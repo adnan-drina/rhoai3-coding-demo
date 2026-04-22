@@ -25,6 +25,7 @@ resources:
   - leaderworkerset/namespace.yaml
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
+  - leaderworkerset/instance.yaml
   - rhcl-operator/namespace.yaml
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml

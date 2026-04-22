@@ -69,6 +69,10 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec
+    - group: operator.openshift.io
+      kind: LeaderWorkerSetOperator
+      jqPathExpressions:
+        - .spec
     # Gateway hostname is patched imperatively by deploy.sh
     - group: gateway.networking.k8s.io
       kind: Gateway

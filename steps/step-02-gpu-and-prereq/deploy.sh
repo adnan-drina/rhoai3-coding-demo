@@ -81,6 +81,12 @@ log_success "RHCL AuthPolicy CRD available"
 log_step "Creating Kuadrant instance..."
 ensure_namespace "kuadrant-system"
 
+# Restart the kuadrant operator to ensure webhook is ready (upstream pattern)
+log_info "Restarting Kuadrant operator to ensure webhook readiness..."
+oc delete pod -n openshift-operators -l app=kuadrant,control-plane=controller-manager 2>/dev/null || true
+sleep 5
+oc rollout status -n openshift-operators deployment/kuadrant-operator-controller-manager --timeout=120s 2>/dev/null || true
+
 cat <<EOF | oc apply -f -
 apiVersion: kuadrant.io/v1beta1
 kind: Kuadrant
