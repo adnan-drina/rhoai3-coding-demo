@@ -15,6 +15,18 @@ echo ""
 log_step "Argo CD Application"
 check_argocd_app "step-03-llm-serving-maas"
 
+# --- MaaS Prerequisites ---
+log_step "MaaS Operator Prerequisites"
+check_csv_succeeded "openshift-lws-operator" "leader"
+check_csv_succeeded "rhcl-operator" "rhcl"
+check_crd_exists "authpolicies.kuadrant.io"
+check_warn "Kuadrant ready" \
+    "oc get kuadrant kuadrant -n kuadrant-system -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
+    "True"
+check_warn "maas-default-gateway exists" \
+    "oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.metadata.name}'" \
+    "maas-default-gateway"
+
 # --- Namespace ---
 log_step "Model Serving Namespace"
 check "maas namespace exists" \

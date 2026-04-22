@@ -1,39 +1,32 @@
 #!/usr/bin/env bash
-# Step 02: GPU Infrastructure & Prerequisites - Deploy Script
-# Deploys operator prerequisites for RHOAI 3.4 + MaaS:
-# - User Workload Monitoring
-# - NFD Operator + Instance
-# - GPU Operator + ClusterPolicy + DCGM Dashboard
-# - OpenShift Serverless + KnativeServing
-# - LeaderWorkerSet Operator
-# - Red Hat Connectivity Link (RHCL)
-# - GPU MachineSets (AWS)
+# Step 02: GPU Infrastructure - Deploy Script
+# Deploys GPU hardware enablement:
+# - NFD Operator + NodeFeatureDiscovery instance
+# - NVIDIA GPU Operator + ClusterPolicy + DCGM Dashboard
+# - GPU MachineSets (AWS g6e.2xlarge)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="step-02-gpu-and-prereq"
+STEP_NAME="step-02-gpu-infra"
 
 load_env
 check_oc_logged_in
 
-log_step "Step 02: GPU Infrastructure & Prerequisites"
+log_step "Step 02: GPU Infrastructure"
 
 log_step "Checking prerequisites..."
-
-if ! oc get applications -n openshift-gitops step-01-rhoai &>/dev/null; then
-    log_error "step-01-rhoai Argo CD Application not found!"
-    log_info "Please run: ./steps/step-01-rhoai/deploy.sh first"
+if ! oc get applications -n openshift-gitops step-01-rhoai-platform &>/dev/null; then
+    log_error "step-01-rhoai-platform Argo CD Application not found!"
+    log_info "Please run: ./steps/step-01-rhoai-platform/deploy.sh first"
     exit 1
 fi
 log_success "Prerequisites verified"
 
 log_step "Creating Argo CD Application for GPU Infrastructure"
-
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
-
 log_success "Argo CD Application '${STEP_NAME}' created"
 
 log_step "Waiting for NFD Operator..."
@@ -49,99 +42,6 @@ until oc get crd clusterpolicies.nvidia.com &>/dev/null; do
     sleep 10
 done
 log_success "GPU Operator CRD available"
-
-log_step "Waiting for Serverless Operator..."
-until oc get crd knativeservings.operator.knative.dev &>/dev/null; do
-    log_info "Waiting for Knative CRD..."
-    sleep 10
-done
-log_success "Serverless CRD available"
-
-log_step "Waiting for LeaderWorkerSet Operator..."
-until oc get csv -n openshift-lws-operator -o jsonpath='{.items[?(@.spec.displayName=="Red Hat build of Leader Worker Set")].status.phase}' 2>/dev/null | grep -q "Succeeded"; do
-    log_info "Waiting for LWS Operator..."
-    sleep 10
-done
-log_success "LeaderWorkerSet Operator ready"
-
-log_step "Waiting for cert-manager Operator..."
-until oc get crd certificates.cert-manager.io &>/dev/null; do
-    log_info "Waiting for cert-manager CRD..."
-    sleep 10
-done
-log_success "cert-manager CRD available"
-
-log_step "Waiting for Red Hat Connectivity Link (RHCL)..."
-until oc get crd authpolicies.kuadrant.io &>/dev/null; do
-    log_info "Waiting for RHCL AuthPolicy CRD..."
-    sleep 10
-done
-log_success "RHCL AuthPolicy CRD available"
-
-log_step "Creating Kuadrant instance..."
-ensure_namespace "kuadrant-system"
-
-# Restart the kuadrant operator to ensure webhook is ready (upstream pattern)
-log_info "Restarting Kuadrant operator to ensure webhook readiness..."
-oc delete pod -n openshift-operators -l app=kuadrant,control-plane=controller-manager 2>/dev/null || true
-sleep 5
-oc rollout status -n openshift-operators deployment/kuadrant-operator-controller-manager --timeout=120s 2>/dev/null || true
-
-cat <<EOF | oc apply -f -
-apiVersion: kuadrant.io/v1beta1
-kind: Kuadrant
-metadata:
-  name: kuadrant
-  namespace: kuadrant-system
-EOF
-
-log_info "Waiting for Kuadrant to become ready..."
-until oc wait Kuadrant -n kuadrant-system kuadrant --for=condition=Ready --timeout=10m 2>/dev/null; do
-    sleep 10
-done
-log_success "Kuadrant ready"
-
-log_step "Configuring Authorino with TLS..."
-oc annotate svc/authorino-authorino-authorization \
-    service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
-    -n kuadrant-system --overwrite 2>/dev/null || true
-sleep 5
-
-cat <<EOF | oc apply -f -
-apiVersion: operator.authorino.kuadrant.io/v1beta1
-kind: Authorino
-metadata:
-  name: authorino
-  namespace: kuadrant-system
-spec:
-  replicas: 1
-  clusterWide: true
-  listener:
-    tls:
-      enabled: true
-      certSecretRef:
-        name: authorino-server-cert
-  oidcServer:
-    tls:
-      enabled: false
-EOF
-
-until oc wait --for=condition=ready pod -l authorino-resource=authorino -n kuadrant-system --timeout=150s 2>/dev/null; do
-    sleep 5
-done
-log_success "Authorino ready with TLS"
-
-log_step "Patching MaaS Gateway with cluster hostname..."
-INGRESS_DOMAIN=$(oc get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null)
-if [[ -n "$INGRESS_DOMAIN" ]]; then
-    MAAS_HOST="maas.${INGRESS_DOMAIN}"
-    oc patch gateway maas-default-gateway -n openshift-ingress --type json \
-        -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${MAAS_HOST}\"}]" 2>/dev/null \
-        && log_success "MaaS Gateway hostname set to $MAAS_HOST" \
-        || log_warn "Could not patch MaaS Gateway hostname"
-else
-    log_warn "Could not detect ingress domain"
-fi
 
 # Deploy MachineSets (cluster-specific, not in GitOps)
 log_step "Deploying GPU MachineSets"
@@ -238,7 +138,7 @@ spec:
 EOF
 done
 
-log_success "GPU MachineSets created (2x g6e.2xlarge with L4 GPUs)"
+log_success "GPU MachineSets created (2x g6e.2xlarge with NVIDIA L4)"
 
 log_step "Deployment Complete"
 

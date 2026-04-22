@@ -1,15 +1,24 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# RHOAI 3.4 Platform Layer
+# RHOAI 3.4 Platform — operator, configuration, and all RHOAI dependencies
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
-# Key 3.x Changes (vs 2.x):
-#   - datasciencepipelines → aipipelines
-#   - User/Admin groups moved from OdhDashboardConfig → Auth resource
-#   - New: Hardware Profiles (replaces Accelerator Profiles)
-#   - New: GenAI Studio, llamastackoperator
 
 resources:
+  # GitOps RBAC (reinforces bootstrap)
+  - gitops-rbac/cluster-admin-binding.yaml
+  # Monitoring (required for RHOAI metrics)
+  - monitoring/cluster-monitoring-config.yaml
+  - monitoring/user-workload-monitoring-config.yaml
+  # cert-manager (required by KServe, Llama Stack)
+  - cert-manager/subscription.yaml
+  # Serverless (required by KServe)
+  - serverless/namespace.yaml
+  - serverless/operatorgroup.yaml
+  - serverless/subscription.yaml
+  - serverless/knative-serving-namespace.yaml
+  - serverless/knative-serving.yaml
+  # RHOAI Operator + Platform
   - rhoai-operator/namespace.yaml
   - rhoai-operator/operatorgroup.yaml
   - rhoai-operator/subscription.yaml

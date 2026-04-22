@@ -40,11 +40,28 @@ spec:
       jqPathExpressions:
         - .spec
         - .metadata.annotations
+    - group: operator.openshift.io
+      kind: LeaderWorkerSetOperator
+      jqPathExpressions:
+        - .spec
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      jqPathExpressions:
+        - .spec
     - group: ""
       kind: Namespace
       jsonPointers:
         - /metadata/annotations
         - /metadata/labels
+    - group: operators.coreos.com
+      kind: OperatorGroup
+      jsonPointers:
+        - /metadata/annotations
+    - group: operators.coreos.com
+      kind: Subscription
+      jsonPointers:
+        - /metadata/annotations
+        - /spec/startingCSV
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:

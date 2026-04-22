@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: step-01-rhoai
+  name: step-01-rhoai-platform
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/step: "01"
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: gitops/step-01-rhoai
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/manifest-generate-paths: gitops/step-01-rhoai-platform
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/step-01-rhoai/base
+    path: gitops/step-01-rhoai-platform/base
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -35,49 +35,52 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    # DataScienceCluster - operator manages component state
     - group: datasciencecluster.opendatahub.io
       kind: DataScienceCluster
       jqPathExpressions:
         - .spec.components
-    # DSCInitialization - operator manages spec
     - group: dscinitialization.opendatahub.io
       kind: DSCInitialization
       jqPathExpressions:
         - .spec
-    # OdhDashboardConfig - operator manages dashboard settings
     - group: opendatahub.io
       kind: OdhDashboardConfig
       jqPathExpressions:
         - .spec
-    # Auth - operator may modify spec
     - group: services.platform.opendatahub.io
       kind: Auth
       jqPathExpressions:
         - .spec
-    # HardwareProfile - dashboard may modify spec
     - group: infrastructure.opendatahub.io
       kind: HardwareProfile
       jqPathExpressions:
         - .spec
-    # Subscriptions - OLM manages these
     - group: operators.coreos.com
       kind: Subscription
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    # Namespaces may have additional annotations/labels from OLM
     - group: ""
       kind: Namespace
       jsonPointers:
         - /metadata/annotations
         - /metadata/labels
-    # OperatorGroups have status fields managed by OLM
     - group: operators.coreos.com
       kind: OperatorGroup
       jsonPointers:
         - /metadata/annotations
-    # PVC spec is immutable after creation
+    - group: ""
+      kind: ConfigMap
+      namespace: openshift-monitoring
+      name: cluster-monitoring-config
+      jsonPointers:
+        - /data
+        - /metadata/annotations
+    - group: operator.knative.dev
+      kind: KnativeServing
+      jsonPointers:
+        - /metadata/annotations
+        - /spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
