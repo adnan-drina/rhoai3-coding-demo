@@ -8,3 +8,4 @@ resources:
   - devspaces/namespace.yaml
   - devspaces/subscription.yaml
   - devspaces/checluster.yaml
+  - devspaces/workspaces.yaml

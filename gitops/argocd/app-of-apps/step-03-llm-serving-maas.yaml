@@ -36,7 +36,7 @@ spec:
         maxDuration: 3m
   ignoreDifferences:
     - group: serving.kserve.io
-      kind: InferenceService
+      kind: LLMInferenceService
       jqPathExpressions:
         - .spec
         - .metadata.annotations

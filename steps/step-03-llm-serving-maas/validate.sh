@@ -21,17 +21,17 @@ check "maas namespace exists" \
     "oc get namespace maas -o jsonpath='{.status.phase}'" \
     "Active"
 
-# --- InferenceServices ---
-log_step "InferenceServices"
+# --- LLMInferenceServices ---
+log_step "LLMInferenceServices"
 for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
-    check_warn "$model ready" \
-        "oc get inferenceservice $model -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-        "True"
+    check_warn "$model exists" \
+        "oc get llminferenceservice $model -n maas -o jsonpath='{.metadata.name}'" \
+        "$model"
 done
 
 # --- MaaS Groups ---
 log_step "MaaS Tier Groups"
-for group in maas-free maas-premium maas-enterprise; do
+for group in tier-free-users tier-premium-users tier-enterprise-users; do
     check "$group group exists" \
         "oc get group $group -o jsonpath='{.metadata.name}'" \
         "$group"

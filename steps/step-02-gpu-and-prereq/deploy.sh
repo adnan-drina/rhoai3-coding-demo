@@ -125,6 +125,18 @@ until oc wait --for=condition=ready pod -l authorino-resource=authorino -n kuadr
 done
 log_success "Authorino ready with TLS"
 
+log_step "Patching MaaS Gateway with cluster hostname..."
+INGRESS_DOMAIN=$(oc get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null)
+if [[ -n "$INGRESS_DOMAIN" ]]; then
+    MAAS_HOST="maas.${INGRESS_DOMAIN}"
+    oc patch gateway maas-default-gateway -n openshift-ingress --type json \
+        -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${MAAS_HOST}\"}]" 2>/dev/null \
+        && log_success "MaaS Gateway hostname set to $MAAS_HOST" \
+        || log_warn "Could not patch MaaS Gateway hostname"
+else
+    log_warn "Could not detect ingress domain"
+fi
+
 # Deploy MachineSets (cluster-specific, not in GitOps)
 log_step "Deploying GPU MachineSets"
 
