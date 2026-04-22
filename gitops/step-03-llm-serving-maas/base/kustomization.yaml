@@ -27,3 +27,11 @@ resources:
   - governance/ratelimitpolicy.yaml
   - governance/tokenratelimitpolicy.yaml
   - governance/telemetrypolicy.yaml
+  # Observability (MaaS usage dashboards)
+  - grafana/namespace.yaml
+  - grafana/operatorgroup.yaml
+  - grafana/subscription.yaml
+  - grafana/instance.yaml
+  - grafana/datasource.yaml
+  - grafana/maas-dashboard.yaml
+  - grafana/servicemonitor.yaml

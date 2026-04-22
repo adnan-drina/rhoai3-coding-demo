@@ -7,12 +7,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Step 05: Dev Spaces & AI Code Assistant — Validation          ║"
+echo "║  Step 04: Dev Spaces & AI Code Assistant — Validation          ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
 log_step "Argo CD Application"
-check_argocd_app "step-05-devspaces"
+check_argocd_app "step-04-devspaces"
 
 log_step "Dev Spaces Operator"
 check_csv_succeeded "openshift-devspaces" "devspaces"

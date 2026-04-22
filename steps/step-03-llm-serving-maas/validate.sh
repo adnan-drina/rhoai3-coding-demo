@@ -49,6 +49,16 @@ for group in tier-free-users tier-premium-users tier-enterprise-users; do
         "$group"
 done
 
+# --- Observability ---
+log_step "Grafana"
+check_csv_succeeded "grafana" "grafana"
+check "Grafana instance exists" \
+    "oc get grafana grafana -n grafana -o jsonpath='{.metadata.name}'" \
+    "grafana"
+check "MaaS dashboard exists" \
+    "oc get grafanadashboard maas-usage -n grafana -o jsonpath='{.metadata.name}'" \
+    "maas-usage"
+
 # --- Summary ---
 echo ""
 validation_summary

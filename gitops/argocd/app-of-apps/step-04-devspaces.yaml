@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: step-04-observability
+  name: step-04-devspaces
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/step: "04"
   annotations:
     argocd.argoproj.io/sync-wave: "40"
-    argocd.argoproj.io/manifest-generate-paths: gitops/step-04-observability
+    argocd.argoproj.io/manifest-generate-paths: gitops/step-04-devspaces
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/step-04-observability/base
+    path: gitops/step-04-devspaces/base
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -45,12 +45,8 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    - group: operators.coreos.com
-      kind: OperatorGroup
-      jsonPointers:
-        - /metadata/annotations
-    - group: grafana.integreatly.org
-      kind: Grafana
+    - group: org.eclipse.che
+      kind: CheCluster
       jqPathExpressions:
         - .spec
     - group: ""

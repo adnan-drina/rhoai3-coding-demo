@@ -1,4 +1,4 @@
-# Step 05: Dev Spaces and AI Code Assistant
+# Step 04: Dev Spaces and AI Code Assistant
 **"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to the private NVIDIA Nemotron model for AI-assisted software development.
 
 ## Overview

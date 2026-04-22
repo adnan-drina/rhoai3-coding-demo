@@ -82,14 +82,11 @@ Deploy steps in order:
 # Step 02: GPU Infrastructure (NFD + GPU Operator + MachineSets)
 ./steps/step-02-gpu-infra/deploy.sh
 
-# Step 03: LLM Serving + MaaS (models + governance + rate limiting)
+# Step 03: LLM Serving + MaaS + Observability (models + governance + dashboards)
 ./steps/step-03-llm-serving-maas/deploy.sh
 
-# Step 04: Observability (Grafana + MaaS usage dashboards)
-./steps/step-04-observability/deploy.sh
-
-# Step 05: Dev Spaces + AI Code Assistant
-./steps/step-05-devspaces/deploy.sh
+# Step 04: Dev Spaces + AI Code Assistant
+./steps/step-04-devspaces/deploy.sh
 ```
 
 ## Step Details
@@ -98,9 +95,8 @@ Deploy steps in order:
 |------|------|-----------|-----|
 | 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles | [RHOAI 3.4 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
-| 04 | [Observability](steps/step-04-observability/README.md) | Grafana, MaaS usage dashboards, ServiceMonitor, Prometheus | [Managing observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai) |
-| 05 | [Dev Spaces + Continue](steps/step-05-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, Grafana dashboards | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## GitOps Architecture
 
@@ -122,14 +118,12 @@ rhoai3-coding-demo/
 │   ├── step-01-rhoai-platform/base/    # RHOAI operator, monitoring, serverless, cert-mgr
 │   ├── step-02-gpu-infra/base/         # NFD, GPU Operator, ClusterPolicy
 │   ├── step-03-llm-serving-maas/base/  # LWS, RHCL, Gateway, models, governance
-│   ├── step-04-observability/base/     # Grafana, dashboards, ServiceMonitor
-│   └── step-05-devspaces/base/         # Dev Spaces operator, workspaces
+│   └── step-04-devspaces/base/          # Dev Spaces operator, workspaces
 ├── steps/                              # Per-step deploy/validate/README + app code
 │   ├── step-01-rhoai-platform/
 │   ├── step-02-gpu-infra/
 │   ├── step-03-llm-serving-maas/
-│   ├── step-04-observability/
-│   └── step-05-devspaces/
+│   └── step-04-devspaces/
 │       └── coding-exercises/        # Python games for "improve this code" demo
 ├── env.example                      # Template for .env
 └── README.md
