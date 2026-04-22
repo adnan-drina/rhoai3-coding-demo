@@ -1,0 +1,54 @@
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/managing_resources/index#dashboard-configuration-options_dashboard-config
+apiVersion: opendatahub.io/v1alpha
+kind: OdhDashboardConfig
+metadata:
+  name: odh-dashboard-config
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  dashboardConfig:
+    disableTracking: false
+    disableModelRegistry: false
+    disableModelCatalog: false
+    disableKServeMetrics: false
+    genAiStudio: true
+    modelAsService: true
+    disableLMEval: false
+    disableDistributedWorkloads: true
+    disableKueue: true
+  hardwareProfileOrder:
+    - cpu-small
+    - default-profile
+    - nvidia-l4-1gpu
+    - nvidia-l4-4gpu
+  notebookController:
+    enabled: true
+    notebookNamespace: rhods-notebooks
+    pvcSize: 40Gi
+  notebookSizes:
+    - name: Small
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+    - name: Medium
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+    - name: Large
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          cpu: "8"
+          memory: 16Gi

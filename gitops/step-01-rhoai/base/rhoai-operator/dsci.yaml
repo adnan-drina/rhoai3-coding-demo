@@ -1,0 +1,22 @@
+# DSCInitialization - mandatory in RHOAI 3.x
+# Sets global configuration for the operator (certificates, monitoring, etc.)
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/index
+apiVersion: dscinitialization.opendatahub.io/v1
+kind: DSCInitialization
+metadata:
+  name: default-dsci
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  applicationsNamespace: redhat-ods-applications
+  monitoring:
+    managementState: Managed
+    namespace: redhat-ods-monitoring
+  serviceMesh:
+    managementState: Managed
+    controlPlane:
+      name: data-science-smcp
+      namespace: istio-system
+  trustedCABundle:
+    managementState: Managed

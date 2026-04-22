@@ -1,6 +1,6 @@
 # RHOAI3 Coding Demo
 
-**Red Hat OpenShift AI 3.x demo on OpenShift Container Platform — GitOps-driven, step-by-step.**
+**Red Hat OpenShift AI 3.4 demo on OpenShift Container Platform 4.20 — GitOps-driven, step-by-step.**
 
 ## Architecture
 
@@ -28,7 +28,8 @@
 
 ## What You Need
 
-- OpenShift 4.x cluster
+- OpenShift 4.20+ cluster (AWS recommended)
+- GPU nodes (NVIDIA L4) for model serving workloads
 - Cluster admin access
 - `oc` CLI installed
 
@@ -46,17 +47,15 @@ oc login --token=<token> --server=<api>
 Deploy steps in order:
 
 ```bash
-# Deploy each step sequentially
-# ./steps/step-NN-<name>/deploy.sh
+# Step 01: RHOAI Platform
+./steps/step-01-rhoai/deploy.sh
 ```
 
 ## Step Details
 
 | Step | Name | Capability | Ref |
 |------|------|-----------|-----|
-| | | | |
-
-<!-- Add steps as they are developed -->
+| 01 | [RHOAI Platform](steps/step-01-rhoai/README.md) | RHOAI Operator, DataScienceCluster, GenAI Studio, Hardware Profiles | [RHOAI 3.4 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 
 ## GitOps Architecture
 
@@ -96,4 +95,5 @@ rhoai3-coding-demo/
 
 - [Red Hat OpenShift AI — Product Page](https://www.redhat.com/en/products/ai/openshift-ai)
 - [Red Hat OpenShift AI — Datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet)
-- [RHOAI Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
+- [RHOAI 3.4 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/)
+- [RHOAI 3.4 Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/index)
