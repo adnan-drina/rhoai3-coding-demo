@@ -1,0 +1,22 @@
+# Scrape inference metrics from model serving pods in the maas namespace
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: maas-inference-metrics
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: monitoring
+spec:
+  endpoints:
+    - port: http
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - maas
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: llm-serving

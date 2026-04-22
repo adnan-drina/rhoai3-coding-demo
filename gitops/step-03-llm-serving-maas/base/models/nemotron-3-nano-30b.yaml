@@ -1,0 +1,35 @@
+# NVIDIA Nemotron 3 Nano 30B A3B FP8 — premium + enterprise tiers only
+# Primary model for the code assistant demo
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: nemotron-3-nano-30b-a3b
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    app.kubernetes.io/part-of: llm-serving
+    app.kubernetes.io/component: inference
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: vllm-cuda-runtime
+      storageUri: oci://quay.io/jharmison/models:redhatai--nvidia-nemotron-3-nano-30b-a3b-fp8-modelcar
+      resources:
+        limits:
+          cpu: "4"
+          memory: 24Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "2"
+          memory: 16Gi
+          nvidia.com/gpu: "1"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists

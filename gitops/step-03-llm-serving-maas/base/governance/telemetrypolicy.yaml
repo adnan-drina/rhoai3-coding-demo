@@ -1,0 +1,17 @@
+# Expose MaaS usage metrics to Prometheus for Grafana dashboards
+apiVersion: kuadrant.io/v1
+kind: TelemetryPolicy
+metadata:
+  name: maas-telemetry
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/part-of: llm-serving
+    app.kubernetes.io/component: orchestrator
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: maas-api

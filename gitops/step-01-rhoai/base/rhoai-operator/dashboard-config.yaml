@@ -18,6 +18,8 @@ spec:
     disableLMEval: false
     disableDistributedWorkloads: true
     disableKueue: true
+    mlflow: true
+    observabilityDashboard: true
   hardwareProfileOrder:
     - cpu-small
     - default-profile

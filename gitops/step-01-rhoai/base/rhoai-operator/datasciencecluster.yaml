@@ -13,9 +13,12 @@ spec:
       managementState: Managed
     workbenches:
       managementState: Managed
+      workbenchNamespace: rhods-notebooks
     # Renamed in 3.0: datasciencepipelines -> aipipelines
     aipipelines:
       managementState: Managed
+      argoWorkflowsControllers:
+        managementState: Removed
     # KServe - Primary model serving platform
     kserve:
       managementState: Managed

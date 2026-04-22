@@ -1,0 +1,42 @@
+# Token rate limits per MaaS tier (LLM-specific)
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: maas-token-rates
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/part-of: llm-serving
+    app.kubernetes.io/component: orchestrator
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: maas-api
+  limits:
+    free-tokens:
+      rates:
+        - limit: 100
+          window: 1m
+      counters:
+        - expression: request.headers["x-token-count"]
+      when:
+        - predicate: auth.identity.group == "maas-free"
+    premium-tokens:
+      rates:
+        - limit: 10000
+          window: 1m
+      counters:
+        - expression: request.headers["x-token-count"]
+      when:
+        - predicate: auth.identity.group == "maas-premium"
+    enterprise-tokens:
+      rates:
+        - limit: 20000
+          window: 1m
+      counters:
+        - expression: request.headers["x-token-count"]
+      when:
+        - predicate: auth.identity.group == "maas-enterprise"
