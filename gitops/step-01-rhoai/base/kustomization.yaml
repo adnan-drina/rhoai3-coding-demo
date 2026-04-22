@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# RHOAI 3.4 Platform Layer
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
+# Key 3.x Changes (vs 2.x):
+#   - datasciencepipelines → aipipelines
+#   - User/Admin groups moved from OdhDashboardConfig → Auth resource
+#   - New: Hardware Profiles (replaces Accelerator Profiles)
+#   - New: GenAI Studio, llamastackoperator
+
+resources:
+  - rhoai-operator/namespace.yaml
+  - rhoai-operator/operatorgroup.yaml
+  - rhoai-operator/subscription.yaml
+  # Must be created before DataScienceCluster
+  - rhoai-operator/dsci.yaml
+  - rhoai-operator/datasciencecluster.yaml
+  - rhoai-operator/auth.yaml
+  - rhoai-operator/dashboard-config.yaml
+  - rhoai-operator/hardware-profile-cpu-small.yaml
+  - rhoai-operator/hardware-profile-default.yaml
+  - rhoai-operator/hardware-profile-l4-1gpu.yaml
+  - rhoai-operator/hardware-profile-l4-4gpu.yaml
