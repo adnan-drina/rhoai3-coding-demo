@@ -144,11 +144,38 @@ for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
     log_success "$model created"
 done
 
+log_step "Configuring Grafana for MaaS observability..."
+
+until oc get crd grafanas.grafana.integreatly.org &>/dev/null; do
+    log_info "Waiting for Grafana CRD..."
+    sleep 10
+done
+until oc get grafana grafana -n grafana &>/dev/null; do
+    sleep 5
+done
+
+oc create serviceaccount grafana-sa -n grafana 2>/dev/null || true
+oc adm policy add-cluster-role-to-user cluster-monitoring-view \
+    -z grafana-sa -n grafana 2>/dev/null || true
+
+GRAFANA_SA_TOKEN=$(oc create token grafana-sa -n grafana --duration=87600h 2>/dev/null || echo "")
+if [[ -n "$GRAFANA_SA_TOKEN" ]]; then
+    oc patch grafanadatasource prometheus -n grafana --type merge \
+        -p "{\"spec\":{\"datasource\":{\"secureJsonData\":{\"httpHeaderValue1\":\"Bearer ${GRAFANA_SA_TOKEN}\"}}}}" 2>/dev/null \
+        && log_success "Grafana datasource configured with SA token" \
+        || log_warn "Could not patch datasource"
+else
+    log_warn "Could not create SA token"
+fi
+
+GRAFANA_URL=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || echo 'loading...')
+log_success "Grafana: https://${GRAFANA_URL} (admin/<demo-password>)"
+
 log_step "Deployment Complete"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "LLM Serving + MaaS Deployed Successfully"
+echo "LLM Serving + MaaS + Observability Deployed Successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "MaaS Tiers:"

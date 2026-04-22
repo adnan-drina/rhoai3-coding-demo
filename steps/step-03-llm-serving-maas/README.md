@@ -109,4 +109,4 @@ Manifests: [`gitops/step-03-llm-serving-maas/base/`](../../gitops/step-03-llm-se
 
 ## Next Steps
 
-- **Step 04**: [Observability & Governance Dashboard](../step-04-observability/README.md) — Grafana dashboards for MaaS usage monitoring
+- **Step 04**: [Dev Spaces & AI Code Assistant](../step-04-devspaces/README.md) — OpenShift Dev Spaces with Continue extension for AI-assisted coding

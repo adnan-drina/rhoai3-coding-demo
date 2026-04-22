@@ -6,12 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="step-05-devspaces"
+STEP_NAME="step-04-devspaces"
 
 load_env
 check_oc_logged_in
 
-log_step "Step 05: Dev Spaces & AI Code Assistant"
+log_step "Step 04: Dev Spaces & AI Code Assistant"
 
 log_step "Checking prerequisites..."
 
