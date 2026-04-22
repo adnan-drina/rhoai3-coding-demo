@@ -34,6 +34,16 @@ fi
 
 log_success "Prerequisites verified"
 
+log_step "Deploying MaaS API (Developer Preview)..."
+
+INGRESS_DOMAIN=$(oc get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null)
+log_info "Ingress domain: $INGRESS_DOMAIN"
+
+ensure_namespace "maas-api"
+oc apply -k "$REPO_ROOT/gitops/step-03-llm-serving-maas/base/maas/" 2>/dev/null \
+    && log_success "MaaS API base applied" \
+    || log_warn "MaaS API apply failed (may need manual patching for cluster hostname)"
+
 log_step "Creating Argo CD Application for LLM Serving + MaaS"
 
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"

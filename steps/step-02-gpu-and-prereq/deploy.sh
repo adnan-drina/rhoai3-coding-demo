@@ -64,12 +64,66 @@ until oc get csv -n openshift-lws-operator -o jsonpath='{.items[?(@.spec.display
 done
 log_success "LeaderWorkerSet Operator ready"
 
+log_step "Waiting for cert-manager Operator..."
+until oc get crd certificates.cert-manager.io &>/dev/null; do
+    log_info "Waiting for cert-manager CRD..."
+    sleep 10
+done
+log_success "cert-manager CRD available"
+
 log_step "Waiting for Red Hat Connectivity Link (RHCL)..."
 until oc get crd authpolicies.kuadrant.io &>/dev/null; do
     log_info "Waiting for RHCL AuthPolicy CRD..."
     sleep 10
 done
 log_success "RHCL AuthPolicy CRD available"
+
+log_step "Creating Kuadrant instance..."
+ensure_namespace "kuadrant-system"
+
+cat <<EOF | oc apply -f -
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+EOF
+
+log_info "Waiting for Kuadrant to become ready..."
+until oc wait Kuadrant -n kuadrant-system kuadrant --for=condition=Ready --timeout=10m 2>/dev/null; do
+    sleep 10
+done
+log_success "Kuadrant ready"
+
+log_step "Configuring Authorino with TLS..."
+oc annotate svc/authorino-authorino-authorization \
+    service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
+    -n kuadrant-system --overwrite 2>/dev/null || true
+sleep 5
+
+cat <<EOF | oc apply -f -
+apiVersion: operator.authorino.kuadrant.io/v1beta1
+kind: Authorino
+metadata:
+  name: authorino
+  namespace: kuadrant-system
+spec:
+  replicas: 1
+  clusterWide: true
+  listener:
+    tls:
+      enabled: true
+      certSecretRef:
+        name: authorino-server-cert
+  oidcServer:
+    tls:
+      enabled: false
+EOF
+
+until oc wait --for=condition=ready pod -l authorino-resource=authorino -n kuadrant-system --timeout=150s 2>/dev/null; do
+    sleep 5
+done
+log_success "Authorino ready with TLS"
 
 # Deploy MachineSets (cluster-specific, not in GitOps)
 log_step "Deploying GPU MachineSets"

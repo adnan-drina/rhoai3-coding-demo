@@ -28,3 +28,6 @@ resources:
   - rhcl-operator/namespace.yaml
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
+  - cert-manager/namespace.yaml
+  - cert-manager/operatorgroup.yaml
+  - cert-manager/subscription.yaml
