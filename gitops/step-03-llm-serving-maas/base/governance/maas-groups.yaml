@@ -1,0 +1,27 @@
+# MaaS tier-to-group mapping — maps OCP user groups to MaaS access tiers
+# deploy.sh creates the actual htpasswd users and group memberships
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/index
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tier-to-group-mapping
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+data:
+  tiers.yaml: |
+    - name: free
+      displayName: Free Tier
+      level: 0
+      groups:
+        - maas-free
+    - name: premium
+      displayName: Premium Tier
+      level: 1
+      groups:
+        - maas-premium
+    - name: enterprise
+      displayName: Enterprise Tier
+      level: 2
+      groups:
+        - maas-enterprise

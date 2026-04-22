@@ -1,0 +1,30 @@
+# CheCluster instance — provides containerized VS Code workspaces
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
+apiVersion: org.eclipse.che/v2
+kind: CheCluster
+metadata:
+  name: devspaces
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/component: backend
+spec:
+  components:
+    cheServer:
+      debug: false
+      logLevel: INFO
+    dashboard: {}
+    devWorkspace: {}
+    devfileRegistry: {}
+    pluginRegistry: {}
+  containerRegistry: {}
+  devEnvironments:
+    startTimeoutSeconds: 600
+    storage:
+      pvcStrategy: per-user
+    defaultNamespace:
+      autoProvision: true
+  networking: {}

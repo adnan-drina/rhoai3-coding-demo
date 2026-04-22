@@ -1,0 +1,34 @@
+# OpenAI gpt-oss-20b — available to all tiers (free, premium, enterprise)
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: gpt-oss-20b
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    app.kubernetes.io/part-of: llm-serving
+    app.kubernetes.io/component: inference
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: vLLM
+      runtime: vllm-cuda-runtime
+      storageUri: oci://registry.redhat.io/rhelai1/modelcar-gpt-oss-20b:1.5
+      resources:
+        limits:
+          cpu: "4"
+          memory: 24Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "2"
+          memory: 16Gi
+          nvidia.com/gpu: "1"
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists

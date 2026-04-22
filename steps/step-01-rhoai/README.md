@@ -191,3 +191,7 @@ curl -sk -o /dev/null -w '%{http_code}' https://data-science-gateway.apps.<clust
 - [Configuring Hardware Profiles](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_accelerators/index#working-with-hardware-profiles)
 - [Red Hat OpenShift AI — Product Page](https://www.redhat.com/en/products/ai/openshift-ai)
 - [Red Hat OpenShift AI — Datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet)
+
+## Next Steps
+
+- **Step 02**: [GPU Infrastructure & Prerequisites](../step-02-gpu-and-prereq/README.md) — NFD, GPU Operator, Serverless, LeaderWorkerSet, Red Hat Connectivity Link

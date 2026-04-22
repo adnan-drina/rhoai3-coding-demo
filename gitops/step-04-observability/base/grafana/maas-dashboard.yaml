@@ -1,0 +1,100 @@
+# MaaS usage dashboard — shows model usage by tier, user, and model
+# Dashboard JSON sourced from upstream maas-code-assistant quickstart
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: maas-usage
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: frontend
+spec:
+  instanceSelector:
+    matchLabels:
+      app: grafana
+  json: |
+    {
+      "title": "MaaS Usage Dashboard",
+      "uid": "maas-usage",
+      "version": 1,
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "id": 1,
+          "title": "Total Requests by Tier",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(kuadrant_ratelimit_total{namespace=\"maas\"}[5m])) by (tier)",
+              "legendFormat": "{{tier}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Token Usage by Tier",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [
+            {
+              "expr": "sum(rate(kuadrant_token_total{namespace=\"maas\"}[5m])) by (tier)",
+              "legendFormat": "{{tier}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Rate Limit Rejections",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "sum(kuadrant_ratelimit_rejected_total{namespace=\"maas\"})",
+              "legendFormat": "Rejected"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Active Models",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
+          "targets": [
+            {
+              "expr": "count(kube_pod_info{namespace=\"maas\",pod=~\".*predictor.*\"})",
+              "legendFormat": "Models"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Requests by Model",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "sum(rate(vllm:request_success:counter[5m])) by (model_name)",
+              "legendFormat": "{{model_name}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Inference Latency (p95)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{namespace=\"maas\"}[5m])) by (le, model_name))",
+              "legendFormat": "{{model_name}} p95"
+            }
+          ]
+        }
+      ]
+    }

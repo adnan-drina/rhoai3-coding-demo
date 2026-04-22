@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: step-03-llm-serving-maas
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/step: "03"
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+    argocd.argoproj.io/manifest-generate-paths: gitops/step-03-llm-serving-maas
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: main
+    path: gitops/step-03-llm-serving-maas/base
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideDiff=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: serving.kserve.io
+      kind: InferenceService
+      jqPathExpressions:
+        - .spec
+        - .metadata.annotations
+    - group: ""
+      kind: Namespace
+      jsonPointers:
+        - /metadata/annotations
+        - /metadata/labels
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec
