@@ -19,6 +19,8 @@ spec:
         name: vLLM
       runtime: vllm-cuda-runtime
       storageUri: oci://registry.redhat.io/rhelai1/modelcar-gpt-oss-20b:1.5
+      args:
+        - --enable-force-include-usage
       resources:
         limits:
           cpu: "4"

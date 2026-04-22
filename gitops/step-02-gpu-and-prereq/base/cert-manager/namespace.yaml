@@ -1,0 +1,8 @@
+# Required by KServe, llm-d, Llama Stack, and Kueue
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
