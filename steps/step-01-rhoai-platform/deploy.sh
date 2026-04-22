@@ -1,30 +1,45 @@
 #!/usr/bin/env bash
-# Step 01: Red Hat OpenShift AI 3.4 - Deploy Script
-# Deploys RHOAI 3.4 Platform Layer:
+# Step 01: RHOAI Platform - Deploy Script
+# Deploys the complete RHOAI 3.4 platform with all dependencies:
+# - User Workload Monitoring
+# - cert-manager Operator (KServe dependency)
+# - OpenShift Serverless + KnativeServing (KServe dependency)
 # - RHOAI Operator (stable-3.x channel)
 # - DSCInitialization (Service Mesh: Managed)
 # - DataScienceCluster with full 3.4 components
-# - Auth resource for user/admin groups
-# - GenAI Studio configuration
-# - Hardware Profiles for AWS G6 GPU nodes
+# - Auth resource, GenAI Studio, Hardware Profiles
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="step-01-rhoai"
+STEP_NAME="step-01-rhoai-platform"
 
 load_env
 check_oc_logged_in
 
-log_step "Step 01: Red Hat OpenShift AI 3.4"
+log_step "Step 01: RHOAI Platform"
 
-log_step "Creating Argo CD Application for RHOAI"
+log_step "Creating Argo CD Application for RHOAI Platform"
 
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
 
 log_success "Argo CD Application '${STEP_NAME}' created"
+
+log_step "Waiting for Serverless Operator..."
+until oc get crd knativeservings.operator.knative.dev &>/dev/null; do
+    log_info "Waiting for Knative CRD..."
+    sleep 10
+done
+log_success "Serverless CRD available"
+
+log_step "Waiting for cert-manager Operator..."
+until oc get crd certificates.cert-manager.io &>/dev/null; do
+    log_info "Waiting for cert-manager CRD..."
+    sleep 10
+done
+log_success "cert-manager CRD available"
 
 log_step "Waiting for RHOAI Operator..."
 
@@ -51,10 +66,6 @@ until oc get crd datascienceclusters.datasciencecluster.opendatahub.io &>/dev/nu
 done
 log_success "DataScienceCluster CRD available"
 
-# Approve Service Mesh 3 install plans (RHOAI forces Manual approval)
-# The RHOAI operator auto-creates the servicemeshoperator3 Subscription with
-# installPlanApproval: Manual and reconciles it back if changed. We must
-# approve pending install plans explicitly to avoid the gateway getting stuck.
 log_step "Checking Service Mesh 3 operator..."
 
 log_info "Waiting for servicemeshoperator3 Subscription..."
@@ -104,17 +115,13 @@ done
 log_success "DataScienceCluster is Ready"
 
 log_step "Verifying Hardware Profiles..."
-
 until oc get hardwareprofiles -n redhat-ods-applications --no-headers 2>/dev/null | grep -q .; do
     sleep 5
 done
-
 PROFILES=$(oc get hardwareprofiles -n redhat-ods-applications -o custom-columns=NAME:.metadata.name --no-headers 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
 log_success "Hardware Profiles available: $PROFILES"
 
-# Patch DSCI with cluster CA bundle (required for LlamaStack TLS)
 log_step "Patching DSCI with cluster CA bundle..."
-
 CA_BUNDLE=$(oc get configmap kube-root-ca.crt -n openshift-config -o jsonpath='{.data.ca\.crt}' 2>/dev/null || true)
 if [[ -n "$CA_BUNDLE" ]]; then
     CA_JSON=$(echo "$CA_BUNDLE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')
@@ -127,7 +134,6 @@ else
 fi
 
 log_step "Ensuring GenAI Studio is enabled..."
-
 until oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications &>/dev/null; do
     sleep 5
 done
@@ -143,24 +149,8 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "RHOAI 3.4 Platform Deployed Successfully"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Enabled Components:"
-oc get datasciencecluster default-dsc -o jsonpath='{.spec.components}' 2>/dev/null | \
-  jq -r 'to_entries | .[] | "  • \(.key): \(.value.managementState)"' 2>/dev/null || \
-  echo "  (use 'oc get datasciencecluster default-dsc -o yaml' to view)"
-echo ""
-echo "Hardware Profiles:"
-oc get hardwareprofiles -n redhat-ods-applications \
-  -o custom-columns=NAME:.metadata.name,DISPLAY:.metadata.annotations."opendatahub\.io/display-name" 2>/dev/null || \
-  echo "  (use 'oc get hardwareprofiles -n redhat-ods-applications' to view)"
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
 log_info "Argo CD Application status:"
 echo "  oc get applications -n openshift-gitops ${STEP_NAME}"
-echo ""
-log_info "RHOAI status:"
-echo "  oc get datasciencecluster default-dsc"
-echo "  oc get pods -n redhat-ods-applications"
 echo ""
 log_info "Dashboard URL:"
 DASHBOARD_URL=$(oc get route -n openshift-ingress data-science-gateway -o jsonpath='{.spec.host}' 2>/dev/null \

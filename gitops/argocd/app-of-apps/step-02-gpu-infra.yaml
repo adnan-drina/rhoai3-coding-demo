@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: step-02-gpu-and-prereq
+  name: step-02-gpu-infra
   namespace: openshift-gitops
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/step: "02"
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: gitops/step-02-gpu-and-prereq
+    argocd.argoproj.io/manifest-generate-paths: gitops/step-02-gpu-infra
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -16,7 +16,7 @@ spec:
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
-    path: gitops/step-02-gpu-and-prereq/base
+    path: gitops/step-02-gpu-infra/base
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -35,13 +35,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    - group: ""
-      kind: ConfigMap
-      namespace: openshift-monitoring
-      name: cluster-monitoring-config
-      jsonPointers:
-        - /data
-        - /metadata/annotations
     - group: ""
       kind: Namespace
       jsonPointers:
@@ -62,20 +55,6 @@ spec:
         - .spec
     - group: nfd.openshift.io
       kind: NodeFeatureDiscovery
-      jqPathExpressions:
-        - .spec
-    - group: operator.knative.dev
-      kind: KnativeServing
-      jsonPointers:
-        - /metadata/annotations
-        - /spec
-    - group: operator.openshift.io
-      kind: LeaderWorkerSetOperator
-      jqPathExpressions:
-        - .spec
-    # Gateway hostname is patched imperatively by deploy.sh
-    - group: gateway.networking.k8s.io
-      kind: Gateway
       jqPathExpressions:
         - .spec
     - group: ""

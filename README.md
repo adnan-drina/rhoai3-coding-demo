@@ -76,19 +76,19 @@ oc login --token=<token> --server=<api>
 Deploy steps in order:
 
 ```bash
-# Step 01: RHOAI Platform
-./steps/step-01-rhoai/deploy.sh
+# Step 01: RHOAI Platform (operator + dependencies + configuration)
+./steps/step-01-rhoai-platform/deploy.sh
 
-# Step 02: GPU Infrastructure & Prerequisites
-./steps/step-02-gpu-and-prereq/deploy.sh
+# Step 02: GPU Infrastructure (NFD + GPU Operator + MachineSets)
+./steps/step-02-gpu-infra/deploy.sh
 
-# Step 03: LLM Serving with Models-as-a-Service
+# Step 03: LLM Serving + MaaS (models + governance + rate limiting)
 ./steps/step-03-llm-serving-maas/deploy.sh
 
-# Step 04: Observability & Governance Dashboard
+# Step 04: Observability (Grafana + MaaS usage dashboards)
 ./steps/step-04-observability/deploy.sh
 
-# Step 05: Dev Spaces & AI Code Assistant
+# Step 05: Dev Spaces + AI Code Assistant
 ./steps/step-05-devspaces/deploy.sh
 ```
 
@@ -96,9 +96,9 @@ Deploy steps in order:
 
 | Step | Name | Capability | Ref |
 |------|------|-----------|-----|
-| 01 | [RHOAI Platform](steps/step-01-rhoai/README.md) | RHOAI Operator, DataScienceCluster, GenAI Studio, Hardware Profiles | [RHOAI 3.4 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
-| 02 | [GPU & Prerequisites](steps/step-02-gpu-and-prereq/README.md) | NFD, GPU Operator, Serverless, LeaderWorkerSet, RHCL, Monitoring | [Installing dependencies](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-the-distributed-workloads-components_install) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | vLLM on GPU, NVIDIA Nemotron, MaaS tiers, rate limits, telemetry | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles | [RHOAI 3.4 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
+| 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Observability](steps/step-04-observability/README.md) | Grafana, MaaS usage dashboards, ServiceMonitor, Prometheus | [Managing observability](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-observability_managing-rhoai) |
 | 05 | [Dev Spaces + Continue](steps/step-05-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
@@ -117,16 +117,16 @@ rhoai3-coding-demo/
 │   ├── lib.sh                       # Shared logging, env, oc helpers
 │   ├── validate-lib.sh              # Shared validation check functions
 │   └── validate-demo-flow.sh
-├── gitops/                          # Kubernetes manifests (Kustomize)
-│   ├── argocd/app-of-apps/          # One ArgoCD Application per step
-│   ├── step-01-rhoai/base/          # RHOAI operator, DSC, hardware profiles
-│   ├── step-02-gpu-and-prereq/base/ # NFD, GPU, Serverless, LWS, RHCL
-│   ├── step-03-llm-serving-maas/base/ # Models, MaaS, tiers, rate limits
-│   ├── step-04-observability/base/  # Grafana, dashboards, ServiceMonitor
-│   └── step-05-devspaces/base/      # Dev Spaces operator, workspaces
-├── steps/                           # Per-step deploy/validate/README + app code
-│   ├── step-01-rhoai/
-│   ├── step-02-gpu-and-prereq/
+├── gitops/                             # Kubernetes manifests (Kustomize)
+│   ├── argocd/app-of-apps/             # One ArgoCD Application per step
+│   ├── step-01-rhoai-platform/base/    # RHOAI operator, monitoring, serverless, cert-mgr
+│   ├── step-02-gpu-infra/base/         # NFD, GPU Operator, ClusterPolicy
+│   ├── step-03-llm-serving-maas/base/  # LWS, RHCL, Gateway, models, governance
+│   ├── step-04-observability/base/     # Grafana, dashboards, ServiceMonitor
+│   └── step-05-devspaces/base/         # Dev Spaces operator, workspaces
+├── steps/                              # Per-step deploy/validate/README + app code
+│   ├── step-01-rhoai-platform/
+│   ├── step-02-gpu-infra/
 │   ├── step-03-llm-serving-maas/
 │   ├── step-04-observability/
 │   └── step-05-devspaces/

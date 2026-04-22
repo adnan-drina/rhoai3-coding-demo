@@ -11,6 +11,12 @@ MaaS lets platform administrators define who can access which models, how much t
 
 ```text
 LLM Serving + MaaS
+├── MaaS Prerequisites
+│   ├── LeaderWorkerSet Operator  → Distributed inference orchestration
+│   ├── Red Hat Connectivity Link → Gateway policies, rate limiting
+│   ├── CloudNative PG Operator   → MaaS API database
+│   ├── GatewayClass + Gateway    → MaaS traffic routing
+│   └── Kuadrant + Authorino TLS  → Authentication and authorization
 ├── Models (namespace: maas)
 │   ├── gpt-oss-20b              → All tiers (free, premium, enterprise)
 │   └── nemotron-3-nano-30b-a3b  → Premium + Enterprise only

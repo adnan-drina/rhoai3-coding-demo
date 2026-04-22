@@ -2,13 +2,27 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # LLM Serving with Models-as-a-Service
+# Includes MaaS operator prerequisites + model deployments + governance
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 
 resources:
+  # MaaS operator prerequisites
+  - leaderworkerset/namespace.yaml
+  - leaderworkerset/operatorgroup.yaml
+  - leaderworkerset/subscription.yaml
+  - leaderworkerset/instance.yaml
+  - rhcl-operator/namespace.yaml
+  - rhcl-operator/operatorgroup.yaml
+  - rhcl-operator/subscription.yaml
+  - cloudnative-pg/subscription.yaml
+  - gateway/gatewayclass.yaml
+  - gateway/maas-gateway.yaml
+  # Model serving
   - models/namespace.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
   - models/rbac.yaml
+  # MaaS governance
   - governance/maas-groups.yaml
   - governance/ratelimitpolicy.yaml
   - governance/tokenratelimitpolicy.yaml
