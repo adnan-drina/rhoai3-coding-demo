@@ -22,7 +22,6 @@ spec:
     observabilityDashboard: true
   hardwareProfileOrder:
     - cpu-small
-    - default-profile
     - nvidia-l4-1gpu
     - nvidia-l4-4gpu
   notebookController:

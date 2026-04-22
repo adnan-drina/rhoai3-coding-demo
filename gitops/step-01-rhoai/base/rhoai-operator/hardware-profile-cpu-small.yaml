@@ -1,4 +1,4 @@
-# HardwareProfile - Small CPU-only (Global, Node-based)
+# HardwareProfile - Small CPU-only (Global)
 apiVersion: infrastructure.opendatahub.io/v1
 kind: HardwareProfile
 metadata:
@@ -14,6 +14,9 @@ metadata:
     app.kubernetes.io/part-of: hardwareprofile
     app.opendatahub.io/hardwareprofile: "true"
 spec:
+  scheduling:
+    type: Node
+    node: {}
   identifiers:
     - identifier: cpu
       displayName: CPU
