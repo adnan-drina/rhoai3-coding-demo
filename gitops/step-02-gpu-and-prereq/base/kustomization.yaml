@@ -29,8 +29,7 @@ resources:
   - rhcl-operator/namespace.yaml
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
-  - cert-manager/namespace.yaml
-  - cert-manager/operatorgroup.yaml
+  # cert-manager namespace + OperatorGroup already provisioned by RHOAI/RHCL
   - cert-manager/subscription.yaml
   - gateway/gatewayclass.yaml
   - gateway/maas-gateway.yaml
