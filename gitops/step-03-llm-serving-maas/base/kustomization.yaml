@@ -8,6 +8,7 @@ resources:
   - models/namespace.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
+  - models/rbac.yaml
   - governance/maas-groups.yaml
   - governance/ratelimitpolicy.yaml
   - governance/tokenratelimitpolicy.yaml

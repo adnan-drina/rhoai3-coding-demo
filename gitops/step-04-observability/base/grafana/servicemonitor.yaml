@@ -1,9 +1,10 @@
-# Scrape inference metrics from model serving pods in the maas namespace
+# Scrape Limitador rate-limit metrics (source for MaaS usage dashboards)
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: maas-inference-metrics
-  namespace: maas
+  name: limitador-metrics
+  namespace: kuadrant-system
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -11,12 +12,10 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/component: monitoring
 spec:
-  endpoints:
-    - port: http
-      interval: 30s
-  namespaceSelector:
-    matchNames:
-      - maas
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: llm-serving
+      app: limitador
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

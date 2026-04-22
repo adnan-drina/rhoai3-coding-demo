@@ -31,3 +31,6 @@ resources:
   - cert-manager/namespace.yaml
   - cert-manager/operatorgroup.yaml
   - cert-manager/subscription.yaml
+  - gateway/gatewayclass.yaml
+  - gateway/maas-gateway.yaml
+  - cloudnative-pg/subscription.yaml

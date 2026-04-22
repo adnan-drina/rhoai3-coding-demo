@@ -50,28 +50,28 @@ oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
 
 log_success "Argo CD Application '${STEP_NAME}' created"
 
-log_step "Creating demo user groups for MaaS tiers..."
+log_step "Verifying MaaS tier user groups..."
 
-for group in maas-free maas-premium maas-enterprise; do
-    oc adm groups new "$group" 2>/dev/null || true
+# Groups are created declaratively via GitOps (governance/maas-groups.yaml)
+# Verify they exist after ArgoCD syncs them
+for group in tier-free-users tier-premium-users tier-enterprise-users; do
+    until oc get group "$group" &>/dev/null; do
+        log_info "Waiting for group $group..."
+        sleep 5
+    done
 done
 
-oc adm groups add-users maas-enterprise admin 2>/dev/null || true
-for i in 1 2 3 4 5; do
-    oc adm groups add-users maas-premium "user${i}" 2>/dev/null || true
-done
+log_success "MaaS tier groups configured (tier-free-users, tier-premium-users, tier-enterprise-users)"
 
-log_success "MaaS tier groups configured"
-
-log_step "Waiting for InferenceServices to become ready..."
+log_step "Waiting for LLMInferenceServices to be created..."
 log_info "This may take several minutes as GPU workloads schedule and models load..."
 
 for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
     log_info "Waiting for $model..."
-    until [[ "$(oc get inferenceservice "$model" -n maas -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == "True" ]]; do
-        sleep 30
+    until oc get llminferenceservice "$model" -n maas &>/dev/null; do
+        sleep 15
     done
-    log_success "$model is ready"
+    log_success "$model created"
 done
 
 log_step "Deployment Complete"

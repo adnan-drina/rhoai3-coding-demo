@@ -1,37 +1,43 @@
-# Request rate limits per MaaS tier
-# Ref: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/
+# Request rate limits per MaaS tier — targets the MaaS Gateway
+# Ref: https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/overviews/rate-limiting/
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:
-  name: maas-request-rates
-  namespace: maas
+  name: gateway-rate-limits
+  namespace: openshift-ingress
   annotations:
     argocd.argoproj.io/sync-wave: "15"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-  labels:
-    app.kubernetes.io/part-of: llm-serving
-    app.kubernetes.io/component: orchestrator
 spec:
   targetRef:
     group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: maas-api
+    kind: Gateway
+    name: maas-default-gateway
   limits:
     free:
       rates:
         - limit: 5
           window: 2m
       when:
-        - predicate: auth.identity.group == "maas-free"
+        - predicate: |
+            auth.identity.tier == "free"
+      counters:
+        - expression: auth.identity.userid
     premium:
       rates:
         - limit: 20
           window: 2m
       when:
-        - predicate: auth.identity.group == "maas-premium"
+        - predicate: |
+            auth.identity.tier == "premium"
+      counters:
+        - expression: auth.identity.userid
     enterprise:
       rates:
         - limit: 50
           window: 2m
       when:
-        - predicate: auth.identity.group == "maas-enterprise"
+        - predicate: |
+            auth.identity.tier == "enterprise"
+      counters:
+        - expression: auth.identity.userid

@@ -69,6 +69,11 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec
+    # Gateway hostname is patched imperatively by deploy.sh
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      jqPathExpressions:
+        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
