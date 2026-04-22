@@ -1,5 +1,4 @@
-# HardwareProfile - NVIDIA L4 1GPU (AWS g6.4xlarge)
-# Node specs: 16 vCPU, 64 GB RAM, 1x NVIDIA L4 GPU
+# HardwareProfile - NVIDIA L4 1GPU (AWS g6e.2xlarge)
 apiVersion: infrastructure.opendatahub.io/v1
 kind: HardwareProfile
 metadata:
@@ -8,20 +7,23 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    opendatahub.io/display-name: "NVIDIA L4 1GPU (g6.4xlarge)"
-    opendatahub.io/description: "AWS g6.4xlarge - Single L4 GPU for inference"
+    opendatahub.io/display-name: "NVIDIA L4 1GPU"
+    opendatahub.io/description: "Single L4 GPU for inference and workbenches"
     opendatahub.io/disabled: "false"
   labels:
     app.kubernetes.io/part-of: hardwareprofile
     app.opendatahub.io/hardwareprofile: "true"
 spec:
-  nodeSelectors:
-    node.kubernetes.io/instance-type: g6.4xlarge
-  tolerations:
-    - key: nvidia.com/gpu
-      operator: Equal
-      value: "true"
-      effect: NoSchedule
+  scheduling:
+    type: Node
+    node:
+      nodeSelector:
+        node-role.kubernetes.io/gpu: ""
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
   identifiers:
     - identifier: cpu
       displayName: CPU
