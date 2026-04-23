@@ -4,5 +4,6 @@ metadata:
   name: openshift-nfd
   annotations:
     argocd.argoproj.io/sync-wave: "-10"
+    openshift.io/display-name: "Node Feature Discovery Operator"
   labels:
     openshift.io/cluster-monitoring: "true"

@@ -4,5 +4,6 @@ metadata:
   name: nvidia-gpu-operator
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    openshift.io/display-name: "NVIDIA GPU Operator"
   labels:
     openshift.io/cluster-monitoring: "true"
