@@ -74,12 +74,10 @@ spec:
         - |
           set -e
 
-          echo "Waiting for RHCL operators..."
-          for op in authorino dns limitador rhcl; do
-            until oc get subscription -n openshift-operators -l "operators.coreos.com/${op}-operator.openshift-operators" -o jsonpath='{.items[0].status.state}' 2>/dev/null | grep -q "AtLatestKnown"; do
-              echo "  waiting for ${op}-operator..."
-              sleep 5
-            done
+          echo "Waiting for RHCL operator to be ready..."
+          until oc get csv -n rhcl-operator --no-headers 2>/dev/null | grep -i rhcl | grep -q Succeeded; do
+            echo "  waiting for RHCL CSV..."
+            sleep 10
           done
 
           echo "Restarting Kuadrant operator for webhook readiness..."
