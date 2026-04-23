@@ -2,32 +2,32 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # RHOAI 3.4 Platform — operator, configuration, and all RHOAI dependencies
+# ArgoCD sync waves handle all ordering. No external deploy.sh orchestration needed.
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
 
 resources:
-  # GitOps RBAC (reinforces bootstrap)
+  # Wave -10..0: GitOps RBAC + Monitoring + Operator Subscriptions
   - gitops-rbac/cluster-admin-binding.yaml
-  # Monitoring (required for RHOAI metrics)
   - monitoring/cluster-monitoring-config.yaml
   - monitoring/user-workload-monitoring-config.yaml
-  # cert-manager (required by KServe, Llama Stack)
   - cert-manager/subscription.yaml
-  # Serverless (required by KServe)
   - serverless/namespace.yaml
   - serverless/operatorgroup.yaml
   - serverless/subscription.yaml
   - serverless/knative-serving-namespace.yaml
   - serverless/knative-serving.yaml
-  # RHOAI Operator + Platform
   - rhoai-operator/namespace.yaml
   - rhoai-operator/operatorgroup.yaml
   - rhoai-operator/subscription.yaml
-  # Must be created before DataScienceCluster
+  # Wave 5-10: RHOAI CRs (SkipDryRun handles missing CRDs)
   - rhoai-operator/dsci.yaml
   - rhoai-operator/datasciencecluster.yaml
+  # Wave 12-16: Platform configuration
   - rhoai-operator/auth.yaml
   - rhoai-operator/dashboard-config.yaml
   - rhoai-operator/hardware-profile-cpu-small.yaml
-  # default-profile is managed by DSCInitialization operator — do not override
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml
+  # Wave 15: In-cluster Jobs (cluster-specific tasks)
+  - jobs/approve-sm-installplan.yaml
+  - jobs/patch-dsci-ca.yaml
