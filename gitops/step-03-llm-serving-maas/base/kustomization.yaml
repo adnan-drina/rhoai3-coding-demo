@@ -13,7 +13,6 @@ resources:
   - rhcl-operator/namespace.yaml
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
-  - cloudnative-pg/subscription.yaml
   # Wave 0-5: Grafana operator
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
@@ -36,11 +35,9 @@ resources:
   - gateway/maas-gateway.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
-  - models/rbac.yaml
   # Wave 20-22: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
-  - grafana/servicemonitor.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
   # Wave 25: MaaS publish (MaaSModelRef + MaaSAuthPolicy + MaaSSubscription)
