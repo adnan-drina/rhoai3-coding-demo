@@ -22,6 +22,8 @@ resources:
   # Wave 5: Gateway + Kuadrant namespace
   - gateway/gatewayclass.yaml
   - governance/kuadrant-system-ns.yaml
+  - governance/authorino-service.yaml
+  - governance/authorino.yaml
   # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
   - models/admin-rbac.yaml

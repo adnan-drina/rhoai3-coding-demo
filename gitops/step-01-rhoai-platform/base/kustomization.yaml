@@ -29,6 +29,7 @@ resources:
   # Wave 12-16: Platform configuration
   - rhoai-operator/auth.yaml
   - rhoai-operator/dashboard-config.yaml
+  - rhoai-operator/model-catalog-sources.yaml
   - rhoai-operator/hardware-profile-cpu-small.yaml
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml

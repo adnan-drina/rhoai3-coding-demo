@@ -24,6 +24,9 @@ spec:
       managementState: Managed
       modelsAsService:
         managementState: Managed
+      rawDeploymentServiceConfig: Headed
+    nim:
+      managementState: Managed
     modelregistry:
       managementState: Managed
       registriesNamespace: rhoai-model-registries
@@ -42,4 +45,8 @@ spec:
           permitOnline: allow
           permitCodeExecution: allow
     feastoperator:
+      managementState: Managed
+    mlflowoperator:
+      managementState: Managed
+    trainer:
       managementState: Managed
