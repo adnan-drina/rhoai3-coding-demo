@@ -14,9 +14,10 @@ spec:
     disableModelCatalog: false
     disableKServeMetrics: false
     genAiStudio: true
-    # MaaS dashboard tab requires RHOAI 3.4 GA. On 3.3.x the maas-ui
-    # container can't communicate with the quickstart's MaaS API (different
-    # protocol/port). MaaS functionality works via the Gateway URL directly.
+    # MaaS dashboard tab requires RHOAI 3.4 GA where maas-ui and maas-api
+    # use compatible internal auth. On 3.3.x, maas-ui calls maas-api directly
+    # (bypassing Gateway/Authorino) but the API requires X-MaaS-Username header
+    # that only Authorino sets. MaaS governance works via Gateway + Grafana.
     modelAsService: false
     disableLMEval: false
     disableDistributedWorkloads: true

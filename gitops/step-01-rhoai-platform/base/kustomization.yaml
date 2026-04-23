@@ -32,8 +32,6 @@ resources:
   - rhoai-operator/hardware-profile-cpu-small.yaml
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml
-  # Wave 9: MaaS database Secret (must exist before DSC enables modelsAsService)
-  - jobs/setup-maas-db.yaml
   # Wave 15: In-cluster Jobs (cluster-specific tasks)
   - jobs/approve-sm-installplan.yaml
   - jobs/patch-dsci-ca.yaml
