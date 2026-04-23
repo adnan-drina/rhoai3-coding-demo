@@ -2,8 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # LLM Serving with Models-as-a-Service + Observability
-# Includes MaaS operator prerequisites, models, governance, Grafana dashboards.
-# In-cluster Jobs handle cluster-specific configuration.
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 
 resources:
@@ -21,29 +19,28 @@ resources:
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
-  # Wave 5: Gateway + User groups
+  # Wave 5: Gateway + Kuadrant namespace
   - gateway/gatewayclass.yaml
   - governance/kuadrant-system-ns.yaml
-  - governance/maas-groups.yaml
   # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
   # Wave 10: Kuadrant CR
   - governance/kuadrant.yaml
-  # Wave 12: Kuadrant configuration Job
+  # Wave 12: Kuadrant configuration Job (Authorino TLS + SSL env vars)
   - jobs/configure-kuadrant.yaml
-  # Wave 15-18: Models + RBAC + Policies + Gateway
+  # Wave 15-21: Models + Gateway
   - gateway/maas-gateway.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
   - models/rbac.yaml
-  - governance/ratelimitpolicy.yaml
-  - governance/tokenratelimitpolicy.yaml
-  - governance/telemetrypolicy.yaml
   # Wave 20-22: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
+  # Wave 25: MaaS publish (MaaSModelRef + MaaSAuthPolicy + MaaSSubscription)
+  # The operator reconciles these into AuthPolicies, tier configs, and the MaaS tab
+  - maas-publish/

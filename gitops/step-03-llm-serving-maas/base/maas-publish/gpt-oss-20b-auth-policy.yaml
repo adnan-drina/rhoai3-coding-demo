@@ -1,0 +1,18 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: gpt-oss-20b-access
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: "gpt-oss-20b Access"
+    openshift.io/description: "Grants all authenticated users access to gpt-oss-20b"
+spec:
+  modelRefs:
+    - name: gpt-oss-20b
+      namespace: maas
+  subjects:
+    groups:
+      - name: system:authenticated
+    users: []

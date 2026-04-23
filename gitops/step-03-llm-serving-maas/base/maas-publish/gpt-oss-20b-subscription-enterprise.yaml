@@ -1,0 +1,22 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: gpt-oss-20b-enterprise
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: "gpt-oss-20b Enterprise Tier"
+    openshift.io/description: "Enterprise tier: 100000 tokens/min for rhoai-admins"
+spec:
+  owner:
+    groups:
+      - name: rhoai-admins
+    users: []
+  modelRefs:
+    - name: gpt-oss-20b
+      namespace: maas
+      tokenRateLimits:
+        - limit: 100000
+          window: 1m
+  priority: 20
