@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # Step 03: LLM Serving with Models-as-a-Service - Deploy Script
-# Deploys MaaS operator prerequisites + model serving + governance:
-# - LeaderWorkerSet Operator (llm-d distributed inference)
-# - Red Hat Connectivity Link (MaaS rate limiting)
-# - CloudNative PG (MaaS API database)
-# - GatewayClass + MaaS Gateway
-# - Kuadrant + Authorino TLS
-# - LLMInferenceServices (gpt-oss-20b, Nemotron)
-# - MaaS tier groups, rate limits, telemetry
+# Deploys MaaS operator prerequisites + model serving + governance + observability:
+# Phase 1: Install MaaS prerequisite operators (LWS, RHCL, CloudNative PG)
+# Phase 2: Configure Kuadrant + Authorino TLS + Gateway (before policies sync)
+# Phase 3: Deploy MaaS API, models, governance, and Grafana via ArgoCD
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,9 +32,13 @@ fi
 
 log_success "Prerequisites verified"
 
+# ── Phase 1: Apply ArgoCD Application (starts operator installs) ──
+
 log_step "Creating Argo CD Application for LLM Serving + MaaS"
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
 log_success "Argo CD Application '${STEP_NAME}' created"
+
+# ── Phase 2: Wait for MaaS prerequisite operators ──
 
 log_step "Waiting for LeaderWorkerSet Operator..."
 until oc get csv -n openshift-lws-operator -o jsonpath='{.items[?(@.spec.displayName=="Red Hat build of Leader Worker Set")].status.phase}' 2>/dev/null | grep -q "Succeeded"; do
@@ -53,6 +53,8 @@ until oc get crd authpolicies.kuadrant.io &>/dev/null; do
     sleep 10
 done
 log_success "RHCL AuthPolicy CRD available"
+
+# ── Phase 3: Configure Kuadrant + Authorino (must be ready before policies sync) ──
 
 log_step "Creating Kuadrant instance..."
 ensure_namespace "kuadrant-system"
@@ -106,10 +108,17 @@ until oc wait --for=condition=ready pod -l authorino-resource=authorino -n kuadr
 done
 log_success "Authorino ready with TLS"
 
+# ── Phase 4: Configure MaaS Gateway hostname ──
+
 log_step "Patching MaaS Gateway with cluster hostname..."
 INGRESS_DOMAIN=$(oc get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null)
 if [[ -n "$INGRESS_DOMAIN" ]]; then
     MAAS_HOST="maas.${INGRESS_DOMAIN}"
+    # Wait for Gateway to be created by ArgoCD sync
+    until oc get gateway maas-default-gateway -n openshift-ingress &>/dev/null; do
+        log_info "Waiting for maas-default-gateway..."
+        sleep 5
+    done
     oc patch gateway maas-default-gateway -n openshift-ingress --type json \
         -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${MAAS_HOST}\"}]" 2>/dev/null \
         && log_success "MaaS Gateway hostname set to $MAAS_HOST" \
@@ -118,11 +127,15 @@ else
     log_warn "Could not detect ingress domain"
 fi
 
+# ── Phase 5: Deploy MaaS API ──
+
 log_step "Deploying MaaS API (Developer Preview)..."
 ensure_namespace "maas-api"
 oc apply -k "$REPO_ROOT/gitops/step-03-llm-serving-maas/base/maas/" 2>/dev/null \
     && log_success "MaaS API base applied" \
     || log_warn "MaaS API apply failed (may need manual patching for cluster hostname)"
+
+# ── Phase 6: Verify resources ──
 
 log_step "Verifying MaaS tier user groups..."
 for group in tier-free-users tier-premium-users tier-enterprise-users; do
@@ -143,6 +156,8 @@ for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
     done
     log_success "$model created"
 done
+
+# ── Phase 7: Configure Grafana ──
 
 log_step "Configuring Grafana for MaaS observability..."
 
@@ -170,6 +185,8 @@ fi
 
 GRAFANA_URL=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || echo 'loading...')
 log_success "Grafana: https://${GRAFANA_URL} (admin/redhat123)"
+
+# ── Done ──
 
 log_step "Deployment Complete"
 
