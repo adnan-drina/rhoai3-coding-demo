@@ -1,0 +1,21 @@
+# RHOAI admin and user groups
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-users-and-groups
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: rhoai-admins
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+users:
+  - ai-admin
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: rhoai-users
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+users:
+  - ai-admin
+  - ai-developer
