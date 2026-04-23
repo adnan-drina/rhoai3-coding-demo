@@ -17,6 +17,7 @@ metadata:
     app.kubernetes.io/part-of: llm-serving
     app.kubernetes.io/component: inference
     opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
 spec:
   model:
     name: nemotron-3-nano-30b-a3b

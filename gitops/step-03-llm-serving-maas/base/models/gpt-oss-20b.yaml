@@ -16,6 +16,7 @@ metadata:
     app.kubernetes.io/part-of: llm-serving
     app.kubernetes.io/component: inference
     opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
 spec:
   model:
     name: gpt-oss-20b
