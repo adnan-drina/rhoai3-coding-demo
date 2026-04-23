@@ -1,0 +1,22 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: gpt-oss-20b-free
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: "gpt-oss-20b Free Tier"
+    openshift.io/description: "Free tier: 100 tokens/min for all authenticated users"
+spec:
+  owner:
+    groups:
+      - name: system:authenticated
+    users: []
+  modelRefs:
+    - name: gpt-oss-20b
+      namespace: maas
+      tokenRateLimits:
+        - limit: 100
+          window: 1m
+  priority: 10

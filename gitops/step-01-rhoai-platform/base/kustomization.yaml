@@ -30,6 +30,8 @@ resources:
   - rhoai-operator/auth.yaml
   - rhoai-operator/dashboard-config.yaml
   - rhoai-operator/model-catalog-sources.yaml
+  - rhoai-operator/notebook-controller-culler-config.yaml
+  - rhoai-operator/hardware-profile-default-disabled.yaml
   - rhoai-operator/hardware-profile-cpu-small.yaml
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml
