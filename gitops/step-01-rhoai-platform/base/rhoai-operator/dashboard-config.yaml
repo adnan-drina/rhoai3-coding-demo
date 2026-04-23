@@ -14,11 +14,7 @@ spec:
     disableModelCatalog: false
     disableKServeMetrics: false
     genAiStudio: true
-    # MaaS dashboard tab requires RHOAI 3.4 GA where maas-ui and maas-api
-    # use compatible internal auth. On 3.3.x, maas-ui calls maas-api directly
-    # (bypassing Gateway/Authorino) but the API requires X-MaaS-Username header
-    # that only Authorino sets. MaaS governance works via Gateway + Grafana.
-    modelAsService: false
+    modelAsService: true
     disableLMEval: false
     disableDistributedWorkloads: true
     disableKueue: true
