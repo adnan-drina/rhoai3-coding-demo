@@ -14,14 +14,14 @@ Dev Spaces & AI Code Assistant
 └── Coding Exercises             → Python starter code for "improve this" demo
 ```
 
-Manifests: [`gitops/step-05-devspaces/base/`](../../gitops/step-05-devspaces/base/)
+Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
 
 <details>
 <summary>Deploy</summary>
 
 ```bash
-./steps/step-05-devspaces/deploy.sh
-./steps/step-05-devspaces/validate.sh
+./steps/step-04-devspaces/deploy.sh
+./steps/step-04-devspaces/validate.sh
 ```
 
 </details>
@@ -39,8 +39,10 @@ Manifests: [`gitops/step-05-devspaces/base/`](../../gitops/step-05-devspaces/bas
 3. In VS Code, install the **Continue** extension from the marketplace
 4. Configure Continue with the MaaS model endpoint:
    - Open Continue settings (gear icon)
-   - Add a new model provider with the Nemotron endpoint URL from Step 03
+   - Add a new model provider with the Nemotron endpoint URL from Step 03:
+     `http://maas.<cluster-domain>/maas/nemotron-3-nano-30b-a3b`
    - Set the API key to the token generated from the RHOAI dashboard
+     (GenAI Studio > AI asset endpoints > maas project > View > Generate API token)
 
 **Expect:** Continue extension shows the Nemotron model as available in the sidebar.
 

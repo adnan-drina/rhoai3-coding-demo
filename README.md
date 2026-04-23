@@ -15,6 +15,11 @@ This demo showcases how Red Hat OpenShift AI and NVIDIA models combine to give d
 ├───────────────────────────────────────────────────────────────────────┤
 │                    Models-as-a-Service (MaaS)                         │
 │                                                                       │
+│  RHOAI Dashboard           MaaS Gateway (HTTPS)      MaaS API        │
+│  ├── GenAI Studio          ├── Authorino (AuthN)     ├── Model CRUD   │
+│  ├── AI asset endpoints    ├── Kuadrant policies     ├── API tokens   │
+│  └── Playground            └── TLS termination       └── PostgreSQL   │
+│                                                                       │
 │  Model Endpoints    Tier-Based Access    Rate Limits    Usage Metrics  │
 │  (vLLM on GPU)      (free/premium/ent)   (RHCL)        (Prometheus)   │
 ├───────────────────────────────────────────────────────────────────────┤
@@ -33,7 +38,7 @@ This demo showcases how Red Hat OpenShift AI and NVIDIA models combine to give d
 │  NFD    NVIDIA GPU    Serverless    Service Mesh    Red Hat            │
 │         Operator      (Knative)     (Istio)         Connectivity Link │
 │                                                                       │
-│  GitOps (ArgoCD)    Dev Spaces    Pipelines (Tekton)    Monitoring    │
+│  GitOps (ArgoCD)    Dev Spaces    cert-manager    Monitoring          │
 ├───────────────────────────────────────────────────────────────────────┤
 │                     Infrastructure (AWS)                              │
 │                                                                       │
@@ -45,9 +50,11 @@ This demo showcases how Red Hat OpenShift AI and NVIDIA models combine to give d
 
 ### Developer Perspective
 
-The demo begins from the **developer's point of view** inside the OpenShift AI dashboard. The developer browses deployed AI assets — models and MCP servers — through the GenAI Studio. In the Models-as-a-Service area, they locate an available NVIDIA Nemotron model and test it in the built-in Playground, exploring prompts, system settings, and optional MCP server integrations.
+The demo begins from the **developer's point of view** inside the OpenShift AI dashboard. The developer navigates to **GenAI Studio > AI asset endpoints** and selects the `maas` project. The page shows deployed models from multiple sources — Internal (LLMInferenceService) and MaaS (via the MaaS API) — each with status, endpoint, and playground access.
 
-Once validated, the developer copies the model endpoint URL, generates an API token, and switches to **OpenShift Dev Spaces** — the organization's containerized development environment. Inside a prepared VS Code workspace, they configure the **Continue** extension (an open-source AI coding assistant) to connect to the private model endpoint. The demo culminates with the developer sending source code to the model and asking it to make the code more "enterprise-grade."
+The developer clicks **View** on the NVIDIA Nemotron model to see its external API endpoint and generates an API token. They test the model in the built-in **Playground**, exploring prompts, system settings, and optional MCP server integrations.
+
+Once validated, the developer switches to **OpenShift Dev Spaces** — the organization's containerized development environment. Inside a prepared VS Code workspace, they configure the **Continue** extension (an open-source AI coding assistant) to connect to the private model endpoint. The demo culminates with the developer sending source code to the model and asking it to make the code more "enterprise-grade."
 
 ### Platform Administrator Perspective
 
@@ -131,10 +138,82 @@ rhoai3-coding-demo/
 
 ## Demo Credentials
 
-| Username | Password | Role | MaaS Tier |
-|----------|----------|------|-----------|
-| `admin` | Set in `.env` | Platform Admin | Enterprise |
-| `user1`-`user5` | Set in `.env` | Developer | Premium |
+| Username | Password | Identity Provider | Role | MaaS Tier |
+|----------|----------|-------------------|------|-----------|
+| `ai-admin` | `<demo-password>` | demo-htpasswd | RHOAI Admin (rhoai-admins group) | Enterprise |
+| `ai-developer` | `<demo-password>` | demo-htpasswd | RHOAI User (rhoai-users group) | Premium |
+
+> Credentials are defined in `gitops/step-01-rhoai-platform/base/users/htpasswd-secret.yaml`. MaaS tier group membership is defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml`.
+
+## Troubleshooting
+
+<details>
+<summary>MaaS tab shows "Models as a Service could not be loaded" or models show as loading forever</summary>
+
+The MaaS Gateway must have an **HTTPS listener with TLS termination** in addition to the HTTP listener. The RHOAI dashboard's `gen-ai-ui` and `maas-ui` containers call the MaaS API via `https://maas.<cluster-domain>/maas-api/`. Without TLS, these calls time out (504).
+
+Verify the Gateway has both listeners:
+```bash
+oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[*].name}'
+# Expected: http https
+```
+
+If the `https` listener is missing, the `job-patch-gateway-hostname` Job in step-03 creates it automatically. Re-sync the ArgoCD Application or re-run `deploy.sh`.
+</details>
+
+<details>
+<summary>Authorino returns TLS errors or MaaS API auth fails</summary>
+
+Authorino needs `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` env vars to trust OpenShift's internal service-ca certificates. The `job-configure-kuadrant` Job sets these automatically.
+
+Verify:
+```bash
+oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec.containers[0].env[*].name}'
+# Expected output should include: SSL_CERT_FILE REQUESTS_CA_BUNDLE
+```
+</details>
+
+<details>
+<summary>API key generation fails with "MaaS service is not available"</summary>
+
+Two issues can cause this:
+
+1. **Tier mapping**: The `tier-to-group-mapping` ConfigMap must include your actual user groups. The operator creates defaults (`system:authenticated`, `premium-users`, `enterprise-users`), but demo users are in `rhoai-admins`/`rhoai-users`. Patch the ConfigMap to add your groups, then restart `maas-api`:
+```bash
+# Verify tier lookup works for your groups
+oc exec deploy/maas-api -n redhat-ods-applications -- \
+  curl -sk https://localhost:8443/v1/tiers/lookup \
+  -H "Content-Type: application/json" \
+  -H "X-MaaS-Username: ai-admin" \
+  -H 'X-MaaS-Group: ["rhoai-admins"]' \
+  -d '{"groups": ["rhoai-admins"]}'
+# Expected: {"tier":"enterprise","displayName":"Enterprise Tier"}
+```
+
+2. **Authorino `@tostr` expression (EA2)**: The operator-managed `AuthPolicy` uses `auth.identity.user.groups.@tostr` to set the `X-MaaS-Group` response header, but this expression doesn't produce output in the deployed Authorino version. The `maas-api` requires this header for write operations and returns 500 without it.
+
+**Workaround** — Generate API keys via CLI from within the cluster:
+```bash
+oc exec deploy/rhods-dashboard -n redhat-ods-applications -c maas-ui -- \
+  curl -sk -H "X-MaaS-Username: ai-admin" \
+       -H 'X-MaaS-Group: ["rhoai-admins","rhoai-users"]' \
+       -H "Content-Type: application/json" \
+       -X POST -d '{"name":"my-key"}' \
+       https://maas-api.redhat-ods-applications.svc:8443/v1/api-keys
+```
+
+The response contains the API key (starts with `sk-oai-`). Use this key in the `Authorization: Bearer sk-oai-...` header for MaaS API calls.
+</details>
+
+<details>
+<summary>Model deployments show "Failed" in RHOAI dashboard but pods run fine</summary>
+
+This typically means the HTTPRoute's `AuthPolicyAffected` condition is `False`. Ensure Red Hat Connectivity Link (RHCL) is installed and the `AuthPolicy` targeting `maas-api-route` is correctly configured. Check:
+```bash
+oc get httproute -n redhat-ods-applications -o wide
+oc get authpolicy -n redhat-ods-applications -o yaml
+```
+</details>
 
 ## References
 
@@ -142,8 +221,9 @@ rhoai3-coding-demo/
 - [Red Hat OpenShift AI — Datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet)
 - [RHOAI 3.4 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/)
 - [RHOAI 3.4 Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/index)
+- [Experimenting with models in the GenAI Playground](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/experimenting_with_models_in_the_gen_ai_playground/)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [Governing LLM access with Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/index)
 - [NVIDIA Nemotron Models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b)
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
-- [Governing LLM access with Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/index)

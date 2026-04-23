@@ -30,7 +30,7 @@ rules:
   verbs: ["get", "list", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list", "patch"]
 - apiGroups: ["operators.coreos.com"]
   resources: ["subscriptions", "clusterserviceversions"]
   verbs: ["get", "list"]
@@ -104,6 +104,18 @@ spec:
           oc patch authorino authorino -n kuadrant-system --type=merge \
             --patch '{"spec":{"listener":{"tls":{"enabled":true,"certSecretRef":{"name":"authorino-server-cert"}}}}}' \
             2>/dev/null || true
+
+          echo "Configuring Authorino SSL env vars for internal service-ca trust..."
+          EXISTING_ENVS=$(oc get deployment authorino -n kuadrant-system \
+            -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null || echo "")
+          if echo "$EXISTING_ENVS" | grep -q "SSL_CERT_FILE"; then
+            echo "  SSL env vars already set, skipping"
+          else
+            oc -n kuadrant-system set env deployment/authorino \
+              SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt \
+              REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
+            echo "  SSL env vars configured"
+          fi
 
           echo "Waiting for Authorino pods..."
           for i in $(seq 1 30); do
