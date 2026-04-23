@@ -22,6 +22,8 @@ spec:
     # KServe - Primary model serving platform
     kserve:
       managementState: Managed
+      modelsAsService:
+        managementState: Managed
     modelregistry:
       managementState: Managed
       registriesNamespace: rhoai-model-registries

@@ -6,6 +6,10 @@ kind: Kustomization
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
 
 resources:
+  # Wave 0: Demo users (htpasswd identity provider + RHOAI groups)
+  - users/htpasswd-secret.yaml
+  - users/oauth.yaml
+  - users/rhoai-groups.yaml
   # Wave -10..0: GitOps RBAC + Monitoring + Operator Subscriptions
   - gitops-rbac/cluster-admin-binding.yaml
   - monitoring/cluster-monitoring-config.yaml
@@ -28,6 +32,8 @@ resources:
   - rhoai-operator/hardware-profile-cpu-small.yaml
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml
+  # Wave 9: MaaS database Secret (must exist before DSC enables modelsAsService)
+  - jobs/setup-maas-db.yaml
   # Wave 15: In-cluster Jobs (cluster-specific tasks)
   - jobs/approve-sm-installplan.yaml
   - jobs/patch-dsci-ca.yaml
