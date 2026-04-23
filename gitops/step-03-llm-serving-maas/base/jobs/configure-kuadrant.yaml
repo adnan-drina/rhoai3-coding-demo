@@ -1,6 +1,5 @@
 # Sets Authorino SSL env vars so it trusts OpenShift's internal service-ca.
-# Required for MaaS API auth chain. Quickstart's install-maas.sh does this imperatively.
-# TLS cert and Authorino CR are handled declaratively in governance/authorino*.yaml.
+# Required for MaaS API auth chain.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -46,7 +45,8 @@ metadata:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  backoffLimit: 10
+  backoffLimit: 5
+  activeDeadlineSeconds: 300
   template:
     spec:
       serviceAccountName: job-configure-kuadrant
@@ -54,41 +54,24 @@ spec:
       containers:
       - name: configure
         image: registry.redhat.io/openshift4/ose-cli
-        command:
-        - /bin/bash
-        - -c
+        command: ["/bin/bash", "-c"]
+        args:
         - |
           set -e
-
-          echo "Waiting for Authorino deployment..."
-          for i in $(seq 1 60); do
+          for i in $(seq 1 30); do
             if oc get deployment authorino -n kuadrant-system &>/dev/null; then
-              echo "Authorino deployment found"
               break
             fi
-            echo "  waiting... ($i/60)"
+            echo "Waiting for Authorino deployment... ($i/30)"
             sleep 10
           done
-
-          echo "Configuring Authorino SSL env vars for internal service-ca trust..."
-          EXISTING_ENVS=$(oc get deployment authorino -n kuadrant-system \
-            -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null || echo "")
-          if echo "$EXISTING_ENVS" | grep -q "SSL_CERT_FILE"; then
-            echo "  SSL env vars already set, skipping"
+          ENVS=$(oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null || echo "")
+          if echo "$ENVS" | grep -q SSL_CERT_FILE; then
+            echo "Authorino SSL already configured"
           else
+            echo "Setting Authorino SSL env vars..."
             oc -n kuadrant-system set env deployment/authorino \
               SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt \
               REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
-            echo "  SSL env vars configured"
           fi
-
-          echo "Waiting for Authorino pods..."
-          for i in $(seq 1 30); do
-            READY=$(oc get pods -n kuadrant-system -l authorino-resource=authorino --no-headers 2>/dev/null | grep -c Running || true)
-            if [ "$READY" -ge 1 ]; then
-              echo "Authorino ready"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Done (Authorino may still be converging)"
+          echo "Done"
