@@ -76,12 +76,19 @@ oc patch argocd openshift-gitops -n openshift-gitops --type merge \
 
 log_step "Configuring custom resource health checks"
 
-# PVC: WaitForFirstConsumer PVCs stay Pending until a pod mounts them.
-# ISVC: ArgoCD default health check misreads KServe condition format.
-# TrustyAIService: ArgoCD has no built-in health check for this CRD.
+# Custom health checks to prevent ArgoCD sync wave blocking:
+# Subscription: OLM Subscriptions with installedCSV are Healthy (prevents wave blocking)
+# PVC: WaitForFirstConsumer PVCs stay Pending until a pod mounts them
+# ISVC: ArgoCD default health check misreads KServe condition format
+# TrustyAIService: ArgoCD has no built-in health check for this CRD
 oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '{
   "spec": {
     "resourceHealthChecks": [
+      {
+        "group": "operators.coreos.com",
+        "kind": "Subscription",
+        "check": "hs = {}\nif obj.status ~= nil then\n  if obj.status.installedCSV ~= nil and obj.status.installedCSV ~= \"\" then\n    hs.status = \"Healthy\"\n    hs.message = obj.status.installedCSV\n  elseif obj.status.state == \"AtLatestKnown\" then\n    hs.status = \"Healthy\"\n    hs.message = \"At latest known\"\n  else\n    hs.status = \"Progressing\"\n    hs.message = obj.status.state or \"Installing\"\n  end\nelse\n  hs.status = \"Progressing\"\n  hs.message = \"Waiting for status\"\nend\nreturn hs"
+      },
       {
         "group": "",
         "kind": "PersistentVolumeClaim",
@@ -100,7 +107,7 @@ oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '{
     ]
   }
 }' 2>/dev/null \
-    && log_success "PVC + InferenceService + TrustyAIService health checks configured" \
+    && log_success "Subscription + PVC + InferenceService + TrustyAIService health checks configured" \
     || log_warn "Could not configure health checks"
 
 log_step "Creating Argo CD project"
