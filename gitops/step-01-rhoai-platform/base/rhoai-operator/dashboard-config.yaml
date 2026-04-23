@@ -14,7 +14,10 @@ spec:
     disableModelCatalog: false
     disableKServeMetrics: false
     genAiStudio: true
-    modelAsService: true
+    # MaaS dashboard tab requires RHOAI 3.4 GA. On 3.3.x the maas-ui
+    # container can't communicate with the quickstart's MaaS API (different
+    # protocol/port). MaaS functionality works via the Gateway URL directly.
+    modelAsService: false
     disableLMEval: false
     disableDistributedWorkloads: true
     disableKueue: true

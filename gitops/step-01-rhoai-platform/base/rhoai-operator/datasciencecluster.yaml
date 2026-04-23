@@ -22,8 +22,11 @@ spec:
     # KServe - Primary model serving platform
     kserve:
       managementState: Managed
+      # MaaS API is deployed separately via Kustomize (step-03) using the
+      # quickstart's dev-preview image. The operator's built-in MaaS API
+      # (modelsAsService: Managed) is incomplete on RHOAI 3.3.x.
       modelsAsService:
-        managementState: Managed
+        managementState: Removed
     modelregistry:
       managementState: Managed
       registriesNamespace: rhoai-model-registries
