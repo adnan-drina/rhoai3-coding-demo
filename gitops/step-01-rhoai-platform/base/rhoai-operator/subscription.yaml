@@ -1,7 +1,5 @@
-# NOTE: stable-3.4 channel does not exist yet (3.4 is Early Access only).
-# Using stable-3.x which gives the latest GA release (currently 3.3.2).
-# Switch to stable-3.4 when it becomes available in the operator catalog.
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/understanding-update-channels_install
+# RHOAI 3.4 EA2 via beta channel (rhods-operator.3.4.0-ea.2)
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
@@ -11,7 +9,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   name: rhods-operator
-  channel: stable-3.x
+  channel: beta
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic
