@@ -1,0 +1,13 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: gpt-oss-20b
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: "OpenAI gpt-oss-20b"
+spec:
+  modelRef:
+    kind: LLMInferenceService
+    name: gpt-oss-20b

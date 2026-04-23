@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  # MaaSModelRef (in model namespace, same as LLMInferenceService)
+  - gpt-oss-20b-model-ref.yaml
+  - nemotron-model-ref.yaml
+  # MaaSAuthPolicy (in models-as-a-service namespace)
+  - gpt-oss-20b-auth-policy.yaml
+  - nemotron-auth-policy.yaml
+  # MaaSSubscription (in models-as-a-service namespace)
+  - gpt-oss-20b-subscription-free.yaml
+  - gpt-oss-20b-subscription-enterprise.yaml
+  - nemotron-subscription-free.yaml
+  - nemotron-subscription-enterprise.yaml
