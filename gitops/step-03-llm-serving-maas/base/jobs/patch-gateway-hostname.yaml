@@ -63,13 +63,22 @@ spec:
           set -e
           DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
           HOSTNAME="maas.${DOMAIN}"
-          echo "Patching maas-default-gateway hostname to: ${HOSTNAME}"
+
+          CERT_NAME=$(oc get ingresscontroller default -n openshift-ingress-operator \
+            -o jsonpath='{.spec.defaultCertificate.name}' 2>/dev/null)
+          [ -z "$CERT_NAME" ] && CERT_NAME="router-certs-default"
+
+          echo "Patching gateway: hostname=${HOSTNAME}, tlsCert=${CERT_NAME}"
 
           for i in $(seq 1 30); do
             if oc get gateway maas-default-gateway -n openshift-ingress &>/dev/null; then
-              oc patch gateway maas-default-gateway -n openshift-ingress --type json \
-                -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${HOSTNAME}\"}]"
-              echo "Gateway hostname patched"
+              oc patch gateway maas-default-gateway -n openshift-ingress --type json -p "
+              [
+                {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${HOSTNAME}\"},
+                {\"op\": \"replace\", \"path\": \"/spec/listeners/1/hostname\", \"value\": \"${HOSTNAME}\"},
+                {\"op\": \"replace\", \"path\": \"/spec/listeners/1/tls/certificateRefs/0/name\", \"value\": \"${CERT_NAME}\"}
+              ]"
+              echo "Gateway patched (HTTP + HTTPS listeners)"
               exit 0
             fi
             echo "Waiting for gateway... ($i/30)"

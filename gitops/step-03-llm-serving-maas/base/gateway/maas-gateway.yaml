@@ -23,3 +23,16 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: maas.placeholder.example.com
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: router-certs-default
+        mode: Terminate
