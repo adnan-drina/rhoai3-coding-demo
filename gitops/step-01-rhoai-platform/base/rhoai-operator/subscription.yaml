@@ -1,4 +1,4 @@
-# RHOAI 3.4 supports stable-3.x, stable-3.4, or fast-3.x channels
+# Pinned to RHOAI 3.4 — the entire demo targets this version
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/understanding-update-channels_install
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
@@ -9,7 +9,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   name: rhods-operator
-  channel: stable-3.x
+  channel: stable-3.4
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic
