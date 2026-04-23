@@ -84,7 +84,7 @@ spec:
 
           echo "Waiting for Authorino pods..."
           for i in $(seq 1 30); do
-            READY=$(oc get pods -n kuadrant-system -l authorino-resource=authorino --no-headers 2>/dev/null | grep -c Running || echo 0)
+            READY=$(oc get pods -n kuadrant-system -l authorino-resource=authorino --no-headers 2>/dev/null | grep -c Running || true)
             if [ "$READY" -ge 1 ]; then
               echo "Authorino ready"
               exit 0
