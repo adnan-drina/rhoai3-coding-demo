@@ -9,7 +9,4 @@ resources:
   - gpt-oss-20b-auth-policy.yaml
   - nemotron-auth-policy.yaml
   # MaaSSubscription (in models-as-a-service namespace)
-  - gpt-oss-20b-subscription-free.yaml
-  - gpt-oss-20b-subscription-enterprise.yaml
-  - nemotron-subscription-free.yaml
-  - nemotron-subscription-enterprise.yaml
+  - subscription-all-models.yaml
