@@ -25,9 +25,12 @@ resources:
   - gateway/gatewayclass.yaml
   - governance/kuadrant-system-ns.yaml
   - governance/maas-groups.yaml
-  # Wave 10: Kuadrant CR + maas namespace
-  - governance/kuadrant.yaml
+  # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
+  - models/admin-rbac.yaml
+  - models/developer-project.yaml
+  # Wave 10: Kuadrant CR
+  - governance/kuadrant.yaml
   # Wave 12: Kuadrant configuration Job
   - jobs/configure-kuadrant.yaml
   # Wave 15-18: Models + RBAC + Policies + Gateway
