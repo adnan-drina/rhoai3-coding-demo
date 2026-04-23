@@ -13,6 +13,7 @@ resources:
   - rhcl-operator/namespace.yaml
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
+  - cloudnative-pg/subscription.yaml
   # Wave 0-5: Grafana operator
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
