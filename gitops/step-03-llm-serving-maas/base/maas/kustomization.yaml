@@ -3,9 +3,18 @@ kind: Kustomization
 
 # MaaS API Developer Preview deployment
 # Source: https://github.com/opendatahub-io/models-as-a-service
-# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+# NOTE: Hostname and image patches are applied imperatively by deploy.sh
+# because they require cluster-specific values (ingress domain)
 
 resources:
   - https://github.com/opendatahub-io/models-as-a-service//deployment/overlays/openshift?ref=39e62e98f382621e401211ae21cb9de0601b8266
 
-# Cluster-specific patches applied by deploy.sh via kustomize edit
+patches:
+  # Use the latest available MaaS API image
+  - target:
+      kind: Deployment
+      name: maas-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: quay.io/opendatahub/maas-api:latest-0681979
