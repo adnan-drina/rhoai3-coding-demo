@@ -1,4 +1,4 @@
-# RHOAI 3.4 EA2 via beta channel (rhods-operator.3.4.0-ea.2)
+# RHOAI 3.4 EA2 via beta channel
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription

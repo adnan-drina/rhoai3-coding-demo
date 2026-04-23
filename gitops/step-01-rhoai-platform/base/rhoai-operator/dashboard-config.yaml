@@ -4,6 +4,9 @@ kind: OdhDashboardConfig
 metadata:
   name: odh-dashboard-config
   namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: rhods-dashboard
+    app.opendatahub.io/rhods-dashboard: "true"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -20,6 +23,8 @@ spec:
     disableKueue: true
     mlflow: true
     observabilityDashboard: true
+  templateDisablement: []
+  templateOrder: []
   hardwareProfileOrder:
     - cpu-small
     - nvidia-l4-1gpu
