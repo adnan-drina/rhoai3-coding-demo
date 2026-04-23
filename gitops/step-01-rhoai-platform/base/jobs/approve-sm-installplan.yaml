@@ -1,0 +1,97 @@
+# Approves pending Service Mesh 3 install plans.
+# The RHOAI operator auto-creates the servicemeshoperator3 Subscription with
+# installPlanApproval: Manual. Without approval, the Gateway controller never
+# starts and the RHOAI Dashboard becomes unreachable.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-approve-sm-installplan
+  namespace: redhat-ods-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-approve-sm-installplan
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+rules:
+- apiGroups: ["operators.coreos.com"]
+  resources: ["installplans"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["operators.coreos.com"]
+  resources: ["subscriptions"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-approve-sm-installplan
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-approve-sm-installplan
+subjects:
+- kind: ServiceAccount
+  name: job-approve-sm-installplan
+  namespace: redhat-ods-operator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-approve-sm-installplan
+  namespace: redhat-ods-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      serviceAccountName: job-approve-sm-installplan
+      restartPolicy: Never
+      containers:
+      - name: approve
+        image: registry.redhat.io/openshift4/ose-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Waiting for servicemeshoperator3 Subscription..."
+          for i in $(seq 1 60); do
+            if oc get subscription servicemeshoperator3 -n openshift-operators &>/dev/null; then
+              break
+            fi
+            sleep 10
+          done
+
+          echo "Checking for pending install plans..."
+          for plan in $(oc get installplan -n openshift-operators -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null); do
+            echo "Approving: $plan"
+            oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}'
+          done
+
+          echo "Waiting for Service Mesh CSV to succeed..."
+          SM_CSV=$(oc get subscription servicemeshoperator3 -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+          if [ -n "$SM_CSV" ]; then
+            for i in $(seq 1 40); do
+              PHASE=$(oc get csv "$SM_CSV" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+              if [ "$PHASE" = "Succeeded" ]; then
+                echo "Service Mesh operator ready"
+                exit 0
+              fi
+              echo "CSV phase: $PHASE ($i/40)"
+              # Keep approving in case new plans appear
+              for plan in $(oc get installplan -n openshift-operators -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null); do
+                oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true
+              done
+              sleep 15
+            done
+          fi
+          echo "Done (SM may still be converging)"

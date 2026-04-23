@@ -1,12 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# LLM Serving with Models-as-a-Service
-# Includes MaaS operator prerequisites + model deployments + governance
+# LLM Serving with Models-as-a-Service + Observability
+# Includes MaaS operator prerequisites, models, governance, Grafana dashboards.
+# In-cluster Jobs handle cluster-specific configuration.
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 
 resources:
-  # MaaS operator prerequisites
+  # Wave 0-2: MaaS operator prerequisites
   - leaderworkerset/namespace.yaml
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
@@ -15,23 +16,31 @@ resources:
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
   - cloudnative-pg/subscription.yaml
-  - gateway/gatewayclass.yaml
-  - gateway/maas-gateway.yaml
-  # Model serving
-  - models/namespace.yaml
-  - models/gpt-oss-20b.yaml
-  - models/nemotron-3-nano-30b.yaml
-  - models/rbac.yaml
-  # MaaS governance
-  - governance/maas-groups.yaml
-  - governance/ratelimitpolicy.yaml
-  - governance/tokenratelimitpolicy.yaml
-  - governance/telemetrypolicy.yaml
-  # Observability (MaaS usage dashboards)
+  # Wave 0-5: Grafana operator
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
+  # Wave 5: Gateway + User groups
+  - gateway/gatewayclass.yaml
+  - governance/kuadrant-system-ns.yaml
+  - governance/maas-groups.yaml
+  # Wave 10: Kuadrant CR + maas namespace
+  - governance/kuadrant.yaml
+  - models/namespace.yaml
+  # Wave 12: Kuadrant configuration Job
+  - jobs/configure-kuadrant.yaml
+  # Wave 15-18: Models + RBAC + Policies + Gateway
+  - gateway/maas-gateway.yaml
+  - models/gpt-oss-20b.yaml
+  - models/nemotron-3-nano-30b.yaml
+  - models/rbac.yaml
+  - governance/ratelimitpolicy.yaml
+  - governance/tokenratelimitpolicy.yaml
+  - governance/telemetrypolicy.yaml
+  # Wave 20-22: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
+  - jobs/patch-gateway-hostname.yaml
+  - jobs/configure-grafana-sa.yaml

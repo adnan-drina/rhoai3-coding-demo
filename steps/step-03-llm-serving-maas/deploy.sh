@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Step 03: LLM Serving with Models-as-a-Service - Deploy Script
-# Deploys MaaS operator prerequisites + model serving + governance + observability:
-# Phase 1: Install MaaS prerequisite operators (LWS, RHCL, CloudNative PG)
-# Phase 2: Configure Kuadrant + Authorino TLS + Gateway (before policies sync)
-# Phase 3: Deploy MaaS API, models, governance, and Grafana via ArgoCD
+# Step 03: LLM Serving + MaaS - Deploy
+# Applies the ArgoCD Application. Kuadrant configuration, Gateway hostname
+# patching, and Grafana SA setup are handled by in-cluster Jobs.
+# MaaS API Developer Preview is applied separately (remote Kustomize base).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,191 +14,26 @@ STEP_NAME="step-03-llm-serving-maas"
 load_env
 check_oc_logged_in
 
-log_step "Step 03: LLM Serving with Models-as-a-Service"
+log_step "Step 03: LLM Serving + MaaS"
 
-log_step "Checking prerequisites..."
-
-if ! oc get applications -n openshift-gitops step-02-gpu-infra &>/dev/null; then
-    log_error "step-02-gpu-infra Argo CD Application not found!"
-    log_info "Please run: ./steps/step-02-gpu-infra/deploy.sh first"
-    exit 1
-fi
-
-GPU_NODES=$(oc get nodes -l node-role.kubernetes.io/gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
-if [[ "$GPU_NODES" -lt 2 ]]; then
-    log_warn "Found $GPU_NODES GPU nodes (need 2 for both models). Models may queue."
-fi
-
-log_success "Prerequisites verified"
-
-# ── Phase 1: Apply ArgoCD Application (starts operator installs) ──
-
-log_step "Creating Argo CD Application for LLM Serving + MaaS"
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
-log_success "Argo CD Application '${STEP_NAME}' created"
+log_success "ArgoCD Application '${STEP_NAME}' applied"
 
-# ── Phase 2: Wait for MaaS prerequisite operators ──
-
-log_step "Waiting for LeaderWorkerSet Operator..."
-until oc get csv -n openshift-lws-operator -o jsonpath='{.items[?(@.spec.displayName=="Red Hat build of Leader Worker Set")].status.phase}' 2>/dev/null | grep -q "Succeeded"; do
-    log_info "Waiting for LWS Operator..."
-    sleep 10
-done
-log_success "LeaderWorkerSet Operator ready"
-
-log_step "Waiting for Red Hat Connectivity Link (RHCL)..."
-until oc get crd authpolicies.kuadrant.io &>/dev/null; do
-    log_info "Waiting for RHCL AuthPolicy CRD..."
-    sleep 10
-done
-log_success "RHCL AuthPolicy CRD available"
-
-# ── Phase 3: Configure Kuadrant + Authorino (must be ready before policies sync) ──
-
-log_step "Creating Kuadrant instance..."
-ensure_namespace "kuadrant-system"
-
-log_info "Restarting Kuadrant operator to ensure webhook readiness..."
-oc delete pod -n openshift-operators -l app=kuadrant,control-plane=controller-manager 2>/dev/null || true
-sleep 5
-oc rollout status -n openshift-operators deployment/kuadrant-operator-controller-manager --timeout=120s 2>/dev/null || true
-
-cat <<EOF | oc apply -f -
-apiVersion: kuadrant.io/v1beta1
-kind: Kuadrant
-metadata:
-  name: kuadrant
-  namespace: kuadrant-system
-EOF
-
-log_info "Waiting for Kuadrant to become ready..."
-until oc wait Kuadrant -n kuadrant-system kuadrant --for=condition=Ready --timeout=10m 2>/dev/null; do
-    sleep 10
-done
-log_success "Kuadrant ready"
-
-log_step "Configuring Authorino with TLS..."
-oc annotate svc/authorino-authorino-authorization \
-    service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
-    -n kuadrant-system --overwrite 2>/dev/null || true
-sleep 5
-
-cat <<EOF | oc apply -f -
-apiVersion: operator.authorino.kuadrant.io/v1beta1
-kind: Authorino
-metadata:
-  name: authorino
-  namespace: kuadrant-system
-spec:
-  replicas: 1
-  clusterWide: true
-  listener:
-    tls:
-      enabled: true
-      certSecretRef:
-        name: authorino-server-cert
-  oidcServer:
-    tls:
-      enabled: false
-EOF
-
-until oc wait --for=condition=ready pod -l authorino-resource=authorino -n kuadrant-system --timeout=150s 2>/dev/null; do
-    sleep 5
-done
-log_success "Authorino ready with TLS"
-
-# ── Phase 4: Configure MaaS Gateway hostname ──
-
-log_step "Patching MaaS Gateway with cluster hostname..."
-INGRESS_DOMAIN=$(oc get ingresscontroller -n openshift-ingress-operator default -o jsonpath='{.status.domain}' 2>/dev/null)
-if [[ -n "$INGRESS_DOMAIN" ]]; then
-    MAAS_HOST="maas.${INGRESS_DOMAIN}"
-    # Wait for Gateway to be created by ArgoCD sync
-    until oc get gateway maas-default-gateway -n openshift-ingress &>/dev/null; do
-        log_info "Waiting for maas-default-gateway..."
-        sleep 5
-    done
-    oc patch gateway maas-default-gateway -n openshift-ingress --type json \
-        -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${MAAS_HOST}\"}]" 2>/dev/null \
-        && log_success "MaaS Gateway hostname set to $MAAS_HOST" \
-        || log_warn "Could not patch MaaS Gateway hostname"
-else
-    log_warn "Could not detect ingress domain"
-fi
-
-# ── Phase 5: Deploy MaaS API ──
-
+# MaaS API Developer Preview (remote Kustomize base, not in ArgoCD)
 log_step "Deploying MaaS API (Developer Preview)..."
-ensure_namespace "maas-api"
+oc create namespace maas-api 2>/dev/null || true
 oc apply -k "$REPO_ROOT/gitops/step-03-llm-serving-maas/base/maas/" 2>/dev/null \
-    && log_success "MaaS API base applied" \
-    || log_warn "MaaS API apply failed (may need manual patching for cluster hostname)"
+    && log_success "MaaS API applied" \
+    || log_warn "MaaS API apply failed (may need cluster-specific patching)"
 
-# ── Phase 6: Verify resources ──
-
-log_step "Verifying MaaS tier user groups..."
-for group in tier-free-users tier-premium-users tier-enterprise-users; do
-    until oc get group "$group" &>/dev/null; do
-        log_info "Waiting for group $group..."
-        sleep 5
-    done
-done
-log_success "MaaS tier groups configured"
-
-log_step "Waiting for LLMInferenceServices to be created..."
-log_info "This may take several minutes as GPU workloads schedule and models load..."
-
-for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
-    log_info "Waiting for $model..."
-    until oc get llminferenceservice "$model" -n maas &>/dev/null; do
-        sleep 15
-    done
-    log_success "$model created"
-done
-
-# ── Phase 7: Configure Grafana ──
-
-log_step "Configuring Grafana for MaaS observability..."
-
-until oc get crd grafanas.grafana.integreatly.org &>/dev/null; do
-    log_info "Waiting for Grafana CRD..."
-    sleep 10
-done
-until oc get grafana grafana -n grafana &>/dev/null; do
-    sleep 5
-done
-
-oc create serviceaccount grafana-sa -n grafana 2>/dev/null || true
-oc adm policy add-cluster-role-to-user cluster-monitoring-view \
-    -z grafana-sa -n grafana 2>/dev/null || true
-
-GRAFANA_SA_TOKEN=$(oc create token grafana-sa -n grafana --duration=87600h 2>/dev/null || echo "")
-if [[ -n "$GRAFANA_SA_TOKEN" ]]; then
-    oc patch grafanadatasource prometheus -n grafana --type merge \
-        -p "{\"spec\":{\"datasource\":{\"secureJsonData\":{\"httpHeaderValue1\":\"Bearer ${GRAFANA_SA_TOKEN}\"}}}}" 2>/dev/null \
-        && log_success "Grafana datasource configured with SA token" \
-        || log_warn "Could not patch datasource"
-else
-    log_warn "Could not create SA token"
-fi
-
-GRAFANA_URL=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || echo 'loading...')
-log_success "Grafana: https://${GRAFANA_URL} (admin/<demo-password>)"
-
-# ── Done ──
-
-log_step "Deployment Complete"
-
+log_info "ArgoCD handles all orchestration via sync waves:"
+log_info "  Wave 0-5:    LWS, RHCL, CNPG, Grafana operators + instances"
+log_info "  Wave 10-12:  Kuadrant CR + configuration Job (Authorino TLS)"
+log_info "  Wave 15-18:  Gateway, models, RBAC, policies"
+log_info "  Wave 20-22:  Grafana dashboard + SA token Job, Gateway hostname Job"
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "LLM Serving + MaaS + Observability Deployed Successfully"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "MaaS Tiers:"
-echo "  Enterprise: admin"
-echo "  Premium: user1-user5"
-echo "  Free: (unassigned users)"
-echo ""
-log_info "Argo CD Application status:"
-echo "  oc get applications -n openshift-gitops ${STEP_NAME}"
+log_info "Monitor progress:"
+echo "  oc get application ${STEP_NAME} -n openshift-gitops -w"
+echo "  oc get llminferenceservice -n maas"
+echo "  oc get kuadrant -n kuadrant-system"
 echo ""

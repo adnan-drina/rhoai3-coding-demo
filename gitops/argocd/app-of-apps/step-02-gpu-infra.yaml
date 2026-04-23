@@ -9,8 +9,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-02-gpu-infra
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
 spec:
   project: rhoai-demo
   source:

@@ -1,0 +1,79 @@
+# Patches the MaaS Gateway with the cluster's ingress domain.
+# The hostname is cluster-specific and cannot be committed to git.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-patch-gateway
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-patch-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+rules:
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways"]
+  verbs: ["get", "patch"]
+- apiGroups: ["operator.openshift.io"]
+  resources: ["ingresscontrollers"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-patch-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-patch-gateway
+subjects:
+- kind: ServiceAccount
+  name: job-patch-gateway
+  namespace: openshift-ingress
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-patch-gateway-hostname
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: job-patch-gateway
+      restartPolicy: Never
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
+          HOSTNAME="maas.${DOMAIN}"
+          echo "Patching maas-default-gateway hostname to: ${HOSTNAME}"
+
+          for i in $(seq 1 30); do
+            if oc get gateway maas-default-gateway -n openshift-ingress &>/dev/null; then
+              oc patch gateway maas-default-gateway -n openshift-ingress --type json \
+                -p "[{\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${HOSTNAME}\"}]"
+              echo "Gateway hostname patched"
+              exit 0
+            fi
+            echo "Waiting for gateway... ($i/30)"
+            sleep 10
+          done
+          echo "Gateway not found after timeout"
+          exit 1

@@ -1,0 +1,132 @@
+# Creates GPU MachineSets by cloning an existing worker MachineSet.
+# Based on redhat-cop/gitops-catalog aws-gpu-machineset pattern.
+# Discovers cluster-specific values (ID, AMI, AZ) from the cluster itself.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-aws-gpu-machineset
+  namespace: nvidia-gpu-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-aws-gpu-machineset
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+rules:
+- apiGroups: ["machine.openshift.io"]
+  resources: ["machinesets"]
+  verbs: ["*"]
+- apiGroups: ["config.openshift.io"]
+  resources: ["infrastructures"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-aws-gpu-machineset
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-aws-gpu-machineset
+subjects:
+- kind: ServiceAccount
+  name: job-aws-gpu-machineset
+  namespace: nvidia-gpu-operator
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-aws-gpu-machineset
+  namespace: nvidia-gpu-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+data:
+  job.sh: |
+    #!/usr/bin/env bash
+    set -e
+
+    INSTANCE_TYPE=${INSTANCE_TYPE:-g6e.2xlarge}
+    REPLICAS=${REPLICAS:-2}
+
+    echo "=== GPU MachineSet Creator ==="
+    echo "Instance type: $INSTANCE_TYPE"
+    echo "Replicas: $REPLICAS"
+
+    # Check if already exists
+    if oc -n openshift-machine-api get machinesets.machine.openshift.io -o name | grep -q "${INSTANCE_TYPE%.*}"; then
+      echo "MachineSet for ${INSTANCE_TYPE} already exists, skipping"
+      oc -n openshift-machine-api get machinesets.machine.openshift.io -o name | grep "${INSTANCE_TYPE%.*}"
+      exit 0
+    fi
+
+    # Clone from an existing worker MachineSet
+    MACHINE_SET=$(oc -n openshift-machine-api get machinesets.machine.openshift.io -o name | grep worker | head -n1)
+    if [ -z "$MACHINE_SET" ]; then
+      echo "ERROR: No worker MachineSet found to clone"
+      exit 1
+    fi
+
+    echo "Cloning from: $MACHINE_SET"
+    oc -n openshift-machine-api get "$MACHINE_SET" -o yaml | \
+      sed '/machine/ s/-worker/-'"${INSTANCE_TYPE}"'/g
+        /name/ s/-worker/-'"${INSTANCE_TYPE%.*}"'/g
+        s/instanceType.*/instanceType: '"${INSTANCE_TYPE}"'/
+        s/replicas.*/replicas: '"${REPLICAS}"'/' | \
+      oc apply -f -
+
+    MS_NAME=$(oc -n openshift-machine-api get machinesets.machine.openshift.io -o name | grep "${INSTANCE_TYPE%.*}" | head -n1)
+    echo "Created: $MS_NAME"
+
+    # Add GPU node label + taint
+    oc -n openshift-machine-api patch "$MS_NAME" --type=merge \
+      --patch '{"spec":{"template":{"spec":{"metadata":{"labels":{"node-role.kubernetes.io/gpu":""}}}}}}'
+
+    oc -n openshift-machine-api patch "$MS_NAME" --type=merge \
+      --patch '{"spec":{"template":{"spec":{"taints":[{"key":"nvidia.com/gpu","value":"true","effect":"NoSchedule"}]}}}}'
+
+    oc -n openshift-machine-api patch "$MS_NAME" --type=merge \
+      --patch '{"spec":{"template":{"spec":{"providerSpec":{"value":{"instanceType":"'"${INSTANCE_TYPE}"'"}}}}}}'
+
+    echo "GPU MachineSet configured: $MS_NAME (${REPLICAS} replicas)"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-aws-gpu-machineset
+  namespace: nvidia-gpu-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: job-aws-gpu-machineset
+      restartPolicy: Never
+      containers:
+      - name: create-machineset
+        image: registry.redhat.io/openshift4/ose-cli
+        env:
+        - name: INSTANCE_TYPE
+          value: "g6e.2xlarge"
+        - name: REPLICAS
+          value: "2"
+        command:
+        - /bin/bash
+        - -c
+        - /scripts/job.sh
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: job-aws-gpu-machineset
+          defaultMode: 0755

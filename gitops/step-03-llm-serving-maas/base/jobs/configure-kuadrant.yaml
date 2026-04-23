@@ -1,0 +1,119 @@
+# Restarts Kuadrant operator (webhook readiness) and configures Authorino TLS.
+# Based on upstream create-kuadrant.sh pattern.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-configure-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+rules:
+- apiGroups: ["kuadrant.io"]
+  resources: ["kuadrants"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["operator.authorino.kuadrant.io"]
+  resources: ["authorinos"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+- apiGroups: ["operators.coreos.com"]
+  resources: ["subscriptions"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-configure-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-configure-kuadrant
+subjects:
+- kind: ServiceAccount
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      serviceAccountName: job-configure-kuadrant
+      restartPolicy: Never
+      containers:
+      - name: configure
+        image: registry.redhat.io/openshift4/ose-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+
+          echo "Waiting for RHCL operators..."
+          for op in authorino dns limitador rhcl; do
+            until oc get subscription -n openshift-operators -l "operators.coreos.com/${op}-operator.openshift-operators" -o jsonpath='{.items[0].status.state}' 2>/dev/null | grep -q "AtLatestKnown"; do
+              echo "  waiting for ${op}-operator..."
+              sleep 5
+            done
+          done
+
+          echo "Restarting Kuadrant operator for webhook readiness..."
+          oc delete pod -n openshift-operators -l app=kuadrant,control-plane=controller-manager 2>/dev/null || true
+          sleep 5
+          oc rollout status -n openshift-operators deployment/kuadrant-operator-controller-manager --timeout=120s 2>/dev/null || true
+
+          echo "Waiting for Kuadrant to become Ready..."
+          for i in $(seq 1 60); do
+            STATUS=$(oc get kuadrant kuadrant -n kuadrant-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+            if [ "$STATUS" = "True" ]; then
+              echo "Kuadrant is Ready"
+              break
+            fi
+            sleep 10
+          done
+
+          echo "Configuring Authorino with TLS..."
+          oc annotate svc/authorino-authorino-authorization \
+            service.beta.openshift.io/serving-cert-secret-name=authorino-server-cert \
+            -n kuadrant-system --overwrite 2>/dev/null || true
+          sleep 5
+
+          oc patch authorino authorino -n kuadrant-system --type=merge \
+            --patch '{"spec":{"listener":{"tls":{"enabled":true,"certSecretRef":{"name":"authorino-server-cert"}}}}}' \
+            2>/dev/null || true
+
+          echo "Waiting for Authorino pods..."
+          for i in $(seq 1 30); do
+            READY=$(oc get pods -n kuadrant-system -l authorino-resource=authorino --no-headers 2>/dev/null | grep -c Running || echo 0)
+            if [ "$READY" -ge 1 ]; then
+              echo "Authorino ready with TLS"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Done (Authorino may still be converging)"

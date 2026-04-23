@@ -9,8 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-01-rhoai-platform
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
+  # Use 'argocd app delete --cascade' explicitly when you want to prune.
 spec:
   project: rhoai-demo
   source:
