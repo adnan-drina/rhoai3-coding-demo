@@ -8,6 +8,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    alpha.maas.opendatahub.io/tiers: '["free","premium","enterprise"]'
     openshift.io/display-name: OpenAI gpt-oss-20b
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
