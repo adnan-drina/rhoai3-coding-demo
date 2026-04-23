@@ -14,8 +14,6 @@ metadata:
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
   labels:
-    app.kubernetes.io/part-of: llm-serving
-    app.kubernetes.io/component: inference
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
 spec:
@@ -59,23 +57,15 @@ spec:
             path: /health
             port: 8000
             scheme: HTTPS
-          initialDelaySeconds: 300
-          periodSeconds: 30
-          timeoutSeconds: 30
-          failureThreshold: 5
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
             scheme: HTTPS
-          initialDelaySeconds: 300
-          periodSeconds: 15
-          timeoutSeconds: 15
-          failureThreshold: 30
         resources:
           limits:
             cpu: "4"
-            memory: 60Gi
+            memory: 24Gi
             nvidia.com/gpu: "1"
           requests:
             cpu: "2"

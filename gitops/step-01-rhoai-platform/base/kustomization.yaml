@@ -1,9 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# RHOAI 3.4 Platform — operator, configuration, and all RHOAI dependencies
-# ArgoCD sync waves handle all ordering. No external deploy.sh orchestration needed.
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index
+# RHOAI 3.3 Platform — operator, configuration, and all RHOAI dependencies
+# Matches public quickstart: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 
 resources:
   # Wave 0: Demo users (htpasswd identity provider + RHOAI groups)
@@ -29,9 +28,6 @@ resources:
   # Wave 12-16: Platform configuration
   - rhoai-operator/auth.yaml
   - rhoai-operator/dashboard-config.yaml
-  - rhoai-operator/model-catalog-sources.yaml
-  - rhoai-operator/notebook-controller-culler-config.yaml
-  - rhoai-operator/hardware-profile-default-disabled.yaml
   - rhoai-operator/hardware-profile-cpu-small.yaml
   - rhoai-operator/hardware-profile-l4-1gpu.yaml
   - rhoai-operator/hardware-profile-l4-4gpu.yaml

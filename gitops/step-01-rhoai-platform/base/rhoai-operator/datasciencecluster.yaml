@@ -1,5 +1,5 @@
-# RHOAI 3.4 DataScienceCluster — full component stack
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install#installing-and-managing-openshift-ai-components_component-install
+# RHOAI 3.3 DataScienceCluster — minimal component set matching public quickstart
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: datasciencecluster.opendatahub.io/v2
 kind: DataScienceCluster
 metadata:
@@ -14,27 +14,21 @@ spec:
     workbenches:
       managementState: Managed
       workbenchNamespace: rhods-notebooks
-    # Renamed in 3.0: datasciencepipelines -> aipipelines
     aipipelines:
-      managementState: Managed
+      managementState: Removed
       argoWorkflowsControllers:
-        managementState: Managed
-    # KServe - Primary model serving platform
+        managementState: Removed
     kserve:
       managementState: Managed
       modelsAsService:
         managementState: Managed
-      rawDeploymentServiceConfig: Headed
-    nim:
-      managementState: Managed
+      nim:
+        managementState: Removed
+      rawDeploymentServiceConfig: Headless
     modelregistry:
       managementState: Managed
       registriesNamespace: rhoai-model-registries
     llamastackoperator:
-      managementState: Managed
-    trainingoperator:
-      managementState: Managed
-    ray:
       managementState: Managed
     kueue:
       managementState: Removed
@@ -42,11 +36,5 @@ spec:
       managementState: Managed
       eval:
         lmeval:
-          permitOnline: allow
-          permitCodeExecution: allow
-    feastoperator:
-      managementState: Managed
-    mlflowoperator:
-      managementState: Managed
-    trainer:
-      managementState: Managed
+          permitOnline: deny
+          permitCodeExecution: deny
