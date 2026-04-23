@@ -23,7 +23,7 @@ spec:
     kserve:
       managementState: Managed
       modelsAsService:
-        managementState: Managed
+        managementState: Removed
       rawDeploymentServiceConfig: Headed
     nim:
       managementState: Managed

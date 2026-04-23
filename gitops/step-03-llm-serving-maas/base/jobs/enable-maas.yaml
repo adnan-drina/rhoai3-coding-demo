@@ -1,0 +1,89 @@
+# Enables modelsAsService on the DSC after the Gateway is ready.
+# Step-01 deploys the DSC with modelsAsService: Removed to avoid the
+# "gateway not found" error. This Job patches it to Managed once step-03
+# has created the Gateway and Kuadrant prerequisites.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-enable-maas
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "23"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-enable-maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "23"
+rules:
+- apiGroups: ["datasciencecluster.opendatahub.io"]
+  resources: ["datascienceclusters"]
+  verbs: ["get", "patch"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-enable-maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "23"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-enable-maas
+subjects:
+- kind: ServiceAccount
+  name: job-enable-maas
+  namespace: redhat-ods-applications
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-enable-maas
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "24"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      serviceAccountName: job-enable-maas
+      restartPolicy: Never
+      containers:
+      - name: enable
+        image: registry.redhat.io/openshift4/ose-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+
+          echo "Waiting for maas-default-gateway..."
+          for i in $(seq 1 60); do
+            if oc get gateway maas-default-gateway -n openshift-ingress &>/dev/null; then
+              echo "Gateway found"
+              break
+            fi
+            echo "  waiting... ($i/60)"
+            sleep 10
+          done
+
+          CURRENT=$(oc get datasciencecluster default-dsc \
+            -o jsonpath='{.spec.components.kserve.modelsAsService.managementState}' 2>/dev/null)
+
+          if [ "$CURRENT" = "Managed" ]; then
+            echo "modelsAsService already Managed, nothing to do"
+            exit 0
+          fi
+
+          echo "Patching DSC: modelsAsService -> Managed"
+          oc patch datasciencecluster default-dsc --type=merge \
+            -p '{"spec":{"components":{"kserve":{"modelsAsService":{"managementState":"Managed"}}}}}'
+
+          echo "Done — operator will now reconcile MaaS components"

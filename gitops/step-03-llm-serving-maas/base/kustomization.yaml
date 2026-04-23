@@ -40,6 +40,8 @@ resources:
   - grafana/maas-dashboard.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
+  # Wave 23-24: Enable MaaS on DSC (after Gateway is ready)
+  - jobs/enable-maas.yaml
   # Wave 25: MaaS publish (MaaSModelRef + MaaSAuthPolicy + MaaSSubscription)
   # The operator reconciles these into AuthPolicies, tier configs, and the MaaS tab
   - maas-publish/
