@@ -33,6 +33,11 @@ The following items use manual configuration or post-deploy patches because the 
 
 ## Planned
 
+- [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole (read-only access to all namespaces). For a more realistic demo, explore per-persona scoping:
+  - **Option A: Namespace-scoped RoleBindings** — Instead of a ClusterRoleBinding, grant `view` only to specific namespaces (`maas`, `coding-assistant`, `redhat-ods-applications`). The model can only see resources in those namespaces.
+  - **Option B: Custom ClusterRole** — Create a restricted ClusterRole that only allows reading specific resource types (pods, services, events, llminferenceservices) but not secrets, configmaps with credentials, etc.
+  - **Option C: Per-user MCP proxy** — Deploy the MCP server with a proxy that impersonates the Playground user's identity, so the model sees exactly what the user would see. Requires Playground to forward user tokens to MCP servers.
+  - Current: `ClusterRoleBinding` → `view` ClusterRole for `openshift-mcp` SA in `coding-assistant`. File: `mcp/openshift-mcp/serviceaccount.yaml`.
 - [ ] **Component-per-operator extraction** — Refactor `gitops/` to extract operator install triads into reusable `components/operators/` bases.
 - [ ] **Multi-version overlay structure** — `rhoai-3.3/` and `rhoai-3.4/` overlays with channel patches.
 - [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
