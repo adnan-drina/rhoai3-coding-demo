@@ -3,7 +3,8 @@
 # - .vscode/extensions.json (recommends Continue extension)
 # - .vscode/config.yaml (Continue model config template)
 # - coding-exercises/ (3 game starters + solutions)
-# The Dev Spaces operator creates its own RBAC when the workspace starts.
+# postStart copies the Continue config to ~/.continue/ and opens only
+# the coding-exercises folder so the developer sees a clean workspace.
 ---
 apiVersion: v1
 kind: Namespace
@@ -37,11 +38,24 @@ spec:
             origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
+    commands:
+      - id: init-continue
+        exec:
+          commandLine: |
+            mkdir -p ~/.continue
+            cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+          component: tooling-container
+    events:
+      postStart:
+        - init-continue
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          env:
+            - name: VSCODE_DEFAULT_WORKSPACE
+              value: /projects/maas-code-assistant/coding-exercises
 ---
 apiVersion: v1
 kind: Namespace
@@ -75,8 +89,21 @@ spec:
             origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
+    commands:
+      - id: init-continue
+        exec:
+          commandLine: |
+            mkdir -p ~/.continue
+            cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+          component: tooling-container
+    events:
+      postStart:
+        - init-continue
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          env:
+            - name: VSCODE_DEFAULT_WORKSPACE
+              value: /projects/maas-code-assistant/coding-exercises
