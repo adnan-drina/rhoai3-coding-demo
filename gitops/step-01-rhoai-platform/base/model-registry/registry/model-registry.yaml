@@ -14,10 +14,6 @@ spec:
   rest:
     port: 8080
     serviceRoute: enabled
-  kubeRBACProxy:
-    port: 8443
-    routePort: 443
-    serviceRoute: enabled
   postgres:
     host: model-registry-db.rhoai-model-registries.svc.cluster.local
     port: 5432

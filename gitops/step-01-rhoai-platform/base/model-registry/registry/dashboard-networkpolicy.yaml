@@ -1,0 +1,24 @@
+# Allows the RHOAI dashboard (model-registry-ui) in redhat-ods-applications
+# to access the demo-registry REST API on port 8080.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-registry-dashboard-access
+  namespace: rhoai-model-registries
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-registry
+      component: model-registry
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-applications
+      ports:
+        - protocol: TCP
+          port: 8080
