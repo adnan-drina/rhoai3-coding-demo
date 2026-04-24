@@ -24,6 +24,9 @@ rules:
 - apiGroups: ["operators.coreos.com"]
   resources: ["subscriptions"]
   verbs: ["get", "list"]
+- apiGroups: ["operators.coreos.com"]
+  resources: ["clusterserviceversions"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -78,20 +81,22 @@ spec:
           done
 
           echo "Waiting for Service Mesh CSV to succeed..."
-          SM_CSV=$(oc get subscription servicemeshoperator3 -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
-          if [ -n "$SM_CSV" ]; then
-            for i in $(seq 1 40); do
+          for i in $(seq 1 40); do
+            SM_CSV=$(oc get subscription servicemeshoperator3 -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+            if [ -n "$SM_CSV" ]; then
               PHASE=$(oc get csv "$SM_CSV" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
               if [ "$PHASE" = "Succeeded" ]; then
-                echo "Service Mesh operator ready"
+                echo "Service Mesh operator ready: $SM_CSV"
                 exit 0
               fi
-              echo "CSV phase: $PHASE ($i/40)"
-              # Keep approving in case new plans appear
-              for plan in $(oc get installplan -n openshift-operators -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null); do
-                oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true
-              done
-              sleep 15
+              echo "CSV $SM_CSV phase: $PHASE ($i/40)"
+            else
+              echo "No installedCSV yet ($i/40)"
+            fi
+            for plan in $(oc get installplan -n openshift-operators -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null); do
+              echo "Approving: $plan"
+              oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}' 2>/dev/null || true
             done
-          fi
+            sleep 15
+          done
           echo "Done (SM may still be converging)"
