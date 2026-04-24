@@ -3,11 +3,11 @@
 
 ## Overview
 
-Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and wraps them with **Models-as-a-Service (MaaS)**, following the [public MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) dev-preview approach for RHOAI 3.3.
+Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and wraps them with **Models-as-a-Service (MaaS)**, following the [public MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) for RHOAI 3.3.
 
 MaaS lets platform administrators define who can access which models, how much they can consume, and track all usage for capacity planning and chargeback. Access is controlled through tier-based groups (free, premium, enterprise) with per-tier request and token rate limits enforced by Red Hat Connectivity Link.
 
-> **Dev-preview note:** RHOAI 3.3 does not include MaaS natively. This step deploys a dev-preview `maas-api` from [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) using Kustomize. When RHOAI 3.4 GA ships with native MaaS support, these community workarounds can be reverted. See [BACKLOG.md](../../BACKLOG.md) for details.
+The RHOAI operator deploys the `maas-api` in `redhat-ods-applications` via `modelsAsService: Managed` in the DSC. This step adds the prerequisite operators, Gateway, models, governance policies, and in-cluster Jobs for cluster-specific configuration. See [BACKLOG.md](../../BACKLOG.md) for workarounds that can be removed when RHOAI 3.4 GA ships.
 
 ### What Gets Deployed
 
@@ -16,23 +16,22 @@ LLM Serving + MaaS
 ├── MaaS Prerequisites
 │   ├── LeaderWorkerSet Operator  → Distributed inference orchestration
 │   ├── Red Hat Connectivity Link → Gateway policies, rate limiting
+│   ├── CloudNative PG Operator   → MaaS API database (operator-managed)
 │   ├── GatewayClass + Gateway    → MaaS traffic routing (HTTP + HTTPS/TLS)
 │   └── Kuadrant + Authorino      → Authentication, authorization, SSL trust
 ├── Models (namespace: maas)
 │   ├── gpt-oss-20b              → All tiers (free, premium, enterprise)
 │   ├── nemotron-3-nano-30b-a3b  → Premium + Enterprise only
 │   └── Per-model RBAC           → Tier ServiceAccounts → LLMInferenceService access
-├── MaaS API (dev-preview)
-│   ├── maas-api deployment      → quay.io/opendatahub/maas-api:latest-0681979
-│   ├── PostgreSQL (CNPG)        → Included in remote kustomize base
-│   └── HTTPRoute + AuthPolicy   → Routed through MaaS Gateway
+├── MaaS API                      → Operator-managed (redhat-ods-applications)
 ├── MaaS Governance
+│   ├── Tier-to-group mapping    → ConfigMap in redhat-ods-applications (for webhook)
 │   ├── Tier Groups              → tier-free-users, tier-premium-users, tier-enterprise-users
 │   ├── RateLimitPolicy          → Request rate limits per tier
 │   ├── TokenRateLimitPolicy     → Token rate limits per tier
 │   └── TelemetryPolicy          → Usage metrics to Prometheus
 ├── In-Cluster Jobs
-│   ├── configure-kuadrant       → Authorino SSL env vars (SSL_CERT_FILE, REQUESTS_CA_BUNDLE)
+│   ├── configure-kuadrant       → Authorino SSL + AuthPolicy patches for MaaS tab
 │   ├── patch-gateway-hostname   → Cluster-specific Gateway hostname + TLS cert
 │   └── configure-grafana-sa     → Grafana ServiceAccount token
 └── Observability
@@ -59,9 +58,7 @@ Manifests: [`gitops/step-03-llm-serving-maas/base/`](../../gitops/step-03-llm-se
 ./steps/step-03-llm-serving-maas/validate.sh
 ```
 
-The `deploy.sh` script:
-1. Applies the ArgoCD Application for all GitOps-managed resources
-2. Separately applies the dev-preview `maas-api` via `oc apply -k gitops/step-03-llm-serving-maas/base/maas-api/` (not managed by ArgoCD because the remote kustomize base references an external repo)
+The `deploy.sh` applies the ArgoCD Application. All resources including operators, models, policies, and Jobs are managed by ArgoCD via sync waves.
 
 </details>
 
@@ -71,29 +68,26 @@ The `deploy.sh` script:
 
 ### Model Discovery in GenAI Studio
 
-> Developers start in the OpenShift AI dashboard, browsing available AI assets. Models deployed through the MaaS dev-preview API appear with MaaS source badges.
+> Developers start in the OpenShift AI dashboard, browsing available AI assets.
 
 1. Log in to the RHOAI Dashboard as `ai-admin` (via `demo-htpasswd`)
 2. Navigate to **GenAI Studio > AI asset endpoints**
 3. Select the **maas** project from the project dropdown
-4. The **Models** tab shows available models with their source type (MaaS), status, and playground access
+4. The **Models** tab shows available models with their status and playground access
+5. The **Models as a service** tab shows models with MaaS badges, external endpoints, and tier information
 
-**Expect:** Models visible with **MaaS** source badge and **Active** status.
-
-> This is self-service model discovery. Developers find what they need without asking platform teams — models, endpoints, and access policies are all visible in one place.
+**Expect:** Both models visible with **Active** status in both tabs.
 
 ### Viewing Endpoints and Generating API Tokens
 
-> The developer selects a MaaS model to get connection details for their application.
+> The developer selects a MaaS model to get connection details.
 
-1. Click **View** on the **gpt-oss-20b** (MaaS source) model
-2. The **Endpoints** modal shows the external API endpoint URL
+1. Click **View** on the **gpt-oss-20b** model in the Models as a service tab
+2. The endpoint details show the external API endpoint URL
 3. Click **Generate API token** to create an authentication token
 4. Copy the endpoint URL and token for use in applications
 
-**Expect:** External API endpoint in the format `https://maas.<cluster-domain>/maas-api/` with a working token generator.
-
-> Each model has a unique endpoint URL and supports OpenAI-compatible API calls. API tokens are managed through the dev-preview MaaS API.
+**Expect:** External API endpoint with a working token generator.
 
 ### Testing in the Playground
 
@@ -112,11 +106,9 @@ The `deploy.sh` script:
 
 **Expect:** The model responds with functional Python code. Response metadata shows latency and token counts.
 
-> The Playground lets developers validate model behavior before committing to an integration. No API keys, no external tools — just the dashboard.
-
 ### Tier-Based Access Control
 
-> Platform administrators define who gets access to which models and how much they can consume. Tiers are enforced at the Gateway level through Kuadrant policies.
+> Platform administrators define who gets access to which models and how much they can consume.
 
 1. Tier definitions are in `gitops/step-03-llm-serving-maas/base/governance/`
 2. `RateLimitPolicy` controls request rate per tier
@@ -124,8 +116,6 @@ The `deploy.sh` script:
 4. `TelemetryPolicy` sends usage metrics to Prometheus
 
 **Expect:** Three tiers (free, premium, enterprise) with distinct rate limits enforced by Red Hat Connectivity Link at the MaaS Gateway.
-
-> Models-as-a-Service gives platform teams centralized governance without building custom infrastructure. Rate limits, quotas, and access policies are defined once and enforced consistently across all consumers.
 
 ## Key Takeaways
 
@@ -144,7 +134,7 @@ The `deploy.sh` script:
 ## References
 
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) — the public quickstart this step is based on
-- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — MaaS API dev-preview source
+- [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
 - [RHOAI 3.3 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
 - [Deploying models on RHOAI](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/deploying_models/)
 - [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/)
