@@ -2,9 +2,26 @@
 
 **A private, governed AI code assistant built with Red Hat AI Factory and NVIDIA, delivered through Models-as-a-Service on OpenShift.**
 
-This demo showcases how Red Hat OpenShift AI and NVIDIA models combine to give developers AI-assisted coding inside familiar enterprise tools — while platform teams retain full control over access, quotas, and observability.
+This demo shows how organizations can deliver a private AI code assistant experience using Red Hat AI Factory with NVIDIA. It walks through how a developer discovers a centrally managed model, tests it, connects it to a coding workflow, and uses it from a familiar development environment. It also highlights how platform administrators can govern, rate limit, and observe model usage across teams — without relying on a public hosted AI service.
 
 > Based on the public quickstart: [Accelerate enterprise software development with NVIDIA and MaaS](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+
+## What This Demo Shows
+
+This quickstart demonstrates a private AI code assistant powered by:
+
+- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
+- [Models-as-a-Service](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [NVIDIA Nemotron models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b)
+- [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
+- [Continue](https://www.continue.dev/), an open-source AI code assistant extension
+- vLLM and llm-d for scalable model serving
+- Optional observability dashboards using Grafana
+
+The demo is shown from two perspectives:
+
+1. **Developer experience** — A developer retrieves model connection details, tests the model, and connects it to a code assistant inside a Dev Spaces workspace.
+2. **Platform administrator experience** — An administrator manages model access, rate limits, user tiers, and usage visibility across the environment.
 
 ## Architecture
 
@@ -48,21 +65,73 @@ This demo showcases how Red Hat OpenShift AI and NVIDIA models combine to give d
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
+From the developer's perspective, the model is accessed through a simple API endpoint. Behind that endpoint, the platform provides a governed and scalable inference architecture using the Models-as-a-Service stack, including vLLM and llm-d. This separation allows developers to focus on building software while platform teams retain control over how AI services are deployed, exposed, secured, and monitored.
+
 ## Demo Storyline
 
-### Developer Perspective
+### Developer Flow
 
-The demo begins from the **developer's point of view** inside the OpenShift AI dashboard. The developer navigates to **GenAI Studio > AI asset endpoints** and selects the `maas` project. Models deployed through the MaaS dev-preview API appear with MaaS source badges, endpoints, and playground access.
+The developer begins in the **OpenShift AI dashboard**, where they can access projects, deployed models, MCP servers, and other AI assets.
 
-The developer clicks **View** on the NVIDIA Nemotron model to see its external API endpoint and generates an API token. They test the model in the built-in **Playground**, exploring prompts, system settings, and optional MCP server integrations.
+From the **GenAI Studio** section, the developer opens **AI Asset Endpoints** and selects the appropriate project (e.g., `quickstart-demo`). In the **Models-as-a-Service** tab, they can view the models that have already been deployed and managed by the platform team. In this demo, the available model is an **NVIDIA Nemotron** model.
 
-Once validated, the developer switches to **OpenShift Dev Spaces** — the organization's containerized development environment. Inside a prepared VS Code workspace, they configure the **Continue** extension (an open-source AI coding assistant) to connect to the private model endpoint. The demo culminates with the developer sending source code to the model and asking it to make the code more "enterprise-grade."
+Before connecting the model to a coding workflow, the developer tests it in the **Playground**. The Playground allows the developer to:
 
-### Platform Administrator Perspective
+- Select the target model
+- Adjust the system prompt
+- Optionally enable MCP servers
+- Send test prompts to validate the model response
 
-The demo then shifts to the **platform administrator's view**. Models-as-a-Service enables centralized model access management: admins define access policies, quotas, and token rate limits based on user tiers (free, premium, enterprise). These tiers map to cluster user groups, aligning AI access with organizational governance.
+For example, the developer asks the model to explain NVIDIA Nemotron models in one to three sentences. Once the model responds successfully, the developer retrieves the model connection details from the Models-as-a-Service endpoint page:
 
-Using a **Grafana dashboard** connected to the cluster's observability stack, administrators monitor model usage across tiers, users, and deployed models — supporting capacity planning, cost tracking, and internal chargeback.
+- **Model endpoint URL**
+- **API token**
+
+These values are then used to configure the local code assistant.
+
+#### Connecting the Model to OpenShift Dev Spaces
+
+The developer then moves into their development environment. In this demo, the organization uses **OpenShift Dev Spaces**, which provides containerized development environments running on OpenShift. Dev Spaces is deployed on the same cluster as OpenShift AI, giving developers a streamlined path from model discovery to application development.
+
+Inside the Dev Spaces workspace, the demo repository is already cloned into a VS Code-compatible environment. The workspace includes **Continue**, an open-source AI code assistant extension. Because Continue can connect to a model endpoint supplied by the user, the developer configures it with the Models-as-a-Service endpoint URL and API token retrieved from OpenShift AI. Once configured, Continue uses the private NVIDIA Nemotron model as the backend for AI-assisted coding.
+
+#### Code Assistant Example
+
+The repository includes several sample game exercises (in `steps/step-04-devspaces/coding-exercises/`) that can be used to demonstrate AI-assisted development. In the demo, the developer selects code from one of the game files and asks the model to *"make the code enterprise grade."* The model suggests improvements directly in the development environment. The developer can review and accept the proposed changes — showing how a private AI model integrates into a familiar coding workflow without sending code to a public hosted service.
+
+### Platform Administrator Flow
+
+After demonstrating the developer workflow, the demo switches to the **platform administrator** perspective. One of the key benefits of Models-as-a-Service in Red Hat AI is that administrators can centrally control how shared models are exposed across users and teams.
+
+Administrators can define and manage:
+
+- Access policies and model availability by group
+- Rate limits and quotas
+- User tiers (free, premium, enterprise)
+- Usage visibility by model and tier
+
+For example, the demo shows a token rate limit policy managed through the API gateway layer. Different user tiers receive different token-per-minute limits:
+
+| User Tier | Example Token Limit |
+|-----------|---------------------|
+| Free | 100 tokens per minute |
+| Premium | 50,000 tokens per minute |
+| Enterprise | 100,000 tokens per minute |
+
+These tiers map to cluster user groups, giving administrators a practical way to align AI model access with organizational policy. Model access can also be restricted by tier — for example, the NVIDIA Nemotron model may only be exposed to premium and enterprise users.
+
+#### Observability and Usage Visibility
+
+The demo includes an observability view for the Models-as-a-Service administrator. In the example environment, **Grafana** is used to visualize metric data collected through the cluster observability stack. While Grafana itself is not part of the Red Hat AI product, it provides a useful example of how platform metrics can be visualized.
+
+The dashboard shows token usage across deployed models and user tiers. Administrators can filter usage data by:
+
+- User
+- Model
+- Metrics data source
+- Time range
+
+This visibility helps platform teams understand how shared AI services are being consumed, where demand is growing, and how to plan future infrastructure capacity. It can also support internal chargeback or cost visibility models.
 
 ## What You Need
 
@@ -148,6 +217,14 @@ rhoai3-coding-demo/
 | `ai-developer` | `redhat123` | demo-htpasswd | RHOAI User (rhoai-users group) | Premium |
 
 > Credentials are defined in `gitops/step-01-rhoai-platform/base/users/htpasswd-secret.yaml`. MaaS tier group membership is defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml`.
+
+## Key Takeaways
+
+This demo shows how Red Hat AI Factory with NVIDIA can help organizations deliver private AI-assisted development at enterprise scale.
+
+- **For developers:** A familiar AI code assistant experience inside OpenShift Dev Spaces, backed by a private NVIDIA model endpoint — no code leaves the organization's infrastructure.
+- **For platform teams:** Centralized control over model access, user tiers, rate limits, quotas, and observability — the same governance patterns used for any shared platform service.
+- **For the organization:** A practical pattern for delivering AI that is useful for developers, manageable for platform teams, and ready to scale across the enterprise.
 
 ## Troubleshooting
 
