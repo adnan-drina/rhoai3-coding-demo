@@ -78,11 +78,17 @@ The `coding-assistant` project is the developer's entry point in the RHOAI dashb
 ### Act 3: Configure the Continue Extension
 
 1. Continue installs from the public Open VSX registry (configured in the CheCluster)
-2. Open Continue settings (gear icon in the sidebar)
-3. Use the template from `.vscode/config.yaml` (already in the repo):
+2. Open a terminal in VS Code and copy the config template:
+   ```bash
+   cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+   ```
+3. Open `~/.continue/config.yaml` and replace the placeholders:
    - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1
    - Replace `YOUR_API_KEY` with the API token from Act 1
-4. The Nemotron model appears in the Continue sidebar
+4. In the Continue sidebar, select **Local Config** from the dropdown
+5. The Nemotron model appears in the model selector
+
+> **Note:** The DevWorkspace has a `postStart` command that attempts to copy this config automatically, but due to a race condition with the git clone, it may not execute on the first workspace start. The manual `cp` step above is a reliable fallback.
 
 ### Act 4: AI-Assisted Coding
 
