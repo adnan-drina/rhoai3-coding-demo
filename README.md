@@ -34,7 +34,7 @@ The demo is shown from two perspectives:
 ├───────────────────────────────────────────────────────────────────────┤
 │                    Models-as-a-Service (MaaS)                         │
 │                                                                       │
-│  MaaS API (dev-preview)    MaaS Gateway (HTTPS)    Authorino (AuthN) │
+│  MaaS API (operator)       MaaS Gateway (HTTPS)    Authorino (AuthN) │
 │  ├── Model discovery       ├── Kuadrant policies   ├── Token review  │
 │  ├── API token generation  ├── TLS termination     └── Tier mapping  │
 │  └── Tier-based access     └── Rate limiting                         │
@@ -181,7 +181,7 @@ Deploy steps in order:
 - **Per-step deployment** — each `deploy.sh` applies its own ArgoCD Application (`oc apply -f`), giving control over ordering and runtime setup (secrets, SCC grants, model uploads) between syncs.
 - **`targetRevision: main`** — acceptable for a demo project where the single branch is the source of truth.
 - **Fork-friendly** — `bootstrap.sh` auto-detects the git remote URL and updates all ArgoCD Applications. No manual URL changes needed for forks.
-- **Dev-preview MaaS API** — deployed separately via `oc apply -k` in `deploy.sh` because RHOAI 3.3 does not include MaaS natively. See [BACKLOG.md](BACKLOG.md) for revert instructions when RHOAI 3.4 GA ships.
+- **Operator-native MaaS** — the RHOAI operator deploys `maas-api` in `redhat-ods-applications` via `modelsAsService: Managed` in the DSC. Governance policies and auth fixes are applied via GitOps and in-cluster Jobs. See [BACKLOG.md](BACKLOG.md) for workarounds that can be removed when RHOAI 3.4 GA ships.
 
 ## Project Structure
 
@@ -197,7 +197,6 @@ rhoai3-coding-demo/
 │   ├── step-01-rhoai-platform/base/    # RHOAI operator, monitoring, serverless, cert-mgr
 │   ├── step-02-gpu-infra/base/         # NFD, GPU Operator, ClusterPolicy
 │   ├── step-03-llm-serving-maas/base/  # LWS, RHCL, Gateway, models, governance
-│   │   └── maas-api/                   # Dev-preview MaaS API (remote kustomize base)
 │   └── step-04-devspaces/base/          # Dev Spaces operator, workspaces
 ├── steps/                              # Per-step deploy/validate/README + app code
 │   ├── step-01-rhoai-platform/
@@ -253,17 +252,15 @@ oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec
 </details>
 
 <details>
-<summary>Dev-preview maas-api pod not starting</summary>
+<summary>MaaS tab shows "No models available as a service"</summary>
 
-The dev-preview `maas-api` runs in the `maas-api` namespace. Check pod status and logs:
+The operator's `gateway-auth-policy` has a `tier-access` authorization step that extracts model names from URL paths. This breaks for the `/maas-api/v1/models` management endpoint. The `configure-kuadrant` Job patches both AuthPolicies to fix this. If the operator reconciles and overwrites the patches, re-run:
 ```bash
-oc get pods -n maas-api
-oc logs deployment/maas-api -n maas-api
+oc patch authpolicy gateway-auth-policy -n openshift-ingress --type=merge \
+  -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}'
+oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
+  --type=merge -p '{"spec":{"rules":{"authorization":{}}}}'
 ```
-
-Common issues:
-- RBAC: the `maas-api` ServiceAccount needs cluster-wide access to `LLMInferenceService`, `HTTPRoute`, `Namespace`, `ServiceAccount`, and `ConfigMap` resources.
-- The remote kustomize base deploys its own Gateway — ours in step-03 takes precedence. Check that only one `maas-api-route` HTTPRoute exists.
 </details>
 
 <details>
@@ -286,4 +283,4 @@ oc rollout status deploy/rhods-dashboard -n redhat-ods-applications
 - [NVIDIA Nemotron Models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b)
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
-- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — MaaS API dev-preview source
+- [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
