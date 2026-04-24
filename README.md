@@ -69,69 +69,21 @@ From the developer's perspective, the model is accessed through a simple API end
 
 ## Demo Storyline
 
+The demo is presented from two perspectives:
+
 ### Developer Flow
 
-The developer begins in the **OpenShift AI dashboard**, where they can access projects, deployed models, MCP servers, and other AI assets.
+A developer discovers a centrally managed NVIDIA Nemotron model in the **GenAI Studio** dashboard, tests it in the built-in **Playground**, retrieves the model endpoint URL and API token, then connects the model to the **Continue** AI code assistant extension inside an **OpenShift Dev Spaces** workspace. The demo culminates with the developer asking the model to improve sample code — showing a private AI coding workflow that never leaves the organization's infrastructure.
 
-From the **GenAI Studio** section, the developer opens **AI Asset Endpoints** and selects the appropriate project (e.g., `quickstart-demo`). In the **Models-as-a-Service** tab, they can view the models that have already been deployed and managed by the platform team. In this demo, the available model is an **NVIDIA Nemotron** model.
-
-Before connecting the model to a coding workflow, the developer tests it in the **Playground**. The Playground allows the developer to:
-
-- Select the target model
-- Adjust the system prompt
-- Optionally enable MCP servers
-- Send test prompts to validate the model response
-
-For example, the developer asks the model to explain NVIDIA Nemotron models in one to three sentences. Once the model responds successfully, the developer retrieves the model connection details from the Models-as-a-Service endpoint page:
-
-- **Model endpoint URL**
-- **API token**
-
-These values are then used to configure the local code assistant.
-
-#### Connecting the Model to OpenShift Dev Spaces
-
-The developer then moves into their development environment. In this demo, the organization uses **OpenShift Dev Spaces**, which provides containerized development environments running on OpenShift. Dev Spaces is deployed on the same cluster as OpenShift AI, giving developers a streamlined path from model discovery to application development.
-
-Inside the Dev Spaces workspace, the demo repository is already cloned into a VS Code-compatible environment. The workspace includes **Continue**, an open-source AI code assistant extension. Because Continue can connect to a model endpoint supplied by the user, the developer configures it with the Models-as-a-Service endpoint URL and API token retrieved from OpenShift AI. Once configured, Continue uses the private NVIDIA Nemotron model as the backend for AI-assisted coding.
-
-#### Code Assistant Example
-
-The repository includes several sample game exercises (in `steps/step-04-devspaces/coding-exercises/`) that can be used to demonstrate AI-assisted development. In the demo, the developer selects code from one of the game files and asks the model to *"make the code enterprise grade."* The model suggests improvements directly in the development environment. The developer can review and accept the proposed changes — showing how a private AI model integrates into a familiar coding workflow without sending code to a public hosted service.
+- Model discovery and Playground testing: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
+- Dev Spaces setup and coding exercise: [Step 04 — The Demo](steps/step-04-devspaces/README.md#the-demo)
 
 ### Platform Administrator Flow
 
-After demonstrating the developer workflow, the demo switches to the **platform administrator** perspective. One of the key benefits of Models-as-a-Service in Red Hat AI is that administrators can centrally control how shared models are exposed across users and teams.
+A platform administrator manages model access through tier-based policies (free, premium, enterprise) with per-tier rate limits and quotas enforced by Red Hat Connectivity Link. The demo shows how tiers map to cluster user groups, how model availability can be restricted by tier, and how **Grafana** dashboards provide usage visibility across models, users, and time — supporting capacity planning and internal chargeback.
 
-Administrators can define and manage:
-
-- Access policies and model availability by group
-- Rate limits and quotas
-- User tiers (free, premium, enterprise)
-- Usage visibility by model and tier
-
-For example, the demo shows a token rate limit policy managed through the API gateway layer. Different user tiers receive different token-per-minute limits:
-
-| User Tier | Example Token Limit |
-|-----------|---------------------|
-| Free | 100 tokens per minute |
-| Premium | 50,000 tokens per minute |
-| Enterprise | 100,000 tokens per minute |
-
-These tiers map to cluster user groups, giving administrators a practical way to align AI model access with organizational policy. Model access can also be restricted by tier — for example, the NVIDIA Nemotron model may only be exposed to premium and enterprise users.
-
-#### Observability and Usage Visibility
-
-The demo includes an observability view for the Models-as-a-Service administrator. In the example environment, **Grafana** is used to visualize metric data collected through the cluster observability stack. While Grafana itself is not part of the Red Hat AI product, it provides a useful example of how platform metrics can be visualized.
-
-The dashboard shows token usage across deployed models and user tiers. Administrators can filter usage data by:
-
-- User
-- Model
-- Metrics data source
-- Time range
-
-This visibility helps platform teams understand how shared AI services are being consumed, where demand is growing, and how to plan future infrastructure capacity. It can also support internal chargeback or cost visibility models.
+- Tier-based access control and governance: [Step 03 — Tier-Based Access Control](steps/step-03-llm-serving-maas/README.md#tier-based-access-control)
+- Observability dashboards: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
 ## What You Need
 
