@@ -49,5 +49,7 @@ resources:
   - grafana/servicemonitor.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
+  # Wave 15-16: MCP servers (OpenShift, Slack, BrightData web browsing)
+  - mcp/
   # Wave 22: Register models in Model Registry
   - model-registry/seed-models.yaml
