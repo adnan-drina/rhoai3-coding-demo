@@ -69,21 +69,21 @@ From the developer's perspective, the model is accessed through a simple API end
 
 ## Demo Storyline
 
-The demo is presented from two perspectives:
+### Platform Foundation (Steps 01–02)
 
-### Developer Flow
+Before the demo begins, the platform team lays the foundation. [Step 01](steps/step-01-rhoai-platform/README.md) installs **Red Hat OpenShift AI 3.3** with all platform dependencies — OpenShift Serverless, Service Mesh, cert-manager, and user workload monitoring — and configures the RHOAI Dashboard with GenAI Studio, hardware profiles, and demo users. [Step 02](steps/step-02-gpu-infra/README.md) enables GPU compute by deploying the **NFD Operator** and **NVIDIA GPU Operator**, then provisions GPU worker nodes (2x NVIDIA L4) to run inference workloads. Together, these steps create a governed AI platform with GPU-accelerated compute — ready for model serving.
 
-A developer discovers a centrally managed NVIDIA Nemotron model in the **GenAI Studio** dashboard, tests it in the built-in **Playground**, retrieves the model endpoint URL and API token, then connects the model to the **Continue** AI code assistant extension inside an **OpenShift Dev Spaces** workspace. The demo culminates with the developer asking the model to improve sample code — showing a private AI coding workflow that never leaves the organization's infrastructure.
+### Model Serving and Governance (Step 03)
 
-- Model discovery and Playground testing: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
-- Dev Spaces setup and coding exercise: [Step 04 — The Demo](steps/step-04-devspaces/README.md#the-demo)
+[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and exposes them through **Models-as-a-Service** with tier-based access control, rate limiting, and usage telemetry. A developer discovers a centrally managed NVIDIA Nemotron model in the **GenAI Studio** dashboard, tests it in the built-in **Playground**, and retrieves the model endpoint URL and API token. A platform administrator manages model access through tier-based policies (free, premium, enterprise) with per-tier rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards — supporting capacity planning and internal chargeback.
 
-### Platform Administrator Flow
+- Full demo walkthrough: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
-A platform administrator manages model access through tier-based policies (free, premium, enterprise) with per-tier rate limits and quotas enforced by Red Hat Connectivity Link. The demo shows how tiers map to cluster user groups, how model availability can be restricted by tier, and how **Grafana** dashboards provide usage visibility across models, users, and time — supporting capacity planning and internal chargeback.
+### AI Code Assistant (Step 04)
 
-- Tier-based access control and governance: [Step 03 — Tier-Based Access Control](steps/step-03-llm-serving-maas/README.md#tier-based-access-control)
-- Observability dashboards: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
+[Step 04](steps/step-04-devspaces/README.md) deploys **OpenShift Dev Spaces** and demonstrates the developer experience end-to-end. The developer configures the **Continue** extension (an open-source AI code assistant) with the MaaS model endpoint, then asks the model to improve sample code — showing a private AI coding workflow that never leaves the organization's infrastructure.
+
+- Full demo walkthrough: [Step 04 — The Demo](steps/step-04-devspaces/README.md#the-demo)
 
 ## What You Need
 
