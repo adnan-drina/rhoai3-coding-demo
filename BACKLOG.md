@@ -29,14 +29,12 @@ The following items use manual configuration or post-deploy patches because the 
   **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
 
 ## Known Limitations
-
-- [ ] **MCP servers not configured** — No `gen-ai-aa-mcp-servers` ConfigMap exists. MCP tool calling in the Playground is not available.
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency — candidate for upstream issue in `opendatahub-io/odh-dashboard`.
 
 ## Planned
 
 - [ ] **Component-per-operator extraction** — Refactor `gitops/` to extract operator install triads into reusable `components/operators/` bases.
 - [ ] **Multi-version overlay structure** — `rhoai-3.3/` and `rhoai-3.4/` overlays with channel patches.
-- [ ] **Automated MaaS API validation** — curl-based validation in `step-03/validate.sh`.
+- [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
 - [ ] **Grafana dashboard screenshots** — Add screenshots to step-03 README.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.

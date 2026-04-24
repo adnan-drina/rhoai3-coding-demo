@@ -46,20 +46,16 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ APPLICATIONS                                                                                 │
-│                                                                                              │
 │  ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────────┐   ┌──────────────┐   │
 │  │ MaaS Consumers   │   │ OpenShift Dev Spaces │   │ MaaS Admins      │   │ Grafana      │   │
 │  │ Internal users   │   │ IDE + Continue       │   │ Platform ops     │   │ Dashboards   │   │
 │  │ Apps via API/UI  │   │ Private AI assistant │   │ CLI / API / UI   │   │ Usage views  │   │
 │  └──────────────────┘   └──────────────────────┘   └──────────────────┘   └──────────────┘   │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │ RED HAT AI / OPENSHIFT AI                                                                    │
-│                                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Models-as-a-Service (MaaS)                                                             │  │
 │  │ Governed model access, catalog, policies, and developer model experimentation          │  │
-│  │                                                                                        │  │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ ┌────────────────┐ ┌────────┐  │  │
 │  │  │ Model Catalog│ │ Access & Auth│ │ Policies &       │ │ Usage &        │ │ Model  │  │  │
 │  │  │ & Discovery  │ │ Tokens, tiers│ │ Governance       │ │ Chargeback     │ │ Exper. │  │  │
@@ -71,7 +67,6 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Inference (Model Serving Runtime)                                                      │  │
 │  │ High-performance LLM inference with scalable runtimes                                  │  │
-│  │                                                                                        │  │
 │  │  ┌────────────────────────────────────┐   ┌──────────────────────────────────────────┐ │  │
 │  │  │ vLLM Runtime                       │   │ llm-d Runtime (via LeaderWorkerSet)      │ │  │
 │  │  │ High-throughput serving for LLMs   │   │ Distributed multi-node inference         │ │  │
@@ -82,7 +77,6 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Multi-tenant Platform                                                                  │  │
 │  │ Isolation, observability, and security for safe enterprise AI                          │  │
-│  │                                                                                        │  │
 │  │  ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────────┐  │  │
 │  │  │ Project Isolation      │ │ Model & Platform       │ │ Security & Access Control  │  │  │
 │  │  │ maas,                  │ │ Observability          │ │ RBAC, service accounts,    │  │  │
@@ -91,18 +85,16 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  │  │ wksp-ai-developer      │ │ Limitador, Prometheus  │ │                            │  │  │
 │  │  └────────────────────────┘ └────────────────────────┘ └────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │ COMPUTE ACCELERATORS                                                                         │
-│                                                                                              │
 │  ┌──────────────────────┐   ┌────────────────────────┐   ┌───────────────────────────────┐   │
 │  │ NVIDIA GPU Operator  │   │ Node Feature Discovery │   │ Hardware Profiles             │   │
 │  │ Drivers, toolkit,    │   │ Detects hardware       │   │ nvidia-l4-1gpu, nvidia-l4-4gpu│   │
 │  │ DCGM, device plugin  │   │ features and labels    │   │ cpu-small                     │   │
 │  │                      │   │ GPU nodes              │   │                               │   │
 │  └──────────────────────┘   └────────────────────────┘   └───────────────────────────────┘   │
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │ RED HAT OPENSHIFT                                                                            │
-│                                                                                              │
 │  ┌─────────────────┐ ┌──────────────────────┐ ┌────────────────┐ ┌──────────────────────┐    │
 │  │ OpenShift GitOps│ │ OpenShift Serverless │ │ OpenShift      │ │ API Gateway &        │    │
 │  │ ArgoCD          │ │ & Serving Infra      │ │ Monitoring     │ │ Authorization        │    │
@@ -110,14 +102,12 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  │ and deployment  │ │ routing, autoscaling,│ │ user workload  │ │ Kuadrant, Authorino  │    │
 │  │ orchestration   │ │ LeaderWorkerSet      │ │ inference/GPU  │ │ rate-limit enforce.  │    │
 │  └─────────────────┘ └──────────────────────┘ └────────────────┘ └──────────────────────┘    │
-│                                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ OpenShift Platform Services                                                            │  │
 │  │ OAuth / HTPasswd, cert-manager, namespaces, RBAC, service accounts, storage defaults   │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │ INFRASTRUCTURE                                                                               │
-│                                                                                              │
 │                   AWS Cloud — OCP 4.20 — 2x g6e.2xlarge (NVIDIA L4)                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
@@ -183,7 +173,7 @@ Deploy steps in order:
 |------|------|-----------|-----|
 | 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles, Model Registry | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, Model Registration, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, MCP servers, Model Registration, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## RHOAI 3.3 Features Covered
