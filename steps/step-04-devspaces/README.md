@@ -40,7 +40,7 @@ Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/bas
 4. Configure Continue with the MaaS model endpoint:
    - Open Continue settings (gear icon)
    - Add a new model provider with the Nemotron endpoint URL from Step 03:
-     `http://maas.<cluster-domain>/maas/nemotron-3-nano-30b-a3b`
+     `https://maas.<cluster-domain>/maas/nemotron-3-nano-30b-a3b`
    - Set the API key to the token generated from the RHOAI dashboard
      (GenAI Studio > AI asset endpoints > maas project > View > Generate API token)
 
