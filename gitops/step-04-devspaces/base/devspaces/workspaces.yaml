@@ -42,8 +42,15 @@ spec:
       - id: init-continue
         exec:
           commandLine: |
-            mkdir -p ~/.continue
-            cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+            for i in $(seq 1 30); do
+              if [ -f /projects/maas-code-assistant/.vscode/config.yaml ]; then
+                mkdir -p ~/.continue
+                cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+                echo "Continue config copied"
+                break
+              fi
+              sleep 2
+            done
           component: tooling-container
     events:
       postStart:
@@ -93,8 +100,15 @@ spec:
       - id: init-continue
         exec:
           commandLine: |
-            mkdir -p ~/.continue
-            cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+            for i in $(seq 1 30); do
+              if [ -f /projects/maas-code-assistant/.vscode/config.yaml ]; then
+                mkdir -p ~/.continue
+                cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+                echo "Continue config copied"
+                break
+              fi
+              sleep 2
+            done
           component: tooling-container
     events:
       postStart:
