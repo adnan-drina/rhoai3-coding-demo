@@ -47,13 +47,12 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ APPLICATIONS                                                                                 │
 │                                                                                              │
-│  ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────────┐   ┌──────────────┐  │
-│  │ MaaS Consumers   │   │ OpenShift Dev Spaces  │   │ MaaS Admins      │   │ Grafana      │  │
-│  │ Internal users   │   │ IDE + Continue        │   │ Platform ops     │   │ Dashboards   │  │
-│  │ Apps via API/UI  │   │ Private AI assistant  │   │ CLI / API / UI   │   │ Usage views  │  │
-│  └──────────────────┘   └──────────────────────┘   └──────────────────┘   └──────────────┘  │
+│  ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────────┐   ┌──────────────┐   │
+│  │ MaaS Consumers   │   │ OpenShift Dev Spaces │   │ MaaS Admins      │   │ Grafana      │   │
+│  │ Internal users   │   │ IDE + Continue       │   │ Platform ops     │   │ Dashboards   │   │
+│  │ Apps via API/UI  │   │ Private AI assistant │   │ CLI / API / UI   │   │ Usage views  │   │
+│  └──────────────────┘   └──────────────────────┘   └──────────────────┘   └──────────────┘   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ RED HAT AI / OPENSHIFT AI                                                                    │
 │                                                                                              │
@@ -61,15 +60,14 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  │ Models-as-a-Service (MaaS)                                                             │  │
 │  │ Governed model access, catalog, policies, and developer model experimentation          │  │
 │  │                                                                                        │  │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ ┌────────────────┐ ┌────────┐ │  │
-│  │  │ Model Catalog│ │ Access & Auth│ │ Policies &       │ │ Usage &        │ │ Model  │ │  │
-│  │  │ & Discovery  │ │ Tokens, tiers│ │ Governance       │ │ Chargeback     │ │ Exper. │ │  │
-│  │  │ Assets,      │ │ groups, RBAC │ │ Rate limits,     │ │ Usage tracking │ │ Prompt │ │  │
-│  │  │ endpoints,   │ │ integration  │ │ quotas, telemetry│ │ analytics,     │ │ tests, │ │  │
-│  │  │ versions     │ │              │ │ policies         │ │ showback       │ │ MCP    │ │  │
-│  │  └──────────────┘ └──────────────┘ └──────────────────┘ └────────────────┘ └────────┘ │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ ┌────────────────┐ ┌────────┐  │  │
+│  │  │ Model Catalog│ │ Access & Auth│ │ Policies &       │ │ Usage &        │ │ Model  │  │  │
+│  │  │ & Discovery  │ │ Tokens, tiers│ │ Governance       │ │ Chargeback     │ │ Exper. │  │  │
+│  │  │ Assets,      │ │ groups, RBAC │ │ Rate limits,     │ │ Usage tracking │ │ Prompt │  │  │
+│  │  │ endpoints,   │ │ integration  │ │ quotas, telemetry│ │ analytics,     │ │ tests, │  │  │
+│  │  │ versions     │ │              │ │ policies         │ │ showback       │ │ MCP    │  │  │
+│  │  └──────────────┘ └──────────────┘ └──────────────────┘ └────────────────┘ └────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Inference (Model Serving Runtime)                                                      │  │
 │  │ High-performance LLM inference with scalable runtimes                                  │  │
@@ -81,62 +79,48 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 │  │  │ batching, tensor parallelism       │   │ sharing, scaling with LWS Operator       │ │  │
 │  │  └────────────────────────────────────┘   └──────────────────────────────────────────┘ │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ Multi-tenant Platform                                                                  │  │
 │  │ Isolation, observability, and security for safe enterprise AI                          │  │
 │  │                                                                                        │  │
-│  │  ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────────┐ │  │
-│  │  │ Project Isolation      │ │ Model & Platform       │ │ Security & Access Control  │ │  │
-│  │  │ maas,                  │ │ Observability          │ │ RBAC, service accounts,    │ │  │
-│  │  │ coding-assistant,      │ │ Model metrics, request │ │ endpoint tokens, roles,    │ │  │
-│  │  │ wksp-ai-admin,         │ │ logs, latency, GPU,    │ │ secure model access        │ │  │
-│  │  │ wksp-ai-developer      │ │ Limitador, Prometheus  │ │                            │ │  │
-│  │  └────────────────────────┘ └────────────────────────┘ └────────────────────────────┘ │  │
+│  │  ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────────┐  │  │
+│  │  │ Project Isolation      │ │ Model & Platform       │ │ Security & Access Control  │  │  │
+│  │  │ maas,                  │ │ Observability          │ │ RBAC, service accounts,    │  │  │
+│  │  │ coding-assistant,      │ │ Model metrics, request │ │ endpoint tokens, roles,    │  │  │
+│  │  │ wksp-ai-admin,         │ │ logs, latency, GPU,    │ │ secure model access        │  │  │
+│  │  │ wksp-ai-developer      │ │ Limitador, Prometheus  │ │                            │  │  │
+│  │  └────────────────────────┘ └────────────────────────┘ └────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ COMPUTE ACCELERATORS                                                                         │
 │                                                                                              │
-│  ┌──────────────────────┐   ┌────────────────────────┐   ┌───────────────────────────────┐  │
-│  │ NVIDIA GPU Operator  │   │ Node Feature Discovery  │   │ Hardware Profiles             │  │
-│  │ Drivers, toolkit,    │   │ Detects hardware        │   │ nvidia-l4-1gpu, nvidia-l4-4gpu│  │
-│  │ DCGM, device plugin  │   │ features and labels     │   │ cpu-small                     │  │
-│  │                      │   │ GPU nodes               │   │                               │  │
-│  └──────────────────────┘   └────────────────────────┘   └───────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
-
+│  ┌──────────────────────┐   ┌────────────────────────┐   ┌───────────────────────────────┐   │
+│  │ NVIDIA GPU Operator  │   │ Node Feature Discovery │   │ Hardware Profiles             │   │
+│  │ Drivers, toolkit,    │   │ Detects hardware       │   │ nvidia-l4-1gpu, nvidia-l4-4gpu│   │
+│  │ DCGM, device plugin  │   │ features and labels    │   │ cpu-small                     │   │
+│  │                      │   │ GPU nodes              │   │                               │   │
+│  └──────────────────────┘   └────────────────────────┘   └───────────────────────────────┘   │
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ RED HAT OPENSHIFT                                                                            │
 │                                                                                              │
-│  ┌─────────────────┐ ┌──────────────────────┐ ┌────────────────┐ ┌──────────────────────┐   │
-│  │ OpenShift GitOps │ │ OpenShift Serverless  │ │ OpenShift      │ │ API Gateway &        │   │
-│  │ ArgoCD           │ │ & Serving Infra       │ │ Monitoring     │ │ Authorization        │   │
-│  │ GitOps bootstrap │ │ Knative, KServe,      │ │ Prometheus,    │ │ Gateway API, RHCL,   │   │
-│  │ and deployment   │ │ routing, autoscaling, │ │ user workload, │ │ Kuadrant, Authorino, │   │
-│  │ orchestration    │ │ LeaderWorkerSet       │ │ inference/GPU  │ │ rate-limit enforce.  │   │
-│  └─────────────────┘ └──────────────────────┘ └────────────────┘ └──────────────────────┘   │
+│  ┌─────────────────┐ ┌──────────────────────┐ ┌────────────────┐ ┌──────────────────────┐    │
+│  │ OpenShift GitOps│ │ OpenShift Serverless │ │ OpenShift      │ │ API Gateway &        │    │
+│  │ ArgoCD          │ │ & Serving Infra      │ │ Monitoring     │ │ Authorization        │    │
+│  │ GitOps bootstrap│ │ Knative, KServe,     │ │ Prometheus,    │ │ Gateway API, RHCL,   │    │
+│  │ and deployment  │ │ routing, autoscaling,│ │ user workload  │ │ Kuadrant, Authorino  │    │
+│  │ orchestration   │ │ LeaderWorkerSet      │ │ inference/GPU  │ │ rate-limit enforce.  │    │
+│  └─────────────────┘ └──────────────────────┘ └────────────────┘ └──────────────────────┘    │
 │                                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │
 │  │ OpenShift Platform Services                                                            │  │
 │  │ OAuth / HTPasswd, cert-manager, namespaces, RBAC, service accounts, storage defaults   │  │
 │  └────────────────────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ INFRASTRUCTURE                                                                               │
 │                                                                                              │
 │                   AWS Cloud — OCP 4.20 — 2x g6e.2xlarge (NVIDIA L4)                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 
-Deployment model:
-  bootstrap.sh
-    └── OpenShift GitOps / ArgoCD AppProject (rhoai-demo)
-        ├── Step 01: RHOAI Platform
-        ├── Step 02: GPU Infrastructure
-        ├── Step 03: LLM Serving / MaaS
-        └── Step 04: Developer Experience / Dev Spaces
 ```
 
 From the developer's perspective, the model is accessed through a simple API endpoint. Behind that endpoint, the platform provides a governed and scalable inference architecture using the Models-as-a-Service stack, including vLLM and llm-d. This separation allows developers to focus on building software while platform teams retain control over how AI services are deployed, exposed, secured, and monitored.
