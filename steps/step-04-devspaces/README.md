@@ -11,6 +11,9 @@ Developers need AI coding assistance inside their existing tools, not a separate
 Dev Spaces & AI Code Assistant
 ├── Dev Spaces Operator          → Manages containerized IDE workspaces
 ├── CheCluster Instance          → Dev Spaces platform (openshift-devspaces)
+├── Per-User Workspaces
+│   ├── wksp-ai-admin            → Namespace + RoleBinding + DevWorkspace
+│   └── wksp-ai-developer        → Namespace + RoleBinding + DevWorkspace
 └── Coding Exercises             → Python starter code for "improve this" demo
 ```
 
