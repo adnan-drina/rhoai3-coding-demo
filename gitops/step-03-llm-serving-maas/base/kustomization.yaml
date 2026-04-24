@@ -30,6 +30,8 @@ resources:
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
+  # Wave 9: Tier-to-group mapping (needed by RHOAI webhook before LLMInferenceService)
+  - governance/tier-to-group-mapping.yaml
   # Wave 10: Kuadrant CR
   - governance/kuadrant.yaml
   # Wave 12: Authorino SSL env vars Job
