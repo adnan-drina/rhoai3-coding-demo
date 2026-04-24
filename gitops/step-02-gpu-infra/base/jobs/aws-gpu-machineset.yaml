@@ -93,6 +93,11 @@ data:
     oc -n openshift-machine-api patch "$MS_NAME" --type=merge \
       --patch '{"spec":{"template":{"spec":{"providerSpec":{"value":{"instanceType":"'"${INSTANCE_TYPE}"'"}}}}}}'
 
+    # Increase root volume to 200GB for large model images (gpt-oss-20b is ~40GB)
+    oc -n openshift-machine-api patch "$MS_NAME" --type=json \
+      --patch '[{"op":"replace","path":"/spec/template/spec/providerSpec/value/blockDevices/0/ebs/volumeSize","value":200}]' 2>/dev/null || \
+    echo "WARN: Could not patch volume size (blockDevices path may differ)"
+
     echo "GPU MachineSet configured: $MS_NAME (${REPLICAS} replicas)"
 ---
 apiVersion: batch/v1
