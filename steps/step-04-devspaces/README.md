@@ -44,13 +44,13 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 
 ## Projects Involved
 
-| Project | Purpose | Who Uses It |
-|---------|---------|-------------|
-| `maas` | Model serving — where `LLMInferenceService` models run | Platform (step-03) |
-| `coding-assistant` | RHOAI Data Science project — visible in the dashboard for model discovery, API token generation, and Playground | `ai-developer`, `ai-admin` |
-| `wksp-ai-developer` | Dev Spaces workspace namespace — contains the running VS Code pod | `ai-developer` |
+| Project | Purpose | Who Uses It | Visible in RHOAI Dashboard |
+|---------|---------|-------------|---------------------------|
+| `maas` | Model serving — where `LLMInferenceService` models run | `ai-admin` only | Yes (`ai-admin`) |
+| `coding-assistant` | Developer's home project — model discovery, API token generation, Playground | `ai-developer`, `ai-admin` | Yes (both users) |
+| `wksp-ai-developer` | Dev Spaces workspace — contains the running VS Code pod | `ai-developer` | No (OpenShift only) |
 
-The `coding-assistant` project is where the developer discovers models in GenAI Studio and generates API tokens. The `wksp-ai-developer` namespace is where the actual coding environment runs. Models are deployed in `maas` and accessed via the MaaS Gateway.
+The `coding-assistant` project is the developer's entry point in the RHOAI dashboard. From there, `ai-developer` sees MaaS models across the cluster (they appear in the **Models as a service** tab regardless of which project is selected). The `wksp-ai-developer` namespace only exists in OpenShift — it is not visible in the RHOAI dashboard.
 
 ## The Demo
 
@@ -60,10 +60,11 @@ The `coding-assistant` project is where the developer discovers models in GenAI 
 
 1. Log in to the RHOAI Dashboard as `ai-developer` (via `demo-htpasswd`)
 2. Navigate to **GenAI Studio > AI asset endpoints**
-3. Select the **maas** project > **Models as a service** tab
-4. Click **View** on the **nemotron-3-nano-30b-a3b** model
-5. Copy the **External endpoint URL**
-6. Click **Generate API token** — copy the token
+3. Select the **Coding Assistant** project from the dropdown
+4. Click the **Models as a service** tab — both models appear with MaaS badges
+5. Click **View** on the **nemotron-3-nano-30b-a3b** model
+6. Copy the **External endpoint URL**
+7. Click **Generate API token** — copy the token
 
 ### Act 2: Open the Development Environment (Dev Spaces)
 
