@@ -13,9 +13,6 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Gateway hostname patch** (`jobs/patch-gateway-hostname.yaml`) — Job patches MaaS Gateway with cluster-specific hostname and TLS cert name.
   **Revert:** The 3.4 operator may parameterize the Gateway hostname.
 
-- [ ] **DashboardConfig post-install patch** — The `genAiStudio: true` and `modelAsService: true` flags must be force-applied because the 3.3 operator overwrites `OdhDashboardConfig`.
-  **Revert:** The 3.4 operator should properly reconcile these from the spec.
-
 - [ ] **Tier-to-group-mapping ConfigMap in `redhat-ods-applications`** — The RHOAI validating webhook requires this ConfigMap when `LLMInferenceService` uses the `alpha.maas.opendatahub.io/tiers` annotation. The operator's `maas-api` does not create it in `redhat-ods-applications`; we deploy it at sync wave 9.
   **Revert:** The 3.4 operator should create this ConfigMap automatically.
 
@@ -28,18 +25,18 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Manual tier groups** (`governance/maas-groups.yaml`) — Groups `tier-free-users`, `tier-premium-users`, `tier-enterprise-users` with demo users.
   **Revert:** Verify if the 3.4 operator manages tier groups.
 
+- [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
+  **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
+
 ## Known Limitations
 
-- [ ] **LlamaStack Distribution not deployed** — The Llama Stack Operator is `Managed` in the DSC but no `LlamaStackDistribution` CR is deployed. No RAG support in the Playground.
 - [ ] **MCP servers not configured** — No `gen-ai-aa-mcp-servers` ConfigMap exists. MCP tool calling in the Playground is not available.
-- [ ] **External models ConfigMap missing** — `gen-ai-aa-external-models` ConfigMap not created, causing non-fatal errors in `gen-ai-ui` logs.
-- [ ] **GPU root volume must be 200GB+** — The default 100GB root volume on g6e.2xlarge is insufficient for the gpt-oss-20b modelcar image (~40GB). The GPU MachineSet Job patches the volume to 200GB.
+- [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency — candidate for upstream issue in `opendatahub-io/odh-dashboard`.
 
 ## Planned
 
 - [ ] **Component-per-operator extraction** — Refactor `gitops/` to extract operator install triads into reusable `components/operators/` bases.
 - [ ] **Multi-version overlay structure** — `rhoai-3.3/` and `rhoai-3.4/` overlays with channel patches.
-- [ ] **DevWorkspace template** — Pre-configured DevWorkspace with Continue extension and MaaS model endpoint pre-populated.
 - [ ] **Automated MaaS API validation** — curl-based validation in `step-03/validate.sh`.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to step-03 README.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
