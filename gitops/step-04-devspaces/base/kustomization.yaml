@@ -6,6 +6,7 @@ kind: Kustomization
 
 resources:
   - devspaces/namespace.yaml
+  - devspaces/operatorgroup.yaml
   - devspaces/subscription.yaml
   - devspaces/checluster.yaml
   - devspaces/workspaces.yaml
