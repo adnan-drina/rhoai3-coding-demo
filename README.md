@@ -6,6 +6,22 @@ This demo shows how organizations can deliver a private AI code assistant experi
 
 > Based on the public quickstart: [Accelerate enterprise software development with NVIDIA and MaaS](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 
+## Why It Matters
+
+AI in the enterprise is not just about models. It is about delivering AI capabilities through a governed platform that gives teams:
+
+- **Privacy** — AI-assisted coding without sending source code to external services
+- **Governance** — centralized control over model access, rate limits, and usage visibility
+- **Developer experience** — familiar tools (VS Code, Dev Spaces) backed by private model endpoints
+
+**Target audience:** Solution Architects, Platform Engineers, and Developer Experience leads evaluating private AI code assistant patterns on Red Hat OpenShift AI.
+
+## Key Takeaways
+
+- **For developers:** A familiar AI code assistant experience inside OpenShift Dev Spaces, backed by a private NVIDIA model endpoint — no code leaves the organization's infrastructure.
+- **For platform teams:** Centralized control over model access, user tiers, rate limits, quotas, and observability — the same governance patterns used for any shared platform service.
+- **For the organization:** A practical pattern for delivering AI that is useful for developers, manageable for platform teams, and ready to scale across the enterprise.
+
 ## What This Demo Shows
 
 This quickstart demonstrates a private AI code assistant powered by:
@@ -128,6 +144,32 @@ Deploy steps in order:
 | 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, Grafana dashboards | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
+## RHOAI 3.3 Features Covered
+
+This demo covers 4 of the 11 features from the [Red Hat OpenShift AI datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet):
+
+| RHOAI Feature | Benefit (from datasheet) | Demo Steps |
+|---------------|--------------------------|------------|
+| **Intelligent GPU and hardware speed** | Self-service GPU access with hardware profiles, workload scheduling, and visibility of use | Steps 01, 02, 03 |
+| **Optimized model serving** | Serves models via vLLM, optimized for high throughput and low latency. llm-d supports scalable performance and efficient resource management | Step 03 |
+| **Agentic AI and gen AI UIs** | GenAI Studio dashboard experience for model discovery, playground testing, and MCP server integration | Steps 01, 03 |
+| **Models-as-a-Service** | Managed, built-in API gateway for self-service model access and usage tracking | Step 03 |
+
+## OCP 4.20 Features Used
+
+| OCP Feature | What It Provides | Demo Steps |
+|-------------|------------------|------------|
+| **Operator Lifecycle Manager (OLM)** | Manages operator install, update, and RBAC across clusters | Steps 01, 02, 03 |
+| **Node Feature Discovery (NFD)** | Detects hardware features, labeling nodes for GPU workload scheduling | Step 02 |
+| **NVIDIA GPU Operator** | Automates GPU driver, DCGM, and device plugin deployment on worker nodes | Step 02 |
+| **OpenShift Serverless** | Serverless containers with dynamic scaling for KServe model endpoints | Step 01 |
+| **Service Mesh 3** | Istio-based gateway, traffic management, and zero-trust networking for KServe | Step 01 |
+| **Monitoring** | Prometheus-based metrics — platform metrics, user workload metrics, dashboards | Steps 01, 03 |
+| **Authentication and Authorization** | Built-in OAuth with identity providers and RBAC for multi-tenant access control | Step 01 |
+| **OpenShift GitOps (ArgoCD)** | Declarative GitOps delivery — Git as the single source of truth | All steps |
+| **OpenShift Dev Spaces** | Containerized cloud-native IDEs running on the cluster | Step 04 |
+| **Red Hat Connectivity Link** | API gateway policies — rate limiting, authentication, TLS termination | Step 03 |
+
 ## GitOps Architecture
 
 - **Per-step deployment** — each `deploy.sh` applies its own ArgoCD Application (`oc apply -f`), giving control over ordering and runtime setup (secrets, SCC grants, model uploads) between syncs.
@@ -168,14 +210,6 @@ rhoai3-coding-demo/
 | `ai-developer` | `<demo-password>` | demo-htpasswd | RHOAI User (rhoai-users group) | Premium |
 
 > Credentials are defined in `gitops/step-01-rhoai-platform/base/users/htpasswd-secret.yaml`. MaaS tier group membership is defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml`.
-
-## Key Takeaways
-
-This demo shows how Red Hat AI Factory with NVIDIA can help organizations deliver private AI-assisted development at enterprise scale.
-
-- **For developers:** A familiar AI code assistant experience inside OpenShift Dev Spaces, backed by a private NVIDIA model endpoint — no code leaves the organization's infrastructure.
-- **For platform teams:** Centralized control over model access, user tiers, rate limits, quotas, and observability — the same governance patterns used for any shared platform service.
-- **For the organization:** A practical pattern for delivering AI that is useful for developers, manageable for platform teams, and ready to scale across the enterprise.
 
 ## Troubleshooting
 
