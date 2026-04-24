@@ -1,9 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# LLM Serving with Models-as-a-Service (dev-preview approach)
+# LLM Serving with Models-as-a-Service
 # Matches the public quickstart: https://github.com/rh-ai-quickstart/maas-code-assistant
-# MaaS API is deployed separately via deploy.sh (oc apply -k maas-api/)
 
 resources:
   # Wave 0-2: MaaS operator prerequisites
@@ -50,3 +49,5 @@ resources:
   - grafana/servicemonitor.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
+  # Wave 22: Register models in Model Registry
+  - model-registry/seed-models.yaml

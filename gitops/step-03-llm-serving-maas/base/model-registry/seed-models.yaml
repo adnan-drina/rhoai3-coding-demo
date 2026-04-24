@@ -1,0 +1,135 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-registry-seed
+  namespace: rhoai-model-registries
+  labels:
+    app: model-registry-seed
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: model-registry-seed
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: quay.io/curl/curl:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: REGISTRY_URL
+              value: "http://demo-registry-internal.rhoai-model-registries.svc:8080"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              API_BASE="${REGISTRY_URL}/api/model_registry/v1alpha3"
+
+              echo "Waiting for Model Registry API..."
+              for i in $(seq 1 30); do
+                if curl -sf "${API_BASE}/registered_models" > /dev/null 2>&1; then
+                  echo "Model Registry API is ready"
+                  break
+                fi
+                echo "  Attempt $i/30 - waiting..."
+                sleep 10
+              done
+
+              register_model() {
+                local NAME="$1" DESC="$2" VERSION="$3" URI="$4" FORMAT="$5"
+                shift 5
+                local TAGS="$*"
+
+                echo ""
+                echo "Registering model: ${NAME}..."
+
+                EXISTING=$(curl -sf "${API_BASE}/registered_models" 2>/dev/null || echo "{}")
+                if echo "$EXISTING" | grep -q "\"name\":\"${NAME}\""; then
+                  echo "  Model '${NAME}' already exists - skipping"
+                  return 0
+                fi
+
+                echo "  [1/3] Creating RegisteredModel..."
+                PROPS=""
+                for tag in $TAGS; do
+                  PROPS="${PROPS}\"${tag}\":{\"metadataType\":\"MetadataStringValue\",\"string_value\":\"\"},"
+                done
+                PROPS="${PROPS%,}"
+
+                RM_RESP=$(curl -sf -X POST "${API_BASE}/registered_models" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "name": "'"${NAME}"'",
+                    "description": "'"${DESC}"'",
+                    "owner": "ai-admin",
+                    "customProperties": {'"${PROPS}"'}
+                  }' 2>&1)
+
+                RM_ID=$(echo "$RM_RESP" | sed 's/.*"id":"\([^"]*\)".*/\1/' | head -1)
+                echo "  Created RegisteredModel ID: ${RM_ID}"
+
+                echo "  [2/3] Creating ModelVersion..."
+                MV_RESP=$(curl -sf -X POST "${API_BASE}/model_versions" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "name": "'"${VERSION}"'",
+                    "description": "Deployed via LLMInferenceService in maas namespace",
+                    "author": "ai-admin",
+                    "registeredModelId": "'"${RM_ID}"'",
+                    "customProperties": {
+                      "serving_runtime": {"metadataType": "MetadataStringValue", "string_value": "vLLM"},
+                      "deployed_on": {"metadataType": "MetadataStringValue", "string_value": "RHOAI 3.3"}
+                    }
+                  }' 2>&1)
+
+                MV_ID=$(echo "$MV_RESP" | sed 's/.*"id":"\([^"]*\)".*/\1/' | head -1)
+                echo "  Created ModelVersion ID: ${MV_ID}"
+
+                echo "  [3/3] Creating ModelArtifact..."
+                curl -sf -X POST "${API_BASE}/model_versions/${MV_ID}/artifacts" \
+                  -H "Content-Type: application/json" \
+                  -d '{
+                    "name": "'"${VERSION}"'",
+                    "description": "OCI model image",
+                    "uri": "'"${URI}"'",
+                    "artifactType": "model-artifact",
+                    "modelFormatName": "'"${FORMAT}"'",
+                    "modelFormatVersion": "1"
+                  }' > /dev/null 2>&1
+
+                echo "  Registered: ${NAME} (${VERSION})"
+              }
+
+              register_model \
+                "gpt-oss-20b" \
+                "OpenAI gpt-oss-20b - 20B parameter general-purpose LLM" \
+                "v1.5" \
+                "oci://registry.redhat.io/rhelai1/modelcar-gpt-oss-20b:1.5" \
+                "vLLM" \
+                openai vllm fp16 text-generation
+
+              register_model \
+                "nemotron-3-nano-30b-a3b" \
+                "NVIDIA Nemotron 3 Nano 30B A3B FP8 - code assistant with tool calling" \
+                "v1.0" \
+                "oci://quay.io/jharmison/models:redhatai--nvidia-nemotron-3-nano-30b-a3b-fp8-modelcar" \
+                "vLLM" \
+                nvidia vllm fp8 tool-calling code-assistant
+
+              echo ""
+              echo "Model registration complete."
+              echo "Models are visible in: AI hub > Model registry > Demo Registry"

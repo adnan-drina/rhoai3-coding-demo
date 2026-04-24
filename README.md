@@ -139,18 +139,19 @@ Deploy steps in order:
 
 | Step | Name | Capability | Ref |
 |------|------|-----------|-----|
-| 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
+| 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles, Model Registry | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, Grafana dashboards | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, Model Registration, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## RHOAI 3.3 Features Covered
 
-This demo covers 4 of the 11 features from the [Red Hat OpenShift AI datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet):
+This demo covers 5 of the 11 features from the [Red Hat OpenShift AI datasheet](https://www.redhat.com/en/resources/red-hat-openshift-ai-hybrid-cloud-datasheet):
 
 | RHOAI Feature | Benefit (from datasheet) | Demo Steps |
 |---------------|--------------------------|------------|
 | **Intelligent GPU and hardware speed** | Self-service GPU access with hardware profiles, workload scheduling, and visibility of use | Steps 01, 02, 03 |
+| **Catalog and registry** | Centralized management for predictive and gen AI models, metadata, and artifacts | Steps 01, 03 |
 | **Optimized model serving** | Serves models via vLLM, optimized for high throughput and low latency. llm-d supports scalable performance and efficient resource management | Step 03 |
 | **Agentic AI and gen AI UIs** | GenAI Studio dashboard experience for model discovery, playground testing, and MCP server integration | Steps 01, 03 |
 | **Models-as-a-Service** | Managed, built-in API gateway for self-service model access and usage tracking | Step 03 |

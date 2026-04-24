@@ -32,6 +32,11 @@ RHOAI Platform
 │   └── RHOAI Groups              → rhoai-admins, rhoai-users
 ├── OdhDashboardConfig            → GenAI Studio, MaaS flags
 ├── Hardware Profiles             → CPU-small, L4-1GPU, L4-4GPU
+├── Model Registry                → Enterprise model governance
+│   ├── PostgreSQL 16             → Registry metadata database
+│   ├── ModelRegistry CR          → demo-registry instance
+│   ├── Internal Service          → Port 8080 for automation (bypasses OAuth)
+│   └── RBAC                      → ai-admin (admin), ai-developer (user)
 └── In-Cluster Jobs
     ├── approve-sm-installplan    → Auto-approve ServiceMesh install plan
     └── patch-dsci-ca             → Patch DSCI with CA bundle
@@ -54,6 +59,7 @@ Manifests: [`gitops/step-01-rhoai-platform/base/`](../../gitops/step-01-rhoai-pl
 
 ## References
 
+- [Managing Model Registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_model_registries)
 - [RHOAI 3.3 Installation Guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
 - [RHOAI 3.3 Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/release_notes/index)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
