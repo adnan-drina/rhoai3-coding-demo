@@ -31,7 +31,7 @@ spec:
               drop: ["ALL"]
           env:
             - name: REGISTRY_URL
-              value: "http://demo-registry-internal.rhoai-model-registries.svc:8080"
+              value: "http://demo-registry.rhoai-model-registries.svc:8080"
           command:
             - /bin/sh
             - -c
