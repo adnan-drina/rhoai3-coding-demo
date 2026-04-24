@@ -72,20 +72,21 @@ The `coding-assistant` project is the developer's entry point in the RHOAI dashb
 2. Log in as `ai-developer` (same credentials)
 3. The pre-provisioned workspace `exercises` is listed
 4. Click to start it — VS Code opens in the browser
-5. The repo is already cloned at `/projects/exercises/`
+5. The [MaaS Code Assistant quickstart](https://github.com/rh-ai-quickstart/maas-code-assistant) repo is cloned at `/projects/maas-code-assistant/`
+6. VS Code recommends the **Continue** extension (from `.vscode/extensions.json`) — install it
 
 ### Act 3: Configure the Continue Extension
 
-1. The Continue extension is recommended via `.vscode/extensions.json` — install it
+1. Continue installs from the public Open VSX registry (configured in the CheCluster)
 2. Open Continue settings (gear icon in the sidebar)
-3. Use the template from `.vscode/config.yaml`:
+3. Use the template from `.vscode/config.yaml` (already in the repo):
    - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1
    - Replace `YOUR_API_KEY` with the API token from Act 1
 4. The Nemotron model appears in the Continue sidebar
 
 ### Act 4: AI-Assisted Coding
 
-Three game exercises are available in `steps/step-04-devspaces/coding-exercises/game_starters/`:
+Three game exercises are available in `coding-exercises/game_starters/` (from the quickstart repo):
 
 | Exercise | What to Ask Continue |
 |----------|---------------------|
