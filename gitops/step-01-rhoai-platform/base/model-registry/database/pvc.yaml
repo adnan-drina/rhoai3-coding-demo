@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-registry-db-pvc
+  namespace: rhoai-model-registries
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: gp3-csi

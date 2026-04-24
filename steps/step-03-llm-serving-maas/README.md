@@ -30,6 +30,8 @@ LLM Serving + MaaS
 │   ├── RateLimitPolicy          → Request rate limits per tier
 │   ├── TokenRateLimitPolicy     → Token rate limits per tier
 │   └── TelemetryPolicy          → Usage metrics to Prometheus
+├── Model Registration              → Seed Job registers models in Model Registry
+│   └── seed-models Job           → REST API calls to demo-registry (from step-01)
 ├── In-Cluster Jobs
 │   ├── configure-kuadrant       → Authorino SSL + AuthPolicy patches for MaaS tab
 │   ├── patch-gateway-hostname   → Cluster-specific Gateway hostname + TLS cert
