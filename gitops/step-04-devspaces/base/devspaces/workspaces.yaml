@@ -1,5 +1,7 @@
-# Per-user workspace namespaces, DevWorkspaces, and RBAC
-# Creates pre-provisioned VS Code workspaces for demo users
+# Per-user workspace namespaces and DevWorkspaces
+# The Dev Spaces operator creates its own RBAC when the workspace starts.
+# No custom RoleBindings needed — they would cause the namespace to appear
+# in the RHOAI AI asset endpoints dropdown.
 ---
 apiVersion: v1
 kind: Namespace
@@ -11,22 +13,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "15"
     che.eclipse.org/username: ai-admin
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: wksp-edit-ai-admin
-  namespace: wksp-ai-admin
-  annotations:
-    argocd.argoproj.io/sync-wave: "16"
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: edit
-subjects:
-- apiGroup: rbac.authorization.k8s.io
-  kind: User
-  name: ai-admin
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -65,22 +51,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "15"
     che.eclipse.org/username: ai-developer
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: wksp-edit-ai-developer
-  namespace: wksp-ai-developer
-  annotations:
-    argocd.argoproj.io/sync-wave: "16"
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: edit
-subjects:
-- apiGroup: rbac.authorization.k8s.io
-  kind: User
-  name: ai-developer
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
