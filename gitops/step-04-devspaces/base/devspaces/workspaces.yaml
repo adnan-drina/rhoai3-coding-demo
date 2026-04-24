@@ -19,11 +19,11 @@ metadata:
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: exercises
+  name: coding-exercises
   namespace: wksp-ai-admin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
 spec:
   routingClass: che
   contributions:
@@ -57,11 +57,11 @@ metadata:
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: exercises
+  name: coding-exercises
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
 spec:
   routingClass: che
   contributions:
