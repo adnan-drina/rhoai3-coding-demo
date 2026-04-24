@@ -1,7 +1,9 @@
 # Per-user workspace namespaces and DevWorkspaces
+# Clones the MaaS Code Assistant quickstart repo which includes:
+# - .vscode/extensions.json (recommends Continue extension)
+# - .vscode/config.yaml (Continue model config template)
+# - coding-exercises/ (3 game starters + solutions)
 # The Dev Spaces operator creates its own RBAC when the workspace starts.
-# No custom RoleBindings needed — they would cause the namespace to appear
-# in the RHOAI AI asset endpoints dropdown.
 ---
 apiVersion: v1
 kind: Namespace
@@ -29,10 +31,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: exercises
+      - name: maas-code-assistant
         git:
           remotes:
-            origin: https://github.com/adnan-drina/rhoai3-coding-demo.git
+            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
     components:
@@ -67,10 +69,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: exercises
+      - name: maas-code-assistant
         git:
           remotes:
-            origin: https://github.com/adnan-drina/rhoai3-coding-demo.git
+            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
     components:

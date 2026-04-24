@@ -19,7 +19,8 @@ spec:
     dashboard: {}
     devWorkspace: {}
     devfileRegistry: {}
-    pluginRegistry: {}
+    pluginRegistry:
+      openVSXURL: "https://open-vsx.org"
   containerRegistry: {}
   devEnvironments:
     startTimeoutSeconds: 600
