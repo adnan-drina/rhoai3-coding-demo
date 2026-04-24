@@ -19,6 +19,9 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "patch"]
+- apiGroups: ["kuadrant.io"]
+  resources: ["authpolicies"]
+  verbs: ["get", "list", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -74,4 +77,30 @@ spec:
               SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt \
               REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
           fi
+          # Add user-tokens authentication to gateway-auth-policy so the
+          # dashboard's gen-ai-ui can call the MaaS Gateway with OAuth tokens.
+          echo "Patching gateway-auth-policy to accept user OAuth tokens..."
+          for i in $(seq 1 20); do
+            if oc get authpolicy gateway-auth-policy -n openshift-ingress &>/dev/null; then
+              oc patch authpolicy gateway-auth-policy -n openshift-ingress --type=merge \
+                -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}' && break
+            fi
+            echo "Waiting for gateway-auth-policy... ($i/20)"
+            sleep 10
+          done
+
+          # Patch maas-api-auth-policy to override gateway-level authorization.
+          # The gateway-auth-policy has a tier-access SubjectAccessReview that
+          # extracts a model name from the URL path. This breaks for /maas-api/*
+          # management endpoints. Adding empty authorization:{} at the route level
+          # overrides the gateway default so the MaaS tab can list models.
+          echo "Patching maas-api-auth-policy authorization override..."
+          for i in $(seq 1 20); do
+            if oc get authpolicy maas-api-auth-policy -n redhat-ods-applications &>/dev/null; then
+              oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
+                --type=merge -p '{"spec":{"rules":{"authorization":{}}}}' && break
+            fi
+            echo "Waiting for maas-api-auth-policy... ($i/20)"
+            sleep 10
+          done
           echo "Done"
