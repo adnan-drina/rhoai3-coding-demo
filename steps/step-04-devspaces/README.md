@@ -79,10 +79,16 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 ### Act 3: Configure the Continue Extension
 
 1. Install the Continue extension (recommended via `.vscode/extensions.json`, available from open-vsx.org)
-2. The `devfile.yaml` auto-copies the config template to `~/.continue/config.yaml` on workspace start
-3. Open `~/.continue/config.yaml` and replace the placeholders:
-   - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1 (append `/v1`)
-   - Replace `YOUR_API_KEY` with the API token from Act 1
+2. Copy the config template to Continue's config directory:
+   ```bash
+   cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+   ```
+3. Open `~/.continue/config.yaml` and configure the connection:
+   - **Provider:** Already set to `openai` (OpenAI Compatible)
+   - **Model:** Already set to `nemotron-3-nano-30b-a3b` (model deployment name)
+   - **apiBase:** Replace `YOUR_MAAS_ROUTE` with the endpoint URL from Act 1, append `/v1`
+     (e.g., `https://maas.<cluster>/maas/nemotron-3-nano-30b-a3b/v1`)
+   - **apiKey:** Replace `YOUR_API_KEY` with the API token from Act 1
 4. In the Continue sidebar, select **Local Config** from the dropdown
 5. The Nemotron model appears in the model selector
 
@@ -115,8 +121,10 @@ This addresses the common concern with AI coding assistants: organizations can p
 **For technical teams:**
 
 - OpenShift Dev Spaces provides reproducible, containerized workspaces on the same cluster
+- Dev Spaces acts as an **AI guardrail** — if an AI agent generates bad code or corrupts a config, you can instantly revert to a clean slate by restarting the workspace from the devfile
 - Continue is open-source and works with any OpenAI-compatible endpoint
 - Model endpoints are reusable — the same Nemotron model serves Playground, MaaS API, and IDE
+- Unlike cloud-hosted AI services (GitHub Copilot, etc.), this approach keeps all code and data on-prem with full control over privacy, security, and IP
 - Unlike local-model approaches (e.g., Ollama sidecar), MaaS provides centralized GPU management, rate limiting, and usage tracking across all developers
 
 ## References
@@ -124,4 +132,5 @@ This addresses the common concern with AI coding assistants: organizations can p
 - [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces) — cloud vs on-prem models, code assistant comparison
 - [Red Hat Developer: Private AI Coding Assistant with Dev Spaces](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) — alternative approach using Ollama + local models
