@@ -92,6 +92,7 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
    - **apiBase:** Replace `YOUR_MAAS_ROUTE` with the endpoint URL from Act 1, append `/v1`
      (e.g., `https://maas.<cluster>/maas/nemotron-3-nano-30b-a3b/v1`)
    - **apiKey:** Replace `YOUR_API_KEY` with the API token from Act 1
+   - **reasoning: true** is pre-configured — Nemotron is a reasoning model and Continue v1.2.19+ reads from the `reasoning_content` field natively
 4. In the Continue sidebar, select **Local Config** from the dropdown
 5. The Nemotron model appears in the model selector
 
