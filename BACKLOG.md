@@ -39,6 +39,7 @@ The following items use manual configuration or post-deploy patches because the 
   - **Option B: Custom ClusterRole** — Create a restricted ClusterRole that only allows reading specific resource types (pods, services, events, llminferenceservices) but not secrets, configmaps with credentials, etc.
   - **Option C: Per-user MCP proxy** — Deploy the MCP server with a proxy that impersonates the Playground user's identity, so the model sees exactly what the user would see. Requires Playground to forward user tokens to MCP servers.
   - Current: `ClusterRoleBinding` → `view` ClusterRole for `openshift-mcp` SA in `coding-assistant`. File: `mcp/openshift-mcp/serviceaccount.yaml`.
+- [ ] **Devfile-based Continue auto-configuration** — Create a dedicated exercises repo (or fork the quickstart) with a `devfile.yaml` that includes a `postStart` command to copy Continue config and auto-install the extension. This eliminates the manual `cp` step. See [Red Hat Developer tutorial](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) for the devfile pattern.
 - [ ] **Component-per-operator extraction** — Refactor `gitops/` to extract operator install triads into reusable `components/operators/` bases.
 - [ ] **Multi-version overlay structure** — `rhoai-3.3/` and `rhoai-3.4/` overlays with channel patches.
 - [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
