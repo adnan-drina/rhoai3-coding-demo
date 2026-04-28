@@ -2,7 +2,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
   name: all-models-subscription
-  namespace: redhat-ods-applications
+  namespace: models-as-a-service
   annotations:
     argocd.argoproj.io/sync-wave: "18"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
