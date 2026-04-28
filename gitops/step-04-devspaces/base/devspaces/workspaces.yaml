@@ -55,8 +55,12 @@ spec:
       - id: copy-continue-config
         exec:
           commandLine: |
+            for i in $(seq 1 30); do
+              [ -f /projects/coding-exercises/.vscode/config.yaml ] && break
+              sleep 2
+            done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
           component: tooling-container
     events:
       postStart:
@@ -124,8 +128,12 @@ spec:
       - id: copy-continue-config
         exec:
           commandLine: |
+            for i in $(seq 1 30); do
+              [ -f /projects/coding-exercises/.vscode/config.yaml ] && break
+              sleep 2
+            done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
           component: tooling-container
     events:
       postStart:
@@ -193,8 +201,12 @@ spec:
       - id: copy-continue-config
         exec:
           commandLine: |
+            for i in $(seq 1 30); do
+              [ -f /projects/coding-exercises/.vscode/config.yaml ] && break
+              sleep 2
+            done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
           component: tooling-container
     events:
       postStart:
