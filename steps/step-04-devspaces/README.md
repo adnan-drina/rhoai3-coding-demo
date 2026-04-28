@@ -15,7 +15,8 @@ Dev Spaces & AI Code Assistant
 │   ├── wksp-kubeadmin            → Namespace + RoleBinding + DevWorkspace
 │   ├── wksp-ai-admin             → Namespace + RoleBinding + DevWorkspace
 │   └── wksp-ai-developer         → Namespace + RoleBinding + DevWorkspace
-└── Quickstart Repo Clone        → rh-ai-quickstart/maas-code-assistant
+└── Exercises Repo Clone         → adnan-drina/coding-exercises
+    ├── devfile.yaml              → Auto-configures Continue via postStart
     ├── coding-exercises/         → 3 game starters + solutions
     ├── .vscode/extensions.json   → Recommends Continue extension
     └── .vscode/config.yaml       → Continue model config template
@@ -73,15 +74,12 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 2. Log in as `ai-developer` (same credentials)
 3. The pre-provisioned workspace `exercises` is listed
 4. Click to start it — VS Code opens in the browser
-5. The [MaaS Code Assistant quickstart](https://github.com/rh-ai-quickstart/maas-code-assistant) repo is cloned
+5. The [coding exercises](https://github.com/adnan-drina/coding-exercises) repo is cloned (includes `devfile.yaml`)
 
 ### Act 3: Configure the Continue Extension
 
 1. Install the Continue extension (recommended via `.vscode/extensions.json`, available from open-vsx.org)
-2. Copy the config template to Continue's config directory:
-   ```bash
-   cp /projects/exercises/.vscode/config.yaml ~/.continue/config.yaml
-   ```
+2. The `devfile.yaml` auto-copies the config template to `~/.continue/config.yaml` on workspace start
 3. Open `~/.continue/config.yaml` and replace the placeholders:
    - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1 (append `/v1`)
    - Replace `YOUR_API_KEY` with the API token from Act 1

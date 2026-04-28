@@ -45,10 +45,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: exercises
+      - name: coding-exercises
         git:
           remotes:
-            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
+            origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
     components:
@@ -56,10 +56,6 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
-          memoryLimit: 4Gi
-          memoryRequest: 1Gi
-          cpuLimit: "2"
-          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -104,10 +100,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: exercises
+      - name: coding-exercises
         git:
           remotes:
-            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
+            origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
     components:
@@ -115,10 +111,6 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
-          memoryLimit: 4Gi
-          memoryRequest: 1Gi
-          cpuLimit: "2"
-          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -163,10 +155,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: exercises
+      - name: coding-exercises
         git:
           remotes:
-            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
+            origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
     components:
@@ -174,7 +166,3 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
-          memoryLimit: 4Gi
-          memoryRequest: 1Gi
-          cpuLimit: "2"
-          cpuRequest: 500m
