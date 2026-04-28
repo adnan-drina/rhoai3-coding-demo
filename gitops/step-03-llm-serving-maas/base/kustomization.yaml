@@ -2,7 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # LLM Serving with Models-as-a-Service
-# Matches the public quickstart: https://github.com/rh-ai-quickstart/maas-code-assistant
+# Uses upstream maas-controller from opendatahub-io/models-as-a-service
+# alongside RHOAI 3.3 operator (modelsAsService: Managed in DSC)
 
 resources:
   # Wave 0-2: MaaS operator prerequisites
@@ -19,37 +20,27 @@ resources:
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
-  # Wave 5: Gateway + Kuadrant + Authorino (declarative)
-  - gateway/gatewayclass.yaml
+  # Wave 5: Kuadrant system namespace (operator creates resources here)
   - governance/kuadrant-system-ns.yaml
-  - governance/authorino-service.yaml
-  - governance/authorino.yaml
-  - governance/maas-groups.yaml
   # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
-  # Wave 9: Tier-to-group mapping (needed by RHOAI webhook before LLMInferenceService)
+  # Wave 9: Tier-to-group mapping (needed by RHOAI webhook for LLMInferenceService)
   - governance/tier-to-group-mapping.yaml
-  # Wave 10: Kuadrant CR
-  - governance/kuadrant.yaml
-  # Wave 12: Authorino SSL env vars Job
-  - jobs/configure-kuadrant.yaml
-  # Wave 15: Models + RBAC + Governance policies
-  - gateway/maas-gateway.yaml
+  # Wave 12-14: Upstream maas-controller (CRDs, RBAC, PostgreSQL, controller)
+  - maas-controller-upstream/
+  # Wave 15: Models (LLMInferenceService CRs)
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
-  - models/rbac.yaml
-  - governance/ratelimitpolicy.yaml
-  - governance/tokenratelimitpolicy.yaml
-  - governance/telemetrypolicy.yaml
+  # Wave 15-16: MCP servers
+  - mcp/
+  # Wave 16-18: MaaS CRDs (MaaSModelRef, ExternalModel, AuthPolicy, Subscription)
+  - models-maas-crds/
   # Wave 20: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
-  - jobs/patch-gateway-hostname.yaml
   - jobs/configure-grafana-sa.yaml
-  # Wave 15-16: MCP servers (OpenShift, Slack, BrightData web browsing)
-  - mcp/
   # Wave 22: Register models in Model Registry
   - model-registry/seed-models.yaml
