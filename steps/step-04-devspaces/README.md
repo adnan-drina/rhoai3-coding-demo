@@ -100,6 +100,12 @@ Three game exercises are available in `coding-exercises/game_starters/`:
 
 Each starter file contains ready-to-use prompts and enhancement ideas. Solutions are in `game_solutions/` for reference.
 
+## Privacy and Data Sovereignty
+
+A key advantage of this approach over cloud-hosted AI services: **no code or data leaves the cluster**. The model runs on the organization's GPUs, the Dev Spaces workspace runs on the same cluster, and the API calls between Continue and the Nemotron model stay within the cluster network via the MaaS Gateway. You can verify this by opening the browser's Network tab — all requests go to `maas.<cluster-domain>`, not to any external service.
+
+This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining full control over data, privacy, and intellectual property.
+
 ## Key Takeaways
 
 **For business stakeholders:**
@@ -113,9 +119,11 @@ Each starter file contains ready-to-use prompts and enhancement ideas. Solutions
 - OpenShift Dev Spaces provides reproducible, containerized workspaces on the same cluster
 - Continue is open-source and works with any OpenAI-compatible endpoint
 - Model endpoints are reusable — the same Nemotron model serves Playground, MaaS API, and IDE
+- Unlike local-model approaches (e.g., Ollama sidecar), MaaS provides centralized GPU management, rate limiting, and usage tracking across all developers
 
 ## References
 
 - [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [Red Hat Developer: Private AI Coding Assistant with Dev Spaces](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) — alternative approach using Ollama + local models
