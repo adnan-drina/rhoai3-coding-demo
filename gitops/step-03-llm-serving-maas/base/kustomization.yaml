@@ -42,5 +42,6 @@ resources:
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
   - jobs/configure-grafana-sa.yaml
+  - jobs/patch-gateway-hostname.yaml
   # Wave 22: Register models in Model Registry
   - model-registry/seed-models.yaml
