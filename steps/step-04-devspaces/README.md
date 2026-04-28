@@ -15,8 +15,11 @@ Dev Spaces & AI Code Assistant
 │   ├── wksp-kubeadmin            → Namespace + RoleBinding + DevWorkspace
 │   ├── wksp-ai-admin             → Namespace + RoleBinding + DevWorkspace
 │   └── wksp-ai-developer         → Namespace + RoleBinding + DevWorkspace
+├── AI Tools (installed via postStart)
+│   ├── Continue Extension       → VS Code sidebar AI assistant (inline edits)
+│   └── OpenCode CLI             → Terminal-based agentic AI (git review, analysis)
 └── Exercises Repo Clone         → adnan-drina/coding-exercises
-    ├── devfile.yaml              → Auto-configures Continue via postStart
+    ├── devfile.yaml              → Resource limits + Continue/OpenCode setup
     ├── coding-exercises/         → 3 game starters + solutions
     ├── .vscode/extensions.json   → Recommends Continue extension
     └── .vscode/config.yaml       → Continue model config template
@@ -103,6 +106,23 @@ Three game exercises are available in `coding-exercises/game_starters/`:
 | `word_scramble/` | Follow the prompts in the file — ask Continue to generate a word scramble game |
 
 Each starter file contains ready-to-use prompts and enhancement ideas. Solutions are in `game_solutions/` for reference.
+
+### Act 5: Terminal AI with OpenCode (Optional)
+
+OpenCode is a model-neutral CLI tool installed in the workspace. It connects to the same MaaS model:
+
+1. Open a terminal in VS Code
+2. Run `opencode`
+3. Use the `/connect` command to add your MaaS model:
+   - Provider: **OpenAI Compatible**
+   - Base URL: same MaaS endpoint as Continue (with `/v1`)
+   - API Key: same token
+4. Try prompts like:
+   - "Review the changes in the last git commit"
+   - "Analyze the project structure and suggest improvements"
+   - "Find potential bugs in the rock_paper_scissors game"
+
+This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool can use it.
 
 ## Privacy and Data Sovereignty
 
