@@ -56,6 +56,10 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -111,6 +115,10 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -166,3 +174,7 @@ spec:
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
