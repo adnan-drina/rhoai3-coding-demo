@@ -1,6 +1,6 @@
 # Per-user workspace namespaces, RBAC, and DevWorkspaces
-# Clones adnan-drina/coding-exercises which has .vscode/config.yaml + exercises.
-# postStart copies Continue config to ~/.continue/ automatically.
+# Clones adnan-drina/coding-exercises with exercises + Continue config.
+# postStart installs OpenCode CLI and copies Continue config.
 ---
 apiVersion: v1
 kind: Namespace
@@ -52,7 +52,7 @@ spec:
           checkoutFrom:
             revision: main
     commands:
-      - id: copy-continue-config
+      - id: init-ai-tools
         exec:
           commandLine: |
             for i in $(seq 1 30); do
@@ -61,10 +61,17 @@ spec:
             done
             mkdir -p ~/.continue
             cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            if ! command -v opencode &>/dev/null; then
+              curl -fsSL -o /tmp/opencode.tar.gz https://github.com/anomalyco/opencode/releases/download/v1.3.13/opencode-linux-x64.tar.gz 2>/dev/null
+              tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null
+              mv /tmp/opencode ~/.local/bin/opencode 2>/dev/null
+              chmod +x ~/.local/bin/opencode 2>/dev/null
+              rm -f /tmp/opencode.tar.gz
+            fi
           component: tooling-container
     events:
       postStart:
-        - copy-continue-config
+        - init-ai-tools
     components:
       - name: tooling-container
         container:
@@ -74,6 +81,9 @@ spec:
           memoryRequest: 1Gi
           cpuLimit: "2"
           cpuRequest: 500m
+          env:
+            - name: PATH
+              value: /home/user/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ---
 apiVersion: v1
 kind: Namespace
@@ -125,7 +135,7 @@ spec:
           checkoutFrom:
             revision: main
     commands:
-      - id: copy-continue-config
+      - id: init-ai-tools
         exec:
           commandLine: |
             for i in $(seq 1 30); do
@@ -134,10 +144,17 @@ spec:
             done
             mkdir -p ~/.continue
             cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            if ! command -v opencode &>/dev/null; then
+              curl -fsSL -o /tmp/opencode.tar.gz https://github.com/anomalyco/opencode/releases/download/v1.3.13/opencode-linux-x64.tar.gz 2>/dev/null
+              tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null
+              mv /tmp/opencode ~/.local/bin/opencode 2>/dev/null
+              chmod +x ~/.local/bin/opencode 2>/dev/null
+              rm -f /tmp/opencode.tar.gz
+            fi
           component: tooling-container
     events:
       postStart:
-        - copy-continue-config
+        - init-ai-tools
     components:
       - name: tooling-container
         container:
@@ -147,6 +164,9 @@ spec:
           memoryRequest: 1Gi
           cpuLimit: "2"
           cpuRequest: 500m
+          env:
+            - name: PATH
+              value: /home/user/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ---
 apiVersion: v1
 kind: Namespace
@@ -198,7 +218,7 @@ spec:
           checkoutFrom:
             revision: main
     commands:
-      - id: copy-continue-config
+      - id: init-ai-tools
         exec:
           commandLine: |
             for i in $(seq 1 30); do
@@ -207,10 +227,17 @@ spec:
             done
             mkdir -p ~/.continue
             cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            if ! command -v opencode &>/dev/null; then
+              curl -fsSL -o /tmp/opencode.tar.gz https://github.com/anomalyco/opencode/releases/download/v1.3.13/opencode-linux-x64.tar.gz 2>/dev/null
+              tar -xzf /tmp/opencode.tar.gz -C /tmp 2>/dev/null
+              mv /tmp/opencode ~/.local/bin/opencode 2>/dev/null
+              chmod +x ~/.local/bin/opencode 2>/dev/null
+              rm -f /tmp/opencode.tar.gz
+            fi
           component: tooling-container
     events:
       postStart:
-        - copy-continue-config
+        - init-ai-tools
     components:
       - name: tooling-container
         container:
@@ -220,3 +247,6 @@ spec:
           memoryRequest: 1Gi
           cpuLimit: "2"
           cpuRequest: 500m
+          env:
+            - name: PATH
+              value: /home/user/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
