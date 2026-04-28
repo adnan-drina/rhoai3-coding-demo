@@ -76,6 +76,8 @@ spec:
           env:
             - name: DEFAULT_EXTENSIONS
               value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
 ---
 apiVersion: v1
 kind: Namespace
@@ -150,6 +152,8 @@ spec:
           env:
             - name: DEFAULT_EXTENSIONS
               value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
 ---
 apiVersion: v1
 kind: Namespace
@@ -224,3 +228,5 @@ spec:
           env:
             - name: DEFAULT_EXTENSIONS
               value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
