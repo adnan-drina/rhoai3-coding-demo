@@ -3,56 +3,58 @@
 
 ## Overview
 
-Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and wraps them with **Models-as-a-Service (MaaS)**, following the [public MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) for RHOAI 3.3.
+Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and an **external model** (OpenAI GPT-4o via the `ExternalModel` CRD), exposing all through **Models-as-a-Service (MaaS)**.
 
-MaaS lets platform administrators define who can access which models, how much they can consume, and track all usage for capacity planning and chargeback. Access is controlled through tier-based groups (free, premium, enterprise) with per-tier request and token rate limits enforced by Red Hat Connectivity Link.
+The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. An `upstream-maas-api` deployment (`quay.io/opendatahub/maas-api:latest`) serves all API traffic through the `maas-api` Service, backed by PostgreSQL for API key storage.
 
-The RHOAI operator deploys the `maas-api` in `redhat-ods-applications` via `modelsAsService: Managed` in the DSC. This step adds the prerequisite operators, Gateway, models, governance policies, and in-cluster Jobs for cluster-specific configuration. See [BACKLOG.md](../../BACKLOG.md) for workarounds that can be removed when RHOAI 3.4 GA ships.
+Access is controlled through `MaaSAuthPolicy` (who can access which models) and `MaaSSubscription` (per-model token rate limits) CRDs, enforced by Red Hat Connectivity Link at the MaaS Gateway. API keys use the `sk-oai-*` hash-based format. See [BACKLOG.md](../../BACKLOG.md) for coexistence workarounds.
 
 ### What Gets Deployed
 
 ```text
 LLM Serving + MaaS
 ├── MaaS Prerequisites
-│   ├── LeaderWorkerSet Operator  → Distributed inference orchestration
-│   ├── Red Hat Connectivity Link → Gateway policies, rate limiting
-│   ├── CloudNative PG Operator   → MaaS API database (operator-managed)
-│   ├── GatewayClass + Gateway    → MaaS traffic routing (HTTP + HTTPS/TLS)
-│   └── Kuadrant + Authorino      → Authentication, authorization, SSL trust
+│   ├── LeaderWorkerSet Operator   → Distributed inference orchestration
+│   ├── Red Hat Connectivity Link  → Gateway policies, rate limiting
+│   ├── CloudNative PG Operator    → MaaS API database (operator-managed)
+│   ├── GatewayClass + Gateway     → MaaS traffic routing (HTTP + HTTPS/TLS)
+│   └── Kuadrant + Authorino       → Authentication, authorization, SSL trust
+├── Upstream MaaS Controller (redhat-ods-applications)
+│   ├── maas-controller            → Manages MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, ExternalModel CRDs
+│   ├── upstream-maas-api          → quay.io/opendatahub/maas-api:latest (serves /maas-api/* traffic)
+│   ├── PostgreSQL                 → API key storage (hash-based sk-oai-* keys)
+│   ├── payload-processing         → ExternalModel credential injection (IPP/BBR plugin)
+│   └── 5 CRDs                    → ExternalModel, MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, Tenant
 ├── Models (namespace: maas)
-│   ├── gpt-oss-20b              → All tiers (free, premium, enterprise)
-│   ├── nemotron-3-nano-30b-a3b  → Premium + Enterprise only
-│   └── Per-model RBAC           → Tier ServiceAccounts → LLMInferenceService access
-├── MaaS API                      → Operator-managed (redhat-ods-applications)
-├── MaaS Governance
-│   ├── Tier-to-group mapping    → ConfigMap in redhat-ods-applications (for webhook)
-│   ├── Tier Groups              → tier-free-users, tier-premium-users, tier-enterprise-users
-│   ├── RateLimitPolicy          → Request rate limits per tier
-│   ├── TokenRateLimitPolicy     → Token rate limits per tier
-│   └── TelemetryPolicy          → Usage metrics to Prometheus
+│   ├── gpt-oss-20b               → Local GPU model (LLMInferenceService + MaaSModelRef)
+│   ├── nemotron-3-nano-30b-a3b   → Local GPU model (LLMInferenceService + MaaSModelRef)
+│   └── openai-gpt-4o             → External model (ExternalModel + MaaSModelRef)
+├── MaaS Governance (namespace: models-as-a-service)
+│   ├── MaaSAuthPolicy            → Per-model access control (groups)
+│   ├── MaaSSubscription          → Per-model token rate limits
+│   └── Per-route policies        → Auto-created AuthPolicies + TokenRateLimitPolicies in maas namespace
 ├── MCP Servers (namespace: coding-assistant)
-│   ├── OpenShift MCP             → Read-only cluster queries (pods, logs, events)
-│   ├── Slack MCP                 → Post messages to Slack channels
-│   └── BrightData Web MCP       → Browse and search the public web
-├── Model Registration              → Seed Job registers models in Model Registry
-│   └── seed-models Job           → REST API calls to demo-registry (from step-01)
+│   ├── OpenShift MCP              → Read-only cluster queries (pods, logs, events)
+│   ├── Slack MCP                  → Post messages to Slack channels
+│   └── BrightData Web MCP        → Browse and search the public web
+├── Model Registration             → Seed Job registers models in Model Registry
 ├── In-Cluster Jobs
-│   ├── configure-kuadrant       → Authorino SSL + AuthPolicy patches for MaaS tab
-│   ├── patch-gateway-hostname   → Cluster-specific Gateway hostname + TLS cert
-│   └── configure-grafana-sa     → Grafana ServiceAccount token
+│   ├── configure-kuadrant        → Authorino SSL + AuthPolicy patches
+│   ├── patch-gateway-hostname    → Cluster-specific Gateway hostname + TLS cert
+│   └── configure-grafana-sa      → Grafana ServiceAccount token
 └── Observability
     ├── Grafana Operator + Instance
-    ├── ServiceMonitor            → Limitador metrics for rate limit monitoring
+    ├── ServiceMonitor             → Limitador metrics for rate limit monitoring
     └── MaaS Usage Dashboard
 ```
 
-| Tier | Request Limit | Token Limit | Models Available | Groups | Users |
-|------|--------------|-------------|-----------------|--------|-------|
-| Free | 5 / 2min | 100 / 1min | gpt-oss-20b | `tier-free-users` | (none by default) |
-| Premium | 20 / 2min | 10,000 / 1min | gpt-oss-20b, Nemotron | `tier-premium-users` | ai-developer |
-| Enterprise | 50 / 2min | 20,000 / 1min | gpt-oss-20b, Nemotron | `tier-enterprise-users` | ai-admin |
+| Model | Type | Endpoint | Access |
+|-------|------|----------|--------|
+| gpt-oss-20b | Local (GPU, vLLM) | `/maas/gpt-oss-20b/v1/chat/completions` | `system:authenticated` |
+| nemotron-3-nano-30b-a3b | Local (GPU, vLLM) | `/maas/nemotron-3-nano-30b-a3b/v1/chat/completions` | `system:authenticated` |
+| openai-gpt-4o | External (OpenAI API) | `/maas/openai-gpt-4o/v1/chat/completions` | `system:authenticated` |
 
-Tier groups are defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml`. Models declare their tier membership via the `alpha.maas.opendatahub.io/tiers` annotation on `LLMInferenceService`.
+Access is controlled via `MaaSAuthPolicy` CRDs in the `models-as-a-service` namespace. Token rate limits (50,000 tokens/hour per model) are defined in `MaaSSubscription` CRDs. The per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace are auto-created by the `maas-controller`.
 
 Manifests: [`gitops/step-03-llm-serving-maas/base/`](../../gitops/step-03-llm-serving-maas/base/)
 
@@ -84,16 +86,16 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 
 **Expect:** Both models visible with **Active** status in both tabs.
 
-### Viewing Endpoints and Generating API Tokens
+### Viewing Endpoints and Generating API Keys
 
 > The developer selects a MaaS model to get connection details.
 
-1. Click **View** on the **gpt-oss-20b** model in the Models as a service tab
-2. The endpoint details show the external API endpoint URL
-3. Click **Generate API token** to create an authentication token
-4. Copy the endpoint URL and token for use in applications
+1. Click **View** on any model in the Models as a service tab
+2. The endpoint details show the external API endpoint URL (e.g., `https://maas.<cluster>/maas/openai-gpt-4o`)
+3. Click **Generate API key** to create an `sk-oai-*` format API key
+4. Copy the endpoint URL and key for use in applications (keys are stored in PostgreSQL, not as ServiceAccount tokens)
 
-**Expect:** External API endpoint with a working token generator.
+**Expect:** External API endpoint with a working API key generator. Keys work for both local GPU models and the external OpenAI model.
 
 ### Testing in the Playground
 
@@ -112,16 +114,25 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 
 **Expect:** The model responds with functional Python code. Response metadata shows latency and token counts.
 
-### Tier-Based Access Control
+### Access Control via MaaS CRDs
 
 > Platform administrators define who gets access to which models and how much they can consume.
 
-1. Tier definitions are in `gitops/step-03-llm-serving-maas/base/governance/`
-2. `RateLimitPolicy` controls request rate per tier
-3. `TokenRateLimitPolicy` controls token consumption per tier
+1. `MaaSAuthPolicy` CRDs in `models-as-a-service` namespace define which groups can access which models
+2. `MaaSSubscription` CRDs define per-model token rate limits per group
+3. The `maas-controller` auto-creates per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace
 4. `TelemetryPolicy` sends usage metrics to Prometheus
 
-**Expect:** Three tiers (free, premium, enterprise) with distinct rate limits enforced by Red Hat Connectivity Link at the MaaS Gateway.
+```bash
+# View access policies
+oc get maasauthpolicy -n models-as-a-service
+# View subscriptions
+oc get maassubscription -n models-as-a-service
+# View auto-created per-route policies
+oc get authpolicy,tokenratelimitpolicy -n maas
+```
+
+**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route policies auto-created for all 3 models.
 
 ## Key Takeaways
 
@@ -141,8 +152,9 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) — the public quickstart this step is based on
 - [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
+- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — upstream MaaS controller with ExternalModel CRD
+- [ExternalModel setup guide](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/external-model-setup.md) — upstream docs for registering external providers
 - [RHOAI 3.3 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
-- [Deploying models on RHOAI](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/deploying_models/)
 - [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/)
 
 ## Next Steps

@@ -27,8 +27,8 @@ AI in the enterprise is not just about models. It is about delivering AI capabil
 This quickstart demonstrates a private AI code assistant powered by:
 
 - [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
-- [Models-as-a-Service](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
-- [NVIDIA Nemotron models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b)
+- [Models-as-a-Service](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) with upstream [maas-controller](https://github.com/opendatahub-io/models-as-a-service) for ExternalModel support
+- [NVIDIA Nemotron models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b) (local GPU) + [OpenAI GPT-4o](https://platform.openai.com/) (external via ExternalModel CRD)
 - [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [Continue](https://www.continue.dev/), an open-source AI code assistant extension
 - vLLM and llm-d for scalable model serving
@@ -123,7 +123,7 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 ### Model Serving and Governance (Step 03)
 
-[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and exposes them through **Models-as-a-Service** with tier-based access control, rate limiting, and usage telemetry. A developer discovers a centrally managed NVIDIA Nemotron model in the **GenAI Studio** dashboard, tests it in the built-in **Playground**, and retrieves the model endpoint URL and API token. A platform administrator manages model access through tier-based policies (free, premium, enterprise) with per-tier rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards — supporting capacity planning and internal chargeback.
+[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and an **OpenAI GPT-4o external model**, exposing all through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers (OpenAI, Anthropic, etc.) through the same governed gateway. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys (`sk-oai-*` format). A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
 
 - Full demo walkthrough: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
@@ -173,7 +173,7 @@ Deploy steps in order:
 |------|------|-----------|-----|
 | 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles, Model Registry | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, MaaS tiers, rate limits, MCP servers, Model Registration, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## RHOAI 3.3 Features Covered
@@ -208,7 +208,7 @@ This demo covers 5 of the 11 features from the [Red Hat OpenShift AI datasheet](
 - **Per-step deployment** — each `deploy.sh` applies its own ArgoCD Application (`oc apply -f`), giving control over ordering and runtime setup (secrets, SCC grants, model uploads) between syncs.
 - **`targetRevision: main`** — acceptable for a demo project where the single branch is the source of truth.
 - **Fork-friendly** — `bootstrap.sh` auto-detects the git remote URL and updates all ArgoCD Applications. No manual URL changes needed for forks.
-- **Operator-native MaaS** — the RHOAI operator deploys `maas-api` in `redhat-ods-applications` via `modelsAsService: Managed` in the DSC. Governance policies and auth fixes are applied via GitOps and in-cluster Jobs. See [BACKLOG.md](BACKLOG.md) for workarounds that can be removed when RHOAI 3.4 GA ships.
+- **Hybrid MaaS architecture** — the RHOAI operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, and `MaaSSubscription` CRDs. An `upstream-maas-api` deployment serves traffic through the `maas-api` Service (the RHOAI operator's `maas-api` deployment is kept at 0 replicas with its ownerReference removed). See [BACKLOG.md](BACKLOG.md) for details.
 
 ## Project Structure
 
@@ -274,12 +274,27 @@ oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec
 <details>
 <summary>MaaS tab shows "No models available as a service"</summary>
 
-The operator's `gateway-auth-policy` has a `tier-access` authorization step that extracts model names from URL paths. This breaks for the `/maas-api/v1/models` management endpoint. The `configure-kuadrant` Job patches both AuthPolicies to fix this. If the operator reconciles and overwrites the patches, re-run:
+With the upstream maas-controller, models are discovered via `MaaSModelRef` CRDs. Verify the upstream `maas-api` is handling traffic (not the RHOAI one):
 ```bash
-oc patch authpolicy gateway-auth-policy -n openshift-ingress --type=merge \
-  -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}'
-oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
-  --type=merge -p '{"spec":{"rules":{"authorization":{}}}}'
+# Check which pod serves traffic
+oc get endpoints maas-api -n redhat-ods-applications
+# Should show only the upstream-maas-api pod IP
+
+# Check RHOAI maas-api is scaled to 0
+oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.spec.replicas}'
+# Should be 0
+
+# Check models visible via API
+MAAS_HOST="maas.$(oc get ingress.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
+TOKEN=$(oc whoami -t)
+curl -sk -H "Authorization: Bearer $TOKEN" "https://${MAAS_HOST}/maas-api/v1/models"
+```
+
+If the RHOAI operator scales `maas-api` back to 1, both pods serve traffic and the RHOAI pod returns empty models. Fix:
+```bash
+oc patch deployment maas-api -n redhat-ods-applications --type json \
+  -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
+oc scale deployment maas-api -n redhat-ods-applications --replicas=0
 ```
 </details>
 
@@ -304,3 +319,4 @@ oc rollout status deploy/rhods-dashboard -n redhat-ods-applications
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
+- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — upstream MaaS controller with ExternalModel CRD support
