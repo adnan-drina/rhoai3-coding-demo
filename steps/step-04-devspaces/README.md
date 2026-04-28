@@ -10,11 +10,15 @@ Developers need AI coding assistance inside their existing tools, not a separate
 ```text
 Dev Spaces & AI Code Assistant
 ├── Dev Spaces Operator          → Manages containerized IDE workspaces
-├── CheCluster Instance          → Dev Spaces platform (openshift-devspaces)
-├── Per-User Workspaces
-│   ├── wksp-ai-admin            → Namespace + RoleBinding + DevWorkspace
-│   └── wksp-ai-developer        → Namespace + RoleBinding + DevWorkspace
-└── Coding Exercises             → 3 game starters + solutions for "code with AI" demo
+├── CheCluster Instance          → Dev Spaces platform (open-vsx.org, no-idle, 1200s timeout)
+├── Per-User Workspaces (3 users)
+│   ├── wksp-kubeadmin            → Namespace + RoleBinding + DevWorkspace
+│   ├── wksp-ai-admin             → Namespace + RoleBinding + DevWorkspace
+│   └── wksp-ai-developer         → Namespace + RoleBinding + DevWorkspace
+└── Quickstart Repo Clone        → rh-ai-quickstart/maas-code-assistant
+    ├── coding-exercises/         → 3 game starters + solutions
+    ├── .vscode/extensions.json   → Recommends Continue extension
+    └── .vscode/config.yaml       → Continue model config template
 ```
 
 Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
@@ -33,14 +37,13 @@ Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/bas
 
 When a user navigates from the RHOAI dashboard to Dev Spaces:
 
-1. The **Dev Spaces dashboard** (`https://devspaces.<cluster>`) authenticates the user via OpenShift OAuth
+1. The **Dev Spaces dashboard** authenticates the user via OpenShift OAuth
 2. It looks for a `DevWorkspace` CR in the user's pre-provisioned namespace (`wksp-<username>`)
 3. The **DevWorkspace Operator** creates a pod with 2 containers:
-   - `tooling-container` — the UDI image with VS Code server, tools, and the cloned repo
+   - `tooling-container` — the UDI image (4Gi memory) with VS Code server, tools, and the cloned repo
    - `che-gateway` — a Traefik sidecar that routes browser traffic to VS Code
-4. The pod runs in the **user's workspace namespace** (e.g., `wksp-ai-developer`), on a regular worker node
+4. The pod runs in the user's workspace namespace on a regular worker node
 5. A `claim-devworkspace` PVC persists workspace data across restarts
-6. The VS Code UI is accessed through the Dev Spaces URL: `https://devspaces.<cluster>/<username>/exercises/3100/`
 
 ## Projects Involved
 
@@ -48,9 +51,7 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 |---------|---------|-------------|---------------------------|
 | `maas` | Model serving — where `LLMInferenceService` models run | `ai-admin` only | Yes (`ai-admin`) |
 | `coding-assistant` | Developer's home project — model discovery, API token generation, Playground | `ai-developer`, `ai-admin` | Yes (both users) |
-| `wksp-ai-developer` | Dev Spaces workspace — contains the running VS Code pod | `ai-developer` | No (OpenShift only) |
-
-The `coding-assistant` project is the developer's entry point in the RHOAI dashboard. From there, `ai-developer` sees MaaS models across the cluster (they appear in the **Models as a service** tab regardless of which project is selected). The `wksp-ai-developer` namespace only exists in OpenShift — it is not visible in the RHOAI dashboard.
+| `wksp-*` | Dev Spaces workspace — contains the running VS Code pod | Each user | No (OpenShift only) |
 
 ## The Demo
 
@@ -72,27 +73,24 @@ The `coding-assistant` project is the developer's entry point in the RHOAI dashb
 2. Log in as `ai-developer` (same credentials)
 3. The pre-provisioned workspace `exercises` is listed
 4. Click to start it — VS Code opens in the browser
-5. The [MaaS Code Assistant quickstart](https://github.com/rh-ai-quickstart/maas-code-assistant) repo is cloned at `/projects/maas-code-assistant/`
-6. VS Code recommends the **Continue** extension (from `.vscode/extensions.json`) — install it
+5. The [MaaS Code Assistant quickstart](https://github.com/rh-ai-quickstart/maas-code-assistant) repo is cloned
 
 ### Act 3: Configure the Continue Extension
 
-1. Continue installs from the public Open VSX registry (configured in the CheCluster)
-2. Open a terminal in VS Code and copy the config template:
+1. Install the Continue extension (recommended via `.vscode/extensions.json`, available from open-vsx.org)
+2. Copy the config template to Continue's config directory:
    ```bash
-   cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
+   cp /projects/exercises/.vscode/config.yaml ~/.continue/config.yaml
    ```
 3. Open `~/.continue/config.yaml` and replace the placeholders:
-   - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1
+   - Replace `YOUR_MAAS_ROUTE` with the model endpoint URL from Act 1 (append `/v1`)
    - Replace `YOUR_API_KEY` with the API token from Act 1
 4. In the Continue sidebar, select **Local Config** from the dropdown
 5. The Nemotron model appears in the model selector
 
-> **Note:** The DevWorkspace has a `postStart` command that attempts to copy this config automatically, but due to a race condition with the git clone, it may not execute on the first workspace start. The manual `cp` step above is a reliable fallback.
-
 ### Act 4: AI-Assisted Coding
 
-Three game exercises are available in `coding-exercises/game_starters/` (from the quickstart repo):
+Three game exercises are available in `coding-exercises/game_starters/`:
 
 | Exercise | What to Ask Continue |
 |----------|---------------------|
@@ -101,13 +99,6 @@ Three game exercises are available in `coding-exercises/game_starters/` (from th
 | `word_scramble/` | Follow the prompts in the file — ask Continue to generate a word scramble game |
 
 Each starter file contains ready-to-use prompts and enhancement ideas. Solutions are in `game_solutions/` for reference.
-
-**Demo flow:**
-1. Open `game_starters/rock_paper_scissors/rock_paper_scissors.py`
-2. Select the code, right-click > **Continue: Edit** or use the chat sidebar
-3. Paste the prompt from the file header
-4. Watch the model rewrite the code with improvements
-5. Optionally run it in the terminal to verify
 
 ## Key Takeaways
 
