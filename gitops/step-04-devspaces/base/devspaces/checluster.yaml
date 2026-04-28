@@ -1,5 +1,5 @@
-# CheCluster instance — provides containerized VS Code workspaces
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
+# CheCluster instance — matches quickstart configuration
+# Ref: https://github.com/rh-ai-quickstart/maas-code-assistant
 apiVersion: org.eclipse.che/v2
 kind: CheCluster
 metadata:
@@ -23,7 +23,8 @@ spec:
       openVSXURL: "https://open-vsx.org"
   containerRegistry: {}
   devEnvironments:
-    startTimeoutSeconds: 600
+    startTimeoutSeconds: 1200
+    secondsOfInactivityBeforeIdling: -1
     storage:
       pvcStrategy: per-user
     defaultNamespace:
