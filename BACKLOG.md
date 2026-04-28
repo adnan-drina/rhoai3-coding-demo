@@ -29,8 +29,7 @@ The following items use manual configuration or post-deploy patches because the 
   **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
 
 ## Known Limitations
-- [ ] **DevWorkspace postStart race condition** — The `postStart` exec command to copy `.vscode/config.yaml` to `~/.continue/config.yaml` runs before the git clone completes. The wait loop helps but doesn't reliably solve it on first boot. Workaround: developer runs `cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml` manually in the terminal.
-- [ ] **VSCODE_DEFAULT_WORKSPACE not effective** — The `VSCODE_DEFAULT_WORKSPACE` env var doesn't change the initial folder in Che Code. The developer sees the full repo tree instead of just `coding-exercises/`. Workaround: use **File > Open Folder** to navigate to `coding-exercises/`.
+- [ ] **Continue config requires manual copy** — The `.vscode/config.yaml` template is in the cloned repo but Continue reads from `~/.continue/config.yaml`. The developer must run `cp /projects/exercises/.vscode/config.yaml ~/.continue/config.yaml` in the terminal and fill in the MaaS endpoint + API key.
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency — candidate for upstream issue in `opendatahub-io/odh-dashboard`.
 
 ## Planned
