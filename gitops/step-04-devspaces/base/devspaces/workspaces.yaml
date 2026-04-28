@@ -1,6 +1,6 @@
 # Per-user workspace namespaces, RBAC, and DevWorkspaces
-# Matches the quickstart: https://github.com/rh-ai-quickstart/maas-code-assistant
-# The .vscode/config.yaml in the repo provides the Continue config template.
+# Clones adnan-drina/coding-exercises which has .vscode/config.yaml + exercises.
+# postStart copies Continue config to ~/.continue/ automatically.
 ---
 apiVersion: v1
 kind: Namespace
@@ -51,11 +51,25 @@ spec:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
+    commands:
+      - id: copy-continue-config
+        exec:
+          commandLine: |
+            mkdir -p ~/.continue
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+          component: tooling-container
+    events:
+      postStart:
+        - copy-continue-config
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -106,11 +120,25 @@ spec:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
+    commands:
+      - id: copy-continue-config
+        exec:
+          commandLine: |
+            mkdir -p ~/.continue
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+          component: tooling-container
+    events:
+      postStart:
+        - copy-continue-config
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
 ---
 apiVersion: v1
 kind: Namespace
@@ -161,8 +189,22 @@ spec:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
+    commands:
+      - id: copy-continue-config
+        exec:
+          commandLine: |
+            mkdir -p ~/.continue
+            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+          component: tooling-container
+    events:
+      postStart:
+        - copy-continue-config
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
