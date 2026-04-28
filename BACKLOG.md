@@ -29,19 +29,18 @@ The following items use manual configuration or post-deploy patches because the 
   **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
 
 ## Known Limitations
-- [ ] **Continue config requires manual copy** — The `.vscode/config.yaml` template is in the cloned repo but Continue reads from `~/.continue/config.yaml`. The developer must run `cp /projects/exercises/.vscode/config.yaml ~/.continue/config.yaml` in the terminal and fill in the MaaS endpoint + API key.
+
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency — candidate for upstream issue in `opendatahub-io/odh-dashboard`.
 
 ## Planned
 
-- [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole (read-only access to all namespaces). For a more realistic demo, explore per-persona scoping:
-  - **Option A: Namespace-scoped RoleBindings** — Instead of a ClusterRoleBinding, grant `view` only to specific namespaces (`maas`, `coding-assistant`, `redhat-ods-applications`). The model can only see resources in those namespaces.
-  - **Option B: Custom ClusterRole** — Create a restricted ClusterRole that only allows reading specific resource types (pods, services, events, llminferenceservices) but not secrets, configmaps with credentials, etc.
-  - **Option C: Per-user MCP proxy** — Deploy the MCP server with a proxy that impersonates the Playground user's identity, so the model sees exactly what the user would see. Requires Playground to forward user tokens to MCP servers.
-  - Current: `ClusterRoleBinding` → `view` ClusterRole for `openshift-mcp` SA in `coding-assistant`. File: `mcp/openshift-mcp/serviceaccount.yaml`.
-- [ ] **Devfile-based Continue auto-configuration** — Create a dedicated exercises repo (or fork the quickstart) with a `devfile.yaml` that includes a `postStart` command to copy Continue config and auto-install the extension. This eliminates the manual `cp` step. See [Red Hat Developer tutorial](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) for the devfile pattern.
-- [ ] **Component-per-operator extraction** — Refactor `gitops/` to extract operator install triads into reusable `components/operators/` bases.
-- [ ] **Multi-version overlay structure** — `rhoai-3.3/` and `rhoai-3.4/` overlays with channel patches.
-- [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
+- [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole (read-only access to all namespaces). Explore namespace-scoped RoleBindings or a custom ClusterRole for tighter security. See BACKLOG for design options.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to step-03 README.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
+
+## Completed
+
+- [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
+- [x] ~~**Devfile-based Continue auto-configuration** — Created `adnan-drina/coding-exercises` repo with `devfile.yaml` that auto-copies Continue config via postStart. DevWorkspaces now clone this repo instead of the full quickstart.~~
+- [x] ~~**Component-per-operator extraction** — Deferred; current structure works well for 4-step demo.~~
+- [x] ~~**Multi-version overlay structure** — Deferred; only RHOAI 3.3 needed for now.~~
