@@ -133,4 +133,5 @@ This addresses the common concern with AI coding assistants: organizations can p
 - [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces) — cloud vs on-prem models, code assistant comparison
+- [OpenCode: Model-neutral AI coding assistant for Dev Spaces](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces) — terminal-based agentic AI, works with MaaS endpoints
 - [Red Hat Developer: Private AI Coding Assistant with Dev Spaces](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) — alternative approach using Ollama + local models

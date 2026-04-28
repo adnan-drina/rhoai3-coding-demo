@@ -34,6 +34,7 @@ The following items use manual configuration or post-deploy patches because the 
 
 ## Planned
 
+- [ ] **OpenCode CLI in Dev Spaces** — Add [OpenCode](https://github.com/opencode-ai/opencode) as a terminal-based agentic AI assistant alongside Continue. OpenCode is model-neutral (75+ providers) and works with any OpenAI-compatible endpoint, including our MaaS. The developer could use Continue for inline editing and OpenCode for terminal tasks (git diff review, code analysis, project scaffolding). Implementation: add the `opencode` binary to the DevWorkspace tooling container or use the [cli-ai-tools](https://github.com/che-incubator/cli-ai-tools/) devfile. See [Red Hat Developer article](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces).
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole (read-only access to all namespaces). Explore namespace-scoped RoleBindings or a custom ClusterRole for tighter security. See BACKLOG for design options.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to step-03 README.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
