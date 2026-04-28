@@ -1,10 +1,6 @@
-# Per-user workspace namespaces and DevWorkspaces
-# Clones the MaaS Code Assistant quickstart repo which includes:
-# - .vscode/extensions.json (recommends Continue extension)
-# - .vscode/config.yaml (Continue model config template)
-# - coding-exercises/ (3 game starters + solutions)
-# postStart copies the Continue config to ~/.continue/ and opens only
-# the coding-exercises folder so the developer sees a clean workspace.
+# Per-user workspace namespaces, RBAC, and DevWorkspaces
+# Matches the quickstart: https://github.com/rh-ai-quickstart/maas-code-assistant
+# The .vscode/config.yaml in the repo provides the Continue config template.
 ---
 apiVersion: v1
 kind: Namespace
@@ -15,12 +11,29 @@ metadata:
     app.kubernetes.io/component: workspaces-namespace
   annotations:
     argocd.argoproj.io/sync-wave: "15"
+    openshift.io/display-name: "Workspace ai-admin"
     che.eclipse.org/username: ai-admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wksp-edit-ai-admin
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: ai-admin
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: coding-exercises
+  name: exercises
   namespace: wksp-ai-admin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
@@ -32,37 +45,17 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: maas-code-assistant
+      - name: exercises
         git:
           remotes:
             origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
-    commands:
-      - id: init-continue
-        exec:
-          commandLine: |
-            for i in $(seq 1 30); do
-              if [ -f /projects/maas-code-assistant/.vscode/config.yaml ]; then
-                mkdir -p ~/.continue
-                cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
-                echo "Continue config copied"
-                break
-              fi
-              sleep 2
-            done
-          component: tooling-container
-    events:
-      postStart:
-        - init-continue
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
-          env:
-            - name: VSCODE_DEFAULT_WORKSPACE
-              value: /projects/maas-code-assistant/coding-exercises
 ---
 apiVersion: v1
 kind: Namespace
@@ -73,12 +66,29 @@ metadata:
     app.kubernetes.io/component: workspaces-namespace
   annotations:
     argocd.argoproj.io/sync-wave: "15"
+    openshift.io/display-name: "Workspace ai-developer"
     che.eclipse.org/username: ai-developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wksp-edit-ai-developer
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: ai-developer
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: coding-exercises
+  name: exercises
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: "20"
@@ -90,34 +100,14 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: maas-code-assistant
+      - name: exercises
         git:
           remotes:
             origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
           checkoutFrom:
             revision: main
-    commands:
-      - id: init-continue
-        exec:
-          commandLine: |
-            for i in $(seq 1 30); do
-              if [ -f /projects/maas-code-assistant/.vscode/config.yaml ]; then
-                mkdir -p ~/.continue
-                cp /projects/maas-code-assistant/.vscode/config.yaml ~/.continue/config.yaml
-                echo "Continue config copied"
-                break
-              fi
-              sleep 2
-            done
-          component: tooling-container
-    events:
-      postStart:
-        - init-continue
     components:
       - name: tooling-container
         container:
           image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
           sourceMapping: /projects
-          env:
-            - name: VSCODE_DEFAULT_WORKSPACE
-              value: /projects/maas-code-assistant/coding-exercises
