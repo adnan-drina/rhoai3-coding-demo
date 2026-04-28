@@ -34,3 +34,4 @@ data:
       level: 2
       groups:
         - tier-enterprise-users
+        - system:cluster-admins
