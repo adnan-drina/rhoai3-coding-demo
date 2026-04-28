@@ -31,3 +31,5 @@ resources:
   - observability/networkpolicy.yaml
   - observability/telemetrypolicy.yaml
   - observability/istio-telemetry.yaml
+  # Tokens bridge (maps /v1/tokens → /v1/api-keys for Playground compatibility)
+  - tokens-bridge/deployment.yaml
