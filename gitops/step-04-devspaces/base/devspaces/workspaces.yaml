@@ -5,6 +5,61 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: wksp-kubeadmin
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: workspaces-namespace
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    openshift.io/display-name: "Workspace kubeadmin"
+    che.eclipse.org/username: kube:admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wksp-edit-kubeadmin
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: "b64:a3ViZTphZG1pbg=="
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: exercises
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
+spec:
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: exercises
+        git:
+          remotes:
+            origin: https://github.com/rh-ai-quickstart/maas-code-assistant.git
+          checkoutFrom:
+            revision: main
+    components:
+      - name: tooling-container
+        container:
+          image: registry.redhat.io/devspaces/udi-rhel9:3.25.0
+          sourceMapping: /projects
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: wksp-ai-admin
   labels:
     app.kubernetes.io/part-of: che.eclipse.org
