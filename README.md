@@ -230,7 +230,7 @@ rhoai3-coding-demo/
 │   ├── step-02-gpu-infra/
 │   ├── step-03-llm-serving-maas/
 │   └── step-04-devspaces/
-│       └── coding-exercises/        # Python games for "improve this code" demo
+│       └── coding-exercises/        # Python games for AI code assistant demo
 ├── env.example                      # Template for .env
 └── README.md
 ```
@@ -239,10 +239,11 @@ rhoai3-coding-demo/
 
 | Username | Password | Identity Provider | Role | MaaS Tier |
 |----------|----------|-------------------|------|-----------|
+| `kubeadmin` | (cluster-specific) | kube:admin | Cluster Admin | Enterprise (via system:cluster-admins) |
 | `ai-admin` | `redhat123` | demo-htpasswd | RHOAI Admin (rhoai-admins group) | Enterprise |
 | `ai-developer` | `redhat123` | demo-htpasswd | RHOAI User (rhoai-users group) | Premium |
 
-> Credentials are defined in `gitops/step-01-rhoai-platform/base/users/htpasswd-secret.yaml`. MaaS tier group membership is defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml`.
+> Demo user credentials are defined in `gitops/step-01-rhoai-platform/base/users/htpasswd-secret.yaml`. MaaS tier group membership is defined in `gitops/step-03-llm-serving-maas/base/governance/maas-groups.yaml` and `tier-to-group-mapping.yaml`. All three users have Dev Spaces workspaces.
 
 ## Troubleshooting
 
