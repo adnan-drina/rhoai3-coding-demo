@@ -1,13 +1,12 @@
-# Token rate limits per MaaS tier — tracks actual token consumption.
-# Must be in openshift-ingress (same namespace as the Gateway).
-# Source: https://github.com/opendatahub-io/models-as-a-service/blob/v0.0.2/deployment/base/policies/usage-policies/token-limit-policy.yaml
+# Token rate limits per MaaS tier — tracks actual token consumption from OpenAI-compatible responses
+# Ref: https://docs.kuadrant.io/dev/kuadrant-operator/doc/overviews/token-rate-limiting/
 apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy
 metadata:
   name: gateway-token-rate-limits
   namespace: openshift-ingress
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: "15"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   targetRef:
@@ -26,7 +25,7 @@ spec:
         - expression: auth.identity.userid
     premium-user-tokens:
       rates:
-        - limit: 50000
+        - limit: 10000
           window: 1m
       when:
         - predicate: |
@@ -35,7 +34,7 @@ spec:
         - expression: auth.identity.userid
     enterprise-user-tokens:
       rates:
-        - limit: 100000
+        - limit: 20000
           window: 1m
       when:
         - predicate: |

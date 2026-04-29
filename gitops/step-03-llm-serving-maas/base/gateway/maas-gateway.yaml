@@ -1,6 +1,6 @@
-# MaaS default gateway — prerequisite for LLMInferenceService MaaS publishing
-# The operator expects this gateway to exist; it does NOT create it automatically.
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas#maas-dependencies_maas-deploy
+# MaaS default gateway — all LLMInferenceService + Kuadrant policies target this
+# Labels and annotations are critical for MaaS/Authorino integration
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -9,7 +9,7 @@ metadata:
   labels:
     opendatahub.io/managed: "false"
   annotations:
-    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-wave: "21"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     opendatahub.io/managed: "false"
     security.opendatahub.io/authorino-tls-bootstrap: "true"

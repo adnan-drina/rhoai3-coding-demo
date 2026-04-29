@@ -1,13 +1,12 @@
-# Request rate limits per MaaS tier — targets the MaaS Gateway.
-# Must be in openshift-ingress (same namespace as the Gateway).
-# Source: https://github.com/opendatahub-io/models-as-a-service/blob/v0.0.2/deployment/base/policies/usage-policies/rate-limit-policy.yaml
+# Request rate limits per MaaS tier — targets the MaaS Gateway
+# Ref: https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/overviews/rate-limiting/
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:
   name: gateway-rate-limits
   namespace: openshift-ingress
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-wave: "15"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   targetRef:

@@ -1,21 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# LLM Serving with Models-as-a-Service (RHOAI 3.4)
-#
-# The RHOAI operator manages: maas-api, maas-controller, maas-api-auth-policy, tier ConfigMap.
-# We manually install (per upstream ODH recommendation):
-#   - Gateway + GatewayClass (prerequisite for modelsAsService)
-#   - Gateway AuthPolicy (tier-based auth for model inference)
-#   - Usage Policies (RateLimitPolicy + TokenRateLimitPolicy)
-#   - MaaS CRDs (MaaSModelRef, MaaSAuthPolicy, MaaSSubscription)
-#   - PostgreSQL for maas-api database
-#   - Authorino SSL fix
-#
-# Ref: https://opendatahub-io.github.io/models-as-a-service/v0.0.2/install/maas-setup/
+# LLM Serving with Models-as-a-Service
+# Uses upstream maas-controller from opendatahub-io/models-as-a-service
+# alongside RHOAI 3.3 operator (modelsAsService: Managed in DSC)
 
 resources:
-  # Wave 0-3: MaaS operator prerequisites (LWS, RHCL, CNPG)
+  # Wave 0-2: MaaS operator prerequisites
   - leaderworkerset/namespace.yaml
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
@@ -24,36 +15,29 @@ resources:
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
   - cloudnative-pg/subscription.yaml
-  # Wave 3: MaaS API database (prerequisite for operator-managed maas-api)
-  - maas-database/
   # Wave 0-5: Grafana operator
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
-  # Wave 0: Kuadrant system namespace
+  # Wave 5: Kuadrant system namespace (operator creates resources here)
   - governance/kuadrant-system-ns.yaml
-  # Wave 4-5: Gateway infrastructure (must exist before modelsAsService can activate)
-  - gateway/gatewayclass.yaml
-  - gateway/maas-gateway.yaml
-  # Wave 5-6: Project namespaces + user RBAC + MaaS tier groups
+  # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
-  - governance/maas-groups.yaml
-  # Wave 8-9: Authorino SSL fix (required for API key validation)
-  - jobs/configure-authorino-ssl.yaml
-  # Wave 10: Kuadrant CR + Gateway policies (auth, rate limits, token limits)
-  - governance/kuadrant.yaml
-  - gateway-policies/
-  # Wave 10: Models (LLMInferenceService — operator auto-creates RBAC via tiers annotation)
+  # Wave 9: Tier-to-group mapping (needed by RHOAI webhook for LLMInferenceService)
+  - governance/tier-to-group-mapping.yaml
+  # Wave 12-14: Upstream maas-controller (CRDs, RBAC, PostgreSQL, controller)
+  - maas-controller-upstream/
+  # Wave 15: Models (LLMInferenceService CRs)
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
-  # Wave 15-16: MaaS CRDs (MaaSModelRef, MaaSAuthPolicy, MaaSSubscription)
-  - maas-crds/
   # Wave 15-16: MCP servers
   - mcp/
-  # Wave 20-22: Grafana dashboards + Jobs
+  # Wave 16-18: MaaS CRDs (MaaSModelRef, ExternalModel, AuthPolicy, Subscription)
+  - models-maas-crds/
+  # Wave 20: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml

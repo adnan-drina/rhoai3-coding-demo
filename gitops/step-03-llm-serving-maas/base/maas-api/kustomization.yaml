@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# MaaS API Developer Preview — deployed separately from the operator
+# Source: https://github.com/opendatahub-io/models-as-a-service
+# The remote base deploys: Gateway, AuthPolicies, maas-api Deployment, observability
+# We patch: hostname (cluster-specific), TLS cert name, and maas-api image
+
+resources:
+  - https://github.com/opendatahub-io/models-as-a-service//deployment/overlays/openshift?ref=39e62e98f382621e401211ae21cb9de0601b8266
+
+patches:
+  # Use the community maas-api image with multi-subscription fix
+  - target:
+      kind: Deployment
+      name: maas-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: quay.io/opendatahub/maas-api:latest-0681979
