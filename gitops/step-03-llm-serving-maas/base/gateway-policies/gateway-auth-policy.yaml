@@ -1,0 +1,78 @@
+# Gateway-level AuthPolicy — authenticates MaaS-issued tokens and resolves tier membership.
+# Must be in openshift-ingress (same namespace as the Gateway).
+# Source: https://github.com/opendatahub-io/models-as-a-service/blob/v0.0.2/deployment/base/policies/auth-policies/gateway-auth-policy.yaml
+# Adapted: maas-api URL changed to redhat-ods-applications namespace for RHOAI.
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: gateway-auth-policy
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: maas-default-gateway
+  rules:
+    metadata:
+      matchedTier:
+        http:
+          url: http://maas-api.redhat-ods-applications.svc.cluster.local:8080/v1/tiers/lookup
+          contentType: application/json
+          method: POST
+          body:
+            expression: |-
+              { "groups": auth.identity.user.groups }
+          cache:
+            key:
+              selector: auth.identity.user.username
+            ttl: 300
+    authentication:
+      service-accounts:
+        kubernetesTokenReview:
+          audiences:
+            - maas-default-gateway-sa
+        defaults:
+          userid:
+            expression: |
+              auth.identity.user.username.split(":")[3]
+        cache:
+          key:
+            selector: context.request.http.headers.authorization.@case:lower
+          ttl: 600
+    authorization:
+      tier-access:
+        cache:
+          key:
+            selector: "{auth.identity.user.username}:{request.path}"
+          ttl: 60
+        kubernetesSubjectAccessReview:
+          user:
+            expression: auth.identity.user.username
+          authorizationGroups:
+            expression: auth.identity.user.groups
+          resourceAttributes:
+            group:
+              value: serving.kserve.io
+            resource:
+              value: llminferenceservices
+            namespace:
+              expression: |
+                request.path.split("/")[1]
+            name:
+              expression: |
+                request.path.split("/")[2]
+            verb:
+              value: post
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                userid:
+                  expression: auth.identity.userid
+                tier:
+                  expression: auth.metadata.matchedTier["tier"]

@@ -1,0 +1,19 @@
+# MaaSAuthPolicy — defines which groups can access which models.
+# The maas-controller creates per-route Kuadrant AuthPolicies from this.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: all-models-access
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRefs:
+    - name: gpt-oss-20b
+      namespace: maas
+    - name: nemotron-3-nano-30b-a3b
+      namespace: maas
+  subjects:
+    groups:
+      - name: "system:authenticated"
