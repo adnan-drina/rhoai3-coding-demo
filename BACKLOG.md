@@ -47,7 +47,12 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 - [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
 
-- [ ] **GPT-5 models not compatible with Playground** — GPT-5 models (`gpt-5-codex`, `gpt-5-mini`) use OpenAI's `/v1/responses` API instead of `/v1/chat/completions`. The RHOAI Playground's `gen-ai-ui` creates LlamaStack with `remote::vllm` provider which calls `/v1/chat/completions`. GPT-5 can be manually configured with `remote::openai` provider in the LlamaStack ConfigMap, but the `gen-ai-ui` overwrites this on Playground recreation. GPT-5 models work via direct MaaS API key access.
+- [ ] **GPT-5 models: MaaS Gateway only supports `/chat/completions`** — GPT-5 models (`gpt-5-codex`, `gpt-5-mini`) require OpenAI's `/v1/responses` API, but the MaaS Gateway's `payload-processing` BBR plugin ([opendatahub-io/ai-gateway-payload-processing](https://github.com/opendatahub-io/ai-gateway-payload-processing)) only handles `/chat/completions` input. Inference requests through the MaaS Gateway fail with `"only /chat/completions input type is supported"`. This blocks GPT-5 from:
+  - **Playground** — `gen-ai-ui` creates LlamaStack with `remote::vllm` (chat completions only). Manual `remote::openai` patching in the LlamaStack ConfigMap works but `gen-ai-ui` overwrites it on Playground recreation.
+  - **Continue** — `provider: openai` correctly sends `/v1/responses` to the MaaS Gateway, but payload-processing rejects it.
+  - **OpenCode / direct API** — same Gateway rejection.
+  GPT-5 models appear in the MaaS tab and API keys can be generated, but inference through the Gateway is blocked.
+  **Investigation needed:** Check if `payload-processing` has a newer version supporting `/v1/responses`, or if the BBR plugin can be configured to pass through `/v1/responses` requests without body processing. See [opendatahub-io/ai-gateway-payload-processing issues](https://github.com/opendatahub-io/ai-gateway-payload-processing/issues).
 
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency.
 
