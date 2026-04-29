@@ -5,6 +5,7 @@ metadata:
     app: maas-controller
     monitoring.opendatahub.io/scrape: 'true'
   name: maas-controller-metrics
+  namespace: redhat-ods-applications
 spec:
   podMetricsEndpoints:
   - interval: 30s

@@ -123,7 +123,7 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 ### Model Serving and Governance (Step 03)
 
-[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and an **OpenAI GPT-4o external model**, exposing all through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers (OpenAI, Anthropic, etc.) through the same governed gateway. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys (`sk-oai-*` format). A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
+[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and an **OpenAI GPT-4o external model**, exposing all through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers (OpenAI, Anthropic, etc.) through the same governed gateway. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys. A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
 
 - Full demo walkthrough: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
@@ -208,7 +208,7 @@ This demo covers 5 of the 11 features from the [Red Hat OpenShift AI datasheet](
 - **Per-step deployment** — each `deploy.sh` applies its own ArgoCD Application (`oc apply -f`), giving control over ordering and runtime setup (secrets, SCC grants, model uploads) between syncs.
 - **`targetRevision: main`** — acceptable for a demo project where the single branch is the source of truth.
 - **Fork-friendly** — `bootstrap.sh` auto-detects the git remote URL and updates all ArgoCD Applications. No manual URL changes needed for forks.
-- **Hybrid MaaS architecture** — the RHOAI operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, and `MaaSSubscription` CRDs. An `upstream-maas-api` deployment serves traffic through the `maas-api` Service (the RHOAI operator's `maas-api` deployment is kept at 0 replicas with its ownerReference removed). See [BACKLOG.md](BACKLOG.md) for details.
+- **Hybrid MaaS architecture** — the RHOAI operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, and `MaaSSubscription` CRDs. The tenant-managed `maas-api` deployment is pinned to the upstream API image so `/maas-api/v1/models` includes both local `LLMInferenceService` models and `ExternalModel` entries. See [BACKLOG.md](BACKLOG.md) for details.
 
 ## Project Structure
 
@@ -274,15 +274,22 @@ oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec
 <details>
 <summary>MaaS tab shows "No models available as a service"</summary>
 
-With the upstream maas-controller, models are discovered via `MaaSModelRef` CRDs. Verify the upstream `maas-api` is handling traffic (not the RHOAI one):
+With the upstream maas-controller, models are discovered via `MaaSModelRef` CRDs. Verify the tenant-managed `maas-api` is handling traffic:
 ```bash
-# Check which pod serves traffic
-oc get endpoints maas-api -n redhat-ods-applications
-# Should show only the upstream-maas-api pod IP
+# Check the deployment was recreated by the upstream tenant reconciler
+oc get deployment maas-api -n redhat-ods-applications \
+  -o jsonpath='{.metadata.labels.maas\.opendatahub\.io/tenant-name}{"\n"}'
+# Expected: default-tenant
 
-# Check RHOAI maas-api is scaled to 0
-oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.spec.replicas}'
-# Should be 0
+# Check it reads MaaSAuthPolicy/MaaSSubscription CRs from models-as-a-service
+oc get deployment maas-api -n redhat-ods-applications \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MAAS_SUBSCRIPTION_NAMESPACE")].value}{"\n"}'
+# Expected: models-as-a-service
+
+# Check it is using the upstream API image that supports ExternalModel discovery
+oc get deployment maas-api -n redhat-ods-applications \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+# Expected: quay.io/opendatahub/maas-api:latest
 
 # Check models visible via API
 MAAS_HOST="maas.$(oc get ingress.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
@@ -290,11 +297,14 @@ TOKEN=$(oc whoami -t)
 curl -sk -H "Authorization: Bearer $TOKEN" "https://${MAAS_HOST}/maas-api/v1/models"
 ```
 
-If the RHOAI operator scales `maas-api` back to 1, both pods serve traffic and the RHOAI pod returns empty models. Fix:
+If `maas-api` is missing the `maas.opendatahub.io/tenant-name=default-tenant` label after a failed upgrade or downgrade attempt, delete the stale deployment and let the tenant reconciler recreate it:
 ```bash
-oc patch deployment maas-api -n redhat-ods-applications --type json \
-  -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
-oc scale deployment maas-api -n redhat-ods-applications --replicas=0
+oc delete deployment maas-api -n redhat-ods-applications
+oc annotate tenant default-tenant -n models-as-a-service \
+  recovery.rhoai-demo.io/restarted-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+oc rollout status deployment/maas-api -n redhat-ods-applications
+oc delete job job-patch-maas-api-storage -n redhat-ods-applications --ignore-not-found
+oc apply -f gitops/step-03-llm-serving-maas/base/jobs/patch-maas-api-storage.yaml
 ```
 </details>
 

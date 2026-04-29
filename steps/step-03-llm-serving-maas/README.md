@@ -5,9 +5,9 @@
 
 Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and an **external model** (OpenAI GPT-4o via the `ExternalModel` CRD), exposing all through **Models-as-a-Service (MaaS)**.
 
-The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. An `upstream-maas-api` deployment (`quay.io/opendatahub/maas-api:latest`) serves all API traffic through the `maas-api` Service, backed by PostgreSQL for API key storage.
+The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. A post-deploy Job pins the tenant-managed `maas-api` deployment to `quay.io/opendatahub/maas-api:latest`, because the RHOAI 3.3 API image does not list `ExternalModel` CRs.
 
-Access is controlled through `MaaSAuthPolicy` (who can access which models) and `MaaSSubscription` (per-model token rate limits) CRDs, enforced by Red Hat Connectivity Link at the MaaS Gateway. API keys use the `sk-oai-*` hash-based format. See [BACKLOG.md](../../BACKLOG.md) for coexistence workarounds.
+Access is controlled through `MaaSAuthPolicy` (who can access which models) and `MaaSSubscription` (per-model token rate limits) CRDs, enforced by Red Hat Connectivity Link at the MaaS Gateway. Playground token generation is bridged to the upstream MaaS API key endpoint. See [BACKLOG.md](../../BACKLOG.md) for coexistence workarounds.
 
 ### What Gets Deployed
 
@@ -21,8 +21,8 @@ LLM Serving + MaaS
 │   └── Kuadrant + Authorino       → Authentication, authorization, SSL trust
 ├── Upstream MaaS Controller (redhat-ods-applications)
 │   ├── maas-controller            → Manages MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, ExternalModel CRDs
-│   ├── upstream-maas-api          → quay.io/opendatahub/maas-api:latest (serves /maas-api/* traffic)
-│   ├── PostgreSQL                 → API key storage (hash-based sk-oai-* keys)
+│   ├── maas-api                   → Tenant-managed MaaS API patched to upstream image for ExternalModel discovery
+│   ├── PostgreSQL                 → MaaS API key storage
 │   ├── payload-processing         → ExternalModel credential injection (IPP/BBR plugin)
 │   └── 5 CRDs                    → ExternalModel, MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, Tenant
 ├── Models (namespace: maas)
@@ -41,6 +41,7 @@ LLM Serving + MaaS
 ├── In-Cluster Jobs
 │   ├── configure-kuadrant        → Authorino SSL + AuthPolicy patches
 │   ├── patch-gateway-hostname    → Cluster-specific Gateway hostname + TLS cert
+│   ├── patch-maas-api-storage    → Pin maas-api to upstream image with PostgreSQL-backed API keys
 │   └── configure-grafana-sa      → Grafana ServiceAccount token
 └── Observability
     ├── Grafana Operator + Instance
@@ -84,7 +85,7 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 4. The **Models** tab shows available models with their status and playground access
 5. The **Models as a service** tab shows models with MaaS badges, external endpoints, and tier information
 
-**Expect:** Both models visible with **Active** status in both tabs.
+**Expect:** `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, and `openai-gpt-4o` visible with **Active** status in the Models as a service tab.
 
 ### Viewing Endpoints and Generating API Keys
 
@@ -92,7 +93,7 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 
 1. Click **View** on any model in the Models as a service tab
 2. The endpoint details show the external API endpoint URL (e.g., `https://maas.<cluster>/maas/openai-gpt-4o`)
-3. Click **Generate API key** to create an `sk-oai-*` format API key
+3. Click **Generate API key** to create a MaaS API key
 4. Copy the endpoint URL and key for use in applications (keys are stored in PostgreSQL, not as ServiceAccount tokens)
 
 **Expect:** External API endpoint with a working API key generator. Keys work for both local GPU models and the external OpenAI model.
