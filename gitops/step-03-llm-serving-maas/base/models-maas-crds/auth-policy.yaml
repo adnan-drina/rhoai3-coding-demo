@@ -16,8 +16,6 @@ spec:
       namespace: maas
     - name: gpt-4o-mini
       namespace: maas
-    - name: gpt-5-codex
-      namespace: maas
   subjects:
     groups:
       - name: "system:authenticated"
