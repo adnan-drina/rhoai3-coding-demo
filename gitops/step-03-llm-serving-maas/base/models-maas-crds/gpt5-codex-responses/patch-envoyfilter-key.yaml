@@ -1,0 +1,119 @@
+# Post-deploy Job: injects the real OpenAI API key from the openai-api-key Secret
+# into the gpt5-codex-responses-bypass EnvoyFilter's request_headers_to_add.
+# Runs after the EnvoyFilter is created (wave 20 > envoyfilter wave 19).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+rules:
+- apiGroups: ["networking.istio.io"]
+  resources: ["envoyfilters"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-read-openai-key
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["openai-api-key"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-patch-envoyfilter-key
+subjects:
+- kind: ServiceAccount
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-read-openai-key
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-read-openai-key
+subjects:
+- kind: ServiceAccount
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-patch-envoyfilter-key
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: job-patch-envoyfilter-key
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          echo "Reading OpenAI key from secret..."
+          OPENAI_KEY=$(oc get secret openai-api-key -n maas \
+            -o jsonpath='{.data.api-key}' | base64 -d)
+
+          if [ -z "$OPENAI_KEY" ] || [ "$OPENAI_KEY" = "REPLACE_WITH_OPENAI_API_KEY" ]; then
+            echo "OpenAI key is a placeholder — skipping EnvoyFilter patch"
+            echo "Set the real key in the openai-api-key Secret and rerun this Job"
+            exit 0
+          fi
+
+          echo "Waiting for EnvoyFilter..."
+          for i in $(seq 1 30); do
+            if oc get envoyfilter gpt5-codex-responses-bypass -n openshift-ingress &>/dev/null; then
+              break
+            fi
+            echo "  waiting ($i/30)..."
+            sleep 5
+          done
+
+          echo "Patching EnvoyFilter with real OpenAI key..."
+          oc patch envoyfilter gpt5-codex-responses-bypass -n openshift-ingress \
+            --type=json -p "[
+              {\"op\":\"replace\",
+               \"path\":\"/spec/configPatches/0/patch/value/request_headers_to_add/0/header/value\",
+               \"value\":\"Bearer ${OPENAI_KEY}\"}
+            ]"
+
+          echo "Done — EnvoyFilter patched with real OpenAI credential"
