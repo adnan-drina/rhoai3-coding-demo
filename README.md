@@ -28,7 +28,7 @@ This quickstart demonstrates a private AI code assistant powered by:
 
 - [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
 - [Models-as-a-Service](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) with upstream [maas-controller](https://github.com/opendatahub-io/models-as-a-service) for ExternalModel support
-- **5 models** through the MaaS Gateway: 2 local GPU models (NVIDIA Nemotron, gpt-oss-20b on vLLM) + 3 external OpenAI models (GPT-4o, GPT-4o-mini via `/chat/completions`; GPT-5-Codex via `/v1/responses` with dedicated routing)
+- **4 models** through the MaaS Gateway: 2 local GPU models (NVIDIA Nemotron, gpt-oss-20b on vLLM) + 2 external OpenAI models (GPT-4o, GPT-4o-mini) — all using the standard `/v1/chat/completions` API
 - [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [Continue](https://www.continue.dev/), an open-source AI code assistant extension
 - vLLM and llm-d for scalable model serving
@@ -123,13 +123,13 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 ### Model Serving and Governance (Step 03)
 
-[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and **OpenAI external models** (GPT-4o, GPT-4o-mini, GPT-5-Codex), exposing all **5 models** through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers through the same governed gateway. Four models use the standard `/chat/completions` API; GPT-5-Codex uses OpenAI's `/v1/responses` API and requires a dedicated routing path — a separate HTTPRoute, EnvoyFilter (to bypass `ext_proc.bbr` and inject OpenAI credentials), AuthPolicy (accepting OpenShift tokens instead of `sk-oai-*` keys), and TokenRateLimitPolicy. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground** (all models except GPT-5-Codex), and retrieves endpoint URLs and API keys. A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
+[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and **OpenAI external models** (GPT-4o, GPT-4o-mini), exposing all **4 models** through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers through the same governed gateway. All 4 models use the standard `/v1/chat/completions` API and authenticate with `sk-oai-*` MaaS API keys. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys. A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
 
 - Full demo walkthrough: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
 ### AI Code Assistant (Step 04)
 
-[Step 04](steps/step-04-devspaces/README.md) deploys **OpenShift Dev Spaces** and demonstrates the developer experience end-to-end. The developer configures the **Continue** extension (an open-source AI code assistant) with the MaaS model endpoint — using `sk-oai-*` API keys for `/chat/completions` models and an OpenShift token (`oc whoami -t`) for GPT-5-Codex — then asks the model to improve sample code, showing a private AI coding workflow that never leaves the organization's infrastructure.
+[Step 04](steps/step-04-devspaces/README.md) deploys **OpenShift Dev Spaces** and demonstrates the developer experience end-to-end. The developer configures the **Continue** extension (an open-source AI code assistant) and **OpenCode** CLI with the MaaS model endpoint using a single `sk-oai-*` API key, then asks the model to improve sample code, showing a private AI coding workflow that never leaves the organization's infrastructure.
 
 - Full demo walkthrough: [Step 04 — The Demo](steps/step-04-devspaces/README.md#the-demo)
 
@@ -173,7 +173,7 @@ Deploy steps in order:
 |------|------|-----------|-----|
 | 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles, Model Registry | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini/5-Codex (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## RHOAI 3.3 Features Covered
@@ -209,7 +209,6 @@ This demo covers 5 of the 11 features from the [Red Hat OpenShift AI datasheet](
 - **`targetRevision: main`** — acceptable for a demo project where the single branch is the source of truth.
 - **Fork-friendly** — `bootstrap.sh` auto-detects the git remote URL and updates all ArgoCD Applications. No manual URL changes needed for forks.
 - **Hybrid MaaS architecture** — the RHOAI operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, and `MaaSSubscription` CRDs. The tenant-managed `maas-api` deployment is pinned to the upstream API image so `/maas-api/v1/models` includes both local `LLMInferenceService` models and `ExternalModel` entries.
-- **GPT-5-Codex `/v1/responses` routing** — the MaaS Gateway's `payload-processing` BBR plugin only supports `/chat/completions`. For GPT-5-Codex, a dedicated routing path bypasses the BBR plugin: a separate HTTPRoute (`/maas/gpt-5-codex/v1/responses` → `api.openai.com`), an EnvoyFilter (disables `ext_proc.bbr` + injects the OpenAI credential), an AuthPolicy (accepts OpenShift tokens instead of `sk-oai-*` keys), and a TokenRateLimitPolicy (overrides the gateway default-deny). This model works via Continue and OpenCode with an `oc whoami -t` token but is not Playground-compatible.
 - See [BACKLOG.md](BACKLOG.md) for coexistence workarounds and tracked upstream issues.
 
 ## Project Structure
@@ -333,4 +332,3 @@ oc rollout status deploy/rhods-dashboard -n redhat-ods-applications
 - [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
 - [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — upstream MaaS controller with ExternalModel CRD support
 - [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684) — ExternalModel naming constraint (BBR plugin targetModel validation)
-- [Envoy AI Gateway — Supported Endpoints](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints) — upstream supports `/v1/responses`; ODH fork does not yet

@@ -47,11 +47,9 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 - [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
 
-- [ ] **GPT-5-Codex Playground incompatibility** — GPT-5-Codex works via Continue and OpenCode through the dedicated `/v1/responses` route, but is not Playground-compatible. The `gen-ai-ui` always generates LlamaStack with `remote::vllm` (which uses `/chat/completions`). Manual `remote::openai` patching in the LlamaStack ConfigMap works but `gen-ai-ui` overwrites it on Playground recreation. This is a UI limitation, not a routing issue.
-
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency.
 
-- [ ] **Upstream `/v1/responses` support in BBR plugin** — The ODH BBR plugin ([opendatahub-io/ai-gateway-payload-processing](https://github.com/opendatahub-io/ai-gateway-payload-processing)) only supports `/chat/completions`. The upstream [Envoy AI Gateway](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints) supports `/v1/responses` natively. When the ODH fork adds native support, the dedicated GPT-5-Codex routing path (EnvoyFilter, separate AuthPolicy, HTTPRoute) can be removed in favor of the standard MaaS pipeline.
+- [ ] **Upstream `/v1/responses` support in BBR plugin** — The ODH BBR plugin ([opendatahub-io/ai-gateway-payload-processing](https://github.com/opendatahub-io/ai-gateway-payload-processing)) only supports `/chat/completions`. The upstream [Envoy AI Gateway](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints) supports `/v1/responses` natively. Models requiring `/v1/responses` (e.g., GPT-5 Codex) cannot be served through the standard MaaS pipeline until the ODH fork adds native support. See the Completed section for the proven routing workaround.
 
 ## Planned
 
@@ -61,21 +59,21 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Validated (2026-04-29)
 
-- [x] **MaaS API — 5 models listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, `gpt-4o-mini`, and `gpt-5-codex` as `ready=true`. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
+- [x] **MaaS API — 4 models listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as `ready=true`. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
 - [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
 - [x] **Local model inference** — Both GPU models respond in the Playground and via MaaS API.
-- [x] **External model inference (GPT-4o/4o-mini)** — Working in Playground and via MaaS API. The `payload-processing` BBR plugin injects OpenAI credentials from the `openai-api-key` Secret.
-- [x] **External model inference (GPT-5-Codex)** — Working via Continue and OpenCode using OpenShift token (`oc whoami -t`). Dedicated routing path bypasses BBR plugin. Not Playground-compatible (Playground uses `remote::vllm` which only supports `/chat/completions`).
-- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for `/chat/completions` models. GPT-5-Codex has manually managed policies via GitOps.
-- [x] **remote::openai LlamaStack provider** — Verified that manually patching the LlamaStack ConfigMap to use `remote::openai` instead of `remote::vllm` enables GPT-5 model responses via `/v1/responses`. However, the `gen-ai-ui` overwrites the ConfigMap on Playground recreation.
-- [x] **GPT-5-Codex /v1/responses routing** — Dedicated routing path working: HTTPRoute (`/maas/gpt-5-codex/v1/responses` → `api.openai.com`), EnvoyFilter (disables `ext_proc.bbr` + injects OpenAI credential), AuthPolicy (accepts OpenShift tokens), TokenRateLimitPolicy (overrides gateway-default-deny). Tested with Continue and OpenCode.
+- [x] **External model inference (GPT-4o/4o-mini)** — Working in Playground, Continue, OpenCode, and via MaaS API. The `payload-processing` BBR plugin injects OpenAI credentials from the `openai-api-key` Secret.
+- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
+- [x] **Continue — 4 models configured** — All 4 models working via `.vscode/config.yaml` with `sk-oai-*` API key auth.
+- [x] **OpenCode — 4 models configured** — All 4 models working via `.opencode/opencode.json` (one provider per model) with `sk-oai-*` API key auth. Nemotron is the default model, gpt-4o-mini is the small model.
 
 ## Completed
 
-- [x] ~~**GPT-5-Codex /v1/responses routing (SOLVED)** — The BBR plugin only supports `/chat/completions`, so a dedicated routing path was created for GPT-5-Codex: separate HTTPRoute, EnvoyFilter (disables `ext_proc.bbr` + injects OpenAI credential), AuthPolicy (accepts OpenShift tokens instead of `sk-oai-*` keys), and TokenRateLimitPolicy. Works with Continue and OpenCode. Not Playground-compatible (gen-ai-ui limitation). Investigation history preserved in git.~~
+- [x] ~~**GPT-5-Codex /v1/responses routing (PROVEN, REMOVED)** — The BBR plugin only supports `/chat/completions`, so a dedicated routing path was created for GPT-5-Codex: separate HTTPRoute, EnvoyFilter (disables `ext_proc.bbr` + injects OpenAI credential), AuthPolicy (accepts OpenShift tokens instead of `sk-oai-*` keys), and TokenRateLimitPolicy. Worked with Continue and OpenCode but was not Playground-compatible (gen-ai-ui limitation). Removed from the demo to simplify to a clean 4-model architecture where all models use the same auth method (`sk-oai-*` keys) and API (`/v1/chat/completions`). The routing solution is preserved in git history and can be reapplied when the BBR plugin adds native `/v1/responses` support.~~
+- [x] ~~**remote::openai LlamaStack provider (INVESTIGATED)** — Verified that manually patching the LlamaStack ConfigMap to use `remote::openai` instead of `remote::vllm` enables GPT-5 model responses via `/v1/responses`. However, the `gen-ai-ui` overwrites the ConfigMap on Playground recreation. Investigation preserved in git history.~~
 - [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
 - [x] ~~**Devfile-based Continue auto-configuration** — Created `adnan-drina/coding-exercises` repo with `devfile.yaml` that auto-copies Continue config via postStart.~~
 - [x] ~~**OpenCode CLI in Dev Spaces** — Installed via postStart in DevWorkspace.~~
-- [x] ~~**ExternalModel support** — Deployed upstream `maas-controller` alongside RHOAI 3.3 operator. 3 OpenAI models (gpt-4o, gpt-4o-mini, gpt-5-codex) registered as `ExternalModel` CRDs.~~
+- [x] ~~**ExternalModel support** — Deployed upstream `maas-controller` alongside RHOAI 3.3 operator. 2 OpenAI models (gpt-4o, gpt-4o-mini) registered as `ExternalModel` CRDs.~~
 - [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs in `gitops/step-03-llm-serving-maas/base/`.~~
 - [x] ~~**RHOAI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary does not implement model discovery from Kubernetes resources. Reverted to RHOAI 3.3 + upstream maas-controller.~~
