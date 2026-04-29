@@ -28,49 +28,50 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
   **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
 
-## Known Limitations
-
-- [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency — candidate for upstream issue in `opendatahub-io/odh-dashboard`.
-
-- [ ] **Playground shows no response for reasoning models** — Both `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` produce output via `reasoning_text` streaming events (the model images have built-in reasoning parsers). The RHOAI 3.3 Playground UI renders `output_text` events only, so responses appear empty. LlamaStack correctly receives and returns the response (verified via direct `/v1/responses` calls). This is a UI rendering limitation — the Playground doesn't display `reasoning_text` content. The models work correctly via API (curl, Continue, OpenCode).
-
-- [ ] **Track upstream MaaS deployment alignment** — The [upstream models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) repo has a `deploy.sh` script with `--operator-type rhoai`. This repo now GitOps-manages the key pieces directly (PostgreSQL, `maas-db-config`, `maas-controller`, upstream CRDs, and MaaS CRs), because the upstream script initially failed on this cluster due to operator version expectations. **Next step:** periodically compare the committed `maas-controller-upstream/` manifests with upstream changes and remove local copies once RHOAI ships equivalent native support.
-
 ## Workarounds (upstream maas-controller coexistence with RHOAI 3.3)
 
 The following items maintain the hybrid architecture where the upstream `maas-controller` runs alongside the RHOAI 3.3 operator. When RHOAI ships the `maas-controller` natively, these can be removed.
 
-- [ ] **RHOAI/upstream `maas-api` ownership conflict** — The RHOAI 3.3 operator and upstream tenant reconciler generate incompatible `maas-api` Deployment selectors. For this hybrid demo, the tenant-managed `maas-api` deployment is patched to `quay.io/opendatahub/maas-api:latest`, because the RHOAI 3.3 image does not list `ExternalModel` CRs. The RHOAI DSC may still report `ModelsAsServiceReady=False` because the 3.3 operator cannot apply its older selector.
+- [ ] **maas-api image pinning** (`jobs/patch-maas-api-storage.yaml`) — The RHOAI 3.3 `maas-api` binary does not implement model discovery from `MaaSModelRef`/`ExternalModel` CRDs. A post-deploy Job pins the tenant-managed deployment to `quay.io/opendatahub/maas-api:latest` which has Kubernetes watchers for model discovery. The RHOAI DSC may still report `ModelsAsServiceReady=False`.
   **Fragility:** If the RHOAI operator recreates the deployment or rewrites `maas-parameters`, rerun the `job-patch-maas-api-storage` Job.
-
-- [ ] **RHOAI DSC status error (non-blocking)** — `DataScienceCluster/default-dsc` can remain `Ready=False` on `ModelsAsServiceReady` while the MaaS route, `maas-api`, `maas-controller`, and generated MaaS CRs are healthy. Validate the demo path through `/maas-api/v1/models` and the dashboard MaaS tab.
 
 - [ ] **`models-as-a-service` namespace** — The upstream `maas-api` expects `MaaSAuthPolicy` and `MaaSSubscription` CRs in the `models-as-a-service` namespace (hardcoded in the kustomize overlay's `params.env`). The namespace and policy CRs are GitOps-managed under `models-maas-crds/`.
 
-- [ ] **Dashboard Route** — The RHOAI dashboard is accessed via a manually created OpenShift Route (`passthrough` TLS to `rhods-dashboard:8443`). The operator's `data-science-gateway` uses ClusterIP only.
+- [ ] **Dashboard Route** — The RHOAI dashboard is accessed via the `rh-ai.*` hostname through the `data-science-gateway`. The operator's default `rhods-dashboard` Route redirects to the gateway.
 
 - [ ] **ExternalModel credential Secret label** — Secrets referenced by `ExternalModel.spec.credentialRef` must have the label `inference.networking.k8s.io/bbr-managed=true` for the payload-processing (IPP) plugin to discover them.
 
+- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground's `gen-ai-ui` calls.
+
+## Known Limitations
+
+- [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
+
+- [ ] **GPT-5 models not compatible with Playground** — GPT-5 models (`gpt-5-codex`, `gpt-5-mini`) use OpenAI's `/v1/responses` API instead of `/v1/chat/completions`. The RHOAI Playground's `gen-ai-ui` creates LlamaStack with `remote::vllm` provider which calls `/v1/chat/completions`. GPT-5 can be manually configured with `remote::openai` provider in the LlamaStack ConfigMap, but the `gen-ai-ui` overwrites this on Playground recreation. GPT-5 models work via direct MaaS API key access.
+
+- [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency.
+
 ## Planned
 
-- [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole (read-only access to all namespaces). Explore namespace-scoped RoleBindings or a custom ClusterRole for tighter security.
+- [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to step-03 README.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
 
 ## Validated (2026-04-29)
 
-- [x] **Upstream MaaS API — 3 models listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, and `openai-gpt-4o` as `ready=true`. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
-- [x] **API key generation** — API keys are generated via `/maas-api/v1/tokens`, bridged to the upstream `/v1/api-keys` endpoint, and stored in PostgreSQL.
-- [x] **Local model inference** — Both GPU models respond HTTP 200 to `/v1/chat/completions` via MaaS Gateway. Nemotron uses `reasoning_content` field; GPT-OSS-20B produces clean output.
-- [x] **External model inference** — OpenAI GPT-4o responds HTTP 200 via `/maas/openai-gpt-4o/v1/chat/completions`. The MaaS Gateway authenticates the user, strips their API key, injects the OpenAI provider credential, and forwards to `api.openai.com`. Requires `inference.networking.k8s.io/bbr-managed=true` label on the credential Secret.
-- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller in `maas` namespace.
+- [x] **MaaS API — 5 models listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, `gpt-4o-mini`, and `gpt-5-codex` as `ready=true`. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
+- [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
+- [x] **Local model inference** — Both GPU models respond in the Playground and via MaaS API.
+- [x] **External model inference (GPT-4o/4o-mini)** — Working in Playground and via MaaS API. The `payload-processing` BBR plugin injects OpenAI credentials from the `openai-api-key` Secret.
+- [x] **External model inference (GPT-5-Codex)** — Working via MaaS API key. Not compatible with Playground (uses `/v1/responses` API). Can be used by code agents through MaaS portal.
+- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller.
+- [x] **remote::openai LlamaStack provider** — Verified that manually patching the LlamaStack ConfigMap to use `remote::openai` instead of `remote::vllm` enables GPT-5 model responses via `/v1/responses`. However, the `gen-ai-ui` overwrites the ConfigMap on Playground recreation.
 
 ## Completed
 
 - [x] ~~**Automated MaaS API validation** — implemented in `step-03/validate.sh`.~~
-- [x] ~~**Devfile-based Continue auto-configuration** — Created `adnan-drina/coding-exercises` repo with `devfile.yaml` that auto-copies Continue config via postStart. DevWorkspaces now clone this repo instead of the full quickstart.~~
-- [x] ~~**Component-per-operator extraction** — Deferred; current structure works well for 4-step demo.~~
-- [x] ~~**Multi-version overlay structure** — Deferred; only RHOAI 3.3 needed for now.~~
-- [x] ~~**OpenCode CLI in Dev Spaces** — Installed via postStart in DevWorkspace. Binary downloaded from GitHub releases to `~/.local/bin/`. Developer uses `/connect` to configure MaaS endpoint.~~
-- [x] ~~**ExternalModel support** — Deployed upstream `maas-controller` alongside RHOAI 3.3 operator. OpenAI GPT-4o registered as `ExternalModel` CRD with `MaaSModelRef`, `MaaSAuthPolicy`, `MaaSSubscription`. All 3 models (2 local + 1 external) visible in MaaS API and serving inference.~~
-- [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller deployment, PostgreSQL, `models-as-a-service` namespace, ExternalModel CRs, and MaaS policy CRs are wired into `gitops/step-03-llm-serving-maas/base/` for repeatable deployment.~~
+- [x] ~~**Devfile-based Continue auto-configuration** — Created `adnan-drina/coding-exercises` repo with `devfile.yaml` that auto-copies Continue config via postStart.~~
+- [x] ~~**OpenCode CLI in Dev Spaces** — Installed via postStart in DevWorkspace.~~
+- [x] ~~**ExternalModel support** — Deployed upstream `maas-controller` alongside RHOAI 3.3 operator. 3 OpenAI models (gpt-4o, gpt-4o-mini, gpt-5-codex) registered as `ExternalModel` CRDs.~~
+- [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs in `gitops/step-03-llm-serving-maas/base/`.~~
+- [x] ~~**RHOAI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary does not implement model discovery from Kubernetes resources. Reverted to RHOAI 3.3 + upstream maas-controller.~~

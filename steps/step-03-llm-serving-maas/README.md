@@ -3,7 +3,7 @@
 
 ## Overview
 
-Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and an **external model** (OpenAI GPT-4o via the `ExternalModel` CRD), exposing all through **Models-as-a-Service (MaaS)**.
+Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and three **external models** (OpenAI GPT-4o, GPT-4o-mini, and GPT-5-Codex via the `ExternalModel` CRD), exposing all 5 models through **Models-as-a-Service (MaaS)**.
 
 The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. A post-deploy Job pins the tenant-managed `maas-api` deployment to `quay.io/opendatahub/maas-api:latest`, because the RHOAI 3.3 API image does not list `ExternalModel` CRs.
 
@@ -28,7 +28,9 @@ LLM Serving + MaaS
 ├── Models (namespace: maas)
 │   ├── gpt-oss-20b               → Local GPU model (LLMInferenceService + MaaSModelRef)
 │   ├── nemotron-3-nano-30b-a3b   → Local GPU model (LLMInferenceService + MaaSModelRef)
-│   └── openai-gpt-4o             → External model (ExternalModel + MaaSModelRef)
+│   ├── gpt-4o                    → External model (ExternalModel, Playground compatible)
+│   ├── gpt-4o-mini               → External model (ExternalModel, Playground compatible)
+│   └── gpt-5-codex               → External model (ExternalModel, API-only)
 ├── MaaS Governance (namespace: models-as-a-service)
 │   ├── MaaSAuthPolicy            → Per-model access control (groups)
 │   ├── MaaSSubscription          → Per-model token rate limits
@@ -53,7 +55,9 @@ LLM Serving + MaaS
 |-------|------|----------|--------|
 | gpt-oss-20b | Local (GPU, vLLM) | `/maas/gpt-oss-20b/v1/chat/completions` | `system:authenticated` |
 | nemotron-3-nano-30b-a3b | Local (GPU, vLLM) | `/maas/nemotron-3-nano-30b-a3b/v1/chat/completions` | `system:authenticated` |
-| openai-gpt-4o | External (OpenAI API) | `/maas/openai-gpt-4o/v1/chat/completions` | `system:authenticated` |
+| gpt-4o | External (OpenAI API) | `/maas/gpt-4o/v1/chat/completions` | `system:authenticated` |
+| gpt-4o-mini | External (OpenAI API) | `/maas/gpt-4o-mini/v1/chat/completions` | `system:authenticated` |
+| gpt-5-codex | External (OpenAI API) | `/maas/gpt-5-codex/v1/responses` | `system:authenticated` |
 
 Access is controlled via `MaaSAuthPolicy` CRDs in the `models-as-a-service` namespace. Token rate limits (50,000 tokens/hour per model) are defined in `MaaSSubscription` CRDs. The per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace are auto-created by the `maas-controller`.
 
@@ -85,14 +89,14 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 4. The **Models** tab shows available models with their status and playground access
 5. The **Models as a service** tab shows models with MaaS badges, external endpoints, and tier information
 
-**Expect:** `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, and `openai-gpt-4o` visible with **Active** status in the Models as a service tab.
+**Expect:** All 5 models visible with **Active** status in the Models as a service tab.
 
 ### Viewing Endpoints and Generating API Keys
 
 > The developer selects a MaaS model to get connection details.
 
 1. Click **View** on any model in the Models as a service tab
-2. The endpoint details show the external API endpoint URL (e.g., `https://maas.<cluster>/maas/openai-gpt-4o`)
+2. The endpoint details show the external API endpoint URL (e.g., `https://maas.<cluster>/maas/gpt-4o-mini`)
 3. Click **Generate API key** to create a MaaS API key
 4. Copy the endpoint URL and key for use in applications (keys are stored in PostgreSQL, not as ServiceAccount tokens)
 
@@ -133,7 +137,7 @@ oc get maassubscription -n models-as-a-service
 oc get authpolicy,tokenratelimitpolicy -n maas
 ```
 
-**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route policies auto-created for all 3 models.
+**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route policies auto-created for all 5 models.
 
 ## Key Takeaways
 

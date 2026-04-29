@@ -62,12 +62,18 @@ else
   VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
-log_step "ExternalModel"
-check "ExternalModel openai-gpt-4o exists" \
-  "oc get externalmodel openai-gpt-4o -n maas -o jsonpath='{.spec.provider}'" \
+log_step "ExternalModels"
+check "ExternalModel gpt-4o exists" \
+  "oc get externalmodel gpt-4o -n maas -o jsonpath='{.spec.provider}'" \
   "openai"
-check "MaaSModelRef openai-gpt-4o ready" \
-  "oc get maasmodelref openai-gpt-4o -n maas -o jsonpath='{.status.phase}'" \
+check "ExternalModel gpt-4o-mini exists" \
+  "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
+  "openai"
+check "ExternalModel gpt-5-codex exists" \
+  "oc get externalmodel gpt-5-codex -n maas -o jsonpath='{.spec.provider}'" \
+  "openai"
+check "MaaSModelRef gpt-4o ready" \
+  "oc get maasmodelref gpt-4o -n maas -o jsonpath='{.status.phase}'" \
   "Ready"
 
 log_step "MaaS CRDs (upstream)"
@@ -82,9 +88,9 @@ log_step "Governance"
 check "Per-route AuthPolicy for gpt-oss-20b" \
   "oc get authpolicy maas-auth-gpt-oss-20b -n maas -o jsonpath='{.metadata.name}'" \
   "maas-auth-gpt-oss-20b"
-check "Per-route AuthPolicy for openai-gpt-4o" \
-  "oc get authpolicy maas-auth-openai-gpt-4o -n maas -o jsonpath='{.metadata.name}'" \
-  "maas-auth-openai-gpt-4o"
+check "Per-route AuthPolicy for gpt-4o" \
+  "oc get authpolicy maas-auth-gpt-4o -n maas -o jsonpath='{.metadata.name}'" \
+  "maas-auth-gpt-4o"
 
 log_step "MCP Servers"
 check_warn "OpenShift MCP running" \
@@ -109,8 +115,10 @@ if [ -n "$GATEWAY_HOST" ]; then
     MODEL_NAMES=$(printf '%s' "$MODELS_JSON" | python3 -c 'import json,sys; print("\n".join(sorted(m.get("id","") for m in (json.load(sys.stdin).get("data") or []))))' 2>/dev/null || true)
     if printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-oss-20b" && \
        printf '%s\n' "$MODEL_NAMES" | grep -qx "nemotron-3-nano-30b-a3b" && \
-       printf '%s\n' "$MODEL_NAMES" | grep -qx "openai-gpt-4o"; then
-      echo -e "${GREEN}[PASS]${NC} MaaS API lists local models and external OpenAI model"
+       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-4o" && \
+       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-4o-mini" && \
+       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-5-codex"; then
+      echo -e "${GREEN}[PASS]${NC} MaaS API lists 5 models (2 local + 3 external)"
       VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
       echo -e "${YELLOW}[WARN]${NC} MaaS API model list missing expected entries: ${MODEL_NAMES:-none}"
