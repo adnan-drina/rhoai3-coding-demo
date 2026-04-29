@@ -1,0 +1,37 @@
+# Tier-to-group mapping ConfigMap in redhat-ods-applications
+# Required by the RHOAI validating webhook for LLMInferenceService resources
+# that use the alpha.maas.opendatahub.io/tiers annotation.
+# The dev-preview maas-api creates this in the maas-api namespace,
+# but the webhook looks in redhat-ods-applications.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tier-to-group-mapping
+  namespace: redhat-ods-applications
+  labels:
+    app: maas-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/name: maas-api
+    app.kubernetes.io/part-of: models-as-a-service
+    component: tier-mapping
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+data:
+  tiers: |
+    - name: free
+      displayName: Free Tier
+      level: 0
+      groups:
+        - tier-free-users
+        - system:authenticated
+    - name: premium
+      displayName: Premium Tier
+      level: 1
+      groups:
+        - tier-premium-users
+    - name: enterprise
+      displayName: Enterprise Tier
+      level: 2
+      groups:
+        - tier-enterprise-users
+        - system:cluster-admins

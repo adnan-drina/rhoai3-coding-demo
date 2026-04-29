@@ -1,5 +1,5 @@
-# OpenAI gpt-oss-20b — published to MaaS, available to all tiers
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas#publish-models-with-maas_maas-deploy
+# OpenAI gpt-oss-20b — available to all tiers (free, premium, enterprise)
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -9,6 +9,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     alpha.maas.opendatahub.io/tiers: '["free","premium","enterprise"]'
+    openshift.io/display-name: OpenAI gpt-oss-20b
+    opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
   labels:
     opendatahub.io/dashboard: "true"

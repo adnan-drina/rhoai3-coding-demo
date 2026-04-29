@@ -1,12 +1,10 @@
-# MaaSSubscription — defines per-model token rate limits for groups.
-# The maas-controller creates per-route TokenRateLimitPolicies from this.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
   name: all-models-subscription
   namespace: models-as-a-service
   annotations:
-    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-wave: "18"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   owner:
@@ -19,6 +17,11 @@ spec:
         - limit: 50000
           window: "1h"
     - name: nemotron-3-nano-30b-a3b
+      namespace: maas
+      tokenRateLimits:
+        - limit: 50000
+          window: "1h"
+    - name: openai-gpt-4o
       namespace: maas
       tokenRateLimits:
         - limit: 50000

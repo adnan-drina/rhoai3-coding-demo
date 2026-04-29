@@ -1,6 +1,6 @@
-# NVIDIA Nemotron 3 Nano 30B A3B FP8 — published to MaaS, premium + enterprise tiers
+# NVIDIA Nemotron 3 Nano 30B A3B FP8 — premium + enterprise tiers only
 # Primary model for the code assistant demo
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas#publish-models-with-maas_maas-deploy
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -10,6 +10,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     alpha.maas.opendatahub.io/tiers: '["premium","enterprise"]'
+    openshift.io/display-name: NVIDIA Nemotron 3 Nano 30B A3B FP8
+    opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
   labels:
     opendatahub.io/dashboard: "true"
