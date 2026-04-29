@@ -1,11 +1,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# LLM Serving with Models-as-a-Service (RHOAI 3.4 operator-native)
-# The RHOAI operator manages maas-api, tier ConfigMap, RBAC, and AuthPolicies.
-# Models opt in to MaaS via the alpha.maas.opendatahub.io/tiers annotation
-# and router.gateway.refs pointing to maas-default-gateway.
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas
+# LLM Serving with Models-as-a-Service (RHOAI 3.4)
+#
+# The RHOAI operator manages: maas-api, maas-controller, maas-api-auth-policy, tier ConfigMap.
+# We manually install (per upstream ODH recommendation):
+#   - Gateway + GatewayClass (prerequisite for modelsAsService)
+#   - Gateway AuthPolicy (tier-based auth for model inference)
+#   - Usage Policies (RateLimitPolicy + TokenRateLimitPolicy)
+#   - MaaS CRDs (MaaSModelRef, MaaSAuthPolicy, MaaSSubscription)
+#   - PostgreSQL for maas-api database
+#   - Authorino SSL fix
+#
+# Ref: https://opendatahub-io.github.io/models-as-a-service/v0.0.2/install/maas-setup/
 
 resources:
   # Wave 0-3: MaaS operator prerequisites (LWS, RHCL, CNPG)
@@ -26,7 +33,7 @@ resources:
   - grafana/instance.yaml
   # Wave 0: Kuadrant system namespace
   - governance/kuadrant-system-ns.yaml
-  # Wave 4-5: Gateway infrastructure (must exist before models at wave 10)
+  # Wave 4-5: Gateway infrastructure (must exist before modelsAsService can activate)
   - gateway/gatewayclass.yaml
   - gateway/maas-gateway.yaml
   # Wave 5-6: Project namespaces + user RBAC + MaaS tier groups
@@ -34,11 +41,16 @@ resources:
   - models/admin-rbac.yaml
   - models/developer-project.yaml
   - governance/maas-groups.yaml
-  # Wave 10: Kuadrant CR
+  # Wave 8-9: Authorino SSL fix (required for API key validation)
+  - jobs/configure-authorino-ssl.yaml
+  # Wave 10: Kuadrant CR + Gateway policies (auth, rate limits, token limits)
   - governance/kuadrant.yaml
+  - gateway-policies/
   # Wave 10: Models (LLMInferenceService — operator auto-creates RBAC via tiers annotation)
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
+  # Wave 15-16: MaaS CRDs (MaaSModelRef, MaaSAuthPolicy, MaaSSubscription)
+  - maas-crds/
   # Wave 15-16: MCP servers
   - mcp/
   # Wave 20-22: Grafana dashboards + Jobs
