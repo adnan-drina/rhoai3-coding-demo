@@ -12,9 +12,9 @@ spec:
       namespace: maas
     - name: nemotron-3-nano-30b-a3b
       namespace: maas
-    - name: gpt-5-codex
+    - name: gpt-4o
       namespace: maas
-    - name: gpt-5-mini
+    - name: gpt-4o-mini
       namespace: maas
   subjects:
     groups:
