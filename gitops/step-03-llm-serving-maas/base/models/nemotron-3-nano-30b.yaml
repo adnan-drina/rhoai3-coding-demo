@@ -13,6 +13,7 @@ metadata:
     security.opendatahub.io/enable-auth: "true"
   labels:
     opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
 spec:
   model:
     name: nemotron-3-nano-30b-a3b
