@@ -1,0 +1,34 @@
+# AuthPolicy for /v1/responses — kubernetes-tokens only.
+# Cannot use sk-oai-* API keys because key validation depends on ext_proc
+# metadata which is disabled on this route.
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: gpt-5-codex-responses-auth
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: gpt-5-codex-responses
+  rules:
+    authentication:
+      kubernetes-tokens:
+        kubernetesTokenReview:
+          audiences:
+          - https://kubernetes.default.svc
+        metrics: false
+    authorization: {}
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                userid:
+                  expression: auth.identity.user.username
+                tier:
+                  expression: '"enterprise"'
