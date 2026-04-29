@@ -17,6 +17,8 @@ resources:
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
   - cloudnative-pg/subscription.yaml
+  # Wave 3: MaaS API database (prerequisite for operator-managed maas-api)
+  - maas-database/
   # Wave 0-5: Grafana operator
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
