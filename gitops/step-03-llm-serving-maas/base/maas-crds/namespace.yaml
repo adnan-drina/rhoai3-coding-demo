@@ -1,0 +1,8 @@
+# The maas-controller expects MaaSAuthPolicy and MaaSSubscription in this namespace
+# (configured via MAAS_SUBSCRIPTION_NAMESPACE env var on the maas-controller)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
