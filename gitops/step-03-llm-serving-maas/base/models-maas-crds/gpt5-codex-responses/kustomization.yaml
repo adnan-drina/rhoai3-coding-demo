@@ -5,3 +5,4 @@ resources:
   - authpolicy.yaml
   - token-rate-limit.yaml
   - envoyfilter.yaml
+  - patch-envoyfilter-key.yaml
