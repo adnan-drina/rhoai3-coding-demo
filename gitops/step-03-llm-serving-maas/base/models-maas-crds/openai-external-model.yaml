@@ -1,3 +1,8 @@
+# OpenAI external models — accessed via MaaS Gateway with credential injection
+# The ExternalModel name MUST match the provider's model name exactly,
+# otherwise the payload-processing plugin rejects the request.
+# See: https://github.com/opendatahub-io/models-as-a-service/issues/684
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -9,20 +14,19 @@ metadata:
     argocd.argoproj.io/sync-wave: "16"
 type: Opaque
 stringData:
-  # Placeholder — replace with real OpenAI API key via SealedSecret or .env
   api-key: "REPLACE_WITH_OPENAI_API_KEY"
 ---
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: ExternalModel
 metadata:
-  name: openai-gpt-4o
+  name: gpt-5-codex
   namespace: maas
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   provider: openai
-  targetModel: gpt-4o
+  targetModel: gpt-5-codex
   endpoint: api.openai.com
   credentialRef:
     name: openai-api-key
@@ -30,7 +34,7 @@ spec:
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
-  name: openai-gpt-4o
+  name: gpt-5-codex
   namespace: maas
   annotations:
     argocd.argoproj.io/sync-wave: "17"
@@ -38,4 +42,32 @@ metadata:
 spec:
   modelRef:
     kind: ExternalModel
-    name: openai-gpt-4o
+    name: gpt-5-codex
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: gpt-5-mini
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider: openai
+  targetModel: gpt-5-mini
+  endpoint: api.openai.com
+  credentialRef:
+    name: openai-api-key
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: gpt-5-mini
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: gpt-5-mini
