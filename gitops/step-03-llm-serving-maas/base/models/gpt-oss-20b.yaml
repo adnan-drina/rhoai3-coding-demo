@@ -12,6 +12,7 @@ metadata:
     security.opendatahub.io/enable-auth: "true"
   labels:
     opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
 spec:
   model:
     name: gpt-oss-20b
