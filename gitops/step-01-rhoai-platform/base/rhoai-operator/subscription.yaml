@@ -1,5 +1,5 @@
-# RHOAI 3.3.x via stable-3.3 channel (matches public quickstart)
-# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+# RHOAI 3.4 via alpha channel (Technology Preview features including MaaS)
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/understanding-update-channels_install
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
@@ -9,8 +9,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   name: rhods-operator
-  channel: stable-3.3
-  startingCSV: rhods-operator.3.3.0
+  channel: alpha
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic

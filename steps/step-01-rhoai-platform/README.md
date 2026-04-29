@@ -1,11 +1,11 @@
 # Step 01: RHOAI Platform
-**"The governed AI platform"** — Install Red Hat OpenShift AI 3.3 with platform dependencies, GenAI Studio, and a minimal DataScienceCluster on OCP 4.20.
+**"The governed AI platform"** — Install Red Hat OpenShift AI 3.4 with platform dependencies, GenAI Studio, and a minimal DataScienceCluster on OCP 4.20.
 
 ## Overview
 
-This step deploys the **Red Hat OpenShift AI 3.3** platform layer, including all operator dependencies required for the AI platform to function. After this step, the RHOAI Dashboard is accessible, GenAI Studio is enabled, and the platform is ready for GPU enablement and model serving.
+This step deploys the **Red Hat OpenShift AI 3.4** platform layer, including all operator dependencies required for the AI platform to function. After this step, the RHOAI Dashboard is accessible, GenAI Studio is enabled, and the platform is ready for GPU enablement and model serving.
 
-> This configuration follows the [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant), using RHOAI 3.3 on the `stable-3.3` channel with a minimal DSC component set.
+> Uses the RHOAI `alpha` channel for Technology Preview features including operator-native Models-as-a-Service. See [Understanding update channels](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/understanding-update-channels_install).
 
 ### What Gets Deployed
 
@@ -16,14 +16,14 @@ RHOAI Platform
 │   ├── cert-manager Operator     → TLS certificates for KServe, Llama Stack
 │   ├── OpenShift Serverless      → KnativeServing for model serving
 │   └── Service Mesh 3            → Auto-installed via DSCInitialization
-├── RHOAI Operator                → stable-3.3 channel
+├── RHOAI Operator                → alpha channel (RHOAI 3.4)
 ├── DSCInitialization             → Monitoring, Service Mesh, CA bundle
-├── DataScienceCluster            → Minimal component set (quickstart-aligned)
+├── DataScienceCluster            → Operator-native MaaS via modelsAsService
 │   ├── kserve: Managed           → Model serving runtime
+│   │   └── modelsAsService: Managed → Operator-native MaaS (maas-api, tiers, RBAC)
 │   ├── llamastackoperator: Managed → Required for GenAI Playground
 │   ├── dashboard: Managed        → RHOAI Dashboard
 │   ├── workbenches: Managed      → Jupyter / VS Code workbenches
-│   ├── modelmeshserving: Managed → ModelMesh
 │   ├── modelregistry: Managed    → Model Registry
 │   └── trustyai: Managed         → Model bias / explainability
 ├── Users & Authentication
@@ -59,9 +59,9 @@ Manifests: [`gitops/step-01-rhoai-platform/base/`](../../gitops/step-01-rhoai-pl
 
 ## References
 
-- [Managing Model Registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_model_registries)
-- [RHOAI 3.3 Installation Guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
-- [RHOAI 3.3 Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/release_notes/index)
+- [RHOAI 3.4 Installation Guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install)
+- [Understanding Update Channels](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/installing_and_uninstalling_openshift_ai_self-managed/understanding-update-channels_install)
+- [Managing Model Registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_model_registries)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [Red Hat OpenShift AI — Product Page](https://www.redhat.com/en/products/ai/openshift-ai)
 
