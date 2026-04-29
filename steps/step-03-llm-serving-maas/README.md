@@ -3,7 +3,7 @@
 
 ## Overview
 
-Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and three **external models** (OpenAI GPT-4o, GPT-4o-mini, and GPT-5-Codex via the `ExternalModel` CRD), exposing all 5 models through **Models-as-a-Service (MaaS)**.
+Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and two **external models** (OpenAI GPT-4o and GPT-4o-mini via the `ExternalModel` CRD), exposing all 4 models through **Models-as-a-Service (MaaS)**.
 
 The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. A post-deploy Job pins the tenant-managed `maas-api` deployment to `quay.io/opendatahub/maas-api:latest`, because the RHOAI 3.3 API image does not list `ExternalModel` CRs.
 
@@ -29,13 +29,7 @@ LLM Serving + MaaS
 │   ├── gpt-oss-20b               → Local GPU model (LLMInferenceService + MaaSModelRef)
 │   ├── nemotron-3-nano-30b-a3b   → Local GPU model (LLMInferenceService + MaaSModelRef)
 │   ├── gpt-4o                    → External model (ExternalModel, Playground compatible)
-│   ├── gpt-4o-mini               → External model (ExternalModel, Playground compatible)
-│   └── gpt-5-codex               → External model (ExternalModel, API-only)
-├── GPT-5-Codex /v1/responses Route (namespace: maas)
-│   ├── HTTPRoute                  → /maas/gpt-5-codex/v1/responses → api.openai.com/v1/responses
-│   ├── EnvoyFilter                → Disables ext_proc.bbr + injects OpenAI credential via request_headers_to_add
-│   ├── AuthPolicy                 → Accepts OpenShift tokens (oc whoami -t), not sk-oai-* API keys
-│   └── TokenRateLimitPolicy       → Overrides gateway-default-deny for the /v1/responses path
+│   └── gpt-4o-mini               → External model (ExternalModel, Playground compatible)
 ├── MaaS Governance (namespace: models-as-a-service)
 │   ├── MaaSAuthPolicy            → Per-model access control (groups)
 │   ├── MaaSSubscription          → Per-model token rate limits
@@ -56,28 +50,21 @@ LLM Serving + MaaS
     └── MaaS Usage Dashboard
 ```
 
-| Model | Type | API | Auth Method | Playground | Continue |
-|-------|------|-----|-------------|-----------|----------|
-| nemotron-3-nano-30b-a3b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes |
-| gpt-oss-20b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes |
-| gpt-4o | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes |
-| gpt-4o-mini | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes |
-| gpt-5-codex | External (OpenAI API) | `/v1/responses` | OpenShift token (`oc whoami -t`) | No | Yes |
+| Model | Type | API | Auth Method | Playground | Continue | OpenCode |
+|-------|------|-----|-------------|-----------|----------|----------|
+| nemotron-3-nano-30b-a3b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes (default) |
+| gpt-oss-20b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes |
+| gpt-4o | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes |
+| gpt-4o-mini | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes (small_model) |
 
 ### Access Control
 
-The 4 `/chat/completions` models are governed by the standard MaaS pipeline:
+All 4 models are governed by the standard MaaS pipeline:
 - `MaaSAuthPolicy` CRDs in `models-as-a-service` namespace define group-based access
 - `MaaSSubscription` CRDs define per-model token rate limits (50,000 tokens/hour)
 - The `maas-controller` auto-creates per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace
 - Authentication uses `sk-oai-*` API keys validated by the `payload-processing` BBR plugin via `ext_proc`
-
-GPT-5-Codex (`/v1/responses`) uses a dedicated routing path because the BBR plugin only supports `/chat/completions`:
-- A separate HTTPRoute routes `/maas/gpt-5-codex/v1/responses` directly to `api.openai.com/v1/responses`
-- An EnvoyFilter disables `ext_proc.bbr` on this route and injects the OpenAI credential via `request_headers_to_add`
-- An AuthPolicy accepts OpenShift tokens (`kubernetes-tokens` auth) instead of `sk-oai-*` keys
-- A TokenRateLimitPolicy overrides the `gateway-default-deny` for this path
-- Playground is not supported because `gen-ai-ui` always generates LlamaStack with `remote::vllm` (which uses `/chat/completions`)
+- All models use the standard `/v1/chat/completions` API and are Playground-compatible
 
 > **Design Decision:** ExternalModel name MUST match the provider's model name exactly (e.g., `gpt-4o`, not `openai-gpt-4o`) because the payload-processing BBR plugin validates `targetModel` against the request body `model` field. Tracked: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
 
@@ -109,7 +96,7 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 4. The **Models** tab shows available models with their status and playground access
 5. The **Models as a service** tab shows models with MaaS badges, external endpoints, and tier information
 
-**Expect:** All 5 models visible with **Active** status in the Models as a service tab.
+**Expect:** All 4 models visible with **Active** status in the Models as a service tab.
 
 ### Viewing Endpoints and Generating API Keys
 
@@ -120,7 +107,7 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 3. Click **Generate API key** to create a MaaS API key
 4. Copy the endpoint URL and key for use in applications (keys are stored in PostgreSQL, not as ServiceAccount tokens)
 
-**Expect:** External API endpoint with a working API key generator. Keys work for local GPU models and external `/chat/completions` models (GPT-4o, GPT-4o-mini). GPT-5-Codex uses OpenShift tokens (`oc whoami -t`) instead of MaaS API keys — see [Access Control](#access-control) above.
+**Expect:** External API endpoint with a working API key generator. Keys work for all 4 models — both local GPU models and external OpenAI models use `sk-oai-*` MaaS API keys.
 
 ### Testing in the Playground
 
@@ -137,7 +124,7 @@ The `deploy.sh` applies the ArgoCD Application. All resources including operator
 3. Enter a test prompt: "Write a Python function that reads a CSV file and returns a summary"
 4. Observe the response quality, latency, and token usage
 
-**Expect:** The model responds with functional Python code. Response metadata shows latency and token counts. All models except GPT-5-Codex are Playground-compatible. GPT-5-Codex requires `/v1/responses` which the Playground's LlamaStack (`remote::vllm`) does not support.
+**Expect:** The model responds with functional Python code. Response metadata shows latency and token counts. All 4 models are Playground-compatible.
 
 ### Access Control via MaaS CRDs
 
@@ -157,7 +144,7 @@ oc get maassubscription -n models-as-a-service
 oc get authpolicy,tokenratelimitpolicy -n maas
 ```
 
-**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route policies auto-created for the 4 `/chat/completions` models. GPT-5-Codex has its own manually managed `AuthPolicy` and `TokenRateLimitPolicy` in the `maas` namespace (created via GitOps, not the `maas-controller`).
+**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route `AuthPolicy` and `TokenRateLimitPolicy` resources auto-created by the `maas-controller` for all 4 models.
 
 ## Key Takeaways
 
@@ -182,8 +169,6 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 - [RHOAI 3.3 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
 - [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/)
 - [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684) — ExternalModel naming constraint (BBR plugin targetModel validation)
-- [Envoy AI Gateway — Supported Endpoints](https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-endpoints) — upstream supports `/v1/responses`; ODH fork does not yet
-- [opendatahub-io/ai-gateway-payload-processing](https://github.com/opendatahub-io/ai-gateway-payload-processing) — BBR plugin that handles `/chat/completions` only
 
 ## Next Steps
 
