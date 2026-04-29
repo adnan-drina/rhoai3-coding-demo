@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Step 03: LLM Serving + MaaS — Validation Script
+# Validates RHOAI 3.4 operator-native MaaS deployment
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +27,12 @@ check "Kuadrant ready" \
   "oc get kuadrant kuadrant -n kuadrant-system -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
   "True"
 
+log_step "MaaS API (operator-managed)"
+check_pods_ready "redhat-ods-applications" "app.kubernetes.io/name=maas-api" 1
+check "tier-to-group-mapping ConfigMap exists" \
+  "oc get configmap tier-to-group-mapping -n redhat-ods-applications -o jsonpath='{.metadata.name}'" \
+  "tier-to-group-mapping"
+
 log_step "Models"
 check "gpt-oss-20b ready" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
@@ -36,10 +43,13 @@ check "nemotron-3-nano-30b-a3b ready" \
 check_pods_ready "maas" "serving.kserve.io/llminferenceservice=gpt-oss-20b" 1
 check_pods_ready "maas" "serving.kserve.io/llminferenceservice=nemotron-3-nano-30b-a3b" 1
 
-log_step "MaaS API (upstream)"
-check_pods_ready "redhat-ods-applications" "app=upstream-maas-api" 1
-check_pods_ready "redhat-ods-applications" "control-plane=maas-controller" 1
-check_pods_ready "redhat-ods-applications" "app=postgres" 1
+log_step "Tier RBAC (auto-created by tiers annotation)"
+check "gpt-oss-20b RoleBindings exist" \
+  "oc get rolebindings -n maas --no-headers 2>/dev/null | grep -c gpt-oss-20b" \
+  "1"
+check_warn "nemotron-3-nano-30b-a3b RoleBindings exist" \
+  "oc get rolebindings -n maas --no-headers 2>/dev/null | grep -c nemotron-3-nano-30b-a3b" \
+  "1"
 
 log_step "MaaS Gateway API"
 GATEWAY_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[?(@.name=="https")].hostname}' 2>/dev/null || echo "")
@@ -50,30 +60,6 @@ else
   echo -e "${YELLOW}[WARN]${NC} No HTTPS listener found on gateway"
   VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
-
-log_step "ExternalModel"
-check "ExternalModel openai-gpt-4o exists" \
-  "oc get externalmodel openai-gpt-4o -n maas -o jsonpath='{.spec.provider}'" \
-  "openai"
-check "MaaSModelRef openai-gpt-4o ready" \
-  "oc get maasmodelref openai-gpt-4o -n maas -o jsonpath='{.status.phase}'" \
-  "Ready"
-
-log_step "MaaS CRDs (upstream)"
-check "MaaSAuthPolicy local-models-access active" \
-  "oc get maasauthpolicy local-models-access -n models-as-a-service -o jsonpath='{.status.phase}'" \
-  "Active"
-check "MaaSSubscription all-models-subscription active" \
-  "oc get maassubscription all-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
-  "Active"
-
-log_step "Governance"
-check "Per-route AuthPolicy for gpt-oss-20b" \
-  "oc get authpolicy maas-auth-gpt-oss-20b -n maas -o jsonpath='{.metadata.name}'" \
-  "maas-auth-gpt-oss-20b"
-check "Per-route AuthPolicy for openai-gpt-4o" \
-  "oc get authpolicy maas-auth-openai-gpt-4o -n maas -o jsonpath='{.metadata.name}'" \
-  "maas-auth-openai-gpt-4o"
 
 log_step "MCP Servers"
 check_warn "OpenShift MCP running" \
@@ -94,12 +80,12 @@ GATEWAY_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonp
 if [ -n "$GATEWAY_HOST" ]; then
   TOKEN=$(oc whoami -t 2>/dev/null || echo "")
   if [ -n "$TOKEN" ]; then
-    MODEL_COUNT=$(curl -sk -H "Authorization: Bearer $TOKEN" "https://${GATEWAY_HOST}/maas-api/v1/models" 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("data") or []))' 2>/dev/null || echo "0")
-    if [ "$MODEL_COUNT" = "3" ]; then
-      echo -e "${GREEN}[PASS]${NC} MaaS API lists 3 models (2 local + 1 external)"
+    MODEL_COUNT=$(curl -sk -H "Authorization: Bearer $TOKEN" "https://${GATEWAY_HOST}/v1/models" 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("data") or []))' 2>/dev/null || echo "0")
+    if [ "$MODEL_COUNT" = "2" ]; then
+      echo -e "${GREEN}[PASS]${NC} MaaS API lists 2 models"
       VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-      echo -e "${YELLOW}[WARN]${NC} MaaS API lists ${MODEL_COUNT} models (expected 3)"
+      echo -e "${YELLOW}[WARN]${NC} MaaS API lists ${MODEL_COUNT} models (expected 2)"
       VALIDATE_WARN=$((VALIDATE_WARN + 1))
     fi
   else

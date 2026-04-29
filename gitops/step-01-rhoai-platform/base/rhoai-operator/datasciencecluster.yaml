@@ -1,5 +1,5 @@
-# RHOAI 3.3 DataScienceCluster — minimal component set matching public quickstart
-# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+# RHOAI 3.4 DataScienceCluster — operator-native MaaS via modelsAsService: Managed
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas
 apiVersion: datasciencecluster.opendatahub.io/v2
 kind: DataScienceCluster
 metadata:

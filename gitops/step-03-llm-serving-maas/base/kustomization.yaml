@@ -1,12 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# LLM Serving with Models-as-a-Service
-# Uses upstream maas-controller from opendatahub-io/models-as-a-service
-# alongside RHOAI 3.3 operator (modelsAsService: Managed in DSC)
+# LLM Serving with Models-as-a-Service (RHOAI 3.4 operator-native)
+# The RHOAI operator manages maas-api, tier ConfigMap, RBAC, and AuthPolicies.
+# Models opt in to MaaS via the alpha.maas.opendatahub.io/tiers annotation
+# and router.gateway.refs pointing to maas-default-gateway.
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas
 
 resources:
-  # Wave 0-2: MaaS operator prerequisites
+  # Wave 0-3: MaaS operator prerequisites (LWS, RHCL, CNPG)
   - leaderworkerset/namespace.yaml
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
@@ -20,24 +22,24 @@ resources:
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
-  # Wave 5: Kuadrant system namespace (operator creates resources here)
+  # Wave 0: Kuadrant system namespace
   - governance/kuadrant-system-ns.yaml
-  # Wave 5-6: Project namespaces + user RBAC
+  # Wave 4-5: Gateway infrastructure (must exist before models at wave 10)
+  - gateway/gatewayclass.yaml
+  - gateway/maas-gateway.yaml
+  # Wave 5-6: Project namespaces + user RBAC + MaaS tier groups
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
-  # Wave 9: Tier-to-group mapping (needed by RHOAI webhook for LLMInferenceService)
-  - governance/tier-to-group-mapping.yaml
-  # Wave 12-14: Upstream maas-controller (CRDs, RBAC, PostgreSQL, controller)
-  - maas-controller-upstream/
-  # Wave 15: Models (LLMInferenceService CRs)
+  - governance/maas-groups.yaml
+  # Wave 10: Kuadrant CR
+  - governance/kuadrant.yaml
+  # Wave 10: Models (LLMInferenceService — operator auto-creates RBAC via tiers annotation)
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
   # Wave 15-16: MCP servers
   - mcp/
-  # Wave 16-18: MaaS CRDs (MaaSModelRef, ExternalModel, AuthPolicy, Subscription)
-  - models-maas-crds/
-  # Wave 20: Grafana dashboard + Jobs
+  # Wave 20-22: Grafana dashboards + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
