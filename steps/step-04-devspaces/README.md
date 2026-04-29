@@ -1,5 +1,5 @@
 # Step 04: Dev Spaces and AI Code Assistant
-**"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to the private NVIDIA Nemotron model for AI-assisted software development.
+**"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to 5 MaaS-governed models (2 local GPU + 3 OpenAI external) for AI-assisted software development.
 
 ## Overview
 
@@ -81,33 +81,46 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 
 ### Act 3: Configure AI Code Assistants
 
-Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/config.json` by the devfile's `postStart` hook. You only need to fill in two placeholders.
+Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/config.json` by the devfile's `postStart` hook. You only need to fill in the placeholders.
 
-1. Get your MaaS route and API key:
+**Two authentication methods** are used depending on the model's API:
+
+| Auth Method | Used By | How to Get |
+|-------------|---------|------------|
+| `sk-oai-*` MaaS API key | `/chat/completions` models (nemotron, gpt-oss, gpt-4o, gpt-4o-mini) | Generate in MaaS tab → "View" → "Generate API key" |
+| OpenShift token | `/v1/responses` model (gpt-5-codex) | Run `oc whoami -t` in a terminal |
+
+1. Get your MaaS route and credentials:
    - From the MaaS tab (Act 1), the route is `https://maas.<cluster-domain>`
-   - Generate an API key from any model's "View" dialog
+   - Generate an API key from any model's "View" dialog (for `/chat/completions` models)
+   - Run `oc whoami -t` to get your OpenShift token (for GPT-5-Codex)
 
 2. Configure **Continue** (`~/.continue/config.yaml`):
    ```bash
    sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.continue/config.yaml
    sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.continue/config.yaml
+   sed -i "s|YOUR_OC_TOKEN|$(oc whoami -t)|g" ~/.continue/config.yaml
    ```
-   The config includes all MaaS models — select from the model dropdown:
-   | Model | Type | Best For |
-   |-------|------|----------|
-   | nemotron-3-nano-30b-a3b | Local GPU | Coding with reasoning (recommended) |
-   | gpt-oss-20b | Local GPU | General coding |
-   | gpt-4o | OpenAI external | High quality coding |
-   | gpt-4o-mini | OpenAI external | Fast responses |
-   | gpt-5-codex | OpenAI external | Code generation (uses /v1/responses API) |
+   The config includes all 5 MaaS models — select from the model dropdown:
+
+   | Model | Type | Auth | Best For |
+   |-------|------|------|----------|
+   | nemotron-3-nano-30b-a3b | Local GPU | `sk-oai-*` key | Coding with reasoning (recommended) |
+   | gpt-oss-20b | Local GPU | `sk-oai-*` key | General coding |
+   | gpt-4o | OpenAI external | `sk-oai-*` key | High quality coding |
+   | gpt-4o-mini | OpenAI external | `sk-oai-*` key | Fast responses |
+   | gpt-5-codex | OpenAI external | OC token | Code generation (`/v1/responses` API) |
 
 3. Configure **OpenCode** (`~/.opencode/config.json`):
    ```bash
    sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.opencode/config.json
    sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.opencode/config.json
+   sed -i "s|YOUR_OC_TOKEN|$(oc whoami -t)|g" ~/.opencode/config.json
    ```
 
 4. In the Continue sidebar, select **Local Config** — all models appear in the model selector
+
+> **Note:** The OpenShift token (`oc whoami -t`) expires when the user's session ends. If GPT-5-Codex stops responding, re-run `oc whoami -t` and update the configs.
 
 ### Act 4: AI-Assisted Coding
 
@@ -128,18 +141,22 @@ OpenCode is a model-neutral CLI tool installed in the workspace. It's pre-config
 1. Open a terminal in VS Code
 2. Run `opencode`
 3. Select a model — defaults to `nemotron-3-nano-30b-a3b`, also has `gpt-4o-mini` and `gpt-5-codex`
+   - `nemotron-3-nano-30b-a3b` and `gpt-4o-mini` use the `sk-oai-*` MaaS API key
+   - `gpt-5-codex` uses the OpenShift token (`oc whoami -t`) and routes through `/v1/responses`
 4. Try prompts like:
    - "Review the changes in the last git commit"
    - "Analyze the project structure and suggest improvements"
    - "Find potential bugs in the rock_paper_scissors game"
 
-This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool can use it.
+This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool can use it, including models that use the newer `/v1/responses` API.
 
 ## Privacy and Data Sovereignty
 
-A key advantage of this approach over cloud-hosted AI services: **no code or data leaves the cluster**. The model runs on the organization's GPUs, the Dev Spaces workspace runs on the same cluster, and the API calls between Continue and the Nemotron model stay within the cluster network via the MaaS Gateway. You can verify this by opening the browser's Network tab — all requests go to `maas.<cluster-domain>`, not to any external service.
+For local GPU models (Nemotron, gpt-oss-20b): **no code or data leaves the cluster**. The model runs on the organization's GPUs, the Dev Spaces workspace runs on the same cluster, and the API calls between Continue and the model stay within the cluster network via the MaaS Gateway. You can verify this by opening the browser's Network tab — all requests go to `maas.<cluster-domain>`, not to any external service.
 
-This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining full control over data, privacy, and intellectual property.
+For external models (GPT-4o, GPT-4o-mini, GPT-5-Codex): requests are proxied through the MaaS Gateway to OpenAI's API. The MaaS Gateway provides centralized governance (rate limiting, access control, usage tracking) but code snippets in prompts do reach the external provider. Organizations can choose which models to expose based on their data classification policies — local GPU models for sensitive code, external models for general-purpose tasks.
+
+This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining centralized control over which providers are used, who can access them, and how much they can consume.
 
 ## Key Takeaways
 
