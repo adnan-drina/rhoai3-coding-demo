@@ -99,6 +99,7 @@ Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yam
    | gpt-oss-20b | Local GPU | General coding |
    | gpt-4o | OpenAI external | High quality coding |
    | gpt-4o-mini | OpenAI external | Fast responses |
+   | gpt-5-codex | OpenAI external | Code generation (uses /v1/responses API) |
 
 3. Configure **OpenCode** (`~/.opencode/config.json`):
    ```bash
