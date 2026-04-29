@@ -22,7 +22,7 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   provider: openai
-  targetModel: openai-gpt-4o
+  targetModel: gpt-4o
   endpoint: api.openai.com
   credentialRef:
     name: openai-api-key
