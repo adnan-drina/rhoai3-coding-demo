@@ -22,6 +22,7 @@ resources:
   - rbac/clusterrole-owner-role.yaml
   - rbac/clusterrole-viewer-role.yaml
   - rbac/clusterrolebinding.yaml
+  - rbac/maas-api-rbac.yaml
   - rbac/leader-election-role.yaml
   - rbac/leader-election-rolebinding.yaml
   # Controller (wave 14)

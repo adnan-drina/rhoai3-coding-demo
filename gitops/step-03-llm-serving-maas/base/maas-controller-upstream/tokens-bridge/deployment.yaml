@@ -29,7 +29,7 @@ data:
             try:
                 resp = urllib.request.urlopen(req, context=ctx)
                 resp_data = json.loads(resp.read())
-                result = {"token": resp_data.get("key", ""), "expiration": "720h0m0s"}
+                result = {"token": resp_data.get("token") or resp_data.get("key", ""), "expiration": "720h0m0s"}
                 self.send_response(201)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
