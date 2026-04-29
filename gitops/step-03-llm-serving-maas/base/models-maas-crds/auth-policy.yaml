@@ -17,3 +17,7 @@ spec:
   subjects:
     groups:
       - name: "system:authenticated"
+      - name: "system:cluster-admins"
+      - name: "tier-free-users"
+      - name: "tier-premium-users"
+      - name: "tier-enterprise-users"

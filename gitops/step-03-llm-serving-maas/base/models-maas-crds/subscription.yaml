@@ -10,6 +10,10 @@ spec:
   owner:
     groups:
       - name: "system:authenticated"
+      - name: "system:cluster-admins"
+      - name: "tier-free-users"
+      - name: "tier-premium-users"
+      - name: "tier-enterprise-users"
   modelRefs:
     - name: gpt-oss-20b
       namespace: maas
