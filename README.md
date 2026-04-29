@@ -28,7 +28,7 @@ This quickstart demonstrates a private AI code assistant powered by:
 
 - [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
 - [Models-as-a-Service](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) with upstream [maas-controller](https://github.com/opendatahub-io/models-as-a-service) for ExternalModel support
-- [NVIDIA Nemotron models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b) (local GPU) + [OpenAI GPT-4o](https://platform.openai.com/) (external via ExternalModel CRD)
+- [NVIDIA Nemotron models](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b) (local GPU) + [OpenAI GPT-4o, GPT-4o-mini, GPT-5-Codex](https://platform.openai.com/) (external via ExternalModel CRD)
 - [OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [Continue](https://www.continue.dev/), an open-source AI code assistant extension
 - vLLM and llm-d for scalable model serving
@@ -123,7 +123,7 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 ### Model Serving and Governance (Step 03)
 
-[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and an **OpenAI GPT-4o external model**, exposing all through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers (OpenAI, Anthropic, etc.) through the same governed gateway. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys. A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
+[Step 03](steps/step-03-llm-serving-maas/README.md) deploys NVIDIA models on vLLM and **OpenAI external models** (GPT-4o, GPT-4o-mini, GPT-5-Codex), exposing all 5 models through **Models-as-a-Service** with access control, rate limiting, and usage telemetry. The MaaS layer uses the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) running alongside the RHOAI 3.3 operator, enabling the `ExternalModel` CRD for integrating external AI providers through the same governed gateway. A developer discovers models in the **GenAI Studio** dashboard, tests them in the built-in **Playground**, and retrieves endpoint URLs and API keys. A platform administrator manages access through `MaaSAuthPolicy` and `MaaSSubscription` CRDs with per-model token rate limits enforced by **Red Hat Connectivity Link**, and monitors usage through **Grafana** dashboards.
 
 - Full demo walkthrough: [Step 03 — The Demo](steps/step-03-llm-serving-maas/README.md#the-demo)
 
@@ -173,7 +173,7 @@ Deploy steps in order:
 |------|------|-----------|-----|
 | 01 | [RHOAI Platform](steps/step-01-rhoai-platform/README.md) | RHOAI 3.3 Operator, DSC, Monitoring, Serverless, cert-manager, GenAI Studio, Hardware Profiles, Model Registry | [RHOAI 3.3 Installation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index) |
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
-| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
+| 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini/5-Codex (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 
 ## RHOAI 3.3 Features Covered
