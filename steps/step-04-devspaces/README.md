@@ -1,5 +1,5 @@
 # Step 04: Dev Spaces and AI Code Assistant
-**"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to 5 MaaS-governed models (2 local GPU + 3 OpenAI external) for AI-assisted software development.
+**"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to 4 MaaS-governed models (2 local GPU + 2 OpenAI external) for AI-assisted software development.
 
 ## Overview
 
@@ -22,7 +22,8 @@ Dev Spaces & AI Code Assistant
     ├── devfile.yaml              → Resource limits + Continue/OpenCode setup
     ├── coding-exercises/         → 3 game starters + solutions
     ├── .vscode/extensions.json   → Recommends Continue extension
-    └── .vscode/config.yaml       → Continue model config template
+    ├── .vscode/config.yaml       → Continue model config template
+    └── .opencode/opencode.json    → OpenCode model config (one provider per model)
 ```
 
 Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
@@ -81,46 +82,36 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 
 ### Act 3: Configure AI Code Assistants
 
-Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/config.json` by the devfile's `postStart` hook. You only need to fill in the placeholders.
+Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/opencode.json` by the devfile's `postStart` hook. You only need to fill in the placeholders.
 
-**Two authentication methods** are used depending on the model's API:
+All 4 models use **a single `sk-oai-*` MaaS API key** for authentication — no separate tokens or auth methods needed.
 
-| Auth Method | Used By | How to Get |
-|-------------|---------|------------|
-| `sk-oai-*` MaaS API key | `/chat/completions` models (nemotron, gpt-oss, gpt-4o, gpt-4o-mini) | Generate in MaaS tab → "View" → "Generate API key" |
-| OpenShift token | `/v1/responses` model (gpt-5-codex) | Run `oc whoami -t` in a terminal |
-
-1. Get your MaaS route and credentials:
+1. Get your MaaS route and API key:
    - From the MaaS tab (Act 1), the route is `https://maas.<cluster-domain>`
-   - Generate an API key from any model's "View" dialog (for `/chat/completions` models)
-   - Run `oc whoami -t` to get your OpenShift token (for GPT-5-Codex)
+   - Generate an API key from any model's "View" dialog
 
 2. Configure **Continue** (`~/.continue/config.yaml`):
    ```bash
    sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.continue/config.yaml
    sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.continue/config.yaml
-   sed -i "s|YOUR_OC_TOKEN|$(oc whoami -t)|g" ~/.continue/config.yaml
    ```
-   The config includes all 5 MaaS models — select from the model dropdown:
+   The config includes all 4 MaaS models — select from the model dropdown:
 
-   | Model | Type | Auth | Best For |
-   |-------|------|------|----------|
-   | nemotron-3-nano-30b-a3b | Local GPU | `sk-oai-*` key | Coding with reasoning (recommended) |
-   | gpt-oss-20b | Local GPU | `sk-oai-*` key | General coding |
-   | gpt-4o | OpenAI external | `sk-oai-*` key | High quality coding |
-   | gpt-4o-mini | OpenAI external | `sk-oai-*` key | Fast responses |
-   | gpt-5-codex | OpenAI external | OC token | Code generation (`/v1/responses` API) |
+   | Model | Type | Best For |
+   |-------|------|----------|
+   | nemotron-3-nano-30b-a3b | Local GPU | Coding with reasoning (recommended) |
+   | gpt-oss-20b | Local GPU | General coding |
+   | gpt-4o | OpenAI external | High quality coding |
+   | gpt-4o-mini | OpenAI external | Fast responses |
 
-3. Configure **OpenCode** (`~/.opencode/config.json`):
+3. Configure **OpenCode** (`~/.opencode/opencode.json`):
    ```bash
-   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.opencode/config.json
-   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.opencode/config.json
-   sed -i "s|YOUR_OC_TOKEN|$(oc whoami -t)|g" ~/.opencode/config.json
+   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.opencode/opencode.json
+   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.opencode/opencode.json
    ```
+   OpenCode uses `opencode.json` (not `config.json`) with **one provider per model**. Each model is defined as a separate provider pointing to the same MaaS endpoint but specifying a different model name. This is required because OpenCode maps each provider to a single model.
 
-4. In the Continue sidebar, select **Local Config** — all models appear in the model selector
-
-> **Note:** The OpenShift token (`oc whoami -t`) expires when the user's session ends. If GPT-5-Codex stops responding, re-run `oc whoami -t` and update the configs.
+4. In the Continue sidebar, select **Local Config** — all 4 models appear in the model selector
 
 ### Act 4: AI-Assisted Coding
 
@@ -136,25 +127,24 @@ Each starter file contains ready-to-use prompts and enhancement ideas. Solutions
 
 ### Act 5: Terminal AI with OpenCode (Optional)
 
-OpenCode is a model-neutral CLI tool installed in the workspace. It's pre-configured with MaaS models via `~/.opencode/config.json` (set up in Act 3).
+OpenCode is a model-neutral CLI tool installed in the workspace. It's pre-configured with MaaS models via `~/.opencode/opencode.json` (set up in Act 3).
 
 1. Open a terminal in VS Code
 2. Run `opencode`
-3. Select a model — defaults to `nemotron-3-nano-30b-a3b`, also has `gpt-4o-mini` and `gpt-5-codex`
-   - `nemotron-3-nano-30b-a3b` and `gpt-4o-mini` use the `sk-oai-*` MaaS API key
-   - `gpt-5-codex` uses the OpenShift token (`oc whoami -t`) and routes through `/v1/responses`
+3. Select a model — defaults to `nemotron-3-nano-30b-a3b` (default), with `gpt-4o-mini` as the small model
+   - All models use the same `sk-oai-*` MaaS API key
 4. Try prompts like:
    - "Review the changes in the last git commit"
    - "Analyze the project structure and suggest improvements"
    - "Find potential bugs in the rock_paper_scissors game"
 
-This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool can use it, including models that use the newer `/v1/responses` API.
+This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool that supports the `/v1/chat/completions` API can use it.
 
 ## Privacy and Data Sovereignty
 
 For local GPU models (Nemotron, gpt-oss-20b): **no code or data leaves the cluster**. The model runs on the organization's GPUs, the Dev Spaces workspace runs on the same cluster, and the API calls between Continue and the model stay within the cluster network via the MaaS Gateway. You can verify this by opening the browser's Network tab — all requests go to `maas.<cluster-domain>`, not to any external service.
 
-For external models (GPT-4o, GPT-4o-mini, GPT-5-Codex): requests are proxied through the MaaS Gateway to OpenAI's API. The MaaS Gateway provides centralized governance (rate limiting, access control, usage tracking) but code snippets in prompts do reach the external provider. Organizations can choose which models to expose based on their data classification policies — local GPU models for sensitive code, external models for general-purpose tasks.
+For external models (GPT-4o, GPT-4o-mini): requests are proxied through the MaaS Gateway to OpenAI's API. The MaaS Gateway provides centralized governance (rate limiting, access control, usage tracking) but code snippets in prompts do reach the external provider. Organizations can choose which models to expose based on their data classification policies — local GPU models for sensitive code, external models for general-purpose tasks.
 
 This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining centralized control over which providers are used, who can access them, and how much they can consume.
 
