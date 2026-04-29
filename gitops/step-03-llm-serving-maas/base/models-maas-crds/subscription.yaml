@@ -25,7 +25,12 @@ spec:
       tokenRateLimits:
         - limit: 50000
           window: "1h"
-    - name: openai-gpt-4o
+    - name: gpt-5-codex
+      namespace: maas
+      tokenRateLimits:
+        - limit: 50000
+          window: "1h"
+    - name: gpt-5-mini
       namespace: maas
       tokenRateLimits:
         - limit: 50000
