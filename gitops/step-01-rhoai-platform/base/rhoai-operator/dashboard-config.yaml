@@ -1,5 +1,6 @@
-# RHOAI 3.4 DashboardConfig — enables GenAI Studio and MaaS dashboard interface
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/deploy-and-manage-models-as-a-service_maas#enable-maas-dashboard_maas-deploy
+# Minimal DashboardConfig matching public quickstart
+# Only sets the two MaaS-required flags; other fields use operator defaults
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: opendatahub.io/v1alpha
 kind: OdhDashboardConfig
 metadata:

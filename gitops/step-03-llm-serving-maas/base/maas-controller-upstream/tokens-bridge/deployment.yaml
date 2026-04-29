@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tokens-bridge-config
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+data:
+  proxy.py: |
+    import http.server, json, ssl, urllib.request
+    MAAS_API = "https://maas-api.redhat-ods-applications.svc.cluster.local:8443"
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length) if length else b'{}'
+            try: data = json.loads(body)
+            except: data = {}
+            api_key_body = json.dumps({"name": f"playground-{data.get('model','auto')}"}).encode()
+            req = urllib.request.Request(
+                f"{MAAS_API}/v1/api-keys", data=api_key_body,
+                headers={"Content-Type": "application/json",
+                    "Authorization": self.headers.get("Authorization", ""),
+                    "X-MaaS-Username": self.headers.get("X-MaaS-Username", ""),
+                    "X-MaaS-Group": self.headers.get("X-MaaS-Group", "")},
+                method="POST")
+            try:
+                resp = urllib.request.urlopen(req, context=ctx)
+                resp_data = json.loads(resp.read())
+                result = {"token": resp_data.get("key", ""), "expiration": "720h0m0s"}
+                self.send_response(201)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+        def log_message(self, format, *args): pass
+    http.server.HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tokens-bridge
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tokens-bridge
+  template:
+    metadata:
+      labels:
+        app: tokens-bridge
+    spec:
+      containers:
+      - name: proxy
+        image: registry.redhat.io/ubi9/python-312:latest
+        command: ["python3", "/app/proxy.py"]
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: config
+          mountPath: /app
+      volumes:
+      - name: config
+        configMap:
+          name: tokens-bridge-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokens-bridge
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  selector:
+    app: tokens-bridge
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: maas-api-tokens-rewrite
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: maas-default-gateway
+    namespace: openshift-ingress
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /maas-api/v1/tokens
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /v1/tokens
+    backendRefs:
+    - name: tokens-bridge
+      port: 8080
+---
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: maas-api-tokens-auth
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: maas-api-tokens-rewrite
+  rules:
+    authentication:
+      openshift-identities:
+        kubernetesTokenReview:
+          audiences:
+            - https://kubernetes.default.svc
+            - maas-default-gateway-sa
+        metrics: false
+    authorization: {}
+    response:
+      success:
+        headers:
+          X-MaaS-Group:
+            metrics: false
+            plain:
+              selector: "auth.identity.user.groups.@tostr"
+          X-MaaS-Username:
+            metrics: false
+            plain:
+              selector: "auth.identity.user.username"

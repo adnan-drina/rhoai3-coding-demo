@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Upstream maas-controller from opendatahub-io/models-as-a-service
+# Provides ExternalModel CRD, MaaSAuthPolicy, MaaSSubscription, MaaSModelRef
+# Source: https://github.com/opendatahub-io/models-as-a-service
+
+resources:
+  # CRDs (cluster-scoped)
+  - crds/externalmodels.yaml
+  - crds/maasauthpolicies.yaml
+  - crds/maasmodelrefs.yaml
+  - crds/maassubscriptions.yaml
+  - crds/tenants.yaml
+  # Database (wave 12)
+  - database/postgres-credentials.yaml
+  - database/postgres-deployment.yaml
+  - database/maas-db-config.yaml
+  # RBAC (wave 12)
+  - rbac/service-account.yaml
+  - rbac/clusterrole-controller-role.yaml
+  - rbac/clusterrole-owner-role.yaml
+  - rbac/clusterrole-viewer-role.yaml
+  - rbac/clusterrolebinding.yaml
+  - rbac/leader-election-role.yaml
+  - rbac/leader-election-rolebinding.yaml
+  # Controller (wave 14)
+  - manager/deployment.yaml
+  # Observability
+  - observability/podmonitor.yaml
+  - observability/networkpolicy.yaml
+  - observability/telemetrypolicy.yaml
+  - observability/istio-telemetry.yaml
+  # Tokens bridge (maps /v1/tokens → /v1/api-keys for Playground compatibility)
+  - tokens-bridge/deployment.yaml
