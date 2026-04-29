@@ -22,6 +22,9 @@ rules:
 - apiGroups: ["operator.openshift.io"]
   resources: ["ingresscontrollers"]
   verbs: ["get"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -66,7 +69,13 @@ spec:
 
           CERT_NAME=$(oc get ingresscontroller default -n openshift-ingress-operator \
             -o jsonpath='{.spec.defaultCertificate.name}' 2>/dev/null)
-          [ -z "$CERT_NAME" ] && CERT_NAME="router-certs-default"
+          if [ -z "$CERT_NAME" ]; then
+            if oc get secret cert-manager-ingress-cert -n openshift-ingress &>/dev/null; then
+              CERT_NAME="cert-manager-ingress-cert"
+            else
+              CERT_NAME="router-certs-default"
+            fi
+          fi
 
           echo "Patching gateway: hostname=${HOSTNAME}, tlsCert=${CERT_NAME}"
 
