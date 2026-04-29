@@ -6,3 +6,4 @@ resources:
   - openai-external-model.yaml
   - auth-policy.yaml
   - subscription.yaml
+  - gpt5-codex-responses/
