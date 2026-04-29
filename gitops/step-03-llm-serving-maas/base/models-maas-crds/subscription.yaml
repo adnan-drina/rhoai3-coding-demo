@@ -35,8 +35,3 @@ spec:
       tokenRateLimits:
         - limit: 50000
           window: "1h"
-    - name: gpt-5-codex
-      namespace: maas
-      tokenRateLimits:
-        - limit: 50000
-          window: "1h"

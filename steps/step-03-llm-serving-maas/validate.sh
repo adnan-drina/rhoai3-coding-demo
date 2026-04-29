@@ -69,8 +69,8 @@ check "ExternalModel gpt-4o exists" \
 check "ExternalModel gpt-4o-mini exists" \
   "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
   "openai"
-check "ExternalModel gpt-5-codex exists" \
-  "oc get externalmodel gpt-5-codex -n maas -o jsonpath='{.spec.provider}'" \
+check "ExternalModel gpt-4o-mini exists" \
+  "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
   "openai"
 check "MaaSModelRef gpt-4o ready" \
   "oc get maasmodelref gpt-4o -n maas -o jsonpath='{.status.phase}'" \
@@ -116,9 +116,8 @@ if [ -n "$GATEWAY_HOST" ]; then
     if printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-oss-20b" && \
        printf '%s\n' "$MODEL_NAMES" | grep -qx "nemotron-3-nano-30b-a3b" && \
        printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-4o" && \
-       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-4o-mini" && \
-       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-5-codex"; then
-      echo -e "${GREEN}[PASS]${NC} MaaS API lists 5 models (2 local + 3 external)"
+       printf '%s\n' "$MODEL_NAMES" | grep -qx "gpt-4o-mini"; then
+      echo -e "${GREEN}[PASS]${NC} MaaS API lists 4 models (2 local + 2 external)"
       VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
       echo -e "${YELLOW}[WARN]${NC} MaaS API model list missing expected entries: ${MODEL_NAMES:-none}"
