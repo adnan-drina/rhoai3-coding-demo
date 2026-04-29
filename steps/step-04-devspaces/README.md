@@ -79,24 +79,34 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 4. Click to start it — VS Code opens in the browser
 5. The [coding exercises](https://github.com/adnan-drina/coding-exercises) repo is cloned (includes `devfile.yaml`)
 
-### Act 3: Configure the Continue Extension
+### Act 3: Configure AI Code Assistants
 
-1. Install the Continue extension (recommended via `.vscode/extensions.json`, available from open-vsx.org)
-2. Copy the config template to Continue's config directory:
+Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/config.json` by the devfile's `postStart` hook. You only need to fill in two placeholders.
+
+1. Get your MaaS route and API key:
+   - From the MaaS tab (Act 1), the route is `https://maas.<cluster-domain>`
+   - Generate an API key from any model's "View" dialog
+
+2. Configure **Continue** (`~/.continue/config.yaml`):
    ```bash
-   cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.continue/config.yaml
+   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.continue/config.yaml
    ```
-3. Open `~/.continue/config.yaml` and configure the connection:
-   - **Provider:** Already set to `openai` (OpenAI Compatible)
-   - **Model:** Already set to `nemotron-3-nano-30b-a3b` (model deployment name)
-   - **apiBase:** Replace `YOUR_MAAS_ROUTE` with the endpoint URL from Act 1, append `/v1`
-     (e.g., `https://maas.<cluster>/maas/nemotron-3-nano-30b-a3b/v1`)
-   - **apiKey:** Replace `YOUR_API_KEY` with the API token from Act 1
-   - **contextLength: 131072** — matches the model's 128K context window (278K token KV cache on L40S 46GB GPU)
-   - **maxTokens: 4096** — output token limit for code generation responses
-   - **reasoning: true** — Nemotron is a reasoning model; Continue v1.3.38 reads `reasoning_content` natively
-4. In the Continue sidebar, select **Local Config** from the dropdown
-5. The Nemotron model appears in the model selector
+   The config includes all MaaS models — select from the model dropdown:
+   | Model | Type | Best For |
+   |-------|------|----------|
+   | nemotron-3-nano-30b-a3b | Local GPU | Coding with reasoning (recommended) |
+   | gpt-oss-20b | Local GPU | General coding |
+   | gpt-4o | OpenAI external | High quality coding |
+   | gpt-4o-mini | OpenAI external | Fast responses |
+
+3. Configure **OpenCode** (`~/.opencode/config.json`):
+   ```bash
+   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.opencode/config.json
+   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.opencode/config.json
+   ```
+
+4. In the Continue sidebar, select **Local Config** — all models appear in the model selector
 
 ### Act 4: AI-Assisted Coding
 
@@ -112,14 +122,11 @@ Each starter file contains ready-to-use prompts and enhancement ideas. Solutions
 
 ### Act 5: Terminal AI with OpenCode (Optional)
 
-OpenCode is a model-neutral CLI tool installed in the workspace. It connects to the same MaaS model:
+OpenCode is a model-neutral CLI tool installed in the workspace. It's pre-configured with MaaS models via `~/.opencode/config.json` (set up in Act 3).
 
 1. Open a terminal in VS Code
 2. Run `opencode`
-3. Use the `/connect` command to add your MaaS model:
-   - Provider: **OpenAI Compatible**
-   - Base URL: same MaaS endpoint as Continue (with `/v1`)
-   - API Key: same token
+3. Select a model — defaults to `nemotron-3-nano-30b-a3b`, also has `gpt-4o-mini` and `gpt-5-codex`
 4. Try prompts like:
    - "Review the changes in the last git commit"
    - "Analyze the project structure and suggest improvements"
