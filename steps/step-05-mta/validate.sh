@@ -111,5 +111,41 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
+log_step "Pre-Demo Readiness"
+MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
+  -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
+MAAS_KEY_VAL=$(oc get secret kai-api-keys -n openshift-mta \
+  -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -n "$MAAS_HOST" ]] && [[ "$MAAS_KEY_VAL" == sk-oai-* ]]; then
+    MAAS_HTTP=$(curl -sk -H "Authorization: Bearer ${MAAS_KEY_VAL}" \
+      "https://${MAAS_HOST}/maas/nemotron-3-nano-30b-a3b/v1/models" \
+      -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+    if [[ "$MAAS_HTTP" == "200" ]]; then
+        echo -e "${GREEN}[PASS]${NC} MaaS auth works with kai-api-keys key (HTTP ${MAAS_HTTP})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} MaaS auth failed with kai-api-keys key (HTTP ${MAAS_HTTP})"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+else
+    echo -e "${RED}[FAIL]${NC} Cannot test MaaS auth (host=${MAAS_HOST:-missing}, key starts with ${MAAS_KEY_VAL:0:7}...)"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+check_warn "llm-proxy has real OPENAI_API_KEY" \
+  "oc exec deployment/llm-proxy -n openshift-mta -- printenv OPENAI_API_KEY 2>/dev/null | grep -c '^sk-oai-'" \
+  "1"
+
+if [[ -n "$MTA_ROUTE" ]]; then
+    HUB_HTTP=$(curl -sk -o /dev/null -w "%{http_code}" "https://${MTA_ROUTE}/hub/applications" 2>/dev/null || echo "000")
+    if [[ "$HUB_HTTP" == "200" ]] || [[ "$HUB_HTTP" == "401" ]]; then
+        echo -e "${GREEN}[PASS]${NC} MTA Hub API reachable (HTTP ${HUB_HTTP})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} MTA Hub API returned HTTP ${HUB_HTTP}"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+fi
+
 echo ""
 validation_summary

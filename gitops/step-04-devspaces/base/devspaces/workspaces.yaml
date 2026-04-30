@@ -204,6 +204,12 @@ spec:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
+      - name: coolstore
+        git:
+          remotes:
+            origin: https://github.com/konveyor-ecosystem/coolstore.git
+          checkoutFrom:
+            revision: main
     commands:
       - id: init-ai-tools
         exec:
@@ -212,6 +218,7 @@ spec:
             mkdir -p ~/.continue
             cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
             curl -fsSL -o /tmp/continue.vsix https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix 2>/dev/null
+            curl -fsSL -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
           component: tooling-container
     events:
       postStart:
@@ -221,12 +228,12 @@ spec:
         container:
           image: quay.io/che-incubator/cli-ai-tools:latest
           sourceMapping: /projects
-          memoryLimit: 4Gi
-          memoryRequest: 1Gi
+          memoryLimit: 6Gi
+          memoryRequest: 2Gi
           cpuLimit: "2"
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/continue.vsix,/tmp/mta.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
