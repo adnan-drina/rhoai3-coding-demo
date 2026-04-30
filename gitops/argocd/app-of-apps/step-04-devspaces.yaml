@@ -48,6 +48,10 @@ spec:
       kind: CheCluster
       jqPathExpressions:
         - .spec
+    - group: workspace.devfile.io
+      kind: DevWorkspace
+      jqPathExpressions:
+        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:

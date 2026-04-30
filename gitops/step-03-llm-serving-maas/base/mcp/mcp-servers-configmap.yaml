@@ -17,15 +17,3 @@ data:
       "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
       "description": "Interact with the OpenShift cluster (Kubernetes MCP Server). Query pod status, logs, events, deployments, and cluster resources. Read-only mode."
     }
-  Slack-MCP: |
-    {
-      "url": "http://slack-mcp.coding-assistant.svc:8080/sse",
-      "transport": "sse",
-      "description": "Post messages and notifications to Slack channels (Slack MCP Server). Send alerts and updates to team channels."
-    }
-  BrightData-Web: |
-    {
-      "url": "http://brightdata-mcp.coding-assistant.svc:3000/sse",
-      "transport": "sse",
-      "description": "Browse and search the public web (BrightData MCP). Access web pages, search engines, and extract structured data from websites."
-    }

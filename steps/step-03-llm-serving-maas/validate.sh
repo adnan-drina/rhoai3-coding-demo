@@ -69,11 +69,11 @@ check "ExternalModel gpt-4o exists" \
 check "ExternalModel gpt-4o-mini exists" \
   "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
   "openai"
-check "ExternalModel gpt-4o-mini exists" \
-  "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
-  "openai"
 check "MaaSModelRef gpt-4o ready" \
   "oc get maasmodelref gpt-4o -n maas -o jsonpath='{.status.phase}'" \
+  "Ready"
+check "MaaSModelRef gpt-4o-mini ready" \
+  "oc get maasmodelref gpt-4o-mini -n maas -o jsonpath='{.status.phase}'" \
   "Ready"
 
 log_step "MaaS CRDs (upstream)"
