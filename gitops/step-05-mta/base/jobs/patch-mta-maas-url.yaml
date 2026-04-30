@@ -43,6 +43,9 @@ rules:
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
   verbs: ["get", "list"]
+- apiGroups: ["console.openshift.io"]
+  resources: ["consolelinks"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -147,6 +150,17 @@ spec:
           oc patch secret kai-api-keys -n openshift-mta --type=merge \
             -p "{\"data\":{\"OPENAI_API_BASE\":\"${ENCODED_URL}\"}}"
           echo "kai-api-keys Secret patched"
+
+          echo "Patching ConsoleLink with MTA route..."
+          MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          if [ -n "$MTA_HOST" ]; then
+            MTA_URL="https://${MTA_HOST}"
+            oc patch consolelink mta --type=merge \
+              -p "{\"spec\":{\"href\":\"${MTA_URL}\",\"applicationMenu\":{\"imageURL\":\"${MTA_URL}/favicon.ico\"}}}"
+            echo "ConsoleLink patched: ${MTA_URL}"
+          else
+            echo "WARNING: MTA route not found, ConsoleLink not patched"
+          fi
 
           echo "Rolling llm-proxy to pick up new secret values..."
           oc rollout restart deployment/llm-proxy -n openshift-mta
