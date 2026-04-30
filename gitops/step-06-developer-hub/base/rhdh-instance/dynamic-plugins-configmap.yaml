@@ -1,0 +1,14 @@
+# Dynamic plugins — Phase 1: defaults only, no additional plugins.
+# Phase 2 will add OpenShift, ArgoCD, TechDocs plugins.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dynamic-plugins-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+data:
+  dynamic-plugins.yaml: |
+    includes:
+      - dynamic-plugins.default.yaml
+    plugins: []

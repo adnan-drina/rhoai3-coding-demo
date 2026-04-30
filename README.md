@@ -139,6 +139,12 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 - Full demo walkthrough: [Step 05 — The Demo](steps/step-05-mta/README.md#the-demo)
 
+### Self-Service Developer Portal (Step 06)
+
+[Step 06](steps/step-06-developer-hub/README.md) deploys **Red Hat Developer Hub 1.9** as the internal developer portal. Developers discover the coolstore application in the software catalog, find links to Dev Spaces, MTA, and MaaS models, and use a single OpenShift login (brokered through MTA Keycloak) across all platform tools. The portal ties together the entire demo workflow: platform services, AI models, modernization tooling, and developer workspaces.
+
+- Full demo walkthrough: [Step 06 — The Demo](steps/step-06-developer-hub/README.md#the-demo)
+
 ## What You Need
 
 - OpenShift 4.20+ cluster on AWS
@@ -174,6 +180,9 @@ Deploy steps in order:
 
 # Step 05: AI-Assisted App Modernization (MTA 8.1)
 ./steps/step-05-mta/deploy.sh
+
+# Step 06: Developer Hub (Self-Service Portal)
+./steps/step-06-developer-hub/deploy.sh
 ```
 
 ## Step Details
@@ -185,6 +194,7 @@ Deploy steps in order:
 | 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
 | 05 | [MTA + AI Modernization](steps/step-05-mta/README.md) | MTA 8.1 Operator, Tackle CR, Developer Lightspeed, OpenShift OAuth federation, Coolstore migration demo via MaaS | [MTA 8.1 Documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/) |
+| 06 | [Developer Hub](steps/step-06-developer-hub/README.md) | RHDH 1.9 Operator, Backstage CR, OIDC auth via MTA Keycloak, software catalog, ConsoleLink | [RHDH 1.9 Documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9) |
 
 ## RHOAI 3.3 Features Covered
 
@@ -236,13 +246,15 @@ rhoai3-coding-demo/
 │   ├── step-02-gpu-infra/base/         # NFD, GPU Operator, ClusterPolicy
 │   ├── step-03-llm-serving-maas/base/  # LWS, RHCL, Gateway, models, governance
 │   ├── step-04-devspaces/base/         # Dev Spaces operator, workspaces
-│   └── step-05-mta/base/              # MTA operator, Tackle CR, AI config
+│   ├── step-05-mta/base/              # MTA operator, Tackle CR, AI config
+│   └── step-06-developer-hub/base/    # RHDH operator, Backstage CR, catalog
 ├── steps/                              # Per-step deploy/validate/README + app code
 │   ├── step-01-rhoai-platform/
 │   ├── step-02-gpu-infra/
 │   ├── step-03-llm-serving-maas/
 │   ├── step-04-devspaces/
-│   └── step-05-mta/
+│   ├── step-05-mta/
+│   └── step-06-developer-hub/
 │       └── coding-exercises/        # Python games for AI code assistant demo
 ├── env.example                      # Template for .env
 └── README.md
