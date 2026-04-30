@@ -20,23 +20,36 @@ resources:
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
-  # Wave 5: Kuadrant system namespace (operator creates resources here)
+  # Wave 5: Kuadrant system namespace + tier user groups
   - governance/kuadrant-system-ns.yaml
+  - governance/maas-groups.yaml
   # Wave 5-6: Project namespaces + user RBAC
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - models/developer-project.yaml
+  # Wave 9: Authorino service (creates serving cert before Authorino CR)
+  - governance/authorino-service.yaml
   # Wave 9: Tier-to-group mapping (needed by RHOAI webhook for LLMInferenceService)
   - governance/tier-to-group-mapping.yaml
+  # Wave 10: Kuadrant + Authorino instances
+  - governance/kuadrant.yaml
+  - governance/authorino.yaml
   # Wave 12-14: Upstream maas-controller (CRDs, RBAC, PostgreSQL, controller)
   - maas-controller-upstream/
   # Wave 15: Models (LLMInferenceService CRs)
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
+  # Wave 15: Governance policies (rate limiting, token limits, telemetry)
+  - governance/ratelimitpolicy.yaml
+  - governance/tokenratelimitpolicy.yaml
+  - governance/telemetrypolicy.yaml
   # Wave 15-16: MCP servers
   - mcp/
   # Wave 16-18: MaaS CRDs (MaaSModelRef, ExternalModel, AuthPolicy, Subscription)
   - models-maas-crds/
+  # Wave 20-21: Gateway infrastructure
+  - gateway/gatewayclass.yaml
+  - gateway/maas-gateway.yaml
   # Wave 20: Grafana dashboard + Jobs
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
