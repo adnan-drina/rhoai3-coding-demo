@@ -215,112 +215,70 @@ spec:
             exit 1
           fi
 
-          # --- 7. Create hardcoded-role mapper: all OpenShift users get tackle-migrator ---
-          echo "Configuring IdP mappers..."
+          # --- 7. Pre-create demo users with roles and IdP links ---
+          # Pre-creating users avoids the "first broker login" flow and ensures
+          # correct roles are assigned before the user ever logs in.
+          # The hardcoded-role-idp-mapper causes NullPointerException in RHBK 24.x,
+          # so we assign roles directly to pre-created users instead.
 
-          MIGRATOR_MAPPER=$(cat <<MAPEOF
-          {
-            "name": "default-tackle-migrator",
-            "identityProviderAlias": "${IDP_ALIAS}",
-            "identityProviderMapper": "hardcoded-role-idp-mapper",
-            "config": {
-              "syncMode": "INHERIT",
-              "role": "tackle-migrator"
-            }
-          }
-          MAPEOF
-          )
+          ROLES_JSON=$(curl -sk -H "${AUTH_HEADER}" \
+            "${RHBK_URL}/auth/admin/realms/${REALM}/roles" 2>/dev/null)
 
-          EXISTING_MAPPERS=$(curl -sk -H "${AUTH_HEADER}" \
-            "${RHBK_URL}/auth/admin/realms/${REALM}/identity-provider/instances/${IDP_ALIAS}/mappers" 2>/dev/null)
-          HAS_MIGRATOR=$(echo "$EXISTING_MAPPERS" | python3 -c "
-          import sys,json
-          try:
-            mappers = json.load(sys.stdin)
-            print('yes' if any(m.get('name') == 'default-tackle-migrator' for m in mappers) else 'no')
-          except: print('no')
-          " 2>/dev/null)
+          create_user_with_role() {
+            local USERNAME="$1" ROLE_NAME="$2" EMAIL="$3" FIRST="$4" LAST="$5"
 
-          if [ "$HAS_MIGRATOR" != "yes" ]; then
-            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/auth/admin/realms/${REALM}/identity-provider/instances/${IDP_ALIAS}/mappers" \
-              -d "${MIGRATOR_MAPPER}" -o /dev/null
-            echo "Created tackle-migrator mapper for all OpenShift users"
-          else
-            echo "tackle-migrator mapper already exists"
-          fi
+            EXISTING=$(curl -sk -H "${AUTH_HEADER}" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/users?username=${USERNAME}&exact=true" 2>/dev/null)
+            EXISTS=$(echo "$EXISTING" | python3 -c "import sys,json; print('yes' if len(json.load(sys.stdin))>0 else 'no')" 2>/dev/null)
 
-          # --- 8. Pre-create ai-admin user with tackle-admin role ---
-          echo "Pre-creating ai-admin user with tackle-admin role..."
+            if [ "$EXISTS" != "yes" ]; then
+              curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+                "${RHBK_URL}/auth/admin/realms/${REALM}/users" \
+                -d "{\"username\":\"${USERNAME}\",\"enabled\":true,\"emailVerified\":true,\"email\":\"${EMAIL}\",\"firstName\":\"${FIRST}\",\"lastName\":\"${LAST}\"}" \
+                -o /dev/null
+              echo "Created user: ${USERNAME}"
+            else
+              echo "User exists: ${USERNAME}"
+            fi
 
-          EXISTING_USER=$(curl -sk -H "${AUTH_HEADER}" \
-            "${RHBK_URL}/auth/admin/realms/${REALM}/users?username=ai-admin&exact=true" 2>/dev/null)
-          USER_EXISTS=$(echo "$EXISTING_USER" | python3 -c "
-          import sys,json
-          try:
-            users = json.load(sys.stdin)
-            print('yes' if len(users) > 0 else 'no')
-          except: print('no')
-          " 2>/dev/null)
-
-          if [ "$USER_EXISTS" != "yes" ]; then
-            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/auth/admin/realms/${REALM}/users" \
-              -d '{
-                "username": "ai-admin",
-                "enabled": true,
-                "emailVerified": true,
-                "email": "ai-admin@demo.local",
-                "firstName": "AI",
-                "lastName": "Admin"
-              }' -o /dev/null
-            echo "Created ai-admin user"
-          else
-            echo "ai-admin user already exists"
-          fi
-
-          AI_ADMIN_ID=$(curl -sk -H "${AUTH_HEADER}" \
-            "${RHBK_URL}/auth/admin/realms/${REALM}/users?username=ai-admin&exact=true" 2>/dev/null \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
-
-          ADMIN_ROLE_ID=$(curl -sk -H "${AUTH_HEADER}" \
-            "${RHBK_URL}/auth/admin/realms/${REALM}/roles" 2>/dev/null \
-            | python3 -c "
+            USER_ID=$(curl -sk -H "${AUTH_HEADER}" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/users?username=${USERNAME}&exact=true" 2>/dev/null \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
+            ROLE_ID=$(echo "$ROLES_JSON" | python3 -c "
           import sys,json
           for r in json.load(sys.stdin):
-            if r['name'] == 'tackle-admin':
-              print(r['id'])
-              break
+            if r['name'] == '${ROLE_NAME}':
+              print(r['id']); break
           " 2>/dev/null)
 
-          if [ -n "$AI_ADMIN_ID" ] && [ -n "$ADMIN_ROLE_ID" ]; then
-            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/auth/admin/realms/${REALM}/users/${AI_ADMIN_ID}/role-mappings/realm" \
-              -d "[{\"id\":\"${ADMIN_ROLE_ID}\",\"name\":\"tackle-admin\"}]" -o /dev/null
-            echo "Assigned tackle-admin role to ai-admin"
-          else
-            echo "WARNING: Could not assign tackle-admin role (user_id=${AI_ADMIN_ID:-missing}, role_id=${ADMIN_ROLE_ID:-missing})"
-          fi
-
-          # --- 9. Link ai-admin to OpenShift IdP (for automatic linking on first login) ---
-          if [ -n "$AI_ADMIN_ID" ]; then
-            EXISTING_LINK=$(curl -sk -H "${AUTH_HEADER}" \
-              "${RHBK_URL}/auth/admin/realms/${REALM}/users/${AI_ADMIN_ID}/federated-identity/${IDP_ALIAS}" \
-              -o /dev/null -w "%{http_code}" 2>/dev/null)
-            if [ "$EXISTING_LINK" != "200" ]; then
+            if [ -n "$USER_ID" ] && [ -n "$ROLE_ID" ]; then
               curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
-                "${RHBK_URL}/auth/admin/realms/${REALM}/users/${AI_ADMIN_ID}/federated-identity/${IDP_ALIAS}" \
-                -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"ai-admin\",\"userName\":\"ai-admin\"}" \
-                -o /dev/null
-              echo "Linked ai-admin to OpenShift IdP"
-            else
-              echo "ai-admin already linked to OpenShift IdP"
+                "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/role-mappings/realm" \
+                -d "[{\"id\":\"${ROLE_ID}\",\"name\":\"${ROLE_NAME}\"}]" -o /dev/null
+              echo "  Assigned role: ${ROLE_NAME}"
             fi
-          fi
+
+            LINK_CHECK=$(curl -sk -H "${AUTH_HEADER}" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
+              -o /dev/null -w "%{http_code}" 2>/dev/null)
+            if [ "$LINK_CHECK" != "200" ]; then
+              curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+                "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
+                -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"${USERNAME}\",\"userName\":\"${USERNAME}\"}" \
+                -o /dev/null
+              echo "  Linked to OpenShift IdP"
+            else
+              echo "  Already linked to OpenShift IdP"
+            fi
+          }
+
+          echo "Configuring demo users..."
+          create_user_with_role "ai-admin" "tackle-admin" "ai-admin@demo.local" "AI" "Admin"
+          create_user_with_role "ai-developer" "tackle-migrator" "ai-developer@demo.local" "AI" "Developer"
 
           echo ""
           echo "=== OpenShift OAuth federation configured ==="
           echo "MTA login URL: ${MTA_URL}"
           echo "Users will see 'Log in with OpenShift' on the login page"
-          echo "  ai-admin    -> tackle-admin (full admin)"
-          echo "  ai-developer -> tackle-migrator (analyst, auto-assigned on first login)"
+          echo "  ai-admin     -> tackle-admin (full admin)"
+          echo "  ai-developer -> tackle-migrator (analyst)"
