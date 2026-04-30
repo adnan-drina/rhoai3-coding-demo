@@ -46,3 +46,9 @@ resources:
   - jobs/patch-maas-api-storage.yaml
   # Wave 22: Register models in Model Registry
   - model-registry/seed-models.yaml
+
+# Optional MCP servers — credential-gated. Uncomment each when the corresponding
+# Secret exists in the coding-assistant namespace.
+# components:
+#   - ../components/slack-mcp      # requires Secret: slack-mcp-credentials (key: SLACK_BOT_TOKEN)
+#   - ../components/brightdata-mcp # requires Secret: brightdata-mcp-credentials (key: API_TOKEN)

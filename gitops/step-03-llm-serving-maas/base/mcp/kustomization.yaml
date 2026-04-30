@@ -4,5 +4,3 @@ resources:
   - mcp-servers-configmap.yaml
   - openshift-mcp/serviceaccount.yaml
   - openshift-mcp/deployment.yaml
-  - slack-mcp/deployment.yaml
-  - brightdata-mcp/deployment.yaml

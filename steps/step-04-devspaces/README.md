@@ -60,14 +60,14 @@ When a user navigates from the RHOAI dashboard to Dev Spaces:
 
 ## The Demo
 
-> In this demo, a developer uses a private AI code assistant inside OpenShift Dev Spaces. The model endpoint comes from MaaS (Step 03) and is accessed via an API token — no external AI services involved.
+> In this demo, a developer uses an AI code assistant inside OpenShift Dev Spaces. The model endpoint comes from MaaS (Step 03) and is accessed via an API token. Local OSS models (`gpt-oss-20b`, `nemotron-3-nano-30b-a3b`) run entirely on private infrastructure; external models (`gpt-4o`, `gpt-4o-mini`) proxy requests to OpenAI under governance controls defined in Step 03.
 
 ### Act 1: Discover the Model (RHOAI Dashboard)
 
 1. Log in to the RHOAI Dashboard as `ai-developer` (via `demo-htpasswd`)
 2. Navigate to **GenAI Studio > AI asset endpoints**
 3. Select the **Coding Assistant** project from the dropdown
-4. Click the **Models as a service** tab — both models appear with MaaS badges
+4. Click the **Models as a service** tab — all four models appear with MaaS badges: `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`
 5. Click **View** on the **nemotron-3-nano-30b-a3b** model
 6. Copy the **External endpoint URL**
 7. Click **Generate API token** — copy the token
