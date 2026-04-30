@@ -56,5 +56,7 @@ spec:
         - /data
     - group: tackle.konveyor.io
       kind: Tackle
+      name: mta
+      namespace: openshift-mta
       jsonPointers:
         - /spec/kai_llm_baseurl

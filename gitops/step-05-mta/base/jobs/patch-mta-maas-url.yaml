@@ -81,8 +81,8 @@ metadata:
   name: job-patch-mta-maas-url
   namespace: openshift-mta
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: Force=true,Replace=true
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 6
   template:
@@ -149,8 +149,8 @@ spec:
           echo "kai-api-keys Secret patched"
 
           echo "Rolling llm-proxy to pick up new secret values..."
-          oc rollout restart deployment/llm-proxy -n openshift-mta 2>/dev/null || true
-          oc rollout status deployment/llm-proxy -n openshift-mta --timeout=120s 2>/dev/null || true
+          oc rollout restart deployment/llm-proxy -n openshift-mta
+          oc rollout status deployment/llm-proxy -n openshift-mta --timeout=120s
 
           echo "Done. MTA is configured to use MaaS model: ${MODEL_NAME}"
           echo "Cluster-specific MaaS URL: ${MAAS_BASE_URL}"
