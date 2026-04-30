@@ -133,6 +133,12 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 - Full demo walkthrough: [Step 04 — The Demo](steps/step-04-devspaces/README.md#the-demo)
 
+### AI-Assisted Application Modernization (Step 05)
+
+[Step 05](steps/step-05-mta/README.md) deploys the **Migration Toolkit for Applications (MTA) 8.1** with **Red Hat Developer Lightspeed** — an AI-assisted code resolution engine that uses the same governed MaaS models to generate precise migration-specific code fixes. MTA combines static code analysis (2400+ Red Hat-maintained rules) with LLM-powered code generation: it identifies exactly what needs to change through analysis, then uses the MaaS endpoint to generate targeted code fixes. The default model is Nemotron (configurable).
+
+- Full demo walkthrough: [Step 05 — The Demo](steps/step-05-mta/README.md#the-demo)
+
 ## What You Need
 
 - OpenShift 4.20+ cluster on AWS
@@ -165,6 +171,9 @@ Deploy steps in order:
 
 # Step 04: Dev Spaces + AI Code Assistant
 ./steps/step-04-devspaces/deploy.sh
+
+# Step 05: AI-Assisted App Modernization (MTA 8.1)
+./steps/step-05-mta/deploy.sh
 ```
 
 ## Step Details
@@ -175,6 +184,7 @@ Deploy steps in order:
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
 | 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
+| 05 | [MTA + AI Modernization](steps/step-05-mta/README.md) | MTA 8.1 Operator, Tackle CR, Red Hat Developer Lightspeed, AI-assisted code fixes via MaaS | [MTA 8.1 Documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/) |
 
 ## RHOAI 3.3 Features Covered
 
@@ -225,12 +235,14 @@ rhoai3-coding-demo/
 │   ├── step-01-rhoai-platform/base/    # RHOAI operator, monitoring, serverless, cert-mgr
 │   ├── step-02-gpu-infra/base/         # NFD, GPU Operator, ClusterPolicy
 │   ├── step-03-llm-serving-maas/base/  # LWS, RHCL, Gateway, models, governance
-│   └── step-04-devspaces/base/          # Dev Spaces operator, workspaces
+│   ├── step-04-devspaces/base/         # Dev Spaces operator, workspaces
+│   └── step-05-mta/base/              # MTA operator, Tackle CR, AI config
 ├── steps/                              # Per-step deploy/validate/README + app code
 │   ├── step-01-rhoai-platform/
 │   ├── step-02-gpu-infra/
 │   ├── step-03-llm-serving-maas/
-│   └── step-04-devspaces/
+│   ├── step-04-devspaces/
+│   └── step-05-mta/
 │       └── coding-exercises/        # Python games for AI code assistant demo
 ├── env.example                      # Template for .env
 └── README.md

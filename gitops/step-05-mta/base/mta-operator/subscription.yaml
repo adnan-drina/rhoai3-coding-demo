@@ -1,0 +1,15 @@
+# MTA 8.1 Operator from redhat-operators catalog
+# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/installing_the_migration_toolkit_for_applications/index
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: mta-operator
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  name: mta-operator
+  channel: stable-v8.1
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

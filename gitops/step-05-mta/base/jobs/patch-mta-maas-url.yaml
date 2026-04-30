@@ -1,0 +1,149 @@
+# Post-deploy Job: patches the cluster-specific MaaS Gateway URL
+# into the Tackle CR and kai-api-keys Secret.
+#
+# The GitOps manifests contain a placeholder URL (maas.placeholder.example.com)
+# because the MaaS Gateway URL is cluster-specific.
+# This Job discovers the real URL from the maas-gateway HTTPRoute and patches it in.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+rules:
+- apiGroups: ["tackle.konveyor.io"]
+  resources: ["tackles"]
+  verbs: ["get", "patch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-patch-mta-maas-url-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+rules:
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways", "httproutes"]
+  verbs: ["get", "list"]
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+subjects:
+- kind: ServiceAccount
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+roleRef:
+  kind: Role
+  name: job-patch-mta-maas-url
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-patch-mta-maas-url
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+subjects:
+- kind: ServiceAccount
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+roleRef:
+  kind: ClusterRole
+  name: job-patch-mta-maas-url-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-patch-mta-maas-url
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: job-patch-mta-maas-url
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        env:
+        - name: MODEL_NAME
+          value: "nemotron-3-nano-30b-a3b"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          echo "Discovering MaaS Gateway URL..."
+          MAAS_HOST=""
+
+          for i in {1..30}; do
+            MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
+              -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || true)
+            if [ -n "$MAAS_HOST" ]; then
+              break
+            fi
+            MAAS_HOST=$(oc get httproute -n maas --no-headers 2>/dev/null \
+              | head -1 | awk '{print $3}' || true)
+            if [ -n "$MAAS_HOST" ]; then
+              break
+            fi
+            echo "Waiting for MaaS Gateway... ($i/30)"
+            sleep 10
+          done
+
+          if [ -z "$MAAS_HOST" ]; then
+            echo "ERROR: MaaS Gateway not found (checked openshift-ingress and maas namespaces)"
+            exit 1
+          fi
+
+          MAAS_BASE_URL="https://${MAAS_HOST}/maas/${MODEL_NAME}/v1"
+          echo "MaaS base URL: ${MAAS_BASE_URL}"
+
+          echo "Waiting for Tackle CR to be ready..."
+          for i in {1..60}; do
+            TACKLE_NAME=$(oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}' 2>/dev/null || true)
+            if [ "$TACKLE_NAME" = "mta" ]; then
+              break
+            fi
+            echo "Waiting for Tackle CR... ($i/60)"
+            sleep 5
+          done
+
+          echo "Patching Tackle CR with MaaS URL..."
+          oc patch tackle mta -n openshift-mta --type=merge \
+            -p "{\"spec\":{\"kai_llm_baseurl\":\"${MAAS_BASE_URL}\"}}"
+          echo "Tackle CR patched"
+
+          echo "Patching kai-api-keys Secret..."
+          ENCODED_URL=$(echo -n "${MAAS_BASE_URL}" | base64 -w0 2>/dev/null || echo -n "${MAAS_BASE_URL}" | base64)
+          oc patch secret kai-api-keys -n openshift-mta --type=merge \
+            -p "{\"data\":{\"OPENAI_API_BASE\":\"${ENCODED_URL}\"}}"
+          echo "kai-api-keys Secret patched"
+
+          echo "Done. MTA is configured to use MaaS model: ${MODEL_NAME}"
+          echo "Cluster-specific MaaS URL: ${MAAS_BASE_URL}"
