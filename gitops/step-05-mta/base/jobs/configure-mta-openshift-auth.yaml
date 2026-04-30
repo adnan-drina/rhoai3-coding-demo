@@ -39,6 +39,9 @@ rules:
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
   verbs: ["get", "list"]
+- apiGroups: ["user.openshift.io"]
+  resources: ["users"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -227,6 +230,14 @@ spec:
           create_user_with_role() {
             local USERNAME="$1" ROLE_NAME="$2" EMAIL="$3" FIRST="$4" LAST="$5"
 
+            # The openshift-v4 provider uses the OpenShift user UID as the
+            # federated identity userId, not the username. Look it up.
+            OCP_USER_UID=$(oc get user "${USERNAME}" -o jsonpath='{.metadata.uid}' 2>/dev/null || echo "")
+            if [ -z "$OCP_USER_UID" ]; then
+              echo "WARNING: OpenShift user '${USERNAME}' not found, skipping"
+              return
+            fi
+
             EXISTING=$(curl -sk -H "${AUTH_HEADER}" \
               "${RHBK_URL}/auth/admin/realms/${REALM}/users?username=${USERNAME}&exact=true" 2>/dev/null)
             EXISTS=$(echo "$EXISTING" | python3 -c "import sys,json; print('yes' if len(json.load(sys.stdin))>0 else 'no')" 2>/dev/null)
@@ -258,18 +269,15 @@ spec:
               echo "  Assigned role: ${ROLE_NAME}"
             fi
 
-            LINK_CHECK=$(curl -sk -H "${AUTH_HEADER}" \
+            # Delete stale link if userId changed, then create with correct UID
+            curl -sk -X DELETE -H "${AUTH_HEADER}" \
               "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
-              -o /dev/null -w "%{http_code}" 2>/dev/null)
-            if [ "$LINK_CHECK" != "200" ]; then
-              curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
-                "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
-                -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"${USERNAME}\",\"userName\":\"${USERNAME}\"}" \
-                -o /dev/null
-              echo "  Linked to OpenShift IdP"
-            else
-              echo "  Already linked to OpenShift IdP"
-            fi
+              -o /dev/null 2>/dev/null
+            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/users/${USER_ID}/federated-identity/${IDP_ALIAS}" \
+              -d "{\"identityProvider\":\"${IDP_ALIAS}\",\"userId\":\"${OCP_USER_UID}\",\"userName\":\"${USERNAME}\"}" \
+              -o /dev/null
+            echo "  Linked to OpenShift IdP (uid=${OCP_USER_UID})"
           }
 
           echo "Configuring demo users..."
