@@ -46,11 +46,12 @@ _Private AI Code Assistant with Red Hat OpenShift AI, MaaS, and NVIDIA GPUs_
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
 │ APPLICATIONS                                                                                 │
-│  ┌──────────────────┐   ┌──────────────────────┐   ┌──────────────────┐   ┌──────────────┐   │
-│  │ MaaS Consumers   │   │ OpenShift Dev Spaces │   │ MaaS Admins      │   │ Grafana      │   │
-│  │ Internal users   │   │ IDE + Continue       │   │ Platform ops     │   │ Dashboards   │   │
-│  │ Apps via API/UI  │   │ Private AI assistant │   │ CLI / API / UI   │   │ Usage views  │   │
-│  └──────────────────┘   └──────────────────────┘   └──────────────────┘   └──────────────┘   │
+│  ┌──────────────┐ ┌──────────────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
+│  │ Developer Hub│ │ OpenShift Dev Spaces │ │ MTA 8.1      │ │ MaaS Admins  │ │ Grafana    │  │
+│  │ Software     │ │ IDE + Continue       │ │ AI-assisted  │ │ Platform ops │ │ Dashboards │  │
+│  │ catalog +    │ │ + MTA Extension      │ │ modernization│ │ CLI / API    │ │ Usage      │  │
+│  │ portal       │ │ Private AI assistant │ │ via MaaS LLM │ │ governance   │ │ views      │  │
+│  └──────────────┘ └──────────────────────┘ └──────────────┘ └──────────────┘ └────────────┘  │
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │ RED HAT AI / OPENSHIFT AI                                                                    │
 │  ┌────────────────────────────────────────────────────────────────────────────────────────┐  │

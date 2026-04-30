@@ -17,13 +17,16 @@ Dev Spaces & AI Code Assistant
 │   └── wksp-ai-developer         → Namespace + RoleBinding + DevWorkspace
 ├── AI Tools (installed via postStart)
 │   ├── Continue Extension       → VS Code sidebar AI assistant (inline edits)
+│   ├── MTA Extension 8.1.1     → Migration analysis + AI-assisted code fixes (ai-admin, ai-developer)
 │   └── OpenCode CLI             → Terminal-based agentic AI (git review, analysis)
-└── Exercises Repo Clone         → adnan-drina/coding-exercises
-    ├── devfile.yaml              → Resource limits + Continue/OpenCode setup
-    ├── coding-exercises/         → 3 game starters + solutions
-    ├── .vscode/extensions.json   → Recommends Continue extension
-    ├── .vscode/config.yaml       → Continue model config template
-    └── .opencode/opencode.json    → OpenCode model config (one provider per model)
+├── Exercises Repo Clone         → adnan-drina/coding-exercises
+│   ├── devfile.yaml              → Resource limits + Continue/OpenCode setup
+│   ├── coding-exercises/         → 3 game starters + solutions
+│   ├── .vscode/extensions.json   → Recommends Continue extension
+│   ├── .vscode/config.yaml       → Continue model config template
+│   └── .opencode/opencode.json   → OpenCode model config (one provider per model)
+└── Coolstore Repo Clone         → konveyor-ecosystem/coolstore (ai-admin, ai-developer)
+    └── Legacy Java EE monolith   → Migration target for Step 05 MTA demo
 ```
 
 Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
@@ -147,6 +150,18 @@ For local GPU models (Nemotron, gpt-oss-20b): **no code or data leaves the clust
 For external models (GPT-4o, GPT-4o-mini): requests are proxied through the MaaS Gateway to OpenAI's API. The MaaS Gateway provides centralized governance (rate limiting, access control, usage tracking) but code snippets in prompts do reach the external provider. Organizations can choose which models to expose based on their data classification policies — local GPU models for sensitive code, external models for general-purpose tasks.
 
 This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining centralized control over which providers are used, who can access them, and how much they can consume.
+
+## MTA Modernization Integration (Step 05)
+
+The `ai-admin` and `ai-developer` workspaces also include:
+
+- **konveyor-ecosystem/coolstore** — the legacy Java EE monolith used in the Step 05 MTA modernization demo. The `main` branch is pre-cloned as the first project so the MTA extension analyzes it by default.
+- **MTA VS Code Extension 8.1.1** — installed via `DEFAULT_EXTENSIONS` alongside Continue. Includes `mta-vscode-extension`, `mta-core`, and `mta-java` (pinned to 8.1.1).
+- **6Gi memory** — increased from 4Gi to accommodate Java + Maven + MTA analysis workloads.
+
+The `kubeadmin` workspace retains the original configuration (coding-exercises only, 4Gi, no MTA extension).
+
+See [Step 05 — The Demo](../step-05-mta/README.md#the-demo) for the full coolstore migration workflow.
 
 ## Key Takeaways
 
