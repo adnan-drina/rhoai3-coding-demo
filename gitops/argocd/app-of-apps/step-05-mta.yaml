@@ -60,3 +60,9 @@ spec:
       namespace: openshift-mta
       jsonPointers:
         - /spec/kai_llm_baseurl
+    - group: console.openshift.io
+      kind: ConsoleLink
+      name: mta
+      jsonPointers:
+        - /spec/href
+        - /spec/applicationMenu/imageURL
