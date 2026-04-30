@@ -84,14 +84,14 @@ fi
 
 MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
 if [[ -n "$MTA_ROUTE_HOST" ]]; then
-    IDP_CHECK=$(curl -sk "https://${MTA_ROUTE_HOST}/auth/realms/mta" 2>/dev/null \
-      | python3 -c "import sys,json; d=json.load(sys.stdin); idps=d.get('social-providers',[]); print('yes' if any('openshift' in str(i) for i in idps) else 'no')" 2>/dev/null || echo "no")
-    if [[ "$IDP_CHECK" == "yes" ]]; then
-        echo -e "${GREEN}[PASS]${NC} RHBK has OpenShift IdP visible on login page"
+    IDP_CHECK=$(curl -sk "https://${MTA_ROUTE_HOST}/auth/realms/mta/protocol/openid-connect/auth?client_id=mta-ui&response_type=code&redirect_uri=https://${MTA_ROUTE_HOST}" 2>/dev/null \
+      | grep -c 'social-openshift' || echo "0")
+    if [[ "$IDP_CHECK" -ge 1 ]]; then
+        echo -e "${GREEN}[PASS]${NC} MTA login page shows 'Log in with OpenShift'"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${YELLOW}[WARN]${NC} OpenShift IdP not visible on RHBK login page (may need first sync)"
-        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+        echo -e "${RED}[FAIL]${NC} OpenShift IdP not visible on MTA login page"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 fi
 
