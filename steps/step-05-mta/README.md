@@ -40,37 +40,35 @@ Manifests: [`gitops/step-05-mta/base/`](../../gitops/step-05-mta/base/)
 
 ## How MTA + AI Works
 
+The LLM proxy is central to how Developer Lightspeed integrates with MaaS. Developers never handle API keys — authentication is managed centrally by the platform.
+
 ```text
-Developer opens legacy Java app in VS Code
+Developer (MTA UI or VS Code Extension)
         |
         v
-MTA Extension runs static code analysis (2400+ rules)
+MTA Hub (orchestrates analysis + AI requests)
         |
         v
-Issues identified (e.g., "javax.* must migrate to jakarta.*")
+LLM Proxy (llm-proxy pod, LlamaStack-based)
+  - Authenticates with MaaS Gateway using kai-api-keys Secret
+  - Administrators rotate the sk-oai-* key without touching developer configs
         |
         v
-Developer requests AI fix → Red Hat Developer Lightspeed
-        |
-        v
-LLM Proxy authenticates with MaaS Gateway (sk-oai-* key)
+MaaS Gateway (rate-limited, governed)
         |
         v
 Nemotron model generates migration-specific code fix
         |
         v
 Developer reviews diff, accepts/rejects changes
-        |
-        v
-Agent AI re-analyzes → fewer issues → iterate until clean
 ```
 
 ### Two AI Modes
 
-| Mode | Description | Best For |
+| Mode | How It Works | Best For |
 |------|-------------|----------|
-| **Solution Server** | RAG-based: learns from past migrations, improves over time | Large migration waves with similar apps |
-| **Agent AI** | Agentic loop: plans, fixes, compiles, re-analyzes automatically | Individual app modernization |
+| **Solution Server** | RAG-based: learns from past migrations, improves over time. Accessed through the MTA UI or VS Code extension — all LLM calls go through the proxy. | Large migration waves with similar apps |
+| **Agent AI** | Agentic loop: plans, fixes, compiles, re-analyzes automatically. Also uses the proxy for all LLM calls. | Individual app modernization |
 
 ## The Demo
 
@@ -86,40 +84,62 @@ Agent AI re-analyzes → fewer issues → iterate until clean
 2. Click **Create new** and import a legacy Spring Boot application
 3. Provide the Git repository URL of the sample app
 
-### Act 3: Run Analysis
+### Act 3: Run Analysis (MTA UI)
 
 1. Select the application and click **Analyze**
 2. Choose target: **Quarkus** (or **cloud-readiness**)
 3. MTA applies default rules and identifies migration issues
 4. Review the analysis report — issues, effort estimates, affected files
 
-### Act 4: AI-Assisted Code Fixes (VS Code Extension)
+### Act 4: AI-Assisted Code Fixes (Solution Server)
+
+The Solution Server uses the LLM proxy to call the MaaS model. No API key is needed by the developer — the platform manages authentication centrally via the `kai-api-keys` Secret.
+
+1. In the MTA UI, select an issue from the analysis report
+2. Click **Get solution** — the Solution Server queries the LLM proxy
+3. The LLM proxy authenticates with MaaS Gateway and forwards the request to Nemotron
+4. Review the generated code fix in the diff view
+5. Accept or reject the change
+6. Accepted fixes are stored in the Solution Server database, improving future suggestions
+
+### Act 5: AI-Assisted Code Fixes (VS Code Extension)
+
+The MTA VS Code extension also uses the same LLM proxy — developers authenticate to MTA via Keycloak, and the proxy handles MaaS credentials.
 
 1. Open the application in **Dev Spaces** (or local VS Code)
 2. Install the **MTA Extension** from the VS Code marketplace
-3. Configure a profile: target **Quarkus**, enable default rules
-4. Configure the LLM provider in `provider-settings.yaml`:
-   ```yaml
-   models:
-     maas-nemotron: &active
-       provider: "ChatOpenAI"
-       environment:
-         OPENAI_API_KEY: "YOUR_MAAS_API_KEY"
-       args:
-         model: "nemotron-3-nano-30b-a3b"
-         configuration:
-           baseURL: "https://maas.<cluster>/maas/nemotron-3-nano-30b-a3b/v1"
-   ```
-5. Run analysis in VS Code — issues appear in the MTA Issues pane
-6. Click the **solutions icon** on an issue to request an AI fix
-7. Review the generated code changes in the diff view
-8. Accept or reject — Agent AI re-analyzes and iterates
+3. Configure an MTA server connection (the extension connects to the MTA Hub)
+4. Run analysis in VS Code — issues appear in the MTA Issues pane
+5. Click the **solutions icon** on an issue to request an AI fix
+6. Review the generated code changes in the diff view
+7. Accept or reject — **Agent AI** mode can re-analyze and iterate automatically
 
-### Act 5: Verify Migration Progress
+### Act 6: Verify Migration Progress
 
 1. Re-run analysis — fewer issues reported
 2. Each accepted fix improves the Solution Server's knowledge
 3. Future analyses of similar apps get better suggestions
+
+<details>
+<summary>Alternative: Direct LLM provider (bypassing the proxy)</summary>
+
+If you need to bypass the LLM proxy and connect the VS Code extension directly to a model provider, configure `provider-settings.yaml` in the extension settings:
+
+```yaml
+models:
+  maas-nemotron: &active
+    provider: "ChatOpenAI"
+    environment:
+      OPENAI_API_KEY: "<your sk-oai-* key from MaaS>"
+    args:
+      model: "nemotron-3-nano-30b-a3b"
+      configuration:
+        baseURL: "https://maas.<cluster>/maas/nemotron-3-nano-30b-a3b/v1"
+```
+
+This approach requires each developer to manage their own MaaS API key. The proxy-based flow (Acts 4-5) is recommended for production use because it centralizes key management and enables administrator-controlled key rotation.
+
+</details>
 
 ## Key Takeaways
 
@@ -132,7 +152,7 @@ Agent AI re-analyzes → fewer issues → iterate until clean
 - MTA's static analysis provides precise context — the LLM knows exactly what to fix
 - Model-agnostic: switch between Nemotron (private) and GPT-4o (external) via MaaS
 - No model fine-tuning needed — RAG-based context from the Solution Server handles it
-- The LLM proxy centralizes API key management — administrators rotate keys without touching developer configs
+- The LLM proxy centralizes API key management — administrators rotate the `kai-api-keys` Secret without touching developer configs or redeploying the extension
 
 ## Supported LLM Providers
 
