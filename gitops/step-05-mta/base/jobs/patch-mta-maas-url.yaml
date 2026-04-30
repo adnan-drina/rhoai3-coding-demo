@@ -169,8 +169,10 @@ spec:
                 -p "{\"data\":{\"OPENAI_API_KEY\":\"${ENCODED_KEY}\"}}"
               echo "OPENAI_API_KEY provisioned (sk-oai-...)"
             else
-              echo "WARNING: Could not provision MaaS API key automatically"
-              echo "  Manual step: oc patch secret kai-api-keys -n openshift-mta --type=merge -p '{\"stringData\":{\"OPENAI_API_KEY\":\"sk-oai-YOUR-KEY\"}}'"
+              echo "ERROR: Could not provision MaaS API key automatically"
+              echo "  The MaaS API did not return a valid sk-oai-* key."
+              echo "  Developer Lightspeed will not be able to call MaaS."
+              exit 1
             fi
           else
             echo "OPENAI_API_KEY already set (non-placeholder)"
