@@ -155,9 +155,10 @@ MTA is configured to use **OpenShift OAuth** as an identity provider via the Key
 **How it works:**
 1. A PostSync Job creates an `openshift-v4` identity provider in the MTA Keycloak realm
 2. An `OAuthClient/mta-keycloak` is registered with the OpenShift OAuth server
-3. All OpenShift-authenticated users get the `tackle-migrator` role by default
-4. `ai-admin` is pre-created in Keycloak with the `tackle-admin` role and linked to the OpenShift IdP
-5. On first login, the user clicks **Log in with OpenShift**, authenticates with HTPasswd, and is redirected back to MTA with the correct role
+3. Both demo users are pre-created in Keycloak with their roles and linked to the OpenShift IdP using their OpenShift user UIDs
+4. On login, the user clicks **Log in with OpenShift**, authenticates with HTPasswd, and Keycloak matches the existing linked account — no profile prompts
+
+> Other OpenShift users can also authenticate via the OpenShift login, but they will not have MTA roles pre-assigned. An MTA admin can assign roles to additional users from the RHBK admin console.
 
 > The default MTA admin account (`admin` / auto-generated password) remains available in the RHBK realm for emergency access.
 

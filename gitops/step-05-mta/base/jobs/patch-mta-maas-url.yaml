@@ -145,11 +145,36 @@ spec:
             -p "{\"spec\":{\"kai_llm_baseurl\":\"${MAAS_BASE_URL}\"}}"
           echo "Tackle CR patched"
 
-          echo "Patching kai-api-keys Secret..."
+          echo "Patching kai-api-keys Secret (OPENAI_API_BASE)..."
           ENCODED_URL=$(echo -n "${MAAS_BASE_URL}" | base64 -w0 2>/dev/null || echo -n "${MAAS_BASE_URL}" | base64)
           oc patch secret kai-api-keys -n openshift-mta --type=merge \
             -p "{\"data\":{\"OPENAI_API_BASE\":\"${ENCODED_URL}\"}}"
-          echo "kai-api-keys Secret patched"
+          echo "OPENAI_API_BASE patched"
+
+          echo "Checking OPENAI_API_KEY..."
+          CURRENT_KEY=$(oc get secret kai-api-keys -n openshift-mta \
+            -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -z "$CURRENT_KEY" ] || echo "$CURRENT_KEY" | grep -q "REPLACE"; then
+            echo "Provisioning MaaS API key via MaaS API..."
+            SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            API_KEY=$(curl -sk -X POST \
+              -H "Authorization: Bearer ${SA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"name":"mta-kai-auto"}' \
+              "https://${MAAS_HOST}/maas-api/v1/api-keys" 2>/dev/null \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
+            if [ -n "$API_KEY" ] && echo "$API_KEY" | grep -q "^sk-oai-"; then
+              ENCODED_KEY=$(echo -n "$API_KEY" | base64 -w0 2>/dev/null || echo -n "$API_KEY" | base64)
+              oc patch secret kai-api-keys -n openshift-mta --type=merge \
+                -p "{\"data\":{\"OPENAI_API_KEY\":\"${ENCODED_KEY}\"}}"
+              echo "OPENAI_API_KEY provisioned (sk-oai-...)"
+            else
+              echo "WARNING: Could not provision MaaS API key automatically"
+              echo "  Manual step: oc patch secret kai-api-keys -n openshift-mta --type=merge -p '{\"stringData\":{\"OPENAI_API_KEY\":\"sk-oai-YOUR-KEY\"}}'"
+            fi
+          else
+            echo "OPENAI_API_KEY already set (non-placeholder)"
+          fi
 
           echo "Patching ConsoleLink with MTA route..."
           MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
