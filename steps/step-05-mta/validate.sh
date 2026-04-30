@@ -68,6 +68,33 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
+log_step "OpenShift OAuth Federation"
+check "OAuthClient mta-keycloak exists" \
+  "oc get oauthclient mta-keycloak -o jsonpath='{.metadata.name}'" \
+  "mta-keycloak"
+
+OAUTH_REDIRECT=$(oc get oauthclient mta-keycloak -o jsonpath='{.redirectURIs[0]}' 2>/dev/null || echo "")
+if [[ -n "$OAUTH_REDIRECT" ]] && [[ "$OAUTH_REDIRECT" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} OAuthClient redirect URI: ${OAUTH_REDIRECT}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} OAuthClient redirect URI is placeholder or missing"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+if [[ -n "$MTA_ROUTE_HOST" ]]; then
+    IDP_CHECK=$(curl -sk "https://${MTA_ROUTE_HOST}/auth/realms/mta" 2>/dev/null \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); idps=d.get('social-providers',[]); print('yes' if any('openshift' in str(i) for i in idps) else 'no')" 2>/dev/null || echo "no")
+    if [[ "$IDP_CHECK" == "yes" ]]; then
+        echo -e "${GREEN}[PASS]${NC} RHBK has OpenShift IdP visible on login page"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} OpenShift IdP not visible on RHBK login page (may need first sync)"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+fi
+
 log_step "MTA UI Route"
 MTA_ROUTE=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
 if [[ -n "$MTA_ROUTE" ]]; then

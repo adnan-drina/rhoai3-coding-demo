@@ -66,3 +66,9 @@ spec:
       jsonPointers:
         - /spec/href
         - /spec/applicationMenu/imageURL
+    - group: oauth.openshift.io
+      kind: OAuthClient
+      name: mta-keycloak
+      jsonPointers:
+        - /secret
+        - /redirectURIs
