@@ -91,28 +91,28 @@ Developer reviews diff, accepts/rejects changes
 3. MTA applies default rules and identifies migration issues
 4. Review the analysis report — issues, effort estimates, affected files
 
-### Act 4: AI-Assisted Code Fixes (Solution Server)
+### Act 4: AI-Assisted Code Fixes (VS Code Extension + Solution Server)
 
-The Solution Server uses the LLM proxy to call the MaaS model. No API key is needed by the developer — the platform manages authentication centrally via the `kai-api-keys` Secret.
-
-1. In the MTA UI, select an issue from the analysis report
-2. Click **Get solution** — the Solution Server queries the LLM proxy
-3. The LLM proxy authenticates with MaaS Gateway and forwards the request to Nemotron
-4. Review the generated code fix in the diff view
-5. Accept or reject the change
-6. Accepted fixes are stored in the Solution Server database, improving future suggestions
-
-### Act 5: AI-Assisted Code Fixes (VS Code Extension)
-
-The MTA VS Code extension also uses the same LLM proxy — developers authenticate to MTA via Keycloak, and the proxy handles MaaS credentials.
+The developer works in **Dev Spaces** (or local VS Code) with the MTA extension. The extension connects to MTA Hub, which routes all LLM calls through the proxy — no API key needed by the developer.
 
 1. Open the application in **Dev Spaces** (or local VS Code)
 2. Install the **MTA Extension** from the VS Code marketplace
 3. Configure an MTA server connection (the extension connects to the MTA Hub)
-4. Run analysis in VS Code — issues appear in the MTA Issues pane
-5. Click the **solutions icon** on an issue to request an AI fix
-6. Review the generated code changes in the diff view
-7. Accept or reject — **Agent AI** mode can re-analyze and iterate automatically
+4. Create an analysis profile: target **Quarkus**, enable default rules
+5. Run analysis in VS Code — issues appear in the **MTA Issues** pane
+6. Click the **solutions icon** on an issue to request an AI fix
+7. The Solution Server queries the LLM proxy, which authenticates with MaaS and forwards the request to Nemotron
+8. Review the generated code changes in the diff view
+9. Accept or reject the change — accepted fixes are stored in the Solution Server database, improving future suggestions
+
+### Act 5: Agent AI (Automated Fix Loop)
+
+**Agent AI** mode automates the fix-compile-reanalyze cycle. It uses the same LLM proxy path.
+
+1. In the MTA extension, select multiple issues and choose **Agent AI**
+2. The agent plans fixes, applies them, recompiles, and re-analyzes
+3. If new issues arise from the fix, the agent iterates automatically
+4. Review the final set of changes as a single diff
 
 ### Act 6: Verify Migration Progress
 

@@ -39,23 +39,32 @@ check "llm-proxy deployment ready" \
   "1"
 
 log_step "Tackle AI Conditions"
-check_warn "Tackle KaiAPIKeysConfigured" \
+check "Tackle KaiAPIKeysConfigured" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiAPIKeysConfigured\")].status}'" \
   "True"
-check_warn "Tackle LLMProxyReady" \
+check "Tackle LLMProxyReady" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"LLMProxyReady\")].status}'" \
   "True"
-check_warn "Tackle KaiSolutionServerReady" \
+check "Tackle KaiSolutionServerReady" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiSolutionServerReady\")].status}'" \
   "True"
 
-log_step "MaaS URL (non-placeholder)"
+log_step "MaaS Credentials (non-placeholder)"
 MAAS_URL=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
 if [[ -n "$MAAS_URL" ]] && [[ "$MAAS_URL" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} MaaS URL: ${MAAS_URL}"
+    echo -e "${GREEN}[PASS]${NC} OPENAI_API_BASE: ${MAAS_URL}"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
-    echo -e "${RED}[FAIL]${NC} MaaS URL is placeholder or missing (got: ${MAAS_URL:-empty})"
+    echo -e "${RED}[FAIL]${NC} OPENAI_API_BASE is placeholder or missing (got: ${MAAS_URL:-empty})"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+MAAS_KEY=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -n "$MAAS_KEY" ]] && [[ "$MAAS_KEY" != *"REPLACE"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} OPENAI_API_KEY: set (sk-oai-...)"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} OPENAI_API_KEY is placeholder or missing"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
