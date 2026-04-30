@@ -1,13 +1,20 @@
-# Step 05: AI-Assisted Application Modernization with MTA
-**"AI-powered application modernization at enterprise scale"** — Deploy Migration Toolkit for Applications 8.1 with Red Hat Developer Lightspeed to automate Java application modernization using the same private MaaS models from Step 03.
+# Step 05: AI-Assisted EAP/Java EE Modernization to Quarkus
+**Modernize a representative slice of the Coolstore Java EE application toward Quarkus** using MTA analysis, Developer Lightspeed, and a MaaS-governed Nemotron model. The demo shows the repeatable workflow: assess, analyze, generate AI-assisted fixes, review, apply, rebuild, and re-analyze.
 
 ## Overview
 
-Application modernization at scale requires more than manual code refactoring. This step deploys the **Migration Toolkit for Applications (MTA) 8.1** with **Red Hat Developer Lightspeed** — an AI-assisted code resolution engine that uses the governed MaaS models to generate precise migration-specific code fixes.
+This step deploys the **Migration Toolkit for Applications (MTA) 8.1** with **Red Hat Developer Lightspeed** and demonstrates an end-to-end modernization workflow against the [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore) — a Java EE 7 monolith originally running on JBoss EAP.
 
-Unlike generic AI coding assistants, MTA combines static code analysis (2400+ Red Hat-maintained rules) with LLM-powered code generation. MTA identifies exactly what needs to change through analysis, then uses the MaaS endpoint to generate targeted code fixes — not generic suggestions, but migration-specific transformations.
+MTA combines static code analysis (2400+ Red Hat-maintained rules) with LLM-powered code generation. It identifies exactly what needs to change through analysis, then uses the MaaS endpoint to generate targeted migration-specific code fixes — not generic suggestions, but context-aware transformations informed by the rule engine.
 
 > The same private Nemotron model that developers use in Dev Spaces (Step 04) is also used by MTA for automated code modernization — all governed through MaaS.
+
+### Reference Application
+
+| Branch | Purpose |
+|--------|---------|
+| [`main`](https://github.com/konveyor-ecosystem/coolstore/tree/main) | Legacy Java EE / JBoss EAP starting point (`javax.*`, JPA, CDI, JAX-RS) |
+| [`quarkus`](https://github.com/konveyor-ecosystem/coolstore/tree/quarkus) | Completed Quarkus migration (reference target architecture) |
 
 ### What Gets Deployed
 
@@ -74,53 +81,97 @@ Developer reviews diff, accepts/rejects changes
 
 ## The Demo
 
-### Act 1: Access MTA UI
+### Act 1: Platform Readiness
 
-1. Get the MTA route: `oc get route -n openshift-mta`
-2. Click **Log in with OpenShift** and authenticate as `ai-admin` / `redhat123`
-3. The MTA dashboard shows the migration workspace
+Verify the platform is ready before the demo:
 
-### Act 2: Import a Sample Application
+```bash
+./steps/step-05-mta/validate.sh
+```
 
-1. In MTA UI, go to **Migration > Applications**
-2. Click **Create new** and import a legacy Spring Boot application
-3. Provide the Git repository URL of the sample app
+Show the audience:
+- MTA 8.1 installed and healthy (`oc get tackle mta -n openshift-mta`)
+- OpenShift OAuth login works — click **Log in with OpenShift** on the MTA login page
+- ConsoleLink opens MTA from the OpenShift launcher menu
+- Tackle CR configured with LLM proxy, Solution Server, and MaaS model
+- `kai-api-keys` contains a real `sk-oai-*` MaaS key (validation confirms this)
+- MaaS model refs are ready (4 models in the MaaS tab)
 
-### Act 3: Run Analysis (MTA UI)
+### Act 2: Architect View (MTA UI)
 
-1. Select the application and click **Analyze**
-2. Choose target: **Quarkus** (or **cloud-readiness**)
-3. MTA applies default rules and identifies migration issues
-4. Review the analysis report — issues, effort estimates, affected files
+Log in as `ai-admin` / `redhat123` via **Log in with OpenShift**.
 
-### Act 4: AI-Assisted Code Fixes (VS Code Extension + Solution Server)
+1. Go to **Migration > Applications**
+2. Click **Create new** and register the Coolstore application:
+   - Name: `coolstore`
+   - Repository type: Git
+   - URL: `https://github.com/konveyor-ecosystem/coolstore.git`
+   - Branch: `main`
+3. Create or select a **Quarkus** migration target profile
+4. Select the coolstore application and click **Analyze**
+5. Review the analysis report:
+   - **Incidents** — migration issues found by the rule engine
+   - **Effort/story points** — estimated migration cost
+   - **Affected files** — which source files need changes
+   - **Migration categories** — `javax.*` namespace, CDI, JAX-RS, JPA, configuration
 
-The developer works in **Dev Spaces** (or local VS Code) with the MTA extension. The extension connects to MTA Hub, which routes all LLM calls through the proxy — no API key needed by the developer.
+Explain to the audience: static analysis gives the LLM precise context about what needs to change. This is why MTA + AI produces better results than generic "modernize this code" prompting.
 
-1. Open the application in **Dev Spaces** (or local VS Code)
-2. Install the **MTA Extension** from the VS Code marketplace
-3. Configure an MTA server connection (the extension connects to the MTA Hub)
-4. Create an analysis profile: target **Quarkus**, enable default rules
-5. Run analysis in VS Code — issues appear in the **MTA Issues** pane
-6. Click the **solutions icon** on an issue to request an AI fix
-7. The Solution Server queries the LLM proxy, which authenticates with MaaS and forwards the request to Nemotron
-8. Review the generated code changes in the diff view
-9. Accept or reject the change — accepted fixes are stored in the Solution Server database, improving future suggestions
+### Act 3: Developer Workspace (Dev Spaces)
 
-### Act 5: Agent AI (Automated Fix Loop)
+Log in as `ai-developer` / `redhat123`.
 
-**Agent AI** mode automates the fix-compile-reanalyze cycle. It uses the same LLM proxy path.
+1. Open **Dev Spaces** from the OpenShift launcher
+2. The ai-developer workspace has the Coolstore `main` branch pre-cloned
+3. Confirm the **MTA extension** is installed (pre-installed via `DEFAULT_EXTENSIONS`)
+4. Connect the MTA extension to the MTA Hub:
+   - Hub URL: `https://<mta-route>` (get from `oc get route mta -n openshift-mta`)
+   - Authentication: enabled (uses OpenShift/Keycloak login)
+   - Solution Server: enabled
+   - Profile sync: enabled
+5. Select the Quarkus migration profile synced from the Hub
 
-1. In the MTA extension, select multiple issues and choose **Agent AI**
-2. The agent plans fixes, applies them, recompiles, and re-analyzes
-3. If new issues arise from the fix, the agent iterates automatically
-4. Review the final set of changes as a single diff
+### Act 4: IDE Analysis
 
-### Act 6: Verify Migration Progress
+From the MTA VS Code extension:
 
-1. Re-run analysis — fewer issues reported
-2. Each accepted fix improves the Solution Server's knowledge
-3. Future analyses of similar apps get better suggestions
+1. Run analysis against the Coolstore source code
+2. Issues appear in the **MTA Issues** pane within the IDE
+3. Pick a narrow issue class for the live demo:
+   - `javax.*` -> `jakarta.*` namespace migration
+   - CDI / JAX-RS modernization patterns
+   - Persistence or configuration changes
+4. Do not attempt to migrate the entire application live — focus on a representative slice
+
+### Act 5: AI-Assisted Fix Through MaaS
+
+Request a Developer Lightspeed / Solution Server fix for a selected issue.
+
+Narrate the key architectural point:
+
+> The developer does not enter a MaaS API key. The MTA extension authenticates to MTA via Keycloak. The LLM proxy uses the administrator-managed `kai-api-keys` Secret to authenticate with the MaaS Gateway. The MaaS Gateway enforces model access and rate limits. Nemotron generates the suggested patch.
+
+Then:
+1. Click the **solutions icon** on an issue to request an AI fix
+2. Review the generated diff
+3. Apply the selected fix
+4. Run `mvn test` or `mvn package` to verify the build
+5. Re-run MTA analysis from the extension
+6. Show reduced incidents or changed issue profile
+
+### Act 6: Reference Completion
+
+Switch to or compare with the [`quarkus` branch](https://github.com/konveyor-ecosystem/coolstore/tree/quarkus):
+
+```bash
+cd /projects/coolstore
+git fetch origin quarkus
+git diff main..origin/quarkus -- src/
+```
+
+Position this for the audience:
+
+> "This branch represents the completed target architecture. In a real migration wave, teams repeat the analyze-fix-build-reanalyze loop until the application reaches this state. The Solution Server learns from each accepted fix, so similar issues across the portfolio get progressively better suggestions."
 
 <details>
 <summary>Alternative: Direct LLM provider (bypassing the proxy)</summary>
@@ -189,13 +240,17 @@ MTA supports any OpenAI-compatible endpoint. In this demo, it connects to MaaS:
 
 ## References
 
+- [Coolstore Sample Application](https://github.com/konveyor-ecosystem/coolstore) — Java EE monolith (`main`) with completed Quarkus migration (`quarkus` branch)
 - [MTA 8.1 Installation Guide](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/installing_the_migration_toolkit_for_applications/index)
-- [Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
-- [MTA 8 Blog: Bringing modernized applications to market faster](https://www.redhat.com/en/blog/migration-toolkit-applications-8-bringing-modernized-applications-market-faster)
+- [Developer Lightspeed for MTA 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
+- [MTA VS Code Extension 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index)
+- [MTA UI Guide 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index)
+- [MTA Rules Guide 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_rules_for_an_mta_analysis/index)
 - [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 
 ## Next Steps
 
-- Configure the MTA VS Code extension in Dev Spaces workspaces
-- Import enterprise Java applications for migration assessment
+- Automate Coolstore registration and Quarkus profile creation via the MTA Hub API (Phase 2)
+- Add custom rulesets for organization-specific migration patterns
 - Build a Solution Server knowledge base from initial migrations
+- Import enterprise Java applications for portfolio-scale assessment

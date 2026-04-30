@@ -135,7 +135,7 @@ Before the demo begins, the platform team lays the foundation. [Step 01](steps/s
 
 ### AI-Assisted Application Modernization (Step 05)
 
-[Step 05](steps/step-05-mta/README.md) deploys the **Migration Toolkit for Applications (MTA) 8.1** with **Red Hat Developer Lightspeed** — an AI-assisted code resolution engine that uses the same governed MaaS models to generate precise migration-specific code fixes. MTA combines static code analysis (2400+ Red Hat-maintained rules) with LLM-powered code generation: it identifies exactly what needs to change through analysis, then uses the MaaS endpoint to generate targeted code fixes. The default model is Nemotron (configurable).
+[Step 05](steps/step-05-mta/README.md) deploys **MTA 8.1** with **Developer Lightspeed** and demonstrates a representative migration slice of the [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore) Java EE monolith toward Quarkus. The developer uses the **MTA VS Code extension** in Dev Spaces to get AI-assisted code fixes through the MaaS-governed Nemotron model — no API keys needed in the IDE. The platform manages authentication centrally through the LLM proxy, while MaaS enforces model access and rate limits. OpenShift OAuth federation allows `ai-admin` and `ai-developer` to log into MTA with their cluster credentials.
 
 - Full demo walkthrough: [Step 05 — The Demo](steps/step-05-mta/README.md#the-demo)
 
@@ -184,7 +184,7 @@ Deploy steps in order:
 | 02 | [GPU Infrastructure](steps/step-02-gpu-infra/README.md) | NFD Operator, NVIDIA GPU Operator, ClusterPolicy, GPU MachineSets | [OCP Hardware Accelerators](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture) |
 | 03 | [LLM Serving + MaaS](steps/step-03-llm-serving-maas/README.md) | LWS, RHCL, Kuadrant, vLLM + NVIDIA Nemotron, OpenAI GPT-4o/4o-mini (ExternalModel), upstream maas-controller, MaaSAuthPolicy, MaaSSubscription, MCP servers, Grafana | [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) |
 | 04 | [Dev Spaces + Continue](steps/step-04-devspaces/README.md) | OpenShift Dev Spaces, VS Code, Continue extension, coding exercises | [Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/) |
-| 05 | [MTA + AI Modernization](steps/step-05-mta/README.md) | MTA 8.1 Operator, Tackle CR, Red Hat Developer Lightspeed, AI-assisted code fixes via MaaS | [MTA 8.1 Documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/) |
+| 05 | [MTA + AI Modernization](steps/step-05-mta/README.md) | MTA 8.1 Operator, Tackle CR, Developer Lightspeed, OpenShift OAuth federation, Coolstore migration demo via MaaS | [MTA 8.1 Documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/) |
 
 ## RHOAI 3.3 Features Covered
 
