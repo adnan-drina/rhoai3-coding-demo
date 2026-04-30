@@ -26,6 +26,9 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -144,6 +147,10 @@ spec:
           oc patch secret kai-api-keys -n openshift-mta --type=merge \
             -p "{\"data\":{\"OPENAI_API_BASE\":\"${ENCODED_URL}\"}}"
           echo "kai-api-keys Secret patched"
+
+          echo "Rolling llm-proxy to pick up new secret values..."
+          oc rollout restart deployment/llm-proxy -n openshift-mta 2>/dev/null || true
+          oc rollout status deployment/llm-proxy -n openshift-mta --timeout=120s 2>/dev/null || true
 
           echo "Done. MTA is configured to use MaaS model: ${MODEL_NAME}"
           echo "Cluster-specific MaaS URL: ${MAAS_BASE_URL}"

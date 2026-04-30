@@ -48,7 +48,13 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
+    - group: ""
+      kind: Secret
+      name: kai-api-keys
+      namespace: openshift-mta
+      jsonPointers:
+        - /data
     - group: tackle.konveyor.io
       kind: Tackle
-      jqPathExpressions:
-        - .spec
+      jsonPointers:
+        - /spec/kai_llm_baseurl

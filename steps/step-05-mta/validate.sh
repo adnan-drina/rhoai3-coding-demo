@@ -22,27 +22,54 @@ check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"
 
-log_step "MTA Core Pods"
-check_warn "mta-ui pod running" \
-  "oc get pods -n openshift-mta --no-headers 2>/dev/null | grep -c 'mta-ui.*Running'" \
+log_step "MTA Core Deployments"
+check "mta-ui deployment ready" \
+  "oc get deployment mta-ui -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
-check_warn "mta-hub pod running" \
-  "oc get pods -n openshift-mta --no-headers 2>/dev/null | grep -c 'mta-hub.*Running'" \
+check "mta-hub deployment ready" \
+  "oc get deployment mta-hub -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
 
 log_step "Red Hat Developer Lightspeed (AI)"
-check "kai-api-keys Secret exists" \
-  "oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.metadata.name}'" \
-  "kai-api-keys"
-check_warn "kai pod running" \
-  "oc get pods -n openshift-mta --no-headers 2>/dev/null | grep -cE 'kai-[a-z0-9].*Running'" \
+check "kai-api deployment ready" \
+  "oc get deployment kai-api -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
+  "1"
+check "llm-proxy deployment ready" \
+  "oc get deployment llm-proxy -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
 
-log_step "MTA UI Route"
-MTA_ROUTE=$(oc get route -n openshift-mta --no-headers 2>/dev/null | grep mta | awk '{print $2}' | head -1)
-if [[ -n "$MTA_ROUTE" ]]; then
-    echo -e "${GREEN}[PASS]${NC} MTA UI: https://${MTA_ROUTE}"
+log_step "Tackle AI Conditions"
+check_warn "Tackle KaiAPIKeysConfigured" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiAPIKeysConfigured\")].status}'" \
+  "True"
+check_warn "Tackle LLMProxyReady" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"LLMProxyReady\")].status}'" \
+  "True"
+check_warn "Tackle KaiSolutionServerReady" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiSolutionServerReady\")].status}'" \
+  "True"
+
+log_step "MaaS URL (non-placeholder)"
+MAAS_URL=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -n "$MAAS_URL" ]] && [[ "$MAAS_URL" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} MaaS URL: ${MAAS_URL}"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} MaaS URL is placeholder or missing (got: ${MAAS_URL:-empty})"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+log_step "MTA UI Route"
+MTA_ROUTE=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+if [[ -n "$MTA_ROUTE" ]]; then
+    HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${MTA_ROUTE}" 2>/dev/null || echo "000")
+    if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
+        echo -e "${GREEN}[PASS]${NC} MTA UI: https://${MTA_ROUTE} (HTTP ${HTTP_CODE})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} MTA UI: https://${MTA_ROUTE} (HTTP ${HTTP_CODE})"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
 else
     echo -e "${YELLOW}[WARN]${NC} MTA UI route not found"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
