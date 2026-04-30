@@ -23,7 +23,9 @@ AI-Assisted App Modernization (MTA 8.1)
 ├── kai-api-keys Secret             → MaaS API key (OPENAI_API_KEY + OPENAI_API_BASE)
 ├── kai-db                          → Solution Server database (5Gi RWO)
 ├── RHBK (Keycloak)                 → MTA authentication
-└── Post-deploy Job                 → Patches cluster-specific MaaS URL
+├── OAuthClient/mta-keycloak        → OpenShift OAuth federation
+├── PostSync Job (MaaS)             → Patches cluster-specific MaaS URL
+└── PostSync Job (Auth)             → Configures OpenShift IdP in RHBK
 ```
 
 Manifests: [`gitops/step-05-mta/base/`](../../gitops/step-05-mta/base/)
@@ -75,7 +77,7 @@ Developer reviews diff, accepts/rejects changes
 ### Act 1: Access MTA UI
 
 1. Get the MTA route: `oc get route -n openshift-mta`
-2. Log in with `admin` / `Passw0rd!` (change on first login)
+2. Click **Log in with OpenShift** and authenticate as `ai-admin` / `redhat123`
 3. The MTA dashboard shows the migration workspace
 
 ### Act 2: Import a Sample Application
@@ -140,6 +142,24 @@ models:
 This approach requires each developer to manage their own MaaS API key. The proxy-based flow (Acts 4-5) is recommended for production use because it centralizes key management and enables administrator-controlled key rotation.
 
 </details>
+
+## Federated Login with OpenShift
+
+MTA is configured to use **OpenShift OAuth** as an identity provider via the Keycloak `openshift-v4` provider. Users log into MTA with their existing cluster credentials — no separate MTA accounts needed.
+
+| OpenShift User | MTA Role | Access |
+|---|---|---|
+| `ai-admin` | `tackle-admin` | Full admin: manage applications, credentials, rules, users |
+| `ai-developer` | `tackle-migrator` | Run analysis, request AI fixes, view reports |
+
+**How it works:**
+1. A PostSync Job creates an `openshift-v4` identity provider in the MTA Keycloak realm
+2. An `OAuthClient/mta-keycloak` is registered with the OpenShift OAuth server
+3. All OpenShift-authenticated users get the `tackle-migrator` role by default
+4. `ai-admin` is pre-created in Keycloak with the `tackle-admin` role and linked to the OpenShift IdP
+5. On first login, the user clicks **Log in with OpenShift**, authenticates with HTPasswd, and is redirected back to MTA with the correct role
+
+> The default MTA admin account (`admin` / auto-generated password) remains available in the RHBK realm for emergency access.
 
 ## Key Takeaways
 
