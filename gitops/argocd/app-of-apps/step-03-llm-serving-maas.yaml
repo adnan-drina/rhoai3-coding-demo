@@ -65,6 +65,10 @@ spec:
       kind: Grafana
       jqPathExpressions:
         - .spec
+    - group: grafana.integreatly.org
+      kind: GrafanaDatasource
+      jqPathExpressions:
+        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
