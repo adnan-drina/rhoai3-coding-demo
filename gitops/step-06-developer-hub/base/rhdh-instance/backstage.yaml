@@ -1,0 +1,22 @@
+# RHDH Backstage instance — references app-config, dynamic plugins, and secrets.
+# The operator creates the Route automatically (route.enabled defaults to true).
+# Ref: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/configuring_red_hat_developer_hub/index
+apiVersion: rhdh.redhat.com/v1alpha5
+kind: Backstage
+metadata:
+  name: developer-hub
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  application:
+    appConfig:
+      mountPath: /opt/app-root/src
+      configMaps:
+        - name: app-config-rhdh
+    dynamicPluginsConfigMapName: dynamic-plugins-rhdh
+    extraEnvs:
+      secrets:
+        - name: rhdh-secrets
+    replicas: 1

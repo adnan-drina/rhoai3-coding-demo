@@ -1,0 +1,40 @@
+# RHDH app-config — uses environment variable substitution for cluster-specific values.
+# The PostSync Job patches rhdh-secrets with real URLs; the Backstage CR injects them as env vars.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+data:
+  app-config-rhdh.yaml: |
+    app:
+      title: "RHOAI Coding Demo Portal"
+      baseUrl: ${RHDH_BASE_URL}
+    backend:
+      baseUrl: ${RHDH_BASE_URL}
+      cors:
+        origin: ${RHDH_BASE_URL}
+    auth:
+      environment: production
+      session:
+        secret: ${SESSION_SECRET}
+      providers:
+        oidc:
+          production:
+            metadataUrl: ${RHBK_METADATA_URL}
+            clientId: rhdh
+            clientSecret: ${RHDH_OIDC_CLIENT_SECRET}
+            prompt: auto
+            signIn:
+              resolvers:
+                - resolver: preferredUsernameMatchingUserEntityName
+                  dangerouslyAllowSignInWithoutUserInCatalog: true
+    signInPage: oidc
+    catalog:
+      rules:
+        - allow: [Component, System, API, Resource, Location, User, Group]
+      locations:
+        - type: url
+          target: https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/main/gitops/step-06-developer-hub/base/catalog/all.yaml

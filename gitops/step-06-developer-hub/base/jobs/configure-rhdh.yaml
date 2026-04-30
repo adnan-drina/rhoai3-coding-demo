@@ -1,0 +1,272 @@
+# PostSync Job: configures RHDH authentication and cluster-specific values.
+#
+# 1. Discovers RHDH route and MTA route (for RHBK)
+# 2. Creates/updates an 'rhdh' OIDC client in the MTA Keycloak realm
+# 3. Generates session secret
+# 4. Patches rhdh-secrets with real URLs and credentials
+# 5. Patches ConsoleLink with RHDH route
+# 6. Restarts RHDH deployment to pick up new secrets
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-configure-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-rhdh-mta-reader
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-configure-rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+rules:
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list"]
+- apiGroups: ["console.openshift.io"]
+  resources: ["consolelinks"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+subjects:
+- kind: ServiceAccount
+  name: job-configure-rhdh
+  namespace: rhdh
+roleRef:
+  kind: Role
+  name: job-configure-rhdh
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-rhdh-mta-reader
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+subjects:
+- kind: ServiceAccount
+  name: job-configure-rhdh
+  namespace: rhdh
+roleRef:
+  kind: Role
+  name: job-configure-rhdh-mta-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-configure-rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+subjects:
+- kind: ServiceAccount
+  name: job-configure-rhdh
+  namespace: rhdh
+roleRef:
+  kind: ClusterRole
+  name: job-configure-rhdh
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-configure-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: job-configure-rhdh
+      containers:
+      - name: configure
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          RHBK_URL="https://mta-rhbk-service.openshift-mta.svc:8443"
+          REALM="mta"
+          RHDH_CLIENT_ID="rhdh"
+
+          # --- 1. Discover RHDH route ---
+          echo "Discovering RHDH route..."
+          RHDH_HOST=""
+          for i in {1..30}; do
+            RHDH_HOST=$(oc get route -n rhdh --no-headers 2>/dev/null \
+              | grep backstage | awk '{print $2}' | head -1 || true)
+            if [ -n "$RHDH_HOST" ]; then break; fi
+            echo "Waiting for RHDH route... ($i/30)"
+            sleep 10
+          done
+          if [ -z "$RHDH_HOST" ]; then
+            echo "ERROR: RHDH route not found"
+            exit 1
+          fi
+          RHDH_URL="https://${RHDH_HOST}"
+          echo "RHDH URL: ${RHDH_URL}"
+
+          # --- 2. Discover MTA route (for RHBK metadata URL) ---
+          echo "Discovering MTA route..."
+          MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          if [ -z "$MTA_HOST" ]; then
+            echo "ERROR: MTA route not found"
+            exit 1
+          fi
+          RHBK_METADATA_URL="https://${MTA_HOST}/auth/realms/${REALM}"
+          echo "RHBK metadata URL: ${RHBK_METADATA_URL}"
+
+          # --- 3. Get RHBK admin token ---
+          echo "Getting RHBK admin token..."
+          RHBK_ADMIN_PASS=$(oc get secret mta-keycloak-rhbk -n openshift-mta \
+            -o jsonpath='{.data.password}' | base64 -d)
+
+          ADMIN_TOKEN=""
+          for i in {1..30}; do
+            ADMIN_TOKEN=$(curl -sk -X POST \
+              "${RHBK_URL}/auth/realms/master/protocol/openid-connect/token" \
+              -d "grant_type=password&client_id=admin-cli&username=admin&password=${RHBK_ADMIN_PASS}" \
+              2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null || echo "")
+            if [ -n "$ADMIN_TOKEN" ]; then break; fi
+            echo "Waiting for RHBK... ($i/30)"
+            sleep 10
+          done
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "ERROR: Cannot get RHBK admin token"
+            exit 1
+          fi
+          echo "Got RHBK admin token"
+          AUTH_HEADER="Authorization: Bearer ${ADMIN_TOKEN}"
+
+          # --- 4. Generate OIDC client secret ---
+          echo "Checking RHDH OIDC client in RHBK..."
+          REDIRECT_URI="${RHDH_URL}/api/auth/oidc/handler/frame"
+
+          EXISTING_CLIENT=$(curl -sk -H "${AUTH_HEADER}" \
+            "${RHBK_URL}/auth/admin/realms/${REALM}/clients?clientId=${RHDH_CLIENT_ID}" 2>/dev/null \
+            | python3 -c "import sys,json; clients=json.load(sys.stdin); print(clients[0]['id'] if clients else '')" 2>/dev/null || echo "")
+
+          CLIENT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+
+          if [ -n "$EXISTING_CLIENT" ]; then
+            echo "Updating existing RHDH client..."
+            curl -sk -X PUT -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/clients/${EXISTING_CLIENT}" \
+              -d "{
+                \"clientId\": \"${RHDH_CLIENT_ID}\",
+                \"enabled\": true,
+                \"publicClient\": false,
+                \"secret\": \"${CLIENT_SECRET}\",
+                \"redirectUris\": [\"${REDIRECT_URI}\"],
+                \"webOrigins\": [\"${RHDH_URL}\"],
+                \"standardFlowEnabled\": true,
+                \"directAccessGrantsEnabled\": false
+              }" -o /dev/null
+            echo "RHDH client updated"
+          else
+            echo "Creating new RHDH client..."
+            curl -sk -X POST -H "${AUTH_HEADER}" -H "Content-Type: application/json" \
+              "${RHBK_URL}/auth/admin/realms/${REALM}/clients" \
+              -d "{
+                \"clientId\": \"${RHDH_CLIENT_ID}\",
+                \"enabled\": true,
+                \"publicClient\": false,
+                \"secret\": \"${CLIENT_SECRET}\",
+                \"redirectUris\": [\"${REDIRECT_URI}\"],
+                \"webOrigins\": [\"${RHDH_URL}\"],
+                \"standardFlowEnabled\": true,
+                \"directAccessGrantsEnabled\": false,
+                \"protocol\": \"openid-connect\"
+              }" -o /dev/null
+            echo "RHDH client created"
+          fi
+
+          # --- 5. Generate session secret ---
+          SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+
+          # --- 6. Patch rhdh-secrets ---
+          echo "Patching rhdh-secrets..."
+          ENCODED_SESSION=$(echo -n "${SESSION_SECRET}" | base64 -w0 2>/dev/null || echo -n "${SESSION_SECRET}" | base64)
+          ENCODED_CLIENT_SECRET=$(echo -n "${CLIENT_SECRET}" | base64 -w0 2>/dev/null || echo -n "${CLIENT_SECRET}" | base64)
+          ENCODED_BASE_URL=$(echo -n "${RHDH_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_URL}" | base64)
+          ENCODED_METADATA_URL=$(echo -n "${RHBK_METADATA_URL}" | base64 -w0 2>/dev/null || echo -n "${RHBK_METADATA_URL}" | base64)
+
+          oc patch secret rhdh-secrets -n rhdh --type=merge \
+            -p "{\"data\":{
+              \"SESSION_SECRET\":\"${ENCODED_SESSION}\",
+              \"RHDH_OIDC_CLIENT_SECRET\":\"${ENCODED_CLIENT_SECRET}\",
+              \"RHDH_BASE_URL\":\"${ENCODED_BASE_URL}\",
+              \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\"
+            }}"
+          echo "rhdh-secrets patched"
+
+          # --- 7. Patch ConsoleLink ---
+          echo "Patching ConsoleLink..."
+          oc patch consolelink rhdh --type=merge \
+            -p "{\"spec\":{\"href\":\"${RHDH_URL}\",\"applicationMenu\":{\"imageURL\":\"${RHDH_URL}/favicon.ico\"}}}"
+          echo "ConsoleLink patched: ${RHDH_URL}"
+
+          # --- 8. Restart RHDH ---
+          echo "Restarting RHDH deployment..."
+          RHDH_DEPLOY=$(oc get deployment -n rhdh --no-headers 2>/dev/null \
+            | grep backstage | awk '{print $1}' | head -1 || true)
+          if [ -n "$RHDH_DEPLOY" ]; then
+            oc rollout restart deployment/${RHDH_DEPLOY} -n rhdh
+            oc rollout status deployment/${RHDH_DEPLOY} -n rhdh --timeout=180s
+            echo "RHDH restarted"
+          else
+            echo "WARNING: RHDH deployment not found for restart"
+          fi
+
+          echo ""
+          echo "=== RHDH configured ==="
+          echo "URL: ${RHDH_URL}"
+          echo "Auth: OIDC via MTA Keycloak (${RHBK_METADATA_URL})"
+          echo "Users log in with OpenShift credentials (brokered through RHBK)"
