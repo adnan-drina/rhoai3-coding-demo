@@ -122,16 +122,16 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: coding-exercises
-        git:
-          remotes:
-            origin: https://github.com/adnan-drina/coding-exercises.git
-          checkoutFrom:
-            revision: main
       - name: coolstore
         git:
           remotes:
             origin: https://github.com/konveyor-ecosystem/coolstore.git
+          checkoutFrom:
+            revision: main
+      - name: coding-exercises
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
     commands:
@@ -207,16 +207,16 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: coding-exercises
-        git:
-          remotes:
-            origin: https://github.com/adnan-drina/coding-exercises.git
-          checkoutFrom:
-            revision: main
       - name: coolstore
         git:
           remotes:
             origin: https://github.com/konveyor-ecosystem/coolstore.git
+          checkoutFrom:
+            revision: main
+      - name: coding-exercises
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
             revision: main
     commands:
