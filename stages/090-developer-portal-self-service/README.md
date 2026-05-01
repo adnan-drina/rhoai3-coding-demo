@@ -47,11 +47,7 @@ Red Hat Developer Hub
 
 That identity chain reinforces the platform story: OpenShift-backed identity is reused across Red Hat OpenShift AI, Red Hat OpenShift Dev Spaces, MTA, MaaS, and Red Hat Developer Hub. The portal does not replace those systems; it gives teams a single place to discover them, understand ownership, and follow approved paths into the right workflow.
 
-## Red Hat Alignment And Demo Deviations
-
 The Red Hat Developer Hub deployment follows the operator-managed Backstage custom resource pattern and uses dynamic plugin configuration through OpenShift resources. The catalog URL is derived at runtime from the Stage 090 Argo CD Application `repoURL` and `targetRevision`, so the portal follows the validated GitOps revision instead of a hard-coded branch.
-
-For demo continuity, Red Hat Developer Hub reuses the MTA Keycloak / Red Hat build of Keycloak realm, which brokers authentication back to OpenShift OAuth. A production implementation should use the organization's approved identity provider or a dedicated Red Hat build of Keycloak design rather than depending on the MTA identity path.
 
 ## Red Hat Products Used
 
@@ -65,6 +61,12 @@ For demo continuity, Red Hat Developer Hub reuses the MTA Keycloak / Red Hat bui
 - [Backstage](https://backstage.io/) is the upstream developer portal framework behind Red Hat Developer Hub.
 - The [Backstage Software Catalog](https://backstage.io/docs/features/software-catalog/) provides the model for describing components, ownership, APIs, systems, resources, and documentation.
 - [TechDocs](https://backstage.io/docs/features/techdocs/) can turn repository documentation into portal-hosted technical documentation.
+
+## Trust Boundaries
+
+For demo continuity, Red Hat Developer Hub reuses the MTA Keycloak / Red Hat build of Keycloak realm, which brokers authentication back to OpenShift OAuth. A production implementation should use the organization's approved identity provider or a dedicated Red Hat build of Keycloak design rather than depending on the MTA identity path.
+
+The portal is a discovery and self-service surface. It should link to approved platform paths rather than embedding provider secrets, kubeconfigs, or unmanaged service credentials.
 
 ## Why This Is Worth Knowing
 
