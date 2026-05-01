@@ -1,0 +1,96 @@
+# Approves pending CloudNativePG install plans when OLM creates a Manual
+# InstallPlan despite the Subscription requesting Automatic approval.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-approve-cloudnative-pg
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-approve-cloudnative-pg
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+rules:
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["installplans"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["subscriptions", "clusterserviceversions"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-approve-cloudnative-pg
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+subjects:
+  - kind: ServiceAccount
+    name: job-approve-cloudnative-pg
+    namespace: openshift-operators
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-approve-cloudnative-pg
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-approve-cloudnative-pg
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      serviceAccountName: job-approve-cloudnative-pg
+      restartPolicy: Never
+      containers:
+        - name: approve
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "Waiting for CloudNativePG Subscription..."
+              for i in $(seq 1 60); do
+                if oc get subscription cloudnative-pg -n openshift-operators &>/dev/null; then
+                  break
+                fi
+                sleep 5
+              done
+
+              echo "Approving pending CloudNativePG install plans..."
+              for i in $(seq 1 60); do
+                for plan in $(oc get installplan -n openshift-operators -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+                  if oc get installplan "$plan" -n openshift-operators -o jsonpath='{.spec.clusterServiceVersionNames}' | grep -q 'cloudnative-pg'; then
+                    echo "Approving: $plan"
+                    oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}'
+                  fi
+                done
+
+                CSV=$(oc get subscription cloudnative-pg -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)
+                if [ -n "$CSV" ]; then
+                  PHASE=$(oc get csv "$CSV" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                  echo "CSV $CSV phase: ${PHASE:-unknown}"
+                  if [ "$PHASE" = "Succeeded" ]; then
+                    exit 0
+                  fi
+                fi
+                sleep 5
+              done
+
+              echo "CloudNativePG CSV did not reach Succeeded in time"
+              exit 1

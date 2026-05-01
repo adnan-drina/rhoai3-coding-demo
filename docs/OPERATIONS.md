@@ -216,6 +216,7 @@ Stage results:
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
 | 030 Private Model Serving | Passed with expected warnings | `./stages/030-private-model-serving/validate.sh`: 6 passed, 2 warnings, 0 failed |
+| 040 Governed Models-as-a-Service | Fixing | CloudNativePG InstallPlan required manual approval despite Automatic Subscription |
 
 Stage 010 findings:
 
@@ -241,6 +242,11 @@ Stage 030 findings:
 - The `LLMInferenceService` resources were created and scheduled on GPU nodes. They currently report `HTTPRouteReconcileError` until Stage 040 installs Red Hat Connectivity Link and the `AuthPolicy` CRD. Stage 030 validation treats model readiness as a warning because gateway governance is introduced in Stage 040.
 - Fix applied in commit `1042add`. Stage 030 re-synced successfully, and the `model-registry-seed` hook completed.
 - Final evidence for Stage 030: `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were registered in the model registry. Both model pods were scheduled on GPU nodes and were in init/model-pull startup. Both `LLMInferenceService` resources reported `HTTPRouteReconcileError` because `AuthPolicy` is introduced by Stage 040.
+
+Stage 040 findings:
+
+- The first Stage 040 auto-sync stalled on `tenants.maas.opendatahub.io` even though the CRD existed. Manual hard refresh plus explicit `argocd app sync` advanced the operation. This is the same Argo CD startup/cache pattern seen in Stage 010.
+- CloudNativePG generated install plan `install-kjljp` with `APPROVAL=Manual` and `APPROVED=false` even though the Subscription requested `installPlanApproval: Automatic`. Improvement being applied: add a narrow Stage 040 approval hook that only approves pending CloudNativePG install plans in `openshift-operators`.
 
 ### Stage 020
 
