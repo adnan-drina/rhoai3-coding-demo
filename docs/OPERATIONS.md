@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Git commit: `1042add`
+- Git commit: `bd36c8e`
 
 Preflight:
 
@@ -220,6 +220,7 @@ Stage results:
 | 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 8 passed, 1 warning, 0 failed |
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 6 passed, 2 warnings, 0 failed |
 | 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 5 passed, 0 warnings, 0 failed |
+| 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 20 passed, 0 warnings, 0 failed |
 
 Stage 010 findings:
 
@@ -275,6 +276,14 @@ Stage 070 findings:
 - Improvement applied: add a narrow Sync hook that waits for the `devspaces-operator` deployment rollout and `devspaces-operator-service` endpoints before Argo CD applies the `CheCluster`.
 - Follow-up GitOps finding: `DevWorkspace` resources had `Replace=true`, which is incompatible with controller-assigned immutable DevWorkspace IDs on later syncs. Improvement applied: remove `Replace=true`, add a repair hook for stale live annotations from earlier revisions, and allow Argo CD to patch/observe the resources while continuing to ignore controller-managed `DevWorkspace.spec` drift.
 - Final evidence for Stage 070: Dev Spaces operator CSV `devspacesoperator.v3.27.1` succeeded, `CheCluster` phase is `Active`, the Dev Spaces URL is `https://devspaces.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`, and Argo CD reports Stage 070 `Synced` and `Healthy`.
+
+Stage 080 findings:
+
+- Initial Stage 080 sync applied the `Tackle` CR successfully, but the MaaS patch hook ran before MTA operator-owned resources such as `llm-proxy` and the MTA route existed. Improvement applied: the hook now waits for the generated route and `llm-proxy` deployment before patching the ConsoleLink and rolling the proxy.
+- MaaS API keys created without an explicit subscription defaulted to `external-models-subscription`, which produced HTTP 403 for the local `nemotron-3-nano-30b-a3b` model. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: local-models-subscription`.
+- The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 080 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
+- Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
+- Final evidence for Stage 080: MTA Operator CSV `mta-operator.v8.1.1` succeeded; MTA Hub, UI, Kai API, LLM proxy, and Kai solution server are ready; OpenShift login is visible on the MTA login page; MaaS auth against the private Nemotron model returns HTTP 200 using `kai-api-keys`; Argo CD reports Stage 080 `Synced` and `Healthy`.
 
 ### Stage 020
 
