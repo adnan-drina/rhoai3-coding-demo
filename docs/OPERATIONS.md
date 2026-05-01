@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Latest validated code commit: `89c9d7c`
+- Latest validated code commit: `08cecb4`
 
 Preflight:
 
@@ -228,12 +228,23 @@ Final sweep:
 - All nine Argo CD Applications reported `Synced` and `Healthy`.
 - A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
 - Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` is not set, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set.
+- A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
 
 Validation hardening pass:
 
 - Validators now check demo-owned outcomes in addition to service readiness: GPU node allocatable capacity and taints, local model metadata and registry entries, generated MaaS routes/policies/token limits, external model endpoint and credential wiring, MCP service discovery and credential gating, Dev Spaces RoleBindings, MTA ConsoleLink, and RHDH OIDC/catalog configuration.
 - `scripts/validate-lib.sh` now handles zero matching pods without producing a malformed `0 0` count.
 - Hook Jobs are treated as non-durable operational evidence. Stage 030 validates the durable model registry contents instead of failing when the `model-registry-seed` hook Job has already been cleaned up.
+
+GitOps hygiene pass:
+
+- Broad `ignoreDifferences` entries were reduced where they hid demo-owned desired state. Operator-generated and cluster-specific fields remain ignored only where they are not useful GitOps ownership points.
+- Stage 020 now records GPU Operator and Node Feature Discovery defaults in Git so Argo CD can manage those specs without broad masking.
+- Hook delete policies now include `HookSucceeded` for stage and compatibility manifests, which reduced stale hook resources and pruning noise.
+- A regression was found while tightening Stage 040: the MaaS Gateway hostname and TLS certificate reference are intentionally patched from the cluster ingress domain and certificate. Removing the old broad Gateway spec ignore let Argo CD restore `maas.placeholder.example.com`, which caused the Stage 080 MTA MaaS hook to patch placeholder values into `Tackle` and `kai-api-keys`.
+- Fix applied: Stage 040 and compatibility Step 03 now ignore only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
+- Fix applied: Stage 080 and compatibility Step 05 now fail fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
+- Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 080 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for `local-models-subscription`, and Stages 040, 080, and 090 validated successfully.
 
 Stage 010 findings:
 
@@ -273,6 +284,7 @@ Stage 040 findings:
 - The MaaS controller reported that `openshift-ingress/maas-default-gateway` was missing because Gateway resources were later than the controller and local MaaS resources. Improvement being applied: move `GatewayClass` and the default MaaS `Gateway` before the MaaS controller deployment, and move the Kuadrant patch hook after the gateway-dependent resources.
 - MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the hook. Improvement being applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
 - After the gateway and RHCL were healthy, the existing `LLMInferenceService` resources still reported the earlier AuthPolicy CRD discovery error. A controlled restart of `kserve-controller-manager` refreshed API discovery and immediately created the model HTTPRoutes. Improvement being applied: add a Stage 040 hook to restart KServe after RHCL/Gateway readiness in this staged demo flow.
+- Follow-up GitOps hygiene finding: the MaaS Gateway listener hostnames and TLS certificate reference are cluster-specific values patched by `job-patch-gateway-hostname`. They must not be masked by a broad Gateway spec ignore, but they must be ignored narrowly so Argo CD does not restore placeholder values after the patch hook runs.
 - Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, local `MaaSSubscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
 
 Stage 050 findings:
@@ -297,6 +309,7 @@ Stage 080 findings:
 
 - Initial Stage 080 sync applied the `Tackle` CR successfully, but the MaaS patch hook ran before MTA operator-owned resources such as `llm-proxy` and the MTA route existed. Improvement applied: the hook now waits for the generated route and `llm-proxy` deployment before patching the ConsoleLink and rolling the proxy.
 - MaaS API keys created without an explicit subscription defaulted to `external-models-subscription`, which produced HTTP 403 for the local `nemotron-3-nano-30b-a3b` model. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: local-models-subscription`.
+- Follow-up GitOps hygiene finding: when Stage 040 temporarily restored the placeholder MaaS Gateway hostname, the Stage 080 hook accepted it and patched placeholder values into `Tackle.spec.kai_llm_baseurl` and the `kai-api-keys` Secret. Improvement applied: the hook now rejects placeholder MaaS hostnames before patching any MTA resources.
 - The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 080 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
 - Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
 - Final evidence for Stage 080: MTA Operator CSV `mta-operator.v8.1.1` succeeded; MTA Hub, UI, Kai API, LLM proxy, and Kai solution server are ready; OpenShift login is visible on the MTA login page; MaaS auth against the private Nemotron model returns HTTP 200 using `kai-api-keys`; Argo CD reports Stage 080 `Synced` and `Healthy`.
