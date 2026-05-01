@@ -196,7 +196,7 @@ spec:
 
           CURRENT_CLIENT_SECRET=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.RHDH_OIDC_CLIENT_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          if [ -n "$CURRENT_CLIENT_SECRET" ] && ! echo "$CURRENT_CLIENT_SECRET" | grep -q "placeholder"; then
+          if [ -n "$CURRENT_CLIENT_SECRET" ] && ! echo "$CURRENT_CLIENT_SECRET" | grep -qi "placeholder"; then
             CLIENT_SECRET="$CURRENT_CLIENT_SECRET"
           else
             CLIENT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
@@ -238,7 +238,7 @@ spec:
           # --- 5. Reuse or generate session secret ---
           CURRENT_SESSION_SECRET=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.SESSION_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          if [ -n "$CURRENT_SESSION_SECRET" ] && ! echo "$CURRENT_SESSION_SECRET" | grep -q "placeholder"; then
+          if [ -n "$CURRENT_SESSION_SECRET" ] && ! echo "$CURRENT_SESSION_SECRET" | grep -qi "placeholder"; then
             SESSION_SECRET="$CURRENT_SESSION_SECRET"
           else
             SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
