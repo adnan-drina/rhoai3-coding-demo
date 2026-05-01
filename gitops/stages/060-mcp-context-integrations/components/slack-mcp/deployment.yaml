@@ -10,7 +10,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: slack-mcp

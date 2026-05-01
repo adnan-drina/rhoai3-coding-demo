@@ -35,6 +35,18 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      namespace: coding-assistant
+      name: slack-mcp
+      jsonPointers:
+        - /spec/replicas
+    - group: apps
+      kind: Deployment
+      namespace: coding-assistant
+      name: brightdata-mcp
+      jsonPointers:
+        - /spec/replicas
     - group: ""
       kind: Secret
       namespace: coding-assistant

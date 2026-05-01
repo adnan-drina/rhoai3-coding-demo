@@ -1,0 +1,83 @@
+# Scales optional MCP runtimes only when their credential Secrets are present.
+# Missing Slack or BrightData credentials should not make the stage unhealthy.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-scale-optional-mcp
+  namespace: coding-assistant
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-scale-optional-mcp
+  namespace: coding-assistant
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-scale-optional-mcp
+  namespace: coding-assistant
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+subjects:
+  - kind: ServiceAccount
+    name: job-scale-optional-mcp
+    namespace: coding-assistant
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-scale-optional-mcp
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-scale-optional-mcp
+  namespace: coding-assistant
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: job-scale-optional-mcp
+      restartPolicy: Never
+      containers:
+        - name: scale
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              scale_optional_mcp() {
+                local deployment="$1"
+                local secret="$2"
+
+                if oc get secret "$secret" -n coding-assistant &>/dev/null; then
+                  echo "Credential $secret found; enabling $deployment"
+                  oc scale deployment "$deployment" -n coding-assistant --replicas=1
+                  oc rollout status deployment "$deployment" -n coding-assistant --timeout=180s
+                else
+                  echo "Credential $secret not found; keeping $deployment disabled"
+                  oc scale deployment "$deployment" -n coding-assistant --replicas=0
+                fi
+              }
+
+              scale_optional_mcp "slack-mcp" "slack-mcp-credentials"
+              scale_optional_mcp "brightdata-mcp" "brightdata-mcp-credentials"
