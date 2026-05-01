@@ -1,190 +1,112 @@
-# Step 04: Dev Spaces and AI Code Assistant
-**"AI-assisted coding in a governed environment"** — Deploy OpenShift Dev Spaces and configure the Continue extension to connect to 4 MaaS-governed models (2 local GPU + 2 OpenAI external) for AI-assisted software development.
+# Step 04: AI-Assisted Development In Controlled Workspaces
 
-## Overview
+## Why This Matters
 
-Developers need AI coding assistance inside their existing tools, not a separate workflow. This step deploys **OpenShift Dev Spaces** — Red Hat's containerized cloud-native IDE running on OpenShift — and demonstrates how the **Continue** extension connects to the private model endpoint deployed in Step 03. The result is a private, governed AI code assistant that runs entirely within the organization's infrastructure.
+Developers want AI assistance in the tools where they already write, test, and review code. Enterprises need that experience to respect identity, data boundaries, model policy, and workspace controls.
 
-### What Gets Deployed
+This step shows how AI-assisted development can be delivered from managed OpenShift workspaces instead of unmanaged local toolchains. Developers still get familiar VS Code-style assistance, but model access flows through the MaaS layer created in Step 03.
+
+## What This Step Adds
+
+Step 04 adds the developer workspace and coding assistant layer:
 
 ```text
-Dev Spaces & AI Code Assistant
-├── Dev Spaces Operator          → Manages containerized IDE workspaces
-├── CheCluster Instance          → Dev Spaces platform (open-vsx.org, no-idle, 1200s timeout)
-├── Per-User Workspaces (3 users)
-│   ├── wksp-kubeadmin            → Namespace + RoleBinding + DevWorkspace
-│   ├── wksp-ai-admin             → Namespace + RoleBinding + DevWorkspace
-│   └── wksp-ai-developer         → Namespace + RoleBinding + DevWorkspace
-├── AI Tools (installed via postStart)
-│   ├── Continue Extension       → VS Code sidebar AI assistant (inline edits)
-│   ├── MTA Extension 8.1.1     → Migration analysis + AI-assisted code fixes (ai-admin, ai-developer)
-│   └── OpenCode CLI             → Terminal-based agentic AI (git review, analysis)
-├── Exercises Repo Clone         → adnan-drina/coding-exercises
-│   ├── devfile.yaml              → Resource limits + Continue/OpenCode setup
-│   ├── coding-exercises/         → 3 game starters + solutions
-│   ├── .vscode/extensions.json   → Recommends Continue extension
-│   ├── .vscode/config.yaml       → Continue model config template
-│   └── .opencode/opencode.json   → OpenCode model config (one provider per model)
-└── Coolstore Repo Clone         → konveyor-ecosystem/coolstore (ai-admin, ai-developer)
-    └── Legacy Java EE monolith   → Migration target for Step 05 MTA demo
+Developer workspace layer
++-- OpenShift Dev Spaces Operator
++-- CheCluster instance
++-- Per-user DevWorkspace resources
++-- Coding exercises repository
++-- Coolstore repository for modernization demos
++-- Continue extension
++-- OpenCode CLI
++-- MTA VS Code extension for ai-admin and ai-developer
 ```
 
-Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
+The `ai-admin` and `ai-developer` workspaces include both coding exercises and the Coolstore Java EE application used in Step 05. The workspace is part of the platform, which means it can be created, governed, reset, and reproduced consistently.
 
-<details>
-<summary>Deploy</summary>
+## What To Notice In The Demo
+
+Show the workspace first, then the model configuration. The important moment is that the developer tool is not tied to a single model provider. Continue and OpenCode can use any MaaS-published model that follows the OpenAI-compatible API pattern.
+
+Then show the trust choice:
+
+- Selecting a local model keeps the request inside the platform.
+- Selecting an external model uses the same developer workflow, but the prompt is processed by the external provider and must be allowed by policy.
+
+The platform provides flexibility without hiding the data boundary.
+
+## How Red Hat And Open Source Make It Work
+
+OpenShift Dev Spaces provides browser-based development environments running on the cluster. Continue provides the IDE assistant experience. OpenCode provides a terminal-based agent workflow. MaaS provides the model endpoint and API key pattern.
+
+The combination matters because it separates concerns:
+
+- Developers focus on code.
+- Platform teams operate workspaces and model access.
+- Security teams can reason about which model paths are approved for which data.
+
+## Red Hat Products Used
+
+- **Red Hat OpenShift Dev Spaces** provides the managed cloud development environment.
+- **Red Hat OpenShift AI** provides the MaaS model endpoints consumed by the developer tools.
+- **Red Hat OpenShift** provides the identity, routing, namespace isolation, and runtime platform for the workspaces.
+
+## Open Source Projects To Know
+
+- [Eclipse Che](https://www.eclipse.org/che/) is the upstream cloud development environment project behind OpenShift Dev Spaces.
+- [DevWorkspace](https://github.com/devfile/devworkspace-operator) provides Kubernetes-native workspace orchestration.
+- [Continue](https://www.continue.dev/) is an open source AI code assistant that can use OpenAI-compatible model endpoints.
+- [OpenCode](https://opencode.ai/) provides terminal-based AI coding workflows that can consume MaaS endpoints.
+
+## Trust Boundaries
+
+| Model path | What happens to prompts and code |
+|------------|----------------------------------|
+| Local models such as Nemotron and gpt-oss | Requests stay within the OpenShift platform boundary. This is the recommended path for sensitive or regulated code. |
+| External models such as GPT-4o and GPT-4o-mini | Requests are proxied through MaaS to OpenAI. Access is centrally governed, but prompt content is processed externally and must be allowed by policy. |
+
+This distinction is the core learning point. A governed external model is useful, but it is not private. The platform makes both options visible and controllable.
+
+## Why This Is Worth Knowing
+
+Many organizations start AI coding experiments with individual developer plugins and personal API keys. That approach does not scale well for enterprise governance.
+
+This step shows a better pattern:
+
+- Developer tools remain familiar.
+- Workspaces are reproducible and centrally managed.
+- Model keys are issued through a platform layer.
+- Private and external model options can coexist.
+- The same model access pattern can serve IDE assistants, terminal agents, and later MTA modernization.
+
+## Where This Fits In The Full Platform
+
+| Workflow | Dev Spaces role |
+|----------|-----------------|
+| AI coding assistant | Developers use Continue against MaaS-published models |
+| Terminal agent workflow | Developers use OpenCode with the same MaaS model access pattern |
+| Java modernization | Developers analyze Coolstore with the MTA extension |
+| Governance story | Model access stays centralized even when tools run in developer workspaces |
+
+## Deploy And Validate
+
+Operational commands are kept here for workshop operators.
 
 ```bash
 ./steps/step-04-devspaces/deploy.sh
 ./steps/step-04-devspaces/validate.sh
 ```
 
-</details>
-
-## How It Works Under the Hood
-
-When a user navigates from the RHOAI dashboard to Dev Spaces:
-
-1. The **Dev Spaces dashboard** authenticates the user via OpenShift OAuth
-2. It looks for a `DevWorkspace` CR in the user's pre-provisioned namespace (`wksp-<username>`)
-3. The **DevWorkspace Operator** creates a pod with 2 containers:
-   - `tooling-container` — the UDI image (4Gi memory) with VS Code server, tools, and the cloned repo
-   - `che-gateway` — a Traefik sidecar that routes browser traffic to VS Code
-4. The pod runs in the user's workspace namespace on a regular worker node
-5. A `claim-devworkspace` PVC persists workspace data across restarts
-
-## Projects Involved
-
-| Project | Purpose | Who Uses It | Visible in RHOAI Dashboard |
-|---------|---------|-------------|---------------------------|
-| `maas` | Model serving — where `LLMInferenceService` models run | `ai-admin` only | Yes (`ai-admin`) |
-| `coding-assistant` | Developer's home project — model discovery, API token generation, Playground | `ai-developer`, `ai-admin` | Yes (both users) |
-| `wksp-*` | Dev Spaces workspace — contains the running VS Code pod | Each user | No (OpenShift only) |
-
-## The Demo
-
-> In this demo, a developer uses an AI code assistant inside OpenShift Dev Spaces. The model endpoint comes from MaaS (Step 03) and is accessed via an API token. Local OSS models (`gpt-oss-20b`, `nemotron-3-nano-30b-a3b`) run entirely on private infrastructure; external models (`gpt-4o`, `gpt-4o-mini`) proxy requests to OpenAI under governance controls defined in Step 03.
-
-### Act 1: Discover the Model (RHOAI Dashboard)
-
-1. Log in to the RHOAI Dashboard as `ai-developer` (via `demo-htpasswd`)
-2. Navigate to **GenAI Studio > AI asset endpoints**
-3. Select the **Coding Assistant** project from the dropdown
-4. Click the **Models as a service** tab — all four models appear with MaaS badges: `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`
-5. Click **View** on the **nemotron-3-nano-30b-a3b** model
-6. Copy the **External endpoint URL**
-7. Click **Generate API token** — copy the token
-
-### Act 2: Open the Development Environment (Dev Spaces)
-
-1. Open Dev Spaces: `https://devspaces.<cluster>/`
-2. Log in as `ai-developer` (same credentials)
-3. The pre-provisioned workspace `exercises` is listed
-4. Click to start it — VS Code opens in the browser
-5. The [coding exercises](https://github.com/adnan-drina/coding-exercises) repo is cloned (includes `devfile.yaml`)
-
-### Act 3: Configure AI Code Assistants
-
-Both Continue and OpenCode configs are **pre-copied** to `~/.continue/config.yaml` and `~/.opencode/opencode.json` by the devfile's `postStart` hook. You only need to fill in the placeholders.
-
-All 4 models use **a single `sk-oai-*` MaaS API key** for authentication — no separate tokens or auth methods needed.
-
-1. Get your MaaS route and API key:
-   - From the MaaS tab (Act 1), the route is `https://maas.<cluster-domain>`
-   - Generate an API key from any model's "View" dialog
-
-2. Configure **Continue** (`~/.continue/config.yaml`):
-   ```bash
-   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.continue/config.yaml
-   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.continue/config.yaml
-   ```
-   The config includes all 4 MaaS models — select from the model dropdown:
-
-   | Model | Type | Best For |
-   |-------|------|----------|
-   | nemotron-3-nano-30b-a3b | Local GPU | Coding with reasoning (recommended) |
-   | gpt-oss-20b | Local GPU | General coding |
-   | gpt-4o | OpenAI external | High quality coding |
-   | gpt-4o-mini | OpenAI external | Fast responses |
-
-3. Configure **OpenCode** (`~/.opencode/opencode.json`):
-   ```bash
-   sed -i "s|YOUR_MAAS_ROUTE|https://maas.<cluster-domain>|g" ~/.opencode/opencode.json
-   sed -i "s|YOUR_API_KEY|<your-api-key>|g" ~/.opencode/opencode.json
-   ```
-   OpenCode uses `opencode.json` (not `config.json`) with **one provider per model**. Each model is defined as a separate provider pointing to the same MaaS endpoint but specifying a different model name. This is required because OpenCode maps each provider to a single model.
-
-4. In the Continue sidebar, select **Local Config** — all 4 models appear in the model selector
-
-### Act 4: AI-Assisted Coding
-
-Three game exercises are available in `coding-exercises/game_starters/`:
-
-| Exercise | What to Ask Continue |
-|----------|---------------------|
-| `rock_paper_scissors/` | "Make this code enterprise-grade: add type hints, validation, logging, testability" |
-| `simple_quiz/` | Follow the prompts in the file — ask Continue to generate a quiz game from scratch |
-| `word_scramble/` | Follow the prompts in the file — ask Continue to generate a word scramble game |
-
-Each starter file contains ready-to-use prompts and enhancement ideas. Solutions are in `game_solutions/` for reference.
-
-### Act 5: Terminal AI with OpenCode (Optional)
-
-OpenCode is a model-neutral CLI tool installed in the workspace. It's pre-configured with MaaS models via `~/.opencode/opencode.json` (set up in Act 3).
-
-1. Open a terminal in VS Code
-2. Run `opencode`
-3. Select a model — defaults to `nemotron-3-nano-30b-a3b` (default), with `gpt-4o-mini` as the small model
-   - All models use the same `sk-oai-*` MaaS API key
-4. Try prompts like:
-   - "Review the changes in the last git commit"
-   - "Analyze the project structure and suggest improvements"
-   - "Find potential bugs in the rock_paper_scissors game"
-
-This demonstrates that the MaaS endpoint is truly OpenAI-compatible — any tool that supports the `/v1/chat/completions` API can use it.
-
-## Privacy and Data Sovereignty
-
-For local GPU models (Nemotron, gpt-oss-20b): **no code or data leaves the cluster**. The model runs on the organization's GPUs, the Dev Spaces workspace runs on the same cluster, and the API calls between Continue and the model stay within the cluster network via the MaaS Gateway. You can verify this by opening the browser's Network tab — all requests go to `maas.<cluster-domain>`, not to any external service.
-
-For external models (GPT-4o, GPT-4o-mini): requests are proxied through the MaaS Gateway to OpenAI's API. The MaaS Gateway provides centralized governance (rate limiting, access control, usage tracking) but code snippets in prompts do reach the external provider. Organizations can choose which models to expose based on their data classification policies — local GPU models for sensitive code, external models for general-purpose tasks.
-
-This addresses the common concern with AI coding assistants: organizations can provide developers with AI-powered tooling while maintaining centralized control over which providers are used, who can access them, and how much they can consume.
-
-## MTA Modernization Integration (Step 05)
-
-The `ai-admin` and `ai-developer` workspaces also include:
-
-- **konveyor-ecosystem/coolstore** — the legacy Java EE monolith used in the Step 05 MTA modernization demo. The `main` branch is pre-cloned as the first project so the MTA extension analyzes it by default.
-- **MTA VS Code Extension 8.1.1** — installed via `DEFAULT_EXTENSIONS` alongside Continue. Includes `mta-vscode-extension`, `mta-core`, and `mta-java` (pinned to 8.1.1).
-- **6Gi memory** — increased from 4Gi to accommodate Java + Maven + MTA analysis workloads.
-
-The `kubeadmin` workspace retains the original configuration (coding-exercises only, 4Gi, no MTA extension).
-
-See [Step 05 — The Demo](../step-05-mta/README.md#the-demo) for the full coolstore migration workflow.
-
-## Key Takeaways
-
-**For business stakeholders:**
-
-- Developers get AI coding assistance without sending code to external services
-- All AI interactions stay within organizational boundaries — data sovereignty by design
-- Usage is tracked and governed through MaaS tiers from Step 03
-
-**For technical teams:**
-
-- OpenShift Dev Spaces provides reproducible, containerized workspaces on the same cluster
-- Dev Spaces acts as an **AI guardrail** — if an AI agent generates bad code or corrupts a config, you can instantly revert to a clean slate by restarting the workspace from the devfile
-- Continue is open-source and works with any OpenAI-compatible endpoint
-- Model endpoints are reusable — the same Nemotron model serves Playground, MaaS API, and IDE
-- Unlike cloud-hosted AI services (GitHub Copilot, etc.), this approach keeps all code and data on-prem with full control over privacy, security, and IP
-- Unlike local-model approaches (e.g., Ollama sidecar), MaaS provides centralized GPU management, rate limiting, and usage tracking across all developers
+Manifests: [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/)
 
 ## References
 
-- [OpenShift Dev Spaces Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
-- [Continue — Open-Source AI Code Assistant](https://www.continue.dev/)
-- [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
-- [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces) — cloud vs on-prem models, code assistant comparison
-- [OpenCode: Model-neutral AI coding assistant for Dev Spaces](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces) — terminal-based agentic AI, works with MaaS endpoints
-- [Red Hat Developer: Private AI Coding Assistant with Dev Spaces](https://developers.redhat.com/learn/openshift-ai/integrate-private-ai-coding-assistant-your-cde-using-ollama-continue-openshift-dev-spaces) — alternative approach using Ollama + local models
+- [OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
+- [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [Continue](https://www.continue.dev/)
+- [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
+- [OpenCode: Model-neutral AI coding assistant for OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces)
+
+## Next Step
+
+[Step 05: AI-Assisted EAP/Java EE Modernization to Quarkus](../step-05-mta/README.md) applies the same governed model access pattern to application modernization.

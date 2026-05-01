@@ -1,108 +1,121 @@
-# Step 06: Red Hat Developer Hub — Self-Service Developer Portal
-**"From platform components to a self-service developer portal."** — Developer Hub ties together the RHOAI platform, MaaS models, Dev Spaces, and MTA modernization into a single catalog-driven portal.
+# Step 06: Red Hat Developer Hub As The Self-Service Portal
 
-## Overview
+## Why This Matters
 
-After Steps 01-05, the platform has RHOAI, MaaS models, Dev Spaces, MTA, and AI-assisted modernization. Step 06 adds **Red Hat Developer Hub 1.9** as the internal developer portal that ties the whole workflow together: one place where developers discover applications, models, tools, and modernization workflows.
+A trusted AI platform is only useful if developers can find and consume it. Without a portal, platform capabilities remain scattered across dashboards, routes, namespaces, and documentation.
 
-### What Gets Deployed
+This step shows the role of Red Hat Developer Hub: it becomes the front door for the platform. Developers should be able to discover the application they own, understand its lifecycle, find modernization context, and follow trusted paths to the tools and models approved by the platform team.
+
+## What This Step Adds
+
+Step 06 adds the portal layer:
 
 ```text
-Developer Hub (RHDH 1.9)
-├── RHDH Operator                     → rhdh-operator namespace
-├── Backstage CR                      → rhdh namespace
-│   ├── app-config-rhdh ConfigMap     → portal title, auth, catalog config
-│   ├── dynamic-plugins-rhdh ConfigMap → Phase 1: defaults only
-│   └── rhdh-secrets Secret           → session key, OIDC credentials, URLs
-├── ConsoleLink                       → OpenShift launcher menu entry
-├── Software Catalog                  → coolstore Component, demo Users/Group
-└── PostSync Job                      → RHBK OIDC client, secret patching, restart
+Developer portal layer
++-- Red Hat Developer Hub Operator
++-- Backstage CR
++-- app-config-rhdh ConfigMap
++-- dynamic plugins ConfigMap
++-- runtime secrets
++-- OIDC client in MTA Keycloak / RHBK
++-- ConsoleLink in the OpenShift launcher
++-- initial catalog content
 ```
 
-Manifests: [`gitops/step-06-developer-hub/base/`](../../gitops/step-06-developer-hub/base/)
+The first catalog entry is `coolstore`, the legacy Java EE application used in the modernization workflow. The catalog also includes the demo users and team ownership model.
 
-<details>
-<summary>Deploy</summary>
+## What To Notice In The Demo
+
+Show the portal as the place where the story comes together:
+
+1. Open Developer Hub from the OpenShift launcher.
+2. Sign in through the OIDC flow backed by MTA Keycloak and OpenShift OAuth.
+3. Search for `coolstore`.
+4. Explain ownership, lifecycle, tags, and source links.
+5. Connect the catalog entry back to the previous steps: workspaces, models, MTA analysis, and modernization.
+
+For the current implementation, present Developer Hub as the portal foundation. The next demo increment is to add direct links, model entities, TechDocs, and a software template so the portal becomes the primary handoff point for the full workflow.
+
+## How Red Hat And Open Source Make It Work
+
+Red Hat Developer Hub provides an enterprise-supported developer portal based on Backstage. The software catalog gives teams a place to describe applications, ownership, lifecycle, documentation, APIs, and platform relationships.
+
+In this demo, Developer Hub authenticates through OIDC against the MTA Keycloak / RHBK realm, which already brokers identity from OpenShift OAuth:
+
+```text
+Developer Hub
+  -> MTA Keycloak / RHBK
+  -> OpenShift OAuth
+  -> demo HTPasswd users
+```
+
+That identity chain reinforces the platform story: the same OpenShift-backed identity can be used across RHOAI, Dev Spaces, MTA, and Developer Hub.
+
+## Red Hat Products Used
+
+- **Red Hat Developer Hub 1.9** provides the enterprise developer portal and software catalog.
+- **Red Hat OpenShift** provides the runtime platform, route, console launcher integration, and OAuth identity foundation.
+- **Red Hat build of Keycloak** is reused as the OIDC identity broker through the MTA realm.
+- **Red Hat OpenShift AI**, **Dev Spaces**, and **MTA** are the platform capabilities that Developer Hub is intended to make discoverable.
+
+## Open Source Projects To Know
+
+- [Backstage](https://backstage.io/) is the upstream developer portal framework behind Red Hat Developer Hub.
+- The [Backstage Software Catalog](https://backstage.io/docs/features/software-catalog/) provides the model for describing components, ownership, APIs, systems, resources, and documentation.
+- [TechDocs](https://backstage.io/docs/features/techdocs/) can turn repository documentation into portal-hosted technical documentation.
+
+## Why This Is Worth Knowing
+
+Developer portals are where platform engineering becomes usable. The previous steps create powerful capabilities, but developers should not need to understand every operator, CRD, route, and secret to start work.
+
+Developer Hub is the natural place to publish:
+
+- Application ownership and lifecycle.
+- Approved model endpoints and AI APIs.
+- Modernization runbooks.
+- Golden paths such as "Modernize Java EE application with MTA."
+- Links to Dev Spaces, MTA analysis, GitOps status, and OpenShift resources.
+
+This turns the AI platform from a set of components into a self-service developer experience.
+
+## Where This Fits In The Full Platform
+
+| Platform capability | Developer Hub role |
+|---------------------|--------------------|
+| Coolstore modernization | Catalog entry provides ownership, lifecycle, and source context |
+| Dev Spaces | Future catalog link or template can launch the developer workspace |
+| MTA | Future catalog link or template can direct users to analysis and remediation workflows |
+| MaaS models | Future Resource/API entities can show approved private and external model endpoints |
+| GitOps | Future Argo CD plugin integration can show deployment state |
+
+## Next Enhancements
+
+- Add direct Coolstore links for Dev Spaces, MTA, MaaS, and OpenShift Console.
+- Add MaaS `Resource` and `API` catalog entities for private and governed external models.
+- Add TechDocs for the Coolstore modernization runbook.
+- Add a Software Template for "Modernize Java EE application with MTA."
+- Add OpenShift and Argo CD plugins for resource and GitOps visibility.
+- Evaluate the OpenShift AI Connector once the base portal story is stable.
+
+## Deploy And Validate
+
+Operational commands are kept here for workshop operators.
 
 ```bash
 ./steps/step-06-developer-hub/deploy.sh
 ./steps/step-06-developer-hub/validate.sh
 ```
 
-</details>
-
-## Authentication
-
-RHDH authenticates via OIDC against the **MTA Keycloak (RHBK)** realm, which brokers identity from OpenShift OAuth. This gives a consistent identity chain:
-
-```text
-Developer Hub → MTA Keycloak (RHBK) → OpenShift OAuth → HTPasswd
-```
-
-Users see **"Sign in using OIDC"** on the RHDH login page. After clicking, they authenticate with their OpenShift credentials (same `ai-admin` / `ai-developer` / `<demo-password>` used across MTA and Dev Spaces).
-
-| User | Catalog Role | Portal Access |
-|------|-------------|--------------|
-| `ai-admin` | ai-modernization-team member | Full catalog visibility |
-| `ai-developer` | ai-modernization-team member | Full catalog visibility |
-
-## Software Catalog
-
-The catalog contains:
-
-| Entity | Kind | Description |
-|--------|------|-------------|
-| `coolstore` | Component | Legacy Java EE CoolStore monolith (lifecycle: modernizing) |
-| `ai-admin` | User | Platform administrator |
-| `ai-developer` | User | Application developer |
-| `ai-modernization-team` | Group | Team owning the modernization workflow |
-
-The coolstore component includes links to:
-- GitHub repository (source code)
-- Quarkus migration reference branch
-
-## The Demo
-
-### Act 1: Portal Entry
-
-1. Open Developer Hub from the OpenShift launcher menu (or `oc get route -n rhdh`)
-2. Click **Sign in using OIDC**
-3. Authenticate with OpenShift credentials (`ai-admin` / `<demo-password>`)
-
-### Act 2: Catalog Discovery
-
-1. Search for `coolstore` in the catalog
-2. Show the component page: ownership, lifecycle (`modernizing`), tags
-3. Click through to the GitHub repository link
-4. Explain: "This is where developers discover what applications exist, who owns them, and where to find the tools to work on them."
-
-### Act 3: Modernization Handoff
-
-From the coolstore catalog page:
-1. Open **Dev Spaces** to work on the code (Step 04 workspace has coolstore pre-cloned)
-2. Open **MTA UI** to run migration analysis (Step 05)
-3. The same MaaS model (Nemotron) powers both the coding assistant and MTA's AI fixes
-
-### Act 4: Platform Story
-
-Explain the unified identity and platform story:
-- One OpenShift login for everything: RHDH, MTA, Dev Spaces, RHOAI
-- The software catalog is the starting point for all developer workflows
-- Platform teams control model access (MaaS), migration targets (MTA), and workspace templates (Dev Spaces) — developers consume them through the portal
-
-## Phase 2 Enhancements
-
-- **Software Template**: "Modernize Java EE App with MTA" golden path
-- **TechDocs**: Coolstore modernization runbook
-- **ArgoCD Plugin**: Show GitOps app status for Steps 01-06
-- **OpenShift Plugin**: Show Kubernetes resources for catalog components
-- **AI Model Catalog Entities**: Nemotron/GPT-4o as Resource/API kinds
-- **OpenShift AI Connector**: Import AI model assets from RHOAI (Developer Preview)
+Manifests: [`gitops/step-06-developer-hub/base/`](../../gitops/step-06-developer-hub/base/)
 
 ## References
 
-- [Red Hat Developer Hub 1.9 Documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
+- [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Installing RHDH on OpenShift](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html/installing_red_hat_developer_hub_on_openshift_container_platform/index)
 - [Configuring RHDH](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/configuring_red_hat_developer_hub/index)
-- [RHDH Authentication](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/authentication_in_red_hat_developer_hub/authentication_in_red_hat_developer_hub)
-- [RHDH Dynamic Plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html/installing_and_viewing_plugins_in_red_hat_developer_hub/index)
+- [RHDH authentication](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/authentication_in_red_hat_developer_hub/authentication_in_red_hat_developer_hub)
+- [RHDH dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html/installing_and_viewing_plugins_in_red_hat_developer_hub/index)
+
+## Next Step
+
+This is the final implemented step. Use [Operations](../../docs/OPERATIONS.md) for day-2 work, or extend Developer Hub with the future catalog, TechDocs, and template items listed above.

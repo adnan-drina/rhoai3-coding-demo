@@ -1,70 +1,91 @@
-# Step 01: RHOAI Platform
-**"The governed AI platform"** — Install Red Hat OpenShift AI 3.3 with platform dependencies, GenAI Studio, and a minimal DataScienceCluster on OCP 4.20.
+# Step 01: Trusted OpenShift AI Platform Foundation
 
-## Overview
+## Why This Matters
 
-This step deploys the **Red Hat OpenShift AI 3.3** platform layer, including all operator dependencies required for the AI platform to function. After this step, the RHOAI Dashboard is accessible, GenAI Studio is enabled, and the platform is ready for GPU enablement and model serving.
+Enterprise AI adoption fails when every team builds its own isolated stack. Developers, data scientists, and platform teams need a shared foundation for identity, model lifecycle, observability, and operational consistency.
 
-> This configuration follows the [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant), using RHOAI 3.3 on the `stable-3.3` channel with a minimal DSC component set.
+This step establishes Red Hat OpenShift AI as that foundation. Before the workshop can show private models, MaaS, AI coding assistants, modernization, or a developer portal, it needs a trusted AI control plane running on OpenShift.
 
-### What Gets Deployed
+## What This Step Adds
+
+Step 01 installs and configures the AI platform layer:
 
 ```text
-RHOAI Platform
-├── Platform Dependencies
-│   ├── User Workload Monitoring  → Prometheus metrics for user projects
-│   ├── cert-manager Operator     → TLS certificates for KServe, Llama Stack
-│   ├── OpenShift Serverless      → KnativeServing for model serving
-│   └── Service Mesh 3            → Auto-installed via DSCInitialization
-├── RHOAI Operator                → stable-3.3 channel
-├── DSCInitialization             → Monitoring, Service Mesh, CA bundle
-├── DataScienceCluster            → Minimal component set (quickstart-aligned)
-│   ├── kserve: Managed           → Model serving runtime
-│   ├── llamastackoperator: Managed → Required for GenAI Playground
-│   ├── dashboard: Managed        → RHOAI Dashboard
-│   ├── workbenches: Managed      → Jupyter / VS Code workbenches
-│   ├── modelmeshserving: Managed → ModelMesh
-│   ├── modelregistry: Managed    → Model Registry
-│   └── trustyai: Managed         → Model bias / explainability
-├── Users & Authentication
-│   ├── HTPasswd Secret           → ai-admin, ai-developer (demo-htpasswd)
-│   ├── OAuth Configuration       → demo-htpasswd identity provider
-│   └── RHOAI Groups              → rhoai-admins, rhoai-users
-├── OdhDashboardConfig            → GenAI Studio, MaaS flags
-├── Hardware Profiles             → CPU-small, L4-1GPU, L4-4GPU
-├── Model Registry                → Enterprise model governance
-│   ├── PostgreSQL 16             → Registry metadata database
-│   ├── ModelRegistry CR          → demo-registry instance
-│   ├── Internal Service          → Port 8080 for automation (bypasses OAuth)
-│   └── RBAC                      → ai-admin (admin), ai-developer (user)
-└── In-Cluster Jobs
-    ├── approve-sm-installplan    → Auto-approve ServiceMesh install plan
-    └── patch-dsci-ca             → Patch DSCI with CA bundle
+OpenShift AI platform foundation
++-- Red Hat OpenShift AI Operator
++-- DataScienceCluster and DSCInitialization
++-- Dashboard and GenAI Studio configuration
++-- Llama Stack and KServe platform components
++-- Model Registry with PostgreSQL metadata storage
++-- Demo users and RHOAI groups
++-- Hardware profiles for CPU and NVIDIA L4 GPU workloads
++-- User workload monitoring and CA trust configuration
++-- Supporting platform dependencies
 ```
 
-Components **not** enabled (set to `Removed` or absent, matching quickstart):
-- `aipipelines`, `ray`, `trainingoperator`, `feastoperator`, `mlflowoperator`, `nim`, `trainer`
+The important design choice is scope. The platform is configured for the capabilities this workshop needs: GenAI Studio, model serving, model registry, dashboard access, identity, monitoring, and hardware profiles. It is not trying to enable every possible AI feature at once.
 
-Manifests: [`gitops/step-01-rhoai-platform/base/`](../../gitops/step-01-rhoai-platform/base/)
+## What To Notice In The Demo
 
-<details>
-<summary>Deploy</summary>
+When presenting this step, focus on the platform outcome rather than the installation mechanics.
+
+Show that OpenShift AI is present as the AI control plane. Show the demo users and groups. Show GenAI Studio and the model registry foundation. Show hardware profiles that make accelerator choices visible before any model is deployed.
+
+The key takeaway is that enterprise AI starts with shared platform services, not with a model endpoint.
+
+## How Red Hat And Open Source Make It Work
+
+OpenShift provides identity, RBAC, namespaces, scheduling, networking, monitoring, and GitOps integration. OpenShift AI adds AI-specific platform capabilities such as the dashboard, model serving integration, model registry, and GenAI Studio.
+
+This combination matters because AI platforms need both AI-specific features and ordinary enterprise platform controls. The value is in the integration: AI workloads run on the same trusted Kubernetes foundation as other enterprise applications.
+
+## Red Hat Products Used
+
+- **Red Hat OpenShift AI** is the main product demonstrated in this step. It provides the AI dashboard, DataScienceCluster, model serving integration, GenAI Studio, and model registry experience.
+- **Red Hat OpenShift** provides the underlying platform services: authentication, namespaces, routes, RBAC, scheduling, monitoring, and storage integration.
+- **OpenShift Serverless** and **Service Mesh** provide platform services used by OpenShift AI serving components.
+
+## Open Source Projects To Know
+
+- [Open Data Hub](https://opendatahub.io/) is the upstream community foundation for many OpenShift AI capabilities.
+- [KServe](https://kserve.github.io/website/) provides Kubernetes-native model serving concepts used by OpenShift AI.
+- [Model Registry](https://github.com/opendatahub-io/model-registry) provides model metadata and lifecycle foundations.
+- Kubernetes and OpenShift provide the identity, scheduling, networking, and operational substrate that make the AI layer enterprise-ready.
+
+## Why This Is Worth Knowing
+
+This step teaches the first architectural principle of the workshop: AI should be delivered as a platform capability. Once identity, observability, dashboard access, model metadata, and hardware profiles are in place, the rest of the workshop can build on a consistent foundation.
+
+For regulated organizations, that consistency matters. A platform gives teams a place to define controls and operating practices before developers start sending prompts to models.
+
+## Where This Fits In The Full Platform
+
+| Later step | What it gets from Step 01 |
+|------------|---------------------------|
+| Step 02 | Hardware profile context and platform readiness |
+| Step 03 | GenAI Studio, Playground, model registry, and dashboard integration |
+| Step 04 | Shared OpenShift identity for developer workspaces |
+| Step 05 | Demo users and groups used by MaaS and MTA workflows |
+| Step 06 | Platform identity and catalog context for Developer Hub |
+
+## Deploy And Validate
+
+Operational commands are kept here for workshop operators.
 
 ```bash
 ./steps/step-01-rhoai-platform/deploy.sh
 ./steps/step-01-rhoai-platform/validate.sh
 ```
 
-</details>
+Manifests: [`gitops/step-01-rhoai-platform/base/`](../../gitops/step-01-rhoai-platform/base/)
 
 ## References
 
-- [Managing Model Registries](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/managing_model_registries)
-- [RHOAI 3.3 Installation Guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
-- [RHOAI 3.3 Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/release_notes/index)
-- [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
-- [Red Hat OpenShift AI — Product Page](https://www.redhat.com/en/products/ai/openshift-ai)
+- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
+- [Red Hat OpenShift AI 3.3 installation guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
+- [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
+- [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 
-## Next Steps
+## Next Step
 
-- **Step 02**: [GPU Infrastructure](../step-02-gpu-infra/README.md) — NFD, GPU Operator, and GPU MachineSets
+[Step 02: GPU Infrastructure](../step-02-gpu-infra/README.md) adds the accelerator layer required for private model inference.

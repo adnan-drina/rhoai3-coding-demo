@@ -1,175 +1,155 @@
-# Step 03: LLM Serving with Models-as-a-Service
-**"Governed model access at enterprise scale"** — Deploy NVIDIA models on vLLM and expose them through Models-as-a-Service with tier-based access control, rate limiting, and usage telemetry.
+# Step 03: Governed Models-as-a-Service
 
-## Overview
+## Why This Matters
 
-Deploying a model is only the beginning. Teams need governed, measurable access to LLMs — not open endpoints that anyone can saturate. This step deploys two local models on vLLM (OpenAI gpt-oss-20b and NVIDIA Nemotron 3 Nano 30B) and two **external models** (OpenAI GPT-4o and GPT-4o-mini via the `ExternalModel` CRD), exposing all 4 models through **Models-as-a-Service (MaaS)**.
+Deploying a model is not the same thing as making AI usable in an enterprise. A single model endpoint might work for a proof of concept, but production teams quickly need answers to harder questions:
 
-The MaaS layer uses a **hybrid architecture**: the RHOAI 3.3 operator's `modelsAsService: Managed` keeps the dashboard MaaS tab active, while the upstream [ODH maas-controller](https://github.com/opendatahub-io/models-as-a-service) (`quay.io/opendatahub/maas-controller:latest`) runs alongside to provide `ExternalModel`, `MaaSAuthPolicy`, `MaaSSubscription`, and `MaaSModelRef` CRDs. A post-deploy Job pins the tenant-managed `maas-api` deployment to `quay.io/opendatahub/maas-api:latest`, because the RHOAI 3.3 API image does not list `ExternalModel` CRs.
+- Who is allowed to use the model?
+- Which workloads are allowed to use external providers?
+- How do we prevent one team from consuming all capacity?
+- How do developers discover the right endpoint?
+- How do we measure usage for capacity planning, showback, or chargeback?
+- How do we switch model backends without rewriting every tool?
 
-Access is controlled through `MaaSAuthPolicy` (who can access which models) and `MaaSSubscription` (per-model token rate limits) CRDs, enforced by Red Hat Connectivity Link at the MaaS Gateway. Playground token generation is bridged to the upstream MaaS API key endpoint. See [BACKLOG.md](../../BACKLOG.md) for coexistence workarounds.
+Models-as-a-Service is the platform answer. It makes models available as shared API services while keeping access, policy, rate limits, keys, and telemetry under central control.
 
-### What Gets Deployed
+This step is the heart of the workshop. Every later developer experience, from coding assistants to MTA modernization, depends on the governed model access layer created here.
+
+## What This Step Adds
+
+Step 03 publishes four models through one MaaS pattern:
+
+| Model | Backend | Trust boundary | Why it is included |
+|-------|---------|----------------|--------------------|
+| `nemotron-3-nano-30b-a3b` | Local vLLM on OpenShift | Private platform boundary | Primary private coding and modernization model |
+| `gpt-oss-20b` | Local vLLM on OpenShift | Private platform boundary | Open model alternative for private workloads |
+| `gpt-4o` | External OpenAI provider through MaaS | Governed external processing | High-intelligence external model path |
+| `gpt-4o-mini` | External OpenAI provider through MaaS | Governed external processing | Fast, lower-cost external model path |
+
+The models are intentionally different. The lesson is not that one model is best. The lesson is that an enterprise platform should let teams choose the right model for the workload while enforcing policy at the access layer.
+
+The external OpenAI model resources are included with a placeholder `openai-api-key` Secret. They show how the governed external model path is wired, but external inference requires an operator to replace the placeholder with an approved provider credential.
+
+## What To Notice In The Demo
+
+When presenting this step, focus on three things.
+
+First, show **model discovery** in the RHOAI dashboard. Developers should be able to find model endpoints without understanding how the backend is deployed.
+
+Second, show **one API style**. Local and external models use the same OpenAI-compatible `/v1/chat/completions` pattern and `sk-oai-*` MaaS keys. That is what makes the later Dev Spaces, OpenCode, Continue, and MTA integrations simple.
+
+Third, show **governance resources**. `MaaSAuthPolicy` and `MaaSSubscription` demonstrate that model access is not unmanaged. The platform team controls who can use the models and how much they can consume.
+
+The key message: developers get simple access; platform teams keep control.
+
+## How Red Hat And Open Source Make It Work
 
 ```text
-LLM Serving + MaaS
-├── MaaS Prerequisites
-│   ├── LeaderWorkerSet Operator   → Distributed inference orchestration
-│   ├── Red Hat Connectivity Link  → Gateway policies, rate limiting
-│   ├── CloudNative PG Operator    → MaaS API database (operator-managed)
-│   ├── GatewayClass + Gateway     → MaaS traffic routing (HTTP + HTTPS/TLS)
-│   └── Kuadrant + Authorino       → Authentication, authorization, SSL trust
-├── Upstream MaaS Controller (redhat-ods-applications)
-│   ├── maas-controller            → Manages MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, ExternalModel CRDs
-│   ├── maas-api                   → Tenant-managed MaaS API patched to upstream image for ExternalModel discovery
-│   ├── PostgreSQL                 → MaaS API key storage
-│   ├── payload-processing         → ExternalModel credential injection (IPP/BBR plugin)
-│   └── 5 CRDs                    → ExternalModel, MaaSModelRef, MaaSAuthPolicy, MaaSSubscription, Tenant
-├── Models (namespace: maas)
-│   ├── gpt-oss-20b               → Local GPU model (LLMInferenceService + MaaSModelRef)
-│   ├── nemotron-3-nano-30b-a3b   → Local GPU model (LLMInferenceService + MaaSModelRef)
-│   ├── gpt-4o                    → External model (ExternalModel, Playground compatible)
-│   └── gpt-4o-mini               → External model (ExternalModel, Playground compatible)
-├── MaaS Governance (namespace: models-as-a-service)
-│   ├── MaaSAuthPolicy            → Per-model access control (groups)
-│   ├── MaaSSubscription          → Per-model token rate limits
-│   └── Per-route policies        → Auto-created AuthPolicies + TokenRateLimitPolicies in maas namespace
-├── MCP Servers (namespace: coding-assistant)
-│   ├── OpenShift MCP              → Read-only cluster queries (pods, logs, events)
-│   ├── Slack MCP                  → Post messages to Slack channels
-│   └── BrightData Web MCP        → Browse and search the public web
-├── Model Registration             → Seed Job registers models in Model Registry
-├── In-Cluster Jobs
-│   ├── configure-kuadrant        → Authorino SSL + AuthPolicy patches
-│   ├── patch-gateway-hostname    → Cluster-specific Gateway hostname + TLS cert
-│   ├── patch-maas-api-storage    → Pin maas-api to upstream image with PostgreSQL-backed API keys
-│   └── configure-grafana-sa      → Grafana ServiceAccount token
-└── Observability
-    ├── Grafana Operator + Instance
-    ├── ServiceMonitor             → Limitador metrics for rate limit monitoring
-    └── MaaS Usage Dashboard
+Governed MaaS layer
++-- Local model serving
+|   +-- nemotron-3-nano-30b-a3b
+|   +-- gpt-oss-20b
++-- External model registration
+|   +-- gpt-4o
+|   +-- gpt-4o-mini
++-- MaaS control plane
+|   +-- maas-controller
+|   +-- maas-api
+|   +-- MaaSModelRef
+|   +-- ExternalModel
+|   +-- MaaSAuthPolicy
+|   +-- MaaSSubscription
++-- API gateway and policy enforcement
+|   +-- Red Hat Connectivity Link
+|   +-- Gateway API
+|   +-- Kuadrant
+|   +-- Authorino
++-- Observability
+    +-- telemetry policies
+    +-- Prometheus metrics
+    +-- Grafana dashboards
++-- MCP integration
+    +-- read-only OpenShift MCP server
+    +-- RHOAI GenAI Playground MCP discovery ConfigMap
+    +-- optional Slack and BrightData MCP components
 ```
 
-| Model | Type | API | Auth Method | Playground | Continue | OpenCode |
-|-------|------|-----|-------------|-----------|----------|----------|
-| nemotron-3-nano-30b-a3b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes (default) |
-| gpt-oss-20b | Local (GPU, vLLM) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes |
-| gpt-4o | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes |
-| gpt-4o-mini | External (OpenAI API) | `/chat/completions` | `sk-oai-*` MaaS key | Yes | Yes | Yes (small_model) |
+The local models run on the GPU infrastructure prepared in Step 02. vLLM provides efficient model inference. MaaS publishes the models as reusable endpoints. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino provide the gateway and policy enforcement layer.
 
-### Access Control
+The workshop uses a hybrid MaaS implementation because external model support is evolving across the RHOAI 3.3 and 3.4 timeframe. The RHOAI dashboard MaaS experience remains active, while the upstream ODH MaaS controller provides the `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` capabilities required for this demo.
 
-All 4 models are governed by the standard MaaS pipeline:
-- `MaaSAuthPolicy` CRDs in `models-as-a-service` namespace define group-based access
-- `MaaSSubscription` CRDs define per-model token rate limits (50,000 tokens/hour)
-- The `maas-controller` auto-creates per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace
-- Authentication uses `sk-oai-*` API keys validated by the `payload-processing` BBR plugin via `ext_proc`
-- All models use the standard `/v1/chat/completions` API and are Playground-compatible
+The base deployment also registers a read-only Kubernetes MCP server for OpenShift cluster context in the GenAI Playground. Slack and BrightData MCP components are present as optional Kustomize components and are not enabled unless their credential Secrets are created and the components are included.
 
-> **Design Decision:** ExternalModel name MUST match the provider's model name exactly (e.g., `gpt-4o`, not `openai-gpt-4o`) because the payload-processing BBR plugin validates `targetModel` against the request body `model` field. Tracked: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
+## Red Hat Products Used
 
-Manifests: [`gitops/step-03-llm-serving-maas/base/`](../../gitops/step-03-llm-serving-maas/base/)
+- **Red Hat OpenShift AI** provides the GenAI Studio dashboard experience, model serving integration, and MaaS user experience.
+- **Models-as-a-Service in OpenShift AI** is the model access pattern demonstrated by this step.
+- **Red Hat Connectivity Link** provides the gateway and policy layer used to enforce model access and token rate limits.
+- **Red Hat OpenShift GitOps** reconciles the MaaS resources, gateway configuration, model definitions, and policy resources.
+- **Red Hat OpenShift** provides the runtime platform, identity, networking, routes, and monitoring foundation.
 
-<details>
-<summary>Deploy</summary>
+## Open Source Projects To Know
+
+- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) provides the upstream MaaS controller and CRDs used in this workshop.
+- [vLLM](https://docs.vllm.ai/) serves local LLMs efficiently and exposes OpenAI-compatible APIs.
+- [llm-d](https://llm-d.ai/) is an open source effort for distributed LLM serving on Kubernetes.
+- [Gateway API](https://gateway-api.sigs.k8s.io/) provides Kubernetes-native gateway resources.
+- [Kuadrant](https://kuadrant.io/) and [Authorino](https://www.authorino.io/) provide policy and authorization patterns for APIs.
+
+## Trust Boundaries
+
+This step should be explained carefully:
+
+- A **private local model** keeps inference on the OpenShift platform. This is the preferred path for sensitive source code, regulated workloads, and network-restricted environments.
+- A **governed external model** still sends prompts to the external provider. MaaS controls access and visibility, but it does not make that processing private.
+- **External provider credentials** are a separate trust boundary. The committed OpenAI Secret is a placeholder and must be replaced with an approved key before external inference is usable.
+- **MCP servers** can introduce additional data movement. The included OpenShift MCP server is deployed read-only; optional Slack and BrightData MCP servers require separate credentials and should be enabled only when those services are approved.
+- A **single access layer** lets platform teams publish both options with clear policy boundaries.
+
+That distinction is especially important for regulated industries. The platform gives teams a way to separate workloads by data sensitivity instead of forcing every use case into the same model path.
+
+## Why This Is Worth Knowing
+
+MaaS turns model serving into a platform capability. Without it, every team would need to manage model endpoints, provider credentials, quotas, and integrations on its own. With it, the platform team can become the internal AI provider.
+
+This pattern supports:
+
+- Private AI for sensitive software development.
+- Approved external AI where policy allows.
+- Consistent API consumption across tools.
+- Centralized key management and rate limiting.
+- Usage visibility for cost and capacity management.
+- Model backend changes without rewriting every consuming workflow.
+
+## Where This Fits In The Full Platform
+
+| Consumer | How it uses Step 03 |
+|----------|---------------------|
+| RHOAI Playground | Tests available models before integration |
+| Dev Spaces | Continue and OpenCode call MaaS endpoints |
+| MTA Developer Lightspeed | The LLM proxy calls the MaaS-backed Nemotron endpoint |
+| Developer Hub | Future catalog entities can expose model and API choices |
+
+## Deploy And Validate
+
+Operational commands are kept here for workshop operators.
 
 ```bash
 ./steps/step-03-llm-serving-maas/deploy.sh
 ./steps/step-03-llm-serving-maas/validate.sh
 ```
 
-The `deploy.sh` applies the ArgoCD Application. All resources including operators, models, policies, and Jobs are managed by ArgoCD via sync waves.
-
-</details>
-
-## The Demo
-
-> In this demo, we show how platform administrators govern model access and how developers discover and use models through the RHOAI dashboard and MaaS.
-
-### Model Discovery in GenAI Studio
-
-> Developers start in the OpenShift AI dashboard, browsing available AI assets.
-
-1. Log in to the RHOAI Dashboard as `ai-admin` (via `demo-htpasswd`)
-2. Navigate to **GenAI Studio > AI asset endpoints**
-3. Select the **maas** project from the project dropdown
-4. The **Models** tab shows available models with their status and playground access
-5. The **Models as a service** tab shows models with MaaS badges, external endpoints, and tier information
-
-**Expect:** All 4 models visible with **Active** status in the Models as a service tab.
-
-### Viewing Endpoints and Generating API Keys
-
-> The developer selects a MaaS model to get connection details.
-
-1. Click **View** on any model in the Models as a service tab
-2. The endpoint details show the external API endpoint URL (e.g., `https://maas.<cluster>/maas/gpt-4o-mini`)
-3. Click **Generate API key** to create a MaaS API key
-4. Copy the endpoint URL and key for use in applications (keys are stored in PostgreSQL, not as ServiceAccount tokens)
-
-**Expect:** External API endpoint with a working API key generator. Keys work for all 4 models — both local GPU models and external OpenAI models use `sk-oai-*` MaaS API keys.
-
-### Testing in the Playground
-
-> Before integrating a model into a coding workflow, the developer validates it in the built-in Playground.
-
-**Playground Prerequisites** (already satisfied by this demo):
-- `genAiStudio: true` in OdhDashboardConfig (set in Step 01)
-- Llama Stack Operator set to `Managed` in the DSC (set in Step 01)
-- User is a member of a configured admin or user group (Auth resource in Step 01)
-- A model is deployed and available as an AI asset endpoint in the project
-
-1. Click **Add to playground** on the Nemotron model
-2. Select the model in the **Configure playground** dialog and click **Create**
-3. Enter a test prompt: "Write a Python function that reads a CSV file and returns a summary"
-4. Observe the response quality, latency, and token usage
-
-**Expect:** The model responds with functional Python code. Response metadata shows latency and token counts. All 4 models are Playground-compatible.
-
-### Access Control via MaaS CRDs
-
-> Platform administrators define who gets access to which models and how much they can consume.
-
-1. `MaaSAuthPolicy` CRDs in `models-as-a-service` namespace define which groups can access which models
-2. `MaaSSubscription` CRDs define per-model token rate limits per group
-3. The `maas-controller` auto-creates per-route `AuthPolicy` and `TokenRateLimitPolicy` resources in the `maas` namespace
-4. `TelemetryPolicy` sends usage metrics to Prometheus
-
-```bash
-# View access policies
-oc get maasauthpolicy -n models-as-a-service
-# View subscriptions
-oc get maassubscription -n models-as-a-service
-# View auto-created per-route policies
-oc get authpolicy,tokenratelimitpolicy -n maas
-```
-
-**Expect:** `MaaSAuthPolicy` and `MaaSSubscription` in `Active` phase. Per-route `AuthPolicy` and `TokenRateLimitPolicy` resources auto-created by the `maas-controller` for all 4 models.
-
-## Key Takeaways
-
-**For business stakeholders:**
-
-- Govern AI model access with tier-based policies that align with organizational roles
-- Track usage for capacity planning and internal cost allocation
-- Control which teams access which models — not all models are for everyone
-
-**For technical teams:**
-
-- Deploy models once, expose through managed API endpoints with per-tier rate limits
-- Red Hat Connectivity Link enforces rate limits at the gateway level — no application changes needed
-- Usage telemetry flows to Prometheus automatically via TelemetryPolicy
+Manifests: [`gitops/step-03-llm-serving-maas/base/`](../../gitops/step-03-llm-serving-maas/base/)
 
 ## References
 
-- [MaaS Code Assistant Quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) — the public quickstart this step is based on
-- [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) — upstream quickstart source
-- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) — upstream MaaS controller with ExternalModel CRD
-- [ExternalModel setup guide](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/external-model-setup.md) — upstream docs for registering external providers
-- [RHOAI 3.3 Documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
+- [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
+- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
 - [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/)
-- [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684) — ExternalModel naming constraint (BBR plugin targetModel validation)
+- [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
+- [ExternalModel setup guide](https://github.com/opendatahub-io/models-as-a-service/blob/main/docs/content/install/external-model-setup.md)
 
-## Next Steps
+## Next Step
 
-- **Step 04**: [Dev Spaces & AI Code Assistant](../step-04-devspaces/README.md) — OpenShift Dev Spaces with Continue extension for AI-assisted coding
+[Step 04: Dev Spaces and AI Code Assistant](../step-04-devspaces/README.md) shows how developers consume the governed model endpoints from a controlled workspace.

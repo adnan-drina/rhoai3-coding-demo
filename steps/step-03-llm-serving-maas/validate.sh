@@ -93,15 +93,23 @@ check "Per-route AuthPolicy for gpt-4o" \
   "maas-auth-gpt-4o"
 
 log_step "MCP Servers"
-check_warn "OpenShift MCP running" \
+check "OpenShift MCP running" \
   "oc get pods -n coding-assistant -l app=openshift-mcp --no-headers 2>/dev/null | grep -c Running" \
   "1"
-check_warn "Slack MCP running" \
-  "oc get pods -n coding-assistant -l app=slack-mcp --no-headers 2>/dev/null | grep -c Running" \
-  "1"
-check_warn "BrightData MCP running" \
-  "oc get pods -n coding-assistant -l app=brightdata-mcp --no-headers 2>/dev/null | grep -c Running" \
-  "1"
+if oc get deployment slack-mcp -n coding-assistant &>/dev/null; then
+  check "Slack MCP running" \
+    "oc get pods -n coding-assistant -l app=slack-mcp --no-headers 2>/dev/null | grep -c Running" \
+    "1"
+else
+  echo -e "${BLUE}[INFO]${NC} Slack MCP not enabled (optional component)"
+fi
+if oc get deployment brightdata-mcp -n coding-assistant &>/dev/null; then
+  check "BrightData MCP running" \
+    "oc get pods -n coding-assistant -l app=brightdata-mcp --no-headers 2>/dev/null | grep -c Running" \
+    "1"
+else
+  echo -e "${BLUE}[INFO]${NC} BrightData MCP not enabled (optional component)"
+fi
 check "MCP ConfigMap exists" \
   "oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o jsonpath='{.metadata.name}'" \
   "gen-ai-aa-mcp-servers"
