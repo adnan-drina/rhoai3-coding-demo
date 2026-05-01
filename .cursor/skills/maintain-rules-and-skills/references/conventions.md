@@ -61,7 +61,7 @@ Each piece of guidance should have ONE canonical location:
 
 Use `@filename` in rules to include file contents in context:
 ```markdown
-Follow the patterns in @steps/step-01-rhoai/deploy.sh
+Follow the patterns in @steps/010-openshift-ai-platform-foundation/deploy.sh
 ```
 This prevents rules from becoming stale when the referenced code changes.
 
@@ -179,7 +179,7 @@ Keep SKILL.md under 500 lines. References should have a Table of Contents if ove
 - [ ] No content duplicated between rules
 - [ ] RHOAI/OCP-specific rules have References sections with doc URLs
 - [ ] Rules with post-edit checks have Agent Behavior sections
-- [ ] No stale file references or removed step numbers
+- [ ] No stale file references or removed stage numbers
 
 ### Skills
 - [ ] All `name` fields match parent folder names

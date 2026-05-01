@@ -17,8 +17,8 @@ description: >-
   - `https://github.com/adnan-drina/coding-exercises.git` (devfile + exercises + Continue config) — all workspaces
   - `https://github.com/konveyor-ecosystem/coolstore.git` (Java EE migration target) — ai-admin, ai-developer only
 - **Extensions**: Continue 1.3.38 + MTA 8.1.1 (pack + core + java) via `DEFAULT_EXTENSIONS` and `postStart` curl
-- **GitOps**: Managed by ArgoCD `step-04-devspaces` Application with `Replace=true` sync option
-- **Manifest**: `gitops/step-04-devspaces/base/devspaces/workspaces.yaml`
+- **GitOps**: Managed by ArgoCD `070-controlled-developer-workspaces` Application with `Replace=true` sync option
+- **Manifest**: `gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
 
 ## Key Behaviors Learned
 
@@ -110,15 +110,15 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 
 ```bash
 NS=wksp-ai-developer
-oc patch application step-04-devspaces -n openshift-gitops --type=json \
+oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace exercises -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
 oc delete devworkspace exercises -n $NS --force --grace-period=0
 oc delete pvc --all -n $NS --force --grace-period=0
 sleep 5
-oc apply -f gitops/step-04-devspaces/base/devspaces/workspaces.yaml
-oc patch application step-04-devspaces -n openshift-gitops --type=merge \
+oc apply -f gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml
+oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```
 

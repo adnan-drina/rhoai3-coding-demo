@@ -9,6 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "60"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-06-developer-hub
+    demo.rhoai.io/deprecated: "true"
+    demo.rhoai.io/deprecation-note: "Compatibility app only. Do not apply with canonical stage apps."
 spec:
   project: rhoai-demo
   source:

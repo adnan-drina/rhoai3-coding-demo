@@ -7,7 +7,7 @@ metadata:
   ocp-version: "4.20"
 description: >
   Diagnose and fix issues with the RHOAI demo deployment. Use when ANY
-  deployment step fails, validate.sh reports errors, pods are in
+  deployment stage fails, validate.sh reports errors, pods are in
   CrashLoopBackOff/Pending/Error/ImagePullBackOff, ArgoCD shows OutOfSync or
   Degraded, operators are not installing, GPU nodes are not joining,
   InferenceServices are not Ready, or the user reports any problem with their
@@ -36,7 +36,7 @@ Structured diagnostic workflow for resolving issues with the RHOAI demo on OpenS
 ### Step 1: Run the Validation Script
 
 ```bash
-./steps/step-XX-<name>/validate.sh
+./stages/NNN-<name>/validate.sh
 ```
 Check exit code: 0 = pass, 1 = failures, 2 = warnings only.
 
@@ -67,7 +67,7 @@ Execute the smallest change that fixes the issue. Re-run `validate.sh` to confir
 
 ### Step 6: Update Knowledge Base
 
-If this was a new issue, update `docs/TROUBLESHOOTING.md` with the symptom, cause, diagnostic commands, and recovery command. Keep step READMEs educational.
+If this was a new issue, update `docs/TROUBLESHOOTING.md` with the symptom, cause, diagnostic commands, and recovery command. Keep stage READMEs educational.
 
 ## Escalation Protocol
 

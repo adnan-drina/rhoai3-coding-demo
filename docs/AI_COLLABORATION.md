@@ -33,7 +33,7 @@ Shared skills live in:
 
 - `.cursor/skills/*/SKILL.md`
 
-Shared skills define repeatable project workflows such as reviewing GitOps changes, validating demo steps, updating documentation, preparing PR summaries, and reviewing workarounds.
+Shared skills define repeatable project workflows such as reviewing GitOps changes, validating demo stages, updating documentation, preparing PR summaries, and reviewing workarounds.
 
 A skill may be shared when it is useful to all contributors, contains no secrets, and represents a workflow that should be performed consistently.
 
@@ -132,7 +132,7 @@ Good rules (specific and actionable):
 | Skill | When to use |
 |-------|-------------|
 | `review-gitops-change` | Reviewing changes under `gitops/` or platform YAML |
-| `validate-demo-step` | After changing a step's deploy, manifests, or validate script |
+| `validate-demo-step` | After changing a stage deploy script, manifests, or validate script |
 | `update-demo-docs` | After any change that might affect documentation consistency |
 | `prepare-pr-summary` | Before opening a pull request |
 | `workaround-review` | When touching known RHOAI, MaaS, or gateway workarounds |
@@ -148,7 +148,7 @@ Hooks provide automated enforcement beyond prose rules. They are defined in `.cu
 | Hook | Trigger | What it does | Failure behavior |
 |------|---------|--------------|-----------------|
 | `validate-yaml.sh` | After editing a `gitops/**/*.yaml` file | Runs `kustomize build` on the nearest base; warns if it fails | Adds a warning to agent context; does not block the edit |
-| `check-docs-consistency.sh` | After editing `gitops/step-*/**` or `steps/step-*/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
+| `check-docs-consistency.sh` | After editing `gitops/stages/**`, `stages/**`, or compatibility `gitops/step-*/**` / `steps/step-*/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
 | `guard-oc-commands.py` | Before running `oc delete`, `oc scale`, or `oc patch` | If the command targets a protected namespace (`redhat-ods-applications`, `redhat-ods-operator`, `openshift-gitops`, `openshift-operators`), asks user for confirmation | Prompts "ask" permission; agent must confirm with user |
 | `session-init.sh` | On session start | Checks `oc whoami` and injects cluster login status into agent context | Warns "Not logged in" if oc is unavailable or not authenticated |
 

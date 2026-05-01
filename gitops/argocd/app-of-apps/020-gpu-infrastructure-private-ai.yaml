@@ -1,0 +1,63 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 020-gpu-infrastructure-private-ai
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "020"
+    demo.rhoai.io/step: "020"
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/020-gpu-infrastructure-private-ai
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: codex/stage-refactor-demo-validation
+    path: gitops/stages/020-gpu-infrastructure-private-ai/base
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideDiff=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: ""
+      kind: Namespace
+      jsonPointers:
+        - /metadata/annotations
+        - /metadata/labels
+    - group: operators.coreos.com
+      kind: OperatorGroup
+      jsonPointers:
+        - /metadata/annotations
+    - group: operators.coreos.com
+      kind: Subscription
+      jsonPointers:
+        - /metadata/annotations
+        - /spec/startingCSV
+    - group: nvidia.com
+      kind: ClusterPolicy
+      jqPathExpressions:
+        - .spec
+    - group: nfd.openshift.io
+      kind: NodeFeatureDiscovery
+      jqPathExpressions:
+        - .spec
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec

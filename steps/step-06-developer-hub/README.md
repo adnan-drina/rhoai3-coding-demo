@@ -1,5 +1,7 @@
 # Step 06: Red Hat Developer Hub As The Self-Service Portal
 
+> Compatibility note: this step path is retained for existing links. New docs and automation should use [Stage 090](../../stages/090-developer-portal-self-service/README.md).
+
 ## Why This Matters
 
 A platform capability only changes day-to-day engineering behavior when teams can find it, understand ownership, and follow a supported path to consume it. Without a portal, the AI platform remains scattered across dashboards, routes, namespaces, GitOps applications, and README files.

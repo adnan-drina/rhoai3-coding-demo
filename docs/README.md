@@ -1,22 +1,27 @@
 # Documentation Index
 
-This directory contains operational documentation for the RHOAI coding demo. The root README and step READMEs are the user-facing educational path; this directory holds the runbook material that would make those READMEs too operational.
+This directory contains operational documentation for the Red Hat OpenShift AI coding demo. The root README and stage READMEs are the user-facing educational path; this directory holds the runbook material that would make those READMEs too operational.
 
 | Document | Purpose | Intended use |
 |----------|---------|--------------|
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operating model, day-2 notes, and cleanup guidance | Use while installing, validating, or maintaining the demo environment |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment step fails validation or a demo component is unavailable |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment stage fails validation or a demo component is unavailable |
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
 
-The published learning path is:
+The published learning path is the stage-based flow from [`demo/flows/default.yaml`](../demo/flows/default.yaml):
 
 1. [Project README](../README.md)
-2. [Step 01: OpenShift AI platform](../steps/step-01-rhoai-platform/README.md)
-3. [Step 02: GPU infrastructure](../steps/step-02-gpu-infra/README.md)
-4. [Step 03: Governed Models-as-a-Service](../steps/step-03-llm-serving-maas/README.md)
-5. [Step 04: Dev Spaces and AI code assistants](../steps/step-04-devspaces/README.md)
-6. [Step 05: MTA and Developer Lightspeed](../steps/step-05-mta/README.md)
-7. [Step 06: Red Hat Developer Hub](../steps/step-06-developer-hub/README.md)
+2. [Stage 010: OpenShift AI Platform Foundation](../stages/010-openshift-ai-platform-foundation/README.md)
+3. [Stage 020: GPU Infrastructure for Private AI](../stages/020-gpu-infrastructure-private-ai/README.md)
+4. [Stage 030: Private Model Serving](../stages/030-private-model-serving/README.md)
+5. [Stage 040: Governed Models-as-a-Service](../stages/040-governed-models-as-a-service/README.md)
+6. [Stage 050: Approved External Model Access](../stages/050-approved-external-model-access/README.md)
+7. [Stage 060: MCP Context Integrations](../stages/060-mcp-context-integrations/README.md)
+8. [Stage 070: Controlled Developer Workspaces](../stages/070-controlled-developer-workspaces/README.md)
+9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
+10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
+
+The old `steps/step-*` paths are transitional compatibility wrappers for existing users.
 
 Shared Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and agent definitions (`.cursor/agents/`) are tracked in git and define project-wide AI agent behavior. Local/private rules and skills that contain credentials, local paths, or personal preferences must not be committed. See [AI_COLLABORATION.md](AI_COLLABORATION.md) for the governance model.
 

@@ -5,8 +5,8 @@ This document explains how to deploy, validate, and operate the workshop environ
 The executable source of truth remains the scripts:
 
 - `scripts/bootstrap.sh`
-- `steps/step-XX-*/deploy.sh`
-- `steps/step-XX-*/validate.sh`
+- `stages/NNN-*/deploy.sh`
+- `stages/NNN-*/validate.sh`
 
 Use this guide to understand when to run those scripts, what they do, and how to interpret the results.
 
@@ -15,10 +15,10 @@ Use this guide to understand when to run those scripts, what they do, and how to
 The repository follows a GitOps-first pattern:
 
 1. `scripts/bootstrap.sh` installs and configures OpenShift GitOps.
-2. Each `deploy.sh` applies one Argo CD `Application`.
-3. Argo CD reconciles manifests from `gitops/step-XX-*/base`.
+2. Each stage `deploy.sh` applies one Argo CD `Application`.
+3. Argo CD reconciles manifests from `gitops/stages/NNN-*/base`.
 4. Sync waves and in-cluster Jobs perform cluster-specific setup.
-5. Each `validate.sh` confirms that the step reached the expected operational state.
+5. Each `validate.sh` confirms that the stage reached the expected operational state.
 
 The deploy scripts do not imperatively install every component themselves. They hand ownership to Argo CD.
 
@@ -43,7 +43,7 @@ git remote -v
 git status --short
 ```
 
-Optional MCP integrations have their own prerequisites. The base deployment includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData MCP components remain disabled unless their credential Secrets exist in `coding-assistant` and the Kustomize components are uncommented in `gitops/step-03-llm-serving-maas/base/kustomization.yaml`.
+MCP integrations have their own prerequisites. Stage 060 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
 
 ## Bootstrap
 
@@ -64,6 +64,10 @@ oc login --token=<token> --server=<api>
 - Configures custom health checks for resources such as PVCs and InferenceServices.
 - Creates the `rhoai-demo` Argo CD project.
 
+This broad GitOps control is intentional for disposable demo clusters because the stages create cluster-scoped operators, CRDs, RBAC, Gateway API resources, and OpenShift platform configuration. Do not treat the bootstrap RBAC and wildcard AppProject as a production recommendation. For a shared or long-lived environment, scope Argo CD permissions, destinations, source repositories, and cluster resource allow-lists to the smallest workable set.
+
+Operator Subscriptions use `installPlanApproval: Automatic` so a disposable demo cluster can reconcile without manual OLM approval steps. This is a repeatability choice for the workshop, not a blanket recommendation for production change control.
+
 Monitor GitOps:
 
 ```bash
@@ -73,34 +77,48 @@ oc get route openshift-gitops-server -n openshift-gitops
 
 ## Deployment Order
 
-Deploy steps in order:
+Deploy stages in order:
 
 ```bash
-./steps/step-01-rhoai-platform/deploy.sh
-./steps/step-02-gpu-infra/deploy.sh
-./steps/step-03-llm-serving-maas/deploy.sh
-./steps/step-04-devspaces/deploy.sh
-./steps/step-05-mta/deploy.sh
-./steps/step-06-developer-hub/deploy.sh
+./stages/010-openshift-ai-platform-foundation/deploy.sh
+./stages/020-gpu-infrastructure-private-ai/deploy.sh
+./stages/030-private-model-serving/deploy.sh
+./stages/040-governed-models-as-a-service/deploy.sh
+./stages/050-approved-external-model-access/deploy.sh
+./stages/060-mcp-context-integrations/deploy.sh
+./stages/070-controlled-developer-workspaces/deploy.sh
+./stages/080-ai-assisted-application-modernization/deploy.sh
+./stages/090-developer-portal-self-service/deploy.sh
 ```
 
-Each script applies one file from `gitops/argocd/app-of-apps/`.
+Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `demo/flows/default.yaml`.
 
-| Step | Argo CD app | Purpose |
+Compatibility note: the old `steps/step-*` scripts remain as wrappers, but the old `step-*` Argo CD Applications should not be run alongside the new stage Applications on the same cluster. For an existing cluster that already has the old six applications, use a clean redeploy or remove the old Applications before adopting the staged flow so Argo CD ownership does not overlap.
+
+| Stage | Argo CD app | Purpose |
 |------|-------------|---------|
-| 01 | `step-01-rhoai-platform` | OpenShift AI platform foundation |
-| 02 | `step-02-gpu-infra` | NFD, GPU Operator, GPU MachineSets |
-| 03 | `step-03-llm-serving-maas` | MaaS, models, gateway, governance, observability |
-| 04 | `step-04-devspaces` | Dev Spaces, workspaces, AI coding tools |
-| 05 | `step-05-mta` | MTA, Developer Lightspeed, MaaS integration |
-| 06 | `step-06-developer-hub` | Red Hat Developer Hub portal |
+| 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
+| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets |
+| 030 | `030-private-model-serving` | Local private model serving |
+| 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, observability |
+| 050 | `050-approved-external-model-access` | External OpenAI models behind MaaS |
+| 060 | `060-mcp-context-integrations` | OpenShift, Slack, and BrightData MCP integrations |
+| 070 | `070-controlled-developer-workspaces` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
+| 080 | `080-ai-assisted-application-modernization` | MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
+| 090 | `090-developer-portal-self-service` | Red Hat Developer Hub portal |
 
 ## Validation Strategy
 
-Run the matching validation script after each step:
+Run static flow validation before cluster work:
 
 ```bash
-./steps/step-03-llm-serving-maas/validate.sh
+./scripts/validate-stage-flow.sh
+```
+
+Run the matching validation script after each stage:
+
+```bash
+./stages/040-governed-models-as-a-service/validate.sh
 ```
 
 Validation scripts use these exit codes:
@@ -125,29 +143,29 @@ oc get applications -n openshift-gitops \
 Inspect an application:
 
 ```bash
-oc get application step-03-llm-serving-maas -n openshift-gitops -o yaml
+oc get application 040-governed-models-as-a-service -n openshift-gitops -o yaml
 ```
 
 List resources managed by an application:
 
 ```bash
-oc get application step-03-llm-serving-maas -n openshift-gitops -o json \
+oc get application 040-governed-models-as-a-service -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | [.kind,.namespace,.name,.status,.health.status] | @tsv'
 ```
 
 Force a sync from the CLI if needed:
 
 ```bash
-argocd app sync step-03-llm-serving-maas
+argocd app sync 040-governed-models-as-a-service
 ```
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.
 
-## Step-Specific Operational Notes
+## Stage-Specific Operational Notes
 
-### Step 01
+### Stage 010
 
-Step 01 installs OpenShift AI and platform dependencies. Operator reconciliation can take several minutes.
+Stage 010 installs OpenShift AI and platform dependencies. Operator reconciliation can take several minutes.
 
 Useful checks:
 
@@ -157,9 +175,11 @@ oc get pods -n redhat-ods-applications
 oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yaml
 ```
 
-### Step 02
+### Stage 020
 
-Step 02 creates GPU infrastructure. New GPU nodes can take several minutes to provision and join the cluster.
+Stage 020 creates GPU infrastructure. New GPU nodes can take several minutes to provision and join the cluster.
+
+The GPU Operator Subscription does not pin a channel. OLM uses the certified catalog default channel available in the target cluster. This avoids carrying an unexplained demo-specific version pin while still installing from the certified operator catalog.
 
 Useful checks:
 
@@ -169,17 +189,44 @@ oc get nodes -l node-role.kubernetes.io/gpu
 oc get clusterpolicy -A
 ```
 
-### Step 03
+### Stage 030
 
-Step 03 is the most complex step. It deploys local models, external model registrations, MaaS governance, gateway policy, and observability.
+Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data.
+
+Useful checks:
+
+```bash
+oc get llminferenceservice -n maas
+oc get pods -n maas
+oc get job model-registry-seed -n rhoai-model-registries
+```
+
+### Stage 040
+
+Stage 040 deploys the governed Models-as-a-Service control point: MaaS controller, Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, local model subscriptions, rate limits, token limits, telemetry, and Grafana.
+
+The upstream `maas-controller` and `maas-api` image override are intentional demo deviations. They demonstrate external model registration through upstream and Red Hat OpenShift AI 3.4 early access MaaS capabilities while the Red Hat OpenShift AI 3.3 supported operator path does not provide that full behavior. Keep the workaround visible in `BACKLOG.md` and remove it when a supported Red Hat OpenShift AI release provides equivalent external model registration.
+
+The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
+
+Useful checks:
+
+```bash
+oc get maasmodelref -n maas
+oc get maasauthpolicy,maassubscription -n models-as-a-service
+oc get gateway maas-default-gateway -n openshift-ingress
+oc get pods -n redhat-ods-applications -l control-plane=maas-controller
+```
+
+### Stage 050
+
+Stage 050 deploys approved external model access through MaaS.
 
 **Credential provisioning:** `deploy.sh` reads `.env` and provisions secrets before applying the Argo CD Application:
 
 | `.env` variable | Secret created | Namespace | Purpose |
 |----------------|----------------|-----------|---------|
 | `OPENAI_API_KEY` | `openai-api-key` | `maas` | Credential injection for external models (gpt-4o, gpt-4o-mini) |
-| `SLACK_BOT_TOKEN` | `slack-mcp-credentials` | `coding-assistant` | Slack MCP server authentication |
-| `BRIGHTDATA_API_TOKEN` | `brightdata-mcp-credentials` | `coding-assistant` | BrightData MCP server authentication |
 
 The Argo CD Application has `ignoreDifferences` configured for these Secrets so `selfHeal` does not revert provisioned values to the GitOps placeholder.
 
@@ -195,17 +242,32 @@ oc label secret openai-api-key -n maas inference.networking.k8s.io/bbr-managed=t
 Useful checks:
 
 ```bash
-oc get llminferenceservice -n maas
-oc get maasmodelref -n maas
 oc get externalmodel -n maas
-oc get maasauthpolicy,maassubscription -n models-as-a-service
-oc get gateway maas-default-gateway -n openshift-ingress
+oc get maasmodelref gpt-4o gpt-4o-mini -n maas
+oc get maasauthpolicy external-models-access -n models-as-a-service
+oc get maassubscription external-models-subscription -n models-as-a-service
 oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' | base64 -d | head -c10
 ```
 
-### Step 04
+### Stage 060
 
-Step 04 installs Dev Spaces and pre-provisions workspaces.
+Stage 060 deploys MCP context integrations.
+
+| `.env` variable | Secret created | Namespace | Purpose |
+|----------------|----------------|-----------|---------|
+| `SLACK_BOT_TOKEN` | `slack-mcp-credentials` | `coding-assistant` | Slack MCP server authentication |
+| `BRIGHTDATA_API_TOKEN` | `brightdata-mcp-credentials` | `coding-assistant` | BrightData MCP server authentication |
+
+Useful checks:
+
+```bash
+oc get pods -n coding-assistant
+oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
+```
+
+### Stage 070
+
+Stage 070 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
 
 Useful checks:
 
@@ -215,9 +277,9 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
-### Step 05
+### Stage 080
 
-Step 05 installs MTA and configures Developer Lightspeed to use MaaS.
+Stage 080 installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS.
 
 Useful checks:
 
@@ -227,9 +289,9 @@ oc get deployment -n openshift-mta
 oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
-### Step 06
+### Stage 090
 
-Step 06 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
+Stage 090 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
 
 Useful checks:
 
@@ -251,7 +313,7 @@ For GitOps-managed behavior:
 
 For documentation-only changes:
 
-1. Edit `README.md`, `steps/*/README.md`, or files under `docs/`.
+1. Edit `README.md`, `stages/*/README.md`, or files under `docs/`.
 2. Run `git diff --check`.
 3. Check that links and references still match the repo.
 
@@ -262,12 +324,15 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete step-06-developer-hub --cascade
-argocd app delete step-05-mta --cascade
-argocd app delete step-04-devspaces --cascade
-argocd app delete step-03-llm-serving-maas --cascade
-argocd app delete step-02-gpu-infra --cascade
-argocd app delete step-01-rhoai-platform --cascade
+argocd app delete 090-developer-portal-self-service --cascade
+argocd app delete 080-ai-assisted-application-modernization --cascade
+argocd app delete 070-controlled-developer-workspaces --cascade
+argocd app delete 060-mcp-context-integrations --cascade
+argocd app delete 050-approved-external-model-access --cascade
+argocd app delete 040-governed-models-as-a-service --cascade
+argocd app delete 030-private-model-serving --cascade
+argocd app delete 020-gpu-infrastructure-private-ai --cascade
+argocd app delete 010-openshift-ai-platform-foundation --cascade
 ```
 
 Delete in reverse deployment order. Review GPU MachineSets and persistent volumes separately before removing them because cloud infrastructure and storage cleanup can be environment-specific.
@@ -278,7 +343,7 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI and choose casca
 
 | Need | Use |
 |------|-----|
-| Understand the architecture and value | `README.md` and step READMEs |
+| Understand the architecture and value | `README.md` and stage READMEs |
 | Deploy and validate the environment | This file |
 | Diagnose failures | `docs/TROUBLESHOOTING.md` |
 | See exact executable behavior | `deploy.sh` and `validate.sh` scripts |

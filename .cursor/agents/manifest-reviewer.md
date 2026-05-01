@@ -28,11 +28,11 @@ For each manifest file, check:
 - Port numbers are consistent (Service targetPort = container port)
 
 ### 2. Label compliance (rule 50)
-- app.kubernetes.io/part-of is set (using functional names, not step numbers)
+- app.kubernetes.io/part-of is set (using functional names, not stage numbers)
 - app.kubernetes.io/name is set
 - app.kubernetes.io/component is set (using standard values)
 - app.openshift.io/runtime is set on visible resources
-- ArgoCD Applications have demo.rhoai.io/step label
+- ArgoCD Applications have `demo.rhoai.io/stage` label
 
 ### 3. YAML standards (rule 40)
 - 2-space indentation
@@ -47,18 +47,18 @@ For each manifest file, check:
 - Demo secrets have DEMO VALUES ONLY header
 - No real credentials in manifests
 
-## How to review a step
+## How to review a stage
 
-1. Read all YAML files in gitops/step-XX-name/base/
+1. Read all YAML files in gitops/stages/NNN-name/base/
 2. Read the kustomization.yaml to understand which resources are included
 3. Apply the checklist above to each resource
 4. Cross-reference between resources (selectors, names, ports)
 
 ## Output format
 
-For each step reviewed:
+For each stage reviewed:
 
-Step: step-XX-name
+Stage: NNN-name
 Files reviewed: N
 Findings:
   - [LABEL] deployment.yaml: missing app.kubernetes.io/component

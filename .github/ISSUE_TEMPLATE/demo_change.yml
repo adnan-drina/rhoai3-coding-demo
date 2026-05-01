@@ -11,11 +11,11 @@ body:
     validations:
       required: true
   - type: textarea
-    id: affected_steps
+    id: affected_stages
     attributes:
-      label: Affected steps
-      description: Which workshop steps are affected?
-      placeholder: "Step 03 MaaS, Step 04 Dev Spaces, docs, scripts, etc."
+      label: Affected stages
+      description: Which workshop stages are affected?
+      placeholder: "Stage 040 MaaS, Stage 070 Dev Spaces, docs, scripts, etc."
     validations:
       required: true
   - type: textarea

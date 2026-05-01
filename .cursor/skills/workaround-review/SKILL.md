@@ -84,7 +84,7 @@ If removing the workaround:
 - Move the `BACKLOG.md` entry to the Completed section with date and evidence
 - Remove the implementing code
 - Update `docs/TROUBLESHOOTING.md` if it references the workaround
-- Update any step README that mentions the workaround behavior
+- Update any stage README that mentions the workaround behavior
 
 If adding a new workaround:
 - Add entry to `BACKLOG.md` under the appropriate section

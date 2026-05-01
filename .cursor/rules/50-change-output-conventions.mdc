@@ -63,7 +63,7 @@ If there is ambiguity in docs or versions:
 - Changes to `.cursor/`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/` templates, or `docs/AI_COLLABORATION.md` (these affect agent behavior for everyone and should be reviewed even if small)
 
 ### Branch naming
-- `feat/step-XX-description` - new features scoped to a step
+- `feat/stage-NNN-description` - new features scoped to a stage
 - `feat/description` - cross-cutting features
 - `fix/description` - bug fixes
 - `refactor/description` - structural improvements
@@ -85,7 +85,7 @@ If there is ambiguity in docs or versions:
 
 Use conventional commit messages: `type(scope): description`
 - **Types:** `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`
-- **Scope:** Use the step number when the change is step-specific (e.g., `feat(step-01): add hardware profiles`)
+- **Scope:** Use the stage number when the change is stage-specific (e.g., `feat(stage-020): add hardware profiles`)
 - **Scope:** Use the component name for cross-cutting changes (e.g., `fix(gitops): switch all apps to rhoai-demo project`)
 - Keep the subject line under 72 characters
 - Never force-push to `main`

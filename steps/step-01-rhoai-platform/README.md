@@ -1,5 +1,7 @@
 # Step 01: Trusted OpenShift AI Platform Foundation
 
+> Compatibility note: this step path is retained for existing links. New docs and automation should use [Stage 010](../../stages/010-openshift-ai-platform-foundation/README.md).
+
 ## Why This Matters
 
 Enterprise AI adoption becomes difficult to govern when every team assembles its own notebooks, model endpoints, credentials, and dashboards. Platform teams need a shared control plane before developers and AI engineers start consuming models from multiple tools and trust boundaries.

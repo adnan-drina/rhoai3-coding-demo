@@ -1,0 +1,93 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 010-openshift-ai-platform-foundation
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "010"
+    demo.rhoai.io/step: "010"
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/010-openshift-ai-platform-foundation
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
+  # Use 'argocd app delete --cascade' explicitly when you want to prune.
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: codex/stage-refactor-demo-validation
+    path: gitops/stages/010-openshift-ai-platform-foundation/base
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideDiff=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: datasciencecluster.opendatahub.io
+      kind: DataScienceCluster
+      jqPathExpressions:
+        - .spec.components
+    - group: dscinitialization.opendatahub.io
+      kind: DSCInitialization
+      jqPathExpressions:
+        - .spec
+    - group: opendatahub.io
+      kind: OdhDashboardConfig
+      jqPathExpressions:
+        - .spec
+    - group: services.platform.opendatahub.io
+      kind: Auth
+      jqPathExpressions:
+        - .spec
+    - group: infrastructure.opendatahub.io
+      kind: HardwareProfile
+      jqPathExpressions:
+        - .spec
+    - group: operators.coreos.com
+      kind: Subscription
+      jsonPointers:
+        - /metadata/annotations
+        - /spec/startingCSV
+    - group: ""
+      kind: Namespace
+      jsonPointers:
+        - /metadata/annotations
+        - /metadata/labels
+    - group: operators.coreos.com
+      kind: OperatorGroup
+      jsonPointers:
+        - /metadata/annotations
+    - group: ""
+      kind: ConfigMap
+      namespace: openshift-monitoring
+      name: cluster-monitoring-config
+      jsonPointers:
+        - /data
+        - /metadata/annotations
+    - group: operator.knative.dev
+      kind: KnativeServing
+      jsonPointers:
+        - /metadata/annotations
+        - /spec
+    # OAuth spec is managed by the cluster; our manifest adds an identity provider
+    - group: config.openshift.io
+      kind: OAuth
+      jqPathExpressions:
+        - .spec
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec

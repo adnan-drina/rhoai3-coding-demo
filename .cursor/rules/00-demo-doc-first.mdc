@@ -47,9 +47,9 @@ See `30-secrets-and-certs.mdc` for details. Use `--insecure-skip-tls-verify=true
 
 ## Agent Behavior
 - Before running `oc` commands that modify cluster state, verify the cluster context: `oc whoami` and `oc project`
-- Before modifying a step, read its README in `steps/step-XX-descriptive-name/README.md` first
-- Every implemented step has at least three user-facing deliverables: `deploy.sh`, `validate.sh`, and `README.md`
-- Every GitOps-managed step also has an Argo CD Application under `gitops/argocd/app-of-apps/` and Kustomize source under `gitops/step-XX-descriptive-name/base/`
+- Before modifying a stage, read its README in `stages/NNN-descriptive-name/README.md` first
+- Every implemented stage has at least three user-facing deliverables: `deploy.sh`, `validate.sh`, and `README.md`
+- Every GitOps-managed stage also has an Argo CD Application under `gitops/argocd/app-of-apps/` and Kustomize source under `gitops/stages/NNN-descriptive-name/base/`
 
 ## Documentation Alignment
 - READMEs are educational technical articles, not runbooks.

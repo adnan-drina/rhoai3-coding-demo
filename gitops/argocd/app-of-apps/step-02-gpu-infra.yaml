@@ -9,6 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-02-gpu-infra
+    demo.rhoai.io/deprecated: "true"
+    demo.rhoai.io/deprecation-note: "Compatibility app only. Do not apply with canonical stage apps."
   # No finalizer: deleting this Application orphans resources instead of destroying them.
 spec:
   project: rhoai-demo

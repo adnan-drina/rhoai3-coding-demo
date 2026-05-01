@@ -1,5 +1,7 @@
 # Step 03: Governed Models-as-a-Service
 
+> Compatibility note: this former step is now split across [Stage 030](../../stages/030-private-model-serving/README.md), [Stage 040](../../stages/040-governed-models-as-a-service/README.md), [Stage 050](../../stages/050-approved-external-model-access/README.md), and [Stage 060](../../stages/060-mcp-context-integrations/README.md).
+
 ## Why This Matters
 
 Deploying a model is not the same as making AI usable across an enterprise. A single endpoint can support a proof of concept, but shared adoption quickly raises harder platform questions:

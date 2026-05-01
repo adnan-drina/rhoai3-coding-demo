@@ -10,7 +10,7 @@ For detailed agent guidance, see:
 
 ## Key rules
 
-- Read the relevant step README and manifests before editing.
+- Read the relevant stage README and manifests before editing.
 - Keep changes small and focused.
 - Preserve GitOps idempotency and Argo CD sync waves.
 - Do not bypass MaaS unless explicitly documented.
@@ -24,8 +24,8 @@ For detailed agent guidance, see:
 
 ```bash
 bash -n scripts/*.sh
-bash -n steps/*/*.sh
-./steps/step-XX-*/validate.sh
+bash -n stages/*/*.sh steps/*/*.sh
+./stages/NNN-*/validate.sh
 ```
 
 ## Security-sensitive areas

@@ -1,0 +1,28 @@
+# MaaS tier user groups — matching quickstart pattern
+# Each user should be in exactly ONE tier group
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: tier-free-users
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+users: []
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: tier-premium-users
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+users:
+  - ai-developer
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: tier-enterprise-users
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+users:
+  - ai-admin

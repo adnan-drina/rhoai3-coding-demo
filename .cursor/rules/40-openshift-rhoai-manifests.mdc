@@ -29,7 +29,7 @@ alwaysApply: false
   - the CRDs and API versions installed on the target cluster
 - If the cluster exposes different API versions than expected, call it out and adapt the manifest accordingly.
 
-## Every step must include validation
+## Every stage must include validation
 When adding a manifest, also provide:
 - How to confirm the operator reconciled it (events/status conditions)
 - The minimal `oc` commands to verify it works

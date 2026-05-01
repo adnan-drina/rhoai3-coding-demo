@@ -1,0 +1,38 @@
+# MaaS default gateway — all LLMInferenceService + Kuadrant policies target this
+# Labels and annotations are critical for MaaS/Authorino integration
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: maas-default-gateway
+  namespace: openshift-ingress
+  labels:
+    opendatahub.io/managed: "false"
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    opendatahub.io/managed: "false"
+    security.opendatahub.io/authorino-tls-bootstrap: "true"
+spec:
+  gatewayClassName: openshift-default
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: maas.placeholder.example.com
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: maas.placeholder.example.com
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: router-certs-default
+        mode: Terminate

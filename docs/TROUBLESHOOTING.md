@@ -7,7 +7,7 @@ Use this format for new entries:
 ````markdown
 ## Symptom
 
-**Affected step:** Step NN
+**Affected stage:** Stage NNN
 
 **Likely cause:** ...
 
@@ -24,10 +24,10 @@ Use this format for new entries:
 
 ## General Diagnostic Flow
 
-Start with the failing step's validation script:
+Start with the failing stage's validation script:
 
 ```bash
-./steps/step-XX-*/validate.sh
+./stages/NNN-*/validate.sh
 ```
 
 Then inspect Argo CD:
@@ -40,7 +40,7 @@ oc get applications -n openshift-gitops \
 For a specific app:
 
 ```bash
-APP=step-03-llm-serving-maas
+APP=040-governed-models-as-a-service
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced" or .health.status != "Healthy") | [.kind,.namespace,.name,.status,.health.status,.message] | @tsv'
 ```
@@ -53,14 +53,14 @@ oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 
 ## Argo CD App Is OutOfSync
 
-**Affected step:** Any
+**Affected stage:** Any
 
 **Likely cause:** Operator-managed fields, PostSync patch jobs, dynamic route values, or manual changes.
 
 **Diagnose:**
 
 ```bash
-APP=step-06-developer-hub
+APP=090-developer-portal-self-service
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 ```
@@ -73,7 +73,7 @@ oc get application "$APP" -n openshift-gitops -o json \
 
 ## Operator CSV Not Succeeded
 
-**Affected step:** Any operator install step
+**Affected stage:** Any operator install stage
 
 **Likely cause:** InstallPlan pending, catalog issue, insufficient permissions, or dependency operator not ready.
 
@@ -89,11 +89,11 @@ oc describe installplan <name> -n <namespace>
 
 - If install approval is manual, approve the InstallPlan.
 - If the package or channel is unavailable, confirm the package manifest in `openshift-marketplace`.
-- Re-run the step validation after the CSV reaches `Succeeded`.
+- Re-run the stage validation after the CSV reaches `Succeeded`.
 
 ## GPU Nodes Do Not Appear
 
-**Affected step:** Step 02
+**Affected stage:** Stage 020
 
 **Likely cause:** MachineSet provisioning delay, cloud quota issue, instance type unavailable, or Machine API failure.
 
@@ -111,11 +111,11 @@ oc describe machineset <gpu-machineset> -n openshift-machine-api
 - Wait if machines are still provisioning.
 - Check cloud quota and instance availability.
 - Inspect Machine API events.
-- Re-run `./steps/step-02-gpu-infra/validate.sh`.
+- Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
 ## MaaS Tab Shows No Models
 
-**Affected step:** Step 03
+**Affected stage:** Stage 040
 
 **Likely cause:** `maas-api` is not using the expected upstream-compatible configuration, `MaaSModelRef` resources are not ready, or the tenant reconciler has not recreated resources.
 
@@ -146,12 +146,12 @@ oc rollout status deployment/maas-api -n redhat-ods-applications
 Then re-run:
 
 ```bash
-./steps/step-03-llm-serving-maas/validate.sh
+./stages/040-governed-models-as-a-service/validate.sh
 ```
 
 ## MaaS Gateway Is Not Reachable
 
-**Affected step:** Step 03
+**Affected stage:** Stage 040
 
 **Likely cause:** Gateway hostname or HTTPS listener not patched, route not admitted, or gateway policy not ready.
 
@@ -165,13 +165,13 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 
 **Recover:**
 
-- Confirm the Step 03 PostSync jobs completed.
+- Confirm the Stage 040 PostSync jobs completed.
 - Confirm the Gateway has an HTTPS listener with the expected cluster domain.
-- Re-sync Step 03 if the patch job did not run.
+- Re-sync Stage 040 if the patch job did not run.
 
-## MTA Developer Lightspeed Cannot Call MaaS
+## Red Hat Developer Lightspeed for MTA Cannot Call MaaS
 
-**Affected step:** Step 05
+**Affected stage:** Stage 080
 
 **Likely cause:** `kai-api-keys` contains placeholder values, the MaaS API key is invalid, or `llm-proxy` did not restart after secret patching.
 
@@ -186,12 +186,12 @@ oc logs deployment/llm-proxy -n openshift-mta --tail=100
 
 **Recover:**
 
-- Re-run or re-sync Step 05 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
-- Confirm `./steps/step-05-mta/validate.sh` reports the MaaS credential checks as passing.
+- Re-run or re-sync Stage 080 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
+- Confirm `./stages/080-ai-assisted-application-modernization/validate.sh` reports the MaaS credential checks as passing.
 
 ## MTA OpenShift Login Does Not Appear
 
-**Affected step:** Step 05
+**Affected stage:** Stage 080
 
 **Likely cause:** OAuthClient redirect URI not patched, Keycloak identity provider not configured, or MTA route not available when the PostSync job ran.
 
@@ -205,13 +205,13 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 **Recover:**
 
-- Re-sync Step 05.
+- Re-sync Stage 080.
 - Confirm the MTA route exists before the auth configuration job runs.
-- Re-run Step 05 validation.
+- Re-run Stage 080 validation.
 
-## Developer Hub Catalog Does Not Load Coolstore
+## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
-**Affected step:** Step 06
+**Affected stage:** Stage 090
 
 **Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, or the catalog location is not reachable.
 
@@ -232,18 +232,18 @@ is not allowed. You may need to configure an integration for the target host, or
 
 - Add a narrow `backend.reading.allow` entry or configure the GitHub integration.
 - Restart the RHDH deployment.
-- Re-run Step 06 validation after adding catalog checks.
+- Re-run Stage 090 validation after adding catalog checks.
 
-## Developer Hub Is Healthy But Step 06 Is OutOfSync
+## Red Hat Developer Hub Is Healthy But Stage 090 Is OutOfSync
 
-**Affected step:** Step 06
+**Affected stage:** Stage 090
 
 **Likely cause:** Operator-defaulted fields differ from Git, or PostSync jobs patched dynamic fields.
 
 **Diagnose:**
 
 ```bash
-oc get application step-06-developer-hub -n openshift-gitops -o json \
+oc get application 090-developer-portal-self-service -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 
 oc get backstage developer-hub -n rhdh -o yaml
@@ -255,9 +255,9 @@ oc get backstage developer-hub -n rhdh -o yaml
 - Add narrow `ignoreDifferences` only for dynamic cluster-specific values.
 - Avoid ignoring the full Backstage spec.
 
-## Dev Spaces Workspace Does Not Start
+## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
-**Affected step:** Step 04
+**Affected stage:** Stage 070
 
 **Likely cause:** DevWorkspace operator issue, image pull problem, insufficient workspace resources, or postStart command failure.
 
@@ -272,9 +272,9 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 
 **Recover:**
 
-- Restart the workspace from the Dev Spaces dashboard.
+- Restart the workspace from the Red Hat OpenShift Dev Spaces dashboard.
 - Confirm resource requests/limits are sufficient.
-- Re-run Step 04 validation.
+- Re-run Stage 070 validation.
 
 ## References
 
