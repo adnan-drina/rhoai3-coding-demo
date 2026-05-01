@@ -39,15 +39,26 @@ check "llm-proxy deployment ready" \
   "1"
 
 log_step "Tackle AI Conditions"
-check "Tackle KaiAPIKeysConfigured" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiAPIKeysConfigured\")].status}'" \
-  "True"
-check "Tackle LLMProxyReady" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"LLMProxyReady\")].status}'" \
-  "True"
-check "Tackle KaiSolutionServerReady" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.status.conditions[?(@.type==\"KaiSolutionServerReady\")].status}'" \
-  "True"
+check_tackle_condition() {
+    local condition="$1"
+    local status=""
+    for _ in $(seq 1 30); do
+        status=$(oc get tackle mta -n openshift-mta \
+          -o jsonpath="{.status.conditions[?(@.type==\"${condition}\")].status}" 2>/dev/null || echo "")
+        if [[ "$status" == "True" ]]; then
+            echo -e "${GREEN}[PASS]${NC} Tackle ${condition}"
+            VALIDATE_PASS=$((VALIDATE_PASS + 1))
+            return
+        fi
+        sleep 5
+    done
+    echo -e "${RED}[FAIL]${NC} Tackle ${condition} (expected: True, got: ${status:-empty})"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+}
+
+check_tackle_condition "KaiAPIKeysConfigured"
+check_tackle_condition "LLMProxyReady"
+check_tackle_condition "KaiSolutionServerReady"
 
 log_step "MaaS Credentials (non-placeholder)"
 MAAS_URL=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
