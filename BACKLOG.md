@@ -1,36 +1,36 @@
 # Backlog
 
-## Workarounds (revert when Red Hat OpenShift AI 3.4 GA ships)
+## Workarounds (review when supported MaaS covers them natively)
 
-The following items use manual configuration or post-deploy patches because the Red Hat OpenShift AI 3.3 operator's MaaS integration has gaps. When Red Hat OpenShift AI 3.4 GA ships, verify whether these are still needed and remove those that are handled natively.
+The following items use manual configuration or post-deploy patches because the Red Hat OpenShift AI 3.3 operator's MaaS integration has gaps. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, so do not remove these workarounds only because a newer operator exists. Review each item when a supported MaaS path covers the behavior natively and the replacement has been validated in this demo.
 
-- [ ] **Gateway AuthPolicy patch for user OAuth tokens** — The operator's `gateway-auth-policy` only accepts ServiceAccount tokens (`maas-default-gateway-sa` audience). The dashboard's `gen-ai-ui` forwards user OAuth tokens. The `configure-kuadrant` Job patches both `gateway-auth-policy` (adds `user-tokens` authentication) and `maas-api-auth-policy` (adds empty `authorization: {}` to override gateway-level tier-access check for `/maas-api/*` management endpoints).
-  **Revert:** The 3.4 operator should configure AuthPolicies that accept dashboard-forwarded tokens natively.
+- [ ] **Gateway AuthPolicy patch for user OAuth tokens** — The operator-managed gateway policy path accepts ServiceAccount tokens (`maas-default-gateway-sa` audience). The dashboard's `gen-ai-ui` forwards user OAuth tokens. The `configure-kuadrant` Job patches `gateway-default-auth` to add `user-tokens` authentication and patches `maas-api-auth-policy` to add empty `authorization: {}` so `/maas-api/*` management endpoints do not inherit the gateway-level tier-access check.
+  **Revert:** A supported MaaS operator path should configure AuthPolicies that accept dashboard-forwarded tokens natively.
 
 - [ ] **Authorino SSL env vars** (`jobs/configure-kuadrant.yaml`) — Job sets `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` on Authorino deployment so it trusts OpenShift's internal service-ca.
-  **Revert:** Verify if the 3.4 operator handles this natively.
+  **Revert:** Verify if the supported operator path handles this natively.
 
 - [ ] **Gateway hostname patch** (`jobs/patch-gateway-hostname.yaml`) — Job patches MaaS Gateway with cluster-specific hostname and TLS cert name.
-  **Revert:** The 3.4 operator may parameterize the Gateway hostname.
+  **Revert:** The supported operator path may parameterize the Gateway hostname.
 
 - [ ] **Tier-to-group-mapping ConfigMap in `redhat-ods-applications`** — The Red Hat OpenShift AI validating webhook requires this ConfigMap when `LLMInferenceService` uses the `alpha.maas.opendatahub.io/tiers` annotation. The operator's `maas-api` does not create it in `redhat-ods-applications`; we deploy it at sync wave 9.
-  **Revert:** The 3.4 operator should create this ConfigMap automatically.
+  **Revert:** The supported operator path should create this ConfigMap automatically.
 
 - [ ] **Manual RateLimitPolicy, TokenRateLimitPolicy, TelemetryPolicy** — Created in `governance/` because 3.3 has no operator-managed MaaS policies.
-  **Revert:** The 3.4 operator may manage these via `MaaSSubscription` CRDs.
+  **Revert:** The supported operator path may manage these via `MaaSSubscription` CRDs.
 
 - [ ] **Manual per-model RBAC** (`models/rbac.yaml`) — Roles granting tier ServiceAccounts access to `LLMInferenceService`.
-  **Revert:** The 3.4 operator may manage RBAC via `MaaSAuthPolicy` CRDs.
+  **Revert:** The supported operator path may manage RBAC via `MaaSAuthPolicy` CRDs.
 
 - [ ] **Manual tier groups** (`governance/maas-groups.yaml`) — Groups `tier-free-users`, `tier-premium-users`, `tier-enterprise-users` with demo users.
-  **Revert:** Verify if the 3.4 operator manages tier groups.
+  **Revert:** Verify if the supported operator path manages tier groups.
 
 - [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
-  **Revert:** The 3.4 operator should create proper NetworkPolicies for the dashboard.
+  **Revert:** The supported operator path should create proper NetworkPolicies for the dashboard.
 
 ## Workarounds (upstream maas-controller coexistence with Red Hat OpenShift AI 3.3)
 
-The following items maintain the hybrid architecture where the upstream `maas-controller` runs alongside the Red Hat OpenShift AI 3.3 operator. This is intentional for the demo: it shows external model registration through `ExternalModel` and `MaaSModelRef`, a capability available in the upstream models-as-a-service project and evaluated in Red Hat OpenShift AI 3.4 early access releases. When Red Hat OpenShift AI ships the capability natively in a supported release, these can be removed.
+The following items maintain the hybrid architecture where the upstream `maas-controller` runs alongside the Red Hat OpenShift AI 3.3 operator. This is intentional for the demo: it shows external model registration through `ExternalModel` and `MaaSModelRef`, a capability available in the upstream models-as-a-service project and aligned with the Red Hat OpenShift AI 3.4 Technology Preview MaaS direction. When Red Hat OpenShift AI ships the capability natively in a supported release, these can be removed.
 
 - [ ] **maas-api image pinning** (`jobs/patch-maas-api-storage.yaml`) — The Red Hat OpenShift AI 3.3 `maas-api` binary does not implement model discovery from `MaaSModelRef`/`ExternalModel` CRDs. A post-deploy Job pins the tenant-managed deployment to `quay.io/opendatahub/maas-api:latest` which has Kubernetes watchers for model discovery. The Red Hat OpenShift AI DSC may still report `ModelsAsServiceReady=False`.
   **Justification:** This deviation is deliberate. The demo needs to demonstrate governed external model registration before the capability is generally available through the supported Red Hat OpenShift AI 3.3 operator path.
@@ -59,15 +59,14 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 - [ ] **Grafana dashboard screenshots** — Add screenshots to Stage 040 README while the community Grafana demo add-on remains in use.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
 
-## Validated (2026-04-29)
+## Validated (2026-05-01)
 
-- [x] **MaaS API — 4 models listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as `ready=true`. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
+- [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
 - [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
-- [x] **Local model inference** — Both GPU models respond in the Playground and via MaaS API.
-- [x] **External model inference (GPT-4o/4o-mini)** — Working in Playground, Continue, OpenCode, and via MaaS API. The `payload-processing` BBR plugin injects OpenAI credentials from the `openai-api-key` Secret.
+- [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
+- [x] **External model registration** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference is credential-gated and was not validated in the current environment because `OPENAI_API_KEY` was not set. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
 - [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
-- [x] **Continue — 4 models configured** — All 4 models working via `.vscode/config.yaml` with `sk-oai-*` API key auth.
-- [x] **OpenCode — 4 models configured** — All 4 models working via `.opencode/opencode.json` (one provider per model) with `sk-oai-*` API key auth. Nemotron is the default model, gpt-4o-mini is the small model.
+- [x] **Continue and OpenCode configuration** — Developer workspace configuration is generated with MaaS endpoint and `sk-oai-*` API key auth. Current live validation covered local model access; external model execution still requires an approved provider key.
 
 ## Completed
 
@@ -79,3 +78,4 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 - [x] ~~**ExternalModel support** — Deployed upstream `maas-controller` alongside Red Hat OpenShift AI 3.3 operator. 2 OpenAI models (gpt-4o, gpt-4o-mini) registered as `ExternalModel` CRDs.~~
 - [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs now live under `gitops/stages/040-governed-models-as-a-service/base/`.~~
 - [x] ~~**Red Hat OpenShift AI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary does not implement model discovery from Kubernetes resources. Reverted to Red Hat OpenShift AI 3.3 + upstream maas-controller.~~
+- [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 090 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~

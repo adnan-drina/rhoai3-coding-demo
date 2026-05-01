@@ -213,13 +213,16 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 **Affected stage:** Stage 090
 
-**Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, or the catalog location is not reachable.
+**Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, the catalog location is not reachable, or `RHDH_CATALOG_URL` does not match the GitOps revision deployed by Argo CD.
 
 **Diagnose:**
 
 ```bash
 oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i catalog
 oc get configmap app-config-rhdh -n rhdh -o yaml
+oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' | base64 -d; echo
+oc get application 090-developer-portal-self-service -n openshift-gitops \
+  -o jsonpath='{.spec.source.repoURL}{" "}{.spec.source.targetRevision}{"\n"}'
 ```
 
 Look for errors like:
@@ -231,6 +234,8 @@ is not allowed. You may need to configure an integration for the target host, or
 **Recover:**
 
 - Add a narrow `backend.reading.allow` entry or configure the GitHub integration.
+- Re-sync Stage 090 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
+- Confirm the Stage 090 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
 - Restart the RHDH deployment.
 - Re-run Stage 090 validation after adding catalog checks.
 
