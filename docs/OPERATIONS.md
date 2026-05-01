@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Git commit: `8e4ce3d`
+- Git commit: `9e72be4`
 
 Preflight:
 
@@ -214,7 +214,7 @@ Stage results:
 | Stage | Status | Evidence |
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
-| 020 GPU Infrastructure for Private AI | Fixing | Argo CD Application `Synced/Healthy`; GPU MachineSet created two `g6e.2xlarge` nodes; live nodes initially missed GPU role label and taint |
+| 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
 
 Stage 010 findings:
 
@@ -229,6 +229,8 @@ Stage 020 findings:
 - Improvement being applied: make the MachineSet hook idempotent. It should always repair the MachineSet template and also label/taint already-created live nodes selected by `node.kubernetes.io/instance-type`.
 - Follow-up RBAC finding: the repair logic also needs narrow Node `get`, `list`, and `patch` permissions. Without those verbs the hook can repair the MachineSet template but cannot repair already-created Nodes.
 - Follow-up command finding: `oc get nodes -o name` returns `node/<name>`, which works for `oc label` but not for `oc adm taint` in this script. Use bare node names from JSONPath and pass `oc label node "$NODE"` / `oc adm taint node "$NODE"` explicitly.
+- Fix applied through commits `52bead9`, `e144001`, and `9e72be4`. Stage 020 re-synced successfully.
+- Final evidence: MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` created two `g6e.2xlarge` nodes. Both nodes were Ready, labeled `node-role.kubernetes.io/gpu`, tainted `nvidia.com/gpu=true:NoSchedule`, labeled `nvidia.com/gpu.present=true`, and advertised `nvidia.com/gpu: 1` allocatable. NVIDIA `ClusterPolicy` state was `ready`.
 
 ### Stage 020
 
