@@ -4,3 +4,4 @@ resources:
   - mcp-servers-configmap.yaml
   - openshift-mcp/serviceaccount.yaml
   - openshift-mcp/deployment.yaml
+  - scale-optional-mcp.yaml
