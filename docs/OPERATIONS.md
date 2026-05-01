@@ -189,7 +189,7 @@ Cluster:
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `main`
 - Latest full stage validation code commit: `b5bb770`
-- Current Argo CD source commit after repointing to `main`: `ec2b4c1`
+- Initial Argo CD source commit after repointing to `main`: `ec2b4c1`
 
 Preflight:
 
@@ -232,7 +232,7 @@ Final sweep:
 - A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
 - Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh`, and `./scripts/validate-stage-flow.sh`.
 - Merge-readiness security check found no committed `.env` file and no real kubeadmin password, provider key, kubeconfig, bearer token, or private key in the branch diff. Only placeholder and masked key examples such as `sk-oai-*` were present.
-- After merging PR #1, all canonical stage Argo CD Applications were repointed from `codex/stage-refactor-demo-validation` to `main` and reported `Synced` and `Healthy` at commit `ec2b4c1`. Stage 090 was reconfigured so `RHDH_CATALOG_URL` resolves to the `main` catalog URL, then Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures.
+- After merging PR #1, all canonical stage Argo CD Applications were repointed from `codex/stage-refactor-demo-validation` to `main` and reported `Synced` and `Healthy` at commit `ec2b4c1`. Stage 090 was reconfigured so `RHDH_CATALOG_URL` resolves to the `main` catalog URL, then Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures. Later docs-only commits may advance Argo CD's displayed revision without changing managed stage resources.
 
 Validation hardening pass:
 
