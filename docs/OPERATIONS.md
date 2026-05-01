@@ -213,13 +213,13 @@ Stage results:
 
 | Stage | Status | Evidence |
 |------|--------|----------|
-| 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
+| 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 18 passed, 0 warnings, 0 failed |
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
 | 030 Private Model Serving | Passed | `./stages/030-private-model-serving/validate.sh`: 8 passed, 0 warnings, 0 failed |
 | 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 17 passed, 0 warnings, 0 failed |
 | 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 8 passed, 1 warning, 0 failed |
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 6 passed, 2 warnings, 0 failed |
-| 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 5 passed, 0 warnings, 0 failed |
+| 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 13 passed, 0 warnings, 0 failed |
 | 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 20 passed, 0 warnings, 0 failed |
 | 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 10 passed, 0 warnings, 0 failed |
 
@@ -234,6 +234,9 @@ Stage 010 findings:
 - Automated sync initially stalled after bootstrap while waiting on `ClusterRole/job-approve-sm-installplan` and `ClusterRole/job-patch-dsci-ca`, even though both resources existed. Manual `argocd app sync 010-openshift-ai-platform-foundation` advanced the operation and completed successfully. Improvement candidate: add a bootstrap readiness wait for the Argo CD application-controller cache before applying the first stage, and document `argocd app sync` as the recovery command for this startup race.
 - Validation found `OdhDashboardConfig.spec.dashboardConfig.genAiStudio` absent. Root cause: the Stage 010 Application ignored the entire `OdhDashboardConfig.spec` while `RespectIgnoreDifferences=true`, so Argo CD reported the resource synced without enforcing the MaaS-required dashboard flags. Fix applied in commit `8e4ce3d`: stop ignoring `OdhDashboardConfig.spec`; keep operator-managed drift ignores only where they do not hide required demo configuration.
 - After the fix, Stage 010 re-synced to commit `8e4ce3d` and validation passed with 11 checks, 0 warnings, and 0 failures.
+- Follow-up identity finding: `demo-htpasswd` and the `rhoai-admins` / `rhoai-users` groups were present, but `OAuth/cluster` still had `spec: {}`. Root cause: the Stage 010 Application ignored the entire `OAuth.spec` while `RespectIgnoreDifferences=true`, so Argo CD applied the OAuth singleton without the `demo-htpasswd` identity provider and still reported `Synced` and `Healthy`.
+- Fix applied during validation: stop ignoring `OAuth.spec` for Stage 010, re-sync the Stage 010 Application, and add explicit validation for the demo HTPasswd Secret, OAuth identity provider, RHOAI groups, and demo persona login lifecycle. `ai-admin` and `ai-developer` OpenShift `User` records are created only after first successful login; validating the OAuth identity provider and group membership is the durable deployment check.
+- Final evidence for Stage 010 after the identity fix: `OAuth/cluster` includes the `demo-htpasswd` HTPasswd identity provider, the `demo-htpasswd` Secret exists in `openshift-config`, `rhoai-admins` includes `ai-admin`, `rhoai-users` includes `ai-admin` and `ai-developer`, both demo users can log in with the demo password, and validation passed with 18 checks, 0 warnings, and 0 failures.
 
 Stage 020 findings:
 
@@ -393,6 +396,8 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 ### Stage 070
 
 Stage 070 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
+
+Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `exercises` DevWorkspace, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users.
 
 Useful checks:
 

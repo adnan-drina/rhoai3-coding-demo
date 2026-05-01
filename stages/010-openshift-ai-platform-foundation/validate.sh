@@ -39,6 +39,33 @@ check "KnativeServing ready" \
 log_step "Red Hat OpenShift AI Operator"
 check_csv_succeeded "redhat-ods-operator" "Red Hat OpenShift AI"
 
+log_step "Demo Persona Identity"
+check "Demo htpasswd Secret exists" \
+    "oc get secret demo-htpasswd -n openshift-config -o jsonpath='{.metadata.name}'" \
+    "demo-htpasswd"
+check "Demo OAuth identity provider configured" \
+    "oc get oauth cluster -o jsonpath='{range .spec.identityProviders[?(@.name==\"demo-htpasswd\")]}{.type}{end}'" \
+    "HTPasswd"
+check "Demo OAuth identity provider uses demo Secret" \
+    "oc get oauth cluster -o jsonpath='{range .spec.identityProviders[?(@.name==\"demo-htpasswd\")]}{.htpasswd.fileData.name}{end}'" \
+    "demo-htpasswd"
+check "RHOAI admin group includes ai-admin" \
+    "oc get group rhoai-admins -o jsonpath='{.users[*]}'" \
+    "ai-admin"
+check "RHOAI users group includes ai-admin" \
+    "oc get group rhoai-users -o jsonpath='{.users[*]}'" \
+    "ai-admin"
+check "RHOAI users group includes ai-developer" \
+    "oc get group rhoai-users -o jsonpath='{.users[*]}'" \
+    "ai-developer"
+
+if oc get user ai-admin ai-developer &>/dev/null; then
+    echo -e "${GREEN}[PASS]${NC} OpenShift User records exist for demo personas"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[INFO]${NC} OpenShift User records are created after first successful login; validating OAuth IdP and groups instead"
+fi
+
 log_step "DSCInitialization"
 check "DSCInitialization exists" \
     "oc get dscinitializations --no-headers 2>/dev/null | wc -l | tr -d ' '" \
