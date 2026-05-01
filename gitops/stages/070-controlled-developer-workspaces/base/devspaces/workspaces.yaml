@@ -38,7 +38,7 @@ metadata:
   namespace: wksp-kubeadmin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   routingClass: che
   contributions:
@@ -114,7 +114,7 @@ metadata:
   namespace: wksp-ai-admin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   routingClass: che
   contributions:
@@ -199,7 +199,7 @@ metadata:
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   routingClass: che
   contributions:
