@@ -20,7 +20,7 @@ Behavioral guardrails for all coding tasks. Bias toward caution over speed; for 
 - No features beyond what was asked.
 - No abstractions for single-use code.
 - No speculative "flexibility" or "configurability" that wasn't requested.
-- No new documentation files unless explicitly requested. Updating existing READMEs, `docs/OPERATIONS.md`, and `docs/TROUBLESHOOTING.md` as required by `15-knowledge-base.mdc` and `22-operations-docs.mdc` is always allowed.
+- Do not create new documentation files unless explicitly requested or clearly required by a new cross-cutting workflow. Prefer updating existing docs first. Updating existing READMEs, `docs/OPERATIONS.md`, and `docs/TROUBLESHOOTING.md` as required by `15-knowledge-base.mdc` and `22-operations-docs.mdc` is always allowed.
 - If you write 200 lines and it could be 50, rewrite it.
 
 ## 3. Surgical Changes

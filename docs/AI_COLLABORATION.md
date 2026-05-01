@@ -141,6 +141,23 @@ Good rules (specific and actionable):
 | `manage-devspaces` | When managing Dev Spaces workspaces |
 | `maintain-rules-and-skills` | When adding or modifying rules/skills/hooks |
 
+## Cursor hooks
+
+Hooks provide automated enforcement beyond prose rules. They are defined in `.cursor/hooks.json` and run automatically at specific events.
+
+| Hook | Trigger | What it does | Failure behavior |
+|------|---------|--------------|-----------------|
+| `validate-yaml.sh` | After editing a `gitops/**/*.yaml` file | Runs `kustomize build` on the nearest base; warns if it fails | Adds a warning to agent context; does not block the edit |
+| `check-docs-consistency.sh` | After editing `gitops/step-*/**` or `steps/step-*/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
+| `guard-oc-commands.py` | Before running `oc delete`, `oc scale`, or `oc patch` | If the command targets a protected namespace (`redhat-ods-applications`, `redhat-ods-operator`, `openshift-gitops`, `openshift-operators`), asks user for confirmation | Prompts "ask" permission; agent must confirm with user |
+| `session-init.sh` | On session start | Checks `oc whoami` and injects cluster login status into agent context | Warns "Not logged in" if oc is unavailable or not authenticated |
+
+**Recovering from a false positive:** Hooks do not hard-block operations. If a hook produces an incorrect warning (e.g., `kustomize build` fails due to a CRD not yet installed), acknowledge the warning and proceed. For `guard-oc-commands.py`, the user can confirm destructive operations when prompted.
+
+**Bypassing hooks:** Hooks cannot be bypassed per-invocation. If a hook is consistently wrong for your workflow, disable it by commenting the entry in `.cursor/hooks.json` and propose a fix via PR.
+
+**Hook logs:** Hooks write to stdout/stderr which appears in the agent context. The `check-docs-consistency.sh` hook tracks edits per session in `/tmp/cursor-edit-track-*.log` (cleaned by OS temp policy).
+
 ## Simple rule of thumb
 
 - If it protects the project, share it.

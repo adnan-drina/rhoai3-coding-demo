@@ -52,7 +52,7 @@ If there is ambiguity in docs or versions:
 
 ### When to commit directly to main
 - Single-file fixes, typos, small updates
-- Documentation-only changes
+- Documentation-only changes (except agent system files — see below)
 - Changes you can describe in one commit message
 
 ### When to use a feature branch
@@ -60,6 +60,7 @@ If there is ambiguity in docs or versions:
 - Parallel agent worktree work
 - Changes that need review before merging
 - Experimental changes you might revert
+- Changes to `.cursor/`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/` templates, or `docs/AI_COLLABORATION.md` (these affect agent behavior for everyone and should be reviewed even if small)
 
 ### Branch naming
 - `feat/step-XX-description` - new features scoped to a step

@@ -1,0 +1,60 @@
+name: Agent system audit
+description: Periodic review of Cursor rules, skills, hooks, and agent governance
+title: "[Audit]: Agent system review"
+labels: ["maintenance", "agent-system"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template quarterly or after major repo changes to review the health
+        of the AI agent configuration. Check each area and note findings.
+  - type: checkboxes
+    id: rules_audit
+    attributes:
+      label: Rules audit (.cursor/rules/)
+      options:
+        - label: All rules still relevant to current demo structure
+        - label: No rules conflict with each other
+        - label: Version references match current product posture
+        - label: No rules duplicate AGENTS.md or CONTRIBUTING.md
+        - label: Always-apply rules are not too broad
+  - type: checkboxes
+    id: skills_audit
+    attributes:
+      label: Skills audit (.cursor/skills/)
+      options:
+        - label: All skills have been invoked at least once since last audit
+        - label: No skills duplicate rule content
+        - label: Skill descriptions are accurate and specific
+        - label: Reference files are not stale
+        - label: Inventory count in maintain-rules-and-skills is accurate
+  - type: checkboxes
+    id: hooks_audit
+    attributes:
+      label: Hooks audit (.cursor/hooks.json)
+      options:
+        - label: No hooks produce persistent false positives
+        - label: Hook scripts still run correctly (bash -n, py_compile)
+        - label: Protected namespace list is still accurate
+        - label: File matchers match current repo structure
+  - type: checkboxes
+    id: governance_audit
+    attributes:
+      label: Governance files
+      options:
+        - label: AGENTS.md reflects current repo map and demo steps
+        - label: CONTRIBUTING.md workflow is still accurate
+        - label: PR template checklist is still relevant
+        - label: docs/AI_COLLABORATION.md shared skills table is current
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings and actions
+      description: What needs to change based on this audit?
+      placeholder: |
+        - Rule X is stale because...
+        - Skill Y was never invoked, consider removing
+        - Hook Z produces false positives for...
+        - Version reference in rule N needs updating to...
+    validations:
+      required: false
