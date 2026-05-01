@@ -2,7 +2,11 @@
 
 This repository is `rhoai3-coding-demo` — a trusted enterprise AI development platform demo on Red Hat OpenShift AI.
 
-For detailed agent guidance, see [AGENTS.md](../AGENTS.md) in the repository root.
+For detailed agent guidance, see:
+
+- [AGENTS.md](../AGENTS.md) — tool-neutral agent contract (repo map, workflow, security, validation)
+- [.cursor/rules/](../.cursor/rules/) — Cursor-specific behavior rules (GitOps, manifests, docs, security)
+- [docs/AI_COLLABORATION.md](../docs/AI_COLLABORATION.md) — rules/skills governance model and hook documentation
 
 ## Key rules
 
