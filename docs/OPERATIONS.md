@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Latest validated code commit: `TBD_VALIDATION_HARDENING_COMMIT`
+- Latest validated code commit: `89c9d7c`
 
 Preflight:
 
