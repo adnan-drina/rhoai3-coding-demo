@@ -2,32 +2,28 @@
 
 ## Why This Matters
 
-Enterprise AI is most valuable when it is embedded into real engineering workflows. Application modernization is a good example: large organizations have portfolios of Java EE and JBoss EAP applications that need to move toward modern runtimes such as Quarkus, but the work is repetitive, specialized, and risky.
+Enterprise AI is more useful when it is embedded in real engineering workflows instead of isolated chat sessions. Application modernization is a strong example: many organizations have Java EE and JBoss EAP portfolios that need to move toward modern runtimes such as Quarkus, but the work requires analysis, code understanding, migration rules, and developer review.
 
-Generic AI prompting is not enough. Modernization needs analysis, rules, portfolio context, developer review, and repeatable workflows. This step shows how Migration Toolkit for Applications (MTA) and Developer Lightspeed can use governed models to assist modernization without bypassing platform controls.
+Generic prompting is not enough for that kind of work. This step shows how Migration Toolkit for Applications (MTA) and Developer Lightspeed connect static analysis, migration context, IDE workflow, and governed model access so AI assistance supports a modernization process rather than replacing it.
+
+## Architecture
+
+![Step 05 layered capability map](../../docs/assets/architecture/step-05-capability-map.svg)
 
 ## What This Step Adds
 
-Step 05 adds the modernization layer:
+- Migration Toolkit for Applications 8.1, deployed from [`gitops/step-05-mta/base/`](../../gitops/step-05-mta/base/) through the MTA Operator and `Tackle` custom resource.
+- MTA Hub and UI for application inventory, static analysis, issue discovery, and modernization workflow context.
+- Developer Lightspeed services, including Kai API, Solution Server, database, and LLM proxy components.
+- A centrally managed `kai-api-keys` Secret and post-sync MaaS URL patching so the MTA LLM proxy calls the MaaS-published `nemotron-3-nano-30b-a3b` model.
+- OpenShift OAuth federation through the MTA Keycloak / Red Hat build of Keycloak identity path, plus an OpenShift ConsoleLink for demo access.
+- Integration with the Dev Spaces workspace from Step 04 through the MTA VS Code extension.
 
-```text
-MTA modernization layer
-+-- MTA 8.1 Operator
-+-- Tackle CR
-+-- MTA Hub and UI
-+-- Developer Lightspeed services
-+-- Solution Server and database
-+-- LLM proxy
-+-- kai-api-keys Secret for MaaS access
-+-- OpenShift OAuth federation through MTA Keycloak / RHBK
-+-- ConsoleLink for OpenShift launcher access
-```
-
-The demo uses [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore), a Java EE / JBoss-style sample application. The `main` branch is the legacy starting point and the `quarkus` branch is the completed reference target.
+The demo application is [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore), a Java EE / JBoss-style sample. The `main` branch is the legacy starting point and the `quarkus` branch is the completed reference target.
 
 ## What To Notice In The Demo
 
-Show the workflow, not only the generated code.
+Show the workflow, not only the suggested code change.
 
 1. MTA analyzes Coolstore and identifies migration issues.
 2. The developer opens the same application in Dev Spaces.
@@ -37,11 +33,13 @@ Show the workflow, not only the generated code.
 6. The developer reviews and applies a targeted change.
 7. Analysis is run again to show progress.
 
-The important message is precision. MTA gives the model migration context from rules and static analysis. The AI is not guessing from a vague prompt; it is assisting a governed modernization workflow.
+The important message is context. MTA gives the model migration findings from rules and static analysis. Developer Lightspeed uses that context to request a targeted suggestion through the LLM proxy. The developer still reviews and applies the change.
+
+The trust boundary is also visible. In the primary demo path, modernization context goes through MaaS to the private Nemotron model on OpenShift. If another MaaS model is selected later, that model path must be evaluated separately, especially for external providers.
 
 ## How Red Hat And Open Source Make It Work
 
-MTA provides the analysis engine, application inventory, migration rules, and developer extension. Developer Lightspeed adds AI-assisted code resolution. The LLM proxy centralizes model credentials. MaaS publishes the model endpoint. OpenShift OAuth and RHBK provide the identity chain.
+MTA provides the modernization platform: analysis engine, application inventory, migration rules, UI, and developer workflow integration. Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings. The LLM proxy centralizes model access for the MTA services instead of placing provider credentials in each workspace.
 
 ```text
 Developer in Dev Spaces
@@ -53,7 +51,9 @@ Developer in Dev Spaces
   -> Suggested migration fix
 ```
 
-The primary demo path uses the private MaaS-published Nemotron model. MTA can also point to other OpenAI-compatible MaaS models when policy allows.
+OpenShift provides the runtime, routing, storage, identity integration, and operator lifecycle for MTA. Red Hat build of Keycloak is used in the MTA identity path. OpenShift AI MaaS publishes the private Nemotron endpoint that the LLM proxy calls.
+
+The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization workflows, and the Coolstore sample application. Red Hat integrates those pieces into MTA and connects them to the same OpenShift and OpenShift AI platform controls used in the earlier steps.
 
 ## Red Hat Products Used
 

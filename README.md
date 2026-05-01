@@ -16,6 +16,10 @@ This workshop shows a platform pattern for that tension:
 
 The goal is not to claim that every AI use case automatically satisfies a regulation. The goal is to show how Red Hat OpenShift AI, open source model infrastructure, and Models-as-a-Service can give enterprise architects the controls and choices needed to design trustworthy AI-enabled development platforms.
 
+## Architecture
+
+![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)
+
 ## What We Are Building
 
 The workshop builds a complete AI-enabled development platform on Red Hat OpenShift:
@@ -68,11 +72,11 @@ If someone only reads the workshop, they should still learn the architecture: pr
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the trusted platform foundation for managing predictive and generative AI workloads across hybrid cloud environments. OpenShift provides the enterprise substrate: identity, RBAC, networking, monitoring, GitOps, scheduling, and operational consistency.
+Red Hat OpenShift is the consistent application platform underneath the demo. It supplies the identity, RBAC, networking, routing, scheduling, storage integration, monitoring, and GitOps reconciliation patterns that enterprise teams already use for application delivery. Red Hat OpenShift AI adds the AI-specific control plane for model discovery, model serving, model registry, GenAI Studio, and Models-as-a-Service access.
 
-Open source model infrastructure provides the model-serving layer. vLLM and llm-d support efficient inference patterns. Kubernetes operators make GPU enablement and AI platform components repeatable. Open ecosystem tools such as Continue, OpenCode, and Backstage-compatible catalog patterns make the platform useful to developers.
+Open source projects provide the building blocks. Open Data Hub and models-as-a-service supply upstream AI platform and MaaS patterns. KServe and vLLM provide Kubernetes-native serving and OpenAI-compatible local inference. Gateway API, Kuadrant, and Authorino create the API policy path. Eclipse Che, DevWorkspace, Continue, OpenCode, Konveyor, Kai, and Backstage bring the same governed model access into developer workspaces, modernization workflows, and the portal.
 
-MaaS is the abstraction that ties the platform together. It lets platform teams expose model endpoints as shared services instead of asking every application team to manage inference infrastructure or direct provider credentials.
+Red Hat’s value in this architecture is integration and lifecycle management across those pieces. Operators install and reconcile platform services. OpenShift OAuth and RBAC establish shared identity boundaries. OpenShift GitOps makes the desired state repeatable. OpenShift AI and MaaS turn local and external models into discoverable, governed services instead of leaving every team to manage endpoints, keys, quotas, and telemetry on its own.
 
 ## Red Hat Products Demonstrated
 

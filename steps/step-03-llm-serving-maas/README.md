@@ -2,7 +2,7 @@
 
 ## Why This Matters
 
-Deploying a model is not the same thing as making AI usable in an enterprise. A single model endpoint might work for a proof of concept, but production teams quickly need answers to harder questions:
+Deploying a model is not the same as making AI usable across an enterprise. A single endpoint can support a proof of concept, but shared adoption quickly raises harder platform questions:
 
 - Who is allowed to use the model?
 - Which workloads are allowed to use external providers?
@@ -11,13 +11,17 @@ Deploying a model is not the same thing as making AI usable in an enterprise. A 
 - How do we measure usage for capacity planning, showback, or chargeback?
 - How do we switch model backends without rewriting every tool?
 
-Models-as-a-Service is the platform answer. It makes models available as shared API services while keeping access, policy, rate limits, keys, and telemetry under central control.
+Models-as-a-Service is the platform pattern this demo uses to answer those questions. It exposes models as shared API services while centralizing access policy, rate limits, API keys, subscriptions, and usage telemetry.
 
-This step is the heart of the workshop. Every later developer experience, from coding assistants to MTA modernization, depends on the governed model access layer created here.
+This step is the center of the architecture. The later coding assistant, terminal agent, MTA Developer Lightspeed workflow, GenAI Playground experience, and portal story all depend on this governed model access layer.
+
+## Architecture
+
+![Step 03 layered capability map](../../docs/assets/architecture/step-03-capability-map.svg)
 
 ## What This Step Adds
 
-Step 03 publishes four models through one MaaS pattern:
+Step 03 publishes four model choices through one MaaS access pattern:
 
 | Model | Backend | Trust boundary | Why it is included |
 |-------|---------|----------------|--------------------|
@@ -26,59 +30,38 @@ Step 03 publishes four models through one MaaS pattern:
 | `gpt-4o` | External OpenAI provider through MaaS | Governed external processing | High-intelligence external model path |
 | `gpt-4o-mini` | External OpenAI provider through MaaS | Governed external processing | Fast, lower-cost external model path |
 
-The models are intentionally different. The lesson is not that one model is best. The lesson is that an enterprise platform should let teams choose the right model for the workload while enforcing policy at the access layer.
+The models are intentionally different. The capability is model choice with a consistent control point, not a claim that one model fits every workload.
 
-The external OpenAI model resources are included with a placeholder `openai-api-key` Secret. They show how the governed external model path is wired, but external inference requires an operator to replace the placeholder with an approved provider credential.
+- Local LLM serving through `LLMInferenceService` resources for `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` in [`gitops/step-03-llm-serving-maas/base/models/`](../../gitops/step-03-llm-serving-maas/base/models/).
+- External OpenAI model registration through `ExternalModel` and `MaaSModelRef` resources in [`gitops/step-03-llm-serving-maas/base/models-maas-crds/`](../../gitops/step-03-llm-serving-maas/base/models-maas-crds/).
+- MaaS authorization and subscription resources that define which identities can consume the published models.
+- Gateway, rate limit, token limit, authorization, and telemetry policy resources under [`gitops/step-03-llm-serving-maas/base/governance/`](../../gitops/step-03-llm-serving-maas/base/governance/) and [`gitops/step-03-llm-serving-maas/base/gateway/`](../../gitops/step-03-llm-serving-maas/base/gateway/).
+- Grafana dashboard and Prometheus-facing metrics resources for usage and operational visibility.
+- A read-only OpenShift MCP server and GenAI Playground MCP discovery ConfigMap, with optional Slack and BrightData MCP components kept credential-gated.
+
+The external OpenAI model resources include a placeholder `openai-api-key` Secret. They prove the governed external path is wired, but external inference is only usable after an operator replaces that placeholder with an approved provider credential.
 
 ## What To Notice In The Demo
 
-When presenting this step, focus on three things.
+Focus on three platform takeaways.
 
-First, show **model discovery** in the RHOAI dashboard. Developers should be able to find model endpoints without understanding how the backend is deployed.
+First, model discovery is separated from backend deployment. The RHOAI dashboard and MaaS API expose consumable model choices without requiring every developer to understand vLLM pods, external provider configuration, gateway policy, or model registry seeding.
 
-Second, show **one API style**. Local and external models use the same OpenAI-compatible `/v1/chat/completions` pattern and `sk-oai-*` MaaS keys. That is what makes the later Dev Spaces, OpenCode, Continue, and MTA integrations simple.
+Second, local and external models use the same OpenAI-compatible API style and MaaS-issued `sk-oai-*` keys. That consistency is what allows Continue, OpenCode, GenAI Playground, and MTA Developer Lightspeed to consume models without bespoke integration work for each backend.
 
-Third, show **governance resources**. `MaaSAuthPolicy` and `MaaSSubscription` demonstrate that model access is not unmanaged. The platform team controls who can use the models and how much they can consume.
+Third, the trust boundary is explicit. Local model requests stay on the OpenShift platform. External OpenAI requests are centrally governed, but prompt content is still processed by OpenAI. MCP integrations add their own data boundaries and should be enabled only when the connected service is approved.
 
-The key message: developers get simple access; platform teams keep control.
+The operational takeaway is simple access for consumers with centralized control for platform teams.
 
 ## How Red Hat And Open Source Make It Work
 
-```text
-Governed MaaS layer
-+-- Local model serving
-|   +-- nemotron-3-nano-30b-a3b
-|   +-- gpt-oss-20b
-+-- External model registration
-|   +-- gpt-4o
-|   +-- gpt-4o-mini
-+-- MaaS control plane
-|   +-- maas-controller
-|   +-- maas-api
-|   +-- MaaSModelRef
-|   +-- ExternalModel
-|   +-- MaaSAuthPolicy
-|   +-- MaaSSubscription
-+-- API gateway and policy enforcement
-|   +-- Red Hat Connectivity Link
-|   +-- Gateway API
-|   +-- Kuadrant
-|   +-- Authorino
-+-- Observability
-    +-- telemetry policies
-    +-- Prometheus metrics
-    +-- Grafana dashboards
-+-- MCP integration
-    +-- read-only OpenShift MCP server
-    +-- RHOAI GenAI Playground MCP discovery ConfigMap
-    +-- optional Slack and BrightData MCP components
-```
+OpenShift AI provides the GenAI Studio and MaaS user experience, model-serving integration, and model registry context. OpenShift supplies the runtime platform, identity, networking, monitoring, and GitOps reconciliation. Red Hat Connectivity Link provides the gateway and policy layer used in the MaaS path.
 
-The local models run on the GPU infrastructure prepared in Step 02. vLLM provides efficient model inference. MaaS publishes the models as reusable endpoints. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino provide the gateway and policy enforcement layer.
+The local models run on the GPU infrastructure from Step 02. vLLM serves the models with an OpenAI-compatible API surface. The upstream Open Data Hub models-as-a-service controller supplies the `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources used in this demo. Gateway API, Kuadrant, and Authorino enforce routing, authorization, rate limiting, and token limits at the API boundary.
 
-The workshop uses a hybrid MaaS implementation because external model support is evolving across the RHOAI 3.3 and 3.4 timeframe. The RHOAI dashboard MaaS experience remains active, while the upstream ODH MaaS controller provides the `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` capabilities required for this demo.
+The workshop uses this hybrid MaaS implementation because external model support is evolving across the OpenShift AI 3.3 and 3.4 timeframe. The RHOAI dashboard MaaS experience remains active, while the upstream MaaS controller provides the external model and subscription capabilities required here.
 
-The base deployment also registers a read-only Kubernetes MCP server for OpenShift cluster context in the GenAI Playground. Slack and BrightData MCP components are present as optional Kustomize components and are not enabled unless their credential Secrets are created and the components are included.
+The MCP layer follows the same pattern: the base deployment registers a read-only Kubernetes MCP server for OpenShift context in GenAI Playground, while Slack and BrightData remain optional Kustomize components that require separate credentials and approval.
 
 ## Red Hat Products Used
 

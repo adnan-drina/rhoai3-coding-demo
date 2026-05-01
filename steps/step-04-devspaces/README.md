@@ -2,48 +2,43 @@
 
 ## Why This Matters
 
-Developers want AI assistance in the tools where they already write, test, and review code. Enterprises need that experience to respect identity, data boundaries, model policy, and workspace controls.
+AI-assisted development is most useful when it appears inside the tools where code is written, tested, and reviewed. The enterprise concern is how to offer that experience without turning every laptop, plugin, and personal API key into a separate policy exception.
 
-This step shows how AI-assisted development can be delivered from managed OpenShift workspaces instead of unmanaged local toolchains. Developers still get familiar VS Code-style assistance, but model access flows through the MaaS layer created in Step 03.
+This step moves the coding experience into managed OpenShift workspaces. Developers still use familiar IDE and terminal workflows, while model access flows through the MaaS layer created in Step 03.
+
+## Architecture
+
+![Step 04 layered capability map](../../docs/assets/architecture/step-04-capability-map.svg)
 
 ## What This Step Adds
 
-Step 04 adds the developer workspace and coding assistant layer:
+- Red Hat OpenShift Dev Spaces, deployed through the operator, `CheCluster`, and workspace manifests in [`gitops/step-04-devspaces/base/`](../../gitops/step-04-devspaces/base/).
+- Per-user DevWorkspace definitions for the demo personas, with OpenShift identity and namespace-based workspace isolation.
+- Browser-based VS Code-style development environments that can be recreated from Git and devfile-style workspace definitions.
+- Continue and OpenCode tooling configured to consume MaaS-published OpenAI-compatible endpoints.
+- Coding exercises for AI assistant demonstrations and the Coolstore Java EE application used by the MTA modernization workflow in Step 05.
+- The MTA VS Code extension in the relevant workspaces so modernization context can move from analysis into the developer IDE.
 
-```text
-Developer workspace layer
-+-- OpenShift Dev Spaces Operator
-+-- CheCluster instance
-+-- Per-user DevWorkspace resources
-+-- Coding exercises repository
-+-- Coolstore repository for modernization demos
-+-- Continue extension
-+-- OpenCode CLI
-+-- MTA VS Code extension for ai-admin and ai-developer
-```
-
-The `ai-admin` and `ai-developer` workspaces include both coding exercises and the Coolstore Java EE application used in Step 05. The workspace is part of the platform, which means it can be created, governed, reset, and reproduced consistently.
+The capability added is a governed developer workspace layer. The workspace, source repositories, tools, and model access pattern are all platform-managed instead of being assembled manually on each developer machine.
 
 ## What To Notice In The Demo
 
-Show the workspace first, then the model configuration. The important moment is that the developer tool is not tied to a single model provider. Continue and OpenCode can use any MaaS-published model that follows the OpenAI-compatible API pattern.
+Show the workspace first, then the model configuration. The important point is that the development tool is not tied to a single model provider. Continue and OpenCode can use any MaaS-published model that follows the OpenAI-compatible API pattern.
 
-Then show the trust choice:
+Then make the trust choice explicit:
 
 - Selecting a local model keeps the request inside the platform.
 - Selecting an external model uses the same developer workflow, but the prompt is processed by the external provider and must be allowed by policy.
 
-The platform provides flexibility without hiding the data boundary.
+The platform provides flexibility without hiding the data boundary. The same workflow can support private model use for sensitive code and governed external model use where policy allows, but those paths are not equivalent.
 
 ## How Red Hat And Open Source Make It Work
 
-OpenShift Dev Spaces provides browser-based development environments running on the cluster. Continue provides the IDE assistant experience. OpenCode provides a terminal-based agent workflow. MaaS provides the model endpoint and API key pattern.
+OpenShift Dev Spaces provides Kubernetes-based cloud development environments on OpenShift, built on Eclipse Che and DevWorkspace. OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls for the workspaces.
 
-The combination matters because it separates concerns:
+Continue provides the IDE assistant experience. OpenCode provides a terminal-based agent workflow. MaaS supplies the model endpoint, API key pattern, and access policy. Because the tools consume OpenAI-compatible endpoints, the model backend can be local vLLM or an approved external provider without changing the developer workflow.
 
-- Developers focus on code.
-- Platform teams operate workspaces and model access.
-- Security teams can reason about which model paths are approved for which data.
+Red Hat’s platform role is the separation of concerns: developers focus on code, platform teams operate workspaces and model access, and governance decisions attach to the model path rather than to unmanaged local tooling.
 
 ## Red Hat Products Used
 

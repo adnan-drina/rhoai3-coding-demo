@@ -2,36 +2,34 @@
 
 ## Why This Matters
 
-Private AI requires more than a private model. It requires compute capacity that the organization can operate, observe, secure, and share. For large language models, that usually means GPU-backed infrastructure.
+Private AI depends on more than choosing a model that can run locally. The platform also needs accelerator capacity that can be provisioned, observed, shared, and recovered by operations teams. For the LLMs in this demo, that means GPU-backed OpenShift worker nodes.
 
-This step shows the accelerator layer behind the private AI story. If regulated workloads cannot use unmanaged public AI services, the organization needs a reliable way to run inference on its own platform.
+This step establishes the infrastructure layer behind the private model path. When source code or modernization context should stay inside the platform boundary, the organization needs a repeatable way to run inference on infrastructure it controls.
+
+## Architecture
+
+![Step 02 layered capability map](../../docs/assets/architecture/step-02-capability-map.svg)
 
 ## What This Step Adds
 
-Step 02 prepares OpenShift to schedule and operate GPU workloads:
+- Hardware discovery through Node Feature Discovery, deployed from [`gitops/step-02-gpu-infra/base/nfd/`](../../gitops/step-02-gpu-infra/base/nfd/), so OpenShift can label nodes based on accelerator capabilities.
+- NVIDIA GPU enablement through the NVIDIA GPU Operator and `ClusterPolicy`, deployed from [`gitops/step-02-gpu-infra/base/gpu-operator/`](../../gitops/step-02-gpu-infra/base/gpu-operator/).
+- DCGM metrics integration so GPU health and utilization can be observed alongside other platform signals.
+- AWS GPU MachineSet automation for NVIDIA L4 worker capacity, created by the GitOps-managed job in [`gitops/step-02-gpu-infra/base/jobs/aws-gpu-machineset.yaml`](../../gitops/step-02-gpu-infra/base/jobs/aws-gpu-machineset.yaml).
 
-```text
-GPU infrastructure
-+-- Node Feature Discovery Operator and instance
-+-- NVIDIA GPU Operator
-+-- NVIDIA ClusterPolicy
-+-- DCGM metrics integration
-+-- AWS GPU MachineSets for NVIDIA L4 worker nodes
-```
-
-The result is not just "there are GPUs." The result is platform-managed accelerator capacity that model-serving workloads can consume in later steps.
+The capability added is centrally managed accelerator capacity. Later steps consume it through model-serving workloads rather than requiring each application team to build its own GPU stack.
 
 ## What To Notice In The Demo
 
-Show that GPU nodes are discovered, labeled, and managed by operators. Show that NVIDIA device plugins and drivers are installed through the platform instead of by hand. Show that GPU telemetry is available for operations teams.
+Show that GPU nodes become part of the OpenShift scheduling model. Nodes are discovered and labeled, the NVIDIA software stack is operator-managed, and GPU metrics are available for operational visibility.
 
-Connect this to the private AI requirement: if a model runs inside the platform, the platform must be able to manage the hardware it depends on.
+Connect this to the private AI requirement. Keeping inference inside the platform boundary is only credible when the platform can also manage the hardware dependency behind that inference path.
 
 ## How Red Hat And Open Source Make It Work
 
-Node Feature Discovery detects hardware features and labels nodes. The NVIDIA GPU Operator automates driver, device plugin, DCGM, and runtime integration. OpenShift then schedules workloads against those resources using Kubernetes-native controls.
+OpenShift provides the Kubernetes scheduling, node management, monitoring, and operator lifecycle foundation. Node Feature Discovery labels nodes based on detected hardware features. The NVIDIA GPU Operator manages the NVIDIA drivers, device plugin, container toolkit, and DCGM telemetry components needed for GPU workloads.
 
-This turns GPUs from manually managed infrastructure into a reusable platform capability.
+Red Hat OpenShift AI consumes that accelerator layer later through hardware profiles and model-serving workloads. The result is a reusable GPU platform service rather than manually configured infrastructure tied to one model deployment.
 
 ## Red Hat Products Used
 
