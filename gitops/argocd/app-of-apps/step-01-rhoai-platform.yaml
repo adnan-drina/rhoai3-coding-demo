@@ -45,10 +45,6 @@ spec:
       kind: DSCInitialization
       jqPathExpressions:
         - .spec
-    - group: opendatahub.io
-      kind: OdhDashboardConfig
-      jqPathExpressions:
-        - .spec
     - group: services.platform.opendatahub.io
       kind: Auth
       jqPathExpressions:
