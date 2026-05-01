@@ -119,6 +119,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 6
+  activeDeadlineSeconds: 1200
   template:
     spec:
       restartPolicy: OnFailure
@@ -259,7 +260,7 @@ spec:
             | grep backstage | awk '{print $1}' | head -1 || true)
           if [ -n "$RHDH_DEPLOY" ]; then
             oc rollout restart deployment/${RHDH_DEPLOY} -n rhdh
-            oc rollout status deployment/${RHDH_DEPLOY} -n rhdh --timeout=180s
+            oc rollout status deployment/${RHDH_DEPLOY} -n rhdh --timeout=900s
             echo "RHDH restarted"
           else
             echo "WARNING: RHDH deployment not found for restart"
