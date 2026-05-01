@@ -9,6 +9,7 @@ metadata:
 spec:
   operator:
     defaultRuntime: crio
+    runtimeClass: nvidia
     use_ocp_driver_toolkit: true
   daemonsets:
     updateStrategy: RollingUpdate
@@ -20,6 +21,7 @@ spec:
         effect: "NoSchedule"
   driver:
     enabled: true
+    kernelModuleType: auto
   dcgm:
     enabled: true
   dcgmExporter:
@@ -36,3 +38,4 @@ spec:
     enabled: true
   toolkit:
     enabled: true
+    installDir: /usr/local/nvidia

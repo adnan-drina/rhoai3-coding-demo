@@ -46,10 +46,8 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    - group: org.eclipse.che
-      kind: CheCluster
-      jqPathExpressions:
-        - .spec
+    # DevWorkspace controllers mutate workspace specs at runtime. Keep this
+    # temporary compatibility ignore until workspace ownership is reworked.
     - group: workspace.devfile.io
       kind: DevWorkspace
       jqPathExpressions:

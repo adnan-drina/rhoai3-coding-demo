@@ -49,7 +49,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "9"
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 300

@@ -37,22 +37,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    - group: datasciencecluster.opendatahub.io
-      kind: DataScienceCluster
-      jqPathExpressions:
-        - .spec.components
-    - group: dscinitialization.opendatahub.io
-      kind: DSCInitialization
-      jqPathExpressions:
-        - .spec
-    - group: services.platform.opendatahub.io
-      kind: Auth
-      jqPathExpressions:
-        - .spec
-    - group: infrastructure.opendatahub.io
-      kind: HardwareProfile
-      jqPathExpressions:
-        - .spec
     - group: operators.coreos.com
       kind: Subscription
       jsonPointers:
@@ -72,13 +56,11 @@ spec:
       namespace: openshift-monitoring
       name: cluster-monitoring-config
       jsonPointers:
-        - /data
         - /metadata/annotations
     - group: operator.knative.dev
       kind: KnativeServing
       jsonPointers:
         - /metadata/annotations
-        - /spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
