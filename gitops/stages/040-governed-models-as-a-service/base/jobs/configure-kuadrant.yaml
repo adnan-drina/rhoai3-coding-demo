@@ -1,0 +1,121 @@
+# Sets Authorino SSL env vars so it trusts OpenShift's internal service-ca.
+# Required for MaaS API auth chain.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-configure-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["kuadrant.io"]
+  resources: ["authpolicies"]
+  verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-configure-kuadrant
+  annotations:
+    argocd.argoproj.io/sync-wave: "22"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-configure-kuadrant
+subjects:
+- kind: ServiceAccount
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-configure-kuadrant
+  namespace: kuadrant-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "23"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: job-configure-kuadrant
+      restartPolicy: Never
+      containers:
+      - name: configure
+        image: registry.redhat.io/openshift4/ose-cli
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if oc get deployment authorino -n kuadrant-system &>/dev/null; then
+              break
+            fi
+            echo "Waiting for Authorino deployment... ($i/30)"
+            sleep 10
+          done
+          ENVS=$(oc get deployment authorino -n kuadrant-system -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null || echo "")
+          if echo "$ENVS" | grep -q SSL_CERT_FILE; then
+            echo "Authorino SSL already configured"
+          else
+            echo "Setting Authorino SSL env vars..."
+            oc -n kuadrant-system set env deployment/authorino \
+              SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt \
+              REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
+          fi
+          # Add user-tokens authentication to the generated gateway default
+          # policy so the dashboard's gen-ai-ui can call the MaaS Gateway with
+          # OAuth tokens.
+          echo "Patching gateway-default-auth to accept user OAuth tokens..."
+          PATCHED_GATEWAY_AUTH=false
+          for i in $(seq 1 20); do
+            if oc get authpolicy gateway-default-auth -n openshift-ingress &>/dev/null; then
+              oc patch authpolicy gateway-default-auth -n openshift-ingress --type=merge \
+                -p '{"spec":{"defaults":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}}'
+              PATCHED_GATEWAY_AUTH=true
+              break
+            fi
+            echo "Waiting for gateway-default-auth... ($i/20)"
+            sleep 10
+          done
+          if [ "$PATCHED_GATEWAY_AUTH" != "true" ]; then
+            echo "gateway-default-auth was not created in time"
+            exit 1
+          fi
+
+          # Patch maas-api-auth-policy to override gateway-level authorization.
+          # The gateway default policy has route authorization defaults that
+          # extracts a model name from the URL path. This breaks for /maas-api/*
+          # management endpoints. Adding empty authorization:{} at the route level
+          # overrides the gateway default so the MaaS tab can list models.
+          echo "Patching maas-api-auth-policy authorization override..."
+          PATCHED_MAAS_API_AUTH=false
+          for i in $(seq 1 20); do
+            if oc get authpolicy maas-api-auth-policy -n redhat-ods-applications &>/dev/null; then
+              oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
+                --type=json -p '[{"op":"replace","path":"/spec/rules/authorization","value":{}}]'
+              PATCHED_MAAS_API_AUTH=true
+              break
+            fi
+            echo "Waiting for maas-api-auth-policy... ($i/20)"
+            sleep 10
+          done
+          if [ "$PATCHED_MAAS_API_AUTH" != "true" ]; then
+            echo "maas-api-auth-policy was not created in time"
+            exit 1
+          fi
+          echo "Done"

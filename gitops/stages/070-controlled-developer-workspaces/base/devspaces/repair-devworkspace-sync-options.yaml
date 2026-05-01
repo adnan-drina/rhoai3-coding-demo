@@ -1,0 +1,71 @@
+# Removes stale Replace=true annotations from DevWorkspace resources created
+# by earlier demo revisions. DevWorkspace IDs are controller-assigned and
+# immutable, so replace-based syncs fail after initial creation.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-repair-devworkspace-sync-options
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-repair-devworkspace-sync-options
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups: ["workspace.devfile.io"]
+    resources: ["devworkspaces"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-repair-devworkspace-sync-options
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+subjects:
+  - kind: ServiceAccount
+    name: job-repair-devworkspace-sync-options
+    namespace: openshift-devspaces
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-repair-devworkspace-sync-options
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-repair-devworkspace-sync-options
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      serviceAccountName: job-repair-devworkspace-sync-options
+      restartPolicy: Never
+      containers:
+        - name: repair
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              for namespace in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
+                if oc get devworkspace exercises -n "$namespace" &>/dev/null; then
+                  echo "Removing stale DevWorkspace sync-options annotation in ${namespace}"
+                  oc annotate devworkspace exercises -n "$namespace" argocd.argoproj.io/sync-options- || true
+                else
+                  echo "No existing DevWorkspace in ${namespace}; nothing to repair"
+                fi
+              done

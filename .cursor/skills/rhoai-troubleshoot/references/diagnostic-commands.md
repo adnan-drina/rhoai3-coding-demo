@@ -23,7 +23,7 @@ This catalog is based on Red Hat's [odh-gitops](https://github.com/opendatahub-i
 | **MariaDB Operator** | `mariadb-operator` | TrustyAI (database mode) | — |
 | **Service Mesh 3** | `openshift-operators` | RHOAI (auto-installed, Manual approval) | — |
 
-Not all dependencies are required for every deployment. Install only what your demo steps need.
+Not all dependencies are required for every deployment. Install only what your demo stages need.
 
 ```bash
 # Quick health check: all dependency CSVs

@@ -1,0 +1,8 @@
+# Red Hat Connectivity Link — provides Gateway policy CRDs (AuthPolicy, RateLimitPolicy)
+# Required for MaaS tier-based rate limiting
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rhcl-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"

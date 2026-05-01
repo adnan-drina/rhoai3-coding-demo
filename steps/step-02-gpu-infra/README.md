@@ -1,5 +1,7 @@
 # Step 02: GPU Infrastructure For Private AI
 
+> Compatibility note: this step path is retained for existing links. New docs and automation should use [Stage 020](../../stages/020-gpu-infrastructure-private-ai/README.md).
+
 ## Why This Matters
 
 Private AI depends on more than choosing a model that can run locally. The platform also needs accelerator capacity that can be provisioned, observed, shared, and recovered by operations teams. For the LLMs in this demo, that means GPU-backed OpenShift worker nodes.

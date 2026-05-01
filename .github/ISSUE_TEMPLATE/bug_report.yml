@@ -22,7 +22,7 @@ body:
     attributes:
       label: Demo step
       description: Which step is affected?
-      placeholder: "step-01, step-02, step-03, step-04, step-05, step-06"
+      placeholder: "stage-010, stage-040, stage-070, compatibility step-03, etc."
     validations:
       required: false
   - type: textarea

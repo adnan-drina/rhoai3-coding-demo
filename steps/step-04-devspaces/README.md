@@ -1,5 +1,7 @@
 # Step 04: AI-Assisted Development In Controlled Workspaces
 
+> Compatibility note: this step path is retained for existing links. New docs and automation should use [Stage 070](../../stages/070-controlled-developer-workspaces/README.md).
+
 ## Why This Matters
 
 AI-assisted development is most useful when it appears inside the tools where code is written, tested, and reviewed. The enterprise concern is how to offer that experience without turning every laptop, plugin, and personal API key into a separate policy exception.

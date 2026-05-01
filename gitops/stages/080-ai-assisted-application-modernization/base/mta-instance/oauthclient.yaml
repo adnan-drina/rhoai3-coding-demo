@@ -1,0 +1,13 @@
+# OAuthClient for MTA Keycloak federation with OpenShift OAuth.
+# The secret and redirectURIs are placeholders — the PostSync Job
+# generates a real secret and patches both fields with the live MTA route.
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: mta-keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+grantMethod: auto
+secret: "PLACEHOLDER_WILL_BE_PATCHED"
+redirectURIs:
+  - https://mta.placeholder.example.com/auth/realms/mta/broker/openshift/endpoint

@@ -40,7 +40,7 @@ that doesn't match what the documentation specifies. Do not modify files.
 ### 4. Annotation correctness
 - Dashboard annotations (`opendatahub.io/template-name`, etc.) — do the
   values match actual platform templates?
-- ArgoCD annotations — are sync-wave values reasonable for the step order?
+- ArgoCD annotations — are sync-wave values reasonable for the stage order?
 
 ### 5. Image references
 - Do container images reference Red Hat registry (`registry.redhat.io`) or
@@ -51,13 +51,13 @@ that doesn't match what the documentation specifies. Do not modify files.
 - Does the manifest's README reference the correct RHOAI doc section for the implemented version?
 - Are the doc links still valid (not pointing to older RHOAI versions)?
 
-## How to review a step
+## How to review a stage
 
-1. Read all YAML files in `gitops/step-XX-name/base/`
+1. Read all YAML files in `gitops/stages/NNN-name/base/`
 2. For each CR (custom resource), search `@RHOAI 3.3` docs for the resource
    kind and compare fields
 3. For each operator Subscription, verify the channel and source against docs
-4. Check the step README's References section for correct doc links
+4. Check the stage README's References section for correct doc links
 5. Report findings
 
 ## Key RHOAI resource types to validate
@@ -79,10 +79,10 @@ that doesn't match what the documentation specifies. Do not modify files.
 
 ## Output format
 
-For each step reviewed:
+For each stage reviewed:
 
 ```
-Step: step-XX-name
+Stage: NNN-name
 Files reviewed: N
 
 Doc-Aligned:

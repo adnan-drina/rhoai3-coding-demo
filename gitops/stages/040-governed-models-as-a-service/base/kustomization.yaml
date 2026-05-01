@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Governed Models-as-a-Service — MaaS control plane, gateway policy,
+# local model subscriptions, quotas, rate limits, telemetry, and observability.
+
+resources:
+  - rhcl-operator/namespace.yaml
+  - rhcl-operator/operatorgroup.yaml
+  - rhcl-operator/subscription.yaml
+  - cloudnative-pg/subscription.yaml
+  - jobs/approve-cloudnative-pg-installplan.yaml
+  - grafana/namespace.yaml
+  - grafana/operatorgroup.yaml
+  - grafana/subscription.yaml
+  - grafana/instance.yaml
+  - governance/kuadrant-system-ns.yaml
+  - governance/maas-groups.yaml
+  - governance/authorino-service.yaml
+  - governance/kuadrant.yaml
+  - governance/authorino.yaml
+  - jobs/configure-kuadrant.yaml
+  - maas-controller-upstream/
+  - models/rbac.yaml
+  - jobs/restart-kserve-controller.yaml
+  - governance/ratelimitpolicy.yaml
+  - governance/tokenratelimitpolicy.yaml
+  - governance/telemetrypolicy.yaml
+  - models-maas-crds/
+  - gateway/gatewayclass.yaml
+  - gateway/maas-gateway.yaml
+  - grafana/datasource.yaml
+  - grafana/maas-dashboard.yaml
+  - grafana/servicemonitor.yaml
+  - jobs/configure-grafana-sa.yaml
+  - jobs/patch-gateway-hostname.yaml
+  - jobs/patch-maas-api-storage.yaml

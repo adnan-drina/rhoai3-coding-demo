@@ -1,0 +1,66 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 040-governed-models-as-a-service
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "040"
+    demo.rhoai.io/step: "040"
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/040-governed-models-as-a-service
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: codex/stage-refactor-demo-validation
+    path: gitops/stages/040-governed-models-as-a-service/base
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideDiff=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: ""
+      kind: Namespace
+      jsonPointers:
+        - /metadata/annotations
+        - /metadata/labels
+    - group: operators.coreos.com
+      kind: OperatorGroup
+      jsonPointers:
+        - /metadata/annotations
+    - group: operators.coreos.com
+      kind: Subscription
+      jsonPointers:
+        - /metadata/annotations
+        - /spec/startingCSV
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: openshift-ingress
+      name: maas-default-gateway
+      jsonPointers:
+        # The MaaS hostname is patched after sync because it depends on the
+        # cluster ingress domain and certificate. Keep the rest of the Gateway
+        # spec managed.
+        - /spec/listeners/0/hostname
+        - /spec/listeners/1/hostname
+        - /spec/listeners/1/tls/certificateRefs/0/name

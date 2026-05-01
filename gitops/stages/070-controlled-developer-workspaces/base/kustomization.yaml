@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# OpenShift Dev Spaces with Continue AI code assistant
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
+
+resources:
+  - devspaces/namespace.yaml
+  - devspaces/operatorgroup.yaml
+  - devspaces/subscription.yaml
+  - devspaces/wait-for-operator-webhook.yaml
+  - devspaces/checluster.yaml
+  - devspaces/repair-devworkspace-sync-options.yaml
+  - devspaces/workspaces.yaml
