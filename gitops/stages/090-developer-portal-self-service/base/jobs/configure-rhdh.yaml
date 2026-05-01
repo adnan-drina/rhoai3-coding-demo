@@ -194,7 +194,13 @@ spec:
             "${RHBK_URL}/auth/admin/realms/${REALM}/clients?clientId=${RHDH_CLIENT_ID}" 2>/dev/null \
             | python3 -c "import sys,json; clients=json.load(sys.stdin); print(clients[0]['id'] if clients else '')" 2>/dev/null || echo "")
 
-          CLIENT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+          CURRENT_CLIENT_SECRET=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_OIDC_CLIENT_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -n "$CURRENT_CLIENT_SECRET" ] && ! echo "$CURRENT_CLIENT_SECRET" | grep -q "placeholder"; then
+            CLIENT_SECRET="$CURRENT_CLIENT_SECRET"
+          else
+            CLIENT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+          fi
 
           if [ -n "$EXISTING_CLIENT" ]; then
             echo "Updating existing RHDH client..."
@@ -229,24 +235,47 @@ spec:
             echo "RHDH client created"
           fi
 
-          # --- 5. Generate session secret ---
-          SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+          # --- 5. Reuse or generate session secret ---
+          CURRENT_SESSION_SECRET=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.SESSION_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -n "$CURRENT_SESSION_SECRET" ] && ! echo "$CURRENT_SESSION_SECRET" | grep -q "placeholder"; then
+            SESSION_SECRET="$CURRENT_SESSION_SECRET"
+          else
+            SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+          fi
 
           # --- 6. Patch rhdh-secrets ---
-          echo "Patching rhdh-secrets..."
+          echo "Checking rhdh-secrets..."
+          CURRENT_BASE_URL=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_METADATA_URL=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHBK_METADATA_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          SECRETS_CHANGED=false
+          if [ "$CURRENT_BASE_URL" != "$RHDH_URL" ] || \
+             [ "$CURRENT_METADATA_URL" != "$RHBK_METADATA_URL" ] || \
+             [ "$CURRENT_CLIENT_SECRET" != "$CLIENT_SECRET" ] || \
+             [ "$CURRENT_SESSION_SECRET" != "$SESSION_SECRET" ]; then
+            SECRETS_CHANGED=true
+          fi
+
           ENCODED_SESSION=$(echo -n "${SESSION_SECRET}" | base64 -w0 2>/dev/null || echo -n "${SESSION_SECRET}" | base64)
           ENCODED_CLIENT_SECRET=$(echo -n "${CLIENT_SECRET}" | base64 -w0 2>/dev/null || echo -n "${CLIENT_SECRET}" | base64)
           ENCODED_BASE_URL=$(echo -n "${RHDH_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_URL}" | base64)
           ENCODED_METADATA_URL=$(echo -n "${RHBK_METADATA_URL}" | base64 -w0 2>/dev/null || echo -n "${RHBK_METADATA_URL}" | base64)
 
-          oc patch secret rhdh-secrets -n rhdh --type=merge \
-            -p "{\"data\":{
-              \"SESSION_SECRET\":\"${ENCODED_SESSION}\",
-              \"RHDH_OIDC_CLIENT_SECRET\":\"${ENCODED_CLIENT_SECRET}\",
-              \"RHDH_BASE_URL\":\"${ENCODED_BASE_URL}\",
-              \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\"
-            }}"
-          echo "rhdh-secrets patched"
+          if [ "$SECRETS_CHANGED" = "true" ]; then
+            echo "Patching rhdh-secrets..."
+            oc patch secret rhdh-secrets -n rhdh --type=merge \
+              -p "{\"data\":{
+                \"SESSION_SECRET\":\"${ENCODED_SESSION}\",
+                \"RHDH_OIDC_CLIENT_SECRET\":\"${ENCODED_CLIENT_SECRET}\",
+                \"RHDH_BASE_URL\":\"${ENCODED_BASE_URL}\",
+                \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\"
+              }}"
+            echo "rhdh-secrets patched"
+          else
+            echo "rhdh-secrets already match desired values"
+          fi
 
           # --- 7. Patch ConsoleLink ---
           echo "Patching ConsoleLink..."
@@ -255,13 +284,15 @@ spec:
           echo "ConsoleLink patched: ${RHDH_URL}"
 
           # --- 8. Restart RHDH ---
-          echo "Restarting RHDH deployment..."
           RHDH_DEPLOY=$(oc get deployment -n rhdh --no-headers 2>/dev/null \
             | grep backstage | awk '{print $1}' | head -1 || true)
-          if [ -n "$RHDH_DEPLOY" ]; then
+          if [ -n "$RHDH_DEPLOY" ] && [ "$SECRETS_CHANGED" = "true" ]; then
+            echo "Restarting RHDH deployment..."
             oc rollout restart deployment/${RHDH_DEPLOY} -n rhdh
             oc rollout status deployment/${RHDH_DEPLOY} -n rhdh --timeout=900s
             echo "RHDH restarted"
+          elif [ -n "$RHDH_DEPLOY" ]; then
+            echo "RHDH deployment restart not needed"
           else
             echo "WARNING: RHDH deployment not found for restart"
           fi
