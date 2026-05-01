@@ -99,6 +99,8 @@ spec:
         env:
         - name: MODEL_NAME
           value: "nemotron-3-nano-30b-a3b"
+        - name: MAAS_SUBSCRIPTION
+          value: "local-models-subscription"
         command:
         - /bin/bash
         - -c
@@ -155,13 +157,26 @@ spec:
           echo "Checking OPENAI_API_KEY..."
           CURRENT_KEY=$(oc get secret kai-api-keys -n openshift-mta \
             -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-          if [ -z "$CURRENT_KEY" ] || echo "$CURRENT_KEY" | grep -q "REPLACE"; then
-            echo "Provisioning MaaS API key via MaaS API..."
+          CURRENT_SUBSCRIPTION=""
+          if [ -n "$CURRENT_KEY" ] && ! echo "$CURRENT_KEY" | grep -q "REPLACE"; then
+            CURRENT_SUBSCRIPTION=$(curl -sk -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"${CURRENT_KEY}\"}" \
+              "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/validate" 2>/dev/null \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('subscription',''))" 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$CURRENT_KEY" ] || echo "$CURRENT_KEY" | grep -q "REPLACE" || [ "$CURRENT_SUBSCRIPTION" != "$MAAS_SUBSCRIPTION" ]; then
+            if [ -n "$CURRENT_SUBSCRIPTION" ]; then
+              echo "Existing MaaS API key uses subscription '${CURRENT_SUBSCRIPTION}', expected '${MAAS_SUBSCRIPTION}'. Rotating key..."
+            else
+              echo "Provisioning MaaS API key via MaaS API..."
+            fi
             SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
             API_KEY=$(curl -sk -X POST \
               -H "Authorization: Bearer ${SA_TOKEN}" \
               -H "Content-Type: application/json" \
-              -d '{"name":"mta-kai-auto"}' \
+              -d "{\"name\":\"mta-kai-auto\",\"subscription\":\"${MAAS_SUBSCRIPTION}\"}" \
               "https://${MAAS_HOST}/maas-api/v1/api-keys" 2>/dev/null \
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
             if [ -n "$API_KEY" ] && echo "$API_KEY" | grep -q "^sk-oai-"; then
@@ -176,7 +191,7 @@ spec:
               exit 1
             fi
           else
-            echo "OPENAI_API_KEY already set (non-placeholder)"
+            echo "OPENAI_API_KEY already set for ${MAAS_SUBSCRIPTION}"
           fi
 
           echo "Waiting for MTA route..."
