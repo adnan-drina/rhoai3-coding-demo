@@ -105,10 +105,10 @@ data:
     # The MachineSet can create initial Machines before the template patch is
     # observed. Repair live nodes as well so validation and scheduling are
     # deterministic during the same demo run.
-    for NODE in $(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" -o name 2>/dev/null); do
+    for NODE in $(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
       echo "Configuring live GPU node: $NODE"
-      oc label "$NODE" node-role.kubernetes.io/gpu="" --overwrite
-      oc adm taint "$NODE" nvidia.com/gpu=true:NoSchedule --overwrite
+      oc label node "$NODE" node-role.kubernetes.io/gpu="" --overwrite
+      oc adm taint node "$NODE" nvidia.com/gpu=true:NoSchedule --overwrite
     done
 
     echo "GPU MachineSet configured: $MS_NAME (${REPLICAS} replicas)"
