@@ -9,6 +9,7 @@ resources:
   - rhcl-operator/operatorgroup.yaml
   - rhcl-operator/subscription.yaml
   - cloudnative-pg/subscription.yaml
+  - jobs/approve-cloudnative-pg-installplan.yaml
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
