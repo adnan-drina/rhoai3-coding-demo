@@ -1,0 +1,83 @@
+# Waits for the Dev Spaces operator webhook endpoints before creating CheCluster.
+# The CheCluster admission webhook can exist before the service has endpoints,
+# which makes first-time Argo CD syncs fail with a transient webhook error.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-wait-devspaces-webhook
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-wait-devspaces-webhook
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-wait-devspaces-webhook
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+subjects:
+  - kind: ServiceAccount
+    name: job-wait-devspaces-webhook
+    namespace: openshift-devspaces
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-wait-devspaces-webhook
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-wait-devspaces-webhook
+  namespace: openshift-devspaces
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: job-wait-devspaces-webhook
+      restartPolicy: Never
+      containers:
+        - name: wait
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "Waiting for Dev Spaces operator deployment..."
+              oc rollout status deployment/devspaces-operator -n openshift-devspaces --timeout=240s
+
+              echo "Waiting for Dev Spaces operator webhook service endpoints..."
+              for i in $(seq 1 60); do
+                ADDRESSES=$(oc get endpoints devspaces-operator-service -n openshift-devspaces -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true)
+                if [ -n "$ADDRESSES" ]; then
+                  echo "Dev Spaces operator webhook endpoints are ready"
+                  exit 0
+                fi
+                sleep 5
+              done
+
+              echo "Dev Spaces operator webhook endpoints did not become ready in time"
+              exit 1

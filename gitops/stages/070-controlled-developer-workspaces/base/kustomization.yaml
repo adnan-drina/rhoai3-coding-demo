@@ -8,5 +8,6 @@ resources:
   - devspaces/namespace.yaml
   - devspaces/operatorgroup.yaml
   - devspaces/subscription.yaml
+  - devspaces/wait-for-operator-webhook.yaml
   - devspaces/checluster.yaml
   - devspaces/workspaces.yaml
