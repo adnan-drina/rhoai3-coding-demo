@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Git commit: `9e72be4`
+- Git commit: `1042add`
 
 Preflight:
 
@@ -215,7 +215,7 @@ Stage results:
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
-| 030 Private Model Serving | Fixing | Argo CD Application created; seed Job initially blocked by model registry NetworkPolicy |
+| 030 Private Model Serving | Passed with expected warnings | `./stages/030-private-model-serving/validate.sh`: 6 passed, 2 warnings, 0 failed |
 
 Stage 010 findings:
 
@@ -239,6 +239,8 @@ Stage 030 findings:
 - Root cause: Stage 010 created a NetworkPolicy for the model registry that allowed dashboard traffic from `redhat-ods-applications`, but did not allow the Stage 030 seed Job running in `rhoai-model-registries`.
 - Improvement being applied: add a narrow Stage 030 NetworkPolicy that permits only pods labeled `app=model-registry-seed` to connect to the model registry API on port 8080.
 - The `LLMInferenceService` resources were created and scheduled on GPU nodes. They currently report `HTTPRouteReconcileError` until Stage 040 installs Red Hat Connectivity Link and the `AuthPolicy` CRD. Stage 030 validation treats model readiness as a warning because gateway governance is introduced in Stage 040.
+- Fix applied in commit `1042add`. Stage 030 re-synced successfully, and the `model-registry-seed` hook completed.
+- Final evidence for Stage 030: `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were registered in the model registry. Both model pods were scheduled on GPU nodes and were in init/model-pull startup. Both `LLMInferenceService` resources reported `HTTPRouteReconcileError` because `AuthPolicy` is introduced by Stage 040.
 
 ### Stage 020
 
