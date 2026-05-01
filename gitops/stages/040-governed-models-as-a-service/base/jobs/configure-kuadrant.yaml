@@ -7,14 +7,14 @@ metadata:
   name: job-configure-kuadrant
   namespace: kuadrant-system
   annotations:
-    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/sync-wave: "18"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-configure-kuadrant
   annotations:
-    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/sync-wave: "18"
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
@@ -28,7 +28,7 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-kuadrant
   annotations:
-    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/sync-wave: "18"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -44,12 +44,12 @@ metadata:
   name: job-configure-kuadrant
   namespace: kuadrant-system
   annotations:
-    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-wave: "19"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 5
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 600
   template:
     spec:
       serviceAccountName: job-configure-kuadrant
@@ -60,7 +60,7 @@ spec:
         command: ["/bin/bash", "-c"]
         args:
         - |
-          set -e
+          set -euo pipefail
           for i in $(seq 1 30); do
             if oc get deployment authorino -n kuadrant-system &>/dev/null; then
               break
@@ -80,14 +80,21 @@ spec:
           # Add user-tokens authentication to gateway-auth-policy so the
           # dashboard's gen-ai-ui can call the MaaS Gateway with OAuth tokens.
           echo "Patching gateway-auth-policy to accept user OAuth tokens..."
+          PATCHED_GATEWAY_AUTH=false
           for i in $(seq 1 20); do
             if oc get authpolicy gateway-auth-policy -n openshift-ingress &>/dev/null; then
               oc patch authpolicy gateway-auth-policy -n openshift-ingress --type=merge \
-                -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}' && break
+                -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}'
+              PATCHED_GATEWAY_AUTH=true
+              break
             fi
             echo "Waiting for gateway-auth-policy... ($i/20)"
             sleep 10
           done
+          if [ "$PATCHED_GATEWAY_AUTH" != "true" ]; then
+            echo "gateway-auth-policy was not created in time"
+            exit 1
+          fi
 
           # Patch maas-api-auth-policy to override gateway-level authorization.
           # The gateway-auth-policy has a tier-access SubjectAccessReview that
@@ -95,12 +102,19 @@ spec:
           # management endpoints. Adding empty authorization:{} at the route level
           # overrides the gateway default so the MaaS tab can list models.
           echo "Patching maas-api-auth-policy authorization override..."
+          PATCHED_MAAS_API_AUTH=false
           for i in $(seq 1 20); do
             if oc get authpolicy maas-api-auth-policy -n redhat-ods-applications &>/dev/null; then
               oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
-                --type=merge -p '{"spec":{"rules":{"authorization":{}}}}' && break
+                --type=merge -p '{"spec":{"rules":{"authorization":{}}}}'
+              PATCHED_MAAS_API_AUTH=true
+              break
             fi
             echo "Waiting for maas-api-auth-policy... ($i/20)"
             sleep 10
           done
+          if [ "$PATCHED_MAAS_API_AUTH" != "true" ]; then
+            echo "maas-api-auth-policy was not created in time"
+            exit 1
+          fi
           echo "Done"
