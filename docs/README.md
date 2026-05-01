@@ -7,6 +7,7 @@ This directory contains operational documentation for the Red Hat OpenShift AI c
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operating model, day-2 notes, and cleanup guidance | Use while installing, validating, or maintaining the demo environment |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment stage fails validation or a demo component is unavailable |
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
+| [../BACKLOG.md](../BACKLOG.md) | Deviation register, workarounds, known limitations, validation notes, and planned cleanup | Use when assessing whether demo behavior matches supported Red Hat product guidance |
 
 The published learning path is the stage-based flow from [`demo/flows/default.yaml`](../demo/flows/default.yaml):
 

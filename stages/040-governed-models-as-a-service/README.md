@@ -13,6 +13,19 @@ Models-as-a-Service (MaaS) turns local model serving into a governed platform ca
 - Grafana and Prometheus-facing resources for model access visibility.
 - Jobs that patch cluster-specific gateway and MaaS API behavior documented in `BACKLOG.md`.
 
+## Red Hat Alignment And Demo Deviations
+
+This stage follows the Red Hat OpenShift AI Models-as-a-Service (MaaS) pattern: models are published through a governed API path with Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, subscriptions, API keys, rate limits, token limits, and telemetry.
+
+The implementation also includes deliberate demo deviations:
+
+- Red Hat OpenShift AI 3.4 documents MaaS as a Technology Preview feature. This demo currently uses Red Hat OpenShift AI 3.3 plus upstream MaaS components where needed so the full external model registration story can be shown.
+- The upstream MaaS controller, upstream `maas-api` image, PostgreSQL storage, and tokens bridge are included to demonstrate `ExternalModel` and `MaaSModelRef` registration before that path is available through the supported Red Hat OpenShift AI 3.3 operator flow.
+- Community Grafana is included as a disposable demo add-on for visibility. A Red Hat-supported monitoring or observability path is preferred for long-lived environments.
+- Cluster-specific Gateway hostname and TLS details are patched by PostSync jobs. The Argo CD ignore rules are intentionally narrow so GitOps still reports meaningful drift.
+
+Keep `BACKLOG.md` and `docs/OPERATIONS.md` current whenever these deviations change.
+
 ## Deploy And Validate
 
 ```bash

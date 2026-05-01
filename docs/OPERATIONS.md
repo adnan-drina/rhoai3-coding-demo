@@ -255,6 +255,13 @@ Red Hat alignment review:
 - Fix applied from the alignment review: RHDH catalog configuration no longer hard-codes the `main` branch. `app-config-rhdh.yaml` now uses `${RHDH_CATALOG_URL}`, and the Stage 090 PostSync hook derives that URL from the live Argo CD Application `repoURL` and `targetRevision`. This keeps the developer portal catalog on the same Git revision as the deployed demo.
 - Final evidence after the alignment fix: Stage 090 re-synced to commit `cff7e4a`; `RHDH_CATALOG_URL` resolved to `https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/codex/stage-refactor-demo-validation/gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml`; Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures; all nine Argo CD Applications reported `Synced` and `Healthy`.
 
+Documentation and deviation-register cleanup:
+
+- `BACKLOG.md` now treats workaround removal as a supported-capability review, not as an automatic Red Hat OpenShift AI 3.4 GA cleanup. This matches the current Red Hat OpenShift AI 3.4 documentation posture where MaaS is Technology Preview.
+- Current validation wording now distinguishes external model registration from external inference. Stage 050 registered `gpt-4o` and `gpt-4o-mini`; external inference remains credential-gated and was not validated in this environment because `OPENAI_API_KEY` is unset.
+- Stage 040, Stage 080, and Stage 090 READMEs now call out Red Hat alignment, Technology Preview posture, and demo-specific deviations close to the affected implementation.
+- `docs/TROUBLESHOOTING.md` now includes `RHDH_CATALOG_URL` diagnostics for Developer Hub catalog failures.
+
 Stage 010 findings:
 
 - Automated sync initially stalled after bootstrap while waiting on `ClusterRole/job-approve-sm-installplan` and `ClusterRole/job-patch-dsci-ca`, even though both resources existed. Manual `argocd app sync 010-openshift-ai-platform-foundation` advanced the operation and completed successfully. Improvement candidate: add a bootstrap readiness wait for the Argo CD application-controller cache before applying the first stage, and document `argocd app sync` as the recovery command for this startup race.
@@ -291,7 +298,7 @@ Stage 040 findings:
 - The first approval hook version used a later sync wave than the CloudNativePG Subscription, so Argo CD did not run it while the Subscription was still Progressing. The hook now runs in the same dependency wave as the Subscription, with RBAC created one wave earlier.
 - The `configure-kuadrant` hook ran before the MaaS controller and generated AuthPolicy resources were created. Improvement being applied: move that hook after the MaaS API, gateway, and local MaaS resources, extend its deadline, and fail explicitly if required AuthPolicy resources are not created in time.
 - The MaaS controller reported that `openshift-ingress/maas-default-gateway` was missing because Gateway resources were later than the controller and local MaaS resources. Improvement being applied: move `GatewayClass` and the default MaaS `Gateway` before the MaaS controller deployment, and move the Kuadrant patch hook after the gateway-dependent resources.
-- MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the hook. Improvement being applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
+- MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the earlier hook implementation. Improvement applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
 - After the gateway and RHCL were healthy, the existing `LLMInferenceService` resources still reported the earlier AuthPolicy CRD discovery error. A controlled restart of `kserve-controller-manager` refreshed API discovery and immediately created the model HTTPRoutes. Improvement being applied: add a Stage 040 hook to restart KServe after RHCL/Gateway readiness in this staged demo flow.
 - Follow-up GitOps hygiene finding: the MaaS Gateway listener hostnames and TLS certificate reference are cluster-specific values patched by `job-patch-gateway-hostname`. They must not be masked by a broad Gateway spec ignore, but they must be ignored narrowly so Argo CD does not restore placeholder values after the patch hook runs.
 - Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, local `MaaSSubscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
@@ -362,7 +369,7 @@ oc get job model-registry-seed -n rhoai-model-registries
 
 Stage 040 deploys the governed Models-as-a-Service control point: MaaS controller, Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, local model subscriptions, rate limits, token limits, telemetry, and Grafana.
 
-The upstream `maas-controller` and `maas-api` image override are intentional demo deviations. They demonstrate external model registration through upstream and Red Hat OpenShift AI 3.4 early access MaaS capabilities while the Red Hat OpenShift AI 3.3 supported operator path does not provide that full behavior. Keep the workaround visible in `BACKLOG.md` and remove it when a supported Red Hat OpenShift AI release provides equivalent external model registration.
+The upstream `maas-controller` and `maas-api` image override are intentional demo deviations. They demonstrate external model registration through upstream MaaS behavior and the Red Hat OpenShift AI 3.4 Technology Preview MaaS direction while the Red Hat OpenShift AI 3.3 supported operator path does not provide that full behavior. Keep the workaround visible in `BACKLOG.md` and remove it only when a supported Red Hat OpenShift AI release provides equivalent external model registration and the replacement has been validated.
 
 The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 
