@@ -53,3 +53,12 @@ spec:
       kind: PersistentVolumeClaim
       jsonPointers:
         - /spec
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: openshift-ingress
+      name: maas-default-gateway
+      jsonPointers:
+        # The MaaS hostname is patched after sync because it depends on the
+        # cluster ingress domain. Keep the rest of the Gateway spec managed.
+        - /spec/listeners/0/hostname
+        - /spec/listeners/1/hostname
