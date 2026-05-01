@@ -175,6 +175,51 @@ oc get pods -n redhat-ods-applications
 oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yaml
 ```
 
+## Live Validation Log
+
+This section records the current validation run against the disposable demo environment.
+
+### 2026-05-01 validation run
+
+Cluster:
+
+- Console: `https://console-openshift-console.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`
+- API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
+- OpenShift: `4.20.19`
+- Kubernetes: `v1.33.9`
+- Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
+- Git commit: `9809a42`
+
+Preflight:
+
+- `./scripts/validate-stage-flow.sh` passed.
+- `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh` passed.
+- `git diff --check` passed.
+- Cluster operators were Available and not Progressing or Degraded before bootstrap.
+- Default StorageClass was `gp3-csi`.
+- No GPU nodes were present before Stage 020.
+
+Bootstrap:
+
+- `./scripts/bootstrap.sh` completed.
+- OpenShift GitOps operator Subscription was created.
+- Demo `openshift-gitops-cluster-admin` ClusterRoleBinding was created.
+- Argo CD resource tracking was set to `annotation`.
+- Custom health checks were configured for Subscription, PVC, InferenceService, and TrustyAIService.
+- AppProject `rhoai-demo` was created.
+- Argo CD route: `openshift-gitops-server-openshift-gitops.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`
+
+Stage results:
+
+| Stage | Status | Evidence |
+|------|--------|----------|
+| 010 OpenShift AI Platform Foundation | Fixing | Argo CD Application reached `Synced/Healthy`; validation found `genAiStudio` missing from `OdhDashboardConfig` |
+
+Stage 010 findings:
+
+- Automated sync initially stalled after bootstrap while waiting on `ClusterRole/job-approve-sm-installplan` and `ClusterRole/job-patch-dsci-ca`, even though both resources existed. Manual `argocd app sync 010-openshift-ai-platform-foundation` advanced the operation and completed successfully. Improvement candidate: add a bootstrap readiness wait for the Argo CD application-controller cache before applying the first stage, and document `argocd app sync` as the recovery command for this startup race.
+- Validation found `OdhDashboardConfig.spec.dashboardConfig.genAiStudio` absent. Root cause: the Stage 010 Application ignored the entire `OdhDashboardConfig.spec` while `RespectIgnoreDifferences=true`, so Argo CD reported the resource synced without enforcing the MaaS-required dashboard flags. Fix: stop ignoring `OdhDashboardConfig.spec`; keep operator-managed drift ignores only where they do not hide required demo configuration.
+
 ### Stage 020
 
 Stage 020 creates GPU infrastructure. New GPU nodes can take several minutes to provision and join the cluster.
