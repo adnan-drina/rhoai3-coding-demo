@@ -21,6 +21,12 @@ log_step "RHDH Instance"
 check "Backstage CR exists" \
   "oc get backstage developer-hub -n rhdh -o jsonpath='{.metadata.name}'" \
   "developer-hub"
+check "RHDH app config mounted by Backstage CR" \
+  "oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.application.appConfig.configMaps[0].name}'" \
+  "app-config-rhdh"
+check "RHDH dynamic plugins config mounted by Backstage CR" \
+  "oc get backstage developer-hub -n rhdh -o jsonpath='{.spec.application.dynamicPluginsConfigMapName}'" \
+  "dynamic-plugins-rhdh"
 
 log_step "RHDH Deployment"
 RHDH_DEPLOY=$(oc get deployment -n rhdh --no-headers 2>/dev/null | grep backstage | awk '{print $1}' | head -1 || echo "")
@@ -78,6 +84,17 @@ else
     echo -e "${RED}[FAIL]${NC} SESSION_SECRET is placeholder or missing"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
+
+log_step "RHDH Configuration"
+check "RHDH config uses OIDC sign-in" \
+  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
+  "signInPage: oidc"
+check "RHDH config references demo catalog" \
+  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
+  "rhoai3-coding-demo"
+check "RHDH dynamic plugins config exists" \
+  "oc get configmap dynamic-plugins-rhdh -n rhdh -o jsonpath='{.data.dynamic-plugins\\.yaml}'" \
+  "dynamic-plugins.default.yaml"
 
 log_step "ConsoleLink"
 CL_HREF=$(oc get consolelink rhdh -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
