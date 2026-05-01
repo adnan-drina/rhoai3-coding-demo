@@ -79,11 +79,6 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec
-    # OAuth spec is managed by the cluster; our manifest adds an identity provider
-    - group: config.openshift.io
-      kind: OAuth
-      jqPathExpressions:
-        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:

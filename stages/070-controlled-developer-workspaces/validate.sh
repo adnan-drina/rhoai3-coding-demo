@@ -32,5 +32,22 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
+log_step "Pre-Provisioned Workspace Namespaces"
+for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
+    check "Workspace namespace exists: $ns" \
+        "oc get namespace $ns -o jsonpath='{.metadata.name}'" \
+        "$ns"
+    check "Workspace DevWorkspace exists: $ns/exercises" \
+        "oc get devworkspace exercises -n $ns -o jsonpath='{.metadata.name}'" \
+        "exercises"
+done
+
+check "ai-admin workspace edit RoleBinding exists" \
+    "oc get rolebinding wksp-edit-ai-admin -n wksp-ai-admin -o jsonpath='{.subjects[0].name}'" \
+    "ai-admin"
+check "ai-developer workspace edit RoleBinding exists" \
+    "oc get rolebinding wksp-edit-ai-developer -n wksp-ai-developer -o jsonpath='{.subjects[0].name}'" \
+    "ai-developer"
+
 echo ""
 validation_summary
