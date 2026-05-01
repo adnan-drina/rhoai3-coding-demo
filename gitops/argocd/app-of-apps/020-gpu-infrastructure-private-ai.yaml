@@ -49,14 +49,6 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    - group: nvidia.com
-      kind: ClusterPolicy
-      jqPathExpressions:
-        - .spec
-    - group: nfd.openshift.io
-      kind: NodeFeatureDiscovery
-      jqPathExpressions:
-        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:

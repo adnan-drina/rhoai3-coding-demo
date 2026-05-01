@@ -8,6 +8,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "-5"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  enableTaints: false
+  instance: ""
   operand:
     servicePort: 12000
     workerTolerations:
@@ -26,3 +28,5 @@ spec:
             - "12"
           deviceLabelFields:
             - "vendor"
+  prunerOnDelete: false
+  topologyUpdater: false
