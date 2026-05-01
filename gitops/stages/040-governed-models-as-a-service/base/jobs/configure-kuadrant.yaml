@@ -77,27 +77,28 @@ spec:
               SSL_CERT_FILE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt \
               REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
           fi
-          # Add user-tokens authentication to gateway-auth-policy so the
-          # dashboard's gen-ai-ui can call the MaaS Gateway with OAuth tokens.
-          echo "Patching gateway-auth-policy to accept user OAuth tokens..."
+          # Add user-tokens authentication to the generated gateway default
+          # policy so the dashboard's gen-ai-ui can call the MaaS Gateway with
+          # OAuth tokens.
+          echo "Patching gateway-default-auth to accept user OAuth tokens..."
           PATCHED_GATEWAY_AUTH=false
           for i in $(seq 1 20); do
-            if oc get authpolicy gateway-auth-policy -n openshift-ingress &>/dev/null; then
-              oc patch authpolicy gateway-auth-policy -n openshift-ingress --type=merge \
-                -p '{"spec":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}'
+            if oc get authpolicy gateway-default-auth -n openshift-ingress &>/dev/null; then
+              oc patch authpolicy gateway-default-auth -n openshift-ingress --type=merge \
+                -p '{"spec":{"defaults":{"rules":{"authentication":{"user-tokens":{"kubernetesTokenReview":{"audiences":["https://kubernetes.default.svc"]},"metrics":false,"priority":1,"defaults":{"userid":{"expression":"auth.identity.user.username"}}}}}}}}'
               PATCHED_GATEWAY_AUTH=true
               break
             fi
-            echo "Waiting for gateway-auth-policy... ($i/20)"
+            echo "Waiting for gateway-default-auth... ($i/20)"
             sleep 10
           done
           if [ "$PATCHED_GATEWAY_AUTH" != "true" ]; then
-            echo "gateway-auth-policy was not created in time"
+            echo "gateway-default-auth was not created in time"
             exit 1
           fi
 
           # Patch maas-api-auth-policy to override gateway-level authorization.
-          # The gateway-auth-policy has a tier-access SubjectAccessReview that
+          # The gateway default policy has route authorization defaults that
           # extracts a model name from the URL path. This breaks for /maas-api/*
           # management endpoints. Adding empty authorization:{} at the route level
           # overrides the gateway default so the MaaS tab can list models.
@@ -106,7 +107,7 @@ spec:
           for i in $(seq 1 20); do
             if oc get authpolicy maas-api-auth-policy -n redhat-ods-applications &>/dev/null; then
               oc patch authpolicy maas-api-auth-policy -n redhat-ods-applications \
-                --type=merge -p '{"spec":{"rules":{"authorization":{}}}}'
+                --type=json -p '[{"op":"replace","path":"/spec/rules/authorization","value":{}}]'
               PATCHED_MAAS_API_AUTH=true
               break
             fi
