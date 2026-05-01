@@ -1,0 +1,247 @@
+---
+description: Use for any work in gitops/ or Kustomize files. Enforce GitOps + Kustomize best practices and reproducible steps.
+globs: gitops/**,**/kustomization.yaml,**/kustomization.yml
+alwaysApply: false
+---
+
+# GitOps & Kustomize Rules
+
+## Golden rule
+Every implemented demo step must be reproducible from the `gitops/` folder and operated through the step `deploy.sh` / `validate.sh` scripts. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
+
+## Mandatory: ArgoCD Application in every deploy.sh
+Every step's `deploy.sh` MUST apply its ArgoCD Application as its **first cluster-modifying action** (after any prerequisite secrets that the step's manifests depend on):
+```bash
+oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STEP_NAME.yaml"
+```
+Every step MUST have these components:
+1. `gitops/step-XX-name/base/` - Kustomize manifests (source of truth)
+2. `gitops/argocd/app-of-apps/step-XX-name.yaml` - ArgoCD Application
+3. `steps/step-XX-name/deploy.sh` - applies the ArgoCD Application and any required non-GitOps prerequisites
+4. `steps/step-XX-name/validate.sh` - verifies deployment succeeded
+5. `steps/step-XX-name/README.md` - educational step narrative and references
+
+**Never** apply step manifests directly with `oc apply -k` or `oc apply -f` for ArgoCD-managed resources.
+
+## Repository layout (this project)
+
+```text
+rhoai3-coding-demo/
+|-- gitops/
+|   |-- argocd/
+|   |   `-- app-of-apps/
+|   |       |-- step-01-rhoai-platform.yaml
+|   |       |-- step-02-gpu-infra.yaml
+|   |       |-- step-03-llm-serving-maas.yaml
+|   |       |-- step-04-devspaces.yaml
+|   |       |-- step-05-mta.yaml
+|   |       `-- step-06-developer-hub.yaml
+|   `-- step-XX-descriptive-name/
+|       `-- base/
+|           |-- kustomization.yaml
+|           `-- component-folders/
+|-- steps/
+|   `-- step-XX-descriptive-name/
+|       |-- deploy.sh
+|       |-- validate.sh
+|       `-- README.md
+|-- docs/
+|   |-- OPERATIONS.md
+|   `-- TROUBLESHOOTING.md
+|-- scripts/
+|   |-- bootstrap.sh
+|   |-- lib.sh
+|   |-- validate-lib.sh
+|   `-- validate-demo-flow.sh
+|-- env.example
+`-- README.md
+```
+
+## Kustomize structure rules
+- Prefer `base/` + `overlays/<env-or-purpose>/` within each step.
+- Keep `base/` environment-agnostic; put environment/step deltas in overlays.
+- Avoid duplicating full resources across overlays; use patches.
+- Prefer `resources:` + `patches:` (strategic merge or JSON6902) with minimal diffs.
+- Use consistent naming and labels to make `oc get` and `oc diff` readable.
+
+### When to use `components:` vs `resources:`
+Use Kustomize `components:` (not `resources:`) for **optional or selectable operators** that users may want to include or exclude by commenting a single line. This follows the pattern from Red Hat's [odh-gitops](https://github.com/opendatahub-io/odh-gitops) reference repository:
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+components:
+  - ../../components/operators/cert-manager
+  - ../../components/operators/nfd
+  # - ../../components/operators/nvidia-gpu-operator  # uncomment if needed
+```
+Components are self-contained units (Namespace + OperatorGroup + Subscription) that can be toggled independently. Use `resources:` for manifests that are always required within a step.
+
+### Operator deployment and CRD timing
+Operators install CRDs asynchronously via OLM. Custom Resources that depend on those CRDs cannot be applied until the CRD exists. Structure steps accordingly:
+1. **Phase 1**: Apply operator Subscriptions (ArgoCD syncs Namespace, OperatorGroup, Subscription)
+2. **Wait or retry**: Use Argo CD retry/backoff, sync waves, `SkipDryRunOnMissingResource=true`, and when needed a `deploy.sh` wait for CSV/CRD readiness
+3. **Phase 2**: ArgoCD syncs CRs using `sync-wave` annotations to order them after the operator
+
+Use `SkipDryRunOnMissingResource=true` in the ArgoCD Application to handle the CRD-not-yet-available window. Use `argocd.argoproj.io/sync-wave` annotations to order CRs after their operator Subscriptions within the same Application.
+
+Ref: [How to manage RHOAI dependencies with Kustomize and Argo CD](https://developers.redhat.com/articles/2026/03/13/manage-openshift-ai-dependencies-kustomize-argo-cd)
+
+## Naming conventions
+- Step folders: `step-XX-descriptive-name/` (e.g., `step-01-rhoai-platform`)
+- Overlays: `overlays/<purpose>/` (e.g., `overlays/aws/`, `overlays/demo/`)
+- Operator folders: group by operator name (e.g., `rhoai-operator/`, `nfd/`, `gpu-operator/`)
+
+## Output hygiene
+- Never require manual, out-of-band edits to cluster state (except secrets created per the secrets rule).
+- If a resource must be created by CLI or a PostSync Job, document why in the step README when it affects the architecture story and in `docs/OPERATIONS.md` when it affects operations.
+
+## Validation commands to include in README (as applicable)
+- `kustomize build <path> | oc apply --dry-run=server -f -`
+- `kustomize build <path> | oc diff -f -`
+- `kustomize build <path> | oc apply -f -`
+
+## Validation scripts
+Every step MUST have a `validate.sh` script using the shared `validate-lib.sh`:
+```bash
+source "$REPO_ROOT/scripts/validate-lib.sh"
+check "Label" "oc get ..." "expected-substring"
+check_argocd_app "step-XX-name"
+validation_summary
+```
+Exit codes: 0 = pass, 1 = critical failures, 2 = warnings only.
+
+## Argo CD Application Standards
+
+### AppProject
+All Applications MUST use `project: rhoai-demo` - never `default`.
+The `rhoai-demo` AppProject is created by `scripts/bootstrap.sh`.
+
+### Required metadata
+Every Application in `gitops/argocd/app-of-apps/` MUST include:
+```yaml
+metadata:
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/step: "XX"
+  annotations:
+    argocd.argoproj.io/sync-wave: "<step-number * 10>"
+    argocd.argoproj.io/manifest-generate-paths: gitops/step-XX-name
+```
+
+### No destructive finalizers
+**NEVER** add `resources-finalizer.argocd.argoproj.io` to Application metadata. Deleting an Application with this finalizer destroys all managed resources on the cluster - operators, namespaces, CRDs, and running workloads. This makes renaming, restructuring, or troubleshooting dangerous.
+
+Instead: rely on `automated.prune: true` for normal cleanup. If you need to cascade-delete, use `argocd app delete --cascade` explicitly.
+
+### In-cluster Jobs for cluster-specific tasks (gitops-catalog pattern)
+Tasks that require cluster-specific values (MachineSet creation, hostname patching, SA token creation, install plan approval) should use **Kubernetes Jobs** deployed as ArgoCD sync hooks when they can be made idempotent and safely reconciled.
+
+Pattern (based on [redhat-cop/gitops-catalog](https://github.com/redhat-cop/gitops-catalog)):
+```yaml
+# ServiceAccount + ClusterRole + ClusterRoleBinding (sync-wave N-1)
+# ConfigMap with script (sync-wave N-1)
+# Job with sync hook annotation (sync-wave N)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+```
+
+Rules for Jobs:
+- Use `argocd.argoproj.io/hook: Sync` to run during each sync
+- Use `BeforeHookCreation` delete policy so Jobs are re-runnable
+- Jobs MUST be idempotent (safe to re-run on every sync)
+- Use `registry.redhat.io/openshift4/ose-cli` as the base image
+- RBAC must be minimal - only the permissions the Job actually needs
+- `deploy.sh` should normally only apply the ArgoCD Application YAML and perform prerequisite checks or secret setup that cannot safely live in GitOps
+
+The `manifest-generate-paths` annotation prevents ArgoCD from re-reconciling this Application when files change in unrelated step directories.
+
+### Version pinning policy
+- **Active development:** `targetRevision: main` is acceptable.
+- **Demo releases:** Tag the repo (e.g., `v1.0`) and set `targetRevision: v1.0` across all Applications.
+- **Never** use `HEAD` as a targetRevision value.
+
+### Required syncPolicy
+| Setting | Value | Why |
+|---------|-------|-----|
+| `automated.prune` | `true` | Remove resources deleted from Git |
+| `automated.selfHeal` | `true` (default) | Revert imperative changes. **Exception:** steps managing GPU nodes or model scaling may use `false`. |
+| `retry.limit` | `10` | Operators need time to install CRDs |
+| `retry.backoff` | `5s / factor 2 / max 3m` | Exponential backoff |
+| `SkipDryRunOnMissingResource` | `true` | CRDs may not exist at first sync |
+| `ServerSideDiff` | `true` | Accurate diff for custom CRDs |
+| `RespectIgnoreDifferences` | `true` | Enables ignoreDifferences with ServerSideDiff |
+
+**Do NOT use:** `ServerSideApply=true` (breaks sync waves) or `Replace=true` (breaks PVCs).
+
+### Universal ignoreDifferences
+All Applications MUST include:
+```yaml
+ignoreDifferences:
+  - group: ""
+    kind: PersistentVolumeClaim
+    jsonPointers:
+      - /spec
+```
+PVC spec is immutable after creation; the cluster adds `storageClassName` and `volumeName`.
+
+### Operator-managed resource ignoreDifferences
+For RHOAI-managed CRs where the operator reconciles spec fields:
+```yaml
+ignoreDifferences:
+  - group: datasciencecluster.opendatahub.io
+    kind: DataScienceCluster
+    jqPathExpressions:
+      - .spec.components
+  - group: dscinitialization.opendatahub.io
+    kind: DSCInitialization
+    jqPathExpressions:
+      - .spec
+  - group: operators.coreos.com
+    kind: Subscription
+    jsonPointers:
+      - /metadata/annotations
+      - /spec/startingCSV
+```
+
+### Resource tracking
+`bootstrap.sh` sets `resourceTrackingMethod: annotation`. This MUST remain `annotation` only; never use `annotation+label` or `label`. Annotation tracking prevents false Out-of-Sync statuses from operator-generated resources in OpenShift.
+
+### Deployment pattern
+- Each step has an Argo CD Application in `gitops/argocd/app-of-apps/`
+- Applications point to `gitops/step-XX-name/base/` by default
+- Use `deploy.sh` scripts to apply the Argo CD Application and perform only prerequisite or orchestration tasks that cannot live cleanly in GitOps
+- Use `validate.sh` scripts as the deterministic readiness signal
+
+## MaaS and model access
+
+The demo teaches that model consumers should go through MaaS, not directly to scattered model endpoints. Do not bypass MaaS unless the task explicitly asks for a documented exception.
+
+Preserve the distinction between:
+- private local models on OpenShift
+- governed external models through MaaS
+- MCP/tool integrations with separate data boundaries
+
+## Workaround awareness
+
+Before modifying MaaS, gateway, RHOAI, or model-serving behavior, check `BACKLOG.md` for known RHOAI 3.3 and RHOAI 3.4-related workarounds.
+
+Do not remove workaround code only because it looks redundant. Confirm whether the underlying platform gap has been resolved. When removing a workaround, update `BACKLOG.md` to mark it as completed with the resolution date and verification evidence.
+
+## References
+
+- [How to manage RHOAI dependencies with Kustomize and Argo CD](https://developers.redhat.com/articles/2026/03/13/manage-openshift-ai-dependencies-kustomize-argo-cd) - Red Hat recommended patterns
+- [odh-gitops repository](https://github.com/opendatahub-io/odh-gitops) - Reference GitOps template for RHOAI dependencies
+- [OCP 4.20 - OpenShift GitOps (ArgoCD)](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/cicd/gitops)
+- [ArgoCD - Sync Options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
+
+## Agent Behavior
+
+After modifying files in `gitops/`:
+- If an ArgoCD Application was changed, verify it uses `project: rhoai-demo`, has `manifest-generate-paths`, and has required labels (`app.kubernetes.io/part-of`, `demo.rhoai.io/step`)
+- If a `kustomization.yaml` was changed, run `kustomize build <path>` to verify it renders without errors
+- If resources were added or removed from a kustomization, verify the resource file exists and is listed

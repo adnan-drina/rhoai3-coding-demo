@@ -1,0 +1,89 @@
+---
+description: Keep project knowledge in the right artifact. Consult existing docs before implementing, and update README, operations, and troubleshooting docs with new learnings.
+globs:
+alwaysApply: true
+---
+
+# Knowledge Base and Documentation Placement
+
+## Golden rule: read before you write
+Before implementing a change, consult the relevant step README, GitOps manifests, scripts, and operations docs. The documentation describes the intended demo story; the manifests and scripts describe the implemented behavior.
+
+## Documentation sources in this repo
+
+| Source | Purpose | When to consult |
+|--------|---------|-----------------|
+| `README.md` | Workshop landing article, architecture story, product map, quick start | Understanding the overall platform narrative |
+| `steps/step-XX-*/README.md` | Step-specific educational article and demo explanation | Before modifying a step or changing its story |
+| `docs/OPERATIONS.md` | Deployment, validation, GitOps operation, and day-2 usage notes | When changing deploy/validate behavior or operational flow |
+| `docs/TROUBLESHOOTING.md` | Symptom-based diagnostics and recovery | When fixing a failure mode or adding a known issue |
+| `steps/*/deploy.sh` | Executable deployment entrypoint | Before changing how a step is installed |
+| `steps/*/validate.sh` | Executable readiness and demo health check | Before claiming a step is healthy or demo-ready |
+| `gitops/**` | Declarative source of truth for cluster resources | Before documenting implemented platform behavior |
+
+## Content placement rules
+
+Use the smallest document that gives the reader the right kind of value:
+
+| Content type | Put it here |
+|--------------|-------------|
+| Why the step matters, what it teaches, Red Hat product value, open source context | Step README |
+| Architecture and trust boundaries | Root README or step README |
+| Exact deployment order, script behavior, validation commands, Argo CD operations | `docs/OPERATIONS.md` |
+| Failure symptoms, root causes, diagnostic commands, recovery steps | `docs/TROUBLESHOOTING.md` |
+| Cluster-specific commands that users should run repeatedly | Script, then reference from operations docs |
+| Future ideas or non-implemented enhancements | README section clearly marked as future/deferred |
+
+Do not turn step READMEs into runbooks. They should teach the platform and explain the demo. Operational detail belongs in `docs/OPERATIONS.md` and recovery detail belongs in `docs/TROUBLESHOOTING.md`.
+
+## Enhance documentation when you learn something new
+
+When resolving an issue or discovering a reusable pattern:
+
+1. If it changes implemented behavior, update manifests/scripts and the relevant docs together.
+2. If it changes how users operate the demo, update `docs/OPERATIONS.md`.
+3. If it is a failure mode or workaround, update `docs/TROUBLESHOOTING.md`.
+4. If it changes the value story, architecture, or trust boundary, update the relevant README.
+5. If it affects another step, add a cross-reference using the real step directory name.
+
+## Troubleshooting entry template
+
+Use this shape in `docs/TROUBLESHOOTING.md`:
+
+````markdown
+## <Symptom>
+
+**Where it appears:** <step/component>
+
+**Likely cause:** <short explanation>
+
+**Check:**
+
+```bash
+<diagnostic command>
+```
+
+**Recover:**
+
+```bash
+<safe recovery command>
+```
+
+**Related docs:** <official docs or local doc link>
+````
+
+## Version-sensitive notes
+
+Tag version-sensitive information explicitly:
+
+```markdown
+> Note: This behavior was verified with OpenShift 4.20 and the product versions listed in the root README.
+```
+
+When official documentation conflicts with the implementation, do not silently choose one. Document the conflict, explain the demo-specific reason, and include a verification command.
+
+## Official docs remain the source of truth
+
+- Local documentation supplements, but does not replace, official Red Hat documentation.
+- Prefer official Red Hat documentation links for product behavior and supported configuration.
+- Prefer upstream project documentation only for open source internals that are not covered by Red Hat product docs.

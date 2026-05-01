@@ -1,0 +1,40 @@
+name: Workaround tracking
+description: Track a temporary workaround or platform limitation
+title: "[Workaround]: "
+labels: ["workaround", "technical-debt"]
+body:
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: What workaround exists?
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why it exists
+      description: What platform gap, version issue, or limitation requires it?
+    validations:
+      required: true
+  - type: textarea
+    id: affected_files
+    attributes:
+      label: Affected files
+      description: Which files implement or document the workaround?
+    validations:
+      required: true
+  - type: textarea
+    id: removal_condition
+    attributes:
+      label: Removal condition
+      description: When can this workaround be removed?
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation needed before removal
+      description: How should we prove the workaround is no longer needed?
+    validations:
+      required: false

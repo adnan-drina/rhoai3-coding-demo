@@ -1,0 +1,135 @@
+---
+description: Use when creating or updating the project root README.md. The root README is the workshop landing article and must explain the enterprise AI platform story before operational details.
+globs: README.md
+alwaysApply: false
+---
+
+# Root README Standard: Workshop Landing Article
+
+The root `README.md` is the first artifact many readers will see. It should read like a Red Hat technical article for a product demo, not like an installation runbook.
+
+The document must explain the enterprise platform pattern:
+- Why regulated organizations need trusted AI development platforms.
+- How private local models and governed external models can coexist.
+- How Red Hat products package, integrate, and operate the platform capabilities.
+- How open source projects provide the innovation foundation.
+- How each workshop step contributes to the complete story.
+
+## Required Structure
+
+Use this structure unless there is a strong reason not to:
+
+```markdown
+# Trusted Enterprise AI Development Platform on Red Hat OpenShift AI
+
+## Why This Workshop Exists
+
+## Architecture
+
+![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)
+
+## What We Are Building
+
+## What The Demo Proves
+
+## How Red Hat And Open Source Make It Work
+
+## Red Hat Products Demonstrated
+
+## Open Source Projects You Will Meet
+
+## Trust Boundaries
+
+## Why This Is Worth Knowing
+
+## Running The Workshop
+
+## Repository Map
+
+## Demo Personas
+
+## References
+```
+
+Operational content is allowed, but it must come after the architecture and learning narrative.
+
+The root README is not a runbook. Keep detailed deployment operations in `docs/OPERATIONS.md` and recovery procedures in `docs/TROUBLESHOOTING.md`. Do not claim capabilities that the repo does not implement. Label future or deferred capabilities clearly, and make trust boundaries, external services, credentials, and data movement visible.
+
+## Red Hat Product Demo Requirements
+
+The root README must include a clear Red Hat product map. At minimum, cover products currently used by the repo:
+
+- Red Hat OpenShift
+- Red Hat OpenShift AI
+- Red Hat OpenShift GitOps
+- Red Hat OpenShift Dev Spaces
+- Migration Toolkit for Applications
+- Developer Lightspeed for MTA
+- Red Hat Developer Hub
+- Red Hat Connectivity Link
+- Red Hat build of Keycloak, when identity brokering is part of the flow
+
+For each product, describe its role in the workshop. The reader should understand why this is a Red Hat platform demo.
+
+## Open Source Education Requirements
+
+The root README must include an open source project map. Explain how upstream projects fit into the Red Hat product/platform story.
+
+Common projects in this repo:
+- Open Data Hub and models-as-a-service
+- KServe
+- vLLM
+- llm-d
+- Gateway API
+- Kuadrant and Authorino
+- Eclipse Che and DevWorkspace
+- Continue and OpenCode
+- Konveyor
+- Backstage
+
+The open source section should educate, not only list links.
+
+## Trust Boundary Requirements
+
+The root README must include an explicit trust boundary table or equivalent explanation.
+
+Required distinction:
+- Private local models keep prompts/code within the OpenShift platform boundary.
+- Governed external models are centrally controlled through MaaS but still process prompts outside the platform.
+
+Never imply that all model paths are private when external models are included.
+
+## Synchronization Rules
+
+Keep the root README synchronized with the repo:
+- Step table must match actual `steps/` directories.
+- Deploy command list must match actual step directories.
+- Repository map must match actual layout.
+- Product list must match major Red Hat products actually used.
+- References must include official Red Hat docs/product pages for products mentioned.
+
+## Architecture Diagram Convention
+
+The root README includes an SVG architecture diagram under a `## Architecture` heading. The diagram is placed **after** "Why This Workshop Exists" and **before** "What We Are Building" — the reader understands the motivation first, sees the platform map, then reads the details.
+
+- The diagram lives at `docs/assets/architecture/rhoai-capability-map.svg`.
+- Use a markdown image reference: `![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)`
+- Do not place the diagram at the top of the file or before the title.
+
+## Style Rules
+
+- Blog-like prose first, operations second.
+- Use sequential heading levels.
+- Use `-` for unordered lists.
+- Use fenced code blocks with language identifiers.
+- Prefer SVG architecture diagrams from `docs/assets/architecture/` over inline ASCII diagrams.
+- Keep the root README concise enough to be readable; use step READMEs for depth.
+
+## Agent Behavior
+
+After modifying the root README:
+- Verify no literal "Tell:" or "Show:" labels remain.
+- Verify product map and open source map are present.
+- Verify trust boundary language is precise.
+- Verify deploy commands and step links match the repo.
+- Run `git diff --check`.

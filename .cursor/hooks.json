@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/validate-yaml.sh",
+        "matcher": "Write"
+      },
+      {
+        "command": ".cursor/hooks/check-docs-consistency.sh",
+        "matcher": "Write",
+        "fileMatcher": "gitops/step-*/**,steps/step-*/**"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "python3 .cursor/hooks/guard-oc-commands.py",
+        "matcher": "oc delete|oc scale.*--replicas=0"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": ".cursor/hooks/session-init.sh"
+      }
+    ]
+  }
+}

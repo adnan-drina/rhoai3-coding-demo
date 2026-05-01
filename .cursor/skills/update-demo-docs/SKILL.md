@@ -1,0 +1,115 @@
+---
+name: update-demo-docs
+metadata:
+  author: rhoai3-coding-demo
+  version: 1.0.0
+description: >
+  Check and update documentation consistency after a change. Use when scripts,
+  manifests, or demo flow change and documentation might be stale. Inspects
+  README.md, step READMEs, OPERATIONS.md, TROUBLESHOOTING.md, and BACKLOG.md
+  for consistency with the current implementation. Do NOT use for writing
+  operational docs from scratch (use demo-operations-docs skill), rewriting
+  educational narrative (use README rules), or troubleshooting (use
+  rhoai-troubleshoot).
+---
+
+# Update Demo Docs
+
+Use this skill after any behavior change to ensure documentation stays
+consistent with the implementation.
+
+## When to invoke
+
+- After changing deploy scripts, validate scripts, or GitOps manifests
+- After adding, removing, or modifying a demo step
+- After resolving or adding a workaround
+- After changing model serving, MaaS, or gateway behavior
+- After changing Dev Spaces, MTA, or Developer Hub configuration
+- When a PR touches code but no docs
+
+## Documents to check
+
+| Document | Check for |
+|----------|-----------|
+| `README.md` | Step table accuracy, product map, trust boundaries, deploy commands |
+| `steps/step-XX-*/README.md` | Architecture claims, "What This Step Adds", trust boundary language |
+| `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
+| `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
+| `BACKLOG.md` | Workaround status, new limitations, resolved items |
+
+## Consistency checks
+
+### 1. Step table matches reality
+
+Verify the root README step table matches:
+- Actual directories under `steps/`
+- Actual Argo CD applications under `gitops/argocd/app-of-apps/`
+- Step numbering and names
+
+### 2. Deploy commands match scripts
+
+Verify commands in README and OPERATIONS.md match what the scripts actually do.
+
+### 3. Trust boundary language is accurate
+
+After model-serving or gateway changes:
+- Private model claims still hold
+- External model descriptions are accurate
+- MaaS role is correctly described
+
+### 4. Product and version references
+
+After operator or version changes:
+- Product versions in README match manifests
+- Official doc links are for the correct version
+- No stale version references
+
+### 5. Workaround documentation
+
+After resolving or adding a workaround:
+- `BACKLOG.md` reflects the current state
+- `docs/TROUBLESHOOTING.md` has relevant entries
+- Workaround code has comments explaining why
+
+### 6. Cross-references
+
+- Step READMEs link to next/previous steps correctly
+- Operations doc references real namespaces and resource names
+- Troubleshooting entries reference real commands
+
+## Workflow
+
+1. Identify the behavior change (from git diff or task context).
+2. Check each document in the table above for staleness.
+3. For each stale section, determine the correct content from manifests/scripts.
+4. Update the document following its rules:
+   - READMEs: educational, blog-like (rule `20-readme-standard.mdc`)
+   - OPERATIONS.md: operational, copy-pastable (rule `22-operations-docs.mdc`)
+   - TROUBLESHOOTING.md: symptom-driven (rule `22-operations-docs.mdc`)
+   - BACKLOG.md: status tracking with removal conditions
+5. Run `git diff --check` after edits.
+
+## Output format
+
+```markdown
+## Documentation consistency check
+
+### Changed behavior
+- [describe what changed]
+
+### Documents updated
+- [list of files updated with brief description]
+
+### Documents verified (no update needed)
+- [list of files checked and confirmed current]
+
+### Documents that could not be verified
+- [any docs requiring live cluster confirmation]
+```
+
+## What this skill must never do
+
+- Turn READMEs into runbooks (operational content belongs in OPERATIONS.md)
+- Claim capabilities that are not backed by manifests/scripts
+- Remove workaround documentation without confirmed resolution
+- Add operational detail to step READMEs (use OPERATIONS.md)

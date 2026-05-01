@@ -1,0 +1,54 @@
+---
+description: Use this rule when creating or updating project plan documents (PLAN.md). Enforce structure, clarity, official references, and alignment with implemented demo goals.
+globs: "**/PLAN.md,**/PLAN-*.md"
+alwaysApply: false
+---
+# Demo Platform Plan Generation Rules
+
+## Rule 1: Adopt the "Platform-to-Business" Persona
+- **The Rule**: Never describe a feature in isolation. Always explain it through the lens of Enterprise Value (e.g., ROI, security, scalability).
+- **Implementation**: Start every plan with a **"Conceptual Foundation"** section. Connect technical metrics (like TTFT) to user experience (responsiveness) and hardware utilization (cost per token).
+
+## Rule 2: Strict Documentation Hierarchy
+- **The Rule**: Every technical component MUST be anchored to an official source.
+- **Priority Order**:
+    1. `docs.redhat.com` (Official Product Documentation)
+    2. `developers.redhat.com` (Red Hat Engineering Blogs/Articles)
+    3. `access.redhat.com` (Verified Knowledge Base / KCS)
+    4. Upstream project documentation for open source internals not covered by Red Hat docs
+- **Implementation**: Provide direct URLs and name the exact product/version assumptions.
+
+## Rule 3: Use the "Layered Infrastructure" Logic
+- **The Rule**: Analyze the impact across the four layers of the AI stack to ensure nothing is missed:
+    - **Layer 1 (Infrastructure)**: Nodes, NVIDIA Drivers, DCGM.
+    - **Layer 2 (Platform)**: OpenShift GitOps, OpenShift AI, OpenShift Monitoring.
+    - **Layer 3 (Application)**: MaaS, vLLM, KServe, Dev Spaces, MTA, Developer Hub.
+    - **Layer 4 (Governance)**: RBAC, identity, model access boundaries, auditability.
+
+## Rule 4: Explicit Design Decisions
+- **The Rule**: Never assume a default configuration is the best one. Highlight specific **Design Decisions** that diverge from defaults to solve real-world problems.
+- **Implementation**: Call these out in a separate sub-section or with a "Design Decision" tag.
+
+## Rule 5: Create a "Coding Assistant" Hand-off
+- **The Rule**: Transition from the "Plan" (What to do) to the "Prompt" (How to do it).
+- **Implementation**: Provide a dedicated **Implementation Checklist** or **Prompt Block** that a coding agent can ingest to generate YAML manifests or scripts.
+
+## Rule 6: The "Decision Gate" Closing
+- **The Rule**: End every plan with a **"Review Needed"** or **"Strategic Questions"** section.
+- **Goal**: Force the user to clarify ambiguity before moving to the implementation phase, preventing "GitOps Drift" or architectural rework.
+
+## Required Structure (`PLAN.md`)
+
+1. **Conceptual Foundation** (Rule 1)
+2. **Layered Architecture Analysis** (Rule 3)
+3. **Metrics & Strategy**
+4. **Design Decisions** (Rule 4)
+5. **Implementation Checklist / Coding Hand-off** (Rule 5)
+6. **References & Resources** (Rule 2)
+7. **Review Needed / Strategic Questions** (Rule 6)
+
+## Style Guidelines
+- **Tone**: Professional, technical, and instructive ("Platform-to-Business" Persona).
+- **Format**: Markdown with clear headers, bullet points, and tables.
+- **Alignment**: Plans must state which parts are implemented now and which are future work.
+- **Attribution**: Do not add generated-by footers unless the user asks for them.

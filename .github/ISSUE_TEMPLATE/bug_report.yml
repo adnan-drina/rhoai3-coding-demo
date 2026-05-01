@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a problem with the demo, scripts, GitOps, or documentation
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: step
+    attributes:
+      label: Demo step
+      description: Which step is affected?
+      placeholder: "step-01, step-02, step-03, step-04, step-05, step-06"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or command output
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Cluster version, RHOAI version, GPU type, branch, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation attempted
+      description: What commands did you run?
+    validations:
+      required: false

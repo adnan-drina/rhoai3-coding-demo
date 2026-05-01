@@ -1,0 +1,124 @@
+---
+description: Use for OpenShift and Red Hat AI platform manifests. Ensure CRDs/operators match the target product versions and include verification steps.
+globs: gitops/**/*.yaml,gitops/**/*.yml,manifests/**/*.yaml,manifests/**/*.yml,**/*.openshift*.yaml,**/*rhoai*.yaml
+alwaysApply: false
+---
+
+# OpenShift and Red Hat AI Platform Manifest Rules
+
+## YAML formatting
+
+- Use 2-space indentation; never tabs
+- Use `.yaml` extension (not `.yml`)
+- One resource per file - name the file after the resource kind or purpose (e.g., `deployment.yaml`, `subscription.yaml`)
+- Order top-level keys: `apiVersion` > `kind` > `metadata` > `spec` > `data`/`stringData`
+- Use block style for multi-line strings (`|` for literal, `>` for folded)
+- End files with a single newline
+- Use `true`/`false` for booleans; never `yes`/`no`
+
+## Doc-validated schemas only
+- If editing/creating CRs (Operators, CRDs, custom resources), verify the schema first:
+  - `oc explain <kind>`
+  - `oc get crd <name> -o yaml` (to confirm versions/fields)
+- Do not "guess" fields based on other versions or upstream projects.
+
+## Version alignment
+- Ensure all manifests align with:
+  - RHOCP 4.20 behaviors/APIs
+  - the Red Hat product versions listed in the root README and `00-demo-doc-first.mdc`
+  - the CRDs and API versions installed on the target cluster
+- If the cluster exposes different API versions than expected, call it out and adapt the manifest accordingly.
+
+## Every step must include validation
+When adding a manifest, also provide:
+- How to confirm the operator reconciled it (events/status conditions)
+- The minimal `oc` commands to verify it works
+
+## YAML comment hygiene
+
+Comments in YAML manifests must explain **why**, never restate **what**.
+
+### Do NOT add
+- **Title comments** that restate the `kind` - the YAML already says `kind: Namespace`.
+  Bad: `# Namespace for RHOAI Operator`
+  Bad: `# OperatorGroup for RHOAI`
+- **Decorative section headers** - no `# ===` or `# ---` borders.
+- **Blank spacer lines** (`#` with no text) between comment lines.
+- **Field narration** - do not narrate obvious fields.
+  Bad: `# Use stable-3.x channel` above `channel: stable-3.x`
+
+### DO add
+- **Why / design decisions**: explain non-obvious choices, workarounds, caveats.
+- **Ref links**: `# Ref: https://docs.redhat.com/...`
+- **Warnings**: `# DEMO VALUES ONLY`, `# IMPORTANT:`, `# NOTE:`
+- **Constraints**: things that will break if changed (e.g., ordering, naming conventions).
+
+### kustomization.yaml resources lists
+List resources without per-resource comments unless the entry has a non-obvious reason:
+```yaml
+resources:
+  - namespace.yaml
+  - operatorgroup.yaml
+  - subscription.yaml
+  # Must be created before DataScienceCluster
+  - dsci.yaml
+```
+
+## Cross-resource consistency
+
+Linters validate individual resources but cannot detect broken links between them.
+When creating or modifying manifests, verify these cross-references resolve:
+
+### Selector alignment
+Service and NetworkPolicy `selector` must match Pod **template** labels (not
+Deployment metadata labels). Every label key AND value must match exactly.
+
+### Name references must resolve
+Every name reference must point to a resource that exists in the kustomize base:
+- `volumes[].configMap.name` / `volumes[].secret.secretName` -> ConfigMap / Secret
+- `envFrom[].configMapRef.name` / `envFrom[].secretRef.name` -> ConfigMap / Secret
+- `serviceAccountName` -> ServiceAccount
+- Ingress/Route backend `service.name` -> Service
+- RoleBinding `subjects[].name` -> ServiceAccount; `roleRef.name` -> Role/ClusterRole
+
+If a referenced resource is created at runtime (e.g., by an operator or `deploy.sh`),
+add a comment: `# Created by <operator/script> at deploy time`
+
+### Port consistency
+- Service `targetPort` must match a Pod `containerPort` (by name or number)
+- Route `targetPort` must match a Service port name
+
+### Namespace consistency
+All cross-referenced resources must share a namespace (except ClusterRole/ClusterRoleBinding).
+
+### Do not rationalize missing references
+
+| Rationalization | Why it's wrong |
+|----------------|----------------|
+| "The ConfigMap probably exists in the cluster" | Untracked dependency - flag it explicitly |
+| "RBAC is handled by cluster admins" | If the manifest has `serviceAccountName`, the RBAC chain must be traceable |
+| "The selector probably works" | Verify character by character |
+| "These are Kustomize bases, overlays add the rest" | Validate what's present; flag missing resources with a note about the expected overlay |
+
+## Static validation tooling
+
+When available locally, use these tools for pre-commit validation:
+
+- **kube-linter** - best practices + security checks
+- **kubeconform** - Kubernetes schema validation (core resources only; CRDs skipped)
+- **`oc apply --dry-run=server`** - validates against the live cluster including CRDs
+
+`oc apply --dry-run=server` remains the authoritative validation method since it validates
+CRD schemas that the offline tools cannot.
+
+## Agent Behavior
+
+After modifying Kubernetes/OpenShift YAML manifests:
+- Verify the manifest has correct key ordering (`apiVersion` > `kind` > `metadata` > `spec`)
+- If the file is part of a Kustomize base, run `kustomize build <base-path>` to verify it renders
+- For new or significantly changed manifests, validate with `kustomize build <path> | oc apply --dry-run=server -f -`
+- Verify the target cluster context before suggesting `oc apply` commands: `oc whoami` and `oc project`
+- Scope operations to an explicit namespace; never rely on the default namespace
+- After mutations, confirm resource state: `oc get <resource> -n <namespace>`
+- When removing a resource from `kustomization.yaml`, also delete the unreferenced file to prevent orphaned manifests
+- **Verify cross-resource consistency**: check that selector labels, ConfigMap/Secret names, ServiceAccount names, and port references resolve to existing resources in the kustomize base

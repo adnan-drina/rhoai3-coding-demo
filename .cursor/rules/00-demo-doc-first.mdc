@@ -1,0 +1,61 @@
+---
+description: Global demo rules for this repo. Enforce doc-first behavior, official documentation alignment, and reproducible GitOps steps.
+globs:
+alwaysApply: true
+---
+
+# Project Purpose (always in effect)
+This repository demonstrates a governed enterprise AI developer platform on Red Hat OpenShift. The demo combines private/local models, governed external model access, GitOps, Dev Spaces, Migration Toolkit for Applications, and Developer Hub to support AI-assisted development and modernization.
+
+## Product and version posture
+The demo evolves across Red Hat product releases and early-access features. Do not invent or normalize versions in documentation. Use the versions currently implemented by the manifests and scripts.
+
+Current target posture:
+- Red Hat OpenShift Container Platform 4.20
+- Red Hat OpenShift AI 3.3 plus selected 3.4 early-access MaaS capabilities where explicitly documented
+- Red Hat OpenShift GitOps for Argo CD based reconciliation
+- Red Hat OpenShift Dev Spaces for cloud development environments
+- Migration Toolkit for Applications 8.1 for modernization analysis and Developer Lightspeed
+- Red Hat Developer Hub 1.9 for the developer portal
+- Red Hat build of Keycloak where used by MTA authentication flows
+
+If changing a version, update the manifests, validation logic, README narrative, operations notes, and references together.
+
+## Absolute priority: official documentation alignment
+- Treat official Red Hat documentation for the relevant product versions as the source of truth.
+- The repo has official docs indexed in Cursor (via @docs). When implementing or validating anything, consult those indexed docs.
+- Do **not** invent CR fields, API versions, annotations, or operator configurations. If unsure, say what you need to verify and propose the verification command.
+
+## YAML correctness requirement
+Whenever generating or modifying Kubernetes/OpenShift YAML:
+- Use the **exact** `apiVersion`, `kind`, and schema supported by the installed operators/cluster version.
+- Validate per `40-openshift-rhoai-manifests.mdc` (schema validation, cross-resource consistency, comment hygiene).
+- Prefer small, composable manifests; avoid overly clever templating.
+
+## Demo reliability > novelty
+- Prefer stable, boring solutions that consistently work.
+- Every change must be reproducible from GitOps (`gitops/`) and must include clear verification steps.
+
+## Bootstrap configuration (set by `scripts/bootstrap.sh`)
+- ArgoCD `resourceTrackingMethod` MUST be `annotation` (not `label` or `annotation+label`)
+- The `rhoai-demo` AppProject MUST exist; all Applications use `project: rhoai-demo`
+- The ArgoCD application controller has `cluster-admin` via ClusterRoleBinding (acceptable for demo)
+- Custom health checks are configured for PVC (WaitForFirstConsumer), InferenceService, and TrustyAIService
+
+## Self-signed certs are acceptable to bypass
+See `30-secrets-and-certs.mdc` for details. Use `--insecure-skip-tls-verify=true` (oc) and `-k` (curl) freely.
+
+## Agent Behavior
+- Before running `oc` commands that modify cluster state, verify the cluster context: `oc whoami` and `oc project`
+- Before modifying a step, read its README in `steps/step-XX-descriptive-name/README.md` first
+- Every implemented step has at least three user-facing deliverables: `deploy.sh`, `validate.sh`, and `README.md`
+- Every GitOps-managed step also has an Argo CD Application under `gitops/argocd/app-of-apps/` and Kustomize source under `gitops/step-XX-descriptive-name/base/`
+
+## Documentation Alignment
+- READMEs are educational technical articles, not runbooks.
+- Operations content belongs in `docs/OPERATIONS.md`.
+- Failure recovery belongs in `docs/TROUBLESHOOTING.md`.
+- Keep code, manifests, scripts, validation, and documentation aligned in the same change.
+- Do not claim capabilities that are not implemented by manifests, scripts, validation, or examples.
+- Label future or deferred capabilities explicitly.
+- Make trust boundaries, credentials, external services, and data movement explicit.

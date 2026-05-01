@@ -1,0 +1,46 @@
+name: Demo change
+description: Propose a change to the workshop or demo flow
+title: "[Demo]: "
+labels: ["demo", "needs-triage"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should the demo show after this change?
+    validations:
+      required: true
+  - type: textarea
+    id: affected_steps
+    attributes:
+      label: Affected steps
+      description: Which workshop steps are affected?
+      placeholder: "Step 03 MaaS, Step 04 Dev Spaces, docs, scripts, etc."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this to be complete?
+      placeholder: |
+        - README updated
+        - GitOps manifests updated
+        - Validation script passes
+        - Troubleshooting docs updated
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: How should this be validated?
+    validations:
+      required: false
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: What should not be changed?
+    validations:
+      required: false

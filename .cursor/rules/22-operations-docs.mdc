@@ -1,0 +1,63 @@
+---
+description: Use when creating or updating operational docs under docs/OPERATIONS.md or docs/TROUBLESHOOTING.md. Keeps runbook content separate from educational README content.
+globs: docs/OPERATIONS.md,docs/TROUBLESHOOTING.md
+alwaysApply: false
+---
+
+# Operations Documentation Standard
+
+Operational docs are the runbook layer for this repository. They complement, but do not replace:
+
+- Educational README files
+- `deploy.sh` scripts
+- `validate.sh` scripts
+
+## Document Responsibilities
+
+| File | Responsibility |
+|------|----------------|
+| `docs/OPERATIONS.md` | Deployment order, validation strategy, GitOps operations, step-specific operational checks |
+| `docs/TROUBLESHOOTING.md` | Failure symptoms, likely causes, diagnostic commands, recovery procedures |
+
+Do not move architecture storytelling back into these docs. Keep the READMEs educational and the docs operational.
+
+Keep code, manifests, scripts, validation, and docs aligned. Operational docs must not describe deployment flows, exit codes, credentials, or recovery paths that the repository does not implement.
+
+## Operations Doc Rules
+
+When updating `docs/OPERATIONS.md`:
+
+- Reference scripts instead of duplicating script logic.
+- Explain what the scripts do and when to run them.
+- Keep deployment order synchronized with actual `steps/` directories.
+- Keep Argo CD app names synchronized with `gitops/argocd/app-of-apps/`.
+- Document validation exit codes and interpretation.
+- Include commands that are safe, deterministic, and copy-pastable.
+
+## Troubleshooting Doc Rules
+
+When updating `docs/TROUBLESHOOTING.md`:
+
+- Use symptom-driven headings.
+- Include affected step.
+- Include likely cause.
+- Include diagnostic commands.
+- Include recovery commands only when the recovery is understood and safe.
+- Prefer minimal recovery over destructive reset.
+- Never recommend `git reset --hard`, `oc delete namespace`, or broad deletion unless explicitly required and clearly warned.
+
+## Source Of Truth
+
+- Exact deployment behavior lives in `deploy.sh`.
+- Exact validation behavior lives in `validate.sh`.
+- Architecture and product story live in READMEs.
+- Known failure recovery lives in `docs/TROUBLESHOOTING.md`.
+
+## Agent Behavior
+
+After modifying operational docs:
+
+- Verify step list matches `find steps -maxdepth 1 -type d`.
+- Verify Argo CD app names match files in `gitops/argocd/app-of-apps/`.
+- Verify commands use existing namespaces and resource names.
+- Run `git diff --check`.

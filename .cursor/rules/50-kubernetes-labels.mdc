@@ -1,0 +1,158 @@
+---
+description: Use when adding or updating Kubernetes labels or OpenShift annotations on manifests. Enforce recommended labeling conventions for OpenShift Topology and demo traceability.
+globs: gitops/**/*.yaml
+alwaysApply: false
+---
+
+# Kubernetes and OpenShift Labeling Standards
+
+## Overview
+
+This rule defines labeling and annotation conventions for Kubernetes and OpenShift resources in this project, following:
+- [Kubernetes recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+- [Guidelines for Labels and Annotations for OpenShift Applications](https://github.com/redhat-developer/app-labels/blob/master/labels-annotation-for-openshift.adoc)
+- [OpenShift 4.20 Topology View](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/building_applications/index#odc-viewing-application-composition-using-topology-view)
+
+Labels should make resources easy to inspect with `oc get`, useful in the OpenShift Topology view, and traceable back to the demo step that created them.
+
+## Required Kubernetes labels
+
+All workload and operator resources should include these labels when the target kind supports labels:
+
+| Label | Status | Purpose | Example |
+|-------|--------|---------|---------|
+| `app.kubernetes.io/part-of` | Recommended | Groups resources by platform capability | `maas` |
+| `app.kubernetes.io/name` | Recommended | Identifies the component name | `rhods-operator` |
+| `app.kubernetes.io/component` | Recommended | Identifies the component role | `operator` |
+| `app.kubernetes.io/instance` | Recommended | Unique instance name when different from `name` | `rhods-operator-step-01` |
+| `app.kubernetes.io/managed-by` | Recommended | Tool managing the resource | `argocd` |
+
+Label values must be under 63 characters and valid per Kubernetes label syntax rules.
+
+## Optional Kubernetes labels
+
+| Label | Purpose | Example |
+|-------|---------|---------|
+| `app.kubernetes.io/version` | Product or component version when stable and meaningful | `"8.1"`, `"1.9"` |
+| `demo.rhoai.io/step` | Demo step number for resources where step tracing helps | `"05"` |
+
+Do not hardcode a version label unless the manifest really owns that version. Operator-managed operands often change versions through CSVs or operator reconciliation.
+
+## Values for `app.kubernetes.io/part-of`
+
+Use short functional group names, not step numbers:
+
+| Group | Value | Resources |
+|-------|-------|-----------|
+| RHOAI Platform | `rhoai-platform` | RHOAI operator, DataScienceCluster, DSCInitialization, dashboard resources |
+| GPU Infrastructure | `gpu-infra` | NFD, NVIDIA GPU Operator, MachineSets, GPU node setup Jobs |
+| LLM Serving | `llm-serving` | KServe, vLLM, llm-d, ServingRuntime, InferenceService |
+| Model-as-a-Service | `maas` | MaaS gateway, model references, external model registration, gateway auth |
+| Dev Spaces | `devspaces` | Dev Spaces operator, CheCluster, DevWorkspaces, workspace bootstrapping |
+| MTA Modernization | `mta-modernization` | MTA operator, Tackle, Developer Lightspeed, MTA seed/configuration Jobs |
+| Developer Hub | `developer-hub` | RHDH operator, Backstage CR, catalog/configuration resources |
+| Identity | `identity` | OAuthClient, Keycloak/OIDC integration resources |
+| Observability | `observability` | Dashboards, ServiceMonitors, Grafana data sources, demo monitoring links |
+| GitOps | `gitops` | AppProject, Argo CD configuration, app-of-apps resources |
+
+Add a new value only when a resource does not fit one of these groups.
+
+## Values for `app.kubernetes.io/component`
+
+Use standard values from the Red Hat app-labels guide where possible, extended with demo-specific roles:
+
+| Value | Description | Examples in this demo |
+|-------|-------------|----------------------|
+| `operator` | Operator subscription and operator configuration | RHOAI, Dev Spaces, MTA, RHDH operators |
+| `inference` | Model-serving endpoint or runtime | InferenceService, ServingRuntime, vLLM |
+| `gateway` | API gateway or model access endpoint | MaaS gateway |
+| `auth` | Authentication or authorization integration | OAuthClient, Authorino, Keycloak config Jobs |
+| `backend` | API or control-plane service | MTA Hub, RHDH backend |
+| `frontend` | User-facing UI | MTA UI, RHDH UI, dashboard resources |
+| `database` | Data persistence | Postgres, MariaDB, MTA DB |
+| `workspace` | Developer workspace or workspace template | DevWorkspace |
+| `job` | One-shot or sync hook automation | PostSync patch/seed Jobs |
+| `monitoring` | Observability components | ServiceMonitor, dashboards |
+
+## OpenShift-specific labels
+
+These labels improve the OpenShift Console Topology view:
+
+| Label | Status | Purpose | Example |
+|-------|--------|---------|---------|
+| `app.openshift.io/runtime` | Recommended | Displays a recognizable runtime icon in Topology | `java`, `nodejs`, `python`, `postgresql` |
+| `app.openshift.io/runtime-version` | Optional | Runtime version display | `"17"`, `"20"` |
+
+## OpenShift-specific annotations
+
+| Annotation | Status | Purpose | Example |
+|------------|--------|---------|---------|
+| `app.openshift.io/connects-to` | Optional | Draws dependency arrows in Topology | `'["maas-gateway"]'` |
+| `app.openshift.io/vcs-uri` | Recommended | Links component to source code from Topology view | `https://github.com/adnan-drina/rhoai3-coding-demo.git` |
+| `app.openshift.io/vcs-ref` | Optional | Branch, tag, or commit SHA for source link | `main` |
+
+## RHOAI dashboard annotations
+
+ServingRuntime resources created through GitOps must include the annotations required for the OpenShift AI dashboard to render the runtime correctly:
+
+| Annotation | Purpose | Example |
+|------------|---------|---------|
+| `opendatahub.io/template-name` | Links to the platform template | `vllm-cuda-runtime` |
+| `opendatahub.io/template-display-name` | Display name in Dashboard | `vLLM CUDA Runtime` |
+| `opendatahub.io/apiProtocol` | Protocol indicator | `REST` |
+
+To find platform templates:
+
+```bash
+oc get template -n redhat-ods-applications --no-headers -o custom-columns='NAME:.metadata.name'
+```
+
+## Example
+
+```yaml
+metadata:
+  labels:
+    app.kubernetes.io/name: mta
+    app.kubernetes.io/instance: mta
+    app.kubernetes.io/version: "8.1"
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/part-of: mta-modernization
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/step: "05"
+  annotations:
+    app.openshift.io/vcs-uri: https://github.com/adnan-drina/rhoai3-coding-demo.git
+```
+
+## Argo CD Application labels
+
+Argo CD Application objects in `gitops/argocd/app-of-apps/` use a separate label set from workload resources:
+
+```yaml
+metadata:
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/step: "XX"
+```
+
+These labels group all demo Applications in the Argo CD UI. Do not use workload `part-of` values like `maas` or `developer-hub` on Application objects.
+
+## Anti-patterns
+
+- Step numbers in `app.kubernetes.io/part-of`, such as `step-01-rhoai-platform`
+- Generic values, such as `app`, `demo`, or `platform`, when a specific capability exists
+- Overly long values, such as `rhoai-platform-operator-subscription-config`
+- Version labels that drift from the operator-managed installed version
+
+## Agent behavior
+
+When adding a manifest:
+- Add labels where the resource kind supports them.
+- Use an existing `part-of` value unless a new platform capability is being introduced.
+- Keep labels consistent across related Namespace, Subscription, CR, Service, Route, and Job resources.
+- If labels affect README diagrams, OpenShift Console screenshots, or validation selectors, update those docs/scripts together.
+
+## References
+
+- [Kubernetes Recommended Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+- [Guidelines for Labels and Annotations for OpenShift Applications](https://github.com/redhat-developer/app-labels/blob/master/labels-annotation-for-openshift.adoc)
+- [OpenShift 4.20 Topology View - Labels and Annotations](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/building_applications/index#odc-viewing-application-composition-using-topology-view)
