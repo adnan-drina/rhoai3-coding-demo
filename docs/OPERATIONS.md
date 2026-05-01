@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Git commit: `bd36c8e`
+- Git commit: `157d2ba`
 
 Preflight:
 
@@ -221,6 +221,13 @@ Stage results:
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 6 passed, 2 warnings, 0 failed |
 | 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 5 passed, 0 warnings, 0 failed |
 | 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 20 passed, 0 warnings, 0 failed |
+| 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 10 passed, 0 warnings, 0 failed |
+
+Final sweep:
+
+- All nine Argo CD Applications reported `Synced` and `Healthy`.
+- A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
+- Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` is not set, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set.
 
 Stage 010 findings:
 
@@ -284,6 +291,14 @@ Stage 080 findings:
 - The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 080 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
 - Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
 - Final evidence for Stage 080: MTA Operator CSV `mta-operator.v8.1.1` succeeded; MTA Hub, UI, Kai API, LLM proxy, and Kai solution server are ready; OpenShift login is visible on the MTA login page; MaaS auth against the private Nemotron model returns HTTP 200 using `kai-api-keys`; Argo CD reports Stage 080 `Synced` and `Healthy`.
+
+Stage 090 findings:
+
+- Initial Stage 090 sync installed Red Hat Developer Hub successfully, but the configure hook's 180 second rollout wait was too short for the first cold RHDH image pull and dynamic plugin install. Improvement applied: increase the hook deadline and rollout timeout.
+- The `Backstage` manifest included `spec.application.replicas`, but the installed RHDH `v1alpha5` CRD does not define that field. The API server pruned it, leaving Argo CD OutOfSync. Improvement applied: remove the unsupported field rather than masking the drift.
+- The configure hook regenerated OIDC and session secrets on every sync, which forced unnecessary RHDH restarts. Improvement applied: reuse existing non-placeholder secret values and restart only when secret data changes.
+- The first idempotency check treated uppercase placeholder values as real secrets. Improvement applied: make placeholder detection case-insensitive and validate that `RHDH_OIDC_CLIENT_SECRET` and `SESSION_SECRET` are non-placeholder.
+- Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
 
 ### Stage 020
 
