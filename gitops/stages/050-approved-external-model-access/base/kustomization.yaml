@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Approved external model access — OpenAI-backed ExternalModel resources exposed
+# through the same governed MaaS path. The committed Secret is a placeholder;
+# deploy.sh provisions the real value from OPENAI_API_KEY when available.
+
+resources:
+  - models-maas-crds/

@@ -13,7 +13,7 @@ This rule defines labeling and annotation conventions for Kubernetes and OpenShi
 - [Guidelines for Labels and Annotations for OpenShift Applications](https://github.com/redhat-developer/app-labels/blob/master/labels-annotation-for-openshift.adoc)
 - [OpenShift 4.20 Topology View](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/building_applications/index#odc-viewing-application-composition-using-topology-view)
 
-Labels should make resources easy to inspect with `oc get`, useful in the OpenShift Topology view, and traceable back to the demo step that created them.
+Labels should make resources easy to inspect with `oc get`, useful in the OpenShift Topology view, and traceable back to the demo stage that created them.
 
 ## Required Kubernetes labels
 
@@ -24,7 +24,7 @@ All workload and operator resources should include these labels when the target 
 | `app.kubernetes.io/part-of` | Recommended | Groups resources by platform capability | `maas` |
 | `app.kubernetes.io/name` | Recommended | Identifies the component name | `rhods-operator` |
 | `app.kubernetes.io/component` | Recommended | Identifies the component role | `operator` |
-| `app.kubernetes.io/instance` | Recommended | Unique instance name when different from `name` | `rhods-operator-step-01` |
+| `app.kubernetes.io/instance` | Recommended | Unique instance name when different from `name` | `rhods-operator-stage-010` |
 | `app.kubernetes.io/managed-by` | Recommended | Tool managing the resource | `argocd` |
 
 Label values must be under 63 characters and valid per Kubernetes label syntax rules.
@@ -34,13 +34,13 @@ Label values must be under 63 characters and valid per Kubernetes label syntax r
 | Label | Purpose | Example |
 |-------|---------|---------|
 | `app.kubernetes.io/version` | Product or component version when stable and meaningful | `"8.1"`, `"1.9"` |
-| `demo.rhoai.io/step` | Demo step number for resources where step tracing helps | `"05"` |
+| `demo.rhoai.io/stage` | Demo stage number for resources where stage tracing helps | `"080"` |
 
 Do not hardcode a version label unless the manifest really owns that version. Operator-managed operands often change versions through CSVs or operator reconciliation.
 
 ## Values for `app.kubernetes.io/part-of`
 
-Use short functional group names, not step numbers:
+Use short functional group names, not stage numbers:
 
 | Group | Value | Resources |
 |-------|-------|-----------|
@@ -118,7 +118,7 @@ metadata:
     app.kubernetes.io/component: operator
     app.kubernetes.io/part-of: mta-modernization
     app.kubernetes.io/managed-by: argocd
-    demo.rhoai.io/step: "05"
+    demo.rhoai.io/stage: "080"
   annotations:
     app.openshift.io/vcs-uri: https://github.com/adnan-drina/rhoai3-coding-demo.git
 ```
@@ -131,14 +131,14 @@ Argo CD Application objects in `gitops/argocd/app-of-apps/` use a separate label
 metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/step: "XX"
+    demo.rhoai.io/stage: "NNN"
 ```
 
 These labels group all demo Applications in the Argo CD UI. Do not use workload `part-of` values like `maas` or `developer-hub` on Application objects.
 
 ## Anti-patterns
 
-- Step numbers in `app.kubernetes.io/part-of`, such as `step-01-rhoai-platform`
+- Stage numbers in `app.kubernetes.io/part-of`, such as `010-openshift-ai-platform-foundation`
 - Generic values, such as `app`, `demo`, or `platform`, when a specific capability exists
 - Overly long values, such as `rhoai-platform-operator-subscription-config`
 - Version labels that drift from the operator-managed installed version

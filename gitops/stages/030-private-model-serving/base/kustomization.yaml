@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Private model serving — local LLMInferenceService resources and model metadata.
+# Tier-to-group mapping remains here because the RHOAI webhook requires it before
+# tier-annotated LLMInferenceService resources can be accepted.
+
+resources:
+  - leaderworkerset/namespace.yaml
+  - leaderworkerset/operatorgroup.yaml
+  - leaderworkerset/subscription.yaml
+  - leaderworkerset/instance.yaml
+  - models/namespace.yaml
+  - models/admin-rbac.yaml
+  - governance/tier-to-group-mapping.yaml
+  - model-registry/seed-networkpolicy.yaml
+  - models/gpt-oss-20b.yaml
+  - models/nemotron-3-nano-30b.yaml
+  - model-registry/seed-models.yaml

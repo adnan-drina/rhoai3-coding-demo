@@ -16,7 +16,7 @@ Operational docs are the runbook layer for this repository. They complement, but
 
 | File | Responsibility |
 |------|----------------|
-| `docs/OPERATIONS.md` | Deployment order, validation strategy, GitOps operations, step-specific operational checks |
+| `docs/OPERATIONS.md` | Deployment order, validation strategy, GitOps operations, stage-specific operational checks |
 | `docs/TROUBLESHOOTING.md` | Failure symptoms, likely causes, diagnostic commands, recovery procedures |
 
 Do not move architecture storytelling back into these docs. Keep the READMEs educational and the docs operational.

@@ -9,6 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-01-rhoai-platform
+    demo.rhoai.io/deprecated: "true"
+    demo.rhoai.io/deprecation-note: "Compatibility app only. Do not apply with canonical stage apps."
   # No finalizer: deleting this Application orphans resources instead of destroying them.
   # Use 'argocd app delete --cascade' explicitly when you want to prune.
 spec:
@@ -35,26 +37,6 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    - group: datasciencecluster.opendatahub.io
-      kind: DataScienceCluster
-      jqPathExpressions:
-        - .spec.components
-    - group: dscinitialization.opendatahub.io
-      kind: DSCInitialization
-      jqPathExpressions:
-        - .spec
-    - group: opendatahub.io
-      kind: OdhDashboardConfig
-      jqPathExpressions:
-        - .spec
-    - group: services.platform.opendatahub.io
-      kind: Auth
-      jqPathExpressions:
-        - .spec
-    - group: infrastructure.opendatahub.io
-      kind: HardwareProfile
-      jqPathExpressions:
-        - .spec
     - group: operators.coreos.com
       kind: Subscription
       jsonPointers:
@@ -74,18 +56,11 @@ spec:
       namespace: openshift-monitoring
       name: cluster-monitoring-config
       jsonPointers:
-        - /data
         - /metadata/annotations
     - group: operator.knative.dev
       kind: KnativeServing
       jsonPointers:
         - /metadata/annotations
-        - /spec
-    # OAuth spec is managed by the cluster; our manifest adds an identity provider
-    - group: config.openshift.io
-      kind: OAuth
-      jqPathExpressions:
-        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:

@@ -1,0 +1,27 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: local-models-subscription
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  owner:
+    groups:
+      - name: "system:authenticated"
+      - name: "system:cluster-admins"
+      - name: "tier-free-users"
+      - name: "tier-premium-users"
+      - name: "tier-enterprise-users"
+  modelRefs:
+    - name: gpt-oss-20b
+      namespace: maas
+      tokenRateLimits:
+        - limit: 50000
+          window: "1h"
+    - name: nemotron-3-nano-30b-a3b
+      namespace: maas
+      tokenRateLimits:
+        - limit: 50000
+          window: "1h"

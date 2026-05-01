@@ -22,12 +22,12 @@ if [[ "$GIT_REPO_URL" != "https://github.com/adnan-drina/rhoai3-coding-demo.git"
     log_step "Updating ArgoCD Applications for fork: $GIT_REPO_URL"
     if [[ "$(uname)" == "Darwin" ]]; then
         sed -i '' "s|https://github.com/adnan-drina/rhoai3-coding-demo.git|${GIT_REPO_URL}|g" \
-            "$REPO_ROOT"/gitops/argocd/app-of-apps/step-*.yaml
+            "$REPO_ROOT"/gitops/argocd/app-of-apps/*.yaml
     else
         sed -i "s|https://github.com/adnan-drina/rhoai3-coding-demo.git|${GIT_REPO_URL}|g" \
-            "$REPO_ROOT"/gitops/argocd/app-of-apps/step-*.yaml
+            "$REPO_ROOT"/gitops/argocd/app-of-apps/*.yaml
     fi
-    log_success "Updated $(ls "$REPO_ROOT"/gitops/argocd/app-of-apps/step-*.yaml | wc -l | tr -d ' ') Application files"
+    log_success "Updated $(find "$REPO_ROOT"/gitops/argocd/app-of-apps -maxdepth 1 -name '*.yaml' | wc -l | tr -d ' ') Application files"
 fi
 
 log_step "Installing OpenShift GitOps operator"

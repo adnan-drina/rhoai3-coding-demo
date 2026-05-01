@@ -4,29 +4,29 @@ metadata:
   author: rhoai3-coding-demo
   version: 1.0.0
 description: >
-  Validate a demo step after changes. Use when a step's deploy script,
+  Validate a demo stage after changes. Use when a stage's deploy script,
   validate script, GitOps manifests, or Argo CD application changes. Produces
-  static validation commands, step-specific checks, and a clear statement of
+  static validation commands, stage-specific checks, and a clear statement of
   what was or was not validated against a live cluster. Do NOT use for
   troubleshooting failures (use rhoai-troubleshoot) or reviewing manifest
   quality (use manifest-reviewer agent or review-gitops-change skill).
 ---
 
-# Validate Demo Step
+# Validate Demo Stage
 
-Use this skill after changing a demo step to verify the change is correct
+Use this skill after changing a demo stage to verify the change is correct
 and complete.
 
 ## When to invoke
 
-- A step's `deploy.sh` or `validate.sh` changes
-- GitOps manifests under `gitops/step-XX-name/` change
-- The step's Argo CD application definition changes
-- A step README claims new behavior that needs verification
+- A stage's `deploy.sh` or `validate.sh` changes
+- GitOps manifests under `gitops/stages/NNN-name/` change
+- The stage's Argo CD application definition changes
+- A stage README claims new behavior that needs verification
 
 ## Inputs needed
 
-- Step number (01-06)
+- Stage number (010-090)
 - List of changed files
 - Whether a live OpenShift cluster is available
 
@@ -36,32 +36,36 @@ and complete.
 
 ```bash
 # Script syntax check
-bash -n steps/step-XX-name/deploy.sh
-bash -n steps/step-XX-name/validate.sh
+bash -n stages/NNN-name/deploy.sh
+bash -n stages/NNN-name/validate.sh
+./scripts/validate-stage-flow.sh
 
 # Kustomize render check
-kustomize build gitops/step-XX-name/base/
+kustomize build gitops/stages/NNN-name/base/
 
 # Dry-run against cluster (requires oc login)
-kustomize build gitops/step-XX-name/base/ | oc apply --dry-run=server -f -
+kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
 ```
 
-### Phase 2: Step-specific validation (requires live cluster)
+### Phase 2: Stage-specific validation (requires live cluster)
 
-| Step | Validation script | Key checks |
+| Stage | Validation script | Key checks |
 |------|-------------------|------------|
-| 01 | `./steps/step-01-rhoai-platform/validate.sh` | RHOAI operator, DSC, DSCI, dashboard |
-| 02 | `./steps/step-02-gpu-infra/validate.sh` | GPU nodes, NFD, NVIDIA operator |
-| 03 | `./steps/step-03-llm-serving-maas/validate.sh` | InferenceServices, MaaS API, models, gateway |
-| 04 | `./steps/step-04-devspaces/validate.sh` | Dev Spaces operator, workspaces, coding tools |
-| 05 | `./steps/step-05-mta/validate.sh` | MTA operator, Tackle, Developer Lightspeed |
-| 06 | `./steps/step-06-developer-hub/validate.sh` | RHDH operator, Backstage CR, catalog |
+| 010 | `./stages/010-openshift-ai-platform-foundation/validate.sh` | RHOAI operator, DSC, DSCI, dashboard |
+| 020 | `./stages/020-gpu-infrastructure-private-ai/validate.sh` | GPU nodes, NFD, NVIDIA operator |
+| 030 | `./stages/030-private-model-serving/validate.sh` | Local model serving resources |
+| 040 | `./stages/040-governed-models-as-a-service/validate.sh` | MaaS API, local model refs, gateway, governance |
+| 050 | `./stages/050-approved-external-model-access/validate.sh` | ExternalModel resources and external subscriptions |
+| 060 | `./stages/060-mcp-context-integrations/validate.sh` | MCP server registrations and credential-gated runtimes |
+| 070 | `./stages/070-controlled-developer-workspaces/validate.sh` | Dev Spaces operator, workspaces, coding tools |
+| 080 | `./stages/080-ai-assisted-application-modernization/validate.sh` | MTA operator, Tackle, Developer Lightspeed |
+| 090 | `./stages/090-developer-portal-self-service/validate.sh` | RHDH operator, Backstage CR, catalog |
 
-### Phase 3: Cross-step verification
+### Phase 3: Cross-stage verification
 
-- Does this change affect downstream steps?
+- Does this change affect downstream stages?
 - Are Argo CD sync waves still ordered correctly?
-- Does the step table in `README.md` still match?
+- Does the stage table in `README.md` still match?
 
 ## Completeness checklist
 
@@ -73,21 +77,21 @@ After validation, verify:
 - [ ] Argo CD Application has required labels and annotations
 - [ ] `kustomization.yaml` lists all resource files
 - [ ] No orphaned manifests in the directory
-- [ ] README explains the step's value (not just commands)
+- [ ] README explains the stage's value (not just commands)
 - [ ] `docs/OPERATIONS.md` reflects any new operational behavior
 - [ ] `docs/TROUBLESHOOTING.md` covers new failure modes if applicable
 
 ## Output format
 
 ```markdown
-## Step validation: step-XX-name
+## Stage validation: NNN-name
 
 ### Static validation
 - bash -n: [PASS/FAIL]
 - kustomize build: [PASS/FAIL]
 - dry-run: [PASS/FAIL/SKIPPED — no cluster]
 
-### Step validation script
+### Stage validation script
 - [PASS/FAIL/SKIPPED — no cluster]
 
 ### Completeness

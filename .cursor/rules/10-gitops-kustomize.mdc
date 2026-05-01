@@ -7,21 +7,21 @@ alwaysApply: false
 # GitOps & Kustomize Rules
 
 ## Golden rule
-Every implemented demo step must be reproducible from the `gitops/` folder and operated through the step `deploy.sh` / `validate.sh` scripts. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
+Every implemented demo stage must be reproducible from the `gitops/` folder and operated through the stage `deploy.sh` / `validate.sh` scripts. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
 
 ## Mandatory: ArgoCD Application in every deploy.sh
-Every step's `deploy.sh` MUST apply its ArgoCD Application as its **first cluster-modifying action** (after any prerequisite secrets that the step's manifests depend on):
+Every stage's `deploy.sh` MUST apply its ArgoCD Application as its **first cluster-modifying action** (after any prerequisite secrets that the stage's manifests depend on):
 ```bash
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STEP_NAME.yaml"
 ```
-Every step MUST have these components:
-1. `gitops/step-XX-name/base/` - Kustomize manifests (source of truth)
-2. `gitops/argocd/app-of-apps/step-XX-name.yaml` - ArgoCD Application
-3. `steps/step-XX-name/deploy.sh` - applies the ArgoCD Application and any required non-GitOps prerequisites
-4. `steps/step-XX-name/validate.sh` - verifies deployment succeeded
-5. `steps/step-XX-name/README.md` - educational step narrative and references
+Every stage MUST have these components:
+1. `gitops/stages/NNN-name/base/` - Kustomize manifests (source of truth)
+2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application
+3. `stages/NNN-name/deploy.sh` - applies the ArgoCD Application and any required non-GitOps prerequisites
+4. `stages/NNN-name/validate.sh` - verifies deployment succeeded
+5. `stages/NNN-name/README.md` - educational stage narrative and references
 
-**Never** apply step manifests directly with `oc apply -k` or `oc apply -f` for ArgoCD-managed resources.
+**Never** apply stage manifests directly with `oc apply -k` or `oc apply -f` for ArgoCD-managed resources.
 
 ## Repository layout (this project)
 
@@ -30,21 +30,21 @@ rhoai3-coding-demo/
 |-- gitops/
 |   |-- argocd/
 |   |   `-- app-of-apps/
-|   |       |-- step-01-rhoai-platform.yaml
-|   |       |-- step-02-gpu-infra.yaml
-|   |       |-- step-03-llm-serving-maas.yaml
-|   |       |-- step-04-devspaces.yaml
-|   |       |-- step-05-mta.yaml
-|   |       `-- step-06-developer-hub.yaml
-|   `-- step-XX-descriptive-name/
+|   |       |-- 010-openshift-ai-platform-foundation.yaml
+|   |       |-- 020-gpu-infrastructure-private-ai.yaml
+|   |       |-- ...
+|   |       `-- 090-developer-portal-self-service.yaml
+|   `-- stages/
+|       `-- NNN-descriptive-name/
 |       `-- base/
 |           |-- kustomization.yaml
 |           `-- component-folders/
-|-- steps/
-|   `-- step-XX-descriptive-name/
+|-- stages/
+|   `-- NNN-descriptive-name/
 |       |-- deploy.sh
 |       |-- validate.sh
 |       `-- README.md
+|-- steps/                         # temporary compatibility wrappers
 |-- docs/
 |   |-- OPERATIONS.md
 |   `-- TROUBLESHOOTING.md
@@ -58,8 +58,8 @@ rhoai3-coding-demo/
 ```
 
 ## Kustomize structure rules
-- Prefer `base/` + `overlays/<env-or-purpose>/` within each step.
-- Keep `base/` environment-agnostic; put environment/step deltas in overlays.
+- Prefer `base/` + `overlays/<env-or-purpose>/` within each stage.
+- Keep `base/` environment-agnostic; put environment/stage deltas in overlays.
 - Avoid duplicating full resources across overlays; use patches.
 - Prefer `resources:` + `patches:` (strategic merge or JSON6902) with minimal diffs.
 - Use consistent naming and labels to make `oc get` and `oc diff` readable.
@@ -74,10 +74,10 @@ components:
   - ../../components/operators/nfd
   # - ../../components/operators/nvidia-gpu-operator  # uncomment if needed
 ```
-Components are self-contained units (Namespace + OperatorGroup + Subscription) that can be toggled independently. Use `resources:` for manifests that are always required within a step.
+Components are self-contained units (Namespace + OperatorGroup + Subscription) that can be toggled independently. Use `resources:` for manifests that are always required within a stage.
 
 ### Operator deployment and CRD timing
-Operators install CRDs asynchronously via OLM. Custom Resources that depend on those CRDs cannot be applied until the CRD exists. Structure steps accordingly:
+Operators install CRDs asynchronously via OLM. Custom Resources that depend on those CRDs cannot be applied until the CRD exists. Structure stages accordingly:
 1. **Phase 1**: Apply operator Subscriptions (ArgoCD syncs Namespace, OperatorGroup, Subscription)
 2. **Wait or retry**: Use Argo CD retry/backoff, sync waves, `SkipDryRunOnMissingResource=true`, and when needed a `deploy.sh` wait for CSV/CRD readiness
 3. **Phase 2**: ArgoCD syncs CRs using `sync-wave` annotations to order them after the operator
@@ -87,13 +87,13 @@ Use `SkipDryRunOnMissingResource=true` in the ArgoCD Application to handle the C
 Ref: [How to manage RHOAI dependencies with Kustomize and Argo CD](https://developers.redhat.com/articles/2026/03/13/manage-openshift-ai-dependencies-kustomize-argo-cd)
 
 ## Naming conventions
-- Step folders: `step-XX-descriptive-name/` (e.g., `step-01-rhoai-platform`)
+- Stage folders: `NNN-descriptive-name/` (e.g., `040-governed-models-as-a-service`)
 - Overlays: `overlays/<purpose>/` (e.g., `overlays/aws/`, `overlays/demo/`)
 - Operator folders: group by operator name (e.g., `rhoai-operator/`, `nfd/`, `gpu-operator/`)
 
 ## Output hygiene
 - Never require manual, out-of-band edits to cluster state (except secrets created per the secrets rule).
-- If a resource must be created by CLI or a PostSync Job, document why in the step README when it affects the architecture story and in `docs/OPERATIONS.md` when it affects operations.
+- If a resource must be created by CLI or a PostSync Job, document why in the stage README when it affects the architecture story and in `docs/OPERATIONS.md` when it affects operations.
 
 ## Validation commands to include in README (as applicable)
 - `kustomize build <path> | oc apply --dry-run=server -f -`
@@ -101,11 +101,11 @@ Ref: [How to manage RHOAI dependencies with Kustomize and Argo CD](https://devel
 - `kustomize build <path> | oc apply -f -`
 
 ## Validation scripts
-Every step MUST have a `validate.sh` script using the shared `validate-lib.sh`:
+Every stage MUST have a `validate.sh` script using the shared `validate-lib.sh`:
 ```bash
 source "$REPO_ROOT/scripts/validate-lib.sh"
 check "Label" "oc get ..." "expected-substring"
-check_argocd_app "step-XX-name"
+check_argocd_app "NNN-name"
 validation_summary
 ```
 Exit codes: 0 = pass, 1 = critical failures, 2 = warnings only.
@@ -122,10 +122,10 @@ Every Application in `gitops/argocd/app-of-apps/` MUST include:
 metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/step: "XX"
+    demo.rhoai.io/stage: "NNN"
   annotations:
-    argocd.argoproj.io/sync-wave: "<step-number * 10>"
-    argocd.argoproj.io/manifest-generate-paths: gitops/step-XX-name
+    argocd.argoproj.io/sync-wave: "<stage-order>"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/NNN-name
 ```
 
 ### No destructive finalizers
@@ -158,7 +158,7 @@ Rules for Jobs:
 - RBAC must be minimal - only the permissions the Job actually needs
 - `deploy.sh` should normally only apply the ArgoCD Application YAML and perform prerequisite checks or secret setup that cannot safely live in GitOps
 
-The `manifest-generate-paths` annotation prevents ArgoCD from re-reconciling this Application when files change in unrelated step directories.
+The `manifest-generate-paths` annotation prevents ArgoCD from re-reconciling this Application when files change in unrelated stage directories.
 
 ### Version pinning policy
 - **Active development:** `targetRevision: main` is acceptable.
@@ -212,8 +212,8 @@ ignoreDifferences:
 `bootstrap.sh` sets `resourceTrackingMethod: annotation`. This MUST remain `annotation` only; never use `annotation+label` or `label`. Annotation tracking prevents false Out-of-Sync statuses from operator-generated resources in OpenShift.
 
 ### Deployment pattern
-- Each step has an Argo CD Application in `gitops/argocd/app-of-apps/`
-- Applications point to `gitops/step-XX-name/base/` by default
+- Each stage has an Argo CD Application in `gitops/argocd/app-of-apps/`
+- Applications point to `gitops/stages/NNN-name/base/` by default
 - Use `deploy.sh` scripts to apply the Argo CD Application and perform only prerequisite or orchestration tasks that cannot live cleanly in GitOps
 - Use `validate.sh` scripts as the deterministic readiness signal
 
@@ -242,6 +242,6 @@ Do not remove workaround code only because it looks redundant. Confirm whether t
 ## Agent Behavior
 
 After modifying files in `gitops/`:
-- If an ArgoCD Application was changed, verify it uses `project: rhoai-demo`, has `manifest-generate-paths`, and has required labels (`app.kubernetes.io/part-of`, `demo.rhoai.io/step`)
+- If an ArgoCD Application was changed, verify it uses `project: rhoai-demo`, has `manifest-generate-paths`, and has required labels (`app.kubernetes.io/part-of`, `demo.rhoai.io/stage`)
 - If a `kustomization.yaml` was changed, run `kustomize build <path>` to verify it renders without errors
 - If resources were added or removed from a kustomization, verify the resource file exists and is listed

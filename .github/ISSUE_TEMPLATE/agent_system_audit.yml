@@ -42,7 +42,7 @@ body:
     attributes:
       label: Governance files
       options:
-        - label: AGENTS.md reflects current repo map and demo steps
+        - label: AGENTS.md reflects current repo map and demo stages
         - label: CONTRIBUTING.md workflow is still accurate
         - label: PR template checklist is still relevant
         - label: docs/AI_COLLABORATION.md shared skills table is current

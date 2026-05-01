@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-mcp
+  namespace: coding-assistant
+  labels:
+    app: slack-mcp
+    app.kubernetes.io/part-of: mcp-integration
+    app.kubernetes.io/component: mcp-server
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: slack-mcp
+  template:
+    metadata:
+      labels:
+        app: slack-mcp
+        app.kubernetes.io/part-of: mcp-integration
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: slack-mcp
+          image: quay.io/mcp-servers/slack-mcp-server:10-03-2025
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SLACK_MCP_XOXP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: slack-mcp-credentials
+                  key: SLACK_BOT_TOKEN
+                  optional: true
+            - name: SLACK_MCP_PORT
+              value: "8080"
+            - name: SLACK_MCP_HOST
+              value: "0.0.0.0"
+            - name: SLACK_MCP_ADD_MESSAGE_TOOL
+              value: "true"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slack-mcp
+  namespace: coding-assistant
+  labels:
+    app: slack-mcp
+    app.kubernetes.io/part-of: mcp-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+spec:
+  type: ClusterIP
+  selector:
+    app: slack-mcp
+  ports:
+    - name: sse
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

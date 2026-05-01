@@ -1,0 +1,117 @@
+apiVersion: rhoai.demo/v1alpha1
+kind: DemoFlow
+metadata:
+  name: default
+  description: Trusted enterprise AI development platform on Red Hat OpenShift AI
+stages:
+  - id: "010"
+    name: OpenShift AI Platform Foundation
+    productFocus:
+      - Red Hat OpenShift AI
+      - Red Hat OpenShift GitOps
+      - Red Hat OpenShift
+    deployScript: stages/010-openshift-ai-platform-foundation/deploy.sh
+    validateScript: stages/010-openshift-ai-platform-foundation/validate.sh
+    gitopsApplication: 010-openshift-ai-platform-foundation
+    gitopsPath: gitops/stages/010-openshift-ai-platform-foundation/base
+    dependsOn: []
+    compatibilityAlias: steps/step-01-rhoai-platform
+  - id: "020"
+    name: GPU Infrastructure for Private AI
+    productFocus:
+      - Red Hat OpenShift
+      - NVIDIA GPU Operator
+    deployScript: stages/020-gpu-infrastructure-private-ai/deploy.sh
+    validateScript: stages/020-gpu-infrastructure-private-ai/validate.sh
+    gitopsApplication: 020-gpu-infrastructure-private-ai
+    gitopsPath: gitops/stages/020-gpu-infrastructure-private-ai/base
+    dependsOn:
+      - "010"
+    compatibilityAlias: steps/step-02-gpu-infra
+  - id: "030"
+    name: Private Model Serving
+    productFocus:
+      - Red Hat OpenShift AI
+      - KServe
+      - vLLM
+    deployScript: stages/030-private-model-serving/deploy.sh
+    validateScript: stages/030-private-model-serving/validate.sh
+    gitopsApplication: 030-private-model-serving
+    gitopsPath: gitops/stages/030-private-model-serving/base
+    dependsOn:
+      - "010"
+      - "020"
+    compatibilityAlias: steps/step-03-llm-serving-maas
+  - id: "040"
+    name: Governed Models-as-a-Service
+    productFocus:
+      - Red Hat OpenShift AI
+      - Red Hat Connectivity Link
+      - Red Hat OpenShift GitOps
+    deployScript: stages/040-governed-models-as-a-service/deploy.sh
+    validateScript: stages/040-governed-models-as-a-service/validate.sh
+    gitopsApplication: 040-governed-models-as-a-service
+    gitopsPath: gitops/stages/040-governed-models-as-a-service/base
+    dependsOn:
+      - "030"
+    compatibilityAlias: steps/step-03-llm-serving-maas
+  - id: "050"
+    name: Approved External Model Access
+    productFocus:
+      - Red Hat OpenShift AI
+      - Models-as-a-Service
+    deployScript: stages/050-approved-external-model-access/deploy.sh
+    validateScript: stages/050-approved-external-model-access/validate.sh
+    gitopsApplication: 050-approved-external-model-access
+    gitopsPath: gitops/stages/050-approved-external-model-access/base
+    dependsOn:
+      - "040"
+    compatibilityAlias: steps/step-03-llm-serving-maas
+  - id: "060"
+    name: MCP Context Integrations
+    productFocus:
+      - Red Hat OpenShift AI GenAI Playground
+      - MCP
+    deployScript: stages/060-mcp-context-integrations/deploy.sh
+    validateScript: stages/060-mcp-context-integrations/validate.sh
+    gitopsApplication: 060-mcp-context-integrations
+    gitopsPath: gitops/stages/060-mcp-context-integrations/base
+    dependsOn:
+      - "050"
+    compatibilityAlias: steps/step-03-llm-serving-maas
+  - id: "070"
+    name: Controlled Developer Workspaces
+    productFocus:
+      - Red Hat OpenShift Dev Spaces
+      - Continue
+      - OpenCode
+    deployScript: stages/070-controlled-developer-workspaces/deploy.sh
+    validateScript: stages/070-controlled-developer-workspaces/validate.sh
+    gitopsApplication: 070-controlled-developer-workspaces
+    gitopsPath: gitops/stages/070-controlled-developer-workspaces/base
+    dependsOn:
+      - "060"
+    compatibilityAlias: steps/step-04-devspaces
+  - id: "080"
+    name: AI-Assisted Application Modernization
+    productFocus:
+      - Migration Toolkit for Applications
+      - Red Hat Developer Lightspeed for MTA
+    deployScript: stages/080-ai-assisted-application-modernization/deploy.sh
+    validateScript: stages/080-ai-assisted-application-modernization/validate.sh
+    gitopsApplication: 080-ai-assisted-application-modernization
+    gitopsPath: gitops/stages/080-ai-assisted-application-modernization/base
+    dependsOn:
+      - "070"
+    compatibilityAlias: steps/step-05-mta
+  - id: "090"
+    name: Developer Portal and Self-Service
+    productFocus:
+      - Red Hat Developer Hub
+    deployScript: stages/090-developer-portal-self-service/deploy.sh
+    validateScript: stages/090-developer-portal-self-service/validate.sh
+    gitopsApplication: 090-developer-portal-self-service
+    gitopsPath: gitops/stages/090-developer-portal-self-service/base
+    dependsOn:
+      - "080"
+    compatibilityAlias: steps/step-06-developer-hub

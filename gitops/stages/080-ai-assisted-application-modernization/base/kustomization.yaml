@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Stage 080: AI-Assisted Application Modernization with MTA 8.1
+# Deploys the Migration Toolkit for Applications with Red Hat Developer
+# Lightspeed configured to use MaaS models for AI-assisted code fixes.
+# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
+
+resources:
+  # Wave 0-2: MTA Operator
+  - mta-operator/namespace.yaml
+  - mta-operator/operatorgroup.yaml
+  - mta-operator/subscription.yaml
+  # Wave 5: kai-api-keys Secret (MaaS API key for LLM proxy)
+  - mta-instance/kai-api-keys-secret.yaml
+  # Wave 5: OAuthClient for OpenShift federated login
+  - mta-instance/oauthclient.yaml
+  # Wave 10: Tackle CR (MTA instance with AI config)
+  - mta-instance/tackle.yaml
+  # Wave 15: ConsoleLink (OpenShift launcher menu entry)
+  - mta-instance/consolelink.yaml
+  # PostSync: Patch cluster-specific MaaS URL + restart llm-proxy
+  - jobs/patch-mta-maas-url.yaml
+  # PostSync: Configure RHBK OpenShift IdP and role mappings
+  - jobs/configure-mta-openshift-auth.yaml

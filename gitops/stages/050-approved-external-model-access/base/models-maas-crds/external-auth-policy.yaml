@@ -1,0 +1,21 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: external-models-access
+  namespace: models-as-a-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRefs:
+    - name: gpt-4o
+      namespace: maas
+    - name: gpt-4o-mini
+      namespace: maas
+  subjects:
+    groups:
+      - name: "system:authenticated"
+      - name: "system:cluster-admins"
+      - name: "tier-free-users"
+      - name: "tier-premium-users"
+      - name: "tier-enterprise-users"

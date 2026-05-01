@@ -9,6 +9,8 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "30"
     argocd.argoproj.io/manifest-generate-paths: gitops/step-03-llm-serving-maas
+    demo.rhoai.io/deprecated: "true"
+    demo.rhoai.io/deprecation-note: "Compatibility app only. Do not apply with canonical stage apps."
   # No finalizer: deleting this Application orphans resources instead of destroying them.
 spec:
   project: rhoai-demo
@@ -47,19 +49,6 @@ spec:
       jsonPointers:
         - /data
         - /stringData
-    - group: serving.kserve.io
-      kind: LLMInferenceService
-      jqPathExpressions:
-        - .spec
-        - .metadata.annotations
-    - group: operator.openshift.io
-      kind: LeaderWorkerSetOperator
-      jqPathExpressions:
-        - .spec
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      jqPathExpressions:
-        - .spec
     - group: ""
       kind: Namespace
       jsonPointers:
@@ -74,15 +63,18 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    - group: grafana.integreatly.org
-      kind: Grafana
-      jqPathExpressions:
-        - .spec
-    - group: grafana.integreatly.org
-      kind: GrafanaDatasource
-      jqPathExpressions:
-        - .spec
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
         - /spec
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: openshift-ingress
+      name: maas-default-gateway
+      jsonPointers:
+        # The MaaS hostname is patched after sync because it depends on the
+        # cluster ingress domain and certificate. Keep the rest of the Gateway
+        # spec managed.
+        - /spec/listeners/0/hostname
+        - /spec/listeners/1/hostname
+        - /spec/listeners/1/tls/certificateRefs/0/name
