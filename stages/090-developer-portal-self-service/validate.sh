@@ -60,7 +60,8 @@ else
 fi
 
 OIDC_SECRET=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_OIDC_CLIENT_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-if [[ -n "$OIDC_SECRET" ]] && [[ "${OIDC_SECRET,,}" != *"placeholder"* ]]; then
+OIDC_SECRET_LC=$(printf '%s' "$OIDC_SECRET" | tr '[:upper:]' '[:lower:]')
+if [[ -n "$OIDC_SECRET" ]] && [[ "$OIDC_SECRET_LC" != *"placeholder"* ]]; then
     echo -e "${GREEN}[PASS]${NC} RHDH_OIDC_CLIENT_SECRET: set"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
@@ -69,7 +70,8 @@ else
 fi
 
 SESSION_SECRET=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.SESSION_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-if [[ -n "$SESSION_SECRET" ]] && [[ "${SESSION_SECRET,,}" != *"placeholder"* ]]; then
+SESSION_SECRET_LC=$(printf '%s' "$SESSION_SECRET" | tr '[:upper:]' '[:lower:]')
+if [[ -n "$SESSION_SECRET" ]] && [[ "$SESSION_SECRET_LC" != *"placeholder"* ]]; then
     echo -e "${GREEN}[PASS]${NC} SESSION_SECRET: set"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
