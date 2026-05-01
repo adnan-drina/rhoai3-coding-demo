@@ -55,11 +55,7 @@ OpenShift provides the runtime, routing, storage, identity integration, and oper
 
 The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization workflows, and the Coolstore sample application. Red Hat integrates those pieces into MTA and connects them to the same OpenShift and OpenShift AI platform controls used in the earlier stages.
 
-## Red Hat Alignment And Demo Deviations
-
 Red Hat Developer Lightspeed for MTA is documented as a Technology Preview feature in MTA 8.1. This stage is included because it is central to the demo narrative: modernization context from MTA is routed through a governed model endpoint instead of unmanaged developer credentials.
-
-The `kai-api-keys` Secret is patched at runtime by the Stage 080 PostSync job. The job discovers the MaaS route, creates or reuses a MaaS API key for the `local-models-subscription`, and restarts the LLM proxy so it uses the current OpenAI-compatible MaaS endpoint. The GitOps manifests contain placeholders only; real provider keys, kubeconfigs, and private credentials must not be committed.
 
 ## Red Hat Products Used
 
@@ -82,6 +78,7 @@ The `kai-api-keys` Secret is patched at runtime by the Stage 080 PostSync job. T
 - For sensitive code, use the private MaaS model path so prompts and source context remain on the OpenShift platform.
 - If an organization approves external models for selected modernization tasks, MaaS can expose those models through the same controlled interface.
 - Developers do not manage provider credentials in the primary flow; the LLM proxy uses centrally managed credentials.
+- The `kai-api-keys` Secret is patched at runtime by the Stage 080 PostSync job. The GitOps manifests contain placeholders only; real provider keys, kubeconfigs, and private credentials must not be committed.
 
 ## Why This Is Worth Knowing
 

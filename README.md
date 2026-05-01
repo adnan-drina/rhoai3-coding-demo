@@ -55,12 +55,6 @@ Platform foundation
 
 The central design choice is that model consumers do not connect directly to scattered model endpoints. They connect through MaaS. MaaS becomes the enterprise control point where platform teams publish model choices and enforce access.
 
-## Implementation Status And Deviations
-
-This is a disposable demo environment, not production implementation guidance. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, and Red Hat Developer Lightspeed for MTA 8.1 is also documented as Technology Preview. The demo intentionally includes early-access and upstream components where they are needed to show the end-to-end platform story.
-
-Known deviations, workarounds, and current validation status are tracked in [`BACKLOG.md`](BACKLOG.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md). External OpenAI model records are included to demonstrate approved external model registration, but external inference requires an operator-supplied provider credential and is not considered validated when `OPENAI_API_KEY` is unset.
-
 ## What The Demo Proves
 
 The demo progresses through nine focused platform stages. The ordered source of truth is [`demo/flows/default.yaml`](demo/flows/default.yaml).
@@ -135,7 +129,9 @@ This workshop deliberately demonstrates more than one trust level.
 
 This distinction is important. A governed external model is not the same as a private model. The value of the platform is that both choices can be offered through one controlled interface with clear policy boundaries.
 
-External OpenAI model definitions are included in GitOps with a placeholder API key. They demonstrate the governed external model path, but the external calls are only usable after an operator replaces `openai-api-key` in the `maas` namespace with an approved provider credential.
+This is a disposable demo environment, not production implementation guidance. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, and Red Hat Developer Lightspeed for MTA 8.1 is also documented as Technology Preview. The demo intentionally includes early-access and upstream components where they are needed to show the end-to-end platform story.
+
+External OpenAI model definitions are included in GitOps with a placeholder API key. They demonstrate the governed external model path, but the external calls are only usable after an operator replaces `openai-api-key` in the `maas` namespace with an approved provider credential. Known deviations, workarounds, and current validation status are tracked in [`BACKLOG.md`](BACKLOG.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## Why This Is Worth Knowing
 
@@ -219,7 +215,9 @@ rhoai3-coding-demo/
 - [Accelerate enterprise software development with NVIDIA and MaaS](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
 - [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
+- [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
 - [Migration Toolkit for Applications 8.1 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/)
+- [Red Hat Developer Lightspeed for MTA 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
 - [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
