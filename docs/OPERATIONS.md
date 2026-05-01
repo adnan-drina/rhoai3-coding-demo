@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Latest validated code commit: `08cecb4`
+- Latest validated code commit: `cff7e4a`
 
 Preflight:
 
@@ -221,7 +221,7 @@ Stage results:
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 14 passed, 2 warnings, 0 failed |
 | 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 18 passed, 0 warnings, 0 failed |
 | 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 22 passed, 0 warnings, 0 failed |
-| 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 15 passed, 0 warnings, 0 failed |
+| 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 16 passed, 0 warnings, 0 failed |
 
 Final sweep:
 
@@ -245,6 +245,15 @@ GitOps hygiene pass:
 - Fix applied: Stage 040 and compatibility Step 03 now ignore only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
 - Fix applied: Stage 080 and compatibility Step 05 now fail fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
 - Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 080 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for `local-models-subscription`, and Stages 040, 080, and 090 validated successfully.
+
+Red Hat alignment review:
+
+- Stage 040 is aligned with the Red Hat OpenShift AI 3.4 MaaS architecture in the core platform pattern: KServe-backed model serving, Gateway API, Red Hat Connectivity Link, Kuadrant/Authorino policy enforcement, API-key authentication, tier-based access, rate limits, token limits, dashboard enablement, and GitOps-managed desired state. MaaS remains a Technology Preview capability in the referenced Red Hat OpenShift AI 3.4 documentation, so the demo must continue to describe it as an early-access showcase rather than a production baseline.
+- Stage 040 deviations remain intentional and documented: upstream MaaS controller/`maas-api` image override for external model registration, tokens bridge for the Playground token endpoint, gateway/AuthPolicy patches, and community Grafana for demo observability. These are acceptable for the disposable environment but not Red Hat-supported production implementation guidance.
+- Stage 080 aligns with Red Hat Developer Lightspeed for MTA guidance by using a centrally managed LLM provider configuration through MTA, the LLM proxy, and an OpenAI-compatible endpoint backed by Red Hat OpenShift AI/MaaS. Developer Lightspeed for MTA is also Technology Preview in the referenced MTA 8.1 documentation, so production-readiness language must stay conservative.
+- Stage 090 aligns with Red Hat Developer Hub 1.9 operator guidance by using the `Backstage` custom resource, app config mounted from a ConfigMap, environment-substituted secrets, and `dynamic-plugins.yaml` mounted through `dynamicPluginsConfigMapName`.
+- Fix applied from the alignment review: RHDH catalog configuration no longer hard-codes the `main` branch. `app-config-rhdh.yaml` now uses `${RHDH_CATALOG_URL}`, and the Stage 090 PostSync hook derives that URL from the live Argo CD Application `repoURL` and `targetRevision`. This keeps the developer portal catalog on the same Git revision as the deployed demo.
+- Final evidence after the alignment fix: Stage 090 re-synced to commit `cff7e4a`; `RHDH_CATALOG_URL` resolved to `https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/codex/stage-refactor-demo-validation/gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml`; Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures; all nine Argo CD Applications reported `Synced` and `Healthy`.
 
 Stage 010 findings:
 
@@ -320,7 +329,8 @@ Stage 090 findings:
 - The `Backstage` manifest included `spec.application.replicas`, but the installed RHDH `v1alpha5` CRD does not define that field. The API server pruned it, leaving Argo CD OutOfSync. Improvement applied: remove the unsupported field rather than masking the drift.
 - The configure hook regenerated OIDC and session secrets on every sync, which forced unnecessary RHDH restarts. Improvement applied: reuse existing non-placeholder secret values and restart only when secret data changes.
 - The first idempotency check treated uppercase placeholder values as real secrets. Improvement applied: make placeholder detection case-insensitive and validate that `RHDH_OIDC_CLIENT_SECRET` and `SESSION_SECRET` are non-placeholder.
-- Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
+- Follow-up Red Hat alignment finding: the RHDH catalog URL was hard-coded to the `main` branch, while the deployed demo was sourced from `codex/stage-refactor-demo-validation`. Improvement applied: make the catalog URL environment-driven and derive it from the live Argo CD Application source.
+- Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the catalog URL matches the deployed GitOps source; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
 
 ### Stage 020
 
@@ -442,6 +452,8 @@ oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}
 
 Stage 090 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
 
+The RHDH catalog location is runtime-derived from the Stage 090 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
+
 Useful checks:
 
 ```bash
@@ -449,6 +461,7 @@ oc get backstage developer-hub -n rhdh -o yaml
 oc get pods -n rhdh
 oc get route -n rhdh
 oc get consolelink rhdh -o yaml
+oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' | base64 -d
 ```
 
 ## Updating The Demo
