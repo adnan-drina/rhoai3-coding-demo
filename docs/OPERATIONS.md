@@ -217,6 +217,7 @@ Stage results:
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
 | 030 Private Model Serving | Passed | `./stages/030-private-model-serving/validate.sh`: 8 passed, 0 warnings, 0 failed |
 | 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 17 passed, 0 warnings, 0 failed |
+| 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 8 passed, 1 warning, 0 failed |
 
 Stage 010 findings:
 
@@ -254,6 +255,11 @@ Stage 040 findings:
 - MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the hook. Improvement being applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
 - After the gateway and RHCL were healthy, the existing `LLMInferenceService` resources still reported the earlier AuthPolicy CRD discovery error. A controlled restart of `kserve-controller-manager` refreshed API discovery and immediately created the model HTTPRoutes. Improvement being applied: add a Stage 040 hook to restart KServe after RHCL/Gateway readiness in this staged demo flow.
 - Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, local `MaaSSubscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
+
+Stage 050 findings:
+
+- `OPENAI_API_KEY` is not set in this demo environment. Stage 050 registered the approved external model resources with the placeholder `openai-api-key` credential, so external inference was intentionally not validated.
+- Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` and `external-models-subscription` are Active. Argo CD reports Stage 050 `Synced` and `Healthy`.
 
 ### Stage 020
 
