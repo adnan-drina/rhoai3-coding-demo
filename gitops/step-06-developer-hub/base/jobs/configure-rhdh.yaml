@@ -58,6 +58,9 @@ rules:
 - apiGroups: ["console.openshift.io"]
   resources: ["consolelinks"]
   verbs: ["get", "patch"]
+- apiGroups: ["argoproj.io"]
+  resources: ["applications"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -163,7 +166,27 @@ spec:
           RHBK_METADATA_URL="https://${MTA_HOST}/auth/realms/${REALM}"
           echo "RHBK metadata URL: ${RHBK_METADATA_URL}"
 
-          # --- 3. Get RHBK admin token ---
+          # --- 3. Derive catalog URL from the deployed Argo CD source ---
+          echo "Discovering RHDH catalog source..."
+          APP_REPO_URL=$(oc get application step-06-developer-hub -n openshift-gitops \
+            -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
+          APP_TARGET_REVISION=$(oc get application step-06-developer-hub -n openshift-gitops \
+            -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
+          [ -z "$APP_REPO_URL" ] && APP_REPO_URL="https://github.com/adnan-drina/rhoai3-coding-demo.git"
+          [ -z "$APP_TARGET_REVISION" ] && APP_TARGET_REVISION="main"
+
+          REPO_NO_GIT="${APP_REPO_URL%.git}"
+          if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
+            REPO_OWNER="${BASH_REMATCH[1]}"
+            REPO_NAME="${BASH_REMATCH[2]}"
+            RHDH_CATALOG_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${APP_TARGET_REVISION}/gitops/step-06-developer-hub/base/catalog/all.yaml"
+          else
+            echo "WARNING: Unsupported repo URL '${APP_REPO_URL}', using default catalog URL"
+            RHDH_CATALOG_URL="https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/main/gitops/step-06-developer-hub/base/catalog/all.yaml"
+          fi
+          echo "RHDH catalog URL: ${RHDH_CATALOG_URL}"
+
+          # --- 4. Get RHBK admin token ---
           echo "Getting RHBK admin token..."
           RHBK_ADMIN_PASS=$(oc get secret mta-keycloak-rhbk -n openshift-mta \
             -o jsonpath='{.data.password}' | base64 -d)
@@ -185,7 +208,7 @@ spec:
           echo "Got RHBK admin token"
           AUTH_HEADER="Authorization: Bearer ${ADMIN_TOKEN}"
 
-          # --- 4. Generate OIDC client secret ---
+          # --- 5. Generate OIDC client secret ---
           echo "Checking RHDH OIDC client in RHBK..."
           REDIRECT_URI="${RHDH_URL}/api/auth/oidc/handler/frame"
 
@@ -228,32 +251,34 @@ spec:
             echo "RHDH client created"
           fi
 
-          # --- 5. Generate session secret ---
+          # --- 6. Generate session secret ---
           SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
 
-          # --- 6. Patch rhdh-secrets ---
+          # --- 7. Patch rhdh-secrets ---
           echo "Patching rhdh-secrets..."
           ENCODED_SESSION=$(echo -n "${SESSION_SECRET}" | base64 -w0 2>/dev/null || echo -n "${SESSION_SECRET}" | base64)
           ENCODED_CLIENT_SECRET=$(echo -n "${CLIENT_SECRET}" | base64 -w0 2>/dev/null || echo -n "${CLIENT_SECRET}" | base64)
           ENCODED_BASE_URL=$(echo -n "${RHDH_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_URL}" | base64)
           ENCODED_METADATA_URL=$(echo -n "${RHBK_METADATA_URL}" | base64 -w0 2>/dev/null || echo -n "${RHBK_METADATA_URL}" | base64)
+          ENCODED_CATALOG_URL=$(echo -n "${RHDH_CATALOG_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_CATALOG_URL}" | base64)
 
           oc patch secret rhdh-secrets -n rhdh --type=merge \
             -p "{\"data\":{
               \"SESSION_SECRET\":\"${ENCODED_SESSION}\",
               \"RHDH_OIDC_CLIENT_SECRET\":\"${ENCODED_CLIENT_SECRET}\",
               \"RHDH_BASE_URL\":\"${ENCODED_BASE_URL}\",
-              \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\"
+              \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\",
+              \"RHDH_CATALOG_URL\":\"${ENCODED_CATALOG_URL}\"
             }}"
           echo "rhdh-secrets patched"
 
-          # --- 7. Patch ConsoleLink ---
+          # --- 8. Patch ConsoleLink ---
           echo "Patching ConsoleLink..."
           oc patch consolelink rhdh --type=merge \
             -p "{\"spec\":{\"href\":\"${RHDH_URL}\",\"applicationMenu\":{\"imageURL\":\"${RHDH_URL}/favicon.ico\"}}}"
           echo "ConsoleLink patched: ${RHDH_URL}"
 
-          # --- 8. Restart RHDH ---
+          # --- 9. Restart RHDH ---
           echo "Restarting RHDH deployment..."
           RHDH_DEPLOY=$(oc get deployment -n rhdh --no-headers 2>/dev/null \
             | grep backstage | awk '{print $1}' | head -1 || true)
@@ -269,4 +294,5 @@ spec:
           echo "=== RHDH configured ==="
           echo "URL: ${RHDH_URL}"
           echo "Auth: OIDC via MTA Keycloak (${RHBK_METADATA_URL})"
+          echo "Catalog: ${RHDH_CATALOG_URL}"
           echo "Users log in with OpenShift credentials (brokered through RHBK)"
