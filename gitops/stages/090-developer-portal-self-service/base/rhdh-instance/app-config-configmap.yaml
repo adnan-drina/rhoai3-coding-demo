@@ -37,4 +37,4 @@ data:
         - allow: [Component, System, API, Resource, Location, User, Group]
       locations:
         - type: url
-          target: https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/main/gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml
+          target: ${RHDH_CATALOG_URL}

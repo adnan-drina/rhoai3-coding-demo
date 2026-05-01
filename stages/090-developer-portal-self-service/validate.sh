@@ -85,13 +85,32 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
+CATALOG_URL=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+APP_REPO_URL=$(oc get application 090-developer-portal-self-service -n openshift-gitops -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || echo "")
+APP_TARGET_REVISION=$(oc get application 090-developer-portal-self-service -n openshift-gitops -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || echo "")
+REPO_NO_GIT="${APP_REPO_URL%.git}"
+EXPECTED_CATALOG_URL=""
+if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] && [[ -n "$APP_TARGET_REVISION" ]]; then
+    EXPECTED_CATALOG_URL="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${APP_TARGET_REVISION}/gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml"
+fi
+if [[ -n "$EXPECTED_CATALOG_URL" ]] && [[ "$CATALOG_URL" == "$EXPECTED_CATALOG_URL" ]]; then
+    echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL matches Argo CD source: ${CATALOG_URL}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+elif [[ -n "$CATALOG_URL" ]] && [[ "$CATALOG_URL" != *"placeholder"* ]]; then
+    echo -e "${YELLOW}[WARN]${NC} RHDH_CATALOG_URL is set but does not match Argo CD source: ${CATALOG_URL}"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+else
+    echo -e "${RED}[FAIL]${NC} RHDH_CATALOG_URL is placeholder or missing"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
 log_step "RHDH Configuration"
 check "RHDH config uses OIDC sign-in" \
   "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
   "signInPage: oidc"
 check "RHDH config references demo catalog" \
   "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
-  "rhoai3-coding-demo"
+  'target: ${RHDH_CATALOG_URL}'
 check "RHDH dynamic plugins config exists" \
   "oc get configmap dynamic-plugins-rhdh -n rhdh -o jsonpath='{.data.dynamic-plugins\\.yaml}'" \
   "dynamic-plugins.default.yaml"
