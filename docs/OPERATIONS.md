@@ -215,8 +215,8 @@ Stage results:
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
-| 030 Private Model Serving | Passed with expected warnings | `./stages/030-private-model-serving/validate.sh`: 6 passed, 2 warnings, 0 failed |
-| 040 Governed Models-as-a-Service | Fixing | CloudNativePG InstallPlan required manual approval despite Automatic Subscription |
+| 030 Private Model Serving | Passed | `./stages/030-private-model-serving/validate.sh`: 8 passed, 0 warnings, 0 failed |
+| 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 17 passed, 0 warnings, 0 failed |
 
 Stage 010 findings:
 
@@ -242,6 +242,7 @@ Stage 030 findings:
 - The `LLMInferenceService` resources were created and scheduled on GPU nodes. They currently report `HTTPRouteReconcileError` until Stage 040 installs Red Hat Connectivity Link and the `AuthPolicy` CRD. Stage 030 validation treats model readiness as a warning because gateway governance is introduced in Stage 040.
 - Fix applied in commit `1042add`. Stage 030 re-synced successfully, and the `model-registry-seed` hook completed.
 - Final evidence for Stage 030: `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were registered in the model registry. Both model pods were scheduled on GPU nodes and were in init/model-pull startup. Both `LLMInferenceService` resources reported `HTTPRouteReconcileError` because `AuthPolicy` is introduced by Stage 040.
+- After Stage 040 installed RHCL and refreshed KServe discovery, Stage 030 re-validation passed with both local `LLMInferenceService` resources ready.
 
 Stage 040 findings:
 
@@ -252,6 +253,7 @@ Stage 040 findings:
 - The MaaS controller reported that `openshift-ingress/maas-default-gateway` was missing because Gateway resources were later than the controller and local MaaS resources. Improvement being applied: move `GatewayClass` and the default MaaS `Gateway` before the MaaS controller deployment, and move the Kuadrant patch hook after the gateway-dependent resources.
 - MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the hook. Improvement being applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
 - After the gateway and RHCL were healthy, the existing `LLMInferenceService` resources still reported the earlier AuthPolicy CRD discovery error. A controlled restart of `kserve-controller-manager` refreshed API discovery and immediately created the model HTTPRoutes. Improvement being applied: add a Stage 040 hook to restart KServe after RHCL/Gateway readiness in this staged demo flow.
+- Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, local `MaaSSubscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
 
 ### Stage 020
 
