@@ -19,4 +19,3 @@ spec:
     extraEnvs:
       secrets:
         - name: rhdh-secrets
-    replicas: 1
