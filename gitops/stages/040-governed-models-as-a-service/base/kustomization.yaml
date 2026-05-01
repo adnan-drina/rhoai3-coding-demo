@@ -22,6 +22,7 @@ resources:
   - jobs/configure-kuadrant.yaml
   - maas-controller-upstream/
   - models/rbac.yaml
+  - jobs/restart-kserve-controller.yaml
   - governance/ratelimitpolicy.yaml
   - governance/tokenratelimitpolicy.yaml
   - governance/telemetrypolicy.yaml
