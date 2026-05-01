@@ -13,7 +13,10 @@ description: >-
 
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle)
 - **Workspaces**: 3 DevWorkspace CRs named `exercises` in `wksp-kubeadmin`, `wksp-ai-admin`, `wksp-ai-developer`
-- **Cloned repo**: `https://github.com/adnan-drina/coding-exercises.git` (devfile + exercises + Continue config)
+- **Cloned repos**:
+  - `https://github.com/adnan-drina/coding-exercises.git` (devfile + exercises + Continue config) — all workspaces
+  - `https://github.com/konveyor-ecosystem/coolstore.git` (Java EE migration target) — ai-admin, ai-developer only
+- **Extensions**: Continue 1.3.38 + MTA 8.1.1 (pack + core + java) via `DEFAULT_EXTENSIONS` and `postStart` curl
 - **GitOps**: Managed by ArgoCD `step-04-devspaces` Application with `Replace=true` sync option
 - **Manifest**: `gitops/step-04-devspaces/base/devspaces/workspaces.yaml`
 
@@ -44,22 +47,39 @@ events:
     - copy-continue-config
 ```
 
-**Known issue**: postStart exec commands in GitOps-managed DevWorkspace CRs may not execute reliably in Dev Spaces 3.25. The manual fallback is:
+**Known issue**: postStart exec commands in GitOps-managed DevWorkspace CRs may not execute reliably. The manual fallback is:
 
 ```bash
 cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
 ```
 
+### Extension Downloads in postStart
+
+VSIX downloads from OpenVSX use CDN redirects that can time out silently. Always use `--max-time 120`:
+
+```bash
+curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
+```
+
+The MTA extension pack (`mta-vscode-extension`) does not reliably resolve its dependencies (`mta-core`, `mta-java`) from a local VSIX in Dev Spaces. Pin and download all three individually.
+
+### Project Order Matters for MTA
+
+The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! Only the first workspace folder will be analyzed." List `coolstore` before `coding-exercises` so MTA analyzes the migration target by default.
+
 ### Memory Requirements
 
-The default tooling container memory (~1152Mi) is insufficient for VS Code + Continue. Always set:
+The default tooling container memory (~1152Mi) is insufficient for VS Code + Continue + MTA + Java/Maven. Use:
+
+- **kubeadmin**: 4Gi limit / 1Gi request (coding-exercises only)
+- **ai-admin, ai-developer**: 6Gi limit / 2Gi request (coolstore + MTA analysis + Maven builds)
 
 ```yaml
 components:
   - name: tooling-container
     container:
-      memoryLimit: 4Gi
-      memoryRequest: 1Gi
+      memoryLimit: 6Gi
+      memoryRequest: 2Gi
       cpuLimit: "2"
       cpuRequest: 500m
 ```
@@ -115,6 +135,12 @@ oc exec $POD -n wksp-ai-developer -c tooling-container -- cat /sys/fs/cgroup/mem
 
 # Check if Continue config was copied
 oc exec $POD -n wksp-ai-developer -c tooling-container -- head -3 ~/.continue/config.yaml 2>/dev/null
+
+# Check VSIX files downloaded
+oc exec $POD -n wksp-ai-developer -c tooling-container -- ls -lh /tmp/*.vsix 2>/dev/null
+
+# Check projects cloned
+oc exec $POD -n wksp-ai-developer -c tooling-container -- ls /projects/ 2>/dev/null
 ```
 
 ### Debug Failed Workspace
