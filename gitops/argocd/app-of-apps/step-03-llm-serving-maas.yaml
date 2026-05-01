@@ -34,6 +34,19 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
+    - group: ""
+      kind: Secret
+      namespace: maas
+      name: openai-api-key
+      jsonPointers:
+        - /data
+        - /stringData
+    - group: ""
+      kind: Secret
+      namespace: coding-assistant
+      jsonPointers:
+        - /data
+        - /stringData
     - group: serving.kserve.io
       kind: LLMInferenceService
       jqPathExpressions:

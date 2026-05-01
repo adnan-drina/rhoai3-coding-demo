@@ -1,0 +1,77 @@
+---
+description: Governance for creating or modifying Cursor rules and skills. Prevents agents from casually rewriting their own instructions.
+globs: .cursor/rules/**/*.mdc,.cursor/skills/**/*,.cursor/agents/**/*,.cursor/hooks*,AGENTS.md,CONTRIBUTING.md,docs/AI_COLLABORATION.md
+alwaysApply: false
+---
+
+# Rules and skills governance
+
+Cursor rules and skills affect how AI agents behave in this repository. Treat changes to them like source code.
+
+## Before changing rules or skills
+
+Do not create, delete, or modify shared rules or skills unless the task explicitly asks for it.
+
+Before editing, identify:
+
+- the problem the rule or skill solves
+- whether this should be a rule, a skill, documentation, or a local/private workflow
+- who the change applies to (all contributors or only one person)
+- whether it contains secrets, local paths, local cluster names, private URLs, or personal preferences
+
+## Rule versus skill
+
+Create or edit a **rule** when the guidance should apply automatically to agent behavior.
+Examples: do not commit secrets, preserve GitOps structure, require honest validation notes.
+
+Create or edit a **skill** when the guidance is a repeatable workflow invoked for a specific task.
+Examples: review a GitOps change, validate a demo step, prepare a PR summary.
+
+Do not create a rule when a checklist or skill would be enough.
+Do not create a skill when a short rule or documentation note would be enough.
+
+## Shared versus local
+
+A shared rule or skill may be committed only when it:
+
+- applies to all contributors
+- contains no secrets or private environment details
+- is stable enough to maintain
+- improves consistency, safety, validation, or onboarding
+- can be reviewed by another contributor
+
+Keep it local/private when it contains:
+
+- personal workflow preferences or shell aliases
+- kubeconfig paths or local cluster URLs
+- API keys or token setup
+- private model preferences
+- experimental workflows not yet reviewed
+- customer or employer-specific information
+
+## Quality bar
+
+Rules should be: short, specific, durable, enforceable, non-duplicative.
+
+Skills should include: when to use, required inputs, files to inspect, steps to follow, validation commands, expected output, things the agent must not do.
+
+## Required PR notes
+
+Any PR changing shared rules or skills must include:
+
+- why the change is needed
+- whether it changes agent behavior
+- whether it should be shared or local
+- validation performed
+- risk of confusing or over-constraining agents
+
+## Guardrails
+
+Do not create rules or skills that:
+
+- include secrets or private credentials
+- depend on one contributor's local machine
+- encode personal model preferences as project policy
+- encourage bypassing MaaS or GitOps controls
+- duplicate existing instructions
+- make agents less honest about validation

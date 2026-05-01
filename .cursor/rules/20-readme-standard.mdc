@@ -1,0 +1,165 @@
+---
+description: Use whenever creating or updating a step README (steps/step-XX-*/README.md). This rule keeps step docs educational, blog-like, Red Hat-product-oriented, and useful even when readers never run the demo.
+globs: steps/**/README.md,steps/**/README.mdx
+alwaysApply: false
+---
+
+# Step README Standard: Technical Blog + Demo Guide
+
+Each step README is an educational artifact first and an operational note second. Readers should understand the "why, what, how, and so what" of the step even if they never install the demo.
+
+The writing should loosely follow a tell-show-tell presentation flow in the background, but **never expose methodology labels** such as "Tell" or "Show" in the README.
+
+## Primary Audience
+
+Write for enterprise engineers, solution architects, platform engineers, and developer experience teams evaluating Red Hat OpenShift AI for regulated or security-sensitive software development use cases.
+
+Assume many readers:
+- Work in large organizations with privacy, sovereignty, and governance requirements.
+- Need to understand why public AI services are not always acceptable for source code.
+- Want to see how Red Hat products and open source projects combine into an enterprise platform.
+- May only read the README and never run the lab.
+
+## Narrative Principles
+
+Every step README must explain:
+
+- **Why this matters** - the enterprise problem or architectural concern.
+- **What this step adds** - the platform capability introduced by the step.
+- **What to notice in the demo** - the proof points a presenter or reader should pay attention to.
+- **How Red Hat and open source make it work** - product layer plus upstream/open source layer.
+- **Why this is worth knowing** - the reusable lesson after the demo.
+- **Where it fits** - how this step connects to the full workshop.
+
+Do not lead with YAML, commands, or implementation details. Commands belong in `Deploy And Validate` and should be secondary.
+
+README files are educational technical articles, not runbooks. Move operational sequences to `docs/OPERATIONS.md` and failure recovery to `docs/TROUBLESHOOTING.md`. Keep implementation claims aligned with GitOps manifests, deploy scripts, validation scripts, and examples. Future capabilities must be labeled as future work, and trust boundaries, credentials, external services, and data movement must be explicit.
+
+## Required Structure
+
+Use this section pattern unless there is a strong reason not to:
+
+```markdown
+# Step NN: Capability Name
+
+## Why This Matters
+
+## Architecture
+
+![Step NN layered capability map](../../docs/assets/architecture/step-NN-capability-map.svg)
+
+## What This Step Adds
+
+## What To Notice In The Demo
+
+## How Red Hat And Open Source Make It Work
+
+## Red Hat Products Used
+
+## Open Source Projects To Know
+
+## Trust Boundaries
+<!-- Include when data boundary, privacy, identity, or external services matter. -->
+
+## Why This Is Worth Knowing
+
+## Where This Fits In The Full Platform
+
+## Deploy And Validate
+
+## References
+
+## Next Step
+```
+
+Use natural blog-style prose. Do not make the README feel like a checklist unless the section is explicitly operational.
+
+## Red Hat Product Demo Requirements
+
+This is a Red Hat product demo. Every step README must clearly identify the relevant Red Hat products and explain their role.
+
+Examples:
+- **Red Hat OpenShift** - platform substrate: Kubernetes, identity, RBAC, networking, routes, scheduling, monitoring.
+- **Red Hat OpenShift AI** - AI platform, GenAI Studio, dashboard, model registry, model serving, MaaS.
+- **Red Hat OpenShift GitOps** - declarative delivery and Argo CD reconciliation.
+- **Red Hat OpenShift Dev Spaces** - managed cloud development workspaces.
+- **Migration Toolkit for Applications** - application modernization analysis and developer workflow.
+- **Developer Lightspeed for MTA** - AI-assisted modernization.
+- **Red Hat Developer Hub** - enterprise developer portal and software catalog.
+- **Red Hat Connectivity Link** - API connectivity, gateway policy, and rate-limit enforcement.
+- **Red Hat build of Keycloak** - supported identity broker where used.
+
+Use official Red Hat product names. Avoid generic descriptions when the product name matters.
+
+## Open Source Education Requirements
+
+Each step should teach the important upstream projects behind the product layer. Keep this concise and practical.
+
+Examples:
+- Open Data Hub and models-as-a-service
+- KServe
+- vLLM
+- llm-d
+- Gateway API
+- Kuadrant
+- Authorino
+- Eclipse Che and DevWorkspace
+- Continue
+- OpenCode
+- Konveyor, Kantra, Kai
+- Backstage and TechDocs
+
+Explain what each project contributes. Do not just list links.
+
+## Trust Boundary Language
+
+Be precise about privacy and external providers.
+
+Approved language:
+- "Private local models keep prompts and code inside the OpenShift platform boundary."
+- "Governed external models are centrally controlled, but prompts are still processed by the external provider."
+- "MaaS provides consistent access, authentication, rate limiting, and visibility across private and external model paths."
+- "The platform supports governance and traceability needs for regulated organizations."
+
+Avoid:
+- "All AI traffic is private" when external models are present.
+- "No code leaves the organization" unless the statement is explicitly limited to local/private model paths.
+- Claims of EU AI Act compliance. Say the architecture supports controls and choices relevant to regulated organizations.
+
+## References Requirements
+
+Each README must include:
+- Official Red Hat documentation or product pages relevant to the step.
+- Important upstream/open source project documentation.
+- Any implementation-specific references used to justify design choices.
+
+Prefer official docs over blogs unless the blog is the authoritative context for the demo.
+
+## Architecture Diagram Convention
+
+Each step README includes an SVG architecture diagram under a `## Architecture` heading. The diagram is placed **after** "Why This Matters" and **before** "What This Step Adds" — the reader first understands the motivation, then sees the visual, then reads the specifics.
+
+- Diagrams live in `docs/assets/architecture/` and are named `step-NN-capability-map.svg`.
+- Use a markdown image reference: `![Step NN layered capability map](../../docs/assets/architecture/step-NN-capability-map.svg)`
+- Do not place the diagram at the top of the file or before the title.
+- The `## Architecture` heading makes the diagram linkable and visible in the table of contents.
+
+## Markdown Style
+
+- Use sequential heading levels.
+- Use `-` for unordered lists.
+- Use fenced code blocks with language identifiers.
+- Use relative links for repo files.
+- Use descriptive link text; never use bare URLs.
+- Prefer SVG architecture diagrams from `docs/assets/architecture/` over inline ASCII diagrams.
+- Keep operational commands copy-pastable but secondary.
+
+## Agent Behavior
+
+After modifying a step README:
+- Verify no literal "Tell:" or "Show:" labels remain.
+- Verify Red Hat product coverage is explicit.
+- Verify open source projects are explained where relevant.
+- Verify privacy statements distinguish private local models from governed external models.
+- Verify `Deploy And Validate`, `References`, and `Next Step` exist.
+- Run `git diff --check`.

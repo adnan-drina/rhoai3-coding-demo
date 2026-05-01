@@ -30,9 +30,9 @@ Before deploying the workshop, confirm:
 - The cluster has enough capacity for GPU nodes and model-serving workloads.
 - `oc`, `git`, `bash`, `curl`, and `jq` are available locally.
 - You are using the intended branch and remote for the GitOps source.
-- `env.example` has been copied to `.env` and adjusted for your branch or fork if needed.
-- A Hugging Face token is available if your environment requires authentication for model pulls.
-- A real OpenAI API key is available only if the governed external model path will be exercised. The GitOps Secret is a placeholder until replaced.
+- `env.example` has been copied to `.env` and configured with required credentials.
+- `OPENAI_API_KEY` is set in `.env` if external model inference (gpt-4o, gpt-4o-mini) will be exercised.
+- Optional: `SLACK_BOT_TOKEN` and/or `BRIGHTDATA_API_TOKEN` in `.env` if those MCP servers are needed.
 
 Recommended checks:
 
@@ -43,7 +43,7 @@ git remote -v
 git status --short
 ```
 
-Optional MCP integrations have their own prerequisites. The base deployment includes the read-only OpenShift MCP server. Slack and BrightData MCP components remain disabled unless their credential Secrets exist in `coding-assistant` and the Kustomize components are enabled.
+Optional MCP integrations have their own prerequisites. The base deployment includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData MCP components remain disabled unless their credential Secrets exist in `coding-assistant` and the Kustomize components are uncommented in `gitops/step-03-llm-serving-maas/base/kustomization.yaml`.
 
 ## Bootstrap
 
@@ -173,6 +173,25 @@ oc get clusterpolicy -A
 
 Step 03 is the most complex step. It deploys local models, external model registrations, MaaS governance, gateway policy, and observability.
 
+**Credential provisioning:** `deploy.sh` reads `.env` and provisions secrets before applying the Argo CD Application:
+
+| `.env` variable | Secret created | Namespace | Purpose |
+|----------------|----------------|-----------|---------|
+| `OPENAI_API_KEY` | `openai-api-key` | `maas` | Credential injection for external models (gpt-4o, gpt-4o-mini) |
+| `SLACK_BOT_TOKEN` | `slack-mcp-credentials` | `coding-assistant` | Slack MCP server authentication |
+| `BRIGHTDATA_API_TOKEN` | `brightdata-mcp-credentials` | `coding-assistant` | BrightData MCP server authentication |
+
+The Argo CD Application has `ignoreDifferences` configured for these Secrets so `selfHeal` does not revert provisioned values to the GitOps placeholder.
+
+If you need to update a credential after initial deployment:
+
+```bash
+oc create secret generic openai-api-key -n maas \
+    --from-literal=api-key="sk-proj-YOUR-KEY" \
+    --dry-run=client -o yaml | oc apply -f -
+oc label secret openai-api-key -n maas inference.networking.k8s.io/bbr-managed=true --overwrite
+```
+
 Useful checks:
 
 ```bash
@@ -181,6 +200,7 @@ oc get maasmodelref -n maas
 oc get externalmodel -n maas
 oc get maasauthpolicy,maassubscription -n models-as-a-service
 oc get gateway maas-default-gateway -n openshift-ingress
+oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' | base64 -d | head -c10
 ```
 
 ### Step 04

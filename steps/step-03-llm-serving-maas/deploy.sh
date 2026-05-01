@@ -15,6 +15,36 @@ check_oc_logged_in
 
 log_step "Step 03: LLM Serving + MaaS"
 
+# Provision credential secrets from .env before ArgoCD syncs.
+# ignoreDifferences in the Application prevents selfHeal from reverting these.
+log_step "Provisioning credential secrets"
+
+ensure_namespace "maas"
+ensure_namespace "coding-assistant"
+
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+    ensure_secret_from_env "openai-api-key" "maas" "api-key=${OPENAI_API_KEY}"
+    oc label secret openai-api-key -n maas inference.networking.k8s.io/bbr-managed=true --overwrite
+    log_success "openai-api-key provisioned in maas namespace"
+else
+    log_info "OPENAI_API_KEY not set — external models will use placeholder (inference will fail)"
+fi
+
+if [[ -n "${SLACK_BOT_TOKEN:-}" ]]; then
+    ensure_secret_from_env "slack-mcp-credentials" "coding-assistant" "SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}"
+    log_success "slack-mcp-credentials provisioned"
+else
+    log_info "SLACK_BOT_TOKEN not set — Slack MCP skipped"
+fi
+
+if [[ -n "${BRIGHTDATA_API_TOKEN:-}" ]]; then
+    ensure_secret_from_env "brightdata-mcp-credentials" "coding-assistant" "API_TOKEN=${BRIGHTDATA_API_TOKEN}"
+    log_success "brightdata-mcp-credentials provisioned"
+else
+    log_info "BRIGHTDATA_API_TOKEN not set — BrightData MCP skipped"
+fi
+
+log_step "Applying ArgoCD Application"
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
 log_success "ArgoCD Application '${STEP_NAME}' applied"
 

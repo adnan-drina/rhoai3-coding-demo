@@ -6,6 +6,7 @@ This directory contains operational documentation for the RHOAI coding demo. The
 |----------|---------|--------------|
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operating model, day-2 notes, and cleanup guidance | Use while installing, validating, or maintaining the demo environment |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment step fails validation or a demo component is unavailable |
+| [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
 
 The published learning path is:
 
@@ -17,4 +18,6 @@ The published learning path is:
 6. [Step 05: MTA and Developer Lightspeed](../steps/step-05-mta/README.md)
 7. [Step 06: Red Hat Developer Hub](../steps/step-06-developer-hub/README.md)
 
-Local-only notes, Cursor rules, agent prompts, and scratch material are not part of the published documentation set. They can guide maintenance, but claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.
+Shared Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and agent definitions (`.cursor/agents/`) are tracked in git and define project-wide AI agent behavior. Local/private rules and skills that contain credentials, local paths, or personal preferences must not be committed. See [AI_COLLABORATION.md](AI_COLLABORATION.md) for the governance model.
+
+Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.

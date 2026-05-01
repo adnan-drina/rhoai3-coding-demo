@@ -1,0 +1,100 @@
+---
+description: Use when proposing or making code, manifest, script, README, operations, or troubleshooting changes. Keep behavior and documentation aligned.
+alwaysApply: true
+---
+
+# How to propose or make changes in this repo
+
+When responding with changes, always include:
+1) **Files to change** (exact paths)
+2) **What to add/modify** (small diffs or full file content if short)
+3) **How to apply** (from GitOps folder, or `deploy.sh`, or exact commands)
+4) **How to validate** (deterministic `oc` checks or `validate.sh`)
+
+## Code and documentation alignment
+
+Behavior and documentation MUST stay aligned.
+
+When changing implemented behavior, update all affected surfaces in the same change:
+- GitOps manifests under `gitops/`
+- deployment scripts under `steps/*/deploy.sh`
+- validation scripts under `steps/*/validate.sh`
+- educational READMEs when the architecture, value story, demo flow, trust boundary, product version, or references change
+- `docs/OPERATIONS.md` when deployment, validation, or day-2 operation changes
+- `docs/TROUBLESHOOTING.md` when a known failure mode, diagnostic command, or recovery path changes
+
+Documentation must not claim a capability is implemented unless it is backed by manifests/scripts and, where practical, validation checks.
+
+When changing workarounds, limitations, or validated status, update `BACKLOG.md` in the same change. Do not delete historical workaround entries unless replacing them with a clear completed/resolved entry.
+
+Documentation-only changes are allowed when they:
+- clarify existing behavior
+- improve educational narrative
+- add or correct references
+- fix structure, style, typos, or terminology
+- explicitly mark unimplemented ideas as future, deferred, optional, or planned
+
+Avoid code-only changes that leave users with stale docs. Avoid docs-only changes that imply new runtime behavior.
+
+Avoid:
+- "Just click around in the UI"
+- "It should work"
+- Unverifiable claims
+- Stating that a demo path exists before it is implemented or clearly marked as future work
+
+If there is ambiguity in docs or versions:
+- State the assumption explicitly
+- Provide a verification command to confirm the assumption on the target cluster
+
+## Branching strategy: GitHub Flow + Trunk-Based Development
+
+`main` is the trunk. ArgoCD syncs from `main`. All work targets `main`.
+
+### When to commit directly to main
+- Single-file fixes, typos, small updates
+- Documentation-only changes
+- Changes you can describe in one commit message
+
+### When to use a feature branch
+- Multi-step changes spanning multiple files or steps
+- Parallel agent worktree work
+- Changes that need review before merging
+- Experimental changes you might revert
+
+### Branch naming
+- `feat/step-XX-description` - new features scoped to a step
+- `feat/description` - cross-cutting features
+- `fix/description` - bug fixes
+- `refactor/description` - structural improvements
+
+### Pull requests
+- Required for feature branches - merge via PR with description
+- Use `--no-ff` merges to preserve branch history in the commit graph
+- Delete the branch after merging
+
+### Version branches and tags
+- Tag milestones: `git tag -a v1.0 -m "Demo milestone"` for stable demo snapshots
+- `targetRevision: main` for active development; switch to a tag for demo releases
+
+### What NOT to do
+- Never force-push to `main`
+- Never create long-lived branches (more than a few days)
+
+## Git commit conventions
+
+Use conventional commit messages: `type(scope): description`
+- **Types:** `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`
+- **Scope:** Use the step number when the change is step-specific (e.g., `feat(step-01): add hardware profiles`)
+- **Scope:** Use the component name for cross-cutting changes (e.g., `fix(gitops): switch all apps to rhoai-demo project`)
+- Keep the subject line under 72 characters
+- Never force-push to `main`
+
+## AI assistance disclosure in PRs
+
+Every PR must include AI assistance disclosure using the PR template at `.github/pull_request_template.md`.
+
+At minimum, state one of:
+- `AI assistance: none`
+- `AI assistance: Cursor with Claude/GPT` (with scope, human review, and validation details)
+
+For security-sensitive changes (MaaS, gateway, Authorino, RBAC, NetworkPolicy, credentials, MCP permissions), always include explicit risk and rollback notes regardless of whether AI assistance was used.
