@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Latest validated code commit: `cff7e4a`
+- Latest validated code commit: `b5bb770`
 
 Preflight:
 
@@ -225,10 +225,12 @@ Stage results:
 
 Final sweep:
 
-- All nine Argo CD Applications reported `Synced` and `Healthy`.
+- All nine Argo CD Applications reported `Synced` and `Healthy` at commit `b5bb770`.
 - A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
 - Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` is not set, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set.
 - A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
+- Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh`, and `./scripts/validate-stage-flow.sh`.
+- Merge-readiness security check found no committed `.env` file and no real kubeadmin password, provider key, kubeconfig, bearer token, or private key in the branch diff. Only placeholder and masked key examples such as `sk-oai-*` were present.
 
 Validation hardening pass:
 
