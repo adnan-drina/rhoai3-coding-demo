@@ -248,6 +248,7 @@ Stage 040 findings:
 - The first Stage 040 auto-sync stalled on `tenants.maas.opendatahub.io` even though the CRD existed. Manual hard refresh plus explicit `argocd app sync` advanced the operation. This is the same Argo CD startup/cache pattern seen in Stage 010.
 - CloudNativePG generated install plan `install-kjljp` with `APPROVAL=Manual` and `APPROVED=false` even though the Subscription requested `installPlanApproval: Automatic`. Improvement being applied: add a narrow Stage 040 approval hook that only approves pending CloudNativePG install plans in `openshift-operators`.
 - The first approval hook version used a later sync wave than the CloudNativePG Subscription, so Argo CD did not run it while the Subscription was still Progressing. The hook now runs in the same dependency wave as the Subscription, with RBAC created one wave earlier.
+- The `configure-kuadrant` hook ran before the MaaS controller and generated AuthPolicy resources were created. Improvement being applied: move that hook after the MaaS API, gateway, and local MaaS resources, extend its deadline, and fail explicitly if required AuthPolicy resources are not created in time.
 
 ### Stage 020
 
