@@ -273,7 +273,7 @@ Stage 070 findings:
 
 - Initial Stage 070 sync attempted to create the `CheCluster` before the Dev Spaces operator webhook service had endpoints, producing a transient `no endpoints available for service "devspaces-operator-service"` admission error. A manual hard refresh and sync succeeded after the operator and webhook pods became ready.
 - Improvement applied: add a narrow Sync hook that waits for the `devspaces-operator` deployment rollout and `devspaces-operator-service` endpoints before Argo CD applies the `CheCluster`.
-- Follow-up GitOps finding: `DevWorkspace` resources had `Replace=true`, which is incompatible with controller-assigned immutable DevWorkspace IDs on later syncs. Improvement applied: remove `Replace=true` and allow Argo CD to patch/observe the resources while continuing to ignore controller-managed `DevWorkspace.spec` drift.
+- Follow-up GitOps finding: `DevWorkspace` resources had `Replace=true`, which is incompatible with controller-assigned immutable DevWorkspace IDs on later syncs. Improvement applied: remove `Replace=true`, add a repair hook for stale live annotations from earlier revisions, and allow Argo CD to patch/observe the resources while continuing to ignore controller-managed `DevWorkspace.spec` drift.
 - Final evidence for Stage 070: Dev Spaces operator CSV `devspacesoperator.v3.27.1` succeeded, `CheCluster` phase is `Active`, the Dev Spaces URL is `https://devspaces.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`, and Argo CD reports Stage 070 `Synced` and `Healthy`.
 
 ### Stage 020

@@ -10,4 +10,5 @@ resources:
   - devspaces/subscription.yaml
   - devspaces/wait-for-operator-webhook.yaml
   - devspaces/checluster.yaml
+  - devspaces/repair-devworkspace-sync-options.yaml
   - devspaces/workspaces.yaml
