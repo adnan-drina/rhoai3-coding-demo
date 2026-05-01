@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Git commit: `9809a42`
+- Git commit: `8e4ce3d`
 
 Preflight:
 
@@ -213,12 +213,13 @@ Stage results:
 
 | Stage | Status | Evidence |
 |------|--------|----------|
-| 010 OpenShift AI Platform Foundation | Fixing | Argo CD Application reached `Synced/Healthy`; validation found `genAiStudio` missing from `OdhDashboardConfig` |
+| 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
 
 Stage 010 findings:
 
 - Automated sync initially stalled after bootstrap while waiting on `ClusterRole/job-approve-sm-installplan` and `ClusterRole/job-patch-dsci-ca`, even though both resources existed. Manual `argocd app sync 010-openshift-ai-platform-foundation` advanced the operation and completed successfully. Improvement candidate: add a bootstrap readiness wait for the Argo CD application-controller cache before applying the first stage, and document `argocd app sync` as the recovery command for this startup race.
-- Validation found `OdhDashboardConfig.spec.dashboardConfig.genAiStudio` absent. Root cause: the Stage 010 Application ignored the entire `OdhDashboardConfig.spec` while `RespectIgnoreDifferences=true`, so Argo CD reported the resource synced without enforcing the MaaS-required dashboard flags. Fix: stop ignoring `OdhDashboardConfig.spec`; keep operator-managed drift ignores only where they do not hide required demo configuration.
+- Validation found `OdhDashboardConfig.spec.dashboardConfig.genAiStudio` absent. Root cause: the Stage 010 Application ignored the entire `OdhDashboardConfig.spec` while `RespectIgnoreDifferences=true`, so Argo CD reported the resource synced without enforcing the MaaS-required dashboard flags. Fix applied in commit `8e4ce3d`: stop ignoring `OdhDashboardConfig.spec`; keep operator-managed drift ignores only where they do not hide required demo configuration.
+- After the fix, Stage 010 re-synced to commit `8e4ce3d` and validation passed with 11 checks, 0 warnings, and 0 failures.
 
 ### Stage 020
 
