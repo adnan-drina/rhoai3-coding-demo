@@ -227,6 +227,7 @@ Stage 020 findings:
 - The GPU MachineSet hook created MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` with two `g6e.2xlarge` Machines. The Machines became Running and the nodes registered Ready.
 - The initial hook patched the MachineSet template after creating the MachineSet. The first Machines could be created before that patch was observed, so the live GPU nodes had `nvidia.com/gpu.present=true` but did not have `node-role.kubernetes.io/gpu` or the `nvidia.com/gpu=true:NoSchedule` taint.
 - Improvement being applied: make the MachineSet hook idempotent. It should always repair the MachineSet template and also label/taint already-created live nodes selected by `node.kubernetes.io/instance-type`.
+- Follow-up RBAC finding: the repair logic also needs narrow Node `get`, `list`, and `patch` permissions. Without those verbs the hook can repair the MachineSet template but cannot repair already-created Nodes.
 
 ### Stage 020
 
