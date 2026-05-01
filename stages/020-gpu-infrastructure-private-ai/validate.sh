@@ -33,12 +33,32 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
+MS_READY=$(oc get machineset -n openshift-machine-api -o json 2>/dev/null \
+    | jq '[.items[] | select(.spec.template.spec.providerSpec.value.instanceType | test("^g[0-9]")) | select((.status.readyReplicas // 0) >= (.spec.replicas // 0))] | length' 2>/dev/null || echo "0")
+if [[ "$MS_READY" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} GPU MachineSet replicas ready"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} GPU MachineSet replicas not fully ready"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
 GPU_NODES=$(oc get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$GPU_NODES" -ge 1 ]]; then
     echo -e "${GREEN}[PASS]${NC} GPU nodes available: $GPU_NODES"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
     echo -e "${YELLOW}[WARN]${NC} GPU nodes available: $GPU_NODES (may take 5-10 min to provision)"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+ALLOC_GPU_NODES=$(oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
+    | jq '[.items[] | select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) >= 1)] | length' 2>/dev/null || echo "0")
+if [[ "$ALLOC_GPU_NODES" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} GPU allocatable resources present: $ALLOC_GPU_NODES"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} GPU allocatable resources present: $ALLOC_GPU_NODES"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
@@ -50,6 +70,27 @@ else
     echo -e "${YELLOW}[WARN]${NC} GPU role labels present: $GPU_ROLE_NODES"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
+
+GPU_TAINT_NODES=$(oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
+    | jq '[.items[] | select(any(.spec.taints[]?; .key == "nvidia.com/gpu" and .effect == "NoSchedule"))] | length' 2>/dev/null || echo "0")
+if [[ "$GPU_TAINT_NODES" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} GPU NoSchedule taints present: $GPU_TAINT_NODES"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} GPU NoSchedule taints present: $GPU_TAINT_NODES"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+log_step "GPU Operator Runtime"
+check "NodeFeatureDiscovery available" \
+    "oc get nodefeaturediscovery nfd-instance -n openshift-nfd -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "NVIDIA ClusterPolicy ready" \
+    "oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
+    "True"
+check "NVIDIA ClusterPolicy state ready" \
+    "oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.state}'" \
+    "ready"
 
 echo ""
 validation_summary

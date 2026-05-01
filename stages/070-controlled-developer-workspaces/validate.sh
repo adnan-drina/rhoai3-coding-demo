@@ -40,14 +40,23 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Workspace DevWorkspace exists: $ns/exercises" \
         "oc get devworkspace exercises -n $ns -o jsonpath='{.metadata.name}'" \
         "exercises"
+    check_warn "Workspace DevWorkspace is not failed: $ns/exercises" \
+        "oc get devworkspace exercises -n $ns -o jsonpath='{.status.phase}'" \
+        "Stopped"
 done
 
 check "ai-admin workspace edit RoleBinding exists" \
     "oc get rolebinding wksp-edit-ai-admin -n wksp-ai-admin -o jsonpath='{.subjects[0].name}'" \
     "ai-admin"
+check "ai-admin workspace RoleBinding grants edit" \
+    "oc get rolebinding wksp-edit-ai-admin -n wksp-ai-admin -o jsonpath='{.roleRef.name}'" \
+    "edit"
 check "ai-developer workspace edit RoleBinding exists" \
     "oc get rolebinding wksp-edit-ai-developer -n wksp-ai-developer -o jsonpath='{.subjects[0].name}'" \
     "ai-developer"
+check "ai-developer workspace RoleBinding grants edit" \
+    "oc get rolebinding wksp-edit-ai-developer -n wksp-ai-developer -o jsonpath='{.roleRef.name}'" \
+    "edit"
 
 echo ""
 validation_summary

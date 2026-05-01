@@ -72,7 +72,7 @@ check_pods_ready() {
     local ns="$1" selector="$2" min_count="${3:-1}"
     local ready_count
     ready_count=$(oc get pods -n "$ns" -l "$selector" --no-headers 2>/dev/null \
-        | grep -c "Running" || echo "0")
+        | grep -c "Running" || true)
 
     if [[ "$ready_count" -ge "$min_count" ]]; then
         echo -e "${GREEN}[PASS]${NC} Pods ready ($selector in $ns): $ready_count >= $min_count"

@@ -188,7 +188,7 @@ Cluster:
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
 - Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
-- Latest validated code commit: `157d2ba`
+- Latest validated code commit: `TBD_VALIDATION_HARDENING_COMMIT`
 
 Preflight:
 
@@ -214,20 +214,26 @@ Stage results:
 | Stage | Status | Evidence |
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 18 passed, 0 warnings, 0 failed |
-| 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
-| 030 Private Model Serving | Passed | `./stages/030-private-model-serving/validate.sh`: 8 passed, 0 warnings, 0 failed |
-| 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 17 passed, 0 warnings, 0 failed |
-| 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 8 passed, 1 warning, 0 failed |
-| 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 6 passed, 2 warnings, 0 failed |
-| 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 13 passed, 0 warnings, 0 failed |
-| 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 20 passed, 0 warnings, 0 failed |
-| 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 10 passed, 0 warnings, 0 failed |
+| 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 15 passed, 0 warnings, 0 failed |
+| 030 Private Model Serving | Passed | `./stages/030-private-model-serving/validate.sh`: 19 passed, 0 warnings, 0 failed |
+| 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 38 passed, 0 warnings, 0 failed |
+| 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 17 passed, 1 warning, 0 failed |
+| 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 14 passed, 2 warnings, 0 failed |
+| 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 18 passed, 0 warnings, 0 failed |
+| 080 AI-Assisted Application Modernization | Passed | `./stages/080-ai-assisted-application-modernization/validate.sh`: 22 passed, 0 warnings, 0 failed |
+| 090 Developer Portal and Self-Service | Passed | `./stages/090-developer-portal-self-service/validate.sh`: 15 passed, 0 warnings, 0 failed |
 
 Final sweep:
 
 - All nine Argo CD Applications reported `Synced` and `Healthy`.
 - A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
 - Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` is not set, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set.
+
+Validation hardening pass:
+
+- Validators now check demo-owned outcomes in addition to service readiness: GPU node allocatable capacity and taints, local model metadata and registry entries, generated MaaS routes/policies/token limits, external model endpoint and credential wiring, MCP service discovery and credential gating, Dev Spaces RoleBindings, MTA ConsoleLink, and RHDH OIDC/catalog configuration.
+- `scripts/validate-lib.sh` now handles zero matching pods without producing a malformed `0 0` count.
+- Hook Jobs are treated as non-durable operational evidence. Stage 030 validates the durable model registry contents instead of failing when the `model-registry-seed` hook Job has already been cleaned up.
 
 Stage 010 findings:
 

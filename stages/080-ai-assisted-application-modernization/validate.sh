@@ -83,6 +83,9 @@ log_step "OpenShift OAuth Federation"
 check "OAuthClient mta-keycloak exists" \
   "oc get oauthclient mta-keycloak -o jsonpath='{.metadata.name}'" \
   "mta-keycloak"
+check "OAuthClient mta-keycloak grant method is auto" \
+  "oc get oauthclient mta-keycloak -o jsonpath='{.grantMethod}'" \
+  "auto"
 
 OAUTH_REDIRECT=$(oc get oauthclient mta-keycloak -o jsonpath='{.redirectURIs[0]}' 2>/dev/null || echo "")
 if [[ -n "$OAUTH_REDIRECT" ]] && [[ "$OAUTH_REDIRECT" != *"placeholder"* ]]; then
@@ -119,6 +122,16 @@ if [[ -n "$MTA_ROUTE" ]]; then
     fi
 else
     echo -e "${YELLOW}[WARN]${NC} MTA UI route not found"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+log_step "ConsoleLink"
+MTA_CL_HREF=$(oc get consolelink mta -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
+if [[ -n "$MTA_CL_HREF" ]] && [[ "$MTA_CL_HREF" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} MTA ConsoleLink: ${MTA_CL_HREF}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} MTA ConsoleLink href is placeholder or missing"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
