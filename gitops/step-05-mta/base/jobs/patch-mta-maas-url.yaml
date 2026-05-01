@@ -126,6 +126,11 @@ spec:
             echo "ERROR: MaaS Gateway not found (checked openshift-ingress and maas namespaces)"
             exit 1
           fi
+          if [[ "$MAAS_HOST" == *placeholder* ]]; then
+            echo "ERROR: MaaS Gateway hostname is still a placeholder: ${MAAS_HOST}"
+            echo "  Run Step 03 and verify job-patch-gateway-hostname patched the cluster-specific route host."
+            exit 1
+          fi
 
           MAAS_BASE_URL="https://${MAAS_HOST}/maas/${MODEL_NAME}/v1"
           echo "MaaS base URL: ${MAAS_BASE_URL}"
