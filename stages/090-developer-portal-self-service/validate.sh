@@ -59,6 +59,24 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
+OIDC_SECRET=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_OIDC_CLIENT_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -n "$OIDC_SECRET" ]] && [[ "${OIDC_SECRET,,}" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} RHDH_OIDC_CLIENT_SECRET: set"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} RHDH_OIDC_CLIENT_SECRET is placeholder or missing"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+SESSION_SECRET=$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.SESSION_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+if [[ -n "$SESSION_SECRET" ]] && [[ "${SESSION_SECRET,,}" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} SESSION_SECRET: set"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} SESSION_SECRET is placeholder or missing"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
 log_step "ConsoleLink"
 CL_HREF=$(oc get consolelink rhdh -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
 if [[ -n "$CL_HREF" ]] && [[ "$CL_HREF" != *"placeholder"* ]]; then
