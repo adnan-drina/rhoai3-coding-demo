@@ -214,12 +214,19 @@ Stage results:
 | Stage | Status | Evidence |
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
+| 020 GPU Infrastructure for Private AI | Fixing | Argo CD Application `Synced/Healthy`; GPU MachineSet created two `g6e.2xlarge` nodes; live nodes initially missed GPU role label and taint |
 
 Stage 010 findings:
 
 - Automated sync initially stalled after bootstrap while waiting on `ClusterRole/job-approve-sm-installplan` and `ClusterRole/job-patch-dsci-ca`, even though both resources existed. Manual `argocd app sync 010-openshift-ai-platform-foundation` advanced the operation and completed successfully. Improvement candidate: add a bootstrap readiness wait for the Argo CD application-controller cache before applying the first stage, and document `argocd app sync` as the recovery command for this startup race.
 - Validation found `OdhDashboardConfig.spec.dashboardConfig.genAiStudio` absent. Root cause: the Stage 010 Application ignored the entire `OdhDashboardConfig.spec` while `RespectIgnoreDifferences=true`, so Argo CD reported the resource synced without enforcing the MaaS-required dashboard flags. Fix applied in commit `8e4ce3d`: stop ignoring `OdhDashboardConfig.spec`; keep operator-managed drift ignores only where they do not hide required demo configuration.
 - After the fix, Stage 010 re-synced to commit `8e4ce3d` and validation passed with 11 checks, 0 warnings, and 0 failures.
+
+Stage 020 findings:
+
+- The GPU MachineSet hook created MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` with two `g6e.2xlarge` Machines. The Machines became Running and the nodes registered Ready.
+- The initial hook patched the MachineSet template after creating the MachineSet. The first Machines could be created before that patch was observed, so the live GPU nodes had `nvidia.com/gpu.present=true` but did not have `node-role.kubernetes.io/gpu` or the `nvidia.com/gpu=true:NoSchedule` taint.
+- Improvement being applied: make the MachineSet hook idempotent. It should always repair the MachineSet template and also label/taint already-created live nodes selected by `node.kubernetes.io/instance-type`.
 
 ### Stage 020
 

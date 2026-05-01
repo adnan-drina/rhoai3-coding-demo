@@ -23,8 +23,8 @@ check_csv_succeeded "openshift-nfd" "nfd"
 check_csv_succeeded "nvidia-gpu-operator" "gpu"
 
 log_step "GPU MachineSets"
-MS_COUNT=$(oc get machineset -n openshift-machine-api --no-headers 2>/dev/null \
-    | grep -c "gpu" || echo "0")
+MS_COUNT=$(oc get machineset -n openshift-machine-api -o json 2>/dev/null \
+    | jq '[.items[] | select(.spec.template.spec.providerSpec.value.instanceType | test("^g[0-9]"))] | length' 2>/dev/null || echo "0")
 if [[ "$MS_COUNT" -ge 1 ]]; then
     echo -e "${GREEN}[PASS]${NC} GPU MachineSets found: $MS_COUNT"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
@@ -33,12 +33,21 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
-GPU_NODES=$(oc get nodes -l node-role.kubernetes.io/gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
+GPU_NODES=$(oc get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$GPU_NODES" -ge 1 ]]; then
     echo -e "${GREEN}[PASS]${NC} GPU nodes available: $GPU_NODES"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
     echo -e "${YELLOW}[WARN]${NC} GPU nodes available: $GPU_NODES (may take 5-10 min to provision)"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+GPU_ROLE_NODES=$(oc get nodes -l node-role.kubernetes.io/gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$GPU_ROLE_NODES" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} GPU role labels present: $GPU_ROLE_NODES"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} GPU role labels present: $GPU_ROLE_NODES"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
