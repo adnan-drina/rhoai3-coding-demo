@@ -15,7 +15,7 @@ spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
-    targetRevision: codex/stage-refactor-demo-validation
+    targetRevision: main
     path: gitops/stages/020-gpu-infrastructure-private-ai/base
   destination:
     server: https://kubernetes.default.svc

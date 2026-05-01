@@ -14,7 +14,7 @@ spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
-    targetRevision: codex/stage-refactor-demo-validation
+    targetRevision: main
     path: gitops/stages/090-developer-portal-self-service/base
   destination:
     server: https://kubernetes.default.svc

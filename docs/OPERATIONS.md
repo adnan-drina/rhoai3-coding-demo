@@ -187,7 +187,7 @@ Cluster:
 - API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
 - OpenShift: `4.20.19`
 - Kubernetes: `v1.33.9`
-- Git branch used by Argo CD: `codex/stage-refactor-demo-validation`
+- Git branch used by Argo CD: `main`
 - Latest validated code commit: `b5bb770`
 
 Preflight:
