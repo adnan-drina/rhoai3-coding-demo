@@ -13,6 +13,7 @@ resources:
   - models/namespace.yaml
   - models/admin-rbac.yaml
   - governance/tier-to-group-mapping.yaml
+  - model-registry/seed-networkpolicy.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
   - model-registry/seed-models.yaml

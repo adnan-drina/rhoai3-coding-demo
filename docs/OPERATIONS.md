@@ -215,6 +215,7 @@ Stage results:
 |------|--------|----------|
 | 010 OpenShift AI Platform Foundation | Passed | `./stages/010-openshift-ai-platform-foundation/validate.sh`: 11 passed, 0 warnings, 0 failed |
 | 020 GPU Infrastructure for Private AI | Passed | `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 9 passed, 0 warnings, 0 failed |
+| 030 Private Model Serving | Fixing | Argo CD Application created; seed Job initially blocked by model registry NetworkPolicy |
 
 Stage 010 findings:
 
@@ -231,6 +232,13 @@ Stage 020 findings:
 - Follow-up command finding: `oc get nodes -o name` returns `node/<name>`, which works for `oc label` but not for `oc adm taint` in this script. Use bare node names from JSONPath and pass `oc label node "$NODE"` / `oc adm taint node "$NODE"` explicitly.
 - Fix applied through commits `52bead9`, `e144001`, and `9e72be4`. Stage 020 re-synced successfully.
 - Final evidence: MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` created two `g6e.2xlarge` nodes. Both nodes were Ready, labeled `node-role.kubernetes.io/gpu`, tainted `nvidia.com/gpu=true:NoSchedule`, labeled `nvidia.com/gpu.present=true`, and advertised `nvidia.com/gpu: 1` allocatable. NVIDIA `ClusterPolicy` state was `ready`.
+
+Stage 030 findings:
+
+- The model registry deployment was healthy, but the `model-registry-seed` hook could not reach `demo-registry.rhoai-model-registries.svc:8080`.
+- Root cause: Stage 010 created a NetworkPolicy for the model registry that allowed dashboard traffic from `redhat-ods-applications`, but did not allow the Stage 030 seed Job running in `rhoai-model-registries`.
+- Improvement being applied: add a narrow Stage 030 NetworkPolicy that permits only pods labeled `app=model-registry-seed` to connect to the model registry API on port 8080.
+- The `LLMInferenceService` resources were created and scheduled on GPU nodes. They currently report `HTTPRouteReconcileError` until Stage 040 installs Red Hat Connectivity Link and the `AuthPolicy` CRD. Stage 030 validation treats model readiness as a warning because gateway governance is introduced in Stage 040.
 
 ### Stage 020
 
