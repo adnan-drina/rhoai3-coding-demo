@@ -249,6 +249,7 @@ Stage 040 findings:
 - CloudNativePG generated install plan `install-kjljp` with `APPROVAL=Manual` and `APPROVED=false` even though the Subscription requested `installPlanApproval: Automatic`. Improvement being applied: add a narrow Stage 040 approval hook that only approves pending CloudNativePG install plans in `openshift-operators`.
 - The first approval hook version used a later sync wave than the CloudNativePG Subscription, so Argo CD did not run it while the Subscription was still Progressing. The hook now runs in the same dependency wave as the Subscription, with RBAC created one wave earlier.
 - The `configure-kuadrant` hook ran before the MaaS controller and generated AuthPolicy resources were created. Improvement being applied: move that hook after the MaaS API, gateway, and local MaaS resources, extend its deadline, and fail explicitly if required AuthPolicy resources are not created in time.
+- The MaaS controller reported that `openshift-ingress/maas-default-gateway` was missing because Gateway resources were later than the controller and local MaaS resources. Improvement being applied: move `GatewayClass` and the default MaaS `Gateway` before the MaaS controller deployment, and move the Kuadrant patch hook after the gateway-dependent resources.
 
 ### Stage 020
 

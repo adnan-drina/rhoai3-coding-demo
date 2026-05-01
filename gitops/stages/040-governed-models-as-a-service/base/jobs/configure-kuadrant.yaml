@@ -7,14 +7,14 @@ metadata:
   name: job-configure-kuadrant
   namespace: kuadrant-system
   annotations:
-    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-wave: "22"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-configure-kuadrant
   annotations:
-    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-wave: "22"
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
@@ -28,7 +28,7 @@ kind: ClusterRoleBinding
 metadata:
   name: job-configure-kuadrant
   annotations:
-    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-wave: "22"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -44,7 +44,7 @@ metadata:
   name: job-configure-kuadrant
   namespace: kuadrant-system
   annotations:
-    argocd.argoproj.io/sync-wave: "19"
+    argocd.argoproj.io/sync-wave: "23"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:

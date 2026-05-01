@@ -5,7 +5,7 @@ kind: GatewayClass
 metadata:
   name: openshift-default
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-wave: "12"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   controllerName: "openshift.io/gateway-controller/v1"
