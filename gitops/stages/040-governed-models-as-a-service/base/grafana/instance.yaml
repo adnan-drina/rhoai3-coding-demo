@@ -1,0 +1,24 @@
+# Grafana instance for MaaS usage dashboards
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: grafana
+  labels:
+    app: grafana
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/component: frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  route:
+    spec:
+      tls:
+        termination: reencrypt
+  config:
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: admin
+      admin_password: redhat123

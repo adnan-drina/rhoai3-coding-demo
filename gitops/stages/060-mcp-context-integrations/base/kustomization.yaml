@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# MCP context integrations — OpenShift MCP is read-only. Slack and BrightData
+# are included as credential-gated integrations and require their Secrets for
+# successful runtime operation.
+
+resources:
+  - project/developer-project.yaml
+  - mcp/
+
+components:
+  - ../components/slack-mcp
+  - ../components/brightdata-mcp

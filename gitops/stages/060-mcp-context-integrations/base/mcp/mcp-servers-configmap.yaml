@@ -1,0 +1,19 @@
+# RHOAI Dashboard discovers MCP servers from this ConfigMap.
+# Each value is JSON with: url, description, and optionally transport.
+# Servers using SSE transport MUST set "transport": "sse".
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/experimenting_with_models_in_the_gen_ai_playground/playground-prerequisites_rhoai-user
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/part-of: mcp-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+data:
+  OpenShift-MCP: |
+    {
+      "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
+      "description": "Interact with the OpenShift cluster (Kubernetes MCP Server). Query pod status, logs, events, deployments, and cluster resources. Read-only mode."
+    }

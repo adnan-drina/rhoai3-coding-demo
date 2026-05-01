@@ -1,0 +1,40 @@
+# RHOAI 3.3 DataScienceCluster — minimal component set matching public quickstart
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+apiVersion: datasciencecluster.opendatahub.io/v2
+kind: DataScienceCluster
+metadata:
+  name: default-dsc
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  components:
+    dashboard:
+      managementState: Managed
+    workbenches:
+      managementState: Managed
+      workbenchNamespace: rhods-notebooks
+    aipipelines:
+      managementState: Removed
+      argoWorkflowsControllers:
+        managementState: Removed
+    kserve:
+      managementState: Managed
+      modelsAsService:
+        managementState: Managed
+      nim:
+        managementState: Removed
+      rawDeploymentServiceConfig: Headless
+    modelregistry:
+      managementState: Managed
+      registriesNamespace: rhoai-model-registries
+    llamastackoperator:
+      managementState: Managed
+    kueue:
+      managementState: Removed
+    trustyai:
+      managementState: Managed
+      eval:
+        lmeval:
+          permitOnline: deny
+          permitCodeExecution: deny

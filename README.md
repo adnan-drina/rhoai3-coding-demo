@@ -18,7 +18,7 @@ The goal is not to claim that every AI use case automatically satisfies a regula
 
 ## Architecture
 
-![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)
+![Red Hat OpenShift AI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)
 
 ## What We Are Building
 
@@ -27,10 +27,10 @@ The workshop builds a complete AI-enabled development platform on Red Hat OpenSh
 ```text
 Developer experience
   Red Hat Developer Hub
-  OpenShift Dev Spaces
+  Red Hat OpenShift Dev Spaces
   Continue and OpenCode
-  MTA Developer Lightspeed
-  RHOAI GenAI Studio and Playground
+  Red Hat Developer Lightspeed for MTA
+  Red Hat OpenShift AI GenAI Studio and Playground
 
 Governed model access
   Models-as-a-Service gateway
@@ -57,16 +57,19 @@ The central design choice is that model consumers do not connect directly to sca
 
 ## What The Demo Proves
 
-The demo progresses through six platform capabilities.
+The demo progresses through nine focused platform stages. The ordered source of truth is [`demo/flows/default.yaml`](demo/flows/default.yaml).
 
-| Step | What we show | What to understand |
+| Stage | What we show | What to understand |
 |------|--------------|--------------------|
-| [01 - OpenShift AI platform](steps/step-01-rhoai-platform/README.md) | The AI control plane, dashboard, users, model registry, and platform services | Trusted AI starts with a managed platform, not a collection of scripts |
-| [02 - GPU infrastructure](steps/step-02-gpu-infra/README.md) | NVIDIA GPU enablement and worker capacity | Private AI needs centrally managed accelerator infrastructure |
-| [03 - MaaS](steps/step-03-llm-serving-maas/README.md) | Local and external models behind one governed API | Model choice can coexist with policy, quotas, and observability |
-| [04 - Dev Spaces](steps/step-04-devspaces/README.md) | AI assistants in controlled workspaces | Developers get familiar AI tools without bypassing platform governance |
-| [05 - MTA](steps/step-05-mta/README.md) | AI-assisted Java modernization with MTA and Developer Lightspeed | AI becomes more valuable when grounded in analysis and workflow context |
-| [06 - Developer Hub](steps/step-06-developer-hub/README.md) | Portal-based discovery of applications and platform capabilities | A developer portal turns AI platform services into self-service paths |
+| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | The AI control plane, dashboard, users, model registry, and platform services | Trusted AI starts with a managed platform, not a collection of scripts |
+| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement and worker capacity | Private AI needs centrally managed accelerator infrastructure |
+| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served on Red Hat OpenShift AI | Sensitive workloads need a private model path before developer tools consume it |
+| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS, gateway policy, subscriptions, quotas, telemetry, and API keys | Model serving becomes an enterprise platform service through governance |
+| [050 - Approved External Model Access](stages/050-approved-external-model-access/README.md) | External OpenAI models behind the governed MaaS path | External model use can be centralized without making it private |
+| [060 - MCP Context Integrations](stages/060-mcp-context-integrations/README.md) | OpenShift, Slack, and BrightData MCP integrations | Tool context has its own data boundary and approval model |
+| [070 - Controlled Developer Workspaces](stages/070-controlled-developer-workspaces/README.md) | Red Hat OpenShift Dev Spaces, Continue, and OpenCode | Developers get familiar AI tools without bypassing platform governance |
+| [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Red Hat Developer Lightspeed for MTA | AI becomes more valuable when grounded in analysis and workflow context |
+| [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Red Hat Developer Hub discovery of applications and platform capabilities | A developer portal turns AI platform services into self-service paths |
 
 If someone only reads the workshop, they should still learn the architecture: private model serving, governed external model access, platform identity, developer tooling, modernization workflows, and portal-driven consumption.
 
@@ -88,12 +91,12 @@ This is a Red Hat platform demo. The open source projects are important, but the
 | [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai) | The AI platform layer for model serving, GenAI Studio, model registry, dashboard experience, and AI workload lifecycle management |
 | [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | GitOps delivery and reconciliation of the workshop platform through Argo CD |
 | [Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces) | Cloud-native developer workspaces for AI-assisted development and modernization |
-| [Migration Toolkit for Applications](https://www.redhat.com/en/technologies/jboss-middleware/migration-toolkit-for-applications) | Application modernization analysis and Developer Lightspeed integration for AI-assisted migration |
+| [Migration Toolkit for Applications](https://www.redhat.com/en/technologies/jboss-middleware/migration-toolkit-for-applications) | Application modernization analysis and Red Hat Developer Lightspeed for MTA integration for AI-assisted migration |
 | [Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub) | Enterprise developer portal and software catalog for self-service platform consumption |
 | [Red Hat Connectivity Link](https://www.redhat.com/en/blog/red-hat-connectivity-link) | API connectivity, gateway, and policy layer used in the MaaS governance path |
 | [Red Hat build of Keycloak](https://www.redhat.com/en/technologies/cloud-computing/openshift/keycloak) | Identity brokering for MTA and Developer Hub authentication flows |
 
-The demo is meant to show how these products work together as a platform: OpenShift runs the infrastructure, OpenShift AI manages AI capabilities, MaaS governs model access, Dev Spaces and MTA consume models in developer workflows, and Developer Hub turns the whole platform into a discoverable experience.
+The demo is meant to show how these products work together as a platform: Red Hat OpenShift runs the infrastructure, Red Hat OpenShift AI manages AI capabilities, MaaS governs model access, Red Hat OpenShift Dev Spaces and MTA consume models in developer workflows, and Red Hat Developer Hub turns the whole platform into a discoverable experience.
 
 ## Open Source Projects You Will Meet
 
@@ -107,10 +110,10 @@ Red Hat products in this workshop are built with and around open source communit
 | [llm-d](https://llm-d.ai/) | Distributed inference architecture | Open source approach for distributed LLM serving on Kubernetes |
 | [Gateway API](https://gateway-api.sigs.k8s.io/) | MaaS gateway | Kubernetes-native API routing and traffic management |
 | [Kuadrant](https://kuadrant.io/) and [Authorino](https://www.authorino.io/) | MaaS policy enforcement | AuthN/AuthZ and rate-limit policy patterns at the gateway |
-| [Eclipse Che](https://www.eclipse.org/che/) and DevWorkspace | Dev Spaces | Cloud-native development workspaces on Kubernetes |
+| [Eclipse Che](https://www.eclipse.org/che/) and DevWorkspace | Red Hat OpenShift Dev Spaces | Cloud-native development workspaces on Kubernetes |
 | [Continue](https://www.continue.dev/) and [OpenCode](https://opencode.ai/) | AI coding assistants | OpenAI-compatible developer tooling that can consume MaaS endpoints |
 | [Konveyor](https://www.konveyor.io/) | MTA modernization | Open source application modernization analysis and workflows |
-| [Backstage](https://backstage.io/) | Developer Hub | Software catalog and developer portal patterns |
+| [Backstage](https://backstage.io/) | Red Hat Developer Hub | Software catalog and developer portal patterns |
 
 The workshop is not only a product tour. It is also a map of how open source projects become consumable, governed enterprise capabilities through Red Hat platforms.
 
@@ -150,19 +153,25 @@ git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
 cd rhoai3-coding-demo
 cp env.example .env
 oc login --token=<token> --server=<api>
+./scripts/validate-stage-flow.sh
 ./scripts/bootstrap.sh
 ```
 
-Deploy steps in order:
+Deploy stages in order:
 
 ```bash
-./steps/step-01-rhoai-platform/deploy.sh
-./steps/step-02-gpu-infra/deploy.sh
-./steps/step-03-llm-serving-maas/deploy.sh
-./steps/step-04-devspaces/deploy.sh
-./steps/step-05-mta/deploy.sh
-./steps/step-06-developer-hub/deploy.sh
+./stages/010-openshift-ai-platform-foundation/deploy.sh
+./stages/020-gpu-infrastructure-private-ai/deploy.sh
+./stages/030-private-model-serving/deploy.sh
+./stages/040-governed-models-as-a-service/deploy.sh
+./stages/050-approved-external-model-access/deploy.sh
+./stages/060-mcp-context-integrations/deploy.sh
+./stages/070-controlled-developer-workspaces/deploy.sh
+./stages/080-ai-assisted-application-modernization/deploy.sh
+./stages/090-developer-portal-self-service/deploy.sh
 ```
+
+The old `steps/step-*` scripts remain as temporary compatibility wrappers. New documentation and automation should use `stages/`.
 
 For deployment details, validation strategy, and recovery procedures, use:
 
@@ -176,21 +185,11 @@ For deployment details, validation strategy, and recovery procedures, use:
 rhoai3-coding-demo/
 +-- scripts/                         # Bootstrap, shared helpers, validation
 +-- gitops/
-|   +-- argocd/app-of-apps/          # One Argo CD Application per workshop step
-|   +-- step-01-rhoai-platform/      # OpenShift AI platform foundation
-|   +-- step-02-gpu-infra/           # GPU infrastructure
-|   +-- step-03-llm-serving-maas/    # MaaS, models, gateway, governance
-|   +-- step-04-devspaces/           # Dev Spaces and workspaces
-|   +-- step-05-mta/                 # MTA and Developer Lightspeed
-|   +-- step-06-developer-hub/       # Red Hat Developer Hub
-+-- steps/
-|   +-- step-01-rhoai-platform/
-|   +-- step-02-gpu-infra/
-|   +-- step-03-llm-serving-maas/
-|   +-- step-04-devspaces/
-|   |   +-- coding-exercises/        # Python exercises for AI assistant demos
-|   +-- step-05-mta/
-|   +-- step-06-developer-hub/
+|   +-- argocd/app-of-apps/          # One Argo CD Application per stage
+|   +-- stages/                      # Canonical GitOps source for stage manifests
++-- stages/                          # Canonical stage READMEs and deploy/validate scripts
++-- steps/                           # Temporary compatibility wrappers for old step commands
++-- demo/flows/default.yaml          # Ordered demo flow metadata
 +-- docs/
 |   +-- README.md
 |   +-- OPERATIONS.md
@@ -216,5 +215,5 @@ rhoai3-coding-demo/
 - [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
 - [Migration Toolkit for Applications 8.1 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/)
 - [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
-- [OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
+- [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)

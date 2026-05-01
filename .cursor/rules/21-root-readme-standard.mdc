@@ -102,8 +102,8 @@ Never imply that all model paths are private when external models are included.
 ## Synchronization Rules
 
 Keep the root README synchronized with the repo:
-- Step table must match actual `steps/` directories.
-- Deploy command list must match actual step directories.
+- Stage table must match actual `stages/` directories and `demo/flows/default.yaml`.
+- Deploy command list must match actual stage directories.
 - Repository map must match actual layout.
 - Product list must match major Red Hat products actually used.
 - References must include official Red Hat docs/product pages for products mentioned.
@@ -123,7 +123,7 @@ The root README includes an SVG architecture diagram under a `## Architecture` h
 - Use `-` for unordered lists.
 - Use fenced code blocks with language identifiers.
 - Prefer SVG architecture diagrams from `docs/assets/architecture/` over inline ASCII diagrams.
-- Keep the root README concise enough to be readable; use step READMEs for depth.
+- Keep the root README concise enough to be readable; use stage READMEs for depth.
 
 ## Agent Behavior
 

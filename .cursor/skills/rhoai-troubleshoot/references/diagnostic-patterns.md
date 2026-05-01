@@ -18,7 +18,7 @@ Known symptom -> cause -> fix patterns for the RHOAI demo on OpenShift AI 3.3 wi
 | Argo CD ComparisonError | CRD schema not resolvable | Add `ServerSideDiff=true` to syncOptions |
 | ArgoCD Application uses `project: default` | Bootstrap didn't run or Applications weren't updated | Verify `oc get appproject rhoai-demo -n openshift-gitops` |
 | ArgoCD shows false Out-of-Sync on operator resources | Label tracking instead of annotation tracking | Verify tracking: `oc get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.spec.resourceTrackingMethod}'` must be `annotation` |
-| ArgoCD reconciles all steps on unrelated commit | Missing `manifest-generate-paths` annotation | Add `argocd.argoproj.io/manifest-generate-paths: gitops/step-XX-name` to each Application |
+| ArgoCD reconciles all stages on unrelated commit | Missing `manifest-generate-paths` annotation | Add `argocd.argoproj.io/manifest-generate-paths: gitops/stages/NNN-name` to each Application |
 
 ## RHOAI Step-01 Patterns
 

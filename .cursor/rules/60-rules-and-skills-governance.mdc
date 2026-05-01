@@ -25,7 +25,7 @@ Create or edit a **rule** when the guidance should apply automatically to agent 
 Examples: do not commit secrets, preserve GitOps structure, require honest validation notes.
 
 Create or edit a **skill** when the guidance is a repeatable workflow invoked for a specific task.
-Examples: review a GitOps change, validate a demo step, prepare a PR summary.
+Examples: review a GitOps change, validate a demo stage, prepare a PR summary.
 
 Do not create a rule when a checklist or skill would be enough.
 Do not create a skill when a short rule or documentation note would be enough.

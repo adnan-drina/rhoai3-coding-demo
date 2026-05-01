@@ -42,7 +42,7 @@ Use this skill to maintain the runbook layer of the repository.
 ## Writing Guidelines
 
 - Be practical and concise.
-- Use tables for step mappings and exit codes.
+- Use tables for stage mappings and exit codes.
 - Use fenced `bash` blocks for commands.
 - Do not duplicate long script bodies.
 - Do not bury important warnings in prose.
@@ -53,7 +53,7 @@ Use this skill to maintain the runbook layer of the repository.
 ````markdown
 ## Symptom
 
-**Affected step:** Step NN
+**Affected stage:** Stage NNN
 
 **Likely cause:** Explain the most common cause.
 

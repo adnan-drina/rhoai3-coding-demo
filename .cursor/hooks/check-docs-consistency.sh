@@ -19,16 +19,30 @@ TRACK_FILE="/tmp/cursor-edit-track-${SESSION_ID}.log"
 # Record this edit
 echo "$file_path" >> "$TRACK_FILE"
 
-# Extract step name from path
-step_name=""
-if [[ "$file_path" == *gitops/step-* ]]; then
-    step_name=$(echo "$file_path" | grep -o 'step-[0-9]*-[a-z-]*' | head -1)
-elif [[ "$file_path" == *steps/step-* ]]; then
-    step_name=$(echo "$file_path" | grep -o 'step-[0-9]*-[a-z-]*' | head -1)
+if [[ "$file_path" == *demo/flows/*.yaml ]]; then
+    cat << EOF
+{"additional_context": "REMINDER: You edited demo flow metadata. Run scripts/validate-stage-flow.sh and check README.md, docs/OPERATIONS.md, and stage READMEs for ordering or dependency changes."}
+EOF
+    exit 0
 fi
 
-# Only check for step-related files
-if [[ -z "$step_name" ]]; then
+# Extract stage or compatibility step name from path
+stage_name=""
+is_stage_path=false
+if [[ "$file_path" == *gitops/stages/* ]]; then
+    stage_name=$(echo "$file_path" | grep -o 'stages/[0-9][0-9][0-9]-[a-z0-9-]*' | cut -d/ -f2 | head -1)
+    is_stage_path=true
+elif [[ "$file_path" == *stages/[0-9][0-9][0-9]-* ]]; then
+    stage_name=$(echo "$file_path" | grep -o 'stages/[0-9][0-9][0-9]-[a-z0-9-]*' | cut -d/ -f2 | head -1)
+    is_stage_path=true
+elif [[ "$file_path" == *gitops/step-* ]]; then
+    stage_name=$(echo "$file_path" | grep -o 'step-[0-9]*-[a-z-]*' | head -1)
+elif [[ "$file_path" == *steps/step-* ]]; then
+    stage_name=$(echo "$file_path" | grep -o 'step-[0-9]*-[a-z-]*' | head -1)
+fi
+
+# Only check for stage/step-related files
+if [[ -z "$stage_name" ]]; then
     exit 0
 fi
 
@@ -36,15 +50,26 @@ fi
 edited_type=""
 companion_hint=""
 
-if [[ "$file_path" == *gitops/*/*.yaml ]]; then
+if [[ "$file_path" == *gitops/stages/*/*.yaml ]]; then
     edited_type="manifest"
-    companion_hint="steps/$step_name/README.md"
+    companion_hint="stages/$stage_name/README.md"
+elif [[ "$file_path" == *gitops/*/*.yaml ]]; then
+    edited_type="manifest"
+    companion_hint="steps/$stage_name/README.md"
 elif [[ "$file_path" == */README.md ]]; then
     edited_type="readme"
-    companion_hint="gitops/$step_name/base/"
+    if [[ "$is_stage_path" == "true" ]]; then
+        companion_hint="gitops/stages/$stage_name/base/"
+    else
+        companion_hint="gitops/$stage_name/base/"
+    fi
 elif [[ "$file_path" == */deploy.sh ]] || [[ "$file_path" == */validate.sh ]]; then
     edited_type="script"
-    companion_hint="steps/$step_name/README.md and gitops/$step_name/base/"
+    if [[ "$is_stage_path" == "true" ]]; then
+        companion_hint="stages/$stage_name/README.md and gitops/stages/$stage_name/base/"
+    else
+        companion_hint="steps/$stage_name/README.md and gitops/$stage_name/base/"
+    fi
 fi
 
 if [[ -z "$edited_type" ]]; then
@@ -54,23 +79,27 @@ fi
 # Check if the companion was already edited in this session
 companion_edited=false
 if [[ "$edited_type" == "manifest" ]]; then
-    if grep -q "steps/$step_name/README.md" "$TRACK_FILE" 2>/dev/null; then
+    if grep -q "stages/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "steps/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
 elif [[ "$edited_type" == "readme" ]]; then
-    if grep -q "gitops/$step_name" "$TRACK_FILE" 2>/dev/null; then
+    if grep -q "gitops/stages/$stage_name" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "gitops/$stage_name" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
 elif [[ "$edited_type" == "script" ]]; then
-    if grep -q "steps/$step_name/README.md" "$TRACK_FILE" 2>/dev/null || \
-       grep -q "gitops/$step_name" "$TRACK_FILE" 2>/dev/null; then
+    if grep -q "stages/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "steps/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "gitops/stages/$stage_name" "$TRACK_FILE" 2>/dev/null || \
+       grep -q "gitops/$stage_name" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
 fi
 
 if [[ "$companion_edited" == "false" ]]; then
     cat << EOF
-{"additional_context": "REMINDER: You edited a $edited_type in $step_name but haven't touched $companion_hint yet. Code and documentation must be aligned — every change must be atomic: code + docs in the same commit."}
+{"additional_context": "REMINDER: You edited a $edited_type in $stage_name but haven't touched $companion_hint yet. Code and documentation must be aligned — every change must be atomic: code + docs in the same commit."}
 EOF
 else
     exit 0

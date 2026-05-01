@@ -9,7 +9,7 @@
       {
         "command": ".cursor/hooks/check-docs-consistency.sh",
         "matcher": "Write",
-        "fileMatcher": "gitops/step-*/**,steps/step-*/**"
+        "fileMatcher": "demo/flows/*.yaml,gitops/stages/**,stages/**,gitops/step-*/**,steps/step-*/**"
       }
     ],
     "beforeShellExecution": [

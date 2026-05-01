@@ -1,0 +1,13 @@
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  href: https://rhdh.placeholder.example.com
+  location: ApplicationMenu
+  text: Developer Hub
+  applicationMenu:
+    section: Red Hat Applications
+    imageURL: https://rhdh.placeholder.example.com/favicon.ico

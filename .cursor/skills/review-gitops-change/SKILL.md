@@ -85,15 +85,15 @@ Flag and describe any changes to:
 
 - Does this change require updates to `docs/OPERATIONS.md`?
 - Does this change require updates to `docs/TROUBLESHOOTING.md`?
-- Does it change the step README architecture story?
+- Does it change the stage README architecture story?
 
 ## Validation commands
 
 ```bash
-kustomize build gitops/step-XX-name/base/
-kustomize build gitops/step-XX-name/base/ | oc apply --dry-run=server -f -
-bash -n steps/step-XX-name/deploy.sh
-bash -n steps/step-XX-name/validate.sh
+kustomize build gitops/stages/NNN-name/base/
+kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
+bash -n stages/NNN-name/deploy.sh
+bash -n stages/NNN-name/validate.sh
 ```
 
 ## Output format

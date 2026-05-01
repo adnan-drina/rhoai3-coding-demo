@@ -1,5 +1,7 @@
 # Step 05: AI-Assisted EAP/Java EE Modernization To Quarkus
 
+> Compatibility note: this step path is retained for existing links. New docs and automation should use [Stage 080](../../stages/080-ai-assisted-application-modernization/README.md).
+
 ## Why This Matters
 
 Enterprise AI is more useful when it is embedded in real engineering workflows instead of isolated chat sessions. Application modernization is a strong example: many organizations have Java EE and JBoss EAP portfolios that need to move toward modern runtimes such as Quarkus, but the work requires analysis, code understanding, migration rules, and developer review.

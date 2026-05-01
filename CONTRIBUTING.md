@@ -67,7 +67,7 @@ Use short descriptive branches:
 
 ```text
 docs/update-agent-rules
-fix/step-03-validation
+fix/stage-040-validation
 demo/devspaces-continue-config
 gitops/maas-policy-update
 ```
@@ -77,7 +77,7 @@ gitops/maas-policy-update
 Use conventional commits: `type(scope): description`
 
 - **Types:** `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`
-- **Scope:** Use the step number when the change is step-specific (e.g., `feat(step-01): add hardware profiles`)
+- **Scope:** Use the stage number when the change is stage-specific (e.g., `feat(stage-020): add hardware profiles`)
 - **Scope:** Use the component name for cross-cutting changes (e.g., `fix(gitops): switch all apps to rhoai-demo project`)
 - Keep the subject line under 72 characters
 
@@ -101,18 +101,22 @@ For script-only changes:
 
 ```bash
 bash -n scripts/*.sh
-bash -n steps/*/*.sh
+bash -n stages/*/*.sh steps/*/*.sh
+./scripts/validate-stage-flow.sh
 ```
 
-For step changes, run the relevant step validation if a live cluster is available:
+For stage changes, run the relevant stage validation if a live cluster is available:
 
 ```bash
-./steps/step-01-rhoai-platform/validate.sh
-./steps/step-02-gpu-infra/validate.sh
-./steps/step-03-llm-serving-maas/validate.sh
-./steps/step-04-devspaces/validate.sh
-./steps/step-05-mta/validate.sh
-./steps/step-06-developer-hub/validate.sh
+./stages/010-openshift-ai-platform-foundation/validate.sh
+./stages/020-gpu-infrastructure-private-ai/validate.sh
+./stages/030-private-model-serving/validate.sh
+./stages/040-governed-models-as-a-service/validate.sh
+./stages/050-approved-external-model-access/validate.sh
+./stages/060-mcp-context-integrations/validate.sh
+./stages/070-controlled-developer-workspaces/validate.sh
+./stages/080-ai-assisted-application-modernization/validate.sh
+./stages/090-developer-portal-self-service/validate.sh
 ```
 
 If live validation is not possible, say:
@@ -184,5 +188,5 @@ For these areas, require review from another person even if the team is small:
 - RBAC
 - NetworkPolicy
 - API keys and external model credentials
-- Dev Spaces workspace permissions
+- Red Hat OpenShift Dev Spaces workspace permissions
 - MCP permissions

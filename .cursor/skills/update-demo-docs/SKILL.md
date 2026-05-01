@@ -6,7 +6,7 @@ metadata:
 description: >
   Check and update documentation consistency after a change. Use when scripts,
   manifests, or demo flow change and documentation might be stale. Inspects
-  README.md, step READMEs, OPERATIONS.md, TROUBLESHOOTING.md, and BACKLOG.md
+  README.md, stage READMEs, OPERATIONS.md, TROUBLESHOOTING.md, and BACKLOG.md
   for consistency with the current implementation. Do NOT use for writing
   operational docs from scratch (use demo-operations-docs skill), rewriting
   educational narrative (use README rules), or troubleshooting (use
@@ -21,7 +21,7 @@ consistent with the implementation.
 ## When to invoke
 
 - After changing deploy scripts, validate scripts, or GitOps manifests
-- After adding, removing, or modifying a demo step
+- After adding, removing, or modifying a demo stage
 - After resolving or adding a workaround
 - After changing model serving, MaaS, or gateway behavior
 - After changing Dev Spaces, MTA, or Developer Hub configuration
@@ -31,20 +31,20 @@ consistent with the implementation.
 
 | Document | Check for |
 |----------|-----------|
-| `README.md` | Step table accuracy, product map, trust boundaries, deploy commands |
-| `steps/step-XX-*/README.md` | Architecture claims, "What This Step Adds", trust boundary language |
+| `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
+| `stages/NNN-*/README.md` | Architecture claims, "What This Stage Adds", trust boundary language |
 | `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
 | `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
 | `BACKLOG.md` | Workaround status, new limitations, resolved items |
 
 ## Consistency checks
 
-### 1. Step table matches reality
+### 1. Stage table matches reality
 
-Verify the root README step table matches:
-- Actual directories under `steps/`
+Verify the root README stage table matches:
+- Actual directories under `stages/`
 - Actual Argo CD applications under `gitops/argocd/app-of-apps/`
-- Step numbering and names
+- Stage numbering and names
 
 ### 2. Deploy commands match scripts
 
@@ -73,7 +73,7 @@ After resolving or adding a workaround:
 
 ### 6. Cross-references
 
-- Step READMEs link to next/previous steps correctly
+- Stage READMEs link to next/previous stages correctly
 - Operations doc references real namespaces and resource names
 - Troubleshooting entries reference real commands
 
@@ -112,4 +112,4 @@ After resolving or adding a workaround:
 - Turn READMEs into runbooks (operational content belongs in OPERATIONS.md)
 - Claim capabilities that are not backed by manifests/scripts
 - Remove workaround documentation without confirmed resolution
-- Add operational detail to step READMEs (use OPERATIONS.md)
+- Add operational detail to stage READMEs (use OPERATIONS.md)

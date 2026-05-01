@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: 060-mcp-context-integrations
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "060"
+    demo.rhoai.io/step: "060"
+  annotations:
+    argocd.argoproj.io/sync-wave: "60"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/060-mcp-context-integrations
+  # No finalizer: deleting this Application orphans resources instead of destroying them.
+spec:
+  project: rhoai-demo
+  source:
+    repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
+    targetRevision: codex/stage-refactor-demo-validation
+    path: gitops/stages/060-mcp-context-integrations/base
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideDiff=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      namespace: coding-assistant
+      jsonPointers:
+        - /data
+        - /stringData
+    - group: ""
+      kind: Namespace
+      jsonPointers:
+        - /metadata/annotations
+        - /metadata/labels
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec

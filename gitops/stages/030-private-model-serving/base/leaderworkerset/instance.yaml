@@ -1,0 +1,13 @@
+# LeaderWorkerSetOperator instance — creates the LWS webhook and controller
+# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+apiVersion: operator.openshift.io/v1
+kind: LeaderWorkerSetOperator
+metadata:
+  name: cluster
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  logLevel: Normal
+  managementState: Managed
+  operatorLogLevel: Normal

@@ -4,7 +4,7 @@
 
 This repository is `rhoai3-coding-demo`.
 
-It demonstrates a trusted enterprise AI development platform on Red Hat OpenShift AI. The demo shows how platform teams can provide private and governed AI coding assistance through OpenShift AI, Models-as-a-Service, OpenShift Dev Spaces, Continue, OpenCode, MTA, Developer Hub, and GitOps-managed platform components.
+It demonstrates a trusted enterprise AI development platform on Red Hat OpenShift AI. The demo shows how platform teams can provide private and governed AI coding assistance through Red Hat OpenShift AI, Models-as-a-Service, Red Hat OpenShift Dev Spaces, Continue, OpenCode, Migration Toolkit for Applications (MTA), Red Hat Developer Hub, and GitOps-managed platform components.
 
 The main architectural idea is:
 
@@ -38,30 +38,31 @@ Important paths:
 - `scripts/` — bootstrap, shared helper scripts, validation utilities.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
-- `gitops/step-01-rhoai-platform/` — OpenShift AI platform foundation.
-- `gitops/step-02-gpu-infra/` — GPU infrastructure.
-- `gitops/step-03-llm-serving-maas/` — MaaS, model serving, gateways, governance, observability.
-- `gitops/step-04-devspaces/` — Dev Spaces and AI coding assistant workspace setup.
-- `gitops/step-05-mta/` — MTA and Developer Lightspeed.
-- `gitops/step-06-developer-hub/` — Developer Hub.
-- `steps/` — human-facing deployment walkthroughs and per-step deploy/validate scripts.
+- `demo/flows/default.yaml` — ordered source of truth for the demo flow.
+- `gitops/stages/` — desired state for stage-specific OpenShift resources.
+- `gitops/argocd/app-of-apps/` — Argo CD application structure.
+- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.
+- `steps/` — temporary compatibility wrappers for the old six-step commands.
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 
 ## Demo steps
 
-The workshop is organized into six steps:
+The workshop is organized into nine stages:
 
-1. OpenShift AI platform
-2. GPU infrastructure
-3. MaaS, local/external models, model gateway, governance, and observability
-4. Dev Spaces, Continue, and OpenCode
-5. MTA and Developer Lightspeed
-6. Developer Hub
+1. 010 OpenShift AI Platform Foundation
+2. 020 GPU Infrastructure for Private AI
+3. 030 Private Model Serving
+4. 040 Governed Models-as-a-Service
+5. 050 Approved External Model Access
+6. 060 MCP Context Integrations
+7. 070 Controlled Developer Workspaces
+8. 080 AI-Assisted Application Modernization
+9. 090 Developer Portal and Self-Service
 
-When changing one step, check whether related changes are also needed in:
+When changing one stage, check whether related changes are also needed in:
 
 - `README.md`
-- the step README
+- the stage README
 - `docs/OPERATIONS.md`
 - `docs/TROUBLESHOOTING.md`
 - `BACKLOG.md`
@@ -72,7 +73,7 @@ When changing one step, check whether related changes are also needed in:
 
 For non-trivial tasks, follow this workflow:
 
-1. Read the relevant README, step docs, and manifests before editing.
+1. Read the relevant README, stage docs, and manifests before editing.
 2. State the intended change and affected files.
 3. Make the smallest useful change.
 4. Avoid broad refactors unless explicitly requested.
@@ -86,7 +87,7 @@ For non-trivial tasks, follow this workflow:
 General rules:
 
 - Prefer clear, boring, maintainable changes.
-- Preserve the step-based workshop structure.
+- Preserve the stage-based workshop structure and compatibility aliases.
 - Preserve GitOps idempotency.
 - Prefer Kustomize overlays and existing patterns over one-off scripts.
 - Do not introduce new tools unless the reason is documented.
@@ -142,7 +143,7 @@ Sensitive areas include:
 - NetworkPolicy
 - OpenShift OAuth and identity configuration
 - External model credentials
-- Dev Spaces workspace configuration
+- Red Hat OpenShift Dev Spaces workspace configuration
 - MCP integrations
 
 For these areas, include explicit validation notes in the PR.
@@ -155,14 +156,18 @@ Examples:
 
 ```bash
 bash -n scripts/*.sh
-bash -n steps/*/*.sh
+bash -n stages/*/*.sh steps/*/*.sh
+./scripts/validate-stage-flow.sh
 
-./steps/step-01-rhoai-platform/validate.sh
-./steps/step-02-gpu-infra/validate.sh
-./steps/step-03-llm-serving-maas/validate.sh
-./steps/step-04-devspaces/validate.sh
-./steps/step-05-mta/validate.sh
-./steps/step-06-developer-hub/validate.sh
+./stages/010-openshift-ai-platform-foundation/validate.sh
+./stages/020-gpu-infrastructure-private-ai/validate.sh
+./stages/030-private-model-serving/validate.sh
+./stages/040-governed-models-as-a-service/validate.sh
+./stages/050-approved-external-model-access/validate.sh
+./stages/060-mcp-context-integrations/validate.sh
+./stages/070-controlled-developer-workspaces/validate.sh
+./stages/080-ai-assisted-application-modernization/validate.sh
+./stages/090-developer-portal-self-service/validate.sh
 ```
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
@@ -182,7 +187,7 @@ This repository includes shared skills for repeatable project workflows:
 | `workaround-review` | Review workaround status before modifying or removing |
 | `demo-operations-docs` | Maintain OPERATIONS.md and TROUBLESHOOTING.md |
 | `rhoai-troubleshoot` | Diagnose and fix live cluster failures |
-| `manage-devspaces` | Manage Dev Spaces workspaces |
+| `manage-devspaces` | Manage Red Hat OpenShift Dev Spaces workspaces |
 
 Skills are invoked workflows. Rules are always-on behavior constraints. See [docs/AI_COLLABORATION.md](docs/AI_COLLABORATION.md) for the full governance model.
 
