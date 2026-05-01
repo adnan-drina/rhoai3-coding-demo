@@ -219,6 +219,7 @@ Stage results:
 | 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 17 passed, 0 warnings, 0 failed |
 | 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 8 passed, 1 warning, 0 failed |
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 6 passed, 2 warnings, 0 failed |
+| 070 Controlled Developer Workspaces | Passed | `./stages/070-controlled-developer-workspaces/validate.sh`: 5 passed, 0 warnings, 0 failed |
 
 Stage 010 findings:
 
@@ -267,6 +268,12 @@ Stage 060 findings:
 - `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set in this demo environment. Slack and BrightData MCP discovery entries are present in the GenAI Playground ConfigMap, but their runtimes are disabled at zero replicas until credentials are approved and an enabling overlay is added.
 - Initial Stage 060 sync showed that running optional MCP pods without credentials leaves Argo CD Progressing. Improvement applied: keep optional Slack and BrightData MCP deployments at zero replicas by default so missing optional credentials produce validation warnings instead of deployment failures.
 - Final evidence for Stage 060: OpenShift MCP is running, OpenShift/Slack/BrightData MCP entries are registered in `gen-ai-aa-mcp-servers`, and Argo CD reports Stage 060 `Synced` and `Healthy`.
+
+Stage 070 findings:
+
+- Initial Stage 070 sync attempted to create the `CheCluster` before the Dev Spaces operator webhook service had endpoints, producing a transient `no endpoints available for service "devspaces-operator-service"` admission error. A manual hard refresh and sync succeeded after the operator and webhook pods became ready.
+- Improvement applied: add a narrow Sync hook that waits for the `devspaces-operator` deployment rollout and `devspaces-operator-service` endpoints before Argo CD applies the `CheCluster`.
+- Final evidence for Stage 070: Dev Spaces operator CSV `devspacesoperator.v3.27.1` succeeded, `CheCluster` phase is `Active`, the Dev Spaces URL is `https://devspaces.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`, and Argo CD reports Stage 070 `Synced` and `Healthy`.
 
 ### Stage 020
 
