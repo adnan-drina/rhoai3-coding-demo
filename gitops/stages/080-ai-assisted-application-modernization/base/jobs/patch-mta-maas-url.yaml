@@ -88,6 +88,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   backoffLimit: 6
+  activeDeadlineSeconds: 900
   template:
     spec:
       restartPolicy: OnFailure
@@ -178,8 +179,18 @@ spec:
             echo "OPENAI_API_KEY already set (non-placeholder)"
           fi
 
+          echo "Waiting for MTA route..."
+          MTA_HOST=""
+          for i in $(seq 1 60); do
+            MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
+            if [ -n "$MTA_HOST" ]; then
+              break
+            fi
+            echo "Waiting for MTA route... ($i/60)"
+            sleep 10
+          done
+
           echo "Patching ConsoleLink with MTA route..."
-          MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
           if [ -n "$MTA_HOST" ]; then
             MTA_URL="https://${MTA_HOST}"
             oc patch consolelink mta --type=merge \
@@ -189,9 +200,23 @@ spec:
             echo "WARNING: MTA route not found, ConsoleLink not patched"
           fi
 
+          echo "Waiting for llm-proxy deployment..."
+          for i in $(seq 1 90); do
+            if oc get deployment/llm-proxy -n openshift-mta &>/dev/null; then
+              break
+            fi
+            echo "Waiting for llm-proxy deployment... ($i/90)"
+            sleep 10
+          done
+
+          if ! oc get deployment/llm-proxy -n openshift-mta &>/dev/null; then
+            echo "ERROR: llm-proxy deployment was not created in time"
+            exit 1
+          fi
+
           echo "Rolling llm-proxy to pick up new secret values..."
           oc rollout restart deployment/llm-proxy -n openshift-mta
-          oc rollout status deployment/llm-proxy -n openshift-mta --timeout=120s
+          oc rollout status deployment/llm-proxy -n openshift-mta --timeout=300s
 
           echo "Done. MTA is configured to use MaaS model: ${MODEL_NAME}"
           echo "Cluster-specific MaaS URL: ${MAAS_BASE_URL}"
