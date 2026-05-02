@@ -433,6 +433,25 @@ Current limitation:
 
 - The demo now uses the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the runtime and scheduler enablement, but it does not deploy full Workload Variant Autoscaler configuration, multi-node serving, or disaggregated prefill/decode workers. That limitation is tracked in `BACKLOG.md`.
 
+### 2026-05-02 GPU resume-from-zero validation run
+
+Actions:
+
+- Scaled GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` from 2 replicas to 0 with `./scripts/resume-gpu-demo.sh down`.
+- Confirmed private model resources moved to `Ready=False` with `MinimumReplicasUnavailable` while Kueue queue resources and admitted workload records remained present.
+- Ran `./scripts/resume-gpu-demo.sh resume` to sync Stage 020, scale the GPU MachineSet back to 2, wait for replacement GPU nodes, and continue Stage 020/030 recovery.
+- Observed a cold-start timing issue: GPU nodes advertised allocatable `nvidia.com/gpu` before NVIDIA `ClusterPolicy` returned to `state=ready`. The resume script now waits for `ClusterPolicy` readiness before Stage 020 validation.
+
+Validation evidence:
+
+- GPU MachineSet returned to 2 ready replicas.
+- Replacement GPU nodes became Ready, retained `node-role.kubernetes.io/gpu`, retained `nvidia.com/gpu=true:NoSchedule`, and advertised `nvidia.com/gpu: 1`.
+- NVIDIA `ClusterPolicy` returned to `Ready=True` and `state=ready`.
+- Stage 020 validation after operator readiness: 43 passed, 2 warnings, 0 failed. The two warnings are the existing raw Prometheus query warnings for GPU/Kueue metrics.
+- Kueue admitted both private model workloads through `private-model-serving-gpu`.
+- `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
+- Stage 030 validation after resume: 30 passed, 0 warnings, 0 failed.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -594,6 +613,25 @@ For documentation-only changes:
 1. Edit `README.md`, `stages/*/README.md`, or files under `docs/`.
 2. Run `git diff --check`.
 3. Check that links and references still match the repo.
+
+## Resuming GPU-Backed Stages After Shutdown
+
+Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workflow. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
+
+```bash
+./scripts/resume-gpu-demo.sh status
+./scripts/resume-gpu-demo.sh resume
+```
+
+The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
+
+To scale GPU capacity down for shutdown:
+
+```bash
+./scripts/resume-gpu-demo.sh down
+```
+
+Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
 
 ## Cleanup Guidance
 
