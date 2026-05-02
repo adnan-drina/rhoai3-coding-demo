@@ -116,12 +116,33 @@ check "MaaS telemetry policy enforced" \
 
 log_step "Grafana"
 check_pods_ready "grafana" "app=grafana" 1
+GRAFANA_POD_CONTAINERS=$(oc get pod -n grafana -l app=grafana \
+  -o jsonpath='{.items[0].spec.containers[*].name}' 2>/dev/null || true)
+if [[ "$GRAFANA_POD_CONTAINERS" == *"oauth-proxy"* ]]; then
+  echo -e "${GREEN}[PASS]${NC} Grafana OAuth proxy sidecar present"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  echo -e "${RED}[FAIL]${NC} Grafana OAuth proxy sidecar present"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
 check "Grafana route exists" \
   "oc get route grafana-route -n grafana -o jsonpath='{.spec.host}'" \
   "grafana"
-check "Grafana route uses edge TLS termination" \
+check "Grafana route uses OAuth proxy target port" \
+  "oc get route grafana-route -n grafana -o jsonpath='{.spec.port.targetPort}'" \
+  "oauth-proxy"
+check "Grafana route uses reencrypt TLS termination" \
   "oc get route grafana-route -n grafana -o jsonpath='{.spec.tls.termination}'" \
-  "edge"
+  "reencrypt"
+check "Grafana OAuth redirect reference configured" \
+  "oc get serviceaccount grafana-sa -n grafana -o jsonpath='{.metadata.annotations.serviceaccounts\\.openshift\\.io/oauth-redirectreference\\.grafana}'" \
+  "grafana-route"
+check "Grafana OAuth proxy restricts access to RHOAI users" \
+  "oc get grafana grafana -n grafana -o jsonpath='{.spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args}'" \
+  "rhoai-users"
+check "Grafana OAuth proxy can delegate token authentication" \
+  "oc get clusterrolebinding grafana-oauth-proxy-auth-delegator -o jsonpath='{.roleRef.name}{\" \"}{.subjects[0].name}'" \
+  "system:auth-delegator grafana-sa"
 check "Grafana datasource exists" \
   "oc get grafanadatasource prometheus -n grafana -o jsonpath='{.metadata.name}'" \
   "prometheus"
@@ -165,16 +186,27 @@ fi
 
 GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || true)
 if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
-  GRAFANA_LOGIN_CODE=$(curl -k -s -o /dev/null -w '%{http_code}' "https://${GRAFANA_HOST}/login" || true)
-  if [[ "$GRAFANA_LOGIN_CODE" == "200" || "$GRAFANA_LOGIN_CODE" == "302" ]]; then
-    echo -e "${GREEN}[PASS]${NC} Grafana route reachable: HTTP ${GRAFANA_LOGIN_CODE}"
+  GRAFANA_LOGIN_CODE=$(curl -k -s -o /dev/null -w '%{http_code}' "https://${GRAFANA_HOST}/" || true)
+  if [[ "$GRAFANA_LOGIN_CODE" == "302" ]]; then
+    echo -e "${GREEN}[PASS]${NC} Grafana OAuth route redirects unauthenticated users"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
   else
-    echo -e "${RED}[FAIL]${NC} Grafana route reachable (expected: 200 or 302, got: ${GRAFANA_LOGIN_CODE:-ERROR})"
+    echo -e "${RED}[FAIL]${NC} Grafana OAuth route redirects unauthenticated users (expected: 302, got: ${GRAFANA_LOGIN_CODE:-ERROR})"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
   fi
 
-  GRAFANA_SEARCH=$(curl -k -s -H "X-Forwarded-User: ai-admin" "https://${GRAFANA_HOST}/api/search?query=maas" || true)
+  GRAFANA_INTERNAL_HEALTH=$(oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+    curl -s -H "X-Forwarded-User: ai-admin" "http://localhost:3000/api/health" 2>/dev/null || true)
+  if [[ "$GRAFANA_INTERNAL_HEALTH" == *'"database":"ok"'* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Grafana accepts trusted OpenShift proxy user header internally"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+  else
+    echo -e "${RED}[FAIL]${NC} Grafana accepts trusted OpenShift proxy user header internally"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  fi
+
+  GRAFANA_SEARCH=$(oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+    curl -s -H "X-Forwarded-User: ai-admin" "http://localhost:3000/api/search?query=maas" 2>/dev/null || true)
   if [[ "$GRAFANA_SEARCH" == *"MaaS"* || "$GRAFANA_SEARCH" == *"maas"* ]]; then
     echo -e "${GREEN}[PASS]${NC} Grafana API can find MaaS dashboard"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
@@ -185,8 +217,9 @@ if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
 
   GRAFANA_DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}' 2>/dev/null || true)
   if [[ -n "$GRAFANA_DATASOURCE_UID" ]]; then
-    GRAFANA_PROM_QUERY=$(curl -k -s -H "X-Forwarded-User: ai-admin" \
-      "https://${GRAFANA_HOST}/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=up" || true)
+    GRAFANA_PROM_QUERY=$(oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+      curl -s -H "X-Forwarded-User: ai-admin" \
+      "http://localhost:3000/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=up" 2>/dev/null || true)
     if [[ "$GRAFANA_PROM_QUERY" == *'"status":"success"'* ]]; then
       echo -e "${GREEN}[PASS]${NC} Grafana datasource can query OpenShift monitoring"
       VALIDATE_PASS=$((VALIDATE_PASS + 1))
@@ -195,8 +228,9 @@ if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
       VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 
-    GRAFANA_USAGE_QUERY=$(curl -k -s -H "X-Forwarded-User: ai-admin" \
-      "https://${GRAFANA_HOST}/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29" || true)
+    GRAFANA_USAGE_QUERY=$(oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+      curl -s -H "X-Forwarded-User: ai-admin" \
+      "http://localhost:3000/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29" 2>/dev/null || true)
     if [[ "$GRAFANA_USAGE_QUERY" == *'"status":"success"'* && "$GRAFANA_USAGE_QUERY" != *'"result":[]'* ]]; then
       echo -e "${GREEN}[PASS]${NC} Grafana MaaS usage metric query returns data"
       VALIDATE_PASS=$((VALIDATE_PASS + 1))

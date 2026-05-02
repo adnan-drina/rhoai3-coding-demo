@@ -470,6 +470,24 @@ Validation evidence:
 - Full Stage 040 validation passed after adding the sanitized load test path: `./stages/040-governed-models-as-a-service/validate.sh`: 52 passed, 0 warnings, 0 failed. Result ConfigMap from the validation run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502163408-results`.
 - Stored GuideLLM result ConfigMaps were checked for `api_key` and `sk-oai-` strings after cleanup; no stored key material was found.
 
+### 2026-05-02 Stage 040 Grafana OAuth validation run
+
+Actions:
+
+- Replaced the public Grafana login path with an OpenShift OAuth proxy sidecar managed through the Grafana Operator `Grafana` CR.
+- Configured `grafana-sa` as the OpenShift OAuth client with an OAuth redirect reference to `Route/grafana-route`.
+- Updated `grafana-route` to target the `oauth-proxy` service port with re-encrypt TLS and OpenShift Service CA.
+- Restricted Grafana OAuth browser access to the `rhoai-users` OpenShift group, which includes both demo personas. Added `system:auth-delegator` for `grafana-sa` to support proxy token-review behavior.
+
+Validation evidence:
+
+- Static validation passed: `bash -n stages/040-governed-models-as-a-service/*.sh`, `kustomize build gitops/stages/040-governed-models-as-a-service/base`, `./scripts/validate-stage-flow.sh`, and `git diff --check`.
+- Argo CD Stage 040 synced to branch commit `25f1426` and reported `Synced` / `Healthy`.
+- Unauthenticated access to `https://grafana-route-grafana.apps.cluster-t977r.t977r.sandbox3022.opentlc.com/` returned HTTP `302` to OpenShift OAuth.
+- The failed SAR-based authorization path was replaced with direct `--openshift-group=["rhoai-users"]` authorization after the proxy denied `ai-admin` as `ai-admin@cluster.local`.
+- Unauthenticated access to the Grafana route returns HTTP `302` to OpenShift OAuth, and the in-pod Grafana API accepts the trusted `X-Forwarded-User: ai-admin` header from the proxy trust boundary.
+- Full Stage 040 validation after OAuth protection passed: `./stages/040-governed-models-as-a-service/validate.sh`: 57 passed, 0 warnings, 0 failed. Result ConfigMap from the embedded GuideLLM run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502165718-results`.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -519,7 +537,7 @@ The upstream `maas-controller` and `maas-api` image override are intentional dem
 
 The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 
-The demo exposes the Grafana route through an OpenShift `ConsoleLink` named `grafana-maas` in the application menu. This is an OpenShift-native convenience for the disposable demo. A more Red Hat-aligned long-term approach is to move MaaS observability into the OpenShift monitoring stack and the web console Observe experience, using user workload monitoring and supported dashboard/query paths instead of a community Grafana dependency.
+The demo exposes the Grafana route through an OpenShift `ConsoleLink` named `grafana-maas` in the application menu. Grafana itself is protected by the Red Hat OpenShift OAuth proxy sidecar, using the `grafana-sa` service account as the OAuth client and the operator-owned `grafana-route` as the redirect reference. The route targets the `oauth-proxy` service port with re-encrypt TLS from OpenShift Service CA, and Grafana trusts `X-Forwarded-User` from the proxy through `auth.proxy`. The proxy restricts browser access to the `rhoai-users` OpenShift group, which includes `ai-admin` and `ai-developer`. A more Red Hat-aligned long-term approach is to move MaaS observability into the OpenShift monitoring stack and the web console Observe experience, using user workload monitoring and supported dashboard/query paths instead of a community Grafana dependency.
 
 Grafana queries OpenShift monitoring through the Thanos Querier using a `grafana-sa` service account with the `cluster-monitoring-view` role. The `GrafanaDatasource` manifest keeps only a placeholder token in Git. A Stage 040 sync job mints the runtime token and patches `GrafanaDatasource/prometheus`; Argo CD ignores only that generated token field. If dashboards show `401 Unauthorized`, re-run Stage 040 sync and validate that the datasource can query OpenShift monitoring.
 
@@ -535,6 +553,9 @@ oc get maasauthpolicy,maassubscription -n models-as-a-service
 oc get gateway maas-default-gateway -n openshift-ingress
 oc get pods -n redhat-ods-applications -l control-plane=maas-controller
 oc get clusterrolebinding grafana-sa-cluster-monitoring-view
+oc get serviceaccount grafana-sa -n grafana -o yaml
+oc get clusterrolebinding grafana-oauth-proxy-auth-delegator -o yaml
+oc get route grafana-route -n grafana -o jsonpath='{.spec.port.targetPort}{" "}{.spec.tls.termination}{"\n"}'
 oc get grafanadatasource prometheus -n grafana
 oc get podmonitor maas-gateway-metrics -n openshift-ingress
 oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
