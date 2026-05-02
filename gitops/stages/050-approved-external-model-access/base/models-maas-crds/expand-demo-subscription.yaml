@@ -34,6 +34,34 @@ roleRef:
   name: job-expand-demo-models-subscription
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-expand-demo-models-subscription-reader
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+rules:
+  - apiGroups: ["maas.opendatahub.io"]
+    resources: ["maasmodelrefs"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-expand-demo-models-subscription-reader
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+subjects:
+  - kind: ServiceAccount
+    name: job-expand-demo-models-subscription
+    namespace: models-as-a-service
+roleRef:
+  kind: Role
+  name: job-expand-demo-models-subscription-reader
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
