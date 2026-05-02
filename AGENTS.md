@@ -188,7 +188,11 @@ This repository includes shared skills for repeatable project workflows:
 | `demo-operations-docs` | Maintain OPERATIONS.md and TROUBLESHOOTING.md |
 | `rhoai-troubleshoot` | Diagnose and fix live cluster failures |
 | `manage-devspaces` | Manage Red Hat OpenShift Dev Spaces workspaces |
+| `manage-resources` | Manage demo resource lifecycle actions such as GPU scale-down and recovery |
 | `resume-gpu-demo` | Resume Stage 020/030 after GPU nodes were scaled to zero or the environment restarted |
+| `run-guidellm-load-test` | Run on-demand GuideLLM load tests against MaaS-published model endpoints |
+| `red-hat-quick-deck` | Create Red Hat-aligned quick decks from demo content |
+| `maintain-rules-and-skills` | Add, update, or audit shared rules, skills, hooks, and agents |
 
 Skills are invoked workflows. Rules are always-on behavior constraints. See [docs/AI_COLLABORATION.md](docs/AI_COLLABORATION.md) for the full governance model.
 
