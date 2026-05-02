@@ -2,11 +2,11 @@
 
 ## Why This Matters
 
-Red Hat's GPU-as-a-Service articles describe a problem that shows up quickly in enterprise AI programs: GPUs are valuable, scarce, and easy to strand behind one-off infrastructure choices. When data scientists, AI engineers, and application teams cannot get governed GPU access, they either wait on platform teams or look for unsanctioned alternatives. That creates cost, security, compliance, and operational visibility problems.
+The workshop story starts with a platform team building a trusted AI development environment for enterprise developers. Stage 010 established the Red Hat OpenShift AI foundation. Stage 020 adds the private compute layer that makes the rest of the story credible: GPU capacity that can be discovered, scheduled, governed, observed, and consumed through platform abstractions.
 
-Stage 020 reframes GPU enablement as a platform service. The demo does not try to simulate a large organization with many competing teams. Instead, it shows the control-plane building blocks behind a GPU-as-a-Service operating model: accelerator discovery, GPU node lifecycle, queue-based admission, quota, Red Hat OpenShift AI hardware profiles, autoscaling readiness, and observability.
+For this demo, GPUs are not just infrastructure. They are the foundation for private model serving, where sensitive source code and prompts can stay inside the OpenShift platform boundary. If GPU access is handled as a collection of hand-built node selectors, every private model deployment becomes a special case. If GPU access is exposed as a governed platform service, the same environment can support model serving, developer workspaces, modernization workflows, and future AI workloads with clearer operational control.
 
-This matters for the rest of the workshop because private model serving depends on more than a GPU node. It needs a repeatable way to expose accelerators to approved AI workloads without making every model deployment responsible for low-level node placement.
+This stage uses a demo-scale GPU-as-a-Service pattern aligned with Red Hat guidance: accelerator discovery, GPU node lifecycle, queue-based admission, quota, Red Hat OpenShift AI hardware profiles, autoscaling readiness, and observability. The demo does not simulate a large organization with many competing teams. It shows the control-plane building blocks that make governed private AI compute possible.
 
 ## Architecture
 
@@ -30,11 +30,11 @@ The stage keeps the direct node-scheduling hardware profiles from Stage 010 for 
 
 ## What To Notice In The Demo
 
-The main demo point is the shift from "we installed GPU nodes" to "we created a governed GPU service."
+The main demo point is the shift from "we installed GPU nodes" to "we created the private AI compute service that later stages consume."
 
 The GPU nodes are still important, but the higher-value proof points are the abstractions around them. `ResourceFlavor` maps the NVIDIA L4 node class to its labels and tolerations. `ClusterQueue` defines the shared quota for private model serving. `LocalQueue` exposes that quota inside the `maas` project. Red Hat OpenShift AI hardware profiles give users a consumable choice in the dashboard without asking them to understand taints, labels, node pools, or scheduler internals.
 
-This mirrors the two Red Hat GPUaaS blog themes. The first theme is operational: platform teams need to reduce shadow IT, fragmentation, idle GPU capacity, and tenant isolation risk. The second theme is architectural: queueing, quotas, workload admission, autoscaling signals, and observability turn accelerators into a managed AI platform capability.
+That is the same message Red Hat emphasizes for GPU-as-a-Service: platform teams need to reduce shadow IT, fragmented accelerator pools, idle GPU capacity, and tenant isolation risk while giving approved AI workloads a governed path to scarce compute. In our storyline, those controls are what let private model serving become a reusable platform capability instead of a one-off deployment.
 
 The demo intentionally stays small. It uses one private model-serving project and does not create artificial contention across many tenants. The operating model is still visible: more teams would mean more projects, more local queues, shared or separate cluster queues, adjusted quotas, and observability-driven tuning.
 
