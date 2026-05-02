@@ -46,8 +46,6 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Known Limitations
 
-- [ ] **Kueue `Workload` creation for `LLMInferenceService` must be live-validated** — Red Hat OpenShift AI 3.4 documents Kueue queue enforcement for `InferenceService`, `Notebook`, `PyTorchJob`, `RayCluster`, and `RayJob`. The demo's private model path uses `LLMInferenceService`. Stage 030 labels those resources with `kueue.x-k8s.io/queue-name=private-model-serving`, but validation treats missing Kueue `Workload` objects as a warning until the behavior is confirmed in a live OpenShift AI 3.4 environment.
-
 - [ ] **GPUaaS dashboard metric names require live confirmation** — Stage 020 adds a dashboard with common DCGM and Kueue Prometheus metric names. Validation warns rather than fails when those metrics differ or are unavailable, because Red Hat build of Kueue metric names and scraping behavior can vary by operator version.
 
 - [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
@@ -58,7 +56,7 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Planned
 
-- [ ] **GPUaaS live validation pass** — Validate Red Hat build of Kueue, queue-based hardware profiles, `LLMInferenceService` queue behavior, KEDA readiness, and GPUaaS dashboard metrics on a live OpenShift AI 3.4 environment.
+- [ ] **GPUaaS metrics validation pass** — Confirm the final Prometheus metric names and proxy query path for the GPUaaS dashboard. Stage 020 currently validates dashboard resources and warns on raw metric query failures.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
 - [ ] **Red Hat-aligned observability path** — The current Grafana dashboard was copied from a Red Hat quickstart repository and uses the community Grafana Operator. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to Stage 040 README while the community Grafana demo add-on remains in use.
@@ -72,6 +70,8 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 - [x] **External model registration** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference is credential-gated and was not validated in the current environment because `OPENAI_API_KEY` was not set. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
 - [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
 - [x] **Continue and OpenCode configuration** — Developer workspace configuration is generated with MaaS endpoint and `sk-oai-*` API key auth. Current live validation covered local model access; external model execution still requires an approved provider key.
+- [x] **Stage 020 GPUaaS foundation** — Live validation on 2026-05-02 confirmed Red Hat build of Kueue, OpenShift AI Kueue integration, queue-based NVIDIA L4 hardware profiles, ResourceFlavor, ClusterQueue, LocalQueue, KEDA readiness, GPU MachineSet readiness, GPU node labels/taints, allocatable GPUs, NVIDIA ClusterPolicy readiness, and GPUaaS dashboard ConfigMap. The OpenShift 4.20 catalog used `stable-v1.3` for Red Hat build of Kueue.
+- [x] **Kueue `Workload` creation for `LLMInferenceService`** — Stage 030 live validation on 2026-05-02 observed two Kueue `Workload` objects for the private model-serving `LLMInferenceService` pods, both admitted through `private-model-serving-gpu`.
 
 ## Completed
 
