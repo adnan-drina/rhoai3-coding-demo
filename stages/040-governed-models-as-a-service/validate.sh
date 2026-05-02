@@ -150,7 +150,7 @@ check "Grafana datasource synchronized" \
   "oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.conditions[?(@.type==\"DatasourceSynchronized\")].status}'" \
   "True"
 GRAFANA_DATASOURCE_TOKEN=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.spec.datasource.secureJsonData.httpHeaderValue1}' 2>/dev/null || true)
-if [[ "$GRAFANA_DATASOURCE_TOKEN" == Bearer\ ey* ]]; then
+if [[ "$GRAFANA_DATASOURCE_TOKEN" == Bearer\ * && "$GRAFANA_DATASOURCE_TOKEN" != *'${GRAFANA_SA_TOKEN}'* ]]; then
   echo -e "${GREEN}[PASS]${NC} Grafana datasource has runtime service account token"
   VALIDATE_PASS=$((VALIDATE_PASS + 1))
 elif [[ "$GRAFANA_DATASOURCE_TOKEN" == *'${GRAFANA_SA_TOKEN}'* || -z "$GRAFANA_DATASOURCE_TOKEN" ]]; then
