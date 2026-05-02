@@ -428,13 +428,14 @@ oc get clusterpolicy -A
 
 ### Stage 030
 
-Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data.
+Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node or disaggregated prefill/decode inference.
 
 Useful checks:
 
 ```bash
 oc get llminferenceservice -n maas
 oc get pods -n maas
+oc get prometheusrule vllm-metrics-alias -n maas
 oc get job model-registry-seed -n rhoai-model-registries
 ```
 
