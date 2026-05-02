@@ -32,7 +32,7 @@ consistent with the implementation.
 | Document | Check for |
 |----------|-----------|
 | `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
-| `stages/NNN-*/README.md` | Architecture claims, "What This Stage Adds", trust boundary language |
+| `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", trust boundary language |
 | `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
 | `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
 | `BACKLOG.md` | Workaround status, new limitations, resolved items |
@@ -76,6 +76,15 @@ After resolving or adding a workaround:
 - Stage READMEs link to next/previous stages correctly
 - Operations doc references real namespaces and resource names
 - Troubleshooting entries reference real commands
+
+### 7. Stage README narrative style
+
+When checking a stage README:
+- The opening should lead with this repository's demo storyline, not with a summary of an external article, blog, or product document.
+- Red Hat blogs and documentation should appear as alignment, implementation baseline, or reference material after the stage's role in the workshop is clear.
+- The stage should connect the previous stage, the capability being introduced, and the later stages that depend on it.
+- The section order should follow rule `20-readme-standard.mdc`, including `Why This Is Worth Knowing` immediately after `How Red Hat And Open Source Make It Work`.
+- The README should explain why the capability matters before listing YAML, resources, or commands.
 
 ## Workflow
 

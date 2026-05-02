@@ -77,7 +77,9 @@ After validation, verify:
 - [ ] Argo CD Application has required labels and annotations
 - [ ] `kustomization.yaml` lists all resource files
 - [ ] No orphaned manifests in the directory
-- [ ] README explains the stage's value (not just commands)
+- [ ] README explains the stage's value in the project storyline, not just commands
+- [ ] README follows the stage README section order, with `Why This Is Worth Knowing` after `How Red Hat And Open Source Make It Work`
+- [ ] README uses external Red Hat blogs/docs as alignment and references, not as the opening narrative voice
 - [ ] `docs/OPERATIONS.md` reflects any new operational behavior
 - [ ] `docs/TROUBLESHOOTING.md` covers new failure modes if applicable
 
