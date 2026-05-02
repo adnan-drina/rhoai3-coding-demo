@@ -343,6 +343,56 @@ Stage 090 findings:
 - Follow-up Red Hat alignment finding: the RHDH catalog URL was hard-coded to the `main` branch, while the deployed demo was sourced from `codex/stage-refactor-demo-validation`. Improvement applied: make the catalog URL environment-driven and derive it from the live Argo CD Application source.
 - Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the catalog URL matches the deployed GitOps source; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
 
+### 2026-05-02 Stage 020 GPUaaS validation run
+
+Cluster:
+
+- API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
+- OpenShift: `4.20.19`
+- Validation branch: `codex/stage020-gpuaas`
+- Validation commits: `ceda099`, `75af578`, `d42d72a`
+
+Actions:
+
+- Restored GPU capacity by scaling MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` from 0 to 2 replicas.
+- Temporarily pointed Argo CD Applications `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving` at branch `codex/stage020-gpuaas` for live GitOps validation.
+- Forced a hard Argo CD refresh after pushing the branch so the controller rendered commit `ceda099`.
+- Corrected the Red Hat build of Kueue channel from planned `stable-v1.0` to `stable-v1.3` after live package discovery showed the OpenShift 4.20 catalog exposes `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`.
+- Fixed Stage 020 validation to use the explicit `kueues.kueue.openshift.io` API resource because `oc get kueue` is ambiguous when both OpenShift AI and Red Hat build of Kueue CRDs are installed.
+- Fixed Stage 020 validation to accept multiple healthy KEDA runtime pods.
+
+Stage 020 evidence:
+
+- `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 43 passed, 2 warnings, 0 failed.
+- Argo CD Application `020-gpu-infrastructure-private-ai`: `Synced` and `Healthy`.
+- Red Hat build of Kueue Operator CSV `kueue-operator.v1.3.1`: `Succeeded`.
+- Custom Metrics Autoscaler CSV `custom-metrics-autoscaler.v2.18.1-2`: `Succeeded`.
+- `Kueue` CR `cluster`: `Available=True`, `readyReplicas=2`.
+- `ResourceFlavor` `nvidia-l4-gpu`, `ClusterQueue` `private-model-serving-gpu`, and `LocalQueue` `private-model-serving` are present.
+- `LocalQueue` reported `pending=0`, `admitted=2`, and `reserving=2` after Stage 030 reconciliation.
+- Queue-based hardware profiles `nvidia-l4-1gpu-queued` and `nvidia-l4-2gpu-queued` are present in `redhat-ods-applications`.
+- `KedaController` `keda` reports `Installation Succeeded`.
+- GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` has 2 ready replicas.
+- Both GPU nodes are Ready, tainted `nvidia.com/gpu=true:NoSchedule`, labeled with the GPU role, and advertise `nvidia.com/gpu: 1`.
+- NVIDIA `ClusterPolicy` reports `Ready=True` and `state=ready`.
+- Dashboard ConfigMaps `nvidia-dcgm-exporter-dashboard` and `rhoai-gpuaas-dashboard` exist.
+
+Remaining Stage 020 warnings:
+
+- Raw Prometheus proxy queries for `DCGM_FI_DEV_GPU_UTIL` and `kueue_pending_workloads` returned authentication errors from `oc get --raw`. The dashboard ConfigMap is present, but metric query validation remains a warning until the supported console/Prometheus query path is confirmed.
+
+Stage 030 evidence:
+
+- `./stages/030-private-model-serving/validate.sh`: 20 passed, 2 warnings, 0 failed.
+- Argo CD Application `030-private-model-serving`: `Synced` and `Healthy`.
+- Both `LLMInferenceService` resources have `kueue.x-k8s.io/queue-name=private-model-serving`.
+- Kueue created two `Workload` objects for private model-serving pods, both admitted through `private-model-serving-gpu`.
+- The `private-model-serving` `LocalQueue` reported two admitted workloads and zero pending workloads.
+
+Remaining Stage 030 warnings:
+
+- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were not yet `Ready` during the first validation pass because the large modelcar images were still pulling after GPU nodes were restored. The pods were admitted by Kueue and scheduled onto the two GPU nodes.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
