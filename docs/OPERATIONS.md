@@ -525,6 +525,22 @@ Validation evidence:
 - A direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
 - The provider key and runtime MaaS key were not printed, committed, or stored in Git.
 
+### 2026-05-02 Gen AI Playground MaaS token validation
+
+Actions:
+
+- Investigated a Playground-only failure where direct Llama Stack calls worked for all four MaaS models, but browser requests through the Gen AI Playground succeeded for only the models covered by the selected MaaS subscription.
+- Confirmed the dashboard BFF obtains a MaaS token and passes it to Llama Stack as request provider data. The Llama Stack `remote::vllm` provider prefers that request `vllm_api_token` over provider-specific environment tokens.
+- Replaced the split local/external consumer subscriptions with one `demo-models-subscription` token boundary for models that appear together in the same Playground.
+- Stage 040 now ensures the demo subscription exists for private models without downgrading a Stage 050-expanded subscription. Stage 050 declaratively owns the expanded four-model subscription after the external `MaaSModelRef` resources exist.
+
+Validation evidence:
+
+- Stage 040 and Stage 050 both synced from commit `c071832` and reported `Synced` and `Healthy`.
+- Live `demo-models-subscription` contains `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`, with all four token-limit statuses ready.
+- `GENAI_PLAYGROUND_BFF_SMOKE_TEST=true GUIDELLM_EXTERNAL_SMOKE_TEST=false ./stages/050-approved-external-model-access/validate.sh` passed with 24 checks, 0 warnings, and 0 failures.
+- Recent Llama Stack logs show successful `POST /v1/responses` calls after the fix. The earlier `subscription ... does not include model` authorization error is no longer present in current validation.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
