@@ -1,0 +1,55 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: nvidia-l4-gpu
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  nodeLabels:
+    node-role.kubernetes.io/gpu: ""
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: private-model-serving-gpu
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: maas
+  resourceGroups:
+    - coveredResources:
+        - cpu
+        - memory
+        - pods
+        - nvidia.com/gpu
+      flavors:
+        - name: nvidia-l4-gpu
+          resources:
+            - name: cpu
+              nominalQuota: "16"
+            - name: memory
+              nominalQuota: 80Gi
+            - name: pods
+              nominalQuota: "12"
+            - name: nvidia.com/gpu
+              nominalQuota: "2"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: private-model-serving
+  namespace: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  clusterQueue: private-model-serving-gpu

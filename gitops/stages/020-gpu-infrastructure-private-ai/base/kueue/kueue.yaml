@@ -1,0 +1,25 @@
+apiVersion: kueue.openshift.io/v1
+kind: Kueue
+metadata:
+  name: cluster
+  namespace: openshift-kueue-operator
+  labels:
+    app.kubernetes.io/name: kueue-operator
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  managementState: Managed
+  config:
+    integrations:
+      frameworks:
+        - BatchJob
+        - Pod
+        - Deployment
+        - StatefulSet
+        - LeaderWorkerSet
+    workloadManagement:
+      labelPolicy: QueueName
+    preemption:
+      preemptionPolicy: Classical

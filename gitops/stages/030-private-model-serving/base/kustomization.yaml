@@ -10,10 +10,10 @@ resources:
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
   - leaderworkerset/instance.yaml
-  - models/namespace.yaml
   - models/admin-rbac.yaml
   - governance/tier-to-group-mapping.yaml
   - model-registry/seed-networkpolicy.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml
+  - observability/vllm-metrics-alias-prometheusrule.yaml
   - model-registry/seed-models.yaml

@@ -45,18 +45,67 @@ check "gpt-oss-20b requests GPU resources" \
 check "nemotron-3-nano-30b-a3b requests GPU resources" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.template.containers[0].resources.requests.nvidia\\.com/gpu}'" \
   "1"
+check "gpt-oss-20b declares Kueue queue" \
+  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.labels.kueue\\.x-k8s\\.io/queue-name}'" \
+  "private-model-serving"
+check "nemotron-3-nano-30b-a3b declares Kueue queue" \
+  "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.kueue\\.x-k8s\\.io/queue-name}'" \
+  "private-model-serving"
+check "gpt-oss-20b declares llm-d single-GPU deployment mode" \
+  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.labels.llm-d\\.ai/deployment-mode}{\" \"}{.metadata.labels.inference\\.optimization/acceleratorName}'" \
+  "single-gpu-per-replica L4"
+check "nemotron-3-nano-30b-a3b declares llm-d single-GPU deployment mode" \
+  "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.llm-d\\.ai/deployment-mode}{\" \"}{.metadata.labels.inference\\.optimization/acceleratorName}'" \
+  "single-gpu-per-replica L4"
 check "gpt-oss-20b targets MaaS Gateway" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
   "openshift-ingress/maas-default-gateway"
 check "nemotron-3-nano-30b-a3b targets MaaS Gateway" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
   "openshift-ingress/maas-default-gateway"
+check "gpt-oss-20b enables llm-d scheduler block" \
+  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.router.scheduler}'" \
+  "{}"
+check "nemotron-3-nano-30b-a3b enables llm-d scheduler block" \
+  "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.scheduler}'" \
+  "{}"
+check "gpt-oss-20b enables vLLM scale-ready runtime arguments" \
+  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
+  "--enable-prefix-caching"
+check "nemotron-3-nano-30b-a3b enables vLLM scale-ready runtime arguments" \
+  "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
+  "--enable-prefix-caching"
 check_warn "gpt-oss-20b ready" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
   "True"
 check_warn "nemotron-3-nano-30b-a3b ready" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
   "True"
+
+log_step "Kueue Workload Observation"
+if oc get crd workloads.kueue.x-k8s.io &>/dev/null; then
+  MODEL_WORKLOAD_COUNT=$(oc get workloads.kueue.x-k8s.io -n maas -o json 2>/dev/null \
+    | jq '[.items[] | select((.metadata.ownerReferences // [])[]?.name | test("gpt-oss-20b|nemotron-3-nano-30b-a3b"))] | length' 2>/dev/null || echo "0")
+  if [[ "$MODEL_WORKLOAD_COUNT" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} Kueue Workload objects observed for private models: $MODEL_WORKLOAD_COUNT"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+  else
+    echo -e "${YELLOW}[WARN]${NC} No Kueue Workload objects observed for LLMInferenceService resources"
+    echo -e "${YELLOW}[WARN]${NC} Red Hat OpenShift AI 3.4 documents Kueue enforcement for InferenceService, Notebook, PyTorchJob, RayCluster, and RayJob; LLMInferenceService requires live demo validation."
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+  fi
+else
+  echo -e "${YELLOW}[WARN]${NC} Kueue Workload CRD is not installed; Stage 020 GPUaaS controls may not be deployed yet"
+  VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+log_step "Inference Metrics"
+check_warn "vLLM metrics alias PrometheusRule exists" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.metadata.name}'" \
+  "vllm-metrics-alias"
+check_warn "vLLM request backlog metric alias is configured" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
+  "vllm:num_requests_waiting"
 
 log_step "Model Registry"
 SEED_JOB_STATUS=$(oc get job model-registry-seed -n rhoai-model-registries -o jsonpath='{.status.succeeded}' 2>/dev/null || echo "")

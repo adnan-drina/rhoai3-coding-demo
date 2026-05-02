@@ -13,6 +13,9 @@ metadata:
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
   labels:
+    inference.optimization/acceleratorName: L4
+    kueue.x-k8s.io/queue-name: private-model-serving
+    llm-d.ai/deployment-mode: single-gpu-per-replica
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
 spec:
@@ -26,6 +29,7 @@ spec:
         - name: maas-default-gateway
           namespace: openshift-ingress
     route: {}
+    scheduler: {}
   template:
     containers:
       - name: main
@@ -41,6 +45,8 @@ spec:
           - --ssl-certfile=/var/run/kserve/tls/tls.crt
           - --ssl-keyfile=/var/run/kserve/tls/tls.key
           - --enable-force-include-usage
+          - --disable-uvicorn-access-log
+          - --enable-prefix-caching
         ports:
           - containerPort: 8000
             name: http
@@ -50,11 +56,19 @@ spec:
             path: /health
             port: 8000
             scheme: HTTPS
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
             scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 60
         resources:
           limits:
             cpu: "4"

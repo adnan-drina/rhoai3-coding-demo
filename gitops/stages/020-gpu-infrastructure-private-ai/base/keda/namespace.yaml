@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-keda
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+    openshift.io/description: "OpenShift Custom Metrics Autoscaler Operator"
+    openshift.io/display-name: "OpenShift Custom Metrics Autoscaler Operator"
