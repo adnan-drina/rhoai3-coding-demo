@@ -32,10 +32,10 @@ check_csv_succeeded "openshift-keda" "custom-metrics-autoscaler"
 
 log_step "GPUaaS Queue Control Plane"
 check "Kueue cluster instance exists" \
-    "oc get kueue cluster -n openshift-kueue-operator -o jsonpath='{.metadata.name}'" \
+    "oc get kueues.kueue.openshift.io cluster -o jsonpath='{.metadata.name}'" \
     "cluster"
 check_warn "Kueue cluster instance ready" \
-    "oc get kueue cluster -n openshift-kueue-operator -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "oc get kueues.kueue.openshift.io cluster -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
     "True"
 check "OpenShift AI Kueue integration is unmanaged" \
     "oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.managementState}'" \
