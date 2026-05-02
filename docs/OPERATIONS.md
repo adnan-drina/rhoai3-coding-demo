@@ -452,6 +452,24 @@ Validation evidence:
 - `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
 - Stage 030 validation after resume: 30 passed, 0 warnings, 0 failed.
 
+### 2026-05-02 Stage 040 GuideLLM load validation run
+
+Actions:
+
+- Added a Stage 040 GuideLLM load-test wrapper that runs as an ephemeral `Job` in the `maas` namespace and targets a MaaS-published OpenAI-compatible endpoint.
+- Kept the default load intentionally small: constant profile, 1 request per second, 20-second maximum duration, 5 generated prompt samples, and 64 requested output tokens.
+- Stored each benchmark console summary in a labeled `ConfigMap` in the `maas` namespace so operators can retrieve prior short-run evidence and compare model behavior across later reruns.
+- Documented the Red Hat OpenShift AI 3.4 Developer Preview status for Evaluation Stack / GuideLLM support. This workshop uses the upstream GuideLLM container directly as demo-scale load tooling until the Red Hat OpenShift AI Evaluation Stack path is ready for this demo.
+- Deleted an intermediate raw-result test artifact after confirming GuideLLM JSON/CSV output includes backend arguments. The committed wrapper stores only the safe console summary, and the `kai-api-keys` MaaS key was rotated in the live environment.
+
+Validation evidence:
+
+- Static validation passed: `bash -n stages/040-governed-models-as-a-service/*.sh`.
+- Static diff hygiene passed: `git diff --check`.
+- Live GuideLLM run against `nemotron-3-nano-30b-a3b` completed 3 requests through the MaaS route with 0 incomplete requests and 0 errors. Result ConfigMap: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502162637-results`.
+- Full Stage 040 validation passed after adding the sanitized load test path: `./stages/040-governed-models-as-a-service/validate.sh`: 52 passed, 0 warnings, 0 failed. Result ConfigMap from the validation run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502163408-results`.
+- Stored GuideLLM result ConfigMaps were checked for `api_key` and `sk-oai-` strings after cleanup; no stored key material was found.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -507,6 +525,8 @@ Grafana queries OpenShift monitoring through the Thanos Querier using a `grafana
 
 MaaS gateway traffic is emitted from the OpenShift Gateway Envoy metrics endpoint and scraped by `PodMonitor/maas-gateway-metrics` in `openshift-ingress`. The disposable Grafana dashboard currently uses a compatibility recording rule, `PrometheusRule/maas-dashboard-usage-metrics`, to map the real `istio_requests_total` series into the quickstart dashboard's expected `authorized_hits` shape. Treat this as demo observability glue, not production metric design guidance.
 
+Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
+
 Useful checks:
 
 ```bash
@@ -518,6 +538,20 @@ oc get clusterrolebinding grafana-sa-cluster-monitoring-view
 oc get grafanadatasource prometheus -n grafana
 oc get podmonitor maas-gateway-metrics -n openshift-ingress
 oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
+oc get configmap -n maas -l app.kubernetes.io/name=guidellm-load-test
+```
+
+Useful GuideLLM overrides:
+
+```bash
+GUIDELLM_MODEL=gpt-oss-20b \
+GUIDELLM_PROFILE=constant \
+GUIDELLM_RATE=1 \
+GUIDELLM_MAX_SECONDS=20 \
+GUIDELLM_REQUESTS=5 \
+GUIDELLM_OUTPUT_TOKENS=64 \
+GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
+./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
 ```
 
 ### Stage 050

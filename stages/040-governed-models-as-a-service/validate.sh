@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/validate-lib.sh"
+load_env
 
 echo "Stage 040: Governed Models-as-a-Service — Validation"
 echo ""
@@ -210,6 +211,24 @@ if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
 else
   echo -e "${YELLOW}[WARN]${NC} curl not available or Grafana route missing; skipping route reachability check"
   VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
+log_step "GuideLLM load test"
+if [[ "${GUIDELLM_SKIP_LOAD_TEST:-false}" == "true" ]]; then
+  echo -e "${YELLOW}[WARN]${NC} GuideLLM load test skipped by GUIDELLM_SKIP_LOAD_TEST=true"
+  VALIDATE_WARN=$((VALIDATE_WARN + 1))
+elif "$SCRIPT_DIR/run-guidellm-load-test.sh"; then
+  echo -e "${GREEN}[PASS]${NC} GuideLLM short MaaS load test completed"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  GUIDELLM_RC=$?
+  if [[ "$GUIDELLM_RC" -eq 2 ]]; then
+    echo -e "${YELLOW}[WARN]${NC} GuideLLM load test skipped because prerequisites are unavailable"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+  else
+    echo -e "${RED}[FAIL]${NC} GuideLLM short MaaS load test failed"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  fi
 fi
 
 echo ""

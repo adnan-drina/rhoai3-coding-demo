@@ -302,6 +302,37 @@ sleep 60
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## GuideLLM Load Test Does Not Run
+
+**Affected stage:** Stage 040
+
+**Likely cause:** The `ghcr.io/vllm-project/guidellm` image cannot be pulled, `kai-api-keys` is missing, the MaaS Gateway hostname is still a placeholder, or the target model is not ready.
+
+**Diagnose:**
+
+```bash
+oc get gateway maas-default-gateway -n openshift-ingress \
+  -o jsonpath='{.spec.listeners[0].hostname}{"\n"}'
+oc get secret kai-api-keys -n openshift-mta
+oc get maasmodelref -n maas
+oc get jobs,pods -n maas -l app.kubernetes.io/name=guidellm-load-test
+```
+
+**Recover:**
+
+```bash
+GUIDELLM_MODEL=nemotron-3-nano-30b-a3b \
+GUIDELLM_PROFILE=constant \
+GUIDELLM_RATE=1 \
+GUIDELLM_MAX_SECONDS=20 \
+GUIDELLM_REQUESTS=5 \
+GUIDELLM_OUTPUT_TOKENS=64 \
+GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
+./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
+```
+
+Set `GUIDELLM_SKIP_LOAD_TEST=true` when you need Stage 040 structural validation without exercising the model endpoint.
+
 ## MaaS Gateway Is Not Reachable
 
 **Affected stage:** Stage 040
