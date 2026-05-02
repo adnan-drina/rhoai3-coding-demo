@@ -82,7 +82,7 @@ How the team should review or test this change.
 | Type | Count | Location |
 |------|-------|----------|
 | Rules | 11 | `.cursor/rules/*.mdc` |
-| Skills | 10 | `.cursor/skills/*/SKILL.md` |
+| Skills | 13 | `.cursor/skills/*/SKILL.md` |
 | Hooks | 4 | `.cursor/hooks.json` |
 | Subagents | 3 | `.cursor/agents/*.md` |
 

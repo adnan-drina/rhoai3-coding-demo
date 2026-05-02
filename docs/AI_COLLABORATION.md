@@ -139,6 +139,10 @@ Good rules (specific and actionable):
 | `demo-operations-docs` | When writing or updating OPERATIONS.md or TROUBLESHOOTING.md |
 | `rhoai-troubleshoot` | When diagnosing live cluster failures |
 | `manage-devspaces` | When managing Dev Spaces workspaces |
+| `manage-resources` | When managing demo resource lifecycle actions |
+| `resume-gpu-demo` | When recovering GPU-backed stages after GPU nodes were scaled to zero |
+| `run-guidellm-load-test` | When generating on-demand GuideLLM load against MaaS-published models |
+| `red-hat-quick-deck` | When creating Red Hat-aligned quick decks from demo content |
 | `maintain-rules-and-skills` | When adding or modifying rules/skills/hooks |
 
 ## Cursor hooks
