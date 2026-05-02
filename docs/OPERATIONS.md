@@ -398,6 +398,40 @@ Argo CD status after remediation:
 - `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving` point to `codex/stage020-gpuaas` for validation and are `Synced`/`Healthy`.
 - Stages `040` through `090` point to `main`; all are `Synced`/`Healthy` after the Stage 050 resync.
 
+### 2026-05-02 Stage 030 llm-d scale-ready validation run
+
+Cluster:
+
+- API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
+- OpenShift: `4.20.19`
+- Validation branch: `codex/stage020-gpuaas`
+- Validation commit: `dcdee7d`
+
+Actions:
+
+- Confirmed the installed `LLMInferenceService` `v1alpha1` CRD supports `spec.router.scheduler`, `spec.parallelism`, `spec.prefill`, and `spec.worker`, but does not expose `spec.scaling`.
+- Added explicit `spec.router.scheduler: {}` to both private model `LLMInferenceService` resources. Live reconciliation created one router-scheduler Deployment per model using the OpenShift AI llm-d inference scheduler image.
+- Added single-GPU-per-replica deployment metadata, NVIDIA L4 accelerator labeling, vLLM prefix-caching arguments, and a `PrometheusRule` that aliases documented vLLM metrics for future autoscaling analysis.
+- Synced Argo CD Application `030-private-model-serving` to branch commit `dcdee7d`; Argo CD reported `Synced` and `Healthy`.
+- During rollout, the two old model ReplicaSets still held the two admitted Kueue GPU reservations while the new scheduler-enabled pods waited behind `SchedulingGated`. Because the demo `ClusterQueue` intentionally has only two GPUs, the stale ReplicaSets were manually scaled to zero to release quota for the new revision.
+
+Validation evidence:
+
+- Static checks passed:
+  - `bash -n stages/030-private-model-serving/deploy.sh stages/030-private-model-serving/validate.sh`
+  - `kustomize build gitops/stages/030-private-model-serving/base`
+  - `kustomize build gitops/stages/030-private-model-serving/base | oc apply --dry-run=server -f -`
+  - `git diff --check`
+- Live validation after sync: `./stages/030-private-model-serving/validate.sh`: 28 passed, 2 warnings, 0 failed.
+- The two warnings were model readiness only; both model pods were admitted through `private-model-serving-gpu` and were still pulling/initializing large model images after GPU node cold start.
+- Both router-scheduler pods were created and running.
+- Both new model workloads were admitted by Kueue and assigned to GPU nodes.
+- `PrometheusRule` `vllm-metrics-alias` exists in the `maas` namespace.
+
+Current limitation:
+
+- The demo now uses the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the runtime and scheduler enablement, but it does not deploy full Workload Variant Autoscaler configuration, multi-node serving, or disaggregated prefill/decode workers. That limitation is tracked in `BACKLOG.md`.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
