@@ -46,7 +46,7 @@ Use this section pattern unless there is a strong reason not to:
 
 ## Architecture
 
-![Stage NNN layered capability map](../../docs/assets/architecture/step-NN-capability-map.svg)
+![Stage NNN layered capability map](../../docs/assets/architecture/stage-NNN-capability-map.svg)
 
 ## What This Stage Adds
 
@@ -139,8 +139,8 @@ Prefer official docs over blogs unless the blog is the authoritative context for
 
 Each stage README includes an SVG architecture diagram under a `## Architecture` heading. The diagram is placed **after** "Why This Matters" and **before** "What This Stage Adds" — the reader first understands the motivation, then sees the visual, then reads the specifics.
 
-- Diagrams live in `docs/assets/architecture/` and are named `step-NN-capability-map.svg`.
-- Use a markdown image reference: `![Step NN layered capability map](../../docs/assets/architecture/step-NN-capability-map.svg)`
+- Diagrams live in `docs/assets/architecture/` and are named `stage-NNN-capability-map.svg`.
+- Use a markdown image reference: `![Stage NNN layered capability map](../../docs/assets/architecture/stage-NNN-capability-map.svg)`
 - Do not place the diagram at the top of the file or before the title.
 - The `## Architecture` heading makes the diagram linkable and visible in the table of contents.
 

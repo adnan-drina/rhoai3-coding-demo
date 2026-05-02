@@ -8,7 +8,7 @@ This stage moves the coding experience into managed OpenShift workspaces. Develo
 
 ## Architecture
 
-![Stage 070 layered capability map](../../docs/assets/architecture/step-04-capability-map.svg)
+![Stage 070 layered capability map](../../docs/assets/architecture/stage-070-capability-map.svg)
 
 ## What This Stage Adds
 

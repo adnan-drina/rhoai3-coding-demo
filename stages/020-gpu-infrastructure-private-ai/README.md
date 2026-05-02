@@ -8,7 +8,7 @@ This stage establishes the infrastructure layer behind the private model path. W
 
 ## Architecture
 
-![Stage 020 layered capability map](../../docs/assets/architecture/step-02-capability-map.svg)
+![Stage 020 layered capability map](../../docs/assets/architecture/stage-020-capability-map.svg)
 
 ## What This Stage Adds
 

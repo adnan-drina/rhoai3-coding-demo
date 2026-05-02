@@ -8,7 +8,7 @@ The message is not that every context source should be enabled. The message is t
 
 ## Architecture
 
-![Stage 060 layered capability map](../../docs/assets/architecture/step-03-capability-map.svg)
+![Stage 060 layered capability map](../../docs/assets/architecture/stage-060-capability-map.svg)
 
 ## What This Stage Adds
 

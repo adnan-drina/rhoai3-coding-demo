@@ -8,7 +8,7 @@ This stage establishes Red Hat Developer Hub as the front door for the demo plat
 
 ## Architecture
 
-![Stage 090 layered capability map](../../docs/assets/architecture/step-06-capability-map.svg)
+![Stage 090 layered capability map](../../docs/assets/architecture/stage-090-capability-map.svg)
 
 ## What This Stage Adds
 
