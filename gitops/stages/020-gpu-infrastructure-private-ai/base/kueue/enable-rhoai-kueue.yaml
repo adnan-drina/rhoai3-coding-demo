@@ -1,0 +1,108 @@
+# Stage 020 owns the transition from Stage 010's Kueue-disabled baseline to
+# OpenShift AI integration with the Red Hat build of Kueue Operator.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-enable-rhoai-kueue
+  namespace: openshift-kueue-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-enable-rhoai-kueue
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+rules:
+  - apiGroups: ["datasciencecluster.opendatahub.io"]
+    resources: ["datascienceclusters"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["opendatahub.io"]
+    resources: ["odhdashboardconfigs"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-enable-rhoai-kueue
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-enable-rhoai-kueue
+subjects:
+  - kind: ServiceAccount
+    name: job-enable-rhoai-kueue
+    namespace: openshift-kueue-operator
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-enable-rhoai-kueue
+  namespace: openshift-kueue-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+data:
+  job.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Enabling Red Hat OpenShift AI Kueue integration"
+
+    oc patch datasciencecluster default-dsc \
+      --type='merge' \
+      --patch '{"spec":{"components":{"kueue":{"managementState":"Unmanaged","defaultClusterQueueName":"private-model-serving-gpu","defaultLocalQueueName":"private-model-serving"}}}}'
+
+    oc patch odhdashboardconfig odh-dashboard-config \
+      -n redhat-ods-applications \
+      --type='merge' \
+      --patch '{"spec":{"dashboardConfig":{"disableKueue":false}}}'
+
+    # Namespace labels are patched here because the Stage 020 Argo CD
+    # Application ignores namespace label drift to avoid fighting
+    # operator-managed metadata on platform namespaces.
+    oc label namespace openshift-kueue-operator openshift.io/cluster-monitoring=true --overwrite
+    oc label namespace maas \
+      opendatahub.io/dashboard=true \
+      kueue.openshift.io/managed=true \
+      --overwrite
+
+    echo "OpenShift AI Kueue integration enabled"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-enable-rhoai-kueue
+  namespace: openshift-kueue-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      serviceAccountName: job-enable-rhoai-kueue
+      restartPolicy: Never
+      containers:
+        - name: enable-rhoai-kueue
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - /scripts/job.sh
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: job-enable-rhoai-kueue
+            defaultMode: 0755

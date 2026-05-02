@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Stage 020: GPU Infrastructure - Deploy
-# Applies the ArgoCD Application. GPU MachineSet creation is handled by
-# an in-cluster Job (gitops-catalog pattern) at sync wave 20.
+# Stage 020: GPU Infrastructure and GPU-as-a-Service - Deploy
+# Applies the ArgoCD Application. GPU MachineSet creation and OpenShift AI
+# Kueue enablement are handled by in-cluster Jobs.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,18 +13,21 @@ STEP_NAME="020-gpu-infrastructure-private-ai"
 load_env
 check_oc_logged_in
 
-log_step "Stage 020: GPU Infrastructure"
+log_step "Stage 020: GPU Infrastructure and GPU-as-a-Service Foundation"
 
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
 log_success "ArgoCD Application '${STEP_NAME}' applied"
 
 log_info "ArgoCD handles all orchestration via sync waves:"
-log_info "  Wave -10..0: NFD + GPU Operator namespaces, subscriptions"
-log_info "  Wave 5-10:   NFD instance, ClusterPolicy, DCGM dashboard"
+log_info "  Wave -10..0: NFD, GPU Operator, Kueue, and Custom Metrics Autoscaler subscriptions"
+log_info "  Wave 5-15:   Kueue CR, queue/quota resources, KEDA controller, dashboards"
+log_info "  Wave 10-15:  NFD instance, ClusterPolicy, DCGM dashboard"
 log_info "  Wave 20:     GPU MachineSet Job (discovers cluster, creates MachineSet)"
 echo ""
 log_info "Monitor progress:"
 echo "  oc get application ${STEP_NAME} -n openshift-gitops -w"
+echo "  oc get pods -n openshift-kueue-operator"
+echo "  oc get clusterqueue,resourceflavor"
 echo "  oc get machines -n openshift-machine-api | grep gpu"
 echo "  oc get nodes -l node-role.kubernetes.io/gpu"
 echo ""

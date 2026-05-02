@@ -98,7 +98,7 @@ Compatibility note: the old `steps/step-*` scripts remain as wrappers, but the o
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
-| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets |
+| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, observability |
 | 050 | `050-approved-external-model-access` | External OpenAI models behind MaaS |
@@ -343,15 +343,138 @@ Stage 090 findings:
 - Follow-up Red Hat alignment finding: the RHDH catalog URL was hard-coded to the `main` branch, while the deployed demo was sourced from `codex/stage-refactor-demo-validation`. Improvement applied: make the catalog URL environment-driven and derive it from the live Argo CD Application source.
 - Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the catalog URL matches the deployed GitOps source; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
 
+### 2026-05-02 Stage 020 GPUaaS validation run
+
+Cluster:
+
+- API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
+- OpenShift: `4.20.19`
+- Validation branch: `codex/stage020-gpuaas`
+- Validation commits: `ceda099`, `75af578`, `d42d72a`
+
+Actions:
+
+- Restored GPU capacity by scaling MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` from 0 to 2 replicas.
+- Temporarily pointed Argo CD Applications `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving` at branch `codex/stage020-gpuaas` for live GitOps validation.
+- Forced a hard Argo CD refresh after pushing the branch so the controller rendered commit `ceda099`.
+- Corrected the Red Hat build of Kueue channel from planned `stable-v1.0` to `stable-v1.3` after live package discovery showed the OpenShift 4.20 catalog exposes `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`.
+- Fixed Stage 020 validation to use the explicit `kueues.kueue.openshift.io` API resource because `oc get kueue` is ambiguous when both OpenShift AI and Red Hat build of Kueue CRDs are installed.
+- Fixed Stage 020 validation to accept multiple healthy KEDA runtime pods.
+- Resolved a follow-on Argo CD issue in Stage 050 after `maas` was recreated by the Stage 020 namespace ownership change. The external model Secret, `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources were reapplied and `050-approved-external-model-access` returned to `Synced` and `Healthy`.
+
+Stage 020 evidence:
+
+- `./stages/020-gpu-infrastructure-private-ai/validate.sh`: 43 passed, 2 warnings, 0 failed.
+- Argo CD Application `020-gpu-infrastructure-private-ai`: `Synced` and `Healthy`.
+- Red Hat build of Kueue Operator CSV `kueue-operator.v1.3.1`: `Succeeded`.
+- Custom Metrics Autoscaler CSV `custom-metrics-autoscaler.v2.18.1-2`: `Succeeded`.
+- `Kueue` CR `cluster`: `Available=True`, `readyReplicas=2`.
+- `ResourceFlavor` `nvidia-l4-gpu`, `ClusterQueue` `private-model-serving-gpu`, and `LocalQueue` `private-model-serving` are present.
+- `LocalQueue` reported `pending=0`, `admitted=2`, and `reserving=2` after Stage 030 reconciliation.
+- Queue-based hardware profiles `nvidia-l4-1gpu-queued` and `nvidia-l4-2gpu-queued` are present in `redhat-ods-applications`.
+- `KedaController` `keda` reports `Installation Succeeded`.
+- GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` has 2 ready replicas.
+- Both GPU nodes are Ready, tainted `nvidia.com/gpu=true:NoSchedule`, labeled with the GPU role, and advertise `nvidia.com/gpu: 1`.
+- NVIDIA `ClusterPolicy` reports `Ready=True` and `state=ready`.
+- Dashboard ConfigMaps `nvidia-dcgm-exporter-dashboard` and `rhoai-gpuaas-dashboard` exist.
+
+Remaining Stage 020 warnings:
+
+- Raw Prometheus proxy queries for `DCGM_FI_DEV_GPU_UTIL` and `kueue_pending_workloads` returned authentication errors from `oc get --raw`. The dashboard ConfigMap is present, but metric query validation remains a warning until the supported console/Prometheus query path is confirmed.
+
+Stage 030 evidence:
+
+- Initial validation while images were still pulling: `./stages/030-private-model-serving/validate.sh`: 20 passed, 2 warnings, 0 failed.
+- Final validation after model image pulls completed: `./stages/030-private-model-serving/validate.sh`: 22 passed, 0 warnings, 0 failed.
+- Argo CD Application `030-private-model-serving`: `Synced` and `Healthy`.
+- Both `LLMInferenceService` resources have `kueue.x-k8s.io/queue-name=private-model-serving`.
+- Kueue created two `Workload` objects for private model-serving pods, both admitted through `private-model-serving-gpu`.
+- The `private-model-serving` `LocalQueue` reported two admitted workloads and zero pending workloads.
+- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` both reached `Ready=True`.
+- Both private model-serving pods are `Running`, with all containers ready, on the two GPU nodes.
+
+Argo CD status after remediation:
+
+- `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving` point to `codex/stage020-gpuaas` for validation and are `Synced`/`Healthy`.
+- Stages `040` through `090` point to `main`; all are `Synced`/`Healthy` after the Stage 050 resync.
+
+### 2026-05-02 Stage 030 llm-d scale-ready validation run
+
+Cluster:
+
+- API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
+- OpenShift: `4.20.19`
+- Validation branch: `codex/stage020-gpuaas`
+- Validation commit: `08b37b0`
+
+Actions:
+
+- Confirmed the installed `LLMInferenceService` `v1alpha1` CRD supports `spec.router.scheduler`, `spec.parallelism`, `spec.prefill`, and `spec.worker`, but does not expose `spec.scaling`.
+- Added explicit `spec.router.scheduler: {}` to both private model `LLMInferenceService` resources. Live reconciliation created one router-scheduler Deployment per model using the OpenShift AI llm-d inference scheduler image.
+- Added single-GPU-per-replica deployment metadata, NVIDIA L4 accelerator labeling, vLLM prefix-caching arguments, explicit cold-start probe timings, and a `PrometheusRule` that aliases documented vLLM metrics for future autoscaling analysis.
+- Synced Argo CD Application `030-private-model-serving` to branch commit `08b37b0`; Argo CD reported `Synced` and `Healthy`.
+- During rollout, the two old model ReplicaSets still held the two admitted Kueue GPU reservations while the new scheduler-enabled pods waited behind `SchedulingGated`. Because the demo `ClusterQueue` intentionally has only two GPUs, the stale ReplicaSets were manually scaled to zero to release quota for the new revision.
+
+Validation evidence:
+
+- Static checks passed:
+  - `bash -n stages/030-private-model-serving/deploy.sh stages/030-private-model-serving/validate.sh`
+  - `kustomize build gitops/stages/030-private-model-serving/base`
+  - `kustomize build gitops/stages/030-private-model-serving/base | oc apply --dry-run=server -f -`
+  - `git diff --check`
+- Live validation after image pull, cold start, and probe remediation: `./stages/030-private-model-serving/validate.sh`: 30 passed, 0 warnings, 0 failed.
+- Both router-scheduler pods were created and running.
+- Both new model workloads were admitted by Kueue and assigned to GPU nodes.
+- Both `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` are `Ready=True`, with model pods `2/2 Running`.
+- `PrometheusRule` `vllm-metrics-alias` exists in the `maas` namespace.
+- GPT-OSS briefly reached readiness and then restarted because the default liveness delay was too short for cold vLLM compilation after image pull. The manifests now set an explicit 600-second liveness initial delay for both private models.
+
+Current limitation:
+
+- The demo now uses the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the runtime and scheduler enablement, but it does not deploy full Workload Variant Autoscaler configuration, multi-node serving, or disaggregated prefill/decode workers. That limitation is tracked in `BACKLOG.md`.
+
+### 2026-05-02 GPU resume-from-zero validation run
+
+Actions:
+
+- Scaled GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` from 2 replicas to 0 with `./scripts/resume-gpu-demo.sh down`.
+- Confirmed private model resources moved to `Ready=False` with `MinimumReplicasUnavailable` while Kueue queue resources and admitted workload records remained present.
+- Ran `./scripts/resume-gpu-demo.sh resume` to sync Stage 020, scale the GPU MachineSet back to 2, wait for replacement GPU nodes, and continue Stage 020/030 recovery.
+- Observed a cold-start timing issue: GPU nodes advertised allocatable `nvidia.com/gpu` before NVIDIA `ClusterPolicy` returned to `state=ready`. The resume script now waits for `ClusterPolicy` readiness before Stage 020 validation.
+
+Validation evidence:
+
+- GPU MachineSet returned to 2 ready replicas.
+- Replacement GPU nodes became Ready, retained `node-role.kubernetes.io/gpu`, retained `nvidia.com/gpu=true:NoSchedule`, and advertised `nvidia.com/gpu: 1`.
+- NVIDIA `ClusterPolicy` returned to `Ready=True` and `state=ready`.
+- Stage 020 validation after operator readiness: 43 passed, 2 warnings, 0 failed. The two warnings are the existing raw Prometheus query warnings for GPU/Kueue metrics.
+- Kueue admitted both private model workloads through `private-model-serving-gpu`.
+- `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
+- Stage 030 validation after resume: 30 passed, 0 warnings, 0 failed.
+
 ### Stage 020
 
-Stage 020 creates GPU infrastructure. New GPU nodes can take several minutes to provision and join the cluster.
+Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
 
 The GPU Operator Subscription does not pin a channel. OLM uses the certified catalog default channel available in the target cluster. This avoids carrying an unexplained demo-specific version pin while still installing from the certified operator catalog.
+
+The Red Hat build of Kueue Subscription uses the `stable-v1.3` channel from `redhat-operators` on the current OpenShift 4.20 demo cluster. Earlier planning referenced `stable-v1.0`, but live package discovery on this cluster showed only `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`; the implementation follows the available Red Hat catalog channel. OpenShift AI is integrated with this external Kueue installation by Stage 020 after the operator is present: the stage patches `DataScienceCluster.spec.components.kueue.managementState` to `Unmanaged`, enables dashboard Kueue support with `OdhDashboardConfig.spec.dashboardConfig.disableKueue=false`, and creates the `maas` namespace with `kueue.openshift.io/managed=true` and `opendatahub.io/dashboard=true`.
+
+The `private-model-serving-gpu` `ClusterQueue` is intentionally small: two NVIDIA L4 GPUs plus CPU, memory, and pod quota for the current private model-serving path. This demonstrates the GPUaaS operating model without pretending the disposable demo environment represents a large multi-tenant GPU fleet.
+
+OpenShift Custom Metrics Autoscaler/KEDA is installed as a building block only. The stage does not attach `ScaledObject` resources to the private model deployments in the first pass. Production patterns should base scaling on validated Prometheus, Kueue backlog, or idle workload metrics.
+
+Stage 010 still owns the base `DataScienceCluster` and dashboard resources. Its Argo CD Application ignores only the Kueue handoff fields so Stage 020 can enable the Red Hat OpenShift AI 3.4 external Kueue integration without making Stage 010 depend on Kueue being installed first. Stage 020 also owns the `maas` namespace now because the `LocalQueue` must exist before Stage 030 creates model-serving resources in that project.
 
 Useful checks:
 
 ```bash
+oc get subscription,csv -n openshift-kueue-operator
+oc get kueue cluster -n openshift-kueue-operator
+oc get resourceflavor,clusterqueue
+oc get localqueue -n maas
+oc get hardwareprofile -n redhat-ods-applications | grep -i queued
+oc get kedacontroller -n openshift-keda
 oc get machineset -n openshift-machine-api | grep -i gpu
 oc get nodes -l node-role.kubernetes.io/gpu
 oc get clusterpolicy -A
@@ -359,13 +482,14 @@ oc get clusterpolicy -A
 
 ### Stage 030
 
-Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data.
+Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node or disaggregated prefill/decode inference.
 
 Useful checks:
 
 ```bash
 oc get llminferenceservice -n maas
 oc get pods -n maas
+oc get prometheusrule vllm-metrics-alias -n maas
 oc get job model-registry-seed -n rhoai-model-registries
 ```
 
@@ -489,6 +613,25 @@ For documentation-only changes:
 1. Edit `README.md`, `stages/*/README.md`, or files under `docs/`.
 2. Run `git diff --check`.
 3. Check that links and references still match the repo.
+
+## Resuming GPU-Backed Stages After Shutdown
+
+Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workflow. Use this after the GPU MachineSet was scaled to zero for cost saving, or after the demo environment has been stopped and started again.
+
+```bash
+./scripts/resume-gpu-demo.sh status
+./scripts/resume-gpu-demo.sh resume
+```
+
+The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
+
+To scale GPU capacity down for shutdown:
+
+```bash
+./scripts/resume-gpu-demo.sh down
+```
+
+Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
 
 ## Cleanup Guidance
 

@@ -9,9 +9,9 @@ disable-model-invocation: true
 description: >
   Scale models and GPU MachineSets up or down in the RHOAI demo environment.
   Use when the user wants to stop/start models, scale GPU nodes, save costs,
-  manage cluster resources, reduce cloud spend overnight, or prepare for a
-  demo by bringing resources back up. Also use when the user asks "how do I
-  shut down the demo?" or "which models can I stop safely?".
+  manage cluster resources, reduce cloud spend overnight, or shut down GPU
+  capacity. For resuming Stage 020/030 after GPU nodes were scaled to zero,
+  use the resume-gpu-demo skill instead.
   Do NOT use for deploying or re-deploying steps (use deploy.sh scripts),
   troubleshooting failures (use rhoai-troubleshoot), or manifest review
   (use manifest-reviewer agent).
@@ -19,10 +19,18 @@ description: >
 
 # Manage Demo Resources
 
-Scale InferenceServices (models) and MachineSets (GPU nodes) without
-conflicting with ArgoCD. Steps that manage GPU nodes or model scaling
-should use `selfHeal: false` so manual changes show OutOfSync but are
-not auto-reverted.
+Scale MachineSets and model-serving resources without conflicting with Argo CD.
+For the Stage 020/030 private model-serving path, prefer the first-class resume
+script:
+
+```bash
+./scripts/resume-gpu-demo.sh status
+./scripts/resume-gpu-demo.sh down
+./scripts/resume-gpu-demo.sh resume
+```
+
+Manual scaling should remain operational and temporary. Git remains the desired
+state for the demo.
 
 ## Prerequisites
 
@@ -37,8 +45,8 @@ Discover the current state before making changes:
 # Models (if any deployed)
 oc get isvc -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,MIN_REPLICAS:.spec.predictor.minReplicas'
 
-# GPU MachineSets
-oc get machineset -n openshift-machine-api -o custom-columns='NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas'
+# GPU-backed demo path
+./scripts/resume-gpu-demo.sh status
 
 # ArgoCD sync status (all apps)
 oc get applications -n openshift-gitops -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
@@ -60,11 +68,7 @@ Scale the MachineSet to 0 replicas. The GPU node drains and terminates.
 Pods on that node are evicted (models become unavailable).
 
 ```bash
-# Scale down
-oc scale machineset <MACHINESET_NAME> -n openshift-machine-api --replicas=0
-
-# Monitor node drain
-oc get nodes -l node-role.kubernetes.io/gpu --watch
+./scripts/resume-gpu-demo.sh down
 ```
 
 **Dependency chain — scale down in this order:**
@@ -77,15 +81,7 @@ oc get nodes -l node-role.kubernetes.io/gpu --watch
 Reverse order — start the MachineSet first, wait for the node, then start models.
 
 ```bash
-# 1. Scale up MachineSet
-oc scale machineset <MACHINESET_NAME> -n openshift-machine-api --replicas=1
-
-# 2. Wait for node ready (~5 min for GPU nodes)
-oc get nodes -l node-role.kubernetes.io/gpu --watch
-
-# 3. Restore model
-oc patch isvc <MODEL_NAME> -n <NAMESPACE> --type merge \
-  -p '{"spec":{"predictor":{"minReplicas":1}}}'
+./scripts/resume-gpu-demo.sh resume
 ```
 
 ## Restore Full Git State

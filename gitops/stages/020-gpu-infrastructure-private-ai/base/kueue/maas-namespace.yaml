@@ -6,3 +6,4 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
   labels:
     opendatahub.io/dashboard: "true"
+    kueue.openshift.io/managed: "true"

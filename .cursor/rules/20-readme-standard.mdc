@@ -31,6 +31,16 @@ Every stage README must explain:
 - **Why this is worth knowing** - the reusable lesson after the demo.
 - **Where it fits** - how this stage connects to the full workshop.
 
+Lead with this repository's demo storyline, not with a quoted external article, vendor blog, or product documentation summary. External references should support and validate the story after the reader understands what this stage does in the workshop.
+
+Each stage should make continuity explicit:
+- What the previous stage made possible.
+- What this stage adds to the trusted enterprise AI platform.
+- Why the capability matters for private and governed AI coding assistance.
+- Which later stages depend on this capability.
+
+When aligning to Red Hat recommendations, use Red Hat guidance as the implementation baseline and reference material. Do not write as if the README exists to summarize a Red Hat article. The README should tell our demo story while using Red Hat terminology, product positioning, and documented implementation patterns.
+
 Do not lead with YAML, commands, or implementation details. Commands belong in `Deploy And Validate` and should be secondary.
 
 README files are educational technical articles, not runbooks. Move operational sequences to `docs/OPERATIONS.md` and failure recovery to `docs/TROUBLESHOOTING.md`. Keep implementation claims aligned with GitOps manifests, deploy scripts, validation scripts, and examples. Future capabilities must be labeled as future work, and trust boundaries, credentials, external services, and data movement must be explicit.
@@ -54,14 +64,14 @@ Use this section pattern unless there is a strong reason not to:
 
 ## How Red Hat And Open Source Make It Work
 
+## Why This Is Worth Knowing
+
 ## Red Hat Products Used
 
 ## Open Source Projects To Know
 
 ## Trust Boundaries
 <!-- Include when data boundary, privacy, identity, or external services matter. -->
-
-## Why This Is Worth Knowing
 
 ## Where This Fits In The Full Platform
 
@@ -158,6 +168,8 @@ Each stage README includes an SVG architecture diagram under a `## Architecture`
 
 After modifying a stage README:
 - Verify no literal "Tell:" or "Show:" labels remain.
+- Verify the opening leads with the demo storyline and does not start by summarizing an external article or product document.
+- Verify section order places `Why This Is Worth Knowing` immediately after `How Red Hat And Open Source Make It Work`.
 - Verify Red Hat product coverage is explicit.
 - Verify open source projects are explained where relevant.
 - Verify privacy statements distinguish private local models from governed external models.
