@@ -508,6 +508,21 @@ Validation evidence:
 - Stage 030 recovery validation completed with 30 passed, 0 warnings, and 0 failed. Both private `LLMInferenceService` resources returned to `Ready=True`.
 - Stage 040 recovery validation with `GUIDELLM_SKIP_LOAD_TEST=true` completed with 56 passed, 2 warnings, and 0 failed. The warnings were expected: skipped GuideLLM traffic generation and no fresh MaaS usage metric data yet.
 
+### 2026-05-02 Stage 050 external model smoke validation
+
+Actions:
+
+- Stored the approved OpenAI provider key only in local `.env` and provisioned it into the live `maas/openai-api-key` Secret with the existing Stage 050 deploy path.
+- Repointed Stage 050 back to the active feature branch after `deploy.sh` reapplied the app-of-apps manifest from `main`.
+- Updated Stage 050 validation so the optional external smoke test creates a runtime MaaS API key for `external-models-subscription` instead of reusing the local-model coding-assistant subscription key.
+- Updated the GuideLLM wrapper to support `GUIDELLM_VALIDATE_BACKEND`; Stage 050 sets it to `false` because the external MaaS path does not expose a vLLM-style `/health` endpoint.
+
+Validation evidence:
+
+- Stage 050 validation with external smoke test passed: `GUIDELLM_EXTERNAL_SMOKE_TEST=true GUIDELLM_REQUESTS=1 GUIDELLM_OUTPUT_TOKENS=32 ./stages/050-approved-external-model-access/validate.sh`: 19 passed, 0 warnings, 0 failed. Result ConfigMap: `maas/guidellm-gpt-4o-mini-20260502181058-results`.
+- A direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
+- The provider key and runtime MaaS key were not printed, committed, or stored in Git.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -646,6 +661,8 @@ GUIDELLM_REQUESTS=1 \
 GUIDELLM_OUTPUT_TOKENS=32 \
 ./stages/050-approved-external-model-access/validate.sh
 ```
+
+The opt-in check creates a MaaS API key for `external-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. Stage 050 disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
 
 ### Stage 060
 

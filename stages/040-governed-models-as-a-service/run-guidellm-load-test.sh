@@ -27,6 +27,7 @@ Useful overrides:
   GUIDELLM_API_KEY           MaaS API key override
   GUIDELLM_PROMPT            Inline prompt used for generated samples
   GUIDELLM_DATA              Existing GuideLLM data source path/URI
+  GUIDELLM_VALIDATE_BACKEND  true, false, or a GuideLLM validate_backend path
 EOF
 }
 
@@ -54,6 +55,7 @@ GUIDELLM_DATA="${GUIDELLM_DATA:-}"
 GUIDELLM_PROCESSOR="${GUIDELLM_PROCESSOR:-gpt2}"
 GUIDELLM_REQUEST_TYPE="${GUIDELLM_REQUEST_TYPE:-chat_completions}"
 GUIDELLM_TIMEOUT_SECONDS="${GUIDELLM_TIMEOUT_SECONDS:-300}"
+GUIDELLM_VALIDATE_BACKEND="${GUIDELLM_VALIDATE_BACKEND:-true}"
 
 if [[ -z "${GUIDELLM_TARGET:-}" ]]; then
     MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress \
@@ -153,6 +155,8 @@ spec:
             - name: LOADTEST_DATA
               value: |-
                 ${GUIDELLM_DATA}
+            - name: LOADTEST_VALIDATE_BACKEND
+              value: "${GUIDELLM_VALIDATE_BACKEND}"
           command:
             - /bin/sh
             - -c
@@ -176,10 +180,29 @@ spec:
               PY
                 DATA_ARG="/tmp/guidellm-data.jsonl"
               fi
+              BACKEND_KWARGS="\$(python - <<'PY'
+              import json
+              import os
+
+              raw_validate = os.environ.get("LOADTEST_VALIDATE_BACKEND", "true").strip()
+              if raw_validate.lower() == "true":
+                  validate_backend = True
+              elif raw_validate.lower() == "false":
+                  validate_backend = False
+              else:
+                  validate_backend = raw_validate
+
+              print(json.dumps({
+                  "api_key": os.environ["LOADTEST_API_KEY"],
+                  "verify": False,
+                  "validate_backend": validate_backend,
+              }))
+              PY
+              )"
               guidellm benchmark \\
                 --target "${GUIDELLM_TARGET}" \\
                 --backend-type openai_http \\
-                --backend-kwargs "{\"api_key\":\"\${LOADTEST_API_KEY}\",\"verify\":false}" \\
+                --backend-kwargs "\${BACKEND_KWARGS}" \\
                 --model "${GUIDELLM_MODEL}" \\
                 --processor "${GUIDELLM_PROCESSOR}" \\
                 --request-type "${GUIDELLM_REQUEST_TYPE}" \\

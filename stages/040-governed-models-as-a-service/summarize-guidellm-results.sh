@@ -48,7 +48,7 @@ if [[ "$count" -eq 0 ]]; then
 fi
 
 jq -r '
-  ["CREATED", "CONFIGMAP", "MODEL", "PROFILE", "RATE", "REQUESTS", "OUTPUT_TOKENS"] | @tsv,
+  (["CREATED", "CONFIGMAP", "MODEL", "PROFILE", "RATE", "REQUESTS", "OUTPUT_TOKENS"] | @tsv),
   (.items
     | sort_by(.metadata.creationTimestamp)
     | reverse

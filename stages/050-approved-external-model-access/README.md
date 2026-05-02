@@ -93,6 +93,7 @@ GUIDELLM_OUTPUT_TOKENS=32 \
 ```
 
 Use this only when `OPENAI_API_KEY` is approved for the demo environment.
+The opt-in smoke test creates a MaaS API key for `external-models-subscription` at runtime and does not print or store that key in Git. It disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
 
 Manifests: [`gitops/stages/050-approved-external-model-access/base/`](../../gitops/stages/050-approved-external-model-access/base/)
 
