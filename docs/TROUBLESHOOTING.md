@@ -280,6 +280,41 @@ oc patch application 040-governed-models-as-a-service -n openshift-gitops \
 
 Expected unauthenticated response is HTTP `302` to OpenShift OAuth. Use an OpenShift bearer token when testing Grafana APIs directly.
 
+## MaaS Grafana OAuth Login Returns 403 Invalid Account
+
+**Affected stage:** Stage 040
+
+**Likely cause:** The OAuth proxy is running with stale or malformed session configuration. The proxy must restrict access with the plain OpenShift group argument `--openshift-group=rhoai-users` and use the generated `grafana-oauth-session` Secret for browser session cookies. If Argo CD reverts a manual patch, the browser can reach OpenShift OAuth, authenticate `ai-admin`, and still return `403 Permission Denied`.
+
+**Diagnose:**
+
+```bash
+oc get group rhoai-users -o yaml
+oc get secret grafana-oauth-session -n grafana
+oc get deployment grafana-deployment -n grafana -o jsonpath='{range .spec.template.spec.containers[?(@.name=="oauth-proxy")].args[*]}{.}{"\n"}{end}'
+oc logs deployment/grafana-deployment -n grafana -c oauth-proxy --tail=100
+```
+
+The proxy args should include:
+
+```text
+--cookie-secret-file=/etc/oauth/session/session_secret
+--openshift-group=rhoai-users
+```
+
+**Recover:**
+
+```bash
+oc annotate application 040-governed-models-as-a-service -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+  --type=merge -p '{"operation":{"sync":{}}}'
+oc wait --for=condition=complete job/job-configure-grafana-oauth -n grafana --timeout=180s
+oc rollout status deployment/grafana-deployment -n grafana --timeout=180s
+```
+
+If a browser still has a failed OAuth session, clear the Grafana route cookies and sign in again as `ai-admin` or `ai-developer`.
+
 ## MaaS Grafana Dashboard Shows 401 Unauthorized
 
 **Affected stage:** Stage 040

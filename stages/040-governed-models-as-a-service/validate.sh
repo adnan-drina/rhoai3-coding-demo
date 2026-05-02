@@ -141,8 +141,19 @@ check "Grafana OAuth redirect reference configured" \
   "oc get serviceaccount grafana-sa -n grafana -o jsonpath='{.metadata.annotations.serviceaccounts\\.openshift\\.io/oauth-redirectreference\\.grafana}'" \
   "grafana-route"
 check "Grafana OAuth proxy restricts access to RHOAI users" \
-  "oc get grafana grafana -n grafana -o jsonpath='{.spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args}'" \
-  "rhoai-users"
+  "oc get grafana grafana -n grafana -o jsonpath='{range .spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args[*]}{.}{\"\\n\"}{end}'" \
+  "--openshift-group=rhoai-users"
+check "Grafana OAuth proxy uses generated session secret" \
+  "oc get grafana grafana -n grafana -o jsonpath='{range .spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args[*]}{.}{\"\\n\"}{end}'" \
+  "--cookie-secret-file=/etc/oauth/session/session_secret"
+GRAFANA_OAUTH_SESSION_SECRET=$(oc get secret grafana-oauth-session -n grafana -o jsonpath='{.data.session_secret}' 2>/dev/null || true)
+if [[ -n "$GRAFANA_OAUTH_SESSION_SECRET" ]]; then
+  echo -e "${GREEN}[PASS]${NC} Grafana OAuth runtime session secret exists"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  echo -e "${RED}[FAIL]${NC} Grafana OAuth runtime session secret exists"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
 check "Grafana OAuth proxy can delegate token authentication" \
   "oc get clusterrolebinding grafana-oauth-proxy-auth-delegator -o jsonpath='{.roleRef.name}{\" \"}{.subjects[0].name}'" \
   "system:auth-delegator grafana-sa"

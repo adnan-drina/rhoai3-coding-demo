@@ -1,0 +1,75 @@
+# Creates the runtime-only cookie secret used by the Grafana OpenShift OAuth proxy.
+# The generated value is intentionally not stored in Git.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-configure-grafana-oauth
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-grafana-oauth
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-grafana-oauth
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-configure-grafana-oauth
+subjects:
+  - kind: ServiceAccount
+    name: job-configure-grafana-oauth
+    namespace: grafana
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-configure-grafana-oauth
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: job-configure-grafana-oauth
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              if oc get secret grafana-oauth-session -n grafana \
+                -o jsonpath='{.data.session_secret}' 2>/dev/null | grep -q .; then
+                echo "Grafana OAuth session secret already exists"
+                exit 0
+              fi
+
+              SESSION_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+              oc create secret generic grafana-oauth-session \
+                -n grafana \
+                --from-literal=session_secret="${SESSION_SECRET}" \
+                --dry-run=client \
+                -o yaml | oc apply -f -
+              echo "Grafana OAuth session secret created"

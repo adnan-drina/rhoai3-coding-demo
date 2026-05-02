@@ -13,6 +13,7 @@ resources:
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
+  - jobs/configure-grafana-oauth.yaml
   - grafana/instance.yaml
   - grafana/oauth-rbac.yaml
   - grafana/consolelink.yaml
