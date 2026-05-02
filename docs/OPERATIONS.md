@@ -405,14 +405,14 @@ Cluster:
 - API: `https://api.cluster-t977r.t977r.sandbox3022.opentlc.com:6443`
 - OpenShift: `4.20.19`
 - Validation branch: `codex/stage020-gpuaas`
-- Validation commit: `dcdee7d`
+- Validation commit: `08b37b0`
 
 Actions:
 
 - Confirmed the installed `LLMInferenceService` `v1alpha1` CRD supports `spec.router.scheduler`, `spec.parallelism`, `spec.prefill`, and `spec.worker`, but does not expose `spec.scaling`.
 - Added explicit `spec.router.scheduler: {}` to both private model `LLMInferenceService` resources. Live reconciliation created one router-scheduler Deployment per model using the OpenShift AI llm-d inference scheduler image.
 - Added single-GPU-per-replica deployment metadata, NVIDIA L4 accelerator labeling, vLLM prefix-caching arguments, explicit cold-start probe timings, and a `PrometheusRule` that aliases documented vLLM metrics for future autoscaling analysis.
-- Synced Argo CD Application `030-private-model-serving` to branch commit `dcdee7d`; Argo CD reported `Synced` and `Healthy`.
+- Synced Argo CD Application `030-private-model-serving` to branch commit `08b37b0`; Argo CD reported `Synced` and `Healthy`.
 - During rollout, the two old model ReplicaSets still held the two admitted Kueue GPU reservations while the new scheduler-enabled pods waited behind `SchedulingGated`. Because the demo `ClusterQueue` intentionally has only two GPUs, the stale ReplicaSets were manually scaled to zero to release quota for the new revision.
 
 Validation evidence:
@@ -422,10 +422,10 @@ Validation evidence:
   - `kustomize build gitops/stages/030-private-model-serving/base`
   - `kustomize build gitops/stages/030-private-model-serving/base | oc apply --dry-run=server -f -`
   - `git diff --check`
-- Live validation after sync: `./stages/030-private-model-serving/validate.sh`: 28 passed, 2 warnings, 0 failed.
-- The two warnings were model readiness only; both model pods were admitted through `private-model-serving-gpu` and were still pulling/initializing large model images after GPU node cold start.
+- Live validation after image pull, cold start, and probe remediation: `./stages/030-private-model-serving/validate.sh`: 30 passed, 0 warnings, 0 failed.
 - Both router-scheduler pods were created and running.
 - Both new model workloads were admitted by Kueue and assigned to GPU nodes.
+- Both `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` are `Ready=True`, with model pods `2/2 Running`.
 - `PrometheusRule` `vllm-metrics-alias` exists in the `maas` namespace.
 - GPT-OSS briefly reached readiness and then restarted because the default liveness delay was too short for cold vLLM compilation after image pull. The manifests now set an explicit 600-second liveness initial delay for both private models.
 
