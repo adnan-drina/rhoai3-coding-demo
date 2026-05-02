@@ -141,10 +141,10 @@ check "Grafana OAuth redirect reference configured" \
   "oc get serviceaccount grafana-sa -n grafana -o jsonpath='{.metadata.annotations.serviceaccounts\\.openshift\\.io/oauth-redirectreference\\.grafana}'" \
   "grafana-route"
 check "Grafana OAuth proxy restricts access to RHOAI users" \
-  "oc get grafana grafana -n grafana -o jsonpath='{range .spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args[*]}{.}{\"\\n\"}{end}'" \
+  "oc get grafana grafana -n grafana -o json | jq -r '.spec.deployment.spec.template.spec.containers[] | select(.name==\"oauth-proxy\") | .args[]'" \
   "--openshift-group=rhoai-users"
 check "Grafana OAuth proxy uses generated session secret" \
-  "oc get grafana grafana -n grafana -o jsonpath='{range .spec.deployment.spec.template.spec.containers[?(@.name==\"oauth-proxy\")].args[*]}{.}{\"\\n\"}{end}'" \
+  "oc get grafana grafana -n grafana -o json | jq -r '.spec.deployment.spec.template.spec.containers[] | select(.name==\"oauth-proxy\") | .args[]'" \
   "--cookie-secret-file=/etc/oauth/session/session_secret"
 GRAFANA_OAUTH_SESSION_SECRET=$(oc get secret grafana-oauth-session -n grafana -o jsonpath='{.data.session_secret}' 2>/dev/null || true)
 if [[ -n "$GRAFANA_OAUTH_SESSION_SECRET" ]]; then

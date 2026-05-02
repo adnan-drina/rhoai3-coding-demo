@@ -342,6 +342,7 @@ oc annotate application 040-governed-models-as-a-service -n openshift-gitops \
 oc patch application 040-governed-models-as-a-service -n openshift-gitops \
   --type=merge -p '{"operation":{"sync":{}}}'
 oc wait --for=condition=complete job/job-configure-grafana-sa -n grafana --timeout=180s
+oc rollout status deployment/grafana-deployment -n grafana --timeout=180s
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 

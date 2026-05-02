@@ -32,6 +32,9 @@ rules:
 - apiGroups: ["grafana.integreatly.org"]
   resources: ["grafanadatasources"]
   verbs: ["get", "patch"]
+- apiGroups: ["grafana.integreatly.org"]
+  resources: ["grafanadashboards"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -96,11 +99,18 @@ spec:
             exit 0
           fi
 
+          echo "Waiting for Grafana deployment rollout..."
+          oc rollout status deployment/grafana-deployment -n grafana --timeout=180s
+
           echo "Patching GrafanaDatasource with token..."
           for i in $(seq 1 20); do
             if oc get grafanadatasource prometheus -n grafana &>/dev/null; then
               oc patch grafanadatasource prometheus -n grafana --type merge \
                 -p "{\"spec\":{\"datasource\":{\"secureJsonData\":{\"httpHeaderValue1\":\"Bearer ${TOKEN}\"}}}}"
+              oc annotate grafanadatasource prometheus -n grafana \
+                rhoai-demo/reconcile-at="$(date +%s)" --overwrite
+              oc annotate grafanadashboard maas-usage -n grafana \
+                rhoai-demo/reconcile-at="$(date +%s)" --overwrite 2>/dev/null || true
               echo "Grafana datasource configured"
               exit 0
             fi

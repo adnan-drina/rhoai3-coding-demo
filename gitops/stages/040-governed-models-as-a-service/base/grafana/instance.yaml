@@ -43,6 +43,17 @@ spec:
         name: grafana-service
         weight: 100
       wildcardPolicy: None
+  persistentVolumeClaim:
+    metadata:
+      labels:
+        app: grafana
+        app.kubernetes.io/part-of: observability
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
   deployment:
     spec:
       template:
