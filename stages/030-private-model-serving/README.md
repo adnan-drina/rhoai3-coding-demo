@@ -18,15 +18,19 @@ Stage 030 provides the private inference layer for the trusted AI development pl
 
 - Local `LLMInferenceService` resources for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
 - vLLM-based OpenAI-compatible inference containers using the `registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.3.0` runtime image.
+- Explicit llm-d scheduler enablement through `spec.router.scheduler: {}` on each `LLMInferenceService`.
+- Single-GPU-per-replica deployment metadata, including NVIDIA L4 accelerator labeling, so the demo is clear about the scale pattern it is exercising.
 - GPU resource requests for each private model, with Kueue queue labels that connect the workloads to the Stage 020 `private-model-serving` local queue.
 - Gateway integration through `maas-default-gateway`, preparing the private models for the governed MaaS access path in Stage 040.
 - Authentication enablement on the `LLMInferenceService` resources through `security.opendatahub.io/enable-auth: "true"`.
 - Administrative RBAC for model management in the `maas` data science project prepared by Stage 020.
 - LeaderWorkerSet prerequisites used by the LLM inference path and required for distributed inference patterns.
+- vLLM runtime arguments for scale-readiness, including prefix caching and reduced access-log overhead.
+- Prometheus metric aliases for vLLM request, token, latency, and prefix-cache metrics used by Red Hat's documented autoscaling path.
 - Model Registry seed data so the local models are discoverable as named, versioned assets.
 - The MaaS tier mapping workaround required by the current Red Hat OpenShift AI webhook before tier-annotated model resources can be accepted.
 
-The stage currently runs each model with one replica and one GPU. That is intentional for the demo environment. The architecture shows the enterprise inference pattern without trying to simulate large-scale production traffic.
+The stage currently runs each model with one replica and one GPU. That is intentional for the demo environment. It uses the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime, but it does not attempt to prove multi-node or disaggregated prefill/decode serving.
 
 ## What To Notice In The Demo
 
@@ -36,7 +40,7 @@ The models are not manually launched from a notebook or exposed as ad hoc endpoi
 
 This is also where inference scaling enters the story. Inference gets harder as models grow, user volume increases, context windows expand, and latency expectations tighten. Scaling can involve faster runtimes, larger or more efficient accelerators, more replicas, queue-based admission, request routing, model optimization, and distributed inference. Red Hat's inference guidance describes distributed inference as splitting inference work across interconnected hardware so large models and high-volume services can be handled more efficiently.
 
-This demo does not claim to prove high-scale distributed inference. It shows the private serving control plane and prerequisites: GPU-backed inference services, vLLM serving, Kueue queue integration, gateway attachment, LeaderWorkerSet installation, and validation that the local models are ready. Those are the building blocks that make larger inference designs possible.
+This demo does not claim to prove high-scale distributed inference. It shows the private serving control plane and scale-ready primitives: GPU-backed `LLMInferenceService` resources, vLLM serving, llm-d scheduler enablement, Kueue queue integration, gateway attachment, LeaderWorkerSet installation, vLLM metrics aliases, and validation that the local models are ready. Those are the building blocks that make larger inference designs possible.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -44,7 +48,7 @@ Red Hat OpenShift provides the application platform underneath private inference
 
 Red Hat OpenShift AI provides the model-serving control plane, data science project integration, dashboard experience, model registry integration, and `LLMInferenceService` API used by this stage. The model-serving platform makes trained models available as services that applications can query through API requests. In this demo, those requests are later routed through MaaS rather than handed directly to each developer tool.
 
-The vLLM-based runtime provides high-throughput LLM serving with an OpenAI-compatible API shape, which matters because developer tools such as Continue, OpenCode, and Red Hat Developer Lightspeed for MTA can use familiar chat completion interfaces. LeaderWorkerSet and llm-d patterns are present because distributed inference for larger models depends on coordinating model-serving components across Kubernetes-managed workers.
+The vLLM-based runtime provides high-throughput LLM serving with an OpenAI-compatible API shape, which matters because developer tools such as Continue, OpenCode, and Red Hat Developer Lightspeed for MTA can use familiar chat completion interfaces. Red Hat OpenShift AI's distributed inference path uses llm-d around this runtime: `LLMInferenceService` defines the inference stack, the router scheduler can participate in request routing, and LeaderWorkerSet supports coordinated serving patterns when the deployment grows beyond this demo's single-GPU-per-model shape.
 
 Stage 020 contributes the GPUaaS foundation. Stage 030 consumes it by labeling the local model resources with `kueue.x-k8s.io/queue-name=private-model-serving`, requesting GPU capacity, and letting the platform manage admission and scheduling rather than hard-coding private model serving as a special case.
 
@@ -62,6 +66,7 @@ The reusable lesson is that enterprise-grade inference sits between infrastructu
 - **Red Hat AI Inference Server** provides the vLLM-based runtime image used by the private LLM serving containers.
 - **Red Hat OpenShift** provides the runtime platform, RBAC, routes, service networking, storage, scheduling, and namespace isolation.
 - **Red Hat build of Kueue** provides the queue and admission context inherited from Stage 020.
+- **OpenShift monitoring** provides the PrometheusRule API used for vLLM metric aliases that support future autoscaling analysis.
 - **Red Hat OpenShift GitOps** reconciles the model-serving desired state through Argo CD.
 
 ## Open Source Projects To Know
