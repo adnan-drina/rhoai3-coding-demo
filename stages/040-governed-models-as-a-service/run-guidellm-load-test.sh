@@ -9,6 +9,37 @@ source "$REPO_ROOT/scripts/lib.sh"
 load_env
 check_oc_logged_in
 
+usage() {
+    cat <<'EOF'
+Usage:
+  stages/040-governed-models-as-a-service/run-guidellm-load-test.sh [model-name]
+
+Runs a short GuideLLM benchmark against a MaaS-published model.
+
+Defaults:
+  model-name                 nemotron-3-nano-30b-a3b
+  GUIDELLM_PROFILE           constant
+  GUIDELLM_RATE              1
+  GUIDELLM_MAX_SECONDS       20
+  GUIDELLM_REQUESTS          5
+  GUIDELLM_OUTPUT_TOKENS     64
+
+Useful overrides:
+  GUIDELLM_MODEL             Model name when no positional model is provided
+  GUIDELLM_TARGET            Full MaaS target URL
+  GUIDELLM_API_KEY           MaaS API key override
+  GUIDELLM_PROMPT            Inline prompt used for generated samples
+  GUIDELLM_DATA              Existing GuideLLM data source path/URI
+EOF
+}
+
+case "${1:-}" in
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+esac
+
 GUIDELLM_NAMESPACE="${GUIDELLM_NAMESPACE:-maas}"
 GUIDELLM_IMAGE="${GUIDELLM_IMAGE:-ghcr.io/vllm-project/guidellm:latest}"
 GUIDELLM_MODEL="${1:-${GUIDELLM_MODEL:-nemotron-3-nano-30b-a3b}}"

@@ -487,6 +487,7 @@ Validation evidence:
 - The failed SAR-based authorization path was replaced with direct `--openshift-group=["rhoai-users"]` authorization after the proxy denied `ai-admin` as `ai-admin@cluster.local`.
 - Unauthenticated access to the Grafana route returns HTTP `302` to OpenShift OAuth, and the in-pod Grafana API accepts the trusted `X-Forwarded-User: ai-admin` header from the proxy trust boundary.
 - Full Stage 040 validation after OAuth protection passed: `./stages/040-governed-models-as-a-service/validate.sh`: 57 passed, 0 warnings, 0 failed. Result ConfigMap from the embedded GuideLLM run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502165718-results`.
+- After environment recovery, a new GuideLLM run generated fresh MaaS traffic and the Grafana datasource query for `authorized_hits` returned data. Full Stage 040 validation then passed with 58 checks, 0 warnings, and 0 failures. Result ConfigMap from the validation run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502173602-results`.
 
 ### 2026-05-02 uncontrolled shutdown recovery observation
 
