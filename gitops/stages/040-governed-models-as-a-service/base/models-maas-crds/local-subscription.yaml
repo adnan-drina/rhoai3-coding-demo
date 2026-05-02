@@ -1,7 +1,7 @@
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
-  name: local-models-subscription
+  name: demo-models-subscription
   namespace: models-as-a-service
   annotations:
     argocd.argoproj.io/sync-wave: "18"

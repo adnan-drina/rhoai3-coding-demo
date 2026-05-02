@@ -73,12 +73,15 @@ check "MaaSModelRef nemotron-3-nano-30b-a3b ready" \
 check "MaaSAuthPolicy local-models-access active" \
   "oc get maasauthpolicy local-models-access -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
-check "MaaSSubscription local-models-subscription active" \
-  "oc get maassubscription local-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
+check "MaaSSubscription demo-models-subscription active" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
-check "local-models-subscription token limits ready" \
-  "oc get maassubscription local-models-subscription -n models-as-a-service -o jsonpath='{.status.tokenRateLimitStatuses[*].ready}'" \
+check "demo-models-subscription token limits ready" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.tokenRateLimitStatuses[*].ready}'" \
   "true"
+check "Playground token bridge uses demo subscription" \
+  "oc get deployment tokens-bridge -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PLAYGROUND_MAAS_SUBSCRIPTION\")].value}'" \
+  "demo-models-subscription"
 
 log_step "Local model routing"
 check "Per-route AuthPolicy for gpt-oss-20b" \

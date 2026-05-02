@@ -22,11 +22,11 @@ Stage 050 adds approved external model choices to the governed MaaS model portfo
 - Matching `MaaSModelRef` resources so the external models appear as MaaS-published model choices.
 - A platform-owned `openai-api-key` Secret in the `maas` namespace, provisioned from `OPENAI_API_KEY` in `.env` when an approved key is available.
 - An `external-models-access` `MaaSAuthPolicy` that grants access through the MaaS control layer rather than direct provider credentials.
-- An `external-models-subscription` `MaaSSubscription` with token-rate limits for both approved external models.
+- Expansion of the shared `demo-models-subscription` so the same governed consumer token can access the private and approved external models that appear together in the Gen AI Playground.
 - Generated gateway policies, authentication policies, and token-rate-limit policies from the MaaS controller path.
 - Validation that external model registration, model references, authorization, subscriptions, and token-limit policies are active.
 - An opt-in GuideLLM smoke test against `gpt-4o-mini` through MaaS for environments where external provider token spend is approved.
-- A runtime MaaS API key creation path for the external subscription so the smoke test validates the same subscription boundary that a governed consumer would use.
+- A runtime MaaS API key creation path for the shared demo subscription so the smoke test validates the same subscription boundary that a governed consumer would use.
 
 The stage intentionally keeps external model inference optional. A missing `OPENAI_API_KEY` is a warning, not a stage failure, because the architecture can still register and govern the approved external model records without spending provider tokens.
 
@@ -42,6 +42,8 @@ Show Stage 050 as the continuation of the MaaS story, not as a separate external
 6. Observability changes at the provider boundary. MaaS can see gateway traffic, subscription use, rate limits, token limits, and request outcomes, but it cannot expose the provider's internal runtime signals.
 
 This is the practical hybrid model portfolio pattern. Sensitive work can stay on the private vLLM and llm-d-backed models from Stage 030. Approved work can use external models through the same MaaS access model. Developer tools later in the workshop do not need to learn a different credential story for each choice.
+
+The Gen AI Playground makes this concrete. A single Playground can contain both private and external MaaS models. The dashboard obtains a MaaS token and passes it to Llama Stack for each request, so the token must cover every model the user can select in that Playground. Stage 050 therefore expands the Stage 040 `demo-models-subscription` instead of creating a second overlapping subscription. That avoids ambiguous subscription selection and duplicate token-rate-limit policies while keeping private and external trust boundaries visible in the model catalog and documentation.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -126,7 +128,7 @@ GUIDELLM_OUTPUT_TOKENS=32 \
 ./stages/050-approved-external-model-access/validate.sh
 ```
 
-Use this only when `OPENAI_API_KEY` is approved for the demo environment. The opt-in smoke test creates a MaaS API key for `external-models-subscription` at runtime and does not print or store that key in Git. It disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
+Use this only when `OPENAI_API_KEY` is approved for the demo environment. The opt-in smoke test creates a MaaS API key for `demo-models-subscription` at runtime and does not print or store that key in Git. It disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
 
 Manifests: [`gitops/stages/050-approved-external-model-access/base/`](../../gitops/stages/050-approved-external-model-access/base/)
 

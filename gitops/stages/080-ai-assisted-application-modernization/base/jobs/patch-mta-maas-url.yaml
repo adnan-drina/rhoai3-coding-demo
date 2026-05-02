@@ -100,7 +100,7 @@ spec:
         - name: MODEL_NAME
           value: "nemotron-3-nano-30b-a3b"
         - name: MAAS_SUBSCRIPTION
-          value: "local-models-subscription"
+          value: "demo-models-subscription"
         command:
         - /bin/bash
         - -c

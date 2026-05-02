@@ -7,8 +7,9 @@ metadata:
     argocd.argoproj.io/sync-wave: "14"
 data:
   proxy.py: |
-    import http.server, json, ssl, urllib.request
+    import http.server, json, os, ssl, urllib.request
     MAAS_API = "https://maas-api.redhat-ods-applications.svc.cluster.local:8443"
+    PLAYGROUND_SUBSCRIPTION = os.environ.get("PLAYGROUND_MAAS_SUBSCRIPTION", "demo-models-subscription")
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -18,7 +19,10 @@ data:
             body = self.rfile.read(length) if length else b'{}'
             try: data = json.loads(body)
             except: data = {}
-            api_key_body = json.dumps({"name": f"playground-{data.get('model','auto')}"}).encode()
+            api_key_body = json.dumps({
+                "name": f"playground-{data.get('model','auto')}",
+                "subscription": PLAYGROUND_SUBSCRIPTION,
+            }).encode()
             req = urllib.request.Request(
                 f"{MAAS_API}/v1/api-keys", data=api_key_body,
                 headers={"Content-Type": "application/json",
@@ -63,6 +67,9 @@ spec:
       - name: proxy
         image: registry.redhat.io/ubi9/python-312:latest
         command: ["python3", "/app/proxy.py"]
+        env:
+        - name: PLAYGROUND_MAAS_SUBSCRIPTION
+          value: demo-models-subscription
         ports:
         - containerPort: 8080
         volumeMounts:

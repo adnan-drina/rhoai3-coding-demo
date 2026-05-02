@@ -3,4 +3,4 @@ kind: Kustomization
 resources:
   - openai-external-model.yaml
   - external-auth-policy.yaml
-  - external-subscription.yaml
+  - expand-demo-subscription.yaml

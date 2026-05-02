@@ -248,7 +248,7 @@ GitOps hygiene pass:
 - A regression was found while tightening Stage 040: the MaaS Gateway hostname and TLS certificate reference are intentionally patched from the cluster ingress domain and certificate. Removing the old broad Gateway spec ignore let Argo CD restore `maas.placeholder.example.com`, which caused the Stage 080 MTA MaaS hook to patch placeholder values into `Tackle` and `kai-api-keys`.
 - Fix applied: Stage 040 and compatibility Step 03 now ignore only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
 - Fix applied: Stage 080 and compatibility Step 05 now fail fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
-- Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 080 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for `local-models-subscription`, and Stages 040, 080, and 090 validated successfully.
+- Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 080 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for the demo subscription, and Stages 040, 080, and 090 validated successfully.
 
 Red Hat alignment review:
 
@@ -305,12 +305,12 @@ Stage 040 findings:
 - MaaS generated the gateway policy as `gateway-default-auth`, not the older `gateway-auth-policy` name used by the earlier hook implementation. Improvement applied: patch `gateway-default-auth` and use a JSON patch to replace `maas-api-auth-policy` authorization with an explicit empty object.
 - After the gateway and RHCL were healthy, the existing `LLMInferenceService` resources still reported the earlier AuthPolicy CRD discovery error. A controlled restart of `kserve-controller-manager` refreshed API discovery and immediately created the model HTTPRoutes. Improvement being applied: add a Stage 040 hook to restart KServe after RHCL/Gateway readiness in this staged demo flow.
 - Follow-up GitOps hygiene finding: the MaaS Gateway listener hostnames and TLS certificate reference are cluster-specific values patched by `job-patch-gateway-hostname`. They must not be masked by a broad Gateway spec ignore, but they must be ignored narrowly so Argo CD does not restore placeholder values after the patch hook runs.
-- Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, local `MaaSSubscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
+- Final evidence for Stage 040: CloudNativePG, Red Hat Connectivity Link, Kuadrant, MaaS API, local `MaaSModelRef` resources, local `MaaSAuthPolicy`, `demo-models-subscription`, per-route AuthPolicies, and Grafana all validated successfully. Argo CD reports Stage 040 `Synced` and `Healthy`.
 
 Stage 050 findings:
 
 - Stage 050 registered the approved external model resources and, when an approved `OPENAI_API_KEY` was later supplied through `.env`, completed an opt-in external inference smoke test through MaaS.
-- Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` and `external-models-subscription` are Active. Argo CD reports Stage 050 `Synced` and `Healthy`. The opt-in external smoke validation passed with 19 checks, 0 warnings, and 0 failures; a direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
+- Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` is Active and `demo-models-subscription` covers the private and approved external model choices. Argo CD reports Stage 050 `Synced` and `Healthy`. The opt-in external smoke validation passed with 19 checks, 0 warnings, and 0 failures; a direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
 
 Stage 060 findings:
 
@@ -328,7 +328,7 @@ Stage 070 findings:
 Stage 080 findings:
 
 - Initial Stage 080 sync applied the `Tackle` CR successfully, but the MaaS patch hook ran before MTA operator-owned resources such as `llm-proxy` and the MTA route existed. Improvement applied: the hook now waits for the generated route and `llm-proxy` deployment before patching the ConsoleLink and rolling the proxy.
-- MaaS API keys created without an explicit subscription defaulted to `external-models-subscription`, which produced HTTP 403 for the local `nemotron-3-nano-30b-a3b` model. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: local-models-subscription`.
+- MaaS API keys created without an explicit subscription could default to a subscription that did not cover the requested local model, producing HTTP 403. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: demo-models-subscription`.
 - Follow-up GitOps hygiene finding: when Stage 040 temporarily restored the placeholder MaaS Gateway hostname, the Stage 080 hook accepted it and patched placeholder values into `Tackle.spec.kai_llm_baseurl` and the `kai-api-keys` Secret. Improvement applied: the hook now rejects placeholder MaaS hostnames before patching any MTA resources.
 - The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 080 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
 - Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
@@ -514,7 +514,7 @@ Actions:
 
 - Stored the approved OpenAI provider key only in local `.env` and provisioned it into the live `maas/openai-api-key` Secret with the existing Stage 050 deploy path.
 - Repointed Stage 050 back to the active feature branch after `deploy.sh` reapplied the app-of-apps manifest from `main`.
-- Updated Stage 050 validation so the optional external smoke test creates a runtime MaaS API key for `external-models-subscription` instead of reusing the local-model coding-assistant subscription key.
+- Updated Stage 050 validation so the optional external smoke test creates a runtime MaaS API key for `demo-models-subscription` instead of reusing an unrelated coding-assistant key.
 - Updated the GuideLLM wrapper to support `GUIDELLM_VALIDATE_BACKEND`; Stage 050 sets it to `false` because the external MaaS path does not expose a vLLM-style `/health` endpoint.
 
 Validation evidence:
@@ -571,7 +571,7 @@ oc get job model-registry-seed -n rhoai-model-registries
 
 ### Stage 040
 
-Stage 040 deploys the governed Models-as-a-Service control point: MaaS controller, Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, local model subscriptions, rate limits, token limits, telemetry, and Grafana.
+Stage 040 deploys the governed Models-as-a-Service control point: MaaS controller, Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, the shared demo consumer subscription, rate limits, token limits, telemetry, and Grafana.
 
 The upstream `maas-controller` and `maas-api` image override are intentional demo deviations. They demonstrate external model registration through upstream MaaS behavior and the Red Hat OpenShift AI 3.4 Technology Preview MaaS direction while the Red Hat OpenShift AI 3.3 supported operator path does not provide that full behavior. Keep the workaround visible in `BACKLOG.md` and remove it only when a supported Red Hat OpenShift AI release provides equivalent external model registration and the replacement has been validated.
 
@@ -585,6 +585,8 @@ MaaS gateway traffic is emitted from the OpenShift Gateway Envoy metrics endpoin
 
 Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
 
+The Gen AI Playground token path uses the dashboard BFF to request a MaaS token, then passes that token to Llama Stack as request provider data. Llama Stack's `remote::vllm` provider gives that request token precedence over provider-specific environment tokens. To keep one Playground usable with private and approved external MaaS models, the demo uses one consumer subscription named `demo-models-subscription`. Stage 040 creates it with private model refs; Stage 050 expands it after the approved external `MaaSModelRef` resources are Ready. The tokens bridge always requests `demo-models-subscription` so Playground traffic uses the same governed subscription boundary as developer tools.
+
 To compare the two private models with the same governed MaaS traffic shape, run:
 
 ```bash
@@ -597,6 +599,7 @@ Useful checks:
 ```bash
 oc get maasmodelref -n maas
 oc get maasauthpolicy,maassubscription -n models-as-a-service
+oc get maassubscription demo-models-subscription -n models-as-a-service -o yaml
 oc get gateway maas-default-gateway -n openshift-ingress
 oc get pods -n redhat-ods-applications -l control-plane=maas-controller
 oc get clusterrolebinding grafana-sa-cluster-monitoring-view
@@ -651,7 +654,7 @@ Useful checks:
 oc get externalmodel -n maas
 oc get maasmodelref gpt-4o gpt-4o-mini -n maas
 oc get maasauthpolicy external-models-access -n models-as-a-service
-oc get maassubscription external-models-subscription -n models-as-a-service
+oc get maassubscription demo-models-subscription -n models-as-a-service
 oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' | base64 -d | head -c10
 ```
 
@@ -664,7 +667,16 @@ GUIDELLM_OUTPUT_TOKENS=32 \
 ./stages/050-approved-external-model-access/validate.sh
 ```
 
-The opt-in check creates a MaaS API key for `external-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. Stage 050 disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
+The opt-in check creates a MaaS API key for `demo-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. Stage 050 disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
+
+To validate the same dashboard path used by the Gen AI Playground, set:
+
+```bash
+GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
+./stages/050-approved-external-model-access/validate.sh
+```
+
+That check sends small non-streaming requests through the dashboard BFF to all four Playground MaaS model entries. It is intentionally opt-in because it can exercise approved external provider credentials.
 
 ### Stage 060
 

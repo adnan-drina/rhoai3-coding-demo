@@ -42,7 +42,7 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 - [ ] **ExternalModel credential Secret label** — Secrets referenced by `ExternalModel.spec.credentialRef` must have the label `inference.networking.k8s.io/bbr-managed=true` for the payload-processing (IPP) plugin to discover them.
 
-- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground's `gen-ai-ui` calls.
+- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground's `gen-ai-ui` calls. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground.
 
 ## Known Limitations
 
@@ -53,6 +53,8 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 - [ ] **Single-endpoint body-based multi-model routing not implemented** — The Red Hat Developer multi-LLM MaaS article demonstrates agentgateway, Gateway API Inference Extension `InferencePool`, endpoint picker pods, and body-based routing on the OpenAI `model` field. This demo currently uses MaaS-published model-specific governed paths and focuses on policy, telemetry, vLLM runtime metrics, and repeatable GuideLLM comparison. Add the agentgateway/GAIE pattern only if it becomes important to the demo storyline and aligns with the Red Hat OpenShift AI support posture for the target release.
 
 - [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
+
+- [ ] **Gen AI Playground uses one MaaS request token per Playground call path** — The dashboard BFF requests a MaaS token and passes it to Llama Stack as request provider data. Llama Stack `remote::vllm` providers prefer that per-request `vllm_api_token` over provider-specific environment tokens. Keep models that appear together in one Playground under one consumer subscription, or local/external split subscriptions can produce HTTP 403 errors for models not covered by the selected token.
 
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency.
 

@@ -82,3 +82,13 @@ spec:
         # Keep the non-secret datasource shape in Git and ignore only the
         # runtime credential value.
         - /spec/datasource/secureJsonData/httpHeaderValue1
+    - group: maas.opendatahub.io
+      kind: MaaSSubscription
+      namespace: models-as-a-service
+      name: demo-models-subscription
+      jsonPointers:
+        # Stage 040 starts the demo consumer subscription with private models.
+        # Stage 050 expands the same subscription with approved external models
+        # after those MaaSModelRefs exist. Keep one token boundary for Gen AI
+        # Playground while avoiding duplicate TokenRateLimitPolicies.
+        - /spec/modelRefs

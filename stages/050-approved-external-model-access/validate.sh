@@ -38,7 +38,7 @@ check "MaaSModelRef gpt-4o-mini targets ExternalModel" \
   "oc get maasmodelref gpt-4o-mini -n maas -o jsonpath='{.spec.modelRef.kind}/{.spec.modelRef.name}'" \
   "ExternalModel/gpt-4o-mini"
 
-log_step "External model subscriptions"
+log_step "External model governance"
 check "MaaSAuthPolicy external-models-access active" \
   "oc get maasauthpolicy external-models-access -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
@@ -48,12 +48,33 @@ check "External AuthPolicy generated for gpt-4o" \
 check "External AuthPolicy generated for gpt-4o-mini" \
   "oc get authpolicy maas-auth-gpt-4o-mini -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
-check "MaaSSubscription external-models-subscription active" \
-  "oc get maassubscription external-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
+check "Shared demo MaaSSubscription active" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
-check "External subscription token limits ready" \
-  "oc get maassubscription external-models-subscription -n models-as-a-service -o jsonpath='{.status.tokenRateLimitStatuses[*].ready}'" \
+check "Shared demo subscription includes gpt-oss-20b" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
+  "gpt-oss-20b"
+check "Shared demo subscription includes nemotron-3-nano-30b-a3b" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
+  "nemotron-3-nano-30b-a3b"
+check "Shared demo subscription includes gpt-4o" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
+  "gpt-4o"
+check "Shared demo subscription includes gpt-4o-mini" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
+  "gpt-4o-mini"
+check "Shared demo subscription token limits ready" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.tokenRateLimitStatuses[*].ready}'" \
   "true"
+DEMO_SUBSCRIPTION_DUPLICATE_PRIORITY=$(oc get maassubscription demo-models-subscription -n models-as-a-service \
+  -o jsonpath='{.status.conditions[?(@.type=="SpecPriorityDuplicate")].status}' 2>/dev/null || true)
+if [[ "$DEMO_SUBSCRIPTION_DUPLICATE_PRIORITY" == "True" ]]; then
+    echo -e "${RED}[FAIL]${NC} Shared demo subscription has duplicate priority with another active subscription"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+else
+    echo -e "${GREEN}[PASS]${NC} Shared demo subscription has no duplicate-priority condition"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+fi
 check "External TokenRateLimitPolicy for gpt-4o accepted" \
   "oc get tokenratelimitpolicy maas-trlp-gpt-4o -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
@@ -83,12 +104,12 @@ if [[ "${GUIDELLM_EXTERNAL_SMOKE_TEST:-false}" == "true" ]]; then
             EXTERNAL_MAAS_API_KEY="$(curl -sk -X POST \
                 -H "Authorization: Bearer ${USER_TOKEN}" \
                 -H "Content-Type: application/json" \
-                -d "{\"name\":\"stage050-external-smoke-$(date -u +%Y%m%d%H%M%S)\",\"subscription\":\"external-models-subscription\"}" \
+                -d "{\"name\":\"stage050-external-smoke-$(date -u +%Y%m%d%H%M%S)\",\"subscription\":\"demo-models-subscription\"}" \
                 "https://${MAAS_HOST}/maas-api/v1/api-keys" 2>/dev/null \
                 | python3 -c 'import json,sys; print(json.load(sys.stdin).get("key",""))' 2>/dev/null || true)"
         fi
         if [[ "$EXTERNAL_MAAS_API_KEY" != sk-oai-* ]]; then
-            echo -e "${RED}[FAIL]${NC} Could not create MaaS API key for external-models-subscription"
+            echo -e "${RED}[FAIL]${NC} Could not create MaaS API key for demo-models-subscription"
             VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
             echo ""
             validation_summary
@@ -109,6 +130,74 @@ if [[ "${GUIDELLM_EXTERNAL_SMOKE_TEST:-false}" == "true" ]]; then
     fi
 else
     echo -e "${YELLOW}[INFO]${NC} External inference smoke test skipped; set GUIDELLM_EXTERNAL_SMOKE_TEST=true to run it"
+fi
+
+log_step "Gen AI Playground compatibility"
+if [[ "${GENAI_PLAYGROUND_BFF_SMOKE_TEST:-false}" == "true" ]]; then
+    PLAYGROUND_POD=$(oc get pod -n coding-assistant -l app.kubernetes.io/instance=lsd-genai-playground \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    USER_TOKEN=$(oc whoami -t 2>/dev/null || true)
+    if [[ -z "$PLAYGROUND_POD" || -z "$USER_TOKEN" ]]; then
+        echo -e "${YELLOW}[WARN]${NC} Gen AI Playground BFF smoke test requested, but Playground pod or user token is unavailable"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    elif oc exec -i -n coding-assistant "$PLAYGROUND_POD" -- env USER_TOKEN="$USER_TOKEN" python3 - <<'PY'
+import json
+import os
+import ssl
+import sys
+import urllib.error
+import urllib.request
+
+models = [
+    "maas-vllm-inference-1/gpt-4o",
+    "maas-vllm-inference-2/gpt-4o-mini",
+    "maas-vllm-inference-3/gpt-oss-20b",
+    "maas-vllm-inference-4/nemotron-3-nano-30b-a3b",
+]
+url = "https://rhods-dashboard.redhat-ods-applications.svc.cluster.local:8143/gen-ai/api/v1/lsd/responses?namespace=coding-assistant"
+ctx = ssl._create_unverified_context()
+failed = []
+
+for model in models:
+    payload = {
+        "model": model,
+        "input": "Reply with ok.",
+        "max_output_tokens": 8,
+        "stream": False,
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={
+            "content-type": "application/json",
+            "x-forwarded-access-token": os.environ["USER_TOKEN"],
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=120) as resp:
+            body = resp.read().decode(errors="replace")
+            if resp.status not in (200, 201):
+                failed.append((model, resp.status, body[:200]))
+    except urllib.error.HTTPError as err:
+        failed.append((model, err.code, err.read().decode(errors="replace")[:200]))
+    except Exception as err:
+        failed.append((model, "ERR", repr(err)))
+
+if failed:
+    for model, status, body in failed:
+        print(f"{model}: {status}: {body}")
+    sys.exit(1)
+PY
+    then
+        echo -e "${GREEN}[PASS]${NC} Gen AI Playground BFF can call private and approved external MaaS models"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} Gen AI Playground BFF model smoke test failed"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+else
+    echo -e "${YELLOW}[INFO]${NC} Gen AI Playground BFF smoke test skipped; set GENAI_PLAYGROUND_BFF_SMOKE_TEST=true to run it"
 fi
 
 echo ""

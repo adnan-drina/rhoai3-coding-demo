@@ -17,7 +17,7 @@ In this demo, MaaS is the point where private AI starts to feel like an internal
 Stage 040 adds the governed access layer for the private models from Stage 030.
 
 - A MaaS model catalog and API path so private models can be discovered and consumed as shared platform resources.
-- Local `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
+- Local `MaaSModelRef`, `MaaSAuthPolicy`, and a `demo-models-subscription` `MaaSSubscription` for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
 - Central API key issuance so developer tools do not manage direct model credentials.
 - Demo user tiers and groups that show how access can be shaped by audience.
 - Rate limit and token rate limit policies that demonstrate predictable consumption controls.
@@ -61,6 +61,8 @@ The upstream Open Data Hub models-as-a-service project supplies the MaaS control
 Red Hat OpenShift AI 3.4 lists the Evaluation Stack control plane as a Developer Preview feature with built-in support for GuideLLM. This demo uses the upstream GuideLLM container directly as a pragmatic load generator until the Evaluation Stack path is ready for this workshop. Treat the GuideLLM path here as a demo-scale benchmarking helper, not a supported production evaluation platform.
 
 This demo also includes deliberate implementation choices. The repository currently uses Red Hat OpenShift AI 3.3 plus selected upstream MaaS components so the full local and external model registration story can be shown. The upstream MaaS controller, upstream `maas-api` image, PostgreSQL storage, tokens bridge, and related patch jobs are demo deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
+
+The Gen AI Playground uses a MaaS token request path that supplies a per-request `vllm_api_token` to Llama Stack. Llama Stack gives that request token precedence over provider-specific environment tokens. For that reason, this demo uses one consumer subscription, `demo-models-subscription`, for the models that can appear together in a Playground. Stage 040 starts the subscription with private models. Stage 050 expands the same subscription after approved external model records exist.
 
 ## Why This Is Worth Knowing
 

@@ -215,6 +215,42 @@ Then re-run:
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## Gen AI Playground External Model Works But Local Models Fail
+
+**Affected stages:** Stage 040, Stage 050
+
+**Likely cause:** The Playground dashboard BFF requests a MaaS token and passes it to Llama Stack as request provider data. Llama Stack's `remote::vllm` provider prefers that request `vllm_api_token` over provider-specific environment tokens. If the selected MaaS token belongs to a subscription that does not include the local models, the local model request fails even though direct Llama Stack calls with provider environment tokens work.
+
+**Diagnose:**
+
+```bash
+oc logs -n coding-assistant \
+  -l app.kubernetes.io/instance=lsd-genai-playground --tail=200 | \
+  grep -E "subscription .* does not include model|OpenAI response failed"
+
+oc get maassubscription demo-models-subscription \
+  -n models-as-a-service \
+  -o jsonpath='{.spec.modelRefs[*].name}{"\n"}'
+
+oc get deployment tokens-bridge \
+  -n redhat-ods-applications \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PLAYGROUND_MAAS_SUBSCRIPTION")].value}{"\n"}'
+```
+
+**Recover:**
+
+- Re-sync Stage 040 so the tokens bridge requests `demo-models-subscription`.
+- Re-sync Stage 050 so the PostSync hook expands `demo-models-subscription` to include `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
+- Avoid adding a second broad subscription with overlapping model refs. The upstream MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
+
+```bash
+argocd app sync 040-governed-models-as-a-service
+argocd app sync 050-approved-external-model-access
+
+GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
+./stages/050-approved-external-model-access/validate.sh
+```
+
 ## MaaS Grafana Route Does Not Redirect To OpenShift OAuth
 
 **Affected stage:** Stage 040
