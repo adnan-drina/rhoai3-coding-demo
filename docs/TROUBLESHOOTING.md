@@ -139,6 +139,26 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 - If the `maas` namespace or `LocalQueue` is missing, re-sync the `020-gpu-infrastructure-private-ai` Argo CD Application before deploying Stage 030.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
+## Demo Was Restarted With Zero GPU Nodes
+
+**Affected stage:** Stage 020 and Stage 030
+
+**Likely cause:** The GPU MachineSet was intentionally scaled to zero for cost saving. Kueue queue resources persist, but private model pods cannot be admitted and run until GPU capacity returns. During model rollout, old ReplicaSets can also keep Kueue reservations in a two-GPU demo environment.
+
+**Diagnose:**
+
+```bash
+./scripts/resume-gpu-demo.sh status
+```
+
+**Recover:**
+
+```bash
+./scripts/resume-gpu-demo.sh resume
+```
+
+The recovery script syncs Stage 020, scales GPU capacity back up, waits for allocatable GPUs, validates GPUaaS, syncs Stage 030, clears stale old model ReplicaSets if needed, waits for private models, and validates Stage 030.
+
 ## Private Models Do Not Produce Kueue Workloads
 
 **Affected stage:** Stage 030
