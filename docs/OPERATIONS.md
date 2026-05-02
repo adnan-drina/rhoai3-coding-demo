@@ -501,6 +501,12 @@ The upstream `maas-controller` and `maas-api` image override are intentional dem
 
 The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 
+The demo exposes the Grafana route through an OpenShift `ConsoleLink` named `grafana-maas` in the application menu. This is an OpenShift-native convenience for the disposable demo. A more Red Hat-aligned long-term approach is to move MaaS observability into the OpenShift monitoring stack and the web console Observe experience, using user workload monitoring and supported dashboard/query paths instead of a community Grafana dependency.
+
+Grafana queries OpenShift monitoring through the Thanos Querier using a `grafana-sa` service account with the `cluster-monitoring-view` role. The `GrafanaDatasource` manifest keeps only a placeholder token in Git. A Stage 040 sync job mints the runtime token and patches `GrafanaDatasource/prometheus`; Argo CD ignores only that generated token field. If dashboards show `401 Unauthorized`, re-run Stage 040 sync and validate that the datasource can query OpenShift monitoring.
+
+MaaS gateway traffic is emitted from the OpenShift Gateway Envoy metrics endpoint and scraped by `PodMonitor/maas-gateway-metrics` in `openshift-ingress`. The disposable Grafana dashboard currently uses a compatibility recording rule, `PrometheusRule/maas-dashboard-usage-metrics`, to map the real `istio_requests_total` series into the quickstart dashboard's expected `authorized_hits` shape. Treat this as demo observability glue, not production metric design guidance.
+
 Useful checks:
 
 ```bash
@@ -508,6 +514,10 @@ oc get maasmodelref -n maas
 oc get maasauthpolicy,maassubscription -n models-as-a-service
 oc get gateway maas-default-gateway -n openshift-ingress
 oc get pods -n redhat-ods-applications -l control-plane=maas-controller
+oc get clusterrolebinding grafana-sa-cluster-monitoring-view
+oc get grafanadatasource prometheus -n grafana
+oc get podmonitor maas-gateway-metrics -n openshift-ingress
+oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
 ```
 
 ### Stage 050

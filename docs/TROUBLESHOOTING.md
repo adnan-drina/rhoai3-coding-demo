@@ -215,6 +215,93 @@ Then re-run:
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## MaaS Grafana Route Returns 503
+
+**Affected stage:** Stage 040
+
+**Likely cause:** The Grafana Operator generated a Route for the Grafana service, but the Route TLS termination does not match the backend. In this demo, Grafana serves HTTP on port 3000, so the external Route must use edge termination.
+
+**Diagnose:**
+
+```bash
+oc get route grafana-route -n grafana -o yaml
+oc get svc,endpoints,pods -n grafana -o wide
+GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
+curl -k -s -o /dev/null -w '%{http_code}\n' "https://${GRAFANA_HOST}/login"
+```
+
+**Recover:**
+
+```bash
+oc patch grafana grafana -n grafana --type=merge \
+  -p '{"spec":{"route":{"spec":{"tls":{"termination":"edge"}}}}}'
+
+oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+  --type=merge -p '{"operation":{"sync":{}}}'
+```
+
+## MaaS Grafana Dashboard Shows 401 Unauthorized
+
+**Affected stage:** Stage 040
+
+**Likely cause:** The Grafana datasource is still using the Git placeholder bearer token, or the `grafana-sa` service account is missing `cluster-monitoring-view`. The dashboard loads, but Prometheus-backed panels return `401 Unauthorized`.
+
+**Diagnose:**
+
+```bash
+oc get clusterrolebinding grafana-sa-cluster-monitoring-view
+oc get grafanadatasource prometheus -n grafana -o yaml
+GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
+DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}')
+curl -k -s -H "X-Forwarded-User: ai-admin" \
+  "https://${GRAFANA_HOST}/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=up"
+```
+
+Do not print or commit the runtime bearer token value. If `secureJsonData.httpHeaderValue1` still contains `Bearer ${GRAFANA_SA_TOKEN}`, the Stage 040 token job has not completed or Argo CD has reverted the runtime field.
+
+**Recover:**
+
+```bash
+oc annotate application 040-governed-models-as-a-service -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 040-governed-models-as-a-service -n openshift-gitops \
+  --type=merge -p '{"operation":{"sync":{}}}'
+oc wait --for=condition=complete job/job-configure-grafana-sa -n grafana --timeout=180s
+./stages/040-governed-models-as-a-service/validate.sh
+```
+
+## MaaS Grafana Dashboard Shows No Data
+
+**Affected stage:** Stage 040
+
+**Likely cause:** Grafana can query Prometheus, but the MaaS Gateway metrics are not being scraped yet, the compatibility recording rule has not evaluated, or no governed MaaS traffic has occurred in the selected dashboard time range.
+
+**Diagnose:**
+
+```bash
+oc get podmonitor maas-gateway-metrics -n openshift-ingress
+oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
+GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
+DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}')
+curl -k -s -H "X-Forwarded-User: ai-admin" \
+  "https://${GRAFANA_HOST}/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29"
+```
+
+**Recover:**
+
+Generate a small amount of governed MaaS traffic, wait for the scrape and recording rule interval, then refresh the dashboard:
+
+```bash
+MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
+  -o jsonpath='{.spec.listeners[0].hostname}')
+MAAS_KEY=$(oc get secret kai-api-keys -n openshift-mta \
+  -o jsonpath='{.data.OPENAI_API_KEY}' | base64 -d)
+curl -sk -H "Authorization: Bearer ${MAAS_KEY}" \
+  "https://${MAAS_HOST}/maas/nemotron-3-nano-30b-a3b/v1/models"
+sleep 60
+./stages/040-governed-models-as-a-service/validate.sh
+```
+
 ## MaaS Gateway Is Not Reachable
 
 **Affected stage:** Stage 040

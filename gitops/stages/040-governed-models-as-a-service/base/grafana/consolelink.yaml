@@ -1,0 +1,13 @@
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: grafana-maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  href: https://grafana.placeholder.example.com
+  location: ApplicationMenu
+  text: MaaS Grafana
+  applicationMenu:
+    section: Red Hat Applications
+    imageURL: https://grafana.placeholder.example.com/favicon.ico

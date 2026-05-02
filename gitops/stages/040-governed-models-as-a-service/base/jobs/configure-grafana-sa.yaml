@@ -24,7 +24,11 @@ rules:
   verbs: ["create"]
 - apiGroups: ["rbac.authorization.k8s.io"]
   resources: ["clusterrolebindings"]
-  verbs: ["create", "get"]
+  verbs: ["create", "get", "patch", "update"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: ["cluster-monitoring-view"]
+  verbs: ["bind"]
 - apiGroups: ["grafana.integreatly.org"]
   resources: ["grafanadatasources"]
   verbs: ["get", "patch"]
@@ -51,8 +55,7 @@ metadata:
   namespace: grafana
   annotations:
     argocd.argoproj.io/sync-wave: "22"
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   backoffLimit: 5
   template:
@@ -71,8 +74,20 @@ spec:
           oc create serviceaccount grafana-sa -n grafana 2>/dev/null || true
 
           echo "Binding cluster-monitoring-view..."
-          oc adm policy add-cluster-role-to-user cluster-monitoring-view \
-            -z grafana-sa -n grafana 2>/dev/null || true
+          oc apply -f - <<'EOF'
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: grafana-sa-cluster-monitoring-view
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: cluster-monitoring-view
+          subjects:
+          - kind: ServiceAccount
+            name: grafana-sa
+            namespace: grafana
+          EOF
 
           echo "Creating long-lived token..."
           TOKEN=$(oc create token grafana-sa -n grafana --duration=87600h 2>/dev/null || echo "")
