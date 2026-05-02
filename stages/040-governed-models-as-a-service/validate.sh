@@ -197,7 +197,7 @@ if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
 
   GRAFANA_INTERNAL_HEALTH=$(oc exec deployment/grafana-deployment -n grafana -c grafana -- \
     curl -s -H "X-Forwarded-User: ai-admin" "http://localhost:3000/api/health" 2>/dev/null || true)
-  if [[ "$GRAFANA_INTERNAL_HEALTH" == *'"database":"ok"'* ]]; then
+  if [[ "$GRAFANA_INTERNAL_HEALTH" == *'"database":"ok"'* || "$GRAFANA_INTERNAL_HEALTH" == *'"database": "ok"'* ]]; then
     echo -e "${GREEN}[PASS]${NC} Grafana accepts trusted OpenShift proxy user header internally"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
   else

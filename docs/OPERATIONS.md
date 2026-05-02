@@ -488,6 +488,25 @@ Validation evidence:
 - Unauthenticated access to the Grafana route returns HTTP `302` to OpenShift OAuth, and the in-pod Grafana API accepts the trusted `X-Forwarded-User: ai-admin` header from the proxy trust boundary.
 - Full Stage 040 validation after OAuth protection passed: `./stages/040-governed-models-as-a-service/validate.sh`: 57 passed, 0 warnings, 0 failed. Result ConfigMap from the embedded GuideLLM run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502165718-results`.
 
+### 2026-05-02 uncontrolled shutdown recovery observation
+
+Actions:
+
+- Monitored the environment after it was stopped outside the normal demo scale-down path and then started again.
+- Confirmed the API recovered from `/readyz=500` to `/readyz=200`, the OpenShift console returned HTTP `200`, and all nine Argo CD Applications reported `Synced` and `Healthy`.
+- Observed that both GPU nodes initially reported `NodeStatusUnknown` because their kubelets stopped posting heartbeats. Machine API showed the GPU Machine objects still existed while the underlying provider instances were `stopped`.
+- Added a repair path to `./scripts/resume-gpu-demo.sh`: when a GPU MachineSet has stopped provider instances, the script can scale the MachineSet to zero, delete the stopped Machine objects, wait for cleanup, and scale back to the requested replica count.
+- Ran `./scripts/resume-gpu-demo.sh resume` after the environment came back. The GPU instances resumed before replacement was required, but the new stopped-instance repair path remains in place for the next uncontrolled shutdown case.
+- Fixed the Stage 040 Grafana health validation to accept both compact and pretty JSON from `/api/health`.
+
+Validation evidence:
+
+- GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` returned to 2 ready and available replicas.
+- Both GPU nodes became `Ready`, advertised `nvidia.com/gpu: 1`, and NVIDIA `ClusterPolicy` returned to `Ready=True` and `state=ready`.
+- Stage 020 recovery validation completed with 43 passed, 2 warnings, and 0 failed. The warnings are the known raw Prometheus query checks for GPU/Kueue metrics.
+- Stage 030 recovery validation completed with 30 passed, 0 warnings, and 0 failed. Both private `LLMInferenceService` resources returned to `Ready=True`.
+- Stage 040 recovery validation with `GUIDELLM_SKIP_LOAD_TEST=true` completed with 56 passed, 2 warnings, and 0 failed. The warnings were expected: skipped GuideLLM traffic generation and no fresh MaaS usage metric data yet.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -688,7 +707,7 @@ Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workf
 ./scripts/resume-gpu-demo.sh resume
 ```
 
-The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
+The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, repairs stopped provider instances when Machine API still has stale GPU Machine objects, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
 
 To scale GPU capacity down for shutdown:
 

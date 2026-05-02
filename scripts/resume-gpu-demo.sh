@@ -172,6 +172,78 @@ wait_for_gpu_operator_ready() {
     log_warn "Timed out waiting for NVIDIA ClusterPolicy; Stage 020 validation will report details"
 }
 
+gpu_machines_for_machineset() {
+    local ms="$1"
+    oc get machines -n openshift-machine-api -o json 2>/dev/null \
+        | jq -r --arg ms "$ms" '
+            .items[]
+            | select(any(.metadata.ownerReferences[]?; .kind == "MachineSet" and .name == $ms))
+            | .metadata.name'
+}
+
+stopped_gpu_machines_for_machineset() {
+    local ms="$1"
+    oc get machines -n openshift-machine-api -o json 2>/dev/null \
+        | jq -r --arg ms "$ms" '
+            .items[]
+            | select(any(.metadata.ownerReferences[]?; .kind == "MachineSet" and .name == $ms))
+            | select((.status.providerStatus.instanceState // "") == "stopped")
+            | .metadata.name'
+}
+
+wait_for_machineset_machine_count() {
+    local ms="$1"
+    local expected="$2"
+    local timeout="${3:-600}"
+    local elapsed=0 count
+
+    while (( elapsed < timeout )); do
+        count="$(gpu_machines_for_machineset "$ms" | grep -c . || true)"
+        if [[ "$count" -eq "$expected" ]]; then
+            return 0
+        fi
+
+        log_info "Waiting for MachineSet $ms machine count: current=$count expected=$expected"
+        sleep "$GPU_RESUME_POLL_SECONDS"
+        elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
+    done
+
+    log_error "Timed out waiting for MachineSet $ms machine count to become $expected"
+    return 1
+}
+
+recreate_stopped_gpu_machines() {
+    local ms="$1"
+    local replicas="$2"
+    local stopped total_count stopped_count
+    stopped="$(stopped_gpu_machines_for_machineset "$ms")"
+
+    if [[ -z "$stopped" ]]; then
+        return 0
+    fi
+
+    total_count="$(gpu_machines_for_machineset "$ms" | grep -c . || true)"
+    stopped_count="$(printf '%s\n' "$stopped" | grep -c . || true)"
+
+    log_warn "GPU MachineSet $ms has stopped provider instances; recreating Machine objects"
+    if [[ "$stopped_count" -eq "$total_count" ]]; then
+        oc scale machineset "$ms" -n openshift-machine-api --replicas=0
+    fi
+
+    while IFS= read -r machine; do
+        [[ -z "$machine" ]] && continue
+        log_warn "Deleting stopped Machine openshift-machine-api/$machine so the MachineSet can replace it"
+        oc delete machine "$machine" -n openshift-machine-api --wait=false
+    done <<< "$stopped"
+
+    if [[ "$stopped_count" -eq "$total_count" ]]; then
+        wait_for_machineset_machine_count "$ms" 0 900
+    fi
+
+    log_info "Scaling GPU MachineSet $ms back to $replicas after stopped instance cleanup"
+    oc scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
+}
+
 scale_gpu_up() {
     local replicas="${1:-$GPU_MACHINESET_REPLICAS}"
     local ms
@@ -179,6 +251,7 @@ scale_gpu_up() {
 
     log_info "Scaling GPU MachineSet $ms to $replicas"
     oc scale machineset "$ms" -n openshift-machine-api --replicas="$replicas"
+    recreate_stopped_gpu_machines "$ms" "$replicas"
     wait_for_gpu_capacity "$replicas"
     wait_for_gpu_operator_ready
 }
