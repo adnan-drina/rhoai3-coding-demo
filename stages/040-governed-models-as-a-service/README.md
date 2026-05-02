@@ -24,6 +24,7 @@ Stage 040 adds the governed access layer for the private models from Stage 030.
 - Telemetry policy and Prometheus-facing metrics for usage visibility.
 - Showback-oriented dashboard content that connects usage to users, tiers, models, and estimated cost signals.
 - A short GuideLLM load test that can generate governed MaaS traffic and compare model performance with repeatable inputs.
+- A private model comparison workflow that runs the same GuideLLM profile against both local MaaS-published models and summarizes the stored results.
 - Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a governed API path rather than a raw model endpoint.
 - An OpenShift console application menu link for the disposable Grafana dashboard.
 - The upstream MaaS controller, upstream MaaS API behavior, and PostgreSQL backing services used by this demo posture.
@@ -140,8 +141,8 @@ GUIDELLM_PROMPT="Explain why governed model access matters for enterprise softwa
 Use the same settings against both local models to compare behavior:
 
 ```bash
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh gpt-oss-20b
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh nemotron-3-nano-30b-a3b
+./stages/040-governed-models-as-a-service/compare-private-models.sh
+./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
 ```
 
 Set `GUIDELLM_SKIP_LOAD_TEST=true` to skip the load test during validation.
@@ -152,6 +153,7 @@ Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops
 
 - [Red Hat: What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
 - [Red Hat Blog: Accelerate enterprise software development with NVIDIA and MaaS on Red Hat AI](https://www.redhat.com/en/blog/accelerate-enterprise-software-development-nvidia-and-model-service-maas-red-hat-ai)
+- [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
 - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
 - [Red Hat OpenShift AI 3.4 Developer Preview features](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/developer-preview-features_relnotes)
 - [Red Hat OpenShift AI MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)

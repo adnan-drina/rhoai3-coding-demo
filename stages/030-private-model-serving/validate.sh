@@ -106,6 +106,18 @@ check_warn "vLLM metrics alias PrometheusRule exists" \
 check_warn "vLLM request backlog metric alias is configured" \
   "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
   "vllm:num_requests_waiting"
+check_warn "vLLM request success rate metric alias is configured" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
+  "vllm:request_success_rate5m"
+check_warn "vLLM token throughput metric aliases are configured" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
+  "vllm:generation_tokens_per_second5m"
+check_warn "vLLM latency metric aliases are configured" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
+  "vllm:time_to_first_token_seconds_avg5m"
+check_warn "vLLM prefix cache hit ratio metric alias is configured" \
+  "oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'" \
+  "vllm:prefix_cache_hit_ratio"
 
 log_step "Model Registry"
 SEED_JOB_STATUS=$(oc get job model-registry-seed -n rhoai-model-registries -o jsonpath='{.status.succeeded}' 2>/dev/null || echo "")

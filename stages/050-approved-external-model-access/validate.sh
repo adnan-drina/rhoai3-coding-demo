@@ -72,5 +72,24 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
+log_step "External inference boundary"
+if [[ "${GUIDELLM_EXTERNAL_SMOKE_TEST:-false}" == "true" ]]; then
+    if [[ -n "$OPENAI_SECRET" ]] && [[ "$OPENAI_SECRET_LC" != *"replace"* ]] && [[ "$OPENAI_SECRET_LC" != *"placeholder"* ]]; then
+        echo -e "${YELLOW}[INFO]${NC} Running opt-in GuideLLM smoke test against gpt-4o-mini through MaaS"
+        GUIDELLM_REQUESTS="${GUIDELLM_REQUESTS:-1}" \
+        GUIDELLM_MAX_SECONDS="${GUIDELLM_MAX_SECONDS:-20}" \
+        GUIDELLM_OUTPUT_TOKENS="${GUIDELLM_OUTPUT_TOKENS:-32}" \
+        GUIDELLM_PROMPT="${GUIDELLM_PROMPT:-Explain one operational difference between private and external AI models.}" \
+        "$REPO_ROOT/stages/040-governed-models-as-a-service/run-guidellm-load-test.sh" gpt-4o-mini
+        echo -e "${GREEN}[PASS]${NC} Opt-in external MaaS inference smoke test completed"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} External inference smoke test requested, but openai-api-key is placeholder or missing"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+else
+    echo -e "${YELLOW}[INFO]${NC} External inference smoke test skipped; set GUIDELLM_EXTERNAL_SMOKE_TEST=true to run it"
+fi
+
 echo ""
 validation_summary

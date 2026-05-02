@@ -6,9 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-load_env
-check_oc_logged_in
-
 usage() {
     cat <<'EOF'
 Usage:
@@ -39,6 +36,9 @@ case "${1:-}" in
         exit 0
         ;;
 esac
+
+load_env
+check_oc_logged_in
 
 GUIDELLM_NAMESPACE="${GUIDELLM_NAMESPACE:-maas}"
 GUIDELLM_IMAGE="${GUIDELLM_IMAGE:-ghcr.io/vllm-project/guidellm:latest}"

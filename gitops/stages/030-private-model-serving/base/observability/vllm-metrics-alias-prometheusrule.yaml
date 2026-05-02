@@ -45,3 +45,24 @@ spec:
           expr: kserve_vllm:prefix_cache_hits
         - record: vllm:prefix_cache_queries
           expr: kserve_vllm:prefix_cache_queries
+        - record: vllm:request_success_rate5m
+          expr: sum by (namespace, pod) (rate(kserve_vllm:request_success_total[5m]))
+        - record: vllm:generation_tokens_per_second5m
+          expr: sum by (namespace, pod) (rate(kserve_vllm:request_generation_tokens_sum[5m]))
+        - record: vllm:prompt_tokens_per_second5m
+          expr: sum by (namespace, pod) (rate(kserve_vllm:request_prompt_tokens_sum[5m]))
+        - record: vllm:time_to_first_token_seconds_avg5m
+          expr: |
+            sum by (namespace, pod) (rate(kserve_vllm:time_to_first_token_seconds_sum[5m]))
+            /
+            clamp_min(sum by (namespace, pod) (rate(kserve_vllm:time_to_first_token_seconds_count[5m])), 1)
+        - record: vllm:time_per_output_token_seconds_avg5m
+          expr: |
+            sum by (namespace, pod) (rate(kserve_vllm:time_per_output_token_seconds_sum[5m]))
+            /
+            clamp_min(sum by (namespace, pod) (rate(kserve_vllm:time_per_output_token_seconds_count[5m])), 1)
+        - record: vllm:prefix_cache_hit_ratio
+          expr: |
+            sum by (namespace, pod) (kserve_vllm:prefix_cache_hits)
+            /
+            clamp_min(sum by (namespace, pod) (kserve_vllm:prefix_cache_queries), 1)

@@ -15,6 +15,7 @@ This stage shows that external model access can be exposed through the same gove
 - OpenAI-backed `ExternalModel` resources for `gpt-4o` and `gpt-4o-mini`.
 - External model `MaaSModelRef`, authorization, and subscription resources.
 - `OPENAI_API_KEY` provisioning into the `openai-api-key` Secret when the value exists in `.env`.
+- Optional GuideLLM smoke testing against `gpt-4o-mini` through MaaS when `GUIDELLM_EXTERNAL_SMOKE_TEST=true`.
 - Validation that external model records are registered, while treating missing provider credentials as a warning rather than a deployment failure.
 
 ## What To Notice In The Demo
@@ -34,6 +35,14 @@ Red Hat OpenShift AI and MaaS provide the model access pattern. Red Hat Connecti
 
 The external registration mechanism in this demo comes from the upstream Open Data Hub models-as-a-service project and is intentionally documented as a demo deviation while the supported Red Hat OpenShift AI operator path evolves. The implementation uses placeholder credentials in GitOps and patches real credentials only from the operator-controlled environment.
 
+## Why This Is Worth Knowing
+
+Many enterprises need both private AI and selective access to frontier models. This stage shows a practical control pattern: private and external model choices can share a developer-facing access layer while preserving distinct data boundaries.
+
+The operational lesson is also important. Local models from Stage 030 expose platform-owned runtime signals: GPU allocation, Kueue admission, vLLM metrics, model readiness, and pod health. External models do not expose those internals to the platform. MaaS can still provide shared governance signals such as subscription, API-key use, request success, latency from the gateway perspective, rate limits, token limits, and usage telemetry.
+
+That distinction keeps the demo honest. External access can be approved, metered, and made convenient, but the provider remains a separate trust and observability boundary.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift AI** provides the MaaS context and model access experience.
@@ -52,10 +61,6 @@ The external registration mechanism in this demo comes from the upstream Open Da
 Governed external access is not private model serving. Prompts are still processed by the external provider and must be allowed by policy. MaaS centralizes access, credentials, subscriptions, and telemetry, but it does not change where the external model processes data.
 
 No real provider key should be committed. `OPENAI_API_KEY` is read from the operator environment and used to patch the `openai-api-key` Secret at deploy time.
-
-## Why This Is Worth Knowing
-
-Many enterprises need both private AI and selective access to frontier models. This stage shows a practical control pattern: private and external model choices can share a developer-facing access layer while preserving distinct data boundaries.
 
 ## Where This Fits In The Full Platform
 
@@ -78,11 +83,24 @@ Operational commands are kept here for workshop operators.
 ./stages/050-approved-external-model-access/validate.sh
 ```
 
+By default, validation confirms registration and governance resources without spending provider tokens. To run a small external inference smoke test through the same MaaS/GuideLLM pattern used in Stage 040:
+
+```bash
+GUIDELLM_EXTERNAL_SMOKE_TEST=true \
+GUIDELLM_REQUESTS=1 \
+GUIDELLM_OUTPUT_TOKENS=32 \
+./stages/050-approved-external-model-access/validate.sh
+```
+
+Use this only when `OPENAI_API_KEY` is approved for the demo environment.
+
 Manifests: [`gitops/stages/050-approved-external-model-access/base/`](../../gitops/stages/050-approved-external-model-access/base/)
 
 ## References
 
 - [Red Hat OpenShift AI MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
+- [Red Hat: What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
+- [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
 - [OpenAI API documentation](https://platform.openai.com/docs)

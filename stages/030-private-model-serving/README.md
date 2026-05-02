@@ -45,6 +45,8 @@ This is also where inference scaling enters the story. Inference gets harder as 
 
 This demo does not claim to prove high-scale distributed inference. It shows the private serving control plane and scale-ready primitives: GPU-backed `LLMInferenceService` resources, vLLM serving, llm-d scheduler enablement, Kueue queue integration, gateway attachment, LeaderWorkerSet installation, vLLM metrics aliases, and validation that the local models are ready. Those are the building blocks that make larger inference designs possible.
 
+The Red Hat Developer multi-LLM MaaS article shows an adjacent advanced pattern: body-based routing through agentgateway, Gateway API Inference Extension `InferencePool` resources, and endpoint picker pods. This stage deliberately stops one level earlier. It focuses on Red Hat OpenShift AI `LLMInferenceService`, vLLM runtime health, llm-d readiness, and the metrics that make those advanced routing and autoscaling designs meaningful later.
+
 ## How Red Hat And Open Source Make It Work
 
 Red Hat OpenShift provides the application platform underneath private inference: namespaces, RBAC, scheduling, storage attachment, routes, service networking, monitoring, and operator lifecycle. Red Hat OpenShift GitOps keeps the private model-serving desired state reproducible.
@@ -126,6 +128,7 @@ Manifests: [`gitops/stages/030-private-model-serving/base/`](../../gitops/stages
 - [Red Hat OpenShift AI 3.4: Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue)
 - [Red Hat: Red Hat launches the llm-d community](https://www.redhat.com/en/about/press-releases/red-hat-launches-llm-d-community-powering-distributed-gen-ai-inference-scale)
 - [Red Hat Developer: llm-d Kubernetes-native distributed inferencing](https://developers.redhat.com/articles/2025/05/20/llm-d-kubernetes-native-distributed-inferencing)
+- [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
 - [PyTorch: vLLM project](https://pytorch.org/projects/vllm/)
 - [CNCF: Welcome llm-d to the CNCF](https://www.cncf.io/blog/2026/03/24/welcome-llm-d-to-the-cncf-evolving-kubernetes-into-sota-ai-infrastructure/)
 - [KServe documentation](https://kserve.github.io/website/)

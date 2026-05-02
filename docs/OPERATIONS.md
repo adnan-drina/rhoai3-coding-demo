@@ -538,7 +538,9 @@ oc get clusterpolicy -A
 
 ### Stage 030
 
-Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node or disaggregated prefill/decode inference.
+Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node, disaggregated prefill/decode inference, Gateway API Inference Extension `InferencePool` resources, or agentgateway body-based routing.
+
+The `vllm-metrics-alias` `PrometheusRule` exposes raw and derived runtime signals for operational analysis: request backlog, running requests, request success rate, prompt and generation token throughput, time-to-first-token average, time-per-output-token average, KV cache usage, and prefix-cache hit ratio. These are the private-runtime signals that Stage 040 load tests and future autoscaling work can use.
 
 Useful checks:
 
@@ -546,6 +548,7 @@ Useful checks:
 oc get llminferenceservice -n maas
 oc get pods -n maas
 oc get prometheusrule vllm-metrics-alias -n maas
+oc get prometheusrule vllm-metrics-alias -n maas -o jsonpath='{.spec.groups[0].rules[*].record}'
 oc get job model-registry-seed -n rhoai-model-registries
 ```
 
@@ -564,6 +567,13 @@ Grafana queries OpenShift monitoring through the Thanos Querier using a `grafana
 MaaS gateway traffic is emitted from the OpenShift Gateway Envoy metrics endpoint and scraped by `PodMonitor/maas-gateway-metrics` in `openshift-ingress`. The disposable Grafana dashboard currently uses a compatibility recording rule, `PrometheusRule/maas-dashboard-usage-metrics`, to map the real `istio_requests_total` series into the quickstart dashboard's expected `authorized_hits` shape. Treat this as demo observability glue, not production metric design guidance.
 
 Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
+
+To compare the two private models with the same governed MaaS traffic shape, run:
+
+```bash
+./stages/040-governed-models-as-a-service/compare-private-models.sh
+./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
+```
 
 Useful checks:
 
@@ -599,6 +609,8 @@ GUIDELLM_PROMPT="Explain why governed model access matters for enterprise softwa
 
 Stage 050 deploys approved external model access through MaaS.
 
+External models share MaaS governance, subscription, API-key, rate-limit, token-limit, and gateway telemetry controls with private models. They do not share the same runtime observability boundary. OpenShift can observe local vLLM/GPU/Kueue signals for Stage 030 models, but external providers expose only gateway-visible request behavior and provider API success/failure from the demo platform perspective.
+
 **Credential provisioning:** `deploy.sh` reads `.env` and provisions secrets before applying the Argo CD Application:
 
 | `.env` variable | Secret created | Namespace | Purpose |
@@ -624,6 +636,15 @@ oc get maasmodelref gpt-4o gpt-4o-mini -n maas
 oc get maasauthpolicy external-models-access -n models-as-a-service
 oc get maassubscription external-models-subscription -n models-as-a-service
 oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' | base64 -d | head -c10
+```
+
+External inference validation is opt-in because it spends provider tokens:
+
+```bash
+GUIDELLM_EXTERNAL_SMOKE_TEST=true \
+GUIDELLM_REQUESTS=1 \
+GUIDELLM_OUTPUT_TOKENS=32 \
+./stages/050-approved-external-model-access/validate.sh
 ```
 
 ### Stage 060
