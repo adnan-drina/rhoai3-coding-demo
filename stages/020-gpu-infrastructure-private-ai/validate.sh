@@ -84,9 +84,14 @@ log_step "Autoscaling Building Block"
 check "KedaController exists" \
     "oc get kedacontroller keda -n openshift-keda -o jsonpath='{.metadata.name}'" \
     "keda"
-check_warn "KEDA operator pod running" \
-    "oc get pods -n openshift-keda --no-headers 2>/dev/null | grep -i keda | grep -c Running || true" \
-    "1"
+KEDA_RUNNING_PODS=$(oc get pods -n openshift-keda --no-headers 2>/dev/null | grep -i keda | grep -c Running || true)
+if [[ "$KEDA_RUNNING_PODS" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} KEDA runtime pods running: $KEDA_RUNNING_PODS"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} KEDA runtime pods running: $KEDA_RUNNING_PODS"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
 
 log_step "GPU MachineSets"
 MS_COUNT=$(oc get machineset -n openshift-machine-api -o json 2>/dev/null \
