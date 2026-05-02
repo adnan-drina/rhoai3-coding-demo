@@ -215,30 +215,34 @@ Then re-run:
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
-## MaaS Grafana Route Returns 503
+## MaaS Grafana Route Does Not Redirect To OpenShift OAuth
 
 **Affected stage:** Stage 040
 
-**Likely cause:** The Grafana Operator generated a Route for the Grafana service, but the Route TLS termination does not match the backend. In this demo, Grafana serves HTTP on port 3000, so the external Route must use edge termination.
+**Likely cause:** The Grafana Operator generated a Route for the Grafana service, but the route is not targeting the OAuth proxy sidecar or the Service CA certificate has not been issued yet. In this demo, the external Route must target `oauth-proxy` and use re-encrypt TLS.
 
 **Diagnose:**
 
 ```bash
 oc get route grafana-route -n grafana -o yaml
+oc get serviceaccount grafana-sa -n grafana -o yaml
+oc get secret grafana-oauth-proxy-tls -n grafana
 oc get svc,endpoints,pods -n grafana -o wide
 GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
-curl -k -s -o /dev/null -w '%{http_code}\n' "https://${GRAFANA_HOST}/login"
+curl -k -s -o /dev/null -w '%{http_code}\n' "https://${GRAFANA_HOST}/"
 ```
 
 **Recover:**
 
 ```bash
 oc patch grafana grafana -n grafana --type=merge \
-  -p '{"spec":{"route":{"spec":{"tls":{"termination":"edge"}}}}}'
+  -p '{"spec":{"route":{"spec":{"port":{"targetPort":"oauth-proxy"},"tls":{"termination":"reencrypt","insecureEdgeTerminationPolicy":"Redirect"}}}}}'
 
 oc patch application 040-governed-models-as-a-service -n openshift-gitops \
   --type=merge -p '{"operation":{"sync":{}}}'
 ```
+
+Expected unauthenticated response is HTTP `302` to OpenShift OAuth. Use an OpenShift bearer token when testing Grafana APIs directly.
 
 ## MaaS Grafana Dashboard Shows 401 Unauthorized
 
@@ -251,10 +255,10 @@ oc patch application 040-governed-models-as-a-service -n openshift-gitops \
 ```bash
 oc get clusterrolebinding grafana-sa-cluster-monitoring-view
 oc get grafanadatasource prometheus -n grafana -o yaml
-GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
 DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}')
-curl -k -s -u admin:redhat123 \
-  "https://${GRAFANA_HOST}/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=up"
+oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+  curl -s -H "X-Forwarded-User: ai-admin" \
+  "http://localhost:3000/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=up"
 ```
 
 Do not print or commit the runtime bearer token value. If `secureJsonData.httpHeaderValue1` still contains `Bearer ${GRAFANA_SA_TOKEN}`, the Stage 040 token job has not completed or Argo CD has reverted the runtime field.
@@ -281,10 +285,10 @@ oc wait --for=condition=complete job/job-configure-grafana-sa -n grafana --timeo
 ```bash
 oc get podmonitor maas-gateway-metrics -n openshift-ingress
 oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
-GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}')
 DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}')
-curl -k -s -u admin:redhat123 \
-  "https://${GRAFANA_HOST}/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29"
+oc exec deployment/grafana-deployment -n grafana -c grafana -- \
+  curl -s -H "X-Forwarded-User: ai-admin" \
+  "http://localhost:3000/api/datasources/uid/${DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29"
 ```
 
 **Recover:**

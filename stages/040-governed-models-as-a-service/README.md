@@ -55,7 +55,7 @@ Red Hat OpenShift AI provides the model-serving and MaaS platform context. In Re
 
 Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino provide the API governance path. Together they turn model calls into policy-enforced traffic: identity checks, tier-aware access, rate limits, token limits, and telemetry. That gateway layer is what lets MaaS act as an enterprise control plane instead of another ad hoc model route.
 
-The upstream Open Data Hub models-as-a-service project supplies the MaaS controller APIs used in this demo posture. CloudNativePG provides the PostgreSQL backing store for the MaaS API. Community Grafana is included only as a disposable demo add-on for visibility and is exposed through an OpenShift `ConsoleLink` for presenter convenience. A Red Hat-supported monitoring or observability path is preferred for long-lived environments.
+The upstream Open Data Hub models-as-a-service project supplies the MaaS controller APIs used in this demo posture. CloudNativePG provides the PostgreSQL backing store for the MaaS API. Community Grafana is included only as a disposable demo add-on for visibility and is exposed through an OpenShift `ConsoleLink` for presenter convenience. The Grafana route uses OpenShift OAuth through the Red Hat OpenShift OAuth proxy sidecar so demo users authenticate with the same OpenShift identity provider used elsewhere in the workshop. A Red Hat-supported monitoring or observability path is preferred for long-lived environments.
 
 Red Hat OpenShift AI 3.4 lists the Evaluation Stack control plane as a Developer Preview feature with built-in support for GuideLLM. This demo uses the upstream GuideLLM container directly as a pragmatic load generator until the Evaluation Stack path is ready for this workshop. Treat the GuideLLM path here as a demo-scale benchmarking helper, not a supported production evaluation platform.
 
@@ -87,6 +87,7 @@ The lesson for regulated environments is that private AI is not only about where
 - [CloudNativePG](https://cloudnative-pg.io/) provides the PostgreSQL database used by the MaaS API in this demo.
 - [Grafana](https://grafana.com/) provides the disposable demo dashboard used to visualize MaaS usage signals.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
+- [OpenShift OAuth proxy](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9) protects the disposable Grafana dashboard with OpenShift login.
 
 ## Trust Boundaries
 
@@ -156,6 +157,9 @@ Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops
 - [Red Hat OpenShift AI MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
 - [Red Hat Connectivity Link gateway policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/configuring_and_deploying_gateway_policies/configuring_and_deploying_gateway_policies)
 - [OpenShift 4.20: Creating custom links in the web console](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/web_console/index#creating-custom-links_customizing-web-console)
+- [OpenShift 4.20: Using service accounts as OAuth clients](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/using-service-accounts-as-oauth-client)
+- [OpenShift OAuth proxy container](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9)
+- [Using OpenShift OAuth for Grafana Authentication](https://blog.cubieserver.de/2025/using-openshift-oauth-for-grafana-authentication/)
 - [OpenShift 4.20: Monitoring getting started](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/monitoring/getting-started)
 - [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
 - [Gateway API](https://gateway-api.sigs.k8s.io/)

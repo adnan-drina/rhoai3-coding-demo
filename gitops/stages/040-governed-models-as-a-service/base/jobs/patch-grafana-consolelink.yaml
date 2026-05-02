@@ -74,9 +74,9 @@ spec:
           fi
 
           GRAFANA_URL="https://${GRAFANA_HOST}"
-          echo "Patching Grafana Route TLS termination to edge"
+          echo "Patching Grafana Route for OAuth proxy and reencrypt TLS"
           oc patch route grafana-route -n grafana --type=merge \
-            -p '{"spec":{"tls":{"termination":"edge"}}}'
+            -p '{"spec":{"port":{"targetPort":"oauth-proxy"},"tls":{"termination":"reencrypt","insecureEdgeTerminationPolicy":"Redirect"}}}'
 
           echo "Patching Grafana ConsoleLink: ${GRAFANA_URL}"
           oc patch consolelink grafana-maas --type=merge \

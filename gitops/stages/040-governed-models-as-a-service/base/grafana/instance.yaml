@@ -12,13 +12,100 @@ metadata:
     argocd.argoproj.io/sync-wave: "5"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  serviceAccount:
+    metadata:
+      annotations:
+        serviceaccounts.openshift.io/oauth-redirectreference.grafana: >-
+          {"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"grafana-route"}}
+  service:
+    metadata:
+      annotations:
+        service.beta.openshift.io/serving-cert-secret-name: grafana-oauth-proxy-tls
+    spec:
+      ports:
+        - name: grafana
+          port: 3000
+          protocol: TCP
+          targetPort: grafana-http
+        - name: oauth-proxy
+          port: 9091
+          protocol: TCP
+          targetPort: oauth-proxy
   route:
     spec:
+      port:
+        targetPort: oauth-proxy
       tls:
-        termination: edge
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+      to:
+        kind: Service
+        name: grafana-service
+        weight: 100
+      wildcardPolicy: None
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: oauth-proxy
+              image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+              imagePullPolicy: IfNotPresent
+              args:
+                - --provider=openshift
+                - --http-address=
+                - --https-address=:9091
+                - --openshift-service-account=grafana-sa
+                - --upstream=http://localhost:3000
+                - --cookie-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+                - --openshift-group=["rhoai-users"]
+                - --tls-cert=/etc/tls/private/tls.crt
+                - --tls-key=/etc/tls/private/tls.key
+                - --openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - --pass-user-headers=true
+                - --skip-provider-button=true
+              ports:
+                - containerPort: 9091
+                  name: oauth-proxy
+                  protocol: TCP
+              readinessProbe:
+                httpGet:
+                  path: /oauth/healthz
+                  port: oauth-proxy
+                  scheme: HTTPS
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                runAsNonRoot: true
+              volumeMounts:
+                - mountPath: /etc/tls/private
+                  name: oauth-proxy-tls
+                  readOnly: true
+          volumes:
+            - name: oauth-proxy-tls
+              secret:
+                secretName: grafana-oauth-proxy-tls
   config:
     auth:
-      disable_login_form: "false"
-    security:
-      admin_user: admin
-      admin_password: redhat123
+      disable_login_form: "true"
+      disable_signout_menu: "true"
+    auth.proxy:
+      enabled: "true"
+      header_name: X-Forwarded-User
+      header_property: username
+      auto_sign_up: "true"
+      sync_ttl: "60"
+      whitelist: 127.0.0.1,::1
+    users:
+      auto_assign_org: "true"
+      auto_assign_org_role: Viewer
