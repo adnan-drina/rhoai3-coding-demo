@@ -115,12 +115,102 @@ check "MaaS telemetry policy enforced" \
 
 log_step "Grafana"
 check_pods_ready "grafana" "app=grafana" 1
+check "Grafana route exists" \
+  "oc get route grafana-route -n grafana -o jsonpath='{.spec.host}'" \
+  "grafana"
+check "Grafana route uses edge TLS termination" \
+  "oc get route grafana-route -n grafana -o jsonpath='{.spec.tls.termination}'" \
+  "edge"
 check "Grafana datasource exists" \
   "oc get grafanadatasource prometheus -n grafana -o jsonpath='{.metadata.name}'" \
   "prometheus"
+check "Grafana datasource synchronized" \
+  "oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.conditions[?(@.type==\"DatasourceSynchronized\")].status}'" \
+  "True"
+GRAFANA_DATASOURCE_TOKEN=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.spec.datasource.secureJsonData.httpHeaderValue1}' 2>/dev/null || true)
+if [[ "$GRAFANA_DATASOURCE_TOKEN" == Bearer\ ey* ]]; then
+  echo -e "${GREEN}[PASS]${NC} Grafana datasource has runtime service account token"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+elif [[ "$GRAFANA_DATASOURCE_TOKEN" == *'${GRAFANA_SA_TOKEN}'* || -z "$GRAFANA_DATASOURCE_TOKEN" ]]; then
+  echo -e "${RED}[FAIL]${NC} Grafana datasource has runtime service account token (placeholder or empty token)"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+else
+  echo -e "${YELLOW}[WARN]${NC} Grafana datasource token is present but has an unexpected shape"
+  VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
 check "Grafana MaaS dashboard exists" \
   "oc get grafanadashboard maas-usage -n grafana -o jsonpath='{.metadata.name}'" \
   "maas-usage"
+check "Grafana MaaS dashboard synchronized" \
+  "oc get grafanadashboard maas-usage -n grafana -o jsonpath='{.status.conditions[?(@.type==\"DashboardSynchronized\")].status}'" \
+  "True"
+check "MaaS Gateway metrics PodMonitor exists" \
+  "oc get podmonitor maas-gateway-metrics -n openshift-ingress -o jsonpath='{.metadata.name}'" \
+  "maas-gateway-metrics"
+check "MaaS dashboard recording rule exists" \
+  "oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress -o jsonpath='{.metadata.name}'" \
+  "maas-dashboard-usage-metrics"
+check "Grafana ConsoleLink exists" \
+  "oc get consolelink grafana-maas -o jsonpath='{.spec.location}{\" \"}{.spec.text}'" \
+  "ApplicationMenu MaaS Grafana"
+GRAFANA_CONSOLELINK_HREF=$(oc get consolelink grafana-maas -o jsonpath='{.spec.href}' 2>/dev/null || true)
+if [[ "$GRAFANA_CONSOLELINK_HREF" == https://grafana* && "$GRAFANA_CONSOLELINK_HREF" != *placeholder* ]]; then
+  echo -e "${GREEN}[PASS]${NC} Grafana ConsoleLink patched with route"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  echo -e "${RED}[FAIL]${NC} Grafana ConsoleLink patched with route (got: ${GRAFANA_CONSOLELINK_HREF:-ERROR})"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || true)
+if command -v curl >/dev/null 2>&1 && [[ -n "$GRAFANA_HOST" ]]; then
+  GRAFANA_LOGIN_CODE=$(curl -k -s -o /dev/null -w '%{http_code}' "https://${GRAFANA_HOST}/login" || true)
+  if [[ "$GRAFANA_LOGIN_CODE" == "200" || "$GRAFANA_LOGIN_CODE" == "302" ]]; then
+    echo -e "${GREEN}[PASS]${NC} Grafana route reachable: HTTP ${GRAFANA_LOGIN_CODE}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+  else
+    echo -e "${RED}[FAIL]${NC} Grafana route reachable (expected: 200 or 302, got: ${GRAFANA_LOGIN_CODE:-ERROR})"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  fi
+
+  GRAFANA_SEARCH=$(curl -k -s -u admin:redhat123 "https://${GRAFANA_HOST}/api/search?query=maas" || true)
+  if [[ "$GRAFANA_SEARCH" == *"MaaS"* || "$GRAFANA_SEARCH" == *"maas"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Grafana API can find MaaS dashboard"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+  else
+    echo -e "${YELLOW}[WARN]${NC} Grafana API did not return MaaS dashboard search results"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+  fi
+
+  GRAFANA_DATASOURCE_UID=$(oc get grafanadatasource prometheus -n grafana -o jsonpath='{.status.uid}' 2>/dev/null || true)
+  if [[ -n "$GRAFANA_DATASOURCE_UID" ]]; then
+    GRAFANA_PROM_QUERY=$(curl -k -s -u admin:redhat123 \
+      "https://${GRAFANA_HOST}/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=up" || true)
+    if [[ "$GRAFANA_PROM_QUERY" == *'"status":"success"'* ]]; then
+      echo -e "${GREEN}[PASS]${NC} Grafana datasource can query OpenShift monitoring"
+      VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+      echo -e "${RED}[FAIL]${NC} Grafana datasource can query OpenShift monitoring"
+      VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+
+    GRAFANA_USAGE_QUERY=$(curl -k -s -u admin:redhat123 \
+      "https://${GRAFANA_HOST}/api/datasources/uid/${GRAFANA_DATASOURCE_UID}/resources/api/v1/query?query=sum%28authorized_hits%29" || true)
+    if [[ "$GRAFANA_USAGE_QUERY" == *'"status":"success"'* && "$GRAFANA_USAGE_QUERY" != *'"result":[]'* ]]; then
+      echo -e "${GREEN}[PASS]${NC} Grafana MaaS usage metric query returns data"
+      VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+      echo -e "${YELLOW}[WARN]${NC} Grafana MaaS usage metric has no data yet; generate governed MaaS traffic and wait for scrape"
+      VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+  else
+    echo -e "${RED}[FAIL]${NC} Grafana datasource UID available for API validation"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  fi
+else
+  echo -e "${YELLOW}[WARN]${NC} curl not available or Grafana route missing; skipping route reachability check"
+  VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
 
 echo ""
 validation_summary

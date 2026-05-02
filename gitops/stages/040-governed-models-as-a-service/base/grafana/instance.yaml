@@ -15,7 +15,7 @@ spec:
   route:
     spec:
       tls:
-        termination: reencrypt
+        termination: edge
   config:
     auth:
       disable_login_form: "false"

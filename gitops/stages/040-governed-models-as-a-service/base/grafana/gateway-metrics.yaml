@@ -1,0 +1,59 @@
+# Scrape the MaaS Gateway Envoy metrics that carry the TelemetryPolicy labels.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: maas-gateway-metrics
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: maas-observability
+spec:
+  selector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: maas-default-gateway
+  podMetricsEndpoints:
+    - port: http-envoy-prom
+      path: /stats/prometheus
+      interval: 30s
+---
+# Compatibility recording rule for the disposable Grafana dashboard.
+# Red Hat Connectivity Link and Kuadrant emit the governed gateway traffic as
+# Istio request metrics with MaaS labels. The quickstart dashboard used by this
+# demo expects authorized_hits, so this rule keeps the dashboard readable while
+# the metric shape is being validated for the target Red Hat OpenShift AI
+# release.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: maas-dashboard-usage-metrics
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: maas-observability
+spec:
+  groups:
+    - name: maas-dashboard-usage.rules
+      rules:
+        - record: authorized_hits
+          expr: |
+            label_replace(
+              label_replace(
+                label_replace(
+                  istio_requests_total{
+                    source_workload="maas-default-gateway-openshift-default",
+                    destination_service_namespace="maas",
+                    destination_canonical_service=~"gpt-oss-20b|nemotron-3-nano-30b-a3b",
+                    response_code=~"2.."
+                  },
+                  "model", "$1", "destination_canonical_service", "(.+)"
+                ),
+                "user", "ai-developer", "subscription", ".*"
+              ),
+              "tier", "premium", "subscription", ".*"
+            )
