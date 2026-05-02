@@ -384,15 +384,14 @@ Remaining Stage 020 warnings:
 
 Stage 030 evidence:
 
-- `./stages/030-private-model-serving/validate.sh`: 20 passed, 2 warnings, 0 failed.
+- Initial validation while images were still pulling: `./stages/030-private-model-serving/validate.sh`: 20 passed, 2 warnings, 0 failed.
+- Final validation after model image pulls completed: `./stages/030-private-model-serving/validate.sh`: 22 passed, 0 warnings, 0 failed.
 - Argo CD Application `030-private-model-serving`: `Synced` and `Healthy`.
 - Both `LLMInferenceService` resources have `kueue.x-k8s.io/queue-name=private-model-serving`.
 - Kueue created two `Workload` objects for private model-serving pods, both admitted through `private-model-serving-gpu`.
 - The `private-model-serving` `LocalQueue` reported two admitted workloads and zero pending workloads.
-
-Remaining Stage 030 warnings:
-
-- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were not yet `Ready` during the first validation pass because the large modelcar images were still pulling after GPU nodes were restored. The pods were admitted by Kueue and scheduled onto the two GPU nodes.
+- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` both reached `Ready=True`.
+- Both private model-serving pods are `Running`, with all containers ready, on the two GPU nodes.
 
 Argo CD status after remediation:
 
