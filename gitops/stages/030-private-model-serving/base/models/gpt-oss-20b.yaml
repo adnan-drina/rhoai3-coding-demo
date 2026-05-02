@@ -13,6 +13,7 @@ metadata:
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
   labels:
+    kueue.x-k8s.io/queue-name: private-model-serving
     opendatahub.io/dashboard: "true"
     opendatahub.io/genai-asset: "true"
 spec:

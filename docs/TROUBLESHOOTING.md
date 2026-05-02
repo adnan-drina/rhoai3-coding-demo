@@ -113,6 +113,52 @@ oc describe machineset <gpu-machineset> -n openshift-machine-api
 - Inspect Machine API events.
 - Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
 
+## Kueue Or GPUaaS Queue Resources Are Missing
+
+**Affected stage:** Stage 020
+
+**Likely cause:** Red Hat build of Kueue Operator has not completed installation, the `Kueue` CR is not reconciled yet, the Stage 020 `maas` namespace or `LocalQueue` failed to sync, or the Kueue API version/channel differs in the target cluster.
+
+**Diagnose:**
+
+```bash
+oc get subscription,csv,installplan -n openshift-kueue-operator
+oc get kueue cluster -n openshift-kueue-operator -o yaml
+oc get resourceflavor,clusterqueue
+oc get localqueue -n maas
+oc get namespace maas -o jsonpath='{.metadata.labels.kueue\.openshift\.io/managed}{"\n"}'
+oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.managementState}{"\n"}'
+oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+  -o jsonpath='{.spec.dashboardConfig.disableKueue}{"\n"}'
+```
+
+**Recover:**
+
+- Wait for the Kueue CSV to reach `Succeeded`.
+- Confirm the `kueue-operator` package and configured channel are available in `redhat-operators` for the cluster release. On the current OpenShift 4.20 demo cluster, Stage 020 uses `stable-v1.3`.
+- If the `maas` namespace or `LocalQueue` is missing, re-sync the `020-gpu-infrastructure-private-ai` Argo CD Application before deploying Stage 030.
+- Re-run `./stages/020-gpu-infrastructure-private-ai/validate.sh`.
+
+## Private Models Do Not Produce Kueue Workloads
+
+**Affected stage:** Stage 030
+
+**Likely cause:** Red Hat OpenShift AI 3.4 documents Kueue queue enforcement for `InferenceService`, `Notebook`, `PyTorchJob`, `RayCluster`, and `RayJob`. This demo uses `LLMInferenceService`; Kueue `Workload` creation for that resource must be validated in the live environment.
+
+**Diagnose:**
+
+```bash
+oc get llminferenceservice -n maas --show-labels
+oc get workloads.kueue.x-k8s.io -n maas
+oc get events -n maas --sort-by=.lastTimestamp | tail -30
+```
+
+**Recover:**
+
+- Treat missing `Workload` objects as a warning unless the demo is explicitly relying on Kueue admission for `LLMInferenceService`.
+- Keep the `kueue.x-k8s.io/queue-name=private-model-serving` labels on the model resources so the manifests remain aligned with the GPUaaS operating model.
+- For a strict queue-enforcement demo, add a small supported workload type such as a labeled `Job` or officially documented OpenShift AI `InferenceService` as a separate validation asset.
+
 ## MaaS Tab Shows No Models
 
 **Affected stage:** Stage 040

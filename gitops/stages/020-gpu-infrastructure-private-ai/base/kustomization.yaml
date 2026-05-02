@@ -1,12 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# GPU Infrastructure — hardware detection, NVIDIA driver/runtime, GPU nodes
+# GPU Infrastructure — hardware detection, NVIDIA driver/runtime, GPU nodes,
+# queue-based GPU quota, KEDA readiness, and GPUaaS observability.
 # GPU MachineSet creation is handled by an in-cluster Job (gitops-catalog pattern).
 # Ref: https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/hardware_accelerators/nvidia-gpu-architecture
 
 resources:
-  # Wave -10..0: NFD + GPU Operator subscriptions
+  # Wave -10..0: NFD, GPU Operator, Kueue, and Custom Metrics Autoscaler subscriptions
   - nfd/namespace.yaml
   - nfd/operatorgroup.yaml
   - nfd/subscription.yaml
@@ -14,8 +15,23 @@ resources:
   - gpu-operator/namespace.yaml
   - gpu-operator/operatorgroup.yaml
   - gpu-operator/subscription.yaml
-  # Wave 10: GPU Operator instances
+  - kueue/namespace.yaml
+  - kueue/operatorgroup.yaml
+  - kueue/subscription.yaml
+  - keda/namespace.yaml
+  - keda/operatorgroup.yaml
+  - keda/subscription.yaml
+  # Wave 5-15: GPUaaS control-plane resources
+  - kueue/maas-namespace.yaml
+  - kueue/kueue.yaml
+  - kueue/private-model-serving-queues.yaml
+  - kueue/hardware-profile-l4-1gpu-queue.yaml
+  - kueue/hardware-profile-l4-2gpu-queue.yaml
+  - kueue/enable-rhoai-kueue.yaml
+  - keda/kedacontroller.yaml
+  # Wave 10-15: GPU Operator instances and dashboards
   - gpu-operator/clusterpolicy.yaml
   - gpu-operator/dcgm-dashboard-configmap.yaml
+  - observability/gpuaas-dashboard-configmap.yaml
   # Wave 20: GPU MachineSet Job
   - jobs/aws-gpu-machineset.yaml

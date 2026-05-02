@@ -46,6 +46,10 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Known Limitations
 
+- [ ] **Kueue `Workload` creation for `LLMInferenceService` must be live-validated** — Red Hat OpenShift AI 3.4 documents Kueue queue enforcement for `InferenceService`, `Notebook`, `PyTorchJob`, `RayCluster`, and `RayJob`. The demo's private model path uses `LLMInferenceService`. Stage 030 labels those resources with `kueue.x-k8s.io/queue-name=private-model-serving`, but validation treats missing Kueue `Workload` objects as a warning until the behavior is confirmed in a live OpenShift AI 3.4 environment.
+
+- [ ] **GPUaaS dashboard metric names require live confirmation** — Stage 020 adds a dashboard with common DCGM and Kueue Prometheus metric names. Validation warns rather than fails when those metrics differ or are unavailable, because Red Hat build of Kueue metric names and scraping behavior can vary by operator version.
+
 - [ ] **ExternalModel name must match provider model name** — The payload-processing BBR plugin validates that `ExternalModel.spec.targetModel` matches the model name in the request body. Since LlamaStack sends the MaaS model name (the ExternalModel resource name), the ExternalModel must be named with the exact provider model name (e.g., `gpt-4o`, not `openai-gpt-4o`). Tracked upstream: [opendatahub-io/models-as-a-service#684](https://github.com/opendatahub-io/models-as-a-service/issues/684).
 
 - [ ] **AI asset endpoints dropdown shows workspace namespaces** — The GenAI Studio AI asset endpoints project dropdown lists all namespaces where the user has any RBAC (including Dev Spaces workspace namespaces). The Projects page correctly filters by `opendatahub.io/dashboard: "true"`. This is a dashboard UI inconsistency.
@@ -54,6 +58,7 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Planned
 
+- [ ] **GPUaaS live validation pass** — Validate Red Hat build of Kueue, queue-based hardware profiles, `LLMInferenceService` queue behavior, KEDA readiness, and GPUaaS dashboard metrics on a live OpenShift AI 3.4 environment.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
 - [ ] **Red Hat-aligned observability path** — The current Grafana dashboard was copied from a Red Hat quickstart repository and uses the community Grafana Operator. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 - [ ] **Grafana dashboard screenshots** — Add screenshots to Stage 040 README while the community Grafana demo add-on remains in use.

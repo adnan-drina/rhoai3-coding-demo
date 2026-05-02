@@ -1,0 +1,15 @@
+apiVersion: keda.sh/v1alpha1
+kind: KedaController
+metadata:
+  name: keda
+  namespace: openshift-keda
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  watchNamespace: ""
+  operator:
+    logLevel: info
+    logEncoder: console
+  metricsServer:
+    logLevel: "0"

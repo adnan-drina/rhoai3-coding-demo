@@ -64,3 +64,16 @@ spec:
       kind: PersistentVolumeClaim
       jsonPointers:
         - /spec
+    - group: datasciencecluster.opendatahub.io
+      kind: DataScienceCluster
+      name: default-dsc
+      jsonPointers:
+        # Stage 020 enables Red Hat build of Kueue after the external Kueue
+        # Operator exists, keeping Stage 010 independently deployable.
+        - /spec/components/kueue
+    - group: opendatahub.io
+      kind: OdhDashboardConfig
+      name: odh-dashboard-config
+      namespace: redhat-ods-applications
+      jsonPointers:
+        - /spec/dashboardConfig/disableKueue
