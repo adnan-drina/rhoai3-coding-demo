@@ -360,6 +360,7 @@ Actions:
 - Corrected the Red Hat build of Kueue channel from planned `stable-v1.0` to `stable-v1.3` after live package discovery showed the OpenShift 4.20 catalog exposes `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`.
 - Fixed Stage 020 validation to use the explicit `kueues.kueue.openshift.io` API resource because `oc get kueue` is ambiguous when both OpenShift AI and Red Hat build of Kueue CRDs are installed.
 - Fixed Stage 020 validation to accept multiple healthy KEDA runtime pods.
+- Resolved a follow-on Argo CD issue in Stage 050 after `maas` was recreated by the Stage 020 namespace ownership change. The external model Secret, `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources were reapplied and `050-approved-external-model-access` returned to `Synced` and `Healthy`.
 
 Stage 020 evidence:
 
@@ -392,6 +393,11 @@ Stage 030 evidence:
 Remaining Stage 030 warnings:
 
 - `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were not yet `Ready` during the first validation pass because the large modelcar images were still pulling after GPU nodes were restored. The pods were admitted by Kueue and scheduled onto the two GPU nodes.
+
+Argo CD status after remediation:
+
+- `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving` point to `codex/stage020-gpuaas` for validation and are `Synced`/`Healthy`.
+- Stages `040` through `090` point to `main`; all are `Synced`/`Healthy` after the Stage 050 resync.
 
 ### Stage 020
 
