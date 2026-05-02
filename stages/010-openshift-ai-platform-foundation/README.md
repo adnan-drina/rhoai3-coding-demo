@@ -8,7 +8,7 @@ This stage establishes that foundation with Red Hat OpenShift AI on OpenShift. I
 
 ## Architecture
 
-![Stage 010 layered capability map](../../docs/assets/architecture/step-01-capability-map.svg)
+![Stage 010 layered capability map](../../docs/assets/architecture/stage-010-capability-map.svg)
 
 ## What This Stage Adds
 

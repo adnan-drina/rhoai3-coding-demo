@@ -8,7 +8,7 @@ The important shift is that developers and tools do not need to know every backi
 
 ## Architecture
 
-![Stage 040 layered capability map](../../docs/assets/architecture/step-03-capability-map.svg)
+![Stage 040 layered capability map](../../docs/assets/architecture/stage-040-capability-map.svg)
 
 ## What This Stage Adds
 

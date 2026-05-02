@@ -8,7 +8,7 @@ Generic prompting is not enough for that kind of work. This stage shows how Migr
 
 ## Architecture
 
-![Stage 080 layered capability map](../../docs/assets/architecture/step-05-capability-map.svg)
+![Stage 080 layered capability map](../../docs/assets/architecture/stage-080-capability-map.svg)
 
 ## What This Stage Adds
 

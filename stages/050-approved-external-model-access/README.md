@@ -8,7 +8,7 @@ This stage shows that external model access can be exposed through the same gove
 
 ## Architecture
 
-![Stage 050 layered capability map](../../docs/assets/architecture/step-03-capability-map.svg)
+![Stage 050 layered capability map](../../docs/assets/architecture/stage-050-capability-map.svg)
 
 ## What This Stage Adds
 

@@ -8,7 +8,7 @@ This stage gives the later developer tools a private model path before any exter
 
 ## Architecture
 
-![Stage 030 layered capability map](../../docs/assets/architecture/step-03-capability-map.svg)
+![Stage 030 layered capability map](../../docs/assets/architecture/stage-030-capability-map.svg)
 
 ## What This Stage Adds
 
