@@ -452,6 +452,62 @@ Validation evidence:
 - `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
 - Stage 030 validation after resume: 30 passed, 0 warnings, 0 failed.
 
+### 2026-05-02 Stage 040 GuideLLM load validation run
+
+Actions:
+
+- Added a Stage 040 GuideLLM load-test wrapper that runs as an ephemeral `Job` in the `maas` namespace and targets a MaaS-published OpenAI-compatible endpoint.
+- Kept the default load intentionally small: constant profile, 1 request per second, 20-second maximum duration, 5 generated prompt samples, and 64 requested output tokens.
+- Stored each benchmark console summary in a labeled `ConfigMap` in the `maas` namespace so operators can retrieve prior short-run evidence and compare model behavior across later reruns.
+- Documented the Red Hat OpenShift AI 3.4 Developer Preview status for Evaluation Stack / GuideLLM support. This workshop uses the upstream GuideLLM container directly as demo-scale load tooling until the Red Hat OpenShift AI Evaluation Stack path is ready for this demo.
+- Deleted an intermediate raw-result test artifact after confirming GuideLLM JSON/CSV output includes backend arguments. The committed wrapper stores only the safe console summary, and the `kai-api-keys` MaaS key was rotated in the live environment.
+
+Validation evidence:
+
+- Static validation passed: `bash -n stages/040-governed-models-as-a-service/*.sh`.
+- Static diff hygiene passed: `git diff --check`.
+- Live GuideLLM run against `nemotron-3-nano-30b-a3b` completed 3 requests through the MaaS route with 0 incomplete requests and 0 errors. Result ConfigMap: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502162637-results`.
+- Full Stage 040 validation passed after adding the sanitized load test path: `./stages/040-governed-models-as-a-service/validate.sh`: 52 passed, 0 warnings, 0 failed. Result ConfigMap from the validation run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502163408-results`.
+- Stored GuideLLM result ConfigMaps were checked for `api_key` and `sk-oai-` strings after cleanup; no stored key material was found.
+
+### 2026-05-02 Stage 040 Grafana OAuth validation run
+
+Actions:
+
+- Replaced the public Grafana login path with an OpenShift OAuth proxy sidecar managed through the Grafana Operator `Grafana` CR.
+- Configured `grafana-sa` as the OpenShift OAuth client with an OAuth redirect reference to `Route/grafana-route`.
+- Updated `grafana-route` to target the `oauth-proxy` service port with re-encrypt TLS and OpenShift Service CA.
+- Restricted Grafana OAuth browser access to the `rhoai-users` OpenShift group, which includes both demo personas. Added `system:auth-delegator` for `grafana-sa` to support proxy token-review behavior.
+
+Validation evidence:
+
+- Static validation passed: `bash -n stages/040-governed-models-as-a-service/*.sh`, `kustomize build gitops/stages/040-governed-models-as-a-service/base`, `./scripts/validate-stage-flow.sh`, and `git diff --check`.
+- Argo CD Stage 040 synced to branch commit `25f1426` and reported `Synced` / `Healthy`.
+- Unauthenticated access to `https://grafana-route-grafana.apps.cluster-t977r.t977r.sandbox3022.opentlc.com/` returned HTTP `302` to OpenShift OAuth.
+- The failed SAR-based authorization path was replaced with direct `--openshift-group=["rhoai-users"]` authorization after the proxy denied `ai-admin` as `ai-admin@cluster.local`.
+- Unauthenticated access to the Grafana route returns HTTP `302` to OpenShift OAuth, and the in-pod Grafana API accepts the trusted `X-Forwarded-User: ai-admin` header from the proxy trust boundary.
+- Full Stage 040 validation after OAuth protection passed: `./stages/040-governed-models-as-a-service/validate.sh`: 57 passed, 0 warnings, 0 failed. Result ConfigMap from the embedded GuideLLM run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502165718-results`.
+- After environment recovery, a new GuideLLM run generated fresh MaaS traffic and the Grafana datasource query for `authorized_hits` returned data. Full Stage 040 validation then passed with 58 checks, 0 warnings, and 0 failures. Result ConfigMap from the validation run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502173602-results`.
+
+### 2026-05-02 uncontrolled shutdown recovery observation
+
+Actions:
+
+- Monitored the environment after it was stopped outside the normal demo scale-down path and then started again.
+- Confirmed the API recovered from `/readyz=500` to `/readyz=200`, the OpenShift console returned HTTP `200`, and all nine Argo CD Applications reported `Synced` and `Healthy`.
+- Observed that both GPU nodes initially reported `NodeStatusUnknown` because their kubelets stopped posting heartbeats. Machine API showed the GPU Machine objects still existed while the underlying provider instances were `stopped`.
+- Added a repair path to `./scripts/resume-gpu-demo.sh`: when a GPU MachineSet has stopped provider instances, the script can scale the MachineSet to zero, delete the stopped Machine objects, wait for cleanup, and scale back to the requested replica count.
+- Ran `./scripts/resume-gpu-demo.sh resume` after the environment came back. The GPU instances resumed before replacement was required, but the new stopped-instance repair path remains in place for the next uncontrolled shutdown case.
+- Fixed the Stage 040 Grafana health validation to accept both compact and pretty JSON from `/api/health`.
+
+Validation evidence:
+
+- GPU MachineSet `cluster-t977r-vs62m-g6e-us-east-2c` returned to 2 ready and available replicas.
+- Both GPU nodes became `Ready`, advertised `nvidia.com/gpu: 1`, and NVIDIA `ClusterPolicy` returned to `Ready=True` and `state=ready`.
+- Stage 020 recovery validation completed with 43 passed, 2 warnings, and 0 failed. The warnings are the known raw Prometheus query checks for GPU/Kueue metrics.
+- Stage 030 recovery validation completed with 30 passed, 0 warnings, and 0 failed. Both private `LLMInferenceService` resources returned to `Ready=True`.
+- Stage 040 recovery validation with `GUIDELLM_SKIP_LOAD_TEST=true` completed with 56 passed, 2 warnings, and 0 failed. The warnings were expected: skipped GuideLLM traffic generation and no fresh MaaS usage metric data yet.
+
 ### Stage 020
 
 Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
@@ -501,6 +557,14 @@ The upstream `maas-controller` and `maas-api` image override are intentional dem
 
 The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 
+The demo exposes the Grafana route through an OpenShift `ConsoleLink` named `grafana-maas` in the application menu. Grafana itself is protected by the Red Hat OpenShift OAuth proxy sidecar, using the `grafana-sa` service account as the OAuth client and the operator-owned `grafana-route` as the redirect reference. The route targets the `oauth-proxy` service port with re-encrypt TLS from OpenShift Service CA, and Grafana trusts `X-Forwarded-User` from the proxy through `auth.proxy`. The proxy restricts browser access to the `rhoai-users` OpenShift group, which includes `ai-admin` and `ai-developer`. A more Red Hat-aligned long-term approach is to move MaaS observability into the OpenShift monitoring stack and the web console Observe experience, using user workload monitoring and supported dashboard/query paths instead of a community Grafana dependency.
+
+Grafana queries OpenShift monitoring through the Thanos Querier using a `grafana-sa` service account with the `cluster-monitoring-view` role. The `GrafanaDatasource` manifest keeps only a placeholder token in Git. A Stage 040 sync job mints the runtime token and patches `GrafanaDatasource/prometheus`; Argo CD ignores only that generated token field. If dashboards show `401 Unauthorized`, re-run Stage 040 sync and validate that the datasource can query OpenShift monitoring.
+
+MaaS gateway traffic is emitted from the OpenShift Gateway Envoy metrics endpoint and scraped by `PodMonitor/maas-gateway-metrics` in `openshift-ingress`. The disposable Grafana dashboard currently uses a compatibility recording rule, `PrometheusRule/maas-dashboard-usage-metrics`, to map the real `istio_requests_total` series into the quickstart dashboard's expected `authorized_hits` shape. Treat this as demo observability glue, not production metric design guidance.
+
+Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
+
 Useful checks:
 
 ```bash
@@ -508,6 +572,27 @@ oc get maasmodelref -n maas
 oc get maasauthpolicy,maassubscription -n models-as-a-service
 oc get gateway maas-default-gateway -n openshift-ingress
 oc get pods -n redhat-ods-applications -l control-plane=maas-controller
+oc get clusterrolebinding grafana-sa-cluster-monitoring-view
+oc get serviceaccount grafana-sa -n grafana -o yaml
+oc get clusterrolebinding grafana-oauth-proxy-auth-delegator -o yaml
+oc get route grafana-route -n grafana -o jsonpath='{.spec.port.targetPort}{" "}{.spec.tls.termination}{"\n"}'
+oc get grafanadatasource prometheus -n grafana
+oc get podmonitor maas-gateway-metrics -n openshift-ingress
+oc get prometheusrule maas-dashboard-usage-metrics -n openshift-ingress
+oc get configmap -n maas -l app.kubernetes.io/name=guidellm-load-test
+```
+
+Useful GuideLLM overrides:
+
+```bash
+GUIDELLM_MODEL=gpt-oss-20b \
+GUIDELLM_PROFILE=constant \
+GUIDELLM_RATE=1 \
+GUIDELLM_MAX_SECONDS=20 \
+GUIDELLM_REQUESTS=5 \
+GUIDELLM_OUTPUT_TOKENS=64 \
+GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
+./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
 ```
 
 ### Stage 050
@@ -623,7 +708,7 @@ Stage 020 and Stage 030 support a first-class "resume from zero GPU nodes" workf
 ./scripts/resume-gpu-demo.sh resume
 ```
 
-The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
+The `resume` command requests an Argo CD sync for Stage 020, scales the discovered GPU MachineSet back to `GPU_MACHINESET_REPLICAS` replicas, repairs stopped provider instances when Machine API still has stale GPU Machine objects, waits for GPU nodes with allocatable `nvidia.com/gpu`, waits for NVIDIA `ClusterPolicy` readiness, validates Stage 020, syncs Stage 030, clears stale old model ReplicaSets that can hold Kueue quota during a two-GPU rollout, waits for private models, and runs Stage 030 validation.
 
 To scale GPU capacity down for shutdown:
 

@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-patch-grafana-consolelink
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-patch-grafana-consolelink
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+rules:
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["console.openshift.io"]
+  resources: ["consolelinks"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-patch-grafana-consolelink
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-patch-grafana-consolelink
+subjects:
+- kind: ServiceAccount
+  name: job-patch-grafana-consolelink
+  namespace: grafana
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-patch-grafana-consolelink
+  namespace: grafana
+  annotations:
+    argocd.argoproj.io/sync-wave: "23"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      serviceAccountName: job-patch-grafana-consolelink
+      restartPolicy: Never
+      containers:
+      - name: patch
+        image: registry.redhat.io/openshift4/ose-cli
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          for i in $(seq 1 60); do
+            GRAFANA_HOST=$(oc get route grafana-route -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || true)
+            if [ -n "$GRAFANA_HOST" ]; then
+              break
+            fi
+            echo "Waiting for Grafana route... ($i/60)"
+            sleep 5
+          done
+
+          if [ -z "${GRAFANA_HOST:-}" ]; then
+            echo "Grafana route not found after timeout"
+            exit 1
+          fi
+
+          GRAFANA_URL="https://${GRAFANA_HOST}"
+          echo "Patching Grafana Route for OAuth proxy and reencrypt TLS"
+          oc patch route grafana-route -n grafana --type=merge \
+            -p '{"spec":{"port":{"targetPort":"oauth-proxy"},"tls":{"termination":"reencrypt","insecureEdgeTerminationPolicy":"Redirect"}}}'
+
+          echo "Patching Grafana ConsoleLink: ${GRAFANA_URL}"
+          oc patch consolelink grafana-maas --type=merge \
+            -p "{\"spec\":{\"href\":\"${GRAFANA_URL}\",\"applicationMenu\":{\"imageURL\":\"${GRAFANA_URL}/favicon.ico\"}}}"

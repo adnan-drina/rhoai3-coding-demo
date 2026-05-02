@@ -14,6 +14,8 @@ resources:
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml
   - grafana/instance.yaml
+  - grafana/oauth-rbac.yaml
+  - grafana/consolelink.yaml
   - governance/kuadrant-system-ns.yaml
   - governance/maas-groups.yaml
   - governance/authorino-service.yaml
@@ -32,6 +34,8 @@ resources:
   - grafana/datasource.yaml
   - grafana/maas-dashboard.yaml
   - grafana/servicemonitor.yaml
+  - grafana/gateway-metrics.yaml
   - jobs/configure-grafana-sa.yaml
+  - jobs/patch-grafana-consolelink.yaml
   - jobs/patch-gateway-hostname.yaml
   - jobs/patch-maas-api-storage.yaml
