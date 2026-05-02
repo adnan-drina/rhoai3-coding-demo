@@ -26,6 +26,7 @@ Stage 030 provides the private inference layer for the trusted AI development pl
 - Administrative RBAC for model management in the `maas` data science project prepared by Stage 020.
 - LeaderWorkerSet prerequisites used by the LLM inference path and required for distributed inference patterns.
 - vLLM runtime arguments for scale-readiness, including prefix caching and reduced access-log overhead.
+- Explicit liveness and readiness probe timings for cold LLM startup on newly scaled GPU nodes.
 - Prometheus metric aliases for vLLM request, token, latency, and prefix-cache metrics used by Red Hat's documented autoscaling path.
 - Model Registry seed data so the local models are discoverable as named, versioned assets.
 - The MaaS tier mapping workaround required by the current Red Hat OpenShift AI webhook before tier-annotated model resources can be accepted.

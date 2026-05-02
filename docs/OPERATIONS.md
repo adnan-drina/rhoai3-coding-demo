@@ -411,7 +411,7 @@ Actions:
 
 - Confirmed the installed `LLMInferenceService` `v1alpha1` CRD supports `spec.router.scheduler`, `spec.parallelism`, `spec.prefill`, and `spec.worker`, but does not expose `spec.scaling`.
 - Added explicit `spec.router.scheduler: {}` to both private model `LLMInferenceService` resources. Live reconciliation created one router-scheduler Deployment per model using the OpenShift AI llm-d inference scheduler image.
-- Added single-GPU-per-replica deployment metadata, NVIDIA L4 accelerator labeling, vLLM prefix-caching arguments, and a `PrometheusRule` that aliases documented vLLM metrics for future autoscaling analysis.
+- Added single-GPU-per-replica deployment metadata, NVIDIA L4 accelerator labeling, vLLM prefix-caching arguments, explicit cold-start probe timings, and a `PrometheusRule` that aliases documented vLLM metrics for future autoscaling analysis.
 - Synced Argo CD Application `030-private-model-serving` to branch commit `dcdee7d`; Argo CD reported `Synced` and `Healthy`.
 - During rollout, the two old model ReplicaSets still held the two admitted Kueue GPU reservations while the new scheduler-enabled pods waited behind `SchedulingGated`. Because the demo `ClusterQueue` intentionally has only two GPUs, the stale ReplicaSets were manually scaled to zero to release quota for the new revision.
 
@@ -427,6 +427,7 @@ Validation evidence:
 - Both router-scheduler pods were created and running.
 - Both new model workloads were admitted by Kueue and assigned to GPU nodes.
 - `PrometheusRule` `vllm-metrics-alias` exists in the `maas` namespace.
+- GPT-OSS briefly reached readiness and then restarted because the default liveness delay was too short for cold vLLM compilation after image pull. The manifests now set an explicit 600-second liveness initial delay for both private models.
 
 Current limitation:
 
