@@ -48,6 +48,14 @@ Red Hat OpenShift AI 3.4 integrates with Kueue through **Red Hat build of Kueue*
 
 OpenShift Custom Metrics Autoscaler, the Red Hat-supported KEDA path for OpenShift, is installed as the autoscaling building block. In production, KEDA can use Prometheus or Kueue signals such as backlog or idle workload state to scale workloads or nodes. In this demo, it is deliberately not attached to the private model deployments. That keeps the first pass focused on the GPUaaS foundation while leaving a clear extension point for demand-driven scaling.
 
+## Why This Is Worth Knowing
+
+GPU-as-a-Service is not only a hyperscale concern. The same design questions appear in a small private AI deployment: who can use accelerators, which workloads get admitted first, how quota is expressed, how idle capacity is detected, and how administrators know whether expensive hardware is being used well.
+
+The reusable lesson is that GPU capacity should be exposed through productized platform controls. Red Hat OpenShift supplies the infrastructure foundation. Red Hat OpenShift AI gives users a dashboard-level consumption model. Red Hat build of Kueue gives administrators the queue and quota model behind that interface. Monitoring and autoscaling signals provide the feedback loop for optimization.
+
+This stage is also the point where the workshop starts to show why private AI coding assistance is a platform concern. A private model is useful only if the organization can operate the compute behind it consistently.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift** provides the application platform, Kubernetes scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
@@ -69,14 +77,6 @@ OpenShift Custom Metrics Autoscaler, the Red Hat-supported KEDA path for OpenShi
 This stage does not process source code or prompts. It prepares the private compute boundary that later stages use for local model serving.
 
 The trust boundary in Stage 020 is operational governance: GPU access is mediated by OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, and GitOps-managed platform state. Private local models in later stages keep prompts and code inside the OpenShift platform boundary. Governed external models introduced later remain centrally controlled, but prompts are still processed by the external provider.
-
-## Why This Is Worth Knowing
-
-GPU-as-a-Service is not only a hyperscale concern. The same design questions appear in a small private AI deployment: who can use accelerators, which workloads get admitted first, how quota is expressed, how idle capacity is detected, and how administrators know whether expensive hardware is being used well.
-
-The reusable lesson is that GPU capacity should be exposed through productized platform controls. Red Hat OpenShift supplies the infrastructure foundation. Red Hat OpenShift AI gives users a dashboard-level consumption model. Red Hat build of Kueue gives administrators the queue and quota model behind that interface. Monitoring and autoscaling signals provide the feedback loop for optimization.
-
-This stage is also the point where the workshop starts to show why private AI coding assistance is a platform concern. A private model is useful only if the organization can operate the compute behind it consistently.
 
 ## Where This Fits In The Full Platform
 
