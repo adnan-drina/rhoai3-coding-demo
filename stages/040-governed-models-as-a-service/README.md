@@ -42,7 +42,7 @@ Show MaaS as the control point for enterprise AI consumption.
 4. User tiers make model access adjustable by team or project.
 5. Metrics and dashboards create the basis for showback, chargeback, capacity planning, and fairness.
 6. GuideLLM can generate a small, repeatable load profile against the MaaS endpoint so operators can compare latency, throughput, and token behavior across models.
-7. The same governed model access pattern is prepared for Red Hat OpenShift Dev Spaces, Migration Toolkit for Applications, and later approved external models.
+7. The same governed model access pattern is prepared for Red Hat OpenShift Dev Spaces, Migration Toolkit for Applications, and approved external models.
 
 The proof point is governance with usability. Private AI adoption fails if every team has to become an inference operations team. MaaS lets developers consume AI through familiar APIs while the platform team controls cost, access, security posture, and operational visibility.
 
@@ -171,4 +171,4 @@ Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops
 
 ## Next Stage
 
-[Stage 050: Approved External Model Access](../050-approved-external-model-access/README.md) adds external OpenAI models behind the same governed MaaS path.
+[Stage 050: Approved External Model Access](../050-approved-external-model-access/README.md) adds approved external OpenAI models behind the same governed MaaS path while making the provider trust boundary explicit.

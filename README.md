@@ -137,7 +137,7 @@ This distinction is important. A governed external model is not the same as a pr
 
 This is a disposable demo environment, not production implementation guidance. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, and Red Hat Developer Lightspeed for MTA 8.1 is also documented as Technology Preview. The demo intentionally includes early-access and upstream components where they are needed to show the end-to-end platform story.
 
-External OpenAI model definitions are included in GitOps with a placeholder API key. They demonstrate the governed external model path, but the external calls are only usable after an operator replaces `openai-api-key` in the `maas` namespace with an approved provider credential. Known deviations, workarounds, and current validation status are tracked in [`BACKLOG.md`](BACKLOG.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+External OpenAI model definitions are included in GitOps with a placeholder API key. They demonstrate the governed external model path, but external calls are only enabled after an operator provisions `openai-api-key` in the `maas` namespace from an approved provider credential. The optional Stage 050 smoke test validates that path when token spend is approved. Known deviations, workarounds, and current validation status are tracked in [`BACKLOG.md`](BACKLOG.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## Why This Is Worth Knowing
 

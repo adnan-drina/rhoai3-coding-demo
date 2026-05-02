@@ -228,7 +228,7 @@ Final sweep:
 
 - All nine Argo CD Applications reported `Synced` and `Healthy` at commit `b5bb770`.
 - A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
-- Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` is not set, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set.
+- Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` was not set during the initial full sweep, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set. Later Stage 050 smoke validation passed after an approved provider key was provisioned.
 - A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
 - Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh`, and `./scripts/validate-stage-flow.sh`.
 - Merge-readiness security check found no committed `.env` file and no real kubeadmin password, provider key, kubeconfig, bearer token, or private key in the branch diff. Only placeholder and masked key examples such as `sk-oai-*` were present.
@@ -262,7 +262,7 @@ Red Hat alignment review:
 Documentation and deviation-register cleanup:
 
 - `BACKLOG.md` now treats workaround removal as a supported-capability review, not as an automatic Red Hat OpenShift AI 3.4 GA cleanup. This matches the current Red Hat OpenShift AI 3.4 documentation posture where MaaS is Technology Preview.
-- Current validation wording now distinguishes external model registration from external inference. Stage 050 registered `gpt-4o` and `gpt-4o-mini`; external inference remains credential-gated and was not validated in this environment because `OPENAI_API_KEY` is unset.
+- Current validation wording now distinguishes external model registration from external inference. Stage 050 registers `gpt-4o` and `gpt-4o-mini` without requiring provider token spend; external inference is credential-gated and has been validated with an approved `OPENAI_API_KEY` by using the opt-in smoke test.
 - Stage 040, Stage 080, and Stage 090 READMEs now call out Red Hat alignment, Technology Preview posture, and demo-specific deviations close to the affected implementation.
 - `docs/TROUBLESHOOTING.md` now includes `RHDH_CATALOG_URL` diagnostics for Developer Hub catalog failures.
 
@@ -309,8 +309,8 @@ Stage 040 findings:
 
 Stage 050 findings:
 
-- `OPENAI_API_KEY` is not set in this demo environment. Stage 050 registered the approved external model resources with the placeholder `openai-api-key` credential, so external inference was intentionally not validated.
-- Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` and `external-models-subscription` are Active. Argo CD reports Stage 050 `Synced` and `Healthy`.
+- Stage 050 registered the approved external model resources and, when an approved `OPENAI_API_KEY` was later supplied through `.env`, completed an opt-in external inference smoke test through MaaS.
+- Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` and `external-models-subscription` are Active. Argo CD reports Stage 050 `Synced` and `Healthy`. The opt-in external smoke validation passed with 19 checks, 0 warnings, and 0 failures; a direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
 
 Stage 060 findings:
 
@@ -519,7 +519,9 @@ Actions:
 
 Validation evidence:
 
-- Stage 050 validation with external smoke test passed: `GUIDELLM_EXTERNAL_SMOKE_TEST=true GUIDELLM_REQUESTS=1 GUIDELLM_OUTPUT_TOKENS=32 ./stages/050-approved-external-model-access/validate.sh`: 19 passed, 0 warnings, 0 failed. Result ConfigMap: `maas/guidellm-gpt-4o-mini-20260502181058-results`.
+- Stage 030 validation after the documentation refresh passed with 34 checks, 0 warnings, and 0 failures.
+- Stage 040 validation after the documentation refresh passed with 58 checks, 0 warnings, and 0 failures. Result ConfigMap from the embedded GuideLLM run: `maas/guidellm-nemotron-3-nano-30b-a3b-20260502182022-results`.
+- Stage 050 validation with external smoke test passed: `GUIDELLM_EXTERNAL_SMOKE_TEST=true GUIDELLM_REQUESTS=1 GUIDELLM_OUTPUT_TOKENS=32 ./stages/050-approved-external-model-access/validate.sh`: 19 passed, 0 warnings, 0 failed. Result ConfigMap: `maas/guidellm-gpt-4o-mini-20260502182117-results`.
 - A direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
 - The provider key and runtime MaaS key were not printed, committed, or stored in Git.
 

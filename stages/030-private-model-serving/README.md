@@ -104,6 +104,7 @@ The model artifacts themselves also remain part of the trust boundary. Operators
 | Later capability | What this stage provides |
 |------------------|--------------------------|
 | Stage 040 MaaS | Supplies local models that MaaS can publish, meter, and govern |
+| Stage 050 Approved External Model Access | Provides the private baseline that approved external model access must be compared against |
 | Stage 060 MCP Context Integrations | Provides the private model path that can receive approved tool context through governed consumers |
 | Stage 070 Dev Spaces | Provides private model endpoints for coding assistants |
 | Stage 080 MTA | Provides the private model path for modernization assistance |

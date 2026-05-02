@@ -66,12 +66,12 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 - [ ] **Grafana dashboard screenshots** — Add screenshots to Stage 040 README while the community Grafana demo add-on remains in use.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
 
-## Validated (2026-05-01)
+## Validated (2026-05-01 and 2026-05-02)
 
 - [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
 - [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
 - [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
-- [x] **External model registration** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference is credential-gated and was not validated in the current environment because `OPENAI_API_KEY` was not set. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
+- [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated, but live validation on 2026-05-02 confirmed that an approved `OPENAI_API_KEY` provisioned into `maas/openai-api-key` can complete a `gpt-4o-mini` call through MaaS. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
 - [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
 - [x] **Continue and OpenCode configuration** — Developer workspace configuration is generated with MaaS endpoint and `sk-oai-*` API key auth. Current live validation covered local model access; external model execution still requires an approved provider key.
 - [x] **Stage 020 GPUaaS foundation** — Live validation on 2026-05-02 confirmed Red Hat build of Kueue, OpenShift AI Kueue integration, queue-based NVIDIA L4 hardware profiles, ResourceFlavor, ClusterQueue, LocalQueue, KEDA readiness, GPU MachineSet readiness, GPU node labels/taints, allocatable GPUs, NVIDIA ClusterPolicy readiness, and GPUaaS dashboard ConfigMap. The OpenShift 4.20 catalog used `stable-v1.3` for Red Hat build of Kueue.
