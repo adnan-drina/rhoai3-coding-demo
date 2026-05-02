@@ -10,7 +10,6 @@ resources:
   - leaderworkerset/operatorgroup.yaml
   - leaderworkerset/subscription.yaml
   - leaderworkerset/instance.yaml
-  - models/namespace.yaml
   - models/admin-rbac.yaml
   - governance/tier-to-group-mapping.yaml
   - model-registry/seed-networkpolicy.yaml

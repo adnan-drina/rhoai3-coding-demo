@@ -98,7 +98,7 @@ Compatibility note: the old `steps/step-*` scripts remain as wrappers, but the o
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
-| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets |
+| 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, observability |
 | 050 | `050-approved-external-model-access` | External OpenAI models behind MaaS |
@@ -345,13 +345,27 @@ Stage 090 findings:
 
 ### Stage 020
 
-Stage 020 creates GPU infrastructure. New GPU nodes can take several minutes to provision and join the cluster.
+Stage 020 creates the demo-scale GPU-as-a-Service foundation. It installs NFD, the NVIDIA GPU Operator, Red Hat build of Kueue, the OpenShift Custom Metrics Autoscaler Operator, queue/quota resources, queue-based hardware profiles, and GPU dashboards. New GPU nodes can take several minutes to provision and join the cluster.
 
 The GPU Operator Subscription does not pin a channel. OLM uses the certified catalog default channel available in the target cluster. This avoids carrying an unexplained demo-specific version pin while still installing from the certified operator catalog.
+
+The Red Hat build of Kueue Subscription uses the `stable-v1.3` channel from `redhat-operators` on the current OpenShift 4.20 demo cluster. Earlier planning referenced `stable-v1.0`, but live package discovery on this cluster showed only `stable-v1.1`, `stable-v1.2`, and `stable-v1.3`; the implementation follows the available Red Hat catalog channel. OpenShift AI is integrated with this external Kueue installation by Stage 020 after the operator is present: the stage patches `DataScienceCluster.spec.components.kueue.managementState` to `Unmanaged`, enables dashboard Kueue support with `OdhDashboardConfig.spec.dashboardConfig.disableKueue=false`, and creates the `maas` namespace with `kueue.openshift.io/managed=true` and `opendatahub.io/dashboard=true`.
+
+The `private-model-serving-gpu` `ClusterQueue` is intentionally small: two NVIDIA L4 GPUs plus CPU, memory, and pod quota for the current private model-serving path. This demonstrates the GPUaaS operating model without pretending the disposable demo environment represents a large multi-tenant GPU fleet.
+
+OpenShift Custom Metrics Autoscaler/KEDA is installed as a building block only. The stage does not attach `ScaledObject` resources to the private model deployments in the first pass. Production patterns should base scaling on validated Prometheus, Kueue backlog, or idle workload metrics.
+
+Stage 010 still owns the base `DataScienceCluster` and dashboard resources. Its Argo CD Application ignores only the Kueue handoff fields so Stage 020 can enable the Red Hat OpenShift AI 3.4 external Kueue integration without making Stage 010 depend on Kueue being installed first. Stage 020 also owns the `maas` namespace now because the `LocalQueue` must exist before Stage 030 creates model-serving resources in that project.
 
 Useful checks:
 
 ```bash
+oc get subscription,csv -n openshift-kueue-operator
+oc get kueue cluster -n openshift-kueue-operator
+oc get resourceflavor,clusterqueue
+oc get localqueue -n maas
+oc get hardwareprofile -n redhat-ods-applications | grep -i queued
+oc get kedacontroller -n openshift-keda
 oc get machineset -n openshift-machine-api | grep -i gpu
 oc get nodes -l node-role.kubernetes.io/gpu
 oc get clusterpolicy -A

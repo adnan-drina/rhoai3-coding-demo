@@ -50,6 +50,8 @@ Platform foundation
   OpenShift GitOps
   OpenShift OAuth and RBAC
   NVIDIA GPU Operator and NFD
+  Red Hat build of Kueue
+  OpenShift Custom Metrics Autoscaler Operator
   OpenShift Serverless, Service Mesh, monitoring
 ```
 
@@ -62,7 +64,7 @@ The demo progresses through nine focused platform stages. The ordered source of 
 | Stage | What we show | What to understand |
 |------|--------------|--------------------|
 | [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | The AI control plane, dashboard, users, model registry, and platform services | Trusted AI starts with a managed platform, not a collection of scripts |
-| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement and worker capacity | Private AI needs centrally managed accelerator infrastructure |
+| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement, Red Hat build of Kueue, queue quotas, and GPUaaS observability | Private AI needs centrally managed accelerator infrastructure, not manually assigned GPU nodes |
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served on Red Hat OpenShift AI | Sensitive workloads need a private model path before developer tools consume it |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS, gateway policy, subscriptions, quotas, telemetry, and API keys | Model serving becomes an enterprise platform service through governance |
 | [050 - Approved External Model Access](stages/050-approved-external-model-access/README.md) | External OpenAI models behind the governed MaaS path | External model use can be centralized without making it private |
@@ -90,6 +92,8 @@ This is a Red Hat platform demo. The open source projects are important, but the
 | [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | The Kubernetes application platform providing identity, RBAC, networking, scheduling, storage integration, routes, monitoring, and operational consistency |
 | [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai) | The AI platform layer for model serving, GenAI Studio, model registry, dashboard experience, and AI workload lifecycle management |
 | [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | GitOps delivery and reconciliation of the workshop platform through Argo CD |
+| [Red Hat build of Kueue](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/ai_workloads/) | Queueing, quota, and admission control for OpenShift AI GPU workload management |
+| [OpenShift Custom Metrics Autoscaler Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator) | Red Hat-supported KEDA integration for metric-driven autoscaling patterns |
 | [Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces) | Cloud-native developer workspaces for AI-assisted development and modernization |
 | [Migration Toolkit for Applications](https://www.redhat.com/en/technologies/jboss-middleware/migration-toolkit-for-applications) | Application modernization analysis and Red Hat Developer Lightspeed for MTA integration for AI-assisted migration |
 | [Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub) | Enterprise developer portal and software catalog for self-service platform consumption |
@@ -105,6 +109,8 @@ Red Hat products in this workshop are built with and around open source communit
 | Project | Where it appears | What to learn |
 |---------|------------------|---------------|
 | [Open Data Hub](https://opendatahub.io/) and [models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) | MaaS control plane | Upstream foundation for OpenShift AI and MaaS-style model access |
+| [Kueue](https://kueue.sigs.k8s.io/) | GPUaaS workload management | Kubernetes-native queueing, quota, and workload admission primitives |
+| [KEDA](https://keda.sh/) | GPUaaS autoscaling readiness | Event-driven autoscaling patterns behind OpenShift Custom Metrics Autoscaler |
 | [KServe](https://kserve.github.io/website/) | OpenShift AI model serving | Kubernetes-native model serving primitives |
 | [vLLM](https://docs.vllm.ai/) | Local LLM inference | High-throughput LLM serving with an OpenAI-compatible API surface |
 | [llm-d](https://llm-d.ai/) | Distributed inference architecture | Open source approach for distributed LLM serving on Kubernetes |

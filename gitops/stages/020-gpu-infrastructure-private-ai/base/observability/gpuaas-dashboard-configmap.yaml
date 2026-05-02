@@ -1,0 +1,108 @@
+# Demo GPUaaS dashboard for OpenShift Console Observe -> Dashboards.
+# Queries intentionally use common DCGM and Kueue metric names and are validated
+# as warnings until confirmed against each OpenShift AI 3.4 demo environment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rhoai-gpuaas-dashboard
+  namespace: openshift-config-managed
+  labels:
+    console.openshift.io/dashboard: "true"
+    console.openshift.io/odc-dashboard: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+data:
+  gpuaas-dashboard.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+          "id": 1,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "targets": [{"expr": "sum(kube_node_status_allocatable{resource=\"nvidia_com_gpu\"})", "refId": "A"}],
+          "title": "Allocatable GPUs",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "percent"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+          "id": 2,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["mean"], "fields": "", "values": false}},
+          "targets": [{"expr": "avg(DCGM_FI_DEV_GPU_UTIL)", "refId": "A"}],
+          "title": "Average GPU Utilization",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+          "id": 3,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "targets": [{"expr": "sum(DCGM_FI_DEV_FB_USED * 1024 * 1024)", "refId": "A"}],
+          "title": "GPU Memory Used",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+          "id": 4,
+          "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "targets": [{"expr": "sum(kueue_pending_workloads)", "refId": "A"}],
+          "title": "Pending Kueue Workloads",
+          "type": "stat"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"custom": {}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "percent"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "id": 5,
+          "targets": [{"expr": "DCGM_FI_DEV_GPU_UTIL", "legendFormat": "{{Hostname}} GPU {{gpu}}", "refId": "A"}],
+          "title": "GPU Utilization by Device",
+          "type": "graph"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"custom": {}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "id": 6,
+          "targets": [{"expr": "kueue_admitted_workloads", "legendFormat": "{{cluster_queue}}", "refId": "A"}],
+          "title": "Admitted Workloads by ClusterQueue",
+          "type": "graph"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"custom": {}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "id": 7,
+          "targets": [{"expr": "kueue_cluster_queue_resource_usage", "legendFormat": "{{cluster_queue}} {{resource}}", "refId": "A"}],
+          "title": "ClusterQueue Resource Usage",
+          "type": "graph"
+        },
+        {
+          "datasource": "prometheus",
+          "fieldConfig": {"defaults": {"custom": {}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "id": 8,
+          "targets": [{"expr": "kueue_cluster_queue_nominal_quota", "legendFormat": "{{cluster_queue}} {{resource}}", "refId": "A"}],
+          "title": "ClusterQueue Nominal Quota",
+          "type": "graph"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 26,
+      "style": "dark",
+      "tags": ["rhoai", "gpuaas", "kueue"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "timezone": "browser",
+      "title": "RHOAI GPU-as-a-Service",
+      "uid": "rhoai-gpuaas"
+    }

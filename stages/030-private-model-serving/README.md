@@ -13,7 +13,8 @@ This stage gives the later developer tools a private model path before any exter
 ## What This Stage Adds
 
 - Local `LLMInferenceService` resources for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
-- The `maas` data science project and administrative RBAC for model management.
+- Administrative RBAC for model management in the `maas` data science project prepared by Stage 020.
+- Kueue queue labels that connect the private model-serving resources to the Stage 020 `private-model-serving` local queue.
 - LeaderWorkerSet prerequisites used by the local model-serving path.
 - Model Registry seed data for the two local models.
 - The MaaS tier mapping workaround required by the current Red Hat OpenShift AI webhook before tier-annotated model resources can be accepted.
@@ -25,7 +26,7 @@ The local models are the private model path used later by Models-as-a-Service, R
 Show that private AI starts as a platform service, not as a developer-managed endpoint:
 
 1. The models are deployed from GitOps-managed `LLMInferenceService` resources.
-2. GPU scheduling, namespace ownership, and RBAC are handled by the platform.
+2. GPU scheduling, queue selection, namespace ownership, and RBAC are handled by the platform.
 3. Model Registry entries make the local models discoverable as named assets.
 4. The stage validates readiness before MaaS publishes the models to developer-facing tools.
 
@@ -33,7 +34,7 @@ The proof point is the boundary: sensitive prompts and source context can use a 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the model-serving control plane, data science project integration, model registry experience, and dashboard surface. OpenShift provides scheduling, identity, RBAC, networking, storage, and GitOps reconciliation.
+Red Hat OpenShift AI provides the model-serving control plane, data science project integration, model registry experience, and dashboard surface. OpenShift provides scheduling, identity, RBAC, networking, storage, and GitOps reconciliation. Stage 020 adds the queue-based GPUaaS context, and this stage labels the private model resources with the `private-model-serving` Kueue local queue.
 
 The open source foundation includes KServe for Kubernetes-native model serving, vLLM for OpenAI-compatible LLM inference, llm-d and LeaderWorkerSet patterns for distributed inference prerequisites, and Open Data Hub as the upstream community behind many OpenShift AI capabilities.
 
@@ -63,7 +64,7 @@ Enterprise AI coding assistance needs a credible private path before developers 
 | Earlier capability | How this stage uses it |
 |--------------------|------------------------|
 | Stage 010 platform foundation | Uses Red Hat OpenShift AI, model registry, RBAC, and GitOps foundations |
-| Stage 020 GPU infrastructure | Schedules local model workloads onto GPU-capable workers |
+| Stage 020 GPU infrastructure | Schedules local model workloads onto GPU-capable workers and marks them for the private model-serving queue |
 
 | Later capability | What this stage provides |
 |------------------|--------------------------|
@@ -85,6 +86,7 @@ Manifests: [`gitops/stages/030-private-model-serving/base/`](../../gitops/stages
 ## References
 
 - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
+- [Red Hat OpenShift AI 3.4: Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue)
 - [KServe documentation](https://kserve.github.io/website/)
 - [vLLM documentation](https://docs.vllm.ai/)
 - [llm-d documentation](https://llm-d.ai/)

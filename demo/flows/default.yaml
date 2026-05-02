@@ -20,6 +20,9 @@ stages:
     name: GPU Infrastructure for Private AI
     productFocus:
       - Red Hat OpenShift
+      - Red Hat OpenShift AI
+      - Red Hat build of Kueue
+      - OpenShift Custom Metrics Autoscaler Operator
       - NVIDIA GPU Operator
     deployScript: stages/020-gpu-infrastructure-private-ai/deploy.sh
     validateScript: stages/020-gpu-infrastructure-private-ai/validate.sh
