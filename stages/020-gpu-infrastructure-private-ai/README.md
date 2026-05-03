@@ -48,6 +48,11 @@ Red Hat OpenShift AI 3.4 integrates with Kueue through **Red Hat build of Kueue*
 
 OpenShift Custom Metrics Autoscaler, the Red Hat-supported KEDA path for OpenShift, is installed as the autoscaling building block. In production, KEDA can use Prometheus or Kueue signals such as backlog or idle workload state to scale workloads or nodes. In this demo, it is deliberately not attached to the private model deployments. That keeps the first pass focused on the GPUaaS foundation while leaving a clear extension point for demand-driven scaling.
 
+
+## Trust Boundaries
+
+This stage does not process source code or prompts; its trust boundary is operational control over scarce accelerator capacity. OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, telemetry, and GitOps-managed state help platform teams keep private AI compute governed inside the OpenShift environment, which supports sovereignty and audit-readiness goals without claiming EU AI Act compliance on its own.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift** provides the application platform, Kubernetes scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
@@ -64,11 +69,6 @@ OpenShift Custom Metrics Autoscaler, the Red Hat-supported KEDA path for OpenShi
 - [Kueue](https://kueue.sigs.k8s.io/) provides Kubernetes-native workload queueing, quota accounting, and admission control.
 - [KEDA](https://keda.sh/) provides event-driven autoscaling patterns that OpenShift supports through the Custom Metrics Autoscaler Operator.
 
-## Trust Boundaries
-
-This stage does not process source code or prompts. It prepares the private compute boundary that later stages use for local model serving.
-
-The trust boundary in Stage 020 is operational governance: GPU access is mediated by OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, and GitOps-managed platform state. Private local models in later stages keep prompts and code inside the OpenShift platform boundary. Governed external models introduced later remain centrally controlled, but prompts are still processed by the external provider.
 
 ## Where This Fits In The Full Platform
 

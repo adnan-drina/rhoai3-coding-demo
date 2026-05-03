@@ -52,6 +52,11 @@ The upstream Open Data Hub models-as-a-service project supplies the `ExternalMod
 
 The Red Hat Developer multi-LLM MaaS article describes a more advanced pattern: one OpenAI-compatible endpoint that routes by the request body's `model` field. This demo currently uses model-specific MaaS paths because the highest-value gap for this workshop is governed access, credential control, and trust-boundary clarity. The single-endpoint body-routing pattern remains future work until it becomes necessary for the storyline and fits the target Red Hat support posture.
 
+
+## Trust Boundaries
+
+Governed external access is not private model serving: prompts are routed through MaaS with centralized provider credentials, API keys, subscriptions, token limits, gateway policy, and telemetry, but they are still processed by the external provider. This pattern can support controlled use of approved frontier models and EU AI Act readiness through traceability and access governance, but it requires data classification, provider approval, legal review, and explicit policy acceptance before sensitive code or regulated data is sent outside the OpenShift boundary.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift AI** provides the MaaS model access context and OpenAI-compatible consumption pattern.
@@ -70,15 +75,6 @@ The Red Hat Developer multi-LLM MaaS article describes a more advanced pattern: 
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the small opt-in smoke test used to confirm external inference through MaaS when provider token spend is approved.
 
-## Trust Boundaries
-
-Governed external access is not private model serving.
-
-For private models from Stage 030, prompts and code stay inside the OpenShift platform boundary. For the external models in this stage, prompts are proxied through MaaS but processed by the external provider. That distinction must be visible to demo operators, developers, security teams, and anyone approving model use.
-
-MaaS centralizes the controls around the external path: provider credentials, MaaS API keys, subscriptions, token limits, gateway policy, and usage telemetry. Those controls support governance and traceability, but they do not replace data classification, provider approval, legal review, or production security assessment.
-
-No real provider key belongs in Git. The committed Secret is a placeholder. `deploy.sh` reads `OPENAI_API_KEY` from the operator's local `.env` file and patches the live `openai-api-key` Secret when an approved key is available. Validation never prints the provider key or the runtime MaaS key.
 
 ## Where This Fits In The Full Platform
 

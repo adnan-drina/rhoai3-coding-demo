@@ -52,6 +52,11 @@ That identity chain reinforces the platform story: OpenShift-backed identity is 
 
 The Red Hat Developer Hub deployment follows the operator-managed Backstage custom resource pattern and uses dynamic plugin configuration through OpenShift resources. The catalog URL is derived at runtime from the Stage 090 Argo CD Application `repoURL` and `targetRevision`, so the portal follows the validated GitOps revision instead of a hard-coded branch.
 
+
+## Trust Boundaries
+
+Red Hat Developer Hub is a discovery and self-service surface, so it should link to approved platform paths rather than embed provider secrets, kubeconfigs, or unmanaged credentials. Reusing OpenShift-backed identity in the demo supports access control and traceability; a production implementation should use the organization’s approved identity provider and governance model to support sovereignty and EU AI Act readiness without treating the portal itself as a compliance boundary.
+
 ## Red Hat Products Used
 
 - **Red Hat Developer Hub 1.9** provides the enterprise developer portal and software catalog.
@@ -67,11 +72,6 @@ The Red Hat Developer Hub deployment follows the operator-managed Backstage cust
 - The [Backstage Software Catalog](https://backstage.io/docs/features/software-catalog/) provides the model for describing components, ownership, APIs, systems, resources, and documentation.
 - [TechDocs](https://backstage.io/docs/features/techdocs/) can turn repository documentation into portal-hosted technical documentation.
 
-## Trust Boundaries
-
-For demo continuity, Red Hat Developer Hub reuses the MTA Keycloak / Red Hat build of Keycloak realm, which brokers authentication back to OpenShift OAuth. A production implementation should use the organization's approved identity provider or a dedicated Red Hat build of Keycloak design rather than depending on the MTA identity path.
-
-The portal is a discovery and self-service surface. It should link to approved platform paths rather than embedding provider secrets, kubeconfigs, or unmanaged service credentials.
 
 ## Where This Fits In The Full Platform
 

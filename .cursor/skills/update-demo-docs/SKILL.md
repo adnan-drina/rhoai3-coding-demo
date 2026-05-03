@@ -57,6 +57,9 @@ After model-serving or gateway changes:
 - Private model claims still hold
 - External model descriptions are accurate
 - MaaS role is correctly described
+- MCP/tool-context boundaries are described separately from model access when relevant
+- `Trust Boundaries` sections stay concise, preferably one paragraph
+- EU AI Act language is readiness-oriented and does not claim compliance
 
 ### 4. Product and version references
 
@@ -91,9 +94,12 @@ When checking a stage README:
 - `What This Stage Adds` should avoid per-bullet manifest links; the stage manifest directory belongs in `Deploy And Validate`.
 - `What This Stage Adds` should avoid YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and validation behavior unless they are central to the architecture story.
 - The section order should follow rule `20-readme-standard.mdc`, including `What To Notice And Why It Matters` immediately after `What This Stage Adds`.
+- `Trust Boundaries`, when present, should appear before `Red Hat Products Used`.
 - The merged `What To Notice And Why It Matters` section should preserve essential demo proof points and the enterprise WHY without excessive length.
 - The merged section should be clear for enterprise architects and platform engineers in regulated hybrid cloud environments.
 - The merged section should emphasize privacy, sovereignty, identity, quota, telemetry, credential, and external-provider boundaries when those are relevant to the stage.
+- `Trust Boundaries` should focus only on the most important privacy, sovereignty, model-provider, credential, or tool-context boundary for the stage.
+- `Trust Boundaries` should mention EU AI Act only as readiness or supporting controls, never as compliance.
 - The README should explain why the capability matters before listing YAML, resources, or commands.
 
 ### 8. Architecture diagram consistency

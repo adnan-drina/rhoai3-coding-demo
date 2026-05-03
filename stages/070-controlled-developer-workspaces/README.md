@@ -43,6 +43,11 @@ Continue provides the IDE assistant experience. OpenCode provides a terminal-bas
 
 Red Hat’s platform role is the separation of concerns: developers focus on code, platform teams operate workspaces and model access, and governance decisions attach to the model path rather than to unmanaged local tooling.
 
+
+## Trust Boundaries
+
+Red Hat OpenShift Dev Spaces keeps workspaces, source access, tool configuration, and MaaS credentials under platform control, but the selected model path still defines where prompts and code are processed. Local models keep sensitive work inside OpenShift; external models are centrally governed through MaaS but processed by the provider, so data-residency policy, usage traceability, and human review remain essential for sovereignty and EU AI Act readiness.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift Dev Spaces** provides the managed cloud development environment.
@@ -56,14 +61,6 @@ Red Hat’s platform role is the separation of concerns: developers focus on cod
 - [Continue](https://www.continue.dev/) is an open source AI code assistant that can use OpenAI-compatible model endpoints.
 - [OpenCode](https://opencode.ai/) provides terminal-based AI coding workflows that can consume MaaS endpoints.
 
-## Trust Boundaries
-
-| Model path | What happens to prompts and code |
-|------------|----------------------------------|
-| Local models such as Nemotron and gpt-oss | Requests stay within the OpenShift platform boundary. This is the recommended path for sensitive or regulated code. |
-| External models such as GPT-4o and GPT-4o-mini | Requests are proxied through MaaS to OpenAI. Access is centrally governed, but prompt content is processed externally and must be allowed by policy. |
-
-This distinction is the core learning point. A governed external model is useful, but it is not private. The platform makes both options visible and controllable.
 
 ## Where This Fits In The Full Platform
 

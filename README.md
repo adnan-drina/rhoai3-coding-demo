@@ -127,19 +127,7 @@ The workshop is not only a product tour. It is also a map of how open source pro
 
 ## Trust Boundaries
 
-This workshop deliberately demonstrates more than one trust level.
-
-| Path | Boundary | What it teaches |
-|------|----------|-----------------|
-| Private local models | Prompts and code remain on the OpenShift platform | Sensitive development and modernization can use AI without sending code to an external provider |
-| Governed external models | Prompts are proxied to an approved external provider | Frontier models can be made available with centralized access and usage control where policy permits |
-| MCP integrations | The base deployment includes a read-only OpenShift MCP server; Slack and BrightData MCP components are optional and require their own credentials | Tool context must be evaluated separately from model access because each integration has its own data boundary |
-
-This distinction is important. A governed external model is not the same as a private model. The value of the platform is that both choices can be offered through one controlled interface with clear policy boundaries.
-
-This is a disposable demo environment, not production implementation guidance. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, and Red Hat Developer Lightspeed for MTA 8.1 is also documented as Technology Preview. The demo intentionally includes early-access and upstream components where they are needed to show the end-to-end platform story.
-
-External OpenAI model definitions are included in GitOps with a placeholder API key. They demonstrate the governed external model path, but external calls are only enabled after an operator provisions `openai-api-key` in the `maas` namespace from an approved provider credential. The optional Stage 050 smoke test validates that path when token spend is approved. Known deviations, workarounds, and current validation status are tracked in [`BACKLOG.md`](BACKLOG.md) and [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+This workshop separates private local models, governed external models, and MCP context integrations. Private models keep prompts and code inside the OpenShift platform boundary to support data-sovereignty choices; governed external models centralize access, credentials, limits, and telemetry but still send prompts to the provider; MCP integrations require separate approval because tool context has its own data boundary. These controls support governance, traceability, documentation, human accountability, and EU AI Act readiness, but the disposable demo does not claim legal or regulatory compliance.
 
 ## Why This Is Worth Knowing
 

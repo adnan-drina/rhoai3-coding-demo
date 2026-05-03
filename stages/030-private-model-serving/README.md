@@ -52,6 +52,11 @@ llm-d is the distributed inference architecture around the serving engine. Its j
 
 Stage 020 contributes the GPUaaS foundation. Stage 030 consumes it by labeling the local model resources with `kueue.x-k8s.io/queue-name=private-model-serving`, requesting GPU capacity, and letting the platform manage admission and scheduling rather than hard-coding private model serving as a special case.
 
+
+## Trust Boundaries
+
+Private local models keep prompts, source code, inference runtime, service endpoints, and model metadata inside the OpenShift platform boundary. This supports data-sovereignty and confidentiality goals for sensitive engineering work, while model artifact provenance, licensing, access control, telemetry, and human approval remain necessary governance controls for EU AI Act readiness rather than automatic compliance.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift AI** provides model serving, `LLMInferenceService`, model registry integration, and the data science project experience.
@@ -69,13 +74,6 @@ Stage 020 contributes the GPUaaS foundation. Stage 030 consumes it by labeling t
 - [LeaderWorkerSet](https://lws.sigs.k8s.io/) supports coordinated leader-worker deployment patterns used by distributed AI workloads.
 - [Open Data Hub](https://opendatahub.io/) is the upstream foundation for many OpenShift AI capabilities.
 
-## Trust Boundaries
-
-Private local models keep prompts and code inside the OpenShift platform boundary. In this stage, the inference runtime, model containers, GPU scheduling, service endpoints, and model metadata are all operated inside the cluster.
-
-That does not mean every later AI path is private. Stage 050 introduces governed external models, where prompts are centrally controlled but still processed by an external provider. Stage 030 establishes the private option that sensitive coding and modernization workflows can use when policy requires local processing.
-
-The model artifacts themselves also remain part of the trust boundary. Operators must verify licensing, provenance, and approved use for the model images they deploy. This repository uses declared model image references for a disposable demo and does not commit provider credentials, kubeconfigs, or private model secrets.
 
 ## Where This Fits In The Full Platform
 

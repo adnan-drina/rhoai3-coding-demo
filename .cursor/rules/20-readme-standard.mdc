@@ -66,12 +66,12 @@ Use this section pattern unless there is a strong reason not to:
 
 ## How Red Hat And Open Source Make It Work
 
+## Trust Boundaries
+<!-- Include when data boundary, privacy, identity, or external services matter. -->
+
 ## Red Hat Products Used
 
 ## Open Source Projects To Know
-
-## Trust Boundaries
-<!-- Include when data boundary, privacy, identity, or external services matter. -->
 
 ## Where This Fits In The Full Platform
 
@@ -179,16 +179,19 @@ Explain what each project contributes. Do not just list links.
 
 Be precise about privacy and external providers.
 
+Trust boundary sections should be short: one focused paragraph, maximum. Put operational credential details, patch behavior, validation behavior, and workaround history in `docs/OPERATIONS.md`, `docs/TROUBLESHOOTING.md`, or `BACKLOG.md`.
+
 Approved language:
 - "Private local models keep prompts and code inside the OpenShift platform boundary."
 - "Governed external models are centrally controlled, but prompts are still processed by the external provider."
 - "MaaS provides consistent access, authentication, rate limiting, and visibility across private and external model paths."
 - "The platform supports governance and traceability needs for regulated organizations."
+- "The architecture supports data-sovereignty choices and EU AI Act readiness through controls such as access governance, traceability, documentation, human review, and clear provider boundaries."
 
 Avoid:
 - "All AI traffic is private" when external models are present.
 - "No code leaves the organization" unless the statement is explicitly limited to local/private model paths.
-- Claims of EU AI Act compliance. Say the architecture supports controls and choices relevant to regulated organizations.
+- Claims of EU AI Act compliance. Say the architecture supports controls, readiness, and choices relevant to regulated organizations.
 
 ## References Requirements
 
@@ -246,12 +249,15 @@ After modifying a stage README:
 - Verify `What This Stage Adds` is concise, capability-oriented, and not a low-level manifest inventory, deployment trace, or workaround ledger.
 - Verify `What This Stage Adds` avoids per-bullet manifest links, YAML field paths, probe timings, patch jobs, sync hooks, and generated resource names unless they are central teaching concepts.
 - Verify section order places `What To Notice And Why It Matters` after `What This Stage Adds` and before `How Red Hat And Open Source Make It Work`.
+- Verify `Trust Boundaries`, when present, appears before `Red Hat Products Used`.
 - Verify the merged section preserves the essential demo proof points and the enterprise WHY without becoming verbose.
 - Verify the merged section is written for enterprise architects and platform engineers in regulated environments, with privacy, sovereignty, and hybrid cloud considerations where relevant.
 - Verify the merged section favors general enterprise use cases over references to capabilities planned for later stages.
 - Verify relevant Red Hat reference links were read before rewriting product-positioning language.
 - Verify Red Hat product coverage is explicit.
 - Verify open source projects are explained where relevant.
-- Verify privacy statements distinguish private local models from governed external models.
+- Verify `Trust Boundaries` is one focused paragraph when present.
+- Verify privacy statements distinguish private local models from governed external models and MCP/tool context boundaries.
+- Verify EU AI Act language is framed as readiness/supporting controls, not legal compliance.
 - Verify `Deploy And Validate`, `References`, and `Next Stage` exist.
 - Run `git diff --check`.

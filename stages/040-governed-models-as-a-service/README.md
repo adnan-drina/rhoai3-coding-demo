@@ -54,6 +54,11 @@ This demo also includes deliberate implementation choices. The repository curren
 
 The Gen AI Playground uses a MaaS token request path that supplies a per-request `vllm_api_token` to Llama Stack. Llama Stack gives that request token precedence over provider-specific environment tokens. For that reason, this demo uses one consumer subscription, `demo-models-subscription`, for the models that can appear together in a Playground. Stage 040 starts the subscription with private models. Stage 050 expands the same subscription after approved external model records exist.
 
+
+## Trust Boundaries
+
+MaaS centralizes authentication, API keys, subscriptions, rate limits, token limits, and telemetry for private model access, but it does not change where a model processes data. Private local model calls stay inside the OpenShift platform boundary, while the same governance pattern can expose other model paths only when policy allows; these controls support traceability, usage accountability, and EU AI Act readiness but do not replace model approval, data classification, legal review, or production security assessment.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift AI** provides the model-serving and MaaS platform context.
@@ -74,15 +79,6 @@ The Gen AI Playground uses a MaaS token request path that supplies a per-request
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
 - [OpenShift OAuth proxy](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9) protects the disposable Grafana dashboard with OpenShift login.
 
-## Trust Boundaries
-
-MaaS provides consistent access, authentication, rate limiting, token limiting, and visibility across private and external model paths. It does not make an external model private.
-
-In this stage, MaaS publishes private local models from Stage 030. Prompts and code sent to those local models stay inside the OpenShift platform boundary. Stage 050 adds governed external model records with a separate provider boundary; those calls are centrally controlled, but prompts are still processed by the external provider.
-
-API keys, subscription metadata, user tiers, and telemetry are also part of the trust story. They let platform teams reason about who is using which model and how much they are consuming. They are not a substitute for model approval, data classification, legal review, or production security controls.
-
-Cluster-specific Gateway hostname and TLS details are patched by PostSync jobs. The Argo CD ignore rules are intentionally narrow so GitOps still reports meaningful drift while allowing those runtime values to come from the cluster.
 
 ## Where This Fits In The Full Platform
 

@@ -82,10 +82,14 @@ After validation, verify:
 - [ ] README's `What This Stage Adds` section is concise, capability-oriented, and not a manifest inventory, deployment trace, or workaround ledger
 - [ ] README's `What This Stage Adds` section avoids per-bullet manifest links, YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and low-level operational caveats
 - [ ] README follows the stage README section order, with `What To Notice And Why It Matters` after `What This Stage Adds`
+- [ ] README places `Trust Boundaries`, when present, before `Red Hat Products Used`
 - [ ] README's `What To Notice And Why It Matters` section is concise, architect-friendly, and grounded in relevant Red Hat references
 - [ ] README's `What To Notice And Why It Matters` section emphasizes enterprise significance, privacy, sovereignty, and trust boundaries where relevant
 - [ ] README avoids over-emphasizing later-stage plans when a general enterprise use case would be clearer
 - [ ] README uses external Red Hat blogs/docs as alignment and references, not as the opening narrative voice
+- [ ] README's `Trust Boundaries` section, when present, is one focused paragraph
+- [ ] README's trust-boundary language distinguishes private model, governed external model, and MCP/tool-context boundaries where relevant
+- [ ] README's EU AI Act language is framed as readiness/supporting controls, not compliance
 - [ ] `docs/OPERATIONS.md` reflects any new operational behavior
 - [ ] `docs/TROUBLESHOOTING.md` covers new failure modes if applicable
 

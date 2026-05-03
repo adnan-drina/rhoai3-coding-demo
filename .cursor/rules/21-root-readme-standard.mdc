@@ -96,8 +96,13 @@ The root README must include an explicit trust boundary table or equivalent expl
 Required distinction:
 - Private local models keep prompts/code within the OpenShift platform boundary.
 - Governed external models are centrally controlled through MaaS but still process prompts outside the platform.
+- MCP and tool-context integrations have their own data boundary separate from model access.
 
 Never imply that all model paths are private when external models are included.
+
+Keep the root trust-boundary section concise. A single focused paragraph is preferred for the landing README; detailed provider credentials, validation behavior, Technology Preview notes, and workaround status belong in `docs/OPERATIONS.md` or `BACKLOG.md`.
+
+EU AI Act wording must be readiness-oriented, not compliance-oriented. Say the platform supports controls relevant to regulated organizations, such as access governance, traceability, documentation, human review, and clear provider boundaries. Do not claim that the demo or architecture is EU AI Act compliant.
 
 ## Synchronization Rules
 
@@ -152,5 +157,6 @@ After modifying the root README:
 - Verify no literal "Tell:" or "Show:" labels remain.
 - Verify product map and open source map are present.
 - Verify trust boundary language is precise.
+- Verify EU AI Act language, if present, is framed as readiness/supporting controls rather than compliance.
 - Verify deploy commands and stage links match the repo.
 - Run `git diff --check`.

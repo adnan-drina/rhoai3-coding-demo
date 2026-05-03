@@ -55,6 +55,11 @@ The open source foundation includes Konveyor for modernization analysis, Kai for
 
 Red Hat Developer Lightspeed for MTA is documented as a Technology Preview feature in MTA 8.1. This stage is included because it is central to the demo narrative: modernization context from MTA is routed through a governed model endpoint instead of unmanaged developer credentials.
 
+
+## Trust Boundaries
+
+Modernization context can include source code, static-analysis findings, dependency information, and remediation suggestions, so the model path must match the data classification. The private MaaS path keeps this context inside OpenShift, while any approved external model path must be explicitly reviewed; centralized LLM proxy credentials, traceable model access, and human review support sovereignty and EU AI Act readiness but do not remove the need for legal, security, and application-owner approval.
+
 ## Red Hat Products Used
 
 - **Migration Toolkit for Applications 8.1** provides the modernization analysis, application inventory, migration rules, and developer workflow integration.
@@ -71,12 +76,6 @@ Red Hat Developer Lightspeed for MTA is documented as a Technology Preview featu
 - [Kai](https://github.com/konveyor/kai) is the upstream AI-assisted modernization effort behind Developer Lightspeed-style workflows.
 - [Coolstore](https://github.com/konveyor-ecosystem/coolstore) is the Java EE sample application used to demonstrate the migration path to Quarkus.
 
-## Trust Boundaries
-
-- For sensitive code, use the private MaaS model path so prompts and source context remain on the OpenShift platform.
-- If an organization approves external models for selected modernization tasks, MaaS can expose those models through the same controlled interface.
-- Developers do not manage provider credentials in the primary flow; the LLM proxy uses centrally managed credentials.
-- The `kai-api-keys` Secret is patched at runtime by the Stage 080 PostSync job. The GitOps manifests contain placeholders only; real provider keys, kubeconfigs, and private credentials must not be committed.
 
 ## Where This Fits In The Full Platform
 

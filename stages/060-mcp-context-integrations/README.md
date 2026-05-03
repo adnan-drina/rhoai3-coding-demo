@@ -52,6 +52,11 @@ MCP provides the open protocol pattern. In MCP terms, an AI application acts as 
 
 MCP and inference are related, but they are not the same thing. Inference is the model generating tokens. MCP is the way an AI application can reach tools and context that may inform that generation. Stage 030 and Stage 040 built the inference and model access path. Stage 060 adds a controlled context path beside it.
 
+
+## Trust Boundaries
+
+MCP context must be governed separately from model access because tools can expose cluster state, logs, chat data, web data, documents, or actions against other systems. The required OpenShift MCP path is read-only platform context, while Slack and BrightData introduce optional external boundaries; trusted server selection, scoped RBAC, credential control, and periodic review support sovereignty, traceability, and EU AI Act readiness but do not by themselves establish least privilege or legal compliance.
+
 ## Red Hat Products Used
 
 - **Red Hat OpenShift AI** provides the GenAI Playground integration point for configured MCP servers.
@@ -68,17 +73,6 @@ MCP and inference are related, but they are not the same thing. Inference is the
 - Slack MCP servers show how team communication platforms can become optional AI context sources when credentials and policy allow.
 - BrightData MCP servers show how external web context can be exposed through MCP when an organization explicitly approves that data path.
 
-## Trust Boundaries
-
-MCP context must be evaluated separately from model access.
-
-Private local models can keep prompts and code inside OpenShift. Governed external models can centralize access to an outside provider. MCP servers add a third kind of boundary: tool and context access. A server can expose cluster metadata, logs, chat messages, public web data, internal documents, or actions against another system depending on what it is allowed to do.
-
-The required OpenShift MCP server is configured read-only. That reduces risk, but it is not the same as least-privilege completion. The current demo grants the `openshift-mcp` ServiceAccount the cluster-wide `view` ClusterRole so the server can inspect broad OpenShift state during the workshop. That scope is intentionally tracked in [`BACKLOG.md`](../../BACKLOG.md) as future hardening; a production design should narrow MCP permissions to the minimum namespaces, resources, and verbs required by the intended use case.
-
-Slack and BrightData are optional because they introduce external service boundaries. Their deployments are included at zero replicas and their discovery entries are visible, but runtime use requires approved credentials and an explicit enablement decision. Missing optional credentials should produce warnings so operators can distinguish a platform failure from an intentionally disabled external integration.
-
-Users and platform teams should understand what they authorize when they enable an MCP connection. Trusted servers, credential control, permission review, and periodic access review are part of the operating model.
 
 ## Where This Fits In The Full Platform
 
