@@ -29,7 +29,7 @@ When updating `docs/OPERATIONS.md`:
 
 - Reference scripts instead of duplicating script logic.
 - Explain what the scripts do and when to run them.
-- Keep deployment order synchronized with `demo/flows/default.yaml` and actual `stages/` directories.
+- Keep deployment order synchronized with `flows/default.yaml` and actual `stages/` directories.
 - Keep Argo CD app names synchronized with `gitops/argocd/app-of-apps/`.
 - Document validation exit codes and interpretation.
 - Include commands that are safe, deterministic, and copy-pastable.
@@ -57,7 +57,7 @@ When updating `docs/TROUBLESHOOTING.md`:
 
 After modifying operational docs:
 
-- Verify stage list matches `demo/flows/default.yaml` and `find stages -maxdepth 1 -type d`.
+- Verify stage list matches `flows/default.yaml` and `find stages -maxdepth 1 -type d`.
 - Verify Argo CD app names match files in `gitops/argocd/app-of-apps/`.
 - Verify commands use existing namespaces and resource names.
 - Run `git diff --check`.

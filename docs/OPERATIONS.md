@@ -91,7 +91,7 @@ Deploy stages in order:
 ./stages/090-developer-portal-self-service/deploy.sh
 ```
 
-Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `demo/flows/default.yaml`.
+Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|

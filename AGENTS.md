@@ -38,7 +38,7 @@ Important paths:
 - `scripts/` — bootstrap, shared helper scripts, validation utilities.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
-- `demo/flows/default.yaml` — ordered source of truth for the demo flow.
+- `flows/default.yaml` — ordered source of truth for the demo flow.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.

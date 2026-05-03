@@ -19,7 +19,7 @@ TRACK_FILE="/tmp/cursor-edit-track-${SESSION_ID}.log"
 # Record this edit
 echo "$file_path" >> "$TRACK_FILE"
 
-if [[ "$file_path" == *demo/flows/*.yaml ]]; then
+if [[ "$file_path" == *flows/*.yaml ]]; then
     cat << EOF
 {"additional_context": "REMINDER: You edited demo flow metadata. Run scripts/validate-stage-flow.sh and check README.md, docs/OPERATIONS.md, and stage READMEs for ordering or dependency changes."}
 EOF

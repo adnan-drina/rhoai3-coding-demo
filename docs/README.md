@@ -9,7 +9,7 @@ This directory contains operational documentation for the Red Hat OpenShift AI c
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
 | [../BACKLOG.md](../BACKLOG.md) | Deviation register, workarounds, known limitations, validation notes, and planned cleanup | Use when assessing whether demo behavior matches supported Red Hat product guidance |
 
-The published learning path is the stage-based flow from [`demo/flows/default.yaml`](../demo/flows/default.yaml):
+The published learning path is the stage-based flow from [`flows/default.yaml`](../flows/default.yaml):
 
 1. [Project README](../README.md)
 2. [Stage 010: OpenShift AI Platform Foundation](../stages/010-openshift-ai-platform-foundation/README.md)

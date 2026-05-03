@@ -102,7 +102,7 @@ Never imply that all model paths are private when external models are included.
 ## Synchronization Rules
 
 Keep the root README synchronized with the repo:
-- Stage table must match actual `stages/` directories and `demo/flows/default.yaml`.
+- Stage table must match actual `stages/` directories and `flows/default.yaml`.
 - Deploy command list must match actual stage directories.
 - Repository map must match actual layout.
 - Product list must match major Red Hat products actually used.

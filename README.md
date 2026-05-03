@@ -59,7 +59,7 @@ The central design choice is that model consumers do not connect directly to sca
 
 ## What The Demo Proves
 
-The demo progresses through nine focused platform stages. The ordered source of truth is [`demo/flows/default.yaml`](demo/flows/default.yaml).
+The demo progresses through nine focused platform stages. The ordered source of truth is [`flows/default.yaml`](flows/default.yaml).
 
 | Stage | What we show | What to understand |
 |------|--------------|--------------------|
@@ -194,7 +194,7 @@ rhoai3-coding-demo/
 |   +-- argocd/app-of-apps/          # One Argo CD Application per stage
 |   +-- stages/                      # Canonical GitOps source for stage manifests
 +-- stages/                          # Canonical stage READMEs and deploy/validate scripts
-+-- demo/flows/default.yaml          # Ordered demo flow metadata
++-- flows/default.yaml               # Ordered stage flow metadata
 +-- docs/
 |   +-- README.md
 |   +-- OPERATIONS.md

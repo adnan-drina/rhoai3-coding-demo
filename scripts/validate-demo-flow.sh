@@ -13,7 +13,7 @@ check_oc_logged_in
 log_step "E2E Demo Flow Validation"
 
 mapfile -t stages < <(
-    python3 - "$REPO_ROOT/demo/flows/default.yaml" <<'PY'
+    python3 - "$REPO_ROOT/flows/default.yaml" <<'PY'
 from pathlib import Path
 import sys
 import yaml

@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-FLOW_FILE="${1:-$REPO_ROOT/demo/flows/default.yaml}"
+FLOW_FILE="${1:-$REPO_ROOT/flows/default.yaml}"
 TMP_PATHS="$(mktemp)"
 trap 'rm -f "$TMP_PATHS"' EXIT
 
