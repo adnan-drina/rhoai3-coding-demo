@@ -2,7 +2,7 @@
 name: cluster-inspector
 description: >
   Safely gather OpenShift cluster state for the RHOAI demo. Use when
-  troubleshooting deployment failures, validating step completion, or
+  troubleshooting deployment failures, validating stage completion, or
   gathering diagnostic information. Runs readonly with a fast model for
   efficient parallel inspection.
 model: fast
@@ -18,10 +18,10 @@ Summarize findings clearly so the parent agent can decide on actions.
 
 ## Standard inspection sequence
 
-When asked to inspect a step or component:
+When asked to inspect a stage or component:
 
 1. Check ArgoCD Application sync status:
-   oc get application <step-name> -n openshift-gitops -o jsonpath='{.status.sync.status}/{.status.health.status}'
+   oc get application <stage-app-name> -n openshift-gitops -o jsonpath='{.status.sync.status}/{.status.health.status}'
 
 2. Check pod status in the target namespace:
    oc get pods -n <namespace> -l app.kubernetes.io/part-of=<component>
@@ -45,8 +45,8 @@ When asked to inspect a step or component:
 | openshift-gitops | ArgoCD |
 | openshift-operators | Subscriptions (NFD, GPU, Service Mesh) |
 
-Additional namespaces will be created as steps are deployed. Check ArgoCD
-Applications for the target namespace of each step.
+Additional namespaces will be created as stages are deployed. Check Argo CD
+Applications for the target namespace of each stage.
 
 ## Output format
 
@@ -63,4 +63,4 @@ Recommendation: <what the parent agent should do>
 - Never run oc delete, oc patch, oc scale, or oc apply
 - Use --insecure-skip-tls-verify=true for oc commands on self-signed clusters
 - If not logged in to oc, report that immediately instead of failing on every command
-- If a step has a validate.sh script, suggest running it for comprehensive checks
+- If a stage has a validate.sh script, suggest running it for comprehensive checks

@@ -17,8 +17,8 @@ Behavior and documentation MUST stay aligned.
 
 When changing implemented behavior, update all affected surfaces in the same change:
 - GitOps manifests under `gitops/`
-- deployment scripts under `steps/*/deploy.sh`
-- validation scripts under `steps/*/validate.sh`
+- deployment scripts under `stages/*/deploy.sh`
+- validation scripts under `stages/*/validate.sh`
 - educational READMEs when the architecture, value story, demo flow, trust boundary, product version, or references change
 - `docs/OPERATIONS.md` when deployment, validation, or day-2 operation changes
 - `docs/TROUBLESHOOTING.md` when a known failure mode, diagnostic command, or recovery path changes
@@ -56,7 +56,7 @@ If there is ambiguity in docs or versions:
 - Changes you can describe in one commit message
 
 ### When to use a feature branch
-- Multi-step changes spanning multiple files or steps
+- Multi-stage changes spanning multiple files or stages
 - Parallel agent worktree work
 - Changes that need review before merging
 - Experimental changes you might revert

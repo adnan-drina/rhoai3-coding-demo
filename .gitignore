@@ -40,9 +40,3 @@ __pycache__/
 .venv/
 .venv-*/
 venv/
-
-# Generated outputs (directories preserved via .gitkeep)
-artifacts/*
-!artifacts/.gitkeep
-runs/*
-!runs/.gitkeep

@@ -18,11 +18,11 @@ body:
     validations:
       required: true
   - type: textarea
-    id: step
+    id: stage
     attributes:
-      label: Demo step
-      description: Which step is affected?
-      placeholder: "stage-010, stage-040, stage-070, compatibility step-03, etc."
+      label: Demo stage
+      description: Which stage is affected?
+      placeholder: "stage-010, stage-040, stage-070, etc."
     validations:
       required: false
   - type: textarea

@@ -12,7 +12,7 @@ Every implemented demo stage must be reproducible from the `gitops/` folder and 
 ## Mandatory: ArgoCD Application in every deploy.sh
 Every stage's `deploy.sh` MUST apply its ArgoCD Application as its **first cluster-modifying action** (after any prerequisite secrets that the stage's manifests depend on):
 ```bash
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STEP_NAME.yaml"
+oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STAGE_NAME.yaml"
 ```
 Every stage MUST have these components:
 1. `gitops/stages/NNN-name/base/` - Kustomize manifests (source of truth)
@@ -44,7 +44,6 @@ rhoai3-coding-demo/
 |       |-- deploy.sh
 |       |-- validate.sh
 |       `-- README.md
-|-- steps/                         # temporary compatibility wrappers
 |-- docs/
 |   |-- OPERATIONS.md
 |   `-- TROUBLESHOOTING.md
@@ -169,7 +168,7 @@ The `manifest-generate-paths` annotation prevents ArgoCD from re-reconciling thi
 | Setting | Value | Why |
 |---------|-------|-----|
 | `automated.prune` | `true` | Remove resources deleted from Git |
-| `automated.selfHeal` | `true` (default) | Revert imperative changes. **Exception:** steps managing GPU nodes or model scaling may use `false`. |
+| `automated.selfHeal` | `true` (default) | Revert imperative changes. **Exception:** stages managing GPU nodes or model scaling may use `false`. |
 | `retry.limit` | `10` | Operators need time to install CRDs |
 | `retry.backoff` | `5s / factor 2 / max 3m` | Exponential backoff |
 | `SkipDryRunOnMissingResource` | `true` | CRDs may not exist at first sync |

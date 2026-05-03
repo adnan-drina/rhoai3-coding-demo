@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "060"
-    demo.rhoai.io/step: "060"
   annotations:
     argocd.argoproj.io/sync-wave: "60"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/060-mcp-context-integrations

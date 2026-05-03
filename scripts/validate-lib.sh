@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared validation functions for RHOAI demo step validation scripts
+# Shared validation functions for RHOAI demo stage validation scripts
 #
 # Convention:
 #   Exit 0 = all checks passed (PASS)

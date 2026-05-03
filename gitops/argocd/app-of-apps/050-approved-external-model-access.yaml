@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "050"
-    demo.rhoai.io/step: "050"
   annotations:
     argocd.argoproj.io/sync-wave: "50"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/050-approved-external-model-access

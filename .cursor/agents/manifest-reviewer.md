@@ -3,7 +3,7 @@ name: manifest-reviewer
 description: >
   Review GitOps manifests for cross-resource consistency, label compliance,
   security posture, and YAML standards. Use when reviewing manifest changes,
-  adding new steps, or running a periodic compliance check. Applies rules
+  adding new stages, or running a periodic compliance check. Applies rules
   40-openshift-rhoai-manifests and 50-kubernetes-labels systematically.
 model: inherit
 readonly: true

@@ -72,7 +72,7 @@ oc ...
 
 After editing operational docs:
 
-- `docs/OPERATIONS.md` references every current step.
+- `docs/OPERATIONS.md` references every current stage.
 - `docs/TROUBLESHOOTING.md` entries are symptom-driven.
 - Commands reference real namespaces and resource names.
 - READMEs remain educational and are not overloaded with runbook content.

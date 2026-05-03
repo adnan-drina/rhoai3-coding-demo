@@ -179,8 +179,6 @@ Deploy stages in order:
 ./stages/090-developer-portal-self-service/deploy.sh
 ```
 
-The old `steps/step-*` scripts remain as temporary compatibility wrappers. New documentation and automation should use `stages/`.
-
 For deployment details, validation strategy, and recovery procedures, use:
 
 - [Documentation Index](docs/README.md)
@@ -196,7 +194,6 @@ rhoai3-coding-demo/
 |   +-- argocd/app-of-apps/          # One Argo CD Application per stage
 |   +-- stages/                      # Canonical GitOps source for stage manifests
 +-- stages/                          # Canonical stage READMEs and deploy/validate scripts
-+-- steps/                           # Temporary compatibility wrappers for old step commands
 +-- demo/flows/default.yaml          # Ordered demo flow metadata
 +-- docs/
 |   +-- README.md

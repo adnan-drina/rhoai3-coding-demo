@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="060-mcp-context-integrations"
+STAGE_NAME="060-mcp-context-integrations"
 
 load_env
 check_oc_logged_in
@@ -30,11 +30,11 @@ else
     log_info "BRIGHTDATA_API_TOKEN not set — BrightData MCP will warn during validation"
 fi
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
-log_success "ArgoCD Application '${STEP_NAME}' applied"
+oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
+log_success "ArgoCD Application '${STAGE_NAME}' applied"
 
 log_info "Monitor progress:"
-echo "  oc get application ${STEP_NAME} -n openshift-gitops -w"
+echo "  oc get application ${STAGE_NAME} -n openshift-gitops -w"
 echo "  oc get pods -n coding-assistant"
 echo "  oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml"
 echo ""

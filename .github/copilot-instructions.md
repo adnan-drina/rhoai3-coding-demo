@@ -24,7 +24,7 @@ For detailed agent guidance, see:
 
 ```bash
 bash -n scripts/*.sh
-bash -n stages/*/*.sh steps/*/*.sh
+bash -n stages/*/*.sh
 ./stages/NNN-*/validate.sh
 ```
 

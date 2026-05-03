@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "070"
-    demo.rhoai.io/step: "070"
   annotations:
     argocd.argoproj.io/sync-wave: "70"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/070-controlled-developer-workspaces
@@ -46,7 +45,7 @@ spec:
         - /metadata/annotations
         - /spec/startingCSV
     # DevWorkspace controllers mutate workspace specs at runtime. Keep this
-    # temporary compatibility ignore until workspace ownership is reworked.
+    # temporary drift ignore until workspace ownership is reworked.
     - group: workspace.devfile.io
       kind: DevWorkspace
       jqPathExpressions:

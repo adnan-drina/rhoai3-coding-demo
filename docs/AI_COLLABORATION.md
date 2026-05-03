@@ -152,7 +152,7 @@ Hooks provide automated enforcement beyond prose rules. They are defined in `.cu
 | Hook | Trigger | What it does | Failure behavior |
 |------|---------|--------------|-----------------|
 | `validate-yaml.sh` | After editing a `gitops/**/*.yaml` file | Runs `kustomize build` on the nearest base; warns if it fails | Adds a warning to agent context; does not block the edit |
-| `check-docs-consistency.sh` | After editing `gitops/stages/**`, `stages/**`, or compatibility `gitops/step-*/**` / `steps/step-*/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
+| `check-docs-consistency.sh` | After editing `gitops/stages/**` or `stages/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
 | `guard-oc-commands.py` | Before running `oc delete`, `oc scale`, or `oc patch` | If the command targets a protected namespace (`redhat-ods-applications`, `redhat-ods-operator`, `openshift-gitops`, `openshift-operators`), asks user for confirmation | Prompts "ask" permission; agent must confirm with user |
 | `session-init.sh` | On session start | Checks `oc whoami` and injects cluster login status into agent context | Warns "Not logged in" if oc is unavailable or not authenticated |
 

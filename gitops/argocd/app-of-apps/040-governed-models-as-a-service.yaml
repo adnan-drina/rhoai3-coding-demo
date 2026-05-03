@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "040"
-    demo.rhoai.io/step: "040"
   annotations:
     argocd.argoproj.io/sync-wave: "40"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/040-governed-models-as-a-service

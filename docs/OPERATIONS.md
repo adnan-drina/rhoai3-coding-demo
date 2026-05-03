@@ -93,8 +93,6 @@ Deploy stages in order:
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `demo/flows/default.yaml`.
 
-Compatibility note: the old `steps/step-*` scripts remain as wrappers, but the old `step-*` Argo CD Applications should not be run alongside the new stage Applications on the same cluster. For an existing cluster that already has the old six applications, use a clean redeploy or remove the old Applications before adopting the staged flow so Argo CD ownership does not overlap.
-
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
@@ -194,7 +192,7 @@ Cluster:
 Preflight:
 
 - `./scripts/validate-stage-flow.sh` passed.
-- `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh` passed.
+- `bash -n scripts/*.sh stages/*/*.sh` passed.
 - `git diff --check` passed.
 - Cluster operators were Available and not Progressing or Degraded before bootstrap.
 - Default StorageClass was `gp3-csi`.
@@ -230,7 +228,7 @@ Final sweep:
 - A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
 - Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` was not set during the initial full sweep, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set. Later Stage 050 smoke validation passed after an approved provider key was provisioned.
 - A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
-- Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh steps/step-*/*.sh`, and `./scripts/validate-stage-flow.sh`.
+- Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh`, and `./scripts/validate-stage-flow.sh`.
 - Merge-readiness security check found no committed `.env` file and no real kubeadmin password, provider key, kubeconfig, bearer token, or private key in the branch diff. Only placeholder and masked key examples such as `sk-oai-*` were present.
 - After merging PR #1, all canonical stage Argo CD Applications were repointed from `codex/stage-refactor-demo-validation` to `main` and reported `Synced` and `Healthy` at commit `ec2b4c1`. Stage 090 was reconfigured so `RHDH_CATALOG_URL` resolves to the `main` catalog URL, then Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures. Later docs-only commits may advance Argo CD's displayed revision without changing managed stage resources.
 
@@ -244,10 +242,10 @@ GitOps hygiene pass:
 
 - Broad `ignoreDifferences` entries were reduced where they hid demo-owned desired state. Operator-generated and cluster-specific fields remain ignored only where they are not useful GitOps ownership points.
 - Stage 020 now records GPU Operator and Node Feature Discovery defaults in Git so Argo CD can manage those specs without broad masking.
-- Hook delete policies now include `HookSucceeded` for stage and compatibility manifests, which reduced stale hook resources and pruning noise.
+- Hook delete policies now include `HookSucceeded` for stage manifests, which reduced stale hook resources and pruning noise.
 - A regression was found while tightening Stage 040: the MaaS Gateway hostname and TLS certificate reference are intentionally patched from the cluster ingress domain and certificate. Removing the old broad Gateway spec ignore let Argo CD restore `maas.placeholder.example.com`, which caused the Stage 080 MTA MaaS hook to patch placeholder values into `Tackle` and `kai-api-keys`.
-- Fix applied: Stage 040 and compatibility Step 03 now ignore only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
-- Fix applied: Stage 080 and compatibility Step 05 now fail fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
+- Fix applied: Stage 040 now ignores only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
+- Fix applied: Stage 080 now fails fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
 - Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 080 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for the demo subscription, and Stages 040, 080, and 090 validated successfully.
 
 Red Hat alignment review:

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="050-approved-external-model-access"
+STAGE_NAME="050-approved-external-model-access"
 
 load_env
 check_oc_logged_in
@@ -24,10 +24,10 @@ else
     log_info "OPENAI_API_KEY not set — external models register with placeholder credentials; inference will fail"
 fi
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
-log_success "ArgoCD Application '${STEP_NAME}' applied"
+oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
+log_success "ArgoCD Application '${STAGE_NAME}' applied"
 
 log_info "Monitor progress:"
-echo "  oc get application ${STEP_NAME} -n openshift-gitops -w"
+echo "  oc get application ${STAGE_NAME} -n openshift-gitops -w"
 echo "  oc get externalmodel,maasmodelref -n maas"
 echo ""

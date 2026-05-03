@@ -12,7 +12,7 @@ description: >
   manage cluster resources, reduce cloud spend overnight, or shut down GPU
   capacity. For resuming Stage 020/030 after GPU nodes were scaled to zero,
   use the resume-gpu-demo skill instead.
-  Do NOT use for deploying or re-deploying steps (use deploy.sh scripts),
+  Do NOT use for deploying or re-deploying stages (use deploy.sh scripts),
   troubleshooting failures (use rhoai-troubleshoot), or manifest review
   (use manifest-reviewer agent).
 ---
@@ -35,7 +35,7 @@ state for the demo.
 ## Prerequisites
 
 - Logged in with `oc` (cluster-admin)
-- ArgoCD Applications for scaling-managed steps have `selfHeal: false`
+- ArgoCD Applications for scaling-managed stages have `selfHeal: false`
 
 ## Resource Inventory
 
@@ -90,7 +90,7 @@ To bring everything back to the Git-declared state, sync via ArgoCD:
 
 ```bash
 # Sync a specific app
-oc patch application <STEP_NAME> -n openshift-gitops \
+oc patch application <STAGE_APP_NAME> -n openshift-gitops \
   --type merge -p '{"operation":{"sync":{}}}'
 ```
 
@@ -116,7 +116,7 @@ oc get nodes -l node-role.kubernetes.io/gpu
 
 | Action | ArgoCD Status | Auto-heal? |
 |--------|---------------|------------|
-| Manual scale down model | OutOfSync | No (selfHeal=false on that step) |
-| Manual scale down MachineSet | OutOfSync | No (selfHeal=false on that step) |
-| Push Git change to the step | Auto-syncs | Yes (automated=true) |
+| Manual scale down model | OutOfSync | No (selfHeal=false on that stage) |
+| Manual scale down MachineSet | OutOfSync | No (selfHeal=false on that stage) |
+| Push Git change to the stage | Auto-syncs | Yes (automated=true) |
 | Click Sync in ArgoCD UI | Synced | Restores Git state |

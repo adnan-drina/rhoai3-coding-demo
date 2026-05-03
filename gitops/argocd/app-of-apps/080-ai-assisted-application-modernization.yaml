@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "080"
-    demo.rhoai.io/step: "080"
   annotations:
     argocd.argoproj.io/sync-wave: "80"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/080-ai-assisted-application-modernization

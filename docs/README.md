@@ -22,8 +22,6 @@ The published learning path is the stage-based flow from [`demo/flows/default.ya
 9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
 10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
-The old `steps/step-*` paths are transitional compatibility wrappers for existing users.
-
 Shared Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and agent definitions (`.cursor/agents/`) are tracked in git and define project-wide AI agent behavior. Local/private rules and skills that contain credentials, local paths, or personal preferences must not be committed. See [AI_COLLABORATION.md](AI_COLLABORATION.md) for the governance model.
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.

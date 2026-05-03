@@ -42,10 +42,9 @@ Important paths:
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.
-- `steps/` — temporary compatibility wrappers for the old six-step commands.
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 
-## Demo steps
+## Demo stages
 
 The workshop is organized into nine stages:
 
@@ -87,7 +86,7 @@ For non-trivial tasks, follow this workflow:
 General rules:
 
 - Prefer clear, boring, maintainable changes.
-- Preserve the stage-based workshop structure and compatibility aliases.
+- Preserve the stage-based workshop structure.
 - Preserve GitOps idempotency.
 - Prefer Kustomize overlays and existing patterns over one-off scripts.
 - Do not introduce new tools unless the reason is documented.
@@ -156,7 +155,7 @@ Examples:
 
 ```bash
 bash -n scripts/*.sh
-bash -n stages/*/*.sh steps/*/*.sh
+bash -n stages/*/*.sh
 ./scripts/validate-stage-flow.sh
 
 ./stages/010-openshift-ai-platform-foundation/validate.sh

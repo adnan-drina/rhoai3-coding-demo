@@ -1,7 +1,0 @@
-# Required for llm-d distributed inference
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: openshift-lws-operator
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"

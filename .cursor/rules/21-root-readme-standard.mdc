@@ -13,7 +13,7 @@ The document must explain the enterprise platform pattern:
 - How private local models and governed external models can coexist.
 - How Red Hat products package, integrate, and operate the platform capabilities.
 - How open source projects provide the innovation foundation.
-- How each workshop step contributes to the complete story.
+- How each workshop stage contributes to the complete story.
 
 ## Required Structure
 
@@ -134,5 +134,5 @@ After modifying the root README:
 - Verify no literal "Tell:" or "Show:" labels remain.
 - Verify product map and open source map are present.
 - Verify trust boundary language is precise.
-- Verify deploy commands and step links match the repo.
+- Verify deploy commands and stage links match the repo.
 - Run `git diff --check`.

@@ -1,6 +1,6 @@
 ---
 description: Use whenever creating or updating a stage README (stages/NNN-*/README.md). This rule keeps stage docs educational, blog-like, Red Hat-product-oriented, and useful even when readers never run the demo.
-globs: stages/**/README.md,stages/**/README.mdx,steps/**/README.md
+globs: stages/**/README.md,stages/**/README.mdx
 alwaysApply: false
 ---
 
@@ -139,7 +139,7 @@ Avoid:
 ## References Requirements
 
 Each README must include:
-- Official Red Hat documentation or product pages relevant to the step.
+- Official Red Hat documentation or product pages relevant to the stage.
 - Important upstream/open source project documentation.
 - Any implementation-specific references used to justify design choices.
 

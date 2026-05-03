@@ -5,7 +5,7 @@ description: >
   RHOCP 4.20 documentation.
   documentation. Use when creating or modifying CRs, operator configurations,
   InferenceServices, ServingRuntimes, or any RHOAI-managed resource. Also use
-  for periodic alignment audits across steps.
+  for periodic alignment audits across stages.
 model: inherit
 readonly: true
 ---

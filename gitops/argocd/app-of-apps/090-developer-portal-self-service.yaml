@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "090"
-    demo.rhoai.io/step: "090"
   annotations:
     argocd.argoproj.io/sync-wave: "90"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/090-developer-portal-self-service

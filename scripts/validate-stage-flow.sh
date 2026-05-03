@@ -64,7 +64,6 @@ required = {
     "gitopsApplication",
     "gitopsPath",
     "dependsOn",
-    "compatibilityAlias",
 }
 
 seen_ids = set()
@@ -99,7 +98,6 @@ for index, stage in enumerate(stages):
     readme_path = stage_dir / "README.md"
     gitops_path = repo / stage["gitopsPath"]
     app_path = repo / "gitops" / "argocd" / "app-of-apps" / f"{stage['gitopsApplication']}.yaml"
-    compat_path = repo / stage["compatibilityAlias"]
 
     if not stage_dir.name.startswith(f"{stage_id}-"):
         fail(f"stage {stage_id} deployScript directory should start with {stage_id}-")
@@ -112,7 +110,6 @@ for index, stage in enumerate(stages):
         ("README", readme_path),
         ("gitopsPath", gitops_path),
         ("Argo CD app", app_path),
-        ("compatibilityAlias", compat_path),
     ):
         if not path.exists():
             fail(f"stage {stage_id} {label} does not exist: {path.relative_to(repo)}")
@@ -120,13 +117,6 @@ for index, stage in enumerate(stages):
     for label, path in (("deployScript", deploy_path), ("validateScript", validate_path)):
         if path.exists() and not path.stat().st_mode & 0o111:
             fail(f"stage {stage_id} {label} is not executable: {path.relative_to(repo)}")
-
-    for wrapper_name in ("deploy.sh", "validate.sh"):
-        wrapper_path = compat_path / wrapper_name
-        if compat_path.exists() and not wrapper_path.exists():
-            fail(f"stage {stage_id} compatibility wrapper missing: {wrapper_path.relative_to(repo)}")
-        elif wrapper_path.exists() and not wrapper_path.stat().st_mode & 0o111:
-            fail(f"stage {stage_id} compatibility wrapper is not executable: {wrapper_path.relative_to(repo)}")
 
     if gitops_path.exists():
         if not (gitops_path / "kustomization.yaml").exists():

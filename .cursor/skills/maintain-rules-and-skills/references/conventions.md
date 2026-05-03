@@ -61,7 +61,7 @@ Each piece of guidance should have ONE canonical location:
 
 Use `@filename` in rules to include file contents in context:
 ```markdown
-Follow the patterns in @steps/010-openshift-ai-platform-foundation/deploy.sh
+Follow the patterns in @stages/010-openshift-ai-platform-foundation/deploy.sh
 ```
 This prevents rules from becoming stale when the referenced code changes.
 
@@ -131,7 +131,7 @@ Keep SKILL.md under 500 lines. References should have a Table of Contents if ove
 | Hook | Trigger | Purpose |
 |------|---------|---------|
 | `afterFileEdit` | `gitops/**/*.yaml` | Auto-run `kustomize build` on the containing base dir |
-| `afterFileEdit` | step files | Warn if code/docs not both edited |
+| `afterFileEdit` | stage files | Warn if code/docs not both edited |
 | `beforeShellExecution` | `oc delete\|oc scale` | Warn before destructive cluster operations |
 | `sessionStart` | Always | Inject project context (cluster URL from oc whoami) |
 

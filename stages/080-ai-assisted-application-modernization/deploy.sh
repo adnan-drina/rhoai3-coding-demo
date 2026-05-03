@@ -8,15 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-STEP_NAME="080-ai-assisted-application-modernization"
+STAGE_NAME="080-ai-assisted-application-modernization"
 
 load_env
 check_oc_logged_in
 
 log_step "Stage 080: AI-Assisted Application Modernization (MTA 8.1)"
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STEP_NAME}.yaml"
-log_success "ArgoCD Application '${STEP_NAME}' applied"
+oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
+log_success "ArgoCD Application '${STAGE_NAME}' applied"
 
 log_info "ArgoCD handles orchestration via sync waves:"
 log_info "  Wave 0-2:    MTA Operator (namespace, operatorgroup, subscription)"
@@ -25,7 +25,7 @@ log_info "  Wave 10:     Tackle CR (MTA instance with AI config)"
 log_info "  Wave 20:     Post-deploy Job (patches cluster-specific MaaS URL)"
 echo ""
 log_info "Monitor progress:"
-echo "  oc get application ${STEP_NAME} -n openshift-gitops -w"
+echo "  oc get application ${STAGE_NAME} -n openshift-gitops -w"
 echo "  oc get pods -n openshift-mta"
 echo "  oc get tackle mta -n openshift-mta"
 echo ""

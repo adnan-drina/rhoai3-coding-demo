@@ -6,7 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "030"
-    demo.rhoai.io/step: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "30"
     argocd.argoproj.io/manifest-generate-paths: gitops/stages/030-private-model-serving

@@ -101,7 +101,7 @@ For script-only changes:
 
 ```bash
 bash -n scripts/*.sh
-bash -n stages/*/*.sh steps/*/*.sh
+bash -n stages/*/*.sh
 ./scripts/validate-stage-flow.sh
 ```
 

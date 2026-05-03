@@ -36,9 +36,9 @@ applications, or any Kubernetes/OpenShift YAML in the repository.
 ### 1. Argo CD application structure
 
 - Application uses `project: rhoai-demo`
-- Required labels present: `app.kubernetes.io/part-of`, `demo.rhoai.io/step`
+- Required labels present: `app.kubernetes.io/part-of`, `demo.rhoai.io/stage`
 - `manifest-generate-paths` annotation matches the source directory
-- Sync waves are ordered correctly relative to other steps
+- Sync waves are ordered correctly relative to other stages
 - No destructive `resources-finalizer.argocd.argoproj.io` finalizer
 
 ### 2. Kustomize structure
