@@ -119,6 +119,22 @@ The root README includes an SVG architecture diagram under a `## Architecture` h
 - Stage diagrams must reuse the same layers and capability list, changing only color highlighting to show which capabilities are introduced by that stage.
 - Regenerate root and stage architecture diagrams with `node scripts/generate-architecture-diagrams.mjs` instead of hand-editing individual SVG files.
 
+Current diagram design:
+- Use the Layout B layered table pattern: a left product rail, a logical layer label column, and capability boxes to the right.
+- The product rail uses Red Hat palette colors: purple for **Red Hat Advanced Developer Suite**, teal for **Red Hat OpenShift AI**, and Red Hat red for **Red Hat OpenShift**.
+- The table uses the dark neutral theme from the existing workshop diagrams: transparent outer SVG canvas, dark gray panels, gray borders, white text, and product-colored stage-highlight borders.
+- The logical layers are:
+  - Developer productivity and modernization
+  - Model and context choices
+  - AI experiences and governed access
+  - GPU acceleration and workload management
+  - Container platform services
+  - Infrastructure and trust boundaries
+- The developer layer is split visually into two rows:
+  - Product surfaces: Red Hat OpenShift Dev Spaces, Migration Toolkit for Applications, Red Hat Developer Hub and software catalog
+  - AI-assisted capabilities: Continue and OpenCode coding assistants, Developer Lightspeed for MTA, Developer Lightspeed for RHDH
+- Keep capability labels concise enough to fit inside boxes. Prefer short Red Hat-aligned terms such as "GPU telemetry and autoscaling readiness" over long implementation strings.
+
 ## Style Rules
 
 - Blog-like prose first, operations second.

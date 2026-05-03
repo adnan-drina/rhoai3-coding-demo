@@ -102,7 +102,9 @@ stages:
   - id: "090"
     name: Developer Portal and Self-Service
     productFocus:
+      - Red Hat Advanced Developer Suite
       - Red Hat Developer Hub
+      - Developer Lightspeed for Red Hat Developer Hub
     deployScript: stages/090-developer-portal-self-service/deploy.sh
     validateScript: stages/090-developer-portal-self-service/validate.sh
     gitopsApplication: 090-developer-portal-self-service

@@ -4,7 +4,7 @@
 
 A platform capability only changes day-to-day engineering behavior when teams can find it, understand ownership, and follow a supported path to consume it. Without a portal, the AI platform remains scattered across dashboards, routes, namespaces, GitOps applications, and README files.
 
-This stage establishes Red Hat Developer Hub as the front door for the demo platform. It starts with application discovery and identity integration, then sets up the place where future golden paths, model entities, TechDocs, and modernization workflows can be published.
+This stage establishes Red Hat Developer Hub as the front door for the demo platform. It starts with application discovery, identity integration, and the Developer Lightspeed for RHDH assistant path, then sets up the place where golden paths, model entities, TechDocs, and modernization workflows can be published.
 
 ## Architecture
 
@@ -15,6 +15,7 @@ This stage establishes Red Hat Developer Hub as the front door for the demo plat
 - Red Hat Developer Hub 1.9, deployed from [`gitops/stages/090-developer-portal-self-service/base/`](../../gitops/stages/090-developer-portal-self-service/base/) through the RHDH Operator and `Backstage` custom resource.
 - Application configuration, runtime secrets, and dynamic plugin configuration managed as OpenShift resources.
 - OIDC authentication configured through the MTA Keycloak / Red Hat build of Keycloak realm, which brokers back to OpenShift OAuth for the demo users.
+- Developer Lightspeed for RHDH in the developer portal layer, positioning the portal as both a catalog and AI-assisted self-service surface.
 - An OpenShift ConsoleLink so the portal is reachable from the same launcher used for the other platform surfaces.
 - Initial Backstage catalog content for the demo users, team ownership model, and the `coolstore` component used in the modernization workflow.
 
@@ -52,6 +53,8 @@ The Red Hat Developer Hub deployment follows the operator-managed Backstage cust
 ## Red Hat Products Used
 
 - **Red Hat Developer Hub 1.9** provides the enterprise developer portal and software catalog.
+- **Red Hat Advanced Developer Suite** frames Developer Hub, Dev Spaces, MTA, and Developer Lightspeed as a developer productivity layer.
+- **Developer Lightspeed for Red Hat Developer Hub** provides the assistant capability in the portal layer.
 - **Red Hat OpenShift** provides the runtime platform, route, console launcher integration, and OAuth identity foundation.
 - **Red Hat build of Keycloak** is reused as the OIDC identity broker through the MTA realm.
 - **Red Hat OpenShift AI**, **Red Hat OpenShift Dev Spaces**, and **MTA** are the platform capabilities that Red Hat Developer Hub is intended to make discoverable.
@@ -115,6 +118,8 @@ Manifests: [`gitops/stages/090-developer-portal-self-service/base/`](../../gitop
 ## References
 
 - [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
+- [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite)
+- [Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/developer-lightspeed)
 - [Installing RHDH on OpenShift](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html/installing_red_hat_developer_hub_on_openshift_container_platform/index)
 - [Configuring RHDH](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/configuring_red_hat_developer_hub/index)
 - [RHDH authentication](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9/html-single/authentication_in_red_hat_developer_hub/authentication_in_red_hat_developer_hub)

@@ -25,12 +25,13 @@ The goal is not to claim that every AI use case automatically satisfies a regula
 The workshop builds a complete AI-enabled development platform on Red Hat OpenShift:
 
 ```text
-Developer experience
-  Red Hat Developer Hub
+Developer productivity and modernization
+  Red Hat Advanced Developer Suite
   Red Hat OpenShift Dev Spaces
+  Migration Toolkit for Applications
+  Red Hat Developer Hub and software catalog
   Continue and OpenCode
-  Red Hat Developer Lightspeed for MTA
-  Red Hat OpenShift AI GenAI Studio and Playground
+  Developer Lightspeed for MTA and RHDH
 
 Governed model access
   Models-as-a-Service gateway
@@ -71,13 +72,13 @@ The demo progresses through nine focused platform stages. The ordered source of 
 | [060 - MCP Context Integrations](stages/060-mcp-context-integrations/README.md) | OpenShift, Slack, and BrightData MCP integrations | Tool context has its own data boundary and approval model |
 | [070 - Controlled Developer Workspaces](stages/070-controlled-developer-workspaces/README.md) | Red Hat OpenShift Dev Spaces, Continue, and OpenCode | Developers get familiar AI tools without bypassing platform governance |
 | [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Red Hat Developer Lightspeed for MTA | AI becomes more valuable when grounded in analysis and workflow context |
-| [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Red Hat Developer Hub discovery of applications and platform capabilities | A developer portal turns AI platform services into self-service paths |
+| [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Red Hat Developer Hub discovery, software catalog, and Developer Lightspeed for RHDH | A developer portal turns AI platform services into self-service paths |
 
 If someone only reads the workshop, they should still learn the architecture: private model serving, governed external model access, platform identity, developer tooling, modernization workflows, and portal-driven consumption.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift is the consistent application platform underneath the demo. It supplies the identity, RBAC, networking, routing, scheduling, storage integration, monitoring, and GitOps reconciliation patterns that enterprise teams already use for application delivery. Red Hat OpenShift AI adds the AI-specific control plane for model discovery, model serving, model registry, GenAI Studio, and Models-as-a-Service access.
+Red Hat OpenShift is the consistent application platform underneath the demo. It supplies the identity, RBAC, networking, routing, scheduling, storage integration, monitoring, and GitOps reconciliation patterns that enterprise teams already use for application delivery. Red Hat OpenShift AI adds the AI-specific control plane for model discovery, model serving, model registry, GenAI Studio, and Models-as-a-Service access. Red Hat Advanced Developer Suite frames the developer productivity layer that brings workspaces, modernization, portal discovery, and Developer Lightspeed experiences together for platform users.
 
 Open source projects provide the building blocks. Open Data Hub and models-as-a-service supply upstream AI platform and MaaS patterns. KServe and vLLM provide Kubernetes-native serving and OpenAI-compatible local inference. Gateway API, Kuadrant, and Authorino create the API policy path. Eclipse Che, DevWorkspace, Continue, OpenCode, Konveyor, Kai, and Backstage bring the same governed model access into developer workspaces, modernization workflows, and the portal.
 
@@ -89,6 +90,7 @@ This is a Red Hat platform demo. The open source projects are important, but the
 
 | Red Hat product | Role in the workshop |
 |-----------------|----------------------|
+| [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite) | Developer productivity and platform engineering layer represented by Dev Spaces, MTA, Developer Hub, and Developer Lightspeed capabilities |
 | [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | The Kubernetes application platform providing identity, RBAC, networking, scheduling, storage integration, routes, monitoring, and operational consistency |
 | [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai) | The AI platform layer for model serving, GenAI Studio, model registry, dashboard experience, and AI workload lifecycle management |
 | [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | GitOps delivery and reconciliation of the workshop platform through Argo CD |
@@ -221,6 +223,8 @@ rhoai3-coding-demo/
 - [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
 - [Migration Toolkit for Applications 8.1 documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/)
 - [Red Hat Developer Lightspeed for MTA 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
+- [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite)
 - [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
+- [Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/developer-lightspeed)
 - [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)

@@ -33,6 +33,7 @@ consistent with the implementation.
 |----------|-----------|
 | `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
 | `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", trust boundary language |
+| `docs/assets/architecture/*.svg` and `scripts/generate-architecture-diagrams.mjs` | Root/stage diagram synchronization, canonical capability labels, product-layer colors |
 | `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
 | `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
 | `BACKLOG.md` | Workaround status, new limitations, resolved items |
@@ -85,6 +86,15 @@ When checking a stage README:
 - The stage should connect the previous stage, the capability being introduced, and the later stages that depend on it.
 - The section order should follow rule `20-readme-standard.mdc`, including `Why This Is Worth Knowing` immediately after `How Red Hat And Open Source Make It Work`.
 - The README should explain why the capability matters before listing YAML, resources, or commands.
+
+### 8. Architecture diagram consistency
+
+When checking architecture diagrams:
+- Treat `scripts/generate-architecture-diagrams.mjs` as the source of truth for root and stage SVGs.
+- Verify root and stage SVGs share the same product rail, logical layers, and capability labels.
+- Verify stage SVGs only change highlighting for capabilities introduced in that stage.
+- Preserve the agreed dark transparent Layout B visual design: purple Advanced Developer Suite, teal OpenShift AI, red OpenShift, dark neutral table, gray borders, and white text.
+- Keep capability labels logical and product-aligned rather than manifest-internal.
 
 ## Workflow
 
