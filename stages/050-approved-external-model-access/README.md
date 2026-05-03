@@ -16,34 +16,29 @@ The boundary remains clear. MaaS centralizes access to the external provider, bu
 
 ## What This Stage Adds
 
-Stage 050 adds approved external model choices to the governed MaaS model portfolio.
+This stage adds approved external model choices to the governed MaaS portfolio.
 
 - OpenAI-backed `ExternalModel` resources for `gpt-4o` and `gpt-4o-mini`.
-- Matching `MaaSModelRef` resources so the external models appear as MaaS-published model choices.
-- A platform-owned `openai-api-key` Secret in the `maas` namespace, provisioned from `OPENAI_API_KEY` in `.env` when an approved key is available.
-- An `external-models-access` `MaaSAuthPolicy` that grants access through the MaaS control layer rather than direct provider credentials.
-- Expansion of the shared `demo-models-subscription` so the same governed consumer token can access the private and approved external models that appear together in the Gen AI Playground.
-- Generated gateway policies, authentication policies, and token-rate-limit policies from the MaaS controller path.
-- Validation that external model registration, model references, authorization, subscriptions, and token-limit policies are active.
-- An opt-in GuideLLM smoke test against `gpt-4o-mini` through MaaS for environments where external provider token spend is approved.
-- A runtime MaaS API key creation path for the shared demo subscription so the smoke test validates the same subscription boundary that a governed consumer would use.
+- MaaS model references so external models appear as approved MaaS-published choices.
+- Platform-owned provider credential handling, with real API keys provisioned only from the operator's local environment.
+- MaaS authorization, subscription, gateway, and token-limit policy for external model access.
+- Validation that distinguishes external model registration from opt-in external inference.
+- An optional GuideLLM smoke test for environments where provider token spend is approved.
 
 The stage intentionally keeps external model inference optional. A missing `OPENAI_API_KEY` is a warning, not a stage failure, because the architecture can still register and govern the approved external model records without spending provider tokens.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-Show Stage 050 as the continuation of the MaaS story, not as a separate external provider shortcut.
+Stage 050 extends the MaaS operating model to approved external models without hiding the provider boundary. OpenAI-backed `ExternalModel` and `MaaSModelRef` resources are declared as GitOps-managed platform assets, provider credentials stay centralized in the platform namespace, and consumers still use MaaS-issued API keys, subscriptions, token limits, and gateway policy.
 
-1. The external models are declared in GitOps as platform assets, not added manually to a developer workspace.
-2. The provider credential is centralized in the platform namespace and injected by the gateway path; it is not copied into tools.
-3. Consumers still receive MaaS-issued API keys and access through subscriptions.
-4. Token limits and gateway policy apply to external models just as they do to private models.
-5. Validation distinguishes registration from inference. Registration proves that MaaS knows about the external model choices. The opt-in smoke test proves that an approved key can complete an external call.
-6. Observability changes at the provider boundary. MaaS can see gateway traffic, subscription use, rate limits, token limits, and request outcomes, but it cannot expose the provider's internal runtime signals.
+The essential proof point is controlled model choice:
 
-This is the practical hybrid model portfolio pattern. Sensitive work can stay on the private vLLM and llm-d-backed models from Stage 030. Approved work can use external models through the same MaaS access model. Developer tools later in the workshop do not need to learn a different credential story for each choice.
+- External models are registered as approved MaaS model choices rather than configured directly in developer tools.
+- The committed Secret remains a placeholder; `deploy.sh` provisions the live `openai-api-key` only when an approved provider key exists.
+- Validation separates model registration from external inference, so governance can be checked without spending provider tokens by default.
+- MaaS keeps the consumer access pattern consistent even when the runtime trust boundary changes.
 
-The Gen AI Playground makes this concrete. A single Playground can contain both private and external MaaS models. The dashboard obtains a MaaS token and passes it to Llama Stack for each request, so the token must cover every model the user can select in that Playground. Stage 050 therefore expands the Stage 040 `demo-models-subscription` instead of creating a second overlapping subscription. That avoids ambiguous subscription selection and duplicate token-rate-limit policies while keeping private and external trust boundaries visible in the model catalog and documentation.
+This matters because regulated enterprises often need a hybrid model portfolio. Sensitive or sovereignty-bound workloads can use private models, while approved lower-risk use cases may use external frontier models. MaaS centralizes access, credential control, and telemetry, but prompts sent to external models are still processed by the provider and must be allowed by data classification, procurement, and legal policy.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -56,16 +51,6 @@ Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino continue to prov
 The upstream Open Data Hub models-as-a-service project supplies the `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` behavior used here. That is a deliberate demo posture. It lets this workshop show approved external model registration now, aligned with the Red Hat OpenShift AI 3.4 MaaS direction, while the Red Hat-supported implementation matures. The deviation is tracked in [`BACKLOG.md`](../../BACKLOG.md) and operationally described in [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 
 The Red Hat Developer multi-LLM MaaS article describes a more advanced pattern: one OpenAI-compatible endpoint that routes by the request body's `model` field. This demo currently uses model-specific MaaS paths because the highest-value gap for this workshop is governed access, credential control, and trust-boundary clarity. The single-endpoint body-routing pattern remains future work until it becomes necessary for the storyline and fits the target Red Hat support posture.
-
-## Why This Is Worth Knowing
-
-Enterprise AI platforms need choice without losing control.
-
-Private models are essential when data classification, source-code sensitivity, or sovereignty requirements demand local processing. External models can still be useful when policy permits them, especially for comparison, broad capability coverage, or workloads where a frontier provider is the approved choice. A mature platform should make both paths explicit, governed, and easy to consume.
-
-The reusable lesson is that MaaS is not only a private model publishing layer. It is a model access operating model. Platform teams can define which models are approved, how users subscribe, how keys are issued, how much traffic is allowed, what usage is visible, and where the data boundary changes.
-
-For developer experience, this matters because AI tools work best when model choice is simple. Developers should not need to know where every model runs, which provider key to request, or how to wire each endpoint. They should receive an approved model catalog and a governed API path. Platform teams should retain enough control to manage cost, risk, and auditability.
 
 ## Red Hat Products Used
 

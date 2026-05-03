@@ -12,23 +12,28 @@ This stage establishes that foundation with Red Hat OpenShift AI on OpenShift. I
 
 ## What This Stage Adds
 
-- An OpenShift AI 3.3 control plane, installed through the Red Hat OpenShift AI Operator and reconciled from [`gitops/stages/010-openshift-ai-platform-foundation/base/`](../../gitops/stages/010-openshift-ai-platform-foundation/base/).
-- A configured `DataScienceCluster` and `DSCInitialization` for the AI services used later in the workshop, including dashboard, model serving, model registry, KServe, Llama Stack, and MaaS-related components.
-- GenAI Studio and dashboard configuration so model discovery and experimentation have a shared platform entry point.
-- A model registry backed by PostgreSQL metadata storage in `rhoai-model-registries`, giving later stages a place to register local models with traceability.
-- Demo users, OpenShift groups, and OpenShift OAuth integration so the same identities can flow through Red Hat OpenShift AI, MaaS, Red Hat OpenShift Dev Spaces, MTA, and Red Hat Developer Hub.
-- CPU and NVIDIA L4 hardware profiles that make workload sizing and accelerator choices explicit in the platform experience.
-- User workload monitoring and CA trust configuration needed by the later model-serving and dashboard flows.
+This stage adds the shared Red Hat OpenShift AI foundation for the workshop.
 
-The scope is intentional. This stage enables the platform services the demo consumes instead of trying to turn on every possible OpenShift AI feature.
+- An OpenShift AI 3.3 control plane installed through the Red Hat OpenShift AI Operator.
+- Core OpenShift AI services for dashboard access, GenAI Studio, model serving, model registry, KServe, Llama Stack, and MaaS-related capabilities.
+- A PostgreSQL-backed model registry so model metadata can be managed as a platform asset.
+- Demo users, OpenShift groups, and OpenShift OAuth integration for consistent identity across platform surfaces.
+- CPU and NVIDIA L4 hardware profiles that make workload sizing and accelerator choices explicit.
+- User workload monitoring and CA trust configuration for platform observability and secure internal communication.
 
-## What To Notice In The Demo
+The scope is intentional: this stage turns on the services needed for the demo platform without trying to enable every possible OpenShift AI feature.
 
-Focus on the platform outcome rather than the installation mechanics.
+## What To Notice And Why It Matters
 
-OpenShift AI appears as a shared AI control plane, not just another namespace. GenAI Studio, the dashboard, model registry, users, groups, and hardware profiles are already in place before a single LLM is served. That order matters: model serving, developer tools, and modernization workflows all inherit the same identity and platform context.
+Stage 010 establishes Red Hat OpenShift AI as the shared control plane for enterprise AI on Red Hat OpenShift. The dashboard, GenAI Studio, model registry, demo identities, OpenShift groups, hardware profiles, monitoring, and model-serving prerequisites are in place before any model endpoint is exposed.
 
-The key takeaway is that enterprise AI starts with governed platform services before it starts with model endpoints.
+The essential proof point is governed platform readiness:
+
+- Platform teams get one OpenShift AI entry point for model discovery, metadata, dashboard access, and workload choices.
+- OpenShift OAuth, groups, and RBAC provide the identity foundation that regulated environments need before teams consume AI services.
+- Hardware profiles make CPU and NVIDIA L4 accelerator options explicit, so workload placement starts from approved platform choices rather than local assumptions.
+
+This matters because regulated European enterprises need a repeatable AI platform that can run consistently across hybrid cloud environments while preserving control over identity, access, metadata, and infrastructure choices. Starting with the platform foundation makes privacy, sovereignty, and operational governance part of the architecture rather than a retrofit after model adoption begins.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -48,12 +53,6 @@ The open source foundation comes from Kubernetes, Open Data Hub, KServe, Model R
 - [KServe](https://kserve.github.io/website/) provides Kubernetes-native model serving concepts used by OpenShift AI.
 - [Model Registry](https://github.com/opendatahub-io/model-registry) provides model metadata and lifecycle foundations.
 - Kubernetes and OpenShift provide the identity, scheduling, networking, and operational substrate that make the AI layer enterprise-ready.
-
-## Why This Is Worth Knowing
-
-This stage teaches the first architectural principle of the workshop: AI should be delivered as a platform capability. Once identity, observability, dashboard access, model metadata, and hardware profiles are in place, the rest of the workshop can build on a consistent foundation.
-
-For regulated organizations, that consistency matters. A platform gives teams a place to define controls and operating practices before developers start sending prompts to models.
 
 ## Where This Fits In The Full Platform
 

@@ -2,7 +2,7 @@
 name: validate-demo-step
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
 description: >
   Validate a demo stage after changes. Use when a stage's deploy script,
   validate script, GitOps manifests, or Argo CD application changes. Produces
@@ -78,7 +78,13 @@ After validation, verify:
 - [ ] `kustomization.yaml` lists all resource files
 - [ ] No orphaned manifests in the directory
 - [ ] README explains the stage's value in the project storyline, not just commands
-- [ ] README follows the stage README section order, with `Why This Is Worth Knowing` after `How Red Hat And Open Source Make It Work`
+- [ ] README's `What This Stage Adds` section uses one short capability sentence plus roughly four to six bullets
+- [ ] README's `What This Stage Adds` section is concise, capability-oriented, and not a manifest inventory, deployment trace, or workaround ledger
+- [ ] README's `What This Stage Adds` section avoids per-bullet manifest links, YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and low-level operational caveats
+- [ ] README follows the stage README section order, with `What To Notice And Why It Matters` after `What This Stage Adds`
+- [ ] README's `What To Notice And Why It Matters` section is concise, architect-friendly, and grounded in relevant Red Hat references
+- [ ] README's `What To Notice And Why It Matters` section emphasizes enterprise significance, privacy, sovereignty, and trust boundaries where relevant
+- [ ] README avoids over-emphasizing later-stage plans when a general enterprise use case would be clearer
 - [ ] README uses external Red Hat blogs/docs as alignment and references, not as the opening narrative voice
 - [ ] `docs/OPERATIONS.md` reflects any new operational behavior
 - [ ] `docs/TROUBLESHOOTING.md` covers new failure modes if applicable

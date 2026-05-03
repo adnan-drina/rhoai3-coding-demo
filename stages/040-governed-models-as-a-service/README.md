@@ -14,39 +14,29 @@ In this demo, MaaS is the point where private AI starts to feel like an internal
 
 ## What This Stage Adds
 
-Stage 040 adds the governed access layer for the private models from Stage 030.
+This stage adds the governed Models-as-a-Service access layer for private models.
 
 - A MaaS model catalog and API path so private models can be discovered and consumed as shared platform resources.
-- Local `MaaSModelRef`, `MaaSAuthPolicy`, and a `demo-models-subscription` `MaaSSubscription` for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
-- Central API key issuance so developer tools do not manage direct model credentials.
-- Demo user tiers and groups that show how access can be shaped by audience.
-- Rate limit and token rate limit policies that demonstrate predictable consumption controls.
-- Telemetry policy and Prometheus-facing metrics for usage visibility.
-- Showback-oriented dashboard content that connects usage to users, tiers, models, and estimated cost signals.
-- A short GuideLLM load test that can generate governed MaaS traffic and compare model performance with repeatable inputs.
-- A private model comparison workflow that runs the same GuideLLM profile against both local MaaS-published models and summarizes the stored results.
-- Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a governed API path rather than a raw model endpoint.
-- An OpenShift console application menu link for the disposable Grafana dashboard.
-- The upstream MaaS controller, upstream MaaS API behavior, and PostgreSQL backing services used by this demo posture.
-- Jobs that patch cluster-specific gateway and MaaS API behavior documented in [`BACKLOG.md`](../../BACKLOG.md).
+- MaaS model references, authorization policy, and subscription resources for the local model portfolio.
+- Central API key issuance so consumers do not manage direct model credentials.
+- User tiers, rate limits, token limits, and telemetry policies for predictable model consumption.
+- Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a policy-enforced API path.
+- Showback dashboards and GuideLLM-based validation helpers for usage visibility and repeatable model comparison.
 
 The important capability is not a single new endpoint. It is a factory-style model access pattern: publish models once, subscribe teams to them, issue access centrally, apply policy consistently, and observe usage across consumers.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-Show MaaS as the control point for enterprise AI consumption.
+Stage 040 turns private model serving into a governed Models-as-a-Service capability. Local models are published as MaaS model choices, tied to a subscription, and accessed through MaaS-issued API keys instead of direct model routes. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino enforce authentication, rate limits, token limits, and telemetry at the gateway.
 
-1. Local models from Stage 030 are published as subscribed MaaS model choices.
-2. API keys are issued centrally instead of being hand-wired into each developer tool.
-3. Gateway policy enforces authentication, rate limits, token limits, and telemetry.
-4. User tiers make model access adjustable by team or project.
-5. Metrics and dashboards create the basis for showback, chargeback, capacity planning, and fairness.
-6. GuideLLM can generate a small, repeatable load profile against the MaaS endpoint so operators can compare latency, throughput, and token behavior across models.
-7. The same governed model access pattern is prepared for Red Hat OpenShift Dev Spaces, Migration Toolkit for Applications, and approved external models.
+The essential proof point is governed consumption without breaking application usability:
 
-The proof point is governance with usability. Private AI adoption fails if every team has to become an inference operations team. MaaS lets developers consume AI through familiar APIs while the platform team controls cost, access, security posture, and operational visibility.
+- Applications and developer tools get OpenAI-compatible model access through a standard API pattern.
+- Platform teams control who can use each model, how much they can consume, and which usage signals are visible.
+- User tiers, subscriptions, dashboards, and GuideLLM tests make access, fairness, showback, and capacity planning observable.
+- Gateway policy keeps authentication, quotas, token limits, and telemetry centralized instead of embedded in each consuming tool.
 
-This stage also connects directly to the Red Hat and NVIDIA code-assistant storyline. Stage 020 supplies accelerator capacity, Stage 030 supplies vLLM and llm-d-backed private inference, and Stage 040 supplies the MaaS control layer that makes that inference usable by enterprise developer workflows. That is what later allows Dev Spaces, Continue, OpenCode, and Red Hat Developer Lightspeed for MTA to consume private AI without bypassing platform governance.
+This matters because enterprise AI adoption breaks down when every team manages endpoints, credentials, GPU capacity, and usage tracking independently. MaaS turns model access into a platform product: publish approved models once, govern consumption centrally, and give applications a stable, policy-aware API path that supports privacy, cost control, and auditability.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -63,14 +53,6 @@ Red Hat OpenShift AI 3.4 lists the Evaluation Stack control plane as a Developer
 This demo also includes deliberate implementation choices. The repository currently uses Red Hat OpenShift AI 3.3 plus selected upstream MaaS components so the full local and external model registration story can be shown. The upstream MaaS controller, upstream `maas-api` image, PostgreSQL storage, tokens bridge, and related patch jobs are demo deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 
 The Gen AI Playground uses a MaaS token request path that supplies a per-request `vllm_api_token` to Llama Stack. Llama Stack gives that request token precedence over provider-specific environment tokens. For that reason, this demo uses one consumer subscription, `demo-models-subscription`, for the models that can appear together in a Playground. Stage 040 starts the subscription with private models. Stage 050 expands the same subscription after approved external model records exist.
-
-## Why This Is Worth Knowing
-
-MaaS is the layer that turns model serving from a technical deployment into an enterprise consumption model.
-
-Without MaaS, teams can end up with fragmented AI services: separate endpoints, separate credentials, duplicated GPU spend, unclear ownership, and little visibility into who is using what. With MaaS, model access becomes accessible, trackable, adjustable, and governable. That supports faster adoption because developers get a simple API path, while platform teams retain control over cost, capacity, policy, and risk.
-
-The lesson for regulated environments is that private AI is not only about where a model runs. It is also about how model access is shared. Stage 040 shows the operating model: one governed path for private models today, extensible to approved external models in Stage 050, and consumable by developer workspaces, modernization tools, and the developer portal later in the workshop.
 
 ## Red Hat Products Used
 

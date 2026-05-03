@@ -2,7 +2,7 @@
 name: update-demo-docs
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
 description: >
   Check and update documentation consistency after a change. Use when scripts,
   manifests, or demo flow change and documentation might be stale. Inspects
@@ -32,7 +32,7 @@ consistent with the implementation.
 | Document | Check for |
 |----------|-----------|
 | `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
-| `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", trust boundary language |
+| `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", "What To Notice And Why It Matters", trust boundary language |
 | `docs/assets/architecture/*.svg` and `scripts/generate-architecture-diagrams.mjs` | Root/stage diagram synchronization, canonical capability labels, product-layer colors |
 | `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
 | `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
@@ -82,9 +82,18 @@ After resolving or adding a workaround:
 
 When checking a stage README:
 - The opening should lead with this repository's demo storyline, not with a summary of an external article, blog, or product document.
+- Read the stage's relevant `## References` links before rewriting product-positioning language, prioritizing official Red Hat product pages and documentation.
 - Red Hat blogs and documentation should appear as alignment, implementation baseline, or reference material after the stage's role in the workshop is clear.
-- The stage should connect the previous stage, the capability being introduced, and the later stages that depend on it.
-- The section order should follow rule `20-readme-standard.mdc`, including `Why This Is Worth Knowing` immediately after `How Red Hat And Open Source Make It Work`.
+- The stage should connect the previous stage and the capability being introduced without over-emphasizing capabilities planned for later stages.
+- `What This Stage Adds` should be concise and capability-oriented, not a low-level manifest inventory.
+- `What This Stage Adds` should normally be one short capability sentence plus four to six bullets.
+- `What This Stage Adds` should prefer product/platform language and mention CRs or resource names only when they are important teaching concepts.
+- `What This Stage Adds` should avoid per-bullet manifest links; the stage manifest directory belongs in `Deploy And Validate`.
+- `What This Stage Adds` should avoid YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and validation behavior unless they are central to the architecture story.
+- The section order should follow rule `20-readme-standard.mdc`, including `What To Notice And Why It Matters` immediately after `What This Stage Adds`.
+- The merged `What To Notice And Why It Matters` section should preserve essential demo proof points and the enterprise WHY without excessive length.
+- The merged section should be clear for enterprise architects and platform engineers in regulated hybrid cloud environments.
+- The merged section should emphasize privacy, sovereignty, identity, quota, telemetry, credential, and external-provider boundaries when those are relevant to the stage.
 - The README should explain why the capability matters before listing YAML, resources, or commands.
 
 ### 8. Architecture diagram consistency

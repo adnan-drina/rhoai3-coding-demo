@@ -12,25 +12,28 @@ This stage moves the coding experience into managed OpenShift workspaces. Develo
 
 ## What This Stage Adds
 
-- Red Hat OpenShift Dev Spaces, deployed through the operator, `CheCluster`, and workspace manifests in [`gitops/stages/070-controlled-developer-workspaces/base/`](../../gitops/stages/070-controlled-developer-workspaces/base/).
-- Per-user DevWorkspace definitions for the demo personas, with OpenShift identity and namespace-based workspace isolation.
-- Browser-based VS Code-style development environments that can be recreated from Git and devfile-style workspace definitions.
+This stage adds a governed cloud development workspace layer.
+
+- Red Hat OpenShift Dev Spaces deployed through operator-managed OpenShift resources.
+- Per-user DevWorkspace definitions for the demo personas, with OpenShift identity and namespace isolation.
+- Browser-based VS Code-style environments that can be recreated from Git and workspace definitions.
 - Continue and OpenCode tooling configured to consume MaaS-published OpenAI-compatible endpoints.
-- Coding exercises for AI assistant demonstrations and the Coolstore Java EE application used by the MTA modernization workflow in Stage 080.
-- The MTA VS Code extension in the relevant workspaces so modernization context can move from analysis into the developer IDE.
+- Coding exercises, Coolstore source, and the MTA VS Code extension for AI-assisted development and modernization workflows.
 
 The capability added is a governed developer workspace layer. The workspace, source repositories, tools, and model access pattern are all platform-managed instead of being assembled manually on each developer machine.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-Show the workspace first, then the model configuration. The important point is that the development tool is not tied to a single model provider. Continue and OpenCode can use any MaaS-published model that follows the OpenAI-compatible API pattern.
+Stage 070 moves AI-assisted development into managed Red Hat OpenShift Dev Spaces workspaces. Developers still use familiar IDE and terminal workflows, but Continue and OpenCode consume MaaS-published OpenAI-compatible endpoints instead of unmanaged local provider keys.
 
-Then make the trust choice explicit:
+The essential proof point is a governed developer experience:
 
-- Selecting a local model keeps the request inside the platform.
-- Selecting an external model uses the same developer workflow, but the prompt is processed by the external provider and must be allowed by policy.
+- Workspaces, source repositories, tools, and model configuration are platform-managed and reproducible.
+- AI assistants consume centrally governed model endpoints instead of personal API keys.
+- Local models keep prompts and code inside the OpenShift platform boundary.
+- External models can use the same workflow only when policy allows provider-side processing.
 
-The platform provides flexibility without hiding the data boundary. The same workflow can support private model use for sensitive code and governed external model use where policy allows, but those paths are not equivalent.
+This matters because regulated enterprises need AI coding assistance that fits existing controls for identity, network access, approved tooling, and data residency. Red Hat OpenShift Dev Spaces gives platform engineers reproducible cloud development environments, while MaaS keeps model access centralized so developer productivity does not depend on unmanaged laptops, plugins, or provider credentials.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -61,18 +64,6 @@ Red Hat’s platform role is the separation of concerns: developers focus on cod
 | External models such as GPT-4o and GPT-4o-mini | Requests are proxied through MaaS to OpenAI. Access is centrally governed, but prompt content is processed externally and must be allowed by policy. |
 
 This distinction is the core learning point. A governed external model is useful, but it is not private. The platform makes both options visible and controllable.
-
-## Why This Is Worth Knowing
-
-Many organizations start AI coding experiments with individual developer plugins and personal API keys. That approach does not scale well for enterprise governance.
-
-This stage shows a better pattern:
-
-- Developer tools remain familiar.
-- Workspaces are reproducible and centrally managed.
-- Model keys are issued through a platform layer.
-- Private and external model options can coexist.
-- The same model access pattern can serve IDE assistants, terminal agents, and later MTA modernization.
 
 ## Where This Fits In The Full Platform
 

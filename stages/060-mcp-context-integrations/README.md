@@ -16,31 +16,29 @@ Stage 060 makes that boundary visible before developer tools consume the integra
 
 ## What This Stage Adds
 
-Stage 060 adds a small MCP context layer to the trusted AI development platform.
+This stage adds a controlled MCP context layer beside governed model access.
 
-- A required read-only OpenShift MCP server in the `coding-assistant` namespace.
-- A dedicated `openshift-mcp` ServiceAccount and `openshift-mcp-view` ClusterRoleBinding.
-- A cluster-internal `openshift-mcp` Service exposed to Red Hat OpenShift AI through the MCP discovery ConfigMap.
-- The `gen-ai-aa-mcp-servers` ConfigMap in `redhat-ods-applications`, used by the Red Hat OpenShift AI GenAI Playground to discover configured MCP servers.
-- Slack MCP and BrightData MCP discovery entries that demonstrate optional external context providers.
-- Slack and BrightData MCP deployments and Services held at zero replicas in the base deployment so missing credentials do not make Argo CD unhealthy.
-- Optional credential provisioning from `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` into the `coding-assistant` namespace.
-- Validation that the OpenShift MCP server is running and that optional providers are discoverable but credential-gated.
+- A required read-only OpenShift MCP server for platform-owned cluster context.
+- ServiceAccount and RBAC configuration that scopes how the OpenShift MCP server reads cluster state.
+- Red Hat OpenShift AI GenAI Playground discovery configuration for platform-managed MCP servers.
+- Optional Slack and BrightData MCP entries that demonstrate credential-gated external context providers.
+- Credential provisioning hooks for optional providers without committing real tokens to Git.
+- Validation that required platform context is running and optional external context remains gated.
 
 OpenShift MCP is required because it represents platform context owned by the demo. Slack and BrightData are intentionally optional because they introduce external service boundaries and require separate credential approval. Missing optional credentials produce validation warnings, not failures.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-Show MCP as the bridge between governed model access and real workflow context.
+Stage 060 adds controlled context discovery beside governed model access. The required read-only OpenShift MCP server is deployed as platform-owned context, while Slack and BrightData MCP entries remain credential-gated external integrations.
 
-1. The model path remains governed by MaaS. MCP does not replace inference or change where a model runs.
-2. OpenShift MCP gives the assistant a controlled way to inspect cluster context through a read-only server.
-3. Red Hat OpenShift AI discovers MCP servers through platform-managed configuration rather than each user hand-editing tool settings.
-4. Slack and BrightData are visible as possible context integrations, but their runtimes stay disabled until credentials and approval exist.
-5. Validation treats optional context providers differently from required platform context.
-6. The trust boundary moves with the MCP server. OpenShift context stays inside the cluster, while Slack or BrightData would introduce external data paths.
+The essential proof point is that context has its own trust boundary:
 
-The proof point is controlled context discovery. A model may be approved, and a developer may have a governed API key, but the assistant should still receive only the context sources that the platform team has made visible and scoped.
+- MCP does not replace inference or change where a model runs; model access remains governed by MaaS.
+- Red Hat OpenShift AI discovers MCP servers through platform-managed configuration rather than per-user tool settings.
+- OpenShift MCP gives assistants a controlled, read-only path to cluster context through ServiceAccount RBAC.
+- Optional external MCP providers demonstrate how context sources can be inventoried without becoming active until credentials and approval exist.
+
+This matters because AI assistants become useful when they can reach relevant enterprise context, but every context source expands the data surface. For regulated environments, MCP should be treated as an integration governance pattern: choose trusted servers, scope permissions, manage credentials centrally, and document whether context remains inside the OpenShift boundary or moves to an external service.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -53,14 +51,6 @@ Red Hat OpenShift provides the hosting and policy substrate: namespaces, Service
 MCP provides the open protocol pattern. In MCP terms, an AI application acts as a client, infrastructure hosts the connection, and MCP servers expose specific tools, resources, or capabilities. The initial handshake lets the client and server discover what each side supports. After that, dynamic discovery allows the application to request task-relevant context instead of packing unrelated data into the prompt up front.
 
 MCP and inference are related, but they are not the same thing. Inference is the model generating tokens. MCP is the way an AI application can reach tools and context that may inform that generation. Stage 030 and Stage 040 built the inference and model access path. Stage 060 adds a controlled context path beside it.
-
-## Why This Is Worth Knowing
-
-Enterprise AI assistants become much more useful when they can inspect the systems people actually work with. For developers, that can mean cluster state, logs, pull requests, tickets, documentation, incident channels, application inventory, or modernization findings. But every added context source increases the potential data surface.
-
-MCP gives teams a common integration pattern, which helps avoid a long tail of one-off assistant connectors. The enterprise lesson is that standardization does not remove the need for governance. It makes governance easier to apply consistently: choose trusted servers, scope their permissions, manage credentials centrally, validate what is discoverable, and document what data can move through each path.
-
-This stage also prepares the reader for later developer workflows. In Stage 070, developer workspaces can consume governed model access. In later iterations, those workspaces can also consume approved MCP context. The important pattern is that both model access and context access are platform capabilities, not private tool configuration hidden on a developer laptop.
 
 ## Red Hat Products Used
 

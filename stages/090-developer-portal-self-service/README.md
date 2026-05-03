@@ -12,26 +12,28 @@ This stage establishes Red Hat Developer Hub as the front door for the demo plat
 
 ## What This Stage Adds
 
-- Red Hat Developer Hub 1.9, deployed from [`gitops/stages/090-developer-portal-self-service/base/`](../../gitops/stages/090-developer-portal-self-service/base/) through the RHDH Operator and `Backstage` custom resource.
-- Application configuration, runtime secrets, and dynamic plugin configuration managed as OpenShift resources.
-- OIDC authentication configured through the MTA Keycloak / Red Hat build of Keycloak realm, which brokers back to OpenShift OAuth for the demo users.
-- Developer Lightspeed for RHDH in the developer portal layer, positioning the portal as both a catalog and AI-assisted self-service surface.
-- An OpenShift ConsoleLink so the portal is reachable from the same launcher used for the other platform surfaces.
-- Initial Backstage catalog content for the demo users, team ownership model, and the `coolstore` component used in the modernization workflow.
+This stage adds the developer portal foundation for platform self-service.
+
+- Red Hat Developer Hub 1.9 deployed through operator-managed OpenShift resources.
+- Application configuration, runtime secrets, and dynamic plugin configuration managed as platform state.
+- OIDC authentication through the MTA Keycloak / Red Hat build of Keycloak realm, brokered back to OpenShift OAuth.
+- Developer Lightspeed for RHDH as an AI-assisted portal experience.
+- OpenShift launcher integration and initial catalog content for demo users, teams, ownership, lifecycle, and the `coolstore` component.
 
 The capability added is the portal foundation: a catalog-backed place to describe ownership, lifecycle, source links, and the platform relationships around the AI-assisted modernization workflow.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-Show the portal as the place where the story starts to come together:
+Stage 090 makes Red Hat Developer Hub the front door for platform consumption. The implementation provides Red Hat Developer Hub 1.9, OIDC authentication through the MTA Keycloak / Red Hat build of Keycloak realm, Developer Lightspeed for RHDH, an OpenShift ConsoleLink, and catalog content for demo users, teams, and the `coolstore` component.
 
-1. Open Developer Hub from the OpenShift launcher.
-2. Sign in through the OIDC flow backed by MTA Keycloak and OpenShift OAuth.
-3. Search for `coolstore`.
-4. Explain ownership, lifecycle, tags, and source links.
-5. Connect the catalog entry back to the previous stages: workspaces, models, MTA analysis, and modernization.
+The essential proof point is discoverability with enterprise access control:
 
-For the current implementation, present Developer Hub as the portal foundation rather than the finished self-service experience. The catalog already establishes ownership and application context. The next increment is to add direct links, model entities, TechDocs, and a software template so the portal becomes the primary handoff point for the full workflow.
+- Developers open Developer Hub from the OpenShift launcher and sign in through the OpenShift-backed identity chain.
+- The catalog gives application teams a central place for ownership, lifecycle, tags, and source context.
+- Developer Lightspeed for RHDH introduces an AI-assisted portal experience without embedding unmanaged provider credentials.
+- Red Hat Developer Hub provides the governed catalog surface where platform services can be documented, discovered, and consumed.
+
+This matters because platform capabilities only change engineering behavior when teams can find them, understand who owns them, and follow approved paths to consume them. For regulated enterprises, the developer portal is also a governance surface: it makes ownership, lifecycle, access control, documentation, and self-service consumption visible across hybrid cloud application teams.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -70,20 +72,6 @@ The Red Hat Developer Hub deployment follows the operator-managed Backstage cust
 For demo continuity, Red Hat Developer Hub reuses the MTA Keycloak / Red Hat build of Keycloak realm, which brokers authentication back to OpenShift OAuth. A production implementation should use the organization's approved identity provider or a dedicated Red Hat build of Keycloak design rather than depending on the MTA identity path.
 
 The portal is a discovery and self-service surface. It should link to approved platform paths rather than embedding provider secrets, kubeconfigs, or unmanaged service credentials.
-
-## Why This Is Worth Knowing
-
-Developer portals are where platform engineering becomes usable. The previous stages create powerful capabilities, but developers should not need to understand every operator, CRD, route, and secret to start work.
-
-Red Hat Developer Hub is the natural place to publish:
-
-- Application ownership and lifecycle.
-- Approved model endpoints and AI APIs.
-- Modernization runbooks.
-- Golden paths such as "Modernize Java EE application with MTA."
-- Links to Dev Spaces, MTA analysis, GitOps status, and OpenShift resources.
-
-This turns the AI platform from a set of components into a self-service developer experience.
 
 ## Where This Fits In The Full Platform
 

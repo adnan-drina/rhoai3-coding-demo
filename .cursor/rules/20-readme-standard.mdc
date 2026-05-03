@@ -12,13 +12,14 @@ The writing should loosely follow a tell-show-tell presentation flow in the back
 
 ## Primary Audience
 
-Write for enterprise engineers, solution architects, platform engineers, and developer experience teams evaluating Red Hat OpenShift AI for regulated or security-sensitive software development use cases.
+Write for enterprise architects, solution architects, platform engineers, and developer experience teams evaluating Red Hat OpenShift AI for regulated or security-sensitive software development use cases, especially hybrid cloud environments in European enterprises where privacy, sovereignty, and governance are first-order design concerns.
 
 Assume many readers:
 - Work in large organizations with privacy, sovereignty, and governance requirements.
 - Need to understand why public AI services are not always acceptable for source code.
 - Want to see how Red Hat products and open source projects combine into an enterprise platform.
 - May only read the README and never run the lab.
+- Care about general enterprise architecture patterns more than demo-only sequencing.
 
 ## Narrative Principles
 
@@ -26,18 +27,19 @@ Every stage README must explain:
 
 - **Why this matters** - the enterprise problem or architectural concern.
 - **What this stage adds** - the platform capability introduced by the stage.
-- **What to notice in the demo** - the proof points a presenter or reader should pay attention to.
+- **What to notice and why it matters** - the essential demo proof points and their enterprise significance.
 - **How Red Hat and open source make it work** - product layer plus upstream/open source layer.
-- **Why this is worth knowing** - the reusable lesson after the demo.
 - **Where it fits** - how this stage connects to the full workshop.
 
 Lead with this repository's demo storyline, not with a quoted external article, vendor blog, or product documentation summary. External references should support and validate the story after the reader understands what this stage does in the workshop.
 
-Each stage should make continuity explicit:
+Before rewriting stage README narrative, read the stage's `## References` links that are relevant to the affected content, prioritizing official Red Hat product pages and documentation. Use that source material to align terminology and product positioning, but keep the README voice focused on this demo and its enterprise architecture pattern.
+
+Each stage should make continuity explicit without making the section read like a teaser for later labs:
 - What the previous stage made possible.
 - What this stage adds to the trusted enterprise AI platform.
 - Why the capability matters for private and governed AI coding assistance.
-- Which later stages depend on this capability.
+- How the capability fits into the overall platform pattern.
 
 When aligning to Red Hat recommendations, use Red Hat guidance as the implementation baseline and reference material. Do not write as if the README exists to summarize a Red Hat article. The README should tell our demo story while using Red Hat terminology, product positioning, and documented implementation patterns.
 
@@ -60,11 +62,9 @@ Use this section pattern unless there is a strong reason not to:
 
 ## What This Stage Adds
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
 ## How Red Hat And Open Source Make It Work
-
-## Why This Is Worth Knowing
 
 ## Red Hat Products Used
 
@@ -83,6 +83,60 @@ Use this section pattern unless there is a strong reason not to:
 ```
 
 Use natural blog-style prose. Do not make the README feel like a checklist unless the section is explicitly operational.
+
+## Merged Notice And WHY Section
+
+The `## What To Notice And Why It Matters` section replaces the older separate `What To Notice In The Demo` and `Why This Is Worth Knowing` sections.
+
+This section should be concise and useful for architects and platform engineers. It should:
+
+- Start with the main capability or platform control introduced by the stage.
+- Highlight the most important demo proof points, preferably in three to five bullets.
+- Explain why the capability matters for enterprise-grade AI in hybrid cloud environments.
+- Use official Red Hat product terminology and avoid informal shorthand when the product name matters.
+- Make privacy, sovereignty, identity, quota, telemetry, credential, or external-provider boundaries explicit when relevant.
+- Favor general enterprise use cases over references to later stages in the workshop.
+
+Avoid:
+
+- Repeating every item from `What This Stage Adds`.
+- Turning the section into a deployment checklist.
+- Over-emphasizing future work or planned later-stage consumption.
+- Claiming regulatory compliance; describe architecture controls and choices instead.
+
+## What This Stage Adds Section
+
+The `## What This Stage Adds` section should summarize the platform capability introduced by the stage. It is not a manifest inventory, deployment trace, or workaround ledger.
+
+Use this shape:
+
+```markdown
+## What This Stage Adds
+
+This stage adds <one-sentence platform capability>.
+
+- <Capability area 1>, described in product/platform terms.
+- <Capability area 2>, especially identity, policy, quota, telemetry, trust boundary, or consumption model when relevant.
+- <Capability area 3>, naming CRs or implementation details only when they are important teaching concepts.
+- <Capability area 4>, if needed.
+```
+
+Keep this section concise:
+
+- Prefer four to six bullets.
+- Use official Red Hat product terminology.
+- Explain capabilities at the platform level before naming resource kinds.
+- Use resource names only when they are user-visible, architecturally important, or important teaching concepts.
+- Avoid linking to individual manifest files in every bullet; the `Deploy And Validate` section already links to the stage manifest directory.
+- Move operational caveats, validation behavior, and workaround detail to `docs/OPERATIONS.md`, `docs/TROUBLESHOOTING.md`, or `BACKLOG.md` unless they change the architecture story.
+- Avoid repeating the full `What To Notice And Why It Matters` explanation. `What This Stage Adds` says what appears; the next section says why it matters.
+
+Do not include low-level implementation details such as:
+
+- Per-file GitOps paths or one link per bullet.
+- YAML field paths such as `spec.*` unless the field is the capability being taught.
+- Probe timings, patch jobs, sync hooks, or generated resource names.
+- Validation script behavior except when the validation behavior is itself part of the stage capability.
 
 ## Red Hat Product Demo Requirements
 
@@ -188,7 +242,14 @@ Current diagram design:
 After modifying a stage README:
 - Verify no literal "Tell:" or "Show:" labels remain.
 - Verify the opening leads with the demo storyline and does not start by summarizing an external article or product document.
-- Verify section order places `Why This Is Worth Knowing` immediately after `How Red Hat And Open Source Make It Work`.
+- Verify `What This Stage Adds` uses one capability sentence plus roughly four to six capability bullets.
+- Verify `What This Stage Adds` is concise, capability-oriented, and not a low-level manifest inventory, deployment trace, or workaround ledger.
+- Verify `What This Stage Adds` avoids per-bullet manifest links, YAML field paths, probe timings, patch jobs, sync hooks, and generated resource names unless they are central teaching concepts.
+- Verify section order places `What To Notice And Why It Matters` after `What This Stage Adds` and before `How Red Hat And Open Source Make It Work`.
+- Verify the merged section preserves the essential demo proof points and the enterprise WHY without becoming verbose.
+- Verify the merged section is written for enterprise architects and platform engineers in regulated environments, with privacy, sovereignty, and hybrid cloud considerations where relevant.
+- Verify the merged section favors general enterprise use cases over references to capabilities planned for later stages.
+- Verify relevant Red Hat reference links were read before rewriting product-positioning language.
 - Verify Red Hat product coverage is explicit.
 - Verify open source projects are explained where relevant.
 - Verify privacy statements distinguish private local models from governed external models.

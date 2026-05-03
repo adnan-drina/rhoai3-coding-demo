@@ -16,36 +16,29 @@ The important idea is not only that a model responds. It is that regulated enter
 
 ## What This Stage Adds
 
-Stage 030 provides the private inference layer for the trusted AI development platform.
+This stage adds the private inference layer for the trusted AI development platform.
 
 - Local `LLMInferenceService` resources for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
-- vLLM-based OpenAI-compatible inference containers using the `registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.3.0` runtime image.
-- Explicit llm-d scheduler enablement through `spec.router.scheduler: {}` on each `LLMInferenceService`.
-- Single-GPU-per-replica deployment metadata, including NVIDIA L4 accelerator labeling, so the demo is clear about the scale pattern it is exercising.
-- GPU resource requests for each private model, with Kueue queue labels that connect the workloads to the Stage 020 `private-model-serving` local queue.
-- Gateway integration through `maas-default-gateway`, preparing the private models for the governed MaaS access path in Stage 040.
-- Authentication enablement on the `LLMInferenceService` resources through `security.opendatahub.io/enable-auth: "true"`.
-- Administrative RBAC for model management in the `maas` data science project prepared by Stage 020.
-- LeaderWorkerSet prerequisites used by the LLM inference path and required for distributed inference patterns.
-- vLLM runtime arguments for scale-readiness, including prefix caching and reduced access-log overhead.
-- Explicit liveness and readiness probe timings for cold LLM startup on newly scaled GPU nodes.
-- Prometheus metric aliases for vLLM request, token, latency, and prefix-cache metrics used by Red Hat's documented autoscaling path.
-- Model Registry seed data so the local models are discoverable as named, versioned assets.
-- The MaaS tier mapping workaround required by the current Red Hat OpenShift AI webhook before tier-annotated model resources can be accepted.
+- Red Hat AI Inference Server / vLLM serving with an OpenAI-compatible API surface.
+- Kueue-backed GPU placement and single-GPU demo sizing for each private model replica.
+- Platform authentication, RBAC, and gateway posture so private model endpoints are not unmanaged routes.
+- llm-d, LeaderWorkerSet, readiness, and metric foundations for scale-aware inference operations.
+- Model registry seed data so private models are discoverable as named, versioned platform assets.
 
-The stage currently runs each model with one replica and one GPU. That is intentional for the demo environment. It uses the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime, but it does not attempt to prove multi-node or disaggregated prefill/decode serving. The demo shows the architectural starting point: a private model-serving service that can later grow into a richer distributed inference topology without changing the enterprise control plane story.
+The stage intentionally demonstrates a controlled private-serving baseline rather than a full multi-node or disaggregated inference benchmark.
 
-## What To Notice In The Demo
+## What To Notice And Why It Matters
 
-The main demo point is that private AI becomes an enterprise service only when inference is operated like platform infrastructure.
+Stage 030 turns the GPUaaS foundation into private AI inference on Red Hat OpenShift AI. The local models are declared as GitOps-managed `LLMInferenceService` resources, served by the Red Hat AI Inference Server vLLM runtime, connected to Kueue-managed GPU capacity, registered for discovery, and exposed through platform-controlled service endpoints.
 
-The models are not manually launched from a notebook or exposed as ad hoc endpoints. They are declared as GitOps-managed `LLMInferenceService` resources. Their GPU placement is tied to the Stage 020 queue. Their runtime containers expose OpenAI-compatible APIs. Their metadata is registered for discovery. Their readiness is validated before later stages publish them to developer-facing tools.
+The essential proof point is private inference operated as enterprise platform infrastructure:
 
-This is also where inference scaling enters the story. Inference gets harder as models grow, user volume increases, context windows expand, and latency expectations tighten. Scaling can involve faster runtimes, larger or more efficient accelerators, more replicas, queue-based admission, request routing, model optimization, and distributed inference. Online inference must respond quickly enough for interactive users, while batch and streaming patterns have different throughput and cost pressures. A regulated organization needs room to choose the right inference pattern without giving up platform governance.
+- Models are reconciled and validated as OpenShift AI resources, not manually launched from notebooks or exposed as unmanaged endpoints.
+- vLLM provides efficient OpenAI-compatible serving, which keeps application integration familiar while preserving platform ownership.
+- llm-d scheduler enablement, LeaderWorkerSet prerequisites, queue labels, readiness probes, and vLLM metrics create a controlled path toward distributed inference patterns.
+- Model registry seed data makes private models discoverable as named, versioned assets.
 
-This demo does not claim to prove high-scale distributed inference. It shows the private serving control plane and scale-ready primitives: GPU-backed `LLMInferenceService` resources, vLLM serving, llm-d scheduler enablement, Kueue queue integration, gateway attachment, LeaderWorkerSet installation, vLLM metrics aliases, and validation that the local models are ready. Those are the building blocks that make larger inference designs possible.
-
-The Red Hat Developer multi-LLM MaaS article shows an adjacent advanced pattern: body-based routing through agentgateway, Gateway API Inference Extension `InferencePool` resources, and endpoint picker pods. This stage deliberately stops one level earlier. It focuses on Red Hat OpenShift AI `LLMInferenceService`, vLLM runtime health, llm-d readiness, and the metrics that make those advanced routing and autoscaling designs meaningful later.
+This matters because data privacy and sovereignty claims require an operating model, not just a model choice. Keeping prompts, source code, and enterprise context inside the OpenShift platform boundary depends on controlling the inference runtime, GPU scheduling, endpoints, authentication posture, metadata, metrics, and validation path.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -58,16 +51,6 @@ vLLM is the serving engine in this stage. Its job is to run the model efficientl
 llm-d is the distributed inference architecture around the serving engine. Its job is to make LLM serving more Kubernetes-native as deployments grow: scheduler-aware routing, distributed serving patterns, LeaderWorkerSet integration, and future paths such as disaggregated prefill/decode and workload-aware autoscaling. In this demo, llm-d is used in a deliberately modest form through `LLMInferenceService` and explicit scheduler enablement. That is enough to show how private inference can be built on the same open cloud-native foundation that enterprises already use for regulated applications.
 
 Stage 020 contributes the GPUaaS foundation. Stage 030 consumes it by labeling the local model resources with `kueue.x-k8s.io/queue-name=private-model-serving`, requesting GPU capacity, and letting the platform manage admission and scheduling rather than hard-coding private model serving as a special case.
-
-## Why This Is Worth Knowing
-
-Inference is where AI becomes operationally real. Training, fine-tuning, and model selection matter, but users experience AI through inference latency, quality, availability, security, and cost. For enterprise coding assistance, that means the model endpoint has to be more than reachable. It has to be governed, observable, repeatable, and ready to plug into the same platform controls as the rest of the developer experience.
-
-This stage also explains why private AI is not just a data-sovereignty claim. Keeping prompts and code inside OpenShift requires the platform to run the inference stack itself: GPU capacity, serving runtime, model artifact, endpoint, authentication posture, registry metadata, and validation. Without those pieces, "use a private model" remains an idea rather than a service.
-
-The reusable lesson is that enterprise-grade inference sits between infrastructure and application experience. It consumes GPUaaS from Stage 020 and becomes the model supply that MaaS, workspaces, modernization tools, and the developer portal consume later.
-
-vLLM and llm-d are worth calling out because they show where the open source ecosystem is going. vLLM makes efficient LLM serving accessible across different accelerators and model families. llm-d extends that idea into the Kubernetes control plane, where routing, scheduling, scaling, and distributed serving can become platform concerns instead of one-off model team implementations. For regulated enterprises, that open architecture matters: it supports portability, auditability, repeatable operations, and a path away from opaque, single-provider inference stacks.
 
 ## Red Hat Products Used
 
