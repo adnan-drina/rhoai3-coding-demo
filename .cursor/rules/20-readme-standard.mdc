@@ -29,7 +29,7 @@ Every stage README must explain:
 - **What this stage adds** - the platform capability introduced by the stage.
 - **What to notice and why it matters** - the essential demo proof points and their enterprise significance.
 - **How Red Hat and open source make it work** - product layer plus upstream/open source layer.
-- **Where it fits** - how this stage connects to the full workshop.
+- **How it fits** - how this stage connects to the full workshop through the narrative, architecture diagram, trust boundary, and next-stage link.
 
 Lead with this repository's demo storyline, not with a quoted external article, vendor blog, or product documentation summary. External references should support and validate the story after the reader understands what this stage does in the workshop.
 
@@ -72,8 +72,6 @@ Use this section pattern unless there is a strong reason not to:
 ## Red Hat Products Used
 
 ## Open Source Projects To Know
-
-## Where This Fits In The Full Platform
 
 ## Deploy And Validate
 
@@ -137,6 +135,19 @@ Do not include low-level implementation details such as:
 - YAML field paths such as `spec.*` unless the field is the capability being taught.
 - Probe timings, patch jobs, sync hooks, or generated resource names.
 - Validation script behavior except when the validation behavior is itself part of the stage capability.
+
+## How Red Hat And Open Source Make It Work Section
+
+The `## How Red Hat And Open Source Make It Work` section should explain the product integration pattern, not repeat every product and open source item listed later.
+
+Keep this section concise:
+
+- Prefer one to three short paragraphs.
+- Start with the Red Hat product layer that makes the stage enterprise-ready.
+- Mention the upstream or ecosystem projects only when they explain the architecture.
+- Preserve important support-posture or demo-deviation notes, but move operational detail to `docs/OPERATIONS.md` or `BACKLOG.md`.
+- Avoid code blocks, request flows, YAML field paths, and long implementation caveats unless they are essential to the architecture story.
+- Do not duplicate the `Red Hat Products Used` or `Open Source Projects To Know` lists.
 
 ## Red Hat Product Demo Requirements
 

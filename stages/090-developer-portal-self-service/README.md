@@ -37,21 +37,9 @@ This matters because platform capabilities only change engineering behavior when
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat Developer Hub provides a developer portal based on the open source Backstage project. Backstage supplies the software catalog model for components, ownership, lifecycle, systems, APIs, resources, and documentation. Red Hat packages that portal for OpenShift with operator-based deployment, supported configuration patterns, and dynamic plugin management.
+Red Hat Developer Hub provides an enterprise developer portal based on Backstage. Backstage supplies the software catalog model for components, ownership, lifecycle, systems, APIs, resources, and documentation, while Red Hat packages the portal for OpenShift with operator-based deployment, supported configuration patterns, and dynamic plugin management.
 
-In this demo, Developer Hub authenticates through OIDC against the MTA Keycloak / Red Hat build of Keycloak realm, which already brokers identity from OpenShift OAuth:
-
-```text
-Red Hat Developer Hub
-  -> MTA Keycloak / RHBK
-  -> OpenShift OAuth
-  -> demo HTPasswd users
-```
-
-That identity chain reinforces the platform story: OpenShift-backed identity is reused across Red Hat OpenShift AI, Red Hat OpenShift Dev Spaces, MTA, MaaS, and Red Hat Developer Hub. The portal does not replace those systems; it gives teams a single place to discover them, understand ownership, and follow approved paths into the right workflow.
-
-The Red Hat Developer Hub deployment follows the operator-managed Backstage custom resource pattern and uses dynamic plugin configuration through OpenShift resources. The catalog URL is derived at runtime from the Stage 090 Argo CD Application `repoURL` and `targetRevision`, so the portal follows the validated GitOps revision instead of a hard-coded branch.
-
+In this demo, Developer Hub uses OIDC through the MTA Keycloak / Red Hat build of Keycloak realm, which brokers identity back to OpenShift OAuth. That keeps the portal aligned with the same OpenShift-backed identity story used by Red Hat OpenShift AI, Red Hat OpenShift Dev Spaces, MTA, and MaaS. GitOps-managed catalog configuration then makes the portal a governed discovery surface rather than another hand-maintained documentation site.
 
 ## Trust Boundaries
 
@@ -71,17 +59,6 @@ Red Hat Developer Hub is a discovery and self-service surface, so it should link
 - [Backstage](https://backstage.io/) is the upstream developer portal framework behind Red Hat Developer Hub.
 - The [Backstage Software Catalog](https://backstage.io/docs/features/software-catalog/) provides the model for describing components, ownership, APIs, systems, resources, and documentation.
 - [TechDocs](https://backstage.io/docs/features/techdocs/) can turn repository documentation into portal-hosted technical documentation.
-
-
-## Where This Fits In The Full Platform
-
-| Platform capability | Red Hat Developer Hub role |
-|---------------------|--------------------|
-| Coolstore modernization | Catalog entry provides ownership, lifecycle, and source context |
-| Red Hat OpenShift Dev Spaces | Future catalog link or template can launch the developer workspace |
-| MTA | Future catalog link or template can direct users to analysis and remediation workflows |
-| MaaS models | Future Resource/API entities can show approved private and external model endpoints |
-| GitOps | Future Argo CD plugin integration can show deployment state |
 
 ## Next Enhancements
 

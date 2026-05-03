@@ -40,20 +40,9 @@ This matters because enterprise AI adoption breaks down when every team manages 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, service discovery, storage, operators, monitoring primitives, and GitOps-managed platform state.
+Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI provides the model-serving and MaaS context; in Red Hat OpenShift AI 3.4, MaaS is documented as a Technology Preview capability. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
 
-Red Hat OpenShift AI provides the model-serving and MaaS platform context. In Red Hat OpenShift AI 3.4, MaaS is documented as a Technology Preview capability for governing LLM access. This demo shows that direction in a disposable environment and keeps the deviation details explicit so readers can distinguish product-aligned architecture from temporary implementation workarounds.
-
-Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino provide the API governance path. Together they turn model calls into policy-enforced traffic: identity checks, tier-aware access, rate limits, token limits, and telemetry. That gateway layer is what lets MaaS act as an enterprise control plane instead of another ad hoc model route.
-
-The upstream Open Data Hub models-as-a-service project supplies the MaaS controller APIs used in this demo posture. CloudNativePG provides the PostgreSQL backing store for the MaaS API. Community Grafana is included only as a disposable demo add-on for visibility and is exposed through an OpenShift `ConsoleLink` for presenter convenience. The Grafana route uses OpenShift OAuth through the Red Hat OpenShift OAuth proxy sidecar so demo users authenticate with the same OpenShift identity provider used elsewhere in the workshop. A Red Hat-supported monitoring or observability path is preferred for long-lived environments.
-
-Red Hat OpenShift AI 3.4 lists the Evaluation Stack control plane as a Developer Preview feature with built-in support for GuideLLM. This demo uses the upstream GuideLLM container directly as a pragmatic load generator until the Evaluation Stack path is ready for this workshop. Treat the GuideLLM path here as a demo-scale benchmarking helper, not a supported production evaluation platform.
-
-This demo also includes deliberate implementation choices. The repository currently uses Red Hat OpenShift AI 3.3 plus selected upstream MaaS components so the full local and external model registration story can be shown. The upstream MaaS controller, upstream `maas-api` image, PostgreSQL storage, tokens bridge, and related patch jobs are demo deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
-
-The Gen AI Playground uses a MaaS token request path that supplies a per-request `vllm_api_token` to Llama Stack. Llama Stack gives that request token precedence over provider-specific environment tokens. For that reason, this demo uses one consumer subscription, `demo-models-subscription`, for the models that can appear together in a Playground. Stage 040 starts the subscription with private models. Stage 050 expands the same subscription after approved external model records exist.
-
+The upstream Open Data Hub models-as-a-service project supplies the MaaS controller APIs used by this demo posture, with CloudNativePG, Grafana, OpenShift OAuth proxy, and GuideLLM used as demo-scale supporting components. Because this repository currently combines Red Hat OpenShift AI 3.3 with selected upstream MaaS pieces to show the full storyline, implementation deviations remain tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md). Treat GuideLLM and the disposable dashboards as workshop helpers, not production observability or evaluation platforms.
 
 ## Trust Boundaries
 
@@ -78,23 +67,6 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 - [Grafana](https://grafana.com/) provides the disposable demo dashboard used to visualize MaaS usage signals.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
 - [OpenShift OAuth proxy](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9) protects the disposable Grafana dashboard with OpenShift login.
-
-
-## Where This Fits In The Full Platform
-
-| Earlier capability | How MaaS uses it |
-|--------------------|------------------|
-| Stage 010 platform foundation | Uses OpenShift identity, routes, GitOps, and platform services |
-| Stage 020 GPU Infrastructure for Private AI | Relies on governed accelerator capacity for private inference cost and capacity planning |
-| Stage 030 private model serving | Publishes local models as governed MaaS model choices |
-
-| Later capability | What MaaS provides |
-|------------------|--------------------|
-| Stage 050 external access | Reuses the same governed path for approved external model records |
-| Stage 060 MCP Context Integrations | Gives tool-augmented workflows a governed model access path |
-| Stage 070 Dev Spaces | Supplies OpenAI-compatible endpoints and API keys for coding assistants |
-| Stage 080 MTA | Supplies the governed model endpoint for Red Hat Developer Lightspeed for MTA |
-| Stage 090 Developer Portal | Provides a platform capability that can be discovered and documented as self-service |
 
 ## Deploy And Validate
 

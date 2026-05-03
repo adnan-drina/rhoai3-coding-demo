@@ -77,7 +77,7 @@ After resolving or adding a workaround:
 
 ### 6. Cross-references
 
-- Stage READMEs link to next/previous stages correctly
+- Stage READMEs link to their next stage correctly
 - Operations doc references real namespaces and resource names
 - Troubleshooting entries reference real commands
 
@@ -88,11 +88,15 @@ When checking a stage README:
 - Read the stage's relevant `## References` links before rewriting product-positioning language, prioritizing official Red Hat product pages and documentation.
 - Red Hat blogs and documentation should appear as alignment, implementation baseline, or reference material after the stage's role in the workshop is clear.
 - The stage should connect the previous stage and the capability being introduced without over-emphasizing capabilities planned for later stages.
+- Stage continuity should be carried by the opening narrative, architecture diagram, trust boundary, and `Next Stage` link rather than a dedicated `Where This Fits In The Full Platform` section.
 - `What This Stage Adds` should be concise and capability-oriented, not a low-level manifest inventory.
 - `What This Stage Adds` should normally be one short capability sentence plus four to six bullets.
 - `What This Stage Adds` should prefer product/platform language and mention CRs or resource names only when they are important teaching concepts.
 - `What This Stage Adds` should avoid per-bullet manifest links; the stage manifest directory belongs in `Deploy And Validate`.
 - `What This Stage Adds` should avoid YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and validation behavior unless they are central to the architecture story.
+- `How Red Hat And Open Source Make It Work` should be concise, normally one to three short paragraphs.
+- `How Red Hat And Open Source Make It Work` should explain the Red Hat product integration pattern plus relevant upstream projects without duplicating the product and open source lists.
+- `How Red Hat And Open Source Make It Work` should keep important support-posture or demo-deviation notes, but move operational detail to `docs/OPERATIONS.md` or `BACKLOG.md`.
 - The section order should follow rule `20-readme-standard.mdc`, including `What To Notice And Why It Matters` immediately after `What This Stage Adds`.
 - `Trust Boundaries`, when present, should appear before `Red Hat Products Used`.
 - The merged `What To Notice And Why It Matters` section should preserve essential demo proof points and the enterprise WHY without excessive length.

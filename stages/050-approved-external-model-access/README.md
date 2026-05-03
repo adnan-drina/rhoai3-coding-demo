@@ -42,16 +42,9 @@ This matters because regulated enterprises often need a hybrid model portfolio. 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the MaaS context used throughout this part of the demo. The Red Hat OpenShift AI 3.4 MaaS documentation describes model access through the OpenShift AI dashboard, MaaS-issued authentication tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows that operating model while keeping the current Technology Preview posture visible.
+Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS Technology Preview direction while keeping the provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
 
-Red Hat OpenShift provides the enterprise platform boundary: namespaces, RBAC, Secrets, routes, service networking, and identity. Red Hat OpenShift GitOps keeps the approved external model records and subscription resources reproducible while leaving real provider credentials outside Git.
-
-Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino continue to provide the governed API path introduced in Stage 040. They keep authentication, authorization, token limits, and request routing in the platform layer instead of pushing those concerns into each developer tool.
-
-The upstream Open Data Hub models-as-a-service project supplies the `ExternalModel`, `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` behavior used here. That is a deliberate demo posture. It lets this workshop show approved external model registration now, aligned with the Red Hat OpenShift AI 3.4 MaaS direction, while the Red Hat-supported implementation matures. The deviation is tracked in [`BACKLOG.md`](../../BACKLOG.md) and operationally described in [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
-
-The Red Hat Developer multi-LLM MaaS article describes a more advanced pattern: one OpenAI-compatible endpoint that routes by the request body's `model` field. This demo currently uses model-specific MaaS paths because the highest-value gap for this workshop is governed access, credential control, and trust-boundary clarity. The single-endpoint body-routing pattern remains future work until it becomes necessary for the storyline and fits the target Red Hat support posture.
-
+Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino keeps external model access on the same governed API path introduced in Stage 040. The upstream Open Data Hub models-as-a-service project supplies the demo APIs for `ExternalModel`, model references, authorization policy, and subscriptions. That posture lets the workshop show approved external model registration now while keeping implementation deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 
 ## Trust Boundaries
 
@@ -74,22 +67,6 @@ Governed external access is not private model serving: prompts are routed throug
 - [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the small opt-in smoke test used to confirm external inference through MaaS when provider token spend is approved.
-
-
-## Where This Fits In The Full Platform
-
-| Earlier capability | How this stage uses it |
-|--------------------|------------------------|
-| Stage 010 platform foundation | Uses OpenShift identity, RBAC, namespaces, Secrets, and GitOps foundations |
-| Stage 030 private model serving | Provides the private model baseline that external access must be distinguished from |
-| Stage 040 governed MaaS | Reuses the model catalog, subscription, API-key, gateway policy, and telemetry pattern |
-
-| Later capability | What this stage provides |
-|------------------|--------------------------|
-| Stage 060 MCP Context Integrations | Gives tool-context workflows a clear model boundary when external models are selected |
-| Stage 070 Dev Spaces | Makes approved external models available to coding assistants when policy and credentials allow |
-| Stage 080 MTA | Provides an approved external option for modernization assistance when private models are not the selected policy path |
-| Stage 090 Developer Portal | Provides external model entities and trust-boundary guidance that can be documented for self-service |
 
 ## Deploy And Validate
 

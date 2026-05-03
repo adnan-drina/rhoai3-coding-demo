@@ -42,16 +42,9 @@ This matters because data privacy and sovereignty claims require an operating mo
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the application platform underneath private inference: namespaces, RBAC, scheduling, storage attachment, routes, service networking, monitoring, and operator lifecycle. Red Hat OpenShift GitOps keeps the private model-serving desired state reproducible.
+Red Hat OpenShift provides the platform foundation for private inference: namespaces, RBAC, scheduling, routes, service networking, monitoring, operator lifecycle, and GitOps-managed desired state. Red Hat OpenShift AI adds the model-serving control plane, data science project integration, dashboard experience, model registry integration, and `LLMInferenceService` API used to expose local models as services.
 
-Red Hat OpenShift AI provides the model-serving control plane, data science project integration, dashboard experience, model registry integration, and `LLMInferenceService` API used by this stage. The model-serving platform makes trained models available as services that applications can query through API requests. In this demo, those requests are later routed through MaaS rather than handed directly to each developer tool.
-
-vLLM is the serving engine in this stage. Its job is to run the model efficiently: manage GPU memory, serve LLM requests with high throughput, expose OpenAI-compatible APIs, and provide runtime metrics that operators can use to understand request pressure, latency, tokens, and cache behavior. That matters because enterprise developer tools should not need a custom integration for every private model. They can talk to a familiar API while the platform team retains control over where the model runs and how it is operated.
-
-llm-d is the distributed inference architecture around the serving engine. Its job is to make LLM serving more Kubernetes-native as deployments grow: scheduler-aware routing, distributed serving patterns, LeaderWorkerSet integration, and future paths such as disaggregated prefill/decode and workload-aware autoscaling. In this demo, llm-d is used in a deliberately modest form through `LLMInferenceService` and explicit scheduler enablement. That is enough to show how private inference can be built on the same open cloud-native foundation that enterprises already use for regulated applications.
-
-Stage 020 contributes the GPUaaS foundation. Stage 030 consumes it by labeling the local model resources with `kueue.x-k8s.io/queue-name=private-model-serving`, requesting GPU capacity, and letting the platform manage admission and scheduling rather than hard-coding private model serving as a special case.
-
+The open source serving layer is vLLM and llm-d. vLLM provides efficient LLM serving, OpenAI-compatible APIs, and runtime metrics. llm-d brings a Kubernetes-native distributed inference pattern around the serving engine. Together with the GPUaaS foundation from Stage 020, this lets private models run inside OpenShift while consumers use a familiar API and platform teams keep scheduling, telemetry, and lifecycle control centralized.
 
 ## Trust Boundaries
 
@@ -73,23 +66,6 @@ Private local models keep prompts, source code, inference runtime, service endpo
 - [llm-d](https://llm-d.ai/) contributes Kubernetes-native distributed inference patterns for large language models. llm-d is a CNCF Sandbox project backed by contributors and supporters including Red Hat, Google Cloud, IBM Research, CoreWeave, NVIDIA, AMD, Cisco, Hugging Face, Intel, Lambda, Mistral AI, UC Berkeley, and the University of Chicago.
 - [LeaderWorkerSet](https://lws.sigs.k8s.io/) supports coordinated leader-worker deployment patterns used by distributed AI workloads.
 - [Open Data Hub](https://opendatahub.io/) is the upstream foundation for many OpenShift AI capabilities.
-
-
-## Where This Fits In The Full Platform
-
-| Earlier capability | How this stage uses it |
-|--------------------|------------------------|
-| Stage 010 platform foundation | Uses Red Hat OpenShift AI, model registry, RBAC, gateway prerequisites, and GitOps foundations |
-| Stage 020 GPU Infrastructure for Private AI | Consumes queue-backed GPU capacity and the `private-model-serving` Kueue local queue |
-
-| Later capability | What this stage provides |
-|------------------|--------------------------|
-| Stage 040 MaaS | Supplies local models that MaaS can publish, meter, and govern |
-| Stage 050 Approved External Model Access | Provides the private baseline that approved external model access must be compared against |
-| Stage 060 MCP Context Integrations | Provides the private model path that can receive approved tool context through governed consumers |
-| Stage 070 Dev Spaces | Provides private model endpoints for coding assistants |
-| Stage 080 MTA | Provides the private model path for modernization assistance |
-| Stage 090 Developer Portal | Provides a platform capability that can be documented and discovered as self-service |
 
 ## Deploy And Validate
 

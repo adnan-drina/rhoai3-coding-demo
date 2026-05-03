@@ -37,12 +37,9 @@ This matters because regulated enterprises need AI coding assistance that fits e
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift Dev Spaces provides Kubernetes-based cloud development environments on OpenShift, built on Eclipse Che and DevWorkspace. OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls for the workspaces.
+Red Hat OpenShift Dev Spaces provides Kubernetes-based cloud development environments on OpenShift, built on Eclipse Che and DevWorkspace. Red Hat OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls, while MaaS supplies the governed OpenAI-compatible model endpoint and API key pattern.
 
-Continue provides the IDE assistant experience. OpenCode provides a terminal-based agent workflow. MaaS supplies the model endpoint, API key pattern, and access policy. Because the tools consume OpenAI-compatible endpoints, the model backend can be local vLLM or an approved external provider without changing the developer workflow.
-
-Red Hat’s platform role is the separation of concerns: developers focus on code, platform teams operate workspaces and model access, and governance decisions attach to the model path rather than to unmanaged local tooling.
-
+Continue provides the IDE assistant experience and OpenCode provides the terminal-based agent workflow. Because both tools consume standard OpenAI-compatible endpoints, developers keep familiar workflows while platform teams control workspace configuration, model access, and credential handling centrally.
 
 ## Trust Boundaries
 
@@ -60,16 +57,6 @@ Red Hat OpenShift Dev Spaces keeps workspaces, source access, tool configuration
 - [DevWorkspace](https://github.com/devfile/devworkspace-operator) provides Kubernetes-native workspace orchestration.
 - [Continue](https://www.continue.dev/) is an open source AI code assistant that can use OpenAI-compatible model endpoints.
 - [OpenCode](https://opencode.ai/) provides terminal-based AI coding workflows that can consume MaaS endpoints.
-
-
-## Where This Fits In The Full Platform
-
-| Workflow | Red Hat OpenShift Dev Spaces role |
-|----------|-----------------|
-| AI coding assistant | Developers use Continue against MaaS-published models |
-| Terminal agent workflow | Developers use OpenCode with the same MaaS model access pattern |
-| Java modernization | Developers analyze Coolstore with the MTA extension |
-| Governance story | Model access stays centralized even when tools run in developer workspaces |
 
 ## Deploy And Validate
 

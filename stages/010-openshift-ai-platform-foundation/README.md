@@ -37,9 +37,9 @@ This matters because regulated European enterprises need a repeatable AI platfor
 
 ## How Red Hat And Open Source Make It Work
 
-OpenShift provides the operational substrate: identity, RBAC, namespaces, scheduling, networking, routes, storage integration, monitoring, and GitOps reconciliation. OpenShift AI adds the AI platform layer: dashboard access, data science projects, model serving integration, model registry, GenAI Studio, and components that later support MaaS.
+Red Hat OpenShift provides the enterprise Kubernetes foundation: identity, RBAC, namespaces, networking, routes, storage integration, monitoring, and GitOps reconciliation. Red Hat OpenShift AI adds the AI platform layer for data science projects, model serving, model registry, GenAI Studio, and later Models-as-a-Service patterns.
 
-The open source foundation comes from Kubernetes, Open Data Hub, KServe, Model Registry, and related serving projects. Red Hat packages and integrates those capabilities through operators and supported platform patterns so AI workloads can use the same identity, access, monitoring, and lifecycle controls as other OpenShift workloads.
+The open source base includes Kubernetes, Open Data Hub, KServe, Model Registry, and related serving projects. Red Hat packages and integrates those capabilities through operators and supported platform patterns so AI workloads can inherit the same lifecycle, access, and operational controls as other OpenShift workloads.
 
 ## Red Hat Products Used
 
@@ -53,16 +53,6 @@ The open source foundation comes from Kubernetes, Open Data Hub, KServe, Model R
 - [KServe](https://kserve.github.io/website/) provides Kubernetes-native model serving concepts used by OpenShift AI.
 - [Model Registry](https://github.com/opendatahub-io/model-registry) provides model metadata and lifecycle foundations.
 - Kubernetes and OpenShift provide the identity, scheduling, networking, and operational substrate that make the AI layer enterprise-ready.
-
-## Where This Fits In The Full Platform
-
-| Later stage | What it gets from Stage 010 |
-|------------|---------------------------|
-| Stage 020 | Platform readiness before accelerator capacity is added |
-| Stage 030 | Data science project, model registry, and model serving integration |
-| Stage 040 | Demo users, groups, and MaaS-related platform components |
-| Stage 070 | Shared OpenShift identity for developer workspaces |
-| Stage 090 | Platform identity and catalog context for Developer Hub |
 
 ## Deploy And Validate
 

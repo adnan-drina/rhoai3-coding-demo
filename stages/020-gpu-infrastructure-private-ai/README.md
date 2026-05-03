@@ -40,14 +40,9 @@ This matters because private and sovereign AI depend on expensive accelerator ca
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the Kubernetes platform substrate: cluster identity, RBAC, machine management, scheduling, networking, monitoring, and Operator Lifecycle Manager. Node Feature Discovery identifies accelerator-capable nodes. The NVIDIA GPU Operator manages the driver stack, device plugin, container toolkit, and DCGM telemetry needed for GPU workloads.
+Red Hat OpenShift provides the platform controls for accelerator infrastructure: identity, RBAC, machine management, scheduling, monitoring, Operator Lifecycle Manager, and GitOps delivery. Red Hat OpenShift AI consumes that foundation through dashboard integration and hardware profiles, while Red Hat build of Kueue provides the supported queueing and quota layer for admitted AI workloads.
 
-Red Hat OpenShift AI provides the AI platform layer. In this stage it consumes the GPUaaS foundation through dashboard integration and hardware profiles. In Stage 030, private model-serving workloads use the queued GPU path by applying the `kueue.x-k8s.io/queue-name=private-model-serving` label.
-
-Red Hat OpenShift AI 3.4 integrates with Kueue through **Red Hat build of Kueue**, not through the deprecated embedded Kueue component. This repository configures `DataScienceCluster.spec.components.kueue.managementState: Unmanaged`, which tells OpenShift AI to integrate with the externally managed Red Hat build of Kueue Operator. It also enables Kueue support in the dashboard and labels the `maas` namespace with `kueue.openshift.io/managed=true` so queue enforcement applies to supported workload types.
-
-OpenShift Custom Metrics Autoscaler, the Red Hat-supported KEDA path for OpenShift, is installed as the autoscaling building block. In production, KEDA can use Prometheus or Kueue signals such as backlog or idle workload state to scale workloads or nodes. In this demo, it is deliberately not attached to the private model deployments. That keeps the first pass focused on the GPUaaS foundation while leaving a clear extension point for demand-driven scaling.
-
+The open source and ecosystem layer supplies the GPU and scheduling building blocks: Node Feature Discovery identifies accelerator-capable nodes, the NVIDIA GPU Operator manages the driver stack and DCGM telemetry, Kueue adds Kubernetes-native admission and quota control, and KEDA provides the autoscaling extension point. In this demo, autoscaling is installed as a foundation capability but kept separate from private model deployments so the stage stays focused on governed GPU consumption.
 
 ## Trust Boundaries
 
@@ -68,17 +63,6 @@ This stage does not process source code or prompts; its trust boundary is operat
 - [DCGM Exporter](https://github.com/NVIDIA/dcgm-exporter) exposes GPU health, utilization, and memory metrics for monitoring.
 - [Kueue](https://kueue.sigs.k8s.io/) provides Kubernetes-native workload queueing, quota accounting, and admission control.
 - [KEDA](https://keda.sh/) provides event-driven autoscaling patterns that OpenShift supports through the Custom Metrics Autoscaler Operator.
-
-
-## Where This Fits In The Full Platform
-
-| Later stage | What it gets from Stage 020 |
-|------------|-----------------------------|
-| Stage 030 | GPU capacity, Kueue queue context, and hardware profile selection for private model serving |
-| Stage 040 | Private model endpoints whose GPU footprint can be observed and governed through the platform |
-| Stage 070 | Private model endpoints consumed from controlled developer workspaces |
-| Stage 080 | Private MaaS model capacity for Red Hat Developer Lightspeed for MTA |
-| Stage 090 | Platform capabilities that can be published through the developer portal |
 
 ## Deploy And Validate
 

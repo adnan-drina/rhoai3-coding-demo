@@ -42,16 +42,9 @@ This matters because AI assistants become useful when they can reach relevant en
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the GenAI Playground surface where users can experiment with foundation models and configured MCP servers before those patterns move into applications or developer tools. In Red Hat OpenShift AI 3.4, GenAI Playground and MCP server integration are documented as Technology Preview, so this demo treats the capability as an early platform direction rather than production guidance.
+Red Hat OpenShift AI provides the GenAI Playground surface where users can try foundation models with configured MCP servers before those patterns move into applications or developer tools. In Red Hat OpenShift AI 3.4, GenAI Playground and MCP server integration are documented as Technology Preview, so this stage presents an early platform direction rather than production guidance. Red Hat OpenShift supplies the hosting and policy substrate: namespaces, ServiceAccounts, RBAC, Secrets, Services, network boundaries, and GitOps reconciliation.
 
-Red Hat also publishes a Red Hat OpenShift AI MCP servers collection. That page presents MCP servers as a way for AI engineers to integrate enterprise tools and resources into AI applications and agents, and it highlights partner-provided containers built with Red Hat Universal Base Images as a reliable foundation for OpenShift AI environments. This demo is smaller than that full ecosystem: it uses one required OpenShift/Kubernetes MCP example and two optional external context examples to teach the operating model.
-
-Red Hat OpenShift provides the hosting and policy substrate: namespaces, ServiceAccounts, RBAC, Secrets, Services, network boundaries, and GitOps reconciliation. Red Hat OpenShift GitOps keeps the MCP server deployment and discovery configuration reproducible.
-
-MCP provides the open protocol pattern. In MCP terms, an AI application acts as a client, infrastructure hosts the connection, and MCP servers expose specific tools, resources, or capabilities. The initial handshake lets the client and server discover what each side supports. After that, dynamic discovery allows the application to request task-relevant context instead of packing unrelated data into the prompt up front.
-
-MCP and inference are related, but they are not the same thing. Inference is the model generating tokens. MCP is the way an AI application can reach tools and context that may inform that generation. Stage 030 and Stage 040 built the inference and model access path. Stage 060 adds a controlled context path beside it.
-
+MCP provides the open protocol for connecting AI applications to tools and context. In this stage, MCP servers expose approved capabilities beside the governed inference path from Stage 040. The important distinction is that inference generates tokens, while MCP controls what external context or tools an AI workflow can reach. That separation helps platform teams govern model access and context access as related but different trust boundaries.
 
 ## Trust Boundaries
 
@@ -72,21 +65,6 @@ MCP context must be governed separately from model access because tools can expo
 - [Kubernetes MCP server](https://github.com/containers/kubernetes-mcp-server) provides the OpenShift/Kubernetes context server pattern used by this demo container image.
 - Slack MCP servers show how team communication platforms can become optional AI context sources when credentials and policy allow.
 - BrightData MCP servers show how external web context can be exposed through MCP when an organization explicitly approves that data path.
-
-
-## Where This Fits In The Full Platform
-
-| Earlier capability | How this stage uses it |
-|--------------------|------------------------|
-| Stage 010 platform foundation | Uses OpenShift namespaces, RBAC, ConfigMaps, Secrets, and GitOps foundations |
-| Stage 040 governed MaaS | Complements governed model access with governed context discovery |
-| Stage 050 approved external access | Reinforces that external context sources need explicit provider boundaries just like external models |
-
-| Later capability | What this stage provides |
-|------------------|--------------------------|
-| Stage 070 Dev Spaces | Supplies context integrations that developer tools can consume after platform approval |
-| Stage 080 MTA | Establishes the context-governance pattern needed before modernization tools use richer external context |
-| Stage 090 Developer Hub | Provides context services that can later be documented as platform resources |
 
 ## Deploy And Validate
 

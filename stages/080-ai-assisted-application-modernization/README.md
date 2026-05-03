@@ -37,24 +37,9 @@ This matters because enterprise modernization is a risk-managed engineering work
 
 ## How Red Hat And Open Source Make It Work
 
-MTA provides the modernization platform: analysis engine, application inventory, migration rules, UI, and developer workflow integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings. The LLM proxy centralizes model access for the MTA services instead of placing provider credentials in each workspace.
+Migration Toolkit for Applications provides the modernization platform: analysis engine, application inventory, migration rules, UI, and developer workflow integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings and is documented as a Technology Preview feature in MTA 8.1. The LLM proxy centralizes model access so modernization assistance uses the MaaS gateway rather than unmanaged workspace credentials.
 
-```text
-Developer in Dev Spaces
-  -> MTA VS Code extension
-  -> MTA Hub
-  -> LLM proxy
-  -> MaaS Gateway
-  -> Private Nemotron model
-  -> Suggested migration fix
-```
-
-OpenShift provides the runtime, routing, storage, identity integration, and operator lifecycle for MTA. Red Hat build of Keycloak is used in the MTA identity path. Red Hat OpenShift AI MaaS publishes the private Nemotron endpoint that the LLM proxy calls.
-
-The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization workflows, and the Coolstore sample application. Red Hat integrates those pieces into MTA and connects them to the same OpenShift and OpenShift AI platform controls used in the earlier stages.
-
-Red Hat Developer Lightspeed for MTA is documented as a Technology Preview feature in MTA 8.1. This stage is included because it is central to the demo narrative: modernization context from MTA is routed through a governed model endpoint instead of unmanaged developer credentials.
-
+Red Hat OpenShift provides the runtime, routing, storage, identity integration, and operator lifecycle for MTA. Red Hat build of Keycloak participates in the MTA identity path, and Red Hat OpenShift AI MaaS publishes the private model endpoint used by the assistant workflow. The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization, and the Coolstore sample application.
 
 ## Trust Boundaries
 
@@ -75,16 +60,6 @@ Modernization context can include source code, static-analysis findings, depende
 - [Kantra](https://github.com/konveyor/kantra) provides CLI-based application analysis capabilities in the Konveyor ecosystem.
 - [Kai](https://github.com/konveyor/kai) is the upstream AI-assisted modernization effort behind Developer Lightspeed-style workflows.
 - [Coolstore](https://github.com/konveyor-ecosystem/coolstore) is the Java EE sample application used to demonstrate the migration path to Quarkus.
-
-
-## Where This Fits In The Full Platform
-
-| Earlier capability | How MTA uses it |
-|--------------------|-----------------|
-| Stage 010 platform identity | MTA login is federated through OpenShift OAuth |
-| Stage 040 MaaS | Red Hat Developer Lightspeed for MTA calls a governed model endpoint |
-| Stage 070 Red Hat OpenShift Dev Spaces | The MTA extension runs in the developer workspace |
-| Stage 090 Red Hat Developer Hub | The modernization workflow can become a portal golden path |
 
 ## Deploy And Validate
 
