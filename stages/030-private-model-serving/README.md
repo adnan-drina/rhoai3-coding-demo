@@ -6,7 +6,7 @@ The workshop story now has a platform foundation and a governed GPU service. Sta
 
 Inference is the operational phase of AI. A trained model receives a prompt or input, applies what it learned during training, and returns a prediction, completion, classification, recommendation, or other answer. For this demo, inference means local large language models responding to coding and modernization requests through OpenAI-compatible APIs. That is the point where AI moves from "we have a model" to "we have a service that can power developer workflows."
 
-This stage matters because enterprise AI coding assistance needs a credible private path before developers use it with sensitive source code. Later stages will add MaaS governance, developer workspaces, modernization tools, MCP context, and portal self-service. Those experiences depend on this stage proving that private model inference can be deployed, scheduled, secured, registered, and validated as platform infrastructure.
+This stage matters because enterprise AI coding assistance needs a credible private path before developers use it with sensitive source code. MaaS governance, developer workspaces, modernization tools, MCP context, and portal self-service all depend on private model inference that can be deployed, scheduled, secured, registered, and validated as platform infrastructure.
 
 The important idea is not only that a model responds. It is that regulated enterprise environments need a repeatable inference layer with clear runtime choices, observable behavior, accelerator governance, API compatibility, and a path to scale when demand grows. Stage 030 introduces that layer with vLLM and llm-d in their proper roles: vLLM serves the model efficiently, and llm-d provides the Kubernetes-native architecture for distributed inference patterns around that serving engine.
 
@@ -61,8 +61,8 @@ Private local models keep prompts, source code, inference runtime, service endpo
 ## Open Source Projects To Know
 
 - [KServe](https://kserve.github.io/website/) provides Kubernetes-native inference service abstractions.
-- [vLLM](https://docs.vllm.ai/) provides high-throughput LLM serving with OpenAI-compatible APIs. vLLM is a Linux Foundation-hosted open source project under the PyTorch Foundation ecosystem, with broad collaboration across model labs, hardware vendors, and AI infrastructure companies.
-- [llm-d](https://llm-d.ai/) contributes Kubernetes-native distributed inference patterns for large language models. llm-d is a CNCF Sandbox project backed by contributors and supporters including Red Hat, Google Cloud, IBM Research, CoreWeave, NVIDIA, AMD, Cisco, Hugging Face, Intel, Lambda, Mistral AI, UC Berkeley, and the University of Chicago.
+- [vLLM](https://docs.vllm.ai/) provides high-throughput LLM serving with OpenAI-compatible APIs.
+- [llm-d](https://llm-d.ai/) contributes Kubernetes-native distributed inference patterns for large language models.
 - [LeaderWorkerSet](https://lws.sigs.k8s.io/) supports coordinated leader-worker deployment patterns used by distributed AI workloads.
 - [Open Data Hub](https://opendatahub.io/) is the upstream foundation for many OpenShift AI capabilities.
 

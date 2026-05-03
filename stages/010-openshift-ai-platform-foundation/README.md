@@ -1,4 +1,4 @@
-# Stage 010: Trusted OpenShift AI Platform Foundation
+# Stage 010: OpenShift AI Platform Foundation
 
 ## Why This Matters
 
@@ -37,7 +37,7 @@ This matters because regulated European enterprises need a repeatable AI platfor
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the enterprise Kubernetes foundation: identity, RBAC, namespaces, networking, routes, storage integration, monitoring, and GitOps reconciliation. Red Hat OpenShift AI adds the AI platform layer for data science projects, model serving, model registry, GenAI Studio, and later Models-as-a-Service patterns.
+Red Hat OpenShift provides the enterprise Kubernetes foundation: identity, RBAC, namespaces, networking, routes, storage integration, monitoring, and GitOps reconciliation. Red Hat OpenShift AI adds the AI platform layer for data science projects, model serving, model registry, GenAI Studio, and Models-as-a-Service patterns used by the workshop.
 
 The open source base includes Kubernetes, Open Data Hub, KServe, Model Registry, and related serving projects. Red Hat packages and integrates those capabilities through operators and supported platform patterns so AI workloads can inherit the same lifecycle, access, and operational controls as other OpenShift workloads.
 
@@ -68,7 +68,7 @@ Manifests: [`gitops/stages/010-openshift-ai-platform-foundation/base/`](../../gi
 
 ## References
 
-- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
+- [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
 - [Red Hat OpenShift AI 3.3 installation guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
 - [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)

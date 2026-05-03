@@ -64,8 +64,6 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 - [CloudNativePG](https://cloudnative-pg.io/) provides the PostgreSQL database used by the MaaS API in this demo.
 - [Grafana](https://grafana.com/) provides the disposable demo dashboard used to visualize MaaS usage signals.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
-- [OpenShift OAuth proxy](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9) protects the disposable Grafana dashboard with OpenShift login.
-
 ## Deploy And Validate
 
 Operational commands are kept here for workshop operators.

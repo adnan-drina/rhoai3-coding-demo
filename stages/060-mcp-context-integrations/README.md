@@ -60,8 +60,6 @@ MCP context must be governed separately from model access because tools can expo
 
 - [Model Context Protocol](https://modelcontextprotocol.io/) defines the client/server protocol for connecting AI applications to tools, resources, and external services.
 - [Kubernetes MCP server](https://github.com/containers/kubernetes-mcp-server) provides the OpenShift/Kubernetes context server pattern used by this demo container image.
-- Slack MCP servers show how team communication platforms can become optional AI context sources when credentials and policy allow.
-- BrightData MCP servers show how external web context can be exposed through MCP when an organization explicitly approves that data path.
 
 ## Deploy And Validate
 

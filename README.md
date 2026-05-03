@@ -24,57 +24,45 @@ The goal is not to claim that every AI use case automatically satisfies a regula
 
 The workshop builds a complete AI-enabled development platform on Red Hat OpenShift:
 
-```text
-Developer productivity and modernization
-  Red Hat Advanced Developer Suite
-  Red Hat OpenShift Dev Spaces
-  Migration Toolkit for Applications
-  Red Hat Developer Hub and software catalog
-  Continue and OpenCode
-  Developer Lightspeed for MTA and RHDH
-
-Governed model access
-  Models-as-a-Service gateway
-  Access policies and subscriptions
-  API keys, quotas, rate limits, telemetry
-
-Model choices
-  Private local models on OpenShift
-    - nemotron-3-nano-30b-a3b
-    - gpt-oss-20b
-  Governed external models
-    - gpt-4o
-    - gpt-4o-mini
-
-Platform foundation
-  Red Hat OpenShift AI
-  OpenShift GitOps
-  OpenShift OAuth and RBAC
-  NVIDIA GPU Operator and NFD
-  Red Hat build of Kueue
-  OpenShift Custom Metrics Autoscaler Operator
-  OpenShift Serverless, Service Mesh, monitoring
-```
+- A Red Hat OpenShift AI foundation with model serving, model registry, GenAI Studio, dashboard access, shared identity, and GitOps-managed platform state.
+- A private AI compute and inference path with NVIDIA GPU enablement, Red Hat build of Kueue, Red Hat AI Inference Server, vLLM, llm-d, and local models running inside the OpenShift boundary.
+- A governed MaaS access layer for private and approved external models, including subscriptions, API keys, quotas, rate limits, token limits, telemetry, and gateway policy.
+- A developer productivity layer where Red Hat OpenShift Dev Spaces, Continue, OpenCode, Migration Toolkit for Applications, Developer Lightspeed, and Red Hat Developer Hub consume those platform capabilities through approved paths.
 
 The central design choice is that model consumers do not connect directly to scattered model endpoints. They connect through MaaS. MaaS becomes the enterprise control point where platform teams publish model choices and enforce access.
 
-## What The Demo Proves
+## What The Demo Shows
 
-The demo progresses through nine focused platform stages. The ordered source of truth is [`flows/default.yaml`](flows/default.yaml).
+The demo progresses through nine focused platform stages. Each stage demonstrates one part of the trusted AI platform pattern, and the ordered source of truth is [`flows/default.yaml`](flows/default.yaml).
 
-| Stage | What we show | What to understand |
-|------|--------------|--------------------|
-| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | The AI control plane, dashboard, users, model registry, and platform services | Trusted AI starts with a managed platform, not a collection of scripts |
-| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement, Red Hat build of Kueue, queue quotas, and GPUaaS observability | Private AI needs centrally managed accelerator infrastructure, not manually assigned GPU nodes |
-| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served on Red Hat OpenShift AI | Sensitive workloads need a private model path before developer tools consume it |
-| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS, gateway policy, subscriptions, quotas, telemetry, and API keys | Model serving becomes an enterprise platform service through governance |
-| [050 - Approved External Model Access](stages/050-approved-external-model-access/README.md) | External OpenAI models behind the governed MaaS path | External model use can be centralized without making it private |
-| [060 - MCP Context Integrations](stages/060-mcp-context-integrations/README.md) | OpenShift, Slack, and BrightData MCP integrations | Tool context has its own data boundary and approval model |
-| [070 - Controlled Developer Workspaces](stages/070-controlled-developer-workspaces/README.md) | Red Hat OpenShift Dev Spaces, Continue, and OpenCode | Developers get familiar AI tools without bypassing platform governance |
-| [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Red Hat Developer Lightspeed for MTA | AI becomes more valuable when grounded in analysis and workflow context |
-| [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Red Hat Developer Hub discovery, software catalog, and Developer Lightspeed for RHDH | A developer portal turns AI platform services into self-service paths |
+| Stage | Capability demonstrated | Enterprise significance |
+|------|-------------------|-------------------------|
+| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | A shared Red Hat OpenShift AI control plane with identity, dashboard, model registry, and platform services | Trusted AI starts with a managed platform foundation, not isolated notebooks, scripts, or credentials |
+| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | Governed accelerator capacity through NVIDIA GPU enablement, Red Hat build of Kueue, queue quotas, and observability | Private AI depends on centrally managed scarce compute that can be scheduled, shared, and reviewed |
+| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served on Red Hat OpenShift AI with OpenAI-compatible APIs and platform-managed runtime controls | Sensitive workloads need a private inference path before developer tools process source code or regulated context |
+| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS access with gateway policy, subscriptions, quotas, telemetry, and API keys | Model serving becomes an enterprise platform service when access, usage, and policy are centralized |
+| [050 - Approved External Model Access](stages/050-approved-external-model-access/README.md) | Approved external models exposed through the same governed MaaS path | External model use can be controlled and traced without pretending provider-side processing is private |
+| [060 - MCP Context Integrations](stages/060-mcp-context-integrations/README.md) | Platform-managed MCP discovery with required OpenShift context and optional credential-gated external context | Tool context has its own data boundary and approval model separate from model access |
+| [070 - Controlled Developer Workspaces](stages/070-controlled-developer-workspaces/README.md) | Red Hat OpenShift Dev Spaces with Continue and OpenCode configured for governed model endpoints | Developers keep familiar AI coding workflows without bypassing platform identity, credentials, or model policy |
+| [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Red Hat Developer Lightspeed for MTA using governed model access | AI assistance is more useful and safer when grounded in analysis, workflow context, and human review |
+| [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Red Hat Developer Hub catalog, identity integration, and Developer Lightspeed for RHDH | A developer portal turns platform capabilities into discoverable, self-service paths with ownership context |
 
 If someone only reads the workshop, they should still learn the architecture: private model serving, governed external model access, platform identity, developer tooling, modernization workflows, and portal-driven consumption.
+
+## Why This Is Worth Knowing
+
+The reusable pattern is bigger than this specific demo. It is a reference architecture for enterprise teams that need to introduce AI-assisted development without weakening controls around source code, regulated data, provider access, and operational accountability.
+
+For architects and platform engineers in regulated industries, the important questions are not only "which model is best?" They are also:
+
+- Which model paths are approved for which data classifications?
+- Which teams, tools, and applications can access each model?
+- Can sensitive source code and modernization context stay inside the OpenShift platform boundary?
+- Can approved external models be offered without distributing unmanaged provider credentials?
+- Can usage be measured, limited, traced, and reviewed?
+- Can AI assistance be embedded into developer workspaces, modernization workflows, and portal self-service without bypassing platform governance?
+
+The workshop shows Red Hat OpenShift AI acting as an enterprise AI platform, not only as a place to deploy models. It becomes the governed layer where model choice, developer productivity, data-sovereignty choices, and audit-ready operations meet.
 
 ## How Red Hat And Open Source Make It Work
 
@@ -84,6 +72,10 @@ Open source projects provide the building blocks. Open Data Hub and models-as-a-
 
 Red Hat’s value in this architecture is integration and lifecycle management across those pieces. Operators install and reconcile platform services. OpenShift OAuth and RBAC establish shared identity boundaries. OpenShift GitOps makes the desired state repeatable. OpenShift AI and MaaS turn local and external models into discoverable, governed services instead of leaving every team to manage endpoints, keys, quotas, and telemetry on its own.
 
+## Trust Boundaries
+
+This workshop separates private local models, governed external models, and MCP context integrations. Private models keep prompts and code inside the OpenShift platform boundary to support data-sovereignty choices; governed external models centralize access, credentials, limits, and telemetry but still send prompts to the provider; MCP integrations require separate approval because tool context has its own data boundary. These controls support governance, traceability, documentation, human accountability, and EU AI Act readiness, but the disposable demo does not claim legal or regulatory compliance.
+
 ## Red Hat Products Demonstrated
 
 This is a Red Hat platform demo. The open source projects are important, but the workshop is primarily about how Red Hat products package, integrate, operate, and support those capabilities for enterprise use.
@@ -92,15 +84,16 @@ This is a Red Hat platform demo. The open source projects are important, but the
 |-----------------|----------------------|
 | [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite) | Developer productivity and platform engineering layer represented by Dev Spaces, MTA, Developer Hub, and Developer Lightspeed capabilities |
 | [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | The Kubernetes application platform providing identity, RBAC, networking, scheduling, storage integration, routes, monitoring, and operational consistency |
-| [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai) | The AI platform layer for model serving, GenAI Studio, model registry, dashboard experience, and AI workload lifecycle management |
+| [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai) | The AI platform layer for model serving, GenAI Studio, model registry, dashboard experience, and AI workload lifecycle management |
+| [Red Hat AI Inference Server](https://www.redhat.com/en/products/ai) | vLLM-based inference runtime used for private LLM serving |
 | [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | GitOps delivery and reconciliation of the workshop platform through Argo CD |
 | [Red Hat build of Kueue](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/ai_workloads/) | Queueing, quota, and admission control for OpenShift AI GPU workload management |
 | [OpenShift Custom Metrics Autoscaler Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator) | Red Hat-supported KEDA integration for metric-driven autoscaling patterns |
 | [Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces) | Cloud-native developer workspaces for AI-assisted development and modernization |
-| [Migration Toolkit for Applications](https://www.redhat.com/en/technologies/jboss-middleware/migration-toolkit-for-applications) | Application modernization analysis and Red Hat Developer Lightspeed for MTA integration for AI-assisted migration |
+| [Migration Toolkit for Applications](https://developers.redhat.com/products/mta) | Application modernization analysis and Red Hat Developer Lightspeed for MTA integration for AI-assisted migration |
 | [Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub) | Enterprise developer portal and software catalog for self-service platform consumption |
-| [Red Hat Connectivity Link](https://www.redhat.com/en/blog/red-hat-connectivity-link) | API connectivity, gateway, and policy layer used in the MaaS governance path |
-| [Red Hat build of Keycloak](https://www.redhat.com/en/technologies/cloud-computing/openshift/keycloak) | Identity brokering for MTA and Developer Hub authentication flows |
+| [Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link) | API connectivity, gateway, and policy layer used in the MaaS governance path |
+| [Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak) | Identity brokering for MTA and Developer Hub authentication flows |
 
 The demo is meant to show how these products work together as a platform: Red Hat OpenShift runs the infrastructure, Red Hat OpenShift AI manages AI capabilities, MaaS governs model access, Red Hat OpenShift Dev Spaces and MTA consume models in developer workflows, and Red Hat Developer Hub turns the whole platform into a discoverable experience.
 
@@ -124,23 +117,6 @@ Red Hat products in this workshop are built with and around open source communit
 | [Backstage](https://backstage.io/) | Red Hat Developer Hub | Software catalog and developer portal patterns |
 
 The workshop is not only a product tour. It is also a map of how open source projects become consumable, governed enterprise capabilities through Red Hat platforms.
-
-## Trust Boundaries
-
-This workshop separates private local models, governed external models, and MCP context integrations. Private models keep prompts and code inside the OpenShift platform boundary to support data-sovereignty choices; governed external models centralize access, credentials, limits, and telemetry but still send prompts to the provider; MCP integrations require separate approval because tool context has its own data boundary. These controls support governance, traceability, documentation, human accountability, and EU AI Act readiness, but the disposable demo does not claim legal or regulatory compliance.
-
-## Why This Is Worth Knowing
-
-The reusable pattern is bigger than this specific demo. A regulated enterprise can use the same architecture to answer common AI adoption questions:
-
-- Which models are approved for which types of data?
-- Which teams can access which models?
-- Can sensitive source code stay inside the platform boundary?
-- Can public models be offered without handing developers unmanaged provider keys?
-- Can usage be measured and controlled?
-- Can AI tools be embedded into real development and modernization workflows?
-
-The workshop shows that Red Hat OpenShift AI can act as the enterprise AI platform, not only as a place to deploy models. It can become the trusted layer where model choice, developer productivity, and governance meet.
 
 ## Running The Workshop
 
@@ -204,7 +180,7 @@ rhoai3-coding-demo/
 ## References
 
 - [Red Hat AI](https://www.redhat.com/en/products/ai)
-- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
+- [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
 - [Accelerate enterprise software development with NVIDIA and MaaS](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 - [What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
 - [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)

@@ -90,4 +90,4 @@ Manifests: [`gitops/stages/090-developer-portal-self-service/base/`](../../gitop
 
 ## Next Stage
 
-This is the final implemented stage. Use [Operations](../../docs/OPERATIONS.md) for day-2 work, or extend Developer Hub with the future catalog, TechDocs, and template items listed above.
+This is the final implemented stage. Use [Operations](../../docs/OPERATIONS.md) for day-2 work, or extend Developer Hub with the catalog, TechDocs, and template items listed above.

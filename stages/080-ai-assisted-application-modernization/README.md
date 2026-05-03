@@ -50,7 +50,7 @@ Modernization context can include source code, static-analysis findings, depende
 - **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** provides modernization analysis, application inventory, migration rules, and developer workflow integration.
 - **[Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/)** adds AI-assisted code resolution to the modernization workflow.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the governed MaaS model endpoint used by the MTA LLM proxy.
-- **[Red Hat OpenShift Dev Spaces](https://developers.redhat.com/products/openshift-dev-spaces)** hosts the developer workspace and MTA VS Code extension.
+- **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** hosts the developer workspace and MTA VS Code extension.
 - **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the identity layer used by MTA and the federated OpenShift login flow.
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, identity integration, routes, storage, and operations foundation.
 
