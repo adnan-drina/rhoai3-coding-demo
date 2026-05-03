@@ -153,13 +153,14 @@ Each stage README includes an SVG architecture diagram under a `## Architecture`
 - Use a markdown image reference: `![Stage NNN layered capability map](../../docs/assets/architecture/stage-NNN-capability-map.svg)`
 - Do not place the diagram at the top of the file or before the title.
 - The `## Architecture` heading makes the diagram linkable and visible in the table of contents.
-- Stage diagrams must use the same architecture layers and capability list as the root diagram. Only the color highlighting changes: the stage diagram highlights capabilities introduced in that stage while the rest of the platform remains visible for context.
+- Stage diagrams must use the same architecture layers and capability list as the root diagram. The stage diagram changes only visual state: capabilities introduced in that stage are highlighted, previously introduced capabilities remain readable, and not-yet-introduced capabilities are dimmed.
 - Regenerate root and stage architecture diagrams with `node scripts/generate-architecture-diagrams.mjs` instead of hand-editing individual SVG files.
 
 Current diagram design:
 - Use the same Layout B layered table as the root diagram: product rail, logical layer labels, and capability boxes.
 - The product rail uses Red Hat palette colors: purple for **Red Hat Advanced Developer Suite**, teal for **Red Hat OpenShift AI**, and Red Hat red for **Red Hat OpenShift**.
 - The table uses a transparent outer SVG canvas with dark neutral panels, gray borders, white text, and stage-highlight borders.
+- Stage diagrams distinguish capability state: new capabilities use a heavy product-colored border, previously introduced capabilities remain readable, and not-yet-introduced capabilities are dimmed.
 - The logical layers must stay in this order:
   - Developer productivity and modernization
   - Model and context choices

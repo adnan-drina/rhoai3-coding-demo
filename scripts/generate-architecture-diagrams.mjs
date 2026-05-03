@@ -24,6 +24,7 @@ const colors = {
   gray80: "#292929",
   gray70: "#383838",
   gray60: "#4d4d4d",
+  gray50: "#707070",
   gray30: "#c7c7c7",
   gray20: "#e0e0e0",
   white: "#ffffff",
@@ -180,7 +181,22 @@ function rect({ x, y, w, h, fill, stroke = colors.gray70, strokeWidth = 2, rx = 
 function capStyle(cap, row, stageId, isRoot) {
   const productColor = products[row.product].color;
 
-  if (!isRoot && cap.stage === stageId) {
+  if (isRoot) {
+    return {
+      fill: colors.gray80,
+      stroke: colors.gray70,
+      strokeWidth: 2,
+      text: colors.white,
+      weight: 550,
+      filter: "",
+      opacity: null,
+    };
+  }
+
+  const capStage = Number(cap.stage);
+  const currentStage = Number(stageId);
+
+  if (capStage === currentStage) {
     return {
       fill: colors.gray95,
       stroke: productColor,
@@ -188,16 +204,30 @@ function capStyle(cap, row, stageId, isRoot) {
       text: colors.white,
       weight: 700,
       filter: ' filter="url(#lift)"',
+      opacity: null,
+    };
+  }
+
+  if (capStage < currentStage) {
+    return {
+      fill: colors.gray80,
+      stroke: colors.gray70,
+      strokeWidth: 2,
+      text: colors.white,
+      weight: 550,
+      filter: "",
+      opacity: null,
     };
   }
 
   return {
-    fill: colors.gray80,
+    fill: colors.gray90,
     stroke: colors.gray70,
     strokeWidth: 2,
-    text: isRoot ? colors.white : colors.gray20,
-    weight: isRoot ? 550 : 450,
+    text: colors.gray50,
+    weight: 450,
     filter: "",
+    opacity: "0.62",
   };
 }
 
@@ -212,9 +242,10 @@ function drawCapability(cap, row, idx, stageId, isRoot) {
   const y = row.y + 24 + rowIndex * (boxH + layout.gap);
   const style = capStyle(cap, row, stageId, isRoot);
   const size = cap.label.length > 2 ? 18 : 19;
+  const opacityAttr = style.opacity ? ` opacity="${style.opacity}"` : "";
 
   return [
-    `<g${style.filter}>`,
+    `<g${style.filter}${opacityAttr}>`,
     rect({ x, y, w: boxW, h: boxH, fill: style.fill, stroke: style.stroke, strokeWidth: style.strokeWidth }),
     textLines(cap.label, x + boxW / 2, y + boxH / 2 + 7, size, style.text, style.weight, "middle"),
     "</g>",
@@ -277,10 +308,12 @@ function drawLegend(stageId, isRoot) {
   const legendColor = products[[...stageProducts][0] || "openshiftAI"].color;
 
   return [
-    rect({ x: 620, y: y - 23, w: 34, h: 34, fill: colors.gray95, stroke: legendColor, strokeWidth: 5 }),
-    `<text x="678" y="${y + 1}" class="body" font-size="22" fill="${colors.gray20}">New in this stage</text>`,
-    rect({ x: 965, y: y - 23, w: 34, h: 34, fill: colors.gray80, stroke: colors.gray70, strokeWidth: 2 }),
-    `<text x="1023" y="${y + 1}" class="body" font-size="22" fill="${colors.gray20}">Capability shown for architectural context</text>`,
+    rect({ x: 440, y: y - 23, w: 34, h: 34, fill: colors.gray95, stroke: legendColor, strokeWidth: 5 }),
+    `<text x="498" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">New in this stage</text>`,
+    rect({ x: 800, y: y - 23, w: 34, h: 34, fill: colors.gray80, stroke: colors.gray70, strokeWidth: 2 }),
+    `<text x="858" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">Previously introduced</text>`,
+    rect({ x: 1225, y: y - 23, w: 34, h: 34, fill: colors.gray90, stroke: colors.gray70, strokeWidth: 2, opacity: "0.62" }),
+    `<text x="1283" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">Not introduced yet</text>`,
   ].join("");
 }
 
