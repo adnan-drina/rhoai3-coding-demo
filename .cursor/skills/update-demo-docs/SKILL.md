@@ -92,6 +92,7 @@ When checking a stage README:
 When checking architecture diagrams:
 - Treat `scripts/generate-architecture-diagrams.mjs` as the source of truth for root and stage SVGs.
 - Verify root and stage SVGs share the same product rail, logical layers, and capability labels.
+- Verify root capability boxes use dark fill with product-colored left stripes.
 - Verify stage SVGs only change capability visual state: new in stage, previously introduced with a product-colored left stripe, and not introduced yet.
 - Preserve the agreed dark transparent Layout B visual design: purple Advanced Developer Suite, teal OpenShift AI, red OpenShift, dark neutral table, gray borders, and white text.
 - Keep capability labels logical and product-aligned rather than manifest-internal.

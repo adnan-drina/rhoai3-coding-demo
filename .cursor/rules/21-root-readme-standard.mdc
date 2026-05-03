@@ -123,6 +123,7 @@ Current diagram design:
 - Use the Layout B layered table pattern: a left product rail, a logical layer label column, and capability boxes to the right.
 - The product rail uses Red Hat palette colors: purple for **Red Hat Advanced Developer Suite**, teal for **Red Hat OpenShift AI**, and Red Hat red for **Red Hat OpenShift**.
 - The table uses the dark neutral theme from the existing workshop diagrams: transparent outer SVG canvas, dark gray panels, gray borders, white text, and product-colored stage-highlight borders.
+- Root capability boxes use a dark fill with a product-colored left stripe to match the final stage diagram convention and show product-layer ownership.
 - Stage diagrams distinguish capability state: new capabilities use a heavy product-colored border, previously introduced capabilities use a dark fill with a product-colored left stripe, and not-yet-introduced capabilities are dimmed.
 - The logical layers are:
   - Developer productivity and modernization

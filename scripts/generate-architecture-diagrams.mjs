@@ -190,7 +190,7 @@ function capStyle(cap, row, stageId, isRoot) {
       weight: 550,
       filter: "",
       opacity: null,
-      stripe: null,
+      stripe: productColor,
     };
   }
 
@@ -298,9 +298,13 @@ function drawLegend(stageId, isRoot) {
   const y = 1415;
   if (isRoot) {
     return [
-      rect({ x: 720, y: y - 23, w: 34, h: 34, fill: colors.gray80, stroke: colors.gray70, strokeWidth: 2 }),
-      `<text x="778" y="${y + 1}" class="body" font-size="22" fill="${colors.gray20}">Capability used in this workshop</text>`,
-      `<text x="1180" y="${y + 1}" class="body" font-size="22" fill="${colors.gray30}">Left rail shows Red Hat product layer ownership</text>`,
+      rect({ x: 650, y: y - 23, w: 34, h: 34, fill: colors.gray80, stroke: colors.gray70, strokeWidth: 2 }),
+      rect({ x: 650, y: y - 23, w: 10, h: 11, fill: products.developerSuite.color, stroke: products.developerSuite.color, strokeWidth: 0, rx: 0 }),
+      rect({ x: 650, y: y - 12, w: 10, h: 12, fill: products.openshiftAI.color, stroke: products.openshiftAI.color, strokeWidth: 0, rx: 0 }),
+      rect({ x: 650, y, w: 10, h: 11, fill: products.openshift.color, stroke: products.openshift.color, strokeWidth: 0, rx: 0 }),
+      rect({ x: 650, y: y - 23, w: 34, h: 34, fill: "none", stroke: colors.gray70, strokeWidth: 2 }),
+      `<text x="708" y="${y + 1}" class="body" font-size="22" fill="${colors.gray20}">Capability used in this workshop</text>`,
+      `<text x="1120" y="${y + 1}" class="body" font-size="22" fill="${colors.gray30}">Left stripe and product rail show Red Hat product layer ownership</text>`,
     ].join("");
   }
 
