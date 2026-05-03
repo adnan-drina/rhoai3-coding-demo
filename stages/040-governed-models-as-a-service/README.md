@@ -50,12 +50,10 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI** provides the model-serving and MaaS platform context.
-- **Red Hat Connectivity Link** provides the gateway and policy layer used in the MaaS governance path.
-- **Red Hat OpenShift GitOps** reconciles the MaaS, gateway, policy, and observability resources.
-- **Red Hat OpenShift** provides the runtime platform, identity, networking, routes, storage, and monitoring foundation.
-- **Red Hat OpenShift Dev Spaces** consumes this governed MaaS path in Stage 070 for AI coding assistants.
-- **Migration Toolkit for Applications (MTA)** and **Red Hat Developer Lightspeed for MTA** consume this governed model access pattern in Stage 080.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the model-serving and MaaS platform context.
+- **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the gateway and policy layer used in the MaaS governance path.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, identity, networking, routes, storage, and monitoring foundation.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the MaaS, gateway, policy, and observability resources.
 
 ## Open Source Projects To Know
 

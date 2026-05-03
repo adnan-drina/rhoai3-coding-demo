@@ -47,9 +47,9 @@ Red Hat OpenShift Dev Spaces keeps workspaces, source access, tool configuration
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift Dev Spaces** provides the managed cloud development environment.
-- **Red Hat OpenShift AI** provides the MaaS model endpoints consumed by the developer tools.
-- **Red Hat OpenShift** provides the identity, routing, namespace isolation, and runtime platform for the workspaces.
+- **[Red Hat OpenShift Dev Spaces](https://developers.redhat.com/products/openshift-dev-spaces)** provides the managed cloud development environment.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the MaaS model endpoints consumed by the developer tools.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides identity, routing, namespace isolation, and runtime controls for the workspaces.
 
 ## Open Source Projects To Know
 

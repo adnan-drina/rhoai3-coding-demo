@@ -50,11 +50,11 @@ This stage does not process source code or prompts; its trust boundary is operat
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift** provides the application platform, Kubernetes scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
-- **Red Hat OpenShift AI** provides the AI platform integration point through hardware profiles, dashboard configuration, Kueue-aware workload management, and later private model serving.
-- **Red Hat build of Kueue** provides the supported queueing and quota control plane used by Red Hat OpenShift AI 3.4.
-- **OpenShift Custom Metrics Autoscaler Operator** provides the Red Hat-supported KEDA integration for custom-metric and event-driven autoscaling patterns.
-- **Red Hat OpenShift GitOps** reconciles the GPUaaS desired state through Argo CD.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides Kubernetes scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides hardware profiles, dashboard configuration, and Kueue-aware workload integration.
+- **[Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index)** provides the supported queueing and quota control plane for AI workloads.
+- **[Custom Metrics Autoscaler Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/nodes/index#nodes-cma-autoscaling-custom)** provides the Red Hat-supported KEDA integration for custom-metric and event-driven autoscaling patterns.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the GPUaaS desired state through Argo CD.
 
 ## Open Source Projects To Know
 

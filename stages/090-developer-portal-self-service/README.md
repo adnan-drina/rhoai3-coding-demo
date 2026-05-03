@@ -47,12 +47,10 @@ Red Hat Developer Hub is a discovery and self-service surface, so it should link
 
 ## Red Hat Products Used
 
-- **Red Hat Developer Hub 1.9** provides the enterprise developer portal and software catalog.
-- **Red Hat Advanced Developer Suite** frames Developer Hub, Dev Spaces, MTA, and Developer Lightspeed as a developer productivity layer.
-- **Developer Lightspeed for Red Hat Developer Hub** provides the assistant capability in the portal layer.
-- **Red Hat OpenShift** provides the runtime platform, route, console launcher integration, and OAuth identity foundation.
-- **Red Hat build of Keycloak** is reused as the OIDC identity broker through the MTA realm.
-- **Red Hat OpenShift AI**, **Red Hat OpenShift Dev Spaces**, and **MTA** are the platform capabilities that Red Hat Developer Hub is intended to make discoverable.
+- **[Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub)** provides the enterprise developer portal and software catalog.
+- **[Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/overview#developer-lightspeed-for-red-hat-developer-hub)** provides the assistant capability in the portal layer.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, route, console launcher integration, and OAuth identity foundation.
+- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the OIDC identity broker reused from the MTA realm.
 
 ## Open Source Projects To Know
 

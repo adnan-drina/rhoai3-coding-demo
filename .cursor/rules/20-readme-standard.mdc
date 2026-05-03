@@ -153,6 +153,14 @@ Keep this section concise:
 
 This is a Red Hat product demo. Every stage README must clearly identify the relevant Red Hat products and explain their role.
 
+The `## Red Hat Products Used` section should be a focused inventory of Red Hat products or productized components used by the current stage. Keep it short and practical:
+
+- List only products or productized components used by the stage itself.
+- Do not list downstream consumers, later-stage integrations, future portal entries, or products mentioned only for context.
+- Link each product name to its official Red Hat product page when one exists.
+- Use official Red Hat documentation links for productized components that do not have a standalone product page.
+- Keep each bullet to one sentence that explains the product's role in this stage.
+
 Examples:
 - **Red Hat OpenShift** - platform substrate: Kubernetes, identity, RBAC, networking, routes, scheduling, monitoring.
 - **Red Hat OpenShift AI** - AI platform, GenAI Studio, dashboard, model registry, model serving, MaaS.

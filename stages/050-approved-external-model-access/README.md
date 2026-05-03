@@ -52,13 +52,10 @@ Governed external access is not private model serving: prompts are routed throug
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI** provides the MaaS model access context and OpenAI-compatible consumption pattern.
-- **Red Hat Connectivity Link** participates in the governed gateway path used for external model access.
-- **Red Hat OpenShift GitOps** reconciles the approved external model resources, subscriptions, and policy desired state.
-- **Red Hat OpenShift** provides namespaces, RBAC, Secrets, routes, identity integration, and service networking.
-- **Red Hat OpenShift Dev Spaces** consumes approved model choices in Stage 070 through governed AI coding assistant configuration.
-- **Migration Toolkit for Applications (MTA)** and **Red Hat Developer Lightspeed for MTA** can use governed model access in Stage 080 when an approved model is selected for modernization assistance.
-- **Red Hat Developer Hub** can document the external model capability as a self-service platform option in Stage 090.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the MaaS model access context and OpenAI-compatible consumption pattern.
+- **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the governed gateway path for external model access.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides namespaces, RBAC, Secrets, routes, identity integration, and service networking.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the approved external model resources, subscriptions, and policy desired state.
 
 ## Open Source Projects To Know
 

@@ -52,12 +52,9 @@ MCP context must be governed separately from model access because tools can expo
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI** provides the GenAI Playground integration point for configured MCP servers.
-- **Red Hat OpenShift AI MCP servers** provide the broader Red Hat and partner ecosystem direction for MCP servers built for OpenShift AI use cases.
-- **Red Hat OpenShift** provides workload hosting, ServiceAccounts, RBAC, Secrets, Services, namespaces, and cluster policy boundaries.
-- **Red Hat OpenShift GitOps** manages the MCP services and discovery configuration.
-- **Red Hat OpenShift Dev Spaces** consumes governed model and context capabilities in the next stage.
-- **Red Hat Developer Hub** can later document approved context services as discoverable platform capabilities.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the GenAI Playground integration point for configured MCP servers.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides workload hosting, ServiceAccounts, RBAC, Secrets, Services, namespaces, and cluster policy boundaries.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** manages the MCP services and discovery configuration.
 
 ## Open Source Projects To Know
 

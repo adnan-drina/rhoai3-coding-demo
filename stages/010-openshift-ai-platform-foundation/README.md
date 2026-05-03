@@ -43,9 +43,10 @@ The open source base includes Kubernetes, Open Data Hub, KServe, Model Registry,
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI** is the main product demonstrated in this stage. It provides the AI dashboard, DataScienceCluster, model serving integration, GenAI Studio, and model registry experience.
-- **Red Hat OpenShift** provides the underlying platform services: authentication, namespaces, routes, RBAC, scheduling, monitoring, and storage integration.
-- **OpenShift Serverless** and **Service Mesh** provide platform services used by OpenShift AI serving components.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the AI dashboard, DataScienceCluster, model serving integration, GenAI Studio, and model registry experience.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides authentication, namespaces, routes, RBAC, scheduling, monitoring, and storage integration.
+- **[Red Hat OpenShift Serverless](https://www.redhat.com/en/technologies/cloud-computing/openshift/serverless)** provides Knative-based services used by OpenShift AI serving components.
+- **[Red Hat OpenShift Service Mesh](https://www.redhat.com/en/technologies/cloud-computing/openshift/service-mesh)** provides service-mesh capabilities used by OpenShift AI serving components.
 
 ## Open Source Projects To Know
 

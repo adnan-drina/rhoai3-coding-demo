@@ -97,6 +97,9 @@ When checking a stage README:
 - `How Red Hat And Open Source Make It Work` should be concise, normally one to three short paragraphs.
 - `How Red Hat And Open Source Make It Work` should explain the Red Hat product integration pattern plus relevant upstream projects without duplicating the product and open source lists.
 - `How Red Hat And Open Source Make It Work` should keep important support-posture or demo-deviation notes, but move operational detail to `docs/OPERATIONS.md` or `BACKLOG.md`.
+- `Red Hat Products Used` should list only products or productized components used by the current stage.
+- `Red Hat Products Used` should avoid downstream consumers, future-stage integrations, and products mentioned only for platform context.
+- `Red Hat Products Used` should link product names to official Red Hat product pages when available, or official Red Hat documentation for productized components.
 - The section order should follow rule `20-readme-standard.mdc`, including `What To Notice And Why It Matters` immediately after `What This Stage Adds`.
 - `Trust Boundaries`, when present, should appear before `Red Hat Products Used`.
 - The merged `What To Notice And Why It Matters` section should preserve essential demo proof points and the enterprise WHY without excessive length.

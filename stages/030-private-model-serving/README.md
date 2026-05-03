@@ -52,12 +52,11 @@ Private local models keep prompts, source code, inference runtime, service endpo
 
 ## Red Hat Products Used
 
-- **Red Hat OpenShift AI** provides model serving, `LLMInferenceService`, model registry integration, and the data science project experience.
-- **Red Hat AI Inference Server** provides the vLLM-based runtime image used by the private LLM serving containers.
-- **Red Hat OpenShift** provides the runtime platform, RBAC, routes, service networking, storage, scheduling, and namespace isolation.
-- **Red Hat build of Kueue** provides the queue and admission context inherited from Stage 020.
-- **OpenShift monitoring** provides the PrometheusRule API used for vLLM metric aliases that support future autoscaling analysis.
-- **Red Hat OpenShift GitOps** reconciles the model-serving desired state through Argo CD.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides model serving, `LLMInferenceService`, model registry integration, and the data science project experience.
+- **[Red Hat AI Inference Server](https://www.redhat.com/en/products/ai)** provides the vLLM-based runtime image used by the private LLM serving containers.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, RBAC, routes, service networking, storage, scheduling, monitoring, and namespace isolation.
+- **[Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index)** provides queueing and admission control for private model workloads.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the model-serving desired state through Argo CD.
 
 ## Open Source Projects To Know
 

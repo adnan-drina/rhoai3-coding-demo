@@ -83,6 +83,9 @@ After validation, verify:
 - [ ] README's `What This Stage Adds` section avoids per-bullet manifest links, YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and low-level operational caveats
 - [ ] README's `How Red Hat And Open Source Make It Work` section is concise, product-oriented, and does not duplicate the product or open source inventory lists
 - [ ] README's `How Red Hat And Open Source Make It Work` section preserves important support-posture or demo-deviation notes without turning into operational detail
+- [ ] README's `Red Hat Products Used` section lists only products or productized components used by the current stage
+- [ ] README's `Red Hat Products Used` section avoids downstream consumers, future integrations, and context-only products
+- [ ] README's `Red Hat Products Used` product names link to official Red Hat product pages or official Red Hat documentation for productized components
 - [ ] README follows the stage README section order, with `What To Notice And Why It Matters` after `What This Stage Adds`
 - [ ] README carries stage continuity through the narrative, architecture diagram, trust boundary, and `Next Stage` link instead of a dedicated `Where This Fits In The Full Platform` section
 - [ ] README places `Trust Boundaries`, when present, before `Red Hat Products Used`
