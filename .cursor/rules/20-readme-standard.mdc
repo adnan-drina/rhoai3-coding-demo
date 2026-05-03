@@ -153,6 +153,8 @@ Each stage README includes an SVG architecture diagram under a `## Architecture`
 - Use a markdown image reference: `![Stage NNN layered capability map](../../docs/assets/architecture/stage-NNN-capability-map.svg)`
 - Do not place the diagram at the top of the file or before the title.
 - The `## Architecture` heading makes the diagram linkable and visible in the table of contents.
+- Stage diagrams must use the same architecture layers and capability list as the root diagram. Only the color highlighting changes: the stage diagram highlights capabilities introduced in that stage while the rest of the platform remains visible for context.
+- Regenerate root and stage architecture diagrams with `node scripts/generate-architecture-diagrams.mjs` instead of hand-editing individual SVG files.
 
 ## Markdown Style
 

@@ -115,6 +115,9 @@ The root README includes an SVG architecture diagram under a `## Architecture` h
 - The diagram lives at `docs/assets/architecture/rhoai-capability-map.svg`.
 - Use a markdown image reference: `![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)`
 - Do not place the diagram at the top of the file or before the title.
+- The root diagram is the complete architecture map. It must list all platform layers and capabilities used by the demo.
+- Stage diagrams must reuse the same layers and capability list, changing only color highlighting to show which capabilities are introduced by that stage.
+- Regenerate root and stage architecture diagrams with `node scripts/generate-architecture-diagrams.mjs` instead of hand-editing individual SVG files.
 
 ## Style Rules
 

@@ -1,157 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1280" viewBox="0 0 2048 1280" role="img" aria-labelledby="title desc">
-  <title id="title">Stage 020: GPU Infrastructure for Private AI</title>
-  <desc id="desc">GPU-as-a-Service building blocks for private AI on Red Hat OpenShift AI</desc>
-  <style>
-    .display{font-family:'Red Hat Display','Arial',sans-serif}
-    .body{font-family:'Red Hat Text','Arial',sans-serif}
-    .mono{font-family:'Red Hat Mono','Consolas',monospace}
-    .lane{fill:none;stroke:#4d4d4d;stroke-width:3}
-    .laneNew{fill:none;stroke:#f56e6e;stroke-width:3}
-    .label{fill:#1f1f1f}
-    .labelRed{fill:#ee0000}
-    .box{fill:#151515;stroke:#4d4d4d;stroke-width:2}
-    .boxOld{fill:#383838;stroke:#4d4d4d;stroke-width:2}
-    .boxNew{fill:#3f0000;stroke:#ee0000;stroke-width:5}
-    .muted{fill:#c7c7c7}
-    .white{fill:#ffffff}
-    .red{fill:#f56e6e}
-  </style>
-  <defs>
-    <radialGradient id="glow" cx="82%" cy="5%" r="70%">
-      <stop offset="0" stop-color="#ee0000" stop-opacity="0.16"/>
-      <stop offset="0.45" stop-color="#ee0000" stop-opacity="0.04"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000" flood-opacity="0.5"/>
-    </filter>
-  </defs>
-  <rect width="2048" height="1280" fill="#000000"/>
-  <rect width="2048" height="1280" fill="url(#glow)"/>
-  <text x="64" y="76" class="display" font-size="52" fill="#ffffff" font-weight="400"><tspan fill="#f56e6e" font-weight="700">Stage 020:</tspan> GPU Infrastructure for Private AI</text>
-  <text x="64" y="116" class="body" font-size="26" fill="#c7c7c7">Adds GPU-as-a-Service building blocks: GPU enablement, Kueue queues, quotas, autoscaling readiness, and observability</text>
-
-  <rect x="36" y="150" width="300" height="150" rx="2" class="label"/>
-  <text x="186" y="215" class="display white" font-size="30" font-weight="700" text-anchor="middle">Developer</text>
-  <text x="186" y="251" class="display white" font-size="30" font-weight="700" text-anchor="middle">Experience</text>
-  <rect x="350" y="150" width="1660" height="150" rx="2" class="lane"/>
-
-  <rect x="36" y="320" width="300" height="300" rx="2" class="label"/>
-  <text x="186" y="438" class="display white" font-size="30" font-weight="700" text-anchor="middle">OpenShift</text>
-  <text x="186" y="474" class="display white" font-size="30" font-weight="700" text-anchor="middle">AI/ML</text>
-  <text x="186" y="510" class="display white" font-size="30" font-weight="700" text-anchor="middle">platform</text>
-  <rect x="350" y="320" width="1660" height="300" rx="2" class="laneNew"/>
-
-  <rect x="36" y="640" width="300" height="190" rx="2" class="labelRed"/>
-  <text x="186" y="714" class="display white" font-size="30" font-weight="700" text-anchor="middle">GPU</text>
-  <text x="186" y="750" class="display white" font-size="30" font-weight="700" text-anchor="middle">as a Service</text>
-  <rect x="350" y="640" width="1660" height="190" rx="2" class="laneNew"/>
-
-  <rect x="36" y="850" width="300" height="170" rx="2" class="labelRed"/>
-  <text x="186" y="918" class="display white" font-size="30" font-weight="700" text-anchor="middle">OpenShift</text>
-  <text x="186" y="954" class="display white" font-size="30" font-weight="700" text-anchor="middle">Container</text>
-  <text x="186" y="990" class="display white" font-size="30" font-weight="700" text-anchor="middle">Platform</text>
-  <rect x="350" y="850" width="1660" height="170" rx="2" class="laneNew"/>
-
-  <rect x="36" y="1040" width="300" height="110" rx="2" class="labelRed"/>
-  <text x="186" y="1108" class="display white" font-size="30" font-weight="700" text-anchor="middle">Infrastructure</text>
-  <rect x="350" y="1040" width="1660" height="110" rx="2" class="laneNew"/>
-
-  <g>
-    <rect x="420" y="185" width="310" height="80" rx="2" class="box"/>
-    <text x="575" y="218" class="body muted" font-size="25" text-anchor="middle">OpenShift</text>
-    <text x="575" y="248" class="body muted" font-size="25" text-anchor="middle">Dev Spaces</text>
-    <rect x="770" y="185" width="310" height="80" rx="2" class="box"/>
-    <text x="925" y="218" class="body muted" font-size="25" text-anchor="middle">Continue and</text>
-    <text x="925" y="248" class="body muted" font-size="25" text-anchor="middle">OpenCode</text>
-    <rect x="1120" y="185" width="330" height="80" rx="2" class="box"/>
-    <text x="1285" y="218" class="body muted" font-size="25" text-anchor="middle">MTA and Developer</text>
-    <text x="1285" y="248" class="body muted" font-size="25" text-anchor="middle">Lightspeed for MTA</text>
-    <rect x="1490" y="185" width="310" height="80" rx="2" class="box"/>
-    <text x="1645" y="218" class="body muted" font-size="25" text-anchor="middle">Red Hat</text>
-    <text x="1645" y="248" class="body muted" font-size="25" text-anchor="middle">Developer Hub</text>
-  </g>
-
-  <g filter="url(#lift)">
-    <rect x="410" y="355" width="310" height="92" rx="2" class="boxNew"/>
-    <text x="565" y="389" class="body white" font-size="25" font-weight="700" text-anchor="middle">Queue-based</text>
-    <text x="565" y="419" class="body white" font-size="25" font-weight="700" text-anchor="middle">HardwareProfiles</text>
-    <rect x="760" y="355" width="310" height="92" rx="2" class="boxNew"/>
-    <text x="915" y="389" class="body white" font-size="25" font-weight="700" text-anchor="middle">OpenShift AI</text>
-    <text x="915" y="419" class="body white" font-size="25" font-weight="700" text-anchor="middle">Kueue integration</text>
-    <rect x="1110" y="355" width="310" height="92" rx="2" class="boxOld"/>
-    <text x="1265" y="389" class="body white" font-size="25" text-anchor="middle">Private model</text>
-    <text x="1265" y="419" class="body white" font-size="25" text-anchor="middle">serving consumers</text>
-    <rect x="1460" y="355" width="380" height="92" rx="2" class="box"/>
-    <text x="1650" y="389" class="body muted" font-size="25" text-anchor="middle">MaaS governance and</text>
-    <text x="1650" y="419" class="body muted" font-size="25" text-anchor="middle">developer workflows</text>
-  </g>
-
-  <g>
-    <rect x="410" y="480" width="310" height="92" rx="2" class="boxNew"/>
-    <text x="565" y="514" class="body white" font-size="25" font-weight="700" text-anchor="middle">LocalQueue</text>
-    <text x="565" y="544" class="body white" font-size="25" font-weight="700" text-anchor="middle">private-model-serving</text>
-    <rect x="760" y="480" width="310" height="92" rx="2" class="boxNew"/>
-    <text x="915" y="514" class="body white" font-size="25" font-weight="700" text-anchor="middle">ClusterQueue</text>
-    <text x="915" y="544" class="body white" font-size="25" font-weight="700" text-anchor="middle">GPU quota</text>
-    <rect x="1110" y="480" width="310" height="92" rx="2" class="boxNew"/>
-    <text x="1265" y="514" class="body white" font-size="25" font-weight="700" text-anchor="middle">ResourceFlavor</text>
-    <text x="1265" y="544" class="body white" font-size="25" font-weight="700" text-anchor="middle">NVIDIA L4 nodes</text>
-    <rect x="1460" y="480" width="380" height="92" rx="2" class="boxNew"/>
-    <text x="1650" y="514" class="body white" font-size="25" font-weight="700" text-anchor="middle">KEDA readiness and</text>
-    <text x="1650" y="544" class="body white" font-size="25" font-weight="700" text-anchor="middle">GPUaaS dashboards</text>
-  </g>
-
-  <g filter="url(#lift)">
-    <rect x="410" y="682" width="315" height="92" rx="2" class="boxNew"/>
-    <text x="567.5" y="716" class="body white" font-size="25" font-weight="700" text-anchor="middle">Node Feature</text>
-    <text x="567.5" y="746" class="body white" font-size="25" font-weight="700" text-anchor="middle">Discovery</text>
-    <rect x="770" y="682" width="315" height="92" rx="2" class="boxNew"/>
-    <text x="927.5" y="716" class="body white" font-size="25" font-weight="700" text-anchor="middle">NVIDIA GPU</text>
-    <text x="927.5" y="746" class="body white" font-size="25" font-weight="700" text-anchor="middle">Operator</text>
-    <rect x="1130" y="682" width="315" height="92" rx="2" class="boxNew"/>
-    <text x="1287.5" y="716" class="body white" font-size="25" font-weight="700" text-anchor="middle">DCGM metrics</text>
-    <text x="1287.5" y="746" class="body white" font-size="25" font-weight="700" text-anchor="middle">and telemetry</text>
-    <rect x="1490" y="682" width="315" height="92" rx="2" class="boxNew"/>
-    <text x="1647.5" y="716" class="body white" font-size="25" font-weight="700" text-anchor="middle">GPU worker</text>
-    <text x="1647.5" y="746" class="body white" font-size="25" font-weight="700" text-anchor="middle">MachineSets</text>
-  </g>
-
-  <g>
-    <rect x="410" y="888" width="270" height="82" rx="2" class="boxOld"/>
-    <text x="545" y="921" class="body white" font-size="25" text-anchor="middle">GitOps</text>
-    <text x="545" y="951" class="body white" font-size="25" text-anchor="middle">(Argo CD)</text>
-    <rect x="720" y="888" width="270" height="82" rx="2" class="boxOld"/>
-    <text x="855" y="921" class="body white" font-size="25" text-anchor="middle">Monitoring</text>
-    <text x="855" y="951" class="body white" font-size="25" text-anchor="middle">(Prometheus)</text>
-    <rect x="1030" y="888" width="270" height="82" rx="2" class="boxOld"/>
-    <text x="1165" y="921" class="body white" font-size="25" text-anchor="middle">Operators</text>
-    <text x="1165" y="951" class="body white" font-size="25" text-anchor="middle">and CRDs</text>
-    <rect x="1340" y="888" width="270" height="82" rx="2" class="boxOld"/>
-    <text x="1475" y="921" class="body white" font-size="25" text-anchor="middle">OAuth, RBAC,</text>
-    <text x="1475" y="951" class="body white" font-size="25" text-anchor="middle">projects</text>
-    <rect x="1650" y="888" width="270" height="82" rx="2" class="boxOld"/>
-    <text x="1785" y="921" class="body white" font-size="25" text-anchor="middle">Serverless</text>
-    <text x="1785" y="951" class="body white" font-size="25" text-anchor="middle">and storage</text>
-  </g>
-
-  <g>
-    <rect x="450" y="1076" width="290" height="54" rx="2" class="boxOld"/>
-    <text x="595" y="1108" class="body white" font-size="26" text-anchor="middle">Cloud cluster</text>
-    <rect x="840" y="1076" width="330" height="54" rx="2" class="boxOld"/>
-    <text x="1005" y="1108" class="body white" font-size="26" text-anchor="middle">Secured network</text>
-    <rect x="1270" y="1076" width="330" height="54" rx="2" class="boxNew"/>
-    <text x="1435" y="1108" class="body white" font-size="26" font-weight="700" text-anchor="middle">NVIDIA L4 nodes</text>
-    <rect x="1700" y="1076" width="230" height="54" rx="2" class="boxNew"/>
-    <text x="1815" y="1108" class="body white" font-size="26" font-weight="700" text-anchor="middle">GPU quota</text>
-  </g>
-
-  <g>
-    <rect x="430" y="1192" width="54" height="54" rx="2" class="boxNew"/>
-    <text x="510" y="1226" class="body white" font-size="27">New in this stage</text>
-    <rect x="875" y="1192" width="54" height="54" rx="2" class="boxOld"/>
-    <text x="955" y="1226" class="body white" font-size="27">Previously introduced</text>
-    <rect x="1385" y="1192" width="54" height="54" rx="2" class="box"/>
-    <text x="1465" y="1226" class="body white" font-size="27">Used by later stages</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1450" viewBox="0 0 2400 1450" role="img" aria-labelledby="title desc"><title id="title">Stage 020: GPU Infrastructure for Private AI</title><desc id="desc">Adds the GPU-as-a-Service operating model: discovery, GPU enablement, Kueue queues, quota, autoscaling readiness, and observability</desc><style>.display{font-family:'Red Hat Display','Arial',sans-serif}.body{font-family:'Red Hat Text','Arial',sans-serif}.mono{font-family:'Red Hat Mono','Consolas',monospace}</style><defs><radialGradient id="glow" cx="86%" cy="4%" r="70%"><stop offset="0" stop-color="#ee0000" stop-opacity="0.14"/><stop offset="0.46" stop-color="#ee0000" stop-opacity="0.04"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient><filter id="lift" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000" flood-opacity="0.5"/></filter></defs><rect width="2400" height="1450" fill="#000000"/><rect width="2400" height="1450" fill="url(#glow)"/><text x="64" y="74" class="display" font-size="50" fill="#ffffff" font-weight="400"><tspan fill="#f56e6e" font-weight="700">Stage 020:</tspan> GPU Infrastructure for Private AI</text><text x="64" y="116" class="body" font-size="25" fill="#c7c7c7">Adds the GPU-as-a-Service operating model: discovery, GPU enablement, Kueue queues, quota, autoscaling readiness, and observability</text><rect x="36" y="140" width="315" height="150" rx="2" fill="#1f1f1f"/><text x="193.5" y="205" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Developer</text>
+<text x="193.5" y="241" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Experience</text><rect x="370" y="140" width="1956" height="150" rx="2" fill="none" stroke="#4d4d4d" stroke-width="3"/><g><rect x="390" y="174" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="560" y="208.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Red Hat OpenShift</text>
+<text x="560" y="237.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Dev Spaces</text></g><g><rect x="754" y="174" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="924" y="208.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Continue</text>
+<text x="924" y="237.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">coding assistant</text></g><g><rect x="1118" y="174" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1288" y="208.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenCode</text>
+<text x="1288" y="237.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">terminal agent</text></g><g><rect x="1482" y="174" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1652" y="208.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">MTA and Developer</text>
+<text x="1652" y="237.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Lightspeed for MTA</text></g><g><rect x="1846" y="174" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2016" y="208.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Red Hat</text>
+<text x="2016" y="237.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Developer Hub</text></g><rect x="36" y="315" width="315" height="330" rx="2" fill="#1f1f1f"/><text x="193.5" y="452" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">OpenShift AI</text>
+<text x="193.5" y="488" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">and model</text>
+<text x="193.5" y="524" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">platform</text><rect x="370" y="315" width="1956" height="330" rx="2" fill="none" stroke="#4d4d4d" stroke-width="3"/><g><rect x="390" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="515" y="372" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenShift AI</text>
+<text x="515" y="398" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">dashboard and</text>
+<text x="515" y="424" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">GenAI Playground</text></g><g><rect x="664" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="789" y="383.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Data science</text>
+<text x="789" y="412.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">projects</text></g><g><rect x="938" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1063" y="383.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Model registry</text>
+<text x="1063" y="412.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and catalog</text></g><g><rect x="1212" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1337" y="383.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">HardwareProfiles</text>
+<text x="1337" y="412.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">for workloads</text></g><g filter="url(#lift)"><rect x="1486" y="349" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1611" y="383.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">OpenShift AI</text>
+<text x="1611" y="412.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">Kueue integration</text></g><g><rect x="1760" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1885" y="383.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Private model</text>
+<text x="1885" y="412.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">serving</text></g><g><rect x="2034" y="349" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2159" y="383.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">vLLM inference</text>
+<text x="2159" y="412.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">runtime</text></g><g><rect x="390" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="515" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">llm-d scheduler</text>
+<text x="515" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and scale path</text></g><g><rect x="664" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="789" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenAI-compatible</text>
+<text x="789" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">API surface</text></g><g><rect x="938" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1063" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Models-as-a-</text>
+<text x="1063" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Service (MaaS)</text></g><g><rect x="1212" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1337" y="480" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">Subscriptions,</text>
+<text x="1337" y="506" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">API keys,</text>
+<text x="1337" y="532" class="body" font-size="22" fill="#c7c7c7" font-weight="400" text-anchor="middle">and telemetry</text></g><g><rect x="1486" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1611" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Approved external</text>
+<text x="1611" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">model records</text></g><g><rect x="1760" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1885" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">MCP discovery</text>
+<text x="1885" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and context servers</text></g><g><rect x="2034" y="457" width="250" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2159" y="491.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Optional external</text>
+<text x="2159" y="520.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">context providers</text></g><rect x="36" y="670" width="315" height="180" rx="2" fill="#1f1f1f"/><text x="193.5" y="732" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">GPU-as-a-</text>
+<text x="193.5" y="768" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Service</text>
+<text x="193.5" y="804" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">accelerators</text><rect x="370" y="670" width="1956" height="180" rx="2" fill="none" stroke="#4d4d4d" stroke-width="3"/><g filter="url(#lift)"><rect x="390" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="515" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">Node Feature</text>
+<text x="515" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">Discovery</text></g><g filter="url(#lift)"><rect x="664" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="789" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">NVIDIA GPU</text>
+<text x="789" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">Operator</text></g><g filter="url(#lift)"><rect x="938" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1063" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">GPU worker</text>
+<text x="1063" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">MachineSets</text></g><g filter="url(#lift)"><rect x="1212" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1337" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">Kueue</text>
+<text x="1337" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">ResourceFlavor</text></g><g filter="url(#lift)"><rect x="1486" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1611" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">ClusterQueue</text>
+<text x="1611" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">GPU quota</text></g><g filter="url(#lift)"><rect x="1760" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1885" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">LocalQueue</text>
+<text x="1885" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">private serving</text></g><g filter="url(#lift)"><rect x="2034" y="704" width="250" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="2159" y="738.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">DCGM telemetry</text>
+<text x="2159" y="767.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">and KEDA readiness</text></g><rect x="36" y="875" width="315" height="290" rx="2" fill="#1f1f1f"/><text x="193.5" y="992" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">OpenShift</text>
+<text x="193.5" y="1028" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Container</text>
+<text x="193.5" y="1064" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Platform</text><rect x="370" y="875" width="1956" height="290" rx="2" fill="none" stroke="#4d4d4d" stroke-width="3"/><g><rect x="390" y="909" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="560" y="943.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenShift GitOps</text>
+<text x="560" y="972.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">(Argo CD)</text></g><g><rect x="754" y="909" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="924" y="943.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Operators</text>
+<text x="924" y="972.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and CRDs</text></g><g><rect x="1118" y="909" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1288" y="943.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OAuth, RBAC,</text>
+<text x="1288" y="972.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and multitenancy</text></g><g><rect x="1482" y="909" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1652" y="943.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenShift</text>
+<text x="1652" y="972.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Serverless</text></g><g><rect x="1846" y="909" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2016" y="943.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">OpenShift</text>
+<text x="2016" y="972.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Service Mesh</text></g><g><rect x="390" y="1017" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="560" y="1051.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Monitoring</text>
+<text x="560" y="1080.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">(Prometheus)</text></g><g><rect x="754" y="1017" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="924" y="1051.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Routes and</text>
+<text x="924" y="1080.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">ingress</text></g><g><rect x="1118" y="1017" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1288" y="1051.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Secrets, config,</text>
+<text x="1288" y="1080.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and storage</text></g><g><rect x="1482" y="1017" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1652" y="1051.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Connectivity Link</text>
+<text x="1652" y="1080.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">and Gateway API</text></g><g><rect x="1846" y="1017" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2016" y="1051.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Authorino,</text>
+<text x="2016" y="1080.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Kuadrant, limits</text></g><rect x="36" y="1190" width="315" height="150" rx="2" fill="#1f1f1f"/><text x="193.5" y="1237" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">Infrastructure</text>
+<text x="193.5" y="1273" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">and external</text>
+<text x="193.5" y="1309" class="body" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">services</text><rect x="370" y="1190" width="1956" height="150" rx="2" fill="none" stroke="#4d4d4d" stroke-width="3"/><g><rect x="390" y="1224" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="560" y="1273" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Cloud cluster</text></g><g><rect x="754" y="1224" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="924" y="1273" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Secured network</text></g><g filter="url(#lift)"><rect x="1118" y="1224" width="340" height="82" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="1288" y="1258.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">GPU worker</text>
+<text x="1288" y="1287.5" class="body" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">nodes</text></g><g><rect x="1482" y="1224" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1652" y="1258.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Approved external</text>
+<text x="1652" y="1287.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">model provider</text></g><g><rect x="1846" y="1224" width="340" height="82" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="2016" y="1258.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">Red Hat build</text>
+<text x="2016" y="1287.5" class="body" font-size="24" fill="#c7c7c7" font-weight="400" text-anchor="middle">of Keycloak / OIDC</text></g><g><rect x="540" y="1380" width="48" height="48" rx="2" fill="#3f0000" stroke="#ee0000" stroke-width="5"/><text x="615" y="1411" class="body" font-size="26" fill="#ffffff">New in this stage</text><rect x="970" y="1380" width="48" height="48" rx="2" fill="#242424" stroke="#4d4d4d" stroke-width="2"/><text x="1045" y="1411" class="body" font-size="26" fill="#ffffff">Capability shown for architectural context</text></g></svg>
