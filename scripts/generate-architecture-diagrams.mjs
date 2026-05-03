@@ -29,22 +29,28 @@ const colors = {
   gray20: "#e0e0e0",
   white: "#ffffff",
   red: "#ee0000",
+  red10: "#fce3e3",
   purple: "#3d2785",
+  purple10: "#ece6ff",
   teal: "#147878",
+  teal10: "#daf2f2",
 };
 
 const products = {
   developerSuite: {
     label: ["Red Hat Advanced", "Developer Suite"],
     color: colors.purple,
+    lightFill: colors.purple10,
   },
   openshiftAI: {
     label: ["Red Hat", "OpenShift AI"],
     color: colors.teal,
+    lightFill: colors.teal10,
   },
   openshift: {
     label: ["Red Hat", "OpenShift"],
     color: colors.red,
+    lightFill: colors.red10,
   },
 };
 
@@ -210,11 +216,11 @@ function capStyle(cap, row, stageId, isRoot) {
 
   if (capStage < currentStage) {
     return {
-      fill: colors.gray80,
+      fill: products[row.product].lightFill,
       stroke: colors.gray70,
       strokeWidth: 2,
-      text: colors.white,
-      weight: 550,
+      text: colors.gray95,
+      weight: 650,
       filter: "",
       opacity: null,
     };
@@ -310,7 +316,10 @@ function drawLegend(stageId, isRoot) {
   return [
     rect({ x: 440, y: y - 23, w: 34, h: 34, fill: colors.gray95, stroke: legendColor, strokeWidth: 5 }),
     `<text x="498" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">New in this stage</text>`,
-    rect({ x: 800, y: y - 23, w: 34, h: 34, fill: colors.gray80, stroke: colors.gray70, strokeWidth: 2 }),
+    rect({ x: 800, y: y - 23, w: 12, h: 34, fill: products.developerSuite.lightFill, stroke: colors.gray70, strokeWidth: 0 }),
+    rect({ x: 812, y: y - 23, w: 11, h: 34, fill: products.openshiftAI.lightFill, stroke: colors.gray70, strokeWidth: 0 }),
+    rect({ x: 823, y: y - 23, w: 11, h: 34, fill: products.openshift.lightFill, stroke: colors.gray70, strokeWidth: 0 }),
+    rect({ x: 800, y: y - 23, w: 34, h: 34, fill: "none", stroke: colors.gray70, strokeWidth: 2 }),
     `<text x="858" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">Previously introduced</text>`,
     rect({ x: 1225, y: y - 23, w: 34, h: 34, fill: colors.gray90, stroke: colors.gray70, strokeWidth: 2, opacity: "0.62" }),
     `<text x="1283" y="${y + 1}" class="body" font-size="21" fill="${colors.gray20}">Not introduced yet</text>`,
