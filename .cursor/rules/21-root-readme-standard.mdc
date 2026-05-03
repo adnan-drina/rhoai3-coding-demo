@@ -116,8 +116,25 @@ The root README includes an SVG architecture diagram under a `## Architecture` h
 - Use a markdown image reference: `![RHOAI coding demo layered capability map](docs/assets/architecture/rhoai-capability-map.svg)`
 - Do not place the diagram at the top of the file or before the title.
 - The root diagram is the complete architecture map. It must list all platform layers and capabilities used by the demo.
-- Stage diagrams must reuse the same layers and capability list, changing only color highlighting to show which capabilities are introduced by that stage.
+- Stage diagrams must reuse the same layers and capability list, changing only visual state to show which capabilities are new in that stage, previously introduced, or not introduced yet.
 - Regenerate root and stage architecture diagrams with `node scripts/generate-architecture-diagrams.mjs` instead of hand-editing individual SVG files.
+
+Current diagram design:
+- Use the Layout B layered table pattern: a left product rail, a logical layer label column, and capability boxes to the right.
+- The product rail uses Red Hat palette colors: purple for **Red Hat Advanced Developer Suite**, teal for **Red Hat OpenShift AI**, and Red Hat red for **Red Hat OpenShift**.
+- The table uses the dark neutral theme from the existing workshop diagrams: transparent outer SVG canvas, dark gray panels, gray borders, white text, and product-colored stage-highlight borders.
+- Stage diagrams distinguish capability state: new capabilities use a heavy product-colored border, previously introduced capabilities use a dark fill with a product-colored left stripe, and not-yet-introduced capabilities are dimmed.
+- The logical layers are:
+  - Developer productivity and modernization
+  - Model and context choices
+  - AI experiences and governed access
+  - GPU acceleration and workload management
+  - Container platform services
+  - Infrastructure and trust boundaries
+- The developer layer is split visually into two rows:
+  - Product surfaces: Red Hat OpenShift Dev Spaces, Migration Toolkit for Applications, Red Hat Developer Hub and software catalog
+  - AI-assisted capabilities: Continue and OpenCode coding assistants, Developer Lightspeed for MTA, Developer Lightspeed for RHDH
+- Keep capability labels concise enough to fit inside boxes. Prefer short Red Hat-aligned terms such as "GPU telemetry and autoscaling readiness" over long implementation strings.
 
 ## Style Rules
 
