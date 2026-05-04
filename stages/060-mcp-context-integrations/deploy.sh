@@ -15,6 +15,11 @@ log_step "Stage 060: MCP Context Integrations"
 
 log_step "Provisioning optional MCP credentials"
 ensure_namespace "coding-assistant"
+oc label namespace coding-assistant opendatahub.io/dashboard=true --overwrite
+oc annotate namespace coding-assistant \
+    openshift.io/display-name="Coding Assistant" \
+    openshift.io/description="AI-assisted development with governed MaaS and MCP context" \
+    --overwrite
 
 if [[ -n "${SLACK_BOT_TOKEN:-}" ]]; then
     ensure_secret_from_env "slack-mcp-credentials" "coding-assistant" "SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}"

@@ -41,11 +41,6 @@ spec:
         - /data
         - /stringData
     - group: ""
-      kind: Namespace
-      jsonPointers:
-        - /metadata/annotations
-        - /metadata/labels
-    - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
         - /spec

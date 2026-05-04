@@ -4,6 +4,8 @@ metadata:
   name: maas
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    openshift.io/display-name: "Models-as-a-Service"
+    openshift.io/description: "Governed model access for private and approved external models"
   labels:
     opendatahub.io/dashboard: "true"
     kueue.openshift.io/managed: "true"

@@ -541,6 +541,35 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 070 validation.
 
+## Coding Assistant Project Is Missing From OpenShift AI Projects
+
+**Affected stage:** Stage 060
+
+**Likely cause:** The `coding-assistant` namespace was created before the Stage 060 Argo CD Application reconciled its namespace metadata, or Argo CD was configured to ignore namespace labels and annotations. OpenShift AI shows accessible OpenShift projects in the Projects page when they carry the dashboard project metadata and the user has suitable RBAC.
+
+**Diagnose:**
+
+```bash
+oc get namespace coding-assistant \
+  -o jsonpath='{.metadata.labels.opendatahub\.io/dashboard}{" "}{.metadata.annotations.openshift\.io/display-name}{"\n"}'
+
+oc get rolebinding ai-developer-edit ai-admin-admin -n coding-assistant
+```
+
+**Recover:**
+
+```bash
+oc label namespace coding-assistant opendatahub.io/dashboard=true --overwrite
+oc annotate namespace coding-assistant \
+  openshift.io/display-name="Coding Assistant" \
+  openshift.io/description="AI-assisted development with governed MaaS and MCP context" \
+  --overwrite
+
+oc annotate application 060-mcp-context-integrations -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+./stages/060-mcp-context-integrations/validate.sh
+```
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)

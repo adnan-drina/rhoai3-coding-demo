@@ -16,6 +16,18 @@ log_step "OpenShift MCP"
 check "coding-assistant namespace exists" \
   "oc get namespace coding-assistant -o jsonpath='{.metadata.name}'" \
   "coding-assistant"
+check "coding-assistant visible in OpenShift AI dashboard" \
+  "oc get namespace coding-assistant -o jsonpath='{.metadata.labels.opendatahub\\.io/dashboard}'" \
+  "true"
+check "coding-assistant has display name" \
+  "oc get namespace coding-assistant -o jsonpath='{.metadata.annotations.openshift\\.io/display-name}'" \
+  "Coding Assistant"
+check "ai-developer can edit coding-assistant" \
+  "oc get rolebinding ai-developer-edit -n coding-assistant -o jsonpath='{.roleRef.name}{\" \"}{.subjects[0].kind}/{.subjects[0].name}'" \
+  "edit User/ai-developer"
+check "ai-admin can administer coding-assistant" \
+  "oc get rolebinding ai-admin-admin -n coding-assistant -o jsonpath='{.roleRef.name}{\" \"}{.subjects[0].kind}/{.subjects[0].name}'" \
+  "admin User/ai-admin"
 check "OpenShift MCP ServiceAccount exists" \
   "oc get serviceaccount openshift-mcp -n coding-assistant -o jsonpath='{.metadata.name}'" \
   "openshift-mcp"
