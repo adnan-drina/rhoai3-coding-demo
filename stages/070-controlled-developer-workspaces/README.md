@@ -35,6 +35,16 @@ The essential proof point is a governed developer experience:
 
 This matters because regulated enterprises need AI coding assistance that fits existing controls for identity, network access, approved tooling, and data residency. Red Hat OpenShift Dev Spaces gives platform engineers reproducible cloud development environments, while MaaS keeps model access centralized so developer productivity does not depend on unmanaged laptops, plugins, or provider credentials.
 
+## Developer Workspace Setup
+
+After Stage 070 is deployed, the demo user opens Red Hat OpenShift Dev Spaces and starts the pre-provisioned `exercises` workspace. The workspace already includes the coding exercises, Continue, OpenCode, and the developer tooling image; the remaining user step is to connect the tools to MaaS.
+
+Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode provides a terminal-based agent workflow for developers who prefer command-line interaction. The MTA VS Code extensions are preloaded in the `ai-admin` and `ai-developer` workspaces so modernization findings can later be reviewed and acted on from the same controlled workspace.
+
+In the OpenShift AI dashboard, generate a MaaS API key for the approved demo subscription, then configure Continue and OpenCode with the MaaS OpenAI-compatible endpoint, the MaaS-issued API key, and the model ID selected for the exercise. Use the private local model when working with sensitive code; use approved external models only when the demo policy allows provider-side processing.
+
+Detailed user steps are captured in [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md).
+
 ## How Red Hat And Open Source Make It Work
 
 Red Hat OpenShift Dev Spaces provides Kubernetes-based cloud development environments on OpenShift, built on Eclipse Che and DevWorkspace. Red Hat OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls, while MaaS supplies the governed OpenAI-compatible model endpoint and API key pattern.
