@@ -23,7 +23,7 @@ It is a strong anchor for enterprise AI development because it has realistic Jav
 The best demo shape is a two-track application story:
 
 - `mca-coolstore` is the brownfield source application for discovery, code explanation, README alignment, characterization tests, MTA analysis, Developer Lightspeed for MTA, Scribe-backed rule generation, and supply-chain review.
-- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Tekton pipelines, GitOps, and trusted software supply-chain promotion. The repository candidate is `adnan-drina/coding-exercises`, which should be renamed to `coolstore-inventory-service` and carry source, app-local GitOps state, pipeline assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
+- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Pipelines-as-Code, GitOps, and trusted software supply-chain promotion. The repository candidate is `adnan-drina/coding-exercises`, which should be renamed to `coolstore-inventory-service` and carry source, app-local GitOps state, `.tekton/` assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
 
 This keeps the modernization story realistic without forcing a fragile full monolith conversion into the first live coding iteration.
 
@@ -186,7 +186,7 @@ Avoid first:
 | AI-assisted coding exercises | 7/10 | Good if scoped to small classes and docs; weak if treated as a fast full-stack app. |
 | Agentic governance exercises | 9/10 | Excellent for project rules, tests-first constraints, MCP boundaries, and reviewed rule generation. |
 | Quarkus golden-path target | 5/10 | Good domain source, but not itself a Quarkus target implementation. |
-| Pipeline and deployment readiness | 4/10 | Needs container, manifests, Tekton, GitOps, and validation assets. |
+| Pipeline and deployment readiness | 6/10 | The target service branch now has `Containerfile`, `.tekton/`, and app-local GitOps review assets, but still needs live Pipelines-as-Code and deployment validation. |
 | Trusted software supply chain | 8/10 | Strong evidence needs because of local JARs, vendored assets, generated rules, and future workspace images. |
 | Live-demo reliability today | 5/10 | Build is easy; runtime requires manual infrastructure and product setup. |
 
@@ -194,7 +194,7 @@ Avoid first:
 
 Adopt `rhpds/mca-coolstore` as the canonical brownfield modernization source for Stage 160 and as the main legacy application used in Stage 110 through Stage 130 examples.
 
-Keep Stage 140 and Stage 150 centered on the demo-owned `coolstore-inventory-service`. Use `adnan-drina/coding-exercises` as the repository to rename and reshape into the service repository. The first-demo repository should include the Quarkus source, app-local GitOps desired state under `gitops/`, pipeline assets under `tekton/`, and documented promotion and rollback evidence. The service should be testable, pipeline-ready, deployable on OpenShift, and small enough for live AI-assisted development.
+Keep Stage 140 and Stage 150 centered on the demo-owned `coolstore-inventory-service`. Use `adnan-drina/coding-exercises` as the repository to rename and reshape into the service repository. The first-demo repository should include the Quarkus source, app-local GitOps desired state under `gitops/`, Pipelines-as-Code assets under `.tekton/`, and documented promotion and rollback evidence. The service should be testable, pipeline-ready, deployable on OpenShift, and small enough for live AI-assisted development.
 
 This gives the demo one coherent application narrative:
 
@@ -206,7 +206,7 @@ Discover Coolstore -> understand and test Coolstore -> catch AI near misses -> g
 
 - Should the demo use `rhpds/mca-coolstore` exclusively, or keep `konveyor-ecosystem/coolstore` as a secondary reference for Quarkus migration examples?
 - How should downstream links be updated after the GitHub repository is renamed from `coding-exercises` to `coolstore-inventory-service`?
-- What repo layout convention should be used for app-local GitOps, Tekton, rollout, promotion, and rollback evidence directories?
+- What additional repo layout convention should be used for rollout notes beyond the selected `gitops/`, `.tekton/`, and `docs/evidence/` paths?
 - What is the minimum live runtime we need for the first demo: compile-only, unit tests, Dev Spaces only, MTA analysis only, or full EAP runtime?
 - Which corporate standards document should drive the first Scribe-generated Konveyor rule?
 - How should local audit JAR provenance be represented in Stage 155: SBOM finding, internal artifact promotion example, or policy failure?

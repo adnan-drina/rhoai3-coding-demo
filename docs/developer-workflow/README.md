@@ -35,10 +35,10 @@ The knowledge base now has stronger source coverage for the developer workflow e
 - The [`scribe` MCP stage map](scribe-mcp-stage-map.md) now captures how a Konveyor rule-generation MCP server can be loaded into OpenCode or another MCP-capable agent.
 - The [`mca-coolstore` candidate assessment](mca-coolstore-candidate-assessment.md) recommends `rhpds/mca-coolstore` as the primary brownfield modernization source while keeping a smaller Quarkus target service for pipeline and deployment stages.
 - The [`Quarkus target service options`](quarkus-target-service-options.md) assessment recommends a demo-owned Coolstore Inventory Quarkus service for Stages 140-155.
-- The [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) records the accepted first-demo repository shape: rename `adnan-drina/coding-exercises` to `coolstore-inventory-service`, then keep Quarkus source, app-local GitOps state, Tekton/OpenShift Pipelines assets, rollout notes, promotion notes, and rollback evidence in that single service repository.
+- The [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) records the accepted first-demo repository shape: rename `adnan-drina/coding-exercises` to `coolstore-inventory-service`, then keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that single service repository.
 - The [`Item 7 modernization analysis`](item-7-modernization-at-scale-analysis.md) records the Stage 160 source review and adds the first MTA analysis exercise, Developer Lightspeed evaluation rubric, and standards-grounded custom rule exercise.
 
-Remaining gaps are implementation choices rather than storyline gaps: the frontend standard, the selected Tekton template, the first eval set, the standards corpus for RAG-backed MTA rules, and live cluster validation still need to be chosen in a later branch. The repository name, first repository boundary, Quarkus baseline, PostgreSQL path, and first Continue/OpenCode task pair are now decided.
+Remaining gaps are implementation choices rather than storyline gaps: the frontend standard, the first eval set, the standards corpus for RAG-backed MTA rules, and live cluster validation still need to be chosen in a later branch. The repository name, first repository boundary, Quarkus baseline, PostgreSQL path, first Continue/OpenCode task pair, and first `.tekton/` plus app-local GitOps delivery path are now decided.
 
 ## Planned Stages
 
@@ -60,7 +60,7 @@ Supporting analysis:
 - [`scribe-mcp-stage-map.md`](scribe-mcp-stage-map.md) maps the `sshaaf/scribe` Konveyor rule-generation MCP server to this demo's stages and OpenCode configuration.
 - [`mca-coolstore-candidate-assessment.md`](mca-coolstore-candidate-assessment.md) assesses `rhpds/mca-coolstore` as the main demo application candidate and recommends a two-track brownfield plus Quarkus-target story.
 - [`quarkus-target-service-options.md`](quarkus-target-service-options.md) compares smaller Quarkus service candidates and selects the Coolstore Inventory service shape for the golden-path, pipeline, and supply-chain stages.
-- [`coding-exercises-app-repo-plan.md`](coding-exercises-app-repo-plan.md) maps the `adnan-drina/coding-exercises` repository into the planned renamed `coolstore-inventory-service` repository with source, app-local GitOps, and pipeline assets in one place for the first demo.
+- [`coding-exercises-app-repo-plan.md`](coding-exercises-app-repo-plan.md) maps the `adnan-drina/coding-exercises` repository into the planned renamed `coolstore-inventory-service` repository with source, app-local GitOps, and `.tekton/` Pipelines-as-Code assets in one place for the first demo.
 - [`readme-completion-alignment-review.md`](readme-completion-alignment-review.md) reviews current README completion, storyline alignment, repository-boundary clarity, and remaining implementation gaps.
 - [`item-7-modernization-at-scale-analysis.md`](item-7-modernization-at-scale-analysis.md) records the Stage 160 analysis gate.
 - [`mta-coolstore-analysis-exercise.md`](mta-coolstore-analysis-exercise.md) defines the first MTA analysis workflow and evidence packet for `rhpds/mca-coolstore`.

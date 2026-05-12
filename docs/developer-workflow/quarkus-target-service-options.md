@@ -15,7 +15,7 @@ The target service must be small enough for live AI-assisted development, but ri
 
 Create a demo-owned `coolstore-inventory-service` as the target Quarkus service.
 
-Use a single service repository for the first live demo. The current repository candidate is `https://github.com/adnan-drina/coding-exercises`, with local adaptation planning on branch `feature/coolstore-inventory-service-plan`. After the direction is accepted, rename that repository to `coolstore-inventory-service` and keep Quarkus source, app-local GitOps state, Tekton/OpenShift Pipelines assets, rollout notes, promotion notes, and rollback evidence in that repository.
+Use a single service repository for the first live demo. The current repository candidate is `https://github.com/adnan-drina/coding-exercises`, with local adaptation planning on branch `feature/coolstore-inventory-service-plan`. After the direction is accepted, rename that repository to `coolstore-inventory-service` and keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that repository.
 
 Use these sources as references, not as direct imports:
 
@@ -31,7 +31,7 @@ The target should be intentionally bounded: inventory/product availability only.
 
 | Candidate | Fit | What It Gives Us | Main Issue |
 |-----------|-----|------------------|------------|
-| `adnan-drina/coding-exercises` | Service repo candidate | Existing Dev Spaces, Continue, and OpenCode workspace setup; should be renamed to `coolstore-inventory-service` and repurposed for source, app-local GitOps, pipelines, and evidence | Currently Python game exercises, no Java, no Quarkus, no Maven build, no catalog metadata, and no target-service code yet. |
+| `adnan-drina/coding-exercises` | Service repo candidate | Existing Dev Spaces, Continue, and OpenCode workspace setup; now has the first Quarkus scaffold, `AGENTS.md`, `catalog-info.yaml`, `.tekton/`, `Containerfile`, app-local GitOps, and evidence docs on the planning branch | Still needs repository rename, live PaC validation, live deployment evidence, PostgreSQL runtime binding, and supply-chain artifacts. |
 | `rh-mad-workshop/coolstore-microservice/inventory` | Strong reference | Public repo, Quarkus 3.35.2, Java 21, REST, Panache, PostgreSQL, health, metrics, Jib, OpenShift extension, tests | Its model is product catalog-like rather than the original Coolstore inventory shape; local tests require Docker-backed Quarkus Dev Services or a configured datasource. |
 | Local `coolstore-demo/inventory` | Strong seed | Coolstore-shaped inventory domain with `itemId`, `location`, `quantity`, `link`; H2 default profile; PostgreSQL OpenShift profile; health; metrics; tests; Dev Spaces commands; GitOps and Tekton examples | Old Quarkus 2.2.3 Red Hat build, Java 11, older OpenShift resources, private/local repository origin. |
 | `konveyor-ecosystem/coolstore` `quarkus` branch | Secondary reference | Full Quarkus migration branch, Java 21, Quarkus 3.12.3, PostgreSQL and Flyway, useful for comparison against legacy monolith | Still monolith-scale, README remains legacy EAP-oriented, not small enough for Stage 140 live coding. |
@@ -109,17 +109,17 @@ InventoryItem
 
 Preferred test profile:
 
-- H2 or Dev Services configured so tests pass without a manually running database.
-- PostgreSQL profile for OpenShift runtime, using the OpenShift Developer Catalog / Red Hat PostgreSQL image path for the first demo.
+- Current scaffold: in-memory data with deterministic tests and no runtime database.
+- Later persistence iteration: H2 or Dev Services configured so tests pass without a manually running database.
+- Later OpenShift runtime: PostgreSQL profile using the OpenShift Developer Catalog / Red Hat PostgreSQL image path for the first demo.
 - Import data aligned with `mca-coolstore` SKUs so the target service remains connected to the monolith story.
 
 Recommended Quarkus extensions:
 
 - REST JSON support.
-- Hibernate ORM with Panache.
-- JDBC PostgreSQL.
 - SmallRye Health.
 - Micrometer Prometheus.
+- Hibernate ORM with Panache and JDBC PostgreSQL only when the persistence iteration starts.
 - OpenShift or Kubernetes extension only if it matches the selected deployment path.
 - OpenTelemetry later, when Stage 170 AgentOps/tracing needs it.
 
@@ -130,7 +130,7 @@ Inventory is the right target because it is small, concrete, and already present
 It supports all remaining stages:
 
 - Stage 140 can scaffold, upgrade, or extend the service under a golden-path contract.
-- Stage 150 can build a compact Tekton pipeline around tests, package, image, and app-local GitOps handoff.
+- Stage 150 can build a compact Pipelines-as-Code path around tests, package, image, and app-local GitOps handoff.
 - Stage 155 can produce SBOM, image, provenance, signing, scan, and policy evidence for one service image.
 - Stage 160 can compare the target back to the brownfield source and MTA findings.
 
@@ -145,7 +145,7 @@ It avoids the first-iteration risks of cart/session state, JMS order processing,
 | Stage 120 | The quality-bar breakpoint can show an unsafe AI-generated endpoint or docs claim, then require tests and README alignment. |
 | Stage 130 | OpenCode rules can require bounded edits, approved Quarkus versions, test-first changes, and no invented deployment claims. |
 | Stage 140 | The target service becomes the golden-path Quarkus exercise. |
-| Stage 150 | The service is small enough for a complete Tekton or OpenShift Pipelines path. |
+| Stage 150 | The service is small enough for a complete Pipelines-as-Code path. |
 | Stage 155 | One service image is enough to demonstrate SBOM, signing, provenance, scanning, and policy gates. |
 | Stage 160 | MTA and Developer Lightspeed can show how the brownfield inventory model informs the target design. |
 | Stage 170 | The service becomes one modernization output that an agent mesh pattern could coordinate with testing, docs, security, and deployment agents. |
@@ -176,7 +176,7 @@ The first implementation should include:
 - inventory model and REST resource;
 - deterministic tests that pass without a live cluster;
 - local dev profile;
-- PostgreSQL runtime profile;
+- PostgreSQL runtime profile in a later persistence iteration;
 - health endpoint;
 - README and TechDocs-ready notes.
 
@@ -192,7 +192,7 @@ Use OpenCode to implement the reservation endpoint or another bounded feature. T
 
 ### Iteration 4: Pipeline And Supply Chain
 
-Generate pipeline and app-local GitOps artifacts from approved templates. Use local `coolstore-demo/inventory-gitops` as a historical reference, but update the pattern for the current demo:
+Generate pipeline and app-local GitOps artifacts from approved templates. The selected first packet now uses `.tekton/` Pipelines-as-Code, an app-local `Containerfile`, Buildah, the OpenShift internal registry, and app-local Kustomize state under `gitops/`. Use local `coolstore-demo/inventory-gitops` only as a historical reference:
 
 - tests must run before image build;
 - avoid legacy `DeploymentConfig` unless the demo intentionally teaches modernization of OpenShift resources;
@@ -204,7 +204,7 @@ Generate pipeline and app-local GitOps artifacts from approved templates. Use lo
 Recommended decision:
 
 ```text
-Use a demo-owned Coolstore Inventory Quarkus service as the Stage 140-155 target, with source, app-local GitOps desired state, pipeline assets, rollout notes, promotion notes, and rollback evidence in one service repository for the first demo.
+Use a demo-owned Coolstore Inventory Quarkus service as the Stage 140-155 target, with source, app-local GitOps desired state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in one service repository for the first demo.
 ```
 
 Recommended repository:
@@ -258,8 +258,8 @@ Recommended non-goals for the first implementation:
 - How should downstream documentation and Dev Spaces links be updated after the GitHub repository is renamed from `coding-exercises` to `coolstore-inventory-service`?
 - Which concrete OpenShift Developer Catalog / Red Hat PostgreSQL image parameters should the first live deployment use?
 - Should Stage 140 start by upgrading the old local `coolstore-inventory` service, or scaffold a clean service that copies only the domain contract?
-- Which project-local directory conventions should be used for `gitops/`, `tekton/`, rollout notes, promotion notes, and rollback evidence?
-- Which approved Tekton or OpenShift Pipelines template should seed `tekton/`?
+- Which directory convention should hold rollout notes beyond the existing `docs/evidence/` promotion and rollback records?
+- Which supply-chain checks become advisory versus blocking after the first live PipelineRun?
 
 ## References
 

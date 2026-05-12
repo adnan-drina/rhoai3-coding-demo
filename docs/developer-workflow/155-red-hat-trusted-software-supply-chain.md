@@ -15,7 +15,7 @@ Show how Red Hat Trusted Software Supply Chain concepts apply to AI-assisted dev
 - Stage 090 provides Developer Hub as the future self-service and catalog surface.
 - Stage 130 provides OpenCode agents, project rules, and review workflows.
 - Stage 140 provides the demo-owned Coolstore Inventory Quarkus service target described in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
-- Stage 150 provides the pipeline and GitOps handoff pattern.
+- Stage 150 provides the `.tekton/` Pipelines-as-Code and app-local GitOps handoff pattern.
 
 ## What This Stage Adds
 
@@ -33,7 +33,7 @@ This planned stage adds the trusted software supply-chain checkpoint for the dev
 
 ### Starting Point
 
-The developer has a reviewed `coolstore-inventory-service` implementation from Stage 140 and a governed pipeline plan from Stage 150. The implementation has not yet been treated as promotable. The next step is to identify which supply-chain evidence must exist before the service image, pipeline, or related AI artifacts can move forward.
+The developer has a reviewed `coolstore-inventory-service` implementation from Stage 140 and a governed pipeline plan from Stage 150. The static delivery packet identifies the app-local `Containerfile`, pull-request PipelineRun, internal registry target, and app-local GitOps path, but the implementation has not yet been treated as promotable. The next step is to identify which supply-chain evidence must exist before the service image, pipeline, or related AI artifacts can move forward.
 
 ### AI-Assisted Task
 
@@ -133,7 +133,7 @@ Supply-chain evidence is a trust boundary. A model endpoint, coding agent, or ge
 - Treat the first artifact scope as the Coolstore Inventory Quarkus service image. Decide later whether to add one AI artifact, such as the Scribe MCP server image or a packaged agent runtime, to the same evidence bundle.
 - Define the minimum evidence bundle for the demo: SBOM, signature, provenance, scan result, and policy decision.
 - Decide whether Red Hat Trusted Artifact Signer and Red Hat Trusted Profile Analyzer are deployed in the demo environment or referenced as enterprise controls.
-- Add pipeline examples only after the chosen Tekton or OpenShift Pipelines template is selected.
+- Use the selected `.tekton/` Pipelines-as-Code packet as the first pipeline example; add SBOM, signing, provenance, scan, and policy examples only after the first live PipelineRun exists.
 - Add policy-gate examples only after the target enforcement tool is selected.
 - If the demo adopts the `rhpds/mca-devspaces` custom workspace image pattern, include the workspace image, base image, downloaded VSIX artifacts, and Quay promotion path in the supply-chain evidence bundle.
 - If the demo adopts the `sshaaf/scribe` MCP server, include its Quarkus application image, UBI OpenJDK base image, Maven dependencies, generated SBOM, signature, provenance, scan result, and MCP Gateway exposure policy in the evidence bundle.

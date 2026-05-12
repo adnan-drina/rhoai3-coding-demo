@@ -35,7 +35,7 @@ The developer has OpenCode running in Dev Spaces with an approved model path and
 
 The target service should be small and domain-aligned: inventory availability for Coolstore item IDs, with deterministic tests, health, metrics, PostgreSQL runtime configuration, and a clear OpenShift deployment path.
 
-The repository candidate is `adnan-drina/coding-exercises`, documented in the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md). After the direction is accepted, that repository should be renamed to `coolstore-inventory-service` and reshaped into a single service repository with Quarkus source at the root, app-local GitOps state under `gitops/`, Tekton/OpenShift Pipelines assets under `tekton/`, and rollout, promotion, and rollback evidence in repository documentation.
+The repository candidate is `adnan-drina/coding-exercises`, documented in the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md). After the direction is accepted, that repository should be renamed to `coolstore-inventory-service` and reshaped into a single service repository with Quarkus source at the root, app-local GitOps state under `gitops/`, Pipelines-as-Code assets under `.tekton/`, and rollout, promotion, and rollback evidence in repository documentation.
 
 The new knowledge-base sources make the preferred direction clearer: this stage should not ask the agent to invent a service from scratch. It should give the agent a golden-path input packet that includes approved template references, Java and Quarkus versions, package naming, dependency policy, deployment style, and validation commands.
 
@@ -140,7 +140,7 @@ Database credentials, software-template trust, and deployment configuration are 
 
 - Choose whether the demo creates a new service from a Developer Hub software template, extends an existing Java/Quarkus app, or uses a small reference service committed to this repo.
 - Use the [`Quarkus target service options`](quarkus-target-service-options.md) assessment as the current baseline: create or seed a demo-owned `coolstore-inventory-service` rather than adopting the full Quarkus monolith branch.
-- Use the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) as the repository baseline: rename `adnan-drina/coding-exercises` to `coolstore-inventory-service` and keep Quarkus source, app-local GitOps, pipeline assets, and deployment evidence in the same repository for the first demo.
+- Use the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) as the repository baseline: rename `adnan-drina/coding-exercises` to `coolstore-inventory-service` and keep Quarkus source, app-local GitOps, `.tekton/` Pipelines-as-Code assets, and deployment evidence in the same repository for the first demo.
 - Use Red Hat build of Quarkus `3.27.x` with Java 21 as the approved first scaffold baseline.
 - Use the OpenShift Developer Catalog / Red Hat PostgreSQL image path for the first live PostgreSQL demo, with any operator-backed database path deferred.
 - Use Continue first for README, API, and test-plan alignment, then use OpenCode for the bounded `POST /api/inventory/{itemId}/reservations` feature task.

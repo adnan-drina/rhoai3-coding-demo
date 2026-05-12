@@ -22,9 +22,9 @@ Show that OpenCode can use an approved skill, software-template reference, or MC
 This planned stage adds the governed delivery exercise.
 
 - A pipeline generation skill or MCP-backed workflow.
-- Approved Tekton or OpenShift Pipelines task structure drawn from a golden-path template.
-- Build, test, image, scan, and deployment handoff stages.
-- App-local GitOps deployment base for the generated service when implementation begins.
+- A first project-local golden-path packet using `.tekton/` Pipelines-as-Code.
+- Build, test, image, and static deployment handoff stages.
+- App-local GitOps deployment base for the generated service.
 - Developer Hub links for repository, docs, pipeline, and deployed route.
 - TechDocs guidance for how developers inspect the pipeline, GitOps state, and rollback path.
 - MCP Gateway and template-access guidance for authenticated, authorized access to pipeline-generation tools.
@@ -51,7 +51,18 @@ The target pipeline should eventually:
 - update or hand off to the app-local GitOps path;
 - expose evidence through Developer Hub or repository documentation.
 
-Developer Hub software-template examples show several useful target patterns. For this first demo, the accepted pattern is a single renamed `coolstore-inventory-service` repository: Quarkus source at the root, pipeline assets under `tekton/`, app-local GitOps desired state under `gitops/`, and rollout, promotion, and rollback evidence in repository documentation. A later multi-repository promotion model can still be evaluated after the first live workflow is stable.
+Developer Hub software-template examples show several useful target patterns. For this first demo, the accepted pattern is a single renamed `coolstore-inventory-service` repository: Quarkus source at the root, Pipelines-as-Code assets under `.tekton/`, app-local GitOps desired state under `gitops/`, and rollout, promotion, and rollback evidence in repository documentation. A later multi-repository promotion model can still be evaluated after the first live workflow is stable.
+
+The first delivery slice is now selected for the application repository:
+
+- `.tekton/pull-request.yaml` triggers on pull requests to `main`;
+- `./mvnw -B test package` runs before image build;
+- Buildah builds the app-local `Containerfile`;
+- the image is pushed to the OpenShift internal registry path `image-registry.openshift-image-registry.svc:5000/coolstore-inventory-dev/coolstore-inventory-service:<revision>`;
+- app-local Kustomize state lives under `gitops/base` and `gitops/overlays/dev`;
+- namespace, app, service, route, runtime service account, and image repository names are fixed as `coolstore-inventory-dev` and `coolstore-inventory-service`;
+- the pipeline does not deploy the service in this first slice;
+- OpenShift Pipelines and Pipelines-as-Code remain prerequisites, not new platform stage installs.
 
 ### Prompts Or Agent Instructions
 
@@ -75,8 +86,8 @@ Review the generated pipeline for hard-coded secrets, direct cluster mutation ou
 
 ### Expected Developer Actions
 
-- Confirm whether Tekton or OpenShift Pipelines is enabled for the implementation environment.
-- Confirm the selected template source, such as a Developer Hub Quarkus backend with CI template, a Tekton CI template, or a project-local golden-path template.
+- Confirm whether OpenShift Pipelines and Pipelines-as-Code are enabled for the implementation environment.
+- Confirm that the project-local golden-path packet remains the selected template source for the first demo.
 - Review the pipeline plan before generation.
 - Confirm secret references are placeholders or approved platform references.
 - Run static YAML and Kustomize validation once resources exist.
@@ -84,7 +95,7 @@ Review the generated pipeline for hard-coded secrets, direct cluster mutation ou
 
 ### Review And Quality Gates
 
-- Pipeline YAML renders cleanly.
+- Pipeline YAML parses cleanly.
 - No credentials are committed.
 - Deployment does not bypass the approved app-local GitOps or platform route.
 - Test execution is part of the pipeline.
@@ -97,7 +108,7 @@ Review the generated pipeline for hard-coded secrets, direct cluster mutation ou
 ### Evidence To Capture
 
 - Pipeline plan and template source.
-- Generated pipeline files.
+- Generated `.tekton/` PipelineRun, `Containerfile`, and app-local GitOps files.
 - Static validation output.
 - PipelineRun result once a live environment exists.
 - App-local GitOps application or deployment handoff evidence.
@@ -139,14 +150,14 @@ Pipeline credentials, image registry access, template trust, MCP tool access, an
 
 ## Future Implementation Notes
 
-- Confirm whether OpenShift Pipelines should be installed as part of this extension or treated as a prerequisite.
+- Treat OpenShift Pipelines and Pipelines-as-Code as prerequisites for this extension, not installs owned by the current platform flow.
 - Use the [`Quarkus target service options`](quarkus-target-service-options.md) assessment as the application baseline for the first pipeline exercise.
 - Use the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) as the repository baseline for the renamed `coolstore-inventory-service` repo.
 - Use local `coolstore-demo/inventory-gitops` only as a historical reference. Update any adopted pattern for current OpenShift, current Tekton API versions, tests-before-image behavior, and GitOps handoff expectations.
-- Define approved pipeline templates and their source of truth.
+- Use the application repository's project-local golden-path packet as the first template source.
 - Put first-demo GitOps desired state under `gitops/` in the renamed service repository.
-- Decide the app-local GitOps handoff pattern for the generated service, including image update behavior and rollback.
-- Decide whether pipeline-generation templates are retrieved through Developer Hub software templates, a project-local catalog, or an authenticated MCP Gateway service.
+- Use `.tekton/` for the first Pipelines-as-Code PipelineRun and keep image update, promotion, and rollback evidence in repository documentation until live validation exists.
+- Revisit Developer Hub software templates or an authenticated MCP Gateway service after the project-local packet is validated.
 - Add static validation and later live PipelineRun validation.
 - Add Developer Hub catalog and TechDocs links only after real resources exist.
 
