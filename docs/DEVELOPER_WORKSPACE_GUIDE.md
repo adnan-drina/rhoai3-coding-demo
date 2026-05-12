@@ -71,6 +71,44 @@ From the workspace terminal, open `/projects/coding-exercises/.opencode/opencode
 
 Run `opencode` from the workspace terminal when the configuration is in place.
 
+## Planned Scribe MCP Integration
+
+Scribe is a candidate MCP server for the future MTA rule-generation workflow. It is not deployed by the current Stage 070 workspace, but when Scribe is running locally or exposed as an approved MCP service, OpenCode can load it as a remote MCP server.
+
+Local development endpoint:
+
+```text
+http://localhost:8080/mcp/sse
+```
+
+Candidate OpenCode configuration:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "scribe": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp/sse",
+      "enabled": true,
+      "timeout": 30000
+    }
+  },
+  "tools": {
+    "scribe_*": false
+  },
+  "agent": {
+    "mta-rule-engineer": {
+      "tools": {
+        "scribe_*": true
+      }
+    }
+  }
+}
+```
+
+Use Scribe only for reviewed modernization rule work. Generated Konveyor or Kantra rules must still be validated, tested against expected matches and known non-matches, and approved by a human before use.
+
 ## MTA Extensions
 
 The MTA VS Code extensions are included so the same controlled workspace can support the modernization workflow introduced in Stage 080. They help developers review MTA analysis findings and act on modernization issues without leaving Dev Spaces.
@@ -85,4 +123,3 @@ Stage 070 only prepares the IDE side of that workflow. Stage 080 deploys Migrati
 - `opencode` starts from the terminal and uses the configured MaaS model.
 - No MaaS API key or provider key is committed to Git.
 - External models are used only when the demo policy allows provider-side processing.
-

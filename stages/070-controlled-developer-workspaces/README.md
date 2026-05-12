@@ -45,6 +45,8 @@ In the OpenShift AI dashboard, generate a MaaS API key for the approved demo sub
 
 Detailed user steps are captured in [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md).
 
+The `rhpds/mca-devspaces` project is a useful implementation reference for the MTA-oriented workspace variant. It demonstrates a Devfile 2.2.0 workspace, a custom UDI-based image with Java and MTA VSIX extensions preloaded, Che Code editor policy through `vscode-editor-configurations`, and script or Ansible automation for creating a DevWorkspace. This demo should treat that project as a reference pattern until we decide whether to own a custom workspace image and its supply-chain evidence.
+
 ## How Red Hat And Open Source Make It Work
 
 Red Hat OpenShift Dev Spaces provides Kubernetes-based cloud development environments on OpenShift, built on Eclipse Che and DevWorkspace. Red Hat OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls, while MaaS supplies the governed OpenAI-compatible model endpoint and API key pattern.
@@ -86,6 +88,7 @@ Manifests: [`gitops/stages/070-controlled-developer-workspaces/base/`](../../git
 - [Continue](https://www.continue.dev/)
 - [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
 - [OpenCode: Model-neutral AI coding assistant for OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces)
+- [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 
 ## Next Stage
 

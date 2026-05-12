@@ -41,6 +41,8 @@ Migration Toolkit for Applications provides the modernization platform: analysis
 
 Red Hat OpenShift provides the runtime, routing, storage, identity integration, and operator lifecycle for MTA. Red Hat build of Keycloak participates in the MTA identity path, and Red Hat OpenShift AI MaaS publishes the private model endpoint used by the assistant workflow. The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization, and the Coolstore sample application.
 
+The `rhpds/mca-devspaces` project provides a concrete Dev Spaces reference for the IDE side of this modernization workflow. It packages Java and MTA VS Code extensions into a custom workspace image, points the devfile at a Coolstore repository, and injects Developer Lightspeed for MTA provider settings during workspace startup. The server-side MTA, LLM proxy, MaaS routing, and policy boundaries remain part of this demo's Stage 080 design.
+
 ## Trust Boundaries
 
 Modernization context can include source code, static-analysis findings, dependency information, and remediation suggestions, so the model path must match the data classification. The private MaaS path keeps this context inside OpenShift, while any approved external model path must be explicitly reviewed; centralized LLM proxy credentials, traceable model access, and human review support sovereignty and EU AI Act readiness but do not remove the need for legal, security, and application-owner approval.
@@ -80,6 +82,7 @@ Manifests: [`gitops/stages/080-ai-assisted-application-modernization/base/`](../
 - [Red Hat Developer Lightspeed for MTA 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
 - [MTA VS Code extension 8.1](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
+- [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 
 ## Next Stage
 

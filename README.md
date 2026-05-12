@@ -49,6 +49,14 @@ The demo progresses through nine focused platform stages. Each stage demonstrate
 
 If someone only reads the workshop, they should still learn the architecture: private model serving, governed external model access, platform identity, developer tooling, modernization workflows, and portal-driven consumption.
 
+### Planned Developer Workflow Extension
+
+The current `010-090` stages are the executable platform setup path. A documentation-only extension under [`docs/developer-workflow/`](docs/developer-workflow/README.md) drafts the next story arc: **From Vibe Coding to Agentic Engineering**.
+
+That planned `100-170` track keeps Stage 070 as the Dev Spaces foundation, Stage 080 as the modernization platform foundation, and Stage 090 as the portal foundation. The new planned stages focus on developer workflow: governed entry from Developer Hub, Continue-based IDE assistance, a quality-bar breakpoint, OpenCode agents and skills, a Quarkus golden path, governed pipeline and deployment, Red Hat Trusted Software Supply Chain evidence, MTA modernization at scale, and the Red Hat agent mesh modernization pattern.
+
+These planned stages are not registered in [`flows/default.yaml`](flows/default.yaml) yet. They do not include deploy scripts, validate scripts, GitOps resources, or Argo CD applications until later implementation iterations choose exact code examples and live validation paths.
+
 ## Why This Is Worth Knowing
 
 The reusable pattern is bigger than this specific demo. It is a reference architecture for enterprise teams that need to introduce AI-assisted development without weakening controls around source code, regulated data, provider access, and operational accountability.
@@ -165,6 +173,7 @@ rhoai3-coding-demo/
 |   +-- README.md
 |   +-- OPERATIONS.md
 |   +-- TROUBLESHOOTING.md
+|   +-- developer-workflow/         # Planned 100-170 developer workflow story
 +-- env.example
 +-- README.md
 ```
@@ -191,4 +200,7 @@ rhoai3-coding-demo/
 - [Red Hat Developer Hub 1.9 documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/developer-lightspeed)
 - [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
+- [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
+- [OpenCode: Model-neutral AI coding assistant for OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces)
+- [Refactoring at the speed of mission: An agent mesh approach to legacy system modernization with Red Hat AI](https://www.redhat.com/en/blog/refactoring-speed-mission-agent-mesh-approach-legacy-system-modernization-red-hat-ai)
 - [opendatahub-io/models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)

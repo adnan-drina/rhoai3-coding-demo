@@ -46,6 +46,21 @@ Red Hat OpenShift AI provides the GenAI Playground surface where users can try f
 
 MCP provides the open protocol for connecting AI applications to tools and context. In this stage, MCP servers expose approved capabilities beside the governed inference path from Stage 040. The important distinction is that inference generates tokens, while MCP controls what external context or tools an AI workflow can reach. That separation helps platform teams govern model access and context access as related but different trust boundaries.
 
+## Future Hardening
+
+This implemented stage currently demonstrates read-only OpenShift MCP and credential-gated optional external MCP entries. Later developer-workflow iterations should evaluate stronger MCP Gateway controls before exposing write-capable tools or enterprise systems of record.
+
+Future hardening topics include:
+
+- identity-based tool filtering so users only see tools they are allowed to call;
+- OAuth or OIDC token exchange with enterprise identity providers such as Keycloak;
+- gateway authorization with Kuadrant `AuthPolicy` or Authorino-style policy checks;
+- network isolation and runtime limits around MCP servers;
+- audit logs for prompts, tool calls, model calls, MCP invocations, and human approvals;
+- separate treatment of read-only context, write-capable tools, and external service calls.
+
+The `sshaaf/scribe` MCP server is a useful future example for this hardening path. Unlike the read-only OpenShift MCP server in this stage, Scribe generates Konveyor/Kantra rule YAML that can influence modernization analysis. If adopted, it should be exposed as a domain-specific MCP service with explicit authorization, network boundaries, audit logging, and agent-scoped tool access.
+
 ## Trust Boundaries
 
 MCP context must be governed separately from model access because tools can expose cluster state, logs, chat data, web data, documents, or actions against other systems. The required OpenShift MCP path is read-only platform context, while Slack and BrightData introduce optional external boundaries; trusted server selection, scoped RBAC, credential control, and periodic review support sovereignty, traceability, and EU AI Act readiness but do not by themselves establish least privilege or legal compliance.
@@ -77,6 +92,12 @@ Manifests: [`gitops/stages/060-mcp-context-integrations/base/`](../../gitops/sta
 - [Red Hat: What is Model Context Protocol (MCP)?](https://www.redhat.com/en/topics/ai/what-is-model-context-protocol-mcp)
 - [MCP servers for Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai/mcp-servers)
 - [Red Hat OpenShift AI 3.4: Experimenting with models in the GenAI Playground](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/experimenting_with_models_in_the_gen_ai_playground/index)
+- [Advanced authentication and authorization for MCP Gateway](https://developers.redhat.com/articles/2025/12/12/advanced-authentication-authorization-mcp-gateway)
+- [MCP security: The current situation](https://www.redhat.com/en/blog/mcp-security-current-situation)
+- [MCP security: Implementing robust authentication and authorization](https://www.redhat.com/en/blog/mcp-security-implementing-robust-authentication-and-authorization)
+- [MCP security: Logging and runtime security measures](https://www.redhat.com/en/blog/mcp-security-logging-and-runtime-security-measures)
+- [MCP security: Containerization and Red Hat OpenShift integration](https://www.redhat.com/en/blog/mcp-security-containerization-and-red-hat-openshift-integration)
+- [sshaaf/scribe](https://github.com/sshaaf/scribe)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [OpenShift documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/)
 

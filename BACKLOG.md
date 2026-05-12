@@ -1,5 +1,17 @@
 # Backlog
 
+## RHOAI 3.4 MaaS upgrade watch items
+
+As of 2026-05-12, the public Red Hat OpenShift AI 3.4 MaaS documentation and 3.4 release notes still describe Models-as-a-Service as a Technology Preview capability. Do not relabel this demo as using GA MaaS, or remove MaaS workarounds only because the target version is 3.4, until final product documentation or release notes explicitly confirm the support scope. If later Red Hat AI 3.4 materials describe a split where some MaaS capabilities are GA and others remain Technology Preview, reconcile that split against the public Red Hat OpenShift AI docs before changing demo language.
+
+Before upgrading this demo, verify the target RHOAI build against the following MaaS capability boundaries:
+
+- [ ] **Governed model access support scope** — Confirm whether governed model access, dashboard discovery, tier/subscription assignment, API-key access, quota enforcement, rate limits, token limits, and usage visibility are GA, Technology Preview, or otherwise scoped for the target release.
+- [ ] **`MaaSSubscription` and `MaaSAuthPolicy` support** — Confirm whether these CRDs are product-supported in the target RHOAI build and whether they replace this repo's manual `RateLimitPolicy`, `TokenRateLimitPolicy`, `TelemetryPolicy`, and per-model RBAC resources.
+- [ ] **`maas-api` API-key lifecycle** — Confirm whether product `maas-api` supports subscription-bound key minting, binding, rotation, and revocation without the upstream image override or Playground tokens bridge.
+- [ ] **MaaS observability path** — Confirm whether MaaS usage and health observability is product-supported or remains Technology Preview/demo glue, and whether this repo should replace community Grafana with a Red Hat-supported observability path.
+- [ ] **External model and payload processing support** — Confirm whether `ExternalModel`, payload/request processing, provider credential injection, and external inference through the same MaaS subscription and policy surface are product-supported enough to remove the upstream `maas-controller` coexistence path.
+
 ## Workarounds (review when supported MaaS covers them natively)
 
 The following items use manual configuration or post-deploy patches because the Red Hat OpenShift AI 3.3 operator's MaaS integration has gaps. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, so do not remove these workarounds only because a newer operator exists. Review each item when a supported MaaS path covers the behavior natively and the replacement has been validated in this demo.
