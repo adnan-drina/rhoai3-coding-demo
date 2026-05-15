@@ -189,9 +189,9 @@ The first trust boundary is model path selection. Private source-code work shoul
 - Decide whether the OpenShift AI connector for Developer Hub should populate model assets automatically or whether the demo should use static catalog-info examples.
 - Decide whether Developer Hub MCP catalog and TechDocs tools become part of the later agentic workflow.
 - Add a workspace readiness checklist.
-- Use [`stage-100-evidence-template.md`](stage-100-evidence-template.md) for sanitized validation notes.
+- Use [`stage-100-evidence-template.md`](evidence-template.md) for sanitized validation notes.
 - Latest sanitized validation evidence:
-  [`stage-100-validation-evidence-2026-05-15.md`](stage-100-validation-evidence-2026-05-15.md).
+  [`stage-100-validation-evidence-2026-05-15.md`](validation-evidence-2026-05-15.md).
 
 ## Deploy And Validate
 
@@ -215,4 +215,4 @@ stage structure exists.
 
 ## Next Stage
 
-[Stage 110: Enterprise Vibe Coding With Continue](110-enterprise-vibe-coding-with-continue.md) uses the governed workspace and model path for the first AI-assisted coding tasks.
+[Stage 110: Enterprise Vibe Coding With Continue](../110-enterprise-vibe-coding-with-continue/README.md) uses the governed workspace and model path for the first AI-assisted coding tasks.

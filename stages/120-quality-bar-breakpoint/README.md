@@ -134,7 +134,7 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## References
 
-- [AI collaboration model](../AI_COLLABORATION.md)
+- [AI collaboration model](../../docs/AI_COLLABORATION.md)
 - [Engineering an AI-ready code base: Governance lessons from the Red Hat Hybrid Cloud Console](https://developers.redhat.com/articles/2026/04/15/governance-lessons-red-hat-hybrid-cloud-console)
 - [Eval-driven development: Build and evaluate AI agents](https://developers.redhat.com/articles/2026/03/23/eval-driven-development-build-evaluate-ai-agents)
 - [AI-powered documentation updates: From code diff to docs PR in one comment](https://developers.redhat.com/articles/2026/04/21/ai-powered-documentation-updates-code-diff-docs-pr-one-comment)
@@ -143,4 +143,4 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## Next Stage
 
-[Stage 130: Agentic Engineering With OpenCode](130-agentic-engineering-with-opencode.md) turns the quality gate into controlled agent roles, skills, permissions, and repeatable workflows.
+[Stage 130: Agentic Engineering With OpenCode](../130-agentic-engineering-with-opencode/README.md) turns the quality gate into controlled agent roles, skills, permissions, and repeatable workflows.

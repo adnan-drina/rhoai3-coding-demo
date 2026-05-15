@@ -14,7 +14,7 @@ Show how Red Hat Trusted Software Supply Chain concepts apply to AI-assisted dev
 
 - Stage 090 provides Developer Hub as the future self-service and catalog surface.
 - Stage 130 provides OpenCode agents, project rules, and review workflows.
-- Stage 140 provides the demo-owned Coolstore Inventory Quarkus service target described in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
+- Stage 140 provides the demo-owned Coolstore Inventory Quarkus service target described in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment.
 - Stage 150 provides the `.tekton/` Pipelines-as-Code and app-local GitOps handoff pattern.
 
 ## What This Stage Adds
@@ -151,11 +151,11 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [Red Hat Trusted Profile Analyzer](https://developers.redhat.com/products/trusted-profile-analyzer)
 - [Using containers to bring software engineering rigor to AI workloads](https://www.redhat.com/en/blog/using-containers-bring-software-engineering-rigor-ai-workloads)
 - [Build more secure, optimized AI supply chains with Fromager](https://developers.redhat.com/articles/2026/04/13/build-more-secure-optimized-ai-supply-chains-fromager)
-- [Quarkus target service options](quarkus-target-service-options.md)
-- [coding-exercises application repository plan](coding-exercises-app-repo-plan.md)
+- [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
+- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 - [sshaaf/scribe](https://github.com/sshaaf/scribe)
 
 ## Next Stage
 
-[Stage 160: Modernization At Scale With MTA And Developer Lightspeed](160-modernization-at-scale-with-mta-and-developer-lightspeed.md) shifts from trusted delivery of one application to brownfield modernization at application-portfolio scale.
+[Stage 160: Modernization At Scale With MTA And Developer Lightspeed](../160-modernization-at-scale-with-mta-and-developer-lightspeed/README.md) shifts from trusted delivery of one application to brownfield modernization at application-portfolio scale.

@@ -39,7 +39,7 @@ The future live environment has MTA and Developer Lightspeed for MTA installed f
 
 The current recommendation is to use `rhpds/mca-coolstore` as the canonical brownfield modernization source for this stage. It contains Java EE modernization pressure, in-tree Konveyor profiles, a custom audit-library migration ruleset, local system-scoped JARs, and a direct connection to the `rhpds/mca-devspaces` Developer Lightspeed workspace pattern.
 
-For the golden-path and deployment stages, the demo should still use the smaller demo-owned `coolstore-inventory-service` described in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment rather than promising a full monolith conversion in one live iteration.
+For the golden-path and deployment stages, the demo should still use the smaller demo-owned `coolstore-inventory-service` described in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment rather than promising a full monolith conversion in one live iteration.
 
 The `rhpds/mca-devspaces` project is a candidate reference for this stage's Dev Spaces implementation. It already packages Java and MTA VS Code extensions, configures Che Code editor policy, points its devfile at `rhpds/mca-coolstore`, and injects Developer Lightspeed for MTA provider settings at workspace startup. The remaining comparison decision is whether `konveyor-ecosystem/coolstore` should stay as a secondary reference for Quarkus migration material.
 
@@ -166,7 +166,7 @@ Modernization context can include source code, dependency information, analysis 
 
 - Confirm the exact Stage 160 execution path for `rhpds/mca-coolstore` and whether `konveyor-ecosystem/coolstore` remains a secondary reference.
 - Use the [`mca-coolstore` candidate assessment](mca-coolstore-candidate-assessment.md) as the current application-selection baseline.
-- Use the [`Quarkus target service options`](quarkus-target-service-options.md) assessment when comparing brownfield inventory behavior to the smaller target service.
+- Use the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment when comparing brownfield inventory behavior to the smaller target service.
 - Decide whether to use the `rhpds/mca-devspaces` workspace pattern directly, adapt it into this repo, or keep the current Stage 070 workspace and only borrow its MTA extension setup.
 - Use the [`MTA Coolstore Analysis Exercise`](mta-coolstore-analysis-exercise.md) as the first analysis checklist.
 - Use the [`Developer Lightspeed Evaluation Rubric`](developer-lightspeed-evaluation-rubric.md) when reviewing suggested remediation.
@@ -196,9 +196,9 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore)
 - [mca-coolstore candidate assessment](mca-coolstore-candidate-assessment.md)
-- [Quarkus target service options](quarkus-target-service-options.md)
+- [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
 - [sshaaf/scribe](https://github.com/sshaaf/scribe)
 
 ## Next Stage
 
-[Stage 170: Agent Mesh Modernization Pattern](170-agent-mesh-modernization-pattern.md) maps the single-application workflow to the Red Hat agent mesh modernization pattern.
+[Stage 170: Agent Mesh Modernization Pattern](../170-agent-mesh-modernization-pattern/README.md) maps the single-application workflow to the Red Hat agent mesh modernization pattern.

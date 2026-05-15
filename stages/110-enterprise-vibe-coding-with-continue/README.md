@@ -146,4 +146,4 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## Next Stage
 
-[Stage 120: Quality Bar Breakpoint](120-quality-bar-breakpoint.md) turns the same productivity story into a controlled example of why AI output still needs professional engineering review.
+[Stage 120: Quality Bar Breakpoint](../120-quality-bar-breakpoint/README.md) turns the same productivity story into a controlled example of why AI output still needs professional engineering review.

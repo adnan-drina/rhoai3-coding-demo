@@ -48,7 +48,7 @@ MCP provides the open protocol for connecting AI applications to tools and conte
 
 ## Future Hardening
 
-This implemented stage currently demonstrates read-only OpenShift MCP and credential-gated optional external MCP entries. Later developer-workflow iterations should evaluate stronger MCP Gateway controls before exposing write-capable tools or enterprise systems of record.
+This implemented stage currently demonstrates read-only OpenShift MCP and credential-gated optional external MCP entries. Later developer workflow stages should evaluate stronger MCP Gateway controls before exposing write-capable tools or enterprise systems of record.
 
 Future hardening topics include:
 

@@ -51,9 +51,21 @@ If someone only reads the workshop, they should still learn the architecture: pr
 
 ### Planned Developer Workflow Extension
 
-The current `010-090` stages are the executable platform setup path. A documentation-only extension under [`docs/developer-workflow/`](docs/developer-workflow/README.md) drafts the next story arc: **From Vibe Coding to Agentic Engineering**.
+The current `010-090` stages are the executable platform setup path. Draft stage directories under [`stages/`](stages/) now hold the next story arc: **From Vibe Coding to Agentic Engineering**.
 
-That planned `100-170` track keeps Stage 070 as the Dev Spaces foundation, Stage 080 as the modernization platform foundation, and Stage 090 as the portal foundation. The new planned stages focus on developer workflow: governed entry from Developer Hub, Continue-based IDE assistance, a quality-bar breakpoint, OpenCode agents and skills, a Quarkus golden path, governed pipeline and deployment, Red Hat Trusted Software Supply Chain evidence, MTA modernization at scale, and the Red Hat agent mesh modernization pattern.
+That draft `100-170` track keeps Stage 070 as the Dev Spaces foundation, Stage 080 as the modernization platform foundation, and Stage 090 as the portal foundation. The new planned stages focus on developer workflow: governed entry from Developer Hub, Continue-based IDE assistance, a quality-bar breakpoint, OpenCode agents and skills, a Quarkus golden path, governed pipeline and deployment, Red Hat Trusted Software Supply Chain evidence, MTA modernization at scale, and the Red Hat agent mesh modernization pattern.
+
+| Draft stage | Focus |
+|-------------|-------|
+| [100 - Governed Developer Entry Point](stages/100-governed-developer-entry-point/README.md) | Start from Developer Hub, open Dev Spaces, and choose the private MaaS model path |
+| [110 - Enterprise Vibe Coding With Continue](stages/110-enterprise-vibe-coding-with-continue/README.md) | Use Continue for README, API, and test-plan alignment |
+| [120 - Quality Bar Breakpoint](stages/120-quality-bar-breakpoint/README.md) | Show why AI output still needs professional engineering review |
+| [130 - Agentic Engineering With OpenCode](stages/130-agentic-engineering-with-opencode/README.md) | Use bounded OpenCode agent work with project rules and write boundaries |
+| [140 - Golden Path Quarkus Service](stages/140-golden-path-quarkus-service/README.md) | Build the `coolstore-inventory-service` target with Red Hat build of Quarkus |
+| [150 - Governed Pipeline And Deployment](stages/150-governed-pipeline-and-deployment/README.md) | Add Pipelines-as-Code and app-local GitOps for the service |
+| [155 - Red Hat Trusted Software Supply Chain](stages/155-red-hat-trusted-software-supply-chain/README.md) | Capture image, provenance, scan, and promotion evidence |
+| [160 - Modernization At Scale With MTA And Developer Lightspeed](stages/160-modernization-at-scale-with-mta-and-developer-lightspeed/README.md) | Analyze `rhpds/mca-coolstore` and evaluate AI-assisted modernization |
+| [170 - Agent Mesh Modernization Pattern](stages/170-agent-mesh-modernization-pattern/README.md) | Map the local workflow to a portfolio modernization agent pattern |
 
 These planned stages are not registered in [`flows/default.yaml`](flows/default.yaml) yet. They do not include deploy scripts, validate scripts, GitOps resources, or Argo CD applications until later implementation iterations choose exact code examples and live validation paths.
 
@@ -173,7 +185,6 @@ rhoai3-coding-demo/
 |   +-- README.md
 |   +-- OPERATIONS.md
 |   +-- TROUBLESHOOTING.md
-|   +-- developer-workflow/         # Planned 100-170 developer workflow story
 +-- env.example
 +-- README.md
 ```

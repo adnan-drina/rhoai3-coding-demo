@@ -21,7 +21,7 @@ YYYY-MM-DD
 
 ## Sources Reviewed
 
-- `docs/developer-workflow/100-governed-developer-entry-point.md`
+- `stages/100-governed-developer-entry-point/README.md`
 - `stages/070-controlled-developer-workspaces/README.md`
 - `stages/090-developer-portal-self-service/README.md`
 - `docs/DEVELOPER_WORKSPACE_GUIDE.md`

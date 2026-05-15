@@ -82,9 +82,9 @@ Stage flow static validation passed
 - Workspace project directories observed:
   - `/projects/mca-coolstore`
   - `/projects/coding-exercises`
-- The workspace still contained an older `/projects/coolstore` directory from
-  the persistent workspace volume; the Stage 100 source project is
-  `/projects/mca-coolstore`.
+- An older `/projects/coolstore` checkout from the persistent workspace volume
+  was removed after validation so the workspace now shows only the current
+  `mca-coolstore` and `coding-exercises` projects.
 
 ## Model Path Evidence
 
@@ -108,9 +108,6 @@ the private MaaS model path is selected for source-code work.
 - The validation used backend catalog state and frontend route reachability
   rather than committing screenshots, to avoid storing route hostnames or
   session details.
-- The workspace persistent volume still has an older `coolstore` directory.
-  This does not block Stage 100, but the demo narration should point developers
-  to `mca-coolstore` and `coding-exercises`.
 - Developer Hub component links are intentionally limited to source repository,
   Dev Spaces, and one getting started guide. The live Dev Spaces URL is
   generated into the runtime catalog from the cluster route and is not committed

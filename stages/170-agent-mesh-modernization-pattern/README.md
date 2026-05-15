@@ -44,9 +44,9 @@ This final stage is documentation and architecture first. It does not require a 
 
 The first Stage 160 exercise packet provides the single-application evidence that a future mesh would consume:
 
-- MTA analysis inputs and findings from [`MTA Coolstore Analysis Exercise`](mta-coolstore-analysis-exercise.md);
-- suggested remediation decisions from [`Developer Lightspeed Evaluation Rubric`](developer-lightspeed-evaluation-rubric.md);
-- reviewed custom rule intent from [`MTA Custom Rule Exercise`](mta-custom-rule-exercise.md).
+- MTA analysis inputs and findings from [`MTA Coolstore Analysis Exercise`](../160-modernization-at-scale-with-mta-and-developer-lightspeed/mta-coolstore-analysis-exercise.md);
+- suggested remediation decisions from [`Developer Lightspeed Evaluation Rubric`](../160-modernization-at-scale-with-mta-and-developer-lightspeed/developer-lightspeed-evaluation-rubric.md);
+- reviewed custom rule intent from [`MTA Custom Rule Exercise`](../160-modernization-at-scale-with-mta-and-developer-lightspeed/mta-custom-rule-exercise.md).
 
 ### AI-Assisted Task
 

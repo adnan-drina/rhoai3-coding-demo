@@ -7,7 +7,6 @@ This directory contains operational documentation for the Red Hat OpenShift AI c
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operating model, day-2 notes, and cleanup guidance | Use while installing, validating, or maintaining the demo environment |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment stage fails validation or a demo component is unavailable |
 | [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | User-facing Dev Spaces setup for Continue, OpenCode, and MTA extension handoff | Use during Stage 070 when demo users configure model access in their workspace |
-| [developer-workflow/](developer-workflow/README.md) | Planned `100-170` "From Vibe Coding to Agentic Engineering" README drafts, including Red Hat Trusted Software Supply Chain | Use when designing the next developer workflow iterations before promoting them into executable stages |
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
 | [../BACKLOG.md](../BACKLOG.md) | Deviation register, workarounds, known limitations, validation notes, and planned cleanup | Use when assessing whether demo behavior matches supported Red Hat product guidance |
 
@@ -24,7 +23,7 @@ The published learning path is the stage-based flow from [`flows/default.yaml`](
 9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
 10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
-The planned developer workflow extension is documented separately in [`developer-workflow/`](developer-workflow/README.md). It is not part of [`flows/default.yaml`](../flows/default.yaml) yet and should remain documentation-only until the future `100-170` stages have deploy scripts, validate scripts, GitOps bases, and Argo CD applications.
+Draft developer workflow stages now live directly under [`../stages/`](../stages/), starting with [Stage 100](../stages/100-governed-developer-entry-point/README.md). Stages `100-170` are not part of [`flows/default.yaml`](../flows/default.yaml) yet and should remain documentation-only until each stage has deploy scripts, validate scripts, GitOps bases, and Argo CD applications.
 
 Shared Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and agent definitions (`.cursor/agents/`) are tracked in git and define project-wide AI agent behavior. Local/private rules and skills that contain credentials, local paths, or personal preferences must not be committed. See [AI_COLLABORATION.md](AI_COLLABORATION.md) for the governance model.
 

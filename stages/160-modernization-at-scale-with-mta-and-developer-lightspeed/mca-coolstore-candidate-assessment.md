@@ -23,7 +23,7 @@ It is a strong anchor for enterprise AI development because it has realistic Jav
 The best demo shape is a two-track application story:
 
 - `mca-coolstore` is the brownfield source application for discovery, code explanation, README alignment, characterization tests, MTA analysis, Developer Lightspeed for MTA, Scribe-backed rule generation, and supply-chain review.
-- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Pipelines-as-Code, GitOps, and trusted software supply-chain promotion. The repository candidate is `adnan-drina/coding-exercises`, which should be renamed to `coolstore-inventory-service` and carry source, app-local GitOps state, `.tekton/` assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
+- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Pipelines-as-Code, GitOps, and trusted software supply-chain promotion. The repository candidate is `adnan-drina/coding-exercises`, which should be renamed to `coolstore-inventory-service` and carry source, app-local GitOps state, `.tekton/` assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment.
 
 This keeps the modernization story realistic without forcing a fragile full monolith conversion into the first live coding iteration.
 
@@ -81,7 +81,7 @@ Those are useful Stage 120 and Stage 130 moments.
 
 ### It Is Not Yet A Fast Live Demo App
 
-The runtime path depends on manual JBoss EAP, Keycloak, PostgreSQL, datasource, JMS, and optional clustering setup. That is appropriate for enterprise modernization, but it is too heavy for every developer-workflow stage unless we prebuild the environment.
+The runtime path depends on manual JBoss EAP, Keycloak, PostgreSQL, datasource, JMS, and optional clustering setup. That is appropriate for enterprise modernization, but it is too heavy for every new stage unless we prebuild the environment.
 
 ### It Has No Automated Quality Baseline
 
@@ -215,8 +215,8 @@ Discover Coolstore -> understand and test Coolstore -> catch AI near misses -> g
 
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
-- [Quarkus target service options](quarkus-target-service-options.md)
-- [coding-exercises application repository plan](coding-exercises-app-repo-plan.md)
+- [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
+- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
 - [Migration Toolkit for Applications](https://developers.redhat.com/products/mta)
 - [Configuring and using Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
 - [Configuring and using rules for an MTA analysis](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_rules_for_an_mta_analysis/index)

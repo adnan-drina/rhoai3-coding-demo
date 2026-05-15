@@ -169,4 +169,4 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## Next Stage
 
-[Stage 150: Governed Pipeline And Deployment](150-governed-pipeline-and-deployment.md) moves from application generation to controlled build, test, and deployment flow.
+[Stage 150: Governed Pipeline And Deployment](../150-governed-pipeline-and-deployment/README.md) moves from application generation to controlled build, test, and deployment flow.

@@ -14,7 +14,7 @@ Show that OpenCode can use an approved skill, software-template reference, or MC
 
 - Stage 090 provides Developer Hub as the future catalog and documentation surface.
 - Stage 130 provides OpenCode agents and skills.
-- Stage 140 provides the demo-owned Coolstore Inventory Quarkus service target described in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
+- Stage 140 provides the demo-owned Coolstore Inventory Quarkus service target described in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment.
 - The implemented GitOps pattern in stages `010-090` provides the delivery model to preserve.
 
 ## What This Stage Adds
@@ -151,8 +151,8 @@ Pipeline credentials, image registry access, template trust, MCP tool access, an
 ## Future Implementation Notes
 
 - Treat OpenShift Pipelines and Pipelines-as-Code as prerequisites for this extension, not installs owned by the current platform flow.
-- Use the [`Quarkus target service options`](quarkus-target-service-options.md) assessment as the application baseline for the first pipeline exercise.
-- Use the [`coding-exercises` application repository plan](coding-exercises-app-repo-plan.md) as the repository baseline for the renamed `coolstore-inventory-service` repo.
+- Use the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment as the application baseline for the first pipeline exercise.
+- Use the [`coding-exercises` application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md) as the repository baseline for the renamed `coolstore-inventory-service` repo.
 - Use local `coolstore-demo/inventory-gitops` only as a historical reference. Update any adopted pattern for current OpenShift, current Tekton API versions, tests-before-image behavior, and GitOps handoff expectations.
 - Use the application repository's project-local golden-path packet as the first template source.
 - Put first-demo GitOps desired state under `gitops/` in the renamed service repository.
@@ -173,8 +173,8 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [How golden paths improve developer productivity](https://developers.redhat.com/articles/2025/01/29/how-golden-paths-improve-developer-productivity)
 - [How to template AI software in Red Hat Developer Hub](https://developers.redhat.com/articles/2024/11/12/template-ai-software-red-hat-developer-hub)
 - [Red Hat Developer Hub Software Templates Library](https://github.com/redhat-developer/red-hat-developer-hub-software-templates)
-- [Quarkus target service options](quarkus-target-service-options.md)
-- [coding-exercises application repository plan](coding-exercises-app-repo-plan.md)
+- [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
+- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
 - [Advanced authentication and authorization for MCP Gateway](https://developers.redhat.com/articles/2025/12/12/advanced-authentication-authorization-mcp-gateway)
 - [MCP security: Implementing robust authentication and authorization](https://www.redhat.com/en/blog/mcp-security-implementing-robust-authentication-and-authorization)
 - [Tekton](https://tekton.dev/)
@@ -182,4 +182,4 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## Next Stage
 
-[Stage 155: Red Hat Trusted Software Supply Chain](155-red-hat-trusted-software-supply-chain.md) adds supply-chain evidence before the workflow shifts to modernization at scale.
+[Stage 155: Red Hat Trusted Software Supply Chain](../155-red-hat-trusted-software-supply-chain/README.md) adds supply-chain evidence before the workflow shifts to modernization at scale.

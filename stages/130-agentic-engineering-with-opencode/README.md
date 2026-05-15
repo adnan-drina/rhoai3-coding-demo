@@ -203,8 +203,8 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [MCP security: Containerization and Red Hat OpenShift integration](https://www.redhat.com/en/blog/mcp-security-containerization-and-red-hat-openshift-integration)
 - [Deploy an enterprise RAG chatbot on Red Hat OpenShift AI](https://developers.redhat.com/articles/2026/01/29/deploy-enterprise-rag-chatbot-red-hat-openshift-ai)
 - [sshaaf/scribe](https://github.com/sshaaf/scribe)
-- [AI collaboration model](../AI_COLLABORATION.md)
+- [AI collaboration model](../../docs/AI_COLLABORATION.md)
 
 ## Next Stage
 
-[Stage 140: Golden Path Quarkus Service](140-golden-path-quarkus-service.md) applies the controlled agent workflow to a larger enterprise service scenario.
+[Stage 140: Golden Path Quarkus Service](../140-golden-path-quarkus-service/README.md) applies the controlled agent workflow to a larger enterprise service scenario.
