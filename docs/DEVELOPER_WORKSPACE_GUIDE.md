@@ -100,13 +100,39 @@ green.
 ## Step 4: Create A MaaS API Key
 
 Use the OpenShift AI dashboard to generate a MaaS-issued API key for the
-approved demo subscription. In this demo, the subscription is
-`demo-models-subscription`, which includes the private local models and any
-approved external models added in Stage 050.
+approved demo subscription.
+
+1. Open the Red Hat OpenShift AI dashboard.
+2. In the left navigation, open `Gen AI studio`.
+3. Open `AI asset endpoints`.
+4. Select the project used for the coding assistant demo.
+5. Open the `Models as a service` tab.
+6. Confirm the MaaS model rows are active.
+
+![MaaS model endpoint list](assets/techdocs/maas-asset-endpoints-list.png)
+
+Use the `nemotron-3-nano-30b-a3b` row for the default private source-code path.
+Click `View` to open the model route and API key dialog.
+
+![MaaS Generate API Key action](assets/techdocs/maas-generate-api-key.svg)
+
+Copy two values from the dialog:
+
+- the MaaS route for the selected model path;
+- the generated API key.
+
+If the API key has not been generated yet, click `Generate API Key`. After the
+key appears, copy and store it immediately. MaaS shows the generated key only
+once.
+
+![MaaS copy-once token dialog](assets/techdocs/maas-copy-token.svg)
 
 Copy the key only into the workspace tool configuration. Do not commit it,
 paste it into README files, or store it in Git. MaaS keys are platform-issued
 credentials and must be treated as secrets.
+
+The screenshots in this guide are sanitized. They show the workflow without
+recording the real route, generated token, or full private cluster hostname.
 
 ## Step 5: Choose The Model Endpoint
 
