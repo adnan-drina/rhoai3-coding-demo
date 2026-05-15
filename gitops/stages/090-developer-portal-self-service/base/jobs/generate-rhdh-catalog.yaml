@@ -130,8 +130,11 @@ spec:
             -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
           APP_TARGET_REVISION=$(oc get application 090-developer-portal-self-service -n openshift-gitops \
             -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
+          APP_SYNC_REVISION=$(oc get application 090-developer-portal-self-service -n openshift-gitops \
+            -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
           [ -z "$APP_REPO_URL" ] && APP_REPO_URL="https://github.com/adnan-drina/rhoai3-coding-demo.git"
           [ -z "$APP_TARGET_REVISION" ] && APP_TARGET_REVISION="main"
+          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION="$APP_TARGET_REVISION"
 
           REPO_NO_GIT="${APP_REPO_URL%.git}"
           if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
@@ -147,7 +150,7 @@ spec:
           curl -fsSL "${SOURCE_CATALOG_URL}" -o /tmp/catalog-template.yaml
 
           echo "Generating runtime catalog..."
-          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_TARGET_REVISION}" <<'PY'
+          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" <<'PY'
           import pathlib
           import sys
 
