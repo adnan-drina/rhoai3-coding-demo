@@ -37,19 +37,22 @@ The platform stages `010-090` have been deployed in a future live environment. T
 
 The planned Developer Hub entry should expose:
 
-- a component for the brownfield `mca-coolstore` source application;
-- a component for the `adnan-drina/coolstore-inventory-service` repository;
+- a component for `getting-started-ai-coding` onboarding and MaaS client checks;
+- a component for the `adnan-drina/coolstore-inventory-service` engineering
+  repository;
+- a component for the brownfield `rhpds/mca-coolstore` migration and
+  modernization source application;
 - component links for source repository, Dev Spaces, and one getting started guide;
 - TechDocs for workflow instructions and model-use policy;
 - model-server, AI model, and API catalog entries when OpenShift AI model metadata is available through the platform.
 
 For the first Stage 100 implementation pass, the Developer Hub catalog is extended
 through the existing Stage 090 catalog source. The live portal should expose the
-Coolstore brownfield component, the `coolstore-inventory-service` target
-component, the `coolstore` system, and the private MaaS model resource. Direct
-Dev Spaces links are generated into the runtime catalog during Stage 090 sync so
-the live portal can point at the current cluster route without committing that
-route to Git.
+getting-started component, the `coolstore-inventory-service` engineering
+component, the `mca-coolstore` modernization component, the `coolstore` system,
+and the private MaaS model resource. Component-specific Dev Spaces factory links
+are generated into the runtime catalog during Stage 090 sync so the live portal
+can point at the current cluster route without committing that route to Git.
 
 ### AI-Assisted Task
 
@@ -57,6 +60,7 @@ The developer does not ask the AI to write code yet. The first task is orientati
 
 - identify the application or exercise repository;
 - open the governed Dev Spaces workspace;
+- confirm the workspace contains only the repository selected from Developer Hub;
 - confirm the available model endpoints;
 - select the private MaaS model path for source-code work;
 - configure Continue and OpenCode with the MaaS route and a MaaS-issued API key
@@ -163,16 +167,23 @@ Stage 100 is green only when all of these are true:
 - The `Getting Started` link opens the Developer Hub TechDocs workspace guide.
 - The Developer Hub catalog exposes:
   - `System:default/coolstore`
+  - `Component:default/getting-started-ai-coding`
   - `Component:default/coolstore`
   - `Component:default/coolstore-inventory-service`
   - `Resource:default/maas-private-code-model-nemotron`
+- The `getting-started-ai-coding` component points to
+  `adnan-drina/getting-started-ai-coding` and opens a single-repository
+  onboarding workspace.
 - The `coolstore` component points to `rhpds/mca-coolstore`.
 - The `coolstore-inventory-service` component points to
   `adnan-drina/coolstore-inventory-service` on the current planning branch and
   exposes only the source repository, Dev Spaces, and getting started links.
 - Red Hat OpenShift Dev Spaces is reachable.
-- The `wksp-ai-developer/exercises` workspace opens without a failed phase.
-- The workspace contains the `mca-coolstore` and `coolstore-inventory-service` projects.
+- The `wksp-ai-developer/getting-started-ai-coding`,
+  `wksp-ai-developer/coolstore-inventory-service`, and
+  `wksp-ai-developer/mca-coolstore` workspaces exist without a failed phase.
+- Each Developer Hub `Dev Spaces` link opens a workspace containing only that
+  component's source repository.
 - The selected source-code model is `nemotron-3-nano-30b-a3b` through MaaS.
 - `~/.continue/config.yaml` is configured with the MaaS route and API key in the
   workspace only, and Continue can complete a harmless prompt against the

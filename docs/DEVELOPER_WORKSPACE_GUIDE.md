@@ -12,10 +12,12 @@ it from the portal without cloning the platform repository into the workspace.
 
 At the end of Stage 100, the developer has verified:
 
-- Developer Hub exposes the Coolstore entry point.
+- Developer Hub exposes three clear workflow entry points:
+  `Getting Started with AI Coding`, `Coolstore Inventory Service`, and
+  `MCA Coolstore`.
 - Developer Hub opens this TechDocs guide from the `Getting Started` link.
-- Dev Spaces opens the pre-provisioned `exercises` workspace.
-- The workspace contains `mca-coolstore` and `coolstore-inventory-service`.
+- Each `Dev Spaces` link opens a single-repository workspace for the selected
+  component.
 - Continue is configured locally with a MaaS route and API key.
 - OpenCode is configured locally with the same MaaS route and API key.
 - Both tools can reach `nemotron-3-nano-30b-a3b` through MaaS with a harmless
@@ -24,24 +26,28 @@ At the end of Stage 100, the developer has verified:
 
 ## What Is Already Prepared
 
-Stage 070 creates the Dev Spaces environment and pre-provisions an `exercises`
-workspace for the demo personas. The `ai-developer` workspace includes:
+Stage 070 creates the Dev Spaces environment and pre-provisions separate
+single-repository workspaces for the demo personas:
 
-- The `coolstore-inventory-service` repository on the
-  `feature/coolstore-inventory-service-plan` branch.
-- The `rhpds/mca-coolstore` brownfield source repository.
-- Continue for IDE-based AI coding assistance.
-- OpenCode for terminal-based AI coding workflows.
-- MTA VS Code extensions for later modernization exercises.
+- `getting-started-ai-coding` for onboarding and MaaS client verification.
+- `coolstore-inventory-service` for AI-assisted engineering and golden-path
+  Quarkus service work.
+- `mca-coolstore` for migration and modernization exercises.
 
-The platform owns the workspace definition, tooling image, source repositories,
-and model access path. The user creates a MaaS API key and places it only into
-local tool configuration files inside the workspace.
+The Developer Hub `Dev Spaces` links use the OpenShift Dev Spaces supported Git
+repository URL launch pattern, `https://<devspaces-host>#<git-repository-url>`,
+so the workspace opens with only the selected repository. The platform owns the
+workspace definition, tooling image, source repositories, and model access path.
+The user creates a MaaS API key and places it only into local tool configuration
+files inside the workspace.
 
 ## Step 1: Start From Developer Hub
 
 1. Log in to Red Hat Developer Hub with the assigned demo user.
-2. Open the `Coolstore Inventory Service` component.
+2. Open the component that matches the task:
+   - `Getting Started with AI Coding` for Stage 100 onboarding.
+   - `Coolstore Inventory Service` for Stage 110 through Stage 150 engineering.
+   - `MCA Coolstore` for Stage 160 and Stage 170 modernization.
 3. Confirm the component shows only these links:
    - `Source Repo`
    - `Dev Spaces`
@@ -58,17 +64,17 @@ overview.
 
 1. From the Developer Hub component, open the `Dev Spaces` link.
 2. Log in to Red Hat OpenShift Dev Spaces with the assigned demo user.
-3. Start or open the pre-provisioned `exercises` workspace.
+3. Start or open the workspace for the selected component.
 4. Wait for the IDE to open and for the startup command to finish.
 
-During startup, the workspace copies:
+During startup, the onboarding and inventory workspaces copy:
 
-- `/projects/coolstore-inventory-service/.vscode/config.yaml` to
+- `/projects/<repo>/.vscode/config.yaml` to
   `~/.continue/config.yaml`
-- `/projects/coolstore-inventory-service/.opencode/opencode.json` to
+- `/projects/<repo>/.opencode/opencode.json` to
   `~/.opencode/opencode.json`
 
-For Stage 100, the workspace should show only the application repositories:
+For Stage 100, the selected workspace should show only one project directory:
 
 ![Sanitized Dev Spaces project explorer](assets/techdocs/devspaces-projects.svg)
 
@@ -89,12 +95,14 @@ test -f ~/.opencode/opencode.json && echo "OpenCode config present"
 Expected project directories:
 
 ```text
-coolstore-inventory-service
-mca-coolstore
+getting-started-ai-coding
 ```
 
-If an old `coding-exercises` directory appears, it is stale state from the
-persistent workspace volume. Stop and clean it up before recording Stage 100 as
+If you opened the inventory or modernization component instead, the only project
+directory should be `coolstore-inventory-service` or `mca-coolstore`
+respectively. If an old `coding-exercises`, `coolstore`, or multi-repository
+workspace appears, it is stale state from a previous workspace volume. Stop it
+and open the component-specific `Dev Spaces` link before recording Stage 100 as
 green.
 
 ## Step 4: Create A MaaS API Key
@@ -182,9 +190,8 @@ Replace the placeholders for the selected model:
   subscription.
 - Keep the `model` value aligned with the selected MaaS model ID.
 
-The committed source template remains in
-`/projects/coolstore-inventory-service/.vscode/config.yaml`. Keep real values
-only in the local home-directory copy.
+The committed source template remains in the selected repository. Keep real
+values only in the local home-directory copy.
 
 ![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
 
@@ -230,8 +237,7 @@ Replace the placeholders for the selected model:
 - Keep the default model on a private local model unless the exercise
   explicitly calls for an approved external model.
 
-The committed source template remains in
-`/projects/coolstore-inventory-service/.opencode/opencode.json`. Keep real
+The committed source template remains in the selected repository. Keep real
 values only in the local home-directory copy.
 
 ## Step 9: Verify OpenCode
@@ -270,8 +276,8 @@ Record:
 
 - Developer Hub component visible: yes/no
 - `Getting Started` opens TechDocs: yes/no
-- `Dev Spaces` opens the workspace: yes/no
-- workspace projects: `mca-coolstore`, `coolstore-inventory-service`
+- `Dev Spaces` opens the selected workspace: yes/no
+- workspace project:
 - private model ready: `nemotron-3-nano-30b-a3b`
 - Continue harmless prompt passed: yes/no
 - OpenCode harmless prompt passed: yes/no

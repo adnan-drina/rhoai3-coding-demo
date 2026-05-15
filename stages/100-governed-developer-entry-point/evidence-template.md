@@ -27,6 +27,7 @@ YYYY-MM-DD
 - `docs/DEVELOPER_WORKSPACE_GUIDE.md`
 - `gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml`
 - `gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
+- `/Users/adrina/Sandbox/getting-started-ai-coding/README.md`
 - `/Users/adrina/Sandbox/coolstore-inventory-service/catalog-info.yaml`
 
 ## Commands Or Actions
@@ -35,17 +36,20 @@ YYYY-MM-DD
 ./stages/090-developer-portal-self-service/validate.sh
 ./stages/070-controlled-developer-workspaces/validate.sh
 ./scripts/resume-gpu-demo.sh status
-oc get devworkspace exercises -n wksp-ai-developer
+oc get devworkspace -n wksp-ai-developer
 ```
 
 Manual actions:
 
 - Open Red Hat Developer Hub from the OpenShift console launcher or known route.
-- Confirm the Coolstore system, brownfield component, target service component,
-  and private MaaS model resource are visible.
+- Confirm the Coolstore system, onboarding component, engineering component,
+  modernization component, and private MaaS model resource are visible.
 - Open Red Hat OpenShift Dev Spaces.
-- Start or open `wksp-ai-developer/exercises`.
-- Confirm the workspace includes `mca-coolstore` and `coolstore-inventory-service`.
+- Start or open `wksp-ai-developer/getting-started-ai-coding`.
+- Confirm the workspace includes only `getting-started-ai-coding`.
+- Confirm the `Coolstore Inventory Service` Dev Spaces link opens only
+  `coolstore-inventory-service`.
+- Confirm the `MCA Coolstore` Dev Spaces link opens only `mca-coolstore`.
 - Confirm the private source-code model path is `nemotron-3-nano-30b-a3b`
   through MaaS.
 - Configure the local workspace copy of `~/.continue/config.yaml` with the
@@ -60,11 +64,15 @@ Manual actions:
 - Developer Hub route reachable: yes/no, hostname omitted
 - Catalog entities visible:
   - `System:default/coolstore`: yes/no
+  - `Component:default/getting-started-ai-coding`: yes/no
   - `Component:default/coolstore`: yes/no
   - `Component:default/coolstore-inventory-service`: yes/no
   - `Resource:default/maas-private-code-model-nemotron`: yes/no
 - Dev Spaces route reachable: yes/no, hostname omitted
-- `wksp-ai-developer/exercises` phase:
+- `wksp-ai-developer/getting-started-ai-coding` phase:
+- `wksp-ai-developer/coolstore-inventory-service` phase:
+- `wksp-ai-developer/mca-coolstore` phase:
+- Component-specific workspaces contain only their selected repository: yes/no
 - Private models ready:
   - `nemotron-3-nano-30b-a3b`: yes/no
   - `gpt-oss-20b`: yes/no

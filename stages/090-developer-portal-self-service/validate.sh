@@ -108,20 +108,24 @@ else
 fi
 
 RUNTIME_CATALOG=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' 2>/dev/null || echo "")
-if [[ "$RUNTIME_CATALOG" == *"https://devspaces.placeholder.example.com"* ]]; then
+if [[ "$RUNTIME_CATALOG" == *"devspaces"* && "$RUNTIME_CATALOG" == *"placeholder.example.com"* ]]; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog still contains Dev Spaces placeholder"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"title: Dev Spaces"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated Dev Spaces link"
+elif [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/getting-started-ai-coding"* ]] && \
+     [[ "$RUNTIME_CATALOG" == *"#https://github.com/rhpds/mca-coolstore"* ]] && \
+     [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated component-specific Dev Spaces links"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
-    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing Dev Spaces link"
+    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing component-specific Dev Spaces links"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* ]]; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog still contains TechDocs placeholders"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore-inventory-service"* ]] && \
+elif [[ "$RUNTIME_CATALOG" == *"/docs/default/component/getting-started-ai-coding"* ]] && \
+     [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore-inventory-service"* ]] && \
+     [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore"* ]] && \
      [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
     echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated TechDocs links"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))

@@ -18,7 +18,8 @@ This stage adds a governed cloud development workspace layer.
 - Per-user DevWorkspace definitions for the demo personas, with OpenShift identity and namespace isolation.
 - Browser-based VS Code-style environments that can be recreated from Git and workspace definitions.
 - Continue and OpenCode tooling configured to consume MaaS-published OpenAI-compatible endpoints.
-- Coding exercises, Coolstore source, and the MTA VS Code extension for AI-assisted development and modernization workflows.
+- Separate single-repository workspaces for onboarding, Coolstore inventory
+  engineering, and MCA Coolstore modernization.
 
 The capability added is a governed developer workspace layer. The workspace, source repositories, tools, and model access pattern are all platform-managed instead of being assembled manually on each developer machine.
 
@@ -37,9 +38,23 @@ This matters because regulated enterprises need AI coding assistance that fits e
 
 ## Developer Workspace Setup
 
-After Stage 070 is deployed, the demo user opens Red Hat OpenShift Dev Spaces and starts the pre-provisioned `exercises` workspace. The workspace already includes the coding exercises, Continue, OpenCode, and the developer tooling image; the remaining user step is to connect the tools to MaaS.
+After Stage 070 is deployed, the demo user opens Red Hat OpenShift Dev Spaces
+from the selected Developer Hub component. Each component opens a separate
+workspace with only that repository loaded:
 
-Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode provides a terminal-based agent workflow for developers who prefer command-line interaction. The MTA VS Code extensions are preloaded in the `ai-admin` and `ai-developer` workspaces so modernization findings can later be reviewed and acted on from the same controlled workspace.
+- `getting-started-ai-coding` for Stage 100 onboarding and MaaS client checks.
+- `coolstore-inventory-service` for AI-assisted engineering and delivery.
+- `mca-coolstore` for migration and modernization.
+
+The onboarding and inventory workspaces include Continue, OpenCode, and the
+developer tooling image; the remaining user step is to connect the tools to
+MaaS.
+
+Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode
+provides a terminal-based agent workflow for developers who prefer command-line
+interaction. The MTA VS Code extensions are preloaded in the `mca-coolstore`
+workspace for the `ai-admin` and `ai-developer` personas so modernization
+findings can later be reviewed and acted on from the same controlled workspace.
 
 In the OpenShift AI dashboard, generate a MaaS API key for the approved demo subscription, then configure Continue and OpenCode with the MaaS OpenAI-compatible endpoint, the MaaS-issued API key, and the model ID selected for the exercise. Use the private local model when working with sensitive code; use approved external models only when the demo policy allows provider-side processing.
 

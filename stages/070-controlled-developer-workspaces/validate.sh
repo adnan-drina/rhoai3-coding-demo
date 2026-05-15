@@ -33,16 +33,28 @@ else
 fi
 
 log_step "Pre-Provisioned Workspace Namespaces"
+WORKSPACES=(
+    getting-started-ai-coding
+    coolstore-inventory-service
+    mca-coolstore
+)
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Workspace namespace exists: $ns" \
         "oc get namespace $ns -o jsonpath='{.metadata.name}'" \
         "$ns"
-    check "Workspace DevWorkspace exists: $ns/exercises" \
-        "oc get devworkspace exercises -n $ns -o jsonpath='{.metadata.name}'" \
-        "exercises"
-    check_warn "Workspace DevWorkspace is not failed: $ns/exercises" \
-        "oc get devworkspace exercises -n $ns -o jsonpath='{.status.phase}'" \
-        "Stopped"
+    for workspace in "${WORKSPACES[@]}"; do
+        check "Workspace DevWorkspace exists: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o jsonpath='{.metadata.name}'" \
+            "$workspace"
+        phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
+        if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
+            echo -e "${RED}[FAIL]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (got: $phase)"
+            VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+        else
+            echo -e "${GREEN}[PASS]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (phase: ${phase:-NotStarted})"
+            VALIDATE_PASS=$((VALIDATE_PASS + 1))
+        fi
+    done
 done
 
 check "ai-admin workspace edit RoleBinding exists" \

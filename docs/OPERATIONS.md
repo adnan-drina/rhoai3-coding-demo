@@ -712,7 +712,12 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 
 Stage 070 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
 
-Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `exercises` DevWorkspace, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users.
+Validation now checks both service readiness and persona workspace readiness.
+The stage is not considered fully validated unless `wksp-kubeadmin`,
+`wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the
+`getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore`
+DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings
+point at the expected OpenShift users.
 
 Useful checks:
 

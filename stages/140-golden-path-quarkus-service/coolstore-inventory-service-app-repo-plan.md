@@ -86,7 +86,7 @@ The service repository should own:
 
 | Stage | Repository Impact |
 |-------|-------------------|
-| Stage 100 | Developer Hub should show `mca-coolstore` as the brownfield source and `coolstore-inventory-service` as the target service component with source, app-local GitOps, pipeline, rollout, promotion, and rollback links. |
+| Stage 100 | Developer Hub should show `getting-started-ai-coding` for onboarding, `coolstore-inventory-service` for AI-assisted engineering, and `mca-coolstore` for modernization. The inventory component should open a single-repository Dev Spaces workspace for this repo. |
 | Stage 110 | Continue can start in the service repo for README, API, and test-plan alignment after the Quarkus scaffold exists. |
 | Stage 120 | The app repo becomes the quality-bar breakpoint for tests, README accuracy, dependency choices, and no invented deployment claims. |
 | Stage 130 | OpenCode rules and skills belong in the service repo first, with app-local GitOps write paths disabled unless explicitly approved. The first bounded coding task is `POST /api/inventory/{itemId}/reservations`. |

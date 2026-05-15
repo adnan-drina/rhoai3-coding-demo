@@ -1,5 +1,11 @@
 # Stage 100 Validation Evidence
 
+> Superseded note: this evidence records the earlier shared `exercises`
+> workspace validation. The current Stage 100 design uses three separate
+> single-repository Developer Hub components and Dev Spaces workspaces:
+> `getting-started-ai-coding`, `coolstore-inventory-service`, and
+> `mca-coolstore`.
+
 ## Stage
 
 100 - Governed Developer Entry Point

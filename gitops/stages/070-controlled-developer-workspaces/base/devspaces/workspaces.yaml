@@ -1,7 +1,9 @@
-# Per-user workspace namespaces, RBAC, and DevWorkspaces
-# Uses che-incubator/cli-ai-tools image (OpenCode, Aider, Goose pre-installed).
-# Continue extension auto-installed via DEFAULT_EXTENSIONS + postStart.
-# Continue and OpenCode configs auto-copied via postStart.
+# Per-user workspace namespaces, RBAC, and DevWorkspaces.
+#
+# Stage 100 uses one Developer Hub component per repo and one matching
+# single-repo Dev Spaces workspace per component. This keeps onboarding,
+# golden-path engineering, and modernization work isolated instead of loading
+# all source projects into one workspace.
 ---
 apiVersion: v1
 kind: Namespace
@@ -27,14 +29,64 @@ roleRef:
   kind: ClusterRole
   name: edit
 subjects:
-- apiGroup: rbac.authorization.k8s.io
-  kind: User
-  name: "b64:a3ViZTphZG1pbg=="
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: "b64:a3ViZTphZG1pbg=="
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: exercises
+  name: getting-started-ai-coding
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: getting-started-ai-coding
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/getting-started-ai-coding.git
+          checkoutFrom:
+            revision: main
+    commands:
+      - id: init-ai-tools
+        exec:
+          commandLine: |
+            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.vscode/config.yaml ] && break; sleep 2; done
+            mkdir -p ~/.continue ~/.opencode
+            cp /projects/getting-started-ai-coding/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-ai-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: coolstore-inventory-service
   namespace: wksp-kubeadmin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
@@ -59,8 +111,8 @@ spec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -78,6 +130,55 @@ spec:
           env:
             - name: DEFAULT_EXTENSIONS
               value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: mca-coolstore
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: mca-coolstore
+        git:
+          remotes:
+            origin: https://github.com/rhpds/mca-coolstore.git
+          checkoutFrom:
+            revision: main
+    commands:
+      - id: init-modernization-tools
+        exec:
+          commandLine: |
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.1/file/redhat.mta-java-8.1.1.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-modernization-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 6Gi
+          memoryRequest: 2Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix,/tmp/mta.vsix,/tmp/mta-core.vsix,/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
 ---
@@ -105,14 +206,114 @@ roleRef:
   kind: ClusterRole
   name: edit
 subjects:
-- apiGroup: rbac.authorization.k8s.io
-  kind: User
-  name: ai-admin
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ai-admin
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: exercises
+  name: getting-started-ai-coding
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: getting-started-ai-coding
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/getting-started-ai-coding.git
+          checkoutFrom:
+            revision: main
+    commands:
+      - id: init-ai-tools
+        exec:
+          commandLine: |
+            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.vscode/config.yaml ] && break; sleep 2; done
+            mkdir -p ~/.continue ~/.opencode
+            cp /projects/getting-started-ai-coding/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-ai-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: coolstore-inventory-service
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: coolstore-inventory-service
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
+          checkoutFrom:
+            revision: feature/coolstore-inventory-service-plan
+    commands:
+      - id: init-ai-tools
+        exec:
+          commandLine: |
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
+            mkdir -p ~/.continue ~/.opencode
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-ai-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: mca-coolstore
   namespace: wksp-ai-admin
   annotations:
     argocd.argoproj.io/sync-wave: "20"
@@ -131,20 +332,10 @@ spec:
             origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
-      - name: coolstore-inventory-service
-        git:
-          remotes:
-            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
-          checkoutFrom:
-            revision: feature/coolstore-inventory-service-plan
     commands:
-      - id: init-ai-tools
+      - id: init-modernization-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
@@ -152,7 +343,7 @@ spec:
           component: tooling-container
     events:
       postStart:
-        - init-ai-tools
+        - init-modernization-tools
     components:
       - name: tooling-container
         container:
@@ -192,14 +383,114 @@ roleRef:
   kind: ClusterRole
   name: edit
 subjects:
-- apiGroup: rbac.authorization.k8s.io
-  kind: User
-  name: ai-developer
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ai-developer
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
 metadata:
-  name: exercises
+  name: getting-started-ai-coding
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: getting-started-ai-coding
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/getting-started-ai-coding.git
+          checkoutFrom:
+            revision: main
+    commands:
+      - id: init-ai-tools
+        exec:
+          commandLine: |
+            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.vscode/config.yaml ] && break; sleep 2; done
+            mkdir -p ~/.continue ~/.opencode
+            cp /projects/getting-started-ai-coding/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-ai-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: coolstore-inventory-service
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  started: false
+  routingClass: che
+  contributions:
+    - name: ide
+      uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  template:
+    projects:
+      - name: coolstore-inventory-service
+        git:
+          remotes:
+            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
+          checkoutFrom:
+            revision: feature/coolstore-inventory-service-plan
+    commands:
+      - id: init-ai-tools
+        exec:
+          commandLine: |
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
+            mkdir -p ~/.continue ~/.opencode
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+          component: tooling-container
+    events:
+      postStart:
+        - init-ai-tools
+    components:
+      - name: tooling-container
+        container:
+          image: quay.io/che-incubator/cli-ai-tools:latest
+          sourceMapping: /projects
+          memoryLimit: 4Gi
+          memoryRequest: 1Gi
+          cpuLimit: "2"
+          cpuRequest: 500m
+          env:
+            - name: DEFAULT_EXTENSIONS
+              value: "/tmp/continue.vsix"
+            - name: SHELL
+              value: "/usr/bin/bash"
+---
+kind: DevWorkspace
+apiVersion: workspace.devfile.io/v1alpha2
+metadata:
+  name: mca-coolstore
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: "20"
@@ -218,20 +509,10 @@ spec:
             origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
-      - name: coolstore-inventory-service
-        git:
-          remotes:
-            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
-          checkoutFrom:
-            revision: feature/coolstore-inventory-service-plan
     commands:
-      - id: init-ai-tools
+      - id: init-modernization-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
@@ -239,7 +520,7 @@ spec:
           component: tooling-container
     events:
       postStart:
-        - init-ai-tools
+        - init-modernization-tools
     components:
       - name: tooling-container
         container:

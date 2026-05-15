@@ -10,9 +10,10 @@ safe Stage 100 evidence without committing secrets or private route details.
 
 ## What This Site Covers
 
-- How to open the Coolstore workflow from Red Hat Developer Hub.
-- How to open the controlled Dev Spaces workspace.
-- How to confirm the expected source repositories are present.
+- How to choose the correct Developer Hub component for onboarding,
+  engineering, or modernization.
+- How to open the controlled single-repository Dev Spaces workspace.
+- How to confirm only the selected source repository is present.
 - How to configure Continue and OpenCode from local workspace copies.
 - How to verify both tools against the private MaaS model path.
 - What evidence to record before Stage 110 begins.
@@ -22,6 +23,8 @@ safe Stage 100 evidence without committing secrets or private route details.
 - It does not expose model API keys, cluster credentials, or private route
   hostnames.
 - It does not load the platform repository into the developer workspace.
+- It does not combine the onboarding, inventory service, and modernization
+  repositories into one workspace.
 - It does not replace the app-local README, task packets, or `AGENTS.md` rules
   in `coolstore-inventory-service`.
 

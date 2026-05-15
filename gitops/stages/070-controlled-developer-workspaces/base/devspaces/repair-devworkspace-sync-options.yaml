@@ -62,10 +62,12 @@ spec:
               set -euo pipefail
 
               for namespace in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
-                if oc get devworkspace exercises -n "$namespace" &>/dev/null; then
-                  echo "Removing stale DevWorkspace sync-options annotation in ${namespace}"
-                  oc annotate devworkspace exercises -n "$namespace" argocd.argoproj.io/sync-options- || true
-                else
-                  echo "No existing DevWorkspace in ${namespace}; nothing to repair"
-                fi
+                for workspace in exercises getting-started-ai-coding coolstore-inventory-service mca-coolstore; do
+                  if oc get devworkspace "$workspace" -n "$namespace" &>/dev/null; then
+                    echo "Removing stale DevWorkspace sync-options annotation from ${namespace}/${workspace}"
+                    oc annotate devworkspace "$workspace" -n "$namespace" argocd.argoproj.io/sync-options- || true
+                  else
+                    echo "No existing DevWorkspace ${namespace}/${workspace}; nothing to repair"
+                  fi
+                done
               done

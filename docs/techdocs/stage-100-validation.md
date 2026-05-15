@@ -8,12 +8,16 @@ AI-assisted code change begins.
 Stage 100 is green only when all of these checks pass:
 
 - Developer Hub is reachable.
-- The Coolstore system and both Coolstore components are visible in the catalog.
-- Each Coolstore component shows only `Source Repo`, `Dev Spaces`, and
+- The Coolstore system and all three workflow components are visible in the catalog:
+  `Getting Started with AI Coding`, `Coolstore Inventory Service`, and
+  `MCA Coolstore`.
+- Each component shows only `Source Repo`, `Dev Spaces`, and
   `Getting Started`.
 - The `Getting Started` link opens this TechDocs site.
-- The `Dev Spaces` link opens the controlled workspace.
-- The workspace contains `mca-coolstore` and `coolstore-inventory-service`.
+- Each `Dev Spaces` link opens a controlled single-repository workspace.
+- The onboarding workspace contains only `getting-started-ai-coding`.
+- The inventory workspace contains only `coolstore-inventory-service`.
+- The modernization workspace contains only `mca-coolstore`.
 - `~/.continue/config.yaml` is configured in the workspace only.
 - `~/.opencode/opencode.json` is configured in the workspace only.
 - Continue completes a harmless prompt against `nemotron-3-nano-30b-a3b`

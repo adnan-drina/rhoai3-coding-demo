@@ -531,7 +531,9 @@ oc get backstage developer-hub -n rhdh -o yaml
 ```bash
 oc get devworkspace -A
 oc get pods -n wksp-ai-developer
-oc describe devworkspace exercises -n wksp-ai-developer
+oc describe devworkspace getting-started-ai-coding -n wksp-ai-developer
+oc describe devworkspace coolstore-inventory-service -n wksp-ai-developer
+oc describe devworkspace mca-coolstore -n wksp-ai-developer
 oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 ```
 

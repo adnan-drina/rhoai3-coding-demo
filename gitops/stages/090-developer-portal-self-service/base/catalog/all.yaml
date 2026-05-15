@@ -38,11 +38,47 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
+  name: getting-started-ai-coding
+  title: Getting Started with AI Coding
+  description: |
+    Onboarding workspace for Stage 100. Developers use it to configure MaaS,
+    Continue, and OpenCode before touching application source code.
+  annotations:
+    backstage.io/source-location: url:https://github.com/adnan-drina/getting-started-ai-coding
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+    github.com/project-slug: adnan-drina/getting-started-ai-coding
+    rhoai3.redhat.com/stage-100-role: onboarding
+  links:
+    - url: https://github.com/adnan-drina/getting-started-ai-coding
+      title: Source Repo
+      icon: github
+    - url: "https://devspaces-getting-started.placeholder.example.com"
+      title: Dev Spaces
+      icon: docs
+    - url: https://rhdh.placeholder.example.com/docs/default/component/getting-started-ai-coding
+      title: Getting Started
+      icon: docs
+  tags:
+    - onboarding
+    - ai-coding
+    - devspaces
+    - maas
+spec:
+  type: documentation
+  lifecycle: experimental
+  owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
   name: coolstore
   title: MCA Coolstore
   description: |
-    Brownfield Coolstore application used as the modernization source for the
-    From Vibe Coding to Agentic Engineering workflow.
+    Brownfield MCA Coolstore application used for the AI-powered migration and
+    modernization stages of the workflow.
   annotations:
     backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
     backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
@@ -52,7 +88,7 @@ metadata:
     - url: https://github.com/rhpds/mca-coolstore
       title: Source Repo
       icon: github
-    - url: https://devspaces.placeholder.example.com
+    - url: "https://devspaces-coolstore.placeholder.example.com"
       title: Dev Spaces
       icon: docs
     - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore
@@ -79,8 +115,8 @@ metadata:
   name: coolstore-inventory-service
   title: Coolstore Inventory Service
   description: |
-    Quarkus inventory service and target repository for the governed AI
-    developer workflow.
+    Quarkus inventory service used for AI-assisted engineering and golden-path
+    delivery work connected to the Coolstore domain.
   annotations:
     backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
     backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
@@ -95,7 +131,7 @@ metadata:
     - url: https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
       title: Source Repo
       icon: github
-    - url: https://devspaces.placeholder.example.com
+    - url: "https://devspaces-inventory.placeholder.example.com"
       title: Dev Spaces
       icon: docs
     - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore-inventory-service

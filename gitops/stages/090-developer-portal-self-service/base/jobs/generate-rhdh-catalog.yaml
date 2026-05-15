@@ -1,9 +1,9 @@
 # Sync hook: generates the RHDH catalog from Git plus cluster-local links.
 #
 # The Git-tracked catalog template intentionally contains a placeholder Dev
-# Spaces URL. This job replaces that placeholder with the current cluster route
-# It also replaces the placeholder RHDH URL used for TechDocs links and writes
-# the generated catalog to a ConfigMap mounted into the RHDH pod.
+# Spaces URLs. This job replaces those placeholders with current cluster factory
+# links. It also replaces the placeholder RHDH URL used for TechDocs links and
+# writes the generated catalog to a ConfigMap mounted into the RHDH pod.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -161,10 +161,23 @@ spec:
           revision = sys.argv[5]
 
           content = source.read_text()
-          content = content.replace("https://devspaces.placeholder.example.com", devspaces_url)
+          devspaces_links = {
+              "https://devspaces.placeholder.example.com": devspaces_url,
+              "https://devspaces-getting-started.placeholder.example.com": (
+                  f"{devspaces_url}#https://github.com/adnan-drina/getting-started-ai-coding"
+              ),
+              "https://devspaces-coolstore.placeholder.example.com": (
+                  f"{devspaces_url}#https://github.com/rhpds/mca-coolstore"
+              ),
+              "https://devspaces-inventory.placeholder.example.com": (
+                  f"{devspaces_url}#https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan"
+              ),
+          }
+          for placeholder, replacement in devspaces_links.items():
+              content = content.replace(placeholder, replacement)
           content = content.replace("https://rhdh.placeholder.example.com", rhdh_url)
           content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
-          if "devspaces.placeholder.example.com" in content:
+          if "devspaces" in content and "placeholder.example.com" in content:
               raise SystemExit("Dev Spaces placeholder was not replaced")
           if "rhdh.placeholder.example.com" in content:
               raise SystemExit("RHDH placeholder was not replaced")

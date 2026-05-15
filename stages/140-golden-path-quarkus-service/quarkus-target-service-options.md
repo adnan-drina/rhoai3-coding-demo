@@ -140,7 +140,7 @@ It avoids the first-iteration risks of cart/session state, JMS order processing,
 
 | Stage | How The Target Service Helps |
 |-------|------------------------------|
-| Stage 100 | Developer Hub can show `mca-coolstore` as the brownfield component and `coolstore-inventory-service` as the target service component with source, app-local GitOps, pipeline, rollout, promotion, and rollback links. |
+| Stage 100 | Developer Hub shows three separated entry points: `getting-started-ai-coding` for onboarding, `coolstore-inventory-service` for AI-assisted engineering, and `mca-coolstore` for modernization. Each entry opens its own single-repository Dev Spaces workspace. |
 | Stage 110 | Continue can explain the legacy inventory path and compare it with the target service README, API contract, and test plan. |
 | Stage 120 | The quality-bar breakpoint can show an unsafe AI-generated endpoint or docs claim, then require tests and README alignment. |
 | Stage 130 | OpenCode rules can require bounded edits, approved Quarkus versions, test-first changes, and no invented deployment claims. |
