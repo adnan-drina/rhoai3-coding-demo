@@ -59,7 +59,45 @@ The developer does not ask the AI to write code yet. The first task is orientati
 - open the governed Dev Spaces workspace;
 - confirm the available model endpoints;
 - select the private MaaS model path for source-code work;
+- configure Continue and OpenCode with the MaaS route and a MaaS-issued API key
+  inside the workspace only;
+- verify both tools can send a harmless request to the selected private model;
 - record which model path is being used and why.
+
+### MaaS Client Configuration And Verification
+
+Stage 100 owns the client connection check. Stage 110 should not start until
+both Continue and OpenCode have been configured in the running Dev Spaces
+workspace and verified against the selected MaaS model.
+
+The expected source-code path is:
+
+```text
+nemotron-3-nano-30b-a3b through MaaS
+```
+
+The workspace starts with committed templates that contain placeholders only.
+The developer must place the actual MaaS route and API key into the local
+workspace copies:
+
+- `~/.continue/config.yaml`
+- `~/.opencode/opencode.json`
+
+Do not edit the committed templates with real route or key values. Do not paste
+the route, API key, model token, or full private cluster hostname into evidence.
+
+Use harmless verification prompts that prove connectivity without sending source
+code:
+
+```text
+Reply with the configured model name and a one-sentence description of what data
+boundary this model path represents. Do not include endpoint URLs, keys, or
+source code.
+```
+
+For Stage 100, the expected result is not model quality. The expected result is
+that both clients can reach the governed MaaS path and the developer can explain
+why that path is appropriate for source-code work.
 
 ### Prompts Or Agent Instructions
 
@@ -80,7 +118,10 @@ These prompts should be used only after the workspace and model configuration ar
 - Open the platform entry point in Developer Hub.
 - Review the catalog component, ownership metadata, TechDocs, and model/API links.
 - Open the controlled Dev Spaces workspace.
-- Verify Continue and OpenCode can be configured with MaaS-published OpenAI-compatible endpoints.
+- Configure Continue and OpenCode local workspace copies with MaaS-published
+  OpenAI-compatible endpoints.
+- Verify Continue can send a harmless request to the selected MaaS model.
+- Verify OpenCode can send a harmless request to the selected MaaS model.
 - Keep model API keys out of git.
 - Choose the private model path for source-code exercises.
 - Record model choice, task type, and data classification in the exercise notes.
@@ -98,6 +139,10 @@ These prompts should be used only after the workspace and model configuration ar
 - Developer Hub component, TechDocs, model-server resource, or planned catalog entry used to start the journey.
 - Workspace name or Dev Spaces URL.
 - Model endpoint class: private MaaS model or approved external MaaS model.
+- Continue local config path and selected model ID.
+- OpenCode local config path and selected model ID.
+- Confirmation that both Continue and OpenCode completed a harmless MaaS
+  connectivity prompt without exposing routes, keys, or source code.
 - Confirmation that no model credentials are stored in the repository.
 - Notes on why the private model path was selected for source-code work.
 
@@ -128,6 +173,12 @@ Stage 100 is green only when all of these are true:
 - The `wksp-ai-developer/exercises` workspace opens without a failed phase.
 - The workspace contains the `mca-coolstore` and `coolstore-inventory-service` projects.
 - The selected source-code model is `nemotron-3-nano-30b-a3b` through MaaS.
+- `~/.continue/config.yaml` is configured with the MaaS route and API key in the
+  workspace only, and Continue can complete a harmless prompt against the
+  selected model.
+- `~/.opencode/opencode.json` is configured with the MaaS route and API key in
+  the workspace only, and OpenCode can complete a harmless prompt against the
+  selected model.
 - No live cluster route hostnames, API keys, kubeconfigs, or model tokens are
   committed as evidence.
 

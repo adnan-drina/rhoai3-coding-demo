@@ -84,6 +84,11 @@ Stage flow static validation passed
   - `/projects/coolstore-inventory-service`
 - Continue configuration present at `~/.continue/config.yaml`
 - OpenCode configuration present at `~/.opencode/opencode.json`
+- Follow-up client check: Stage 100 now requires both Continue and OpenCode to
+  complete a harmless MaaS verification prompt after the developer inserts the
+  MaaS route and API key into the local workspace configs. The running workspace
+  configs still contained placeholders when this follow-up check was added, so
+  no client request was marked as passed.
 - Older `/projects/coolstore` and `/projects/coding-exercises` directories
   from the persistent workspace volume were removed after validation so the
   workspace now shows only the current `mca-coolstore` and
@@ -101,12 +106,17 @@ Stage flow static validation passed
 
 ## Result
 
-Green.
+Yellow under the updated Stage 100 client-verification bar.
 
-Stage 100 is validated as a live Developer Hub to Dev Spaces entry point:
-Developer Hub exposes the Coolstore system, brownfield source, target service,
-and private MaaS model resource; the governed Dev Spaces workspace opens; and
-the private MaaS model path is selected for source-code work.
+The Developer Hub to Dev Spaces entry path is validated: Developer Hub exposes
+the Coolstore system, brownfield source, target service, and private MaaS model
+resource; the governed Dev Spaces workspace opens; and the private MaaS model
+path is selected for source-code work.
+
+The remaining Stage 100 gate is client-level verification: after the developer
+places the MaaS route and API key into the local workspace config files,
+Continue and OpenCode must each complete a harmless prompt against
+`nemotron-3-nano-30b-a3b` through MaaS.
 
 ## Risks Or Gaps
 
@@ -123,6 +133,6 @@ the private MaaS model path is selected for source-code work.
 
 ## Next Gate
 
-Stage 110 can start after the developer confirms the Continue configuration in
-the running workspace and uses the private MaaS model for the README/API/test
-alignment task.
+Stage 110 can start after the developer configures both Continue and OpenCode in
+the running workspace, verifies both clients with a harmless MaaS prompt, and
+uses the private MaaS model for the README/API/test alignment task.

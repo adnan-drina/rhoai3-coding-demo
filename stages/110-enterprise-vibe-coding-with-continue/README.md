@@ -32,7 +32,12 @@ This planned stage adds the first hands-on AI coding exercise.
 
 ### Starting Point
 
-The developer is in the controlled Dev Spaces workspace with Continue configured for a MaaS endpoint. The target service repository is now `adnan-drina/coolstore-inventory-service`, and the exact hands-on task for this stage is the README, API, and test-plan alignment review against the Quarkus scaffold.
+The developer is in the controlled Dev Spaces workspace. Stage 100 has already
+verified that both Continue and OpenCode can reach the selected private MaaS
+model from local workspace configuration. The target service repository is now
+`adnan-drina/coolstore-inventory-service`, and the exact hands-on task for this
+stage is the README, API, and test-plan alignment review against the Quarkus
+scaffold.
 
 ### AI-Assisted Task
 

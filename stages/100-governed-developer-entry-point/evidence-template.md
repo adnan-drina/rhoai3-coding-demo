@@ -48,6 +48,12 @@ Manual actions:
 - Confirm the workspace includes `mca-coolstore` and `coolstore-inventory-service`.
 - Confirm the private source-code model path is `nemotron-3-nano-30b-a3b`
   through MaaS.
+- Configure the local workspace copy of `~/.continue/config.yaml` with the
+  MaaS route and API key.
+- Configure the local workspace copy of `~/.opencode/opencode.json` with the
+  same MaaS route and API key.
+- Send one harmless verification prompt from Continue and one from OpenCode.
+  The prompt must not include source code, route URLs, API keys, or tokens.
 
 ## Evidence
 
@@ -62,6 +68,14 @@ Manual actions:
 - Private models ready:
   - `nemotron-3-nano-30b-a3b`: yes/no
   - `gpt-oss-20b`: yes/no
+- Continue configured in workspace only:
+  - config path: `~/.continue/config.yaml`
+  - selected model ID:
+  - harmless MaaS verification prompt passed: yes/no
+- OpenCode configured in workspace only:
+  - config path: `~/.opencode/opencode.json`
+  - selected model ID:
+  - harmless MaaS verification prompt passed: yes/no
 - Secrets committed: no
 
 ## Result
@@ -74,5 +88,6 @@ Green/yellow/red:
 
 ## Next Gate
 
-Stage 110 can start only after the developer has a working governed workspace
-and a recorded private model choice for source-code work.
+Stage 110 can start only after the developer has a working governed workspace,
+a recorded private model choice for source-code work, and successful harmless
+verification prompts from both Continue and OpenCode.

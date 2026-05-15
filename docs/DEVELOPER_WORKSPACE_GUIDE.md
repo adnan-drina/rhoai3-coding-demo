@@ -20,7 +20,11 @@ The platform owns the workspace definition, tooling image, source repositories, 
 2. Start the pre-provisioned `exercises` workspace.
 3. Wait for the IDE to open and for the workspace startup command to finish.
 
-During startup, the workspace copies the Continue template from `/projects/coolstore-inventory-service/.vscode/config.yaml` to `~/.continue/config.yaml`. The OpenCode template is available at `/projects/coolstore-inventory-service/.opencode/opencode.json`.
+During startup, the workspace copies the Continue template from
+`/projects/coolstore-inventory-service/.vscode/config.yaml` to
+`~/.continue/config.yaml` and the OpenCode template from
+`/projects/coolstore-inventory-service/.opencode/opencode.json` to
+`~/.opencode/opencode.json`.
 
 For the Stage 100 developer-entry validation, confirm that the workspace has
 both `/projects/mca-coolstore` and `/projects/coolstore-inventory-service`.
@@ -62,17 +66,48 @@ Open `~/.continue/config.yaml` and replace the placeholders:
 
 The source template lives in `/projects/coolstore-inventory-service/.vscode/config.yaml`. After editing the local config, select **Local Config** in the Continue sidebar.
 
+## Verify Continue
+
+After selecting the local config, send a harmless prompt that proves the MaaS
+path works without exposing source code or secrets:
+
+```text
+Reply with the configured model name and a one-sentence description of what data
+boundary this model path represents. Do not include endpoint URLs, keys, or
+source code.
+```
+
+Record only that the prompt succeeded and which model ID was used. Do not copy
+the MaaS route, API key, or full cluster hostname into evidence.
+
 ## Configure OpenCode
 
 OpenCode is used for terminal-based AI coding workflows. It is useful for reviewing project structure, working with diffs, asking for multi-file changes, and running command-line development tasks from the same controlled workspace.
 
-From the workspace terminal, open `/projects/coolstore-inventory-service/.opencode/opencode.json` and replace the placeholders:
+From the workspace terminal, open `~/.opencode/opencode.json` and replace the placeholders:
 
 - Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full `baseURL` value with a complete model endpoint.
 - Replace `YOUR_API_KEY` with the same MaaS API key.
 - Keep the default model on a private local model unless the exercise explicitly calls for an approved external model.
 
+The source template lives in
+`/projects/coolstore-inventory-service/.opencode/opencode.json`. Keep real
+values only in the local home-directory copy.
+
+## Verify OpenCode
+
 Run `opencode` from the workspace terminal when the configuration is in place.
+Use the same harmless prompt:
+
+```text
+Reply with the configured model name and a one-sentence description of what data
+boundary this model path represents. Do not include endpoint URLs, keys, or
+source code.
+```
+
+Record only that OpenCode reached the selected MaaS model and which model ID was
+used. Do not copy the MaaS route, API key, or full cluster hostname into
+evidence.
 
 ## Planned Scribe MCP Integration
 
@@ -124,5 +159,6 @@ Stage 070 only prepares the IDE side of that workflow. Stage 080 deploys Migrati
 - Continue appears in the IDE and uses `~/.continue/config.yaml`.
 - Continue can send a request to the selected MaaS model.
 - `opencode` starts from the terminal and uses the configured MaaS model.
+- OpenCode can send a request to the selected MaaS model.
 - No MaaS API key or provider key is committed to Git.
 - External models are used only when the demo policy allows provider-side processing.
