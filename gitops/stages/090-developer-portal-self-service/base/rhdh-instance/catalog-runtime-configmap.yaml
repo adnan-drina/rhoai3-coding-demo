@@ -1,0 +1,24 @@
+# Runtime catalog mounted into RHDH.
+#
+# The Sync hook job replaces this placeholder data with a catalog generated from
+# the Git-tracked catalog template and the cluster-local Dev Spaces route.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-runtime-rhdh
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+data:
+  all.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: ai-modernization-team
+      description: Placeholder catalog loaded until the runtime catalog generation hook runs.
+    spec:
+      type: team
+      children: []

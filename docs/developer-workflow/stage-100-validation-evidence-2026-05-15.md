@@ -111,6 +111,10 @@ the private MaaS model path is selected for source-code work.
 - The workspace persistent volume still has an older `coolstore` directory.
   This does not block Stage 100, but the demo narration should point developers
   to `mca-coolstore` and `coding-exercises`.
+- Developer Hub component links are intentionally limited to source repository,
+  Dev Spaces, and one getting started guide. The live Dev Spaces URL is
+  generated into the runtime catalog from the cluster route and is not committed
+  to Git.
 
 ## Next Gate
 

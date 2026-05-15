@@ -16,6 +16,13 @@ spec:
       configMaps:
         - name: app-config-rhdh
     dynamicPluginsConfigMapName: dynamic-plugins-rhdh
+    extraFiles:
+      mountPath: /opt/app-root/src
+      configMaps:
+        - name: catalog-runtime-rhdh
+          mountPath: /opt/app-root/src/catalog
+          containers:
+            - backstage-backend
     extraEnvs:
       secrets:
         - name: rhdh-secrets

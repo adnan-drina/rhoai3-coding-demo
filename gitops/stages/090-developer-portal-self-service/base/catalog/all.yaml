@@ -49,16 +49,13 @@ metadata:
     rhoai3.redhat.com/stage-100-role: brownfield-source
   links:
     - url: https://github.com/rhpds/mca-coolstore
-      title: Brownfield Source Repository
+      title: Source Repo
       icon: github
-    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/100-governed-developer-entry-point.md
-      title: Stage 100 Entry Point
+    - url: https://devspaces.placeholder.example.com
+      title: Dev Spaces
       icon: docs
-    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/mca-coolstore-candidate-assessment.md
-      title: Coolstore Candidate Assessment
-      icon: docs
-    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/mta-coolstore-analysis-exercise.md
-      title: MTA Analysis Exercise
+    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/DEVELOPER_WORKSPACE_GUIDE.md
+      title: Getting Started
       icon: docs
   tags:
     - java
@@ -94,28 +91,13 @@ metadata:
     rhoai3.redhat.com/stage-100-role: target-service
   links:
     - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan
-      title: Current Source Repository
+      title: Source Repo
       icon: github
-    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/coolstore-inventory-service-repository-plan.md
-      title: Repository Plan
+    - url: https://devspaces.placeholder.example.com
+      title: Dev Spaces
       icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/tasks/continue-readme-api-test-plan-alignment.md
-      title: Continue Alignment Task
-      icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/tasks/opencode-reservation-endpoint.md
-      title: OpenCode Reservation Task
-      icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan/gitops
-      title: App-Local GitOps State
-      icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/.tekton/pull-request.yaml
-      title: Pipelines-as-Code Pull Request Pipeline
-      icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/delivery/0001-pipelines-as-code-app-local-gitops.md
-      title: Delivery Decision Record
-      icon: docs
-    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan/docs/evidence
-      title: Evidence Model
+    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/DEVELOPER_WORKSPACE_GUIDE.md
+      title: Getting Started
       icon: docs
   tags:
     - java
@@ -143,11 +125,8 @@ metadata:
     rhoai3.redhat.com/model-path: private-maas
     rhoai3.redhat.com/data-classification: source-code-context
   links:
-    - url: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas
-      title: OpenShift AI MaaS Documentation
-      icon: docs
     - url: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
-      title: MaaS Code Assistant Quickstart
+      title: Getting Started
       icon: docs
   tags:
     - maas

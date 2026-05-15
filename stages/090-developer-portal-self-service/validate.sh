@@ -93,7 +93,10 @@ EXPECTED_CATALOG_URL=""
 if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] && [[ -n "$APP_TARGET_REVISION" ]]; then
     EXPECTED_CATALOG_URL="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${APP_TARGET_REVISION}/gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml"
 fi
-if [[ -n "$EXPECTED_CATALOG_URL" ]] && [[ "$CATALOG_URL" == "$EXPECTED_CATALOG_URL" ]]; then
+if [[ "$CATALOG_URL" == "file:/opt/app-root/src/catalog/all.yaml" ]]; then
+    echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL uses generated runtime catalog: ${CATALOG_URL}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+elif [[ -n "$EXPECTED_CATALOG_URL" ]] && [[ "$CATALOG_URL" == "$EXPECTED_CATALOG_URL" ]]; then
     echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL matches Argo CD source: ${CATALOG_URL}"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 elif [[ -n "$CATALOG_URL" ]] && [[ "$CATALOG_URL" != *"placeholder"* ]]; then
@@ -102,6 +105,18 @@ elif [[ -n "$CATALOG_URL" ]] && [[ "$CATALOG_URL" != *"placeholder"* ]]; then
 else
     echo -e "${RED}[FAIL]${NC} RHDH_CATALOG_URL is placeholder or missing"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
+RUNTIME_CATALOG=$(oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' 2>/dev/null || echo "")
+if [[ "$RUNTIME_CATALOG" == *"https://devspaces.placeholder.example.com"* ]]; then
+    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains Dev Spaces placeholder"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+elif [[ "$RUNTIME_CATALOG" == *"title: Dev Spaces"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated Dev Spaces link"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing Dev Spaces link"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
 log_step "RHDH Configuration"

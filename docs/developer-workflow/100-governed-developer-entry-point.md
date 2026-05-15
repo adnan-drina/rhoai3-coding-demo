@@ -39,17 +39,17 @@ The planned Developer Hub entry should expose:
 
 - a component for the brownfield `mca-coolstore` source application;
 - a component for the `coolstore-inventory-service` repository, currently planned by renaming `adnan-drina/coding-exercises`;
-- component links for the service source, app-local GitOps directory, pipeline directory, rollout notes, promotion notes, and rollback evidence once those paths exist;
+- component links for source repository, Dev Spaces, and one getting started guide;
 - TechDocs for workflow instructions and model-use policy;
-- links to Dev Spaces, source, CI/CD, GitOps, MTA, and OpenShift resources when they exist;
 - model-server, AI model, and API catalog entries when OpenShift AI model metadata is available through the platform.
 
 For the first Stage 100 implementation pass, the Developer Hub catalog is extended
 through the existing Stage 090 catalog source. The live portal should expose the
 Coolstore brownfield component, the `coolstore-inventory-service` target
 component, the `coolstore` system, and the private MaaS model resource. Direct
-workspace launch automation can remain manual as long as the approved Dev Spaces
-route and `wksp-ai-developer/exercises` workspace are validated.
+Dev Spaces links are generated into the runtime catalog during Stage 090 sync so
+the live portal can point at the current cluster route without committing that
+route to Git.
 
 ### AI-Assisted Task
 
@@ -122,9 +122,8 @@ Stage 100 is green only when all of these are true:
   - `Resource:default/maas-private-code-model-nemotron`
 - The `coolstore` component points to `rhpds/mca-coolstore`.
 - The `coolstore-inventory-service` component points to the current
-  `adnan-drina/coding-exercises` planning branch and links to the repository
-  plan, Continue task, OpenCode task, app-local GitOps, Pipelines-as-Code, and
-  evidence docs.
+  `adnan-drina/coding-exercises` planning branch and exposes only the source
+  repository, Dev Spaces, and getting started links.
 - Red Hat OpenShift Dev Spaces is reachable.
 - The `wksp-ai-developer/exercises` workspace opens without a failed phase.
 - The workspace contains the `mca-coolstore` and `coding-exercises` projects.
@@ -183,7 +182,9 @@ The first trust boundary is model path selection. Private source-code work shoul
 
 ## Future Implementation Notes
 
-- Add direct Developer Hub links for Dev Spaces, MaaS guidance, MTA, model servers, AI models, APIs, and the exercise repository after the route and launch-link policy is finalized.
+- Add the official RHDH Topology source-code editor integration when the
+  `coolstore-inventory-service` workload exists and can carry the documented
+  OpenShift Git annotations.
 - Add TechDocs pages for model-use policy, workflow instructions, and validation evidence.
 - Decide whether the OpenShift AI connector for Developer Hub should populate model assets automatically or whether the demo should use static catalog-info examples.
 - Decide whether Developer Hub MCP catalog and TechDocs tools become part of the later agentic workflow.
