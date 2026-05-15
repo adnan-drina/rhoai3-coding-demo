@@ -1,7 +1,7 @@
 # Per-user workspace namespaces, RBAC, and DevWorkspaces
 # Uses che-incubator/cli-ai-tools image (OpenCode, Aider, Goose pre-installed).
 # Continue extension auto-installed via DEFAULT_EXTENSIONS + postStart.
-# Continue config auto-copied to ~/.continue/config.yaml via postStart.
+# Continue and OpenCode configs auto-copied via postStart.
 ---
 apiVersion: v1
 kind: Namespace
@@ -58,8 +58,9 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue
+            mkdir -p ~/.continue ~/.opencode
             cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -141,8 +142,9 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue
+            mkdir -p ~/.continue ~/.opencode
             cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
@@ -227,8 +229,9 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue
+            mkdir -p ~/.continue ~/.opencode
             cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
