@@ -62,6 +62,7 @@ Supporting analysis:
 - [`quarkus-target-service-options.md`](quarkus-target-service-options.md) compares smaller Quarkus service candidates and selects the Coolstore Inventory service shape for the golden-path, pipeline, and supply-chain stages.
 - [`coding-exercises-app-repo-plan.md`](coding-exercises-app-repo-plan.md) maps the `adnan-drina/coding-exercises` repository into the planned renamed `coolstore-inventory-service` repository with source, app-local GitOps, and `.tekton/` Pipelines-as-Code assets in one place for the first demo.
 - [`readme-completion-alignment-review.md`](readme-completion-alignment-review.md) reviews current README completion, storyline alignment, repository-boundary clarity, and remaining implementation gaps.
+- [`stage-validation-runbook.md`](stage-validation-runbook.md) defines the one-by-one validation path for planned stages `100-170` without adding them to the executable platform flow.
 - [`item-7-modernization-at-scale-analysis.md`](item-7-modernization-at-scale-analysis.md) records the Stage 160 analysis gate.
 - [`mta-coolstore-analysis-exercise.md`](mta-coolstore-analysis-exercise.md) defines the first MTA analysis workflow and evidence packet for `rhpds/mca-coolstore`.
 - [`developer-lightspeed-evaluation-rubric.md`](developer-lightspeed-evaluation-rubric.md) defines how to evaluate Developer Lightspeed for MTA suggestions before accepting changes.
