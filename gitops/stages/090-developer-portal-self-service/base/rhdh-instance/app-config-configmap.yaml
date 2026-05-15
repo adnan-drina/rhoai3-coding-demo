@@ -16,6 +16,9 @@ data:
       baseUrl: ${RHDH_BASE_URL}
       cors:
         origin: ${RHDH_BASE_URL}
+      reading:
+        allow:
+          - host: raw.githubusercontent.com
     auth:
       environment: production
       session:
