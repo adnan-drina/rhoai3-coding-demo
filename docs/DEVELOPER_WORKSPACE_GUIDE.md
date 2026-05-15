@@ -69,7 +69,7 @@ overview.
 
 During startup, the onboarding and inventory workspaces copy:
 
-- `/projects/<repo>/.vscode/config.yaml` to
+- `/projects/<repo>/.continue/config.yaml` to
   `~/.continue/config.yaml`
 - `/projects/<repo>/.opencode/opencode.json` to
   `~/.opencode/opencode.json`

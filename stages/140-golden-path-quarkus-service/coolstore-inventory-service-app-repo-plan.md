@@ -37,7 +37,7 @@ This keeps the first demo simpler than a multi-repository application-plus-deplo
 The `coolstore-inventory-service` repository is the active AI developer-workspace shell:
 
 - it has a Dev Spaces `devfile.yaml`;
-- it has Continue configuration in `.vscode/config.yaml`;
+- it has Continue configuration in `.continue/config.yaml`;
 - it has OpenCode configuration in `.opencode/opencode.json`;
 - it has starter and solution exercises for small Python games.
 
