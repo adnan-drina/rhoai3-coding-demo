@@ -132,6 +132,21 @@ Stage 100 is green only when all of these are true:
 - No live cluster route hostnames, API keys, kubeconfigs, or model tokens are
   committed as evidence.
 
+### Live Branch Validation And Rollback
+
+During branch validation, patch only the Stage 070 and Stage 090 Argo CD
+applications in the sandbox cluster to this feature branch. Do not merge the
+branch to `main` and do not add Stage 100 to the default flow.
+
+Rollback to the stable platform branch:
+
+```bash
+oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc patch application 090-developer-portal-self-service -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc annotate application 070-controlled-developer-workspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 090-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+```
+
 ## What To Notice And Why It Matters
 
 The important proof point is that the developer starts from a governed platform contract. Red Hat Developer Hub makes the path discoverable through catalog entities, software templates, and TechDocs. Dev Spaces makes the workspace reproducible, MaaS centralizes model access, and the project rules define how AI assistance is reviewed.
@@ -174,6 +189,8 @@ The first trust boundary is model path selection. Private source-code work shoul
 - Decide whether Developer Hub MCP catalog and TechDocs tools become part of the later agentic workflow.
 - Add a workspace readiness checklist.
 - Use [`stage-100-evidence-template.md`](stage-100-evidence-template.md) for sanitized validation notes.
+- Latest sanitized validation evidence:
+  [`stage-100-validation-evidence-2026-05-15.md`](stage-100-validation-evidence-2026-05-15.md).
 
 ## Deploy And Validate
 
