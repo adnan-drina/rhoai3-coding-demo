@@ -40,6 +40,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  started: false
   routingClass: che
   contributions:
     - name: ide
@@ -116,6 +117,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  started: false
   routingClass: che
   contributions:
     - name: ide
@@ -201,6 +203,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "20"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  started: false
   routingClass: che
   contributions:
     - name: ide
