@@ -1,15 +1,15 @@
-# coding-exercises To coolstore-inventory-service Repository Plan
+# Coolstore Inventory Service Repository Plan
 
 ## Purpose
 
-This note maps `https://github.com/adnan-drina/coding-exercises` to the planned developer workflow stages and records the accepted rename direction.
+This note maps `https://github.com/adnan-drina/coolstore-inventory-service` to the planned developer workflow stages and records the accepted repository direction.
 
-The repository is the candidate service repository for `coolstore-inventory-service`. After the direction is accepted, the repository should be renamed to `coolstore-inventory-service`.
+The repository is the service repository for `coolstore-inventory-service`.
 
 Local checkout used for this assessment:
 
 ```text
-/Users/adrina/Sandbox/coding-exercises
+/Users/adrina/Sandbox/coolstore-inventory-service
 ```
 
 Branch created for adaptation planning:
@@ -24,7 +24,7 @@ Use a single service repository for the first live demo.
 
 Recommended shape:
 
-- `coding-exercises` is renamed to `coolstore-inventory-service`;
+- the repository is named `coolstore-inventory-service`;
 - Quarkus source lives at the repository root;
 - app-local GitOps desired state lives under `gitops/`;
 - Pipelines-as-Code assets live under `.tekton/`;
@@ -34,14 +34,14 @@ This keeps the first demo simpler than a multi-repository application-plus-deplo
 
 ## Current Repository Shape
 
-The current `coding-exercises` repository is a useful AI developer-workspace shell:
+The `coolstore-inventory-service` repository is the active AI developer-workspace shell:
 
 - it has a Dev Spaces `devfile.yaml`;
 - it has Continue configuration in `.vscode/config.yaml`;
 - it has OpenCode configuration in `.opencode/opencode.json`;
 - it has starter and solution exercises for small Python games.
 
-It is now the transition Quarkus target service branch, but it has not yet been renamed:
+It is now the Quarkus target service branch:
 
 - Red Hat build of Quarkus `3.27.3.SP1-redhat-00002` with Java 21 exists;
 - Maven wrapper, source, tests, health, metrics, and in-memory inventory read APIs exist;
@@ -51,7 +51,7 @@ It is now the transition Quarkus target service branch, but it has not yet been 
 
 ## What Was Added To The App Repo
 
-The local `coding-exercises` checkout now has a Quarkus scaffold and static delivery packet:
+The local `coolstore-inventory-service` checkout now has a Quarkus scaffold and static delivery packet:
 
 ```text
 docs/coolstore-inventory-service-repository-plan.md
@@ -67,7 +67,7 @@ The app repo README now points to the service plan, Continue/OpenCode task packe
 
 ## Target Responsibilities
 
-The renamed service repository should own:
+The service repository should own:
 
 - Quarkus service source and tests;
 - service README and TechDocs-ready documentation;
@@ -87,7 +87,7 @@ The renamed service repository should own:
 | Stage | Repository Impact |
 |-------|-------------------|
 | Stage 100 | Developer Hub should show `mca-coolstore` as the brownfield source and `coolstore-inventory-service` as the target service component with source, app-local GitOps, pipeline, rollout, promotion, and rollback links. |
-| Stage 110 | Continue can start in the renamed service repo for README, API, and test-plan alignment after the Quarkus scaffold exists. |
+| Stage 110 | Continue can start in the service repo for README, API, and test-plan alignment after the Quarkus scaffold exists. |
 | Stage 120 | The app repo becomes the quality-bar breakpoint for tests, README accuracy, dependency choices, and no invented deployment claims. |
 | Stage 130 | OpenCode rules and skills belong in the service repo first, with app-local GitOps write paths disabled unless explicitly approved. The first bounded coding task is `POST /api/inventory/{itemId}/reservations`. |
 | Stage 140 | The app repo is where the Quarkus inventory service is scaffolded or seeded. |
@@ -102,7 +102,7 @@ First implementation branch:
 
 - keep the current app-repo branch as the service/delivery planning branch until the Quarkus and delivery baseline are accepted;
 - preserve the existing Continue and OpenCode setup because it is useful for the demo;
-- rename the repository to `coolstore-inventory-service` after this direction is accepted;
+- keep the repository name `coolstore-inventory-service`;
 - use Red Hat build of Quarkus `3.27.x` with Java 21 for the first scaffold;
 - use the OpenShift Developer Catalog / Red Hat PostgreSQL image path for the first PostgreSQL demo;
 - archive the Python game exercise content under `legacy/python-exercises/` only after the Quarkus service is scaffolded;
@@ -113,6 +113,6 @@ First implementation branch:
 
 ## Open Decisions
 
-- Which downstream Dev Spaces, Developer Hub, and README links must be updated after the GitHub repository rename?
+- Which downstream Dev Spaces, Developer Hub, and README links still need live validation after the repository rename rollout?
 - Which exact directory names should hold rollout notes, promotion notes, and rollback evidence?
 - Which supply-chain controls become advisory versus blocking after the first live PipelineRun?

@@ -38,7 +38,7 @@ The platform stages `010-090` have been deployed in a future live environment. T
 The planned Developer Hub entry should expose:
 
 - a component for the brownfield `mca-coolstore` source application;
-- a component for the `coolstore-inventory-service` repository, currently planned by renaming `adnan-drina/coding-exercises`;
+- a component for the `adnan-drina/coolstore-inventory-service` repository;
 - component links for source repository, Dev Spaces, and one getting started guide;
 - TechDocs for workflow instructions and model-use policy;
 - model-server, AI model, and API catalog entries when OpenShift AI model metadata is available through the platform.
@@ -121,12 +121,12 @@ Stage 100 is green only when all of these are true:
   - `Component:default/coolstore-inventory-service`
   - `Resource:default/maas-private-code-model-nemotron`
 - The `coolstore` component points to `rhpds/mca-coolstore`.
-- The `coolstore-inventory-service` component points to the current
-  `adnan-drina/coding-exercises` planning branch and exposes only the source
-  repository, Dev Spaces, and getting started links.
+- The `coolstore-inventory-service` component points to
+  `adnan-drina/coolstore-inventory-service` on the current planning branch and
+  exposes only the source repository, Dev Spaces, and getting started links.
 - Red Hat OpenShift Dev Spaces is reachable.
 - The `wksp-ai-developer/exercises` workspace opens without a failed phase.
-- The workspace contains the `mca-coolstore` and `coding-exercises` projects.
+- The workspace contains the `mca-coolstore` and `coolstore-inventory-service` projects.
 - The selected source-code model is `nemotron-3-nano-30b-a3b` through MaaS.
 - No live cluster route hostnames, API keys, kubeconfigs, or model tokens are
   committed as evidence.

@@ -27,7 +27,7 @@ YYYY-MM-DD
 - `docs/DEVELOPER_WORKSPACE_GUIDE.md`
 - `gitops/stages/090-developer-portal-self-service/base/catalog/all.yaml`
 - `gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
-- `/Users/adrina/Sandbox/coding-exercises/catalog-info.yaml`
+- `/Users/adrina/Sandbox/coolstore-inventory-service/catalog-info.yaml`
 
 ## Commands Or Actions
 
@@ -45,7 +45,7 @@ Manual actions:
   and private MaaS model resource are visible.
 - Open Red Hat OpenShift Dev Spaces.
 - Start or open `wksp-ai-developer/exercises`.
-- Confirm the workspace includes `mca-coolstore` and `coding-exercises`.
+- Confirm the workspace includes `mca-coolstore` and `coolstore-inventory-service`.
 - Confirm the private source-code model path is `nemotron-3-nano-30b-a3b`
   through MaaS.
 

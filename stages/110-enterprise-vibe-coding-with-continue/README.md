@@ -32,7 +32,7 @@ This planned stage adds the first hands-on AI coding exercise.
 
 ### Starting Point
 
-The developer is in the controlled Dev Spaces workspace with Continue configured for a MaaS endpoint. The repository direction is now selected: `adnan-drina/coding-exercises` should be renamed to `coolstore-inventory-service` after the direction is accepted, then reshaped into the service repository. The exact hands-on task for this stage is the README, API, and test-plan alignment review once the Quarkus scaffold or source slice exists.
+The developer is in the controlled Dev Spaces workspace with Continue configured for a MaaS endpoint. The target service repository is now `adnan-drina/coolstore-inventory-service`, and the exact hands-on task for this stage is the README, API, and test-plan alignment review against the Quarkus scaffold.
 
 ### AI-Assisted Task
 
@@ -126,7 +126,7 @@ Source-code prompts should use the private model path unless the organization ex
 
 ## Future Implementation Notes
 
-- Use the first Continue exercise inside the renamed `coolstore-inventory-service` repository for README, API, and test-plan alignment after the Quarkus scaffold or source slice exists.
+- Use the first Continue exercise inside the `coolstore-inventory-service` repository for README, API, and test-plan alignment.
 - Add the Continue prompt pack as versioned demo content.
 - Add expected test commands and README alignment examples.
 - Add a Code-to-Docs prompt that produces a gap list before applying any README change.

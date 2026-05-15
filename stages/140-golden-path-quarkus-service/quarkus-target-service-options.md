@@ -15,11 +15,11 @@ The target service must be small enough for live AI-assisted development, but ri
 
 Create a demo-owned `coolstore-inventory-service` as the target Quarkus service.
 
-Use a single service repository for the first live demo. The current repository candidate is `https://github.com/adnan-drina/coding-exercises`, with local adaptation planning on branch `feature/coolstore-inventory-service-plan`. After the direction is accepted, rename that repository to `coolstore-inventory-service` and keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that repository.
+Use a single service repository for the first live demo. The service repository is `https://github.com/adnan-drina/coolstore-inventory-service`, with local adaptation work on branch `feature/coolstore-inventory-service-plan`. Keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that repository.
 
 Use these sources as references, not as direct imports:
 
-- `adnan-drina/coding-exercises` as the repository to rename and repurpose for the target service.
+- `adnan-drina/coolstore-inventory-service` as the service repository for the target service.
 - `rh-mad-workshop/coolstore-microservice/inventory` for a current public Quarkus 3 and Java 21 service shape.
 - Local `coolstore-demo/inventory` for the closer Coolstore inventory domain, REST path, H2/PostgreSQL profile split, health check, metrics, tests, Dev Spaces commands, and GitOps/Tekton examples.
 - `konveyor-ecosystem/coolstore` `quarkus` branch as a comparison reference for a full Quarkus migration, not as the Stage 140 target.
@@ -31,7 +31,7 @@ The target should be intentionally bounded: inventory/product availability only.
 
 | Candidate | Fit | What It Gives Us | Main Issue |
 |-----------|-----|------------------|------------|
-| `adnan-drina/coding-exercises` | Service repo candidate | Existing Dev Spaces, Continue, and OpenCode workspace setup; now has the first Quarkus scaffold, `AGENTS.md`, `catalog-info.yaml`, `.tekton/`, `Containerfile`, app-local GitOps, and evidence docs on the planning branch | Still needs repository rename, live PaC validation, live deployment evidence, PostgreSQL runtime binding, and supply-chain artifacts. |
+| `adnan-drina/coolstore-inventory-service` | Service repo | Existing Dev Spaces, Continue, and OpenCode workspace setup; now has the first Quarkus scaffold, `AGENTS.md`, `catalog-info.yaml`, `.tekton/`, `Containerfile`, app-local GitOps, and evidence docs on the planning branch | Still needs live PaC validation, live deployment evidence, PostgreSQL runtime binding, and supply-chain artifacts. |
 | `rh-mad-workshop/coolstore-microservice/inventory` | Strong reference | Public repo, Quarkus 3.35.2, Java 21, REST, Panache, PostgreSQL, health, metrics, Jib, OpenShift extension, tests | Its model is product catalog-like rather than the original Coolstore inventory shape; local tests require Docker-backed Quarkus Dev Services or a configured datasource. |
 | Local `coolstore-demo/inventory` | Strong seed | Coolstore-shaped inventory domain with `itemId`, `location`, `quantity`, `link`; H2 default profile; PostgreSQL OpenShift profile; health; metrics; tests; Dev Spaces commands; GitOps and Tekton examples | Old Quarkus 2.2.3 Red Hat build, Java 11, older OpenShift resources, private/local repository origin. |
 | `konveyor-ecosystem/coolstore` `quarkus` branch | Secondary reference | Full Quarkus migration branch, Java 21, Quarkus 3.12.3, PostgreSQL and Flyway, useful for comparison against legacy monolith | Still monolith-scale, README remains legacy EAP-oriented, not small enough for Stage 140 live coding. |
@@ -168,7 +168,7 @@ Add documentation only:
 
 ### Iteration 2: Service Scaffold
 
-Create the service in the renamed `coolstore-inventory-service` repository. The current candidate is `adnan-drina/coding-exercises`; it should be reshaped from a Python exercise workspace into the service repo after the repository direction is accepted.
+Create the service in the `coolstore-inventory-service` repository. The repository has already been reshaped from a Python exercise workspace into the service repo.
 
 The first implementation should include:
 
@@ -210,19 +210,13 @@ Use a demo-owned Coolstore Inventory Quarkus service as the Stage 140-155 target
 Recommended repository:
 
 ```text
-https://github.com/adnan-drina/coding-exercises
-```
-
-Recommended accepted repository name after the planning branch is merged:
-
-```text
 https://github.com/adnan-drina/coolstore-inventory-service
 ```
 
 Recommended source strategy:
 
 ```text
-Rename and repurpose `coding-exercises` as the `coolstore-inventory-service` repository, then seed the implementation from the public `rh-mad-workshop/coolstore-microservice/inventory` Quarkus 3 shape and the local `coolstore-demo/inventory` Coolstore domain shape.
+Use `coolstore-inventory-service` as the target repository, then seed or refine the implementation from the public `rh-mad-workshop/coolstore-microservice/inventory` Quarkus 3 shape and the local `coolstore-demo/inventory` Coolstore domain shape.
 ```
 
 Recommended baseline:
@@ -255,7 +249,7 @@ Recommended non-goals for the first implementation:
 
 ## Open Questions
 
-- How should downstream documentation and Dev Spaces links be updated after the GitHub repository is renamed from `coding-exercises` to `coolstore-inventory-service`?
+- Which downstream documentation and Dev Spaces links still need live validation after the repository rename rollout?
 - Which concrete OpenShift Developer Catalog / Red Hat PostgreSQL image parameters should the first live deployment use?
 - Should Stage 140 start by upgrading the old local `coolstore-inventory` service, or scaffold a clean service that copies only the domain contract?
 - Which directory convention should hold rollout notes beyond the existing `docs/evidence/` promotion and rollback records?
@@ -264,10 +258,10 @@ Recommended non-goals for the first implementation:
 ## References
 
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore)
-- [adnan-drina/coding-exercises](https://github.com/adnan-drina/coding-exercises)
+- [adnan-drina/coolstore-inventory-service](https://github.com/adnan-drina/coolstore-inventory-service)
 - [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore)
 - [rh-mad-workshop/coolstore-microservice](https://github.com/rh-mad-workshop/coolstore-microservice)
-- [coding-exercises application repository plan](coding-exercises-app-repo-plan.md)
+- [coolstore-inventory-service application repository plan](coolstore-inventory-service-app-repo-plan.md)
 - [Red Hat build of Quarkus](https://developers.redhat.com/products/quarkus)
 - [Quarkus OpenShift guide](https://quarkus.io/guides/deploying-to-openshift)
 - [Red Hat OpenShift Pipelines documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/)

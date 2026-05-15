@@ -47,7 +47,7 @@ Use OpenCode for a controlled engineering task that is larger than a single IDE 
 - generate a pipeline from approved templates;
 - inspect MTA findings and propose remediation steps.
 
-For this documentation iteration, the repository target and first task are selected. OpenCode should operate in the renamed `coolstore-inventory-service` repository once `adnan-drina/coding-exercises` is reshaped. The first bounded feature task is the reservation endpoint, `POST /api/inventory/{itemId}/reservations`, after Continue has completed the README, API, and test-plan alignment pass.
+For this documentation iteration, the repository target and first task are selected. OpenCode should operate in the `coolstore-inventory-service` repository. The first bounded feature task is the reservation endpoint, `POST /api/inventory/{itemId}/reservations`, after Continue has completed the README, API, and test-plan alignment pass.
 
 ### Prompts Or Agent Instructions
 

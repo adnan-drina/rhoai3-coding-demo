@@ -51,7 +51,7 @@ The target pipeline should eventually:
 - update or hand off to the app-local GitOps path;
 - expose evidence through Developer Hub or repository documentation.
 
-Developer Hub software-template examples show several useful target patterns. For this first demo, the accepted pattern is a single renamed `coolstore-inventory-service` repository: Quarkus source at the root, Pipelines-as-Code assets under `.tekton/`, app-local GitOps desired state under `gitops/`, and rollout, promotion, and rollback evidence in repository documentation. A later multi-repository promotion model can still be evaluated after the first live workflow is stable.
+Developer Hub software-template examples show several useful target patterns. For this first demo, the accepted pattern is a single `coolstore-inventory-service` repository: Quarkus source at the root, Pipelines-as-Code assets under `.tekton/`, app-local GitOps desired state under `gitops/`, and rollout, promotion, and rollback evidence in repository documentation. A later multi-repository promotion model can still be evaluated after the first live workflow is stable.
 
 The first delivery slice is now selected for the application repository:
 
@@ -152,10 +152,10 @@ Pipeline credentials, image registry access, template trust, MCP tool access, an
 
 - Treat OpenShift Pipelines and Pipelines-as-Code as prerequisites for this extension, not installs owned by the current platform flow.
 - Use the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment as the application baseline for the first pipeline exercise.
-- Use the [`coding-exercises` application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md) as the repository baseline for the renamed `coolstore-inventory-service` repo.
+- Use the [`coolstore-inventory-service` application repository plan](../140-golden-path-quarkus-service/coolstore-inventory-service-app-repo-plan.md) as the repository baseline for the `coolstore-inventory-service` repo.
 - Use local `coolstore-demo/inventory-gitops` only as a historical reference. Update any adopted pattern for current OpenShift, current Tekton API versions, tests-before-image behavior, and GitOps handoff expectations.
 - Use the application repository's project-local golden-path packet as the first template source.
-- Put first-demo GitOps desired state under `gitops/` in the renamed service repository.
+- Put first-demo GitOps desired state under `gitops/` in the service repository.
 - Use `.tekton/` for the first Pipelines-as-Code PipelineRun and keep image update, promotion, and rollback evidence in repository documentation until live validation exists.
 - Revisit Developer Hub software templates or an authenticated MCP Gateway service after the project-local packet is validated.
 - Add static validation and later live PipelineRun validation.
@@ -174,7 +174,7 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [How to template AI software in Red Hat Developer Hub](https://developers.redhat.com/articles/2024/11/12/template-ai-software-red-hat-developer-hub)
 - [Red Hat Developer Hub Software Templates Library](https://github.com/redhat-developer/red-hat-developer-hub-software-templates)
 - [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
-- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
+- [coolstore-inventory-service application repository plan](../140-golden-path-quarkus-service/coolstore-inventory-service-app-repo-plan.md)
 - [Advanced authentication and authorization for MCP Gateway](https://developers.redhat.com/articles/2025/12/12/advanced-authentication-authorization-mcp-gateway)
 - [MCP security: Implementing robust authentication and authorization](https://www.redhat.com/en/blog/mcp-security-implementing-robust-authentication-and-authorization)
 - [Tekton](https://tekton.dev/)

@@ -47,7 +47,7 @@ The plan should cover:
 - provenance and SLSA-aligned build evidence;
 - image storage and scanning;
 - deployment policy gates;
-- the single-repository evidence model in the renamed `coolstore-inventory-service` repo, including source evidence, pipeline evidence, app-local GitOps state, promotion notes, rollout notes, and rollback evidence;
+- the single-repository evidence model in the `coolstore-inventory-service` repo, including source evidence, pipeline evidence, app-local GitOps state, promotion notes, rollout notes, and rollback evidence;
 - treatment of MCP servers, skills, model artifacts, and agent containers if they become shared platform assets.
 - treatment of Scribe as a custom Quarkus MCP server image if it is deployed outside an individual workspace.
 
@@ -152,7 +152,7 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [Using containers to bring software engineering rigor to AI workloads](https://www.redhat.com/en/blog/using-containers-bring-software-engineering-rigor-ai-workloads)
 - [Build more secure, optimized AI supply chains with Fromager](https://developers.redhat.com/articles/2026/04/13/build-more-secure-optimized-ai-supply-chains-fromager)
 - [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
-- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
+- [coolstore-inventory-service application repository plan](../140-golden-path-quarkus-service/coolstore-inventory-service-app-repo-plan.md)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 - [sshaaf/scribe](https://github.com/sshaaf/scribe)
 

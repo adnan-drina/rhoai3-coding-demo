@@ -81,10 +81,10 @@ Stage flow static validation passed
 - Workspace pod state: running
 - Workspace project directories observed:
   - `/projects/mca-coolstore`
-  - `/projects/coding-exercises`
+  - `/projects/coolstore-inventory-service`
 - An older `/projects/coolstore` checkout from the persistent workspace volume
   was removed after validation so the workspace now shows only the current
-  `mca-coolstore` and `coding-exercises` projects.
+  `mca-coolstore` and `coolstore-inventory-service` projects.
 
 ## Model Path Evidence
 

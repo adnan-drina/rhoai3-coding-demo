@@ -23,7 +23,7 @@ It is a strong anchor for enterprise AI development because it has realistic Jav
 The best demo shape is a two-track application story:
 
 - `mca-coolstore` is the brownfield source application for discovery, code explanation, README alignment, characterization tests, MTA analysis, Developer Lightspeed for MTA, Scribe-backed rule generation, and supply-chain review.
-- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Pipelines-as-Code, GitOps, and trusted software supply-chain promotion. The repository candidate is `adnan-drina/coding-exercises`, which should be renamed to `coolstore-inventory-service` and carry source, app-local GitOps state, `.tekton/` assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment.
+- A smaller demo-owned `coolstore-inventory-service` becomes the golden-path target for stages that need clean Quarkus development, OpenShift deployment, Pipelines-as-Code, GitOps, and trusted software supply-chain promotion. The service repository is `adnan-drina/coolstore-inventory-service` and carries source, app-local GitOps state, `.tekton/` assets, rollout notes, promotion notes, and rollback evidence in one repository for the first demo. The target-service rationale is captured in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment.
 
 This keeps the modernization story realistic without forcing a fragile full monolith conversion into the first live coding iteration.
 
@@ -194,7 +194,7 @@ Avoid first:
 
 Adopt `rhpds/mca-coolstore` as the canonical brownfield modernization source for Stage 160 and as the main legacy application used in Stage 110 through Stage 130 examples.
 
-Keep Stage 140 and Stage 150 centered on the demo-owned `coolstore-inventory-service`. Use `adnan-drina/coding-exercises` as the repository to rename and reshape into the service repository. The first-demo repository should include the Quarkus source, app-local GitOps desired state under `gitops/`, Pipelines-as-Code assets under `.tekton/`, and documented promotion and rollback evidence. The service should be testable, pipeline-ready, deployable on OpenShift, and small enough for live AI-assisted development.
+Keep Stage 140 and Stage 150 centered on the demo-owned `coolstore-inventory-service`. The first-demo repository includes the Quarkus source, app-local GitOps desired state under `gitops/`, Pipelines-as-Code assets under `.tekton/`, and documented promotion and rollback evidence. The service should be testable, pipeline-ready, deployable on OpenShift, and small enough for live AI-assisted development.
 
 This gives the demo one coherent application narrative:
 
@@ -205,7 +205,7 @@ Discover Coolstore -> understand and test Coolstore -> catch AI near misses -> g
 ## Open Questions
 
 - Should the demo use `rhpds/mca-coolstore` exclusively, or keep `konveyor-ecosystem/coolstore` as a secondary reference for Quarkus migration examples?
-- How should downstream links be updated after the GitHub repository is renamed from `coding-exercises` to `coolstore-inventory-service`?
+- Which downstream links still need live validation after the service repository rename rollout?
 - What additional repo layout convention should be used for rollout notes beyond the selected `gitops/`, `.tekton/`, and `docs/evidence/` paths?
 - What is the minimum live runtime we need for the first demo: compile-only, unit tests, Dev Spaces only, MTA analysis only, or full EAP runtime?
 - Which corporate standards document should drive the first Scribe-generated Konveyor rule?
@@ -216,7 +216,7 @@ Discover Coolstore -> understand and test Coolstore -> catch AI near misses -> g
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 - [Quarkus target service options](../140-golden-path-quarkus-service/quarkus-target-service-options.md)
-- [coding-exercises application repository plan](../140-golden-path-quarkus-service/coding-exercises-app-repo-plan.md)
+- [coolstore-inventory-service application repository plan](../140-golden-path-quarkus-service/coolstore-inventory-service-app-repo-plan.md)
 - [Migration Toolkit for Applications](https://developers.redhat.com/products/mta)
 - [Configuring and using Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
 - [Configuring and using rules for an MTA analysis](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_rules_for_an_mta_analysis/index)

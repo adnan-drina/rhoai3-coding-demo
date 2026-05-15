@@ -6,7 +6,7 @@ This guide is for demo users working in Stage 070 and later. It explains how to 
 
 Stage 070 creates the Dev Spaces environment and pre-provisions an `exercises` workspace for the demo personas. The workspace includes:
 
-- The `coding-exercises` repository on the `feature/coolstore-inventory-service-plan` branch with Continue and OpenCode configuration templates.
+- The `coolstore-inventory-service` repository on the `feature/coolstore-inventory-service-plan` branch with Continue and OpenCode configuration templates.
 - The `rhpds/mca-coolstore` application source for the `ai-admin` and `ai-developer` personas.
 - Continue for IDE-based AI coding assistance.
 - OpenCode for terminal-based AI coding workflows.
@@ -20,12 +20,10 @@ The platform owns the workspace definition, tooling image, source repositories, 
 2. Start the pre-provisioned `exercises` workspace.
 3. Wait for the IDE to open and for the workspace startup command to finish.
 
-During startup, the workspace copies the Continue template from `/projects/coding-exercises/.vscode/config.yaml` to `~/.continue/config.yaml`. The OpenCode template is available at `/projects/coding-exercises/.opencode/opencode.json`.
+During startup, the workspace copies the Continue template from `/projects/coolstore-inventory-service/.vscode/config.yaml` to `~/.continue/config.yaml`. The OpenCode template is available at `/projects/coolstore-inventory-service/.opencode/opencode.json`.
 
 For the Stage 100 developer-entry validation, confirm that the workspace has
-both `/projects/mca-coolstore` and `/projects/coding-exercises`. The
-`coding-exercises` repository remains the transition name until it is renamed to
-`coolstore-inventory-service`.
+both `/projects/mca-coolstore` and `/projects/coolstore-inventory-service`.
 
 ## Create A MaaS API Key
 
@@ -62,13 +60,13 @@ Open `~/.continue/config.yaml` and replace the placeholders:
 - Replace `YOUR_API_KEY` with the MaaS API key generated for the demo subscription.
 - Keep the `model` value aligned with the selected MaaS model ID.
 
-The source template lives in `/projects/coding-exercises/.vscode/config.yaml`. After editing the local config, select **Local Config** in the Continue sidebar.
+The source template lives in `/projects/coolstore-inventory-service/.vscode/config.yaml`. After editing the local config, select **Local Config** in the Continue sidebar.
 
 ## Configure OpenCode
 
 OpenCode is used for terminal-based AI coding workflows. It is useful for reviewing project structure, working with diffs, asking for multi-file changes, and running command-line development tasks from the same controlled workspace.
 
-From the workspace terminal, open `/projects/coding-exercises/.opencode/opencode.json` and replace the placeholders:
+From the workspace terminal, open `/projects/coolstore-inventory-service/.opencode/opencode.json` and replace the placeholders:
 
 - Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full `baseURL` value with a complete model endpoint.
 - Replace `YOUR_API_KEY` with the same MaaS API key.

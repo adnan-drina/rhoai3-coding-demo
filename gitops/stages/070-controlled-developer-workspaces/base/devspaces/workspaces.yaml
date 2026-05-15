@@ -47,19 +47,19 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: coding-exercises
+      - name: coolstore-inventory-service
         git:
           remotes:
-            origin: https://github.com/adnan-drina/coding-exercises.git
+            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
             revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coding-exercises/.vscode/config.yaml ] && break; sleep 2; done
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -130,19 +130,19 @@ spec:
             origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
-      - name: coding-exercises
+      - name: coolstore-inventory-service
         git:
           remotes:
-            origin: https://github.com/adnan-drina/coding-exercises.git
+            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
             revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coding-exercises/.vscode/config.yaml ] && break; sleep 2; done
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
@@ -216,19 +216,19 @@ spec:
             origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
-      - name: coding-exercises
+      - name: coolstore-inventory-service
         git:
           remotes:
-            origin: https://github.com/adnan-drina/coding-exercises.git
+            origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
             revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coding-exercises/.vscode/config.yaml ] && break; sleep 2; done
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.vscode/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue
-            cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+            cp /projects/coolstore-inventory-service/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true

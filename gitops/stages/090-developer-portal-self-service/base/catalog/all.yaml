@@ -81,16 +81,16 @@ metadata:
     Quarkus inventory service and target repository for the governed AI
     developer workflow.
   annotations:
-    backstage.io/source-location: url:https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan
-    github.com/project-slug: adnan-drina/coding-exercises
-    rhoai3.redhat.com/current-repository: adnan-drina/coding-exercises
-    rhoai3.redhat.com/planned-repository: adnan-drina/coolstore-inventory-service
+    backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
+    github.com/project-slug: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/gitops-path: gitops/overlays/dev
     rhoai3.redhat.com/pipelines-as-code-path: .tekton/pull-request.yaml
     rhoai3.redhat.com/evidence-path: docs/evidence/
     rhoai3.redhat.com/stage-100-role: target-service
   links:
-    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan
+    - url: https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
       title: Source Repo
       icon: github
     - url: https://devspaces.placeholder.example.com
