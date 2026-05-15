@@ -18,20 +18,20 @@ spec:
     - name: gpt-oss-20b
       namespace: maas
       tokenRateLimits:
-        - limit: 50000
+        - limit: 1000000
           window: "1h"
     - name: nemotron-3-nano-30b-a3b
       namespace: maas
       tokenRateLimits:
-        - limit: 50000
+        - limit: 1000000
           window: "1h"
     - name: gpt-4o
       namespace: maas
       tokenRateLimits:
-        - limit: 50000
+        - limit: 1000000
           window: "1h"
     - name: gpt-4o-mini
       namespace: maas
       tokenRateLimits:
-        - limit: 50000
+        - limit: 1000000
           window: "1h"
