@@ -85,7 +85,12 @@ The developer must place the actual MaaS route and API key into the local
 workspace copies:
 
 - `~/.continue/config.yaml`
-- `~/.opencode/opencode.json`
+- `~/.config/opencode/opencode.json`
+
+The current Dev Spaces OpenCode build can also read
+`~/.opencode/opencode.json`. Stage 070 keeps that legacy path as a compatibility
+link or copy, while the canonical file to edit is
+`~/.config/opencode/opencode.json`.
 
 Do not edit the committed templates with real route or key values. Do not paste
 the route, API key, model token, or full private cluster hostname into evidence.
@@ -188,9 +193,10 @@ Stage 100 is green only when all of these are true:
 - `~/.continue/config.yaml` is configured with the MaaS route and API key in the
   workspace only, and Continue can complete a harmless prompt against the
   selected model.
-- `~/.opencode/opencode.json` is configured with the MaaS route and API key in
-  the workspace only, and OpenCode can complete a harmless prompt against the
-  selected model.
+- `~/.config/opencode/opencode.json` is configured with the MaaS route and API
+  key in the workspace only, and OpenCode can complete a harmless prompt
+  against the selected model.
+- `~/.opencode/opencode.json` exists only as the OpenCode compatibility path.
 - No live cluster route hostnames, API keys, kubeconfigs, or model tokens are
   committed as evidence.
 

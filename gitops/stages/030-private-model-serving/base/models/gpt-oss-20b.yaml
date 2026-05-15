@@ -47,6 +47,7 @@ spec:
           - --enable-force-include-usage
           - --disable-uvicorn-access-log
           - --enable-prefix-caching
+          - --max-num-batched-tokens=8192
         ports:
           - containerPort: 8000
             name: http

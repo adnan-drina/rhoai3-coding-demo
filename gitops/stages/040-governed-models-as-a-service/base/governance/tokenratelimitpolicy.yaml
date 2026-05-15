@@ -16,7 +16,7 @@ spec:
   limits:
     free-user-tokens:
       rates:
-        - limit: 100
+        - limit: 100000
           window: 1m
       when:
         - predicate: |
@@ -25,7 +25,7 @@ spec:
         - expression: auth.identity.userid
     premium-user-tokens:
       rates:
-        - limit: 10000
+        - limit: 250000
           window: 1m
       when:
         - predicate: |
@@ -34,7 +34,7 @@ spec:
         - expression: auth.identity.userid
     enterprise-user-tokens:
       rates:
-        - limit: 20000
+        - limit: 500000
           window: 1m
       when:
         - predicate: |

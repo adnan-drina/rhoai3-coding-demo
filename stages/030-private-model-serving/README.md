@@ -35,6 +35,7 @@ The essential proof point is private inference operated as enterprise platform i
 
 - Models are reconciled and validated as OpenShift AI resources, not manually launched from notebooks or exposed as unmanaged endpoints.
 - vLLM provides efficient OpenAI-compatible serving, which keeps application integration familiar while preserving platform ownership.
+- The private coding models are tuned for long developer prompts: Nemotron is served with a 131,072-token model context and the private vLLM runtimes use an 8,192-token chunked-prefill scheduling budget for better long-prompt responsiveness.
 - llm-d scheduler enablement, LeaderWorkerSet prerequisites, queue labels, readiness probes, and vLLM metrics create a controlled path toward distributed inference patterns.
 - Model registry seed data makes private models discoverable as named, versioned assets.
 

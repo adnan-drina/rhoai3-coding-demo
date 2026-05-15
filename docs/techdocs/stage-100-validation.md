@@ -19,7 +19,8 @@ Stage 100 is green only when all of these checks pass:
 - The inventory workspace contains only `coolstore-inventory-service`.
 - The modernization workspace contains only `mca-coolstore`.
 - `~/.continue/config.yaml` is configured in the workspace only.
-- `~/.opencode/opencode.json` is configured in the workspace only.
+- `~/.config/opencode/opencode.json` is configured in the workspace only.
+- `~/.opencode/opencode.json` exists only as the OpenCode compatibility path.
 - Continue completes a harmless prompt against `nemotron-3-nano-30b-a3b`
   through MaaS.
 - OpenCode completes a harmless prompt against `nemotron-3-nano-30b-a3b`

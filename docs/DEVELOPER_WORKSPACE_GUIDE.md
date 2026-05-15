@@ -67,12 +67,28 @@ overview.
 3. Start or open the workspace for the selected component.
 4. Wait for the IDE to open and for the startup command to finish.
 
-During startup, the onboarding and inventory workspaces copy:
+During first startup, the onboarding and inventory workspaces copy the
+Git-tracked templates into local home-directory config:
 
-- `/projects/<repo>/.continue/config.yaml` to
-  `~/.continue/config.yaml`
-- `/projects/<repo>/.opencode/opencode.json` to
-  `~/.opencode/opencode.json`
+- `/projects/<repo>/.continue/config.yaml` to `~/.continue/config.yaml`
+- `/projects/<repo>/.opencode/opencode.template.json` to
+  `~/.config/opencode/opencode.json`
+
+The startup command keeps existing `~/.continue/config.yaml` and
+`~/.config/opencode/opencode.json` files on later workspace starts. Edit only
+the `~` files with real MaaS values. Do not put real route URLs or API keys into
+`/projects/<repo>/.continue/config.yaml` or
+`/projects/<repo>/.opencode/opencode.template.json`; those are Git-tracked
+templates.
+
+OpenCode uses `~/.config/opencode/opencode.json` for user/provider
+configuration. The project `.opencode/` directory is reserved for checked-in
+templates, agents, commands, and future project-local assets.
+
+The current Dev Spaces OpenCode build can also read the older
+`~/.opencode/opencode.json` path. The workspace startup command migrates an
+existing legacy file into the canonical path when needed, and then keeps the
+legacy path as a compatibility link or copy.
 
 For Stage 100, the selected workspace should show only one project directory:
 
@@ -89,7 +105,8 @@ From the Dev Spaces terminal:
 ```bash
 find /projects -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort
 test -f ~/.continue/config.yaml && echo "Continue config present"
-test -f ~/.opencode/opencode.json && echo "OpenCode config present"
+test -f ~/.config/opencode/opencode.json && echo "OpenCode config present"
+test -f ~/.opencode/opencode.json && echo "OpenCode compatibility path present"
 ```
 
 Expected project directories:
@@ -176,10 +193,10 @@ Continue is used for IDE-based chat, code explanation, edits, and code
 generation. It is useful when the developer wants assistance while reading or
 changing files in the browser-based IDE.
 
-Open the local workspace copy:
+Open the live workspace config from the Dev Spaces terminal:
 
 ```bash
-code ~/.continue/config.yaml
+vi ~/.continue/config.yaml
 ```
 
 Replace the placeholders for the selected model:
@@ -192,6 +209,9 @@ Replace the placeholders for the selected model:
 
 The committed source template remains in the selected repository. Keep real
 values only in the local home-directory copy.
+
+In `vi`, press `i` to edit, press `Esc` when finished, then type `:wq` and
+press `Enter` to save.
 
 ![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
 
@@ -223,10 +243,10 @@ OpenCode is used for terminal-based AI coding workflows. It is useful for
 reviewing project structure, working with diffs, asking for multi-file changes,
 and running command-line development tasks from the same controlled workspace.
 
-Open the local workspace copy:
+Open the live workspace config from the Dev Spaces terminal:
 
 ```bash
-code ~/.opencode/opencode.json
+vi ~/.config/opencode/opencode.json
 ```
 
 Replace the placeholders for the selected model:
@@ -239,6 +259,12 @@ Replace the placeholders for the selected model:
 
 The committed source template remains in the selected repository. Keep real
 values only in the local home-directory copy.
+
+The Stage 100 onboarding template sets the private Nemotron OpenCode output
+budget to 16,384 tokens so longer coding answers are less likely to stop at the
+client-side limit before the model finishes.
+
+Use the same `vi` save flow: `i`, edit, `Esc`, `:wq`, `Enter`.
 
 ## Step 9: Verify OpenCode
 

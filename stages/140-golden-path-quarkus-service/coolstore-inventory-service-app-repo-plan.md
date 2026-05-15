@@ -38,7 +38,7 @@ The `coolstore-inventory-service` repository is the active AI developer-workspac
 
 - it has a Dev Spaces `devfile.yaml`;
 - it has Continue configuration in `.continue/config.yaml`;
-- it has OpenCode configuration in `.opencode/opencode.json`;
+- it has OpenCode configuration in `.opencode/opencode.template.json`;
 - it has starter and solution exercises for small Python games.
 
 It is now the Quarkus target service branch:

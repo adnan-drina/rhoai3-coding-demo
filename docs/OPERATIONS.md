@@ -569,7 +569,7 @@ oc get clusterpolicy -A
 
 ### Stage 030
 
-Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node, disaggregated prefill/decode inference, Gateway API Inference Extension `InferencePool` resources, or agentgateway body-based routing.
+Stage 030 deploys local private model serving resources: the `maas` project, local `LLMInferenceService` resources, LeaderWorkerSet prerequisites, and model registry seed data. The local models use the Red Hat OpenShift AI llm-d `LLMInferenceService` path with vLLM as the inference runtime. The demo configures single-GPU-per-replica serving, explicit scheduler enablement, Kueue queue admission, an 8,192-token chunked-prefill scheduling budget for long developer prompts, and vLLM metric aliases for future autoscaling analysis. It does not deploy multi-node, disaggregated prefill/decode inference, Gateway API Inference Extension `InferencePool` resources, or agentgateway body-based routing.
 
 The `vllm-metrics-alias` `PrometheusRule` exposes raw and derived runtime signals for operational analysis: request backlog, running requests, request success rate, prompt and generation token throughput, time-to-first-token average, time-per-output-token average, KV cache usage, and prefix-cache hit ratio. These are the private-runtime signals that Stage 040 load tests and future autoscaling work can use.
 

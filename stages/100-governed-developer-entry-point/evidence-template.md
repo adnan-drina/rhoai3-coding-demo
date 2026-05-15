@@ -54,7 +54,7 @@ Manual actions:
   through MaaS.
 - Configure the local workspace copy of `~/.continue/config.yaml` with the
   MaaS route and API key.
-- Configure the local workspace copy of `~/.opencode/opencode.json` with the
+- Configure the local workspace copy of `~/.config/opencode/opencode.json` with the
   same MaaS route and API key.
 - Send one harmless verification prompt from Continue and one from OpenCode.
   The prompt must not include source code, route URLs, API keys, or tokens.
@@ -81,7 +81,8 @@ Manual actions:
   - selected model ID:
   - harmless MaaS verification prompt passed: yes/no
 - OpenCode configured in workspace only:
-  - config path: `~/.opencode/opencode.json`
+  - config path: `~/.config/opencode/opencode.json`
+  - compatibility path present: `~/.opencode/opencode.json` yes/no
   - selected model ID:
   - harmless MaaS verification prompt passed: yes/no
 - Secrets committed: no

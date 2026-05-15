@@ -60,9 +60,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -110,9 +136,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -237,9 +289,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -287,9 +365,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -414,9 +518,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/getting-started-ai-coding/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:
@@ -464,9 +594,35 @@ spec:
         exec:
           commandLine: |
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.opencode
-            cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-            cp /projects/coolstore-inventory-service/.opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.continue/config.yaml ]; then
+              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
+              echo "Created ~/.continue/config.yaml from the repo template."
+            else
+              echo "Kept existing ~/.continue/config.yaml."
+            fi
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              if [ -f ~/.opencode/opencode.json ]; then
+                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              else
+                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              fi
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+            fi
+            if [ ! -L ~/.opencode/opencode.json ]; then
+              rm -f ~/.opencode/opencode.json
+              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+            else
+              echo "Kept compatibility ~/.opencode/opencode.json link."
+            fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
     events:

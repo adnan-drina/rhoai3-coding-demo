@@ -89,7 +89,8 @@ Stage flow static validation passed
   - `/projects/mca-coolstore`
   - `/projects/coolstore-inventory-service`
 - Continue configuration present at `~/.continue/config.yaml`
-- OpenCode configuration present at `~/.opencode/opencode.json`
+- OpenCode configuration present at `~/.config/opencode/opencode.json`
+- OpenCode compatibility path present at `~/.opencode/opencode.json`
 - Follow-up client check: Stage 100 now requires both Continue and OpenCode to
   complete a harmless MaaS verification prompt after the developer inserts the
   MaaS route and API key into the local workspace configs. The running workspace
