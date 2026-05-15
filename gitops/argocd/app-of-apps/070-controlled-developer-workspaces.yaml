@@ -44,12 +44,12 @@ spec:
       jsonPointers:
         - /metadata/annotations
         - /spec/startingCSV
-    # DevWorkspace controllers mutate workspace specs at runtime. Keep this
-    # temporary drift ignore until workspace ownership is reworked.
+    # Developers and Dev Spaces toggle started at runtime. Keep the rest of the
+    # DevWorkspace spec GitOps-owned so workspace definitions can be updated.
     - group: workspace.devfile.io
       kind: DevWorkspace
-      jqPathExpressions:
-        - .spec
+      jsonPointers:
+        - /spec/started
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
