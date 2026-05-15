@@ -36,7 +36,7 @@ oc annotate application 090-developer-portal-self-service -n openshift-gitops ar
 
 ```text
 ./stages/090-developer-portal-self-service/validate.sh
-VALIDATION: 16 passed, 0 warnings, 0 failed
+VALIDATION: 17 passed, 0 warnings, 0 failed
 
 ./stages/070-controlled-developer-workspaces/validate.sh
 VALIDATION: 17 passed, 1 warnings, 0 failed
@@ -115,6 +115,9 @@ the private MaaS model path is selected for source-code work.
   Dev Spaces, and one getting started guide. The live Dev Spaces URL is
   generated into the runtime catalog from the cluster route and is not committed
   to Git.
+- Human UI validation confirmed that both Coolstore component link cards show
+  only `Source Repo`, `Dev Spaces`, and `Getting Started`, and that the
+  `Dev Spaces` link opens the workspace path.
 
 ## Next Gate
 
