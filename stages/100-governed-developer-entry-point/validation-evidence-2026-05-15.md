@@ -82,9 +82,14 @@ Stage flow static validation passed
 - Workspace project directories observed:
   - `/projects/mca-coolstore`
   - `/projects/coolstore-inventory-service`
-- An older `/projects/coolstore` checkout from the persistent workspace volume
-  was removed after validation so the workspace now shows only the current
-  `mca-coolstore` and `coolstore-inventory-service` projects.
+- Continue configuration present at `~/.continue/config.yaml`
+- OpenCode configuration present at `~/.opencode/opencode.json`
+- Older `/projects/coolstore` and `/projects/coding-exercises` directories
+  from the persistent workspace volume were removed after validation so the
+  workspace now shows only the current `mca-coolstore` and
+  `coolstore-inventory-service` projects. The stale `coding-exercises`
+  directory was archived locally before removal because it contained
+  uncommitted workspace edits.
 
 ## Model Path Evidence
 
