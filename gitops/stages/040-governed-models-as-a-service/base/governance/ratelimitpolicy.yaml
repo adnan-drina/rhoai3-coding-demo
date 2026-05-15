@@ -25,7 +25,7 @@ spec:
         - expression: auth.identity.userid
     premium:
       rates:
-        - limit: 20
+        - limit: 120
           window: 2m
       when:
         - predicate: |
@@ -34,7 +34,7 @@ spec:
         - expression: auth.identity.userid
     enterprise:
       rates:
-        - limit: 50
+        - limit: 240
           window: 2m
       when:
         - predicate: |
