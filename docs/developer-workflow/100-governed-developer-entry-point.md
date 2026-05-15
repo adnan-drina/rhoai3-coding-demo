@@ -44,7 +44,12 @@ The planned Developer Hub entry should expose:
 - links to Dev Spaces, source, CI/CD, GitOps, MTA, and OpenShift resources when they exist;
 - model-server, AI model, and API catalog entries when OpenShift AI model metadata is available through the platform.
 
-For this documentation iteration, the live portal links and workspace launch buttons are not implemented. The planned path is captured so the demo can later be wired to real Developer Hub catalog entities.
+For the first Stage 100 implementation pass, the Developer Hub catalog is extended
+through the existing Stage 090 catalog source. The live portal should expose the
+Coolstore brownfield component, the `coolstore-inventory-service` target
+component, the `coolstore` system, and the private MaaS model resource. Direct
+workspace launch automation can remain manual as long as the approved Dev Spaces
+route and `wksp-ai-developer/exercises` workspace are validated.
 
 ### AI-Assisted Task
 
@@ -96,6 +101,37 @@ These prompts should be used only after the workspace and model configuration ar
 - Confirmation that no model credentials are stored in the repository.
 - Notes on why the private model path was selected for source-code work.
 
+### Model And Data Classification
+
+| Task type | Data classification | Default model path | Stage 100 decision |
+|-----------|---------------------|--------------------|--------------------|
+| Source-code explanation, README/API alignment, tests, and bounded implementation planning | Private source-code context | Private MaaS model | Use `nemotron-3-nano-30b-a3b` through MaaS. |
+| General product documentation lookup or public Red Hat documentation review | Public documentation | Private MaaS model by default; approved external MaaS model only when policy allows | Prefer the private path during the demo to keep the story simple. |
+| Corporate standards, internal policies, customer code, credentials, or private architecture notes | Sensitive internal context | Private MaaS model only | Do not use approved external models. Do not paste secrets. |
+| Non-sensitive comparison of public model behavior | Public or synthetic content | Approved external MaaS model when explicitly allowed | Keep separate from source-code exercises and record the reason. |
+
+### Live Validation Checklist
+
+Stage 100 is green only when all of these are true:
+
+- Red Hat Developer Hub is reachable through the Stage 090 route.
+- The Developer Hub catalog exposes:
+  - `System:default/coolstore`
+  - `Component:default/coolstore`
+  - `Component:default/coolstore-inventory-service`
+  - `Resource:default/maas-private-code-model-nemotron`
+- The `coolstore` component points to `rhpds/mca-coolstore`.
+- The `coolstore-inventory-service` component points to the current
+  `adnan-drina/coding-exercises` planning branch and links to the repository
+  plan, Continue task, OpenCode task, app-local GitOps, Pipelines-as-Code, and
+  evidence docs.
+- Red Hat OpenShift Dev Spaces is reachable.
+- The `wksp-ai-developer/exercises` workspace opens without a failed phase.
+- The workspace contains the `mca-coolstore` and `coding-exercises` projects.
+- The selected source-code model is `nemotron-3-nano-30b-a3b` through MaaS.
+- No live cluster route hostnames, API keys, kubeconfigs, or model tokens are
+  committed as evidence.
+
 ## What To Notice And Why It Matters
 
 The important proof point is that the developer starts from a governed platform contract. Red Hat Developer Hub makes the path discoverable through catalog entities, software templates, and TechDocs. Dev Spaces makes the workspace reproducible, MaaS centralizes model access, and the project rules define how AI assistance is reviewed.
@@ -132,17 +168,20 @@ The first trust boundary is model path selection. Private source-code work shoul
 
 ## Future Implementation Notes
 
-- Add Developer Hub catalog links for Dev Spaces, MaaS guidance, MTA, model servers, AI models, APIs, and the exercise repository.
+- Add direct Developer Hub links for Dev Spaces, MaaS guidance, MTA, model servers, AI models, APIs, and the exercise repository after the route and launch-link policy is finalized.
 - Add TechDocs pages for model-use policy, workflow instructions, and validation evidence.
 - Decide whether the OpenShift AI connector for Developer Hub should populate model assets automatically or whether the demo should use static catalog-info examples.
 - Decide whether Developer Hub MCP catalog and TechDocs tools become part of the later agentic workflow.
-- Add a model and data classification decision table.
 - Add a workspace readiness checklist.
-- Add a model selection evidence template for later demo runs.
+- Use [`stage-100-evidence-template.md`](stage-100-evidence-template.md) for sanitized validation notes.
 
 ## Deploy And Validate
 
-This planned workflow stage does not yet include deploy or validate scripts. Static validation for this iteration is documentation review only.
+This planned workflow stage does not yet include deploy or validate scripts. Live
+validation uses the existing Stage 070 and Stage 090 platform assets plus manual
+Developer Hub and Dev Spaces checks. Do not add this stage to
+[`../../flows/default.yaml`](../../flows/default.yaml) until a real executable
+stage structure exists.
 
 ## References
 

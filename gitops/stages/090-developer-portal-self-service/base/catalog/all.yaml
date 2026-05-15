@@ -23,28 +23,137 @@ spec:
   children: []
 ---
 apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: coolstore
+  description: Coolstore modernization system for the governed AI developer workflow.
+  tags:
+    - coolstore
+    - modernization
+    - agentic-engineering
+spec:
+  owner: ai-modernization-team
+  domain: application-modernization
+---
+apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: coolstore
+  title: MCA Coolstore
   description: |
-    Legacy Java EE CoolStore monolith running on JBoss EAP.
-    Migration target: Quarkus. See the quarkus branch for completed reference.
+    Brownfield Coolstore application used as the modernization source for the
+    From Vibe Coding to Agentic Engineering workflow.
   annotations:
-    backstage.io/source-location: url:https://github.com/konveyor-ecosystem/coolstore
+    backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
+    github.com/project-slug: rhpds/mca-coolstore
+    rhoai3.redhat.com/stage-100-role: brownfield-source
   links:
-    - url: https://github.com/konveyor-ecosystem/coolstore
-      title: GitHub Repository
+    - url: https://github.com/rhpds/mca-coolstore
+      title: Brownfield Source Repository
       icon: github
-    - url: https://github.com/konveyor-ecosystem/coolstore/tree/quarkus
-      title: Quarkus Migration Reference (quarkus branch)
-      icon: github
+    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/100-governed-developer-entry-point.md
+      title: Stage 100 Entry Point
+      icon: docs
+    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/mca-coolstore-candidate-assessment.md
+      title: Coolstore Candidate Assessment
+      icon: docs
+    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/developer-workflow/mta-coolstore-analysis-exercise.md
+      title: MTA Analysis Exercise
+      icon: docs
   tags:
     - java
     - javaee
     - eap
-    - quarkus
+    - mta
     - modernization
+    - brownfield
 spec:
   type: service
   lifecycle: modernizing
   owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: coolstore-inventory-service
+  title: Coolstore Inventory Service
+  description: |
+    Quarkus inventory service and target repository for the governed AI
+    developer workflow.
+  annotations:
+    backstage.io/source-location: url:https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan
+    github.com/project-slug: adnan-drina/coding-exercises
+    rhoai3.redhat.com/current-repository: adnan-drina/coding-exercises
+    rhoai3.redhat.com/planned-repository: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/gitops-path: gitops/overlays/dev
+    rhoai3.redhat.com/pipelines-as-code-path: .tekton/pull-request.yaml
+    rhoai3.redhat.com/evidence-path: docs/evidence/
+    rhoai3.redhat.com/stage-100-role: target-service
+  links:
+    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan
+      title: Current Source Repository
+      icon: github
+    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/coolstore-inventory-service-repository-plan.md
+      title: Repository Plan
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/tasks/continue-readme-api-test-plan-alignment.md
+      title: Continue Alignment Task
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/tasks/opencode-reservation-endpoint.md
+      title: OpenCode Reservation Task
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan/gitops
+      title: App-Local GitOps State
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/.tekton/pull-request.yaml
+      title: Pipelines-as-Code Pull Request Pipeline
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/blob/feature/coolstore-inventory-service-plan/docs/delivery/0001-pipelines-as-code-app-local-gitops.md
+      title: Delivery Decision Record
+      icon: docs
+    - url: https://github.com/adnan-drina/coding-exercises/tree/feature/coolstore-inventory-service-plan/docs/evidence
+      title: Evidence Model
+      icon: docs
+  tags:
+    - java
+    - quarkus
+    - inventory
+    - coolstore
+    - agentic-engineering
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - component:default/coolstore
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: maas-private-code-model-nemotron
+  title: Nemotron Private Code Model
+  description: Private MaaS model path selected for source-code work in the governed developer workflow.
+  annotations:
+    rhoai3.redhat.com/model-id: nemotron-3-nano-30b-a3b
+    rhoai3.redhat.com/model-path: private-maas
+    rhoai3.redhat.com/data-classification: source-code-context
+  links:
+    - url: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas
+      title: OpenShift AI MaaS Documentation
+      icon: docs
+    - url: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+      title: MaaS Code Assistant Quickstart
+      icon: docs
+  tags:
+    - maas
+    - private-model
+    - source-code
+spec:
+  type: ai-model
+  owner: ai-modernization-team
+  system: coolstore

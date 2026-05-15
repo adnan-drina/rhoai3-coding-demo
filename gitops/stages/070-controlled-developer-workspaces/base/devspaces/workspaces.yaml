@@ -51,7 +51,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
-            revision: main
+            revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:
@@ -122,10 +122,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: coolstore
+      - name: mca-coolstore
         git:
           remotes:
-            origin: https://github.com/konveyor-ecosystem/coolstore.git
+            origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
       - name: coding-exercises
@@ -133,7 +133,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
-            revision: main
+            revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:
@@ -207,10 +207,10 @@ spec:
       uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
   template:
     projects:
-      - name: coolstore
+      - name: mca-coolstore
         git:
           remotes:
-            origin: https://github.com/konveyor-ecosystem/coolstore.git
+            origin: https://github.com/rhpds/mca-coolstore.git
           checkoutFrom:
             revision: main
       - name: coding-exercises
@@ -218,7 +218,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coding-exercises.git
           checkoutFrom:
-            revision: main
+            revision: feature/coolstore-inventory-service-plan
     commands:
       - id: init-ai-tools
         exec:

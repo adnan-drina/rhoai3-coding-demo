@@ -6,8 +6,8 @@ This guide is for demo users working in Stage 070 and later. It explains how to 
 
 Stage 070 creates the Dev Spaces environment and pre-provisions an `exercises` workspace for the demo personas. The workspace includes:
 
-- The `coding-exercises` repository with Continue and OpenCode configuration templates.
-- The `coolstore` application source for the `ai-admin` and `ai-developer` personas.
+- The `coding-exercises` repository on the `feature/coolstore-inventory-service-plan` branch with Continue and OpenCode configuration templates.
+- The `rhpds/mca-coolstore` application source for the `ai-admin` and `ai-developer` personas.
 - Continue for IDE-based AI coding assistance.
 - OpenCode for terminal-based AI coding workflows.
 - MTA VS Code extensions in the `ai-admin` and `ai-developer` workspaces for later modernization exercises.
@@ -21,6 +21,11 @@ The platform owns the workspace definition, tooling image, source repositories, 
 3. Wait for the IDE to open and for the workspace startup command to finish.
 
 During startup, the workspace copies the Continue template from `/projects/coding-exercises/.vscode/config.yaml` to `~/.continue/config.yaml`. The OpenCode template is available at `/projects/coding-exercises/.opencode/opencode.json`.
+
+For the Stage 100 developer-entry validation, confirm that the workspace has
+both `/projects/mca-coolstore` and `/projects/coding-exercises`. The
+`coding-exercises` repository remains the transition name until it is renamed to
+`coolstore-inventory-service`.
 
 ## Create A MaaS API Key
 
