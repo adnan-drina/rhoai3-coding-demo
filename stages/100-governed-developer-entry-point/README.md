@@ -160,6 +160,7 @@ These prompts should be used only after the workspace and model configuration ar
 Stage 100 is green only when all of these are true:
 
 - Red Hat Developer Hub is reachable through the Stage 090 route.
+- The `Getting Started` link opens the Developer Hub TechDocs workspace guide.
 - The Developer Hub catalog exposes:
   - `System:default/coolstore`
   - `Component:default/coolstore`

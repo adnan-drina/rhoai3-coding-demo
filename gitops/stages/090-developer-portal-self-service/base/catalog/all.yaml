@@ -45,6 +45,7 @@ metadata:
     From Vibe Coding to Agentic Engineering workflow.
   annotations:
     backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
     github.com/project-slug: rhpds/mca-coolstore
     rhoai3.redhat.com/stage-100-role: brownfield-source
   links:
@@ -54,7 +55,7 @@ metadata:
     - url: https://devspaces.placeholder.example.com
       title: Dev Spaces
       icon: docs
-    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/DEVELOPER_WORKSPACE_GUIDE.md
+    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore
       title: Getting Started
       icon: docs
   tags:
@@ -82,6 +83,7 @@ metadata:
     developer workflow.
   annotations:
     backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
     github.com/project-slug: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
@@ -96,7 +98,7 @@ metadata:
     - url: https://devspaces.placeholder.example.com
       title: Dev Spaces
       icon: docs
-    - url: https://github.com/adnan-drina/rhoai3-coding-demo/blob/feature/vibe-agentic-workflow-readmes/docs/DEVELOPER_WORKSPACE_GUIDE.md
+    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore-inventory-service
       title: Getting Started
       icon: docs
   tags:

@@ -1,41 +1,114 @@
 # Developer Workspace Guide
 
-This guide is for demo users working in Stage 070 and later. It explains how to open the pre-provisioned Red Hat OpenShift Dev Spaces workspace and connect the developer tools to MaaS without using personal provider credentials.
+This guide is for demo users working in Stage 100 and later. It explains how to
+start from Red Hat Developer Hub, open the governed Red Hat OpenShift Dev Spaces
+workspace, and connect Continue and OpenCode to MaaS without using personal
+provider credentials.
+
+The guide is published through Developer Hub TechDocs so the developer can read
+it from the portal without cloning the platform repository into the workspace.
+
+## Stage 100 Outcome
+
+At the end of Stage 100, the developer has verified:
+
+- Developer Hub exposes the Coolstore entry point.
+- Developer Hub opens this TechDocs guide from the `Getting Started` link.
+- Dev Spaces opens the pre-provisioned `exercises` workspace.
+- The workspace contains `mca-coolstore` and `coolstore-inventory-service`.
+- Continue is configured locally with a MaaS route and API key.
+- OpenCode is configured locally with the same MaaS route and API key.
+- Both tools can reach `nemotron-3-nano-30b-a3b` through MaaS with a harmless
+  verification prompt.
+- No route URL, API key, token, kubeconfig, or provider credential is committed.
 
 ## What Is Already Prepared
 
-Stage 070 creates the Dev Spaces environment and pre-provisions an `exercises` workspace for the demo personas. The workspace includes:
+Stage 070 creates the Dev Spaces environment and pre-provisions an `exercises`
+workspace for the demo personas. The `ai-developer` workspace includes:
 
-- The `coolstore-inventory-service` repository on the `feature/coolstore-inventory-service-plan` branch with Continue and OpenCode configuration templates.
-- The `rhpds/mca-coolstore` application source for the `ai-admin` and `ai-developer` personas.
+- The `coolstore-inventory-service` repository on the
+  `feature/coolstore-inventory-service-plan` branch.
+- The `rhpds/mca-coolstore` brownfield source repository.
 - Continue for IDE-based AI coding assistance.
 - OpenCode for terminal-based AI coding workflows.
-- MTA VS Code extensions in the `ai-admin` and `ai-developer` workspaces for later modernization exercises.
+- MTA VS Code extensions for later modernization exercises.
 
-The platform owns the workspace definition, tooling image, source repositories, and model access path. The user still needs to create a MaaS API key and place it into the local tool configuration inside the workspace.
+The platform owns the workspace definition, tooling image, source repositories,
+and model access path. The user creates a MaaS API key and places it only into
+local tool configuration files inside the workspace.
 
-## Open The Workspace
+## Step 1: Start From Developer Hub
 
-1. Log in to Red Hat OpenShift Dev Spaces with the assigned demo user.
-2. Start the pre-provisioned `exercises` workspace.
-3. Wait for the IDE to open and for the workspace startup command to finish.
+1. Log in to Red Hat Developer Hub with the assigned demo user.
+2. Open the `Coolstore Inventory Service` component.
+3. Confirm the component shows only these links:
+   - `Source Repo`
+   - `Dev Spaces`
+   - `Getting Started`
+4. Open `Getting Started` to read this TechDocs guide.
 
-During startup, the workspace copies the Continue template from
-`/projects/coolstore-inventory-service/.vscode/config.yaml` to
-`~/.continue/config.yaml` and the OpenCode template from
-`/projects/coolstore-inventory-service/.opencode/opencode.json` to
-`~/.opencode/opencode.json`.
+![Sanitized Developer Hub component links](assets/techdocs/developer-hub-entry.svg)
 
-For the Stage 100 developer-entry validation, confirm that the workspace has
-both `/projects/mca-coolstore` and `/projects/coolstore-inventory-service`.
+The link card is intentionally small. Deeper delivery, evidence, and task docs
+belong in the repository and TechDocs navigation, not in the first component
+overview.
 
-## Create A MaaS API Key
+## Step 2: Open The Dev Spaces Workspace
 
-Use the OpenShift AI dashboard to generate a MaaS-issued API key for the approved demo subscription. In this demo, the subscription is `demo-models-subscription`, which includes the private local models and any approved external models added in Stage 050.
+1. From the Developer Hub component, open the `Dev Spaces` link.
+2. Log in to Red Hat OpenShift Dev Spaces with the assigned demo user.
+3. Start or open the pre-provisioned `exercises` workspace.
+4. Wait for the IDE to open and for the startup command to finish.
 
-Copy the key only into the workspace tool configuration. Do not commit it, paste it into README files, or store it in Git. MaaS keys are platform-issued credentials and should be treated as secrets.
+During startup, the workspace copies:
 
-## Choose The Model Endpoint
+- `/projects/coolstore-inventory-service/.vscode/config.yaml` to
+  `~/.continue/config.yaml`
+- `/projects/coolstore-inventory-service/.opencode/opencode.json` to
+  `~/.opencode/opencode.json`
+
+For Stage 100, the workspace should show only the application repositories:
+
+![Sanitized Dev Spaces project explorer](assets/techdocs/devspaces-projects.svg)
+
+Do not clone `rhoai3-coding-demo` into this workspace. The developer workspace
+is for application work; platform implementation and stage GitOps stay in the
+platform repository and are exposed through Developer Hub.
+
+## Step 3: Confirm Workspace Files
+
+From the Dev Spaces terminal:
+
+```bash
+find /projects -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort
+test -f ~/.continue/config.yaml && echo "Continue config present"
+test -f ~/.opencode/opencode.json && echo "OpenCode config present"
+```
+
+Expected project directories:
+
+```text
+coolstore-inventory-service
+mca-coolstore
+```
+
+If an old `coding-exercises` directory appears, it is stale state from the
+persistent workspace volume. Stop and clean it up before recording Stage 100 as
+green.
+
+## Step 4: Create A MaaS API Key
+
+Use the OpenShift AI dashboard to generate a MaaS-issued API key for the
+approved demo subscription. In this demo, the subscription is
+`demo-models-subscription`, which includes the private local models and any
+approved external models added in Stage 050.
+
+Copy the key only into the workspace tool configuration. Do not commit it,
+paste it into README files, or store it in Git. MaaS keys are platform-issued
+credentials and must be treated as secrets.
+
+## Step 5: Choose The Model Endpoint
 
 Use a model endpoint that matches the exercise and data policy:
 
@@ -46,30 +119,55 @@ Use a model endpoint that matches the exercise and data policy:
 | `gpt-4o` | Approved external model when provider-side processing is allowed |
 | `gpt-4o-mini` | Lower-cost approved external model when provider-side processing is allowed |
 
+The default Stage 100 source-code path is:
+
+```text
+nemotron-3-nano-30b-a3b through MaaS
+```
+
 The OpenAI-compatible MaaS endpoint shape is:
 
 ```text
 https://<maas-gateway-host>/maas/<model-id>/v1
 ```
 
-If the OpenShift AI dashboard gives you the full model endpoint, use that value directly for the selected model. If you are updating the templates for several models, replace `YOUR_MAAS_ROUTE` with only the gateway base URL, such as `https://<maas-gateway-host>`.
+If the OpenShift AI dashboard gives you the full model endpoint, use that value
+directly for the selected model. If you are updating the templates for several
+models, replace `YOUR_MAAS_ROUTE` with only the gateway base URL, such as
+`https://<maas-gateway-host>`.
 
-## Configure Continue
+## Step 6: Configure Continue
 
-Continue is used for IDE-based chat, code explanation, edits, and code generation. It is useful when the developer wants assistance while reading or changing files in the browser-based IDE.
+Continue is used for IDE-based chat, code explanation, edits, and code
+generation. It is useful when the developer wants assistance while reading or
+changing files in the browser-based IDE.
 
-Open `~/.continue/config.yaml` and replace the placeholders:
+Open the local workspace copy:
 
-- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full `apiBase` value with a complete model endpoint.
-- Replace `YOUR_API_KEY` with the MaaS API key generated for the demo subscription.
+```bash
+code ~/.continue/config.yaml
+```
+
+Replace the placeholders for the selected model:
+
+- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full
+  `apiBase` value with a complete model endpoint.
+- Replace `YOUR_API_KEY` with the MaaS API key generated for the demo
+  subscription.
 - Keep the `model` value aligned with the selected MaaS model ID.
 
-The source template lives in `/projects/coolstore-inventory-service/.vscode/config.yaml`. After editing the local config, select **Local Config** in the Continue sidebar.
+The committed source template remains in
+`/projects/coolstore-inventory-service/.vscode/config.yaml`. Keep real values
+only in the local home-directory copy.
 
-## Verify Continue
+![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
 
-After selecting the local config, send a harmless prompt that proves the MaaS
-path works without exposing source code or secrets:
+After editing the local config, select `Local Config` in the Continue sidebar.
+
+## Step 7: Verify Continue
+
+Send a harmless prompt that proves the MaaS path works without exposing source
+code or secrets:
 
 ```text
 Reply with the configured model name and a one-sentence description of what data
@@ -77,26 +175,47 @@ boundary this model path represents. Do not include endpoint URLs, keys, or
 source code.
 ```
 
-Record only that the prompt succeeded and which model ID was used. Do not copy
-the MaaS route, API key, or full cluster hostname into evidence.
+Record only:
 
-## Configure OpenCode
+- client: `Continue`
+- selected model ID
+- prompt result: pass/fail
+- blocker, if any
 
-OpenCode is used for terminal-based AI coding workflows. It is useful for reviewing project structure, working with diffs, asking for multi-file changes, and running command-line development tasks from the same controlled workspace.
+Do not copy the MaaS route, API key, or full cluster hostname into evidence.
 
-From the workspace terminal, open `~/.opencode/opencode.json` and replace the placeholders:
+## Step 8: Configure OpenCode
 
-- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full `baseURL` value with a complete model endpoint.
+OpenCode is used for terminal-based AI coding workflows. It is useful for
+reviewing project structure, working with diffs, asking for multi-file changes,
+and running command-line development tasks from the same controlled workspace.
+
+Open the local workspace copy:
+
+```bash
+code ~/.opencode/opencode.json
+```
+
+Replace the placeholders for the selected model:
+
+- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full
+  `baseURL` value with a complete model endpoint.
 - Replace `YOUR_API_KEY` with the same MaaS API key.
-- Keep the default model on a private local model unless the exercise explicitly calls for an approved external model.
+- Keep the default model on a private local model unless the exercise
+  explicitly calls for an approved external model.
 
-The source template lives in
+The committed source template remains in
 `/projects/coolstore-inventory-service/.opencode/opencode.json`. Keep real
 values only in the local home-directory copy.
 
-## Verify OpenCode
+## Step 9: Verify OpenCode
 
-Run `opencode` from the workspace terminal when the configuration is in place.
+Run OpenCode from the workspace terminal:
+
+```bash
+opencode
+```
+
 Use the same harmless prompt:
 
 ```text
@@ -105,13 +224,48 @@ boundary this model path represents. Do not include endpoint URLs, keys, or
 source code.
 ```
 
-Record only that OpenCode reached the selected MaaS model and which model ID was
-used. Do not copy the MaaS route, API key, or full cluster hostname into
-evidence.
+![Sanitized OpenCode verification prompt](assets/techdocs/opencode-verify.svg)
+
+Record only:
+
+- client: `OpenCode`
+- selected model ID
+- prompt result: pass/fail
+- blocker, if any
+
+Do not copy the MaaS route, API key, or full cluster hostname into evidence.
+
+## Step 10: Capture Stage 100 Evidence
+
+Use the Stage 100 evidence template from the platform repository. Evidence must
+be sanitized.
+
+Record:
+
+- Developer Hub component visible: yes/no
+- `Getting Started` opens TechDocs: yes/no
+- `Dev Spaces` opens the workspace: yes/no
+- workspace projects: `mca-coolstore`, `coolstore-inventory-service`
+- private model ready: `nemotron-3-nano-30b-a3b`
+- Continue harmless prompt passed: yes/no
+- OpenCode harmless prompt passed: yes/no
+- secrets committed: no
+
+Do not record:
+
+- API keys
+- bearer tokens
+- kubeconfigs
+- full private route hostnames
+- model provider credentials
+- source-code prompt contents that include private code
 
 ## Planned Scribe MCP Integration
 
-Scribe is a candidate MCP server for the future MTA rule-generation workflow. It is not deployed by the current Stage 070 workspace, but when Scribe is running locally or exposed as an approved MCP service, OpenCode can load it as a remote MCP server.
+Scribe is a candidate MCP server for the future MTA rule-generation workflow.
+It is not deployed by the current Stage 070 workspace, but when Scribe is
+running locally or exposed as an approved MCP service, OpenCode can load it as a
+remote MCP server.
 
 Local development endpoint:
 
@@ -145,20 +299,19 @@ Candidate OpenCode configuration:
 }
 ```
 
-Use Scribe only for reviewed modernization rule work. Generated Konveyor or Kantra rules must still be validated, tested against expected matches and known non-matches, and approved by a human before use.
+Use Scribe only for reviewed modernization rule work. Generated Konveyor or
+Kantra rules must still be validated, tested against expected matches and known
+non-matches, and approved by a human before use.
 
 ## MTA Extensions
 
-The MTA VS Code extensions are included so the same controlled workspace can support the modernization workflow introduced in Stage 080. They help developers review MTA analysis findings and act on modernization issues without leaving Dev Spaces.
+The MTA VS Code extensions are included so the same controlled workspace can
+support the modernization workflow introduced in Stage 080. They help
+developers review MTA analysis findings and act on modernization issues without
+leaving Dev Spaces.
 
-Stage 070 only prepares the IDE side of that workflow. Stage 080 deploys Migration Toolkit for Applications, Red Hat Developer Lightspeed for MTA, and the server-side MaaS-backed LLM proxy configuration. Do not put MaaS API keys directly into the MTA extension configuration unless a later exercise explicitly instructs you to do so.
-
-## Validation Checklist
-
-- Dev Spaces opens the `exercises` workspace.
-- Continue appears in the IDE and uses `~/.continue/config.yaml`.
-- Continue can send a request to the selected MaaS model.
-- `opencode` starts from the terminal and uses the configured MaaS model.
-- OpenCode can send a request to the selected MaaS model.
-- No MaaS API key or provider key is committed to Git.
-- External models are used only when the demo policy allows provider-side processing.
+Stage 070 only prepares the IDE side of that workflow. Stage 080 deploys
+Migration Toolkit for Applications, Red Hat Developer Lightspeed for MTA, and
+the server-side MaaS-backed LLM proxy configuration. Do not put MaaS API keys
+directly into the MTA extension configuration unless a later exercise explicitly
+instructs you to do so.

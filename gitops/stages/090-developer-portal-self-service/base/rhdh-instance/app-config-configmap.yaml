@@ -19,6 +19,7 @@ data:
       reading:
         allow:
           - host: raw.githubusercontent.com
+          - host: github.com
     auth:
       environment: production
       session:
@@ -41,3 +42,9 @@ data:
       locations:
         - type: file
           target: ${RHDH_CATALOG_URL}
+    techdocs:
+      builder: local
+      generator:
+        runIn: local
+      publisher:
+        type: local

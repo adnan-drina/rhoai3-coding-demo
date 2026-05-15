@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="650" viewBox="0 0 1160 650" role="img" aria-labelledby="title desc">
+  <title id="title">OpenCode MaaS verification</title>
+  <desc id="desc">Sanitized printscreen-style image showing an OpenCode terminal verification prompt.</desc>
+  <rect width="1160" height="650" fill="#1f1f1f"/>
+  <rect x="48" y="42" width="1064" height="566" rx="8" fill="#101010" stroke="#4d4d4d" stroke-width="2"/>
+  <rect x="48" y="42" width="1064" height="56" rx="8" fill="#2d2d2d"/>
+  <text x="82" y="78" font-family="Arial, sans-serif" font-size="22" fill="#e6e6e6">workspace terminal</text>
+  <g font-family="Menlo, Consolas, monospace" font-size="23" fill="#d4d4d4">
+    <text x="82" y="150">$ opencode</text>
+    <text x="82" y="205">&gt; Reply with the configured model name and a one-sentence</text>
+    <text x="82" y="240">&gt; description of what data boundary this model path represents.</text>
+    <text x="82" y="310" fill="#9cdcfe">model: nemotron-3-nano-30b-a3b</text>
+    <text x="82" y="350" fill="#c7c7c7">This private MaaS path keeps source-code prompts on the</text>
+    <text x="82" y="385" fill="#c7c7c7">approved on-cluster model route for the demo.</text>
+  </g>
+  <rect x="82" y="500" width="996" height="54" rx="6" fill="#151515" stroke="#4d4d4d"/>
+  <text x="112" y="535" font-family="Arial, sans-serif" font-size="20" fill="#c7c7c7">Record success and model ID only. Do not record route URLs or keys.</text>
+</svg>

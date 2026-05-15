@@ -118,6 +118,17 @@ else
     echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing Dev Spaces link"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
+if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* ]]; then
+    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains TechDocs placeholders"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+elif [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore-inventory-service"* ]] && \
+     [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated TechDocs links"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs links"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
 
 log_step "RHDH Configuration"
 check "RHDH config uses OIDC sign-in" \
@@ -126,6 +137,9 @@ check "RHDH config uses OIDC sign-in" \
 check "RHDH config references demo catalog" \
   "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
   'target: ${RHDH_CATALOG_URL}'
+check "RHDH config enables local TechDocs builder for demo use" \
+  "oc get configmap app-config-rhdh -n rhdh -o jsonpath='{.data.app-config-rhdh\\.yaml}'" \
+  "techdocs:"
 check "RHDH dynamic plugins config exists" \
   "oc get configmap dynamic-plugins-rhdh -n rhdh -o jsonpath='{.data.dynamic-plugins\\.yaml}'" \
   "dynamic-plugins.default.yaml"

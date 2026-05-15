@@ -19,17 +19,18 @@ This stage adds the developer portal foundation for platform self-service.
 - OIDC authentication through the MTA Keycloak / Red Hat build of Keycloak realm, brokered back to OpenShift OAuth.
 - Developer Lightspeed for RHDH as an AI-assisted portal experience.
 - OpenShift launcher integration and initial catalog content for demo users, teams, ownership, lifecycle, and the `coolstore` component.
+- TechDocs publishing for the governed developer workspace guide.
 
 The capability added is the portal foundation: a catalog-backed place to describe ownership, lifecycle, source links, and the platform relationships around the AI-assisted modernization workflow.
 
 ## What To Notice And Why It Matters
 
-Stage 090 makes Red Hat Developer Hub the front door for platform consumption. The implementation provides Red Hat Developer Hub 1.9, OIDC authentication through the MTA Keycloak / Red Hat build of Keycloak realm, Developer Lightspeed for RHDH, an OpenShift ConsoleLink, and catalog content for demo users, teams, and the `coolstore` component.
+Stage 090 makes Red Hat Developer Hub the front door for platform consumption. The implementation provides Red Hat Developer Hub 1.9, OIDC authentication through the MTA Keycloak / Red Hat build of Keycloak realm, Developer Lightspeed for RHDH, an OpenShift ConsoleLink, catalog content for demo users and teams, and TechDocs-backed guidance for the Coolstore developer workflow.
 
 The essential proof point is discoverability with enterprise access control:
 
 - Developers open Developer Hub from the OpenShift launcher and sign in through the OpenShift-backed identity chain.
-- The catalog gives application teams a central place for ownership, lifecycle, tags, and source context.
+- The catalog gives application teams a central place for ownership, lifecycle, tags, source context, and developer workflow documentation.
 - Developer Lightspeed for RHDH introduces an AI-assisted portal experience without embedding unmanaged provider credentials.
 - Red Hat Developer Hub provides the governed catalog surface where platform services can be documented, discovered, and consumed.
 
@@ -37,7 +38,7 @@ This matters because platform capabilities only change engineering behavior when
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat Developer Hub provides an enterprise developer portal based on Backstage. Backstage supplies the software catalog model for components, ownership, lifecycle, systems, APIs, resources, and documentation, while Red Hat packages the portal for OpenShift with operator-based deployment, supported configuration patterns, and dynamic plugin management.
+Red Hat Developer Hub provides an enterprise developer portal based on Backstage. Backstage supplies the software catalog model for components, ownership, lifecycle, systems, APIs, resources, and documentation, while Red Hat packages the portal for OpenShift with operator-based deployment, supported configuration patterns, and dynamic plugin management. TechDocs renders the workspace guide from `rhoai3-coding-demo` through MkDocs so the developer can read governed workflow instructions from the portal without cloning the platform repository into Dev Spaces.
 
 In this demo, Developer Hub uses OIDC through the MTA Keycloak / Red Hat build of Keycloak realm, which brokers identity back to OpenShift OAuth. That keeps the portal aligned with the same OpenShift-backed identity story used by Red Hat OpenShift AI, Red Hat OpenShift Dev Spaces, MTA, and MaaS. GitOps-managed catalog configuration then makes the portal a governed discovery surface rather than another hand-maintained documentation site.
 
@@ -62,7 +63,7 @@ Red Hat Developer Hub is a discovery and self-service surface, so it should link
 
 - Add direct Coolstore links for Red Hat OpenShift Dev Spaces, MTA, MaaS, and OpenShift Console.
 - Add MaaS `Resource` and `API` catalog entities for private and governed external models.
-- Add TechDocs for the Coolstore modernization runbook.
+- Move the demo TechDocs publisher from the local builder to external object storage before treating it as a production pattern.
 - Add a Software Template for "Modernize Java EE application with MTA."
 - Add OpenShift and Argo CD plugins for resource and GitOps visibility.
 - Evaluate the OpenShift AI Connector once the base portal story is stable.

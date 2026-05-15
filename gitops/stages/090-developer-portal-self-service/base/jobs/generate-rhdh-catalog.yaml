@@ -2,7 +2,8 @@
 #
 # The Git-tracked catalog template intentionally contains a placeholder Dev
 # Spaces URL. This job replaces that placeholder with the current cluster route
-# and writes the generated catalog to a ConfigMap mounted into the RHDH pod.
+# It also replaces the placeholder RHDH URL used for TechDocs links and writes
+# the generated catalog to a ConfigMap mounted into the RHDH pod.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -115,6 +116,15 @@ spec:
           fi
           DEVSPACES_URL="https://${DEVSPACES_HOST}"
 
+          echo "Discovering RHDH route..."
+          RHDH_HOST=$(oc get route -n rhdh --no-headers 2>/dev/null \
+            | grep backstage | awk '{print $2}' | head -1 || true)
+          if [ -z "$RHDH_HOST" ]; then
+            echo "ERROR: RHDH route not found"
+            exit 1
+          fi
+          RHDH_URL="https://${RHDH_HOST}"
+
           echo "Discovering catalog source from Argo CD..."
           APP_REPO_URL=$(oc get application 090-developer-portal-self-service -n openshift-gitops \
             -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
@@ -137,18 +147,26 @@ spec:
           curl -fsSL "${SOURCE_CATALOG_URL}" -o /tmp/catalog-template.yaml
 
           echo "Generating runtime catalog..."
-          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" <<'PY'
+          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_TARGET_REVISION}" <<'PY'
           import pathlib
           import sys
 
           source = pathlib.Path(sys.argv[1])
           target = pathlib.Path(sys.argv[2])
           devspaces_url = sys.argv[3].rstrip("/")
+          rhdh_url = sys.argv[4].rstrip("/")
+          revision = sys.argv[5]
 
           content = source.read_text()
           content = content.replace("https://devspaces.placeholder.example.com", devspaces_url)
+          content = content.replace("https://rhdh.placeholder.example.com", rhdh_url)
+          content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
           if "devspaces.placeholder.example.com" in content:
               raise SystemExit("Dev Spaces placeholder was not replaced")
+          if "rhdh.placeholder.example.com" in content:
+              raise SystemExit("RHDH placeholder was not replaced")
+          if "__RHOAI3_DEMO_REVISION__" in content:
+              raise SystemExit("Repository revision placeholder was not replaced")
           target.write_text(content)
           PY
 
@@ -167,4 +185,4 @@ spec:
             oc create configmap catalog-runtime-rhdh -n rhdh --from-file=all.yaml=/tmp/catalog-runtime.yaml
           fi
 
-          echo "Runtime catalog generated with cluster-local Dev Spaces link"
+          echo "Runtime catalog generated with cluster-local Dev Spaces and TechDocs links"
