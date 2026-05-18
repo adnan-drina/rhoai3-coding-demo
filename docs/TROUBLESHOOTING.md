@@ -183,7 +183,7 @@ oc get events -n maas --sort-by=.lastTimestamp | tail -30
 
 **Affected stage:** Stage 040
 
-**Likely cause:** the Red Hat OpenShift AI MaaS controller or `maas-api` deployment is not ready, `MaaSModelRef` resources are not ready, or the dashboard feature flags have not been reconciled after an operator upgrade.
+**Likely cause:** the Red Hat OpenShift AI MaaS controller or `maas-api` deployment is not ready, the `models-as-a-service/default-tenant` reconciliation failed, `MaaSModelRef` resources are not ready, or the dashboard feature flags have not been reconciled after an operator upgrade. In RHOAI 3.4 environments, also check that the MaaS `Config/default` anchor exists and that the `redhat-ods-applications/maas-db-config` secret is present. Without the database connection secret, the operator-managed `maas-api` service can exist with no backing endpoint, which makes the dashboard tab appear empty.
 
 **Diagnose:**
 
@@ -193,6 +193,13 @@ oc get deployment maas-api -n redhat-ods-applications \
 
 oc get dsc default-dsc \
   -o jsonpath='{.status.conditions[?(@.type=="ModelsAsServiceReady")].status}{" "}{.status.conditions[?(@.type=="ModelsAsServiceReady")].reason}{"\n"}'
+
+oc get tenant default-tenant -n models-as-a-service \
+  -o jsonpath='{.status.phase}{" "}{.status.conditions[?(@.type=="Ready")].reason}{"\n"}'
+
+oc get config.maas.opendatahub.io default
+oc get secret maas-db-config -n redhat-ods-applications
+oc get endpoints maas-api -n redhat-ods-applications
 
 oc get maasmodelref -n maas
 oc get externalmodel -n maas
@@ -214,6 +221,7 @@ oc rollout status deployment/maas-api -n redhat-ods-applications
 Then re-run:
 
 ```bash
+argocd app sync 040-governed-models-as-a-service
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 

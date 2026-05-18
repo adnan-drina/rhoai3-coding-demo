@@ -10,6 +10,7 @@ resources:
   - rhcl-operator/subscription.yaml
   - cloudnative-pg/subscription.yaml
   - jobs/approve-cloudnative-pg-installplan.yaml
+  - database/maas-db-bootstrap.yaml
   - grafana/namespace.yaml
   - grafana/operatorgroup.yaml
   - grafana/subscription.yaml

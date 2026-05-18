@@ -19,6 +19,7 @@ This stage adds the governed Models-as-a-Service access layer for private models
 - A MaaS model catalog and API path so private models can be discovered and consumed as shared platform resources.
 - MaaS model references, authorization policy, and subscription resources for the local model portfolio.
 - Central API key issuance so consumers do not manage direct model credentials.
+- A demo PostgreSQL database and `maas-db-config` connection secret for MaaS API key metadata.
 - User tiers, rate limits, token limits, and telemetry policies for predictable model consumption.
 - Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a policy-enforced API path.
 - Showback dashboards and GuideLLM-based validation helpers for usage visibility and repeatable model comparison.
@@ -42,7 +43,7 @@ This matters because enterprise AI adoption breaks down when every team manages 
 
 Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI 3.4 provides the MaaS controller, API, model references, subscription APIs, and model-serving context; MaaS is documented as a Technology Preview capability. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
 
-GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, telemetry helpers, and validation assets. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin pre-release upstream controller images or override operator-managed deployments. Treat GuideLLM and the disposable dashboards as workshop helpers, not production observability or evaluation platforms.
+GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, telemetry helpers, validation assets, and the disposable PostgreSQL backing service needed for MaaS API key metadata. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin pre-release upstream controller images or override operator-managed deployments. Treat GuideLLM, the generated demo database password, and the disposable dashboards as workshop helpers, not production observability, credential management, or evaluation platforms.
 
 ## Trust Boundaries
 

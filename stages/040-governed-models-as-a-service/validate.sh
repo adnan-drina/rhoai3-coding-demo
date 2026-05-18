@@ -22,6 +22,22 @@ check_crd_exists "maasmodelrefs.maas.opendatahub.io"
 check_crd_exists "maasauthpolicies.maas.opendatahub.io"
 check_crd_exists "maassubscriptions.maas.opendatahub.io"
 check_crd_exists "externalmodels.maas.opendatahub.io"
+check_crd_exists "configs.maas.opendatahub.io"
+check_crd_exists "tenants.maas.opendatahub.io"
+
+log_step "MaaS database"
+check "MaaS Config anchor exists" \
+  "oc get config.maas.opendatahub.io default -o jsonpath='{.metadata.name}'" \
+  "default"
+check "MaaS PostgreSQL cluster exists" \
+  "oc get cluster maas-db -n redhat-ods-applications -o jsonpath='{.metadata.name}'" \
+  "maas-db"
+check "MaaS PostgreSQL write endpoint exists" \
+  "oc get endpoints maas-db-rw -n redhat-ods-applications -o jsonpath='{.subsets[*].addresses[*].ip}'" \
+  "."
+check "MaaS database connection secret exists" \
+  "oc get secret maas-db-config -n redhat-ods-applications -o jsonpath='{.metadata.name}'" \
+  "maas-db-config"
 
 log_step "Gateway and policy"
 check "MaaS GatewayClass accepted" \
@@ -50,9 +66,15 @@ log_step "MaaS API"
 check "Tenant-managed maas-api deployment ready" \
   "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.status.readyReplicas}'" \
   "1"
+check "Tenant-managed maas-api endpoint ready" \
+  "oc get endpoints maas-api -n redhat-ods-applications -o jsonpath='{.subsets[*].addresses[*].ip}'" \
+  "."
 check "RHOAI MaaS controller deployment ready" \
   "oc get deployment maas-controller -n redhat-ods-applications -o jsonpath='{.status.readyReplicas}'" \
   "1"
+check "MaaS tenant active" \
+  "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.status.phase}'" \
+  "Active"
 check "DataScienceCluster MaaS component ready" \
   "oc get dsc default-dsc -o jsonpath='{.status.conditions[?(@.type==\"ModelsAsServiceReady\")].status}'" \
   "True"
@@ -114,7 +136,7 @@ check "Gateway RateLimitPolicy enforced" \
   "oc get ratelimitpolicy gateway-rate-limits -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
 check "MaaS telemetry policy enforced" \
-  "oc get telemetrypolicy maas-telemetry -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
+  "oc get telemetrypolicy user-group -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
 
 log_step "Grafana"
