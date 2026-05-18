@@ -18,8 +18,9 @@ At the end of Stage 100, the developer has verified:
 - Developer Hub opens this TechDocs guide from the `Getting Started` link.
 - Each `Dev Spaces` link opens a single-repository workspace for the selected
   component.
-- Continue is configured locally with a MaaS route and API key.
-- OpenCode is configured locally with the same MaaS route and API key.
+- Continue is configured locally by the workspace startup command with MaaS
+  routes and API keys.
+- OpenCode is configured locally by the same startup command.
 - Both tools can reach `nemotron-3-nano-30b-a3b` through MaaS with a harmless
   verification prompt.
 - No route URL, API key, token, kubeconfig, or provider credential is committed.
@@ -37,9 +38,10 @@ single-repository workspaces for the demo personas:
 The Developer Hub `Dev Spaces` links use the OpenShift Dev Spaces supported Git
 repository URL launch pattern, `https://<devspaces-host>#<git-repository-url>`,
 so the workspace opens with only the selected repository. The platform owns the
-workspace definition, tooling image, source repositories, and model access path.
-The user creates a MaaS API key and places it only into local tool configuration
-files inside the workspace.
+workspace definition, tooling image, source repositories, model access path, and
+workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
+`Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
+renders local Continue and OpenCode config files from that Secret.
 
 ## Step 1: Start From Developer Hub
 
@@ -67,18 +69,17 @@ overview.
 3. Start or open the workspace for the selected component.
 4. Wait for the IDE to open and for the startup command to finish.
 
-During first startup, the onboarding and inventory workspaces copy the
-Git-tracked templates into local home-directory config:
+During startup, the onboarding and inventory workspaces render local
+home-directory config from the platform-managed MaaS API key Secret:
 
-- `/projects/<repo>/.continue/config.yaml` to `~/.continue/config.yaml`
-- `/projects/<repo>/.opencode/opencode.template.json` to
-  `~/.config/opencode/opencode.json`
+- `~/.continue/config.yaml`
+- `~/.config/opencode/opencode.json`
+- `~/.opencode/opencode.json` as an OpenCode compatibility link or copy
 
-The startup command keeps existing `~/.continue/config.yaml` and
-`~/.config/opencode/opencode.json` files on later workspace starts. Edit only
-the `~` files with real MaaS values. Do not put real route URLs or API keys into
-`/projects/<repo>/.continue/config.yaml` or
-`/projects/<repo>/.opencode/opencode.template.json`; those are Git-tracked
+If the Secret is not ready, the startup command falls back to the checked-in
+templates so the workspace still opens. Do not put real route URLs or API keys
+into `/projects/<repo>/.continue/config.yaml` or
+`/projects/<repo>/.opencode/opencode.template.json`; those remain Git-tracked
 templates.
 
 OpenCode uses `~/.config/opencode/opencode.json` for user/provider
@@ -122,42 +123,24 @@ workspace appears, it is stale state from a previous workspace volume. Stop it
 and open the component-specific `Dev Spaces` link before recording Stage 100 as
 green.
 
-## Step 4: Create A MaaS API Key
+## Step 4: Confirm MaaS API Keys
 
-Use the OpenShift AI dashboard to generate a MaaS-issued API key for the
-approved demo subscription.
+Stage deployment creates API keys for the demo models and stores them in the
+developer workspace namespace. The normal developer flow does not require
+copying keys from the OpenShift AI dashboard.
 
-1. Open the Red Hat OpenShift AI dashboard.
-2. In the left navigation, open `Gen AI studio`.
-3. Open `AI asset endpoints`.
-4. Select the project used for the coding assistant demo.
-5. Open the `Models as a service` tab.
-6. Confirm the MaaS model rows are active.
+From the workspace terminal, confirm the local config files were generated:
 
-![MaaS model endpoint list](assets/techdocs/maas-asset-endpoints-list.png)
+```bash
+test -f ~/.continue/config.yaml && echo "Continue config present"
+test -f ~/.config/opencode/opencode.json && echo "OpenCode config present"
+test -f ~/.opencode/opencode.json && echo "OpenCode compatibility path present"
+```
 
-Use the `nemotron-3-nano-30b-a3b` row for the default private source-code path.
-Click `View` to open the model route and API key dialog.
-
-![MaaS Generate API Key action](assets/techdocs/maas-generate-api-key.svg)
-
-Copy two values from the dialog:
-
-- the MaaS route for the selected model path;
-- the generated API key.
-
-If the API key has not been generated yet, click `Generate API Key`. After the
-key appears, copy and store it immediately. MaaS shows the generated key only
-once.
-
-![MaaS copy-once token dialog](assets/techdocs/maas-copy-token.svg)
-
-Copy the key only into the workspace tool configuration. Do not commit it,
-paste it into README files, or store it in Git. MaaS keys are platform-issued
-credentials and must be treated as secrets.
-
-The screenshots in this guide are sanitized. They show the workflow without
-recording the real route, generated token, or full private cluster hostname.
+Platform operators can inspect key records in Red Hat OpenShift AI by opening
+`Gen AI studio` and then `API keys`. MaaS shows generated key values only once,
+so do not rely on the dashboard as a source for workspace startup. The
+workspace reads the values from the Kubernetes Secret created by Stage 070.
 
 ## Step 5: Choose The Model Endpoint
 
@@ -187,35 +170,25 @@ directly for the selected model. If you are updating the templates for several
 models, replace `YOUR_MAAS_ROUTE` with only the gateway base URL, such as
 `https://<maas-gateway-host>`.
 
-## Step 6: Configure Continue
+## Step 6: Verify Continue Configuration
 
 Continue is used for IDE-based chat, code explanation, edits, and code
 generation. It is useful when the developer wants assistance while reading or
 changing files in the browser-based IDE.
 
-Open the live workspace config from the Dev Spaces terminal:
+Inspect the generated config from the Dev Spaces terminal:
 
 ```bash
-vi ~/.continue/config.yaml
+grep -E "model:|apiBase:" ~/.continue/config.yaml
 ```
 
-Replace the placeholders for the selected model:
-
-- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full
-  `apiBase` value with a complete model endpoint.
-- Replace `YOUR_API_KEY` with the MaaS API key generated for the demo
-  subscription.
-- Keep the `model` value aligned with the selected MaaS model ID.
-
-The committed source template remains in the selected repository. Keep real
-values only in the local home-directory copy.
-
-In `vi`, press `i` to edit, press `Esc` when finished, then type `:wq` and
-press `Enter` to save.
+Do not print `apiKey` values. The generated config should include
+`nemotron-3-nano-30b-a3b`, `gpt-oss-20b`, `gpt-4o`, and `gpt-4o-mini` with
+MaaS OpenAI-compatible endpoints.
 
 ![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
 
-After editing the local config, select `Local Config` in the Continue sidebar.
+Select `Local Config` in the Continue sidebar.
 
 ## Step 7: Verify Continue
 
@@ -237,34 +210,25 @@ Record only:
 
 Do not copy the MaaS route, API key, or full cluster hostname into evidence.
 
-## Step 8: Configure OpenCode
+## Step 8: Verify OpenCode Configuration
 
 OpenCode is used for terminal-based AI coding workflows. It is useful for
 reviewing project structure, working with diffs, asking for multi-file changes,
 and running command-line development tasks from the same controlled workspace.
 
-Open the live workspace config from the Dev Spaces terminal:
+Inspect the generated config from the Dev Spaces terminal:
 
 ```bash
-vi ~/.config/opencode/opencode.json
+jq '.model, .small_model, (.provider | keys)' ~/.config/opencode/opencode.json
 ```
 
-Replace the placeholders for the selected model:
-
-- Replace `YOUR_MAAS_ROUTE` with the MaaS gateway base URL, or replace the full
-  `baseURL` value with a complete model endpoint.
-- Replace `YOUR_API_KEY` with the same MaaS API key.
-- Keep the default model on a private local model unless the exercise
-  explicitly calls for an approved external model.
-
-The committed source template remains in the selected repository. Keep real
-values only in the local home-directory copy.
+Do not print provider `apiKey` values. The default model remains the private
+local Nemotron model unless the exercise explicitly calls for an approved
+external model.
 
 The Stage 100 onboarding template sets the private Nemotron OpenCode output
 budget to 16,384 tokens so longer coding answers are less likely to stop at the
 client-side limit before the model finishes.
-
-Use the same `vi` save flow: `i`, edit, `Esc`, `:wq`, `Enter`.
 
 ## Step 9: Verify OpenCode
 

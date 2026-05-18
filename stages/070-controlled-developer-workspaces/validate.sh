@@ -70,5 +70,26 @@ check "ai-developer workspace RoleBinding grants edit" \
     "oc get rolebinding wksp-edit-ai-developer -n wksp-ai-developer -o jsonpath='{.roleRef.name}'" \
     "edit"
 
+log_step "MaaS AI Tool Auto-Configuration"
+check "DevWorkspace MaaS key provisioner Job completed" \
+    "oc get job provision-devspace-maas-api-keys -n wksp-ai-developer -o jsonpath='{.status.succeeded}'" \
+    "1"
+check "DevWorkspace AI tools init ConfigMap exists" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+    "devspace-ai-tools-init"
+check "DevWorkspace MaaS API key Secret exists" \
+    "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+    "maas-devspace-api-keys"
+for key_name in \
+    MAAS_BASE_URL \
+    MAAS_API_KEY_NEMOTRON \
+    MAAS_API_KEY_GPT_OSS \
+    MAAS_API_KEY_GPT_4O \
+    MAAS_API_KEY_GPT_4O_MINI; do
+    check "DevWorkspace MaaS Secret contains $key_name" \
+        "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \
+        "present"
+done
+
 echo ""
 validation_summary

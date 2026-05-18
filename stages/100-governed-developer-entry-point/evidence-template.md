@@ -52,10 +52,11 @@ Manual actions:
 - Confirm the `MCA Coolstore` Dev Spaces link opens only `mca-coolstore`.
 - Confirm the private source-code model path is `nemotron-3-nano-30b-a3b`
   through MaaS.
-- Configure the local workspace copy of `~/.continue/config.yaml` with the
-  MaaS route and API key.
-- Configure the local workspace copy of `~/.config/opencode/opencode.json` with the
-  same MaaS route and API key.
+- Confirm Stage 070 created `Secret/wksp-ai-developer/maas-devspace-api-keys`.
+- Confirm the workspace startup command generated `~/.continue/config.yaml`
+  from the MaaS API key Secret.
+- Confirm the workspace startup command generated
+  `~/.config/opencode/opencode.json` from the same Secret.
 - Send one harmless verification prompt from Continue and one from OpenCode.
   The prompt must not include source code, route URLs, API keys, or tokens.
 
@@ -73,14 +74,15 @@ Manual actions:
 - `wksp-ai-developer/coolstore-inventory-service` phase:
 - `wksp-ai-developer/mca-coolstore` phase:
 - Component-specific workspaces contain only their selected repository: yes/no
+- Stage 070 MaaS API key Secret present: yes/no
 - Private models ready:
   - `nemotron-3-nano-30b-a3b`: yes/no
   - `gpt-oss-20b`: yes/no
-- Continue configured in workspace only:
+- Continue generated in workspace only:
   - config path: `~/.continue/config.yaml`
   - selected model ID:
   - harmless MaaS verification prompt passed: yes/no
-- OpenCode configured in workspace only:
+- OpenCode generated in workspace only:
   - config path: `~/.config/opencode/opencode.json`
   - compatibility path present: `~/.opencode/opencode.json` yes/no
   - selected model ID:

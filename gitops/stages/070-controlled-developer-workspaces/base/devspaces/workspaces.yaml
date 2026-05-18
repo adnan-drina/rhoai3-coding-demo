@@ -517,35 +517,28 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
+            PROJECT_DIR="/projects/getting-started-ai-coding"
+            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
+            KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+            KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+            if curl -fsS --cacert "${KUBE_CA}"                 -H "Authorization: Bearer ${KUBE_TOKEN}"                 "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init"                 | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh                 && [ -s /tmp/init-ai-tools.sh ]; then
+              chmod 700 /tmp/init-ai-tools.sh
+              /tmp/init-ai-tools.sh "${PROJECT_DIR}" "getting-started-ai-coding"
             else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
-                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.continue/config.yaml ]; then
+                cp "${PROJECT_DIR}/.continue/config.yaml" ~/.continue/config.yaml 2>/dev/null || true
+                echo "Created ~/.continue/config.yaml from the repo template."
               else
-                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
+                echo "Kept existing ~/.continue/config.yaml."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
             fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container
@@ -593,35 +586,28 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
+            PROJECT_DIR="/projects/coolstore-inventory-service"
+            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
+            KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+            KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+            KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+            if curl -fsS --cacert "${KUBE_CA}"                 -H "Authorization: Bearer ${KUBE_TOKEN}"                 "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init"                 | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh                 && [ -s /tmp/init-ai-tools.sh ]; then
+              chmod 700 /tmp/init-ai-tools.sh
+              /tmp/init-ai-tools.sh "${PROJECT_DIR}" "coolstore-inventory-service"
             else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
-                cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+              mkdir -p ~/.continue ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.continue/config.yaml ]; then
+                cp "${PROJECT_DIR}/.continue/config.yaml" ~/.continue/config.yaml 2>/dev/null || true
+                echo "Created ~/.continue/config.yaml from the repo template."
               else
-                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
+                echo "Kept existing ~/.continue/config.yaml."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
             fi
             curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
           component: tooling-container

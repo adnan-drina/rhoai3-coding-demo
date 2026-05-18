@@ -47,8 +47,9 @@ workspace with only that repository loaded:
 - `mca-coolstore` for migration and modernization.
 
 The onboarding and inventory workspaces include Continue, OpenCode, and the
-developer tooling image; the remaining user step is to connect the tools to
-MaaS.
+developer tooling image. The `wksp-ai-developer` workspaces also receive
+platform-provisioned MaaS API keys through a namespace Secret, so Continue and
+OpenCode can be configured automatically at workspace startup.
 
 Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode
 provides a terminal-based agent workflow for developers who prefer command-line
@@ -56,7 +57,13 @@ interaction. The MTA VS Code extensions are preloaded in the `mca-coolstore`
 workspace for the `ai-admin` and `ai-developer` personas so modernization
 findings can later be reviewed and acted on from the same controlled workspace.
 
-In the OpenShift AI dashboard, generate a MaaS API key for the approved demo subscription, then configure Continue and OpenCode with the MaaS OpenAI-compatible endpoint, the MaaS-issued API key, and the model ID selected for the exercise. Use the private local model when working with sensitive code; use approved external models only when the demo policy allows provider-side processing.
+Stage deployment creates one MaaS API key per demo model for the developer
+workspace namespace and stores them in `Secret/wksp-ai-developer/maas-devspace-api-keys`.
+The workspace startup command renders `~/.continue/config.yaml`,
+`~/.config/opencode/opencode.json`, and the OpenCode compatibility path from
+that Secret. Real keys are never committed to Git. Use the private local model
+when working with sensitive code; use approved external models only when the
+demo policy allows provider-side processing.
 
 Detailed user steps are captured in [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md).
 

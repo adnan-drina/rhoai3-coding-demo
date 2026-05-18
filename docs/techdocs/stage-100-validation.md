@@ -18,8 +18,10 @@ Stage 100 is green only when all of these checks pass:
 - The onboarding workspace contains only `getting-started-ai-coding`.
 - The inventory workspace contains only `coolstore-inventory-service`.
 - The modernization workspace contains only `mca-coolstore`.
-- `~/.continue/config.yaml` is configured in the workspace only.
-- `~/.config/opencode/opencode.json` is configured in the workspace only.
+- `Secret/wksp-ai-developer/maas-devspace-api-keys` exists and is not copied
+  into Git.
+- `~/.continue/config.yaml` is generated in the workspace only.
+- `~/.config/opencode/opencode.json` is generated in the workspace only.
 - `~/.opencode/opencode.json` exists only as the OpenCode compatibility path.
 - Continue completes a harmless prompt against `nemotron-3-nano-30b-a3b`
   through MaaS.

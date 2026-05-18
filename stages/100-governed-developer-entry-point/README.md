@@ -71,8 +71,9 @@ The developer does not ask the AI to write code yet. The first task is orientati
 ### MaaS Client Configuration And Verification
 
 Stage 100 owns the client connection check. Stage 110 should not start until
-both Continue and OpenCode have been configured in the running Dev Spaces
-workspace and verified against the selected MaaS model.
+the running Dev Spaces workspace has rendered Continue and OpenCode
+configuration from the Stage 070 MaaS API key Secret and both clients have been
+verified against the selected MaaS model.
 
 The expected source-code path is:
 
@@ -80,20 +81,22 @@ The expected source-code path is:
 nemotron-3-nano-30b-a3b through MaaS
 ```
 
-The workspace starts with committed templates that contain placeholders only.
-The developer must place the actual MaaS route and API key into the local
-workspace copies:
+The application repositories keep committed templates with placeholders only.
+Stage 070 provisions MaaS API keys into
+`Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
+uses that Secret to render the local workspace copies:
 
 - `~/.continue/config.yaml`
 - `~/.config/opencode/opencode.json`
 
 The current Dev Spaces OpenCode build can also read
 `~/.opencode/opencode.json`. Stage 070 keeps that legacy path as a compatibility
-link or copy, while the canonical file to edit is
+link or copy, while the canonical generated file is
 `~/.config/opencode/opencode.json`.
 
-Do not edit the committed templates with real route or key values. Do not paste
-the route, API key, model token, or full private cluster hostname into evidence.
+Do not edit the committed templates with real route or key values. Do not print
+or paste API keys, model tokens, or full private cluster hostnames into
+evidence.
 
 Use harmless verification prompts that prove connectivity without sending source
 code:
