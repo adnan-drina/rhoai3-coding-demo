@@ -63,12 +63,12 @@ check "gpt-oss-20b targets MaaS Gateway" \
 check "nemotron-3-nano-30b-a3b targets MaaS Gateway" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
   "openshift-ingress/maas-default-gateway"
-check "gpt-oss-20b enables llm-d scheduler block" \
+check "gpt-oss-20b enables llm-d scheduler endpoint picker" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.router.scheduler}'" \
-  "{}"
-check "nemotron-3-nano-30b-a3b enables llm-d scheduler block" \
+  "\"number\":9002"
+check "nemotron-3-nano-30b-a3b enables llm-d scheduler endpoint picker" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.scheduler}'" \
-  "{}"
+  "\"number\":9002"
 check "gpt-oss-20b enables vLLM scale-ready runtime arguments" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
   "--enable-prefix-caching"
