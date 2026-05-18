@@ -66,12 +66,12 @@ subjects:
   namespace: openshift-gitops
 EOF
 
-log_step "Configuring resource tracking method"
+log_step "Configuring resource tracking and controller resources"
 
 until oc get argocd openshift-gitops -n openshift-gitops &>/dev/null; do sleep 5; done
 oc patch argocd openshift-gitops -n openshift-gitops --type merge \
-    -p '{"spec":{"resourceTrackingMethod":"annotation"}}' 2>/dev/null \
-    && log_success "Resource tracking set to annotation (GitOps 1.19 default)" \
+    -p '{"spec":{"resourceTrackingMethod":"annotation","controller":{"resources":{"requests":{"cpu":"250m","memory":"2Gi"},"limits":{"cpu":"2","memory":"4Gi"}}}}}' 2>/dev/null \
+    && log_success "Resource tracking and controller resources configured" \
     || log_warn "Could not patch ArgoCD tracking method (may not be ready yet)"
 
 log_step "Configuring custom resource health checks"
