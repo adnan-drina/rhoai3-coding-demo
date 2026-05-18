@@ -78,6 +78,19 @@ check "DSCInitialization exists" \
 check "DSCInitialization monitoring managed" \
     "oc get dsci default-dsci -o jsonpath='{.spec.monitoring.managementState}{\" \"}{.spec.monitoring.namespace}'" \
     "Managed redhat-ods-monitoring"
+check "RHOAI monitoring CR Ready" \
+    "oc get monitoring default-monitoring -o jsonpath='{.status.phase}'" \
+    "Ready"
+check "RHOAI monitoring stack available" \
+    "oc get monitoringstack data-science-monitoringstack -n redhat-ods-monitoring -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "Prometheus web TLS CA Secret exists" \
+    "test -n \"\$(oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring -o jsonpath='{.data.service-ca\\.crt}')\" && echo true" \
+    "true"
+check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=prometheus" 1
+check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=alertmanager" 2
+check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=opentelemetry-collector" 1
+check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=tempo" 1
 
 log_step "DataScienceCluster"
 check "DataScienceCluster phase Ready" \

@@ -44,6 +44,9 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 - [x] ~~**Tokens-bridge** (`tokens-bridge/deployment.yaml`) — The compatibility bridge translated `/maas-api/v1/tokens` to `/v1/api-keys` for older Playground/dashboard call paths. The active GitOps path now relies on the product MaaS API key path and no longer deploys this bridge.~~
 
+- [ ] **RHOAI monitoring service-ca Secret sync** — The generated RHOAI 3.4 `MonitoringStack` references `Secret/prometheus-web-tls-ca`, while the OpenShift service-ca injection path creates the CA bundle as `ConfigMap/prometheus-web-tls-ca`. Stage 010 syncs that bundle into the expected Secret at deploy time without committing certificate material.
+  **Revert:** Remove the sync hook if a later RHOAI build creates the Secret natively or changes the generated `MonitoringStack` to reference the ConfigMap.
+
 ## 3.3 tier-model cleanup status
 
 - [x] Removed `alpha.maas.opendatahub.io/tiers` annotations from local `LLMInferenceService` manifests.

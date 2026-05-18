@@ -225,6 +225,35 @@ argocd app sync 040-governed-models-as-a-service
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## RHOAI Monitoring Prometheus Stuck In Init
+
+**Affected stage:** Stage 010
+
+**Likely cause:** The RHOAI 3.4 generated `MonitoringStack` can reference
+`Secret/prometheus-web-tls-ca` while the OpenShift service-ca injection path has
+created `ConfigMap/prometheus-web-tls-ca`. Without the Secret, the Prometheus
+pod waits on a missing volume and MaaS observability is not fully available.
+
+**Diagnose:**
+
+```bash
+oc describe pod prometheus-data-science-monitoringstack-0 \
+  -n redhat-ods-monitoring
+
+oc get configmap prometheus-web-tls-ca -n redhat-ods-monitoring
+oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring
+```
+
+**Recover:**
+
+Re-sync Stage 010 so the GitOps hook creates the Secret from the injected
+ConfigMap:
+
+```bash
+argocd app sync 010-openshift-ai-platform-foundation
+./stages/010-openshift-ai-platform-foundation/validate.sh
+```
+
 ## Gen AI Playground External Model Works But Local Models Fail
 
 **Affected stages:** Stage 040, Stage 050

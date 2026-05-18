@@ -24,6 +24,7 @@ resources:
   - serverless/knative-serving-namespace.yaml
   - serverless/knative-serving.yaml
   - rhoai-operator/namespace.yaml
+  - rhoai-operator/monitoring-namespace.yaml
   - rhoai-operator/operatorgroup.yaml
   - rhoai-operator/subscription.yaml
   # Wave 5-10: RHOAI CRs (SkipDryRun handles missing CRDs)
@@ -40,3 +41,4 @@ resources:
   # Wave 15: In-cluster Jobs (cluster-specific tasks)
   - jobs/approve-sm-installplan.yaml
   - jobs/patch-dsci-ca.yaml
+  - jobs/sync-prometheus-web-tls-ca-secret.yaml
