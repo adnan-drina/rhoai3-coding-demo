@@ -1,0 +1,105 @@
+# Approves Red Hat observability operator install plans when OLM marks the
+# combined plan Manual despite Subscription installPlanApproval: Automatic.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-approve-observability-installplans
+  namespace: redhat-ods-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-approve-observability-installplans
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+rules:
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["installplans", "subscriptions", "clusterserviceversions"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-approve-observability-installplans
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-approve-observability-installplans
+subjects:
+  - kind: ServiceAccount
+    name: job-approve-observability-installplans
+    namespace: redhat-ods-operator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-approve-observability-installplans
+  namespace: redhat-ods-operator
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      serviceAccountName: job-approve-observability-installplans
+      restartPolicy: Never
+      containers:
+        - name: approve
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              packages=(
+                cluster-observability-operator
+                opentelemetry-product
+                tempo-product
+              )
+
+              echo "Waiting for observability subscriptions..."
+              for package in "${packages[@]}"; do
+                for i in $(seq 1 60); do
+                  if oc get subscription "$package" -n openshift-operators &>/dev/null; then
+                    break
+                  fi
+                  sleep 5
+                done
+              done
+
+              echo "Approving pending observability install plans..."
+              for i in $(seq 1 40); do
+                for plan in $(oc get installplan -n openshift-operators \
+                  -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}' 2>/dev/null); do
+                  echo "Approving: $plan"
+                  oc patch installplan "$plan" -n openshift-operators --type merge -p '{"spec":{"approved":true}}'
+                done
+
+                ready=true
+                for package in "${packages[@]}"; do
+                  csv="$(oc get subscription "$package" -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
+                  phase=""
+                  if [[ -n "$csv" ]]; then
+                    phase="$(oc get csv "$csv" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                  fi
+                  echo "$package: ${csv:-no-csv} ${phase:-no-phase}"
+                  if [[ "$phase" != "Succeeded" ]]; then
+                    ready=false
+                  fi
+                done
+
+                if [[ "$ready" == "true" ]]; then
+                  echo "Observability operators are ready."
+                  exit 0
+                fi
+                sleep 15
+              done
+
+              echo "Observability operators are still converging."

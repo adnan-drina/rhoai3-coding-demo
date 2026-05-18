@@ -17,6 +17,7 @@ resources:
   - observability-operators/cluster-observability-operator-subscription.yaml
   - observability-operators/opentelemetry-product-subscription.yaml
   - observability-operators/tempo-product-subscription.yaml
+  - observability-operators/approve-observability-installplans.yaml
   - serverless/namespace.yaml
   - serverless/operatorgroup.yaml
   - serverless/subscription.yaml
