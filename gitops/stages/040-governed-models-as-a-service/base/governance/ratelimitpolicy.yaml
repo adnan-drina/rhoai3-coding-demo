@@ -1,4 +1,6 @@
-# Request rate limits per MaaS tier — targets the MaaS Gateway
+# Temporary request rate limits keyed by the older MaaS tier identity.
+# RHOAI 3.4 cleanup should prefer subscription/group policy or product-created
+# limits after validating MaaSSubscription behavior.
 # Ref: https://docs.kuadrant.io/1.3.x/kuadrant-operator/doc/overviews/rate-limiting/
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy

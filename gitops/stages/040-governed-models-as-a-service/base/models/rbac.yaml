@@ -1,5 +1,6 @@
-# Per-model RBAC: grant tier ServiceAccounts access to GET LLMInferenceService
-# Required for MaaS gateway to authorize requests per tier
+# Temporary per-model RBAC for tier ServiceAccounts from the earlier 3.3 tier
+# model. RHOAI 3.4 cleanup should remove this if MaaSAuthPolicy/controller-
+# generated resources cover model authorization through subscriptions.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

@@ -1,8 +1,9 @@
-# Tier-to-group mapping ConfigMap in redhat-ods-applications
-# Required by the RHOAI validating webhook for LLMInferenceService resources
-# that use the alpha.maas.opendatahub.io/tiers annotation.
-# The dev-preview maas-api creates this in the maas-api namespace,
-# but the webhook looks in redhat-ods-applications.
+# Temporary tier-to-group mapping ConfigMap in redhat-ods-applications.
+# This is RHOAI 3.3 tier-model compatibility debt. RHOAI 3.4 MaaS uses
+# subscriptions instead of tiers, managed through custom resources instead of
+# ConfigMaps. Keep this only until live 3.4 validation proves that
+# LLMInferenceService publication and MaaS discovery work without the
+# alpha.maas.opendatahub.io/tiers annotation.
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -1,4 +1,6 @@
-# MaaS usage telemetry — exposes per-model, per-tier, per-user metrics to Prometheus
+# Temporary MaaS usage telemetry with older tier labels for the demo dashboard.
+# RHOAI 3.4 cleanup should move this to subscription-level MaaS observability
+# or another supported OpenShift monitoring path after validation.
 # Ref: https://docs.kuadrant.io/dev/kuadrant-operator/doc/overviews/telemetry/
 apiVersion: extensions.kuadrant.io/v1alpha1
 kind: TelemetryPolicy

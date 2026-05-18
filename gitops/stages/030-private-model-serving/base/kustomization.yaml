@@ -2,8 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Private model serving — local LLMInferenceService resources and model metadata.
-# Tier-to-group mapping remains here because the RHOAI webhook requires it before
-# tier-annotated LLMInferenceService resources can be accepted.
+# Temporary RHOAI 3.3 tier-model compatibility remains here because the
+# currently validated webhook path requires tier data before tier-annotated
+# LLMInferenceService resources can be accepted. The RHOAI 3.4 target design is
+# subscription-based MaaS; remove this after live validation proves the model
+# publication path works without tier annotations and ConfigMaps.
 
 resources:
   - leaderworkerset/namespace.yaml

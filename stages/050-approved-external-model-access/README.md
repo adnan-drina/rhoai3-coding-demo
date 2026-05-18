@@ -42,7 +42,7 @@ This matters because regulated enterprises often need a hybrid model portfolio. 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS operating model while keeping the external provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
+Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued API keys, subscription-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS operating model while keeping the external provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
 
 Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino keeps external model access on the same governed API path introduced in Stage 040. Red Hat OpenShift AI 3.4 supplies the MaaS APIs for `ExternalModel`, model references, authorization policy, and subscriptions. That posture lets the workshop show approved external model registration through the product-owned MaaS control plane while keeping implementation deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 

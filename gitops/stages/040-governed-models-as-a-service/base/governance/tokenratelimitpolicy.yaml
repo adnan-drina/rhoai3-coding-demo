@@ -1,4 +1,6 @@
-# Token rate limits per MaaS tier — tracks actual token consumption from OpenAI-compatible responses
+# Temporary token limits keyed by the older MaaS tier identity. RHOAI 3.4
+# cleanup should prefer subscription token limits after validating product
+# behavior for MaaSSubscription.
 # Ref: https://docs.kuadrant.io/dev/kuadrant-operator/doc/overviews/token-rate-limiting/
 apiVersion: kuadrant.io/v1alpha1
 kind: TokenRateLimitPolicy

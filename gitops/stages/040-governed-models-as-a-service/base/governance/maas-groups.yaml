@@ -1,5 +1,6 @@
-# MaaS tier user groups — matching quickstart pattern
-# Each user should be in exactly ONE tier group
+# Temporary MaaS tier user groups from the earlier 3.3 tier model.
+# RHOAI 3.4 uses subscription/group-based access. Rename or replace these with
+# subscription consumer groups after live validation proves the new access path.
 ---
 apiVersion: user.openshift.io/v1
 kind: Group
