@@ -22,7 +22,7 @@ This stage adds the governed Models-as-a-Service access layer for private models
 - A demo PostgreSQL database and `maas-db-config` connection secret for MaaS API key metadata.
 - Subscription groups, rate limits, token limits, and telemetry policies for predictable model consumption.
 - Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a policy-enforced API path.
-- Showback dashboards and GuideLLM-based validation helpers for usage visibility and repeatable model comparison.
+- Tenant telemetry and GuideLLM-based validation helpers for usage visibility and repeatable model comparison.
 
 The important capability is not a single new endpoint. It is a factory-style model access pattern: publish models once, subscribe teams to them, issue access centrally, apply policy consistently, and observe usage across consumers.
 
@@ -34,7 +34,7 @@ The essential proof point is governed consumption without breaking application u
 
 - Applications and developer tools get OpenAI-compatible model access through a standard API pattern.
 - Platform teams control who can use each model, how much they can consume, and which usage signals are visible.
-- Subscriptions, groups, dashboards, and GuideLLM tests make access, fairness, showback, and capacity planning observable.
+- Subscriptions, groups, tenant telemetry, and GuideLLM tests make access, fairness, showback, and capacity planning observable.
 - Gateway policy keeps authentication, quotas, token limits, and telemetry centralized instead of embedded in each consuming tool.
 
 This matters because enterprise AI adoption breaks down when every team manages endpoints, credentials, GPU capacity, and usage tracking independently. MaaS turns model access into a platform product: publish approved models once, govern consumption centrally, and give applications a stable, policy-aware API path that supports privacy, cost control, and auditability.
@@ -43,14 +43,13 @@ This matters because enterprise AI adoption breaks down when every team manages 
 
 Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI 3.4 provides the MaaS controller, API, model references, subscription APIs, and model-serving context. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
 
-GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, telemetry helpers, validation assets, and the disposable PostgreSQL backing service needed for MaaS API key metadata. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin upstream controller images or override operator-managed deployments. Treat GuideLLM, the generated demo database password, and the disposable dashboards as workshop helpers, not production observability, credential management, or evaluation platforms.
+GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, tenant telemetry, validation assets, and the disposable PostgreSQL backing service needed for MaaS API key metadata. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin upstream controller images or override operator-managed deployments. Treat GuideLLM and the generated demo database password as workshop helpers, not production evaluation or credential-management platforms.
 
 OpenShift AI 3.4 uses subscriptions instead of the tier model used by OpenShift
-AI 3.3. Some GitOps manifests still contain tier-named resources as validated
-compatibility debt. Those names are not the desired product vocabulary for the
-upgrade; they must be removed or renamed only after a live 3.4 validation pass
-proves that subscription-based model publication, authorization, API key
-generation, token limits, and observability still work.
+AI 3.3. This stage now follows that product model: model publication is handled
+through `MaaSModelRef`, access is handled through `MaaSAuthPolicy`, quota and
+token limits are handled through `MaaSSubscription`, and usage telemetry is
+enabled on the `Tenant`.
 
 ## Trust Boundaries
 
@@ -61,7 +60,7 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the model-serving and MaaS platform context.
 - **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the gateway and policy layer used in the MaaS governance path.
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, identity, networking, routes, storage, and monitoring foundation.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the MaaS, gateway, policy, and observability resources.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the MaaS, gateway, policy, and telemetry resources.
 
 ## Open Source Projects To Know
 
@@ -70,7 +69,6 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 - [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.
 - [CloudNativePG](https://cloudnative-pg.io/) provides the PostgreSQL database used by the MaaS API in this demo.
-- [Grafana](https://grafana.com/) provides the disposable demo dashboard used to visualize MaaS usage signals.
 - [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
 ## Deploy And Validate
 
@@ -118,7 +116,6 @@ Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops
 - [OpenShift 4.20: Creating custom links in the web console](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/web_console/index#creating-custom-links_customizing-web-console)
 - [OpenShift 4.20: Using service accounts as OAuth clients](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/using-service-accounts-as-oauth-client)
 - [OpenShift OAuth proxy container](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9)
-- [Using OpenShift OAuth for Grafana Authentication](https://blog.cubieserver.de/2025/using-openshift-oauth-for-grafana-authentication/)
 - [OpenShift 4.20: Monitoring getting started](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/monitoring/getting-started)
 - [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
 - [Gateway API](https://gateway-api.sigs.k8s.io/)

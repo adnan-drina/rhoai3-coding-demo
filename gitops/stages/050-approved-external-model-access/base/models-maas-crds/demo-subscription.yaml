@@ -11,9 +11,15 @@ spec:
     groups:
       - name: "system:authenticated"
       - name: "system:cluster-admins"
-      - name: "tier-free-users"
-      - name: "tier-premium-users"
-      - name: "tier-enterprise-users"
+      - name: "rhoai-users"
+      - name: "rhoai-admins"
+  priority: 10
+  tokenMetadata:
+    costCenter: "rhoai3-coding-demo"
+    organizationId: "redhat-demo"
+    labels:
+      environment: "sandbox"
+      stage: "050"
   modelRefs:
     - name: gpt-oss-20b
       namespace: maas

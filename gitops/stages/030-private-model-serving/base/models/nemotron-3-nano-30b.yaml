@@ -1,6 +1,5 @@
-# NVIDIA Nemotron 3 Nano 30B A3B FP8 — code-assistant model for selected demo groups.
-# The tier annotation below is temporary 3.3 compatibility debt; RHOAI 3.4
-# cleanup should replace it with subscription-based access after validation.
+# NVIDIA Nemotron 3 Nano 30B A3B FP8 — code-assistant model published through
+# MaaSModelRef and governed by MaaSSubscription/MaaSAuthPolicy in Stage 040.
 # Primary model for the code assistant demo
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: serving.kserve.io/v1alpha2
@@ -11,7 +10,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    alpha.maas.opendatahub.io/tiers: '["premium","enterprise"]'
     openshift.io/display-name: NVIDIA Nemotron 3 Nano 30B A3B FP8
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"

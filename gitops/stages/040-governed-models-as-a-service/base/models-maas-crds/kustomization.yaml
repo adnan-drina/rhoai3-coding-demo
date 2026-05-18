@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - config-bootstrap.yaml
   - namespace.yaml
+  - tenant.yaml
   - local-modelrefs.yaml
   - local-auth-policy.yaml
   - local-subscription.yaml

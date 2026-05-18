@@ -7,11 +7,11 @@ As of 2026-05-18, the public Red Hat OpenShift AI 3.4 documentation describes th
 Before upgrading this demo, verify the target RHOAI build against the following MaaS capability boundaries:
 
 - [ ] **Governed model access support scope** — Confirm whether governed model access, dashboard discovery, subscription assignment, API-key access, quota enforcement, rate limits, token limits, and usage visibility are GA, Technology Preview, Developer Preview, or otherwise scoped for the target release.
-- [ ] **`MaaSSubscription` and `MaaSAuthPolicy` support** — Confirm whether these CRDs are product-supported in the target RHOAI build and whether they replace this repo's manual `RateLimitPolicy`, `TokenRateLimitPolicy`, `TelemetryPolicy`, and per-model RBAC resources.
+- [x] **`MaaSSubscription` and `MaaSAuthPolicy` support** — Confirmed against the target RHOAI 3.4 build. The active GitOps path now uses these CRDs for model access and token limits instead of manual tier policy resources.
 - [ ] **`maas-api` API-key lifecycle** — Confirm whether product `maas-api` supports subscription-bound key minting, binding, rotation, and revocation without the upstream image override or Playground tokens bridge.
 - [ ] **MaaS observability path** — Confirm whether MaaS usage and health observability is product-supported or remains Technology Preview/demo glue, and whether this repo should replace community Grafana with a Red Hat-supported observability path.
 - [ ] **External model and payload processing support** — Confirm whether `ExternalModel`, payload/request processing, provider credential injection, and external inference through the same MaaS subscription and policy surface are product-supported enough to remove the upstream `maas-controller` coexistence path.
-- [ ] **3.3 tier model removal** — Confirm whether the target RHOAI 3.4 build can remove tier annotations, the `tier-to-group-mapping` ConfigMap, tier-named groups, tier ServiceAccount RBAC, and tier-shaped dashboard metrics in favor of subscription/group vocabulary and product-managed policy.
+- [x] **3.3 tier model removal** — Server-side dry-run validation confirmed the target RHOAI 3.4 build accepts local model resources without tier annotations. The active GitOps path now removes tier annotations, the `tier-to-group-mapping` ConfigMap, tier-named groups, tier ServiceAccount RBAC, manual tier policy resources, and the tier-shaped community Grafana dashboard.
 
 ## Workarounds (review when supported RHOAI 3.4 paths cover them natively)
 
@@ -25,18 +25,6 @@ The following items use manual configuration or post-deploy patches because the 
 
 - [ ] **Gateway hostname patch** (`jobs/patch-gateway-hostname.yaml`) — Job patches MaaS Gateway with cluster-specific hostname and TLS cert name.
   **Revert:** The supported operator path may parameterize the Gateway hostname.
-
-- [ ] **Tier-to-group-mapping ConfigMap in `redhat-ods-applications`** — This is 3.3 tier-model compatibility debt. The Red Hat OpenShift AI validating webhook has required this ConfigMap when `LLMInferenceService` uses the `alpha.maas.opendatahub.io/tiers` annotation. The operator's `maas-api` does not create it in `redhat-ods-applications`; we deploy it at sync wave 9.
-  **Revert:** In the RHOAI 3.4 target model, subscriptions replace tiers and are managed through custom resources instead of ConfigMaps. Remove this ConfigMap and the tier annotations after live validation confirms model apply, model discovery, and MaaS subscription access still pass.
-
-- [ ] **Manual RateLimitPolicy, TokenRateLimitPolicy, TelemetryPolicy** — Created in `governance/` to make the demo gateway, token-limit, and telemetry behavior explicit and reproducible.
-  **Revert:** The supported operator path may manage these via `MaaSSubscription` CRDs.
-
-- [ ] **Manual per-model RBAC** (`models/rbac.yaml`) — Roles granting tier ServiceAccounts access to `LLMInferenceService`. This is 3.3 tier-model compatibility debt until the 3.4 controller-generated access path is proven.
-  **Revert:** The supported operator path may manage RBAC via `MaaSAuthPolicy` CRDs.
-
-- [ ] **Manual tier groups** (`governance/maas-groups.yaml`) — Groups `tier-free-users`, `tier-premium-users`, `tier-enterprise-users` with demo users. In RHOAI 3.4, these should become subscription consumer groups if the live schema and controller behavior support the rename cleanly.
-  **Revert:** Verify the supported subscription/group path and then replace tier vocabulary.
 
 - [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
   **Revert:** The supported operator path should create proper NetworkPolicies for the dashboard.
@@ -56,16 +44,14 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 - [ ] **Tokens-bridge** (`tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` for Playground and older dashboard call paths. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground. Dashboard bundles have expected the generated credential in different response shapes (`key`, `token`, `data.key`, or `data.token`), so the bridge returns all four names with the same redacted-only logging. Do not route `/gen-ai/api/v1/maas/tokens` directly to this bridge; that bypasses the dashboard Gen AI proxy and loses the user headers needed by `maas-api`.
 
-## 3.3 tier-model cleanup candidates
+## 3.3 tier-model cleanup status
 
-These items are not permanent RHOAI 3.4 design decisions. They remain in GitOps only until a live RHOAI 3.4 validation pass proves the subscription-based product path covers the same behavior.
-
-- [ ] Remove `alpha.maas.opendatahub.io/tiers` annotations from local `LLMInferenceService` manifests after MaaS model discovery works without them.
-- [ ] Remove `tier-to-group-mapping` after the webhook no longer requires tier data for model publication.
-- [ ] Replace `tier-free-users`, `tier-premium-users`, and `tier-enterprise-users` with subscription consumer groups or another product-aligned group naming model.
-- [ ] Remove manual tier ServiceAccount RBAC if `MaaSAuthPolicy` and controller-created resources grant the required access.
-- [ ] Replace tier-shaped Grafana panels and `authorized_hits{tier=...}` compatibility metrics with subscription-level MaaS observability.
-- [ ] Remove historical upstream `maas-controller` and `maas-api` override language from active stage narratives. Keep it only as historical context or in Git history.
+- [x] Removed `alpha.maas.opendatahub.io/tiers` annotations from local `LLMInferenceService` manifests.
+- [x] Removed `tier-to-group-mapping` from the active GitOps path.
+- [x] Replaced `tier-free-users`, `tier-premium-users`, and `tier-enterprise-users` with existing `rhoai-users` and `rhoai-admins` subscription consumer groups.
+- [x] Removed manual tier ServiceAccount RBAC from the active GitOps path.
+- [x] Removed manual tier-shaped gateway `RateLimitPolicy`, `TokenRateLimitPolicy`, `TelemetryPolicy`, and the community Grafana dashboard from the active GitOps path.
+- [x] Preserved historical upstream `maas-controller` and `maas-api` override language only as completed historical context.
 
 ## Known Limitations
 
@@ -87,8 +73,7 @@ These items are not permanent RHOAI 3.4 design decisions. They remain in GitOps 
 
 - [ ] **GPUaaS metrics validation pass** — Confirm the final Prometheus metric names and proxy query path for the GPUaaS dashboard. Stage 020 currently validates dashboard resources and warns on raw metric query failures.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
-- [ ] **Red Hat-aligned observability path** — The current Grafana dashboard was copied from a Red Hat quickstart repository and uses the community Grafana Operator. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
-- [ ] **Grafana dashboard screenshots** — Add screenshots to Stage 040 README while the community Grafana demo add-on remains in use.
+- [ ] **Red Hat-aligned observability path** — The community Grafana add-on has been removed from active Stage 040 GitOps. Next step is validating the product MaaS observability dashboard after Cluster Observability Operator and metrics storage are configured.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
 
 ## Validated (2026-05-01 and 2026-05-02)
@@ -97,7 +82,7 @@ These items are not permanent RHOAI 3.4 design decisions. They remain in GitOps 
 - [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
 - [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
 - [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated, but live validation on 2026-05-02 confirmed that an approved `OPENAI_API_KEY` provisioned into `maas/openai-api-key` can complete a `gpt-4o-mini` call through MaaS. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
-- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models. RHOAI 3.4 cleanup still needs to confirm whether these replace the remaining manual tier-model resources.
+- [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
 - [x] **Continue and OpenCode configuration** — Developer workspace configuration is generated with MaaS endpoint and `sk-oai-*` API key auth. Current live validation covered local model access; external model execution still requires an approved provider key.
 - [x] **Stage 020 GPUaaS foundation** — Live validation on 2026-05-02 confirmed Red Hat build of Kueue, OpenShift AI Kueue integration, queue-based NVIDIA L4 hardware profiles, ResourceFlavor, ClusterQueue, LocalQueue, KEDA readiness, GPU MachineSet readiness, GPU node labels/taints, allocatable GPUs, NVIDIA ClusterPolicy readiness, and GPUaaS dashboard ConfigMap. The OpenShift 4.20 catalog used `stable-v1.3` for Red Hat build of Kueue.
 - [x] **Kueue `Workload` creation for `LLMInferenceService`** — Stage 030 live validation on 2026-05-02 observed two Kueue `Workload` objects for the private model-serving `LLMInferenceService` pods, both admitted through `private-model-serving-gpu`.

@@ -45,11 +45,10 @@ The repository is already partially aligned with the target 3.4 platform:
 - Stage 040 no longer reintroduces the previous upstream `maas-controller` deployment or `maas-api` image override.
 - Stage 070 and Stage 100+ consume MaaS through generated OpenAI-compatible endpoint configuration.
 
-The repository is not fully cleaned up for the 3.4 MaaS model yet. It still
-contains deliberate compatibility resources and historical wording from the
-3.3 tier-based MaaS implementation. Those resources must be reviewed and
-removed only after live validation confirms the 3.4 subscription-based path
-covers the same behavior.
+The active GitOps path has been updated for the 3.4 MaaS model. It now uses
+`MaaSModelRef`, `MaaSAuthPolicy`, `MaaSSubscription`, and `Tenant` telemetry
+instead of the older 3.3 tier annotations, tier mapping ConfigMap, tier groups,
+manual tier ServiceAccount RBAC, and tier-shaped dashboard policy.
 
 The currently connected sandbox, checked on 2026-05-18, reports:
 
@@ -69,34 +68,31 @@ The currently connected sandbox, checked on 2026-05-18, reports:
 - Treat AI Available Assets plus MaaS key generation as a demo validation point with known UI risk until the current empty-key issue is resolved or documented as a browser/UI defect.
 - Preserve conservative support language for Developer Preview or Technology Preview features.
 - Treat subscriptions, groups, API keys, `MaaSSubscription`, and `MaaSAuthPolicy` as the target RHOAI 3.4 MaaS vocabulary.
-- Treat tiers, `tier-to-group-mapping`, tier-named ServiceAccounts, and `alpha.maas.opendatahub.io/tiers` annotations as 3.3 compatibility debt unless a current 3.4 schema check proves they are still required.
+- Do not reintroduce tiers, `tier-to-group-mapping`, tier-named ServiceAccounts, or `alpha.maas.opendatahub.io/tiers` annotations unless a current 3.4 schema check proves they are still required.
 
 ## MaaS 3.3 Design Debt Audit
 
-The RHOAI 3.4 upgrade must remove design ambiguity between the old tier-based
-MaaS implementation and the 3.4 subscription-based product model. This branch
-does not remove functional manifests yet; it records what needs to be cleaned
-up and in what order.
+The RHOAI 3.4 upgrade removes design ambiguity between the old tier-based MaaS
+implementation and the 3.4 subscription-based product model. This branch
+removed the active tier resources after server-side dry-run checks confirmed
+that the target 3.4 cluster accepts the subscription-based path.
 
 | Area | Current repo evidence | Why it exists | 3.4 cleanup target |
 |------|-----------------------|---------------|--------------------|
-| Tier mapping | `gitops/stages/030-private-model-serving/base/governance/tier-to-group-mapping.yaml` and `alpha.maas.opendatahub.io/tiers` annotations on `LLMInferenceService` manifests | Compatibility with the older webhook and 3.3 tier model | Remove the ConfigMap and tier annotations after `LLMInferenceService` create/update validates without them on the target 3.4 build. |
-| Tier-named users and groups | `tier-free-users`, `tier-premium-users`, and `tier-enterprise-users` in Stage 040 | Demo personas were modeled as access tiers | Replace documentation and, after live validation, manifests with subscription consumer groups that map to `MaaSSubscription` access. |
-| Manual gateway policy | Manual `RateLimitPolicy`, `TokenRateLimitPolicy`, `TelemetryPolicy`, and AuthPolicy patches | Made 3.3 gateway, token-limit, and telemetry behavior explicit | Prefer product-created policy from `MaaSSubscription` and `MaaSAuthPolicy` when validation proves it covers the demo. Keep only demo-specific patches that are still required. |
-| Manual per-model RBAC | `gitops/stages/040-governed-models-as-a-service/base/models/rbac.yaml` grants tier ServiceAccounts model read access | Older MaaS gateway authorization expected tier ServiceAccounts | Remove or replace with product-managed authorization after validating the 3.4 controller-generated access path. |
+| Tier mapping | `tier-to-group-mapping` and `alpha.maas.opendatahub.io/tiers` annotations | Compatibility with the older webhook and 3.3 tier model | Removed from the active GitOps path after server-side dry-run validation. |
+| Tier-named users and groups | `tier-free-users`, `tier-premium-users`, and `tier-enterprise-users` | Demo personas were modeled as access tiers | Replaced by `rhoai-users` and `rhoai-admins` in `MaaSAuthPolicy` and `MaaSSubscription`. |
+| Manual gateway policy | Manual `RateLimitPolicy`, `TokenRateLimitPolicy`, and `TelemetryPolicy` | Made 3.3 gateway, token-limit, and telemetry behavior explicit | Removed from the active GitOps path; token limits are owned by `MaaSSubscription` and telemetry is configured on `Tenant`. |
+| Manual per-model RBAC | Tier ServiceAccount RoleBindings | Older MaaS gateway authorization expected tier ServiceAccounts | Removed from the active GitOps path in favor of controller-generated authorization policy. |
 | Tokens bridge | `gitops/stages/040-governed-models-as-a-service/base/tokens-bridge/deployment.yaml` | Maintains compatibility for Playground and older dashboard token call paths | Keep until product API key and temporary-token flows work through supported dashboard paths without empty-key or header-loss issues. |
-| Observability dashboard | Community Grafana dashboard with tier-shaped metrics and compatibility recording rules | Provides visible demo showback before a supported MaaS observability path is adopted | Move to the 3.4 subscription-level MaaS observability dashboard or an OpenShift monitoring path when validated. |
+| Observability dashboard | Community Grafana dashboard with tier-shaped metrics and compatibility recording rules | Provided visible demo showback before product MaaS observability was available | Removed from active GitOps. Product MaaS observability remains the follow-up after Cluster Observability Operator and metrics storage are configured. |
 | Historical upstream controller path | Completed backlog entries for upstream `maas-controller`, upstream CRDs, and `maas-api` image override | Previous 3.3 and 3.4 EA2 workaround | Keep only as historical context. Do not present it as current architecture and do not reintroduce it without a newly proven 3.4 product gap. |
 
 ## Cleanup Order
 
-1. Update documentation to describe the target 3.4 design as subscription-based MaaS access, not tier-based access.
-2. Add or tighten validation that proves the cluster is using operator-owned `maas-api` and `maas-controller` images from `registry.redhat.io/rhoai/`.
-3. Validate 3.4 `MaaSSubscription`, `MaaSAuthPolicy`, API key, temporary API key, and dashboard paths against the live sandbox.
-4. Remove tier annotations and the `tier-to-group-mapping` ConfigMap only after `LLMInferenceService` apply and MaaS model discovery still pass.
-5. Replace tier-named groups, manual RBAC, and manual gateway policies with subscription/group-based resources or product-generated policy after the live path is proven.
-6. Replace or retire the tokens bridge only after the dashboard and Playground can mint non-empty keys through supported 3.4 paths.
-7. Replace the community Grafana/tier dashboard with the product MaaS observability dashboard or another Red Hat-supported observability path when it is validated for the demo.
+1. Keep validation proving the cluster is using operator-owned `maas-api` and `maas-controller` images from `registry.redhat.io/rhoai/`.
+2. Validate 3.4 `MaaSSubscription`, `MaaSAuthPolicy`, API key, temporary API key, and dashboard paths against the live sandbox.
+3. Replace or retire the tokens bridge only after the dashboard and Playground can mint non-empty keys through supported 3.4 paths.
+4. Add the product MaaS observability dashboard only after Cluster Observability Operator and metrics storage are configured and validated.
 
 ## Required Readiness Gates
 

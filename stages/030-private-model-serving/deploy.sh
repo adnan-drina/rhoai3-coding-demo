@@ -18,7 +18,7 @@ log_success "ArgoCD Application '${STAGE_NAME}' applied"
 
 log_info "ArgoCD handles orchestration via sync waves:"
 log_info "  Wave 0-2:   LeaderWorkerSet operator prerequisites"
-log_info "  Wave 5-10:  compatibility tier mapping, model RBAC, local LLMInferenceService resources"
+log_info "  Wave 5-10:  local LLMInferenceService resources and model metadata"
 log_info "              (maas namespace is prepared by Stage 020 GPUaaS queue setup)"
 log_info "  Wave 22:    model registry seed job"
 echo ""

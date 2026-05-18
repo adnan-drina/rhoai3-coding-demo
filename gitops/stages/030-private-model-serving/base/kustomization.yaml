@@ -2,11 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Private model serving — local LLMInferenceService resources and model metadata.
-# Temporary RHOAI 3.3 tier-model compatibility remains here because the
-# currently validated webhook path requires tier data before tier-annotated
-# LLMInferenceService resources can be accepted. The RHOAI 3.4 target design is
-# subscription-based MaaS; remove this after live validation proves the model
-# publication path works without tier annotations and ConfigMaps.
+# Private model publication now follows the RHOAI 3.4 MaaS model: the serving
+# resources are published through MaaSModelRef, then access is controlled by
+# MaaSSubscription and MaaSAuthPolicy in Stage 040.
 
 resources:
   - leaderworkerset/namespace.yaml
@@ -14,7 +12,6 @@ resources:
   - leaderworkerset/subscription.yaml
   - leaderworkerset/instance.yaml
   - models/admin-rbac.yaml
-  - governance/tier-to-group-mapping.yaml
   - model-registry/seed-networkpolicy.yaml
   - models/gpt-oss-20b.yaml
   - models/nemotron-3-nano-30b.yaml

@@ -22,9 +22,6 @@ check "maas namespace exists" \
 check "ai-admin has admin access to maas namespace" \
   "oc get rolebinding ai-admin-maas -n maas -o jsonpath='{.roleRef.name}{\" \"}{.subjects[0].name}'" \
   "admin ai-admin"
-check "tier-to-group mapping includes premium tier" \
-  "oc get configmap tier-to-group-mapping -n redhat-ods-applications -o jsonpath='{.data.tiers}'" \
-  "premium"
 
 log_step "Local model resources"
 check "gpt-oss-20b resource exists" \
@@ -39,6 +36,15 @@ check "gpt-oss-20b exposes dashboard GenAI asset metadata" \
 check "nemotron-3-nano-30b-a3b exposes dashboard GenAI asset metadata" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.opendatahub\\.io/genai-asset}{\" \"}{.metadata.annotations.security\\.opendatahub\\.io/enable-auth}'" \
   "true true"
+TIER_ANNOTATIONS="$(oc get llminferenceservice gpt-oss-20b nemotron-3-nano-30b-a3b -n maas \
+  -o jsonpath='{range .items[*]}{.metadata.annotations.alpha\.maas\.opendatahub\.io/tiers}{"\n"}{end}' 2>/dev/null || true)"
+if [[ -z "$(printf '%s' "$TIER_ANNOTATIONS" | tr -d '[:space:]')" ]]; then
+  echo -e "${GREEN}[PASS]${NC} Local LLMInferenceService resources do not use 3.3 tier annotations"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  echo -e "${RED}[FAIL]${NC} Local LLMInferenceService resources do not use 3.3 tier annotations"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
 check "gpt-oss-20b requests GPU resources" \
   "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.template.containers[0].resources.requests.nvidia\\.com/gpu}'" \
   "1"

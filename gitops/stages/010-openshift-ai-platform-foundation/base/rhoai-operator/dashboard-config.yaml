@@ -15,7 +15,9 @@ metadata:
 spec:
   dashboardConfig:
     genAiStudio: true
+    maasAuthPolicies: true
     modelAsService: true
+    vLLMDeploymentOnMaaS: true
   notebookController:
     enabled: true
     notebookNamespace: rhods-notebooks

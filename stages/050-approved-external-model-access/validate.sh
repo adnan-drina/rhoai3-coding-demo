@@ -51,6 +51,17 @@ check "External AuthPolicy generated for gpt-4o-mini" \
 check "Shared demo MaaSSubscription active" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
+check "Shared demo subscription uses RHOAI demo groups" \
+  "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.owner.groups[*].name}'" \
+  "rhoai-users"
+DEMO_SUBSCRIPTION_GROUPS=$(oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.owner.groups[*].name}' 2>/dev/null || true)
+if [[ "$DEMO_SUBSCRIPTION_GROUPS" != *"tier-"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Shared demo subscription no longer uses 3.3 tier groups"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} Shared demo subscription no longer uses 3.3 tier groups"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
 check "Shared demo subscription includes gpt-oss-20b" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
   "gpt-oss-20b"
