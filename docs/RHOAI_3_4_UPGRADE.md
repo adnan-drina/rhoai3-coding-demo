@@ -110,6 +110,7 @@ Validated on `cluster-t977r` on 2026-05-18:
 - `GUIDELLM_SKIP_LOAD_TEST=true ./stages/040-governed-models-as-a-service/validate.sh`: 48 passed, 1 skipped load-test warning, 0 failed.
 - `./stages/050-approved-external-model-access/validate.sh`: 25 passed, 0 failed.
 - Temporary MaaS key plus Nemotron smoke request: HTTP 200 with one chat completion choice.
+- Small GuideLLM Nemotron run: 3 completed requests, 0 errors, about 1.3 requests/sec, about 48 output tokens/sec, results stored in `ConfigMap/maas/guidellm-nemotron-3-nano-30b-a3b-20260518120131-results`.
 - Removed 3.3 tier evidence:
   - no `alpha.maas.opendatahub.io/tiers` annotations on local `LLMInferenceService` resources;
   - `tier-to-group-mapping` ConfigMap removed;
