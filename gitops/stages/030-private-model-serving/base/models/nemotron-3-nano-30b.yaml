@@ -1,7 +1,7 @@
 # NVIDIA Nemotron 3 Nano 30B A3B FP8 — code-assistant model published through
 # MaaSModelRef and governed by MaaSSubscription/MaaSAuthPolicy in Stage 040.
 # Primary model for the code assistant demo
-# Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+# Ref: https://docs.redhat.com/en/documentation/red_hat_ai/3/html/validated_models/redhat-ai-validated-modelcar-images
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
@@ -22,7 +22,7 @@ metadata:
 spec:
   model:
     name: nemotron-3-nano-30b-a3b
-    uri: oci://quay.io/jharmison/models:redhatai--nvidia-nemotron-3-nano-30b-a3b-fp8-modelcar
+    uri: oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0
   replicas: 1
   router:
     gateway:

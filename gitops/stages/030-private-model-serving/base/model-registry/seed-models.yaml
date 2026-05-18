@@ -125,8 +125,8 @@ spec:
               register_model \
                 "nemotron-3-nano-30b-a3b" \
                 "NVIDIA Nemotron 3 Nano 30B A3B FP8 - code assistant with tool calling" \
-                "v1.0" \
-                "oci://quay.io/jharmison/models:redhatai--nvidia-nemotron-3-nano-30b-a3b-fp8-modelcar" \
+                "v3.0" \
+                "oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0" \
                 "vLLM" \
                 nvidia vllm fp8 tool-calling code-assistant
 
