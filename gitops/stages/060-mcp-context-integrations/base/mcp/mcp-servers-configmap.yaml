@@ -1,7 +1,7 @@
 # RHOAI Dashboard discovers MCP servers from this ConfigMap.
 # Each value is JSON with: url, description, and optionally transport.
 # Servers using SSE transport MUST set "transport": "sse".
-# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html/experimenting_with_models_in_the_gen_ai_playground/playground-prerequisites_rhoai-user
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/experimenting_with_models_in_the_gen_ai_playground/playground-prerequisites_rhoai-user
 apiVersion: v1
 kind: ConfigMap
 metadata:

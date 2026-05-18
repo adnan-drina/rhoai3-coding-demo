@@ -44,7 +44,7 @@ This matters because regulated enterprises often need a hybrid model portfolio. 
 
 Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS Technology Preview direction while keeping the provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
 
-Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino keeps external model access on the same governed API path introduced in Stage 040. The upstream Open Data Hub models-as-a-service project supplies the demo APIs for `ExternalModel`, model references, authorization policy, and subscriptions. That posture lets the workshop show approved external model registration now while keeping implementation deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
+Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino keeps external model access on the same governed API path introduced in Stage 040. Red Hat OpenShift AI 3.4 supplies the MaaS APIs for `ExternalModel`, model references, authorization policy, and subscriptions. That posture lets the workshop show approved external model registration through the product-owned MaaS control plane while keeping implementation deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 
 ## Trust Boundaries
 
@@ -59,7 +59,7 @@ Governed external access is not private model serving: prompts are routed throug
 
 ## Open Source Projects To Know
 
-- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) provides the upstream MaaS APIs used for external model registration in this demo posture.
+- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) is the upstream project behind the MaaS APIs surfaced through Red Hat OpenShift AI.
 - [Gateway API](https://gateway-api.sigs.k8s.io/) provides Kubernetes-native routing primitives for the governed model access path.
 - [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.

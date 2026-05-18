@@ -251,7 +251,7 @@ GitOps hygiene pass:
 Red Hat alignment review:
 
 - Stage 040 is aligned with the Red Hat OpenShift AI 3.4 MaaS architecture in the core platform pattern: KServe-backed model serving, Gateway API, Red Hat Connectivity Link, Kuadrant/Authorino policy enforcement, API-key authentication, tier-based access, rate limits, token limits, dashboard enablement, and GitOps-managed desired state. MaaS remains a Technology Preview capability in the referenced Red Hat OpenShift AI 3.4 documentation, so the demo must continue to describe it as an early-access showcase rather than a production baseline.
-- Stage 040 deviations remain intentional and documented: upstream MaaS controller/`maas-api` image override for external model registration, tokens bridge for the Playground token endpoint, gateway/AuthPolicy patches, and community Grafana for demo observability. These are acceptable for the disposable environment but not Red Hat-supported production implementation guidance.
+- Stage 040 deviations remain intentional and documented: tokens bridge for the Playground token endpoint, gateway/AuthPolicy patches, and community Grafana for demo observability. The previous upstream MaaS controller and `maas-api` image override were removed for Red Hat OpenShift AI 3.4 because they conflict with operator-owned MaaS resources.
 - Stage 080 aligns with Red Hat Developer Lightspeed for MTA guidance by using a centrally managed LLM provider configuration through MTA, the LLM proxy, and an OpenAI-compatible endpoint backed by Red Hat OpenShift AI/MaaS. Developer Lightspeed for MTA is also Technology Preview in the referenced MTA 8.1 documentation, so production-readiness language must stay conservative.
 - Stage 090 aligns with Red Hat Developer Hub 1.9 operator guidance by using the `Backstage` custom resource, app config mounted from a ConfigMap, environment-substituted secrets, and `dynamic-plugins.yaml` mounted through `dynamicPluginsConfigMapName`.
 - Fix applied from the alignment review: RHDH catalog configuration no longer hard-codes the `main` branch. `app-config-rhdh.yaml` now uses `${RHDH_CATALOG_URL}`, and the Stage 090 PostSync hook derives that URL from the live Argo CD Application `repoURL` and `targetRevision`. This keeps the developer portal catalog on the same Git revision as the deployed demo.
@@ -586,9 +586,9 @@ oc get job model-registry-seed -n rhoai-model-registries
 
 ### Stage 040
 
-Stage 040 deploys the governed Models-as-a-Service control point: MaaS controller, Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, the shared demo consumer subscription, rate limits, token limits, telemetry, and Grafana.
+Stage 040 deploys the governed Models-as-a-Service control point around the Red Hat OpenShift AI 3.4 MaaS controller and API: Gateway API, Red Hat Connectivity Link, Kuadrant, Authorino, the shared demo consumer subscription, rate limits, token limits, telemetry, and Grafana.
 
-The upstream `maas-controller` and `maas-api` image override are intentional demo deviations. They demonstrate external model registration through upstream MaaS behavior and the Red Hat OpenShift AI 3.4 Technology Preview MaaS direction while the Red Hat OpenShift AI 3.3 supported operator path does not provide that full behavior. Keep the workaround visible in `BACKLOG.md` and remove it only when a supported Red Hat OpenShift AI release provides equivalent external model registration and the replacement has been validated.
+RHOAI 3.4 owns the MaaS controller and `maas-api` deployments. Do not reintroduce the previous upstream `maas-controller` deployment or `maas-api` image override: those pre-3.4 workarounds conflict with the operator-owned selectors, RBAC, CRDs, and images. GitOps should manage only demo MaaS model references, access policies, subscriptions, gateway policy, observability helpers, and validation jobs unless product documentation and live schema checks require otherwise.
 
 The Grafana dashboard was copied from a Red Hat quickstart repository, but the operator source is `community-operators`. This is acceptable as a disposable demo add-on. Prefer a Red Hat-supported monitoring or observability path for long-lived environments.
 
@@ -616,7 +616,7 @@ oc get maasmodelref -n maas
 oc get maasauthpolicy,maassubscription -n models-as-a-service
 oc get maassubscription demo-models-subscription -n models-as-a-service -o yaml
 oc get gateway maas-default-gateway -n openshift-ingress
-oc get pods -n redhat-ods-applications -l control-plane=maas-controller
+oc get deployment maas-controller maas-api -n redhat-ods-applications
 oc get clusterrolebinding grafana-sa-cluster-monitoring-view
 oc get serviceaccount grafana-sa -n grafana -o yaml
 oc get clusterrolebinding grafana-oauth-proxy-auth-delegator -o yaml

@@ -50,18 +50,18 @@ log_step "MaaS API"
 check "Tenant-managed maas-api deployment ready" \
   "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.status.readyReplicas}'" \
   "1"
+check "RHOAI MaaS controller deployment ready" \
+  "oc get deployment maas-controller -n redhat-ods-applications -o jsonpath='{.status.readyReplicas}'" \
+  "1"
+check "DataScienceCluster MaaS component ready" \
+  "oc get dsc default-dsc -o jsonpath='{.status.conditions[?(@.type==\"ModelsAsServiceReady\")].status}'" \
+  "True"
 check "MaaS API route accepted" \
   "oc get httproute maas-api-route -n redhat-ods-applications -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
-check "maas-api owned by upstream tenant reconciler" \
-  "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.metadata.labels.maas\\.opendatahub\\.io/tenant-name}'" \
-  "default-tenant"
-check "maas-api uses models-as-a-service policy namespace" \
-  "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"MAAS_SUBSCRIPTION_NAMESPACE\")].value}'" \
-  "models-as-a-service"
-check "maas-api uses upstream image with ExternalModel discovery" \
+check "maas-api uses RHOAI 3.4 image" \
   "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].image}'" \
-  "quay.io/opendatahub/maas-api:latest"
+  "registry.redhat.io/rhoai/odh-maas-api-rhel9"
 
 log_step "Local MaaS resources"
 check "MaaSModelRef gpt-oss-20b ready" \

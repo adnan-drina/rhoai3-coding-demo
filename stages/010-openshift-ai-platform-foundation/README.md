@@ -14,7 +14,7 @@ This stage establishes that foundation with Red Hat OpenShift AI on OpenShift. I
 
 This stage adds the shared Red Hat OpenShift AI foundation for the workshop.
 
-- An OpenShift AI 3.3 control plane installed through the Red Hat OpenShift AI Operator.
+- An OpenShift AI 3.4 control plane installed through the Red Hat OpenShift AI Operator.
 - Core OpenShift AI services for dashboard access, GenAI Studio, model serving, model registry, KServe, Llama Stack, and MaaS-related capabilities.
 - A PostgreSQL-backed model registry so model metadata can be managed as a platform asset.
 - Demo users, OpenShift groups, and OpenShift OAuth integration for consistent identity across platform surfaces.
@@ -69,8 +69,8 @@ Manifests: [`gitops/stages/010-openshift-ai-platform-foundation/base/`](../../gi
 ## References
 
 - [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
-- [Red Hat OpenShift AI 3.3 installation guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
-- [Red Hat OpenShift AI 3.3 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.3/)
+- [Red Hat OpenShift AI 3.4 installation guide](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/installing_and_uninstalling_openshift_ai_self-managed/index)
+- [Red Hat OpenShift AI 3.4 documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)
 
 ## Next Stage

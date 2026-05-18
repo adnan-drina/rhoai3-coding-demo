@@ -1,7 +1,7 @@
 # NVIDIA Nemotron 3 Nano 30B A3B FP8 — premium + enterprise tiers only
 # Primary model for the code assistant demo
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
-apiVersion: serving.kserve.io/v1alpha1
+apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
   name: nemotron-3-nano-30b-a3b
@@ -30,11 +30,27 @@ spec:
         - name: maas-default-gateway
           namespace: openshift-ingress
     route: {}
-    scheduler: {}
+    scheduler:
+      pool:
+        spec:
+          endpointPickerRef:
+            failureMode: FailOpen
+            group: ""
+            kind: Service
+            name: nemotron-3-nano-30b-a3b-epp-service
+            port:
+              number: 9002
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: nemotron-3-nano-30b-a3b
+              app.kubernetes.io/part-of: llminferenceservice
+              kserve.io/component: workload
+          targetPorts:
+            - number: 8000
   template:
     containers:
       - name: main
-        image: registry.redhat.io/rhaiis/vllm-cuda-rhel9:3.3.0
+        image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b
         command:
           - python
           - -m

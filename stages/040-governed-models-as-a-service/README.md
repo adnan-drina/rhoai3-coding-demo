@@ -40,9 +40,9 @@ This matters because enterprise AI adoption breaks down when every team manages 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI provides the model-serving and MaaS context; in Red Hat OpenShift AI 3.4, MaaS is documented as a Technology Preview capability. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
+Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI 3.4 provides the MaaS controller, API, model references, subscription APIs, and model-serving context; MaaS is documented as a Technology Preview capability. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
 
-The upstream Open Data Hub models-as-a-service project supplies the MaaS controller APIs used by this demo posture, with CloudNativePG, Grafana, OpenShift OAuth proxy, and GuideLLM used as demo-scale supporting components. Because this repository currently combines Red Hat OpenShift AI 3.3 with selected upstream MaaS pieces to show the full storyline, implementation deviations remain tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md). Treat GuideLLM and the disposable dashboards as workshop helpers, not production observability or evaluation platforms.
+GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, telemetry helpers, and validation assets. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin pre-release upstream controller images or override operator-managed deployments. Treat GuideLLM and the disposable dashboards as workshop helpers, not production observability or evaluation platforms.
 
 ## Trust Boundaries
 
@@ -57,7 +57,7 @@ MaaS centralizes authentication, API keys, subscriptions, rate limits, token lim
 
 ## Open Source Projects To Know
 
-- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) provides the upstream MaaS controller and APIs used by this demo posture.
+- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) is the upstream project behind the MaaS APIs surfaced through Red Hat OpenShift AI.
 - [Gateway API](https://gateway-api.sigs.k8s.io/) provides Kubernetes-native API routing primitives.
 - [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.

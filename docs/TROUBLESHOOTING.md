@@ -183,16 +183,16 @@ oc get events -n maas --sort-by=.lastTimestamp | tail -30
 
 **Affected stage:** Stage 040
 
-**Likely cause:** `maas-api` is not using the expected upstream-compatible configuration, `MaaSModelRef` resources are not ready, or the tenant reconciler has not recreated resources.
+**Likely cause:** the Red Hat OpenShift AI MaaS controller or `maas-api` deployment is not ready, `MaaSModelRef` resources are not ready, or the dashboard feature flags have not been reconciled after an operator upgrade.
 
 **Diagnose:**
 
 ```bash
 oc get deployment maas-api -n redhat-ods-applications \
-  -o jsonpath='{.metadata.labels.maas\.opendatahub\.io/tenant-name}{"\n"}'
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 
-oc get deployment maas-api -n redhat-ods-applications \
-  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MAAS_SUBSCRIPTION_NAMESPACE")].value}{"\n"}'
+oc get dsc default-dsc \
+  -o jsonpath='{.status.conditions[?(@.type=="ModelsAsServiceReady")].status}{" "}{.status.conditions[?(@.type=="ModelsAsServiceReady")].reason}{"\n"}'
 
 oc get maasmodelref -n maas
 oc get externalmodel -n maas
@@ -200,12 +200,14 @@ oc get externalmodel -n maas
 
 **Recover:**
 
-If the `maas-api` deployment is stale, delete it and let the tenant reconciler recreate it:
+If the `maas-controller` or `maas-api` deployment was created by an older demo workaround, delete the stale deployment and let the Red Hat OpenShift AI 3.4 operator recreate it:
 
 ```bash
+oc delete deployment maas-controller -n redhat-ods-applications
 oc delete deployment maas-api -n redhat-ods-applications
-oc annotate tenant default-tenant -n models-as-a-service \
+oc annotate dsc default-dsc \
   recovery.rhoai-demo.io/restarted-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+oc rollout status deployment/maas-controller -n redhat-ods-applications
 oc rollout status deployment/maas-api -n redhat-ods-applications
 ```
 
@@ -241,7 +243,7 @@ oc get deployment tokens-bridge \
 
 - Re-sync Stage 040 so the tokens bridge requests `demo-models-subscription`.
 - Re-sync Stage 050 so the PostSync hook expands `demo-models-subscription` to include `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
-- Avoid adding a second broad subscription with overlapping model refs. The upstream MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
+- Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
 ```bash
 argocd app sync 040-governed-models-as-a-service

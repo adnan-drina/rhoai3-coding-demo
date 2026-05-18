@@ -29,7 +29,7 @@ The stage intentionally demonstrates a controlled private-serving baseline rathe
 
 ## What To Notice And Why It Matters
 
-Stage 030 turns the GPUaaS foundation into private AI inference on Red Hat OpenShift AI. The local models are declared as GitOps-managed `LLMInferenceService` resources, served by the Red Hat AI Inference Server vLLM runtime, connected to Kueue-managed GPU capacity, registered for discovery, and exposed through platform-controlled service endpoints.
+Stage 030 turns the GPUaaS foundation into private AI inference on Red Hat OpenShift AI. The local models are declared as GitOps-managed `LLMInferenceService` resources, served by the Red Hat AI Inference Server vLLM runtime image published with Red Hat OpenShift AI 3.4, connected to Kueue-managed GPU capacity, registered for discovery, and exposed through platform-controlled service endpoints.
 
 The essential proof point is private inference operated as enterprise platform infrastructure:
 

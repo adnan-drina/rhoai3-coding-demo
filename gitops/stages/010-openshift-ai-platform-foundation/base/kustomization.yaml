@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# RHOAI 3.3 Platform — operator, configuration, and all RHOAI dependencies
+# RHOAI 3.4 Platform — operator, configuration, and all RHOAI dependencies
 # Matches public quickstart: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 
 resources:

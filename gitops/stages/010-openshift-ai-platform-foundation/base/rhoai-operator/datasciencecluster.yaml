@@ -1,4 +1,4 @@
-# RHOAI 3.3 DataScienceCluster — minimal component set matching public quickstart
+# RHOAI 3.4 DataScienceCluster — minimal component set matching public quickstart
 # Ref: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
 apiVersion: datasciencecluster.opendatahub.io/v2
 kind: DataScienceCluster

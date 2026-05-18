@@ -92,7 +92,7 @@ spec:
                     "registeredModelId": "'"${RM_ID}"'",
                     "customProperties": {
                       "serving_runtime": {"metadataType": "MetadataStringValue", "string_value": "vLLM"},
-                      "deployed_on": {"metadataType": "MetadataStringValue", "string_value": "RHOAI 3.3"}
+                      "deployed_on": {"metadataType": "MetadataStringValue", "string_value": "RHOAI 3.4"}
                     }
                   }' 2>&1)
 
