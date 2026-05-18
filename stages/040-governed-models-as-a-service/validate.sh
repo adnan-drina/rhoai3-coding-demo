@@ -14,8 +14,11 @@ log_step "Argo CD Application"
 check_argocd_app "040-governed-models-as-a-service"
 
 log_step "Operators"
-check_csv_succeeded "rhcl-operator" "Connectivity Link"
+check_csv_succeeded "openshift-operators" "Connectivity Link"
 check_csv_succeeded "openshift-operators" "cloudnative-pg"
+check_csv_succeeded "openshift-operators" "Cluster Observability Operator"
+check_csv_succeeded "openshift-operators" "Red Hat build of OpenTelemetry"
+check_csv_succeeded "openshift-operators" "Tempo Operator"
 
 log_step "MaaS CRDs"
 check_crd_exists "maasmodelrefs.maas.opendatahub.io"
@@ -64,8 +67,8 @@ check "Limitador deployment ready" \
 
 log_step "MaaS API"
 check "Dashboard MaaS user and admin flags enabled" \
-  "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.modelAsService}{\" \"}{.spec.dashboardConfig.genAiStudio}{\" \"}{.spec.dashboardConfig.maasAuthPolicies}{\" \"}{.spec.dashboardConfig.vLLMDeploymentOnMaaS}'" \
-  "true true true true"
+  "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.modelAsService}{\" \"}{.spec.dashboardConfig.genAiStudio}{\" \"}{.spec.dashboardConfig.maasAuthPolicies}{\" \"}{.spec.dashboardConfig.vLLMDeploymentOnMaaS}{\" \"}{.spec.dashboardConfig.observabilityDashboard}'" \
+  "true true true true true"
 check "Tenant-managed maas-api deployment ready" \
   "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.status.readyReplicas}'" \
   "1"
@@ -81,6 +84,9 @@ check "MaaS tenant active" \
 check "MaaS tenant telemetry enabled" \
   "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.spec.telemetry.enabled}{\" \"}{.spec.telemetry.metrics.captureOrganization}{\" \"}{.spec.telemetry.metrics.captureModelUsage}'" \
   "true true true"
+check "MaaS API key expiration limit configured" \
+  "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.spec.apiKeys.maxExpirationDays}'" \
+  "90"
 check "DataScienceCluster MaaS component ready" \
   "oc get dsc default-dsc -o jsonpath='{.status.conditions[?(@.type==\"ModelsAsServiceReady\")].status}'" \
   "True"
@@ -118,55 +124,34 @@ fi
 check "demo-models-subscription token limits ready" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.tokenRateLimitStatuses[*].ready}'" \
   "true"
-check "Playground token bridge uses demo subscription" \
-  "oc get deployment tokens-bridge -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PLAYGROUND_MAAS_SUBSCRIPTION\")].value}'" \
-  "demo-models-subscription"
 
 USER_TOKEN="$(oc whoami -t 2>/dev/null || true)"
 if [[ -n "$USER_TOKEN" ]]; then
-  BRIDGE_RESPONSE=$(oc run "maas-bridge-key-smoke-$(date +%s)" \
-    -n redhat-ods-applications \
-    --restart=Never \
-    --rm \
-    -i \
-    --quiet \
-    --image=registry.access.redhat.com/ubi9/ubi-minimal \
-    -- curl -s -X POST \
-      -H "X-Forwarded-Access-Token: ${USER_TOKEN}" \
-      -H "X-Forwarded-User: ai-developer" \
-      -H 'X-Forwarded-Groups: rhoai-users,system:authenticated:oauth,system:authenticated' \
+  MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || true)"
+  API_KEY_RESPONSE=""
+  if [[ -n "$MAAS_HOST" && "$MAAS_HOST" != *placeholder* ]]; then
+    API_KEY_RESPONSE=$(curl -sk -X POST \
+      -H "Authorization: Bearer ${USER_TOKEN}" \
       -H "Content-Type: application/json" \
-      --data '{"model":"nemotron-3-nano-30b-a3b","subscription":"demo-models-subscription"}' \
-      http://tokens-bridge.redhat-ods-applications.svc:8080/v1/tokens 2>/dev/null || true)
-  BRIDGE_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.key // "") | length)' 2>/dev/null || echo 0)
-  BRIDGE_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.token // "") | length)' 2>/dev/null || echo 0)
-  BRIDGE_DATA_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.data.key // "") | length)' 2>/dev/null || echo 0)
-  BRIDGE_DATA_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.data.token // "") | length)' 2>/dev/null || echo 0)
-  BRIDGE_KEY_ID=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '.id // .data.id // empty' 2>/dev/null || true)
-  if (( BRIDGE_KEY_LENGTH > 0 && BRIDGE_TOKEN_LENGTH > 0 && BRIDGE_DATA_KEY_LENGTH > 0 && BRIDGE_DATA_TOKEN_LENGTH > 0 )); then
-    echo -e "${GREEN}[PASS]${NC} Gen AI token bridge returns top-level and nested key/token fields"
+      -d "{\"name\":\"stage040-key-smoke-$(date -u +%Y%m%d%H%M%S)\",\"subscription\":\"demo-models-subscription\"}" \
+      "https://${MAAS_HOST}/maas-api/v1/api-keys" 2>/dev/null || true)
+  fi
+  API_KEY_VALUE=$(printf '%s' "$API_KEY_RESPONSE" | jq -r '.key // empty' 2>/dev/null || true)
+  API_KEY_ID=$(printf '%s' "$API_KEY_RESPONSE" | jq -r '.id // empty' 2>/dev/null || true)
+  if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Product MaaS API creates non-empty API key"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
   else
-    echo -e "${RED}[FAIL]${NC} Gen AI token bridge returns top-level and nested key/token fields"
+    echo -e "${RED}[FAIL]${NC} Product MaaS API creates non-empty API key"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
   fi
-  if [[ -n "$BRIDGE_KEY_ID" ]]; then
-    oc run "maas-bridge-key-cleanup-$(date +%s)" \
-      -n redhat-ods-applications \
-      --restart=Never \
-      --rm \
-      -i \
-      --quiet \
-      --image=registry.access.redhat.com/ubi9/ubi-minimal \
-      -- curl -s -X DELETE \
-        -H "Authorization: Bearer ${USER_TOKEN}" \
-        -H "X-MaaS-Username: ai-developer" \
-        -H 'X-MaaS-Group: ["rhoai-users","system:authenticated:oauth","system:authenticated"]' \
-        "https://maas-api.redhat-ods-applications.svc:8443/v1/api-keys/${BRIDGE_KEY_ID}" \
-        -k >/dev/null 2>&1 || true
+  if [[ -n "$API_KEY_ID" && -n "$MAAS_HOST" ]]; then
+    curl -sk -X DELETE \
+      -H "Authorization: Bearer ${USER_TOKEN}" \
+      "https://${MAAS_HOST}/maas-api/v1/api-keys/${API_KEY_ID}" >/dev/null 2>&1 || true
   fi
 else
-  echo -e "${YELLOW}[WARN]${NC} Skipping token bridge key smoke test because no OpenShift user token is available"
+  echo -e "${YELLOW}[WARN]${NC} Skipping MaaS API key smoke test because no OpenShift user token is available"
   VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
@@ -197,9 +182,21 @@ check "TokenRateLimitPolicy for nemotron-3-nano-30b-a3b accepted" \
   "True"
 
 log_step "MaaS Observability Configuration"
-check "Kuadrant ready for MaaS policy enforcement" \
-  "oc get kuadrant kuadrant -n kuadrant-system -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-  "True"
+check "RHOAI observability stack managed" \
+  "oc get dsci default-dsci -o jsonpath='{.spec.monitoring.managementState}{\" \"}{.spec.monitoring.namespace}'" \
+  "Managed redhat-ods-monitoring"
+check "Kuadrant observability enabled" \
+  "oc get kuadrant kuadrant -n kuadrant-system -o jsonpath='{.spec.observability.enable}'" \
+  "true"
+check "Limitador PodMonitor exists" \
+  "oc get podmonitor kuadrant-limitador-monitor -n kuadrant-system -o jsonpath='{.metadata.name}'" \
+  "kuadrant-limitador-monitor"
+check "MaaS TelemetryPolicy accepted and enforced" \
+  "oc get telemetrypolicy maas-telemetry -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}{\" \"}{.status.conditions[?(@.type==\"Enforced\")].status}'" \
+  "True True"
+check_warn "MaaS authorized_calls metric queryable" \
+  "oc exec -n openshift-user-workload-monitoring prometheus-user-workload-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=authorized_calls' | jq -r '.status'" \
+  "success"
 
 log_step "GuideLLM load test"
 if [[ "${GUIDELLM_SKIP_LOAD_TEST:-false}" == "true" ]]; then

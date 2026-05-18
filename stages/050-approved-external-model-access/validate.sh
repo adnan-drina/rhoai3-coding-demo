@@ -14,28 +14,28 @@ check_argocd_app "050-approved-external-model-access"
 
 log_step "ExternalModels"
 check "ExternalModel gpt-4o exists" \
-  "oc get externalmodel gpt-4o -n maas -o jsonpath='{.spec.provider}'" \
+  "oc get externalmodel gpt-4o -n redhat-ods-applications -o jsonpath='{.spec.provider}'" \
   "openai"
 check "ExternalModel gpt-4o points at OpenAI endpoint" \
-  "oc get externalmodel gpt-4o -n maas -o jsonpath='{.spec.endpoint}{\" \"}{.spec.credentialRef.name}{\" \"}{.spec.targetModel}'" \
+  "oc get externalmodel gpt-4o -n redhat-ods-applications -o jsonpath='{.spec.endpoint}{\" \"}{.spec.credentialRef.name}{\" \"}{.spec.targetModel}'" \
   "api.openai.com openai-api-key gpt-4o"
 check "ExternalModel gpt-4o-mini exists" \
-  "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.provider}'" \
+  "oc get externalmodel gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.spec.provider}'" \
   "openai"
 check "ExternalModel gpt-4o-mini points at OpenAI endpoint" \
-  "oc get externalmodel gpt-4o-mini -n maas -o jsonpath='{.spec.endpoint}{\" \"}{.spec.credentialRef.name}{\" \"}{.spec.targetModel}'" \
+  "oc get externalmodel gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.spec.endpoint}{\" \"}{.spec.credentialRef.name}{\" \"}{.spec.targetModel}'" \
   "api.openai.com openai-api-key gpt-4o-mini"
 check "MaaSModelRef gpt-4o ready" \
-  "oc get maasmodelref gpt-4o -n maas -o jsonpath='{.status.phase}'" \
+  "oc get maasmodelref gpt-4o -n redhat-ods-applications -o jsonpath='{.status.phase}'" \
   "Ready"
 check "MaaSModelRef gpt-4o targets ExternalModel" \
-  "oc get maasmodelref gpt-4o -n maas -o jsonpath='{.spec.modelRef.kind}/{.spec.modelRef.name}'" \
+  "oc get maasmodelref gpt-4o -n redhat-ods-applications -o jsonpath='{.spec.modelRef.kind}/{.spec.modelRef.name}'" \
   "ExternalModel/gpt-4o"
 check "MaaSModelRef gpt-4o-mini ready" \
-  "oc get maasmodelref gpt-4o-mini -n maas -o jsonpath='{.status.phase}'" \
+  "oc get maasmodelref gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.status.phase}'" \
   "Ready"
 check "MaaSModelRef gpt-4o-mini targets ExternalModel" \
-  "oc get maasmodelref gpt-4o-mini -n maas -o jsonpath='{.spec.modelRef.kind}/{.spec.modelRef.name}'" \
+  "oc get maasmodelref gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.spec.modelRef.kind}/{.spec.modelRef.name}'" \
   "ExternalModel/gpt-4o-mini"
 
 log_step "External model governance"
@@ -43,10 +43,10 @@ check "MaaSAuthPolicy external-models-access active" \
   "oc get maasauthpolicy external-models-access -n models-as-a-service -o jsonpath='{.status.phase}'" \
   "Active"
 check "External AuthPolicy generated for gpt-4o" \
-  "oc get authpolicy maas-auth-gpt-4o -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
+  "oc get authpolicy maas-auth-gpt-4o -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
 check "External AuthPolicy generated for gpt-4o-mini" \
-  "oc get authpolicy maas-auth-gpt-4o-mini -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
+  "oc get authpolicy maas-auth-gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
 check "Shared demo MaaSSubscription active" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.status.phase}'" \
@@ -87,14 +87,14 @@ else
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 fi
 check "External TokenRateLimitPolicy for gpt-4o accepted" \
-  "oc get tokenratelimitpolicy maas-trlp-gpt-4o -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
+  "oc get tokenratelimitpolicy maas-trlp-gpt-4o -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
 check "External TokenRateLimitPolicy for gpt-4o-mini accepted" \
-  "oc get tokenratelimitpolicy maas-trlp-gpt-4o-mini -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
+  "oc get tokenratelimitpolicy maas-trlp-gpt-4o-mini -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
 
 log_step "Credential placeholder check"
-OPENAI_SECRET=$(oc get secret openai-api-key -n maas -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+OPENAI_SECRET=$(oc get secret openai-api-key -n redhat-ods-applications -o jsonpath='{.data.api-key}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
 OPENAI_SECRET_LC=$(printf '%s' "$OPENAI_SECRET" | tr '[:upper:]' '[:lower:]')
 if [[ -n "$OPENAI_SECRET" ]] && [[ "$OPENAI_SECRET_LC" != *"replace"* ]] && [[ "$OPENAI_SECRET_LC" != *"placeholder"* ]]; then
     echo -e "${GREEN}[PASS]${NC} openai-api-key contains a non-placeholder value"

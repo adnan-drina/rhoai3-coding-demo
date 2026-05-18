@@ -9,9 +9,9 @@ metadata:
 spec:
   modelRefs:
     - name: gpt-4o
-      namespace: maas
+      namespace: redhat-ods-applications
     - name: gpt-4o-mini
-      namespace: maas
+      namespace: redhat-ods-applications
   subjects:
     groups:
       - name: "system:authenticated"

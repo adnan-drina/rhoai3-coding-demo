@@ -39,6 +39,11 @@ check "KnativeServing ready" \
 log_step "Red Hat OpenShift AI Operator"
 check_csv_succeeded "redhat-ods-operator" "Red Hat OpenShift AI"
 
+log_step "RHOAI Observability Prerequisites"
+check_csv_succeeded "openshift-operators" "Cluster Observability Operator"
+check_csv_succeeded "openshift-operators" "Red Hat build of OpenTelemetry"
+check_csv_succeeded "openshift-operators" "Tempo Operator"
+
 log_step "Demo Persona Identity"
 check "Demo htpasswd Secret exists" \
     "oc get secret demo-htpasswd -n openshift-config -o jsonpath='{.metadata.name}'" \
@@ -70,6 +75,9 @@ log_step "DSCInitialization"
 check "DSCInitialization exists" \
     "oc get dscinitializations --no-headers 2>/dev/null | wc -l | tr -d ' '" \
     "1"
+check "DSCInitialization monitoring managed" \
+    "oc get dsci default-dsci -o jsonpath='{.spec.monitoring.managementState}{\" \"}{.spec.monitoring.namespace}'" \
+    "Managed redhat-ods-monitoring"
 
 log_step "DataScienceCluster"
 check "DataScienceCluster phase Ready" \
@@ -89,6 +97,9 @@ fi
 log_step "GenAI Studio"
 check "GenAI Studio enabled" \
     "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.genAiStudio}'" \
+    "true"
+check "Observability dashboard enabled" \
+    "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.observabilityDashboard}'" \
     "true"
 
 log_step "Dashboard Access"

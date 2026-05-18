@@ -87,16 +87,16 @@ that the target 3.4 cluster accepts the subscription-based path.
 | Tier-named users and groups | `tier-free-users`, `tier-premium-users`, and `tier-enterprise-users` | Demo personas were modeled as access tiers | Replaced by `rhoai-users` and `rhoai-admins` in `MaaSAuthPolicy` and `MaaSSubscription`. |
 | Manual gateway policy | Manual `RateLimitPolicy`, `TokenRateLimitPolicy`, and `TelemetryPolicy` | Made 3.3 gateway, token-limit, and telemetry behavior explicit | Removed from the active GitOps path; token limits are owned by `MaaSSubscription` and telemetry is configured on `Tenant`. |
 | Manual per-model RBAC | Tier ServiceAccount RoleBindings | Older MaaS gateway authorization expected tier ServiceAccounts | Removed from the active GitOps path in favor of controller-generated authorization policy. |
-| Tokens bridge | `gitops/stages/040-governed-models-as-a-service/base/tokens-bridge/deployment.yaml` | Maintains compatibility for Playground and older dashboard token call paths | Keep until product API key and temporary-token flows work through supported dashboard paths without empty-key or header-loss issues. |
-| Observability dashboard | Community Grafana dashboard with tier-shaped metrics and compatibility recording rules | Provided visible demo showback before product MaaS observability was available | Removed from active GitOps. Product MaaS observability remains the follow-up after Cluster Observability Operator and metrics storage are configured. |
+| Tokens bridge | Retired from active GitOps | Maintained compatibility for older Playground and dashboard token call paths | Removed after the target 3.4 path was aligned on product `/maas-api/v1/api-keys` key creation. |
+| Observability dashboard | Product RHOAI observability stack and MaaS Usage dashboard | Replaces the historical community Grafana showback view | Active GitOps installs the documented Red Hat observability prerequisites and enables MaaS telemetry/Kuadrant observability. |
 | Historical upstream controller path | Completed backlog entries for upstream `maas-controller`, upstream CRDs, and `maas-api` image override | Previous 3.3 and 3.4 EA2 workaround | Keep only as historical context. Do not present it as current architecture and do not reintroduce it without a newly proven 3.4 product gap. |
 
 ## Cleanup Order
 
 1. Keep validation proving the cluster is using operator-owned `maas-api` and `maas-controller` images from `registry.redhat.io/rhoai/`.
 2. Validate 3.4 `MaaSSubscription`, `MaaSAuthPolicy`, API key, temporary API key, and dashboard paths against the live sandbox.
-3. Replace or retire the tokens bridge only after the dashboard and Playground can mint non-empty keys through supported 3.4 paths.
-4. Add the product MaaS observability dashboard only after Cluster Observability Operator and metrics storage are configured and validated.
+3. Keep the product `/maas-api/v1/api-keys` path as the supported key lifecycle path.
+4. Keep MaaS usage visibility on the product RHOAI observability dashboard path.
 
 ## Live Validation Record
 
@@ -183,11 +183,10 @@ Operational note:
 
 ## Risks To Track
 
-- **AI Available Assets key dialog:** The Gen AI backend can mint a non-empty `data.key`, but the browser modal has shown an empty field in the live sandbox. Do not route `/gen-ai/api/v1/maas/tokens` directly to the tokens bridge; that bypasses dashboard user-header handling.
-- **MaaS token bridge:** Keep the `/maas-api/v1/tokens` compatibility bridge until the product path covers Playground and dashboard token callers without it.
+- **AI Available Assets key dialog:** The Gen AI backend can mint a non-empty MaaS API key, but browser bundles can cache stale response handling after dashboard upgrades. Hard-refresh the dashboard before diagnosing the product API path.
 - **External model routing:** Keep provider credential and trust-boundary language explicit. External inference remains governed but not private.
 - **GuideLLM path:** Current validation uses the upstream GuideLLM container directly. Treat this as demo tooling unless the Red Hat Evaluation Stack path is adopted.
-- **Product observability:** The community Grafana add-on was removed from the active GitOps path. Add the supported MaaS observability dashboard only after Cluster Observability Operator and metrics storage are configured.
+- **Product observability:** MaaS observability is configured through the RHOAI 3.4 documented stack. Metrics can remain empty until MaaS traffic generates `authorized_calls` or `limited_calls`.
 
 ## Rollback
 

@@ -11,7 +11,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: openai-api-key
-  namespace: maas
+  namespace: redhat-ods-applications
   labels:
     inference.networking.k8s.io/bbr-managed: "true"
   annotations:
@@ -24,7 +24,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: ExternalModel
 metadata:
   name: gpt-4o
-  namespace: maas
+  namespace: redhat-ods-applications
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -39,7 +39,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
   name: gpt-4o
-  namespace: maas
+  namespace: redhat-ods-applications
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -52,7 +52,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: ExternalModel
 metadata:
   name: gpt-4o-mini
-  namespace: maas
+  namespace: redhat-ods-applications
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
@@ -67,7 +67,7 @@ apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
   name: gpt-4o-mini
-  namespace: maas
+  namespace: redhat-ods-applications
   annotations:
     argocd.argoproj.io/sync-wave: "17"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true

@@ -2,14 +2,14 @@
 
 ## RHOAI 3.4 upgrade watch items
 
-As of 2026-05-18, the public Red Hat OpenShift AI 3.4 documentation describes the target MaaS model as subscription-based governance with API keys, group assignment, token limits, authorization policy, and usage tracking. The same release documentation still marks several MaaS-related surfaces as Technology Preview or Developer Preview. Do not remove demo workarounds automatically, because adjacent pieces still have narrower support scope or live-demo gaps: AI Available Assets with MaaS is Developer Preview, vLLM MaaS and MaaS observability are Technology Preview, external provider routing must keep its provider trust boundary explicit, and the current demo still carries compatibility glue for Playground token generation, dashboard user-token handling, and disposable observability.
+As of 2026-05-18, the public Red Hat OpenShift AI 3.4 documentation describes the target MaaS model as subscription-based governance with API keys, group assignment, token limits, authorization policy, and usage tracking. The same release documentation still marks several MaaS-related surfaces as Technology Preview or Developer Preview. Do not remove demo workarounds automatically, because adjacent pieces still have narrower support scope or live-demo gaps: AI Available Assets with MaaS is Developer Preview, vLLM MaaS and MaaS observability are Technology Preview, external provider routing must keep its provider trust boundary explicit, and the current demo still carries compatibility glue for dashboard user-token handling and cluster-specific gateway setup.
 
 Before upgrading this demo, verify the target RHOAI build against the following MaaS capability boundaries:
 
 - [ ] **Governed model access support scope** — Confirm whether governed model access, dashboard discovery, subscription assignment, API-key access, quota enforcement, rate limits, token limits, and usage visibility are GA, Technology Preview, Developer Preview, or otherwise scoped for the target release.
 - [x] **`MaaSSubscription` and `MaaSAuthPolicy` support** — Confirmed against the target RHOAI 3.4 build. The active GitOps path now uses these CRDs for model access and token limits instead of manual tier policy resources.
-- [ ] **`maas-api` API-key lifecycle** — Confirm whether product `maas-api` supports subscription-bound key minting, binding, rotation, and revocation without the upstream image override or Playground tokens bridge.
-- [ ] **MaaS observability path** — Confirm whether MaaS usage and health observability is product-supported or remains Technology Preview/demo glue, and whether this repo should replace community Grafana with a Red Hat-supported observability path.
+- [x] **`maas-api` API-key lifecycle** — Product `maas-api` supports subscription-bound API key creation and revocation through `/maas-api/v1/api-keys` in the target 3.4 build. The active GitOps path no longer deploys the demo tokens bridge.
+- [x] **MaaS observability path** — Active GitOps now installs the documented observability operator prerequisites, enables `DSCInitialization.spec.monitoring`, enables the RHOAI observability dashboard flag, enables Kuadrant observability, and keeps MaaS telemetry on the `Tenant`.
 - [ ] **External model and payload processing support** — Confirm whether `ExternalModel`, payload/request processing, provider credential injection, and external inference through the same MaaS subscription and policy surface are product-supported enough to remove the upstream `maas-controller` coexistence path.
 - [x] **3.3 tier model removal** — Server-side dry-run validation confirmed the target RHOAI 3.4 build accepts local model resources without tier annotations. The active GitOps path now removes tier annotations, the `tier-to-group-mapping` ConfigMap, tier-named groups, tier ServiceAccount RBAC, manual tier policy resources, and the tier-shaped community Grafana dashboard.
 
@@ -42,7 +42,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 - [ ] **ExternalModel credential Secret label** — Secrets referenced by `ExternalModel.spec.credentialRef` must have the label `inference.networking.k8s.io/bbr-managed=true` for the payload-processing (IPP) plugin to discover them.
 
-- [ ] **Tokens-bridge** (`tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` for Playground and older dashboard call paths. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground. Dashboard bundles have expected the generated credential in different response shapes (`key`, `token`, `data.key`, or `data.token`), so the bridge returns all four names with the same redacted-only logging. Do not route `/gen-ai/api/v1/maas/tokens` directly to this bridge; that bypasses the dashboard Gen AI proxy and loses the user headers needed by `maas-api`.
+- [x] ~~**Tokens-bridge** (`tokens-bridge/deployment.yaml`) — The compatibility bridge translated `/maas-api/v1/tokens` to `/v1/api-keys` for older Playground/dashboard call paths. The active GitOps path now relies on the product MaaS API key path and no longer deploys this bridge.~~
 
 ## 3.3 tier-model cleanup status
 
@@ -73,15 +73,15 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 - [ ] **GPUaaS metrics validation pass** — Confirm the final Prometheus metric names and proxy query path for the GPUaaS dashboard. Stage 020 currently validates dashboard resources and warns on raw metric query failures.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
-- [ ] **Red Hat-aligned observability path** — The community Grafana add-on has been removed from active Stage 040 GitOps. Next step is validating the product MaaS observability dashboard after Cluster Observability Operator and metrics storage are configured.
+- [x] **Red Hat-aligned observability path** — Active GitOps installs the Red Hat observability prerequisites and configures the product MaaS observability path instead of the historical community Grafana add-on.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
 
 ## Validated (2026-05-01 and 2026-05-02)
 
 - [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Current 3.4 validation expects the operator-owned `registry.redhat.io/rhoai/odh-maas-api-rhel9` deployment with PostgreSQL backend.
-- [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
+- [x] **API key generation** — `sk-oai-*` format keys are generated through the product `/maas-api/v1/api-keys` path.
 - [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
-- [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated, but live validation on 2026-05-02 confirmed that an approved `OPENAI_API_KEY` provisioned into `maas/openai-api-key` can complete a `gpt-4o-mini` call through MaaS. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.
+- [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated. The provider credential Secret now follows the RHOAI 3.4 documentation path in `redhat-ods-applications/openai-api-key`.
 - [x] **MaaSAuthPolicy + MaaSSubscription** — CRDs in `models-as-a-service` namespace, both `Active`. Per-route AuthPolicies and TokenRateLimitPolicies auto-created by the controller for all 4 models.
 - [x] **Continue and OpenCode configuration** — Developer workspace configuration is generated with MaaS endpoint and `sk-oai-*` API key auth. Current live validation covered local model access; external model execution still requires an approved provider key.
 - [x] **Stage 020 GPUaaS foundation** — Live validation on 2026-05-02 confirmed Red Hat build of Kueue, OpenShift AI Kueue integration, queue-based NVIDIA L4 hardware profiles, ResourceFlavor, ClusterQueue, LocalQueue, KEDA readiness, GPU MachineSet readiness, GPU node labels/taints, allocatable GPUs, NVIDIA ClusterPolicy readiness, and GPUaaS dashboard ConfigMap. The OpenShift 4.20 catalog used `stable-v1.3` for Red Hat build of Kueue.

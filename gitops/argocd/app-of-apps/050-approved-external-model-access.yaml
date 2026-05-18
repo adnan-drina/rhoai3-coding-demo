@@ -36,7 +36,7 @@ spec:
   ignoreDifferences:
     - group: ""
       kind: Secret
-      namespace: maas
+      namespace: redhat-ods-applications
       name: openai-api-key
       jsonPointers:
         - /data

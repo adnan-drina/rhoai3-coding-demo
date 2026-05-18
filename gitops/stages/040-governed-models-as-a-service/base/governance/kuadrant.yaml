@@ -1,5 +1,5 @@
-# Kuadrant instance — enables rate limiting and auth policy enforcement
-# Matching quickstart: no observability spec (uses defaults)
+# Kuadrant instance — enables rate limiting, auth policy enforcement, and MaaS usage metrics.
+# MaaS observability requires Kuadrant observability so Limitador metrics are scraped.
 apiVersion: kuadrant.io/v1beta1
 kind: Kuadrant
 metadata:
@@ -8,3 +8,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  observability:
+    enable: true

@@ -242,14 +242,14 @@ oc get maassubscription demo-models-subscription \
   -n models-as-a-service \
   -o jsonpath='{.spec.modelRefs[*].name}{"\n"}'
 
-oc get deployment tokens-bridge \
-  -n redhat-ods-applications \
-  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="PLAYGROUND_MAAS_SUBSCRIPTION")].value}{"\n"}'
+oc get tenant default-tenant \
+  -n models-as-a-service \
+  -o jsonpath='{.spec.telemetry.enabled}{"\n"}'
 ```
 
 **Recover:**
 
-- Re-sync Stage 040 so the tokens bridge requests `demo-models-subscription`.
+- Re-sync Stage 040 so the product MaaS API route, `Tenant`, and `MaaSSubscription` are reconciled.
 - Re-sync Stage 050 so the PostSync hook expands `demo-models-subscription` to include `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
 - Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
@@ -276,8 +276,8 @@ can still create a real API key while the modal displays an empty input.
 oc logs deployment/maas-api -n redhat-ods-applications --tail=100 | \
   grep -E 'Created API key|/v1/api-keys'
 
-oc logs deployment/tokens-bridge -n redhat-ods-applications --tail=100 | \
-  grep maas_token_created
+oc get tenant default-tenant -n models-as-a-service \
+  -o jsonpath='{.spec.apiKeys.maxExpirationDays}{"\n"}'
 ```
 
 The logs must show successful key creation, but must not print full API keys.
@@ -286,18 +286,13 @@ output.
 
 **Recover:**
 
-- Re-sync Stage 040 so the existing MaaS token bridge returns `key`, `token`,
-  `data.key`, and `data.token` on the `/maas-api/v1/tokens` compatibility path.
-- Restart `deployment/tokens-bridge` if the ConfigMap changed but the pod did
-  not roll.
+- Re-sync Stage 040 so the product MaaS API route and `Tenant` configuration are current.
 - Hard-refresh the OpenShift AI browser tab so the browser uses the dashboard
   bundle that matches the live Gen AI backend.
 - Generate a new one-time key.
 
 ```bash
 argocd app sync 040-governed-models-as-a-service
-oc rollout restart deployment/tokens-bridge -n redhat-ods-applications
-oc rollout status deployment/tokens-bridge -n redhat-ods-applications
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 

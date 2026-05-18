@@ -17,6 +17,7 @@ spec:
     genAiStudio: true
     maasAuthPolicies: true
     modelAsService: true
+    observabilityDashboard: true
     vLLMDeploymentOnMaaS: true
   notebookController:
     enabled: true

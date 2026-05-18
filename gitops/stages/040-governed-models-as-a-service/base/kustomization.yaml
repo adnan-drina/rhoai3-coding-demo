@@ -15,7 +15,6 @@ resources:
   - governance/authorino-service.yaml
   - governance/kuadrant.yaml
   - governance/authorino.yaml
-  - tokens-bridge/deployment.yaml
   - jobs/configure-kuadrant.yaml
   - jobs/restart-kserve-controller.yaml
   - models-maas-crds/
