@@ -103,8 +103,24 @@ data:
     echo "WARN: Could not patch volume size (blockDevices path may differ)"
 
     # The MachineSet can create initial Machines before the template patch is
-    # observed. Repair live nodes as well so validation and scheduling are
-    # deterministic during the same demo run.
+    # observed. Wait for live nodes and repair them as well so validation and
+    # scheduling are deterministic during the same demo run.
+    echo "Waiting for ${REPLICAS} live ${INSTANCE_TYPE} node(s)..."
+    for attempt in $(seq 1 60); do
+      NODE_COUNT=$(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+      if [ "${NODE_COUNT}" -ge "${REPLICAS}" ]; then
+        break
+      fi
+      echo "Found ${NODE_COUNT}/${REPLICAS} ${INSTANCE_TYPE} node(s); waiting... (${attempt}/60)"
+      sleep 30
+    done
+
+    NODE_COUNT=$(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${NODE_COUNT}" -lt "${REPLICAS}" ]; then
+      echo "ERROR: Timed out waiting for ${REPLICAS} ${INSTANCE_TYPE} node(s); found ${NODE_COUNT}"
+      exit 1
+    fi
+
     for NODE in $(oc get nodes -l "node.kubernetes.io/instance-type=${INSTANCE_TYPE}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
       echo "Configuring live GPU node: $NODE"
       oc label node "$NODE" node-role.kubernetes.io/gpu="" --overwrite
