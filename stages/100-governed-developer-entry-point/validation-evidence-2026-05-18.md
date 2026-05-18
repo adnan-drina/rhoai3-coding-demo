@@ -103,9 +103,21 @@ VALIDATION: 19 passed, 0 warnings, 0 failed
 ## Model Path Evidence
 
 - Selected source-code model: `nemotron-3-nano-30b-a3b`
-- Private MaaS models ready:
-  - `gpt-oss-20b`: ready
-  - `nemotron-3-nano-30b-a3b`: ready
+- GPU MachineSet: desired `2`, ready `2`
+- GPU nodes: two nodes ready
+- Private model pods:
+  - `gpt-oss-20b`: `2/2 Running`
+  - `nemotron-3-nano-30b-a3b`: `2/2 Running`
+- `LLMInferenceService` Ready condition:
+  - `gpt-oss-20b`: `False`, reason `SchedulerReconcileError`
+  - `nemotron-3-nano-30b-a3b`: `False`, reason
+    `SchedulerReconcileError`
+- Observed controller message: scheduler reconciliation failed while validating
+  generated `InferencePool.spec.endpointPickerRef`, reporting that `port` is
+  required for a Service endpoint picker reference.
+- Live `InferencePool` objects currently include endpoint picker port `9002`
+  and target port `8000`, so the failure appears to be a controller
+  reconciliation/status issue rather than missing running model pods.
 - Continue template default path: MaaS endpoint for
   `nemotron-3-nano-30b-a3b`
 - OpenCode template default model: `nemotron/nemotron-3-nano-30b-a3b`
@@ -130,13 +142,16 @@ Yellow.
 
 The governed platform entry path is validated: Developer Hub exposes the three
 demo components, each component has a single-repository Dev Spaces link, the
-workspace definitions are GitOps-managed, and the private MaaS model path is
-ready.
+workspace definitions are GitOps-managed, and the private model pods are
+running on GPU nodes.
 
-The remaining gate is client-level verification in the refreshed workspace:
-Continue and OpenCode must each complete the harmless MaaS model prompt and the
-read-only OpenShift MCP prompt after the developer inserts local MaaS
-credentials.
+The remaining gates are:
+
+- restore or explain the `LLMInferenceService` Ready condition for both private
+  models;
+- re-enter local MaaS credentials in the refreshed workspace configs;
+- verify Continue and OpenCode with the harmless MaaS model prompt;
+- verify Continue and OpenCode with the read-only OpenShift MCP prompt.
 
 ## Risks Or Gaps
 
@@ -149,8 +164,9 @@ credentials.
 
 ## Next Gate
 
-Reconfigure the refreshed `getting-started-ai-coding` workspace local client
-files with the MaaS route and API key, then verify:
+Before Stage 110 starts, resolve the private model status discrepancy, then
+reconfigure the refreshed `getting-started-ai-coding` workspace local client
+files with the MaaS route and API key and verify:
 
 - Continue harmless MaaS prompt: pass/fail
 - OpenCode harmless MaaS prompt: pass/fail
