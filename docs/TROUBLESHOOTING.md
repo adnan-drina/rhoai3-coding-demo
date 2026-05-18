@@ -265,10 +265,10 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 **Affected stages:** Stage 040, Stage 100
 
-**Likely cause:** The Gen AI AI asset endpoints modal calls `/maas-api/v1/tokens`
-and expects the generated credential in a response field named `key`. The demo
-tokens bridge translates that route to the MaaS API `/v1/api-keys` endpoint. If
-the bridge returns only the older Playground `token` field, MaaS still creates a
+**Likely cause:** The Gen AI AI asset endpoints modal calls the dashboard MaaS
+token endpoint and expects the generated credential in a nested response field.
+The demo tokens bridge translates that request to the MaaS API `/v1/api-keys`
+endpoint. If the dashboard bundle and response shape drift, MaaS still creates a
 real API key, but the modal displays an empty input.
 
 **Diagnose:**
@@ -287,7 +287,10 @@ output.
 
 **Recover:**
 
-- Re-sync Stage 040 so the tokens bridge returns both `key` and `token`.
+- Re-sync Stage 040 so the Gen AI token compatibility route points the token
+  request at the tokens bridge.
+- Confirm the tokens bridge returns `key`, `token`, `data.key`, and
+  `data.token`.
 - Restart `deployment/tokens-bridge` if the ConfigMap changed but the pod did
   not roll.
 - Refresh the OpenShift AI browser tab and generate a new one-time key.
@@ -296,6 +299,7 @@ output.
 argocd app sync 040-governed-models-as-a-service
 oc rollout restart deployment/tokens-bridge -n redhat-ods-applications
 oc rollout status deployment/tokens-bridge -n redhat-ods-applications
+./stages/040-governed-models-as-a-service/validate.sh
 ```
 
 ## MaaS Grafana Route Does Not Redirect To OpenShift OAuth

@@ -104,6 +104,9 @@ check "demo-models-subscription token limits ready" \
 check "Playground token bridge uses demo subscription" \
   "oc get deployment tokens-bridge -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PLAYGROUND_MAAS_SUBSCRIPTION\")].value}'" \
   "demo-models-subscription"
+check "Gen AI MaaS token compatibility route accepted" \
+  "oc get httproute gen-ai-maas-tokens-compat -n redhat-ods-applications -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
+  "True"
 
 USER_TOKEN="$(oc whoami -t 2>/dev/null || true)"
 if [[ -n "$USER_TOKEN" ]]; then
@@ -115,20 +118,22 @@ if [[ -n "$USER_TOKEN" ]]; then
     --quiet \
     --image=registry.access.redhat.com/ubi9/ubi-minimal \
     -- curl -s -X POST \
-      -H "Authorization: Bearer ${USER_TOKEN}" \
-      -H "X-MaaS-Username: ai-developer" \
-      -H 'X-MaaS-Group: ["rhoai-users","tier-premium-users","system:authenticated:oauth","system:authenticated"]' \
+      -H "X-Forwarded-Access-Token: ${USER_TOKEN}" \
+      -H "X-Forwarded-User: ai-developer" \
+      -H 'X-Forwarded-Groups: rhoai-users,tier-premium-users,system:authenticated:oauth,system:authenticated' \
       -H "Content-Type: application/json" \
       --data '{"model":"nemotron-3-nano-30b-a3b","subscription":"demo-models-subscription"}' \
-      http://tokens-bridge.redhat-ods-applications.svc:8080/v1/tokens 2>/dev/null || true)
+      'http://tokens-bridge.redhat-ods-applications.svc:8080/gen-ai/api/v1/maas/tokens?namespace=coding-assistant' 2>/dev/null || true)
   BRIDGE_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.key // "") | length)' 2>/dev/null || echo 0)
   BRIDGE_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.token // "") | length)' 2>/dev/null || echo 0)
-  BRIDGE_KEY_ID=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '.id // empty' 2>/dev/null || true)
-  if (( BRIDGE_KEY_LENGTH > 0 && BRIDGE_TOKEN_LENGTH > 0 )); then
-    echo -e "${GREEN}[PASS]${NC} Playground token bridge returns both key and token fields"
+  BRIDGE_DATA_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.data.key // "") | length)' 2>/dev/null || echo 0)
+  BRIDGE_DATA_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.data.token // "") | length)' 2>/dev/null || echo 0)
+  BRIDGE_KEY_ID=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '.id // .data.id // empty' 2>/dev/null || true)
+  if (( BRIDGE_KEY_LENGTH > 0 && BRIDGE_TOKEN_LENGTH > 0 && BRIDGE_DATA_KEY_LENGTH > 0 && BRIDGE_DATA_TOKEN_LENGTH > 0 )); then
+    echo -e "${GREEN}[PASS]${NC} Gen AI token bridge returns top-level and nested key/token fields"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
   else
-    echo -e "${RED}[FAIL]${NC} Playground token bridge returns both key and token fields"
+    echo -e "${RED}[FAIL]${NC} Gen AI token bridge returns top-level and nested key/token fields"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
   fi
   if [[ -n "$BRIDGE_KEY_ID" ]]; then

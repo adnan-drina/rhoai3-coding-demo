@@ -13,12 +13,31 @@ data:
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
+    def forwarded_groups(header_value):
+        if not header_value:
+            return ""
+        stripped = header_value.strip()
+        if stripped.startswith("["):
+            return stripped
+        return json.dumps([group.strip() for group in stripped.split(",") if group.strip()])
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
             length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(length) if length else b'{}'
             try: data = json.loads(body)
             except: data = {}
+            bearer = self.headers.get("Authorization", "")
+            forwarded_token = self.headers.get("X-Forwarded-Access-Token", "")
+            if not bearer and forwarded_token:
+                bearer = f"Bearer {forwarded_token}"
+            username = (
+                self.headers.get("X-MaaS-Username", "")
+                or self.headers.get("X-Forwarded-User", "")
+            )
+            groups = (
+                self.headers.get("X-MaaS-Group", "")
+                or forwarded_groups(self.headers.get("X-Forwarded-Groups", ""))
+            )
             api_key_body = json.dumps({
                 "name": f"playground-{data.get('model','auto')}",
                 "subscription": data.get("subscription") or PLAYGROUND_SUBSCRIPTION,
@@ -26,9 +45,9 @@ data:
             req = urllib.request.Request(
                 f"{MAAS_API}/v1/api-keys", data=api_key_body,
                 headers={"Content-Type": "application/json",
-                    "Authorization": self.headers.get("Authorization", ""),
-                    "X-MaaS-Username": self.headers.get("X-MaaS-Username", ""),
-                    "X-MaaS-Group": self.headers.get("X-MaaS-Group", "")},
+                    "Authorization": bearer,
+                    "X-MaaS-Username": username,
+                    "X-MaaS-Group": groups},
                 method="POST")
             try:
                 resp = urllib.request.urlopen(req, context=ctx)
@@ -39,7 +58,7 @@ data:
                     or resp_data.get("apiKey")
                     or ""
                 )
-                result = {
+                token_data = {
                     "key": api_key,
                     "token": api_key,
                     "keyPrefix": resp_data.get("keyPrefix", ""),
@@ -47,6 +66,7 @@ data:
                     "expiresAt": resp_data.get("expiresAt", ""),
                     "expiration": resp_data.get("expiresAt") or "720h0m0s",
                 }
+                result = {**token_data, "data": token_data}
                 print(json.dumps({
                     "event": "maas_token_created",
                     "path": self.path,
@@ -84,7 +104,7 @@ spec:
       labels:
         app: tokens-bridge
       annotations:
-        demo.rhoai.redhat.com/config-version: "api-key-response-v2"
+        demo.rhoai.redhat.com/config-version: "gen-ai-token-compat-v1"
     spec:
       containers:
       - name: proxy
@@ -141,6 +161,28 @@ spec:
         path:
           type: ReplacePrefixMatch
           replacePrefixMatch: /v1/tokens
+    backendRefs:
+    - name: tokens-bridge
+      port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gen-ai-maas-tokens-compat
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: data-science-gateway
+    namespace: openshift-ingress
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /gen-ai/api/v1/maas/tokens
     backendRefs:
     - name: tokens-bridge
       port: 8080
