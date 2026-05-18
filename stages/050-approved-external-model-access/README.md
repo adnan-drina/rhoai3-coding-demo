@@ -42,7 +42,7 @@ This matters because regulated enterprises often need a hybrid model portfolio. 
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS Technology Preview direction while keeping the provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
+Red Hat OpenShift AI provides the MaaS operating model: approved model choices, MaaS-issued tokens, tier-aware limits, OpenAI-compatible APIs, and rate-limit feedback. This stage follows the Red Hat OpenShift AI 3.4 MaaS operating model while keeping the external provider trust boundary explicit. Red Hat OpenShift supplies namespaces, RBAC, Secrets, routes, service networking, and identity, while Red Hat OpenShift GitOps keeps approved external model records and subscription policy reproducible without storing real provider credentials in Git.
 
 Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino keeps external model access on the same governed API path introduced in Stage 040. Red Hat OpenShift AI 3.4 supplies the MaaS APIs for `ExternalModel`, model references, authorization policy, and subscriptions. That posture lets the workshop show approved external model registration through the product-owned MaaS control plane while keeping implementation deviations tracked in [`BACKLOG.md`](../../BACKLOG.md) and [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
 
@@ -90,6 +90,7 @@ Manifests: [`gitops/stages/050-approved-external-model-access/base/`](../../gito
 ## References
 
 - [Red Hat OpenShift AI 3.4: Use Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/govern_llm_access_with_models-as-a-service/use-models-as-a-service_maas)
+- [Red Hat OpenShift AI 3.4 release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/release_notes/release_notes)
 - [Red Hat: What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
 - [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
 - [MaaS code assistant quickstart](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)

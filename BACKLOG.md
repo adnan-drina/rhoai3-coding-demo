@@ -1,8 +1,8 @@
 # Backlog
 
-## RHOAI 3.4 MaaS upgrade watch items
+## RHOAI 3.4 upgrade watch items
 
-As of 2026-05-12, the public Red Hat OpenShift AI 3.4 MaaS documentation and 3.4 release notes still describe Models-as-a-Service as a Technology Preview capability. Do not relabel this demo as using GA MaaS, or remove MaaS workarounds only because the target version is 3.4, until final product documentation or release notes explicitly confirm the support scope. If later Red Hat AI 3.4 materials describe a split where some MaaS capabilities are GA and others remain Technology Preview, reconcile that split against the public Red Hat OpenShift AI docs before changing demo language.
+As of 2026-05-18, the public Red Hat OpenShift AI 3.4 release notes describe a 3.4 GA release and document Models-as-a-Service as a 3.4 capability. Do not remove demo workarounds automatically, because adjacent pieces still have narrower support scope or live-demo gaps: AI Available Assets with MaaS is Developer Preview, external provider routing must keep its provider trust boundary explicit, and the current demo still carries compatibility glue for Playground token generation, dashboard user-token handling, and disposable observability.
 
 Before upgrading this demo, verify the target RHOAI build against the following MaaS capability boundaries:
 
@@ -12,9 +12,9 @@ Before upgrading this demo, verify the target RHOAI build against the following 
 - [ ] **MaaS observability path** — Confirm whether MaaS usage and health observability is product-supported or remains Technology Preview/demo glue, and whether this repo should replace community Grafana with a Red Hat-supported observability path.
 - [ ] **External model and payload processing support** — Confirm whether `ExternalModel`, payload/request processing, provider credential injection, and external inference through the same MaaS subscription and policy surface are product-supported enough to remove the upstream `maas-controller` coexistence path.
 
-## Workarounds (review when supported MaaS covers them natively)
+## Workarounds (review when supported RHOAI 3.4 paths cover them natively)
 
-The following items use manual configuration or post-deploy patches because the Red Hat OpenShift AI 3.3 operator's MaaS integration has gaps. Red Hat OpenShift AI 3.4 documents Models-as-a-Service (MaaS) as a Technology Preview feature, so do not remove these workarounds only because a newer operator exists. Review each item when a supported MaaS path covers the behavior natively and the replacement has been validated in this demo.
+The following items use manual configuration or post-deploy patches because the demo validates MaaS, dashboard, gateway, and observability behavior across several product surfaces. Review each item against the exact Red Hat OpenShift AI 3.4 build in the target cluster and remove it only after the replacement behavior has been validated in this demo.
 
 - [ ] **Gateway AuthPolicy patch for user OAuth tokens** — The operator-managed gateway policy path accepts ServiceAccount tokens (`maas-default-gateway-sa` audience). The dashboard's `gen-ai-ui` forwards user OAuth tokens. The `configure-kuadrant` Job patches `gateway-default-auth` to add `user-tokens` authentication and patches `maas-api-auth-policy` to add empty `authorization: {}` so `/maas-api/*` management endpoints do not inherit the gateway-level tier-access check.
   **Revert:** A supported MaaS operator path should configure AuthPolicies that accept dashboard-forwarded tokens natively.
@@ -28,7 +28,7 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Tier-to-group-mapping ConfigMap in `redhat-ods-applications`** — The Red Hat OpenShift AI validating webhook requires this ConfigMap when `LLMInferenceService` uses the `alpha.maas.opendatahub.io/tiers` annotation. The operator's `maas-api` does not create it in `redhat-ods-applications`; we deploy it at sync wave 9.
   **Revert:** The supported operator path should create this ConfigMap automatically.
 
-- [ ] **Manual RateLimitPolicy, TokenRateLimitPolicy, TelemetryPolicy** — Created in `governance/` because 3.3 has no operator-managed MaaS policies.
+- [ ] **Manual RateLimitPolicy, TokenRateLimitPolicy, TelemetryPolicy** — Created in `governance/` to make the demo gateway, token-limit, and telemetry behavior explicit and reproducible.
   **Revert:** The supported operator path may manage these via `MaaSSubscription` CRDs.
 
 - [ ] **Manual per-model RBAC** (`models/rbac.yaml`) — Roles granting tier ServiceAccounts access to `LLMInferenceService`.
@@ -40,21 +40,20 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
   **Revert:** The supported operator path should create proper NetworkPolicies for the dashboard.
 
-## Workarounds (upstream maas-controller coexistence with Red Hat OpenShift AI 3.3)
+## Retired pre-3.4 workarounds and remaining compatibility glue
 
-The following items maintain the hybrid architecture where the upstream `maas-controller` runs alongside the Red Hat OpenShift AI 3.3 operator. This is intentional for the demo: it shows external model registration through `ExternalModel` and `MaaSModelRef`, a capability available in the upstream models-as-a-service project and aligned with the Red Hat OpenShift AI 3.4 Technology Preview MaaS direction. When Red Hat OpenShift AI ships the capability natively in a supported release, these can be removed.
+The upstream `maas-controller` coexistence path and `maas-api` image override were used before the 3.4 operator-owned MaaS path was available in the demo. Keep these as historical context and do not reintroduce them unless a live 3.4 product gap is proven and documented.
 
-- [ ] **maas-api image pinning** (`jobs/patch-maas-api-storage.yaml`) — The Red Hat OpenShift AI 3.3 `maas-api` binary does not implement model discovery from `MaaSModelRef`/`ExternalModel` CRDs. A post-deploy Job pins the tenant-managed deployment to `quay.io/opendatahub/maas-api:latest` which has Kubernetes watchers for model discovery. The Red Hat OpenShift AI DSC may still report `ModelsAsServiceReady=False`.
-  **Justification:** This deviation is deliberate. The demo needs to demonstrate governed external model registration before the capability is generally available through the supported Red Hat OpenShift AI 3.3 operator path.
-  **Fragility:** If the Red Hat OpenShift AI operator recreates the deployment or rewrites `maas-parameters`, rerun the `job-patch-maas-api-storage` Job.
+- [x] ~~**maas-api image pinning** (`jobs/patch-maas-api-storage.yaml`) — The older workaround pinned the tenant-managed deployment to `quay.io/opendatahub/maas-api:latest` for model discovery. The 3.4 demo now expects operator-owned `registry.redhat.io/rhoai/odh-maas-api-rhel9` and `registry.redhat.io/rhoai/odh-maas-controller-rhel9` deployments.~~
+  **Validation:** Stage 040 validation must continue to assert that `maas-api` uses a `registry.redhat.io/rhoai/odh-maas-api-rhel9` image.
 
-- [ ] **`models-as-a-service` namespace** — The upstream `maas-api` expects `MaaSAuthPolicy` and `MaaSSubscription` CRs in the `models-as-a-service` namespace (hardcoded in the kustomize overlay's `params.env`). The namespace and policy CRs are GitOps-managed under `models-maas-crds/`.
+- [ ] **`models-as-a-service` namespace** — The current 3.4 demo stores `MaaSAuthPolicy` and `MaaSSubscription` CRs in the `models-as-a-service` namespace. Keep this namespace until the operator-owned layout and validation rules are confirmed for the exact target build.
 
 - [ ] **Dashboard Route** — The Red Hat OpenShift AI dashboard is accessed via the `rh-ai.*` hostname through the `data-science-gateway`. The operator's default `rhods-dashboard` Route redirects to the gateway.
 
 - [ ] **ExternalModel credential Secret label** — Secrets referenced by `ExternalModel.spec.credentialRef` must have the label `inference.networking.k8s.io/bbr-managed=true` for the payload-processing (IPP) plugin to discover them.
 
-- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground and AI asset endpoint UI call paths have used. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground. Dashboard bundles have expected the generated credential in different response shapes (`key`, `token`, `data.key`, or `data.token`), so the bridge returns all four names with the same redacted-only logging. Do not route `/gen-ai/api/v1/maas/tokens` directly to this bridge; that bypasses the dashboard Gen AI proxy and loses the user headers needed by `maas-api`.
+- [ ] **Tokens-bridge** (`tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` for Playground and older dashboard call paths. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground. Dashboard bundles have expected the generated credential in different response shapes (`key`, `token`, `data.key`, or `data.token`), so the bridge returns all four names with the same redacted-only logging. Do not route `/gen-ai/api/v1/maas/tokens` directly to this bridge; that bypasses the dashboard Gen AI proxy and loses the user headers needed by `maas-api`.
 
 ## Known Limitations
 
@@ -82,7 +81,7 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 ## Validated (2026-05-01 and 2026-05-02)
 
-- [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Uses upstream `maas-api` (`quay.io/opendatahub/maas-api:latest`) with PostgreSQL backend.
+- [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Current 3.4 validation expects the operator-owned `registry.redhat.io/rhoai/odh-maas-api-rhel9` deployment with PostgreSQL backend.
 - [x] **API key generation** — `sk-oai-*` format keys via `/maas-api/v1/api-keys`. Playground uses `/maas-api/v1/tokens` through the tokens-bridge proxy.
 - [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
 - [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated, but live validation on 2026-05-02 confirmed that an approved `OPENAI_API_KEY` provisioned into `maas/openai-api-key` can complete a `gpt-4o-mini` call through MaaS. The `payload-processing` BBR plugin injects provider credentials from the `openai-api-key` Secret when an approved key is supplied.

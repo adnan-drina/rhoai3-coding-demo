@@ -250,7 +250,7 @@ GitOps hygiene pass:
 
 Red Hat alignment review:
 
-- Stage 040 is aligned with the Red Hat OpenShift AI 3.4 MaaS architecture in the core platform pattern: KServe-backed model serving, Gateway API, Red Hat Connectivity Link, Kuadrant/Authorino policy enforcement, API-key authentication, tier-based access, rate limits, token limits, dashboard enablement, and GitOps-managed desired state. MaaS remains a Technology Preview capability in the referenced Red Hat OpenShift AI 3.4 documentation, so the demo must continue to describe it as an early-access showcase rather than a production baseline.
+- Stage 040 is aligned with the Red Hat OpenShift AI 3.4 MaaS architecture in the core platform pattern: KServe-backed model serving, Gateway API, Red Hat Connectivity Link, Kuadrant/Authorino policy enforcement, API-key authentication, tier-based access, rate limits, token limits, dashboard enablement, and GitOps-managed desired state. Red Hat OpenShift AI 3.4 release notes describe MaaS as a 3.4 capability, while adjacent AI Available Assets and evaluation paths still require conservative support-scope language.
 - Stage 040 deviations remain intentional and documented: tokens bridge for the Playground token endpoint, gateway/AuthPolicy patches, and community Grafana for demo observability. The previous upstream MaaS controller and `maas-api` image override were removed for Red Hat OpenShift AI 3.4 because they conflict with operator-owned MaaS resources.
 - Stage 080 aligns with Red Hat Developer Lightspeed for MTA guidance by using a centrally managed LLM provider configuration through MTA, the LLM proxy, and an OpenAI-compatible endpoint backed by Red Hat OpenShift AI/MaaS. Developer Lightspeed for MTA is also Technology Preview in the referenced MTA 8.1 documentation, so production-readiness language must stay conservative.
 - Stage 090 aligns with Red Hat Developer Hub 1.9 operator guidance by using the `Backstage` custom resource, app config mounted from a ConfigMap, environment-substituted secrets, and `dynamic-plugins.yaml` mounted through `dynamicPluginsConfigMapName`.
@@ -259,9 +259,9 @@ Red Hat alignment review:
 
 Documentation and deviation-register cleanup:
 
-- `BACKLOG.md` now treats workaround removal as a supported-capability review, not as an automatic Red Hat OpenShift AI 3.4 GA cleanup. This matches the current Red Hat OpenShift AI 3.4 documentation posture where MaaS is Technology Preview.
+- `BACKLOG.md` now treats workaround removal as a supported-capability review, not as an automatic Red Hat OpenShift AI 3.4 cleanup. This matches the current Red Hat OpenShift AI 3.4 posture where the core platform is 3.4, while specific demo-adjacent paths still require live validation and support-scope checks.
 - Current validation wording now distinguishes external model registration from external inference. Stage 050 registers `gpt-4o` and `gpt-4o-mini` without requiring provider token spend; external inference is credential-gated and has been validated with an approved `OPENAI_API_KEY` by using the opt-in smoke test.
-- Stage 040, Stage 080, and Stage 090 READMEs now call out Red Hat alignment, Technology Preview posture, and demo-specific deviations close to the affected implementation.
+- Stage 040, Stage 080, and Stage 090 READMEs now call out Red Hat alignment, support-scope posture, and demo-specific deviations close to the affected implementation.
 - `docs/TROUBLESHOOTING.md` now includes `RHDH_CATALOG_URL` diagnostics for Developer Hub catalog failures.
 
 Stage 010 findings:
