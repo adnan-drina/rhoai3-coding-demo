@@ -261,6 +261,43 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 ./stages/050-approved-external-model-access/validate.sh
 ```
 
+## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
+
+**Affected stages:** Stage 040, Stage 100
+
+**Likely cause:** The Gen AI AI asset endpoints modal calls `/maas-api/v1/tokens`
+and expects the generated credential in a response field named `key`. The demo
+tokens bridge translates that route to the MaaS API `/v1/api-keys` endpoint. If
+the bridge returns only the older Playground `token` field, MaaS still creates a
+real API key, but the modal displays an empty input.
+
+**Diagnose:**
+
+```bash
+oc logs deployment/maas-api -n redhat-ods-applications --tail=100 | \
+  grep -E 'Created API key|/v1/api-keys'
+
+oc logs deployment/tokens-bridge -n redhat-ods-applications --tail=100 | \
+  grep maas_token_created
+```
+
+The logs must show successful key creation, but must not print full API keys.
+Only prefixes, field names, and key lengths are acceptable in troubleshooting
+output.
+
+**Recover:**
+
+- Re-sync Stage 040 so the tokens bridge returns both `key` and `token`.
+- Restart `deployment/tokens-bridge` if the ConfigMap changed but the pod did
+  not roll.
+- Refresh the OpenShift AI browser tab and generate a new one-time key.
+
+```bash
+argocd app sync 040-governed-models-as-a-service
+oc rollout restart deployment/tokens-bridge -n redhat-ods-applications
+oc rollout status deployment/tokens-bridge -n redhat-ods-applications
+```
+
 ## MaaS Grafana Route Does Not Redirect To OpenShift OAuth
 
 **Affected stage:** Stage 040

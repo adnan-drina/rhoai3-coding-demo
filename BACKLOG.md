@@ -54,7 +54,7 @@ The following items maintain the hybrid architecture where the upstream `maas-co
 
 - [ ] **ExternalModel credential Secret label** — Secrets referenced by `ExternalModel.spec.credentialRef` must have the label `inference.networking.k8s.io/bbr-managed=true` for the payload-processing (IPP) plugin to discover them.
 
-- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground's `gen-ai-ui` calls. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground.
+- [ ] **Tokens-bridge** (`maas-controller-upstream/tokens-bridge/deployment.yaml`) — Translates `/maas-api/v1/tokens` to `/v1/api-keys` because the upstream `maas-api:latest` does not have the `/v1/tokens` endpoint that the Playground's `gen-ai-ui` calls. The bridge requests `demo-models-subscription` explicitly so the Gen AI Playground receives one request token that covers the private and approved external MaaS models selected together in the same Playground. The AI asset endpoints modal expects the generated credential in the response `key` field, while older Playground paths used `token`, so the bridge returns both names with the same redacted-only logging.
 
 ## Known Limitations
 

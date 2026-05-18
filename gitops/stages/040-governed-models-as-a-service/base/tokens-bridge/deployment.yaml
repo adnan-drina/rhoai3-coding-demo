@@ -21,7 +21,7 @@ data:
             except: data = {}
             api_key_body = json.dumps({
                 "name": f"playground-{data.get('model','auto')}",
-                "subscription": PLAYGROUND_SUBSCRIPTION,
+                "subscription": data.get("subscription") or PLAYGROUND_SUBSCRIPTION,
             }).encode()
             req = urllib.request.Request(
                 f"{MAAS_API}/v1/api-keys", data=api_key_body,
@@ -33,12 +33,33 @@ data:
             try:
                 resp = urllib.request.urlopen(req, context=ctx)
                 resp_data = json.loads(resp.read())
-                result = {"token": resp_data.get("token") or resp_data.get("key", ""), "expiration": "720h0m0s"}
+                api_key = (
+                    resp_data.get("key")
+                    or resp_data.get("token")
+                    or resp_data.get("apiKey")
+                    or ""
+                )
+                result = {
+                    "key": api_key,
+                    "token": api_key,
+                    "keyPrefix": resp_data.get("keyPrefix", ""),
+                    "id": resp_data.get("id", ""),
+                    "expiresAt": resp_data.get("expiresAt", ""),
+                    "expiration": resp_data.get("expiresAt") or "720h0m0s",
+                }
+                print(json.dumps({
+                    "event": "maas_token_created",
+                    "path": self.path,
+                    "upstream_fields": sorted(resp_data.keys()),
+                    "key_length": len(api_key),
+                    "subscription": resp_data.get("subscription", PLAYGROUND_SUBSCRIPTION),
+                }), flush=True)
                 self.send_response(201)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps(result).encode())
             except Exception as e:
+                print(json.dumps({"event": "maas_token_create_failed", "error": str(e)}), flush=True)
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -62,6 +83,8 @@ spec:
     metadata:
       labels:
         app: tokens-bridge
+      annotations:
+        demo.rhoai.redhat.com/config-version: "api-key-response-v2"
     spec:
       containers:
       - name: proxy

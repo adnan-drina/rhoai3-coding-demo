@@ -105,6 +105,52 @@ check "Playground token bridge uses demo subscription" \
   "oc get deployment tokens-bridge -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PLAYGROUND_MAAS_SUBSCRIPTION\")].value}'" \
   "demo-models-subscription"
 
+USER_TOKEN="$(oc whoami -t 2>/dev/null || true)"
+if [[ -n "$USER_TOKEN" ]]; then
+  BRIDGE_RESPONSE=$(oc run "maas-bridge-key-smoke-$(date +%s)" \
+    -n redhat-ods-applications \
+    --restart=Never \
+    --rm \
+    -i \
+    --quiet \
+    --image=registry.access.redhat.com/ubi9/ubi-minimal \
+    -- curl -s -X POST \
+      -H "Authorization: Bearer ${USER_TOKEN}" \
+      -H "X-MaaS-Username: ai-developer" \
+      -H 'X-MaaS-Group: ["rhoai-users","tier-premium-users","system:authenticated:oauth","system:authenticated"]' \
+      -H "Content-Type: application/json" \
+      --data '{"model":"nemotron-3-nano-30b-a3b","subscription":"demo-models-subscription"}' \
+      http://tokens-bridge.redhat-ods-applications.svc:8080/v1/tokens 2>/dev/null || true)
+  BRIDGE_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.key // "") | length)' 2>/dev/null || echo 0)
+  BRIDGE_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.token // "") | length)' 2>/dev/null || echo 0)
+  BRIDGE_KEY_ID=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '.id // empty' 2>/dev/null || true)
+  if (( BRIDGE_KEY_LENGTH > 0 && BRIDGE_TOKEN_LENGTH > 0 )); then
+    echo -e "${GREEN}[PASS]${NC} Playground token bridge returns both key and token fields"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+  else
+    echo -e "${RED}[FAIL]${NC} Playground token bridge returns both key and token fields"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+  fi
+  if [[ -n "$BRIDGE_KEY_ID" ]]; then
+    oc run "maas-bridge-key-cleanup-$(date +%s)" \
+      -n redhat-ods-applications \
+      --restart=Never \
+      --rm \
+      -i \
+      --quiet \
+      --image=registry.access.redhat.com/ubi9/ubi-minimal \
+      -- curl -s -X DELETE \
+        -H "Authorization: Bearer ${USER_TOKEN}" \
+        -H "X-MaaS-Username: ai-developer" \
+        -H 'X-MaaS-Group: ["rhoai-users","tier-premium-users","system:authenticated:oauth","system:authenticated"]' \
+        "https://maas-api.redhat-ods-applications.svc:8443/v1/api-keys/${BRIDGE_KEY_ID}" \
+        -k >/dev/null 2>&1 || true
+  fi
+else
+  echo -e "${YELLOW}[WARN]${NC} Skipping token bridge key smoke test because no OpenShift user token is available"
+  VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
 log_step "Local model routing"
 check "Per-route AuthPolicy for gpt-oss-20b" \
   "oc get authpolicy maas-auth-gpt-oss-20b -n maas -o jsonpath='{.metadata.name}'" \
