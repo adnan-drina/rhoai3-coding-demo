@@ -1,6 +1,7 @@
-# Restarts KServe after Red Hat Connectivity Link CRDs are installed.
-# KServe can cache API discovery before the Kuadrant AuthPolicy CRD exists,
-# leaving pre-created LLMInferenceService routes stuck until the controller restarts.
+# Restarts KServe controllers after Red Hat Connectivity Link CRDs are installed.
+# The LLMInferenceService controller can cache API discovery before the Kuadrant
+# AuthPolicy CRD exists, leaving pre-created model HTTPRoutes withheld until the
+# controller restarts.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -66,4 +67,9 @@ spec:
               echo "Restarting kserve-controller-manager to refresh API discovery..."
               oc rollout restart deployment/kserve-controller-manager -n redhat-ods-applications
               oc rollout status deployment/kserve-controller-manager -n redhat-ods-applications --timeout=180s
-              echo "KServe controller restart completed"
+
+              echo "Restarting llmisvc-controller-manager to refresh AuthPolicy discovery..."
+              oc rollout restart deployment/llmisvc-controller-manager -n redhat-ods-applications
+              oc rollout status deployment/llmisvc-controller-manager -n redhat-ods-applications --timeout=180s
+
+              echo "KServe controller restarts completed"

@@ -97,7 +97,7 @@ spec:
               done
 
               if ! oc get secret maas-db-app -n redhat-ods-applications &>/dev/null; then
-                password="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+                password="$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
                 oc create secret generic maas-db-app \
                   -n redhat-ods-applications \
                   --type=kubernetes.io/basic-auth \
@@ -137,7 +137,11 @@ spec:
 
               password="$(oc get secret maas-db-app -n redhat-ods-applications \
                 -o jsonpath='{.data.password}' | base64 --decode)"
-              connection_url="postgresql://maas:${password}@maas-db-rw.redhat-ods-applications.svc:5432/maas?sslmode=disable"
+              encoded_password="${password//%/%25}"
+              encoded_password="${encoded_password//+/%2B}"
+              encoded_password="${encoded_password//\//%2F}"
+              encoded_password="${encoded_password//=/%3D}"
+              connection_url="postgresql://maas:${encoded_password}@maas-db-rw.redhat-ods-applications.svc:5432/maas?sslmode=disable"
               oc create secret generic maas-db-config \
                 -n redhat-ods-applications \
                 --from-literal=DB_CONNECTION_URL="${connection_url}" \

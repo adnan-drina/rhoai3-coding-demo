@@ -78,6 +78,8 @@ log_step "Configuring custom resource health checks"
 
 # Custom health checks to prevent ArgoCD sync wave blocking:
 # Subscription: OLM Subscriptions with installedCSV are Healthy (prevents wave blocking)
+# CRD: Argo CD has no built-in health check and can block sync waves after creating
+# MaaS CRDs even when Kubernetes reports them as Established.
 # PVC: WaitForFirstConsumer PVCs stay Pending until a pod mounts them
 # ISVC: ArgoCD default health check misreads KServe condition format
 # TrustyAIService: ArgoCD has no built-in health check for this CRD
@@ -88,6 +90,11 @@ oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '{
         "group": "operators.coreos.com",
         "kind": "Subscription",
         "check": "hs = {}\nif obj.status ~= nil then\n  if obj.status.installedCSV ~= nil and obj.status.installedCSV ~= \"\" then\n    hs.status = \"Healthy\"\n    hs.message = obj.status.installedCSV\n  elseif obj.status.state == \"AtLatestKnown\" then\n    hs.status = \"Healthy\"\n    hs.message = \"At latest known\"\n  else\n    hs.status = \"Progressing\"\n    hs.message = obj.status.state or \"Installing\"\n  end\nelse\n  hs.status = \"Progressing\"\n  hs.message = \"Waiting for status\"\nend\nreturn hs"
+      },
+      {
+        "group": "apiextensions.k8s.io",
+        "kind": "CustomResourceDefinition",
+        "check": "hs = {}\nhs.status = \"Progressing\"\nhs.message = \"Waiting for CRD to be established\"\nif obj.status ~= nil and obj.status.conditions ~= nil then\n  for _, condition in ipairs(obj.status.conditions) do\n    if condition.type == \"Established\" and condition.status == \"True\" then\n      hs.status = \"Healthy\"\n      hs.message = \"CRD is established\"\n      return hs\n    end\n    if condition.type == \"NamesAccepted\" and condition.status == \"False\" then\n      hs.status = \"Degraded\"\n      hs.message = condition.message or \"CRD names not accepted\"\n      return hs\n    end\n  end\nend\nreturn hs"
       },
       {
         "group": "",
@@ -107,7 +114,7 @@ oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '{
     ]
   }
 }' 2>/dev/null \
-    && log_success "Subscription + PVC + InferenceService + TrustyAIService health checks configured" \
+    && log_success "Subscription + CRD + PVC + InferenceService + TrustyAIService health checks configured" \
     || log_warn "Could not configure health checks"
 
 log_step "Creating Argo CD project"
