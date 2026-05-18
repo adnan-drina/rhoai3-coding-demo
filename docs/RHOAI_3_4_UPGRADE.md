@@ -90,6 +90,7 @@ that the target 3.4 cluster accepts the subscription-based path.
 | Tokens bridge | Retired from active GitOps | Maintained compatibility for older Playground and dashboard token call paths | Removed after the target 3.4 path was aligned on product `/maas-api/v1/api-keys` key creation. |
 | Observability dashboard | Product RHOAI observability stack and MaaS Usage dashboard | Replaces the historical community Grafana showback view | Active GitOps installs the documented Red Hat observability prerequisites, enables MaaS telemetry/Kuadrant observability, and syncs the service-ca bundle into the Secret shape expected by the generated MonitoringStack without storing certificate material in Git. |
 | Historical upstream controller path | Completed backlog entries for upstream `maas-controller`, upstream CRDs, and `maas-api` image override | Previous 3.3 and 3.4 EA2 workaround | Keep only as historical context. Do not present it as current architecture and do not reintroduce it without a newly proven 3.4 product gap. |
+| Community Grafana binding | `grafana-sa-cluster-monitoring-view` existed only in the live cluster | Left behind by the historical custom Grafana MaaS dashboard | Removed from `cluster-t977r` on 2026-05-18 after verifying the `grafana` namespace and Grafana custom resources were absent. |
 
 ## Cleanup Order
 
@@ -97,6 +98,7 @@ that the target 3.4 cluster accepts the subscription-based path.
 2. Validate 3.4 `MaaSSubscription`, `MaaSAuthPolicy`, API key, temporary API key, and dashboard paths against the live sandbox.
 3. Keep the product `/maas-api/v1/api-keys` path as the supported key lifecycle path.
 4. Keep MaaS usage visibility on the product RHOAI observability dashboard path.
+5. Run `./scripts/audit-maas-cleanup.sh` after MaaS changes to prove that retired tier resources, the tokens bridge, upstream MaaS image overrides, and the old community Grafana binding are not active.
 
 ## Live Validation Record
 
@@ -117,6 +119,11 @@ Validated on `cluster-t977r` on 2026-05-18:
   - `tier-*` OpenShift groups removed;
   - manual gateway `RateLimitPolicy`, `TokenRateLimitPolicy`, and `TelemetryPolicy` removed, except controller-generated `maas-trlp-*` policies;
   - community Grafana namespace and console link removed.
+- MaaS cleanup audit:
+  - no live `tokens-bridge`, `maas-api-tokens`, upstream MaaS controller, upstream `quay.io/opendatahub/maas-api` image override, 3.3 tier mapping, or tier groups;
+  - `maas-api` and `maas-controller` use `registry.redhat.io/rhoai/*` images;
+  - the orphaned `grafana-sa-cluster-monitoring-view` binding was deleted because it referenced a removed `grafana/grafana-sa` service account;
+  - Grafana Operator CRDs remain cluster-wide without live Grafana custom resources. They are not part of the current MaaS architecture.
 
 Operational note:
 

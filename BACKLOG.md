@@ -44,6 +44,10 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 - [x] ~~**Tokens-bridge** (`tokens-bridge/deployment.yaml`) — The compatibility bridge translated `/maas-api/v1/tokens` to `/v1/api-keys` for older Playground/dashboard call paths. The active GitOps path now relies on the product MaaS API key path and no longer deploys this bridge.~~
 
+- [x] ~~**Community Grafana monitoring binding** (`ClusterRoleBinding/grafana-sa-cluster-monitoring-view`) — The older custom MaaS showback dashboard bound `grafana/grafana-sa` to `cluster-monitoring-view`. The `grafana` namespace and service account are gone, and the orphaned binding was removed from the live `cluster-t977r` sandbox on 2026-05-18.~~
+
+- [ ] **Community Grafana CRDs** — Grafana Operator CRDs and generated aggregate ClusterRoles can remain after the historical custom Grafana stack is removed. Do not treat them as active MaaS architecture unless `grafana.*` custom resources, a `grafana` namespace, or demo-owned Grafana RBAC bindings reappear.
+
 - [ ] **RHOAI monitoring service-ca Secret sync** — The generated RHOAI 3.4 `MonitoringStack` references `Secret/prometheus-web-tls-ca`, while the OpenShift service-ca injection path creates the CA bundle as `ConfigMap/prometheus-web-tls-ca`. Stage 010 syncs that bundle into the expected Secret at deploy time without committing certificate material.
   **Revert:** Remove the sync hook if a later RHOAI build creates the Secret natively or changes the generated `MonitoringStack` to reference the ConfigMap.
 
@@ -55,6 +59,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] Removed manual tier ServiceAccount RBAC from the active GitOps path.
 - [x] Removed manual tier-shaped gateway `RateLimitPolicy`, `TokenRateLimitPolicy`, `TelemetryPolicy`, and the community Grafana dashboard from the active GitOps path.
 - [x] Preserved historical upstream `maas-controller` and `maas-api` override language only as completed historical context.
+- [x] Added `scripts/audit-maas-cleanup.sh` and Stage 040 validation coverage so retired 3.3 tier resources, the tokens bridge, upstream MaaS controller/image overrides, and the old community Grafana binding are caught if they reappear.
 
 ## Known Limitations
 

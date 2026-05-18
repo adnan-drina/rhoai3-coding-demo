@@ -97,6 +97,15 @@ check "maas-api uses RHOAI 3.4 image" \
   "oc get deployment maas-api -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].image}'" \
   "registry.redhat.io/rhoai/odh-maas-api-rhel9"
 
+log_step "MaaS cleanup guardrails"
+if "$REPO_ROOT/scripts/audit-maas-cleanup.sh"; then
+  echo -e "${GREEN}[PASS]${NC} Retired MaaS workarounds are not active"
+  VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+  echo -e "${RED}[FAIL]${NC} Retired MaaS workarounds are not active"
+  VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
 log_step "Local MaaS resources"
 check "MaaSModelRef gpt-oss-20b ready" \
   "oc get maasmodelref gpt-oss-20b -n maas -o jsonpath='{.status.phase}'" \
