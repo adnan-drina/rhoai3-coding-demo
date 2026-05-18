@@ -104,9 +104,6 @@ check "demo-models-subscription token limits ready" \
 check "Playground token bridge uses demo subscription" \
   "oc get deployment tokens-bridge -n redhat-ods-applications -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PLAYGROUND_MAAS_SUBSCRIPTION\")].value}'" \
   "demo-models-subscription"
-check "Gen AI MaaS token compatibility route accepted" \
-  "oc get httproute gen-ai-maas-tokens-compat -n redhat-ods-applications -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
-  "True"
 
 USER_TOKEN="$(oc whoami -t 2>/dev/null || true)"
 if [[ -n "$USER_TOKEN" ]]; then
@@ -123,7 +120,7 @@ if [[ -n "$USER_TOKEN" ]]; then
       -H 'X-Forwarded-Groups: rhoai-users,tier-premium-users,system:authenticated:oauth,system:authenticated' \
       -H "Content-Type: application/json" \
       --data '{"model":"nemotron-3-nano-30b-a3b","subscription":"demo-models-subscription"}' \
-      'http://tokens-bridge.redhat-ods-applications.svc:8080/gen-ai/api/v1/maas/tokens?namespace=coding-assistant' 2>/dev/null || true)
+      http://tokens-bridge.redhat-ods-applications.svc:8080/v1/tokens 2>/dev/null || true)
   BRIDGE_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.key // "") | length)' 2>/dev/null || echo 0)
   BRIDGE_TOKEN_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.token // "") | length)' 2>/dev/null || echo 0)
   BRIDGE_DATA_KEY_LENGTH=$(printf '%s' "$BRIDGE_RESPONSE" | jq -r '((.data.key // "") | length)' 2>/dev/null || echo 0)

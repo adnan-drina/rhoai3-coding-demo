@@ -265,11 +265,10 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 **Affected stages:** Stage 040, Stage 100
 
-**Likely cause:** The Gen AI AI asset endpoints modal calls the dashboard MaaS
-token endpoint and expects the generated credential in a nested response field.
-The demo tokens bridge translates that request to the MaaS API `/v1/api-keys`
-endpoint. If the dashboard bundle and response shape drift, MaaS still creates a
-real API key, but the modal displays an empty input.
+**Likely cause:** The Gen AI AI asset endpoints modal expects the generated
+credential in the response shape used by its current browser bundle. If the
+browser is still running an older cached bundle after the dashboard rolled, MaaS
+can still create a real API key while the modal displays an empty input.
 
 **Diagnose:**
 
@@ -287,13 +286,13 @@ output.
 
 **Recover:**
 
-- Re-sync Stage 040 so the Gen AI token compatibility route points the token
-  request at the tokens bridge.
-- Confirm the tokens bridge returns `key`, `token`, `data.key`, and
-  `data.token`.
+- Re-sync Stage 040 so the existing MaaS token bridge returns `key`, `token`,
+  `data.key`, and `data.token` on the `/maas-api/v1/tokens` compatibility path.
 - Restart `deployment/tokens-bridge` if the ConfigMap changed but the pod did
   not roll.
-- Refresh the OpenShift AI browser tab and generate a new one-time key.
+- Hard-refresh the OpenShift AI browser tab so the browser uses the dashboard
+  bundle that matches the live Gen AI backend.
+- Generate a new one-time key.
 
 ```bash
 argocd app sync 040-governed-models-as-a-service
