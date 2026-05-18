@@ -1,14 +1,16 @@
 # Red Hat OpenShift AI 3.4 Upgrade Readiness
 
-This document prepares the demo branch for Red Hat OpenShift AI 3.4 validation.
-It is an upgrade-readiness record, not a request to change the live platform.
+This document records the Red Hat OpenShift AI 3.4 upgrade validation for the
+demo branch and the live `cluster-t977r` sandbox.
 
 ## Current Branch
 
 - Branch: `codex/rhoai-3-4-demo-upgrade`
 - Base branch at creation: `feature/vibe-agentic-workflow-readmes`
-- Scope: documentation, validation gates, and upgrade decision cleanup first.
-- Live deployment changes: none from this document.
+- Scope: RHOAI 3.4 MaaS GitOps alignment, validation gates, and upgrade
+  decision cleanup.
+- Live deployment changes: synced to `cluster-t977r` on 2026-05-18 through
+  Argo CD applications `010`, `030`, `040`, and `050`.
 
 ## Source Baseline
 
@@ -57,6 +59,8 @@ The currently connected sandbox, checked on 2026-05-18, reports:
 - `DataScienceCluster/default-dsc`: `Ready`
 - `ModelsAsServiceReady`: `True`
 - `maas-api` and `maas-controller`: operator-owned `registry.redhat.io/rhoai/*` images
+- Argo CD applications `010`, `030`, `040`, and `050`: `Synced` and `Healthy`
+  at commit `961fe72090d781f83dd6929eb1d81ae9adb7fdf1`
 
 ## Upgrade Decisions
 
@@ -93,6 +97,35 @@ that the target 3.4 cluster accepts the subscription-based path.
 2. Validate 3.4 `MaaSSubscription`, `MaaSAuthPolicy`, API key, temporary API key, and dashboard paths against the live sandbox.
 3. Replace or retire the tokens bridge only after the dashboard and Playground can mint non-empty keys through supported 3.4 paths.
 4. Add the product MaaS observability dashboard only after Cluster Observability Operator and metrics storage are configured and validated.
+
+## Live Validation Record
+
+Validated on `cluster-t977r` on 2026-05-18:
+
+- `./scripts/validate-stage-flow.sh`: passed.
+- `bash -n scripts/*.sh && bash -n stages/*/*.sh`: passed.
+- `git diff --check`: passed.
+- `./stages/010-openshift-ai-platform-foundation/validate.sh`: 18 passed, 0 failed.
+- `./stages/030-private-model-serving/validate.sh`: 34 passed, 0 failed.
+- `GUIDELLM_SKIP_LOAD_TEST=true ./stages/040-governed-models-as-a-service/validate.sh`: 48 passed, 1 skipped load-test warning, 0 failed.
+- `./stages/050-approved-external-model-access/validate.sh`: 25 passed, 0 failed.
+- Temporary MaaS key plus Nemotron smoke request: HTTP 200 with one chat completion choice.
+- Removed 3.3 tier evidence:
+  - no `alpha.maas.opendatahub.io/tiers` annotations on local `LLMInferenceService` resources;
+  - `tier-to-group-mapping` ConfigMap removed;
+  - `tier-*` OpenShift groups removed;
+  - manual gateway `RateLimitPolicy`, `TokenRateLimitPolicy`, and `TelemetryPolicy` removed, except controller-generated `maas-trlp-*` policies;
+  - community Grafana namespace and console link removed.
+
+Operational note:
+
+- The OpenShift GitOps application controller needed a larger memory limit to
+  process the large Stage 040 prune. The live `ArgoCD/openshift-gitops`
+  controller resources were raised to `requests.memory=2Gi` and
+  `limits.memory=4Gi`. Keep this setting for future large prune operations.
+- The `job-ensure-maas-db` sync hook now has cluster-scoped read access for the
+  CloudNativePG CRD. Without that permission, the hook waits for its full CRD
+  probe timeout before continuing.
 
 ## Required Readiness Gates
 
@@ -153,7 +186,7 @@ that the target 3.4 cluster accepts the subscription-based path.
 - **MaaS token bridge:** Keep the `/maas-api/v1/tokens` compatibility bridge until the product path covers Playground and dashboard token callers without it.
 - **External model routing:** Keep provider credential and trust-boundary language explicit. External inference remains governed but not private.
 - **GuideLLM path:** Current validation uses the upstream GuideLLM container directly. Treat this as demo tooling unless the Red Hat Evaluation Stack path is adopted.
-- **Community Grafana:** The current MaaS dashboard is a disposable demo add-on. Prefer a supported OpenShift monitoring path for a longer-lived environment.
+- **Product observability:** The community Grafana add-on was removed from the active GitOps path. Add the supported MaaS observability dashboard only after Cluster Observability Operator and metrics storage are configured.
 
 ## Rollback
 
