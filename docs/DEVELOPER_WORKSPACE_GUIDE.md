@@ -46,7 +46,9 @@ renders local Continue and OpenCode config files from that Secret.
 Che Code editor policy is also platform-managed. Stage 070 provides a
 `vscode-editor-configurations` ConfigMap in each workspace namespace. It
 recommends the Continue extension from Open VSX and sets the integrated
-terminal default profile to bash.
+terminal default profile to bash. The modernization-only MTA extensions are
+scoped to the `mca-coolstore` DevWorkspace with `DEFAULT_EXTENSIONS`, so they do
+not install into the onboarding or inventory engineering workspaces.
 
 ## Step 1: Start From Developer Hub
 
@@ -338,10 +340,10 @@ non-matches, and approved by a human before use.
 
 ## MTA Extensions
 
-The MTA VS Code extensions are included so the same controlled workspace can
-support the modernization workflow introduced in Stage 080. They help
-developers review MTA analysis findings and act on modernization issues without
-leaving Dev Spaces.
+The MTA VS Code extensions are included only in the `mca-coolstore` workspace so
+the same controlled workspace can support the modernization workflow introduced
+in Stage 080. They help developers review MTA analysis findings and act on
+modernization issues without leaving Dev Spaces.
 
 Stage 070 only prepares the IDE side of that workflow. Stage 080 deploys
 Migration Toolkit for Applications, Red Hat Developer Lightspeed for MTA, and

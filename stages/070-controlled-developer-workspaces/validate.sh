@@ -51,6 +51,18 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration defaults to bash: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
+    check "mca-coolstore workspace declares MTA default extensions: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA VS Code extension 8.1.2: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.2.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA core extension 8.1.2: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.1.2.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA Java extension 8.1.2: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.1.2.vsix' && echo present || echo missing" \
+        "present"
     for workspace in "${WORKSPACES[@]}"; do
         check "Workspace DevWorkspace exists: $ns/$workspace" \
             "oc get devworkspace $workspace -n $ns -o jsonpath='{.metadata.name}'" \

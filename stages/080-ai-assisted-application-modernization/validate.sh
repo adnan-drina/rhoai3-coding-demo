@@ -21,6 +21,21 @@ log_step "MTA Instance"
 check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"
+check "Tackle LLM proxy enabled" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" \
+  "true"
+check "Tackle Solution Server enabled" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
+  "true"
+check "Tackle LLM provider is OpenAI-compatible" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_provider}'" \
+  "openai"
+check "Tackle LLM model is private MaaS model" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_model}'" \
+  "nemotron-3-nano-30b-a3b"
+check "Tackle LLM base URL uses MaaS route" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}'" \
+  "/maas/nemotron-3-nano-30b-a3b/v1"
 
 log_step "MTA Core Deployments"
 check "mta-ui deployment ready" \

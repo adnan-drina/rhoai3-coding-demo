@@ -205,9 +205,12 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.1/file/redhat.mta-java-8.1.1.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            test -s /tmp/mta.vsix
+            test -s /tmp/mta-core.vsix
+            test -s /tmp/mta-java.vsix
           component: tooling-container
     events:
       postStart:
@@ -427,9 +430,12 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.1/file/redhat.mta-java-8.1.1.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            test -s /tmp/mta.vsix
+            test -s /tmp/mta-core.vsix
+            test -s /tmp/mta-java.vsix
           component: tooling-container
     events:
       postStart:
@@ -635,9 +641,12 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.1/file/redhat.mta-core-8.1.1.vsix" 2>/dev/null || true
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.1/file/redhat.mta-java-8.1.1.vsix" 2>/dev/null || true
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            test -s /tmp/mta.vsix
+            test -s /tmp/mta-core.vsix
+            test -s /tmp/mta-java.vsix
           component: tooling-container
     events:
       postStart:

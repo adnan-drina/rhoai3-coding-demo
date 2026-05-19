@@ -37,7 +37,7 @@ This matters because enterprise modernization is a risk-managed engineering work
 
 ## How Red Hat And Open Source Make It Work
 
-Migration Toolkit for Applications provides the modernization platform: analysis engine, application inventory, migration rules, UI, and developer workflow integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings and is documented as a Technology Preview feature in MTA 8.1. The LLM proxy centralizes model access so modernization assistance uses the MaaS gateway rather than unmanaged workspace credentials.
+Migration Toolkit for Applications provides the modernization platform: analysis engine, application inventory, migration rules, UI, and developer workflow integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings and is documented as a Technology Preview feature in MTA 8.1. The MTA `Tackle` custom resource enables the LLM proxy and Solution Server, and the `kai-api-keys` Secret holds the MaaS-backed OpenAI-compatible credentials. The LLM proxy centralizes model access so modernization assistance uses the MaaS gateway rather than unmanaged workspace credentials.
 
 Red Hat OpenShift provides the runtime, routing, storage, identity integration, and operator lifecycle for MTA. Red Hat build of Keycloak participates in the MTA identity path, and Red Hat OpenShift AI MaaS publishes the private model endpoint used by the assistant workflow. The open source foundation includes Konveyor for modernization analysis, Kai for AI-assisted modernization, and the Coolstore sample application.
 

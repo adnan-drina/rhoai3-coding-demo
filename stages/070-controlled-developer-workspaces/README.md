@@ -21,8 +21,10 @@ This stage adds a governed cloud development workspace layer.
 - Separate single-repository workspaces for onboarding, Coolstore inventory
   engineering, and MCA Coolstore modernization.
 - Che Code editor configuration managed through `vscode-editor-configurations`
-  so Continue extension installation and bash terminal defaults are
+  so Continue extension recommendations and bash terminal defaults are
   reproducible.
+- MTA VS Code extensions pinned on the `mca-coolstore` DevWorkspace with
+  `DEFAULT_EXTENSIONS`, scoped only to the modernization workspace.
 
 The capability added is a governed developer workspace layer. The workspace, source repositories, tools, and model access pattern are all platform-managed instead of being assembled manually on each developer machine.
 
@@ -56,9 +58,10 @@ OpenCode can be configured automatically at workspace startup.
 
 Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode
 provides a terminal-based agent workflow for developers who prefer command-line
-interaction. The MTA VS Code extensions are preloaded in the `mca-coolstore`
-workspace for the `ai-admin` and `ai-developer` personas so modernization
-findings can later be reviewed and acted on from the same controlled workspace.
+interaction. The MTA VS Code extensions are preloaded only in the
+`mca-coolstore` workspace by using the Dev Spaces `DEFAULT_EXTENSIONS` pattern,
+so modernization tooling does not appear in the onboarding or inventory service
+workspaces.
 
 Stage deployment creates one MaaS API key per demo model for the developer
 workspace namespace and stores them in `Secret/wksp-ai-developer/maas-devspace-api-keys`.

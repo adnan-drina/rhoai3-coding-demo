@@ -1,8 +1,10 @@
 # Che Code editor configuration for demo workspace namespaces.
 #
 # Red Hat OpenShift Dev Spaces applies this ConfigMap at workspace startup.
-# It keeps extension installation and terminal defaults platform-managed instead
-# of relying on per-workspace postStart downloads.
+# It keeps namespace-wide editor recommendations and terminal defaults
+# platform-managed. Workspace-specific VSIX extensions, such as the MTA
+# modernization extensions for mca-coolstore, are configured on that
+# DevWorkspace with DEFAULT_EXTENSIONS.
 ---
 apiVersion: v1
 kind: ConfigMap
