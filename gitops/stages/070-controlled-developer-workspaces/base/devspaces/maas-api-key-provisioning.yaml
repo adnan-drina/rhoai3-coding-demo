@@ -396,7 +396,7 @@ metadata:
   namespace: wksp-ai-developer
   annotations:
     argocd.argoproj.io/sync-wave: "18"
-    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   backoffLimit: 2
   template:
