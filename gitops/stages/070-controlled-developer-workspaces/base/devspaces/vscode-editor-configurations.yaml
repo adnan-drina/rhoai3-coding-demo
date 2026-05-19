@@ -1,0 +1,119 @@
+# Che Code editor configuration for demo workspace namespaces.
+#
+# Red Hat OpenShift Dev Spaces applies this ConfigMap at workspace startup.
+# It keeps extension installation and terminal defaults platform-managed instead
+# of relying on per-workspace postStart downloads.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vscode-editor-configurations
+  namespace: wksp-kubeadmin
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: workspaces-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  extensions.json: |
+    {
+      "recommendations": [
+        "Continue.continue"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "args": [
+            "-l"
+          ],
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash",
+        "args": [
+          "-l"
+        ]
+      },
+      "terminal.integrated.inheritEnv": true
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vscode-editor-configurations
+  namespace: wksp-ai-admin
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: workspaces-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  extensions.json: |
+    {
+      "recommendations": [
+        "Continue.continue"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "args": [
+            "-l"
+          ],
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash",
+        "args": [
+          "-l"
+        ]
+      },
+      "terminal.integrated.inheritEnv": true
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vscode-editor-configurations
+  namespace: wksp-ai-developer
+  labels:
+    app.kubernetes.io/part-of: che.eclipse.org
+    app.kubernetes.io/component: workspaces-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  extensions.json: |
+    {
+      "recommendations": [
+        "Continue.continue"
+      ]
+    }
+  settings.json: |
+    {
+      "terminal.integrated.defaultProfile.linux": "bash",
+      "terminal.integrated.profiles.linux": {
+        "bash": {
+          "path": "/usr/bin/bash",
+          "args": [
+            "-l"
+          ],
+          "icon": "terminal-bash"
+        }
+      },
+      "terminal.integrated.automationProfile.linux": {
+        "path": "/usr/bin/bash",
+        "args": [
+          "-l"
+        ]
+      },
+      "terminal.integrated.inheritEnv": true
+    }

@@ -94,6 +94,13 @@ The current Dev Spaces OpenCode build can also read
 link or copy, while the canonical generated file is
 `~/.config/opencode/opencode.json`.
 
+Stage 070 installs the Continue extension through the Dev Spaces
+`vscode-editor-configurations` ConfigMap and uses the same ConfigMap to set the
+Che Code integrated terminal default to bash. Continue should be used for
+model, MCP, and IDE assistance checks in this stage, not for shell command
+execution. Use OpenCode or a manually opened Dev Spaces terminal when a command
+must be run.
+
 Do not edit the committed templates with real route or key values. Do not print
 or paste API keys, model tokens, or full private cluster hostnames into
 evidence.

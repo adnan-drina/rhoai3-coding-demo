@@ -236,6 +236,10 @@ data:
         defaultCompletionOptions:
           reasoning: true
           maxTokens: 16384
+        chatOptions:
+          toolOverrides:
+            run_terminal_command:
+              disabled: true
 
       - name: OpenAI gpt-oss-20b
         provider: openai
@@ -245,6 +249,10 @@ data:
         contextLength: 8192
         defaultCompletionOptions:
           maxTokens: 4096
+        chatOptions:
+          toolOverrides:
+            run_terminal_command:
+              disabled: true
 
       - name: OpenAI GPT-4o
         provider: openai
@@ -256,6 +264,10 @@ data:
           - tool_use
         defaultCompletionOptions:
           maxTokens: 4096
+        chatOptions:
+          toolOverrides:
+            run_terminal_command:
+              disabled: true
 
       - name: OpenAI GPT-4o Mini
         provider: openai
@@ -267,6 +279,13 @@ data:
           - tool_use
         defaultCompletionOptions:
           maxTokens: 4096
+        chatOptions:
+          toolOverrides:
+            run_terminal_command:
+              disabled: true
+
+    rules:
+      - Continue runs inside Red Hat OpenShift Dev Spaces. Do not use the built-in run_terminal_command tool in this environment. Use the OpenShift MCP tools for read-only cluster inspection, and ask the user to run shell commands manually or use OpenCode when command execution is required.
 
     context:
       - provider: code

@@ -52,6 +52,13 @@ Use Continue for short, bounded tasks:
 
 The developer should keep each request small enough to review.
 
+Do not use Continue as the command-execution path in Dev Spaces. The platform
+configuration disables Continue's built-in terminal-command tool because the
+current VS Code extension does not reliably execute or capture terminal output
+in the remote Che Code environment. Use Continue for IDE assistance and
+read-only MCP context; use OpenCode or a manually opened Dev Spaces terminal for
+commands and validation.
+
 ### Prompts Or Agent Instructions
 
 Recommended starter prompts:

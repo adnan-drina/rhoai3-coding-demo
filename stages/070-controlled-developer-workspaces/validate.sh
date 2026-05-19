@@ -42,6 +42,15 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Workspace namespace exists: $ns" \
         "oc get namespace $ns -o jsonpath='{.metadata.name}'" \
         "$ns"
+    check "Che Code editor configuration exists: $ns/vscode-editor-configurations" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.metadata.name}'" \
+        "vscode-editor-configurations"
+    check "Che Code editor configuration recommends Continue: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'Continue.continue' && echo present || echo missing" \
+        "present"
+    check "Che Code editor configuration defaults to bash: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
+        "present"
     for workspace in "${WORKSPACES[@]}"; do
         check "Workspace DevWorkspace exists: $ns/$workspace" \
             "oc get devworkspace $workspace -n $ns -o jsonpath='{.metadata.name}'" \

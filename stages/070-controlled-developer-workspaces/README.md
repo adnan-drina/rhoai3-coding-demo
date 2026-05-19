@@ -20,6 +20,9 @@ This stage adds a governed cloud development workspace layer.
 - Continue and OpenCode tooling configured to consume MaaS-published OpenAI-compatible endpoints.
 - Separate single-repository workspaces for onboarding, Coolstore inventory
   engineering, and MCA Coolstore modernization.
+- Che Code editor configuration managed through `vscode-editor-configurations`
+  so Continue extension installation and bash terminal defaults are
+  reproducible.
 
 The capability added is a governed developer workspace layer. The workspace, source repositories, tools, and model access pattern are all platform-managed instead of being assembled manually on each developer machine.
 
@@ -64,6 +67,13 @@ The workspace startup command renders `~/.continue/config.yaml`,
 that Secret. Real keys are never committed to Git. Use the private local model
 when working with sensitive code; use approved external models only when the
 demo policy allows provider-side processing.
+
+Continue is configured for IDE chat, code explanation, edits, and read-only
+OpenShift MCP access. The built-in Continue terminal-command tool is disabled
+in the generated config because the current Continue VS Code extension sends
+terminal text without reliable execution or output capture in this remote Che
+Code environment. Use OpenCode or a manually opened Dev Spaces terminal for
+shell command execution.
 
 Detailed user steps are captured in [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md).
 

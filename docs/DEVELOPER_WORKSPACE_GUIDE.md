@@ -43,6 +43,11 @@ workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
 `Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
 renders local Continue and OpenCode config files from that Secret.
 
+Che Code editor policy is also platform-managed. Stage 070 provides a
+`vscode-editor-configurations` ConfigMap in each workspace namespace. It
+recommends the Continue extension from Open VSX and sets the integrated
+terminal default profile to bash.
+
 ## Step 1: Start From Developer Hub
 
 1. Log in to Red Hat Developer Hub with the assigned demo user.
@@ -209,6 +214,12 @@ Record only:
 - blocker, if any
 
 Do not copy the MaaS route, API key, or full cluster hostname into evidence.
+
+Continue terminal command execution is intentionally not part of Stage 100
+validation. In this Dev Spaces remote IDE, the current Continue VS Code
+extension can send terminal text without reliably executing it or capturing
+output. Use Continue for chat, edits, and read-only OpenShift MCP questions. Use
+OpenCode or a manually opened Dev Spaces terminal for shell commands.
 
 ## Step 8: Verify OpenCode Configuration
 
