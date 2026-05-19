@@ -20,7 +20,8 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "Continue.continue"
+        "Continue.continue",
+        "redhat.vscode-openshift-connector"
       ]
     }
   settings.json: |
@@ -58,7 +59,8 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "Continue.continue"
+        "Continue.continue",
+        "redhat.vscode-openshift-connector"
       ]
     }
   settings.json: |
@@ -96,7 +98,8 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "Continue.continue"
+        "Continue.continue",
+        "redhat.vscode-openshift-connector"
       ]
     }
   settings.json: |

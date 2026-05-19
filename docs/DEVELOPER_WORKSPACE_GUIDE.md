@@ -21,6 +21,8 @@ At the end of Stage 100, the developer has verified:
 - Continue is configured locally by the workspace startup command with MaaS
   routes and API keys.
 - OpenCode is configured locally by the same startup command.
+- OpenShift Toolkit is available in Che Code for IDE-based OpenShift resource
+  navigation.
 - Both tools can reach `nemotron-3-nano-30b-a3b` through MaaS with a harmless
   verification prompt.
 - No route URL, API key, token, kubeconfig, or provider credential is committed.
@@ -45,10 +47,11 @@ renders local Continue and OpenCode config files from that Secret.
 
 Che Code editor policy is also platform-managed. Stage 070 provides a
 `vscode-editor-configurations` ConfigMap in each workspace namespace. It
-recommends the Continue extension from Open VSX and sets the integrated
-terminal default profile to bash. The modernization-only MTA extensions are
-scoped to the `mca-coolstore` DevWorkspace with `DEFAULT_EXTENSIONS`, so they do
-not install into the onboarding or inventory engineering workspaces.
+recommends the Continue and OpenShift Toolkit extensions from Open VSX and sets
+the integrated terminal default profile to bash. The modernization-only MTA
+extensions are scoped to the `mca-coolstore` DevWorkspace with
+`DEFAULT_EXTENSIONS`, so they do not install into the onboarding or inventory
+engineering workspaces.
 
 ## Step 1: Start From Developer Hub
 
@@ -223,7 +226,18 @@ extension can send terminal text without reliably executing it or capturing
 output. Use Continue for chat, edits, and read-only OpenShift MCP questions. Use
 OpenCode or a manually opened Dev Spaces terminal for shell commands.
 
-## Step 8: Verify OpenCode Configuration
+## Step 8: Verify OpenShift Toolkit
+
+OpenShift Toolkit is available in Che Code for developers who want an
+IDE-integrated view of OpenShift projects, workloads, pods, logs, and
+application resources.
+
+Open the OpenShift Toolkit activity from the Che Code side bar. If the extension
+asks for cluster access, use the same cluster identity and namespace boundaries
+as the terminal `oc` session. Do not paste tokens into repository files or AI
+prompts.
+
+## Step 9: Verify OpenCode Configuration
 
 OpenCode is used for terminal-based AI coding workflows. It is useful for
 reviewing project structure, working with diffs, asking for multi-file changes,
@@ -243,7 +257,7 @@ The Stage 100 onboarding template sets the private Nemotron OpenCode output
 budget to 16,384 tokens so longer coding answers are less likely to stop at the
 client-side limit before the model finishes.
 
-## Step 9: Verify OpenCode
+## Step 10: Verify OpenCode
 
 Run OpenCode from the workspace terminal:
 
@@ -270,7 +284,7 @@ Record only:
 
 Do not copy the MaaS route, API key, or full cluster hostname into evidence.
 
-## Step 10: Capture Stage 100 Evidence
+## Step 11: Capture Stage 100 Evidence
 
 Use the Stage 100 evidence template from the platform repository. Evidence must
 be sanitized.

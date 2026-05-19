@@ -48,6 +48,9 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration recommends Continue: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'Continue.continue' && echo present || echo missing" \
         "present"
+    check "Che Code editor configuration recommends OpenShift Toolkit: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'redhat.vscode-openshift-connector' && echo present || echo missing" \
+        "present"
     check "Che Code editor configuration defaults to bash: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"

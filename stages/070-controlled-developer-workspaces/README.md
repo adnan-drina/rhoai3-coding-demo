@@ -21,8 +21,7 @@ This stage adds a governed cloud development workspace layer.
 - Separate single-repository workspaces for onboarding, Coolstore inventory
   engineering, and MCA Coolstore modernization.
 - Che Code editor configuration managed through `vscode-editor-configurations`
-  so Continue extension recommendations and bash terminal defaults are
-  reproducible.
+  so Continue, OpenShift Toolkit, and bash terminal defaults are reproducible.
 - MTA VS Code extensions pinned on the `mca-coolstore` DevWorkspace with
   `DEFAULT_EXTENSIONS`, scoped only to the modernization workspace.
 
@@ -58,7 +57,9 @@ OpenCode can be configured automatically at workspace startup.
 
 Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode
 provides a terminal-based agent workflow for developers who prefer command-line
-interaction. The MTA VS Code extensions are preloaded only in the
+interaction. OpenShift Toolkit provides an IDE-integrated OpenShift explorer for
+developers who want to inspect project resources without switching to the
+console or terminal. The MTA VS Code extensions are preloaded only in the
 `mca-coolstore` workspace by using the Dev Spaces `DEFAULT_EXTENSIONS` pattern,
 so modernization tooling does not appear in the onboarding or inventory service
 workspaces.
@@ -104,6 +105,7 @@ Red Hat OpenShift Dev Spaces keeps workspaces, source access, tool configuration
 - [DevWorkspace](https://github.com/devfile/devworkspace-operator) provides Kubernetes-native workspace orchestration.
 - [Continue](https://www.continue.dev/) is an open source AI code assistant that can use OpenAI-compatible model endpoints.
 - [OpenCode](https://opencode.ai/) provides terminal-based AI coding workflows that can consume MaaS endpoints.
+- [OpenShift Toolkit](https://developers.redhat.com/products/openshift-ide-extensions) provides IDE-integrated OpenShift and Kubernetes resource workflows.
 
 ## Deploy And Validate
 
