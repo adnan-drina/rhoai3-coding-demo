@@ -15,7 +15,7 @@ YYYY-MM-DD
 ## Environment
 
 - Repository branch: `feature/vibe-agentic-workflow-readmes`
-- Application repository branch: `feature/coolstore-inventory-service-plan`
+- Application repository branch: `main`
 - Cluster: `cluster-t977r`
 - Validation mode: live cluster
 

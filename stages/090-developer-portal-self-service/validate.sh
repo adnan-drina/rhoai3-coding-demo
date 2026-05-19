@@ -113,7 +113,7 @@ if [[ "$RUNTIME_CATALOG" == *"devspaces"* && "$RUNTIME_CATALOG" == *"placeholder
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 elif [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/getting-started-ai-coding"* ]] && \
      [[ "$RUNTIME_CATALOG" == *"#https://github.com/rhpds/mca-coolstore"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan"* ]]; then
+     [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service"* ]]; then
     echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated component-specific Dev Spaces links"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else

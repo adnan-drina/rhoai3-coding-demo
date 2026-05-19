@@ -45,6 +45,13 @@ workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
 `Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
 renders local Continue and OpenCode config files from that Secret.
 
+The OpenCode-capable demo workspaces use a digest-pinned `che-incubator/cli-ai-tools`
+image because that is the current public OpenCode-in-Dev-Spaces reference path.
+The Red Hat-managed baseline for a production workspace image is the Red Hat
+OpenShift Dev Spaces Universal Developer Image that matches the installed Dev
+Spaces version. Treat the incubator image as a demo convenience until a
+reviewed UDI-derived enterprise image is published.
+
 Che Code editor policy is also platform-managed. Stage 070 provides a
 `vscode-editor-configurations` ConfigMap in each workspace namespace. It
 recommends the Continue and OpenShift Toolkit extensions from Open VSX and sets

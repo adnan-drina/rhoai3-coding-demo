@@ -15,7 +15,7 @@ The target service must be small enough for live AI-assisted development, but ri
 
 Create a demo-owned `coolstore-inventory-service` as the target Quarkus service.
 
-Use a single service repository for the first live demo. The service repository is `https://github.com/adnan-drina/coolstore-inventory-service`, with local adaptation work on branch `feature/coolstore-inventory-service-plan`. Keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that repository.
+Use a single service repository for the first live demo. The service repository is `https://github.com/adnan-drina/coolstore-inventory-service`, with active demo work on `main`. Keep Quarkus source, app-local GitOps state, `.tekton/` Pipelines-as-Code assets, rollout notes, promotion notes, and rollback evidence in that repository.
 
 Use these sources as references, not as direct imports:
 

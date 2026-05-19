@@ -70,6 +70,9 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         check "Workspace DevWorkspace exists: $ns/$workspace" \
             "oc get devworkspace $workspace -n $ns -o jsonpath='{.metadata.name}'" \
             "$workspace"
+        check "Workspace tooling image is digest-pinned: $ns/$workspace" \
+            "case \"\$(oc get devworkspace $workspace -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
+            "pinned"
         phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
         if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
             echo -e "${RED}[FAIL]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (got: $phase)"

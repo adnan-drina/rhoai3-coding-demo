@@ -12,10 +12,10 @@ Local checkout used for this assessment:
 /Users/adrina/Sandbox/coolstore-inventory-service
 ```
 
-Branch created for adaptation planning:
+Active branch for the demo:
 
 ```text
-feature/coolstore-inventory-service-plan
+main
 ```
 
 ## Recommendation
@@ -41,7 +41,7 @@ The `coolstore-inventory-service` repository is the active AI developer-workspac
 - it has OpenCode configuration in `.opencode/opencode.template.json`;
 - it has starter and solution exercises for small Python games.
 
-It is now the Quarkus target service branch:
+It is now the Quarkus target service repository:
 
 - Red Hat build of Quarkus `3.27.3.SP1-redhat-00002` with Java 21 exists;
 - Maven wrapper, source, tests, health, metrics, and in-memory inventory read APIs exist;

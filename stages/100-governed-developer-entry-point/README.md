@@ -192,8 +192,8 @@ Stage 100 is green only when all of these are true:
   onboarding workspace.
 - The `coolstore` component points to `rhpds/mca-coolstore`.
 - The `coolstore-inventory-service` component points to
-  `adnan-drina/coolstore-inventory-service` on the current planning branch and
-  exposes only the source repository, Dev Spaces, and getting started links.
+  `adnan-drina/coolstore-inventory-service` on `main` and exposes only the
+  source repository, Dev Spaces, and getting started links.
 - Red Hat OpenShift Dev Spaces is reachable.
 - The `wksp-ai-developer/getting-started-ai-coding`,
   `wksp-ai-developer/coolstore-inventory-service`, and

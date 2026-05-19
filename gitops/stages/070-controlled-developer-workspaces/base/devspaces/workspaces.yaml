@@ -96,7 +96,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -127,7 +127,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
-            revision: feature/coolstore-inventory-service-plan
+            revision: main
     commands:
       - id: init-ai-tools
         exec:
@@ -169,7 +169,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -218,7 +218,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi
@@ -321,7 +321,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -352,7 +352,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
-            revision: feature/coolstore-inventory-service-plan
+            revision: main
     commands:
       - id: init-ai-tools
         exec:
@@ -394,7 +394,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -443,7 +443,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi
@@ -539,7 +539,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -570,7 +570,7 @@ spec:
           remotes:
             origin: https://github.com/adnan-drina/coolstore-inventory-service.git
           checkoutFrom:
-            revision: feature/coolstore-inventory-service-plan
+            revision: main
     commands:
       - id: init-ai-tools
         exec:
@@ -605,7 +605,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -654,7 +654,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools:latest
+          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi

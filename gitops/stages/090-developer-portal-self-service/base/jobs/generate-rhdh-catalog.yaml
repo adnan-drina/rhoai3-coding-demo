@@ -166,7 +166,7 @@ spec:
                   f"{devspaces_url}#https://github.com/rhpds/mca-coolstore"
               ),
               "https://devspaces-inventory.placeholder.example.com": (
-                  f"{devspaces_url}#https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan"
+                  f"{devspaces_url}#https://github.com/adnan-drina/coolstore-inventory-service"
               ),
           }
           for placeholder, replacement in devspaces_links.items():

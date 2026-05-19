@@ -118,7 +118,7 @@ metadata:
     Quarkus inventory service used for AI-assisted engineering and golden-path
     delivery work connected to the Coolstore domain.
   annotations:
-    backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
+    backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service
     backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
     github.com/project-slug: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
@@ -128,7 +128,7 @@ metadata:
     rhoai3.redhat.com/evidence-path: docs/evidence/
     rhoai3.redhat.com/stage-100-role: target-service
   links:
-    - url: https://github.com/adnan-drina/coolstore-inventory-service/tree/feature/coolstore-inventory-service-plan
+    - url: https://github.com/adnan-drina/coolstore-inventory-service
       title: Source Repo
       icon: github
     - url: "https://devspaces-inventory.placeholder.example.com"

@@ -55,6 +55,13 @@ developer tooling image. The `wksp-ai-developer` workspaces also receive
 platform-provisioned MaaS API keys through a namespace Secret, so Continue and
 OpenCode can be configured automatically at workspace startup.
 
+The OpenCode-capable demo workspaces currently use the `che-incubator/cli-ai-tools`
+image because the current Red Hat OpenCode for Dev Spaces guidance uses that
+repository for the OpenCode CLI workflow. The image is pinned by digest in this
+demo instead of using `latest`. For a production enterprise path, replace it
+with a reviewed organization-owned image built from the Red Hat OpenShift Dev
+Spaces Universal Developer Image for the deployed Dev Spaces version.
+
 Continue provides the IDE chat, edit, and code-assistance workflow. OpenCode
 provides a terminal-based agent workflow for developers who prefer command-line
 interaction. OpenShift Toolkit provides an IDE-integrated OpenShift explorer for
