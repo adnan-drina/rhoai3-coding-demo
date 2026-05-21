@@ -77,9 +77,9 @@ Evidence:
 - Blocker, if any.
 
 Detailed live validation is in
-[`techdocs/stage-100-validation.md`](techdocs/stage-100-validation.md). The
-sanitized evidence template is
-[`../stages/100-governed-developer-entry-point/evidence-template.md`](../stages/100-governed-developer-entry-point/evidence-template.md).
+[`techdocs/stage-100-validation.md`](techdocs/stage-100-validation.md). Record
+live evidence outside this repository and keep committed docs limited to
+reusable validation expectations.
 
 ## Stage 120: Skills
 

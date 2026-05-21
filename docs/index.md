@@ -5,8 +5,8 @@ workspace used in the "From Vibe Coding to Agentic Engineering" demo.
 
 Start with the [Developer Workspace Guide](DEVELOPER_WORKSPACE_GUIDE.md). It
 shows how an enterprise developer moves from Developer Hub to Red Hat OpenShift
-Dev Spaces, verifies MaaS-backed Continue, and captures safe Stage 100 evidence
-without committing secrets or private route details.
+Dev Spaces, verifies MaaS-backed Continue, and records Stage 100 evidence
+outside Git without exposing secrets or private route details.
 
 Use [Developer Workflow Validation](DEVELOPER_WORKFLOW_VALIDATION.md) for the
 quality gates and evidence expectations that were moved out of the stage

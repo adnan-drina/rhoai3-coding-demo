@@ -344,7 +344,6 @@ The Code-to-Docs pattern is useful here: let AI inspect diffs and propose docume
 - TODO: Add executable deploy and validate scripts only after the workflow has real GitOps resources.
 - TODO: Decide whether Developer Hub MCP catalog and TechDocs tools become part of later agentic workflows.
 - TODO: Add direct catalog validation for model assets once the OpenShift AI connector path is selected.
-- TODO: Keep [`evidence-template.md`](evidence-template.md) aligned with the final live validation checklist.
 - TODO: Add versioned prompt-pack examples for bounded Continue tasks after the hands-on workflow is finalized.
 
 ## Deploy And Validate

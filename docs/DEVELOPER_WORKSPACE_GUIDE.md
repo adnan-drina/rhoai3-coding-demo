@@ -310,10 +310,12 @@ asks for cluster access, use the same cluster identity and namespace boundaries
 as the terminal `oc` session. Do not paste tokens into repository files or AI
 prompts.
 
-## Step 9: Capture Stage 100 Evidence
+## Step 9: Record Stage 100 Evidence
 
-Use the Stage 100 evidence template from the platform repository. Evidence must
-be sanitized.
+Record live validation evidence outside this repository, for example in the PR,
+issue tracker, or approved private evidence store. Do not commit live evidence
+files, screenshots, route hostnames, credentials, tokens, API keys, kubeconfigs,
+or private endpoint details to Git.
 
 Record:
 
