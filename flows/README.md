@@ -1,7 +1,7 @@
 # Demo Flows
 
-This directory contains machine-readable ordering metadata for the demo.
+This directory contains machine-readable flow metadata.
 
-It does not contain stage content. Human-facing stage walkthroughs and deploy or validate scripts live in `stages/`. GitOps manifests for each stage live in `gitops/stages/`.
+[`default.yaml`](default.yaml) is the ordered source of truth for the implemented nine-stage demo path. It records each stage ID, name, product focus, deploy script, validate script, GitOps application, GitOps source path, and dependencies.
 
-`default.yaml` is the ordered source of truth for the default nine-stage demo flow.
+Stage content lives in [`../stages/`](../stages/). GitOps manifests live in [`../gitops/stages/`](../gitops/stages/).

@@ -2,11 +2,9 @@
 
 ## Why This Matters
 
-Stage 030 proved that private models can run on Red Hat OpenShift AI. Stage 040 turns those model endpoints into a shared enterprise service.
+Stage 030 proved that private models can run on OpenShift AI. Stage 040 turns those model endpoints into a governed platform service.
 
-That shift is the heart of Models-as-a-Service (MaaS). A private model is useful only if more than one person, tool, or application can consume it without each team learning how the model was deployed, where the GPU runs, which route to call, how credentials are issued, or how usage is tracked. MaaS gives platform teams a way to expose model access through governed API endpoints while keeping control over identity, subscriptions, quotas, rate limits, token limits, telemetry, and policy.
-
-In this demo, MaaS is the point where private AI starts to feel like an internal platform product. Developers and tools get a familiar model access pattern. Platform teams keep the controls they need for regulated environments: who can use which model, how much they can use, what traffic is visible, and where the trust boundary changes.
+Models-as-a-Service (MaaS) lets platform teams publish approved model choices while centralizing identity, API keys, subscriptions, quotas, rate limits, token limits, telemetry, and policy. Developers and tools get a familiar OpenAI-compatible access pattern without learning where the GPU runs or how each model was deployed.
 
 ## Architecture
 
@@ -14,109 +12,81 @@ In this demo, MaaS is the point where private AI starts to feel like an internal
 
 ## What This Stage Adds
 
-This stage adds the governed Models-as-a-Service access layer for private models.
+This stage adds the governed MaaS access layer for private models.
 
-- A MaaS model catalog and API path so private models can be discovered and consumed as shared platform resources.
-- MaaS model references, authorization policy, and subscription resources for the local model portfolio.
-- Central API key issuance so consumers do not manage direct model credentials.
-- A demo PostgreSQL database and `maas-db-config` connection secret for MaaS API key metadata.
-- Subscription groups, rate limits, token limits, and telemetry policies for predictable model consumption.
-- Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources that make MaaS a policy-enforced API path.
-- Tenant telemetry and GuideLLM-based validation helpers for usage visibility and repeatable model comparison.
+- A MaaS model catalog and API path for local model consumption.
+- `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources for the private model portfolio.
+- Central MaaS API key issuance so consumers do not manage direct model credentials.
+- A demo PostgreSQL database and `maas-db-config` connection Secret for MaaS API key metadata.
+- Subscription groups, rate limits, token limits, and tenant telemetry.
+- Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources for policy-enforced API access.
+- GuideLLM validation helpers for small, repeatable endpoint checks.
 
-The important capability is not a single new endpoint. It is a factory-style model access pattern: publish models once, subscribe teams to them, issue access centrally, apply policy consistently, and observe usage across consumers.
+The important capability is the access pattern: publish models once, subscribe consumers to them, issue keys centrally, enforce policy consistently, and observe usage.
 
 ## What To Notice And Why It Matters
 
-Stage 040 turns private model serving into a governed Models-as-a-Service capability. Local models are published as MaaS model choices, tied to a subscription, and accessed through MaaS-issued API keys instead of direct model routes. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino enforce authentication, rate limits, token limits, and telemetry at the gateway.
+Stage 040 makes private model serving consumable without losing platform control.
 
-The essential proof point is governed consumption without breaking application usability:
+- Applications and developer tools use OpenAI-compatible access through MaaS-issued API keys.
+- Platform teams control which groups can use each model and how much they can consume.
+- Subscriptions, token limits, tenant telemetry, and GuideLLM tests make usage visible.
+- Gateway policy centralizes authentication, limits, and telemetry instead of embedding those controls in each client.
+- The active OpenShift AI 3.4 path uses subscriptions rather than the older 3.3 tier model.
 
-- Applications and developer tools get OpenAI-compatible model access through a standard API pattern.
-- Platform teams control who can use each model, how much they can consume, and which usage signals are visible.
-- Subscriptions, groups, tenant telemetry, and GuideLLM tests make access, fairness, showback, and capacity planning observable.
-- Gateway policy keeps authentication, quotas, token limits, and telemetry centralized instead of embedded in each consuming tool.
-
-This matters because enterprise AI adoption breaks down when every team manages endpoints, credentials, GPU capacity, and usage tracking independently. MaaS turns model access into a platform product: publish approved models once, govern consumption centrally, and give applications a stable, policy-aware API path that supports privacy, cost control, and auditability.
+This matters because enterprise AI adoption breaks down when every team manages endpoints, keys, GPU capacity, and usage tracking independently.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the runtime foundation for MaaS: identity integration, networking, routes, storage, operators, monitoring primitives, and GitOps-managed platform state. Red Hat OpenShift AI 3.4 provides the MaaS controller, API, model references, subscription APIs, and model-serving context. Red Hat Connectivity Link with Gateway API, Kuadrant, and Authorino turns model calls into policy-enforced API traffic with authentication, rate limits, token limits, and telemetry.
+Red Hat OpenShift AI 3.4 provides the MaaS controller, MaaS API, model references, authorization policy, subscriptions, and model-serving context. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino turn model calls into policy-enforced API traffic.
 
-GitOps owns the demo-facing MaaS resources: local model references, access policy, subscriptions, quota policy, gateway policy, tenant telemetry, validation assets, and the disposable PostgreSQL backing service needed for MaaS API key metadata. The MaaS controller and MaaS API are intentionally left to the Red Hat OpenShift AI 3.4 operator so the demo does not pin upstream controller images or override operator-managed deployments. Treat GuideLLM and the generated demo database password as workshop helpers, not production evaluation or credential-management platforms.
-
-OpenShift AI 3.4 uses subscriptions instead of the tier model used by OpenShift
-AI 3.3. This stage now follows that product model: model publication is handled
-through `MaaSModelRef`, access is handled through `MaaSAuthPolicy`, quota and
-token limits are handled through `MaaSSubscription`, and usage telemetry is
-enabled on the `Tenant`.
+GitOps owns the demo MaaS resources: local model references, access policy, subscriptions, tenant telemetry, validation helpers, and the disposable PostgreSQL backing service required by the MaaS API. The OpenShift AI operator owns the MaaS controller and MaaS API deployments. Remaining compatibility items are tracked in [`BACKLOG.md`](../../BACKLOG.md).
 
 ## Trust Boundaries
 
-MaaS centralizes authentication, API keys, subscriptions, rate limits, token limits, and telemetry for private model access, but it does not change where a model processes data. Private local model calls stay inside the OpenShift platform boundary, while the same governance pattern can expose other model paths only when policy allows; these controls support traceability, usage accountability, and EU AI Act readiness but do not replace model approval, data classification, legal review, or production security assessment.
+MaaS centralizes authentication, API keys, subscriptions, limits, and telemetry, but it does not change where a model processes data. Private local model calls stay inside the OpenShift platform boundary; other model paths require their own approval and trust-boundary review.
 
 ## Red Hat Products Used
 
-- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the model-serving and MaaS platform context.
-- **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the gateway and policy layer used in the MaaS governance path.
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the runtime platform, identity, networking, routes, storage, and monitoring foundation.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the MaaS, gateway, policy, and telemetry resources.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the MaaS and model-serving platform context.
+- **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the gateway and policy layer.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, identity, networking, routes, storage, and monitoring.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles MaaS, gateway, policy, and telemetry resources.
 
 ## Open Source Projects To Know
 
-- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) is the upstream project behind the MaaS APIs surfaced through Red Hat OpenShift AI.
+- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) is the upstream project behind the MaaS APIs.
 - [Gateway API](https://gateway-api.sigs.k8s.io/) provides Kubernetes-native API routing primitives.
 - [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
 - [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.
-- [CloudNativePG](https://cloudnative-pg.io/) provides the PostgreSQL database used by the MaaS API in this demo.
-- [GuideLLM](https://github.com/vllm-project/guidellm) provides the short model load test used to compare MaaS-published OpenAI-compatible endpoints.
-## Deploy And Validate
+- [CloudNativePG](https://cloudnative-pg.io/) provides the demo PostgreSQL database.
+- [GuideLLM](https://github.com/vllm-project/guidellm) provides the small model load test used by validation.
 
-Operational commands are kept here for workshop operators.
+## Deploy And Validate
 
 ```bash
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
-Stage validation runs a short GuideLLM test when a MaaS API key is available. The default is intentionally small:
+Stage validation runs a short GuideLLM test when a MaaS API key is available. Defaults come from [`env.example`](../../env.example). Set `GUIDELLM_SKIP_LOAD_TEST=true` to skip the load test.
 
-```bash
-GUIDELLM_MODEL=nemotron-3-nano-30b-a3b \
-GUIDELLM_PROFILE=constant \
-GUIDELLM_RATE=1 \
-GUIDELLM_MAX_SECONDS=20 \
-GUIDELLM_REQUESTS=5 \
-GUIDELLM_OUTPUT_TOKENS=64 \
-GUIDELLM_PROMPT="Explain why governed model access matters for enterprise software teams." \
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
-```
-
-Use the same settings against both local models to compare behavior:
+Compare the two private models with the helper scripts:
 
 ```bash
 ./stages/040-governed-models-as-a-service/compare-private-models.sh
 ./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
 ```
 
-Set `GUIDELLM_SKIP_LOAD_TEST=true` to skip the load test during validation.
-
 Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops/stages/040-governed-models-as-a-service/base/)
 
 ## References
 
 - [Red Hat: What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
-- [Red Hat Blog: Accelerate enterprise software development with NVIDIA and MaaS on Red Hat AI](https://www.redhat.com/en/blog/accelerate-enterprise-software-development-nvidia-and-model-service-maas-red-hat-ai)
 - [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
-- [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
+- [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/govern_llm_access_with_models-as-a-service)
 - [Red Hat OpenShift AI 3.4 release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/release_notes/release_notes)
-- [Red Hat OpenShift AI 3.4 Developer Preview features](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/release_notes/developer-preview-features_relnotes)
-- [Red Hat OpenShift AI MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/govern_llm_access_with_models-as-a-service)
 - [Red Hat Connectivity Link gateway policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/configuring_and_deploying_gateway_policies/configuring_and_deploying_gateway_policies)
-- [OpenShift 4.20: Creating custom links in the web console](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/web_console/index#creating-custom-links_customizing-web-console)
-- [OpenShift 4.20: Using service accounts as OAuth clients](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/using-service-accounts-as-oauth-client)
-- [OpenShift OAuth proxy container](https://catalog.redhat.com/en/software/containers/openshift4/ose-oauth-proxy-rhel9)
-- [OpenShift 4.20: Monitoring getting started](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/monitoring/getting-started)
 - [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
 - [Gateway API](https://gateway-api.sigs.k8s.io/)
 - [Kuadrant](https://kuadrant.io/)
@@ -125,4 +95,4 @@ Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops
 
 ## Next Stage
 
-[Stage 050: Approved External Model Access](../050-approved-external-model-access/README.md) adds approved external OpenAI models behind the same governed MaaS path while making the provider trust boundary explicit.
+[Stage 050: Approved External Model Access](../050-approved-external-model-access/README.md) adds approved external models behind the same governed MaaS path.

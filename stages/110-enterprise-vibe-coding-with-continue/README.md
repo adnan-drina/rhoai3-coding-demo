@@ -1,161 +1,108 @@
-# Stage 110: Enterprise Vibe Coding With Continue
+# Stage 110: Specs - Spec-Driven AI Coding With Continue
+
+## Status
+
+This is a planned developer workflow stage. It is not part of [`../../flows/default.yaml`](../../flows/default.yaml) and does not include deploy scripts, validate scripts, GitOps manifests, or an Argo CD Application.
 
 ## Why This Matters
 
-Vibe coding is valuable because it makes software work more accessible. A developer can ask for explanations, tests, documentation, and small changes without leaving the IDE. In an enterprise setting, that productivity gain only helps if the assistant runs inside approved model, workspace, and review boundaries.
+Vibes are useful for orientation, but enterprise engineering needs instructions that survive a chat session. Specs capture what to build, how this organization expects it to be built, and how success will be verified.
 
-This planned stage shows the useful side of AI-assisted IDE work while keeping the limits visible. Continue runs in Red Hat OpenShift Dev Spaces and uses a MaaS-published model endpoint, preferably a private model for source-code context.
-
-## Story Goal
-
-Show a realistic first productivity win: the developer uses Continue to understand an existing Java or Quarkus application, generate or improve a test, review README alignment, and draft documentation. The output is useful, but it becomes trusted only after human review and validation.
-
-## Platform Capabilities Consumed
-
-- Stage 030 provides private model serving for sensitive source-code tasks.
-- Stage 040 provides MaaS access to approved model endpoints.
-- Stage 070 provides Dev Spaces and Continue tooling.
-- Stage 100 defines the model path and evidence expectations for the developer workflow.
+Stage 110 shows how a developer uses Continue inside Dev Spaces to turn exploratory intent into compact, reviewable specifications for README content, API behavior, tests, and implementation constraints.
 
 ## What This Stage Adds
 
-This planned stage adds the first hands-on AI coding exercise.
+This planned stage adds the specs increment of the developer workflow.
 
-- A Continue prompt pack for explanation, test creation, README alignment, and documentation drafting.
-- A Code-to-Docs style review pattern where the assistant proposes documentation changes from implementation diffs and the developer approves them explicitly.
-- A model evaluation scorecard for private and approved external model comparison when policy allows.
-- A human review checklist for generated code and documentation.
-- A record of which model was used for which task.
-- A transition point toward the quality-bar exercise in Stage 120.
+- A move from broad prompts to small, authoritative Markdown instructions.
+- A clear split between the `what` and the `how`.
+- README, API, standards, and test-plan alignment checks.
+- Gap lists before documentation or code edits.
+- A reviewable handoff for later skills and agents.
+
+## Platform Capabilities Consumed
+
+- Stage 030 provides private model serving.
+- Stage 040 provides MaaS access.
+- Stage 070 provides Dev Spaces and Continue tooling.
+- Stage 100 verifies the governed Continue path.
 
 ## Developer Workflow
 
-### Starting Point
+The developer works in the `coolstore-inventory-service` Dev Spaces workspace after Stage 100 has verified Continue connectivity to the private MaaS model.
 
-The developer is in the controlled Dev Spaces workspace. Stage 100 has already
-verified that both Continue and OpenCode can reach the selected private MaaS
-model from local workspace configuration. The target service repository is now
-`adnan-drina/coolstore-inventory-service`, and the exact hands-on task for this
-stage is the README, API, and test-plan alignment review against the Quarkus
-scaffold.
+Use Continue for:
 
-### AI-Assisted Task
+- explaining the current service in terms of inputs, outputs, dependencies, and behavior;
+- separating user-visible behavior from implementation constraints;
+- comparing README, API descriptions, tests, and implementation;
+- producing a gap list before editing;
+- drafting concise specs for accepted behavior and validation.
 
-Use Continue for short, bounded tasks:
+Do not rely on Continue terminal execution for validation unless it returns captured output. For shell evidence, use `Terminal > New Terminal (Select a Container) > tooling-container`.
 
-- explain the current service or endpoint;
-- identify the safest small change to make;
-- write a unit or integration test using project conventions;
-- compare the README with the implementation;
-- produce a README-vs-code or spec-vs-code gap list before editing documentation;
-- draft documentation for a new or changed endpoint.
-
-The developer should keep each request small enough to review.
-
-Do not use Continue as the command-execution path in Dev Spaces. The platform
-configuration disables Continue's built-in terminal-command tool because the
-current VS Code extension does not reliably execute or capture terminal output
-in the remote Che Code environment. Use Continue for IDE assistance and
-read-only MCP context; use OpenCode or a manually opened Dev Spaces terminal for
-commands and validation.
-
-### Prompts Or Agent Instructions
-
-Recommended starter prompts:
+## Starter Prompts
 
 ```text
-Explain this service in terms of inputs, outputs, dependencies, and the safest small behavior to test first. Do not edit files.
+Explain this service in terms of inputs, outputs, dependencies, and observable behavior. Separate what the service should do from how this repository should implement it. Do not edit files.
 ```
 
 ```text
-Write a unit or integration test for this endpoint using the conventions already present in the project. Explain the behavior the test proves.
+Review the README, API description, and tests. List gaps between documented behavior, implemented behavior, and missing verification. Do not rewrite files yet.
 ```
 
 ```text
-Review the README against the implementation and list mismatches. Do not rewrite the README until I confirm which mismatches matter.
+Draft a compact spec for the inventory availability API. Include the user-visible behavior, expected test cases, and implementation constraints. Do not add code.
 ```
 
 ```text
-Draft documentation for this endpoint. Include only behavior that is visible in the implementation or tests.
+Given this accepted spec, propose the smallest README or test-plan update. Include only behavior that is visible in implementation, tests, or the accepted spec.
 ```
-
-### Expected Developer Actions
-
-- Select the source file or test file intentionally.
-- Ask Continue for a plan before accepting code changes.
-- Review the generated diff.
-- Run the relevant test command once the exact hands-on task is chosen.
-- Update documentation only for behavior that is actually implemented.
-- Record model name, task type, prompt summary, and validation outcome.
-
-### Review And Quality Gates
-
-- Generated tests must compile and pass in the selected project.
-- Documentation changes must start as proposed gaps, not silent rewrites.
-- Documentation updates must match implemented behavior.
-- No unsupported dependency or version change is accepted without review.
-- No credentials, keys, or private URLs are introduced.
-- The developer owns the final diff and can explain it without relying on the assistant transcript.
-
-### Evidence To Capture
-
-- Prompt summary and model path.
-- Files changed by the assistant.
-- Test command and result.
-- README alignment findings and which ones were accepted.
-- Accepted and rejected documentation changes from the gap list.
-- Human review notes explaining why the output was accepted or rejected.
 
 ## What To Notice And Why It Matters
 
-The proof point is that vibe coding can be useful without being unmanaged. Continue gives the developer quick feedback inside the IDE, while Dev Spaces, MaaS, and project review rules keep the workflow inside a controlled platform boundary.
+The proof point is that useful prompts become shared instructions. A spec gives developers, reviewers, and later agents a stable source of truth instead of asking the model to infer standards from a broad request.
 
-This matters because enterprises should not reject AI-assisted coding only because free-form prompting is risky. The better pattern is to make the useful tasks visible, bounded, and verifiable.
+This matters because enterprises should not treat free-form prompting as the final workflow. AI-assisted work becomes easier to review when intent, constraints, tests, and documentation expectations are visible before code changes are accepted.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift Dev Spaces provides a reproducible workspace where the assistant runs close to the source and tooling. Red Hat OpenShift AI and MaaS provide the approved model endpoint. Continue provides the open source IDE assistant experience and can connect to OpenAI-compatible endpoints.
+Red Hat OpenShift Dev Spaces provides a reproducible workspace near the source and tools. Red Hat OpenShift AI MaaS provides the approved model endpoint. Continue provides the IDE assistant experience and can consume OpenAI-compatible endpoints.
 
-The result is a familiar developer workflow where model access is supplied by the platform instead of by personal provider keys.
-
-Red Hat's Code-to-Docs pattern adds a useful discipline for this stage: let AI inspect diffs and propose documentation updates, but require humans to approve which documentation changes are true. That makes README alignment a reviewable engineering task instead of a free-form rewrite.
-
-## Trust Boundaries
-
-Source-code prompts should use the private model path unless the organization explicitly approves the data classification for external processing. MaaS can centralize access to both private and approved external models, but it does not make provider-side processing private.
+The Code-to-Docs pattern is useful here: let AI inspect diffs and propose documentation updates, but require humans to approve which documentation changes are true.
 
 ## Red Hat Products Used
 
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the IDE workspace.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides governed model serving and MaaS access.
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the platform identity and runtime boundary.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides platform identity and runtime boundaries.
 
 ## Open Source Projects To Know
 
-- [Continue](https://www.continue.dev/) provides the IDE AI assistant workflow.
+- [Continue](https://www.continue.dev/) provides the IDE assistant workflow.
 - [Eclipse Che](https://www.eclipse.org/che/) and DevWorkspace provide the cloud workspace foundation.
-- [KServe](https://kserve.github.io/website/) and [vLLM](https://docs.vllm.ai/) are part of the private inference path introduced earlier in the platform story.
+- [KServe](https://kserve.github.io/website/) and [vLLM](https://docs.vllm.ai/) are part of the private inference path introduced earlier.
 
-## Future Implementation Notes
+## TODOs
 
-- Use the first Continue exercise inside the `coolstore-inventory-service` repository for README, API, and test-plan alignment.
-- Add the Continue prompt pack as versioned demo content.
-- Add expected test commands and README alignment examples.
-- Add a Code-to-Docs prompt that produces a gap list before applying any README change.
-- Define a simple scorecard for private model versus approved external model behavior when policy allows comparison.
+- TODO: Add the first Continue prompt pack as versioned demo content.
+- TODO: Add expected test commands and README alignment examples for `coolstore-inventory-service`.
+- TODO: Define a simple scorecard for private model versus approved external model behavior when policy allows comparison.
 
 ## Deploy And Validate
 
-This planned workflow stage does not yet include deploy or validate scripts. Static validation for this iteration is documentation review only.
+This planned stage has no deploy or validate scripts. Static validation is documentation review only. Shared quality gates and evidence expectations live in [Developer Workflow Validation](../../docs/DEVELOPER_WORKFLOW_VALIDATION.md).
 
 ## References
 
 - [A guide to AI code assistants with Red Hat OpenShift Dev Spaces](https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces)
 - [AI-powered documentation updates: From code diff to docs PR in one comment](https://developers.redhat.com/articles/2026/04/21/ai-powered-documentation-updates-code-diff-docs-pr-one-comment)
+- [Vibes, specs, skills, and agents: The four pillars of AI coding](https://developers.redhat.com/articles/2026/03/30/vibes-specs-skills-agents-ai-coding)
 - [Red Hat OpenShift Dev Spaces documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/)
 - [What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
+- [Red Hat's enterprise guide to AI-assisted app dev](https://www.redhat.com/en/resources/ai-assisted-app-dev-enterprise-ebook)
 - [Continue](https://www.continue.dev/)
 
 ## Next Stage
 
-[Stage 120: Quality Bar Breakpoint](../120-quality-bar-breakpoint/README.md) turns the same productivity story into a controlled example of why AI output still needs professional engineering review.
+[Stage 120: Skills - Reusable Quality Gates](../120-quality-bar-breakpoint/README.md) turns accepted specs and review rules into reusable skill packets.

@@ -1,17 +1,21 @@
 # Documentation Index
 
-This directory contains operational documentation for the Red Hat OpenShift AI coding demo. The root README and stage READMEs are the user-facing educational path; this directory holds the runbook material that would make those READMEs too operational.
+This directory holds operational and governance documentation for the Red Hat OpenShift AI coding demo. The root README and stage READMEs explain the learning path; these docs hold the runbooks, validation notes, and contribution rules that would make those READMEs too operational.
 
-| Document | Purpose | Intended use |
-|----------|---------|--------------|
-| [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operating model, day-2 notes, and cleanup guidance | Use while installing, validating, or maintaining the demo environment |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based recovery procedures with diagnostic and recovery commands | Use when a deployment stage fails validation or a demo component is unavailable |
-| [RHOAI_3_4_UPGRADE.md](RHOAI_3_4_UPGRADE.md) | Red Hat OpenShift AI 3.4 upgrade readiness, validation gates, risks, and rollback notes | Use before syncing or merging any 3.4 upgrade branch |
-| [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs-published Dev Spaces setup for Continue, OpenCode, and MTA extension handoff | Use during Stage 100 when demo users configure and verify model access in their workspace |
-| [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution model, rules/skills governance, local vs shared boundaries | Use when adding or reviewing rules, skills, or AI-assisted contributions |
-| [../BACKLOG.md](../BACKLOG.md) | Deviation register, workarounds, known limitations, validation notes, and planned cleanup | Use when assessing whether demo behavior matches supported Red Hat product guidance |
+| Document | Purpose |
+|----------|---------|
+| [index.md](index.md) | Published TechDocs landing page for the developer workspace guide |
+| [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operations, day-2 notes, and cleanup guidance |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
+| [RHOAI_3_4_UPGRADE.md](RHOAI_3_4_UPGRADE.md) | Red Hat OpenShift AI 3.4 upgrade posture, validation gates, risks, and rollback notes |
+| [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs guide for Developer Hub, Dev Spaces, Continue, MaaS, and Stage 100 onboarding |
+| [DEVELOPER_WORKFLOW_VALIDATION.md](DEVELOPER_WORKFLOW_VALIDATION.md) | Quality gates and evidence expectations for planned stages 100-170 |
+| [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution rules, shared rules and skills governance, and local vs shared boundaries |
+| [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |
 
-The published learning path is the stage-based flow from [`flows/default.yaml`](../flows/default.yaml):
+## Learning Path
+
+The implemented flow is defined in [`../flows/default.yaml`](../flows/default.yaml):
 
 1. [Project README](../README.md)
 2. [Stage 010: OpenShift AI Platform Foundation](../stages/010-openshift-ai-platform-foundation/README.md)
@@ -24,8 +28,10 @@ The published learning path is the stage-based flow from [`flows/default.yaml`](
 9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
 10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
-Draft developer workflow stages now live directly under [`../stages/`](../stages/), starting with [Stage 100](../stages/100-governed-developer-entry-point/README.md). Stages `100-170` are not part of [`flows/default.yaml`](../flows/default.yaml) yet and should remain documentation-only until each stage has deploy scripts, validate scripts, GitOps bases, and Argo CD applications.
+Draft developer workflow stages start at [Stage 100](../stages/100-governed-developer-entry-point/README.md). Keep stages `100-170` documentation-only until they have deploy scripts, validate scripts, GitOps bases, and Argo CD Applications.
 
-Shared Cursor rules (`.cursor/rules/`), skills (`.cursor/skills/`), and agent definitions (`.cursor/agents/`) are tracked in git and define project-wide AI agent behavior. Local/private rules and skills that contain credentials, local paths, or personal preferences must not be committed. See [AI_COLLABORATION.md](AI_COLLABORATION.md) for the governance model.
+## AI Collaboration Rules
+
+Shared Cursor rules, skills, and agent definitions live under [`../.cursor/`](../.cursor/). They define project-wide AI agent behavior. Do not commit local rules, skills, credentials, personal paths, private cluster URLs, or personal preferences. See [AI_COLLABORATION.md](AI_COLLABORATION.md) before changing shared agent behavior.
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.

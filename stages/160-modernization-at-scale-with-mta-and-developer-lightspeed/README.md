@@ -1,132 +1,77 @@
 # Stage 160: Modernization At Scale With MTA And Developer Lightspeed
 
+## Status
+
+This is a planned developer workflow stage. It is not part of [`../../flows/default.yaml`](../../flows/default.yaml) and does not include deploy scripts, validate scripts, GitOps manifests, or an Argo CD Application.
+
 ## Why This Matters
 
-AI-powered development at enterprise scale is not only about generating new code. Many organizations have large Java estates that need modernization, and that work requires analysis, rules, evidence, remediation, testing, and application-owner review.
+Enterprise AI development is not only about generating new services. Many organizations have Java estates that need modernization, and that work requires analysis, rules, remediation, testing, evidence, and application-owner review.
 
-This planned stage uses Migration Toolkit for Applications and Red Hat Developer Lightspeed for MTA to show a modernization workflow grounded in static analysis instead of generic chat.
-
-## Story Goal
-
-Analyze a legacy Java application such as Coolstore, review MTA findings, use Developer Lightspeed for MTA for targeted remediation suggestions, compare one remediation against known behavior or a reference branch, and introduce custom rules derived from corporate standards.
-
-## Platform Capabilities Consumed
-
-- Stage 070 provides Dev Spaces and the MTA extension handoff.
-- Stage 080 provides MTA and Red Hat Developer Lightspeed for MTA.
-- Stage 130 provides OpenCode agents and skills for review and standards work.
-- Stage 150 provides the delivery discipline that modernization changes should eventually pass through.
-- Stage 155 provides the trusted software supply-chain evidence model for artifacts produced by modernization work.
+Stage 160 uses Migration Toolkit for Applications and Red Hat Developer Lightspeed for MTA to show modernization grounded in static analysis instead of generic chat.
 
 ## What This Stage Adds
 
-This planned stage adds the modernization exercise.
+This planned stage adds a brownfield modernization workflow.
 
-- Coolstore or another legacy Java application as the analysis target.
-- MTA analysis checklist and findings review workflow.
-- Developer Lightspeed for MTA evaluation rubric.
-- Custom MTA rule generation path from corporate technical standards.
-- RAG-backed or MCP-backed retrieval of corporate standards as grounded context for rule creation.
-- Eval-driven review of generated rules, remediation suggestions, false positives, and false negatives.
-- Scribe MCP as a candidate tool for generating and validating Konveyor/Kantra rule YAML from reviewed rule intent.
-- Modernization evidence model for findings, suggestions, accepted changes, tests, and review notes.
+- `rhpds/mca-coolstore` as the recommended modernization source.
+- MTA findings as the evidence base for remediation.
+- Developer Lightspeed for MTA suggestions reviewed as diffs, not blindly accepted changes.
+- Custom rule design from corporate standards.
+- A future Scribe MCP path for drafting and validating Konveyor/Kantra rules.
+- Documentation-only exercise packets for analysis, remediation evaluation, and custom rules.
 
-## Developer Workflow
-
-### Starting Point
-
-The future live environment has MTA and Developer Lightspeed for MTA installed from Stage 080. The developer opens the legacy application in Dev Spaces and has access to the MTA VS Code extension.
-
-The current recommendation is to use `rhpds/mca-coolstore` as the canonical brownfield modernization source for this stage. It contains Java EE modernization pressure, in-tree Konveyor profiles, a custom audit-library migration ruleset, local system-scoped JARs, and a direct connection to the `rhpds/mca-devspaces` Developer Lightspeed workspace pattern.
-
-For the golden-path and deployment stages, the demo should still use the smaller demo-owned `coolstore-inventory-service` described in the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment rather than promising a full monolith conversion in one live iteration.
-
-The `rhpds/mca-devspaces` project is a candidate reference for this stage's Dev Spaces implementation. It already packages Java and MTA VS Code extensions, configures Che Code editor policy, points its devfile at `rhpds/mca-coolstore`, and injects Developer Lightspeed for MTA provider settings at workspace startup. The remaining comparison decision is whether `konveyor-ecosystem/coolstore` should stay as a secondary reference for Quarkus migration material.
-
-This stage now has a first exercise packet:
+Exercise packet:
 
 - [`MTA Coolstore Analysis Exercise`](mta-coolstore-analysis-exercise.md)
 - [`Developer Lightspeed Evaluation Rubric`](developer-lightspeed-evaluation-rubric.md)
 - [`MTA Custom Rule Exercise`](mta-custom-rule-exercise.md)
 
-The packet is still documentation-only. It does not claim that MTA analysis has been run against the current cluster or a local `mca-coolstore` checkout.
+The packet does not claim that MTA analysis has run against the current cluster or a local `mca-coolstore` checkout.
 
-### AI-Assisted Task
+## Platform Capabilities Consumed
 
-The developer performs a modernization slice:
+- Stage 070 provides Dev Spaces and the MTA extension handoff.
+- Stage 080 provides MTA and Developer Lightspeed for MTA.
+- Stage 130 provides OpenCode agents and skills.
+- Stage 150 provides delivery discipline for modernization changes.
+- Stage 155 provides the supply-chain evidence model.
 
-- run or review an MTA analysis;
-- inspect findings in MTA UI or the VS Code extension;
+## Developer Workflow
+
+The developer opens the legacy application in Dev Spaces and uses the MTA VS Code extension or MTA UI to review analysis findings.
+
+The modernization slice should:
+
+- run or review MTA analysis;
+- inspect findings;
 - select one finding for remediation;
 - request a Developer Lightspeed for MTA suggestion;
 - compare the suggestion with tests and reference behavior;
 - propose a custom rule from corporate standards;
-- retrieve the exact corporate standard passages that justify the custom rule;
-- use Scribe through MCP to generate the draft Konveyor/Kantra rule after the rule intent is reviewed;
+- cite the standards passages that justify the rule;
 - validate generated rule YAML before adding it to a ruleset;
-- evaluate the rule against expected-good and known-bad examples;
-- re-run analysis once the rule path exists.
+- evaluate the rule against expected-good and known-bad examples.
 
-### Prompts Or Agent Instructions
+For golden-path and deployment stages, continue using the smaller demo-owned `coolstore-inventory-service` target rather than promising a full monolith conversion.
 
-Recommended OpenCode instruction for rule work:
+## Starter Prompts
 
 ```text
 Review this corporate Java modernization standard and propose an MTA custom rule that would detect violations. Do not apply the rule until you explain the metadata, condition, message, labels, effort, and expected false positives.
 ```
 
-Recommended grounded-rule instruction:
-
 ```text
 Use only the retrieved corporate standards passages as source material. Cite the passage that justifies each rule condition, then list false positives, false negatives, and test examples before proposing the MTA rule.
 ```
-
-Recommended Scribe MCP instruction:
 
 ```text
 Use Scribe only after you have cited the standards passage and described the expected match. Generate the smallest useful Konveyor rule, validate it with Scribe, and report expected matches, known non-matches, false-positive risk, category, effort, labels, and review evidence. Do not commit the rule until a human approves it.
 ```
 
-Recommended remediation review instruction:
-
 ```text
 Compare this suggested remediation with the MTA finding, project tests, and reference behavior. Identify what must be reviewed before accepting the change.
 ```
-
-### Expected Developer Actions
-
-- Run or inspect MTA analysis for the selected application.
-- Choose a bounded finding.
-- Request and review a Developer Lightspeed for MTA suggestion.
-- Accept, reject, or edit the suggested change based on evidence.
-- Draft custom MTA rule content from a selected standard.
-- Check that any standards-based rule cites the retrieved source text or approved policy document.
-- Use Scribe-generated YAML as a draft, not as accepted policy.
-- Review rule metadata, category, effort, labels, and match conditions.
-- Review expected-good and known-bad examples for the generated rule.
-
-### Review And Quality Gates
-
-- MTA analysis completes for the selected target.
-- Findings are documented before remediation.
-- Suggested code changes are reviewed as diffs.
-- Tests or reference behavior support accepted changes.
-- Custom rules are reviewed before use.
-- Standards-derived rules cite the source standard or retrieved context.
-- Scribe-generated rules pass Scribe validation and MTA validation before use.
-- Rule behavior is evaluated against expected matches and known non-matches before it is promoted.
-- Modernized artifacts follow the Stage 155 supply-chain evidence model before promotion.
-- Model path for modernization context is recorded.
-
-### Evidence To Capture
-
-- Application branch or source used for analysis.
-- MTA target technologies and rule sets.
-- Finding selected for remediation.
-- Developer Lightspeed suggestion and decision.
-- Test or reference comparison.
-- Custom rule draft and review notes.
-- Model path and data classification.
 
 ## What To Notice And Why It Matters
 
@@ -136,24 +81,16 @@ This matters because modernization at scale needs repeatability. Custom rules le
 
 ## How Red Hat And Open Source Make It Work
 
-Migration Toolkit for Applications provides application inventory, static analysis, rules, and IDE integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings and context. The MTA rule system lets organizations extend analysis coverage for custom frameworks, technologies, and corporate standards.
+Migration Toolkit for Applications provides application inventory, static analysis, rules, and IDE integration. Red Hat Developer Lightspeed for MTA adds AI-assisted code resolution based on MTA findings and is Technology Preview in MTA 8.1.
 
-In the reviewed MTA 8.1 documentation, Developer Lightspeed for MTA is Technology Preview. In this demo, its output should be evaluated as a suggested diff that a developer can accept, edit, reject, or defer after review.
-
-Konveyor is the open source modernization foundation behind these workflows, and Kai is the upstream AI-assisted modernization effort associated with Developer Lightspeed-style remediation.
-
-Red Hat's enterprise RAG, document-processing, and RAG-evaluation guidance adds a way to make corporate standards usable by agents without turning them into ungrounded prompt text. Standards can be processed, chunked, retrieved, cited, and evaluated before they influence MTA custom rules or remediation guidance.
-
-## Trust Boundaries
-
-Modernization context can include source code, dependency information, analysis findings, and remediation suggestions. The model path must match the data classification. Custom MTA rules should be reviewed like code because they influence what the organization treats as a modernization issue.
+Konveyor is the open source modernization foundation, and Kai is the upstream AI-assisted modernization effort associated with Developer Lightspeed-style remediation.
 
 ## Red Hat Products Used
 
 - **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** provides modernization analysis and rules.
 - **[Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)** provides AI-assisted code resolution workflows.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the developer workspace.
-- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides governed model access for modernization context.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides governed model access.
 
 ## Open Source Projects To Know
 
@@ -162,24 +99,18 @@ Modernization context can include source code, dependency information, analysis 
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore) is the recommended Java modernization source for this demo.
 - [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore) remains a possible secondary reference for comparison material.
 
-## Future Implementation Notes
+## TODOs
 
-- Confirm the exact Stage 160 execution path for `rhpds/mca-coolstore` and whether `konveyor-ecosystem/coolstore` remains a secondary reference.
-- Use the [`mca-coolstore` candidate assessment](mca-coolstore-candidate-assessment.md) as the current application-selection baseline.
-- Use the [`Quarkus target service options`](../140-golden-path-quarkus-service/quarkus-target-service-options.md) assessment when comparing brownfield inventory behavior to the smaller target service.
-- Decide whether to use the `rhpds/mca-devspaces` workspace pattern directly, adapt it into this repo, or keep the current Stage 070 workspace and only borrow its MTA extension setup.
-- Use the [`MTA Coolstore Analysis Exercise`](mta-coolstore-analysis-exercise.md) as the first analysis checklist.
-- Use the [`Developer Lightspeed Evaluation Rubric`](developer-lightspeed-evaluation-rubric.md) when reviewing suggested remediation.
-- Use the [`MTA Custom Rule Exercise`](mta-custom-rule-exercise.md) as the first standards-to-rule workflow.
-- Decide whether MTA rule generation should use an MCP service, a RAG-backed standards lookup, or a local reviewed skill.
-- Decide whether Scribe runs locally inside Dev Spaces for the first demo or as a shared OpenShift MCP service behind MCP Gateway.
-- Define an OpenCode `mta-rule-engineer` agent or skill that can call Scribe while keeping Scribe tools disabled for unrelated agents.
-- Add a standards corpus ingestion step using document-processing tooling once the corporate source documents are selected.
-- Add a RAG evaluation set for standards retrieval, expected rule conditions, known-bad matches, and rule false-positive review.
+- TODO: Confirm the exact execution path for `rhpds/mca-coolstore`.
+- TODO: Decide whether `konveyor-ecosystem/coolstore` remains a secondary reference.
+- TODO: Decide whether `rhpds/mca-devspaces` is adopted directly, adapted, or used only as a reference.
+- TODO: Decide whether MTA rule generation uses Scribe MCP, a RAG-backed standards lookup, or a local reviewed skill.
+- TODO: Add standards corpus ingestion only after corporate source documents are selected.
+- TODO: Add a RAG evaluation set for standards retrieval and rule-condition review.
 
 ## Deploy And Validate
 
-This planned workflow stage does not yet include deploy or validate scripts. Static validation for this iteration is documentation review only.
+This planned stage has no deploy or validate scripts. Static validation is documentation review only. Shared quality gates and evidence expectations live in [Developer Workflow Validation](../../docs/DEVELOPER_WORKFLOW_VALIDATION.md).
 
 ## References
 
@@ -190,8 +121,6 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 - [Developer Lightspeed Evaluation Rubric](developer-lightspeed-evaluation-rubric.md)
 - [MTA Custom Rule Exercise](mta-custom-rule-exercise.md)
 - [Deploy an enterprise RAG chatbot on Red Hat OpenShift AI](https://developers.redhat.com/articles/2026/01/29/deploy-enterprise-rag-chatbot-red-hat-openshift-ai)
-- [Breaking the RAG bottleneck: Scalable document processing with Ray Data and Docling](https://www.redhat.com/en/blog/breaking-rag-bottleneck-scalable-document-processing-ray-data-docling)
-- [Synthetic data for RAG evaluation: Why your RAG system needs better testing](https://developers.redhat.com/articles/2026/02/23/synthetic-data-rag-evaluation-why-your-rag-system-needs-better-testing)
 - [Coolstore sample application](https://github.com/konveyor-ecosystem/coolstore)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 - [rhpds/mca-coolstore](https://github.com/rhpds/mca-coolstore)

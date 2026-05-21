@@ -1,12 +1,10 @@
-# Stage 020: GPU Infrastructure For Private AI
+# Stage 020: GPU Infrastructure for Private AI
 
 ## Why This Matters
 
-The workshop story starts with a platform team building a trusted AI development environment for enterprise developers. Stage 010 established the Red Hat OpenShift AI foundation. Stage 020 adds the private compute layer that makes the rest of the story credible: GPU capacity that can be discovered, scheduled, governed, observed, and consumed through platform abstractions.
+Private model serving needs accelerator capacity that can be discovered, scheduled, shared, observed, and governed. If every model deployment uses hand-built node selectors and local exceptions, private AI becomes difficult to operate and expensive to scale.
 
-For this demo, GPUs are not just infrastructure. They are the foundation for private model serving, where sensitive source code and prompts can stay inside the OpenShift platform boundary. If GPU access is handled as a collection of hand-built node selectors, every private model deployment becomes a special case. If GPU access is exposed as a governed platform service, the same environment can support model serving, developer workspaces, modernization workflows, and other approved AI workloads with clearer operational control.
-
-This stage uses a demo-scale GPU-as-a-Service pattern aligned with Red Hat guidance: accelerator discovery, GPU node lifecycle, queue-based admission, quota, Red Hat OpenShift AI hardware profiles, autoscaling readiness, and observability. The demo does not simulate a large organization with many competing teams. It shows the control-plane building blocks that make governed private AI compute possible.
+Stage 020 adds a demo-scale GPU-as-a-Service foundation. It prepares NVIDIA GPU capacity for OpenShift AI workloads and introduces queue-based admission, quota, hardware profiles, autoscaling readiness, and observability.
 
 ## Architecture
 
@@ -14,59 +12,55 @@ This stage uses a demo-scale GPU-as-a-Service pattern aligned with Red Hat guida
 
 ## What This Stage Adds
 
-This stage adds a demo-scale GPU-as-a-Service foundation for private AI workloads.
+This stage adds governed GPU infrastructure for private AI workloads.
 
-- Hardware discovery through Node Feature Discovery so OpenShift can label accelerator-capable nodes.
+- Hardware discovery through Node Feature Discovery.
 - NVIDIA GPU enablement through the NVIDIA GPU Operator and managed NVIDIA L4 worker capacity.
-- Red Hat build of Kueue with queue, flavor, and quota resources for admitted AI workloads.
-- Queue-based Red Hat OpenShift AI hardware profiles that expose approved GPU choices through the platform experience.
+- Red Hat build of Kueue with `ResourceFlavor`, `ClusterQueue`, and `LocalQueue` resources.
+- Queue-based OpenShift AI hardware profiles for approved GPU choices.
 - OpenShift Custom Metrics Autoscaler and KEDA readiness for metric-driven scaling patterns.
-- GPUaaS observability for capacity, utilization, memory, queue state, and quota status.
+- GPU, Kueue, and quota observability dashboards.
 
 The preferred path is queue-managed GPU consumption. Direct node-scheduling hardware profiles remain only for compatibility with existing OpenShift AI usage patterns.
 
 ## What To Notice And Why It Matters
 
-Stage 020 turns accelerator capacity into a governed private AI compute service. Node Feature Discovery, the NVIDIA GPU Operator, AWS GPU MachineSet automation, Red Hat build of Kueue, Red Hat OpenShift AI hardware profiles, OpenShift Custom Metrics Autoscaler, and GPUaaS dashboards make GPU access discoverable, schedulable, quota-aware, and observable.
+Stage 020 turns scarce GPU capacity into a platform service.
 
-The essential proof point is enterprise control around scarce accelerator resources:
+- `ResourceFlavor` maps NVIDIA L4 nodes to the labels and tolerations needed for scheduling.
+- `ClusterQueue` and `LocalQueue` express quota and admission control for model workloads.
+- Queue-backed OpenShift AI hardware profiles hide scheduler details from users while preserving platform control.
+- GPU and Kueue metrics support capacity planning, cost control, and utilization review.
 
-- `ResourceFlavor` maps the NVIDIA L4 node class to the labels and tolerations needed for scheduling.
-- `ClusterQueue` and `LocalQueue` express quota and admission control for approved AI workloads.
-- Queue-based OpenShift AI hardware profiles give users a dashboard-level accelerator choice without exposing node selectors, taints, or scheduler details.
-- GPU, Kueue, and KEDA observability provide the signals needed for capacity planning, cost control, and utilization review.
-
-This matters because private and sovereign AI depend on expensive accelerator capacity that must be shared without losing control. A GPU-as-a-Service pattern helps platform engineers reduce shadow IT, fragmented accelerator pools, idle capacity, and tenant-isolation risk while giving approved workloads a governed path to compute across the hybrid cloud estate.
+This matters because private and sovereign AI depend on expensive accelerator capacity. A GPU-as-a-Service pattern helps reduce fragmented pools, idle capacity, tenant-isolation risk, and undocumented scheduling exceptions.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift provides the platform controls for accelerator infrastructure: identity, RBAC, machine management, scheduling, monitoring, Operator Lifecycle Manager, and GitOps delivery. Red Hat OpenShift AI consumes that foundation through dashboard integration and hardware profiles, while Red Hat build of Kueue provides the supported queueing and quota layer for admitted AI workloads.
+Red Hat OpenShift provides machine management, scheduling, RBAC, monitoring, Operator Lifecycle Manager, and GitOps delivery. Red Hat OpenShift AI consumes that foundation through hardware profiles. Red Hat build of Kueue adds the supported queueing and quota layer for AI workloads.
 
-The open source and ecosystem layer supplies the GPU and scheduling building blocks: Node Feature Discovery identifies accelerator-capable nodes, the NVIDIA GPU Operator manages the driver stack and DCGM telemetry, Kueue adds Kubernetes-native admission and quota control, and KEDA provides the autoscaling extension point. In this demo, autoscaling is installed as a foundation capability but kept separate from private model deployments so the stage stays focused on governed GPU consumption.
+Node Feature Discovery labels accelerator-capable nodes. The NVIDIA GPU Operator manages the driver stack and DCGM telemetry. Kueue supplies Kubernetes-native workload admission. KEDA supplies the autoscaling extension point used by the OpenShift Custom Metrics Autoscaler Operator.
 
 ## Trust Boundaries
 
-This stage does not process source code or prompts; its trust boundary is operational control over scarce accelerator capacity. OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, telemetry, and GitOps-managed state help platform teams keep private AI compute governed inside the OpenShift environment, which supports sovereignty and audit-readiness goals without claiming EU AI Act compliance on its own.
+This stage does not process prompts or source code. Its trust boundary is operational control over accelerator capacity through OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, telemetry, and GitOps-managed state.
 
 ## Red Hat Products Used
 
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides Kubernetes scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
-- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides hardware profiles, dashboard configuration, and Kueue-aware workload integration.
-- **[Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index)** provides the supported queueing and quota control plane for AI workloads.
-- **[Custom Metrics Autoscaler Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/nodes/index#nodes-cma-autoscaling-custom)** provides the Red Hat-supported KEDA integration for custom-metric and event-driven autoscaling patterns.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the GPUaaS desired state through Argo CD.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides hardware profiles and Kueue-aware workload integration.
+- **[Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index)** provides queueing and quota control for AI workloads.
+- **[Custom Metrics Autoscaler Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator)** provides the Red Hat-supported KEDA integration.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the GPUaaS desired state.
 
 ## Open Source Projects To Know
 
-- [Node Feature Discovery](https://kubernetes-sigs.github.io/node-feature-discovery/stable/get-started/index.html) labels Kubernetes nodes based on hardware capabilities so accelerator-aware scheduling can work from observable node facts.
-- [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) automates the NVIDIA software stack required for GPU workloads on Kubernetes.
-- [DCGM Exporter](https://github.com/NVIDIA/dcgm-exporter) exposes GPU health, utilization, and memory metrics for monitoring.
-- [Kueue](https://kueue.sigs.k8s.io/) provides Kubernetes-native workload queueing, quota accounting, and admission control.
-- [KEDA](https://keda.sh/) provides event-driven autoscaling patterns that OpenShift supports through the Custom Metrics Autoscaler Operator.
+- [Node Feature Discovery](https://kubernetes-sigs.github.io/node-feature-discovery/stable/get-started/index.html) labels nodes based on hardware capabilities.
+- [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) automates the NVIDIA software stack for GPU workloads.
+- [DCGM Exporter](https://github.com/NVIDIA/dcgm-exporter) exposes GPU health, utilization, and memory metrics.
+- [Kueue](https://kueue.sigs.k8s.io/) provides workload queueing, quota accounting, and admission control.
+- [KEDA](https://keda.sh/) provides event-driven autoscaling patterns.
 
 ## Deploy And Validate
-
-Operational commands are kept here for workshop operators.
 
 ```bash
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
@@ -78,14 +72,13 @@ Manifests: [`gitops/stages/020-gpu-infrastructure-private-ai/base/`](../../gitop
 ## References
 
 - [Unlocking AI innovation: GPU-as-a-Service with Red Hat](https://www.redhat.com/en/blog/unlocking-ai-innovation-gpu-service-red-hat)
-- [GPU-as-a-Service for AI at scale: Practical strategies with Red Hat OpenShift AI](https://www.redhat.com/en/blog/gpu-service-ai-scale-practical-strategies-red-hat-openshift-ai)
+- [GPU-as-a-Service for AI at scale with Red Hat OpenShift AI](https://www.redhat.com/en/blog/gpu-service-ai-scale-practical-strategies-red-hat-openshift-ai)
 - [Red Hat OpenShift AI 3.4: Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue)
 - [Red Hat OpenShift AI 3.4: Working with hardware profiles](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/working-with-hardware-profiles_accelerators)
-- [Red Hat OpenShift AI 3.4: Managing distributed workloads](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-distributed-workloads_managing-rhoai)
 - [OpenShift 4.20: Red Hat build of Kueue](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/ai_workloads/)
 - [OpenShift 4.20: Custom Metrics Autoscaler Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator)
 - [NVIDIA GPU Operator on OpenShift](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/openshift/contents.html)
 
 ## Next Stage
 
-[Stage 030: Private Model Serving](../030-private-model-serving/README.md) deploys the private model serving resources that consume the queue-backed GPU capacity.
+[Stage 030: Private Model Serving](../030-private-model-serving/README.md) deploys private model serving resources that consume the queue-backed GPU capacity.

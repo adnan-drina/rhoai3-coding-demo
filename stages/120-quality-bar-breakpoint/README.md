@@ -1,54 +1,45 @@
-# Stage 120: Quality Bar Breakpoint
+# Stage 120: Skills - Reusable Quality Gates
+
+## Status
+
+This is a planned developer workflow stage. It is not part of [`../../flows/default.yaml`](../../flows/default.yaml) and does not include deploy scripts, validate scripts, GitOps manifests, or an Argo CD Application.
 
 ## Why This Matters
 
-AI assistance can produce plausible output that looks correct before it has been tested against the project's standards. That is the key transition from vibe coding to agentic engineering: the question is not whether the assistant can help, but whether the engineering system can catch gaps before they become accepted changes.
+Specs describe the desired outcome. Skills capture repeatable know-how: how to review README alignment, validate an OpenShift delivery path, check enterprise readiness, or prepare a PR summary.
 
-This planned stage introduces a deliberate near miss. The point is not to make the model look bad. The point is to show that professional software still depends on tests, architecture judgment, conventions, policy, and human review.
+Stage 120 uses a deliberate near miss to show why skills matter. The point is not to make a model look bad. The point is to show that tests, architecture judgment, conventions, policy, and human review still decide whether AI-assisted output is acceptable.
 
-## Story Goal
+## What This Stage Adds
 
-Show a useful but imperfect AI-assisted result and catch the issue through an explicit quality gate. The audience should see why free-form prompting is not enough for enterprise software and why the next stage moves into controlled OpenCode agents and skills.
+This planned stage adds the skills increment of the developer workflow.
+
+- A near-miss exercise that exposes a real review, policy, test, or documentation gap.
+- A reusable quality gate derived from the review procedure.
+- A first skill candidate, currently `review-enterprise-readiness`.
+- Evidence showing which checklist item caught the issue and how the corrected output was validated.
 
 ## Platform Capabilities Consumed
 
 - Stage 070 provides the controlled Dev Spaces workspace.
-- Stage 110 provides the Continue prompt workflow and initial coding exercise.
-- Project rules in `AGENTS.md` and `docs/AI_COLLABORATION.md` provide the human accountability and validation model.
-
-## What This Stage Adds
-
-This planned stage adds the quality-bar transition exercise.
-
-- A deliberately ambiguous prompt or task.
-- A plausible assistant output with a detectable defect.
-- A review rubric that catches the defect.
-- An AI-ready codebase governance layer using project rules, structured documentation, lint rules, and tests as machine-readable control points.
-- An eval-driven development pattern for comparing agent outputs against expected-good and known-bad cases.
-- A corrected path that demonstrates the expected enterprise standard.
-- A narrative bridge from IDE assistance to agentic engineering.
+- Stage 110 provides accepted specs and alignment expectations.
+- [`../../AGENTS.md`](../../AGENTS.md) and [`../../docs/AI_COLLABORATION.md`](../../docs/AI_COLLABORATION.md) provide human accountability and validation expectations.
 
 ## Developer Workflow
 
-### Starting Point
+The developer starts with an accepted spec from Stage 110, then asks for a change that is tempting to accept quickly but likely to expose a quality gap.
 
-The developer has already used Continue for a bounded coding task in Stage 110. The same repository or exercise is used again, but the prompt is intentionally broader or underspecified.
+Possible near misses:
 
-### AI-Assisted Task
-
-Ask for a change that is tempting to accept quickly but likely to expose a quality gap. Good candidates include:
-
-- adding a dependency without checking the approved version list;
+- adding a dependency without checking approved versions;
 - updating README content without verifying implementation behavior;
-- generating a deployment or pipeline manifest that bypasses GitOps;
+- generating deployment YAML that bypasses GitOps;
 - proposing an external model path for sensitive source-code context;
 - producing code that compiles but violates package, naming, or test conventions.
 
-The exact example will be selected in the next iteration.
+The review procedure that catches the issue becomes a skill candidate with purpose, when to use it, inputs, steps, constraints, validation commands, and expected output.
 
-### Prompts Or Agent Instructions
-
-Example near-miss prompts:
+## Starter Prompts
 
 ```text
 Add the simplest implementation for this feature and update the README so the demo can move quickly.
@@ -62,79 +53,51 @@ Generate the Kubernetes resources needed to deploy this service directly to Open
 Use the strongest available model to review this private source code and propose changes.
 ```
 
-These prompts are intentionally unsafe or incomplete. The stage exists to show how the review process responds.
-
-### Expected Developer Actions
-
-- Let the assistant produce a proposed answer or diff.
-- Review the output against project standards.
-- Identify the specific defect or policy issue.
-- Correct the task framing.
-- Re-run the smallest relevant validation check.
-- Document what the quality gate caught.
-
-### Review And Quality Gates
-
-- Dependency and version changes must match approved standards.
-- Documentation must describe implemented behavior only.
-- Project rules such as `AGENTS.md`, `docs/AI_COLLABORATION.md`, lint rules, and tests must be treated as input to the review, not background advice.
-- Known-bad prompts and expected-good outputs should be added to the evaluation set when the exact demo task is chosen.
-- OpenShift deployment changes must use the approved platform delivery path.
-- Sensitive source-code context must stay on the private model path.
-- The final corrected output must pass the selected static or test validation.
-
-### Evidence To Capture
-
-- Original ambiguous prompt.
-- Defect or policy issue found.
-- Review checklist item that caught it.
-- Corrected prompt or agent instruction.
-- Final validation evidence.
+```text
+Turn the review checklist that caught this issue into a reusable skill design.
+Include purpose, when to use it, inputs, steps, constraints, validation
+commands, and expected output. Do not implement tool-specific files yet.
+```
 
 ## What To Notice And Why It Matters
 
-The important proof point is that the workflow catches a plausible failure before it becomes accepted work. That is the quality bar Karpathy's distinction points toward: vibe coding raises the floor, but professional engineering needs an explicit system for preserving standards.
+The proof point is that the workflow catches a plausible failure before it becomes accepted work, then converts the lesson into reusable agent capability.
 
-This matters in regulated enterprise settings because a small AI-assisted shortcut can create a real governance problem: source sent to the wrong model, an unsupported dependency, a deployment path outside GitOps, or documentation that overstates the implementation.
+This matters in regulated enterprise settings because small shortcuts can create real governance problems: source sent to the wrong model, unsupported dependencies, deployment paths outside GitOps, or documentation that overstates implementation.
 
 ## How Red Hat And Open Source Make It Work
 
-The platform gives the developer controlled tools, but the quality gate comes from the engineering process around those tools. Red Hat OpenShift Dev Spaces makes the workspace reproducible. MaaS keeps model access visible. GitOps, validation scripts, and project rules define how output becomes acceptable.
+Red Hat OpenShift Dev Spaces makes the workspace reproducible. Red Hat OpenShift AI MaaS keeps model access visible. GitOps, validation scripts, and project rules define the acceptance path.
 
-Open source assistants remain useful in this model because their output is treated as a proposal that must pass review.
-
-Red Hat's AI-ready codebase guidance strengthens this point: agent behavior improves when repositories expose clear rules, structured docs, lint feedback, tests, and review expectations in formats that tools can consume. Eval-driven development adds a second layer by making non-deterministic assistant behavior measurable through repeatable conversations, generated tests, known-bad cases, CI checks, cost awareness, and telemetry.
-
-## Trust Boundaries
-
-The most important boundary in this stage is the difference between assistant output and accepted engineering work. AI-generated code, documentation, or manifests are not trusted until they pass review and validation. External model suggestions for sensitive source-code context should be rejected unless policy explicitly permits them.
+Open source assistants remain useful because their output is treated as a proposal. Skills make known review practice portable across agents and repositories.
 
 ## Red Hat Products Used
 
-- **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the controlled workspace where the near miss is reviewed.
+- **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the controlled workspace.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides governed model access through MaaS.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** represents the approved delivery control that generated manifests must not bypass.
+- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** represents the approved delivery control.
 
 ## Open Source Projects To Know
 
 - [Continue](https://www.continue.dev/) provides the IDE assistant used for the near-miss exercise.
-- [Kustomize](https://kustomize.io/) and Argo CD patterns represent the GitOps delivery shape used by the repository.
+- [AgentSkills.io](https://agentskills.io/) defines a portable skill packaging pattern.
+- [Kustomize](https://kustomize.io/) and [Argo CD](https://argo-cd.readthedocs.io/) represent the GitOps delivery shape used by the repository.
 
-## Future Implementation Notes
+## TODOs
 
-- Select one near-miss scenario that is easy to demonstrate and easy to detect.
-- Add before and after example diffs.
-- Add a review rubric that can be reused in Stage 130 as an OpenCode skill.
-- Add a small evaluation set with expected-good prompts, known-bad prompts, validation commands, and pass/fail notes.
-- Decide whether the failure is caught by tests, docs review, dependency review, or GitOps policy review.
+- TODO: Select one near-miss scenario that is easy to demonstrate and detect.
+- TODO: Add before and after example diffs.
+- TODO: Add a reusable enterprise readiness rubric for Stage 130 agents.
+- TODO: Add a small evaluation set with expected-good prompts, known-bad prompts, validation commands, and pass/fail notes.
 
 ## Deploy And Validate
 
-This planned workflow stage does not yet include deploy or validate scripts. Static validation for this iteration is documentation review only.
+This planned stage has no deploy or validate scripts. Static validation is documentation review only. Shared quality gates and evidence expectations live in [Developer Workflow Validation](../../docs/DEVELOPER_WORKFLOW_VALIDATION.md).
 
 ## References
 
 - [AI collaboration model](../../docs/AI_COLLABORATION.md)
+- [Vibes, specs, skills, and agents: The four pillars of AI coding](https://developers.redhat.com/articles/2026/03/30/vibes-specs-skills-agents-ai-coding)
 - [Engineering an AI-ready code base: Governance lessons from the Red Hat Hybrid Cloud Console](https://developers.redhat.com/articles/2026/04/15/governance-lessons-red-hat-hybrid-cloud-console)
 - [Eval-driven development: Build and evaluate AI agents](https://developers.redhat.com/articles/2026/03/23/eval-driven-development-build-evaluate-ai-agents)
 - [AI-powered documentation updates: From code diff to docs PR in one comment](https://developers.redhat.com/articles/2026/04/21/ai-powered-documentation-updates-code-diff-docs-pr-one-comment)
@@ -143,4 +106,4 @@ This planned workflow stage does not yet include deploy or validate scripts. Sta
 
 ## Next Stage
 
-[Stage 130: Agentic Engineering With OpenCode](../130-agentic-engineering-with-opencode/README.md) turns the quality gate into controlled agent roles, skills, permissions, and repeatable workflows.
+[Stage 130: Agents - Agentic Engineering With OpenCode](../130-agentic-engineering-with-opencode/README.md) shows agents reading specs, selecting skills, using approved tools, and producing reviewable changes.

@@ -1,132 +1,84 @@
 # Stage 140: Golden Path Quarkus Service
 
+## Status
+
+This is a planned developer workflow stage. It is not part of [`../../flows/default.yaml`](../../flows/default.yaml) and does not include deploy scripts, validate scripts, GitOps manifests, or an Argo CD Application.
+
 ## Why This Matters
 
-Enterprise developers rarely need a random code snippet in isolation. They need service structure, approved versions, dependency policy, tests, configuration, database access, frontend conventions, deployment metadata, and documentation that all fit the organization's standards.
+Enterprise developers need more than isolated code snippets. They need supported versions, service structure, dependency policy, tests, configuration, database access, deployment metadata, and documentation that match organizational standards.
 
-This planned stage uses the controlled OpenCode workflow from Stage 130 to scaffold or extend a realistic Quarkus service from a golden-path contract. The task is intentionally larger than vibe coding, but still constrained by standards, software-template guidance, and review.
+Stage 140 applies the controlled OpenCode workflow from Stage 130 to a realistic Quarkus service. The point is not for an agent to invent an architecture. The point is for the agent to work from a golden-path contract.
 
-## Story Goal
+## What This Stage Adds
 
-Show that an agent can help create a service path without inventing the enterprise architecture. The output should follow approved Java and Quarkus versions, package naming, REST conventions, tests, health checks, configuration patterns, OpenShift deployment guidance, and the selected data/frontend standards.
+This planned stage adds the first service-building scenario.
+
+- A demo-owned `coolstore-inventory-service` target.
+- A golden-path input packet with approved Java, Quarkus, package, dependency, testing, deployment, and documentation expectations.
+- A small inventory availability domain aligned to Coolstore item IDs.
+- App-local GitOps and Pipelines-as-Code as the intended repository structure.
+- Reviewable agent planning before implementation.
+
+The current repository baseline is described in:
+
+- [`quarkus-target-service-options.md`](quarkus-target-service-options.md)
+- [`coolstore-inventory-service-app-repo-plan.md`](coolstore-inventory-service-app-repo-plan.md)
 
 ## Platform Capabilities Consumed
 
 - Stage 070 provides the Dev Spaces workspace.
 - Stage 090 provides the future portal and golden path discovery surface.
-- Stage 130 provides OpenCode agents, skills, project rules, and review patterns.
-
-## What This Stage Adds
-
-This planned stage adds the golden path application exercise.
-
-- A golden-path contract that identifies the repository template, pipeline expectations, deployment manifests, observability defaults, and extension points.
-- Enterprise Quarkus standards for package names, extensions, tests, health endpoints, OpenShift deployment settings, and supported Java versions. The first scaffold uses Red Hat build of Quarkus `3.27.x` with Java 21.
-- Approved dependency and version guidance.
-- PostgreSQL service integration through the OpenShift Developer Catalog / Red Hat PostgreSQL image path, with no committed credentials.
-- Optional frontend standard when it supports the story.
-- Reference output for a future hands-on exercise.
+- Stage 130 provides OpenCode agents, skills, rules, and review patterns.
 
 ## Developer Workflow
 
-### Starting Point
+The developer uses OpenCode in the `coolstore-inventory-service` workspace. The agent must plan first, then implement only a reviewed slice.
 
-The developer has OpenCode running in Dev Spaces with an approved model path and project instructions loaded. The current target-service recommendation is a demo-owned Coolstore Inventory Quarkus service, captured in the [`Quarkus target service options`](quarkus-target-service-options.md) assessment.
+The first service target should include:
 
-The target service should be small and domain-aligned: inventory availability for Coolstore item IDs, with deterministic tests, health, metrics, PostgreSQL runtime configuration, and a clear OpenShift deployment path.
-
-The service repository is `adnan-drina/coolstore-inventory-service`, documented in the [`coolstore-inventory-service` application repository plan](coolstore-inventory-service-app-repo-plan.md). It is a single service repository with Quarkus source at the root, app-local GitOps state under `gitops/`, Pipelines-as-Code assets under `.tekton/`, and rollout, promotion, and rollback evidence in repository documentation.
-
-The new knowledge-base sources make the preferred direction clearer: this stage should not ask the agent to invent a service from scratch. It should give the agent a golden-path input packet that includes approved template references, Java and Quarkus versions, package naming, dependency policy, deployment style, and validation commands.
-
-### AI-Assisted Task
-
-Ask the agent to plan and then scaffold or extend a service with:
-
-- REST endpoints;
+- REST endpoints for inventory availability and reservation behavior;
 - service and persistence layers;
-- PostgreSQL-backed data access through the OpenShift Developer Catalog / Red Hat PostgreSQL image path;
+- PostgreSQL runtime configuration using platform-provided resources;
 - tests;
 - health checks;
-- OpenShift deployment configuration through app-local GitOps manifests and the selected Quarkus deployment path;
-- documentation;
-- optional frontend integration.
+- app-local GitOps desired state;
+- documentation for implemented behavior only.
 
-### Prompts Or Agent Instructions
+The preferred baseline is Red Hat build of Quarkus `3.27.x` with Java 21. The first live database path should use the OpenShift Developer Catalog / Red Hat PostgreSQL image path; operator-backed database choices are deferred.
 
-Recommended initial instruction:
+## Starter Prompts
 
 ```text
 Plan an enterprise-grade Quarkus service extension. Use approved versions and existing project conventions. Do not edit files until you identify the package structure, dependencies, tests, configuration, and validation commands.
 ```
 
-Recommended golden-path instruction:
-
 ```text
 Use the provided golden-path packet as the source of truth. Identify the repository template, pipeline expectation, deployment manifest pattern, observability defaults, and allowed extension points before proposing code changes.
 ```
-
-Recommended implementation instruction after review:
 
 ```text
 Implement the reviewed plan in the smallest useful slice. Keep credentials out of source, add tests for the changed behavior, and update documentation only for implemented behavior.
 ```
 
-### Expected Developer Actions
-
-- Provide the selected service name, package prefix, and business capability.
-- Review the agent plan before edits.
-- Confirm dependency versions, Quarkus extensions, and the Red Hat build of Quarkus `3.27.x` with Java 21 baseline.
-- Confirm the chosen OpenShift deployment path: Developer Hub software template, Quarkus OpenShift extension, S2I, Docker build strategy, or app-local GitOps-managed manifests.
-- Confirm PostgreSQL configuration does not commit secrets.
-- Run the selected Maven and test commands.
-- Review generated frontend code if the frontend path is included.
-
-### Review And Quality Gates
-
-- Maven build passes.
-- Tests pass.
-- Health endpoints exist where expected.
-- Dependencies match approved versions.
-- Package names and class names follow project conventions.
-- Configuration uses environment, ConfigMap, Secret, or platform-provided resources instead of hard-coded credentials.
-- Generated OpenShift resources follow the selected golden-path deployment pattern.
-- Documentation matches implemented behavior.
-
-### Evidence To Capture
-
-- Approved standards used by the agent.
-- Golden-path source packet or software-template reference.
-- Generated plan.
-- Files changed.
-- Build and test results.
-- Dependency review notes.
-- Configuration and secret-handling review notes.
-
 ## What To Notice And Why It Matters
 
-The proof point is that the agent can help with a realistic application slice while still operating under enterprise constraints. The value is not raw file generation. The value is the combination of planning, template-backed standards, scoped edits, validation, and reviewable evidence.
+The proof point is that an agent can help with a realistic application slice while staying inside enterprise constraints. The value is planning, template-backed standards, scoped edits, validation, and reviewable evidence.
 
-This matters because the enterprise risk is not that developers use AI. The risk is that AI output drifts away from supported versions, known patterns, and security boundaries. A golden path gives the assistant less room to improvise.
+This matters because AI-generated service code can easily drift from supported versions, known patterns, and security boundaries. A golden path gives the assistant less room to improvise.
 
 ## How Red Hat And Open Source Make It Work
 
-Red Hat OpenShift Dev Spaces provides the workspace where the service is created or extended. Red Hat Developer Hub can later publish the golden path through Software Templates, catalog the resulting component, and expose TechDocs for the service. Red Hat OpenShift provides the runtime and deployment foundation.
+Red Hat OpenShift Dev Spaces provides the workspace. Red Hat build of Quarkus provides the supported Kubernetes-native Java baseline. Red Hat Developer Hub can later publish the golden path through Software Templates, catalog metadata, and TechDocs. Red Hat OpenShift provides the target runtime.
 
-Red Hat and Quarkus sources now give this stage a stronger technical foundation. The Red Hat build of Quarkus positions Quarkus as Kubernetes-native Java for microservices and serverless applications, while the Quarkus OpenShift deployment guides provide concrete deployment paths such as one-step OpenShift deployment, Docker build strategy, and S2I.
-
-The Red Hat golden-path sources also clarify how this stage should be framed: a golden path should include a repository template, a pipeline, deployment manifests, and observability defaults, while staying transparent and extensible. Developer Hub software templates are the portal mechanism that can turn those patterns into a developer-facing workflow.
-
-## Trust Boundaries
-
-Database credentials, software-template trust, and deployment configuration are the main trust boundaries in this stage. The agent must not hard-code secrets, invent unmanaged databases, pull from unreviewed templates, or bypass the approved platform path. Generated application code is still a proposal until it passes tests and human review.
+Quarkus, PostgreSQL, PatternFly, Backstage Software Templates, and OpenCode supply the framework, data, UI, scaffolding, and agent tooling pieces.
 
 ## Red Hat Products Used
 
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the workspace.
 - **[Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub)** can later publish the software template, golden path, TechDocs, and catalog metadata.
-- **[Red Hat build of Quarkus](https://developers.redhat.com/products/quarkus)** provides the supported Quarkus product context for Kubernetes-native Java.
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the target application platform.
+- **[Red Hat build of Quarkus](https://developers.redhat.com/products/quarkus)** provides the supported Quarkus product context.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides the application platform.
 
 ## Open Source Projects To Know
 
@@ -134,23 +86,18 @@ Database credentials, software-template trust, and deployment configuration are 
 - [PostgreSQL](https://www.postgresql.org/) provides the relational data tier.
 - [PatternFly](https://www.patternfly.org/) provides the Red Hat-aligned frontend design system.
 - [Backstage Software Templates](https://backstage.io/docs/features/software-templates/) provide the upstream scaffolding model used by Developer Hub.
-- [OpenCode](https://opencode.ai/) provides the controlled agent workflow used to scaffold or extend the service.
+- [OpenCode](https://opencode.ai/) provides the controlled agent workflow.
 
-## Future Implementation Notes
+## TODOs
 
-- Choose whether the demo creates a new service from a Developer Hub software template, extends an existing Java/Quarkus app, or uses a small reference service committed to this repo.
-- Use the [`Quarkus target service options`](quarkus-target-service-options.md) assessment as the current baseline: create or seed a demo-owned `coolstore-inventory-service` rather than adopting the full Quarkus monolith branch.
-- Use the [`coolstore-inventory-service` application repository plan](coolstore-inventory-service-app-repo-plan.md) as the repository baseline: keep Quarkus source, app-local GitOps, `.tekton/` Pipelines-as-Code assets, and deployment evidence in the same repository for the first demo.
-- Use Red Hat build of Quarkus `3.27.x` with Java 21 as the approved first scaffold baseline.
-- Use the OpenShift Developer Catalog / Red Hat PostgreSQL image path for the first live PostgreSQL demo, with any operator-backed database path deferred.
-- Use Continue first for README, API, and test-plan alignment, then use OpenCode for the bounded `POST /api/inventory/{itemId}/reservations` feature task.
-- Decide whether the frontend path is required for the first implementation or deferred. The KB still needs a project-specific frontend standard before making this mandatory.
-- Choose the golden-path source packet: template reference, standards doc, deployment pattern, observability expectations, and validation commands.
-- Add a reference implementation after the standards are agreed.
+- TODO: Finalize the golden-path source packet: template reference, standards doc, deployment pattern, observability expectations, and validation commands.
+- TODO: Add a reference implementation after standards are agreed.
+- TODO: Decide whether frontend integration is required for the first implementation or deferred.
+- TODO: Add live validation only after a real service repository and deployment path exist.
 
 ## Deploy And Validate
 
-This planned workflow stage does not yet include deploy or validate scripts. Static validation for this iteration is documentation review only.
+This planned stage has no deploy or validate scripts. Static validation is documentation review only. Shared quality gates and evidence expectations live in [Developer Workflow Validation](../../docs/DEVELOPER_WORKFLOW_VALIDATION.md).
 
 ## References
 
