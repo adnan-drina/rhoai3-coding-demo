@@ -73,6 +73,12 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         check "Workspace tooling image is digest-pinned: $ns/$workspace" \
             "case \"\$(oc get devworkspace $workspace -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
             "pinned"
+        check "Workspace declares Java 21 JAVA_HOME: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o yaml | grep -q '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
+            "present"
+        check "Workspace startup configures Java 21 shell default: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
+            "present"
         phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
         if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
             echo -e "${RED}[FAIL]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (got: $phase)"

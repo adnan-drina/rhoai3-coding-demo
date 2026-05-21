@@ -59,6 +59,36 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue ~/.config/opencode ~/.opencode
             if [ ! -f ~/.continue/config.yaml ]; then
@@ -105,6 +135,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -132,6 +164,36 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue ~/.config/opencode ~/.opencode
             if [ ! -f ~/.continue/config.yaml ]; then
@@ -178,6 +240,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -205,6 +269,36 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -229,6 +323,8 @@ spec:
               value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 apiVersion: v1
 kind: Namespace
@@ -284,6 +380,36 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue ~/.config/opencode ~/.opencode
             if [ ! -f ~/.continue/config.yaml ]; then
@@ -330,6 +456,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -357,6 +485,36 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
             mkdir -p ~/.continue ~/.config/opencode ~/.opencode
             if [ ! -f ~/.continue/config.yaml ]; then
@@ -403,6 +561,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -430,6 +590,36 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -454,6 +644,8 @@ spec:
               value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 apiVersion: v1
 kind: Namespace
@@ -510,6 +702,36 @@ spec:
         exec:
           commandLine: |
             PROJECT_DIR="/projects/getting-started-ai-coding"
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -548,6 +770,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -576,6 +800,36 @@ spec:
         exec:
           commandLine: |
             PROJECT_DIR="/projects/coolstore-inventory-service"
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -614,6 +868,8 @@ spec:
           env:
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -641,6 +897,36 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
+            java21_home="${JAVA_HOME:-}"
+            if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+              for candidate in \
+                "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+                /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+                /usr/lib/jvm/java-21-openjdk; do
+                if [ -x "${candidate}/bin/java" ]; then
+                  java21_home="${candidate}"
+                  break
+                fi
+              done
+            fi
+            if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+              export JAVA_HOME="${java21_home}"
+              export PATH="${JAVA_HOME}/bin:${PATH}"
+              for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+                touch "${rc}"
+                if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                  {
+                    printf '\n'
+                    printf '# rhoai3-coding-demo: java 21 default\n'
+                    printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                    printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                  } >> "${rc}"
+                fi
+              done
+              echo "Configured Java 21 as the default shell runtime."
+            else
+              echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -665,3 +951,5 @@ spec:
               value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
+            - name: JAVA_HOME
+              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem

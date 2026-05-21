@@ -130,6 +130,79 @@ data:
 
     mkdir -p "${HOME}/.continue" "${HOME}/.config/opencode" "${HOME}/.opencode"
 
+    ensure_vscode_shell_integration() {
+      local shell_integration=""
+
+      for candidate in \
+        /checode/checode-linux-libc/ubi9/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh \
+        /checode/checode-linux-libc/ubi8/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh; do
+        if [ -r "${candidate}" ]; then
+          shell_integration="${candidate}"
+          break
+        fi
+      done
+
+      if [ -z "${shell_integration}" ]; then
+        echo "Che Code bash shell integration script not found; skipping ~/.bashrc update."
+        return
+      fi
+
+      touch "${HOME}/.bashrc"
+      if ! grep -q "rhoai3-coding-demo: vscode shell integration" "${HOME}/.bashrc"; then
+        {
+          printf '\n'
+          printf '# rhoai3-coding-demo: vscode shell integration\n'
+          printf 'if [ -z "${VSCODE_SHELL_INTEGRATION:-}" ] && [ -r "%s" ]; then\n' "${shell_integration}"
+          printf '  . "%s"\n' "${shell_integration}"
+          printf 'fi\n'
+        } >> "${HOME}/.bashrc"
+        echo "Enabled Che Code shell integration from ~/.bashrc."
+      else
+        echo "Che Code shell integration already configured in ~/.bashrc."
+      fi
+    }
+
+    ensure_java21_default() {
+      local java21_home=""
+
+      for candidate in \
+        "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+        /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+        /usr/lib/jvm/java-21-openjdk; do
+        if [ -x "${candidate}/bin/java" ]; then
+          java21_home="${candidate}"
+          break
+        fi
+      done
+
+      if [ -z "${java21_home}" ]; then
+        echo "Java 21 runtime not found; leaving Java default unchanged."
+        return
+      fi
+
+      if [ -d "${HOME}/.sdkman/candidates/java" ]; then
+        ln -sfn "${java21_home}" "${HOME}/.sdkman/candidates/java/current" 2>/dev/null || true
+      fi
+
+      for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+        touch "${rc}"
+        if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+          {
+            printf '\n'
+            printf '# rhoai3-coding-demo: java 21 default\n'
+            printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+            printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+          } >> "${rc}"
+          echo "Configured Java 21 as the default shell runtime in ${rc}."
+        else
+          echo "Java 21 shell default already configured in ${rc}."
+        fi
+      done
+
+      export JAVA_HOME="${java21_home}"
+      export PATH="${JAVA_HOME}/bin:${PATH}"
+    }
+
     fallback_from_repo() {
       if [ ! -f "${HOME}/.continue/config.yaml" ]; then
         cp "${PROJECT_DIR}/.continue/config.yaml" "${HOME}/.continue/config.yaml" 2>/dev/null || true
@@ -202,6 +275,9 @@ data:
       sleep 2
     done
 
+    ensure_vscode_shell_integration
+    ensure_java21_default
+
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_GPT_OSS="$(secret_value MAAS_API_KEY_GPT_OSS)"
@@ -236,10 +312,8 @@ data:
         defaultCompletionOptions:
           reasoning: true
           maxTokens: 16384
-        chatOptions:
-          toolOverrides:
-            run_terminal_command:
-              disabled: true
+        requestOptions:
+          timeout: 600
 
       - name: OpenAI gpt-oss-20b
         provider: openai
@@ -249,43 +323,51 @@ data:
         contextLength: 8192
         defaultCompletionOptions:
           maxTokens: 4096
-        chatOptions:
-          toolOverrides:
-            run_terminal_command:
-              disabled: true
+        requestOptions:
+          timeout: 600
 
       - name: OpenAI GPT-4o
         provider: openai
         model: "gpt-4o"
-        apiBase: "${MAAS_BASE_URL}/maas/gpt-4o/v1"
+        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1"
         apiKey: "${MAAS_API_KEY_GPT_4O}"
         contextLength: 128000
         capabilities:
           - tool_use
         defaultCompletionOptions:
           maxTokens: 4096
-        chatOptions:
-          toolOverrides:
-            run_terminal_command:
-              disabled: true
+        requestOptions:
+          timeout: 600
 
       - name: OpenAI GPT-4o Mini
         provider: openai
         model: "gpt-4o-mini"
-        apiBase: "${MAAS_BASE_URL}/maas/gpt-4o-mini/v1"
+        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1"
         apiKey: "${MAAS_API_KEY_GPT_4O_MINI}"
         contextLength: 128000
         capabilities:
           - tool_use
         defaultCompletionOptions:
           maxTokens: 4096
-        chatOptions:
-          toolOverrides:
-            run_terminal_command:
-              disabled: true
+        requestOptions:
+          timeout: 600
 
     rules:
-      - Continue runs inside Red Hat OpenShift Dev Spaces. Do not use the built-in run_terminal_command tool in this environment. Use the OpenShift MCP tools for read-only cluster inspection, and ask the user to run shell commands manually or use OpenCode when command execution is required.
+      - >-
+        You are assisting inside Red Hat OpenShift Dev Spaces for a governed AI
+        coding demo. When asked to create or edit files, use IDE file editing
+        capabilities and write files to disk. Do not answer with file contents only
+        unless file writing is unavailable; if unavailable, say so clearly.
+
+      - >-
+        Use repository-relative paths with no leading slash. Do not edit files
+        outside the requested project directory. Keep generated examples minimal and
+        reviewable.
+
+      - >-
+        Do not print API keys, tokens, kubeconfigs, concrete route hosts, private
+        cluster hostnames, or full environment variables. Use shell variables such
+        as ROUTE_HOST in commands instead of printing sensitive values.
 
     context:
       - provider: code
@@ -317,7 +399,9 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "baseURL": "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1"
+            "baseURL": "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           }
         },
         "gpt-oss": {
@@ -331,7 +415,9 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_GPT_OSS}",
-            "baseURL": "${MAAS_BASE_URL}/maas/gpt-oss-20b/v1"
+            "baseURL": "${MAAS_BASE_URL}/maas/gpt-oss-20b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           }
         },
         "gpt-4o": {
@@ -345,7 +431,9 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_GPT_4O}",
-            "baseURL": "${MAAS_BASE_URL}/maas/gpt-4o/v1"
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           }
         },
         "gpt-4o-mini": {
@@ -359,7 +447,9 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_GPT_4O_MINI}",
-            "baseURL": "${MAAS_BASE_URL}/maas/gpt-4o-mini/v1"
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           }
         }
       },
@@ -387,7 +477,7 @@ data:
     EOF
 
     ensure_opencode_compat_path
-    echo "Configured Continue and OpenCode from the Stage 100 MaaS API key Secret for ${PROFILE}."
+    echo "Configured Continue for Stage 100 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
 ---
 apiVersion: batch/v1
 kind: Job

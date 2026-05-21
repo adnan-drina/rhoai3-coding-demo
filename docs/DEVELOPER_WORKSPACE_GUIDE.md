@@ -2,11 +2,28 @@
 
 This guide is for demo users working in Stage 100 and later. It explains how to
 start from Red Hat Developer Hub, open the governed Red Hat OpenShift Dev Spaces
-workspace, and connect Continue and OpenCode to MaaS without using personal
-provider credentials.
+workspace, and use MaaS-backed Continue for developer onboarding and enterprise
+vibe coding without using personal provider credentials.
 
 The guide is published through Developer Hub TechDocs so the developer can read
 it from the portal without cloning the platform repository into the workspace.
+
+This follows the enterprise pattern from Red Hat's AI-assisted application
+development ebook: put AI tooling behind an internal developer platform, make
+the approved path easy to discover, and keep human review and evidence capture
+visible. The workspace is a safe innovation-zone experience, not a private
+collection of local plugins and personal API keys.
+
+The demo uses Andrej Karpathy's X post as the origin reference for the term
+"vibe coding" and Red Hat's enterprise guide to AI-assisted application
+development as the terminology source. In this guide, vibe coding means
+human-led, prompt-driven IDE work. The developer stays responsible for review,
+validation, and evidence capture.
+
+The developer-focused stages then teach the four increments from Red Hat's
+"vibes, specs, skills, and agents" framing: start with intuitive exploration,
+turn accepted intent into specs, package repeatable checks as skills, and let
+agents use those assets for bounded engineering work.
 
 ## Stage 100 Outcome
 
@@ -20,11 +37,10 @@ At the end of Stage 100, the developer has verified:
   component.
 - Continue is configured locally by the workspace startup command with MaaS
   routes and API keys.
-- OpenCode is configured locally by the same startup command.
 - OpenShift Toolkit is available in Che Code for IDE-based OpenShift resource
   navigation.
-- Both tools can reach `nemotron-3-nano-30b-a3b` through MaaS with a harmless
-  verification prompt.
+- Continue can reach `nemotron-3-nano-30b-a3b` through MaaS with the opening
+  onboarding and vibes prompt.
 - No route URL, API key, token, kubeconfig, or provider credential is committed.
 
 ## What Is Already Prepared
@@ -43,7 +59,9 @@ so the workspace opens with only the selected repository. The platform owns the
 workspace definition, tooling image, source repositories, model access path, and
 workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
 `Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
-renders local Continue and OpenCode config files from that Secret.
+renders local Continue configuration from that Secret. Some workspaces also
+render OpenCode configuration for later agentic engineering stages, but OpenCode
+is not part of the Stage 100 demo flow.
 
 The OpenCode-capable demo workspaces use a digest-pinned `che-incubator/cli-ai-tools`
 image because that is the current public OpenCode-in-Dev-Spaces reference path.
@@ -51,6 +69,13 @@ The Red Hat-managed baseline for a production workspace image is the Red Hat
 OpenShift Dev Spaces Universal Developer Image that matches the installed Dev
 Spaces version. Treat the incubator image as a demo convenience until a
 reviewed UDI-derived enterprise image is published.
+
+The onboarding Quarkus exercise targets Java 21, and the workspace must provide
+that as the default runtime. Stage 070 sets `JAVA_HOME` for the tooling
+container and writes Java 21 shell defaults during workspace startup so fresh
+terminals make both `java -version` and `mvn -v` resolve to Java 21. If a fresh
+workspace still reports Java 17, fix the workspace image or startup
+configuration; do not add Java-version workarounds to the application prompt.
 
 Che Code editor policy is also platform-managed. Stage 070 provides a
 `vscode-editor-configurations` ConfigMap in each workspace namespace. It
@@ -86,27 +111,16 @@ overview.
 3. Start or open the workspace for the selected component.
 4. Wait for the IDE to open and for the startup command to finish.
 
-During startup, the onboarding and inventory workspaces render local
-home-directory config from the platform-managed MaaS API key Secret:
+During startup, the onboarding workspace renders local home-directory config
+from the platform-managed MaaS API key Secret:
 
 - `~/.continue/config.yaml`
 - `~/.config/opencode/opencode.json`
-- `~/.opencode/opencode.json` as an OpenCode compatibility link or copy
 
 If the Secret is not ready, the startup command falls back to the checked-in
 templates so the workspace still opens. Do not put real route URLs or API keys
-into `/projects/<repo>/.continue/config.yaml` or
-`/projects/<repo>/.opencode/opencode.template.json`; those remain Git-tracked
-templates.
-
-OpenCode uses `~/.config/opencode/opencode.json` for user/provider
-configuration. The project `.opencode/` directory is reserved for checked-in
-templates, agents, commands, and future project-local assets.
-
-The current Dev Spaces OpenCode build can also read the older
-`~/.opencode/opencode.json` path. The workspace startup command migrates an
-existing legacy file into the canonical path when needed, and then keeps the
-legacy path as a compatibility link or copy.
+into `/projects/<repo>/.continue/config.yaml`; that file remains a Git-tracked
+template.
 
 For Stage 100, the selected workspace should show only one project directory:
 
@@ -123,8 +137,6 @@ From the Dev Spaces terminal:
 ```bash
 find /projects -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort
 test -f ~/.continue/config.yaml && echo "Continue config present"
-test -f ~/.config/opencode/opencode.json && echo "OpenCode config present"
-test -f ~/.opencode/opencode.json && echo "OpenCode compatibility path present"
 ```
 
 Expected project directories:
@@ -150,8 +162,6 @@ From the workspace terminal, confirm the local config files were generated:
 
 ```bash
 test -f ~/.continue/config.yaml && echo "Continue config present"
-test -f ~/.config/opencode/opencode.json && echo "OpenCode config present"
-test -f ~/.opencode/opencode.json && echo "OpenCode compatibility path present"
 ```
 
 Platform operators can inspect key records in Red Hat OpenShift AI by opening
@@ -176,16 +186,27 @@ The default Stage 100 source-code path is:
 nemotron-3-nano-30b-a3b through MaaS
 ```
 
+Use the model path that matches the task and data classification:
+
+| Task type | Data classification | Default model path | Stage 100 decision |
+|-----------|---------------------|--------------------|--------------------|
+| Source-code explanation, README/API alignment, tests, and bounded implementation planning | Private source-code context | Private MaaS model | Use `nemotron-3-nano-30b-a3b` through MaaS. |
+| General product documentation lookup or public Red Hat documentation review | Public documentation | Private MaaS model by default; approved external MaaS model only when policy allows | Prefer the private path during the demo to keep the story simple. |
+| Corporate standards, internal policies, customer code, credentials, or private architecture notes | Sensitive internal context | Private MaaS model only | Do not use approved external models. Do not paste secrets. |
+| Non-sensitive comparison of public model behavior | Public or synthetic content | Approved external MaaS model when explicitly allowed | Keep separate from source-code exercises and record the reason. |
+
 The OpenAI-compatible MaaS endpoint shape is:
 
 ```text
 https://<maas-gateway-host>/maas/<model-id>/v1
 ```
 
-If the OpenShift AI dashboard gives you the full model endpoint, use that value
-directly for the selected model. If you are updating the templates for several
-models, replace `YOUR_MAAS_ROUTE` with only the gateway base URL, such as
-`https://<maas-gateway-host>`.
+Some approved external models can use a namespace-qualified MaaS path, such as
+`/redhat-ods-applications/<model-id>/v1`. If the OpenShift AI dashboard gives
+you the full model endpoint, use that value directly for the selected model. If
+you are updating templates for several models, replace `YOUR_MAAS_ROUTE` with
+only the gateway base URL, such as `https://<maas-gateway-host>`, and preserve
+the model-specific path shown by the platform.
 
 ## Step 6: Verify Continue Configuration
 
@@ -203,19 +224,59 @@ Do not print `apiKey` values. The generated config should include
 `nemotron-3-nano-30b-a3b`, `gpt-oss-20b`, `gpt-4o`, and `gpt-4o-mini` with
 MaaS OpenAI-compatible endpoints.
 
+The generated Continue model entries set a 600 second request timeout. This is
+intended for long coding-agent generations through the MaaS gateway; it does
+not change the model output token limits or make oversized prompts cheaper.
+
 ![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
+
+Continue's Agent mode exposes terminal command execution as the built-in
+`run_terminal_command` tool, but this Dev Spaces workspace is a remote Che Code
+environment. In the current Continue extension, that remote path can write a
+command into the active terminal without executing it or capturing output. Use
+Continue for repository inspection, edits, model checks, and read-only
+OpenShift MCP context. For shell commands, open `Terminal > New Terminal (Select
+a Container) > tooling-container` and run the command yourself, or use OpenCode
+when that workflow is introduced.
 
 Select `Local Config` in the Continue sidebar.
 
+The local Continue config uses `rules:` as workspace-level system guidance.
+Keep those rules durable and exercise-neutral: file edits should be written to
+disk, repository-relative paths should be used, edits should stay inside the
+requested project directory, examples should stay minimal, and secrets or
+concrete route hosts must not be printed.
+
+Keep exercise details out of the general rules. Product versions, Maven
+coordinates, Java imports, generated file names, and validation commands belong
+in the one-shot task prompt or later specs/skills. This keeps the same workspace
+rules useful when the demo moves from the Stage 100 Quarkus exercise to later
+spec-driven and agentic workflows.
+
+Likewise, Java 21 is not a prompt guardrail. It is part of the controlled Dev
+Spaces runtime contract. The prompt can ask for a Java 21 Quarkus application,
+but the workspace must make Maven run on Java 21 before the developer validates
+the generated project.
+
 ## Step 7: Verify Continue
 
-Send a harmless prompt that proves the MaaS path works without exposing source
-code or secrets:
+Send the opening prompt that proves Continue can inspect the repository, use the
+configured model path, and call available read-only platform-context tools
+without exposing source code or secrets:
 
 ```text
-Reply with the configured model name and a one-sentence description of what data
-boundary this model path represents. Do not include endpoint URLs, keys, or
-source code.
+Explore this repository, the configured LLM, and the connected environment.
+
+Return exactly four bullets:
+- Model: the configured model ID.
+- Model access: the governed access layer used by the configured model path.
+- Project: the repository name and a short description from the README file.
+- Platform: the namespace or cluster context visible through tools.
+
+Do not change cluster state. Do not print sensitive information, endpoint URLs,
+API keys, tokens, source code, credentials, private hostnames, or full
+environment variables. If any check cannot be verified, say "not verified" for
+that bullet.
 ```
 
 Record only:
@@ -227,11 +288,16 @@ Record only:
 
 Do not copy the MaaS route, API key, or full cluster hostname into evidence.
 
-Continue terminal command execution is intentionally not part of Stage 100
-validation. In this Dev Spaces remote IDE, the current Continue VS Code
-extension can send terminal text without reliably executing it or capturing
-output. Use Continue for chat, edits, and read-only OpenShift MCP questions. Use
-OpenCode or a manually opened Dev Spaces terminal for shell commands.
+For command evidence, use a terminal attached to `tooling-container`. Avoid the
+plain `New Terminal` path if it opens a broken session; the workspace pod also
+contains `che-gateway`, which is a non-interactive routing sidecar and not a
+developer shell. If Continue attempts a terminal command and cannot execute or
+capture output, the assistant must stop, report the exact command to run
+manually, and record the blocker instead of claiming that the command passed.
+
+This is the Stage 100 vibes check: a lightweight, human-led interaction
+that verifies model access, local repository context, and read-only platform
+context before any source-code change is requested.
 
 ## Step 8: Verify OpenShift Toolkit
 
@@ -244,54 +310,7 @@ asks for cluster access, use the same cluster identity and namespace boundaries
 as the terminal `oc` session. Do not paste tokens into repository files or AI
 prompts.
 
-## Step 9: Verify OpenCode Configuration
-
-OpenCode is used for terminal-based AI coding workflows. It is useful for
-reviewing project structure, working with diffs, asking for multi-file changes,
-and running command-line development tasks from the same controlled workspace.
-
-Inspect the generated config from the Dev Spaces terminal:
-
-```bash
-jq '.model, .small_model, (.provider | keys)' ~/.config/opencode/opencode.json
-```
-
-Do not print provider `apiKey` values. The default model remains the private
-local Nemotron model unless the exercise explicitly calls for an approved
-external model.
-
-The Stage 100 onboarding template sets the private Nemotron OpenCode output
-budget to 16,384 tokens so longer coding answers are less likely to stop at the
-client-side limit before the model finishes.
-
-## Step 10: Verify OpenCode
-
-Run OpenCode from the workspace terminal:
-
-```bash
-opencode
-```
-
-Use the same harmless prompt:
-
-```text
-Reply with the configured model name and a one-sentence description of what data
-boundary this model path represents. Do not include endpoint URLs, keys, or
-source code.
-```
-
-![Sanitized OpenCode verification prompt](assets/techdocs/opencode-verify.svg)
-
-Record only:
-
-- client: `OpenCode`
-- selected model ID
-- prompt result: pass/fail
-- blocker, if any
-
-Do not copy the MaaS route, API key, or full cluster hostname into evidence.
-
-## Step 11: Capture Stage 100 Evidence
+## Step 9: Capture Stage 100 Evidence
 
 Use the Stage 100 evidence template from the platform repository. Evidence must
 be sanitized.
@@ -303,8 +322,7 @@ Record:
 - `Dev Spaces` opens the selected workspace: yes/no
 - workspace project:
 - private model ready: `nemotron-3-nano-30b-a3b`
-- Continue harmless prompt passed: yes/no
-- OpenCode harmless prompt passed: yes/no
+- Continue opening prompt passed: yes/no
 - secrets committed: no
 
 Do not record:
@@ -316,12 +334,18 @@ Do not record:
 - model provider credentials
 - source-code prompt contents that include private code
 
-## Planned Scribe MCP Integration
+## Later Segment: OpenCode And Scribe MCP
 
-Scribe is a candidate MCP server for the future MTA rule-generation workflow.
-It is not deployed by the current Stage 070 workspace, but when Scribe is
-running locally or exposed as an approved MCP service, OpenCode can load it as a
-remote MCP server.
+OpenCode, project rules, skills, and Scribe MCP are introduced in later
+agentic-engineering and modernization segments. They are not part of the Stage
+100 onboarding and Continue vibes validation. When Scribe is running
+locally or exposed as an approved MCP service, OpenCode can load it as a remote
+MCP server for reviewed modernization rule work.
+
+The generated MaaS OpenCode provider entries set a 600000 millisecond request
+timeout and a 120000 millisecond streamed chunk timeout. These values prevent
+long local-model generations from being cut short by conservative client
+defaults while still surfacing genuinely stalled streams.
 
 Local development endpoint:
 
