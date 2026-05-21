@@ -27,7 +27,7 @@ The implemented flow is defined in [`../flows/default.yaml`](../flows/default.ya
 9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
 10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
-[Stage 100](../stages/100-governed-developer-entry-point/README.md) starts the developer-facing part of the workshop. It uses the Stage 070 workspace and Stage 090 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
+[Stage 100](../stages/100-governed-vibe-coding/README.md) starts the developer-facing part of the workshop. It uses the Stage 070 workspace and Stage 090 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
 
 ## AI Collaboration Rules
 

@@ -62,7 +62,7 @@ Current implemented stages:
 7. 070 Controlled Developer Workspaces
 8. 080 AI-Assisted Application Modernization
 9. 090 Developer Portal and Self-Service
-10. 100 Vibe Coding - Governed Developer Workflow With Continue
+10. 100 Governed Vibe Coding With Continue
 
 Developer workflow stages after 100 are deferred until each has a concrete
 implementation plan and validation path. Treat placeholder ideas as backlog

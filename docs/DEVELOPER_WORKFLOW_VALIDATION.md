@@ -77,7 +77,7 @@ Evidence:
 - Blocker, if any.
 
 The current Stage 100 prompt and human validation flow live in
-[`../stages/100-governed-developer-entry-point/README.md`](../stages/100-governed-developer-entry-point/README.md). Record live
+[`../stages/100-governed-vibe-coding/README.md`](../stages/100-governed-vibe-coding/README.md). Record live
 evidence outside this repository and keep committed docs limited to reusable
 validation expectations.
 

@@ -1,4 +1,4 @@
-# Stage 100: Vibe Coding - Governed Developer Workflow With Continue
+# Stage 100: Governed Vibe Coding With Continue
 
 ## Why This Matters
 
