@@ -264,6 +264,10 @@ oc auth can-i list persesdashboards.perses.dev \
 oc auth can-i list persesdashboards.perses.dev \
   --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users \
   --all-namespaces
+
+oc auth can-i get prometheuses/k8s --subresource=api \
+  --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users \
+  -n openshift-monitoring
 ```
 
 **Recover:**
@@ -288,7 +292,7 @@ oc get persesdatasource -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"
     done
 ```
 
-If the dashboard page opens but only the Usage tab is visible, verify that the product-generated `dashboard-0-cluster-admin` and `dashboard-1-model` resources carry `app.opendatahub.io/modelsasservice=true`. Stage 040 applies that label through `job-label-observability-dashboard-tabs` so the OpenShift AI MaaS dashboard discovers the documented Cluster, Models, and Usage tabs without copying or replacing the operator-managed dashboards.
+If the dashboard page opens but only the Usage tab is visible, verify that the product-generated `dashboard-0-cluster-admin` and `dashboard-1-model` resources carry `app.opendatahub.io/modelsasservice=true`. Stage 040 applies that label through `job-label-observability-dashboard-tabs` so the OpenShift AI MaaS dashboard discovers the documented Cluster, Models, and Usage tabs without copying or replacing the operator-managed dashboards. The OpenShift AI observability frontend also filters the Cluster and Models tabs unless the user can `get` `prometheuses/api/k8s` in `openshift-monitoring`; Stage 010 grants that narrow read check to `rhoai-admins`.
 
 After recovery, hard-refresh the OpenShift AI dashboard. The dashboard page should show the Cluster, Models, and Usage tabs; MaaS usage panels show non-zero data only after recent MaaS traffic exists in the selected time range.
 
