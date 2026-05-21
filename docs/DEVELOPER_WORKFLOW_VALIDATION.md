@@ -76,10 +76,10 @@ Evidence:
 - Accepted and rejected assistant suggestions.
 - Blocker, if any.
 
-Detailed live validation is in
-[`techdocs/stage-100-validation.md`](techdocs/stage-100-validation.md). Record
-live evidence outside this repository and keep committed docs limited to
-reusable validation expectations.
+The current Stage 100 prompt and human validation flow live in
+[`../stages/100-governed-developer-entry-point/README.md`](../stages/100-governed-developer-entry-point/README.md). Record live
+evidence outside this repository and keep committed docs limited to reusable
+validation expectations.
 
 ## Stage 120: Skills
 
