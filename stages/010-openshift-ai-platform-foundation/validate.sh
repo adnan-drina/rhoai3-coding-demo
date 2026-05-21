@@ -146,6 +146,9 @@ check "Demo admin can list Perses datasources across namespaces" \
 check "Demo admin can access OpenShift monitoring Prometheus API" \
     "oc auth can-i get prometheuses/k8s --subresource=api --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n openshift-monitoring" \
     "yes"
+check "Demo admin can query OpenShift monitoring Prometheus API" \
+    "oc auth can-i create prometheuses/k8s --subresource=api --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n openshift-monitoring" \
+    "yes"
 
 log_step "Dashboard Access"
 DASHBOARD_HTTPROUTE=$(oc get httproute rhods-dashboard -n redhat-ods-applications -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")

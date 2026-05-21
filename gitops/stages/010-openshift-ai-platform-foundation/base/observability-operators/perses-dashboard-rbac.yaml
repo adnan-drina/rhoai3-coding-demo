@@ -59,6 +59,9 @@ rules:
       - k8s
     verbs:
       - get
+      # Perses sends Prometheus query POSTs through this subresource; Kubernetes
+      # authorizes those as create on prometheuses/api.
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
