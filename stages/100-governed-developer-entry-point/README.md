@@ -72,7 +72,7 @@ Record only the client, selected model ID, pass/fail result, and blocker.
 
 ## One-Shot Quarkus Vibe Coding Prompt
 
-After the opening check passes, use this exercise to demonstrate a strong but still prompt-driven workflow. Continue Agent mode may not be able to execute and capture terminal output in the remote Che Code context. If command execution is unavailable, the assistant must stop after file creation and provide exact manual commands.
+After the opening check passes, use this exercise to demonstrate a strong but still prompt-driven workflow. Continue Agent mode in Dev Spaces can write files, but remote terminal execution is not reliable enough to use as evidence for this exercise. The assistant must create files only and report a concise summary.
 
 Latest findings from testing:
 
@@ -91,15 +91,20 @@ Latest findings from testing:
   context and in-cluster build client on the workspace namespace.
 - The generated application configuration must include route exposure. If
   `src/main/resources/application.properties` is missing, no Route is generated.
+- A "Files Created" list is not evidence by itself. The generated project must
+  contain the source, test, resources, and POM files on disk before validation.
 - The OpenShift Route should use edge TLS termination and allow insecure HTTP
   traffic, so the same route host can be tested with both HTTP and HTTPS.
+- The Route insecure edge termination policy lives at
+  `.spec.tls.insecureEdgeTerminationPolicy`. The JSONPath
+  `.spec.insecureEdgeTerminationPolicy` is wrong.
 - Do not rely on `oc project` or the current Kubernetes context for deployment
   targeting. The Maven command and application properties must both select the
   `hello-quarkus-vibe` namespace.
-- Never delete an OpenShift project or namespace in this exercise. Do not output
-  `oc delete namespace`, `oc delete project`, `oc delete all --all`, or wildcard
-  cleanup commands. App-specific label cleanup is allowed only for the
-  `buildconfig=hello-quarkus-vibe` build selector used below.
+- Validation and cleanup commands are kept outside the one-shot prompt. The
+  assistant should only create files and report a concise summary.
+- The one-shot prompt does not ask for terminal work. The assistant must not
+  try to run commands or claim command output.
 
 Prompt engineering in this demo:
 
@@ -113,11 +118,12 @@ to produce something reviewable.
 
 The prompt also demonstrates the tradeoff between big and small prompts. A
 single large prompt is easier to run live and is useful for Stage 100 vibes: one
-request can create a small app, explain assumptions, and hand the developer
-validation commands. The downside is that a big prompt costs more context, can
-drift, and still needs human review. Later stages move this same intent into
-specs, skills, and agents so the work can be split into smaller, more focused,
-repeatable steps with stronger validation.
+request can create a small app and explain assumptions. Validation stays
+outside the prompt because this Continue workflow does not provide reliable
+terminal evidence. The downside is that a big prompt costs more context, can
+drift, and still needs review. Later stages move this same intent into specs,
+skills, and agents so the work can be split into smaller, more focused,
+repeatable steps.
 
 This one-shot prompt applies these practices:
 
@@ -125,8 +131,8 @@ This one-shot prompt applies these practices:
 - provide exact product coordinates where correctness matters;
 - keep the file scope small and reviewable;
 - include known failure modes as short constraints;
-- separate file creation from human-run validation commands;
-- require sanitized evidence instead of trusting unverified claims.
+- avoid asking the model to validate work it cannot execute;
+- require a sanitized summary instead of command output.
 
 Prompt split used in this demo:
 
@@ -135,7 +141,7 @@ Prompt split used in this demo:
   keep examples minimal, and avoid printing secrets or concrete route hosts.
 - The one-shot prompt carries task-specific details: Red Hat build of Quarkus
   coordinates, Maven repository and plugin XML, Jakarta imports, OpenShift
-  deployment properties, cleanup scope, and validation commands.
+  deployment properties, and generated-file requirements.
 - Quarkus-specific requirements do not belong in the general Continue rules.
   They stay in the one-shot prompt so the workspace rules remain useful for
   later specs, skills, and agentic workflows.
@@ -152,37 +158,44 @@ Create a minimal Red Hat build of Quarkus REST API in this Dev Spaces workspace.
 Scope:
 - Write only the `hello-quarkus-vibe` project files listed below.
 - Do not edit other files.
+- Do not run terminal commands or claim command results.
 - Do not create `.mvn` config, use Quarkus CLI/archetypes, Helm, or
-  cluster-scoped resources.
-- Never delete OpenShift namespaces/projects or use wildcard cleanup. The only
-  label cleanup allowed is `buildconfig=hello-quarkus-vibe` in the target
-  namespace.
+  OpenShift manifests.
 
 Return Markdown only.
+Do not report "Files Created" unless each required path exists on disk. If any
+required file is missing, create it before responding.
 
 Create exactly these relative paths with no leading slash:
 - `hello-quarkus-vibe/pom.xml`
 - `hello-quarkus-vibe/src/main/java/com/redhat/demo/hello/HelloResource.java`
 - `hello-quarkus-vibe/src/test/java/com/redhat/demo/hello/HelloResourceTest.java`
 - `hello-quarkus-vibe/src/main/resources/application.properties`
+Create the directory hierarchy needed for each file, including
+`hello-quarkus-vibe/src/main/resources`.
 
 Use these project coordinates:
 - Java 21, `groupId` `com.redhat.demo`, `artifactId` `hello-quarkus-vibe`,
   version `1.0.0-SNAPSHOT`, package `com.redhat.demo.hello`.
 - Red Hat build of Quarkus `3.27.3.SP1-redhat-00002`.
 - BOM `com.redhat.quarkus.platform:quarkus-bom:3.27.3.SP1-redhat-00002`.
-- Plugin `com.redhat.quarkus.platform:quarkus-maven-plugin:3.27.3.SP1-redhat-00002`
-  with `<extensions>true</extensions>`.
+- Plugin `com.redhat.quarkus.platform:quarkus-maven-plugin:3.27.3.SP1-redhat-00002`.
 - Dependencies: `quarkus-rest`, `quarkus-openshift`, `quarkus-junit5` test,
   and `rest-assured` test.
+- The Red Hat BOM and Maven plugin use `com.redhat.quarkus.platform`. The
+  Quarkus extension dependencies use `io.quarkus`. Rest Assured uses
+  `io.rest-assured`.
 
 POM requirements:
-- Set `<maven.compiler.release>21</maven.compiler.release>`.
+- Include `<properties>` with `<maven.compiler.release>21</maven.compiler.release>`
+  and `<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>`.
 - Configure `https://maven.repository.redhat.com/ga/` under both
   `<repositories>` and `<pluginRepositories>` with id
   `red-hat-enterprise-maven-repository`.
-- Use literal Red Hat BOM and plugin coordinates, not Maven property indirection
-  for the groupId, artifactId, or version.
+- Use literal Red Hat BOM and plugin coordinates, not Maven property indirection.
+- Do not define or use `quarkus.maven.plugin.groupId`,
+  `${quarkus.maven.plugin.groupId}`, `${quarkus.platform.group-id}`,
+  `${quarkus.platform.artifact-id}`, or `${quarkus.platform.version}`.
 - Use this exact BOM dependency inside `<dependencyManagement>`:
   <dependency>
       <groupId>com.redhat.quarkus.platform</groupId>
@@ -191,22 +204,30 @@ POM requirements:
       <type>pom</type>
       <scope>import</scope>
   </dependency>
-- Put Quarkus plugin goals `build`, `generate-code`, and `generate-code-tests`
-  inside `<executions>`.
-- Use this exact Quarkus Maven plugin header in `<build><plugins>`:
+- Use this exact Quarkus Maven plugin in `<build><plugins>`:
   <plugin>
       <groupId>com.redhat.quarkus.platform</groupId>
       <artifactId>quarkus-maven-plugin</artifactId>
       <version>3.27.3.SP1-redhat-00002</version>
       <extensions>true</extensions>
+      <executions>
+          <execution>
+              <goals>
+                  <goal>build</goal>
+                  <goal>generate-code</goal>
+                  <goal>generate-code-tests</goal>
+              </goals>
+          </execution>
+      </executions>
+  </plugin>
 - Do not use `io.quarkus` as the Red Hat BOM or plugin groupId. Never use
   `io.quarkus:quarkus-maven-plugin` with a Red Hat build version.
-- If `pom.xml` contains `<artifactId>quarkus-maven-plugin</artifactId>` and the
-  nearest preceding `<groupId>` is `<groupId>io.quarkus</groupId>`, the POM is
-  wrong and must be fixed before reporting completion.
+- If `pom.xml` contains `${quarkus.maven.plugin.groupId}`, the POM is wrong
+  and must be fixed before reporting completion.
 - Do not use repository id `central` for the Red Hat GA repository.
 - Do not use `generate-private`, Mockito, DeploymentConfig assumptions, or
   unrelated dependencies.
+- Do not replace `quarkus-rest` with `quarkus-resteasy`.
 
 Application requirements:
 - `HelloResource` exposes `GET /hello`.
@@ -227,48 +248,13 @@ Test requirements:
 - Assert HTTP 200 and the exact response body.
 - Use `org.hamcrest.CoreMatchers.equalTo(...)` for the response body assertion.
 
-Before your final response, self-check the generated files:
-- `pom.xml` uses `com.redhat.quarkus.platform` for both the BOM and the
-  `quarkus-maven-plugin`.
-- `pom.xml` does not contain `io.quarkus` next to `quarkus-maven-plugin`.
-- `HelloResource.java` uses `jakarta.ws.rs.*`, not `javax.ws.rs.*`.
-- `HelloResourceTest.java` uses `CoreMatchers.equalTo(...)`.
-- `application.properties` contains the five OpenShift properties listed above.
+After writing the files to disk, report only:
+- files created;
+- assumptions;
+- notable implementation choices or blockers.
 
-After writing the files to disk, report files created, assumptions, manual
-commands, and expected evidence. Do not paste full file contents unless file
-writing was unavailable. Use these manual commands from the workspace root:
-- Use these commands exactly. Do not replace them with `./mvnw`,
-  `openshift:deploy`, `oc new-app`, or `oc create route`.
-- `cd hello-quarkus-vibe`
-- `oc whoami`
-- `oc whoami | grep -v '^system:serviceaccount:' || { echo "Run oc login as your OpenShift user before continuing"; exit 1; }`
-- `oc new-project hello-quarkus-vibe || oc project hello-quarkus-vibe`
-- `oc delete deployment,service,route,buildconfig,imagestream hello-quarkus-vibe -n hello-quarkus-vibe --ignore-not-found`
-- `oc delete build -l buildconfig=hello-quarkus-vibe -n hello-quarkus-vibe --ignore-not-found`
-- `java -version`
-- `mvn -U test`
-- `mvn package`
-- `mvn install -Dquarkus.openshift.deploy=true -Dquarkus.openshift.namespace=hello-quarkus-vibe -Dquarkus.container-image.group=hello-quarkus-vibe -Dquarkus.openshift.route.expose=true -Dquarkus.openshift.route.tls.termination=edge -Dquarkus.openshift.route.tls.insecure-edge-termination-policy=Allow`
-- `oc get deployment,service,route hello-quarkus-vibe -n hello-quarkus-vibe`
-- Include this exact route TLS verification command; do not omit it:
-- `oc get route hello-quarkus-vibe -n hello-quarkus-vibe -o jsonpath='{.spec.tls.termination}{"\n"}{.spec.tls.insecureEdgeTerminationPolicy}{"\n"}'`
-- `ROUTE_HOST="$(oc get route hello-quarkus-vibe -n hello-quarkus-vibe -o jsonpath='{.spec.host}')"`
-- `curl -fsS "http://${ROUTE_HOST}/hello"`
-- `curl -k -fsS "https://${ROUTE_HOST}/hello"`
-- `oc get buildconfig,build,pod,deployment,service,route,imagestream -n wksp-ai-developer | grep hello-quarkus-vibe || true`
-
-Expected evidence:
-- Maven reports `BUILD SUCCESS` for test, package, and deploy.
-- Quarkus deploy logs target namespace `hello-quarkus-vibe`, not
-  `wksp-ai-developer`.
-- The route has TLS termination `edge` and insecure policy `Allow`.
-- HTTP and HTTPS curls return `Hello from governed vibe coding`.
-- The workspace namespace check returns no `hello-quarkus-vibe` resources.
-
-Do not print concrete endpoint URLs, API keys, tokens, unrelated source code,
-credentials, private hostnames, or full environment variables. Use `ROUTE_HOST`
-instead of writing the route host value in your response.
+Do not include validation commands, command output, endpoint URLs, API keys,
+tokens, credentials, private hostnames, or full environment variables.
 ```
 
 ## What To Notice And Why It Matters
