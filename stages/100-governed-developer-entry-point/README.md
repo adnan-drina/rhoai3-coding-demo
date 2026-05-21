@@ -42,8 +42,8 @@ Expected component and repository mapping:
 | Component | Repository | Use |
 |-----------|------------|-----|
 | `getting-started-ai-coding` | `adnan-drina/getting-started-ai-coding` | Stage 100 onboarding and MaaS client checks |
-| `coolstore-inventory-service` | `adnan-drina/coolstore-inventory-service` | Stages 110-150 engineering workflow |
-| `mca-coolstore` | `rhpds/mca-coolstore` | Stages 160-170 modernization workflow |
+| `coolstore-inventory-service` | `adnan-drina/coolstore-inventory-service` | Future engineering workflow stages tracked in the backlog |
+| `mca-coolstore` | `rhpds/mca-coolstore` | Future modernization workflow stages tracked in the backlog |
 
 The onboarding workspace should contain only `getting-started-ai-coding`. Continue configuration is rendered from the Stage 070 MaaS API key Secret into `~/.continue/config.yaml`. Do not edit committed templates with real routes or keys.
 
@@ -317,4 +317,4 @@ This planned stage has no deploy or validate scripts. Use:
 
 ## Next Stage
 
-[Stage 110: Specs - Spec-Driven AI Coding With Continue](../110-enterprise-vibe-coding-with-continue/README.md) turns exploratory context into precise README, API, test, and standards instructions.
+Stages `110-170` are deferred in [BACKLOG.md](../../BACKLOG.md). Recreate the next stage only when the spec-driven workflow has a concrete implementation plan and validation path.

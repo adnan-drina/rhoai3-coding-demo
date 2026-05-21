@@ -90,8 +90,8 @@ engineering workspaces.
 1. Log in to Red Hat Developer Hub with the assigned demo user.
 2. Open the component that matches the task:
    - `Getting Started with AI Coding` for Stage 100 onboarding.
-   - `Coolstore Inventory Service` for Stage 110 through Stage 150 engineering.
-   - `MCA Coolstore` for Stage 160 and Stage 170 modernization.
+   - `Coolstore Inventory Service` for deferred engineering stages `110-150`.
+   - `MCA Coolstore` for deferred modernization stages `160-170`.
 3. Confirm the component shows only these links:
    - `Source Repo`
    - `Dev Spaces`

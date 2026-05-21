@@ -5,8 +5,8 @@ workspace used in the "From Vibe Coding to Agentic Engineering" demo.
 
 Start with the [Developer Workspace Guide](DEVELOPER_WORKSPACE_GUIDE.md). It
 shows how an enterprise developer moves from Developer Hub to Red Hat OpenShift
-Dev Spaces, configures MaaS-backed Continue and OpenCode clients, and captures
-safe Stage 100 evidence without committing secrets or private route details.
+Dev Spaces, verifies MaaS-backed Continue, and captures safe Stage 100 evidence
+without committing secrets or private route details.
 
 ## What This Site Covers
 
@@ -14,9 +14,9 @@ safe Stage 100 evidence without committing secrets or private route details.
   engineering, or modernization.
 - How to open the controlled single-repository Dev Spaces workspace.
 - How to confirm only the selected source repository is present.
-- How to configure Continue and OpenCode from local workspace copies.
-- How to verify both tools against the private MaaS model path.
-- What evidence to record before Stage 110 begins.
+- How to verify Continue against the private MaaS model path.
+- Where deferred stages `110-170` are tracked before they are recreated.
+- What evidence to record before later agentic engineering work.
 
 ## What This Site Does Not Do
 

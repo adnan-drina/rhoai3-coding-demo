@@ -46,19 +46,7 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Developer Lightspeed for MTA using governed model access | AI assistance is grounded in modernization analysis and human review |
 | [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | Platform capabilities become discoverable and self-service |
 
-Draft developer workflow stages under [`stages/`](stages/) extend the story from the platform setup into "vibes, specs, skills, and agents." They are not part of `flows/default.yaml` yet and do not have deploy scripts, validate scripts, GitOps bases, or Argo CD applications.
-
-| Draft stage | Focus |
-|-------------|-------|
-| [100 - Vibes: Developer Onboarding With Continue](stages/100-governed-developer-entry-point/README.md) | Start from Developer Hub, open Dev Spaces, and verify Continue against a MaaS-published private model |
-| [110 - Specs: Spec-Driven AI Coding With Continue](stages/110-enterprise-vibe-coding-with-continue/README.md) | Turn intent into README, API, test, and standards specifications |
-| [120 - Skills: Reusable Quality Gates](stages/120-quality-bar-breakpoint/README.md) | Convert review rubrics and validation steps into reusable skill packets |
-| [130 - Agents: Agentic Engineering With OpenCode](stages/130-agentic-engineering-with-opencode/README.md) | Use OpenCode agents with specs, skills, approved tools, and human review |
-| [140 - Golden Path Quarkus Service](stages/140-golden-path-quarkus-service/README.md) | Build the `coolstore-inventory-service` target with Red Hat build of Quarkus |
-| [150 - Governed Pipeline And Deployment](stages/150-governed-pipeline-and-deployment/README.md) | Add Pipelines-as-Code and app-local GitOps for the service |
-| [155 - Red Hat Trusted Software Supply Chain](stages/155-red-hat-trusted-software-supply-chain/README.md) | Capture SBOM, provenance, signature, scan, and policy evidence |
-| [160 - Modernization At Scale With MTA And Developer Lightspeed](stages/160-modernization-at-scale-with-mta-and-developer-lightspeed/README.md) | Analyze `rhpds/mca-coolstore` and evaluate AI-assisted modernization |
-| [170 - Agent Mesh Modernization Pattern](stages/170-agent-mesh-modernization-pattern/README.md) | Map the local workflow to a portfolio modernization agent pattern |
+Draft developer workflow work starts with [Stage 100 - Vibes: Developer Onboarding With Continue](stages/100-governed-developer-entry-point/README.md). Later planned stages `110-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred demo stages](BACKLOG.md#deferred-demo-stages).
 
 ## Why This Is Worth Knowing
 

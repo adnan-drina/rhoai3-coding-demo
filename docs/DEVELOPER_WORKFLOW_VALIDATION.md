@@ -1,12 +1,13 @@
 # Developer Workflow Validation
 
-This guide holds the quality gates and evidence expectations for the planned
-developer workflow stages `100-170`. The stage READMEs explain the story; this
-file explains what to verify when a stage is implemented or rehearsed.
+This guide holds quality gates and evidence expectations for Stage 100 and for
+the deferred developer workflow stages tracked in `BACKLOG.md`. The Stage 100
+README explains the current onboarding story; this file explains what to verify
+when a deferred stage is later implemented or rehearsed.
 
-The planned stages remain documentation-only until they have executable stage
-directories, deploy scripts, validate scripts, GitOps bases, and Argo CD
-applications. Do not add stages `100-170` to
+Stages `110-170` are no longer directories under `stages/`. Recreate them
+one-by-one only after each has a concrete scope, artifacts, and validation
+path. Do not add stages `110-170` to
 [`../flows/default.yaml`](../flows/default.yaml) until that implementation
 exists.
 

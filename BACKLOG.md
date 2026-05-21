@@ -64,6 +64,23 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] Preserved historical upstream `maas-controller` and `maas-api` override language only as completed historical context.
 - [x] Added `scripts/audit-maas-cleanup.sh` and Stage 040 validation coverage so retired 3.3 tier resources, the tokens bridge, upstream MaaS controller/image overrides, and the old community Grafana binding are caught if they reappear.
 
+## Deferred Demo Stages
+
+- [ ] **Stages 110-170 moved out of `stages/`** — Stages `110` through `170` are intentionally no longer stage directories. Recreate each stage one-by-one only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence. Stage 100 remains as the current documentation-only onboarding stage.
+
+  Deferred scope to revisit:
+
+  - **Stage 110: Specs - Spec-Driven AI Coding With Continue** — Use Continue in the `coolstore-inventory-service` workspace to turn exploratory intent into README, API, standards, and test-plan specs. Preserve the `what` versus `how` split, require gap lists before edits, and add a versioned prompt pack before recreating the stage.
+  - **Stage 120: Skills - Reusable Quality Gates** — Demonstrate a near miss, capture the review procedure, and turn it into reusable skill candidates such as `review-enterprise-readiness`, README/API alignment, dependency review, model-boundary review, and PR summary preparation.
+  - **Stage 130: Agents - Agentic Engineering With OpenCode** — Introduce OpenCode only after specs and skills exist. Preserve scoped agent roles, explicit tool permissions, human approval points, and the first bounded feature candidate: `POST /api/inventory/{itemId}/reservations`.
+  - **Stage 140: Golden Path Quarkus Service** — Build or seed a demo-owned `coolstore-inventory-service` with Red Hat build of Quarkus `3.27.x`, Java 21, tests, health, PostgreSQL configuration, app-local GitOps, and documentation. Do not claim a full Coolstore monolith conversion.
+  - **Stage 150: Governed Pipeline And Deployment** — Add a Pipelines-as-Code first slice for `coolstore-inventory-service`: PR trigger, `./mvnw -B test package`, Buildah image build, push to the OpenShift internal registry, app-local Kustomize under `gitops/base` and `gitops/overlays/dev`, and no direct deployment in the first slice.
+  - **Stage 155: Red Hat Trusted Software Supply Chain** — Define the minimum evidence bundle before implementation: SBOM, VEX posture, signature, provenance, scan result, registry location, policy decision, and rollback evidence. Start with the service image before adding MCP server, skill, model, or agent artifacts.
+  - **Stage 160: Modernization At Scale With MTA And Developer Lightspeed** — Use `rhpds/mca-coolstore` as the likely brownfield source, review MTA findings, treat Developer Lightspeed output as suggested diffs, and decide whether custom-rule generation uses Scribe MCP, RAG-backed standards lookup, or a local reviewed skill.
+  - **Stage 170: Agent Mesh Modernization Pattern** — Keep this as an architecture horizon until there is implementation evidence. Revisit after local stages can exchange evidence between modernization, testing, documentation, security, delivery, AgentOps, and supply-chain harnesses.
+
+  Recreate the detailed supporting material from git history only when the exact implementation slice is selected. Do not add these stages back to `flows/default.yaml` until they are executable or explicitly accepted as documentation-only stage artifacts.
+
 ## Known Limitations
 
 - [ ] **GPUaaS dashboard metric names require live confirmation** — Stage 020 adds a dashboard with common DCGM and Kueue Prometheus metric names. Validation warns rather than fails when those metrics differ or are unavailable, because Red Hat build of Kueue metric names and scraping behavior can vary by operator version.
