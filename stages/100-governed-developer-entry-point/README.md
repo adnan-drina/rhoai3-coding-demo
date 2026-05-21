@@ -2,7 +2,7 @@
 
 ## Why This Matters
 
-Stages 010-090 build the AI development platform for platform teams. Stage 100 changes the point of view: an enterprise developer now uses that platform to perform real development work. This is the moment where the architecture has to prove that productivity, governance, and human accountability can coexist.
+Stages 010-090 build the Enterprise AI platform for platform teams. Stage 100 changes the point of view: an enterprise developer now uses that platform to perform real development work. This is the moment where the architecture has to prove that productivity, governance, and human accountability can coexist.
 
 The developer workflow should start from the platform, not from personal tools, copied API keys, and undocumented model choices. This stage shows the first developer-facing path after the platform is installed: Developer Hub for discovery, Dev Spaces for the workspace, MaaS for governed model access, and Continue for IDE assistance.
 
