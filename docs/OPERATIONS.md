@@ -184,9 +184,10 @@ oc annotate application 070-controlled-developer-workspaces -n openshift-gitops 
 oc annotate application 090-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-Do not merge a feature branch to `main` only to validate planned developer
-workflow documentation or catalog/workspace changes. Do not create Stage
-`100-170` Argo CD applications until those stages have executable artifacts.
+Do not merge a feature branch to `main` only to validate developer workflow
+catalog or workspace changes. Do not create Stage `100-170` Argo CD
+applications until a workflow owns executable artifacts or dedicated cluster
+resources.
 
 ## Stage-Specific Operational Notes
 
@@ -782,7 +783,7 @@ For GitOps-managed behavior:
 3. Let Argo CD reconcile or manually sync.
 4. Run the matching `validate.sh`.
 
-For documentation-only changes:
+For documentation changes:
 
 1. Edit `README.md`, `stages/*/README.md`, or files under `docs/`.
 2. Run `git diff --check`.

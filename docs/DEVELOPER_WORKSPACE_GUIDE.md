@@ -260,23 +260,17 @@ the generated project.
 
 ## Step 7: Verify Continue
 
-Send the opening prompt that proves Continue can inspect the repository, use the
-configured model path, and call available read-only platform-context tools
-without exposing source code or secrets:
+Send the opening prompt that verifies the AI coding assistants configuration
+for this workspace:
 
 ```text
-Explore this repository, the configured LLM, and the connected environment.
+Check the AI coding assistants configuration for this workspace.
 
 Return exactly four bullets:
+- Client: the AI coding assistant being used.
 - Model: the configured model ID.
-- Model access: the governed access layer used by the configured model path.
-- Project: the repository name and a short description from the README file.
-- Platform: the namespace or cluster context visible through tools.
-
-Do not change cluster state. Do not print sensitive information, endpoint URLs,
-API keys, tokens, source code, credentials, private hostnames, or full
-environment variables. If any check cannot be verified, say "not verified" for
-that bullet.
+- Model access: whether the model is reached through MaaS or not verified.
+- Workspace: the repository name and workspace namespace if safely visible.
 ```
 
 Record only:
@@ -296,8 +290,8 @@ capture output, the assistant must stop, report the exact command to run
 manually, and record the blocker instead of claiming that the command passed.
 
 This is the Stage 100 vibe-coding check: a lightweight, human-led interaction
-that verifies model access, local repository context, and read-only platform
-context before any source-code change is requested.
+that verifies IDE integration with the configured model path before any
+source-code change is requested.
 
 ## Step 8: Verify OpenShift Toolkit
 

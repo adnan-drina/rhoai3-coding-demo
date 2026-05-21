@@ -64,9 +64,9 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] Preserved historical upstream `maas-controller` and `maas-api` override language only as completed historical context.
 - [x] Added `scripts/audit-maas-cleanup.sh` and Stage 040 validation coverage so retired 3.3 tier resources, the tokens bridge, upstream MaaS controller/image overrides, and the old community Grafana binding are caught if they reappear.
 
-## Deferred Demo Stages
+## Deferred Developer Workflow Topics
 
-- [ ] **Stage 110 merged into Stage 100; stages 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 100 as the review discipline for vibe coding. Stages `120` through `170` are intentionally no longer stage directories. Recreate each remaining stage one-by-one only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
+- [ ] **Stage 110 merged into Stage 100; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 100 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
 
   Deferred scope to revisit:
 
@@ -78,7 +78,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
   - **Stage 160: Modernization At Scale With MTA And Developer Lightspeed** — Use `rhpds/mca-coolstore` as the likely brownfield source, review MTA findings, treat Developer Lightspeed output as suggested diffs, and decide whether custom-rule generation uses Scribe MCP, RAG-backed standards lookup, or a local reviewed skill.
   - **Stage 170: Agent Mesh Modernization Pattern** — Keep this as an architecture horizon until there is implementation evidence. Revisit after local stages can exchange evidence between modernization, testing, documentation, security, delivery, AgentOps, and supply-chain harnesses.
 
-  Recreate the detailed supporting material from git history only when the exact implementation slice is selected. Do not add these stages back to `flows/default.yaml` until they are executable or explicitly accepted as documentation-only stage artifacts.
+  Recreate the detailed supporting material from git history only when the exact implementation slice is selected. Do not add these topics back to `flows/default.yaml` until they have executable artifacts and a validation path.
 
 ## Known Limitations
 

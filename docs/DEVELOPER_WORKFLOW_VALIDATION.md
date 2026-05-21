@@ -1,13 +1,13 @@
 # Developer Workflow Validation
 
 This guide holds quality gates and evidence expectations for Stage 100 and for
-the deferred developer workflow stages tracked in `BACKLOG.md`. The Stage 100
+the deferred developer workflow topics tracked in `BACKLOG.md`. The Stage 100
 README explains the current vibe-coding story; this file explains what to verify
-when a deferred stage is later implemented or rehearsed.
+when a deferred topic is later implemented or rehearsed as a stage.
 
-Stage `110` has been merged into Stage 100. Stages `120-170` are no longer
-directories under `stages/`. Recreate them one-by-one only after each has a
-concrete scope, artifacts, and validation path. Do not add stages `120-170` to
+Stage `110` has been merged into Stage 100. Topics `120-170` are no longer
+directories under `stages/`. Recreate them as stages one-by-one only after each
+has a concrete scope, artifacts, and validation path. Do not add stages `120-170` to
 [`../flows/default.yaml`](../flows/default.yaml) until that implementation
 exists.
 

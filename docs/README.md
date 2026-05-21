@@ -9,7 +9,7 @@ This directory holds operational and governance documentation for the Red Hat Op
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
 | [RHOAI_3_4_UPGRADE.md](RHOAI_3_4_UPGRADE.md) | Red Hat OpenShift AI 3.4 upgrade posture, validation gates, risks, and rollback notes |
 | [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs guide for Developer Hub, Dev Spaces, Continue, MaaS, and Stage 100 vibe coding |
-| [DEVELOPER_WORKFLOW_VALIDATION.md](DEVELOPER_WORKFLOW_VALIDATION.md) | Quality gates and evidence expectations for Stage 100 and deferred developer workflow stages |
+| [DEVELOPER_WORKFLOW_VALIDATION.md](DEVELOPER_WORKFLOW_VALIDATION.md) | Quality gates and evidence expectations for Stage 100 and deferred developer workflow topics |
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution rules, shared rules and skills governance, and local vs shared boundaries |
 | [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |
 
@@ -28,7 +28,7 @@ The implemented flow is defined in [`../flows/default.yaml`](../flows/default.ya
 9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
 10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
-The developer workflow extension currently keeps [Stage 100](../stages/100-governed-developer-entry-point/README.md) as a documentation-only vibe-coding stage. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100. Deferred stages `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
+[Stage 100](../stages/100-governed-developer-entry-point/README.md) starts the developer-facing part of the workshop. It uses the Stage 070 workspace and Stage 090 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
 
 ## AI Collaboration Rules
 

@@ -9,9 +9,10 @@ reviews the result, and remains accountable for validation.
 In the four-increment developer story, this is the **vibes** stage: intuitive
 exploration and idea-sharing inside a governed workspace.
 
-## Green Bar
+## Platform Prerequisites
 
-Stage 100 is green only when all of these checks pass:
+These checks are owned by Stage 070 and Stage 090. Confirm them before running
+the Stage 100 developer workflow:
 
 - Developer Hub is reachable.
 - These catalog entities are visible:
@@ -39,6 +40,11 @@ Stage 100 is green only when all of these checks pass:
 - `Secret/wksp-ai-developer/maas-devspace-api-keys` exists and is not copied
   into Git.
 - `~/.continue/config.yaml` is generated in the workspace only.
+
+## Green Bar
+
+Stage 100 is green only when all of these developer workflow checks pass:
+
 - Continue completes the opening onboarding prompt against
   `nemotron-3-nano-30b-a3b` through MaaS.
 - Continue completes the one-shot Quarkus vibe-coding prompt from the Stage 100
@@ -63,18 +69,13 @@ Stage 100 is green only when all of these checks pass:
 Use this prompt in Continue agent mode:
 
 ```text
-Explore this repository, the configured LLM, and the connected environment.
+Check the AI coding assistants configuration for this workspace.
 
 Return exactly four bullets:
+- Client: the AI coding assistant being used.
 - Model: the configured model ID.
-- Model access: the governed access layer used by the configured model path.
-- Project: the repository name and a short description from the README file.
-- Platform: the namespace or cluster context visible through tools.
-
-Do not change cluster state. Do not print sensitive information, endpoint URLs,
-API keys, tokens, source code, credentials, private hostnames, or full
-environment variables. If any check cannot be verified, say "not verified" for
-that bullet.
+- Model access: whether the model is reached through MaaS or not verified.
+- Workspace: the repository name and workspace namespace if safely visible.
 ```
 
 Record only:

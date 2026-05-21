@@ -20,6 +20,8 @@ This stage adds the developer portal foundation.
 - Developer Lightspeed for Red Hat Developer Hub.
 - OpenShift launcher integration.
 - Initial catalog content for demo users, teams, ownership, lifecycle, and Coolstore-related components.
+- Developer Hub component entries for `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore`.
+- Component-specific Dev Spaces links that open one repository per workspace.
 - TechDocs publishing for the governed developer workspace guide.
 
 The portal becomes the place to describe ownership, lifecycle, source links, documentation, and relationships around the AI-assisted development workflow.
@@ -30,6 +32,7 @@ Stage 090 makes platform consumption discoverable.
 
 - Developers open Developer Hub from the OpenShift launcher and sign in through the OpenShift-backed identity chain.
 - Catalog entities make ownership, lifecycle, tags, source links, and workflow docs visible.
+- Component-specific Dev Spaces links route developers into the correct controlled workspace instead of asking them to assemble repository URLs manually.
 - Developer Lightspeed for RHDH adds an AI-assisted portal experience without embedding unmanaged provider credentials.
 - TechDocs publishes the Dev Spaces workflow guide from this repository.
 
@@ -60,7 +63,7 @@ Developer Hub is a discovery and self-service surface. It should link to approve
 
 ## Next Enhancements
 
-- Add direct Coolstore links for Dev Spaces, MTA, MaaS, and OpenShift Console.
+- Add direct Coolstore links for MTA, MaaS, and OpenShift Console.
 - Add MaaS `Resource` and `API` catalog entities for private and governed external models.
 - Move the demo TechDocs publisher from the local builder to external object storage before treating it as a production pattern.
 - Add a Software Template for "Modernize Java EE application with MTA."
