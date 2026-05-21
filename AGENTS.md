@@ -46,7 +46,12 @@ Important paths:
 
 ## Demo stages
 
-The workshop is organized into nine stages:
+The workshop has two parts:
+
+- Stages 010-090 build the trusted AI development platform for platform engineers.
+- Stages 100 and later show enterprise developer workflows that consume that platform.
+
+Current implemented stages:
 
 1. 010 OpenShift AI Platform Foundation
 2. 020 GPU Infrastructure for Private AI
@@ -57,6 +62,11 @@ The workshop is organized into nine stages:
 7. 070 Controlled Developer Workspaces
 8. 080 AI-Assisted Application Modernization
 9. 090 Developer Portal and Self-Service
+10. 100 Vibe Coding - Governed Developer Workflow With Continue
+
+Developer workflow stages after 100 are deferred until each has a concrete
+implementation plan and validation path. Treat placeholder ideas as backlog
+topics, not implemented stages.
 
 When changing one stage, check whether related changes are also needed in:
 
@@ -168,6 +178,12 @@ bash -n stages/*/*.sh
 ./stages/080-ai-assisted-application-modernization/validate.sh
 ./stages/090-developer-portal-self-service/validate.sh
 ```
+
+Stage 100 currently consumes Stage 070 Dev Spaces and Stage 090 Developer Hub
+assets. It does not have a standalone deploy or validate script; validate its
+documentation changes with `./scripts/validate-stage-flow.sh` and any specific
+commands documented in the Stage 100 README when a live workspace and cluster
+are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 
