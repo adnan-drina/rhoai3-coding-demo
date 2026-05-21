@@ -115,6 +115,29 @@ check "Observability dashboard enabled" \
     "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.observabilityDashboard}'" \
     "true"
 
+log_step "RHOAI Observability Dashboards"
+check "Perses backend operator access policy exists" \
+    "oc get networkpolicy perses-backend-operator-access -n redhat-ods-monitoring -o jsonpath='{.spec.ingress[0].from[0].namespaceSelector.matchLabels.kubernetes\\.io/metadata\\.name}{\" \"}{.spec.ingress[0].from[0].podSelector.matchLabels.app\\.kubernetes\\.io/name}'" \
+    "openshift-operators perses-operator"
+check "Cluster Perses dashboard reconciled" \
+    "oc get persesdashboard dashboard-0-cluster-admin -n redhat-ods-monitoring -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "Model Perses dashboard reconciled" \
+    "oc get persesdashboard dashboard-1-model -n redhat-ods-monitoring -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "MaaS usage Perses dashboard reconciled" \
+    "oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "Kuadrant MaaS datasource reconciled" \
+    "oc get persesdatasource kuadrant-prometheus-datasource -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
+    "True"
+check "Demo admin can list Perses dashboards" \
+    "oc auth can-i list persesdashboards.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n redhat-ods-applications" \
+    "yes"
+check "Demo admin can list Perses datasources" \
+    "oc auth can-i list persesdatasources.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n redhat-ods-applications" \
+    "yes"
+
 log_step "Dashboard Access"
 DASHBOARD_HTTPROUTE=$(oc get httproute rhods-dashboard -n redhat-ods-applications -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
 DASHBOARD_ROUTE=$(oc get route rhods-dashboard -n redhat-ods-applications -o jsonpath='{.spec.host}' 2>/dev/null || echo "")

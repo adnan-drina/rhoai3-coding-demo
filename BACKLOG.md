@@ -29,6 +29,9 @@ The following items use manual configuration or post-deploy patches because the 
 - [ ] **Model Registry NetworkPolicy** (`model-registry/registry/dashboard-networkpolicy.yaml`) — The operator's default NetworkPolicy only allows same-namespace access. We add a policy allowing `redhat-ods-applications` to reach the registry on port 8080.
   **Revert:** The supported operator path should create proper NetworkPolicies for the dashboard.
 
+- [ ] **Perses backend NetworkPolicy and demo dashboard RBAC** (`observability-operators/perses-backend-operator-access.yaml`, `observability-operators/perses-dashboard-rbac.yaml`) — The generated RHOAI observability backend policy can allow the historical Cluster Observability Operator namespace while the Perses operator is installed by OLM in `openshift-operators`. The demo also grants the `rhoai-admins` persona read-only access to Perses dashboard resources so the non-cluster-admin admin user can open the RHOAI dashboard.
+  **Revert:** Remove these resources if a later RHOAI/observability operator build creates backend ingress for the actual Perses operator namespace and the demo uses a product-supported dashboard access role.
+
 ## Retired pre-3.4 workarounds and remaining compatibility glue
 
 The upstream `maas-controller` coexistence path and `maas-api` image override were used before the 3.4 operator-owned MaaS path was available in the demo. Keep these as historical context and do not reintroduce them unless a live 3.4 product gap is proven and documented.

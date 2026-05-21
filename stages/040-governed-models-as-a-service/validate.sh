@@ -84,6 +84,9 @@ check "MaaS tenant active" \
 check "MaaS tenant telemetry enabled" \
   "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.spec.telemetry.enabled}{\" \"}{.spec.telemetry.metrics.captureOrganization}{\" \"}{.spec.telemetry.metrics.captureModelUsage}'" \
   "true true true"
+check "MaaS tenant user telemetry enabled for Usage dashboard" \
+  "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.spec.telemetry.metrics.captureUser}'" \
+  "true"
 check "MaaS API key expiration limit configured" \
   "oc get tenant default-tenant -n models-as-a-service -o jsonpath='{.spec.apiKeys.maxExpirationDays}'" \
   "90"

@@ -225,6 +225,63 @@ argocd app sync 040-governed-models-as-a-service
 ./stages/040-governed-models-as-a-service/validate.sh
 ```
 
+## Observability Dashboard Shows No Dashboards Found
+
+**Affected stage:** Stage 010 and Stage 040
+
+**Likely cause:** The RHOAI observability stack, dashboard feature flag, Kuadrant observability, or MaaS telemetry is missing; the Perses operator cannot reach the `redhat-ods-monitoring` Perses backend; or the dashboard user cannot list Perses dashboard resources. In current sandbox clusters, OLM can install the Perses operator in `openshift-operators` while the generated backend NetworkPolicy only allows the historical observability operator namespace. If the Usage tab opens but the panels are empty, the Tenant might be collecting MaaS metrics without the `user` label required by the generated dashboard queries.
+
+**Diagnose:**
+
+```bash
+oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
+  -o jsonpath='{.spec.dashboardConfig.observabilityDashboard}{"\n"}'
+
+oc get kuadrant kuadrant -n kuadrant-system \
+  -o jsonpath='{.spec.observability.enable}{"\n"}'
+
+oc get tenant default-tenant -n models-as-a-service \
+  -o jsonpath='{.spec.telemetry.enabled}{" "}{.spec.telemetry.metrics.captureUser}{" "}{.spec.telemetry.metrics.captureModelUsage}{"\n"}'
+
+oc exec -n openshift-user-workload-monitoring prometheus-user-workload-0 -c prometheus -- \
+  sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query="authorized_hits{user!=\"\"}"' \
+  | jq -r '.data.result | length'
+
+oc get persesdashboard,persesdatasource -A
+
+oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-applications \
+  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}{" "}{.status.conditions[?(@.type=="Available")].reason}{"\n"}'
+
+oc get pods -n openshift-operators -l app.kubernetes.io/name=perses-operator
+
+oc auth can-i list persesdashboards.perses.dev \
+  --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users \
+  -n redhat-ods-applications
+```
+
+**Recover:**
+
+```bash
+oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-backend-operator-access.yaml
+oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-dashboard-rbac.yaml
+oc apply -f gitops/stages/040-governed-models-as-a-service/base/models-maas-crds/tenant.yaml
+
+ts="$(date -u +%Y%m%d%H%M%S)"
+oc get persesdashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
+  | while read -r ns name; do
+      oc annotate persesdashboard "$name" -n "$ns" \
+        rhoai3.redhat.com/reconcile-ts="$ts" --overwrite
+    done
+
+oc get persesdatasource -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
+  | while read -r ns name; do
+      oc annotate persesdatasource "$name" -n "$ns" \
+        rhoai3.redhat.com/reconcile-ts="$ts" --overwrite
+    done
+```
+
+After recovery, hard-refresh the OpenShift AI dashboard. The dashboard page should show the Cluster, Models, and Usage tabs; MaaS usage panels show non-zero data only after recent MaaS traffic exists in the selected time range.
+
 ## RHOAI Monitoring Prometheus Stuck In Init
 
 **Affected stage:** Stage 010

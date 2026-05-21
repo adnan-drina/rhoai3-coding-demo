@@ -18,6 +18,8 @@ resources:
   - observability-operators/opentelemetry-product-subscription.yaml
   - observability-operators/tempo-product-subscription.yaml
   - observability-operators/approve-observability-installplans.yaml
+  - observability-operators/perses-backend-operator-access.yaml
+  - observability-operators/perses-dashboard-rbac.yaml
   - serverless/namespace.yaml
   - serverless/operatorgroup.yaml
   - serverless/subscription.yaml
