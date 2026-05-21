@@ -134,8 +134,14 @@ check "Kuadrant MaaS datasource reconciled" \
 check "Demo admin can list Perses dashboards" \
     "oc auth can-i list persesdashboards.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n redhat-ods-applications" \
     "yes"
+check "Demo admin can list Perses dashboards across namespaces" \
+    "oc auth can-i list persesdashboards.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users --all-namespaces" \
+    "yes"
 check "Demo admin can list Perses datasources" \
     "oc auth can-i list persesdatasources.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n redhat-ods-applications" \
+    "yes"
+check "Demo admin can list Perses datasources across namespaces" \
+    "oc auth can-i list persesdatasources.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users --all-namespaces" \
     "yes"
 
 log_step "Dashboard Access"

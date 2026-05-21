@@ -260,6 +260,10 @@ oc get pods -n openshift-operators -l app.kubernetes.io/name=perses-operator
 oc auth can-i list persesdashboards.perses.dev \
   --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users \
   -n redhat-ods-applications
+
+oc auth can-i list persesdashboards.perses.dev \
+  --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users \
+  --all-namespaces
 ```
 
 **Recover:**
