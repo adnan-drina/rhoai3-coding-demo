@@ -7,7 +7,6 @@ This directory holds operational and governance documentation for the Red Hat Op
 | [index.md](index.md) | Published TechDocs landing page for the developer workspace guide |
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operations, day-2 notes, and cleanup guidance |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
-| [RHOAI_3_4_UPGRADE.md](RHOAI_3_4_UPGRADE.md) | Red Hat OpenShift AI 3.4 upgrade posture, validation gates, risks, and rollback notes |
 | [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs guide for Developer Hub, Dev Spaces, Continue, MaaS, and Stage 100 vibe coding |
 | [DEVELOPER_WORKFLOW_VALIDATION.md](DEVELOPER_WORKFLOW_VALIDATION.md) | Quality gates and evidence expectations for Stage 100 and deferred developer workflow topics |
 | [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution rules, shared rules and skills governance, and local vs shared boundaries |
