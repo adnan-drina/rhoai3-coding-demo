@@ -206,6 +206,15 @@ check "Limitador PodMonitor exists" \
 check "MaaS TelemetryPolicy accepted and enforced" \
   "oc get telemetrypolicy maas-telemetry -n openshift-ingress -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}{\" \"}{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True True"
+check "Cluster dashboard discoverable as MaaS tab" \
+  "oc get persesdashboard dashboard-0-cluster-admin -n redhat-ods-monitoring -o jsonpath='{.metadata.labels.app\\.opendatahub\\.io/modelsasservice}'" \
+  "true"
+check "Models dashboard discoverable as MaaS tab" \
+  "oc get persesdashboard dashboard-1-model -n redhat-ods-monitoring -o jsonpath='{.metadata.labels.app\\.opendatahub\\.io/modelsasservice}'" \
+  "true"
+check "Usage dashboard discoverable as MaaS tab" \
+  "oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-applications -o jsonpath='{.metadata.labels.app\\.opendatahub\\.io/modelsasservice}'" \
+  "true"
 check_warn "MaaS authorized_calls metric queryable" \
   "oc exec -n openshift-user-workload-monitoring prometheus-user-workload-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=authorized_calls' | jq -r '.status'" \
   "success"

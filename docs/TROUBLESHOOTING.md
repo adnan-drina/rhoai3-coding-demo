@@ -252,6 +252,9 @@ oc get persesdashboard,persesdatasource -A
 oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-applications \
   -o jsonpath='{.status.conditions[?(@.type=="Available")].status}{" "}{.status.conditions[?(@.type=="Available")].reason}{"\n"}'
 
+oc get persesdashboard -A -l app.opendatahub.io/modelsasservice=true \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,TAB:.spec.config.display.name'
+
 oc get pods -n openshift-operators -l app.kubernetes.io/name=perses-operator
 
 oc auth can-i list persesdashboards.perses.dev \
@@ -265,6 +268,7 @@ oc auth can-i list persesdashboards.perses.dev \
 oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-backend-operator-access.yaml
 oc apply -f gitops/stages/010-openshift-ai-platform-foundation/base/observability-operators/perses-dashboard-rbac.yaml
 oc apply -f gitops/stages/040-governed-models-as-a-service/base/models-maas-crds/tenant.yaml
+oc apply -f gitops/stages/040-governed-models-as-a-service/base/jobs/label-observability-dashboard-tabs.yaml
 
 ts="$(date -u +%Y%m%d%H%M%S)"
 oc get persesdashboard -A -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
@@ -279,6 +283,8 @@ oc get persesdatasource -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"
         rhoai3.redhat.com/reconcile-ts="$ts" --overwrite
     done
 ```
+
+If the dashboard page opens but only the Usage tab is visible, verify that the product-generated `dashboard-0-cluster-admin` and `dashboard-1-model` resources carry `app.opendatahub.io/modelsasservice=true`. Stage 040 applies that label through `job-label-observability-dashboard-tabs` so the OpenShift AI MaaS dashboard discovers the documented Cluster, Models, and Usage tabs without copying or replacing the operator-managed dashboards.
 
 After recovery, hard-refresh the OpenShift AI dashboard. The dashboard page should show the Cluster, Models, and Usage tabs; MaaS usage panels show non-zero data only after recent MaaS traffic exists in the selected time range.
 
