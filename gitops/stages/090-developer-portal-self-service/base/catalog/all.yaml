@@ -41,8 +41,9 @@ metadata:
   name: getting-started-ai-coding
   title: Getting Started with AI Coding
   description: |
-    Onboarding workspace for Stage 100. Developers use it to configure MaaS,
-    Continue, and OpenCode before touching application source code.
+    Onboarding workspace for Stage 100. Developers use Developer Hub, Dev
+    Spaces, Continue, and MaaS for the governed vibe-coding increment before moving
+    into specs, skills, and agentic engineering stages.
   annotations:
     backstage.io/source-location: url:https://github.com/adnan-drina/getting-started-ai-coding
     backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__

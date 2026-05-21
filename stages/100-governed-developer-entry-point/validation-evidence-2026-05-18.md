@@ -163,7 +163,7 @@ The remaining gates are:
 
 ## Next Gate
 
-Before Stage 110 starts, reconfigure the refreshed
+Before continuing the Stage 100 vibe-coding exercise, reconfigure the refreshed
 `getting-started-ai-coding` workspace local client files with the MaaS route
 and API key and verify:
 
@@ -172,4 +172,5 @@ and API key and verify:
 - Continue read-only OpenShift MCP prompt: pass/fail
 - OpenCode read-only OpenShift MCP prompt: pass/fail
 
-Stage 110 can start after those four client checks are green.
+The bounded Continue and validation exercises can continue after those four
+client checks are green.

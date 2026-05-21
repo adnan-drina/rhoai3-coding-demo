@@ -66,11 +66,10 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Deferred Demo Stages
 
-- [ ] **Stages 110-170 moved out of `stages/`** — Stages `110` through `170` are intentionally no longer stage directories. Recreate each stage one-by-one only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence. Stage 100 remains as the current documentation-only onboarding stage.
+- [ ] **Stage 110 merged into Stage 100; stages 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 100 as the review discipline for vibe coding. Stages `120` through `170` are intentionally no longer stage directories. Recreate each remaining stage one-by-one only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
 
   Deferred scope to revisit:
 
-  - **Stage 110: Specs - Spec-Driven AI Coding With Continue** — Use Continue in the `coolstore-inventory-service` workspace to turn exploratory intent into README, API, standards, and test-plan specs. Preserve the `what` versus `how` split, require gap lists before edits, and add a versioned prompt pack before recreating the stage.
   - **Stage 120: Skills - Reusable Quality Gates** — Demonstrate a near miss, capture the review procedure, and turn it into reusable skill candidates such as `review-enterprise-readiness`, README/API alignment, dependency review, model-boundary review, and PR summary preparation.
   - **Stage 130: Agents - Agentic Engineering With OpenCode** — Introduce OpenCode only after specs and skills exist. Preserve scoped agent roles, explicit tool permissions, human approval points, and the first bounded feature candidate: `POST /api/inventory/{itemId}/reservations`.
   - **Stage 140: Golden Path Quarkus Service** — Build or seed a demo-owned `coolstore-inventory-service` with Red Hat build of Quarkus `3.27.x`, Java 21, tests, health, PostgreSQL configuration, app-local GitOps, and documentation. Do not claim a full Coolstore monolith conversion.
@@ -100,6 +99,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 ## Planned
 
 - [ ] **GPUaaS metrics validation pass** — Confirm the final Prometheus metric names and proxy query path for the GPUaaS dashboard. Stage 020 currently validates dashboard resources and warns on raw metric query failures.
+- [ ] **Red Hat UDI-based AI tools image** — Build and publish a Red Hat OpenShift Dev Spaces UDI-derived `ai-tools` image with OpenCode, Continue support tooling, OpenShift CLI tooling, Java 21 as the default Maven runtime, and demo-required MCP/client utilities. Replace the current digest-pinned `quay.io/che-incubator/cli-ai-tools` workspace image once the UDI-based image is built, scanned, documented, and validated in fresh Dev Spaces workspaces. Until then, Stage 070 configures Java 21 during workspace startup so the Quarkus prompt does not carry Java-selection workaround commands.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
 - [x] **Red Hat-aligned observability path** — Active GitOps installs the Red Hat observability prerequisites and configures the product MaaS observability path instead of the historical community Grafana add-on.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.

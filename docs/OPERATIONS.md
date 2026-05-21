@@ -159,6 +159,35 @@ argocd app sync 040-governed-models-as-a-service
 
 If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for automated sync. Most applications have automated sync enabled.
 
+## Developer Workflow Branch Validation
+
+Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml)
+yet. When validating developer-workflow changes on a sandbox cluster, patch only
+the existing platform applications that own the affected live resources.
+
+For Stage 100 vibe-coding changes, patch only Stage 070 and Stage 090 to the
+feature branch being validated:
+
+```bash
+oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc patch application 090-developer-portal-self-service -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc annotate application 070-controlled-developer-workspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 090-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+```
+
+Rollback to the stable platform branch:
+
+```bash
+oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc patch application 090-developer-portal-self-service -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc annotate application 070-controlled-developer-workspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 090-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+```
+
+Do not merge a feature branch to `main` only to validate planned developer
+workflow documentation or catalog/workspace changes. Do not create Stage
+`100-170` Argo CD applications until those stages have executable artifacts.
+
 ## Stage-Specific Operational Notes
 
 ### Stage 010

@@ -313,7 +313,7 @@ data:
           reasoning: true
           maxTokens: 16384
         requestOptions:
-          timeout: 600
+          timeout: 600000
 
       - name: OpenAI gpt-oss-20b
         provider: openai
@@ -324,7 +324,7 @@ data:
         defaultCompletionOptions:
           maxTokens: 4096
         requestOptions:
-          timeout: 600
+          timeout: 600000
 
       - name: OpenAI GPT-4o
         provider: openai
@@ -337,7 +337,7 @@ data:
         defaultCompletionOptions:
           maxTokens: 4096
         requestOptions:
-          timeout: 600
+          timeout: 600000
 
       - name: OpenAI GPT-4o Mini
         provider: openai
@@ -350,7 +350,7 @@ data:
         defaultCompletionOptions:
           maxTokens: 4096
         requestOptions:
-          timeout: 600
+          timeout: 600000
 
     rules:
       - >-

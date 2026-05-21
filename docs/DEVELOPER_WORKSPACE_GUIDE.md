@@ -89,8 +89,8 @@ engineering workspaces.
 
 1. Log in to Red Hat Developer Hub with the assigned demo user.
 2. Open the component that matches the task:
-   - `Getting Started with AI Coding` for Stage 100 onboarding.
-   - `Coolstore Inventory Service` for deferred engineering stages `110-150`.
+   - `Getting Started with AI Coding` for Stage 100 vibe coding.
+   - `Coolstore Inventory Service` for deferred engineering stages `120-150`.
    - `MCA Coolstore` for deferred modernization stages `160-170`.
 3. Confirm the component shows only these links:
    - `Source Repo`
@@ -224,9 +224,9 @@ Do not print `apiKey` values. The generated config should include
 `nemotron-3-nano-30b-a3b`, `gpt-oss-20b`, `gpt-4o`, and `gpt-4o-mini` with
 MaaS OpenAI-compatible endpoints.
 
-The generated Continue model entries set a 600 second request timeout. This is
-intended for long coding-agent generations through the MaaS gateway; it does
-not change the model output token limits or make oversized prompts cheaper.
+The generated Continue model entries set a 600000 millisecond request timeout.
+This is intended for long coding-agent generations through the MaaS gateway; it
+does not change the model output token limits or make oversized prompts cheaper.
 
 ![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
 
@@ -295,7 +295,7 @@ developer shell. If Continue attempts a terminal command and cannot execute or
 capture output, the assistant must stop, report the exact command to run
 manually, and record the blocker instead of claiming that the command passed.
 
-This is the Stage 100 vibes check: a lightweight, human-led interaction
+This is the Stage 100 vibe-coding check: a lightweight, human-led interaction
 that verifies model access, local repository context, and read-only platform
 context before any source-code change is requested.
 

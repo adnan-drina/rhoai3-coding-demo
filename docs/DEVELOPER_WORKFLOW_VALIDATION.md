@@ -2,12 +2,12 @@
 
 This guide holds quality gates and evidence expectations for Stage 100 and for
 the deferred developer workflow stages tracked in `BACKLOG.md`. The Stage 100
-README explains the current onboarding story; this file explains what to verify
+README explains the current vibe-coding story; this file explains what to verify
 when a deferred stage is later implemented or rehearsed.
 
-Stages `110-170` are no longer directories under `stages/`. Recreate them
-one-by-one only after each has a concrete scope, artifacts, and validation
-path. Do not add stages `110-170` to
+Stage `110` has been merged into Stage 100. Stages `120-170` are no longer
+directories under `stages/`. Recreate them one-by-one only after each has a
+concrete scope, artifacts, and validation path. Do not add stages `120-170` to
 [`../flows/default.yaml`](../flows/default.yaml) until that implementation
 exists.
 
@@ -28,7 +28,7 @@ exists.
   evidence, use `Terminal > New Terminal (Select a Container) >
   tooling-container`, then record the command and output.
 
-## Stage 100: Vibes
+## Stage 100: Vibe Coding
 
 Quality gates:
 
@@ -41,6 +41,9 @@ Quality gates:
   provisioning.
 - The opening Continue prompt completes without printing secrets, endpoint
   URLs, private hostnames, source code, or full environment variables.
+- Bounded Continue prompts for explanation, test ideas, README/API alignment,
+  and documentation drafting produce a plan or gap list before edits are
+  accepted.
 - The one-shot Quarkus vibe-coding prompt creates the required POM, source,
   test, and resources files in a new directory and reports a concise sanitized
   summary. Separate terminal validation tests the app, deploys only into the
@@ -51,6 +54,11 @@ Quality gates:
 - Generated Quarkus files use current Red Hat build of Quarkus 3.27 guidance:
   `quarkus-rest`, `quarkus-openshift`, `quarkus-junit5`, Rest Assured tests,
   Red Hat build of Quarkus Maven plugin coordinates, and `Deployment` language.
+- Generated tests compile and pass when tests are added.
+- Documentation changes describe implemented behavior, passing tests, or an
+  accepted spec only.
+- README/API/test-plan changes start from accepted gap-list findings, not silent
+  rewrites.
 - The assistant does not use Helm tools, list or read Kubernetes Secrets, try
   terminal execution, claim "Command executed in remote terminal", or report
   unverified deployment results.
@@ -64,30 +72,14 @@ Evidence:
 - Quarkus test result.
 - OpenShift deployment resource names.
 - Route verification result with hostname redacted.
+- README/API/test-plan gap-list findings, when documentation is reviewed.
+- Accepted and rejected assistant suggestions.
 - Blocker, if any.
 
 Detailed live validation is in
 [`techdocs/stage-100-validation.md`](techdocs/stage-100-validation.md). The
 sanitized evidence template is
 [`../stages/100-governed-developer-entry-point/evidence-template.md`](../stages/100-governed-developer-entry-point/evidence-template.md).
-
-## Stage 110: Specs
-
-Quality gates:
-
-- Specs separate the `what` from the `how`.
-- README, API, standards, and test-plan changes start from a gap list.
-- Generated tests compile and pass when tests are added.
-- Documentation changes describe accepted specs or implemented behavior only.
-
-Evidence:
-
-- Prompt summary.
-- Model path.
-- Accepted spec summary.
-- Files changed.
-- Test command and result.
-- Accepted and rejected README/API/test-plan findings.
 
 ## Stage 120: Skills
 

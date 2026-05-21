@@ -46,7 +46,7 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Developer Lightspeed for MTA using governed model access | AI assistance is grounded in modernization analysis and human review |
 | [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | Platform capabilities become discoverable and self-service |
 
-Draft developer workflow work starts with [Stage 100 - Vibes: Developer Onboarding With Continue](stages/100-governed-developer-entry-point/README.md). Later planned stages `110-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred demo stages](BACKLOG.md#deferred-demo-stages).
+Draft developer workflow work starts with [Stage 100 - Vibe Coding: Developer Onboarding With Continue](stages/100-governed-developer-entry-point/README.md). The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100 as vibe-coding review discipline. Later planned stages `120-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred demo stages](BACKLOG.md#deferred-demo-stages).
 
 ## Why This Is Worth Knowing
 

@@ -26,21 +26,16 @@ data:
     }
   settings.json: |
     {
+      "terminal.integrated.shellIntegration.enabled": true,
       "terminal.integrated.defaultProfile.linux": "bash",
       "terminal.integrated.profiles.linux": {
         "bash": {
           "path": "/usr/bin/bash",
-          "args": [
-            "-l"
-          ],
           "icon": "terminal-bash"
         }
       },
       "terminal.integrated.automationProfile.linux": {
-        "path": "/usr/bin/bash",
-        "args": [
-          "-l"
-        ]
+        "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true
     }
@@ -65,21 +60,16 @@ data:
     }
   settings.json: |
     {
+      "terminal.integrated.shellIntegration.enabled": true,
       "terminal.integrated.defaultProfile.linux": "bash",
       "terminal.integrated.profiles.linux": {
         "bash": {
           "path": "/usr/bin/bash",
-          "args": [
-            "-l"
-          ],
           "icon": "terminal-bash"
         }
       },
       "terminal.integrated.automationProfile.linux": {
-        "path": "/usr/bin/bash",
-        "args": [
-          "-l"
-        ]
+        "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true
     }
@@ -104,21 +94,16 @@ data:
     }
   settings.json: |
     {
+      "terminal.integrated.shellIntegration.enabled": true,
       "terminal.integrated.defaultProfile.linux": "bash",
       "terminal.integrated.profiles.linux": {
         "bash": {
           "path": "/usr/bin/bash",
-          "args": [
-            "-l"
-          ],
           "icon": "terminal-bash"
         }
       },
       "terminal.integrated.automationProfile.linux": {
-        "path": "/usr/bin/bash",
-        "args": [
-          "-l"
-        ]
+        "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true
     }

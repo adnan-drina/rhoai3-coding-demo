@@ -6,7 +6,7 @@ file.
 
 ## Stage
 
-100 - Governed Developer Entry Point
+100 - Vibe Coding: Developer Onboarding With Continue
 
 ## Date
 
@@ -14,7 +14,7 @@ YYYY-MM-DD
 
 ## Environment
 
-- Repository branch: `feature/vibe-agentic-workflow-readmes`
+- Repository branch: `main`
 - Application repository branch: `main`
 - Cluster: `cluster-t977r`
 - Validation mode: live cluster
@@ -55,10 +55,9 @@ Manual actions:
 - Confirm Stage 070 created `Secret/wksp-ai-developer/maas-devspace-api-keys`.
 - Confirm the workspace startup command generated `~/.continue/config.yaml`
   from the MaaS API key Secret.
-- Confirm the workspace startup command generated
-  `~/.config/opencode/opencode.json` from the same Secret.
-- Send one harmless verification prompt from Continue and one from OpenCode.
-  The prompt must not include source code, route URLs, API keys, or tokens.
+- Send the Stage 100 opening prompt from Continue agent mode. The prompt must
+  not include source code, route URLs, API keys, tokens, credentials, or private
+  hostnames.
 
 ## Evidence
 
@@ -82,11 +81,6 @@ Manual actions:
   - config path: `~/.continue/config.yaml`
   - selected model ID:
   - harmless MaaS verification prompt passed: yes/no
-- OpenCode generated in workspace only:
-  - config path: `~/.config/opencode/opencode.json`
-  - compatibility path present: `~/.opencode/opencode.json` yes/no
-  - selected model ID:
-  - harmless MaaS verification prompt passed: yes/no
 - Secrets committed: no
 
 ## Result
@@ -99,6 +93,7 @@ Green/yellow/red:
 
 ## Next Gate
 
-Stage 110 can start only after the developer has a working governed workspace,
-a recorded private model choice for source-code work, and successful harmless
-verification prompts from both Continue and OpenCode.
+The next segment can start only after the developer has a working governed
+workspace, a recorded private model choice for source-code work, and a
+successful Continue opening prompt that verifies model access, repository
+context, and read-only platform context without exposing sensitive values.

@@ -1,4 +1,4 @@
-# Stage 100: Vibes - Developer Onboarding With Continue
+# Stage 100: Vibe Coding - Developer Onboarding With Continue
 
 ## Status
 
@@ -12,7 +12,7 @@ The developer workflow should start from the platform, not from personal tools, 
 
 In this demo, "vibe coding" means human-led, prompt-driven IDE work. The developer explains intent in natural language, reviews the output, runs validation, records evidence, and remains accountable for the result.
 
-Stage 100 is intentionally small. It proves the governed entry point before introducing formal specs, reusable skills, OpenCode agents, or multi-file autonomous work.
+Stage 100 is intentionally small. It proves the governed entry point and the first useful Continue workflow before introducing reusable skills, OpenCode agents, or multi-file autonomous work. The former Stage 110 spec and README-alignment placeholder has been merged into this stage as review discipline for responsible vibe coding, not as a separate implementation stage.
 
 ## What This Stage Adds
 
@@ -23,6 +23,9 @@ This planned stage adds the first developer onboarding exercise.
 - Continue validation against `nemotron-3-nano-30b-a3b` through MaaS.
 - A safe opening prompt that confirms repository, model, and read-only platform context without printing secrets.
 - A one-shot Red Hat build of Quarkus Hello World exercise to demonstrate the limits and value of prompt-driven work.
+- Bounded Continue prompts for explanation, gap-listing, test ideas, README/API alignment, and documentation drafting.
+- A Code-to-Docs style review pattern where the assistant proposes documentation changes and the developer explicitly accepts or rejects them.
+- Human review gates for generated code, tests, documentation, dependencies, and model-boundary evidence.
 - Sanitized evidence expectations for model path, validation, and blockers.
 
 ## Platform Capabilities Consumed
@@ -69,6 +72,57 @@ for that bullet.
 ```
 
 Record only the client, selected model ID, pass/fail result, and blocker.
+
+## Bounded Continue Tasks
+
+After the opening check passes, Continue can be used for short IDE-assistance tasks before or after the Quarkus one-shot exercise. Keep each request small enough to review, and ask for gaps or a plan before accepting edits.
+
+Useful tasks from the retired Stage 110 placeholder now belong here:
+
+- explain a service or endpoint in terms of inputs, outputs, dependencies, and observable behavior;
+- identify the safest small behavior to test first;
+- propose a unit or integration test using project conventions;
+- compare README, API notes, tests, and implementation;
+- produce a README-vs-code or spec-vs-code gap list before editing documentation;
+- draft documentation only for behavior visible in implementation, tests, or an accepted spec.
+
+Recommended starter prompts:
+
+```text
+Explain this service in terms of inputs, outputs, dependencies, and the safest small behavior to test first. Do not edit files.
+```
+
+```text
+Review the README, API description, and tests. List gaps between documented behavior, implemented behavior, and missing verification. Do not rewrite files yet.
+```
+
+```text
+Write a unit or integration test for this endpoint using the conventions already present in the project. Explain the behavior the test proves.
+```
+
+```text
+Draft documentation for this endpoint. Include only behavior that is visible in the implementation or tests.
+```
+
+Expected developer actions:
+
+- select the source file, test file, or README section intentionally;
+- ask Continue for a plan before accepting code or documentation changes;
+- review the generated diff;
+- run validation outside Continue when shell evidence is needed;
+- accept documentation changes only after the gap list is reviewed;
+- record model name, task type, prompt summary, files changed, validation result, and rejected suggestions.
+
+Review and quality gates:
+
+- generated tests must compile and pass in the selected project;
+- documentation changes must start as proposed gaps, not silent rewrites;
+- documentation updates must match implemented behavior, tests, or an accepted spec;
+- no unsupported dependency or version change is accepted without review;
+- no credentials, keys, private URLs, or full environment variables are introduced;
+- the developer owns the final diff and can explain it without relying on the assistant transcript.
+
+Source-code prompts should use the private model path unless the organization explicitly approves the data classification for external processing. MaaS centralizes access to private and approved external models, but it does not make provider-side processing private.
 
 ## One-Shot Quarkus Vibe Coding Prompt
 
@@ -117,7 +171,7 @@ carry enough product facts, constraints, and acceptance criteria for the model
 to produce something reviewable.
 
 The prompt also demonstrates the tradeoff between big and small prompts. A
-single large prompt is easier to run live and is useful for Stage 100 vibes: one
+single large prompt is easier to run live and is useful for Stage 100 vibe coding: one
 request can create a small app and explain assumptions. Validation stays
 outside the prompt because this Continue workflow does not provide reliable
 terminal evidence. The downside is that a big prompt costs more context, can
@@ -261,13 +315,15 @@ tokens, credentials, private hostnames, or full environment variables.
 
 The proof point is that experimentation starts from a governed platform contract. Developer Hub makes the path discoverable. Dev Spaces makes the workspace reproducible. MaaS centralizes model access. Continue gives the developer a familiar IDE interaction.
 
-This matters because uncontrolled entry points weaken every later claim about source-code boundaries, model governance, and auditability.
+This matters because uncontrolled entry points weaken every later claim about source-code boundaries, model governance, and auditability. The merged vibe-coding guidance shows the productive side of prompting without pretending free-form output is trusted by default: useful requests stay bounded, reviewable, and verifiable.
 
 ## How Red Hat And Open Source Make It Work
 
 Red Hat Developer Hub provides the portal and catalog entry point. Red Hat OpenShift Dev Spaces provides the cloud workspace. Red Hat OpenShift AI and MaaS provide the approved model endpoint. Continue consumes the OpenAI-compatible endpoint inside the IDE.
 
 The open source tooling remains replaceable, while the enterprise controls remain platform-owned.
+
+The Code-to-Docs pattern is useful here: let AI inspect diffs and propose documentation updates, but require humans to approve which documentation changes are true.
 
 ## Red Hat Products Used
 
@@ -289,6 +345,7 @@ The open source tooling remains replaceable, while the enterprise controls remai
 - TODO: Decide whether Developer Hub MCP catalog and TechDocs tools become part of later agentic workflows.
 - TODO: Add direct catalog validation for model assets once the OpenShift AI connector path is selected.
 - TODO: Keep [`evidence-template.md`](evidence-template.md) aligned with the final live validation checklist.
+- TODO: Add versioned prompt-pack examples for bounded Continue tasks after the hands-on workflow is finalized.
 
 ## Deploy And Validate
 
@@ -317,4 +374,4 @@ This planned stage has no deploy or validate scripts. Use:
 
 ## Next Stage
 
-Stages `110-170` are deferred in [BACKLOG.md](../../BACKLOG.md). Recreate the next stage only when the spec-driven workflow has a concrete implementation plan and validation path.
+The former Stage 110 placeholder has been merged into this Stage 100 vibe-coding flow. Later stages are deferred in [BACKLOG.md](../../BACKLOG.md) and should be recreated only when each has a concrete implementation plan and validation path.

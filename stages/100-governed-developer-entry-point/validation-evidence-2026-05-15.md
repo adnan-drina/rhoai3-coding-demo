@@ -140,6 +140,6 @@ Continue and OpenCode must each complete a harmless prompt against
 
 ## Next Gate
 
-Stage 110 can start after the developer configures both Continue and OpenCode in
-the running workspace, verifies both clients with a harmless MaaS prompt, and
-uses the private MaaS model for the README/API/test alignment task.
+The Stage 100 vibe-coding exercise can continue after the developer configures
+the running workspace clients, verifies them with a harmless MaaS prompt, and
+uses the private MaaS model for bounded README/API/test alignment work.
