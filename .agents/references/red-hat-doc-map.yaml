@@ -733,6 +733,35 @@ products:
             status: active
             skill: odf-object-bucket-claims
 
+  tpa:
+    name: Red Hat Trusted Profile Analyzer
+    baseline_component: Red Hat Trusted Profile Analyzer
+    skill_prefix: tpa-
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
+    categories:
+      discover:
+        description: Release notes, new features, bug fixes, known issues, and deprecated endpoints.
+        routes:
+          - book: release_notes
+            status: active
+            skill: tpa-release-notes
+      get_started:
+        description: Managed service quick start, SBOM scanning, IDE integration, and self-hosted deployment.
+        routes:
+          - book: quick_start_guide
+            status: active
+            skill: tpa-quick-start
+          - book: deployment_guide
+            status: active
+            skill: tpa-deployment
+      reference:
+        description: Administration, data importers, SBOM lifecycle, OIDC, and Helm upgrade.
+        routes:
+          - book: administration_guide
+            status: active
+            skill: tpa-admin
+
   rhdh:
     name: Red Hat Developer Hub
     baseline_component: Red Hat Developer Hub
