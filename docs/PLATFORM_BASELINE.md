@@ -20,6 +20,7 @@ Update it first when preparing an upgrade.
 | Red Hat Developer Hub | 1.10 | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10 |
 | Red Hat Trusted Profile Analyzer | 2.2 | https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2 |
 | Migration Toolkit for Applications | 8.1 | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1 |
+| Red Hat Advanced Developer Suite - software supply chain | 1.9 | https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9 |
 
 ## Version Match Rule
 
