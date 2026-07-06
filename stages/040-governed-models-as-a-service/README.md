@@ -13,9 +13,10 @@ two private local models — `nemotron-3-nano-30b-a3b` (131K-context reasoning)
 and `qwen3-6-35b-a3b` (Qwen3.6 35B A3B FP8-dynamic, the coding specialist,
 32K deployed context) — plus an external OpenAI `gpt-4o-mini` provider model
 as managed AI assets that can be discovered, subscribed to, monitored, and
-consumed through OpenAI-compatible APIs. Each private model claims a full
-L40S; required pod anti-affinity keeps one LLM per GPU node because two vLLM
-runtimes cannot share one card's memory.
+consumed through OpenAI-compatible APIs. Each private model requests all
+four time-sliced units of one L40S, which keeps one LLM per GPU node through
+resource accounting: two vLLM runtimes cannot share one card's memory, and
+the KServe webhook strips template-level anti-affinity on RHOAI 3.4.
 
 ## What Enables It
 

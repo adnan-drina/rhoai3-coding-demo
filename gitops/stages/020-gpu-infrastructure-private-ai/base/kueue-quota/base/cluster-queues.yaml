@@ -109,5 +109,6 @@ spec:
         - name: gpu-l40s
           resources:
             - name: nvidia.com/gpu
-              # One L40S per private model (nemotron + qwen).
-              nominalQuota: "2"
+              # Two L40S cards, 4 time-sliced units each; every private model
+              # requests a full card (4 units) for exclusive VRAM.
+              nominalQuota: "8"

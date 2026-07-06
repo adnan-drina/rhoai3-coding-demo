@@ -121,7 +121,7 @@ The low-level scheduling authority remains in Kueue `ResourceFlavor` and
 | CPU Default | `lq-cpu-default` | 0 | CPU-only workbench or small job |
 | GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 2 | Shared GPU capacity when available |
 | GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 1 | Dedicated higher-importance lane |
-| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 2 | Reserved capacity: one L40S per private model (nemotron + qwen) |
+| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 8 | Reserved capacity: two L40S cards as 4 time-sliced units each; every private model claims a full card |
 
 ---
 

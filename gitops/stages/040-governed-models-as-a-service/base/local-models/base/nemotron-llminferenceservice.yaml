@@ -46,16 +46,6 @@ spec:
           targetPorts:
             - number: 8000
   template:
-    # One private LLM per physical GPU node: two vLLM runtimes on one
-    # time-sliced L40S would both try to allocate ~90% of its VRAM.
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app.kubernetes.io/part-of: llminferenceservice
-                kserve.io/component: workload
-            topologyKey: kubernetes.io/hostname
     containers:
       - name: main
         # No image override: the RHOAI operator supplies the supported vLLM
@@ -106,11 +96,14 @@ spec:
           requests:
             cpu: "2"
             memory: 16Gi
-            nvidia.com/gpu: "1"
+            # All 4 time-sliced units of one L40S: the KServe webhook strips
+            # template affinity, so exclusive-card placement is enforced by
+            # resource accounting (two models cannot fit on one node).
+            nvidia.com/gpu: "4"
           limits:
             cpu: "4"
             memory: 24Gi
-            nvidia.com/gpu: "1"
+            nvidia.com/gpu: "4"
         volumeMounts:
           - mountPath: /dev/shm
             name: shm
