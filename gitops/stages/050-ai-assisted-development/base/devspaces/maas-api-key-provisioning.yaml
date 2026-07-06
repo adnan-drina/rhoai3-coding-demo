@@ -502,7 +502,8 @@ spec:
             - |
               SECRET_NAME="maas-devspace-api-keys"
               SECRET_NAMESPACE="wksp-ai-developer"
-              SUBSCRIPTION="demo-models-subscription"
+              # Developer-tier subscription from the migrated MaaS governance (Stage 040).
+              SUBSCRIPTION="rhoai-developers-gpt-4o-mini"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 
               if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q "placeholder"; then
