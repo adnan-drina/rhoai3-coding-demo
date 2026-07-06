@@ -16,10 +16,6 @@ check_argocd_app "010-openshift-ai-platform-foundation"
 
 log_step "Platform Dependencies"
 check_crd_exists "certificates.cert-manager.io"
-check_crd_exists "knativeservings.operator.knative.dev"
-check "KnativeServing ready" \
-    "oc get knativeserving knative-serving -n knative-serving -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-    "True"
 
 log_step "Red Hat OpenShift AI Operator"
 check_csv_succeeded "redhat-ods-operator" "Red Hat OpenShift AI"

@@ -10,7 +10,6 @@ metadata:
 spec:
   name: rhods-operator
   channel: stable-3.4
-  startingCSV: rhods-operator.3.4.0
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic
