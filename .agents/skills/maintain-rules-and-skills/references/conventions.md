@@ -1,27 +1,146 @@
-# Project Conventions for Cursor Platform Components
+# Shared Agent Guidance Conventions
 
-## Table of Contents
+Use these conventions when changing `AGENTS.md`, `.agents/`, or `.cursor/`
+in this repository.
 
-- [Rule Conventions](#rule-conventions)
-- [Skill Conventions](#skill-conventions)
-- [Hook Patterns](#hook-patterns)
-- [Subagent Patterns](#subagent-patterns)
-- [Anti-Patterns](#anti-patterns)
-- [Audit Checklist](#audit-checklist)
+## AGENTS.md
 
-## Rule Conventions
+`AGENTS.md` is the root, tool-neutral contract for coding agents.
 
-### Frontmatter
+- Keep it concise enough to be useful on every task.
+- Use plain Markdown; do not rely on tool-specific include syntax.
+- Include project overview, commands, safety constraints, branch/commit rules,
+  and pointers to detailed shared rules and skills.
+- Add nested `AGENTS.md` files only for genuinely distinct subprojects with
+  local instructions that should override root guidance.
+- If instructions conflict, the user's current prompt wins; otherwise the
+  closest applicable `AGENTS.md` should be treated as more specific.
+
+## Shared Rules
+
+Rules live under `.agents/rules/` and are short, tool-neutral domain guardrails.
+They are not a replacement for root `AGENTS.md`; they give agents a predictable
+place to look before work in a specific skill group.
+
+Current rule taxonomy:
+
+| Rule | Skill prefix | Purpose |
+|------|--------------|---------|
+| `project.md` | `project-` | Repo structure, GitOps authoring, docs, manifest review, Red Hat source alignment, and shared guidance |
+| `env.md` | (none) | Live demo environment deployment, validation, troubleshooting, shutdown, recovery, and redeploy |
+| `gitops.md` | (none) | GitOps authoring, manifests, labels, schema validation |
+| `docs.md` | (none) | Documentation standards, README structure, operations docs |
+| `rhoai.md` | `rhoai-` | Official-doc-backed RHOAI component behavior and configuration |
+| `ocp.md` | `ocp-` | Official-doc-backed OpenShift infrastructure, networking, auth, monitoring, GitOps, and storage integration |
+| `odf.md` | `odf-` | Official-doc-backed OpenShift Data Foundation storage, object storage, NooBaa, and storage class guidance |
+
+Rule frontmatter should stay simple:
 
 ```yaml
 ---
-description: One-line description shown in rule picker and used by agent to decide relevance
-globs: "gitops/**/*.yaml"   # or comma-separated: "*.py,*.sh"
-alwaysApply: false           # true only for project-wide behavioral rules
+name: project
+skill-group: Project Structure
+skill-prefix: project-
+applies-to:
+  - AGENTS.md
+  - .agents/**
 ---
 ```
 
-### Four rule types in Cursor
+Keep detailed procedure in skills, not rules. A rule should point to the
+relevant skills and state the non-negotiable constraints for that domain.
+
+## Shared Skills
+
+Skills live under `.agents/skills/<skill-name>/SKILL.md`.
+
+Skill frontmatter:
+
+```yaml
+---
+name: skill-name
+metadata:
+  author: rhoai3-coding-demo
+  version: 1.0.0
+  platform-family: "rhoai"
+  platform-baseline: "repo"
+  ocp-baseline: "repo"
+  skill-group: "Project Structure"
+description: >
+  Use when [specific scenarios]. Do NOT use for [X] (use [Y] instead).
+---
+```
+
+Conventions:
+
+- `name` must match the parent folder.
+- Folder prefix must match `metadata.skill-group`.
+- Use `platform-baseline: "repo"` and `ocp-baseline: "repo"` so the active
+  versions stay centralized in `docs/PLATFORM_BASELINE.md`.
+- Descriptions should enumerate concrete trigger scenarios and negative
+  triggers.
+- Keep `SKILL.md` focused; put deeper detail in `references/`, executable
+  helpers in `scripts/`, and reusable examples in `examples/` when needed.
+- Keep tool-specific copies out of the repo.
+- If a canonical repo skill exists on disk but is not listed by the current
+  runtime skill discovery output, treat the on-disk skill as project guidance
+  after reading it fully and note the discovery mismatch for follow-up.
+
+### Product documentation skills
+
+Product documentation skills (`rhoai-*`, `ocp-*`, `odf-*`) follow an extended
+structure:
+
+```
+skill-name/
+  SKILL.md                              # Workflow and usage guidance
+  references/
+    official-doc-extraction.md          # Extracted official docs content
+    validation-checklist.md             # Verification steps
+    source-capture.md                   # Provenance tracking
+  examples/
+    component-patterns.md              # Reusable configuration patterns
+```
+
+Use `project-red-hat-doc-skill-authoring` for the generation workflow and
+`.agents/references/red-hat-doc-map.yaml` to route documentation topics to
+skills.
+
+## Shared Hooks
+
+Reusable hook implementations live under `.agents/hooks/`.
+
+- Tool-specific hook config may call shared hook scripts.
+- Keep hook logic deterministic and non-secret.
+- Hooks should validate, remind, or block; they should not rewrite project files.
+- Security-critical hooks should fail closed when the tool supports that mode.
+- Cursor-only hook scripts may remain in `.cursor/hooks/` when they depend on
+  Cursor event payloads.
+
+## Tool Bridges
+
+Keep tool-specific directories minimal:
+
+| Directory | Shared repo purpose |
+|-----------|---------------------|
+| `.cursor/` | Cursor hook config and Cursor-only hook scripts only |
+
+Do not reintroduce tool-specific rules, skills, agents, or worktree state unless
+there is a concrete tool-only gap and the bridge is reviewed as source.
+
+## Cursor Rules (`.cursor/rules/`)
+
+Cursor rules use `.mdc` files with their own frontmatter format:
+
+```yaml
+---
+description: One-line description shown in rule picker
+globs: "gitops/**/*.yaml"
+alwaysApply: false
+---
+```
+
+Four rule types in Cursor:
 
 | Type | Frontmatter | When it activates |
 |------|-------------|-------------------|
@@ -30,135 +149,14 @@ alwaysApply: false           # true only for project-wide behavioral rules
 | Apply Intelligently | `alwaysApply: false`, no globs | When agent decides based on description |
 | Apply Manually | `alwaysApply: false`, no globs, no description | Only when @-mentioned |
 
-### Naming convention
+Naming convention: `XX-descriptive-name.mdc` where XX is a priority number.
 
-`XX-descriptive-name.mdc` where XX is a priority number:
-- `00-09`: Project identity and core principles
-- `10-19`: Repository structure and GitOps
-- `20-29`: Documentation standards
-- `30-39`: Security and secrets
-- `40-49`: Manifest and YAML standards
-- `50-59`: Cross-cutting conventions (labels, pipelines, change output)
-- `60-79`: Step-specific development patterns
-- `99`: Plan documents
+## Red Hat Documentation Alignment
 
-### Red Hat documentation alignment
-
-Every rule that references RHOAI 3.4 or RHOCP 4.20 features should:
+Every rule or skill that references RHOAI or OCP features should:
 - Include a References section with official doc URLs
 - Use `docs.redhat.com` as the primary source
 - Note version-specific behavior: `> **Note (RHOAI 3.4):** ...`
-
-### Deduplication principle
-
-Each piece of guidance should have ONE canonical location:
-- If guidance appears in both a rule and a skill, the rule is the guardrail (brief),
-  the skill is the workflow (detailed), and the skill references the rule
-- If guidance appears in two rules, the more specific (glob-scoped) rule is canonical;
-  the broader rule references it
-
-### Reference files instead of copying
-
-Use `@filename` in rules to include file contents in context:
-```markdown
-Follow the patterns in @stages/010-openshift-ai-platform-foundation/deploy.sh
-```
-This prevents rules from becoming stale when the referenced code changes.
-
-### Agent Behavior sections
-
-Only add to rules that require post-edit verification. Pattern:
-```markdown
-## Agent Behavior
-
-After modifying [specific file type]:
-- [Verification step 1]
-- [Verification step 2]
-```
-
-## Skill Conventions
-
-### Frontmatter
-
-```yaml
----
-name: skill-name                    # MUST match parent folder name
-metadata:
-  author: rhoai3-coding-demo
-  version: 1.0.0
-  rhoai-version: "3.4"
-  ocp-version: "4.20"
-description: >
-  What this skill does. Use when [specific scenarios]. Also use when
-  [additional triggers]. Do NOT use for [X] (use [Y] instead).
-disable-model-invocation: false     # true for destructive operations
----
-```
-
-### Description writing
-
-Descriptions should be "pushy" — enumerate specific scenarios:
-- Bad: "Use when deploying the demo"
-- Good: "Use when deploying the demo, setting up a new environment, re-deploying
-  a specific step, checking deployment status, or when ArgoCD apps are OutOfSync"
-
-### Negative triggers
-
-Every skill must say what NOT to use it for, naming the correct alternative:
-```
-Do NOT use for chatbot changes (use chatbot-customization) or
-model evaluation (use model-evaluation).
-```
-This creates a routing mesh that reduces mis-triggering.
-
-### Progressive disclosure
-
-```
-SKILL.md          # Workflow (~100-150 lines)
-references/
-  detail-a.md     # Deep knowledge (loaded on demand)
-  detail-b.md     # Deep knowledge (loaded on demand)
-scripts/
-  validate.sh     # Executable scripts
-```
-
-Keep SKILL.md under 500 lines. References should have a Table of Contents if over 300 lines.
-
-## Hook Patterns
-
-### Recommended hooks for this project
-
-| Hook | Trigger | Purpose |
-|------|---------|---------|
-| `afterFileEdit` | `gitops/**/*.yaml` | Auto-run `kustomize build` on the containing base dir |
-| `afterFileEdit` | stage files | Warn if code/docs not both edited |
-| `beforeShellExecution` | `oc delete\|oc scale` | Warn before destructive cluster operations |
-| `sessionStart` | Always | Inject project context (cluster URL from oc whoami) |
-
-### Hook script conventions
-
-- Scripts receive JSON on stdin, return JSON on stdout
-- Exit code 0 = success
-- Use matchers to avoid running on every file edit / every command
-- Python for structured parsing, Bash for simple checks
-
-## Subagent Patterns
-
-### When to use a subagent vs a skill
-
-| Subagent | Skill |
-|----------|-------|
-| Multi-step investigation with many tool calls | Single-purpose repeatable action |
-| Generates verbose intermediate output | Compact, focused workflow |
-| Benefits from context isolation | Runs in main chat context |
-| Can run in parallel with other work | Sequential execution |
-
-### Model selection
-
-| Value | When to use |
-|-------|-------------|
-| `fast` | Search, verification, high-volume queries (cheaper, faster) |
-| `inherit` | Complex reasoning, code review, architectural decisions |
 
 ## Anti-Patterns
 
@@ -167,33 +165,22 @@ Keep SKILL.md under 500 lines. References should have a Table of Contents if ove
 | Copying code into rules | Use `@filename` to reference the canonical source |
 | Always-apply for niche guidance | Use glob-scoped or "Apply Intelligently" |
 | Duplicating content between rule and skill | Skill references the rule |
-| Generic subagent descriptions ("helps with coding") | Specific: "reviews manifests for label compliance" |
+| Generic subagent descriptions | Specific: "reviews manifests for label compliance" |
 | 50+ hooks on every event | Use matchers to scope hooks narrowly |
 | Hook scripts that modify files | Hooks should validate/audit; let the agent make edits |
 
 ## Audit Checklist
 
-### Rules
-- [ ] All rules have correct frontmatter (description, globs or alwaysApply)
-- [ ] Always-apply budget is reasonable
-- [ ] No content duplicated between rules
-- [ ] RHOAI/OCP-specific rules have References sections with doc URLs
-- [ ] Rules with post-edit checks have Agent Behavior sections
-- [ ] No stale file references or removed stage numbers
+Run this after major guidance changes:
 
-### Skills
-- [ ] All `name` fields match parent folder names
-- [ ] All skills have `metadata` (version, rhoai-version, ocp-version)
-- [ ] All skills have negative triggers ("Do NOT use for...")
-- [ ] No content duplicated between skill and companion rule
-- [ ] SKILL.md files are under 500 lines
-
-### Hooks
-- [ ] `.cursor/hooks.json` has `"version": 1`
-- [ ] Hook scripts are executable (`chmod +x`)
-- [ ] Matchers are specific enough to avoid false triggers
-
-### Subagents
-- [ ] Each agent has a focused, single responsibility
-- [ ] Information-gathering agents use `readonly: true`
-- [ ] Descriptions are specific enough for agent to decide when to delegate
+- [ ] Root `AGENTS.md` is plain Markdown and self-contained enough to orient a
+      new agent.
+- [ ] `.agents/rules/` has the expected group-level rules unless the skill
+      taxonomy changes.
+- [ ] Every rule points to the relevant skills instead of duplicating workflows.
+- [ ] Every skill `name` matches its folder.
+- [ ] Every skill has `metadata.skill-group`, `platform-baseline`, and
+      `ocp-baseline`.
+- [ ] No active references point to removed paths.
+- [ ] Hook scripts pass syntax checks and JSON hook configs parse.
+- [ ] `AGENTS.md` and `.agents/rules/README.md` inventories match the filesystem.
