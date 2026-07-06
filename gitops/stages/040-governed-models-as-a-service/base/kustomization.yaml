@@ -20,7 +20,6 @@ resources:
   - policies/base
   - mcp/base
   - jobs/base
-  - model-registry-seed
   - monitoring/base
 
 # Optional external-context MCP servers (credential-gated; Secrets are

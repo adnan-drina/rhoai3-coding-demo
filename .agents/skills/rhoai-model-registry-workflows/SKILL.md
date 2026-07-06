@@ -100,6 +100,19 @@ For this repo:
   redeploys; the official workflow warns that overriding them can break
   deployments.
 
+## Project Registration Pattern (rhoai3-coding-demo)
+
+- The demo-registry service exposes only TLS 8443 behind an authenticated
+  route; plain-HTTP in-cluster jobs cannot reach it. Register models through
+  the registry route with a bearer token (curl -sk -H "Authorization:
+  Bearer $(oc whoami -t)" against /api/model_registry/v1alpha3), as
+  implemented in stages/030-private-model-serving/deploy.sh (Nemotron) and
+  stages/040-governed-models-as-a-service/register-model-cards.sh (Qwen3.6
+  rich model card: provider, validated_by, source_repo, license,
+  architecture, quantization, deployed context, capabilities).
+- Registration is idempotent: check /registered_models for the display name
+  before POSTing; skip when present.
+
 ## Workflow
 
 1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.

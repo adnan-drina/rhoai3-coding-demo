@@ -82,9 +82,11 @@ This stage is implemented in phases:
    their `MaaSModelRef` entries, and the matching subscription/auth policy.
    The deployment wrapper removes the Stage 030 baseline Nemotron
    `InferenceService` from `demo-sandbox` before the MaaS-owned backends are
-   reconciled (see the Stage 030 lifecycle note), and the model registry seed
-   job writes rich model cards (provider, validated-by, source repo, license,
-   quantization, deployed context, capabilities) for both private models.
+   reconciled (see the Stage 030 lifecycle note), and
+   `register-model-cards.sh` (invoked by deploy.sh) registers the Qwen3.6
+   rich model card (provider, validated-by, source repo, license,
+   quantization, deployed context, capabilities) through the authenticated
+   registry route, alongside the Nemotron entry Stage 030 registers.
 4. Validate user access with real demo users, temporary MaaS API keys,
    Nemotron tool-calling inference, external OpenAI function calling, and MaaS
    observability prerequisites. Nemotron remains the primary model for the

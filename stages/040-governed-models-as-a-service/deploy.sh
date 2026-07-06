@@ -432,6 +432,7 @@ ensure_optional_mcp_secrets() {
 
 ensure_openai_provider_secret
 ensure_optional_mcp_secrets
+"$SCRIPT_DIR/register-model-cards.sh"
 cleanup_demo_sandbox_nemotron
 
 echo "── Applying shared Stage 010 Argo CD Application ──"
