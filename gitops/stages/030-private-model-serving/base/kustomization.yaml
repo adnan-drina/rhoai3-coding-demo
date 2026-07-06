@@ -9,7 +9,7 @@ kind: Kustomization
 resources:
   - models/admin-rbac.yaml
   - model-registry/seed-networkpolicy.yaml
-  - models/gpt-oss-20b.yaml
+  - models/qwen3-6-35b-a3b.yaml
   - models/nemotron-3-nano-30b.yaml
   - observability/vllm-metrics-alias-prometheusrule.yaml
   - model-registry/seed-models.yaml

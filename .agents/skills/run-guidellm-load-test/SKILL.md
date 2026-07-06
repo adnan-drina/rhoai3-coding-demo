@@ -56,7 +56,7 @@ The default is intentionally small for demo environments:
 Compare both local models:
 
 ```bash
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh gpt-oss-20b
+./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh qwen3-6-35b-a3b
 ./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh nemotron-3-nano-30b-a3b
 ```
 
@@ -84,7 +84,7 @@ Use a file or dataset supported by GuideLLM:
 
 ```bash
 GUIDELLM_DATA=/path/to/prompts.jsonl \
-./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh gpt-oss-20b
+./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh qwen3-6-35b-a3b
 ```
 
 ## Evidence To Capture

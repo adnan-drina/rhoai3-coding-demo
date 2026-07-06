@@ -106,7 +106,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Validated (2026-05-01 and 2026-05-02)
 
-- [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Current 3.4 validation expects the operator-owned `registry.redhat.io/rhoai/odh-maas-api-rhel9` deployment with PostgreSQL backend.
+- [x] **MaaS API — local and external model records listed** — `/maas-api/v1/models` returns `qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini` as registered MaaS model records. Current 3.4 validation expects the operator-owned `registry.redhat.io/rhoai/odh-maas-api-rhel9` deployment with PostgreSQL backend.
 - [x] **API key generation** — `sk-oai-*` format keys are generated through the product `/maas-api/v1/api-keys` path.
 - [x] **Local model inference** — Both GPU models responded through the private model serving and MaaS validation paths in the current demo environment.
 - [x] **External model registration and credential-gated inference** — `gpt-4o` and `gpt-4o-mini` are registered as governed external model records. External inference remains credential-gated. The provider credential Secret now follows the RHOAI 3.4 documentation path in `redhat-ods-applications/openai-api-key`.

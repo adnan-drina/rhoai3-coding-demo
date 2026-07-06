@@ -61,6 +61,20 @@ This stage does not process prompts or source code. Its trust boundary is operat
 - [Kueue](https://kueue.sigs.k8s.io/) provides workload queueing, quota accounting, and admission control.
 - [KEDA](https://keda.sh/) provides event-driven autoscaling patterns.
 
+## Demo
+
+The screenshots below show Stage 020 running on a live OpenShift cluster with NVIDIA L4 GPU workers provisioned and managed through GitOps.
+
+### Key Screens
+
+| Screen | Component | What it shows |
+|--------|-----------|---------------|
+| ![GPU Worker Nodes](../../docs/assets/demos/stage-020/01-gpu-worker-nodes.png) | GPU Worker Nodes | Two g6e.2xlarge nodes with `gpu, worker` roles joined to the cluster, each providing NVIDIA L4 accelerator capacity |
+| ![Hardware Profiles](../../docs/assets/demos/stage-020/02-hardware-profiles.png) | Hardware Profiles | CPU-only, direct L4, and queue-managed GPU profiles — the disabled NVIDIA L4 4GPUs profile shows the "approved but not provisioned" governance pattern |
+| ![GPU Dashboard](../../docs/assets/demos/stage-020/03-gpu-dashboard.png) | DCGM GPU Metrics | NVIDIA DCGM Exporter dashboard showing live GPU temperature and power usage from the L4 accelerators |
+| ![Argo CD Synced](../../docs/assets/demos/stage-020/04-argocd-synced.png) | Argo CD Application | The `020-gpu-infrastructure-private-ai` application showing Healthy and Synced status in the `rhoai-demo` project |
+| ![Kueue ClusterQueues](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png) | Kueue ClusterQueue | The `private-model-serving-gpu` queue with BestEffortFIFO strategy providing queue-based GPU admission control |
+
 ## Deploy And Validate
 
 ```bash

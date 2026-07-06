@@ -280,13 +280,13 @@ data:
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
-    MAAS_API_KEY_GPT_OSS="$(secret_value MAAS_API_KEY_GPT_OSS)"
+    MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
     MAAS_API_KEY_GPT_4O="$(secret_value MAAS_API_KEY_GPT_4O)"
     MAAS_API_KEY_GPT_4O_MINI="$(secret_value MAAS_API_KEY_GPT_4O_MINI)"
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
-      || [ -z "${MAAS_API_KEY_GPT_OSS}" ] \
+      || [ -z "${MAAS_API_KEY_QWEN}" ] \
       || [ -z "${MAAS_API_KEY_GPT_4O}" ] \
       || [ -z "${MAAS_API_KEY_GPT_4O_MINI}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
@@ -315,12 +315,12 @@ data:
         requestOptions:
           timeout: 600000
 
-      - name: OpenAI gpt-oss-20b
+      - name: Qwen3.6 35B A3B
         provider: openai
-        model: "gpt-oss-20b"
-        apiBase: "${MAAS_BASE_URL}/maas/gpt-oss-20b/v1"
-        apiKey: "${MAAS_API_KEY_GPT_OSS}"
-        contextLength: 8192
+        model: "qwen3-6-35b-a3b"
+        apiBase: "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1"
+        apiKey: "${MAAS_API_KEY_QWEN}"
+        contextLength: 32768
         defaultCompletionOptions:
           maxTokens: 4096
         requestOptions:
@@ -404,18 +404,18 @@ data:
             "chunkTimeout": 120000
           }
         },
-        "gpt-oss": {
+        "qwen": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS gpt-oss",
+          "name": "MaaS Qwen3.6",
           "models": {
-            "gpt-oss-20b": {
-              "name": "OpenAI gpt-oss-20b (Local GPU)",
-              "limit": { "context": 8192, "output": 4096 }
+            "qwen3-6-35b-a3b": {
+              "name": "Qwen3.6 35B A3B (Local GPU)",
+              "limit": { "context": 32768, "output": 4096 }
             }
           },
           "options": {
-            "apiKey": "${MAAS_API_KEY_GPT_OSS}",
-            "baseURL": "${MAAS_BASE_URL}/maas/gpt-oss-20b/v1",
+            "apiKey": "${MAAS_API_KEY_QWEN}",
+            "baseURL": "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
@@ -601,7 +601,7 @@ spec:
               } > "${SECRET_FILE}"
 
               write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
-              write_model_key "GPT_OSS" "gpt-oss-20b"
+              write_model_key "QWEN" "qwen3-6-35b-a3b"
               write_model_key "GPT_4O" "gpt-4o"
               write_model_key "GPT_4O_MINI" "gpt-4o-mini"
 

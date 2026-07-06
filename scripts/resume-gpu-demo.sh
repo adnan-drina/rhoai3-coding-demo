@@ -297,7 +297,7 @@ cleanup_stale_model_replicasets() {
     local deployments
     deployments="$(oc get deployment -n "$MODEL_NAMESPACE" -o json 2>/dev/null \
         | jq -r '.items[]
-            | select(.metadata.name | test("^(gpt-oss-20b|nemotron-3-nano-30b-a3b)-kserve$"))
+            | select(.metadata.name | test("^(qwen3-6-35b-a3b|nemotron-3-nano-30b-a3b)-kserve$"))
             | .metadata.name')"
 
     if [[ -z "$deployments" ]]; then
@@ -343,7 +343,7 @@ wait_for_private_models() {
     log_info "Waiting for private LLMInferenceService resources to become Ready"
     while (( elapsed < timeout )); do
         cleanup_stale_model_replicasets
-        gpt="$(oc get llminferenceservice gpt-oss-20b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+        gpt="$(oc get llminferenceservice qwen3-6-35b-a3b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
         nemotron="$(oc get llminferenceservice nemotron-3-nano-30b-a3b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
 
         if [[ "$gpt" == "True" && "$nemotron" == "True" ]]; then
@@ -351,7 +351,7 @@ wait_for_private_models() {
             return 0
         fi
 
-        log_info "Model readiness: gpt-oss-20b=${gpt:-Unknown} nemotron-3-nano-30b-a3b=${nemotron:-Unknown}"
+        log_info "Model readiness: qwen3-6-35b-a3b=${gpt:-Unknown} nemotron-3-nano-30b-a3b=${nemotron:-Unknown}"
         sleep "$GPU_RESUME_POLL_SECONDS"
         elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
     done
@@ -386,7 +386,7 @@ print_status() {
 
     log_step "Private Models"
     oc get llminferenceservice -n "$MODEL_NAMESPACE" 2>/dev/null || true
-    oc get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|gpt-oss|nemotron|router-scheduler' || true
+    oc get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|nemotron|router-scheduler' || true
 }
 
 resume_from_zero() {

@@ -8,7 +8,7 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   modelRefs:
-    - name: gpt-oss-20b
+    - name: qwen3-6-35b-a3b
       namespace: maas
     - name: nemotron-3-nano-30b-a3b
       namespace: maas

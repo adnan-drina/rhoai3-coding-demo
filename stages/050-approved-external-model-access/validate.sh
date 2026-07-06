@@ -62,9 +62,9 @@ else
     echo -e "${RED}[FAIL]${NC} Shared demo subscription no longer uses 3.3 tier groups"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
-check "Shared demo subscription includes gpt-oss-20b" \
+check "Shared demo subscription includes qwen3-6-35b-a3b" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
-  "gpt-oss-20b"
+  "qwen3-6-35b-a3b"
 check "Shared demo subscription includes nemotron-3-nano-30b-a3b" \
   "oc get maassubscription demo-models-subscription -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}'" \
   "nemotron-3-nano-30b-a3b"
@@ -162,7 +162,7 @@ import urllib.request
 models = [
     "maas-vllm-inference-1/gpt-4o",
     "maas-vllm-inference-2/gpt-4o-mini",
-    "maas-vllm-inference-3/gpt-oss-20b",
+    "maas-vllm-inference-3/qwen3-6-35b-a3b",
     "maas-vllm-inference-4/nemotron-3-nano-30b-a3b",
 ]
 url = "https://rhods-dashboard.redhat-ods-applications.svc.cluster.local:8143/gen-ai/api/v1/lsd/responses?namespace=coding-assistant"

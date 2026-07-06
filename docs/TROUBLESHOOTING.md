@@ -416,7 +416,7 @@ oc get tenant default-tenant \
 **Recover:**
 
 - Re-sync Stage 040 so the product MaaS API route, `Tenant`, and `MaaSSubscription` are reconciled.
-- Re-sync Stage 050 so the PostSync hook expands `demo-models-subscription` to include `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
+- Re-sync Stage 050 so the PostSync hook expands `demo-models-subscription` to include `qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`.
 - Avoid adding a second broad subscription with overlapping model refs. The MaaS controller generates token-rate-limit policy names per model, so overlapping subscriptions can create policy conflicts.
 
 ```bash

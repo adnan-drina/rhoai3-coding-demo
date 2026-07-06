@@ -15,7 +15,7 @@ Runs the Stage 040 GuideLLM load-test wrapper against each private model
 listed in GUIDELLM_COMPARE_MODELS.
 
 Defaults:
-  GUIDELLM_COMPARE_MODELS   gpt-oss-20b nemotron-3-nano-30b-a3b
+  GUIDELLM_COMPARE_MODELS   qwen3-6-35b-a3b nemotron-3-nano-30b-a3b
   GUIDELLM_PROFILE          constant
   GUIDELLM_RATE             1
   GUIDELLM_MAX_SECONDS      20
@@ -37,7 +37,7 @@ esac
 load_env
 check_oc_logged_in
 
-GUIDELLM_COMPARE_MODELS="${GUIDELLM_COMPARE_MODELS:-gpt-oss-20b nemotron-3-nano-30b-a3b}"
+GUIDELLM_COMPARE_MODELS="${GUIDELLM_COMPARE_MODELS:-qwen3-6-35b-a3b nemotron-3-nano-30b-a3b}"
 
 log_step "Stage 040 private model comparison"
 for model in $GUIDELLM_COMPARE_MODELS; do

@@ -85,7 +85,7 @@ After a successful resume:
 - GPU nodes advertise allocatable `nvidia.com/gpu`.
 - `ResourceFlavor`, `ClusterQueue`, and `LocalQueue` exist.
 - Kueue `Workload` objects exist for private models.
-- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` are `Ready=True`.
+- `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` are `Ready=True`.
 - Stage 020 and Stage 030 validation pass, or only known metric warnings remain.
 
 ## Notes

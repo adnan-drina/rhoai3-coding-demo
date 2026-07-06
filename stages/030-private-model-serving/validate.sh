@@ -21,19 +21,19 @@ check "ai-admin has admin access to maas namespace" \
   "admin ai-admin"
 
 log_step "Local model resources"
-check "gpt-oss-20b resource exists" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.name}'" \
-  "gpt-oss-20b"
+check "qwen3-6-35b-a3b resource exists" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.metadata.name}'" \
+  "qwen3-6-35b-a3b"
 check "nemotron-3-nano-30b-a3b resource exists" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.name}'" \
   "nemotron-3-nano-30b-a3b"
-check "gpt-oss-20b exposes dashboard GenAI asset metadata" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.labels.opendatahub\\.io/genai-asset}{\" \"}{.metadata.annotations.security\\.opendatahub\\.io/enable-auth}'" \
+check "qwen3-6-35b-a3b exposes dashboard GenAI asset metadata" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.metadata.labels.opendatahub\\.io/genai-asset}{\" \"}{.metadata.annotations.security\\.opendatahub\\.io/enable-auth}'" \
   "true true"
 check "nemotron-3-nano-30b-a3b exposes dashboard GenAI asset metadata" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.opendatahub\\.io/genai-asset}{\" \"}{.metadata.annotations.security\\.opendatahub\\.io/enable-auth}'" \
   "true true"
-TIER_ANNOTATIONS="$(oc get llminferenceservice gpt-oss-20b nemotron-3-nano-30b-a3b -n maas \
+TIER_ANNOTATIONS="$(oc get llminferenceservice qwen3-6-35b-a3b nemotron-3-nano-30b-a3b -n maas \
   -o jsonpath='{range .items[*]}{.metadata.annotations.alpha\.maas\.opendatahub\.io/tiers}{"\n"}{end}' 2>/dev/null || true)"
 if [[ -z "$(printf '%s' "$TIER_ANNOTATIONS" | tr -d '[:space:]')" ]]; then
   echo -e "${GREEN}[PASS]${NC} Local LLMInferenceService resources do not use 3.3 tier annotations"
@@ -42,44 +42,44 @@ else
   echo -e "${RED}[FAIL]${NC} Local LLMInferenceService resources do not use 3.3 tier annotations"
   VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
-check "gpt-oss-20b requests GPU resources" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.template.containers[0].resources.requests.nvidia\\.com/gpu}'" \
+check "qwen3-6-35b-a3b requests GPU resources" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.spec.template.containers[0].resources.requests.nvidia\\.com/gpu}'" \
   "1"
 check "nemotron-3-nano-30b-a3b requests GPU resources" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.template.containers[0].resources.requests.nvidia\\.com/gpu}'" \
   "1"
-check "gpt-oss-20b declares Kueue queue" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.labels.kueue\\.x-k8s\\.io/queue-name}'" \
+check "qwen3-6-35b-a3b declares Kueue queue" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.metadata.labels.kueue\\.x-k8s\\.io/queue-name}'" \
   "private-model-serving"
 check "nemotron-3-nano-30b-a3b declares Kueue queue" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.kueue\\.x-k8s\\.io/queue-name}'" \
   "private-model-serving"
-check "gpt-oss-20b declares llm-d single-GPU deployment mode" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.metadata.labels.llm-d\\.ai/deployment-mode}{\" \"}{.metadata.labels.inference\\.optimization/acceleratorName}'" \
+check "qwen3-6-35b-a3b declares llm-d single-GPU deployment mode" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.metadata.labels.llm-d\\.ai/deployment-mode}{\" \"}{.metadata.labels.inference\\.optimization/acceleratorName}'" \
   "single-gpu-per-replica L4"
 check "nemotron-3-nano-30b-a3b declares llm-d single-GPU deployment mode" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.labels.llm-d\\.ai/deployment-mode}{\" \"}{.metadata.labels.inference\\.optimization/acceleratorName}'" \
   "single-gpu-per-replica L4"
-check "gpt-oss-20b targets MaaS Gateway" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
+check "qwen3-6-35b-a3b targets MaaS Gateway" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
   "openshift-ingress/maas-default-gateway"
 check "nemotron-3-nano-30b-a3b targets MaaS Gateway" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.gateway.refs[0].namespace}/{.spec.router.gateway.refs[0].name}'" \
   "openshift-ingress/maas-default-gateway"
-check "gpt-oss-20b enables llm-d scheduler endpoint picker" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.router.scheduler}'" \
+check "qwen3-6-35b-a3b enables llm-d scheduler endpoint picker" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.spec.router.scheduler}'" \
   "\"number\":9002"
 check "nemotron-3-nano-30b-a3b enables llm-d scheduler endpoint picker" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.router.scheduler}'" \
   "\"number\":9002"
-check "gpt-oss-20b enables vLLM scale-ready runtime arguments" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
+check "qwen3-6-35b-a3b enables vLLM scale-ready runtime arguments" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
   "--enable-prefix-caching"
 check "nemotron-3-nano-30b-a3b enables vLLM scale-ready runtime arguments" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.spec.template.containers[0].args}'" \
   "--enable-prefix-caching"
-check_warn "gpt-oss-20b ready" \
-  "oc get llminferenceservice gpt-oss-20b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
+check_warn "qwen3-6-35b-a3b ready" \
+  "oc get llminferenceservice qwen3-6-35b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
   "True"
 check_warn "nemotron-3-nano-30b-a3b ready" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
@@ -88,7 +88,7 @@ check_warn "nemotron-3-nano-30b-a3b ready" \
 log_step "In-Cluster OpenAI API Surface"
 # Private models serve an OpenAI-compatible API inside the platform boundary
 # at Stage 030; governed external access arrives with the Stage 040 gateway.
-for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
+for model in qwen3-6-35b-a3b nemotron-3-nano-30b-a3b; do
   check_warn "${model} answers /v1/models in-cluster" \
     "oc exec deployment/${model}-kserve -n maas -c main -- curl -sk --max-time 10 https://localhost:8000/v1/models 2>/dev/null | jq -r '.data[0].id' 2>/dev/null" \
     "${model}"
@@ -97,7 +97,7 @@ done
 log_step "Kueue Workload Observation"
 if oc get crd workloads.kueue.x-k8s.io &>/dev/null; then
   MODEL_WORKLOAD_COUNT=$(oc get workloads.kueue.x-k8s.io -n maas -o json 2>/dev/null \
-    | jq '[.items[] | select((.metadata.ownerReferences // [])[]?.name | test("gpt-oss-20b|nemotron-3-nano-30b-a3b"))] | length' 2>/dev/null || echo "0")
+    | jq '[.items[] | select((.metadata.ownerReferences // [])[]?.name | test("qwen3-6-35b-a3b|nemotron-3-nano-30b-a3b"))] | length' 2>/dev/null || echo "0")
   if [[ "$MODEL_WORKLOAD_COUNT" -ge 1 ]]; then
     echo -e "${GREEN}[PASS]${NC} Kueue Workload objects observed for private models: $MODEL_WORKLOAD_COUNT"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
@@ -142,9 +142,9 @@ else
   echo -e "${YELLOW}[WARN]${NC} model-registry-seed job status: ${SEED_JOB_STATUS}"
   VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
-check "Model registry contains gpt-oss-20b" \
+check "Model registry contains qwen3-6-35b-a3b" \
   "oc exec deployment/demo-registry -n rhoai-model-registries -- curl -sf http://localhost:8080/api/model_registry/v1alpha3/registered_models 2>/dev/null | python3 -c 'import json,sys; print(\"\\n\".join(item.get(\"name\", \"\") for item in json.load(sys.stdin).get(\"items\", [])))'" \
-  "gpt-oss-20b"
+  "qwen3-6-35b-a3b"
 check "Model registry contains nemotron-3-nano-30b-a3b" \
   "oc exec deployment/demo-registry -n rhoai-model-registries -- curl -sf http://localhost:8080/api/model_registry/v1alpha3/registered_models 2>/dev/null | python3 -c 'import json,sys; print(\"\\n\".join(item.get(\"name\", \"\") for item in json.load(sys.stdin).get(\"items\", [])))'" \
   "nemotron-3-nano-30b-a3b"

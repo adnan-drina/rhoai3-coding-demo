@@ -320,7 +320,7 @@ Stage 030 findings:
 - Improvement being applied: add a narrow Stage 030 NetworkPolicy that permits only pods labeled `app=model-registry-seed` to connect to the model registry API on port 8080.
 - The `LLMInferenceService` resources were created and scheduled on GPU nodes. They currently report `HTTPRouteReconcileError` until Stage 040 installs Red Hat Connectivity Link and the `AuthPolicy` CRD. Stage 030 validation treats model readiness as a warning because gateway governance is introduced in Stage 040.
 - Fix applied in commit `1042add`. Stage 030 re-synced successfully, and the `model-registry-seed` hook completed.
-- Final evidence for Stage 030: `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` were registered in the model registry. Both model pods were scheduled on GPU nodes and were in init/model-pull startup. Both `LLMInferenceService` resources reported `HTTPRouteReconcileError` because `AuthPolicy` is introduced by Stage 040.
+- Final evidence for Stage 030: `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` were registered in the model registry. Both model pods were scheduled on GPU nodes and were in init/model-pull startup. Both `LLMInferenceService` resources reported `HTTPRouteReconcileError` because `AuthPolicy` is introduced by Stage 040.
 - After Stage 040 installed RHCL and refreshed KServe discovery, Stage 030 re-validation passed with both local `LLMInferenceService` resources ready.
 
 Stage 040 findings:
@@ -419,7 +419,7 @@ Stage 030 evidence:
 - Both `LLMInferenceService` resources have `kueue.x-k8s.io/queue-name=private-model-serving`.
 - Kueue created two `Workload` objects for private model-serving pods, both admitted through `private-model-serving-gpu`.
 - The `private-model-serving` `LocalQueue` reported two admitted workloads and zero pending workloads.
-- `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` both reached `Ready=True`.
+- `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` both reached `Ready=True`.
 - Both private model-serving pods are `Running`, with all containers ready, on the two GPU nodes.
 
 Argo CD status after remediation:
@@ -454,7 +454,7 @@ Validation evidence:
 - Live validation after image pull, cold start, and probe remediation: `./stages/030-private-model-serving/validate.sh`: 30 passed, 0 warnings, 0 failed.
 - Both router-scheduler pods were created and running.
 - Both new model workloads were admitted by Kueue and assigned to GPU nodes.
-- Both `gpt-oss-20b` and `nemotron-3-nano-30b-a3b` are `Ready=True`, with model pods `2/2 Running`.
+- Both `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` are `Ready=True`, with model pods `2/2 Running`.
 - `PrometheusRule` `vllm-metrics-alias` exists in the `maas` namespace.
 - GPT-OSS briefly reached readiness and then restarted because the default liveness delay was too short for cold vLLM compilation after image pull. The manifests now set an explicit 600-second liveness initial delay for both private models.
 
@@ -478,7 +478,7 @@ Validation evidence:
 - NVIDIA `ClusterPolicy` returned to `Ready=True` and `state=ready`.
 - Stage 020 validation after operator readiness: 43 passed, 2 warnings, 0 failed. The two warnings are the existing raw Prometheus query warnings for GPU/Kueue metrics.
 - Kueue admitted both private model workloads through `private-model-serving-gpu`.
-- `nemotron-3-nano-30b-a3b` and `gpt-oss-20b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
+- `nemotron-3-nano-30b-a3b` and `qwen3-6-35b-a3b` both recovered to `Ready=True` after large model image pulls and vLLM cold start.
 - Stage 030 validation after resume: 30 passed, 0 warnings, 0 failed.
 
 ### 2026-05-02 Stage 040 GuideLLM load validation run
@@ -566,7 +566,7 @@ Actions:
 Validation evidence:
 
 - Stage 040 and Stage 050 both synced from commit `c071832` and reported `Synced` and `Healthy`.
-- Live `demo-models-subscription` contains `gpt-oss-20b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`, with all four token-limit statuses ready.
+- Live `demo-models-subscription` contains `qwen3-6-35b-a3b`, `nemotron-3-nano-30b-a3b`, `gpt-4o`, and `gpt-4o-mini`, with all four token-limit statuses ready.
 - `GENAI_PLAYGROUND_BFF_SMOKE_TEST=true GUIDELLM_EXTERNAL_SMOKE_TEST=false ./stages/050-approved-external-model-access/validate.sh` passed with 24 checks, 0 warnings, and 0 failures.
 - Recent Llama Stack logs show successful `POST /v1/responses` calls after the fix. The earlier `subscription ... does not include model` authorization error is no longer present in current validation.
 
@@ -648,7 +648,7 @@ oc get configmap -n maas -l app.kubernetes.io/name=guidellm-load-test
 Useful GuideLLM overrides:
 
 ```bash
-GUIDELLM_MODEL=gpt-oss-20b \
+GUIDELLM_MODEL=qwen3-6-35b-a3b \
 GUIDELLM_PROFILE=constant \
 GUIDELLM_RATE=1 \
 GUIDELLM_MAX_SECONDS=20 \

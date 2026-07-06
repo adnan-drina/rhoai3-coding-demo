@@ -125,7 +125,7 @@ check "DevWorkspace MaaS API key Secret exists" \
 for key_name in \
     MAAS_BASE_URL \
     MAAS_API_KEY_NEMOTRON \
-    MAAS_API_KEY_GPT_OSS \
+    MAAS_API_KEY_QWEN \
     MAAS_API_KEY_GPT_4O \
     MAAS_API_KEY_GPT_4O_MINI; do
     check "DevWorkspace MaaS Secret contains $key_name" \

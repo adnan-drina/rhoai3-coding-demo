@@ -109,8 +109,8 @@ else
 fi
 
 log_step "Local MaaS resources"
-check "MaaSModelRef gpt-oss-20b ready" \
-  "oc get maasmodelref gpt-oss-20b -n maas -o jsonpath='{.status.phase}'" \
+check "MaaSModelRef qwen3-6-35b-a3b ready" \
+  "oc get maasmodelref qwen3-6-35b-a3b -n maas -o jsonpath='{.status.phase}'" \
   "Ready"
 check "MaaSModelRef nemotron-3-nano-30b-a3b ready" \
   "oc get maasmodelref nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.phase}'" \
@@ -167,11 +167,11 @@ else
 fi
 
 log_step "Local model routing"
-check "Per-route AuthPolicy for gpt-oss-20b" \
-  "oc get authpolicy maas-auth-gpt-oss-20b -n maas -o jsonpath='{.metadata.name}'" \
-  "maas-auth-gpt-oss-20b"
-check "AuthPolicy for gpt-oss-20b enforced" \
-  "oc get authpolicy maas-auth-gpt-oss-20b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
+check "Per-route AuthPolicy for qwen3-6-35b-a3b" \
+  "oc get authpolicy maas-auth-qwen3-6-35b-a3b -n maas -o jsonpath='{.metadata.name}'" \
+  "maas-auth-qwen3-6-35b-a3b"
+check "AuthPolicy for qwen3-6-35b-a3b enforced" \
+  "oc get authpolicy maas-auth-qwen3-6-35b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
 check "Per-route AuthPolicy for nemotron-3-nano-30b-a3b" \
   "oc get authpolicy maas-auth-nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.metadata.name}'" \
@@ -179,14 +179,14 @@ check "Per-route AuthPolicy for nemotron-3-nano-30b-a3b" \
 check "AuthPolicy for nemotron-3-nano-30b-a3b enforced" \
   "oc get authpolicy maas-auth-nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Enforced\")].status}'" \
   "True"
-check "HTTPRoute for gpt-oss-20b accepted" \
-  "oc get httproute gpt-oss-20b-kserve-route -n maas -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
+check "HTTPRoute for qwen3-6-35b-a3b accepted" \
+  "oc get httproute qwen3-6-35b-a3b-kserve-route -n maas -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
 check "HTTPRoute for nemotron-3-nano-30b-a3b accepted" \
   "oc get httproute nemotron-3-nano-30b-a3b-kserve-route -n maas -o jsonpath='{.status.parents[*].conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
-check "TokenRateLimitPolicy for gpt-oss-20b accepted" \
-  "oc get tokenratelimitpolicy maas-trlp-gpt-oss-20b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
+check "TokenRateLimitPolicy for qwen3-6-35b-a3b accepted" \
+  "oc get tokenratelimitpolicy maas-trlp-qwen3-6-35b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
   "True"
 check "TokenRateLimitPolicy for nemotron-3-nano-30b-a3b accepted" \
   "oc get tokenratelimitpolicy maas-trlp-nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Accepted\")].status}'" \
