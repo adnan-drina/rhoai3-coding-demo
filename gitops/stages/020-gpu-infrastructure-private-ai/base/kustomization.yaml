@@ -1,10 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Stage 120: GPU-as-a-Service.
+# Stage 020: GPU-as-a-Service.
 # cert-manager is a prerequisite for the Red Hat build of Kueue operator. It is
 # already present on this cluster and OLM installs it automatically as a Kueue
-# dependency, so stage-120 verifies it rather than declaring a duplicate
+# dependency, so stage-020 verifies it rather than declaring a duplicate
 # OperatorGroup.
 resources:
   - rhoai-dsc/base

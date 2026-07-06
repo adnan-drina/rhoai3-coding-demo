@@ -1,4 +1,4 @@
-# Models-as-a-Service
+# Stage 040: Governed Models-as-a-Service
 
 ## Why This Matters
 
@@ -9,7 +9,7 @@ discovery, usage reporting, and consistent controls across local and external
 models.
 
 Models-as-a-Service (MaaS) adds that product layer. In this demo it turns the
-validated Nemotron endpoint from Stage 210 and an external OpenAI
+validated Nemotron endpoint from Stage 030 and an external OpenAI
 `gpt-4o-mini` provider model into managed AI assets that can be discovered,
 subscribed to, monitored, and consumed through OpenAI-compatible APIs.
 
@@ -31,7 +31,7 @@ subscribed to, monitored, and consumed through OpenAI-compatible APIs.
 
 ```mermaid
 flowchart LR
-  previous["Stage 210: vLLM baseline configuration"] --> maas["RHOAI MaaS"]
+  previous["Stage 030: vLLM baseline configuration"] --> maas["RHOAI MaaS"]
   openai["OpenAI gpt-4o-mini"] --> maas
   maas --> sub["MaaS subscriptions"]
   maas --> auth["MaaS auth policies"]
@@ -64,7 +64,7 @@ flowchart LR
 This stage is implemented in phases:
 
 1. Enable MaaS prerequisites and validate CRD/schema availability. cert-manager
-   is treated as a required platform prerequisite, not as a Stage 220-owned
+   is treated as a required platform prerequisite, not as a Stage 040-owned
    operator lifecycle resource.
 2. Add schema-validated external OpenAI `gpt-4o-mini` publication resources
    using the same MaaS resource name and upstream provider model ID,
@@ -92,28 +92,28 @@ would exhaust the interactive developer subscription budgets. This keeps
 governance enforced while sizing quota for the optimization workload.
 
 Serving-health monitoring rides on the same User Workload Monitoring pipeline
-that feeds the Stage 210 Grafana dashboards. A `vllm-serving-health`
+that feeds the Stage 030 Grafana dashboards. A `vllm-serving-health`
 PrometheusRule in `models-as-a-service` (recording rules for TTFT/ITL p95 and
 KV-cache utilization, plus alerts for high TTFT, request-queue backlog,
 KV-cache pressure, and a parked-model info alert) turns the `vllm:*` metrics
 into serving-capacity signals, and a `monitoring-rules-view` RoleBinding lets
 the demo user groups read those rules without cluster-admin. The signals match
-what the Stage 210 GuideLLM capacity benchmark measures, so the alert
+what the Stage 030 GuideLLM capacity benchmark measures, so the alert
 thresholds and the benchmark's breaking point tell the same story. These are
 conservative demo defaults, not a production SLA.
 
 The prerequisite, local Nemotron, external OpenAI, and model-policy resources
-use schemas observed on the current RHOAI 3.4 cluster. Stage 220 pins Red Hat
+use schemas observed on the current RHOAI 3.4 cluster. Stage 040 pins Red Hat
 Connectivity Link to `rhcl-operator.v1.3.4` with manual InstallPlan approval
 and also GitOps-manages the RHCL dependency Subscriptions for Authorino, DNS,
 and Limitador at their validated 1.3.x CSVs. This is a deliberate
 compatibility guard because the official RHCL 1.4 release notes deprecate
 RHCL 1.4.0 and direct upgrade customers to pin Connectivity Link and dependent
 operators to the latest 1.3.z release. The live MaaS API group is
-`maas.opendatahub.io/v1alpha1`; Stage 220 model publication and policy
+`maas.opendatahub.io/v1alpha1`; Stage 040 model publication and policy
 resources use that installed schema.
 
-Stage 220 intentionally does not patch generated Kuadrant `AuthPolicy` or
+Stage 040 intentionally does not patch generated Kuadrant `AuthPolicy` or
 EnvoyFilter resources. The implementation follows the documented MaaS/RHCL
 setup and leaves generated gateway behavior to supported RHOAI, RHCL,
 Kuadrant, and OpenShift Service Mesh versions.
@@ -140,11 +140,11 @@ flow.
 
 ## Demo
 
-![Stage 220 walkthrough](docs/assets/demos/stage-220/stage-220-demo.gif)
+![Stage 040 walkthrough](../../docs/assets/demos/stage-040/stage-040-demo.gif)
 
 | Screenshot | What it shows |
 |------------|---------------|
-| ![Playground](../docs/assets/demos/stage-220/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
-| ![Gateway](../docs/assets/demos/stage-220/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
-| ![HTTPRoutes](../docs/assets/demos/stage-220/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
-| ![AuthPolicy](../docs/assets/demos/stage-220/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |
+| ![Playground](../../docs/assets/demos/stage-040/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
+| ![Gateway](../../docs/assets/demos/stage-040/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
+| ![HTTPRoutes](../../docs/assets/demos/stage-040/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
+| ![AuthPolicy](../../docs/assets/demos/stage-040/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |

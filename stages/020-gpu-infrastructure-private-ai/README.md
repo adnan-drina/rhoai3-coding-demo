@@ -1,4 +1,4 @@
-# Stage 120: GPU-as-a-Service
+# Stage 020: GPU Infrastructure for Private AI
 
 **Theme:** AI Platform Foundation
 **Concept:** Make scarce GPU capacity available as a governed, self-service
@@ -31,7 +31,7 @@ GPU Reserved.
 
 ## What Enables It
 
-This stage builds the GPU-as-a-Service layer on top of the Stage 110 base
+This stage builds the GPU-as-a-Service layer on top of the Stage 010 base
 platform.
 
 ### GPU Worker Capacity
@@ -140,23 +140,23 @@ RHOAI Hardware Profiles -> CPU Default / GPU Shared / GPU Priority / GPU Reserve
 Data scientist selects governed capacity from the RHOAI dashboard
 ```
 
-Stage 210 uses this capacity to prove vLLM model serving with Nemotron and
-capture a lightweight serving baseline. Stage 220 exposes validated model
+Stage 030 uses this capacity to prove vLLM model serving with Nemotron and
+capture a lightweight serving baseline. Stage 040 exposes validated model
 access through Models-as-a-Service.
 
 ---
 
 ## Demo
 
-![Stage 120 walkthrough](docs/assets/demos/stage-120/stage-120-demo.gif)
+![Stage 020 walkthrough](../../docs/assets/demos/stage-020/stage-020-demo.gif)
 
 | Screenshot | What it shows |
 |------------|---------------|
-| ![Workbench form](../docs/assets/demos/stage-120/01-create-workbench-form.png) | Create workbench form with deployment size section |
-| ![Hardware profiles](../docs/assets/demos/stage-120/02-hardware-profiles-dropdown.png) | Hardware profile dropdown showing GPU options |
-| ![GPU selected](../docs/assets/demos/stage-120/03-gpu-shared-selected.png) | GPU Shared Time-Slicing profile selected |
-| ![MachineSet](../docs/assets/demos/stage-120/04-machineset-gpu-node.png) | GPU MachineSet managing the g5.2xlarge node |
-| ![Kueue](../docs/assets/demos/stage-120/05-kueue-clusterqueues.png) | Kueue ClusterQueues for GPU quota management |
+| ![Workbench form](../../docs/assets/demos/stage-020/01-create-workbench-form.png) | Create workbench form with deployment size section |
+| ![Hardware profiles](../../docs/assets/demos/stage-020/02-hardware-profiles-dropdown.png) | Hardware profile dropdown showing GPU options |
+| ![GPU selected](../../docs/assets/demos/stage-020/03-gpu-shared-selected.png) | GPU Shared Time-Slicing profile selected |
+| ![MachineSet](../../docs/assets/demos/stage-020/04-machineset-gpu-node.png) | GPU MachineSet managing the g5.2xlarge node |
+| ![Kueue](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png) | Kueue ClusterQueues for GPU quota management |
 
 ---
 

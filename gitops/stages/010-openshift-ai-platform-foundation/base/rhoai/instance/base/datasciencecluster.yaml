@@ -13,7 +13,7 @@ metadata:
   name: default-dsc
 spec:
   components:
-    # ---- Base platform (stage-110) ----
+    # ---- Base platform (stage-010) ----
     dashboard:
       managementState: Managed
     workbenches:
@@ -23,9 +23,9 @@ spec:
       managementState: Managed
       registriesNamespace: rhoai-model-registries
 
-    # ---- Shared workload management integration (used by stage-120) ----
+    # ---- Shared workload management integration (used by stage-020) ----
     kueue:
-      # Stage 120 enables the standalone Red Hat build of Kueue integration.
+      # Stage 020 enables the standalone Red Hat build of Kueue integration.
       managementState: Removed
 
     # ---- Deferred to future stages via DSC patches ----

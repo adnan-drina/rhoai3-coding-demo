@@ -1,4 +1,4 @@
-# Stage 110: RHOAI Base Platform
+# Stage 010: OpenShift AI Platform Foundation
 
 **Theme:** AI Platform Foundation  
 **Concept:** A production-ready, GitOps-managed Private AI platform on OpenShift, with S3-compatible object storage, ready for GenAI and MLOps workloads.
@@ -43,7 +43,7 @@ MCG-only deployment provides S3-compatible object storage for RHOAI workloads. T
 
 ### OpenShift Observability Prerequisites
 
-The RHOAI observability dashboard is a Technology Preview capability. The RHOAI documentation enables it in two steps: first install the required OpenShift observability operators and configure `DSCInitialization.spec.monitoring` with metrics and traces, then expose the dashboard menu through `OdhDashboardConfig`. Stage 110 installs the prerequisite operators and configures a small demo stack so the dashboard is backed by real monitoring services instead of a visible but unavailable menu.
+The RHOAI observability dashboard is a Technology Preview capability. The RHOAI documentation enables it in two steps: first install the required OpenShift observability operators and configure `DSCInitialization.spec.monitoring` with metrics and traces, then expose the dashboard menu through `OdhDashboardConfig`. Stage 010 installs the prerequisite operators and configures a small demo stack so the dashboard is backed by real monitoring services instead of a visible but unavailable menu.
 
 - **Operator:** Cluster Observability Operator (`openshift-cluster-observability-operator`)
 - **Operator:** Red Hat build of OpenTelemetry (`openshift-opentelemetry-operator`)
@@ -58,7 +58,7 @@ The RHOAI observability dashboard is a Technology Preview capability. The RHOAI 
 - **RHOAI stack namespace:** `redhat-ods-monitoring`
 - **Metrics:** one Prometheus replica with 5Gi storage and 90-day retention
 - **Traces:** Tempo with PV-backed storage and 10% sampling
-- **Compatibility:** Stage 110 mirrors the service-ca `ConfigMap` into the
+- **Compatibility:** Stage 010 mirrors the service-ca `ConfigMap` into the
   `Secret` expected by the generated `MonitoringStack`, opens the Perses
   backend only to the installed Perses operator namespace, and grants
   `rhods-admins` the narrow Perses/Prometheus API permissions required by the
@@ -69,7 +69,7 @@ The RHOAI observability dashboard is a Technology Preview capability. The RHOAI 
 
 ### Red Hat OpenShift AI Self-Managed
 
-The RHOAI operator installs the AI platform control plane. `DSCInitialization` configures shared namespaces and the observability stack after the prerequisite observability operators are present. `DataScienceCluster` enables the Dashboard and Workbenches for interactive exploration, plus the Model Registry as the governed metadata store between experimentation and serving. Stage 110 creates the shared `DataScienceCluster` in a base-ready state. Later stages enable their own RHOAI component deltas through GitOps hook jobs so a fresh environment can validate one stage at a time.
+The RHOAI operator installs the AI platform control plane. `DSCInitialization` configures shared namespaces and the observability stack after the prerequisite observability operators are present. `DataScienceCluster` enables the Dashboard and Workbenches for interactive exploration, plus the Model Registry as the governed metadata store between experimentation and serving. Stage 010 creates the shared `DataScienceCluster` in a base-ready state. Later stages enable their own RHOAI component deltas through GitOps hook jobs so a fresh environment can validate one stage at a time.
 
 - **Operator:** Red Hat OpenShift AI Self-Managed (`redhat-ods-operator` namespace)
 - **Channel:** `stable-3.4`
@@ -144,7 +144,7 @@ Created imperatively (secret-bearing)
   demo-sandbox-s3 connection secret (from OBC)
 
 Extended by later stages
-  DataScienceCluster components via the shared Stage 110 owner (kserve, ray ...)
+  DataScienceCluster components via the shared Stage 010 owner (kserve, ray ...)
   ObjectBucketClaims per workload namespace
 ```
 
@@ -152,16 +152,16 @@ Extended by later stages
 
 ## Demo
 
-![Stage 110 walkthrough](docs/assets/demos/stage-110/stage-110-demo.gif)
+![Stage 010 walkthrough](../../docs/assets/demos/stage-010/stage-010-demo.gif)
 
 | Screenshot | What it shows |
 |------------|---------------|
-| ![Login](../docs/assets/demos/stage-110/01-login-identity-providers.png) | OpenShift login with htpasswd identity providers (ai-developer, ai-admin) |
-| ![Dashboard](../docs/assets/demos/stage-110/02-dashboard-home.png) | RHOAI Dashboard home after first login |
-| ![Project](../docs/assets/demos/stage-110/03-demo-sandbox-project.png) | Demo Sandbox data science project overview |
-| ![Connections](../docs/assets/demos/stage-110/04-connections-tab.png) | S3 object storage connection (OBC-sourced) |
-| ![Model Registry](../docs/assets/demos/stage-110/05-model-registry.png) | AI Hub Models catalog with validated models |
-| ![Argo CD](../docs/assets/demos/stage-110/06-argocd-applications.png) | Argo CD applications managing GitOps state |
+| ![Login](../../docs/assets/demos/stage-010/01-login-identity-providers.png) | OpenShift login with htpasswd identity providers (ai-developer, ai-admin) |
+| ![Dashboard](../../docs/assets/demos/stage-010/02-dashboard-home.png) | RHOAI Dashboard home after first login |
+| ![Project](../../docs/assets/demos/stage-010/03-demo-sandbox-project.png) | Demo Sandbox data science project overview |
+| ![Connections](../../docs/assets/demos/stage-010/04-connections-tab.png) | S3 object storage connection (OBC-sourced) |
+| ![Model Registry](../../docs/assets/demos/stage-010/05-model-registry.png) | AI Hub Models catalog with validated models |
+| ![Argo CD](../../docs/assets/demos/stage-010/06-argocd-applications.png) | Argo CD applications managing GitOps state |
 
 ---
 

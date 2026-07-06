@@ -90,7 +90,7 @@ echo "✓ AppProject rhoai-demo created"
 
 # ── Step 4: Patch Application with repo URL and branch from .env ──────────────
 echo ""
-echo "── Step 4: Applying stage-110 Argo CD Application ──"
+echo "── Step 4: Applying stage-010 Argo CD Application ──"
 
 GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}"
 GIT_REPO_BRANCH="${GIT_REPO_BRANCH:-main}"

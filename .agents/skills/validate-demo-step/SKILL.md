@@ -61,9 +61,9 @@ kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
 | 040 | `./stages/040-governed-models-as-a-service/validate.sh` | MaaS API, local model refs, gateway, governance |
 | 050 | `./stages/050-approved-external-model-access/validate.sh` | ExternalModel resources and external subscriptions |
 | 060 | `./stages/060-mcp-context-integrations/validate.sh` | MCP server registrations and credential-gated runtimes |
-| 070 | `./stages/070-controlled-developer-workspaces/validate.sh` | Dev Spaces operator, workspaces, coding tools |
-| 080 | `./stages/080-ai-assisted-application-modernization/validate.sh` | MTA operator, Tackle, Developer Lightspeed |
-| 090 | `./stages/090-developer-portal-self-service/validate.sh` | RHDH operator, Backstage CR, catalog |
+| 070 | `./stages/050-controlled-developer-workspaces/validate.sh` | Dev Spaces operator, workspaces, coding tools |
+| 080 | `./stages/060-ai-assisted-application-modernization/validate.sh` | MTA operator, Tackle, Developer Lightspeed |
+| 090 | `./stages/070-developer-portal-self-service/validate.sh` | RHDH operator, Backstage CR, catalog |
 
 ### Phase 3: Cross-stage verification
 

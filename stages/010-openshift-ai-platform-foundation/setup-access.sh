@@ -97,7 +97,7 @@ for _ in $(seq 1 24); do
 done
 if [[ "${PHASE:-}" != "Bound" ]]; then
   echo "ERROR: OBC demo-sandbox-bucket is not Bound (phase=${PHASE:-missing})." >&2
-  echo "       Ensure the stage-110 Argo CD Application has synced the access tree." >&2
+  echo "       Ensure the stage-010 Argo CD Application has synced the access tree." >&2
   exit 1
 fi
 

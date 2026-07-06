@@ -28,7 +28,7 @@ Kubernetes `Job` manually unless the script itself is being debugged.
 - Confirm `oc whoami` succeeds against the intended OpenShift cluster.
 - Confirm Stage 040 is deployed and the MaaS Gateway hostname is not a placeholder.
 - Confirm the target model is ready through MaaS.
-- Confirm a MaaS API key is available through `GUIDELLM_API_KEY`, `MAAS_API_KEY`, or the `kai-api-keys` Secret created by Stage 080.
+- Confirm a MaaS API key is available through `GUIDELLM_API_KEY`, `MAAS_API_KEY`, or the `kai-api-keys` Secret created by Stage 060.
 
 Never print, summarize, or store API key values. The wrapper creates a temporary
 in-cluster Secret, deletes it on exit, and stores only a safe console summary in

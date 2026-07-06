@@ -24,12 +24,12 @@ description: >-
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle)
 - **Workspaces**: 3 DevWorkspace CRs in each `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` namespace: `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore`
 - **Cloned repos**:
-  - `https://github.com/adnan-drina/getting-started-ai-coding.git` — Stage 100 onboarding and MaaS checks
+  - `https://github.com/adnan-drina/getting-started-ai-coding.git` — Stage 080 onboarding and MaaS checks
   - `https://github.com/adnan-drina/coolstore-inventory-service.git` — deferred engineering workflows
   - `https://github.com/rhpds/mca-coolstore.git` — modernization workflow
 - **Extensions**: Continue 1.3.38 via `DEFAULT_EXTENSIONS` in all workspaces; MTA 8.1.2 (pack + core + java) via `DEFAULT_EXTENSIONS` only in `mca-coolstore`
-- **GitOps**: Managed by ArgoCD `070-controlled-developer-workspaces` Application with `Replace=true` sync option
-- **Manifest**: `gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
+- **GitOps**: Managed by ArgoCD `050-controlled-developer-workspaces` Application with `Replace=true` sync option
+- **Manifest**: `gitops/stages/050-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
 
 ## Key Behaviors Learned
 
@@ -122,15 +122,15 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 
 ```bash
 NS=wksp-ai-developer
-oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=json \
+oc patch application 050-controlled-developer-workspaces -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace getting-started-ai-coding -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
 oc delete devworkspace getting-started-ai-coding -n $NS --force --grace-period=0
 oc delete pvc --all -n $NS --force --grace-period=0
 sleep 5
-oc apply -f gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml
-oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=merge \
+oc apply -f gitops/stages/050-controlled-developer-workspaces/base/devspaces/workspaces.yaml
+oc patch application 050-controlled-developer-workspaces -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```
 

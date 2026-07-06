@@ -66,7 +66,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Deferred Developer Workflow Topics
 
-- [ ] **Stage 110 merged into Stage 100; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 100 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
+- [ ] **Stage 110 merged into Stage 080; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 080 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
 
   Deferred scope to revisit:
 
@@ -99,7 +99,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 ## Planned
 
 - [ ] **GPUaaS metrics validation pass** — Confirm the final Prometheus metric names and proxy query path for the GPUaaS dashboard. Stage 020 currently validates dashboard resources and warns on raw metric query failures.
-- [ ] **Red Hat UDI-based AI tools image** — Build and publish a Red Hat OpenShift Dev Spaces UDI-derived `ai-tools` image with OpenCode, Continue support tooling, OpenShift CLI tooling, Java 21 as the default Maven runtime, and demo-required MCP/client utilities. Replace the current digest-pinned `quay.io/che-incubator/cli-ai-tools` workspace image once the UDI-based image is built, scanned, documented, and validated in fresh Dev Spaces workspaces. Until then, Stage 070 configures Java 21 during workspace startup so the Quarkus prompt does not carry Java-selection workaround commands.
+- [ ] **Red Hat UDI-based AI tools image** — Build and publish a Red Hat OpenShift Dev Spaces UDI-derived `ai-tools` image with OpenCode, Continue support tooling, OpenShift CLI tooling, Java 21 as the default Maven runtime, and demo-required MCP/client utilities. Replace the current digest-pinned `quay.io/che-incubator/cli-ai-tools` workspace image once the UDI-based image is built, scanned, documented, and validated in fresh Dev Spaces workspaces. Until then, Stage 050 configures Java 21 during workspace startup so the Quarkus prompt does not carry Java-selection workaround commands.
 - [ ] **OpenShift MCP — scoped RBAC per persona** — The OpenShift MCP ServiceAccount currently has cluster-wide `view` ClusterRole. Explore namespace-scoped RoleBindings.
 - [x] **Red Hat-aligned observability path** — Active GitOps installs the Red Hat observability prerequisites and configures the product MaaS observability path instead of the historical community Grafana add-on.
 - [ ] **Multi-cluster support** — Parameterize cluster-specific values via overlay.
@@ -125,7 +125,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] ~~**ExternalModel support on the older workaround path** — Deployed upstream `maas-controller` alongside Red Hat OpenShift AI 3.3 operator. 2 OpenAI models (gpt-4o, gpt-4o-mini) registered as `ExternalModel` CRDs. Historical context only; not the current RHOAI 3.4 target architecture.~~
 - [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs lived under `gitops/stages/040-governed-models-as-a-service/base/` during the older workaround period. Historical context only.~~
 - [x] ~~**Red Hat OpenShift AI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary did not implement model discovery from Kubernetes resources. Historical context only; do not use this EA2 result as a current 3.4 GA design decision.~~
-- [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 090 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~
+- [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 070 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~
 
 
 ## Post-migration documentation rewrite

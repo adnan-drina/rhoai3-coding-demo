@@ -36,7 +36,7 @@ sed \
   "$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml" \
   > "$APP_MANIFEST"
 
-echo "── Applying stage-120 Argo CD Application ──"
+echo "── Applying stage-020 Argo CD Application ──"
 oc apply -f "$APP_MANIFEST" --insecure-skip-tls-verify=true
 rm -f "$APP_MANIFEST"
 

@@ -112,7 +112,7 @@ RUN_ID="$(date -u +%Y%m%d%H%M%S)"
 JOB_NAME="guidellm-${GUIDELLM_PROFILE}-${RUN_ID}"
 PVC_NAME="guidellm-results-${RUN_ID}"
 COPY_JOB="guidellm-copy-${RUN_ID}"
-RESULTS_DIR="${ROOT_DIR}/runs/stage-210-guidellm/${RUN_ID}"
+RESULTS_DIR="${ROOT_DIR}/runs/stage-030-guidellm/${RUN_ID}"
 
 mkdir -p "$RESULTS_DIR"
 

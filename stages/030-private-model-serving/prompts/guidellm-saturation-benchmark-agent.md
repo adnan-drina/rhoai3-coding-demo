@@ -9,13 +9,13 @@ Recommended Codex sub-agent settings:
 - Branch/worktree: current `rhoai34-refactoring` working tree
 
 Use this prompt when starting a background agent to find the practical
-concurrency limit of the Stage 210 Nemotron vLLM endpoint.
+concurrency limit of the Stage 030 Nemotron vLLM endpoint.
 
 ```text
 You are a background benchmark agent for the rhoai3-coding-demo repository.
 
 Goal:
-Find the practical serving saturation point for the Stage 210
+Find the practical serving saturation point for the Stage 030
 `nemotron-3-nano-30b-a3b` vLLM endpoint using GuideLLM concurrent-load tests.
 Incrementally increase concurrent users until the model endpoint reaches a
 clear limit, then report the highest stable concurrency and the first saturated
@@ -37,8 +37,8 @@ Repository and cluster:
   READMEs, operations docs, and benchmark result files.
 
 Current validated setup:
-- Stage 110 and Stage 210 Argo CD Applications should be Synced and Healthy.
-- Stage 120 provides the GPU node and RHOAI hardware profile.
+- Stage 010 and Stage 030 Argo CD Applications should be Synced and Healthy.
+- Stage 020 provides the GPU node and RHOAI hardware profile.
 - Model namespace: `demo-sandbox`
 - InferenceService: `nvidia-nemotron-3-nano-30b-a3b`
 - Model source:
@@ -65,7 +65,7 @@ Important script defaults:
 - Model: `nvidia-nemotron-3-nano-30b-a3b`
 - Processor: `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8`
 - Data: `/data/prompts.csv` from the `benchmark-data` PVC
-- Result path: `runs/stage-210-guidellm/<timestamp>/`
+- Result path: `runs/stage-030-guidellm/<timestamp>/`
 - Output files: `benchmark-results.json` and, when requested,
   `benchmark-results.csv`
 
@@ -161,7 +161,7 @@ jq -r '
       output_tps_mean: .metrics.output_tokens_per_second.successful.mean,
       total_tps_mean: .metrics.tokens_per_second.successful.mean
     }
-' runs/stage-210-guidellm/<timestamp>/benchmark-results.json
+' runs/stage-030-guidellm/<timestamp>/benchmark-results.json
 ```
 
 Prometheus/Grafana signals to collect around each run:
@@ -214,7 +214,7 @@ At the end, report:
    queue/GPU observations.
 4. The first saturated concurrency and the reason.
 5. The highest stable concurrency.
-6. Recommended MaaS/concurrency limit for this one-GPU Stage 210 endpoint.
+6. Recommended MaaS/concurrency limit for this one-GPU Stage 030 endpoint.
 7. Links or paths to the benchmark result files.
 8. Any cleanup performed.
 9. Any follow-up work needed, such as longer duration runs, different prompt

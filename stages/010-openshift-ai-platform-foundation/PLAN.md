@@ -1,4 +1,4 @@
-# Stage 110: RHOAI Base Platform — Plan
+# Stage 010: OpenShift AI Platform Foundation — Plan
 
 ## Intent
 
@@ -17,7 +17,7 @@
   - RHOAI model serving, Ray, pipelines, TrustyAI (all deferred)
 - Included access layer (added after initial deploy): htpasswd IdP (`ai-admin`, `ai-developer`), `demo-sandbox` data science project, Contributor RBAC, and an OBC-backed S3 connection. Model registry is enabled in the base DSC.
 
-**Scope note:** Stage 110 owns shared platform resources that later stages depend on, including the single rendered `DataScienceCluster`. Later stages must not render competing copies of shared platform resources.
+**Scope note:** Stage 010 owns shared platform resources that later stages depend on, including the single rendered `DataScienceCluster`. Later stages must not render competing copies of shared platform resources.
 
 ## Acceptance Criteria
 
@@ -79,7 +79,7 @@
   - ODF operator must be `Succeeded` before the MCG `StorageCluster` is applied (handled by `SkipDryRunOnMissingResource=true` + retry)
   - Cluster Observability Operator, Red Hat build of OpenTelemetry, and Tempo Operator must be installed before the RHOAI observability stack can materialize
   - Cluster Observability Operator is held at `cluster-observability-operator.v1.4.0` through OLM `startingCSV` and manual approval automation; operand images, copied CSVs, and generated Perses resources remain operator-managed
-  - `redhat-ods-monitoring` is GitOps-managed before Stage 110 creates the
+  - `redhat-ods-monitoring` is GitOps-managed before Stage 010 creates the
     service-ca Secret sync hook and Perses dashboard access resources
   - The `prometheus-web-tls-ca` sync hook waits for the service-ca injected
     ConfigMap, then creates the Secret referenced by the generated
@@ -127,7 +127,7 @@
   1. Wait for `openshift-gitops-operator` CSV to be `Succeeded`
   2. Wait for `openshift-gitops` ArgoCD instance to become Available
   3. `oc apply -k gitops/bootstrap/overlays/demo` (resource tracking patch + AppProject)
-  4. Apply the stage-110 Application to ArgoCD
+  4. Apply the stage-010 Application to ArgoCD
   5. Report ArgoCD Application sync URL to console
 
 ### `validate.sh`
@@ -161,9 +161,9 @@
 | ODF StorageSystem MCG-only CR fields | resolved | ODF 4.20 removed the `odf.openshift.io` StorageSystem CRD; replaced with `StorageCluster` (`ocs.openshift.io/v1`) + `multiCloudGateway.reconcileStrategy: standalone`, verified against live CRD |
 | GPU-as-a-Service | implemented separately | Stage `020-gpu-infrastructure-private-ai` (NFD + GPU Operator + AWS GPU MachineSet + Kueue queues + hardware profiles) |
 | Identity provider / access groups | deferred | Future stage in 1xx family |
-| RHOAI component enablement (kueue, kserve, MaaS, ray, etc.) | deferred | Each component added by its dedicated stage through a GitOps hook patch; Stage 110 ignores those DSC component fields to avoid self-healing later-stage state |
+| RHOAI component enablement (kueue, kserve, MaaS, ray, etc.) | deferred | Each component added by its dedicated stage through a GitOps hook patch; Stage 010 ignores those DSC component fields to avoid self-healing later-stage state |
 | ODF full StorageCluster | deferred | Added only if a future stage needs block/file storage |
-| RHOAI observability dashboard backing stack | resolved with compatibility hold | Stage 110 installs Cluster Observability Operator at `cluster-observability-operator.v1.4.0`, Red Hat build of OpenTelemetry, and Tempo Operator before enabling DSCI monitoring and the dashboard flag. COO operand images remain operator-managed; do not patch generated Perses resources, generated datasources, copied CSVs, or operator-created Deployments. |
+| RHOAI observability dashboard backing stack | resolved with compatibility hold | Stage 010 installs Cluster Observability Operator at `cluster-observability-operator.v1.4.0`, Red Hat build of OpenTelemetry, and Tempo Operator before enabling DSCI monitoring and the dashboard flag. COO operand images remain operator-managed; do not patch generated Perses resources, generated datasources, copied CSVs, or operator-created Deployments. |
 
 ## Review Log
 

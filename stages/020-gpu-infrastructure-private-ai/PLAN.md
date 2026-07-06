@@ -1,4 +1,4 @@
-# Stage 120: GPU-as-a-Service - Plan
+# Stage 020: GPU-as-a-Service - Plan
 
 ## Intent
 
@@ -14,13 +14,13 @@
 - Depends on: `010-openshift-ai-platform-foundation`
 - New components: Red Hat build of Kueue operator, NFD operator, NVIDIA GPU
   Operator, AWS GPU MachineSet, Kueue quota objects, RHOAI hardware profiles.
-- Existing shared components touched: Stage 120 patches the shared
+- Existing shared components touched: Stage 020 patches the shared
   `DataScienceCluster` to `kueue.managementState: Unmanaged` so RHOAI
   integrates with the standalone Kueue operator.
 - Non-goals:
   - model serving or KServe enablement; deferred to
     `030-private-model-serving`
-  - GuideLLM or performance benchmarking; deferred to the Stage 210 serving
+  - GuideLLM or performance benchmarking; deferred to the Stage 030 serving
     baseline work after endpoint readiness is repeatable
   - Models-as-a-Service governance; deferred to
     `040-governed-models-as-a-service`
@@ -41,7 +41,7 @@ The committed MachineSet is specific to the current `cluster-klvxt` AWS
 environment because MachineSet provider configuration includes cluster ID, AMI,
 subnet, security group, IAM profile, region, and zone values. A fresh demo
 environment must regenerate this manifest from a live worker MachineSet before
-Stage 120 is deployed.
+Stage 020 is deployed.
 
 Use `generate-gpu-machineset.sh` to create the replacement manifest from the
 guarded target cluster. The script preserves provider-specific AWS fields from
@@ -78,7 +78,7 @@ stage demonstrates governed admission and reservation, not preemption.
 - [ ] NFD, NVIDIA GPU Operator, and Kueue operator CSVs are `Succeeded`.
 - [ ] NVIDIA `ClusterPolicy` reports `ready`.
 - [ ] Shared `DataScienceCluster` has `kueue: Unmanaged`; `kserve`
-  is `Removed` before Stage 210 and may become `Managed` after Stage 210.
+  is `Removed` before Stage 030 and may become `Managed` after Stage 030.
 - [ ] Four ClusterQueues and four LocalQueues are `Active`.
 - [ ] Four RHOAI hardware profiles exist and are visible to users.
 - [ ] Deploy and validate scripts pass against the guarded cluster.
@@ -124,7 +124,7 @@ stage demonstrates governed admission and reservation, not preemption.
   - Kueue ResourceFlavor, ClusterQueue, LocalQueue, WorkloadPriorityClass
   - RHOAI HardwareProfile resources
 - Shared resources:
-  - Stage 110 creates the single `DataScienceCluster`; Stage 120 patches only
+  - Stage 010 creates the single `DataScienceCluster`; Stage 020 patches only
     the Kueue component field through a GitOps hook and does not render a
     competing DSC.
 - Intentional drift:
@@ -168,7 +168,7 @@ stage demonstrates governed admission and reservation, not preemption.
 
 ## Operations And Troubleshooting
 
-- `docs/OPERATIONS.md`: Stage 120 deploy, validate, manual scale-down, and fresh
+- `docs/OPERATIONS.md`: Stage 020 deploy, validate, manual scale-down, and fresh
   environment MachineSet regeneration guidance.
 - `docs/TROUBLESHOOTING.md`: GPU MachineSet, quota, ClusterPolicy, Kueue, and
   hardware-profile failure patterns.
@@ -180,8 +180,8 @@ stage demonstrates governed admission and reservation, not preemption.
 | AWS GPU quota for `g6e` | risk | Provisioning fails if the sandbox lacks quota; verify before scale-up |
 | GPU cost | risk | One `g6e.2xlarge` runs continuously unless manually scaled to zero |
 | MachineSet portability | expected | Regenerate from a live worker MachineSet in each fresh environment |
-| Kueue preemption | deferred | Stage 120 is non-preemptive; later stages can test suspendable jobs |
-| model serving | deferred | Stage 210 will enable KServe/vLLM and ensure the Nemotron endpoint is ready |
+| Kueue preemption | deferred | Stage 020 is non-preemptive; later stages can test suspendable jobs |
+| model serving | deferred | Stage 030 will enable KServe/vLLM and ensure the Nemotron endpoint is ready |
 
 ## Review Log
 
@@ -194,5 +194,5 @@ stage demonstrates governed admission and reservation, not preemption.
 - Live validation: PASSED 2026-06-12 — `020-gpu-infrastructure-private-ai/validate.sh`
   23/23 after validator fix commit `c1a2a66`.
 - Regression validation: PASSED 2026-06-12 — `validate.sh` 23/23 after
-  Stage 210 changed KServe from `Removed` to `Managed` through the shared
-  Stage 110 `DataScienceCluster` owner.
+  Stage 030 changed KServe from `Removed` to `Managed` through the shared
+  Stage 010 `DataScienceCluster` owner.

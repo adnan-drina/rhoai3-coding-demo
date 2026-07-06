@@ -7,7 +7,7 @@ metadata:
     # appears in the dashboard project list.
     opendatahub.io/dashboard: "true"
     kubernetes.io/metadata.name: demo-sandbox
-    # Enables Kueue queue enforcement (stage-120): workloads must carry a
+    # Enables Kueue queue enforcement (stage-020): workloads must carry a
     # kueue.x-k8s.io/queue-name label, applied automatically by Kueue-enabled
     # hardware profiles.
     kueue.openshift.io/managed: "true"

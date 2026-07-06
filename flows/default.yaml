@@ -54,38 +54,38 @@ stages:
     gitopsPath: gitops/stages/040-governed-models-as-a-service/base
     dependsOn:
       - "030"
-  - id: "070"
+  - id: "050"
     name: Controlled Developer Workspaces
     productFocus:
       - Red Hat OpenShift Dev Spaces
       - Continue
       - OpenCode
-    deployScript: stages/070-controlled-developer-workspaces/deploy.sh
-    validateScript: stages/070-controlled-developer-workspaces/validate.sh
-    gitopsApplication: 070-controlled-developer-workspaces
-    gitopsPath: gitops/stages/070-controlled-developer-workspaces/base
+    deployScript: stages/050-controlled-developer-workspaces/deploy.sh
+    validateScript: stages/050-controlled-developer-workspaces/validate.sh
+    gitopsApplication: 050-controlled-developer-workspaces
+    gitopsPath: gitops/stages/050-controlled-developer-workspaces/base
     dependsOn:
       - "040"
-  - id: "080"
+  - id: "060"
     name: AI-Assisted Application Modernization
     productFocus:
       - Migration Toolkit for Applications
       - Red Hat Developer Lightspeed for MTA
-    deployScript: stages/080-ai-assisted-application-modernization/deploy.sh
-    validateScript: stages/080-ai-assisted-application-modernization/validate.sh
-    gitopsApplication: 080-ai-assisted-application-modernization
-    gitopsPath: gitops/stages/080-ai-assisted-application-modernization/base
+    deployScript: stages/060-ai-assisted-application-modernization/deploy.sh
+    validateScript: stages/060-ai-assisted-application-modernization/validate.sh
+    gitopsApplication: 060-ai-assisted-application-modernization
+    gitopsPath: gitops/stages/060-ai-assisted-application-modernization/base
     dependsOn:
-      - "070"
-  - id: "090"
+      - "050"
+  - id: "070"
     name: Developer Portal and Self-Service
     productFocus:
       - Red Hat Advanced Developer Suite
       - Red Hat Developer Hub
       - Developer Lightspeed for Red Hat Developer Hub
-    deployScript: stages/090-developer-portal-self-service/deploy.sh
-    validateScript: stages/090-developer-portal-self-service/validate.sh
-    gitopsApplication: 090-developer-portal-self-service
-    gitopsPath: gitops/stages/090-developer-portal-self-service/base
+    deployScript: stages/070-developer-portal-self-service/deploy.sh
+    validateScript: stages/070-developer-portal-self-service/validate.sh
+    gitopsApplication: 070-developer-portal-self-service
+    gitopsPath: gitops/stages/070-developer-portal-self-service/base
     dependsOn:
-      - "080"
+      - "060"

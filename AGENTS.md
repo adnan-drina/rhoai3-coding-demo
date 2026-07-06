@@ -48,8 +48,8 @@ Important paths:
 
 The workshop has two parts:
 
-- Stages 010-090 build the trusted AI development platform for platform engineers.
-- Stages 100 and later show enterprise developer workflows that consume that platform.
+- Stages 010-070 build the trusted AI development platform for platform engineers.
+- Stages 080 and later show enterprise developer workflows that consume that platform.
 
 Current implemented stages:
 
@@ -57,15 +57,16 @@ Current implemented stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 070 Controlled Developer Workspaces
-6. 080 AI-Assisted Application Modernization
-7. 090 Developer Portal and Self-Service
-8. 100 Governed Vibe Coding With Continue
+5. 050 Controlled Developer Workspaces
+6. 060 AI-Assisted Application Modernization
+7. 070 Developer Portal and Self-Service
+8. 080 Governed Vibe Coding With Continue
 
-Former stages 050 (external models) and 060 (MCP context) are folded into
-stage 040, which imports the validated rhoai3-demo foundation.
+The stages renumbered when stage 040 absorbed the former external-model and
+MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became
+050/060/070/080.
 
-Developer workflow stages after 100 are deferred until each has a concrete
+Developer workflow stages after 080 are deferred until each has a concrete
 implementation plan and validation path.
 
 When changing one stage, check whether related changes are also needed in:
@@ -211,15 +212,15 @@ bash -n stages/*/*.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/070-controlled-developer-workspaces/validate.sh
-./stages/080-ai-assisted-application-modernization/validate.sh
-./stages/090-developer-portal-self-service/validate.sh
+./stages/050-controlled-developer-workspaces/validate.sh
+./stages/060-ai-assisted-application-modernization/validate.sh
+./stages/070-developer-portal-self-service/validate.sh
 ```
 
-Stage 100 currently consumes Stage 070 Dev Spaces and Stage 090 Developer Hub
+Stage 080 currently consumes Stage 050 Dev Spaces and Stage 070 Developer Hub
 assets. It does not have a standalone deploy or validate script; validate its
 documentation changes with `./scripts/validate-stage-flow.sh` and any specific
-commands documented in the Stage 100 README when a live workspace and cluster
+commands documented in the Stage 080 README when a live workspace and cluster
 are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:

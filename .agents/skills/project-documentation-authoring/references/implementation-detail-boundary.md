@@ -54,8 +54,8 @@ When a value is a default with no special rationale, omit the explanation.
 
 When a resource in this stage serves a downstream stage, document it:
 
-- "`rhoai-maas` gateway provides governed API endpoints consumed by Stage 070
-  developer workspaces and Stage 080 MTA"
+- "`rhoai-maas` gateway provides governed API endpoints consumed by Stage 050
+  developer workspaces and Stage 060 MTA"
 - "`gpu-pool` Kueue ClusterQueue is shared by Stage 030 private model serving"
 
 This prevents the downstream README from being the only place the dependency

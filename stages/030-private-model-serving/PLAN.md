@@ -1,4 +1,4 @@
-# Stage 210: Model Serving Baseline with vLLM Plan
+# Stage 030: Model Serving Baseline with vLLM Plan
 
 ## Intent
 
@@ -16,8 +16,8 @@
   `demo-registry` and Nemotron metadata readiness, a deployment path for
   `nemotron-3-nano-30b-a3b`, user workload monitoring, a GitOps-managed
   Grafana dashboard, and an on-demand GuideLLM benchmark runner.
-- Existing components reused: Stage 110 OpenShift GitOps, RHOAI Dashboard,
-  `demo-sandbox`, ODF MCG, Model Registry, and Stage 120 GPU hardware
+- Existing components reused: Stage 010 OpenShift GitOps, RHOAI Dashboard,
+  `demo-sandbox`, ODF MCG, Model Registry, and Stage 020 GPU hardware
   profiles.
 - Non-goals:
   - MaaS governance, subscriptions, quotas, external OpenAI model registration,
@@ -38,9 +38,9 @@
   official docs and verified live schema.
 - [x] Red Hat-linked GitHub reference implementations are captured as patterns,
   not API authority.
-- [x] GitOps ownership model is explicit: Stage 110 remains the sole
+- [x] GitOps ownership model is explicit: Stage 010 remains the sole
   `DataScienceCluster` owner.
-- [x] Stage 210 carries a focused GitOps hook that patches the shared DSC
+- [x] Stage 030 carries a focused GitOps hook that patches the shared DSC
   KServe component.
 - [x] Deploy script applies the shared owner Application and triggers Argo CD
   reconciliation.
@@ -66,15 +66,15 @@
 | Concept/value and validated model context | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/wiki/analyses/2026-05-29 - Red Hat AI Validated Models Timeline.md` | `project-documentation-authoring` | Identifies `NVIDIA-Nemotron-3-Nano-30B-A3B-FP8` as a Red Hat AI validated model from the January 2026 batch. |
 | Research finding | `rg -i "nemotron-3-nano|nemotron 3 nano|nvidia-nemotron-3-nano|g6e\\.2xlarge|g6e" /Users/adrina/Sandbox/rh-brain/Red\ Hat\ Brain` | `project-red-hat-doc-alignment-review` | RH Brain did not contain an exact matching article for Nemotron 3 Nano on AWS `g6e.2xlarge`; use the Red Hat-maintained quickstart below as implementation evidence and live GuideLLM/Grafana results for tuning. |
 | Implementation reference | [Red Hat AI quickstart - MaaS code assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant) | `project-red-hat-doc-alignment-review`, `rhoai-model-serving-platform`, `rhoai-maas-governance` | Documents the private code assistant architecture, Nemotron 3 Nano, MaaS, vLLM/llm-d, Grafana, 48GB VRAM requirement, and testing on two AWS `g6e.2xlarge` L40S instances. |
-| Implementation reference | [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) | `project-red-hat-doc-alignment-review`, `rhoai-model-serving-platform`, `rhoai-maas-governance` | Source for the Nemotron vLLM flags, resource requests/limits, `LLMInferenceService` template, MaaS tier annotations, tiered RBAC, and Grafana patterns. Stage 210 adapts the direct serving subset; Stage 220 should reuse the MaaS pattern after RHOAI 3.4 schema checks. |
+| Implementation reference | [rh-ai-quickstart/maas-code-assistant](https://github.com/rh-ai-quickstart/maas-code-assistant) | `project-red-hat-doc-alignment-review`, `rhoai-model-serving-platform`, `rhoai-maas-governance` | Source for the Nemotron vLLM flags, resource requests/limits, `LLMInferenceService` template, MaaS tier annotations, tiered RBAC, and Grafana patterns. Stage 030 adapts the direct serving subset; Stage 040 should reuse the MaaS pattern after RHOAI 3.4 schema checks. |
 | Implementation reference | `/Users/adrina/Sandbox/rhoai3-coding-demo/gitops/stages/030-private-model-serving/base/models/nemotron-3-nano-30b.yaml` | `rhoai-model-serving-platform`, `rhoai-maas-governance` | Working sibling-demo configuration for the Red Hat registry modelcar, tool-calling args, reasoning parser args, prefix caching, `--max-num-batched-tokens=8192`, resources, probes, scheduler shape, and `/dev/shm` volume. |
 | Benchmark methodology | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/raw/GuideLLM Evaluate LLM deployments for real-world inference.md` | `rhoai-model-management-monitoring` | GuideLLM purpose, workload shaping, TTFT, ITL, throughput, and SLO framing. |
 | Benchmark implementation pattern | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/raw/How to deploy and benchmark vLLM with GuideLLM on Kubernetes.md` | `rhoai-model-management-monitoring` | Kubernetes Job pattern for in-cluster GuideLLM benchmarking against a vLLM endpoint. |
 | Observability methodology | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/wiki/configurations/vLLM Performance Triage Baseline.md` | `rhoai-model-management-monitoring` | vLLM baseline workflow: TTFT, ITL, request queue, KV cache, prefix cache, sequence length, and topology checks. |
 | Observability implementation pattern | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/raw/Autoscaling vLLM with OpenShift AI model serving Performance validation.md` | `rhoai-model-management-monitoring` | OpenShift AI vLLM performance validation with Prometheus/Grafana signals. |
 | Observability triage | `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/raw/5 steps to triage vLLM performance.md` | `rhoai-model-management-monitoring` | PromQL-style triage flow and vLLM signal selection. |
-| Benchmark workshop pattern | [llm-d showroom Module 2](https://rhpds.github.io/llm-d-showroom/modules/workshop/llm-d/04-module-02.html) | `rhoai-model-management-monitoring`, `project-demo-stage-authoring` | Source for the Stage 210 single-GPU vLLM baseline pattern: vLLM metrics, `benchmark-data` PVC, `prompts.csv`, GuideLLM concurrent `32,64`, and `llm-performance` dashboard URL. |
-| Benchmark implementation reference | [rh-aiservices-bu/rhaoi3-llm-d](https://github.com/rh-aiservices-bu/rhaoi3-llm-d) | `rhoai-model-management-monitoring`, `ocp-grafana-operator` | Concrete shared-prefix prompt dataset and `grafana-dashboard-llm-performance.json` adapted locally for Stage 210. Product fields still come from official RHOAI/OCP docs and active CRDs. |
+| Benchmark workshop pattern | [llm-d showroom Module 2](https://rhpds.github.io/llm-d-showroom/modules/workshop/llm-d/04-module-02.html) | `rhoai-model-management-monitoring`, `project-demo-stage-authoring` | Source for the Stage 030 single-GPU vLLM baseline pattern: vLLM metrics, `benchmark-data` PVC, `prompts.csv`, GuideLLM concurrent `32,64`, and `llm-performance` dashboard URL. |
+| Benchmark implementation reference | [rh-aiservices-bu/rhaoi3-llm-d](https://github.com/rh-aiservices-bu/rhaoi3-llm-d) | `rhoai-model-management-monitoring`, `ocp-grafana-operator` | Concrete shared-prefix prompt dataset and `grafana-dashboard-llm-performance.json` adapted locally for Stage 030. Product fields still come from official RHOAI/OCP docs and active CRDs. |
 | Grafana pattern | [redhat-cop/gitops-catalog/grafana-operator](https://github.com/redhat-cop/gitops-catalog/tree/main/grafana-operator) | `ocp-grafana-operator`, `project-red-hat-operator-gitops` | Local-curated Operator/instance/datasource/dashboard layout pattern; community operator exception. |
 | Grafana CR API | [Grafana Operator API reference](https://grafana.github.io/grafana-operator/docs/api/) | `ocp-grafana-operator` | `Grafana`, `GrafanaDatasource`, and `GrafanaDashboard` v1beta1 schema references. |
 | OCP monitoring | [OCP 4.20 - Monitoring](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/monitoring/index) | `ocp-observability` | User workload monitoring enablement and Prometheus/Thanos access context. |
@@ -126,17 +126,17 @@
 - Ownership model: split shared-owner plus independent observability owner.
 - Shared RHOAI owner Application: `010-openshift-ai-platform-foundation`.
 - Shared RHOAI source path: `gitops/stages/010-openshift-ai-platform-foundation/base`.
-- Stage 210 observability Application: `030-private-model-serving`.
-- Stage 210 observability source path: `gitops/stages/030-private-model-serving/base`.
+- Stage 030 observability Application: `030-private-model-serving`.
+- Stage 030 observability source path: `gitops/stages/030-private-model-serving/base`.
 - Shared resources touched: the single `DataScienceCluster` named
-  `default-dsc`; Stage 210 observability does not own or render a second DSC.
+  `default-dsc`; Stage 030 observability does not own or render a second DSC.
 - Argo CD sync or ordering requirements:
-  - Stage 110 must be installed and healthy first.
-  - Stage 120 should be healthy before deploying a GPU model.
-  - Stage 210 patches only the KServe component on the shared
+  - Stage 010 must be installed and healthy first.
+  - Stage 020 should be healthy before deploying a GPU model.
+  - Stage 030 patches only the KServe component on the shared
     `DataScienceCluster` through a GitOps hook; no separate Argo CD
     Application owns the DSC.
-  - Stage 210 also applies its own Argo CD Application for user workload
+  - Stage 030 also applies its own Argo CD Application for user workload
     monitoring, Grafana, datasource, and dashboards.
   - Argo CD console visibility is split: KServe/DSC in
     `010-openshift-ai-platform-foundation`; observability in
@@ -146,8 +146,8 @@
     are committed.
   - The deploy script may copy the cluster pull-secret into `demo-sandbox` as a
     runtime Kubernetes Secret when the Nemotron modelcar pull secret is absent.
-  - Endpoint auth is disabled for the Stage 210 controlled baseline endpoint;
-    MaaS provides governed shared access in Stage 220.
+  - Endpoint auth is disabled for the Stage 030 controlled baseline endpoint;
+    MaaS provides governed shared access in Stage 040.
 
 ## Manifest Inventory
 
@@ -176,9 +176,9 @@
 
 - Guard behavior: loads `.env`, verifies `RHOAI_EXPECTED_API_SERVER` against
   `oc whoami --show-server`, exits on mismatch.
-- First action: applies the Stage 110 Argo CD Application with local
+- First action: applies the Stage 010 Argo CD Application with local
   `GIT_REPO_URL` and `GIT_REPO_BRANCH`.
-- Wait/report behavior: requests an Argo CD refresh and waits for Stage 110 to
+- Wait/report behavior: requests an Argo CD refresh and waits for Stage 010 to
   report `Synced` and `Healthy`, then reports the KServe component state.
 - Registry behavior:
   - waits for `demo-registry` to become `Available`
@@ -194,7 +194,7 @@
   - creates the Nemotron `InferenceService` when absent
   - waits for the endpoint to become `Ready`
 - Observability behavior:
-  - applies the Stage 210 observability Argo CD Application
+  - applies the Stage 030 observability Argo CD Application
   - waits for it to report `Synced` and `Healthy`
   - enables user workload monitoring and installs Grafana resources through
     GitOps
@@ -218,7 +218,7 @@
   - default data is GuideLLM synthetic (`prompt_tokens=1200,output_tokens=256`,
     RAG-turn-shaped); a `/data/*` value mounts the `benchmark-data` PVC
     instead
-  - writes JSON and CSV to `runs/stage-210-guidellm/<timestamp>/`, then runs
+  - writes JSON and CSV to `runs/stage-030-guidellm/<timestamp>/`, then runs
     `scripts/analyze-guidellm.py` to produce `capacity-report.md`: optimal
     load, max stable concurrency, breaking point, sustained token capacity,
     answers/hour, concurrent RAG-chatbot users (discounting the 3 model calls
@@ -230,19 +230,19 @@
 ### `validate.sh`
 
 - Readiness checks:
-  - Stage 110 Argo CD Application is `Synced` and `Healthy`.
+  - Stage 010 Argo CD Application is `Synced` and `Healthy`.
   - `DataScienceCluster` is `Ready`.
   - `spec.components.kserve.managementState` is `Managed`.
   - KServe `InferenceService` and `ServingRuntime` CRDs are present.
   - A vLLM `ServingRuntime` is discoverable.
-  - Stage 120 GPU hardware profile and GPU capacity are still visible.
+  - Stage 020 GPU hardware profile and GPU capacity are still visible.
   - `demo-registry` is available and has a route host.
   - Nemotron registered model, version, and OCI artifact metadata exist.
   - Nemotron `InferenceService` is `Ready`, has a runtime, and uses the
     expected OCI modelcar source.
   - Nemotron `InferenceService` uses the curated quickstart/coding-demo-backed vLLM
     arguments and resource sizing.
-  - Stage 210 observability Application is `Synced` and `Healthy`.
+  - Stage 030 observability Application is `Synced` and `Healthy`.
   - User workload monitoring is enabled.
   - Grafana Operator, Grafana instance, Prometheus datasource, dashboards, and
     route are present.
@@ -253,11 +253,11 @@
 
 ## Operations And Troubleshooting
 
-- `docs/OPERATIONS.md` update needed: yes - Stage 210 deployment sequence,
+- `docs/OPERATIONS.md` update needed: yes - Stage 030 deployment sequence,
   validation, and user-led Nemotron dashboard path.
 - `docs/TROUBLESHOOTING.md` update needed: yes - model serving component stuck,
   missing runtime, KServe CRDs missing, GPU profile unavailable.
-- `docs/BACKLOG.md` update needed: yes - Stage 210 status and deferred
+- `docs/BACKLOG.md` update needed: yes - Stage 030 status and deferred
   GuideLLM/Grafana baseline work.
 
 ## Risks And Deferred Work
@@ -270,8 +270,8 @@
 | GuideLLM benchmark image | risk | `ghcr.io/vllm-project/guidellm:v0.5.0` is an upstream image used by the Red Hat article pattern, not a Red Hat product image. Keep it on-demand and documented as a benchmark tool. |
 | Grafana Operator support posture | risk | Grafana Operator is from `community-operators`; use only as a demo observability UI and document the support boundary. |
 | OCI modelcar pull permissions | risk | The Red Hat registry modelcar may require entitlement/pull credentials; keep credentials out of Git. |
-| Scarce GPU capacity | risk | Use Recreate strategy and one replica; Stage 120 scale-to-zero remains available. |
-| MaaS and external OpenAI | deferred | Stage 220 owns MaaS, including external `gpt-4o-mini`. |
+| Scarce GPU capacity | risk | Use Recreate strategy and one replica; Stage 020 scale-to-zero remains available. |
+| MaaS and external OpenAI | deferred | Stage 040 owns MaaS, including external `gpt-4o-mini`. |
 
 ## Review Log
 
@@ -307,7 +307,7 @@
   `RHOAI_GUIDELLM_OUTPUTS=benchmark-results.json`; the job targeted the
   internal `/v1` endpoint and read `/data/prompts.csv` from `benchmark-data`.
   Results stored under gitignored
-  `runs/stage-210-guidellm/20260612131009/`.
+  `runs/stage-030-guidellm/20260612131009/`.
 - GuideLLM smoke values: completed 5 requests with no errors; observed p95
   TTFT about 1.63 seconds, p95 ITL about 6.1 ms, p95 end-to-end latency about
   3.0 seconds, and mean output throughput about 126.7 output tokens/second.
@@ -328,8 +328,8 @@
   ran chat concurrency `1,2,4,8,12,16` for 120 seconds per level and
   4k-context RAG concurrency `1,2,4,8` for 120 seconds per level. Results are
   stored under gitignored directories
-  `runs/stage-210-guidellm/20260612152549/` and
-  `runs/stage-210-guidellm/20260612153735/`.
+  `runs/stage-030-guidellm/20260612152549/` and
+  `runs/stage-030-guidellm/20260612153735/`.
 - GuideLLM policy values: short chat stayed usable through `8` concurrent
   users with p95 TTFT about 4.6 seconds, p95 ITL about 12.6 ms, and p95
   end-to-end latency about 6.0 seconds. Chat `12-16` concurrent users is a
@@ -341,7 +341,7 @@
   failed on a redirected report-template URL, so the automation defaults to
   JSON and CSV output and smoke tests can override to JSON-only.
 - Regression validation: PASSED 2026-06-12 -
-  Stage 110 `validate.sh` 17/17 and Stage 120 `validate.sh` 23/23 after KServe
+  Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23 after KServe
   became `Managed`.
 - Manual dashboard validation: user created `demo-registry` in
   `rhoai-model-registries`, registered Nemotron 3, and manually deployed
@@ -358,7 +358,7 @@
   `030-private-model-serving/validate.sh` 17/17 for KServe, vLLM,
   registry availability, Nemotron metadata, and endpoint readiness.
 - Regression validation after idempotent bootstrap changes: PASSED 2026-06-12 -
-  Stage 110 `validate.sh` 17/17 and Stage 120 `validate.sh` 23/23.
+  Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23.
 - Grafana OAuth RBAC fix: PASSED 2026-06-12 -
   replaced the cluster-scoped `get namespaces` OAuth proxy SAR with a
   namespace-scoped `get services` SAR in `rhoai-demo-grafana`, added
@@ -367,12 +367,12 @@
   --as-group rhods-admins` and the equivalent `ai-developer` check with
   `rhoai-developers`.
 - Official Grafana Operator validation: PASSED 2026-06-12 -
-  checked the Stage 210 Grafana GitOps setup against the official Grafana
+  checked the Stage 030 Grafana GitOps setup against the official Grafana
   Operator docs, Argo CD dashboard guide, Kustomize installation docs, and API
   reference. Confirmed active OLM package `grafana-operator`, channel `v5`,
   CSV `grafana-operator.v5.24.0`, `grafana.integreatly.org/v1beta1` CRDs,
   `GrafanaReady=True`, `DatasourceSynchronized=True`, and
-  `DashboardSynchronized=True` for both Stage 210 dashboards. The install path
+  `DashboardSynchronized=True` for both Stage 030 dashboards. The install path
   remains an intentional OpenShift OLM/GitOps adaptation rather than the
   official Grafana Helm or direct Kustomize install path.
 - Grafana dashboard datasource fix: PASSED 2026-06-12 -

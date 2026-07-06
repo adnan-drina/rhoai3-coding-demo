@@ -15,7 +15,7 @@ body:
     attributes:
       label: Affected stages
       description: Which workshop stages are affected?
-      placeholder: "Stage 040 MaaS, Stage 070 Dev Spaces, docs, scripts, etc."
+      placeholder: "Stage 040 MaaS, Stage 050 Dev Spaces, docs, scripts, etc."
     validations:
       required: true
   - type: textarea

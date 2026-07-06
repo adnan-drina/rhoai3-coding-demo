@@ -101,7 +101,7 @@ spec:
               fi
 
               if [[ -n "$installed" && "$installed" != "$PINNED_CSV" ]]; then
-                echo "ERROR: RHCL installedCSV is ${installed}; Stage 220 is pinned to ${PINNED_CSV}."
+                echo "ERROR: RHCL installedCSV is ${installed}; Stage 040 is pinned to ${PINNED_CSV}."
                 echo "Perform one-time RHCL remediation before relying on MaaS gateway policy resources."
                 exit 1
               fi

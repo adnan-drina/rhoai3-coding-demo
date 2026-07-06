@@ -22,7 +22,7 @@ body:
     attributes:
       label: Demo stage
       description: Which stage is affected?
-      placeholder: "stage-010, stage-040, stage-070, etc."
+      placeholder: "stage-010, stage-040, stage-050, etc."
     validations:
       required: false
   - type: textarea

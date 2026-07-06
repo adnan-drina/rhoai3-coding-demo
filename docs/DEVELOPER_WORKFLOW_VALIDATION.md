@@ -1,11 +1,11 @@
 # Developer Workflow Validation
 
-This guide holds quality gates and evidence expectations for Stage 100 and for
-the deferred developer workflow topics tracked in `BACKLOG.md`. The Stage 100
+This guide holds quality gates and evidence expectations for Stage 080 and for
+the deferred developer workflow topics tracked in `BACKLOG.md`. The Stage 080
 README explains the current vibe-coding story; this file explains what to verify
 when a deferred topic is later implemented or rehearsed as a stage.
 
-Stage `110` has been merged into Stage 100. Topics `120-170` are no longer
+Stage `110` has been merged into Stage 080. Topics `120-170` are no longer
 directories under `stages/`. Recreate them as stages one-by-one only after each
 has a concrete scope, artifacts, and validation path. Do not add stages `120-170` to
 [`../flows/default.yaml`](../flows/default.yaml) until that implementation
@@ -28,7 +28,7 @@ exists.
   evidence, use `Terminal > New Terminal (Select a Container) >
   tooling-container`, then record the command and output.
 
-## Stage 100: Vibe Coding
+## Stage 080: Vibe Coding
 
 Quality gates:
 
@@ -76,8 +76,8 @@ Evidence:
 - Accepted and rejected assistant suggestions.
 - Blocker, if any.
 
-The current Stage 100 prompt and human validation flow live in
-[`../stages/100-governed-vibe-coding/README.md`](../stages/100-governed-vibe-coding/README.md). Record live
+The current Stage 080 prompt and human validation flow live in
+[`../stages/080-governed-vibe-coding/README.md`](../stages/080-governed-vibe-coding/README.md). Record live
 evidence outside this repository and keep committed docs limited to reusable
 validation expectations.
 

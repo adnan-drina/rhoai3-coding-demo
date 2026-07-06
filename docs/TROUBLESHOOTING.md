@@ -66,7 +66,7 @@ oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 **Diagnose:**
 
 ```bash
-APP=090-developer-portal-self-service
+APP=070-developer-portal-self-service
 oc get application "$APP" -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 ```
@@ -458,7 +458,7 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 ## AI Asset Endpoints MaaS API Key Dialog Shows An Empty Key
 
-**Affected stages:** Stage 040, Stage 100
+**Affected stages:** Stage 040, Stage 080
 
 **Likely cause:** The Gen AI AI asset endpoints modal expects the generated
 credential in the response shape used by its current browser bundle. If the
@@ -671,7 +671,7 @@ oc get authpolicy,tokenratelimitpolicy -n maas
 
 ## Red Hat Developer Lightspeed for MTA Cannot Call MaaS
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 060
 
 **Likely cause:** `kai-api-keys` contains placeholder values, the MaaS API key is invalid, or `llm-proxy` did not restart after secret patching.
 
@@ -686,12 +686,12 @@ oc logs deployment/llm-proxy -n openshift-mta --tail=100
 
 **Recover:**
 
-- Re-run or re-sync Stage 080 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
-- Confirm `./stages/080-ai-assisted-application-modernization/validate.sh` reports the MaaS credential checks as passing.
+- Re-run or re-sync Stage 060 so the PostSync job provisions the MaaS key and restarts `llm-proxy`.
+- Confirm `./stages/060-ai-assisted-application-modernization/validate.sh` reports the MaaS credential checks as passing.
 
 ## MTA OpenShift Login Does Not Appear
 
-**Affected stage:** Stage 080
+**Affected stage:** Stage 060
 
 **Likely cause:** OAuthClient redirect URI not patched, Keycloak identity provider not configured, or MTA route not available when the PostSync job ran.
 
@@ -705,13 +705,13 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 **Recover:**
 
-- Re-sync Stage 080.
+- Re-sync Stage 060.
 - Confirm the MTA route exists before the auth configuration job runs.
-- Re-run Stage 080 validation.
+- Re-run Stage 060 validation.
 
 ## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
-**Affected stage:** Stage 090
+**Affected stage:** Stage 070
 
 **Likely cause:** RHDH backend is not allowed to read the raw GitHub catalog URL, the catalog location is not reachable, or `RHDH_CATALOG_URL` does not match the GitOps revision deployed by Argo CD.
 
@@ -721,7 +721,7 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i catalog
 oc get configmap app-config-rhdh -n rhdh -o yaml
 oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.RHDH_CATALOG_URL}' | base64 -d; echo
-oc get application 090-developer-portal-self-service -n openshift-gitops \
+oc get application 070-developer-portal-self-service -n openshift-gitops \
   -o jsonpath='{.spec.source.repoURL}{" "}{.spec.source.targetRevision}{"\n"}'
 ```
 
@@ -734,21 +734,21 @@ is not allowed. You may need to configure an integration for the target host, or
 **Recover:**
 
 - Add a narrow `backend.reading.allow` entry or configure the GitHub integration.
-- Re-sync Stage 090 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
-- Confirm the Stage 090 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
+- Re-sync Stage 070 so the configure hook derives `RHDH_CATALOG_URL` from the live Argo CD Application source.
+- Confirm the Stage 070 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
 - Restart the RHDH deployment.
-- Re-run Stage 090 validation after adding catalog checks.
+- Re-run Stage 070 validation after adding catalog checks.
 
-## Red Hat Developer Hub Is Healthy But Stage 090 Is OutOfSync
+## Red Hat Developer Hub Is Healthy But Stage 070 Is OutOfSync
 
-**Affected stage:** Stage 090
+**Affected stage:** Stage 070
 
 **Likely cause:** Operator-defaulted fields differ from Git, or PostSync jobs patched dynamic fields.
 
 **Diagnose:**
 
 ```bash
-oc get application 090-developer-portal-self-service -n openshift-gitops -o json \
+oc get application 070-developer-portal-self-service -n openshift-gitops -o json \
   | jq -r '.status.resources[]? | select(.status != "Synced") | [.kind,.namespace,.name,.status,.message] | @tsv'
 
 oc get backstage developer-hub -n rhdh -o yaml
@@ -762,7 +762,7 @@ oc get backstage developer-hub -n rhdh -o yaml
 
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
-**Affected stage:** Stage 070
+**Affected stage:** Stage 050
 
 **Likely cause:** DevWorkspace operator issue, image pull problem, insufficient workspace resources, or postStart command failure.
 
@@ -781,11 +781,11 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 
 - Restart the workspace from the Red Hat OpenShift Dev Spaces dashboard.
 - Confirm resource requests/limits are sufficient.
-- Re-run Stage 070 validation.
+- Re-run Stage 050 validation.
 
 ## Continue Is Missing From A Dev Spaces Workspace
 
-**Affected stage:** Stage 070
+**Affected stage:** Stage 050
 
 **Likely cause:** The workspace was started from an older DevWorkspace spec that only recommended Continue through `extensions.json`, or the workspace did not restart after the `DEFAULT_EXTENSIONS` policy changed.
 
@@ -805,7 +805,7 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Recover:**
 
-- Sync Stage 070 so each DevWorkspace downloads `/tmp/continue.vsix` and sets `DEFAULT_EXTENSIONS`.
+- Sync Stage 050 so each DevWorkspace downloads `/tmp/continue.vsix` and sets `DEFAULT_EXTENSIONS`.
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
 - Confirm the Continue sidebar appears in Che Code and that `~/.continue/config.yaml` exists in the tooling container.
 
