@@ -21,11 +21,9 @@ The implemented flow is defined in [`../flows/default.yaml`](../flows/default.ya
 3. [Stage 020: GPU Infrastructure for Private AI](../stages/020-gpu-infrastructure-private-ai/README.md)
 4. [Stage 030: Private Model Serving](../stages/030-private-model-serving/README.md)
 5. [Stage 040: Governed Models-as-a-Service](../stages/040-governed-models-as-a-service/README.md)
-6. [Stage 050: Approved External Model Access](../stages/050-approved-external-model-access/README.md)
-7. [Stage 060: MCP Context Integrations](../stages/060-mcp-context-integrations/README.md)
-8. [Stage 070: Controlled Developer Workspaces](../stages/070-controlled-developer-workspaces/README.md)
-9. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
-10. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
+6. [Stage 070: Controlled Developer Workspaces](../stages/070-controlled-developer-workspaces/README.md)
+7. [Stage 080: AI-Assisted Application Modernization](../stages/080-ai-assisted-application-modernization/README.md)
+8. [Stage 090: Developer Portal and Self-Service](../stages/090-developer-portal-self-service/README.md)
 
 [Stage 100](../stages/100-governed-vibe-coding/README.md) starts the developer-facing part of the workshop. It uses the Stage 070 workspace and Stage 090 portal assets to teach governed vibe coding, prompt discipline, review gates, and evidence capture. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 100. Deferred developer workflow topics `120-170` are tracked in [BACKLOG.md](../BACKLOG.md) until each one has a concrete implementation plan, artifacts, and validation path.
 

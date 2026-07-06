@@ -39,9 +39,7 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | OpenShift AI control plane, identity, dashboard, model registry, and platform services | Trusted AI starts with a managed platform foundation, not isolated notebooks or unmanaged credentials |
 | [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement, Red Hat build of Kueue, quotas, hardware profiles, and observability | Private AI needs scarce accelerator capacity to be scheduled, shared, and reviewed |
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served with OpenAI-compatible APIs | Sensitive source code and modernization context need a private inference path |
-| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS access with subscriptions, API keys, token limits, rate limits, and telemetry | Model serving becomes a platform service when access and usage are centralized |
-| [050 - Approved External Model Access](stages/050-approved-external-model-access/README.md) | External model registration behind the same MaaS access pattern | Approved external use can be controlled without pretending provider processing is private |
-| [060 - MCP Context Integrations](stages/060-mcp-context-integrations/README.md) | Platform-managed MCP discovery with required OpenShift context and optional external context | Tool context has a separate trust boundary from model access |
+| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS access with subscriptions, API keys, token limits, rate limits, telemetry, approved external models, and platform-managed MCP context | Model serving becomes a platform service when access, external use, and tool context are centralized |
 | [070 - Controlled Developer Workspaces](stages/070-controlled-developer-workspaces/README.md) | Dev Spaces workspaces with Continue and OpenCode configured for MaaS | Developers get familiar AI coding workflows without personal provider keys |
 | [080 - AI-Assisted Application Modernization](stages/080-ai-assisted-application-modernization/README.md) | MTA and Developer Lightspeed for MTA using governed model access | AI assistance is grounded in modernization analysis and human review |
 | [090 - Developer Portal and Self-Service](stages/090-developer-portal-self-service/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | Platform capabilities become discoverable and self-service |
@@ -130,8 +128,6 @@ Deploy the implemented stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-approved-external-model-access/deploy.sh
-./stages/060-mcp-context-integrations/deploy.sh
 ./stages/070-controlled-developer-workspaces/deploy.sh
 ./stages/080-ai-assisted-application-modernization/deploy.sh
 ./stages/090-developer-portal-self-service/deploy.sh

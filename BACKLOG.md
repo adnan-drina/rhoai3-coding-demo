@@ -126,3 +126,8 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs lived under `gitops/stages/040-governed-models-as-a-service/base/` during the older workaround period. Historical context only.~~
 - [x] ~~**Red Hat OpenShift AI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary did not implement model discovery from Kubernetes resources. Historical context only; do not use this EA2 result as a current 3.4 GA design decision.~~
 - [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 090 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~
+
+
+## Post-migration documentation rewrite
+
+- [ ] **Rewrite OPERATIONS.md and TROUBLESHOOTING.md per-stage sections for the migrated 010-040 foundation** — the current sections describe the pre-migration implementation. Rewrite with live evidence from the first fresh-environment deployment of the migrated stages. Carry over rhoai3-demo known-issue entries (COO 1.4 pin rationale, MaaS quirks) where they apply.

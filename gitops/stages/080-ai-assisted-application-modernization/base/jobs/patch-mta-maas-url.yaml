@@ -116,7 +116,7 @@ spec:
             if [ -n "$MAAS_HOST" ]; then
               break
             fi
-            MAAS_HOST=$(oc get httproute -n maas --no-headers 2>/dev/null \
+            MAAS_HOST=$(oc get httproute -n models-as-a-service --no-headers 2>/dev/null \
               | head -1 | awk '{print $3}' || true)
             if [ -n "$MAAS_HOST" ]; then
               break

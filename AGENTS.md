@@ -57,12 +57,13 @@ Current implemented stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 050 Approved External Model Access
-6. 060 MCP Context Integrations
-7. 070 Controlled Developer Workspaces
-8. 080 AI-Assisted Application Modernization
-9. 090 Developer Portal and Self-Service
-10. 100 Governed Vibe Coding With Continue
+5. 070 Controlled Developer Workspaces
+6. 080 AI-Assisted Application Modernization
+7. 090 Developer Portal and Self-Service
+8. 100 Governed Vibe Coding With Continue
+
+Former stages 050 (external models) and 060 (MCP context) are folded into
+stage 040, which imports the validated rhoai3-demo foundation.
 
 Developer workflow stages after 100 are deferred until each has a concrete
 implementation plan and validation path.
@@ -210,8 +211,6 @@ bash -n stages/*/*.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/050-approved-external-model-access/validate.sh
-./stages/060-mcp-context-integrations/validate.sh
 ./stages/070-controlled-developer-workspaces/validate.sh
 ./stages/080-ai-assisted-application-modernization/validate.sh
 ./stages/090-developer-portal-self-service/validate.sh
