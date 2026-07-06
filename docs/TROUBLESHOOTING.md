@@ -71,6 +71,35 @@ oc get application "$APP" -n openshift-gitops -o json \
 - If drift is not expected, fix the Git manifest or re-sync the app.
 - Avoid broad ignores such as a whole CR `spec` unless the operator truly owns that full field.
 
+## Argo CD Reports Synced But New Manifests Are Missing
+
+**Affected stage:** any
+
+**Likely cause:** The Argo CD repo-server can serve a stale manifest cache
+for a revision, especially right after quick successive pushes. The app
+reports Synced at the new revision while resources added in that revision
+were never rendered or applied. A normal refresh does not bust the
+manifest cache.
+
+**Diagnose:**
+
+```bash
+# Compare what git has against what Argo tracked
+kustomize build gitops/stages/<stage>/base | grep <new-resource>
+oc get application <stage> -n openshift-gitops -o json \
+  | jq -r '.status.resources[] | "\(.kind) \(.namespace)/\(.name)"' | grep <new-resource>
+```
+
+**Recover:**
+
+```bash
+oc annotate application <stage> -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+# Auto-sync does not refire for an already-seen revision; trigger it:
+oc patch application <stage> -n openshift-gitops --type=merge \
+  -p '{"operation":{"initiatedBy":{"username":"operator"},"sync":{"prune":true}}}'
+```
+
 ## Operator CSV Not Succeeded
 
 **Affected stage:** Any operator install stage
