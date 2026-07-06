@@ -18,6 +18,7 @@ Update it first when preparing an upgrade.
 | Red Hat OpenShift Lightspeed | 1.0 | https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0 |
 | Red Hat OpenShift Dev Spaces | 3.28 | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28 |
 | Red Hat Developer Hub | 1.10 | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10 |
+| Red Hat Trusted Profile Analyzer | 2.2 | https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2 |
 
 ## Version Match Rule
 
@@ -82,6 +83,13 @@ For the current baseline, Red Hat Developer Hub documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/
+```
+
+For the current baseline, Red Hat Trusted Profile Analyzer documentation links
+should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
 ```
 
 Do not use `latest` or another product version for product configuration unless
@@ -265,6 +273,19 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
   [Using OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/operate/index)
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
+
+## Red Hat Trusted Profile Analyzer 2.2 Documentation Index
+
+Use the official Trusted Profile Analyzer 2.2 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2
+
+- **Discover**:
+  [Release Notes](https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/html/release_notes/index)
+- **Get Started**:
+  [Quick Start Guide](https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/html/quick_start_guide/index),
+  [Deployment Guide](https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/html/deployment_guide/index)
+- **Reference**:
+  [Administration Guide](https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/html/administration_guide/index)
 
 ## Red Hat Developer Hub 1.10 Documentation Index
 

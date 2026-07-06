@@ -87,6 +87,11 @@ spec:
           # concurrency to demo scale so the state cache fits next to 34.4GiB
           # of weights on the 44.4GiB card.
           - --max-num-seqs=64
+          # Final fit lever: skip CUDA graph capture + inductor compilation,
+          # reclaiming their resident memory. Costs decode throughput; if the
+          # engine still reports zero KV blocks, swap to the 30B coder model
+          # instead of shrinking the context below 32K.
+          - --enforce-eager
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --reasoning-parser=qwen3
