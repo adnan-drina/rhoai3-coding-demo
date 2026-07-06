@@ -66,6 +66,17 @@ stages:
     gitopsPath: gitops/stages/050-ai-assisted-development/base
     dependsOn:
       - "040"
+  - id: "060"
+    name: Agentic Development
+    productFocus:
+      - Red Hat OpenShift Dev Spaces
+      - Red Hat OpenShift AI
+    deployScript: stages/060-ai-agentic-development/deploy.sh
+    validateScript: stages/060-ai-agentic-development/validate.sh
+    gitopsApplication: 060-ai-agentic-development
+    gitopsPath: gitops/stages/060-ai-agentic-development/base
+    dependsOn:
+      - "050"
   - id: "070"
     name: Autonomous Application Migration
     productFocus:

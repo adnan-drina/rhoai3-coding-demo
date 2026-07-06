@@ -3,13 +3,13 @@
 **Theme:** From one-shot prompts to skill-guided agents
 **Concept:** Enterprise development guidelines become reusable skills that AI agents follow — and improve — inside governed workspaces.
 
-> **Status:** Workflow stage under construction. The demo design is approved
-> (see [docs/PLAN-developer-arc-restructure.md](../../docs/PLAN-developer-arc-restructure.md));
-> the skills and AGENT.md live in the
-> [coolstore-inventory-service](https://github.com/adnan-drina/coolstore-inventory-service)
-> workspace repository and are being authored now. This stage consumes the
-> Stage 050 Dev Spaces workspaces and the Stage 040 MaaS endpoints; it deploys
-> no additional platform resources.
+> **Status:** deployable. This stage provisions the `agentic-coolstore`
+> DevWorkspace: coolstore-inventory-service checked out on the
+> `demo/agentic-skills` branch (AGENTS.md + `.opencode/skills` Quarkus
+> standards, authored and pushed), with agent-scale resources for OpenCode
+> multi-step runs. It consumes the Stage 050 Dev Spaces platform and the
+> Stage 040 MaaS keys. Flip the workspace checkout to `main` once the skills
+> branch merges.
 
 ## Why This Matters
 
@@ -44,9 +44,12 @@ feedback.
 
 ## Deploy And Validate
 
-This is a workflow stage: no `deploy.sh`. Validate the workspace assets with
-the Stage 050 validation plus the demo script in this README once the
-workspace repository skills land.
+```bash
+./stages/060-ai-agentic-development/deploy.sh
+./stages/060-ai-agentic-development/validate.sh
+```
+
+Manifests: [`gitops/stages/060-ai-agentic-development/base/`](../../gitops/stages/060-ai-agentic-development/base/)
 
 ## Next Stage
 
