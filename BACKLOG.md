@@ -141,8 +141,8 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Showroom-derived topics (adv-app-platform-demo-showroom mapping)
 
-- [ ] **Stage 080 implementation recipe** — adopt showroom modules 5-6 as the reference: Tekton pipeline for the Stage 070 migrated app with SonarQube gate, Tekton Chains SLSA attestation, TAS signing, SBOM generation, TPA SBOM/vulnerability management. See docs/PLAN-showroom-concept-mapping.md.
-- [ ] **Stage 090 self-service template** — RHDH software template scaffolding a component + governed workspace (showroom module 4 pattern) and topology wrap-up view (module 6).
+- [ ] **Stage 080 implementation recipe** — adopt showroom modules 5-6 as the reference: Tekton pipeline for the Stage 070 migrated app with SonarQube gate, Tekton Chains SLSA attestation, TAS signing, SBOM generation, TPA SBOM/vulnerability management. Implementation plan: docs/PLAN-implementation-wave-2.md (workstream B).
+- [ ] **Stage 090 self-service template** — RHDH software template scaffolding a component + governed workspace (showroom module 4 pattern) and topology wrap-up view (module 6). Implementation plan: docs/PLAN-implementation-wave-2.md (workstream C).
 - [ ] **Stage 060 demo beat** — pipeline/quality-gate fails, skills-guided agent fixes it (showroom module 2 loop adapted to OpenCode + skills).
 - [ ] **Stage 050 workspace addition** — Dependency Analytics extension in the editor policy (showroom module 5 part 1).
-- [ ] **AI-enhanced application development (future stage candidate)** — Quarkus + LangChain4j service consuming MaaS endpoints on the same golden path (showroom module 7 email-triage pattern adapted to our governed models).
+- [ ] **AI-enhanced application development (future stage candidate)** — Quarkus + LangChain4j service consuming MaaS endpoints on the same golden path (showroom module 7 pattern). Implementation plan: docs/PLAN-implementation-wave-2.md (workstream D; introduces the service-identity MaaSSubscription persona).
