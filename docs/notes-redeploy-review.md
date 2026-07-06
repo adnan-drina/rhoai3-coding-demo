@@ -55,6 +55,29 @@ move to BACKLOG.md, TROUBLESHOOTING.md, and stage READMEs.
 - Stage 010 already uses 3.x-native APIs: DataScienceCluster v2, DSCI v2,
   services.platform.opendatahub.io/v1alpha1 Auth, MaaS dashboard flags.
 
+## Image pin policy (user directive 2026-07-06)
+
+Only pin images where product documentation recommends pinning; otherwise
+let the RHOAI/product operators manage image versions and lifecycle.
+
+Audit result:
+- stage 030 `models/*.yaml` pin `rhaii/vllm-cuda-rhel9@sha256:...` — remove
+  at stage 030 deploy and confirm the RHOAI KServe controller injects the
+  supported runtime image.
+- `ose-cli`, `postgresql-16:latest`, MCP date tags, Dev Spaces
+  `cli-ai-tools` digest: demo-owned utility/tooling images, not
+  operator-managed; keep as-is (cli-ai-tools digest is deliberate for the
+  Java 21 toolchain).
+
 ## Per-stage deploy log
+
+### Fresh environment (2026-07-06)
+
+- Cluster: cluster-j98ml.j98ml.sandbox1570.opentlc.com, OCP 4.20.26
+- Pre-flight: OAuth spec empty (no IdP-replacement risk on this cluster);
+  gitops-1.19 pinned (1.15 was 6 releases behind); rhods stable-3.4
+  resolves 3.4.2, startingCSV pin dropped
+- bootstrap.sh: clean first run after refactor
+- Stage 010: deployed without serverless (validation of the 3.x removal)
 
 (filled in as each stage deploys on the fresh cluster)

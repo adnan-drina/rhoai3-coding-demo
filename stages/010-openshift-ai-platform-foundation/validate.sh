@@ -74,9 +74,20 @@ check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=openteleme
 check_pods_ready "redhat-ods-monitoring" "app.kubernetes.io/component=tempo" 1
 
 log_step "DataScienceCluster"
-check "DataScienceCluster phase Ready" \
-    "oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}'" \
-    "Ready"
+# The modelsasservice component stays pending until Stage 040 creates the
+# maas-default-gateway, so a fresh sequential deploy warns instead of failing.
+DSC_PHASE=$(oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}' 2>/dev/null || echo "NOT_FOUND")
+DSC_NOT_READY=$(oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type=="ComponentsReady")].message}' 2>/dev/null || echo "")
+if [[ "$DSC_PHASE" == "Ready" ]]; then
+    echo -e "${GREEN}[PASS]${NC} DataScienceCluster phase Ready"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+elif [[ "$DSC_NOT_READY" == *"not ready: modelsasservice"* ]]; then
+    echo -e "${YELLOW}[WARN]${NC} DataScienceCluster pending on modelsasservice (MaaS gateway arrives with Stage 040)"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+else
+    echo -e "${RED}[FAIL]${NC} DataScienceCluster phase (expected: Ready, got: $DSC_PHASE — $DSC_NOT_READY)"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
 
 log_step "Hardware Profiles"
 HP_COUNT=$(oc get hardwareprofiles -n redhat-ods-applications --no-headers 2>/dev/null | wc -l | tr -d ' ')
@@ -106,12 +117,8 @@ check "Cluster Perses dashboard reconciled" \
 check "Model Perses dashboard reconciled" \
     "oc get persesdashboard dashboard-1-model -n redhat-ods-monitoring -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
     "True"
-check "MaaS usage Perses dashboard reconciled" \
-    "oc get persesdashboard dashboard-3-maas-usage-admin -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
-    "True"
-check "Kuadrant MaaS datasource reconciled" \
-    "oc get persesdatasource kuadrant-prometheus-datasource -n redhat-ods-applications -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
-    "True"
+# MaaS usage dashboard and Kuadrant datasource are created by the operator
+# once the MaaS component reconciles; Stage 040 validation covers them.
 check "Demo admin can list Perses dashboards" \
     "oc auth can-i list persesdashboards.perses.dev --as=ai-admin --as-group=rhoai-admins --as-group=rhoai-users -n redhat-ods-applications" \
     "yes"
