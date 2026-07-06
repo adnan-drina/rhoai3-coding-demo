@@ -300,6 +300,39 @@ If the dashboard page opens but only the Usage tab is visible, verify that the p
 
 After recovery, hard-refresh the OpenShift AI dashboard. The dashboard page should show the Cluster, Models, and Usage tabs; MaaS usage panels show non-zero data only after recent MaaS traffic exists in the selected time range.
 
+## PrometheusOperatorRejectedResources Warning Alert Fires
+
+**Affected stage:** Stage 010 (visible any time afterwards)
+
+**Likely cause:** The Tempo operator, the Red Hat build of OpenTelemetry
+operator, and the RHOAI `odh-model-controller` ship ServiceMonitor resources
+that authenticate with `bearerTokenFile`. User-workload Prometheus prohibits
+file-system access from scrape configs and rejects those ServiceMonitors,
+which fires the warning alert. This is a known Operator SDK-era pattern in
+operator bundles, not a resource this repository owns or applies.
+
+**Diagnose:**
+
+```bash
+oc logs -n openshift-user-workload-monitoring deploy/prometheus-operator \
+  | grep -i rejected | tail -5
+```
+
+Expected offenders: `openshift-operators/tempo-operator-controller-manager-metrics-monitor`,
+`openshift-operators/opentelemetry-operator-metrics-monitor`,
+`redhat-ods-applications/odh-model-controller-metrics-monitor`.
+
+**Impact and recovery:**
+
+- Only the operators' own controller self-metrics are skipped. Demo
+  telemetry (RHOAI MonitoringStack Prometheus, OpenTelemetry collector,
+  Tempo traces, MaaS usage metrics) flows through
+  `redhat-ods-monitoring` and is unaffected — Stage 010 validation covers it.
+- Do not patch the ServiceMonitors; OLM and the operators reconcile them
+  back. Treat the warning as benign for this demo and silence it in
+  Alertmanager if it distracts from screenshots or demos. Track operator
+  releases that migrate to `authorization`-based scrape configs.
+
 ## RHOAI Monitoring Prometheus Stuck In Init
 
 **Affected stage:** Stage 010
