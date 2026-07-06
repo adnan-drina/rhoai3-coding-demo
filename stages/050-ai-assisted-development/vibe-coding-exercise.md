@@ -32,7 +32,7 @@ This stage turns the platform into a developer workflow.
 
 ## Developer Workflow
 
-The developer starts in Red Hat Developer Hub and opens the `getting-started-ai-coding` component in Red Hat OpenShift Dev Spaces. The workspace is already prepared with the repository, IDE, runtime, and AI assistant configuration needed for the exercise.
+The developer opens the `getting-started-ai-coding` workspace in Red Hat OpenShift Dev Spaces. The workspace is already prepared with the repository, IDE, runtime, and AI assistant configuration needed for the exercise. (Stage 090 later adds Developer Hub as the discovery entry point, so developers reach this same workspace from the portal catalog.)
 
 Inside the workspace, the developer first checks that the AI coding assistant is using the governed model path. After that, the developer asks Continue to create a small Quarkus project, reviews the generated files, and validates the result outside the assistant.
 
@@ -61,6 +61,23 @@ Return exactly four bullets:
 Vibe coding is useful when the task is small, the reviewer understands the code, and validation is close at hand. The practice breaks down when intent, constraints, and decisions live only in a chat transcript. Stage 050 therefore treats assistant output as a draft and teaches the developer to move from conversation to durable engineering artifacts.
 
 In this stage, vibe coding means asking Continue for a small, bounded application and then treating the generated output as something to review, test, and own.
+
+Run the exercise with both outcomes in mind:
+
+**Where one-shot prompting shines**
+
+- scaffolding a bounded, well-known shape (a REST endpoint, a test class, a Containerfile) in seconds;
+- explaining unfamiliar code and suggesting alternatives while the developer stays in flow;
+- exploring an idea cheaply before committing to it — all against private models, with prompts that never leave the platform.
+
+**Where it predictably breaks**
+
+- project standards: the model does not know how this team names paths, structures tests, or documents APIs — output looks plausible and reviews poorly;
+- multi-file consistency: a one-shot answer edits what it sees, not the README, test plan, and callers that depend on it;
+- hidden requirements: thread-safety, error contracts, and seed-data stability live in reviewers' heads, not the prompt;
+- repeatability: the same prompt tomorrow produces a different answer; nothing accumulates.
+
+These limits are not solved with longer prompts. They are solved by teaching the agent the team's standards — which is exactly what [Stage 060: Agentic Development](../060-ai-agentic-development/README.md) does with AGENT.md and reusable skills.
 
 ## Prompt Engineering
 
@@ -260,7 +277,7 @@ curl -k -fsS "https://${ROUTE_HOST}/hello"
 - Stage 050 can provide approved external models for non-sensitive tasks when policy allows.
 - Stage 070 provides MCP context integration.
 - Stage 050 provides Dev Spaces with Continue and OpenCode tooling.
-- Stage 090 provides Developer Hub catalog entries and component-specific Dev Spaces links.
+- Stage 090 later surfaces this workspace through Developer Hub catalog entries and component-specific Dev Spaces links.
 
 ## Red Hat Products Used
 
@@ -299,4 +316,8 @@ curl -k -fsS "https://${ROUTE_HOST}/hello"
 
 ## Next Developer Workflow
 
-The former Stage 110 placeholder has been merged into this Stage 050 vibe-coding flow. Later developer workflow topics are deferred in [BACKLOG.md](../../BACKLOG.md) and should be recreated only when each has a concrete implementation plan and validation path.
+Take the review notes from this exercise with you: every gap you flagged
+(naming, structure, missing tests, undocumented behavior) becomes a reusable
+skill in [Stage 060: Agentic Development](../060-ai-agentic-development/README.md),
+where OpenCode repeats this class of task with the team's standards encoded —
+and the difference is the demo.
