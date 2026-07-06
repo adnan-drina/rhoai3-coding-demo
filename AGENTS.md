@@ -60,7 +60,8 @@ Current implemented stages:
 5. 050 AI-Assisted Development (workspaces + one-shot vibe coding)
 6. 060 Agentic Development (OpenCode, AGENT.md, skills — workflow stage)
 7. 070 Autonomous Application Migration (MTA + multi-agent migration)
-8. 090 AI Self-Service Portal (080 is reserved for AI in Trusted Delivery)
+8. 080 AI in Trusted Delivery (base setup: Pipelines + Trusted Artifact Signer operators)
+9. 090 AI Self-Service Portal
 
 The stages renumbered when stage 040 absorbed the former external-model and
 MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became

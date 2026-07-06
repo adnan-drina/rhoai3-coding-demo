@@ -77,6 +77,17 @@ stages:
     gitopsPath: gitops/stages/070-ai-autonomous-migration/base
     dependsOn:
       - "050"
+  - id: "080"
+    name: AI in Trusted Delivery
+    productFocus:
+      - Red Hat OpenShift Pipelines
+      - Red Hat Trusted Artifact Signer
+    deployScript: stages/080-ai-trusted-delivery/deploy.sh
+    validateScript: stages/080-ai-trusted-delivery/validate.sh
+    gitopsApplication: 080-ai-trusted-delivery
+    gitopsPath: gitops/stages/080-ai-trusted-delivery/base
+    dependsOn:
+      - "070"
   - id: "090"
     name: AI Self-Service Portal
     productFocus:

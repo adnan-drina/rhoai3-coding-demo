@@ -95,6 +95,4 @@ Manifests: [`gitops/stages/070-ai-autonomous-migration/base/`](../../gitops/stag
 
 ## Next Stage
 
-Stage 080 is reserved for AI in Trusted Delivery (Red Hat Trusted Software Supply Chain) and is tracked in [BACKLOG.md](../../BACKLOG.md) until its scope is concrete.
-
-[Stage 090: AI Self-Service Portal](../090-ai-self-service-portal/README.md) turns platform capabilities into a self-service developer portal experience.
+[Stage 080: AI in Trusted Delivery](../080-ai-trusted-delivery/README.md) proves what the agents built: provenance, signatures, and SBOMs for AI-generated changes.

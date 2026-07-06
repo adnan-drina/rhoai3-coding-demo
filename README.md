@@ -43,7 +43,7 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [050 - AI-Assisted Development](stages/050-ai-assisted-development/README.md) | Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise | The most basic form of AI-assisted coding shows both the possibilities and the limits that motivate agentic workflows |
 | [060 - Agentic Development](stages/060-ai-agentic-development/README.md) | OpenCode with AGENT.md and reusable skills that encode enterprise Quarkus standards | Internal development guidelines become living assets that agents follow and improve |
 | [070 - Autonomous Application Migration](stages/070-ai-autonomous-migration/README.md) | MTA and Developer Lightspeed analysis plus a multi-agent Spring Boot to Quarkus migration through MaaS | Legacy backlogs need secure, affordable, reviewable autonomous migration |
-| 080 - AI in Trusted Delivery (reserved) | AI with Red Hat Trusted Software Supply Chain | Reserved slot; tracked in the backlog until the scope is concrete |
+| [080 - AI in Trusted Delivery](stages/080-ai-trusted-delivery/README.md) | OpenShift Pipelines and Trusted Artifact Signer base for provenance, signing, and SBOMs of AI-generated changes | Autonomous output needs supply-chain proof, not trust-me claims (base setup; implementation tracked in backlog) |
 | [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | The whole arc becomes one discoverable self-service experience |
 
 Developer workflow use cases start with [Stage 050 - AI-Assisted Development (vibe-coding exercise)](stages/050-ai-assisted-development/README.md). Stages 010-070 are primarily for platform engineers building the trusted AI development platform. Stage 050 and later topics shift to enterprise developers using that platform for governed coding, documentation, modernization, delivery, and review. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 050 as vibe-coding review discipline. Later developer workflow topics `120-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
@@ -132,6 +132,7 @@ Deploy the implemented stages in order:
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-ai-assisted-development/deploy.sh
 ./stages/070-ai-autonomous-migration/deploy.sh
+./stages/080-ai-trusted-delivery/deploy.sh
 ./stages/090-ai-self-service-portal/deploy.sh
 ```
 

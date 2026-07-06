@@ -1,0 +1,18 @@
+# Red Hat Trusted Artifact Signer: sigstore-based signing and attestation
+# (Fulcio, Rekor, CLI server) for AI-generated artifacts.
+# The Securesign instance is created in the stage implementation phase:
+# its Fulcio OIDC issuer wires to the Stage 070 Keycloak and needs live
+# validation before it lands in GitOps.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhtas-operator
+  namespace: openshift-operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  name: rhtas-operator
+  channel: stable-v1.4
+  installPlanApproval: Automatic
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
