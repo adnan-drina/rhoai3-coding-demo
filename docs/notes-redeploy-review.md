@@ -109,4 +109,15 @@ Audit result:
   batch 4096 (> 2096 mamba block), seqs 64 -> 5GiB KV / 130K tokens / 11x
   32K concurrency. Qwen added to developer subscription (100K/h) and
   elevated agent subscription (2M/h).
-- Remaining: 050 Dev Spaces, 070 MTA, 080 base, 090 portal.
+- 050: 110/110 (workspaces, Continue 1.3.38, MaaS keys incl. qwen; provisioner
+  SA authorized on developer subscription; model route prefix fixed to
+  /models-as-a-service/<model>/v1 across all consumers)
+- 060: 9/9 (NEW deployable stage: agentic-coolstore workspace on the
+  demo/agentic-skills branch, agent-scale memory)
+- 070: 27/27 (MTA + Lightspeed; kai key via governed gateway HTTP 200;
+  hook SA authorized; stuck-hook recovery recipe documented)
+- 080: 5/1/0 base (pipelines 1.22.4 + rhtas 1.4.1; install-plan approval
+  hook added for the shared Manual namespace; Securesign = impl phase)
+- 090: 19/19 (RHDH, OIDC via MTA Keycloak, catalog, TechDocs, ConsoleLink)
+
+ALL NINE STAGES DEPLOYED AND VALIDATED ON cluster-24vkd (2026-07-06).
