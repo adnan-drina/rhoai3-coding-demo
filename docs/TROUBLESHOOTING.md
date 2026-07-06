@@ -100,6 +100,41 @@ oc get llminferenceservice -n maas <model> \
 gateway and policy CRDs exist, and the console flips to green. No action
 is needed on the model itself.
 
+## Large Hybrid-MoE Model Crash-Loops With CUDA OOM At Engine Init
+
+**Affected stage:** Stage 040 (qwen3-6-35b-a3b on a 48GB L40S)
+
+**Likely cause:** a ~35GB-weight hybrid SSM/MoE model leaves almost no
+headroom on a 44.4GiB-usable card, and several vLLM consumers claim the rest
+by default: the multimodal vision-encoder cache (profiled with a max-size
+image), the per-slot mamba/GDN state cache sized by max_num_seqs (~8GiB at
+the default), and the MoE prefill activation workspace sized by
+max_num_batched_tokens. vLLM sizes the KV budget from the profiling peak, so
+these overheads produce num_gpu_blocks=0 and an OOM when the KServe template
+block override forces an allocation anyway.
+
+**Diagnose:** read the engine log memory ledger in order — "Model loading
+took X GiB", "Initial profiling/warmup run", "Available KV cache memory",
+"num_gpu_blocks". Zero available KV with weights far below the utilization
+budget means resident overhead, not weights.
+
+**Recover (the fit recipe that ships in GitOps):**
+
+- `--limit-mm-per-prompt={"image":0,"video":0}` — text-only serving drops
+  the vision encoder cache;
+- `--max-num-seqs=64` — caps the per-slot hybrid state cache (the ~8GiB
+  term; the KV pool, not the slot count, is the practical concurrency limit);
+- `--kv-cache-dtype=fp8` — halves cache bytes, keeps the 32K context;
+- `--max-num-batched-tokens=4096` — small MoE prefill workspace, but MUST
+  exceed the mamba-aligned attention block size (2096 tokens with fp8 KV;
+  the engine asserts otherwise);
+- result: ~5GiB KV = ~130K cached tokens = 11x concurrency at 32K.
+
+Rolling updates of single-replica GPU models deadlock when the new pod is
+SchedulingGated behind the old pod's Kueue quota: delete the old pod to hand
+over the card; the replacement the old ReplicaSet creates stays gated and is
+removed when the new pod reports Ready.
+
 ## Model Image Pull Stalls On A GPU Node
 
 **Affected stage:** Stage 040 (first pull of a large modelcar)

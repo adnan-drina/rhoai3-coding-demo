@@ -124,6 +124,24 @@ For this repo:
 - Treat MLServer ServingRuntime for KServe and Spyre x86 paths as Technology
   Preview where the official guide labels them that way.
 
+## Project Sizing Checklist: Large Hybrid-MoE On A Single L40S (rhoai3-coding-demo)
+
+Validated live for qwen3-6-35b-a3b (35GB FP8 weights, 256-expert MoE with
+GDN/mamba layers, multimodal-capable) on one 48GB L40S with the RHOAI 3.4.2
+operator vLLM (v0.18.0+rhaiv.11):
+
+1. Text-only? Disable multimodal inputs or the vision encoder cache is
+   profiled with a max-size image.
+2. Cap `max_num_seqs` (64 for demos): hybrid models allocate per-slot state
+   for every slot up front.
+3. `kv-cache-dtype=fp8` to double effective KV tokens.
+4. `max-num-batched-tokens` low for MoE workspace but ABOVE the
+   mamba-aligned attention block size printed at startup (assertion enforced).
+5. Read the startup memory ledger before changing anything else: weights,
+   profiling peak, available KV, block override.
+6. Expect the rolling-update GPU deadlock on single-replica models under
+   Kueue; hand over the card by deleting the old pod.
+
 ## Workflow
 
 1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.

@@ -19,6 +19,7 @@ Update it first when preparing an upgrade.
 | Red Hat OpenShift Dev Spaces | 3.28 | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28 |
 | Red Hat Developer Hub | 1.10 | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10 |
 | Red Hat Trusted Profile Analyzer | 2.2 | https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2 |
+| Migration Toolkit for Applications | 8.1 | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1 |
 
 ## Version Match Rule
 
@@ -90,6 +91,13 @@ should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
+```
+
+For the current baseline, Migration Toolkit for Applications documentation
+links should use:
+
+```text
+https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/
 ```
 
 Do not use `latest` or another product version for product configuration unless
@@ -273,6 +281,25 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
   [Using OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/operate/index)
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
+
+## Migration Toolkit for Applications 8.1 Documentation Index
+
+Use the official MTA 8.1 landing page as the entry point:
+https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
+
+- **What's New**:
+  [Release Notes](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/release_notes/index)
+- **Install**:
+  [Installing MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/installing_the_migration_toolkit_for_applications/index)
+- **AI**:
+  [Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
+- **Using the Tools**:
+  [CLI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/using_the_migration_toolkit_for_applications_command-line_interface/index),
+  [UI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index),
+  [VS Code Extension](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index),
+  [IntelliJ IDEA plugin](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/intellij_idea_plugin_guide/index)
+- **Rules Development**:
+  [Custom rules](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_rules_for_an_mta_analysis/index)
 
 ## Red Hat Trusted Profile Analyzer 2.2 Documentation Index
 
