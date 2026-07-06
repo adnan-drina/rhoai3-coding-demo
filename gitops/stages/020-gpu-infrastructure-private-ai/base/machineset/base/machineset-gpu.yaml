@@ -46,8 +46,8 @@ spec:
               iops: 0
               kmsKey:
                 arn: ''
-              volumeSize: 100
-              volumeType: gp2
+              volumeSize: 200
+              volumeType: gp3
           capacityReservationId: ''
           credentialsSecret:
             name: aws-cloud-credentials

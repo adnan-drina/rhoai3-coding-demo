@@ -100,6 +100,32 @@ oc get llminferenceservice -n maas <model> \
 gateway and policy CRDs exist, and the console flips to green. No action
 is needed on the model itself.
 
+## Model Image Pull Stalls On A GPU Node
+
+**Affected stage:** Stage 040 (first pull of a large modelcar)
+
+**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large
+(~30-36GB); on a 100GB root volume the pull plus cached base images crosses
+the image-GC threshold and garbage collection thrashes the very layers being
+pulled. Fixed by the 200GB gp3 default in generate-gpu-machineset.sh; note
+that MachineSet template changes only apply to newly created machines.
+
+**Diagnose:**
+
+```bash
+oc describe node <gpu-node> | grep -A3 Conditions:   # DiskPressure transitions
+oc get events -n models-as-a-service --sort-by=.lastTimestamp | grep -i pull
+oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
+```
+
+**Recover:**
+
+- If the volume is undersized, recreate the GPU machines: scale the GPU
+  MachineSet to 0, regenerate with `generate-gpu-machineset.sh --write`
+  (200GB gp3 default), sync Stage 020, scale back up.
+- If pressure already cleared, the pull resumes on its own; disk usage
+  growth in /var confirms progress.
+
 ## Argo CD Reports Synced But New Manifests Are Missing
 
 **Affected stage:** any

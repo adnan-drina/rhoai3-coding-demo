@@ -79,7 +79,12 @@ for cmd in oc jq ruby; do
 done
 
 GPU_INSTANCE_TYPE="${RHOAI_GPU_INSTANCE_TYPE:-g6e.2xlarge}"
-GPU_REPLICAS="${RHOAI_GPU_MACHINESET_REPLICAS:-1}"
+GPU_REPLICAS="${RHOAI_GPU_MACHINESET_REPLICAS:-2}"
+# Root volume sized for large modelcar images: a 100GB worker default hits
+# kubelet DiskPressure mid-pull (~36GB qwen modelcar + base images) and image
+# GC thrashes the pull. 200GB matches the two-model coding demo.
+GPU_VOLUME_SIZE="${RHOAI_GPU_VOLUME_SIZE:-200}"
+GPU_VOLUME_TYPE="${RHOAI_GPU_VOLUME_TYPE:-gp3}"
 OUTPUT_PATH="${RHOAI_GPU_MACHINESET_OUTPUT:-gitops/stages/020-gpu-infrastructure-private-ai/base/machineset/base/machineset-gpu.yaml}"
 
 if ! [[ "$GPU_REPLICAS" =~ ^[0-9]+$ ]]; then
@@ -126,7 +131,9 @@ GENERATED_JSON=$(jq \
   --arg name "$GPU_NAME" \
   --arg cluster "$CLUSTER_ID" \
   --arg instance "$GPU_INSTANCE_TYPE" \
-  --argjson replicas "$GPU_REPLICAS" '
+  --argjson replicas "$GPU_REPLICAS" \
+  --argjson volsize "$GPU_VOLUME_SIZE" \
+  --arg voltype "$GPU_VOLUME_TYPE" '
   del(
     .metadata.creationTimestamp,
     .metadata.generation,
@@ -166,6 +173,8 @@ GENERATED_JSON=$(jq \
       "node-role.kubernetes.io/gpu": ""
     })
   | .spec.template.spec.providerSpec.value.instanceType = $instance
+  | .spec.template.spec.providerSpec.value.blockDevices[0].ebs.volumeSize = $volsize
+  | .spec.template.spec.providerSpec.value.blockDevices[0].ebs.volumeType = $voltype
   | .spec.template.spec.taints = [
       {
         "effect": "NoSchedule",

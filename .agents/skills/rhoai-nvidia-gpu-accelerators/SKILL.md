@@ -47,7 +47,8 @@ The demo hardware intent is:
   by vLLM model servers that need full-card VRAM (see stages/020 README).
 - Default node count: two GPU worker nodes — one per private model
   (nemotron-3-nano-30b-a3b, qwen3-6-35b-a3b) — regenerated per environment
-  with generate-gpu-machineset.sh --write and RHOAI_GPU_MACHINESET_REPLICAS=2.
+  with generate-gpu-machineset.sh --write (defaults: 2 replicas, 200GB gp3
+  root volume sized for modelcar image pulls).
 - Default AWS environment source: demo.redhat.com OpenShift on AWS.
 - Default GPU worker scheduling handoff:
   - MachineSet template label `node-role.kubernetes.io/gpu`
