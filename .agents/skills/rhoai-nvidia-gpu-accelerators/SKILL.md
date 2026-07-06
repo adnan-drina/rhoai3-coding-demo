@@ -41,11 +41,13 @@ or IBM Spyre accelerator paths unless the project baseline changes.
 The demo hardware intent is:
 
 - AWS GPU instance type: `g6e.2xlarge`.
-- GPU capacity pattern: one NVIDIA L40S GPU per node, exposed to Kubernetes as
-  `nvidia.com/gpu`; Stage 120 time-slices one physical GPU into four
-  schedulable `nvidia.com/gpu` units for demo density.
-- Default node count: one GPU worker node unless an environment-specific
-  resource plan says otherwise.
+- GPU capacity pattern: one NVIDIA L40S GPU per node, exposed to Kubernetes
+  as one `nvidia.com/gpu` unit; this repo does NOT time-slice (divergence
+  from the rhoai3-demo foundation) because both cards are exclusively claimed
+  by vLLM model servers that need full-card VRAM (see stages/020 README).
+- Default node count: two GPU worker nodes — one per private model
+  (nemotron-3-nano-30b-a3b, qwen3-6-35b-a3b) — regenerated per environment
+  with generate-gpu-machineset.sh --write and RHOAI_GPU_MACHINESET_REPLICAS=2.
 - Default AWS environment source: demo.redhat.com OpenShift on AWS.
 - Default GPU worker scheduling handoff:
   - MachineSet template label `node-role.kubernetes.io/gpu`

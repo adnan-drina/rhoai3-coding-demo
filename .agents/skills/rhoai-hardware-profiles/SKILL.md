@@ -62,11 +62,13 @@ This skill does not cover:
 For this repo:
 
 - Default accelerator identifier: `nvidia.com/gpu`.
-- Default demo hardware shape: one NVIDIA L40S GPU per `g6e.2xlarge` GPU worker,
-  time-sliced to four schedulable `nvidia.com/gpu` units in Stage 120.
-- Default profile intent: queue-backed GPU profiles for workbenches and later
-  Nemotron model-serving workloads unless a stage `PLAN.md` documents a
-  different resource class.
+- Default demo hardware shape: one NVIDIA L40S GPU per `g6e.2xlarge` GPU
+  worker, two workers, advertised as one `nvidia.com/gpu` unit each — this
+  repo disables time-slicing so every private model claims an exclusive card
+  (see stages/020 README for the rationale).
+- Default profile intent: queue-backed GPU profiles for workbenches and the
+  Nemotron + Qwen3.6 model-serving workloads unless a stage README documents
+  a different resource class.
 - Create hardware profiles only after GPU support is installed and nodes report
   accelerator capacity and allocatable resources.
 - Use active node labels and taints as scheduling authority. Do not infer
