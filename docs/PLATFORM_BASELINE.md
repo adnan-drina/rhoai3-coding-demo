@@ -14,6 +14,7 @@ Update it first when preparing an upgrade.
 | Red Hat OpenShift Cluster Observability Operator | 1.4.0 compatibility hold | https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/ |
 | Red Hat build of OpenTelemetry | 3.9 | https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9 |
 | Red Hat OpenShift distributed tracing platform | 3.9 | https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9 |
+| Red Hat OpenShift Pipelines | 1.22 | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/ |
 
 ## Version Match Rule
 
@@ -51,6 +52,13 @@ documentation links should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9/
+```
+
+For the current baseline, Red Hat OpenShift Pipelines documentation links
+should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
 ```
 
 Do not use `latest` or another product version for product configuration unless
@@ -192,6 +200,30 @@ https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/
   [Images](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/images/index),
   [Registry](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/registry/index),
   [Disconnected environments](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/disconnected_environments/index)
+
+## Red Hat OpenShift Pipelines 1.22 Documentation Index
+
+Use the official OpenShift Pipelines 1.22 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
+
+- **About**:
+  [Release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/release_notes/index),
+  [About OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/about_openshift_pipelines/index)
+- **Installing and configuring**:
+  [Installing and configuring](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/installing_and_configuring/index),
+  [Managing performance and resource use](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/managing_performance_and_resource_use/index)
+- **Security**:
+  [Securing OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/securing_openshift_pipelines/index)
+- **Observability**:
+  [Observability in OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/observability_in_openshift_pipelines/index)
+- **Pipelines as Code**:
+  [Pipelines as Code](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/pipelines_as_code/index)
+- **Creating CI/CD pipelines**:
+  [Creating CI/CD pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/creating_cicd_pipelines/index)
+- **Custom Tekton Hub instance**:
+  [Custom Tekton Hub instance](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/custom_tekton_hub_instance/index)
+- **Reference**:
+  [Pipelines CLI (tkn) reference](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/pipelines_cli_tkn_reference/index)
 
 ## OpenShift Data Foundation 4.20 Documentation Index
 

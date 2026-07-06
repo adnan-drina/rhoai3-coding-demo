@@ -50,6 +50,11 @@ spec:
       - name: main
         # No image override: the RHOAI operator supplies the supported vLLM
         # runtime through the versioned kserve-config-llm-template config.
+        env:
+          # Reduce CUDA allocator fragmentation during weight load + graph
+          # capture on the tight 35GB-weights/44GiB-card fit.
+          - name: PYTORCH_ALLOC_CONF
+            value: expandable_segments:True
         command:
           - python
           - -m
@@ -63,9 +68,12 @@ spec:
           - --enable-force-include-usage
           - --disable-uvicorn-access-log
           - --enable-prefix-caching
-          # ~36GB FP8 weights on a 48GB L40S: cap the context so the KV cache
-          # fits; nemotron remains the long-context option.
+          # ~35GB FP8 weights on a 44.4GiB-usable L40S: cap the context,
+          # store KV/mamba cache in fp8, and trim the CUDA-graph budget so
+          # engine init fits (bf16 KV at 32K OOMed by ~1GiB at graph capture).
           - --max-model-len=32768
+          - --kv-cache-dtype=fp8
+          - --gpu-memory-utilization=0.92
           - --max-num-batched-tokens=8192
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
