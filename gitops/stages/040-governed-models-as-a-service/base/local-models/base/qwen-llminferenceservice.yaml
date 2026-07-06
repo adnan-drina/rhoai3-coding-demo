@@ -78,7 +78,10 @@ spec:
           # multimodal encoder cache (16K-token budget profiled with a
           # max-size image) that consumed the remaining KV headroom.
           - --limit-mm-per-prompt={"image":0,"video":0}
-          - --max-num-batched-tokens=8192
+          # 2048, not 8192: chunked-prefill activation workspace scales with
+          # this on the 256-expert MoE (~8.9GiB peak at 8192 profiled on the
+          # L40S), and the profiling peak is what sizes the KV budget.
+          - --max-num-batched-tokens=2048
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --reasoning-parser=qwen3

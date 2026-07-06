@@ -513,6 +513,48 @@ products:
             status: active
             skill: ocp-image-registry-and-mirroring
 
+  ocp_lightspeed:
+    name: Red Hat OpenShift Lightspeed
+    baseline_component: Red Hat OpenShift Lightspeed
+    skill_prefix: ocp-lightspeed-
+    rule: .agents/rules/ocp.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/
+    categories:
+      about:
+        description: Product overview, supported LLM providers, resource requirements, data handling, and OLSConfig CR concepts.
+        routes:
+          - book: about
+            status: active
+            skill: ocp-lightspeed-about
+          - book: release_notes
+            status: active
+            skill: ocp-lightspeed-release-notes
+      installing:
+        description: Operator installation via OperatorHub or software catalog.
+        routes:
+          - book: install
+            status: active
+            skill: ocp-lightspeed-install
+      configuring:
+        description: OLSConfig CR customization, LLM provider secrets, TLS, RBAC, query filters, RAG, MCP, token quotas, and PostgreSQL persistence.
+        routes:
+          - book: configure
+            status: active
+            skill: ocp-lightspeed-configure
+      operations:
+        description: Chat usage, conversation management, resource attachments, feedback, REST API, and day-2 operations.
+        routes:
+          - book: operate
+            status: active
+            skill: ocp-lightspeed-operate
+      troubleshoot:
+        description: 502 errors, OperatorHub visibility, API auth failures, prompt-too-long, truncated responses, and Google Vertex AI validation.
+        routes:
+          - book: troubleshoot
+            status: active
+            skill: ocp-lightspeed-troubleshoot
+
   ocp_pipelines:
     name: Red Hat OpenShift Pipelines
     baseline_component: Red Hat OpenShift Pipelines

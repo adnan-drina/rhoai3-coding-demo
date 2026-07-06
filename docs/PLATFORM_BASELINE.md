@@ -16,6 +16,8 @@ Update it first when preparing an upgrade.
 | Red Hat OpenShift distributed tracing platform | 3.9 | https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9 |
 | Red Hat OpenShift Pipelines | 1.22 | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/ |
 | Red Hat OpenShift Lightspeed | 1.0 | https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0 |
+| Red Hat OpenShift Dev Spaces | 3.28 | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28 |
+| Red Hat Developer Hub | 1.10 | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10 |
 
 ## Version Match Rule
 
@@ -67,6 +69,19 @@ should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/
+```
+
+For the current baseline, Red Hat OpenShift Dev Spaces documentation links
+should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/
+```
+
+For the current baseline, Red Hat Developer Hub documentation links should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/
 ```
 
 Do not use `latest` or another product version for product configuration unless
@@ -250,6 +265,21 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
   [Using OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/operate/index)
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
+
+## Red Hat OpenShift Dev Spaces 3.28 Documentation Index
+
+Use the official OpenShift Dev Spaces 3.28 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28
+
+- **Discover**:
+  [Understanding Red Hat OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/understanding_red_hat_openshift_dev_spaces/index)
+- **What's New**:
+  [3.28.0 Release notes and known issues](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/release_notes_and_known_issues/index)
+- **Install**:
+  [Installing Red Hat OpenShift Dev Spaces](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/installing_red_hat_openshift_dev_spaces/index)
+- **Usage and Administration**:
+  [Administration guide](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/administration_guide/index),
+  [User guide](https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/user_guide/index)
 
 ## OpenShift Data Foundation 4.20 Documentation Index
 
