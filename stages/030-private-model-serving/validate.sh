@@ -85,6 +85,15 @@ check_warn "nemotron-3-nano-30b-a3b ready" \
   "oc get llminferenceservice nemotron-3-nano-30b-a3b -n maas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
   "True"
 
+log_step "In-Cluster OpenAI API Surface"
+# Private models serve an OpenAI-compatible API inside the platform boundary
+# at Stage 030; governed external access arrives with the Stage 040 gateway.
+for model in gpt-oss-20b nemotron-3-nano-30b-a3b; do
+  check_warn "${model} answers /v1/models in-cluster" \
+    "oc exec deployment/${model}-kserve -n maas -c main -- curl -sk --max-time 10 https://localhost:8000/v1/models 2>/dev/null | jq -r '.data[0].id' 2>/dev/null" \
+    "${model}"
+done
+
 log_step "Kueue Workload Observation"
 if oc get crd workloads.kueue.x-k8s.io &>/dev/null; then
   MODEL_WORKLOAD_COUNT=$(oc get workloads.kueue.x-k8s.io -n maas -o json 2>/dev/null \

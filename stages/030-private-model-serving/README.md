@@ -15,7 +15,7 @@ For this demo, inference means local large language models answering coding and 
 This stage adds the private inference layer.
 
 - Local `LLMInferenceService` resources for `gpt-oss-20b` and `nemotron-3-nano-30b-a3b`.
-- Red Hat AI Inference Server / vLLM serving with an OpenAI-compatible API surface.
+- Red Hat AI Inference Server / vLLM serving with an OpenAI-compatible API surface inside the platform boundary; the `LLMInferenceService` resources reference the MaaS gateway and report Ready once Stage 040 provides governed external access.
 - Kueue-backed GPU placement with single-GPU demo sizing for each model replica.
 - Platform authentication, RBAC, and gateway posture so model endpoints are not unmanaged routes.
 - llm-d, readiness, and metric foundations for scale-aware inference operations (the LeaderWorkerSet operator arrives with Stage 020 as a Kueue dependency).
