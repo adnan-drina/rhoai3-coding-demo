@@ -1,0 +1,612 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devspace-maas-key-provisioner
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devspace-maas-key-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devspace-maas-key-provisioner-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devspace-maas-key-secret-manager
+subjects:
+  - kind: ServiceAccount
+    name: devspace-maas-key-provisioner
+    namespace: wksp-ai-developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devspace-maas-gateway-reader
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - gateways
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devspace-maas-key-provisioner-gateway-reader
+  namespace: openshift-ingress
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devspace-maas-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: devspace-maas-key-provisioner
+    namespace: wksp-ai-developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: devspace-maas-key-reader
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - maas-devspace-api-keys
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - devspace-ai-tools-init
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devspace-maas-key-workspace-readers
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: devspace-maas-key-reader
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:wksp-ai-developer
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devspace-ai-tools-init
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  init-ai-tools.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    PROJECT_DIR="${1:?project directory is required}"
+    PROFILE="${2:-default}"
+
+    mkdir -p "${HOME}/.continue" "${HOME}/.config/opencode" "${HOME}/.opencode"
+
+    ensure_vscode_shell_integration() {
+      local shell_integration=""
+
+      for candidate in \
+        /checode/checode-linux-libc/ubi9/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh \
+        /checode/checode-linux-libc/ubi8/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh; do
+        if [ -r "${candidate}" ]; then
+          shell_integration="${candidate}"
+          break
+        fi
+      done
+
+      if [ -z "${shell_integration}" ]; then
+        echo "Che Code bash shell integration script not found; skipping ~/.bashrc update."
+        return
+      fi
+
+      touch "${HOME}/.bashrc"
+      if ! grep -q "rhoai3-coding-demo: vscode shell integration" "${HOME}/.bashrc"; then
+        {
+          printf '\n'
+          printf '# rhoai3-coding-demo: vscode shell integration\n'
+          printf 'if [ -z "${VSCODE_SHELL_INTEGRATION:-}" ] && [ -r "%s" ]; then\n' "${shell_integration}"
+          printf '  . "%s"\n' "${shell_integration}"
+          printf 'fi\n'
+        } >> "${HOME}/.bashrc"
+        echo "Enabled Che Code shell integration from ~/.bashrc."
+      else
+        echo "Che Code shell integration already configured in ~/.bashrc."
+      fi
+    }
+
+    ensure_java21_default() {
+      local java21_home=""
+
+      for candidate in \
+        "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+        /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+        /usr/lib/jvm/java-21-openjdk; do
+        if [ -x "${candidate}/bin/java" ]; then
+          java21_home="${candidate}"
+          break
+        fi
+      done
+
+      if [ -z "${java21_home}" ]; then
+        echo "Java 21 runtime not found; leaving Java default unchanged."
+        return
+      fi
+
+      if [ -d "${HOME}/.sdkman/candidates/java" ]; then
+        ln -sfn "${java21_home}" "${HOME}/.sdkman/candidates/java/current" 2>/dev/null || true
+      fi
+
+      for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+        touch "${rc}"
+        if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+          {
+            printf '\n'
+            printf '# rhoai3-coding-demo: java 21 default\n'
+            printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+            printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+          } >> "${rc}"
+          echo "Configured Java 21 as the default shell runtime in ${rc}."
+        else
+          echo "Java 21 shell default already configured in ${rc}."
+        fi
+      done
+
+      export JAVA_HOME="${java21_home}"
+      export PATH="${JAVA_HOME}/bin:${PATH}"
+    }
+
+    fallback_from_repo() {
+      if [ ! -f "${HOME}/.continue/config.yaml" ]; then
+        cp "${PROJECT_DIR}/.continue/config.yaml" "${HOME}/.continue/config.yaml" 2>/dev/null || true
+        echo "Created ~/.continue/config.yaml from the repo template."
+      else
+        echo "Kept existing ~/.continue/config.yaml."
+      fi
+
+      if [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
+        if [ -f "${HOME}/.opencode/opencode.json" ]; then
+          cp "${HOME}/.opencode/opencode.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
+          echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+        else
+          cp "${PROJECT_DIR}/.opencode/opencode.template.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
+          echo "Created ~/.config/opencode/opencode.json from the repo template."
+        fi
+      else
+        echo "Kept existing ~/.config/opencode/opencode.json."
+      fi
+    }
+
+    ensure_opencode_compat_path() {
+      if [ -f "${HOME}/.opencode/opencode.json" ] && [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
+        cp "${HOME}/.opencode/opencode.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
+        echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+      fi
+      if [ ! -L "${HOME}/.opencode/opencode.json" ]; then
+        rm -f "${HOME}/.opencode/opencode.json"
+        ln -s "${HOME}/.config/opencode/opencode.json" "${HOME}/.opencode/opencode.json" 2>/dev/null \
+          || cp "${HOME}/.config/opencode/opencode.json" "${HOME}/.opencode/opencode.json" 2>/dev/null \
+          || true
+        echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+      else
+        echo "Kept compatibility ~/.opencode/opencode.json link."
+      fi
+    }
+
+    secret_value() {
+      local key="$1"
+      local value=""
+
+      if [ -n "${KUBERNETES_SERVICE_HOST:-}" ] && [ -n "${KUBERNETES_SERVICE_PORT:-}" ]; then
+        local kube_api="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+        local kube_ca="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        local kube_token_file="/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+        if [ -r "${kube_ca}" ] && [ -r "${kube_token_file}" ]; then
+          value="$(
+            curl -fsS --cacert "${kube_ca}" \
+              -H "Authorization: Bearer $(cat "${kube_token_file}")" \
+              "${kube_api}/api/v1/namespaces/wksp-ai-developer/secrets/maas-devspace-api-keys" \
+              | jq -r --arg key "${key}" '.data[$key] // empty' \
+              | base64 -d 2>/dev/null
+          )" || true
+        fi
+      fi
+
+      if [ -z "${value}" ] && command -v oc >/dev/null 2>&1; then
+        value="$(
+          oc get secret maas-devspace-api-keys -n wksp-ai-developer \
+            -o "jsonpath={.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null
+        )" || true
+      fi
+
+      printf '%s' "${value}"
+    }
+
+    for _ in $(seq 1 30); do
+      [ -n "$(secret_value MAAS_API_KEY_NEMOTRON)" ] && break
+      sleep 2
+    done
+
+    ensure_vscode_shell_integration
+    ensure_java21_default
+
+    MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
+    MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
+    MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
+    MAAS_API_KEY_GPT_4O="$(secret_value MAAS_API_KEY_GPT_4O)"
+    MAAS_API_KEY_GPT_4O_MINI="$(secret_value MAAS_API_KEY_GPT_4O_MINI)"
+
+    if [ -z "${MAAS_BASE_URL}" ] \
+      || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
+      || [ -z "${MAAS_API_KEY_QWEN}" ] \
+      || [ -z "${MAAS_API_KEY_GPT_4O}" ] \
+      || [ -z "${MAAS_API_KEY_GPT_4O_MINI}" ]; then
+      echo "MaaS API key Secret is not ready; using repository templates."
+      fallback_from_repo
+      ensure_opencode_compat_path
+      exit 0
+    fi
+
+    umask 077
+    cat > "${HOME}/.continue/config.yaml" <<EOF
+    name: MaaS Code Assistant
+    version: 1.0.0
+    schema: v1
+    models:
+      - name: NVIDIA Nemotron 3 Nano 30B-A3B
+        provider: openai
+        model: "nemotron-3-nano-30b-a3b"
+        apiBase: "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1"
+        apiKey: "${MAAS_API_KEY_NEMOTRON}"
+        contextLength: 131072
+        capabilities:
+          - tool_use
+        defaultCompletionOptions:
+          reasoning: true
+          maxTokens: 16384
+        requestOptions:
+          timeout: 600000
+
+      - name: Qwen3.6 35B A3B
+        provider: openai
+        model: "qwen3-6-35b-a3b"
+        apiBase: "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1"
+        apiKey: "${MAAS_API_KEY_QWEN}"
+        contextLength: 32768
+        defaultCompletionOptions:
+          maxTokens: 4096
+        requestOptions:
+          timeout: 600000
+
+      - name: OpenAI GPT-4o
+        provider: openai
+        model: "gpt-4o"
+        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1"
+        apiKey: "${MAAS_API_KEY_GPT_4O}"
+        contextLength: 128000
+        capabilities:
+          - tool_use
+        defaultCompletionOptions:
+          maxTokens: 4096
+        requestOptions:
+          timeout: 600000
+
+      - name: OpenAI GPT-4o Mini
+        provider: openai
+        model: "gpt-4o-mini"
+        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1"
+        apiKey: "${MAAS_API_KEY_GPT_4O_MINI}"
+        contextLength: 128000
+        capabilities:
+          - tool_use
+        defaultCompletionOptions:
+          maxTokens: 4096
+        requestOptions:
+          timeout: 600000
+
+    rules:
+      - >-
+        You are assisting inside Red Hat OpenShift Dev Spaces for a governed AI
+        coding demo. When asked to create or edit files, use IDE file editing
+        capabilities and write files to disk. Do not answer with file contents only
+        unless file writing is unavailable; if unavailable, say so clearly.
+
+      - >-
+        Use repository-relative paths with no leading slash. Do not edit files
+        outside the requested project directory. Keep generated examples minimal and
+        reviewable.
+
+      - >-
+        Do not print API keys, tokens, kubeconfigs, concrete route hosts, private
+        cluster hostnames, or full environment variables. Use shell variables such
+        as ROUTE_HOST in commands instead of printing sensitive values.
+
+    context:
+      - provider: code
+      - provider: docs
+      - provider: diff
+      - provider: terminal
+      - provider: problems
+      - provider: folder
+      - provider: codebase
+
+    mcpServers:
+      - name: OpenShift MCP
+        type: streamable-http
+        url: http://openshift-mcp.coding-assistant.svc:8000/mcp
+    EOF
+
+    cat > "${HOME}/.config/opencode/opencode.json" <<EOF
+    {
+      "\$schema": "https://opencode.ai/config.json",
+      "provider": {
+        "nemotron": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS Nemotron",
+          "models": {
+            "nemotron-3-nano-30b-a3b": {
+              "name": "NVIDIA Nemotron (Local GPU)",
+              "limit": { "context": 131072, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
+            "baseURL": "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
+          }
+        },
+        "qwen": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS Qwen3.6",
+          "models": {
+            "qwen3-6-35b-a3b": {
+              "name": "Qwen3.6 35B A3B (Local GPU)",
+              "limit": { "context": 32768, "output": 4096 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_QWEN}",
+            "baseURL": "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
+          }
+        },
+        "gpt-4o": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS GPT-4o",
+          "models": {
+            "gpt-4o": {
+              "name": "OpenAI GPT-4o (External)",
+              "limit": { "context": 128000, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_GPT_4O}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
+          }
+        },
+        "gpt-4o-mini": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS GPT-4o Mini",
+          "models": {
+            "gpt-4o-mini": {
+              "name": "OpenAI GPT-4o Mini (External)",
+              "limit": { "context": 128000, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_GPT_4O_MINI}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
+          }
+        }
+      },
+      "model": "nemotron/nemotron-3-nano-30b-a3b",
+      "small_model": "gpt-4o-mini/gpt-4o-mini",
+      "mcp": {
+        "openshift": {
+          "type": "remote",
+          "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
+          "enabled": true,
+          "timeout": 10000
+        }
+      },
+      "permission": {
+        "read": "allow",
+        "grep": "allow",
+        "glob": "allow",
+        "edit": "ask",
+        "write": "ask",
+        "bash": "ask",
+        "webfetch": "ask",
+        "*_mcp_*": "ask"
+      }
+    }
+    EOF
+
+    ensure_opencode_compat_path
+    echo "Configured Continue for Stage 050 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-devspace-maas-api-keys
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: devspace-maas-key-provisioner
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -ceu
+            - |
+              SECRET_NAME="maas-devspace-api-keys"
+              SECRET_NAMESPACE="wksp-ai-developer"
+              SUBSCRIPTION="demo-models-subscription"
+              MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+
+              if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q "placeholder"; then
+                echo "ERROR: MaaS Gateway hostname is not ready"
+                exit 1
+              fi
+
+              MAAS_BASE_URL="https://${MAAS_HOST}"
+              SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              SECRET_FILE="$(mktemp)"
+              trap 'rm -f "${SECRET_FILE}"' EXIT
+              chmod 600 "${SECRET_FILE}"
+
+              secret_value() {
+                local key="$1"
+                oc get secret "${SECRET_NAME}" -n "${SECRET_NAMESPACE}" \
+                  -o "jsonpath={.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null || true
+              }
+
+              validate_subscription() {
+                local key="$1"
+                local payload
+                payload="$(mktemp)"
+                python3 -c 'import json,sys; print(json.dumps({"key": sys.argv[1]}))' "${key}" > "${payload}"
+                curl -sk -X POST \
+                  -H "Content-Type: application/json" \
+                  --data-binary "@${payload}" \
+                  "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/validate" \
+                  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("subscription",""))' 2>/dev/null || true
+                rm -f "${payload}"
+              }
+
+              create_key() {
+                local name="$1"
+                local response key id expires_at
+                response="$(mktemp)"
+                curl -sk -X POST \
+                  -H "Authorization: Bearer ${SA_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"name\":\"${name}\",\"subscription\":\"${SUBSCRIPTION}\"}" \
+                  "${MAAS_BASE_URL}/maas-api/v1/api-keys" > "${response}"
+
+                key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("key",""))' "${response}" 2>/dev/null || true)"
+                id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "${response}" 2>/dev/null || true)"
+                expires_at="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("expiresAt",""))' "${response}" 2>/dev/null || true)"
+                rm -f "${response}"
+
+                if [ -z "${key}" ] || ! echo "${key}" | grep -q '^sk-oai-'; then
+                  echo "ERROR: MaaS API did not return a valid key for ${name}"
+                  exit 1
+                fi
+                printf '%s\n%s\n%s\n' "${key}" "${id}" "${expires_at}"
+              }
+
+              write_model_key() {
+                local suffix="$1"
+                local model="$2"
+                local name="devspace-ai-developer-${model}"
+                local key id expires_at current_key current_id current_subscription
+
+                current_key="$(secret_value "MAAS_API_KEY_${suffix}")"
+                current_id="$(secret_value "MAAS_API_KEY_${suffix}_ID")"
+                current_subscription=""
+                if [ -n "${current_key}" ]; then
+                  current_subscription="$(validate_subscription "${current_key}")"
+                fi
+
+                if [ "${current_subscription}" = "${SUBSCRIPTION}" ]; then
+                  key="${current_key}"
+                  id="${current_id}"
+                  expires_at="$(secret_value "MAAS_API_KEY_${suffix}_EXPIRES_AT")"
+                  echo "Keeping existing MaaS API key for ${model}"
+                else
+                  if [ -n "${current_id}" ]; then
+                    curl -sk -X DELETE \
+                      -H "Authorization: Bearer ${SA_TOKEN}" \
+                      "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}" >/dev/null || true
+                  fi
+                  mapfile -t created < <(create_key "${name}")
+                  key="${created[0]}"
+                  id="${created[1]}"
+                  expires_at="${created[2]}"
+                  echo "Provisioned MaaS API key for ${model}"
+                fi
+
+                {
+                  printf 'MAAS_API_KEY_%s=%s\n' "${suffix}" "${key}"
+                  printf 'MAAS_API_KEY_%s_ID=%s\n' "${suffix}" "${id}"
+                  printf 'MAAS_API_KEY_%s_EXPIRES_AT=%s\n' "${suffix}" "${expires_at}"
+                } >> "${SECRET_FILE}"
+              }
+
+              {
+                printf 'MAAS_BASE_URL=%s\n' "${MAAS_BASE_URL}"
+                printf 'MAAS_SUBSCRIPTION=%s\n' "${SUBSCRIPTION}"
+              } > "${SECRET_FILE}"
+
+              write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
+              write_model_key "QWEN" "qwen3-6-35b-a3b"
+              write_model_key "GPT_4O" "gpt-4o"
+              write_model_key "GPT_4O_MINI" "gpt-4o-mini"
+
+              oc create secret generic "${SECRET_NAME}" \
+                -n "${SECRET_NAMESPACE}" \
+                --from-env-file="${SECRET_FILE}" \
+                --dry-run=client -o yaml | oc apply -f -
+              echo "MaaS API key Secret ${SECRET_NAMESPACE}/${SECRET_NAME} is ready"

@@ -1,6 +1,6 @@
 # Developer Workspace Guide
 
-This guide is for demo users working in Stage 080 and later. It explains how to
+This guide is for demo users working in Stage 050 and later. It explains how to
 start from Red Hat Developer Hub, open the governed Red Hat OpenShift Dev Spaces
 workspace, and use MaaS-backed Continue for developer onboarding and enterprise
 vibe coding without using personal provider credentials.
@@ -25,9 +25,9 @@ The developer-focused stages then teach the four increments from Red Hat's
 turn accepted intent into specs, package repeatable checks as skills, and let
 agents use those assets for bounded engineering work.
 
-## Stage 080 Outcome
+## Stage 050 Outcome
 
-At the end of Stage 080, the developer has verified:
+At the end of Stage 050, the developer has verified:
 
 - Developer Hub exposes three clear workflow entry points:
   `Getting Started with AI Coding`, `Coolstore Inventory Service`, and
@@ -61,7 +61,7 @@ workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
 `Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
 renders local Continue configuration from that Secret. Some workspaces also
 render OpenCode configuration for later agentic engineering stages, but OpenCode
-is not part of the Stage 080 demo flow.
+is not part of the Stage 050 demo flow.
 
 The OpenCode-capable demo workspaces use a digest-pinned `che-incubator/cli-ai-tools`
 image because that is the current public OpenCode-in-Dev-Spaces reference path.
@@ -89,7 +89,7 @@ engineering workspaces.
 
 1. Log in to Red Hat Developer Hub with the assigned demo user.
 2. Open the component that matches the task:
-   - `Getting Started with AI Coding` for Stage 080 vibe coding.
+   - `Getting Started with AI Coding` for Stage 050 vibe coding.
    - `Coolstore Inventory Service` for deferred engineering stages `120-150`.
    - `MCA Coolstore` for deferred modernization stages `160-170`.
 3. Confirm the component shows only these links:
@@ -122,7 +122,7 @@ templates so the workspace still opens. Do not put real route URLs or API keys
 into `/projects/<repo>/.continue/config.yaml`; that file remains a Git-tracked
 template.
 
-For Stage 080, the selected workspace should show only one project directory:
+For Stage 050, the selected workspace should show only one project directory:
 
 ![Sanitized Dev Spaces project explorer](assets/techdocs/devspaces-projects.svg)
 
@@ -149,7 +149,7 @@ If you opened the inventory or modernization component instead, the only project
 directory should be `coolstore-inventory-service` or `mca-coolstore`
 respectively. If an old `coding-exercises`, `coolstore`, or multi-repository
 workspace appears, it is stale state from a previous workspace volume. Stop it
-and open the component-specific `Dev Spaces` link before recording Stage 080 as
+and open the component-specific `Dev Spaces` link before recording Stage 050 as
 green.
 
 ## Step 4: Confirm MaaS API Keys
@@ -180,7 +180,7 @@ Use a model endpoint that matches the exercise and data policy:
 | `gpt-4o` | Approved external model when provider-side processing is allowed |
 | `gpt-4o-mini` | Lower-cost approved external model when provider-side processing is allowed |
 
-The default Stage 080 source-code path is:
+The default Stage 050 source-code path is:
 
 ```text
 nemotron-3-nano-30b-a3b through MaaS
@@ -188,7 +188,7 @@ nemotron-3-nano-30b-a3b through MaaS
 
 Use the model path that matches the task and data classification:
 
-| Task type | Data classification | Default model path | Stage 080 decision |
+| Task type | Data classification | Default model path | Stage 050 decision |
 |-----------|---------------------|--------------------|--------------------|
 | Source-code explanation, README/API alignment, tests, and bounded implementation planning | Private source-code context | Private MaaS model | Use `nemotron-3-nano-30b-a3b` through MaaS. |
 | General product documentation lookup or public Red Hat documentation review | Public documentation | Private MaaS model by default; approved external MaaS model only when policy allows | Prefer the private path during the demo to keep the story simple. |
@@ -250,7 +250,7 @@ concrete route hosts must not be printed.
 Keep exercise details out of the general rules. Product versions, Maven
 coordinates, Java imports, generated file names, and validation commands belong
 in the one-shot task prompt or later specs/skills. This keeps the same workspace
-rules useful when the demo moves from the Stage 080 Quarkus exercise to later
+rules useful when the demo moves from the Stage 050 Quarkus exercise to later
 spec-driven and agentic workflows.
 
 Likewise, Java 21 is not a prompt guardrail. It is part of the controlled Dev
@@ -289,7 +289,7 @@ developer shell. If Continue attempts a terminal command and cannot execute or
 capture output, the assistant must stop, report the exact command to run
 manually, and record the blocker instead of claiming that the command passed.
 
-This is the Stage 080 vibe-coding check: a lightweight, human-led interaction
+This is the Stage 050 vibe-coding check: a lightweight, human-led interaction
 that verifies IDE integration with the configured model path before any
 source-code change is requested.
 
@@ -304,7 +304,7 @@ asks for cluster access, use the same cluster identity and namespace boundaries
 as the terminal `oc` session. Do not paste tokens into repository files or AI
 prompts.
 
-## Step 9: Record Stage 080 Evidence
+## Step 9: Record Stage 050 Evidence
 
 Record live validation evidence outside this repository, for example in the PR,
 issue tracker, or approved private evidence store. Do not commit live evidence
@@ -383,10 +383,10 @@ non-matches, and approved by a human before use.
 
 The MTA VS Code extensions are included only in the `mca-coolstore` workspace so
 the same controlled workspace can support the modernization workflow introduced
-in Stage 060. They help developers review MTA analysis findings and act on
+in Stage 070. They help developers review MTA analysis findings and act on
 modernization issues without leaving Dev Spaces.
 
-Stage 050 only prepares the IDE side of that workflow. Stage 060 deploys
+Stage 050 only prepares the IDE side of that workflow. Stage 070 deploys
 Migration Toolkit for Applications, Red Hat Developer Lightspeed for MTA, and
 the server-side MaaS-backed LLM proxy configuration. Do not put MaaS API keys
 directly into the MTA extension configuration unless a later exercise explicitly

@@ -49,7 +49,7 @@ git remote -v
 git status --short
 ```
 
-MCP integrations have their own prerequisites. Stage 060 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
+MCP integrations have their own prerequisites. Stage 070 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
 
 ## Bootstrap
 
@@ -92,9 +92,9 @@ Deploy stages in order:
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-approved-external-model-access/deploy.sh
 ./stages/060-mcp-context-integrations/deploy.sh
-./stages/050-controlled-developer-workspaces/deploy.sh
-./stages/060-ai-assisted-application-modernization/deploy.sh
-./stages/070-developer-portal-self-service/deploy.sh
+./stages/050-ai-assisted-development/deploy.sh
+./stages/070-ai-autonomous-migration/deploy.sh
+./stages/090-ai-self-service-portal/deploy.sh
 ```
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
@@ -107,9 +107,9 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, observability |
 | 050 | `050-approved-external-model-access` | External OpenAI models behind MaaS |
 | 060 | `060-mcp-context-integrations` | OpenShift, Slack, and BrightData MCP integrations |
-| 070 | `050-controlled-developer-workspaces` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
-| 080 | `060-ai-assisted-application-modernization` | MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
-| 090 | `070-developer-portal-self-service` | Red Hat Developer Hub portal |
+| 070 | `050-ai-assisted-development` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
+| 080 | `070-ai-autonomous-migration` | MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
+| 090 | `090-ai-self-service-portal` | Red Hat Developer Hub portal |
 
 ## Validation Strategy
 
@@ -171,23 +171,23 @@ Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml
 yet. When validating developer-workflow changes on a sandbox cluster, patch only
 the existing platform applications that own the affected live resources.
 
-For Stage 080 vibe-coding changes, patch only Stage 050 and Stage 070 to the
+For Stage 050 vibe-coding changes, patch only Stage 050 and Stage 090 to the
 feature branch being validated:
 
 ```bash
-oc patch application 050-controlled-developer-workspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc patch application 070-developer-portal-self-service -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc annotate application 050-controlled-developer-workspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-oc annotate application 070-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 050-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc patch application 090-ai-self-service-portal -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc annotate application 050-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 090-ai-self-service-portal -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Rollback to the stable platform branch:
 
 ```bash
-oc patch application 050-controlled-developer-workspaces -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc patch application 070-developer-portal-self-service -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc annotate application 050-controlled-developer-workspaces -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-oc annotate application 070-developer-portal-self-service -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 050-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc patch application 090-ai-self-service-portal -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc annotate application 050-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 090-ai-self-service-portal -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Do not merge a feature branch to `main` only to validate developer workflow
@@ -254,19 +254,19 @@ Stage results:
 | 040 Governed Models-as-a-Service | Passed | `./stages/040-governed-models-as-a-service/validate.sh`: 38 passed, 0 warnings, 0 failed |
 | 050 Approved External Model Access | Passed with expected warning | `./stages/050-approved-external-model-access/validate.sh`: 17 passed, 1 warning, 0 failed |
 | 060 MCP Context Integrations | Passed with expected warnings | `./stages/060-mcp-context-integrations/validate.sh`: 14 passed, 2 warnings, 0 failed |
-| 070 Controlled Developer Workspaces | Passed | `./stages/050-controlled-developer-workspaces/validate.sh`: 18 passed, 0 warnings, 0 failed |
-| 080 AI-Assisted Application Modernization | Passed | `./stages/060-ai-assisted-application-modernization/validate.sh`: 22 passed, 0 warnings, 0 failed |
-| 090 Developer Portal and Self-Service | Passed | `./stages/070-developer-portal-self-service/validate.sh`: 16 passed, 0 warnings, 0 failed |
+| 070 AI-Assisted Development | Passed | `./stages/050-ai-assisted-development/validate.sh`: 18 passed, 0 warnings, 0 failed |
+| 080 Autonomous Application Migration | Passed | `./stages/070-ai-autonomous-migration/validate.sh`: 22 passed, 0 warnings, 0 failed |
+| 090 AI Self-Service Portal | Passed | `./stages/090-ai-self-service-portal/validate.sh`: 16 passed, 0 warnings, 0 failed |
 
 Final sweep:
 
 - All nine Argo CD Applications reported `Synced` and `Healthy` at commit `b5bb770`.
-- A full live validation sweep from Stage 010 through Stage 070 completed without critical failures.
-- Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` was not set during the initial full sweep, and Stage 060 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set. Later Stage 050 smoke validation passed after an approved provider key was provisioned.
-- A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 070 hook resources.
+- A full live validation sweep from Stage 010 through Stage 090 completed without critical failures.
+- Expected warnings remain for Stage 050 external inference because `OPENAI_API_KEY` was not set during the initial full sweep, and Stage 070 optional Slack/BrightData MCP runtimes because `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set. Later Stage 050 smoke validation passed after an approved provider key was provisioned.
+- A GitOps hygiene sweep found no remaining Argo CD resources with `requiresPruning=true` after re-syncing Stage 090 hook resources.
 - Merge-readiness static checks also passed: `git diff --check origin/main...HEAD`, `bash -n scripts/*.sh stages/*/*.sh`, and `./scripts/validate-stage-flow.sh`.
 - Merge-readiness security check found no committed `.env` file and no real kubeadmin password, provider key, kubeconfig, bearer token, or private key in the branch diff. Only placeholder and masked key examples such as `sk-oai-*` were present.
-- After merging PR #1, all canonical stage Argo CD Applications were repointed from `codex/stage-refactor-demo-validation` to `main` and reported `Synced` and `Healthy` at commit `ec2b4c1`. Stage 070 was reconfigured so `RHDH_CATALOG_URL` resolves to the `main` catalog URL, then Stage 070 validation passed with 16 checks, 0 warnings, and 0 failures. Later docs-only commits may advance Argo CD's displayed revision without changing managed stage resources.
+- After merging PR #1, all canonical stage Argo CD Applications were repointed from `codex/stage-refactor-demo-validation` to `main` and reported `Synced` and `Healthy` at commit `ec2b4c1`. Stage 090 was reconfigured so `RHDH_CATALOG_URL` resolves to the `main` catalog URL, then Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures. Later docs-only commits may advance Argo CD's displayed revision without changing managed stage resources.
 
 Validation hardening pass:
 
@@ -279,25 +279,25 @@ GitOps hygiene pass:
 - Broad `ignoreDifferences` entries were reduced where they hid demo-owned desired state. Operator-generated and cluster-specific fields remain ignored only where they are not useful GitOps ownership points.
 - Stage 020 now records GPU Operator and Node Feature Discovery defaults in Git so Argo CD can manage those specs without broad masking.
 - Hook delete policies now include `HookSucceeded` for stage manifests, which reduced stale hook resources and pruning noise.
-- A regression was found while tightening Stage 040: the MaaS Gateway hostname and TLS certificate reference are intentionally patched from the cluster ingress domain and certificate. Removing the old broad Gateway spec ignore let Argo CD restore `maas.placeholder.example.com`, which caused the Stage 060 MTA MaaS hook to patch placeholder values into `Tackle` and `kai-api-keys`.
+- A regression was found while tightening Stage 040: the MaaS Gateway hostname and TLS certificate reference are intentionally patched from the cluster ingress domain and certificate. Removing the old broad Gateway spec ignore let Argo CD restore `maas.placeholder.example.com`, which caused the Stage 070 MTA MaaS hook to patch placeholder values into `Tackle` and `kai-api-keys`.
 - Fix applied: Stage 040 now ignores only `/spec/listeners/0/hostname`, `/spec/listeners/1/hostname`, and `/spec/listeners/1/tls/certificateRefs/0/name` for `Gateway/maas-default-gateway`. The rest of the Gateway spec remains GitOps-managed.
-- Fix applied: Stage 060 now fails fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
-- Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 060 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for the demo subscription, and Stages 040, 080, and 090 validated successfully.
+- Fix applied: Stage 070 now fails fast if the discovered MaaS hostname still contains `placeholder`, preventing a bad hook run from overwriting runtime configuration with placeholder values.
+- Final evidence after the fix: Stage 040 re-synced to the real `maas.apps.cluster-t977r.t977r.sandbox3022.opentlc.com` host, Stage 070 re-provisioned `kai-api-keys` with a real `sk-oai-*` MaaS key for the demo subscription, and Stages 040, 080, and 090 validated successfully.
 
 Red Hat alignment review:
 
 - Stage 040 is aligned with the Red Hat OpenShift AI 3.4 MaaS architecture in the core platform pattern: KServe-backed model serving, Gateway API, Red Hat Connectivity Link, Kuadrant/Authorino policy enforcement, API-key authentication, subscription/group-based access, rate limits, token limits, dashboard enablement, and GitOps-managed desired state. Red Hat OpenShift AI 3.4 documentation describes MaaS as subscription-based governance that replaces the 3.3 tier model, while several MaaS-adjacent paths still require conservative Technology Preview or Developer Preview language.
 - Stage 040 deviations remain intentional and documented: gateway/AuthPolicy patches for the current dashboard-forwarded user token path and cluster-specific gateway hostname patching. The previous tokens bridge, upstream MaaS controller, `maas-api` image override, tier-based policy resources, and community Grafana add-on were removed for Red Hat OpenShift AI 3.4 alignment because they conflict with or duplicate operator-owned MaaS resources and subscription-based MaaS telemetry.
-- Stage 060 aligns with Red Hat Developer Lightspeed for MTA guidance by using a centrally managed LLM provider configuration through MTA, the LLM proxy, and an OpenAI-compatible endpoint backed by Red Hat OpenShift AI/MaaS. Developer Lightspeed for MTA is also Technology Preview in the referenced MTA 8.1 documentation, so production-readiness language must stay conservative.
-- Stage 070 aligns with Red Hat Developer Hub 1.9 operator guidance by using the `Backstage` custom resource, app config mounted from a ConfigMap, environment-substituted secrets, and `dynamic-plugins.yaml` mounted through `dynamicPluginsConfigMapName`.
-- Fix applied from the alignment review: RHDH catalog configuration no longer hard-codes the `main` branch. `app-config-rhdh.yaml` now uses `${RHDH_CATALOG_URL}`, and the Stage 070 PostSync hook derives that URL from the live Argo CD Application `repoURL` and `targetRevision`. This keeps the developer portal catalog on the same Git revision as the deployed demo.
-- Final evidence after the alignment fix: Stage 070 re-synced to commit `cff7e4a`; `RHDH_CATALOG_URL` resolved to `https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/codex/stage-refactor-demo-validation/gitops/stages/070-developer-portal-self-service/base/catalog/all.yaml`; Stage 070 validation passed with 16 checks, 0 warnings, and 0 failures; all nine Argo CD Applications reported `Synced` and `Healthy`.
+- Stage 070 aligns with Red Hat Developer Lightspeed for MTA guidance by using a centrally managed LLM provider configuration through MTA, the LLM proxy, and an OpenAI-compatible endpoint backed by Red Hat OpenShift AI/MaaS. Developer Lightspeed for MTA is also Technology Preview in the referenced MTA 8.1 documentation, so production-readiness language must stay conservative.
+- Stage 090 aligns with Red Hat Developer Hub 1.9 operator guidance by using the `Backstage` custom resource, app config mounted from a ConfigMap, environment-substituted secrets, and `dynamic-plugins.yaml` mounted through `dynamicPluginsConfigMapName`.
+- Fix applied from the alignment review: RHDH catalog configuration no longer hard-codes the `main` branch. `app-config-rhdh.yaml` now uses `${RHDH_CATALOG_URL}`, and the Stage 090 PostSync hook derives that URL from the live Argo CD Application `repoURL` and `targetRevision`. This keeps the developer portal catalog on the same Git revision as the deployed demo.
+- Final evidence after the alignment fix: Stage 090 re-synced to commit `cff7e4a`; `RHDH_CATALOG_URL` resolved to `https://raw.githubusercontent.com/adnan-drina/rhoai3-coding-demo/codex/stage-refactor-demo-validation/gitops/stages/090-ai-self-service-portal/base/catalog/all.yaml`; Stage 090 validation passed with 16 checks, 0 warnings, and 0 failures; all nine Argo CD Applications reported `Synced` and `Healthy`.
 
 Documentation and deviation-register cleanup:
 
 - `BACKLOG.md` now treats workaround removal as a supported-capability review, not as an automatic Red Hat OpenShift AI 3.4 cleanup. This matches the current Red Hat OpenShift AI 3.4 posture where the core platform is 3.4, while specific demo-adjacent paths still require live validation and support-scope checks.
 - Current validation wording now distinguishes external model registration from external inference. Stage 050 registers `gpt-4o` and `gpt-4o-mini` without requiring provider token spend; external inference is credential-gated and has been validated with an approved `OPENAI_API_KEY` by using the opt-in smoke test.
-- Stage 040, Stage 060, and Stage 070 READMEs now call out Red Hat alignment, support-scope posture, and demo-specific deviations close to the affected implementation.
+- Stage 040, Stage 070, and Stage 090 READMEs now call out Red Hat alignment, support-scope posture, and demo-specific deviations close to the affected implementation.
 - `docs/TROUBLESHOOTING.md` now includes `RHDH_CATALOG_URL` diagnostics for Developer Hub catalog failures.
 
 Stage 010 findings:
@@ -346,37 +346,37 @@ Stage 050 findings:
 - Stage 050 registered the approved external model resources and, when an approved `OPENAI_API_KEY` was later supplied through `.env`, completed an opt-in external inference smoke test through MaaS.
 - Final evidence for Stage 050: `ExternalModel` and `MaaSModelRef` resources for `gpt-4o` and `gpt-4o-mini` are registered and Ready. `external-models-access` is Active and `demo-models-subscription` covers the private and approved external model choices. Argo CD reports Stage 050 `Synced` and `Healthy`. The opt-in external smoke validation passed with 19 checks, 0 warnings, and 0 failures; a direct OpenAI-compatible call through MaaS to `gpt-4o-mini` returned HTTP `200` with non-empty assistant content.
 
-Stage 060 findings:
+Stage 070 findings:
 
 - `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` are not set in this demo environment. Slack and BrightData MCP discovery entries are present in the GenAI Playground ConfigMap, but their runtimes are disabled at zero replicas until credentials are approved and an enabling overlay is added.
-- Initial Stage 060 sync showed that running optional MCP pods without credentials leaves Argo CD Progressing. Improvement applied: keep optional Slack and BrightData MCP deployments at zero replicas by default so missing optional credentials produce validation warnings instead of deployment failures.
-- Final evidence for Stage 060: OpenShift MCP is running, OpenShift/Slack/BrightData MCP entries are registered in `gen-ai-aa-mcp-servers`, and Argo CD reports Stage 060 `Synced` and `Healthy`.
+- Initial Stage 070 sync showed that running optional MCP pods without credentials leaves Argo CD Progressing. Improvement applied: keep optional Slack and BrightData MCP deployments at zero replicas by default so missing optional credentials produce validation warnings instead of deployment failures.
+- Final evidence for Stage 070: OpenShift MCP is running, OpenShift/Slack/BrightData MCP entries are registered in `gen-ai-aa-mcp-servers`, and Argo CD reports Stage 070 `Synced` and `Healthy`.
 
 Stage 050 findings:
 
 - Initial Stage 050 sync attempted to create the `CheCluster` before the Dev Spaces operator webhook service had endpoints, producing a transient `no endpoints available for service "devspaces-operator-service"` admission error. A manual hard refresh and sync succeeded after the operator and webhook pods became ready.
 - Improvement applied: add a narrow Sync hook that waits for the `devspaces-operator` deployment rollout and `devspaces-operator-service` endpoints before Argo CD applies the `CheCluster`.
 - Follow-up GitOps finding: `DevWorkspace` resources had `Replace=true`, which is incompatible with controller-assigned immutable DevWorkspace IDs on later syncs. Improvement applied: remove `Replace=true`, add a repair hook for stale live annotations from earlier revisions, and allow Argo CD to patch/observe the resources.
-- Stage 080 follow-up: the Stage 050 Application previously ignored the entire `DevWorkspace.spec`, which hid updates to workspace setup commands. The ignore rule now covers only `/spec/started`, so GitOps owns the workspace definitions while Dev Spaces can still start and stop workspaces at runtime.
+- Stage 050 follow-up: the Stage 050 Application previously ignored the entire `DevWorkspace.spec`, which hid updates to workspace setup commands. The ignore rule now covers only `/spec/started`, so GitOps owns the workspace definitions while Dev Spaces can still start and stop workspaces at runtime.
 - Final evidence for Stage 050: Dev Spaces operator CSV `devspacesoperator.v3.27.1` succeeded, `CheCluster` phase is `Active`, the Dev Spaces URL is `https://devspaces.apps.cluster-t977r.t977r.sandbox3022.opentlc.com`, and Argo CD reports Stage 050 `Synced` and `Healthy`.
-
-Stage 060 findings:
-
-- Initial Stage 060 sync applied the `Tackle` CR successfully, but the MaaS patch hook ran before MTA operator-owned resources such as `llm-proxy` and the MTA route existed. Improvement applied: the hook now waits for the generated route and `llm-proxy` deployment before patching the ConsoleLink and rolling the proxy.
-- MaaS API keys created without an explicit subscription could default to a subscription that did not cover the requested local model, producing HTTP 403. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: demo-models-subscription`.
-- Follow-up GitOps hygiene finding: when Stage 040 temporarily restored the placeholder MaaS Gateway hostname, the Stage 060 hook accepted it and patched placeholder values into `Tackle.spec.kai_llm_baseurl` and the `kai-api-keys` Secret. Improvement applied: the hook now rejects placeholder MaaS hostnames before patching any MTA resources.
-- The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 060 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
-- Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
-- Final evidence for Stage 060: MTA Operator CSV `mta-operator.v8.1.1` succeeded; MTA Hub, UI, Kai API, LLM proxy, and Kai solution server are ready; OpenShift login is visible on the MTA login page; MaaS auth against the private Nemotron model returns HTTP 200 using `kai-api-keys`; Argo CD reports Stage 060 `Synced` and `Healthy`.
 
 Stage 070 findings:
 
-- Initial Stage 070 sync installed Red Hat Developer Hub successfully, but the configure hook's 180 second rollout wait was too short for the first cold RHDH image pull and dynamic plugin install. Improvement applied: increase the hook deadline and rollout timeout.
+- Initial Stage 070 sync applied the `Tackle` CR successfully, but the MaaS patch hook ran before MTA operator-owned resources such as `llm-proxy` and the MTA route existed. Improvement applied: the hook now waits for the generated route and `llm-proxy` deployment before patching the ConsoleLink and rolling the proxy.
+- MaaS API keys created without an explicit subscription could default to a subscription that did not cover the requested local model, producing HTTP 403. Improvement applied: the hook now creates or rotates the `kai-api-keys` key with `subscription: demo-models-subscription`.
+- Follow-up GitOps hygiene finding: when Stage 040 temporarily restored the placeholder MaaS Gateway hostname, the Stage 070 hook accepted it and patched placeholder values into `Tackle.spec.kai_llm_baseurl` and the `kai-api-keys` Secret. Improvement applied: the hook now rejects placeholder MaaS hostnames before patching any MTA resources.
+- The validator initially checked Tackle AI conditions before the operator finished updating status. Improvement applied: Stage 070 validation now waits for `KaiAPIKeysConfigured`, `LLMProxyReady`, and `KaiSolutionServerReady`.
+- Temporary MaaS API keys created while testing the subscription field were deleted through the MaaS API.
+- Final evidence for Stage 070: MTA Operator CSV `mta-operator.v8.1.1` succeeded; MTA Hub, UI, Kai API, LLM proxy, and Kai solution server are ready; OpenShift login is visible on the MTA login page; MaaS auth against the private Nemotron model returns HTTP 200 using `kai-api-keys`; Argo CD reports Stage 070 `Synced` and `Healthy`.
+
+Stage 090 findings:
+
+- Initial Stage 090 sync installed Red Hat Developer Hub successfully, but the configure hook's 180 second rollout wait was too short for the first cold RHDH image pull and dynamic plugin install. Improvement applied: increase the hook deadline and rollout timeout.
 - The `Backstage` manifest included `spec.application.replicas`, but the installed RHDH `v1alpha5` CRD does not define that field. The API server pruned it, leaving Argo CD OutOfSync. Improvement applied: remove the unsupported field rather than masking the drift.
 - The configure hook regenerated OIDC and session secrets on every sync, which forced unnecessary RHDH restarts. Improvement applied: reuse existing non-placeholder secret values and restart only when secret data changes.
 - The first idempotency check treated uppercase placeholder values as real secrets. Improvement applied: make placeholder detection case-insensitive and validate that `RHDH_OIDC_CLIENT_SECRET` and `SESSION_SECRET` are non-placeholder.
 - Follow-up Red Hat alignment finding: the RHDH catalog URL was hard-coded to the `main` branch, while the deployed demo was sourced from `codex/stage-refactor-demo-validation`. Improvement applied: make the catalog URL environment-driven and derive it from the live Argo CD Application source.
-- Final evidence for Stage 070: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the catalog URL matches the deployed GitOps source; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 070 `Synced` and `Healthy`.
+- Final evidence for Stage 090: RHDH Operator CSV `rhdh-operator.v1.9.3` succeeded; `Backstage` CR `developer-hub` is present; the RHDH deployment is ready; the portal route returns HTTP 200; OIDC/session secrets are generated; the catalog URL matches the deployed GitOps source; the ConsoleLink points to the real RHDH route; Argo CD reports Stage 090 `Synced` and `Healthy`.
 
 ### 2026-05-02 Stage 020 GPUaaS validation run
 
@@ -717,9 +717,9 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 That check sends small non-streaming requests through the dashboard BFF to all four Playground MaaS model entries. It is intentionally opt-in because it can exercise approved external provider credentials.
 
-### Stage 060
+### Stage 070
 
-Stage 060 deploys MCP context integrations.
+Stage 070 deploys MCP context integrations.
 
 | `.env` variable | Secret created | Namespace | Purpose |
 |----------------|----------------|-----------|---------|
@@ -752,9 +752,9 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
-### Stage 060
+### Stage 070
 
-Stage 060 installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS.
+Stage 070 installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS.
 
 Useful checks:
 
@@ -764,11 +764,11 @@ oc get deployment -n openshift-mta
 oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
-### Stage 070
+### Stage 090
 
-Stage 070 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
+Stage 090 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
 
-The RHDH catalog location is runtime-derived from the Stage 070 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
+The RHDH catalog location is runtime-derived from the Stage 090 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 
 Useful checks:
 
@@ -821,9 +821,9 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete 070-developer-portal-self-service --cascade
-argocd app delete 060-ai-assisted-application-modernization --cascade
-argocd app delete 050-controlled-developer-workspaces --cascade
+argocd app delete 090-ai-self-service-portal --cascade
+argocd app delete 070-ai-autonomous-migration --cascade
+argocd app delete 050-ai-assisted-development --cascade
 argocd app delete 060-mcp-context-integrations --cascade
 argocd app delete 050-approved-external-model-access --cascade
 argocd app delete 040-governed-models-as-a-service --cascade

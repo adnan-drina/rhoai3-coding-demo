@@ -40,11 +40,13 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement, Red Hat build of Kueue, quotas, hardware profiles, and observability | Private AI needs scarce accelerator capacity to be scheduled, shared, and reviewed |
 | [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served with OpenAI-compatible APIs | Sensitive source code and modernization context need a private inference path |
 | [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS access with subscriptions, API keys, token limits, rate limits, telemetry, approved external models, and platform-managed MCP context | Model serving becomes a platform service when access, external use, and tool context are centralized |
-| [070 - Controlled Developer Workspaces](stages/050-controlled-developer-workspaces/README.md) | Dev Spaces workspaces with Continue and OpenCode configured for MaaS | Developers get familiar AI coding workflows without personal provider keys |
-| [080 - AI-Assisted Application Modernization](stages/060-ai-assisted-application-modernization/README.md) | MTA and Developer Lightspeed for MTA using governed model access | AI assistance is grounded in modernization analysis and human review |
-| [090 - Developer Portal and Self-Service](stages/070-developer-portal-self-service/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | Platform capabilities become discoverable and self-service |
+| [050 - AI-Assisted Development](stages/050-ai-assisted-development/README.md) | Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise | The most basic form of AI-assisted coding shows both the possibilities and the limits that motivate agentic workflows |
+| [060 - Agentic Development](stages/060-ai-agentic-development/README.md) | OpenCode with AGENT.md and reusable skills that encode enterprise Quarkus standards | Internal development guidelines become living assets that agents follow and improve |
+| [070 - Autonomous Application Migration](stages/070-ai-autonomous-migration/README.md) | MTA and Developer Lightspeed analysis plus a multi-agent Spring Boot to Quarkus migration through MaaS | Legacy backlogs need secure, affordable, reviewable autonomous migration |
+| 080 - AI in Trusted Delivery (reserved) | AI with Red Hat Trusted Software Supply Chain | Reserved slot; tracked in the backlog until the scope is concrete |
+| [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | The whole arc becomes one discoverable self-service experience |
 
-Developer workflow use cases start with [Stage 080 - Governed Vibe Coding With Continue](stages/080-governed-vibe-coding/README.md). Stages 010-070 are primarily for platform engineers building the trusted AI development platform. Stage 080 and later topics shift to enterprise developers using that platform for governed coding, documentation, modernization, delivery, and review. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 080 as vibe-coding review discipline. Later developer workflow topics `120-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
+Developer workflow use cases start with [Stage 050 - AI-Assisted Development (vibe-coding exercise)](stages/050-ai-assisted-development/README.md). Stages 010-070 are primarily for platform engineers building the trusted AI development platform. Stage 050 and later topics shift to enterprise developers using that platform for governed coding, documentation, modernization, delivery, and review. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 050 as vibe-coding review discipline. Later developer workflow topics `120-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
 
 ## Why This Is Worth Knowing
 
@@ -128,9 +130,9 @@ Deploy the implemented stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-controlled-developer-workspaces/deploy.sh
-./stages/060-ai-assisted-application-modernization/deploy.sh
-./stages/070-developer-portal-self-service/deploy.sh
+./stages/050-ai-assisted-development/deploy.sh
+./stages/070-ai-autonomous-migration/deploy.sh
+./stages/090-ai-self-service-portal/deploy.sh
 ```
 
 For deployment detail, validation strategy, and recovery procedures, use:

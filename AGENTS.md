@@ -49,7 +49,7 @@ Important paths:
 The workshop has two parts:
 
 - Stages 010-070 build the trusted AI development platform for platform engineers.
-- Stages 080 and later show enterprise developer workflows that consume that platform.
+- Stages 050 and later show enterprise developer workflows that consume that platform.
 
 Current implemented stages:
 
@@ -57,10 +57,10 @@ Current implemented stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 050 Controlled Developer Workspaces
-6. 060 AI-Assisted Application Modernization
-7. 070 Developer Portal and Self-Service
-8. 080 Governed Vibe Coding With Continue
+5. 050 AI-Assisted Development (workspaces + one-shot vibe coding)
+6. 060 Agentic Development (OpenCode, AGENT.md, skills — workflow stage)
+7. 070 Autonomous Application Migration (MTA + multi-agent migration)
+8. 090 AI Self-Service Portal (080 is reserved for AI in Trusted Delivery)
 
 The stages renumbered when stage 040 absorbed the former external-model and
 MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became
@@ -212,15 +212,15 @@ bash -n stages/*/*.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/050-controlled-developer-workspaces/validate.sh
-./stages/060-ai-assisted-application-modernization/validate.sh
-./stages/070-developer-portal-self-service/validate.sh
+./stages/050-ai-assisted-development/validate.sh
+./stages/070-ai-autonomous-migration/validate.sh
+./stages/090-ai-self-service-portal/validate.sh
 ```
 
-Stage 080 currently consumes Stage 050 Dev Spaces and Stage 070 Developer Hub
+Stage 050 currently consumes Stage 050 Dev Spaces and Stage 090 Developer Hub
 assets. It does not have a standalone deploy or validate script; validate its
 documentation changes with `./scripts/validate-stage-flow.sh` and any specific
-commands documented in the Stage 080 README when a live workspace and cluster
+commands documented in the Stage 050 README when a live workspace and cluster
 are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:

@@ -66,7 +66,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Deferred Developer Workflow Topics
 
-- [ ] **Stage 110 merged into Stage 080; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 080 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
+- [ ] **Stage 110 merged into Stage 050; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 050 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.
 
   Deferred scope to revisit:
 
@@ -125,9 +125,16 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] ~~**ExternalModel support on the older workaround path** — Deployed upstream `maas-controller` alongside Red Hat OpenShift AI 3.3 operator. 2 OpenAI models (gpt-4o, gpt-4o-mini) registered as `ExternalModel` CRDs. Historical context only; not the current RHOAI 3.4 target architecture.~~
 - [x] ~~**GitOps-ify upstream maas-controller** — Upstream CRDs, RBAC, controller, PostgreSQL, and MaaS CRs lived under `gitops/stages/040-governed-models-as-a-service/base/` during the older workaround period. Historical context only.~~
 - [x] ~~**Red Hat OpenShift AI 3.4 EA2 evaluation** — Tested operator-native MaaS. Found that the EA2 `maas-api` binary did not implement model discovery from Kubernetes resources. Historical context only; do not use this EA2 result as a current 3.4 GA design decision.~~
-- [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 070 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~
+- [x] ~~**Red Hat Developer Hub catalog URL follows GitOps revision** — Stage 090 now derives `RHDH_CATALOG_URL` from the live Argo CD Application `repoURL` and `targetRevision`, avoiding hard-coded `main` branch catalog references.~~
 
 
 ## Post-migration documentation rewrite
 
 - [ ] **Rewrite OPERATIONS.md and TROUBLESHOOTING.md per-stage sections for the migrated 010-040 foundation** — the current sections describe the pre-migration implementation. Rewrite with live evidence from the first fresh-environment deployment of the migrated stages. Carry over rhoai3-demo known-issue entries (COO 1.4 pin rationale, MaaS quirks) where they apply.
+## Reserved stage 080: AI in Trusted Delivery
+
+- [ ] **Stage 080 (reserved) — AI with Red Hat Trusted Software Supply Chain** — AI-assisted pipeline generation and review, artifact signing and attestation (Trusted Artifact Signer), vulnerability triage (Trusted Profile Analyzer), and Konflux integration. Create the stage directory only with a concrete implementation plan, deploy/validate path, and GitOps ownership per the stage rules.
+
+## Stage 070 agentic migration provenance
+
+- [ ] **MigIQ is experimental and Claude-Code-first** — the Stage 070 multi-agent migration follows the MigIQ pattern (github.com/sshaaf/migIQ, npm @sshaaf/migiq). Pin the npm version in workspace provisioning, document its experimental status in the stage README, and run an OpenCode-compatibility proving run inside Dev Spaces before the stage README promises OpenCode support. Models route through MaaS (qwen3-6-35b-a3b executor, nemotron long-context planning) so agent token usage is visible on the Stage 040 usage dashboards.

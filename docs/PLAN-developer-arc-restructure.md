@@ -1,6 +1,6 @@
 # Plan: Developer-Arc Restructure (stages 050–090)
 
-Status: APPROVED DESIGN — execution pending.
+Status: APPROVED — naming finalized to the maturity-ladder scheme; phase 1 (renumber/rename/merge) executed 2026-07-06.
 Decisions (2026-07-06): MTA folds into stage 070; portal takes 090 with 080
 reserved for AI-in-CI/CD; stage 060 targets coolstore-inventory-service.
 
@@ -9,11 +9,11 @@ reserved for AI-in-CI/CD; stage 060 targets coolstore-inventory-service.
 | Stage | Name | Story | Built from |
 |---|---|---|---|
 | 010–040 | (unchanged platform foundation) | Governed platform | rhoai3-demo import |
-| 050 | governed-ai-assisted-development | Dev Spaces + Continue via MaaS; **one-shot prompt vibe coding** — possibilities and limits of the most basic AI-assisted coding | merge: current 050 (infra) + current 080 (vibe-coding exercise) |
-| 060 | agentic-coding | OpenCode + AGENT.md + Skills: enterprise Quarkus standards as reusable skills that agents follow and improve | new content; infra from 050 |
-| 070 | ai-application-migration | MTA + Developer Lightspeed (supported path) + multi-agent Spring Boot→Quarkus end-to-end migration (MigIQ pattern) | current 060 (MTA) + new agentic workflow |
-| 080 | *(reserved)* ai-in-cicd | AI with Red Hat Trusted Software Supply Chain | BACKLOG topic until concrete |
-| 090 | developer-portal-self-service | Developer Hub + Lightspeed for RHDH: the self-service wrap-up of all stages | current 070, moved to capstone |
+| 050 | ai-assisted-development | Dev Spaces + Continue via MaaS; **one-shot prompt vibe coding** — possibilities and limits of the most basic AI-assisted coding | merge: current 050 (infra) + current 080 (vibe-coding exercise) |
+| 060 | ai-agentic-development | OpenCode + AGENT.md + Skills: enterprise Quarkus standards as reusable skills that agents follow and improve | new content; infra from 050 |
+| 070 | ai-autonomous-migration | MTA + Developer Lightspeed (supported path) + multi-agent Spring Boot→Quarkus end-to-end migration (MigIQ pattern) | current 060 (MTA) + new agentic workflow |
+| 080 | *(reserved)* ai-trusted-delivery | AI with Red Hat Trusted Software Supply Chain | BACKLOG topic until concrete |
+| 090 | ai-self-service-portal | Developer Hub + Lightspeed for RHDH: the self-service wrap-up of all stages | current 070, moved to capstone |
 
 Narrative arc: assisted (one-shot) → agentic (skills/rules) → autonomous
 (multi-agent migration) → delivery (CI/CD, reserved) → self-service (portal).
@@ -23,10 +23,10 @@ everything lands in the portal as the end-user experience.
 
 ## Stage plans
 
-### 050 governed-ai-assisted-development
+### 050 ai-assisted-development
 
 - Rename dirs/apps: `050-controlled-developer-workspaces` →
-  `050-governed-ai-assisted-development` (stages/, gitops/stages/,
+  `050-ai-assisted-development` (stages/, gitops/stages/,
   app-of-apps, flows, labels).
 - Keep all current 050 gitops (CheCluster, DevWorkspaces, MaaS key
   provisioning, Continue/OpenCode configs, editor policy).
@@ -41,9 +41,9 @@ everything lands in the portal as the end-user experience.
 - Retire `stages/080-governed-vibe-coding/` after merge.
 - Validation: current 050 validate.sh + documented manual demo path.
 
-### 060 agentic-coding
+### 060 ai-agentic-development
 
-- New stage dirs: `stages/060-agentic-coding/` (README, deploy.sh thin or
+- New stage dirs: `stages/060-ai-agentic-development/` (README, deploy.sh thin or
   none if no new cluster resources; validate.sh for workspace assets).
 - In-repo work: OpenCode wiring already exists (MaaS keys, opencode.json);
   add workspace/devfile entries if a dedicated workspace is needed
@@ -61,10 +61,10 @@ everything lands in the portal as the end-user experience.
 - Validation: skills present in workspace, OpenCode config resolves MaaS,
   scripted agent run completes the reference task (documented manual gate).
 
-### 070 ai-application-migration
+### 070 ai-autonomous-migration
 
 - Rename current 060 (`ai-assisted-application-modernization`) →
-  `070-ai-application-migration`; keep MTA operator, Tackle, Lightspeed,
+  `070-ai-autonomous-migration`; keep MTA operator, Tackle, Lightspeed,
   Keycloak (portal OIDC depends on it), kai-api-keys MaaS wiring.
 - Add the agentic migration workflow:
   - Sample app: Spring Boot service (MigIQ example or a curated fork under
@@ -79,13 +79,13 @@ everything lands in the portal as the end-user experience.
 - Validation: MTA validate (existing) + migrated app builds/tests/deploys;
   MaaS telemetry captured as evidence.
 
-### 080 (reserved) ai-in-cicd — BACKLOG only
+### 080 (reserved) ai-trusted-delivery — BACKLOG only
 
 - BACKLOG topic: AI with Red Hat Trusted Software Supply Chain (pipeline
   generation/review, artifact signing/attestation with TAS, vulnerability
   triage with TPA, Konflux). No stage dir until concrete plan exists.
 
-### 090 developer-portal-self-service
+### 090 ai-self-service-portal
 
 - Renumber current 070 → 090 (dirs, app, flows, labels, docs).
 - Scope addition (small): surface the whole arc as self-service — catalog
