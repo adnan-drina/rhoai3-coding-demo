@@ -78,6 +78,12 @@ Audit result:
   gitops-1.19 pinned (1.15 was 6 releases behind); rhods stable-3.4
   resolves 3.4.2, startingCSV pin dropped
 - bootstrap.sh: clean first run after refactor
-- Stage 010: deployed without serverless (validation of the 3.x removal)
+- Stage 010: COMPLETE. Deployed without serverless — confirmed: no Knative
+  conditions on the DSC; RHOAI 3.4.2; validation 35 pass / 1 warn / 0 fail.
+  Fixes made: validation warns (not fails) while modelsasservice waits for
+  the Stage 040 gateway; MaaS observability checks moved to Stage 040 scope;
+  PrometheusOperatorRejectedResources warning documented as benign
+  (operator-shipped ServiceMonitors with bearerTokenFile).
+  Dashboard: https://data-science-gateway.apps.<cluster-domain>
 
 (filled in as each stage deploys on the fresh cluster)
