@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-sandbox
+  labels:
+    # Marks the namespace as a Red Hat OpenShift AI data science project so it
+    # appears in the dashboard project list.
+    opendatahub.io/dashboard: "true"
+    kubernetes.io/metadata.name: demo-sandbox
+    # Enables Kueue queue enforcement (stage-120): workloads must carry a
+    # kueue.x-k8s.io/queue-name label, applied automatically by Kueue-enabled
+    # hardware profiles.
+    kueue.openshift.io/managed: "true"
+  annotations:
+    openshift.io/display-name: "Demo Sandbox"
+    openshift.io/description: "Shared project for platform validation and ad-hoc demos."

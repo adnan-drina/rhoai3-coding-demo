@@ -1,0 +1,48 @@
+# LocalQueues expose the ClusterQueues to the demo-sandbox project. Hardware
+# profiles reference these by name (scheduling.kueue.localQueueName), and RHOAI
+# applies the kueue.x-k8s.io/queue-name label to workloads that select the
+# profile. The namespace must be labeled kueue.openshift.io/managed=true.
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-cpu-default
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  clusterQueue: cq-cpu-default
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-shared
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  clusterQueue: cq-gpu-shared
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-priority
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  clusterQueue: cq-gpu-priority
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-reserved-demo
+  namespace: demo-sandbox
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  clusterQueue: cq-gpu-reserved-demo

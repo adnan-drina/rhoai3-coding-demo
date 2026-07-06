@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: patch-grafana-consolelink
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: job
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patch-grafana-consolelink-route-reader
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: rbac
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+rules:
+  - apiGroups:
+      - route.openshift.io
+    resources:
+      - routes
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patch-grafana-consolelink-route-reader
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: rbac
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: patch-grafana-consolelink-route-reader
+subjects:
+  - kind: ServiceAccount
+    name: patch-grafana-consolelink
+    namespace: rhoai-demo-grafana
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-demo-patch-grafana-consolelink
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: rbac
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+rules:
+  - apiGroups:
+      - console.openshift.io
+    resources:
+      - consolelinks
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhoai-demo-patch-grafana-consolelink
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: rbac
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-patch-grafana-consolelink
+subjects:
+  - kind: ServiceAccount
+    name: patch-grafana-consolelink
+    namespace: rhoai-demo-grafana
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: patch-grafana-consolelink
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: patch-grafana-consolelink
+    app.kubernetes.io/component: job
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 8
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: observability
+        app.kubernetes.io/name: patch-grafana-consolelink
+        demo.rhoai.io/stage: "210"
+    spec:
+      serviceAccountName: patch-grafana-consolelink
+      restartPolicy: Never
+      containers:
+        - name: patch
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              route_host=""
+              for i in $(seq 1 60); do
+                route_host=$(oc get route grafana-route -n rhoai-demo-grafana -o jsonpath='{.spec.host}' 2>/dev/null || true)
+                if [[ -n "${route_host}" ]]; then
+                  break
+                fi
+                echo "Waiting for Grafana route... (${i}/60)"
+                sleep 10
+              done
+
+              if [[ -z "${route_host}" ]]; then
+                echo "Timed out waiting for route/grafana-route"
+                exit 1
+              fi
+
+              grafana_url="https://${route_host}"
+              dashboard_url="${grafana_url}/d/llm-performance/llm-inference-performance?orgId=1"
+              icon_url="${grafana_url}/public/img/grafana_icon.svg"
+
+              oc patch consolelink rhoai-demo-grafana --type=merge \
+                -p "{\"spec\":{\"href\":\"${dashboard_url}\",\"applicationMenu\":{\"imageURL\":\"${icon_url}\"}}}"
+
+              echo "ConsoleLink patched: ${dashboard_url}"

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rhoai-mcp
+  labels:
+    app.kubernetes.io/part-of: mcp-integration
+    openshift.io/cluster-monitoring: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    openshift.io/display-name: "RHOAI Demo MCP Integrations"
+    openshift.io/description: "Read-only MCP context servers for the RHOAI demo"

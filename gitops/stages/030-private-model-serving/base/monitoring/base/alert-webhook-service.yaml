@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rhoai-demo-alert-webhook
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/name: rhoai-demo-alert-webhook
+    app.kubernetes.io/component: alert-receiver
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "210"
+spec:
+  selector:
+    app.kubernetes.io/name: rhoai-demo-alert-webhook
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: http

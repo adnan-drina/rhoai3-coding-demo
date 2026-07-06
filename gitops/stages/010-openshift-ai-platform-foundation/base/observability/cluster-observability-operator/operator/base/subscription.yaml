@@ -1,0 +1,18 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: cluster-observability-operator
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  channel: patch-me-see-overlays-dir
+  installPlanApproval: Automatic
+  name: cluster-observability-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - monitoring-namespace.yaml
+  - dsc-init.yaml
+  - datasciencecluster.yaml
+  - odhdashboardconfig.yaml
+  - observability/prometheus-web-tls-ca-sync.yaml
+  - observability/perses-backend-operator-access.yaml
+  - observability/perses-dashboard-rbac.yaml

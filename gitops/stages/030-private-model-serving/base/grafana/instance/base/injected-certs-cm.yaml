@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ocp-injected-certs
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+    config.openshift.io/inject-trusted-cabundle: "true"

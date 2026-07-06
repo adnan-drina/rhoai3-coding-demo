@@ -1,0 +1,107 @@
+# Mirrors the OpenShift service-ca injected ConfigMap into the Secret expected
+# by the RHOAI 3.4 generated MonitoringStack webTLSConfig. The CA bundle is
+# cluster-specific, so the certificate data is generated at sync time and is
+# not committed to Git.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-sync-prometheus-web-tls-ca
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-sync-prometheus-web-tls-ca
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-sync-prometheus-web-tls-ca
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-sync-prometheus-web-tls-ca
+subjects:
+  - kind: ServiceAccount
+    name: job-sync-prometheus-web-tls-ca
+    namespace: redhat-ods-monitoring
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-sync-prometheus-web-tls-ca
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+spec:
+  backoffLimit: 8
+  template:
+    spec:
+      serviceAccountName: job-sync-prometheus-web-tls-ca
+      restartPolicy: Never
+      containers:
+        - name: sync
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "Waiting for prometheus-web-tls-ca ConfigMap..."
+              for _ in $(seq 1 60); do
+                if oc get configmap prometheus-web-tls-ca -n redhat-ods-monitoring &>/dev/null; then
+                  break
+                fi
+                sleep 10
+              done
+
+              workdir="$(mktemp -d)"
+              oc extract configmap/prometheus-web-tls-ca \
+                -n redhat-ods-monitoring \
+                --keys=service-ca.crt \
+                --to="${workdir}"
+
+              if [[ ! -s "${workdir}/service-ca.crt" ]]; then
+                echo "service-ca.crt was not found in ConfigMap prometheus-web-tls-ca"
+                exit 1
+              fi
+
+              oc create secret generic prometheus-web-tls-ca \
+                -n redhat-ods-monitoring \
+                --from-file=service-ca.crt="${workdir}/service-ca.crt" \
+                --dry-run=client \
+                -o yaml | oc apply -f -
+
+              echo "prometheus-web-tls-ca Secret synchronized."
+

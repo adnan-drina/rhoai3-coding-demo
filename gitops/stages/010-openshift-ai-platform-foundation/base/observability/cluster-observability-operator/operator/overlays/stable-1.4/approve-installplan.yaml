@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: approve-cluster-observability-installplan
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: approve-cluster-observability-installplan
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups:
+      - operators.coreos.com
+    resources:
+      - installplans
+      - subscriptions
+      - clusterserviceversions
+    verbs:
+      - get
+      - list
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: approve-cluster-observability-installplan
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: approve-cluster-observability-installplan
+subjects:
+  - kind: ServiceAccount
+    name: approve-cluster-observability-installplan
+    namespace: openshift-cluster-observability-operator
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: approve-cluster-observability-installplan
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    # Manual InstallPlans keep the Subscription unhealthy until approved.
+    # Keep the approver in the same wave as the Subscription so Argo CD does
+    # not wait forever before creating the hook.
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: approve-cluster-observability-installplan
+      restartPolicy: Never
+      containers:
+        - name: approve
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              namespace="openshift-cluster-observability-operator"
+              subscription="cluster-observability-operator"
+              expected_csv="cluster-observability-operator.v1.4.0"
+
+              echo "Waiting for ${subscription} Subscription and approving only ${expected_csv}..."
+              for i in $(seq 1 90); do
+                installed_csv="$(
+                  oc get subscription "${subscription}" -n "${namespace}" \
+                    -o jsonpath='{.status.installedCSV}' 2>/dev/null || true
+                )"
+
+                if [[ "${installed_csv}" == "${expected_csv}" ]]; then
+                  phase="$(
+                    oc get csv "${expected_csv}" -n "${namespace}" \
+                      -o jsonpath='{.status.phase}' 2>/dev/null || true
+                  )"
+                  echo "${expected_csv}: ${phase:-not-ready}"
+                  if [[ "${phase}" == "Succeeded" ]]; then
+                    echo "Cluster Observability Operator is installed at the expected CSV."
+                    exit 0
+                  fi
+                elif [[ -n "${installed_csv}" ]]; then
+                  echo "ERROR: ${subscription} is already installed as ${installed_csv}, expected ${expected_csv}."
+                  echo "In-place OLM downgrade is not treated as a GitOps sync operation; cleanly reinstall this prerequisite operator or redeploy a fresh environment."
+                  exit 1
+                fi
+
+                while IFS= read -r plan; do
+                  [[ -z "${plan}" ]] && continue
+                  echo "Approving InstallPlan ${plan} for ${expected_csv}"
+                  oc patch installplan "${plan}" -n "${namespace}" --type merge \
+                    -p '{"spec":{"approved":true}}'
+                done < <(
+                  oc get installplan -n "${namespace}" \
+                    -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{" "}{.spec.clusterServiceVersionNames}{"\n"}{end}' 2>/dev/null \
+                    | awk -v csv="${expected_csv}" '$0 ~ csv {print $1}'
+                )
+
+                sleep 10
+              done
+
+              echo "ERROR: ${expected_csv} did not reach Succeeded."
+              oc get subscription,installplan,csv -n "${namespace}" || true
+              exit 1

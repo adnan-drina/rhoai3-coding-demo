@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: grafana-operator
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana-operator
+    app.kubernetes.io/component: monitoring
+spec:
+  targetNamespaces:
+    - rhoai-demo-grafana

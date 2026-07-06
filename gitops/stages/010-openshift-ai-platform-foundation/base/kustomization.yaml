@@ -1,39 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# RHOAI 3.4 Platform — operator, configuration, and all RHOAI dependencies
-# Matches public quickstart: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
-
 resources:
-  # Wave 0: Demo users (htpasswd identity provider + RHOAI groups)
-  - users/htpasswd-secret.yaml
-  - users/oauth.yaml
-  - users/rhoai-groups.yaml
-  # Wave -10..0: GitOps RBAC + Monitoring + Operator Subscriptions
-  - gitops-rbac/cluster-admin-binding.yaml
-  - monitoring/cluster-monitoring-config.yaml
-  - monitoring/user-workload-monitoring-config.yaml
-  - cert-manager/subscription.yaml
-  - observability-operators/cluster-observability-operator-subscription.yaml
-  - observability-operators/opentelemetry-product-subscription.yaml
-  - observability-operators/tempo-product-subscription.yaml
-  - observability-operators/approve-observability-installplans.yaml
-  - observability-operators/perses-backend-operator-access.yaml
-  - observability-operators/perses-dashboard-rbac.yaml
-  - rhoai-operator/namespace.yaml
-  - rhoai-operator/monitoring-namespace.yaml
-  - rhoai-operator/operatorgroup.yaml
-  - rhoai-operator/subscription.yaml
-  # Wave 5-10: RHOAI CRs (SkipDryRun handles missing CRDs)
-  - rhoai-operator/dsci.yaml
-  - rhoai-operator/datasciencecluster.yaml
-  # Wave 12-16: Platform configuration
-  - rhoai-operator/auth.yaml
-  - rhoai-operator/dashboard-config.yaml
-  - rhoai-operator/hardware-profile-cpu-small.yaml
-  # Wave 13-15: Model Registry (database + instance + RBAC)
-  - model-registry/
-  # Wave 15: In-cluster Jobs (cluster-specific tasks)
-  - jobs/approve-sm-installplan.yaml
-  - jobs/patch-dsci-ca.yaml
-  - jobs/sync-prometheus-web-tls-ca-secret.yaml
+  - observability/aggregate/overlays/demo
+  - odf/aggregate/overlays/demo
+  - rhoai/aggregate/overlays/demo
+  - access/base

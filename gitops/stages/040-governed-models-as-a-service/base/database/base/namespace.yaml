@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: models-as-a-service
+  labels:
+    app.kubernetes.io/name: models-as-a-service
+    app.kubernetes.io/component: maas
+    kueue.openshift.io/managed: "true"
+    opendatahub.io/dashboard: "true"
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    openshift.io/display-name: Models-as-a-Service
+    openshift.io/description: MaaS tenant, model backends, and governance resources for the RHOAI demo.

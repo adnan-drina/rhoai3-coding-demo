@@ -1,0 +1,39 @@
+# Allows the Perses operator to sync product dashboards into the RHOAI
+# observability backend. Current demo environments can install the Perses
+# operator in either the all-namespaces operator namespace or the dedicated
+# Cluster Observability Operator namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perses-backend-operator-access
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+  labels:
+    app.kubernetes.io/name: perses-backend-operator-access
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: perses-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-operators
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perses-operator
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-cluster-observability-operator
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perses-operator
+      ports:
+        - protocol: TCP
+          port: 8080
+

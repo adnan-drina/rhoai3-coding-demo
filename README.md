@@ -118,8 +118,10 @@ cd rhoai3-coding-demo
 cp env.example .env
 oc login --token=<token> --server=<api>
 ./scripts/validate-stage-flow.sh
-./scripts/bootstrap.sh
 ```
+
+Stage 010 bootstraps OpenShift GitOps itself (declarative overlays in
+`gitops/bootstrap/`) before handing the platform to Argo CD.
 
 Deploy the implemented stages in order:
 

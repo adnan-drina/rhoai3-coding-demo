@@ -1,0 +1,20 @@
+# The default openshift-gitops ArgoCD instance ships with a scoped ClusterRole
+# that cannot create the cluster-scoped resources, SCCs, and cross-namespace
+# ServiceAccounts that the ODF and RHOAI operators require. This demo grants the
+# application-controller cluster-admin.
+#
+# DEMO POSTURE: cluster-admin for the Argo CD application-controller is accepted
+# for this demo only, and is documented in docs/OPERATIONS.md per AGENTS.md.
+# A least-privilege role is tracked as a backlog item.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openshift-gitops-argocd-application-controller-cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin

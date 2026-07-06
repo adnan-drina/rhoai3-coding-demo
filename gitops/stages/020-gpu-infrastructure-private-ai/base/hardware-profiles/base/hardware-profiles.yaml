@@ -1,0 +1,140 @@
+# Four RHOAI hardware profiles backing the queue experiences. Identifiers follow
+# the live default-profile (CPU/Memory) plus an Accelerator identifier for GPU
+# profiles. Scheduling is Queue-based: each profile binds to a LocalQueue, and
+# RHOAI applies kueue.x-k8s.io/queue-name to workloads that select it. Per the
+# Kueue restriction, these profiles carry NO node selectors/tolerations —
+# placement lives in the gpu-l40s ResourceFlavor.
+---
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: cpu-default
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+    opendatahub.io/display-name: "CPU Default"
+    opendatahub.io/description: "CPU-only workbenches. Everyone can start one."
+spec:
+  identifiers:
+    - identifier: cpu
+      displayName: CPU
+      resourceType: CPU
+      defaultCount: 2
+      minCount: 1
+      maxCount: 8
+    - identifier: memory
+      displayName: Memory
+      resourceType: Memory
+      defaultCount: 8Gi
+      minCount: 2Gi
+      maxCount: 32Gi
+  scheduling:
+    type: Queue
+    kueue:
+      localQueueName: lq-cpu-default
+---
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: gpu-shared
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+    opendatahub.io/display-name: "GPU Shared - 1x NVIDIA"
+    opendatahub.io/description: "Request a GPU when shared capacity is available."
+spec:
+  identifiers:
+    - identifier: cpu
+      displayName: CPU
+      resourceType: CPU
+      defaultCount: 2
+      minCount: 1
+      maxCount: 8
+    - identifier: memory
+      displayName: Memory
+      resourceType: Memory
+      defaultCount: 8Gi
+      minCount: 2Gi
+      maxCount: 32Gi
+    - identifier: nvidia.com/gpu
+      displayName: NVIDIA GPU
+      resourceType: Accelerator
+      defaultCount: 1
+      minCount: 1
+      maxCount: 1
+  scheduling:
+    type: Queue
+    kueue:
+      localQueueName: lq-gpu-shared
+---
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: gpu-priority
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+    opendatahub.io/display-name: "GPU Priority - 1x NVIDIA"
+    opendatahub.io/description: "Higher-priority demo path for critical jobs."
+spec:
+  identifiers:
+    - identifier: cpu
+      displayName: CPU
+      resourceType: CPU
+      defaultCount: 2
+      minCount: 1
+      maxCount: 8
+    - identifier: memory
+      displayName: Memory
+      resourceType: Memory
+      defaultCount: 8Gi
+      minCount: 2Gi
+      maxCount: 32Gi
+    - identifier: nvidia.com/gpu
+      displayName: NVIDIA GPU
+      resourceType: Accelerator
+      defaultCount: 1
+      minCount: 1
+      maxCount: 1
+  scheduling:
+    type: Queue
+    kueue:
+      localQueueName: lq-gpu-priority
+---
+apiVersion: infrastructure.opendatahub.io/v1
+kind: HardwareProfile
+metadata:
+  name: gpu-reserved-demo
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "5"
+    opendatahub.io/display-name: "GPU Reserved - Demo Team"
+    opendatahub.io/description: "Reserved/team-owned GPU quota without a booking app."
+spec:
+  identifiers:
+    - identifier: cpu
+      displayName: CPU
+      resourceType: CPU
+      defaultCount: 2
+      minCount: 1
+      maxCount: 8
+    - identifier: memory
+      displayName: Memory
+      resourceType: Memory
+      defaultCount: 8Gi
+      minCount: 2Gi
+      maxCount: 32Gi
+    - identifier: nvidia.com/gpu
+      displayName: NVIDIA GPU
+      resourceType: Accelerator
+      defaultCount: 1
+      minCount: 1
+      maxCount: 1
+  scheduling:
+    type: Queue
+    kueue:
+      localQueueName: lq-gpu-reserved-demo

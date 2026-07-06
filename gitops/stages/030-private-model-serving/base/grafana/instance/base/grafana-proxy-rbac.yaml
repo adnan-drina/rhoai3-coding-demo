@@ -1,0 +1,38 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-demo-grafana-proxy
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: grafana-proxy
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-grafana-proxy
+subjects:
+  - kind: ServiceAccount
+    name: grafana-sa
+    namespace: rhoai-demo-grafana

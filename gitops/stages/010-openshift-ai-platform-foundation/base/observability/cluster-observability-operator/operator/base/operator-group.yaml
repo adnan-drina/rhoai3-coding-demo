@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: cluster-observability-operator
+  namespace: openshift-cluster-observability-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: cluster-observability-operator
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"

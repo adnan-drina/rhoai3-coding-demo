@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - patch-gateway-hostname.yaml
+  - configure-kuadrant.yaml
+  - patch-dsc-maas.yaml
+  - restart-kserve-controllers.yaml

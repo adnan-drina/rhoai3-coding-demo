@@ -1,0 +1,19 @@
+# RHOAI Gen AI Playground discovers platform MCP servers from this ConfigMap.
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/experimenting_with_models_in_the_gen_ai_playground/playground-prerequisites_rhoai-user
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gen-ai-aa-mcp-servers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: gen-ai-aa-mcp-servers
+    app.kubernetes.io/component: mcp-discovery
+    app.kubernetes.io/part-of: mcp-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+data:
+  OpenShift-MCP: |
+    {
+      "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
+      "description": "Read-only MCP server for Red Hat OpenShift cluster context. Use it for bounded namespace-scoped pod readiness, known-pod status, and node usage summaries without exposing Secrets, ConfigMaps, RBAC objects, broad cluster listings, or write operations."
+    }

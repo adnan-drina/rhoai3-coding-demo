@@ -1,0 +1,106 @@
+# Ref: https://github.com/openshift/openshift-mcp-server/tree/main/charts/kubernetes-mcp-server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openshift-mcp
+  namespace: rhoai-mcp
+  labels:
+    app.kubernetes.io/name: openshift-mcp
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: mcp-integration
+    app.openshift.io/runtime: golang
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openshift-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openshift-mcp
+        app.kubernetes.io/component: mcp-server
+        app.kubernetes.io/part-of: mcp-integration
+        app.openshift.io/runtime: golang
+    spec:
+      serviceAccountName: openshift-mcp
+      automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openshift-mcp
+          image: quay.io/redhat-user-workloads/crt-nshift-lightspeed-tenant/openshift-mcp-server:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config
+            - /etc/kubernetes-mcp-server/config.toml
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/kubernetes-mcp-server
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: openshift-mcp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshift-mcp
+  namespace: rhoai-mcp
+  labels:
+    app.kubernetes.io/name: openshift-mcp
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: mcp-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openshift-mcp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

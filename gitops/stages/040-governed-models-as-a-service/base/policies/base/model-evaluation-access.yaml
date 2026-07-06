@@ -1,0 +1,46 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: model-evaluation
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: model-evaluation
+    app.kubernetes.io/component: maas-subscription
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Dedicated subscription for Stage 250 model evaluation. Evaluation fires
+  # many benchmark prompts in a burst (a collection runs dozens of tasks x
+  # samples), which would exhaust the interactive developer budgets and
+  # surface as 429 failures mid-run. Governance stays enforced; the quota is
+  # sized for the evaluation workload, like the AutoRAG subscription.
+  owner:
+    groups:
+      - name: rhoai-developers
+      - name: rhods-admins
+    users:
+      - kube:admin
+  modelRefs:
+    - name: nemotron-3-nano-30b-a3b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 2000000
+          window: 1h
+    # gpt-4o-mini is the judge / synthetic-data-generation model for
+    # garak-kfp automated risk assessment (a stronger judge than the model
+    # under test). One minted key covers both models on this subscription.
+    - name: gpt-4o-mini
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: model-evaluation

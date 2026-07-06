@@ -7,26 +7,26 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "010"
   annotations:
-    argocd.argoproj.io/sync-wave: "10"
-    argocd.argoproj.io/manifest-generate-paths: gitops/stages/010-openshift-ai-platform-foundation
-  # No finalizer: deleting this Application orphans resources instead of destroying them.
-  # Use 'argocd app delete --cascade' explicitly when you want to prune.
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/010-openshift-ai-platform-foundation/base
 spec:
   project: rhoai-demo
   source:
+    # repoURL and targetRevision are set by deploy.sh from .env (GIT_REPO_URL, GIT_REPO_BRANCH)
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
     path: gitops/stages/010-openshift-ai-platform-foundation/base
   destination:
     server: https://kubernetes.default.svc
+    namespace: openshift-gitops
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideDiff=true
       - SkipDryRunOnMissingResource=true
+      - ServerSideDiff=true
       - RespectIgnoreDifferences=true
     retry:
       limit: 10
@@ -35,46 +35,16 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    - group: operators.coreos.com
-      kind: Subscription
-      jsonPointers:
-        - /metadata/annotations
-        - /spec/startingCSV
-    - group: ""
-      kind: Namespace
-      jsonPointers:
-        - /metadata/annotations
-        - /metadata/labels
-    - group: operators.coreos.com
-      kind: OperatorGroup
-      jsonPointers:
-        - /metadata/annotations
-    - group: ""
-      kind: ConfigMap
-      namespace: openshift-monitoring
-      name: cluster-monitoring-config
-      jsonPointers:
-        - /metadata/annotations
-    - group: operator.knative.dev
-      kind: KnativeServing
-      jsonPointers:
-        - /metadata/annotations
-    - group: ""
-      kind: PersistentVolumeClaim
-      jsonPointers:
-        - /spec
+    # Stage 110 creates the shared DSC. Later stages enable these component
+    # fields with GitOps hook jobs so the base platform can validate cleanly
+    # before GPU, model serving, and MaaS stages are deployed.
     - group: datasciencecluster.opendatahub.io
       kind: DataScienceCluster
       name: default-dsc
       jsonPointers:
-        # Stage 020 enables Red Hat build of Kueue after the external Kueue
-        # Operator exists, keeping Stage 010 independently deployable.
         - /spec/components/kueue
-        # Stage 040 enables Models-as-a-Service after the MaaS gateway exists.
-        - /spec/components/kserve/modelsAsService
-    - group: opendatahub.io
-      kind: OdhDashboardConfig
-      name: odh-dashboard-config
-      namespace: redhat-ods-applications
-      jsonPointers:
-        - /spec/dashboardConfig/disableKueue
+        - /spec/components/kserve
+        - /spec/components/llamastackoperator
+        - /spec/components/aipipelines
+        - /spec/components/trustyai
+        - /spec/components/mlflowoperator

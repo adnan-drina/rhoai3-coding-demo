@@ -1,0 +1,11 @@
+# Explicit OpenShift group for regular RHOAI demo users (per rhoai-users-groups-access:
+# prefer explicit groups over system:authenticated). ai-developer is created by
+# deploy.sh via the htpasswd identity provider; listing the username here before the
+# User object exists is valid. The RHOAI admin group (rhods-admins) is operator-owned
+# and is populated imperatively by deploy.sh, not managed here.
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: rhoai-developers
+users:
+  - ai-developer

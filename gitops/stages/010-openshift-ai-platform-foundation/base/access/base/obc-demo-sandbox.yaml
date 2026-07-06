@@ -1,0 +1,15 @@
+# Project-scoped S3 bucket from ODF/NooBaa. NooBaa generates a Secret and ConfigMap
+# named demo-sandbox-bucket in this namespace at runtime; deploy.sh reads those to
+# build the dashboard-visible RHOAI connection. Generated credentials are never
+# committed. storageClassName verified live: openshift-storage.noobaa.io.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: demo-sandbox-bucket
+  namespace: demo-sandbox
+  annotations:
+    # Wait until ODF has created the NooBaa storage class.
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  generateBucketName: demo-sandbox
+  storageClassName: openshift-storage.noobaa.io

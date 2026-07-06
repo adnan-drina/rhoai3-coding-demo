@@ -1,99 +1,150 @@
-# Stage 040: Governed Models-as-a-Service
+# Models-as-a-Service
 
 ## Why This Matters
 
-Stage 030 proved that private models can run on OpenShift AI. Stage 040 turns those model endpoints into a governed platform service.
+Enterprise AI teams need to turn model endpoints into governed platform
+services. A raw inference URL is difficult to share safely: it lacks
+subscription boundaries, API key lifecycle management, user-facing model
+discovery, usage reporting, and consistent controls across local and external
+models.
 
-Models-as-a-Service (MaaS) lets platform teams publish approved model choices while centralizing identity, API keys, subscriptions, quotas, rate limits, token limits, telemetry, and policy. Developers and tools get a familiar OpenAI-compatible access pattern without learning where the GPU runs or how each model was deployed.
+Models-as-a-Service (MaaS) adds that product layer. In this demo it turns the
+validated Nemotron endpoint from Stage 210 and an external OpenAI
+`gpt-4o-mini` provider model into managed AI assets that can be discovered,
+subscribed to, monitored, and consumed through OpenAI-compatible APIs.
 
-## Architecture
+## What Enables It
 
-![Stage 040 layered capability map](../../docs/assets/architecture/stage-040-capability-map.svg)
+| Component | Role |
+|-----------|------|
+| RHOAI MaaS | Subscription-based governance, API keys, model publication, authorization policies, and usage telemetry. |
+| KServe and vLLM | Local model-serving foundation for Nemotron. vLLM with MaaS is Technology Preview in RHOAI 3.4. |
+| Leader Worker Set Operator | Required distributed-inference prerequisite for the RHOAI `LLMInferenceService` path. |
+| Red Hat Connectivity Link and Kuadrant | Gateway policy, authorization integration, rate-limit enforcement, and observability substrate. |
+| Gateway API | Cluster ingress path for MaaS model and API traffic. |
+| Authorino | Authentication and authorization service used by the gateway policy chain. |
+| PostgreSQL | Stores MaaS API key lifecycle data; OpenShift AI requires an externally managed PostgreSQL 14+ database. |
+| Llama Stack Operator and Gen AI Studio | User-facing GenAI Playground and AI asset endpoint experience. |
+| OpenShift MCP Server | Read-only cluster-context tool server registered in Gen AI Playground for controlled MCP tool use. |
 
-## What This Stage Adds
+## Architecture Delta
 
-This stage adds the governed MaaS access layer for private models.
-
-- Enablement of the OpenShift AI Models-as-a-Service component (`job-enable-rhoai-maas`) once the MaaS gateway exists; Stages 010-030 keep it disabled so each stage validates cleanly.
-- A MaaS model catalog and API path for local model consumption.
-- `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources for the private model portfolio.
-- Central MaaS API key issuance so consumers do not manage direct model credentials.
-- A demo PostgreSQL database and `maas-db-config` connection Secret for MaaS API key metadata.
-- Subscription groups, rate limits, token limits, and tenant telemetry.
-- Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino resources for policy-enforced API access.
-- GuideLLM validation helpers for small, repeatable endpoint checks.
-
-The important capability is the access pattern: publish models once, subscribe consumers to them, issue keys centrally, enforce policy consistently, and observe usage.
-
-## What To Notice And Why It Matters
-
-Stage 040 makes private model serving consumable without losing platform control.
-
-- Applications and developer tools use OpenAI-compatible access through MaaS-issued API keys.
-- Platform teams control which groups can use each model and how much they can consume.
-- Subscriptions, token limits, tenant telemetry, and GuideLLM tests make usage visible.
-- Gateway policy centralizes authentication, limits, and telemetry instead of embedding those controls in each client.
-- The active OpenShift AI 3.4 path uses subscriptions rather than the older 3.3 tier model.
-
-This matters because enterprise AI adoption breaks down when every team manages endpoints, keys, GPU capacity, and usage tracking independently.
-
-## How Red Hat And Open Source Make It Work
-
-Red Hat OpenShift AI 3.4 provides the MaaS controller, MaaS API, model references, authorization policy, subscriptions, and model-serving context. Red Hat Connectivity Link, Gateway API, Kuadrant, and Authorino turn model calls into policy-enforced API traffic.
-
-GitOps owns the demo MaaS resources: local model references, access policy, subscriptions, tenant telemetry, validation helpers, and the disposable PostgreSQL backing service required by the MaaS API. The OpenShift AI operator owns the MaaS controller and MaaS API deployments. Remaining compatibility items are tracked in [`BACKLOG.md`](../../BACKLOG.md).
-
-## Trust Boundaries
-
-MaaS centralizes authentication, API keys, subscriptions, limits, and telemetry, but it does not change where a model processes data. Private local model calls stay inside the OpenShift platform boundary; other model paths require their own approval and trust-boundary review.
-
-## Red Hat Products Used
-
-- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the MaaS and model-serving platform context.
-- **[Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link)** provides the gateway and policy layer.
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, identity, networking, routes, storage, and monitoring.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles MaaS, gateway, policy, and telemetry resources.
-
-## Open Source Projects To Know
-
-- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) is the upstream project behind the MaaS APIs.
-- [Gateway API](https://gateway-api.sigs.k8s.io/) provides Kubernetes-native API routing primitives.
-- [Kuadrant](https://kuadrant.io/) provides gateway policy patterns for authentication, rate limiting, and protection.
-- [Authorino](https://www.authorino.io/) provides external authorization for gateway-protected APIs.
-- [CloudNativePG](https://cloudnative-pg.io/) provides the demo PostgreSQL database.
-- [GuideLLM](https://github.com/vllm-project/guidellm) provides the small model load test used by validation.
-
-## Deploy And Validate
-
-```bash
-./stages/040-governed-models-as-a-service/deploy.sh
-./stages/040-governed-models-as-a-service/validate.sh
+```mermaid
+flowchart LR
+  previous["Stage 210: vLLM baseline configuration"] --> maas["RHOAI MaaS"]
+  openai["OpenAI gpt-4o-mini"] --> maas
+  maas --> sub["MaaS subscriptions"]
+  maas --> auth["MaaS auth policies"]
+  maas --> keys["API keys"]
+  maas --> obs["Usage telemetry"]
+  sub --> gateway["Gateway API + Kuadrant + Authorino"]
+  auth --> gateway
+  keys --> gateway
+  gateway --> users["ai-developer consumers"]
+  maas --> admin["ai-admin MaaS administration"]
+  maas --> playground["Gen AI Playground"]
+  mcp["OpenShift MCP Server"] --> playground
 ```
 
-Stage validation runs a short GuideLLM test when a MaaS API key is available. Defaults come from [`env.example`](../../env.example). Set `GUIDELLM_SKIP_LOAD_TEST=true` to skip the load test.
+## Source Alignment
 
-Compare the two private models with the helper scripts:
+- [RHOAI 3.4 - Govern LLM access with Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index)
+- [RHOAI 3.4 - Configuring authentication for llm-d using Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/deploy_models_using_distributed_inference_with_llm-d/configuring-authentication-for-llmd_distributed-inference)
+- [OpenShift 4.20 - Leader Worker Set Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/ai_workloads/leader-worker-set-operator)
+- [Red Hat Connectivity Link 1.3 - Installing Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/installing_connectivity_link/index)
+- [OpenShift 4.20 - cert-manager Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
+- [Red Hat Ecosystem Catalog - PostgreSQL 16 RHEL 9 image](https://catalog.redhat.com/en/software/containers/rhel9/postgresql-16/657b03866783e1b1fb87e142)
+- [Centralized routing for external and self-hosted LLMs on OpenShift AI](https://developers.redhat.com/articles/2026/05/25/route-external-and-local-llms-models-as-a-service)
+- [Red Hat - Model Context Protocol server for Red Hat OpenShift now available as Technology Preview](https://www.redhat.com/en/blog/model-context-protocol-server-red-hat-openshift-now-available-technology-preview)
+- [OpenShift MCP Server repository](https://github.com/openshift/openshift-mcp-server)
+- [OpenAI API - GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini)
 
-```bash
-./stages/040-governed-models-as-a-service/compare-private-models.sh
-./stages/040-governed-models-as-a-service/summarize-guidellm-results.sh
-```
+## Current Scope
 
-Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops/stages/040-governed-models-as-a-service/base/)
+This stage is implemented in phases:
 
-## References
+1. Enable MaaS prerequisites and validate CRD/schema availability. cert-manager
+   is treated as a required platform prerequisite, not as a Stage 220-owned
+   operator lifecycle resource.
+2. Add schema-validated external OpenAI `gpt-4o-mini` publication resources
+   using the same MaaS resource name and upstream provider model ID,
+   developer subscription quota, developer authorization policy, and MaaS
+   namespace admin access for `rhods-admins`.
+3. Migrate the local Nemotron serving path into the MaaS namespace by creating
+   a schema-validated `LLMInferenceService`, a MaaS `MaaSModelRef`, and the
+   matching subscription/auth policy. The deployment wrapper removes a stale
+   dashboard-created direct Nemotron `InferenceService` from `demo-sandbox`
+   before the MaaS-owned backend is reconciled.
+4. Validate user access with real demo users, temporary MaaS API keys,
+   Nemotron tool-calling inference, external OpenAI function calling, and MaaS
+   observability prerequisites. Nemotron remains the primary model for the
+   OpenShift MCP demo because it keeps cluster context on the private
+   inference path.
+5. Register a read-only OpenShift MCP server in Gen AI Playground discovery so
+   users can test model tool use against OpenShift cluster context without
+   giving the model write permissions or access to Secrets, ConfigMaps, or
+   RBAC resources.
 
-- [Red Hat: What is Model-as-a-Service?](https://www.redhat.com/en/topics/ai/what-is-models-as-a-service)
-- [Red Hat Developer: Run Model-as-a-Service for multiple LLMs on OpenShift](https://developers.redhat.com/articles/2026/03/24/run-model-service-multiple-llms-openshift)
-- [Red Hat OpenShift AI 3.4 MaaS documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/govern_llm_access_with_models-as-a-service)
-- [Red Hat OpenShift AI 3.4 release notes](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/release_notes/release_notes)
-- [Red Hat Connectivity Link gateway policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/configuring_and_deploying_gateway_policies/configuring_and_deploying_gateway_policies)
-- [Open Data Hub models-as-a-service](https://github.com/opendatahub-io/models-as-a-service)
-- [Gateway API](https://gateway-api.sigs.k8s.io/)
-- [Kuadrant](https://kuadrant.io/)
-- [Authorino](https://www.authorino.io/)
-- [GuideLLM](https://github.com/vllm-project/guidellm)
+A dedicated `enterprise-rag-autorag` MaaSSubscription provides elevated token
+rate limits (Nemotron: 2M tokens/h, GPT-4o-mini: 1M tokens/h) for Stage 230
+AutoRAG optimization runs, which evaluate many RAG patterns in a burst and
+would exhaust the interactive developer subscription budgets. This keeps
+governance enforced while sizing quota for the optimization workload.
 
-## Next Stage
+Serving-health monitoring rides on the same User Workload Monitoring pipeline
+that feeds the Stage 210 Grafana dashboards. A `vllm-serving-health`
+PrometheusRule in `models-as-a-service` (recording rules for TTFT/ITL p95 and
+KV-cache utilization, plus alerts for high TTFT, request-queue backlog,
+KV-cache pressure, and a parked-model info alert) turns the `vllm:*` metrics
+into serving-capacity signals, and a `monitoring-rules-view` RoleBinding lets
+the demo user groups read those rules without cluster-admin. The signals match
+what the Stage 210 GuideLLM capacity benchmark measures, so the alert
+thresholds and the benchmark's breaking point tell the same story. These are
+conservative demo defaults, not a production SLA.
 
-[Stage 050: Approved External Model Access](../050-approved-external-model-access/README.md) adds approved external models behind the same governed MaaS path.
+The prerequisite, local Nemotron, external OpenAI, and model-policy resources
+use schemas observed on the current RHOAI 3.4 cluster. Stage 220 pins Red Hat
+Connectivity Link to `rhcl-operator.v1.3.4` with manual InstallPlan approval
+and also GitOps-manages the RHCL dependency Subscriptions for Authorino, DNS,
+and Limitador at their validated 1.3.x CSVs. This is a deliberate
+compatibility guard because the official RHCL 1.4 release notes deprecate
+RHCL 1.4.0 and direct upgrade customers to pin Connectivity Link and dependent
+operators to the latest 1.3.z release. The live MaaS API group is
+`maas.opendatahub.io/v1alpha1`; Stage 220 model publication and policy
+resources use that installed schema.
+
+Stage 220 intentionally does not patch generated Kuadrant `AuthPolicy` or
+EnvoyFilter resources. The implementation follows the documented MaaS/RHCL
+setup and leaves generated gateway behavior to supported RHOAI, RHCL,
+Kuadrant, and OpenShift Service Mesh versions.
+
+The external OpenAI path is credential-gated. `deploy.sh` creates
+`openai-provider-api-key` in `models-as-a-service` from local
+`OPENAI_API_KEY` or `RHOAI_OPENAI_API_KEY`, or reuses the Secret if it already
+exists. The provider key is never committed.
+
+The OpenShift MCP path uses the newer Red Hat/OpenShift MCP server project. The
+server runs in `rhoai-mcp`, uses in-cluster ServiceAccount authentication, is
+configured `read_only = true`, enables only the `core` and `config` toolsets,
+and denies `Secret`, `ConfigMap`, and RBAC resource access in the MCP server
+configuration. The server is registered for Gen AI Playground through the
+platform-level `gen-ai-aa-mcp-servers` ConfigMap in
+`redhat-ods-applications`. MCP and Gen AI Playground are preview surfaces in
+this demo, so use them to demonstrate governed tool context, not production
+automation. External GPT can complete tightly bounded MCP calls, but broad
+OpenShift MCP prompts can send large tool schemas or results to the external
+provider and hit provider token limits; use Nemotron for the standard MCP demo
+flow.
+
+---
+
+## Demo
+
+![Stage 220 walkthrough](docs/assets/demos/stage-220/stage-220-demo.gif)
+
+| Screenshot | What it shows |
+|------------|---------------|
+| ![Playground](../docs/assets/demos/stage-220/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
+| ![Gateway](../docs/assets/demos/stage-220/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
+| ![HTTPRoutes](../docs/assets/demos/stage-220/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
+| ![AuthPolicy](../docs/assets/demos/stage-220/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |

@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: tempo-product
+  namespace: openshift-tempo-operator
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    app.kubernetes.io/name: tempo-product
+    app.kubernetes.io/component: observability
+    demo.rhoai.io/stage: "110"
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"

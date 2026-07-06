@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-enable-dsc-maas
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-dsc-maas
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-enable-dsc-maas
+  labels:
+    app.kubernetes.io/name: enable-dsc-maas
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+rules:
+  - apiGroups:
+      - datasciencecluster.opendatahub.io
+    resources:
+      - datascienceclusters
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-enable-dsc-maas
+  labels:
+    app.kubernetes.io/name: enable-dsc-maas
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-enable-dsc-maas
+subjects:
+  - kind: ServiceAccount
+    name: job-enable-dsc-maas
+    namespace: redhat-ods-applications
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-enable-dsc-maas
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: enable-dsc-maas
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: job-enable-dsc-maas
+      restartPolicy: Never
+      containers:
+        - name: patch
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              oc patch datasciencecluster default-dsc --type=merge -p \
+                '{"spec":{"components":{"kserve":{"managementState":"Managed","modelsAsService":{"managementState":"Managed"}},"llamastackoperator":{"managementState":"Managed"}}}}'
+              oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kserve.modelsAsService.managementState}{" "}{.spec.components.llamastackoperator.managementState}'
+              echo

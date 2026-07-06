@@ -1,0 +1,16 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: nemotron-3-nano-30b-a3b
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: nemotron-3-nano-30b-a3b
+    app.kubernetes.io/component: maas-model-ref
+    demo.rhoai.io/provider: local
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRef:
+    kind: LLMInferenceService
+    name: nemotron-3-nano-30b-a3b

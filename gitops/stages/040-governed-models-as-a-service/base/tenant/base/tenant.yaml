@@ -1,0 +1,24 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: Tenant
+metadata:
+  name: default-tenant
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: default-tenant
+    app.kubernetes.io/component: maas-tenant
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  apiKeys:
+    maxExpirationDays: 90
+  gatewayRef:
+    name: maas-default-gateway
+    namespace: openshift-ingress
+  telemetry:
+    enabled: true
+    metrics:
+      captureOrganization: true
+      captureUser: true
+      captureGroup: false
+      captureModelUsage: true

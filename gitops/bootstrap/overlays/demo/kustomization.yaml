@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Phase 2 of bootstrap: configure the operator-created ArgoCD instance
+# (annotation resource tracking) and create the rhoai-demo AppProject.
+# Applied by deploy.sh AFTER the GitOps operator CSV is Succeeded, because
+# both resources depend on CRDs the operator installs.
+# The operator Subscription + pinned channel live in overlays/operator.
+resources:
+  - argocd-instance.yaml
+  - argocd-project.yaml
+  - argocd-cluster-admin.yaml

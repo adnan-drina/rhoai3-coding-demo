@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - grafana-proxy-rbac.yaml
+  - grafana-serviceaccount.yaml
+  - grafana-viewer-rbac.yaml
+  - grafana.yaml
+  - injected-certs-cm.yaml
+  - session-secret.yaml

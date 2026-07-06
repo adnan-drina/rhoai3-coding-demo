@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-workload-monitoring-config
+  namespace: openshift-user-workload-monitoring
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: user-workload-monitoring
+    app.kubernetes.io/component: monitoring
+data:
+  config.yaml: |
+    prometheus:
+      retention: 15d

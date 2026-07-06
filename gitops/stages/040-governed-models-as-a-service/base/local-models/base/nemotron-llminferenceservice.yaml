@@ -1,0 +1,114 @@
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: nemotron-3-nano-30b-a3b
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: nemotron-3-nano-30b-a3b
+    app.kubernetes.io/component: local-llm
+    inference.optimization/acceleratorName: L40S
+    kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
+    llm-d.ai/deployment-mode: single-gpu-per-replica
+    opendatahub.io/dashboard: "true"
+    opendatahub.io/genai-asset: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: NVIDIA Nemotron 3 Nano 30B A3B FP8
+    opendatahub.io/model-type: generative
+    security.opendatahub.io/enable-auth: "true"
+spec:
+  model:
+    name: nemotron-3-nano-30b-a3b
+    uri: oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0
+  replicas: 1
+  router:
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+    route: {}
+    scheduler:
+      pool:
+        spec:
+          endpointPickerRef:
+            failureMode: FailOpen
+            group: ""
+            kind: Service
+            name: nemotron-3-nano-30b-a3b-epp-service
+            port:
+              number: 9002
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: nemotron-3-nano-30b-a3b
+              app.kubernetes.io/part-of: llminferenceservice
+              kserve.io/component: workload
+          targetPorts:
+            - number: 8000
+  template:
+    containers:
+      - name: main
+        image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b
+        command:
+          - python
+          - -m
+          - vllm.entrypoints.openai.api_server
+        args:
+          - "--served-model-name={{.Name}}"
+          - --model=/mnt/models
+          - --enable-ssl-refresh
+          - --ssl-certfile=/var/run/kserve/tls/tls.crt
+          - --ssl-keyfile=/var/run/kserve/tls/tls.key
+          - --enable-force-include-usage
+          - --disable-uvicorn-access-log
+          - --enable-prefix-caching
+          - --max-model-len=131072
+          - --max-num-batched-tokens=8192
+          - --enable-auto-tool-choice
+          - --tool-call-parser=qwen3_coder
+          - --trust-remote-code
+          - --reasoning-parser-plugin=/mnt/models/nano_v3_reasoning_parser.py
+          - --reasoning-parser=nano_v3
+        ports:
+          - containerPort: 8000
+            name: http
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 60
+        resources:
+          requests:
+            cpu: "2"
+            memory: 16Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "4"
+            memory: 24Gi
+            nvidia.com/gpu: "1"
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: shm
+    tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+    volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+        name: shm

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuadrant-system
+  labels:
+    app.kubernetes.io/name: kuadrant-system
+    app.kubernetes.io/component: api-gateway-governance
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    openshift.io/display-name: Kuadrant System

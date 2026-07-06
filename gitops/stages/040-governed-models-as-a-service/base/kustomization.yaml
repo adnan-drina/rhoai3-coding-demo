@@ -1,25 +1,23 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Governed Models-as-a-Service — MaaS control plane, gateway policy,
-# local model subscriptions, API key policy, telemetry, and observability.
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: rhoai3-coding-demo
+      demo.rhoai.io/stage: "220"
 
 resources:
-  - rhcl-operator/namespace.yaml
-  - rhcl-operator/operatorgroup.yaml
-  - rhcl-operator/subscription.yaml
-  - cloudnative-pg/subscription.yaml
-  - jobs/approve-cloudnative-pg-installplan.yaml
-  - database/maas-db-bootstrap.yaml
-  - governance/kuadrant-system-ns.yaml
-  - governance/authorino-service.yaml
-  - governance/kuadrant.yaml
-  - governance/authorino.yaml
-  - jobs/configure-kuadrant.yaml
-  - jobs/enable-rhoai-maas.yaml
-  - jobs/restart-kserve-controller.yaml
-  - jobs/label-observability-dashboard-tabs.yaml
-  - models-maas-crds/
-  - gateway/gatewayclass.yaml
-  - gateway/maas-gateway.yaml
-  - jobs/patch-gateway-hostname.yaml
+  - prerequisites/lws/base
+  - prerequisites/rhcl/base
+  - database/base
+  - access/base
+  - gateway/base
+  - governance/base
+  - local-models/base
+  - tenant/base
+  - external-models/base
+  - policies/base
+  - mcp/base
+  - jobs/base
+  - monitoring/base

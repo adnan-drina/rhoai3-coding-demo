@@ -7,25 +7,26 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     demo.rhoai.io/stage: "020"
   annotations:
-    argocd.argoproj.io/sync-wave: "20"
-    argocd.argoproj.io/manifest-generate-paths: gitops/stages/020-gpu-infrastructure-private-ai
-  # No finalizer: deleting this Application orphans resources instead of destroying them.
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/manifest-generate-paths: gitops/stages/020-gpu-infrastructure-private-ai/base
 spec:
   project: rhoai-demo
   source:
+    # repoURL and targetRevision are set by deploy.sh from .env (GIT_REPO_URL, GIT_REPO_BRANCH)
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
     targetRevision: main
     path: gitops/stages/020-gpu-infrastructure-private-ai/base
   destination:
     server: https://kubernetes.default.svc
+    namespace: openshift-gitops
   syncPolicy:
     automated:
       prune: true
-      selfHeal: false
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideDiff=true
       - SkipDryRunOnMissingResource=true
+      - ServerSideDiff=true
       - RespectIgnoreDifferences=true
     retry:
       limit: 10
@@ -34,21 +35,9 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    - group: ""
-      kind: Namespace
+    # Operators may manually scale the GPU MachineSet to zero between demo
+    # sessions. Git keeps the default one-node intent for fresh environments.
+    - group: machine.openshift.io
+      kind: MachineSet
       jsonPointers:
-        - /metadata/annotations
-        - /metadata/labels
-    - group: operators.coreos.com
-      kind: OperatorGroup
-      jsonPointers:
-        - /metadata/annotations
-    - group: operators.coreos.com
-      kind: Subscription
-      jsonPointers:
-        - /metadata/annotations
-        - /spec/startingCSV
-    - group: ""
-      kind: PersistentVolumeClaim
-      jsonPointers:
-        - /spec
+        - /spec/replicas

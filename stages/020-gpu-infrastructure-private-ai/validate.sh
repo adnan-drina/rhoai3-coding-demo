@@ -1,189 +1,150 @@
 #!/usr/bin/env bash
-# Stage 020: GPU Infrastructure and GPU-as-a-Service — Validation Script
+# validate.sh — Stage 120: GPU-as-a-Service
+# Proves the GPU node, NVIDIA stack, Kueue queues, and RHOAI hardware profiles
+# are ready for self-service use.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/validate-lib.sh"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 020: GPU Infrastructure + GPUaaS — Validation            ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
+PASS=0
+FAIL=0
 
-log_step "Argo CD Application"
-check_argocd_app "020-gpu-infrastructure-private-ai"
-
-log_step "Required CRDs"
-check_crd_exists "nodefeaturediscoveries.nfd.openshift.io"
-check_crd_exists "clusterpolicies.nvidia.com"
-check_crd_exists "kueues.kueue.openshift.io"
-check_crd_exists "resourceflavors.kueue.x-k8s.io"
-check_crd_exists "clusterqueues.kueue.x-k8s.io"
-check_crd_exists "localqueues.kueue.x-k8s.io"
-check_crd_exists "kedacontrollers.keda.sh"
-check_crd_exists "scaledobjects.keda.sh"
-
-log_step "Operator CSVs"
-check_csv_succeeded "openshift-nfd" "nfd"
-check_csv_succeeded "nvidia-gpu-operator" "gpu"
-check_csv_succeeded "openshift-kueue-operator" "kueue"
-check_csv_succeeded "openshift-keda" "custom-metrics-autoscaler"
-
-log_step "LeaderWorkerSet (Kueue framework dependency)"
-check_crd_exists "leaderworkersets.leaderworkerset.x-k8s.io"
-check "Kueue cluster reports no missing dependencies" \
-    "oc get kueue.kueue.openshift.io cluster -o jsonpath='{.status.conditions[?(@.type==\"Degraded\")].status}'" \
-    "False"
-
-log_step "GPUaaS Queue Control Plane"
-check "Kueue cluster instance exists" \
-    "oc get kueues.kueue.openshift.io cluster -o jsonpath='{.metadata.name}'" \
-    "cluster"
-check_warn "Kueue cluster instance ready" \
-    "oc get kueues.kueue.openshift.io cluster -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
-    "True"
-check "OpenShift AI Kueue integration is unmanaged" \
-    "oc get datasciencecluster default-dsc -o jsonpath='{.spec.components.kueue.managementState}'" \
-    "Unmanaged"
-check "OpenShift AI dashboard Kueue support enabled" \
-    "oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o jsonpath='{.spec.dashboardConfig.disableKueue}'" \
-    "false"
-check "maas namespace managed by Kueue" \
-    "oc get namespace maas -o jsonpath='{.metadata.labels.kueue\\.openshift\\.io/managed}'" \
-    "true"
-check "maas namespace visible in OpenShift AI dashboard" \
-    "oc get namespace maas -o jsonpath='{.metadata.labels.opendatahub\\.io/dashboard}'" \
-    "true"
-check "Kueue namespace has cluster monitoring enabled" \
-    "oc get namespace openshift-kueue-operator -o jsonpath='{.metadata.labels.openshift\\.io/cluster-monitoring}'" \
-    "true"
-check "NVIDIA L4 ResourceFlavor exists" \
-    "oc get resourceflavor nvidia-l4-gpu -o jsonpath='{.metadata.name}'" \
-    "nvidia-l4-gpu"
-check "ResourceFlavor selects GPU nodes" \
-    "oc get resourceflavor nvidia-l4-gpu -o jsonpath='{.spec.nodeLabels}'" \
-    "node-role.kubernetes.io/gpu"
-check "ResourceFlavor carries GPU taint toleration" \
-    "oc get resourceflavor nvidia-l4-gpu -o jsonpath='{.spec.tolerations[0].key}{\"=\"}{.spec.tolerations[0].value}:{.spec.tolerations[0].effect}'" \
-    "nvidia.com/gpu=true:NoSchedule"
-check "ClusterQueue exists" \
-    "oc get clusterqueue private-model-serving-gpu -o jsonpath='{.metadata.name}'" \
-    "private-model-serving-gpu"
-check "ClusterQueue advertises two GPU nominal quota" \
-    "oc get clusterqueue private-model-serving-gpu -o jsonpath='{.spec.resourceGroups[0].flavors[0].resources[?(@.name==\"nvidia.com/gpu\")].nominalQuota}'" \
-    "2"
-check "LocalQueue exists in maas" \
-    "oc get localqueue private-model-serving -n maas -o jsonpath='{.spec.clusterQueue}'" \
-    "private-model-serving-gpu"
-check "Queued 1GPU hardware profile exists" \
-    "oc get hardwareprofile nvidia-l4-1gpu-queued -n redhat-ods-applications -o jsonpath='{.spec.scheduling.type}{\" \"}{.spec.scheduling.kueue.localQueueName}'" \
-    "Queue private-model-serving"
-check "Queued 2GPU hardware profile exists" \
-    "oc get hardwareprofile nvidia-l4-2gpu-queued -n redhat-ods-applications -o jsonpath='{.spec.scheduling.type}{\" \"}{.spec.scheduling.kueue.localQueueName}'" \
-    "Queue private-model-serving"
-check "Direct 1GPU hardware profile preserved" \
-    "oc get hardwareprofile nvidia-l4-1gpu -n redhat-ods-applications -o jsonpath='{.spec.scheduling.type}'" \
-    "Node"
-
-log_step "Autoscaling Building Block"
-check "KedaController exists" \
-    "oc get kedacontroller keda -n openshift-keda -o jsonpath='{.metadata.name}'" \
-    "keda"
-KEDA_RUNNING_PODS=$(oc get pods -n openshift-keda --no-headers 2>/dev/null | grep -i keda | grep -c Running || true)
-if [[ "$KEDA_RUNNING_PODS" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} KEDA runtime pods running: $KEDA_RUNNING_PODS"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} KEDA runtime pods running: $KEDA_RUNNING_PODS"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/.env"
+  set +a
 fi
 
-log_step "GPU MachineSets"
-MS_COUNT=$(oc get machineset -n openshift-machine-api -o json 2>/dev/null \
-    | jq '[.items[] | select(.spec.template.spec.providerSpec.value.instanceType | test("^g[0-9]"))] | length' 2>/dev/null || echo "0")
-if [[ "$MS_COUNT" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU MachineSets found: $MS_COUNT"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} No GPU MachineSets found"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
+  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set. Set it in .env." >&2
+  exit 1
 fi
 
-MS_READY=$(oc get machineset -n openshift-machine-api -o json 2>/dev/null \
-    | jq '[.items[] | select(.spec.template.spec.providerSpec.value.instanceType | test("^g[0-9]")) | select((.status.readyReplicas // 0) >= (.spec.replicas // 0))] | length' 2>/dev/null || echo "0")
-if [[ "$MS_READY" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU MachineSet replicas ready"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} GPU MachineSet replicas not fully ready"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
+if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
+  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match guard." >&2
+  exit 1
 fi
 
-GPU_NODES=$(oc get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l | tr -d ' ')
-if [[ "$GPU_NODES" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU nodes available: $GPU_NODES"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+check() {
+  local label="$1"
+  local result="$2"
+  if [[ "$result" == "pass" ]]; then
+    echo "✓ $label"
+    (( PASS++ )) || true
+  else
+    echo "✗ $label  ($result)"
+    (( FAIL++ )) || true
+  fi
+}
+
+csv_phase() {
+  local namespace="$1"
+  local display_name="$2"
+  oc get csv -n "$namespace" \
+    -o jsonpath="{.items[?(@.spec.displayName==\"${display_name}\")].status.phase}" \
+    --insecure-skip-tls-verify=true 2>/dev/null || true
+}
+
+condition_status() {
+  local kind="$1"
+  local name="$2"
+  local type="$3"
+  local namespace="${4:-}"
+  if [[ -n "$namespace" ]]; then
+    oc get "$kind" "$name" -n "$namespace" \
+      -o jsonpath="{.status.conditions[?(@.type==\"${type}\")].status}" \
+      --insecure-skip-tls-verify=true 2>/dev/null || true
+  else
+    oc get "$kind" "$name" \
+      -o jsonpath="{.status.conditions[?(@.type==\"${type}\")].status}" \
+      --insecure-skip-tls-verify=true 2>/dev/null || true
+  fi
+}
+
+APP_SYNC=$(oc get applications.argoproj.io 020-gpu-infrastructure-private-ai -n openshift-gitops \
+  -o jsonpath='{.status.sync.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+APP_HEALTH=$(oc get applications.argoproj.io 020-gpu-infrastructure-private-ai -n openshift-gitops \
+  -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${APP_SYNC:-not found}"
+check "Argo CD Application Synced" "$R"
+[[ "$APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${APP_HEALTH:-not found}"
+check "Argo CD Application Healthy" "$R"
+
+NFD_CSV=$(csv_phase openshift-nfd "Node Feature Discovery Operator")
+[[ "$NFD_CSV" == "Succeeded" ]] && R="pass" || R="phase=${NFD_CSV:-not found}"
+check "NFD operator CSV Succeeded" "$R"
+
+GPU_CSV=$(csv_phase nvidia-gpu-operator "NVIDIA GPU Operator")
+[[ "$GPU_CSV" == "Succeeded" ]] && R="pass" || R="phase=${GPU_CSV:-not found}"
+check "NVIDIA GPU operator CSV Succeeded" "$R"
+
+KUEUE_CSV=$(csv_phase openshift-kueue-operator "Red Hat build of Kueue")
+[[ "$KUEUE_CSV" == "Succeeded" ]] && R="pass" || R="phase=${KUEUE_CSV:-not found}"
+check "Kueue operator CSV Succeeded" "$R"
+
+NFD_AVAILABLE=$(condition_status nodefeaturediscovery nfd-instance Available openshift-nfd)
+[[ "$NFD_AVAILABLE" == "True" ]] && R="pass" || R="available=${NFD_AVAILABLE:-not found}"
+check "NodeFeatureDiscovery Available" "$R"
+
+CLUSTER_POLICY_STATE=$(oc get clusterpolicy gpu-cluster-policy \
+  -o jsonpath='{.status.state}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$CLUSTER_POLICY_STATE" == "ready" ]] && R="pass" || R="state=${CLUSTER_POLICY_STATE:-not found}"
+check "NVIDIA ClusterPolicy ready" "$R"
+
+GPU_MS=$(oc get machineset -n openshift-machine-api \
+  -l cluster-api/accelerator=nvidia-gpu \
+  -o jsonpath='{.items[0].metadata.name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+if [[ -n "$GPU_MS" ]]; then
+  READY=$(oc get machineset "$GPU_MS" -n openshift-machine-api \
+    -o jsonpath='{.status.readyReplicas}' --insecure-skip-tls-verify=true 2>/dev/null || echo "0")
+  [[ "${READY:-0}" -ge 1 ]] && R="pass" || R="readyReplicas=${READY:-0}"
 else
-    echo -e "${YELLOW}[WARN]${NC} GPU nodes available: $GPU_NODES (may take 5-10 min to provision)"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+  R="not found"
 fi
+check "GPU MachineSet has a ready worker" "$R"
 
-ALLOC_GPU_NODES=$(oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
-    | jq '[.items[] | select(((.status.allocatable["nvidia.com/gpu"] // "0") | tonumber) >= 1)] | length' 2>/dev/null || echo "0")
-if [[ "$ALLOC_GPU_NODES" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU allocatable resources present: $ALLOC_GPU_NODES"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
+  -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' \
+  --insecure-skip-tls-verify=true 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
+[[ "$GPU_ALLOCATABLE" -ge 4 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
+check "GPU node advertises at least 4 time-sliced GPU units" "$R"
+
+DSC_KUEUE=$(oc get datasciencecluster default-dsc \
+  -o jsonpath='{.spec.components.kueue.managementState}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+DSC_KSERVE=$(oc get datasciencecluster default-dsc \
+  -o jsonpath='{.spec.components.kserve.managementState}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$DSC_KUEUE" == "Unmanaged" ]] && R="pass" || R="kueue=${DSC_KUEUE:-not found}"
+check "DataScienceCluster Kueue integration is Unmanaged" "$R"
+if [[ "$DSC_KSERVE" == "Removed" || "$DSC_KSERVE" == "Managed" ]]; then
+  R="pass"
 else
-    echo -e "${YELLOW}[WARN]${NC} GPU allocatable resources present: $ALLOC_GPU_NODES"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+  R="kserve=${DSC_KSERVE:-not found}"
 fi
+check "DataScienceCluster KServe state is valid for current stage progression" "$R"
 
-GPU_ROLE_NODES=$(oc get nodes -l node-role.kubernetes.io/gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
-if [[ "$GPU_ROLE_NODES" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU role labels present: $GPU_ROLE_NODES"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} GPU role labels present: $GPU_ROLE_NODES"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
+for cq in cq-cpu-default cq-gpu-shared cq-gpu-priority cq-gpu-reserved-demo; do
+  ACTIVE=$(condition_status clusterqueue "$cq" Active)
+  [[ "$ACTIVE" == "True" ]] && R="pass" || R="active=${ACTIVE:-not found}"
+  check "ClusterQueue ${cq} Active" "$R"
+done
 
-GPU_TAINT_NODES=$(oc get nodes -l nvidia.com/gpu.present=true -o json 2>/dev/null \
-    | jq '[.items[] | select(any(.spec.taints[]?; .key == "nvidia.com/gpu" and .effect == "NoSchedule"))] | length' 2>/dev/null || echo "0")
-if [[ "$GPU_TAINT_NODES" -ge 1 ]]; then
-    echo -e "${GREEN}[PASS]${NC} GPU NoSchedule taints present: $GPU_TAINT_NODES"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} GPU NoSchedule taints present: $GPU_TAINT_NODES"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
+for lq in lq-cpu-default lq-gpu-shared lq-gpu-priority lq-gpu-reserved-demo; do
+  ACTIVE=$(condition_status localqueue "$lq" Active demo-sandbox)
+  [[ "$ACTIVE" == "True" ]] && R="pass" || R="active=${ACTIVE:-not found}"
+  check "LocalQueue ${lq} Active" "$R"
+done
 
-log_step "GPU Operator Runtime"
-check "NodeFeatureDiscovery available" \
-    "oc get nodefeaturediscovery nfd-instance -n openshift-nfd -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}'" \
-    "True"
-check "NVIDIA ClusterPolicy ready" \
-    "oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
-    "True"
-check "NVIDIA ClusterPolicy state ready" \
-    "oc get clusterpolicy gpu-cluster-policy -o jsonpath='{.status.state}'" \
-    "ready"
-
-log_step "GPUaaS Observability"
-check "DCGM dashboard ConfigMap exists" \
-    "oc get configmap nvidia-dcgm-exporter-dashboard -n openshift-config-managed -o jsonpath='{.metadata.name}'" \
-    "nvidia-dcgm-exporter-dashboard"
-check "GPUaaS dashboard ConfigMap exists" \
-    "oc get configmap rhoai-gpuaas-dashboard -n openshift-config-managed -o jsonpath='{.metadata.name}'" \
-    "rhoai-gpuaas-dashboard"
-# Query platform Prometheus from inside the pod: the API-server service proxy
-# does not forward bearer tokens, so external /proxy queries always get 401.
-check_warn "GPU utilization metric available" \
-    "oc exec -n openshift-monitoring prometheus-k8s-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=DCGM_FI_DEV_GPU_UTIL' | jq -r '(.status + \" \" + (.data.result | length | tostring))'" \
-    "success"
-check_warn "Kueue pending workload metric available" \
-    "oc exec -n openshift-monitoring prometheus-k8s-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=kueue_pending_workloads' | jq -r '(.status + \" \" + (.data.result | length | tostring))'" \
-    "success"
+for hp in cpu-default gpu-shared gpu-priority gpu-reserved-demo; do
+  DISPLAY_NAME=$(oc get hardwareprofile "$hp" -n redhat-ods-applications \
+    -o jsonpath='{.metadata.annotations.opendatahub\.io/display-name}' \
+    --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+  [[ -n "$DISPLAY_NAME" ]] && R="pass" || R="missing"
+  check "HardwareProfile ${hp} present" "$R"
+done
 
 echo ""
-validation_summary
+echo "Results: ${PASS} passed, ${FAIL} failed"
+[[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

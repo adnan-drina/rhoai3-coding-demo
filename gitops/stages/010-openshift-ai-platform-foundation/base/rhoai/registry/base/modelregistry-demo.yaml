@@ -1,0 +1,29 @@
+apiVersion: modelregistry.opendatahub.io/v1beta1
+kind: ModelRegistry
+metadata:
+  name: demo-registry
+  namespace: rhoai-model-registries
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+  annotations:
+    # The ModelRegistry CRD is installed by the modelregistry DSC component.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "6"
+    openshift.io/display-name: demo-registry
+    openshift.io/description: "RHOAI demo model registry"
+spec:
+  grpc:
+    port: 9090
+  kubeRBACProxy:
+    port: 8443
+    routePort: 443
+    serviceRoute: enabled
+  postgres:
+    generateDeployment: true
+    port: 5432
+    skipDBCreation: false
+    sslMode: disable
+  rest:
+    port: 8080
+    serviceRoute: disabled

@@ -1,0 +1,73 @@
+# Ref: https://github.com/openshift/openshift-mcp-server/blob/main/docs/openshift/user-guide.md
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openshift-mcp-config
+  namespace: rhoai-mcp
+  labels:
+    app.kubernetes.io/name: openshift-mcp
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: mcp-integration
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+data:
+  config.toml: |
+    port = "8080"
+    stateless = true
+    read_only = true
+    list_output = "table"
+    cluster_provider_strategy = "in-cluster"
+    toolsets = ["core", "config"]
+    enabled_tools = [
+      "pods_list_in_namespace",
+      "pods_get",
+      "nodes_top"
+    ]
+    disabled_tools = [
+      "namespaces_list",
+      "pods_list",
+      "pods_delete",
+      "pods_exec",
+      "pods_run",
+      "resources_create_or_update",
+      "resources_delete",
+      "resources_scale",
+      "nodes_log"
+    ]
+    server_instructions = "Use this read-only OpenShift MCP server for bounded namespace-scoped pod inspection, known-pod status, and node usage summaries. Do not request cluster-wide namespace or pod listings, events, logs, secrets, configmaps, RBAC objects, or write actions."
+
+    [http]
+    read_header_timeout = "10s"
+    max_body_bytes = 1048576
+    rate_limit_rps = 2
+    rate_limit_burst = 4
+
+    [[denied_resources]]
+    group = ""
+    version = "v1"
+    kind = "Secret"
+
+    [[denied_resources]]
+    group = ""
+    version = "v1"
+    kind = "ConfigMap"
+
+    [[denied_resources]]
+    group = "rbac.authorization.k8s.io"
+    version = "v1"
+    kind = "Role"
+
+    [[denied_resources]]
+    group = "rbac.authorization.k8s.io"
+    version = "v1"
+    kind = "RoleBinding"
+
+    [[denied_resources]]
+    group = "rbac.authorization.k8s.io"
+    version = "v1"
+    kind = "ClusterRole"
+
+    [[denied_resources]]
+    group = "rbac.authorization.k8s.io"
+    version = "v1"
+    kind = "ClusterRoleBinding"

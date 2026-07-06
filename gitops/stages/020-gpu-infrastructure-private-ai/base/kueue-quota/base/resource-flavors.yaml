@@ -1,0 +1,29 @@
+# ResourceFlavors carry node placement so that Kueue-enabled hardware profiles
+# do not need node selectors/tolerations (a RHOAI restriction). The GPU flavor
+# targets the GPU node by the NVIDIA GPU-feature-discovery label
+# nvidia.com/gpu.present=true. Verified live: MachineSet template labels
+# (cluster-api/accelerator, node-role.kubernetes.io/gpu) do NOT propagate to the
+# node; the taint does, and NFD/GFD labels are the reliable scheduling authority.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: default-flavor
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+# No nodeLabels: matches any node (used for CPU/memory quota).
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: gpu-l40s
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  nodeLabels:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+    - key: nvidia-gpu-only
+      operator: Exists
+      effect: NoSchedule

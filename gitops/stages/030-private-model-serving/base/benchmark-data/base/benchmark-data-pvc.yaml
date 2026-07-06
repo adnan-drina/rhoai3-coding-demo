@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: benchmark-data
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/part-of: benchmarking
+    app.kubernetes.io/name: benchmark-data
+    app.kubernetes.io/component: storage
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

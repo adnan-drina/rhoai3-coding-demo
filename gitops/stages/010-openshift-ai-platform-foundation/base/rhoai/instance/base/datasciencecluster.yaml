@@ -1,0 +1,45 @@
+# v2 is the current served+storage version in RHOAI 3.4. The component schema
+# (e.g. spec.components.aipipelines) exists only in v2; v1 is retained for
+# compatibility but rejects v2-only fields when a v1 manifest is submitted.
+# Verified live: oc get crd datascienceclusters.datasciencecluster.opendatahub.io
+apiVersion: datasciencecluster.opendatahub.io/v2
+kind: DataScienceCluster
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/name: datasciencecluster
+  name: default-dsc
+spec:
+  components:
+    # ---- Base platform (stage-110) ----
+    dashboard:
+      managementState: Managed
+    workbenches:
+      managementState: Managed
+      workbenchNamespace: rhods-notebooks
+    modelregistry:
+      managementState: Managed
+      registriesNamespace: rhoai-model-registries
+
+    # ---- Shared workload management integration (used by stage-120) ----
+    kueue:
+      # Stage 120 enables the standalone Red Hat build of Kueue integration.
+      managementState: Removed
+
+    # ---- Deferred to future stages via DSC patches ----
+    aipipelines:
+      managementState: Removed
+    feastoperator:
+      managementState: Removed
+    kserve:
+      managementState: Removed
+    llamastackoperator:
+      managementState: Removed
+    ray:
+      managementState: Removed
+    trainingoperator:
+      managementState: Removed
+    trustyai:
+      managementState: Removed

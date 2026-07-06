@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-odf-console-plugin
+  namespace: openshift-storage
+  annotations:
+    # Run after ODF operator and StorageCluster are reconciled (wave 2)
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: enable-odf-console-plugin
+      containers:
+        - name: enable-plugin
+          # OCP-managed internal imagestream; latest always matches the cluster version
+          image: 'image-registry.openshift-image-registry.svc:5000/openshift/tools:latest'
+          env:
+            - name: PLUGIN_NAME
+              value: odf-console
+          command: ["/bin/bash"]
+          args:
+            - /app/enable-console-plugin.sh
+          volumeMounts:
+            - name: enable-plugin
+              mountPath: /app
+      volumes:
+        - name: enable-plugin
+          configMap:
+            name: enable-odf-console-plugin
+            defaultMode: 0755

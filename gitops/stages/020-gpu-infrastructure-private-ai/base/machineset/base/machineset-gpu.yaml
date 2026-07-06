@@ -1,0 +1,98 @@
+apiVersion: machine.openshift.io/v1beta1
+kind: MachineSet
+metadata:
+  annotations:
+    capacity.cluster-autoscaler.kubernetes.io/labels: kubernetes.io/arch=amd64
+    machine.openshift.io/GPU: '1'
+    machine.openshift.io/memoryMb: '65536'
+    machine.openshift.io/vCPU: '8'
+  labels:
+    machine.openshift.io/cluster-api-cluster: cluster-qt67m-xmnfl
+    app.kubernetes.io/part-of: gpu-infra
+    app.kubernetes.io/name: aws-gpu-machineset
+    app.kubernetes.io/component: gpu-worker
+    cluster-api/accelerator: nvidia-gpu
+  name: cluster-qt67m-xmnfl-gpu-us-east-2b
+  namespace: openshift-machine-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      machine.openshift.io/cluster-api-cluster: cluster-qt67m-xmnfl
+      machine.openshift.io/cluster-api-machineset: cluster-qt67m-xmnfl-gpu-us-east-2b
+  template:
+    metadata:
+      labels:
+        machine.openshift.io/cluster-api-cluster: cluster-qt67m-xmnfl
+        machine.openshift.io/cluster-api-machine-role: worker
+        machine.openshift.io/cluster-api-machine-type: worker
+        machine.openshift.io/cluster-api-machineset: cluster-qt67m-xmnfl-gpu-us-east-2b
+        cluster-api/accelerator: nvidia-gpu
+        node-role.kubernetes.io/gpu: ''
+    spec:
+      lifecycleHooks: {}
+      metadata:
+        labels:
+          cluster-api/accelerator: nvidia-gpu
+          node-role.kubernetes.io/gpu: ''
+      providerSpec:
+        value:
+          ami:
+            id: ami-0551cfffb0c3f0e45
+          apiVersion: machine.openshift.io/v1beta1
+          blockDevices:
+          - ebs:
+              encrypted: true
+              iops: 0
+              kmsKey:
+                arn: ''
+              volumeSize: 100
+              volumeType: gp2
+          capacityReservationId: ''
+          credentialsSecret:
+            name: aws-cloud-credentials
+          deviceIndex: 0
+          iamInstanceProfile:
+            id: cluster-qt67m-xmnfl-worker-profile
+          instanceType: g6e.2xlarge
+          kind: AWSMachineProviderConfig
+          metadata:
+            creationTimestamp: 
+          metadataServiceOptions: {}
+          placement:
+            availabilityZone: us-east-2b
+            region: us-east-2
+          securityGroups:
+          - filters:
+            - name: tag:Name
+              values:
+              - cluster-qt67m-xmnfl-node
+          - filters:
+            - name: tag:Name
+              values:
+              - cluster-qt67m-xmnfl-lb
+          subnet:
+            filters:
+            - name: tag:Name
+              values:
+              - cluster-qt67m-xmnfl-subnet-private-us-east-2b
+          tags:
+          - name: kubernetes.io/cluster/cluster-qt67m-xmnfl
+            value: owned
+          - name: Stack
+            value: project ocp4-cluster-qt67m
+          - name: env_type
+            value: ocp4-cluster
+          - name: guid
+            value: qt67m
+          - name: owner
+            value: unknown
+          - name: platform
+            value: RHPDS
+          - name: uuid
+            value: c4638a65-f2cd-5d79-9385-723b5f86e695
+          userDataSecret:
+            name: worker-user-data
+      taints:
+      - effect: NoSchedule
+        key: nvidia-gpu-only

@@ -1,0 +1,110 @@
+# Four ClusterQueues backing the four hardware-profile experiences. All are
+# non-preemptive: RHOAI workbenches are not suspendable and may only use a
+# local queue tied to a non-preemptive ClusterQueue (omitting spec.preemption
+# yields the non-preemptive default).
+#
+# GPU quota sums to 4 = the time-sliced capacity (1 physical L40S -> 4 units):
+#   shared 2 + priority 1  (cohort "gpu-pool", grouped for later fair-share work)
+#   reserved 1             (no cohort: isolated, never lent — a true reservation)
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-cpu-default
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  namespaceSelector: {}
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: default-flavor
+          resources:
+            # Sized for the Stage 230 CPU model plane (Qwen3 reranker plus
+            # the granite-30m and MiniLM embedding InferenceServices,
+            # including rolling-update overlap) and the Enterprise RAG
+            # Workbench. Worker allocatable is ~76 CPU, so the quota stays
+            # a governance ceiling, not a hardware one.
+            - name: cpu
+              nominalQuota: "40"
+            - name: memory
+              nominalQuota: "128Gi"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-gpu-shared
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  namespaceSelector: {}
+  cohortName: gpu-pool
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: default-flavor
+          resources:
+            - name: cpu
+              nominalQuota: "8"
+            - name: memory
+              nominalQuota: "32Gi"
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l40s
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: "2"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-gpu-priority
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  namespaceSelector: {}
+  cohortName: gpu-pool
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: default-flavor
+          resources:
+            - name: cpu
+              nominalQuota: "8"
+            - name: memory
+              nominalQuota: "32Gi"
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l40s
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: "1"
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: cq-gpu-reserved-demo
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  namespaceSelector: {}
+  # No cohort: this queue's GPU is isolated and never lent out.
+  resourceGroups:
+    - coveredResources: ["cpu", "memory"]
+      flavors:
+        - name: default-flavor
+          resources:
+            - name: cpu
+              nominalQuota: "8"
+            - name: memory
+              nominalQuota: "32Gi"
+    - coveredResources: ["nvidia.com/gpu"]
+      flavors:
+        - name: gpu-l40s
+          resources:
+            - name: nvidia.com/gpu
+              nominalQuota: "1"

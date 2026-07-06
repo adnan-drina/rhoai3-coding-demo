@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-restart-kserve-controllers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: restart-kserve-controllers
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-restart-kserve-controllers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: restart-kserve-controllers
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-restart-kserve-controllers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: restart-kserve-controllers
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+subjects:
+  - kind: ServiceAccount
+    name: job-restart-kserve-controllers
+    namespace: redhat-ods-applications
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-restart-kserve-controllers
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-restart-kserve-controllers
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: restart-kserve-controllers
+    app.kubernetes.io/component: maas
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: job-restart-kserve-controllers
+      restartPolicy: Never
+      containers:
+        - name: restart
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              restart_controller() {
+                local label_selector="$1"
+                local description="$2"
+
+                if oc get pod -n redhat-ods-applications -l "$label_selector" --no-headers 2>/dev/null | grep -q .; then
+                  oc delete pod -n redhat-ods-applications -l "$label_selector"
+                  oc wait --for=condition=Ready pod -n redhat-ods-applications -l "$label_selector" --timeout=300s
+                  echo "${description} restarted."
+                else
+                  echo "${description} pods not found; skipping restart."
+                fi
+              }
+
+              restart_controller "app=odh-model-controller" "ODH model controller"
+              restart_controller "control-plane=kserve-controller-manager" "KServe controller manager"
+
+              echo "Documented RHOAI controller refresh completed."

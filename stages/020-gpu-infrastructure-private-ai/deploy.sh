@@ -1,32 +1,45 @@
 #!/usr/bin/env bash
-# Stage 020: GPU Infrastructure and GPU-as-a-Service - Deploy
-# Applies the ArgoCD Application. GPU MachineSet creation and OpenShift AI
-# Kueue enablement are handled by in-cluster Jobs.
+# deploy.sh — Stage 120: GPU-as-a-Service
+# Hands GPU infrastructure, Kueue quotas, and hardware profiles to Argo CD.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$REPO_ROOT/scripts/lib.sh"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-STAGE_NAME="020-gpu-infrastructure-private-ai"
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$ROOT_DIR/.env"
+  set +a
+fi
 
-load_env
-check_oc_logged_in
+if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
+  echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set." >&2
+  exit 1
+fi
 
-log_step "Stage 020: GPU Infrastructure and GPU-as-a-Service Foundation"
+ACTUAL_SERVER=$(oc whoami --show-server 2>/dev/null || true)
+if [[ "$ACTUAL_SERVER" != *"$RHOAI_EXPECTED_API_SERVER"* ]]; then
+  echo "ERROR: Active cluster ($ACTUAL_SERVER) does not match RHOAI_EXPECTED_API_SERVER." >&2
+  exit 1
+fi
 
-apply_stage_app "$STAGE_NAME"
+echo "✓ Cluster guard passed: $ACTUAL_SERVER"
 
-log_info "ArgoCD handles all orchestration via sync waves:"
-log_info "  Wave -10..0: NFD, GPU Operator, Kueue, and Custom Metrics Autoscaler subscriptions"
-log_info "  Wave 5-15:   Kueue CR, queue/quota resources, KEDA controller, dashboards"
-log_info "  Wave 10-15:  NFD instance, ClusterPolicy, DCGM dashboard"
-log_info "  Wave 20:     GPU MachineSet Job (discovers cluster, creates MachineSet)"
-echo ""
-log_info "Monitor progress:"
-echo "  oc get application ${STAGE_NAME} -n openshift-gitops -w"
-echo "  oc get pods -n openshift-kueue-operator"
-echo "  oc get clusterqueue,resourceflavor"
-echo "  oc get machines -n openshift-machine-api | grep gpu"
-echo "  oc get nodes -l node-role.kubernetes.io/gpu"
-echo ""
+GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/adnan-drina/rhoai3-coding-demo.git}"
+GIT_REPO_BRANCH="${GIT_REPO_BRANCH:-main}"
+
+APP_MANIFEST=$(mktemp)
+sed \
+  -e "s|repoURL: .*|repoURL: ${GIT_REPO_URL}|" \
+  -e "s|targetRevision: .*|targetRevision: ${GIT_REPO_BRANCH}|" \
+  "$ROOT_DIR/gitops/argocd/app-of-apps/020-gpu-infrastructure-private-ai.yaml" \
+  > "$APP_MANIFEST"
+
+echo "── Applying stage-120 Argo CD Application ──"
+oc apply -f "$APP_MANIFEST" --insecure-skip-tls-verify=true
+rm -f "$APP_MANIFEST"
+
+echo "✓ Application 020-gpu-infrastructure-private-ai applied"
+echo "  Argo CD will reconcile GPU infrastructure and queue resources."
+echo "  Run ./validate.sh to confirm GPU-as-a-Service readiness."

@@ -1,0 +1,37 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: prometheus
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  uid: Prometheus
+  resyncPeriod: 30s
+  datasource:
+    access: proxy
+    editable: true
+    isDefault: true
+    jsonData:
+      httpHeaderName1: Authorization
+      timeInterval: 5s
+      tlsSkipVerify: true
+    name: Prometheus
+    secureJsonData:
+      httpHeaderValue1: "Bearer ${token}"
+    type: prometheus
+    url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+  valuesFrom:
+    - targetPath: secureJsonData.httpHeaderValue1
+      valueFrom:
+        secretKeyRef:
+          name: grafana-auth-secret
+          key: token
+  instanceSelector:
+    matchLabels:
+      instance: rhoai-demo-grafana

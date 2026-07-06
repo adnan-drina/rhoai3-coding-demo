@@ -1,0 +1,13 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: lq-gpu-reserved-demo
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: lq-gpu-reserved-demo
+    app.kubernetes.io/component: gpu-scheduling
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  clusterQueue: cq-gpu-reserved-demo

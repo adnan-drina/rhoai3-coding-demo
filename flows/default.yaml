@@ -54,28 +54,6 @@ stages:
     gitopsPath: gitops/stages/040-governed-models-as-a-service/base
     dependsOn:
       - "030"
-  - id: "050"
-    name: Approved External Model Access
-    productFocus:
-      - Red Hat OpenShift AI
-      - Models-as-a-Service
-    deployScript: stages/050-approved-external-model-access/deploy.sh
-    validateScript: stages/050-approved-external-model-access/validate.sh
-    gitopsApplication: 050-approved-external-model-access
-    gitopsPath: gitops/stages/050-approved-external-model-access/base
-    dependsOn:
-      - "040"
-  - id: "060"
-    name: MCP Context Integrations
-    productFocus:
-      - Red Hat OpenShift AI GenAI Playground
-      - MCP
-    deployScript: stages/060-mcp-context-integrations/deploy.sh
-    validateScript: stages/060-mcp-context-integrations/validate.sh
-    gitopsApplication: 060-mcp-context-integrations
-    gitopsPath: gitops/stages/060-mcp-context-integrations/base
-    dependsOn:
-      - "050"
   - id: "070"
     name: Controlled Developer Workspaces
     productFocus:
@@ -87,7 +65,7 @@ stages:
     gitopsApplication: 070-controlled-developer-workspaces
     gitopsPath: gitops/stages/070-controlled-developer-workspaces/base
     dependsOn:
-      - "060"
+      - "040"
   - id: "080"
     name: AI-Assisted Application Modernization
     productFocus:

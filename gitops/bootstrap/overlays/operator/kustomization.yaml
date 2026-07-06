@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Phase 1 of bootstrap: install the OpenShift GitOps operator with the
+# baseline-pinned channel. Applied imperatively by deploy.sh BEFORE the ArgoCD
+# CRDs exist. The ArgoCD instance + AppProject live in overlays/demo and are
+# applied only after the operator CSV reaches Succeeded.
+resources:
+  - ../../base
+
+patches:
+  - path: patch-channel.yaml
+    target:
+      kind: Subscription
+      name: openshift-gitops-operator

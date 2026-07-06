@@ -1,0 +1,128 @@
+# Lets the demo RHOAI administrator persona discover product Perses dashboards
+# without granting broad cluster-admin permissions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-observability-dashboard-viewer
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+rules:
+  - apiGroups:
+      - perses.dev
+    resources:
+      - perses
+      - persesdashboards
+      - persesdatasources
+      - persesglobaldatasources
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhods-admins-observability-dashboard-viewer
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-observability-dashboard-viewer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: rhods-admins
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rhods-admins-observability-prometheus-api-viewer
+  namespace: openshift-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+rules:
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - prometheuses/api
+    resourceNames:
+      - k8s
+    verbs:
+      - get
+      # Perses sends Prometheus query POSTs through this subresource; Kubernetes
+      # authorizes those as create on prometheuses/api.
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rhods-admins-observability-prometheus-api-viewer
+  namespace: openshift-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: rhods-admins-observability-prometheus-api-viewer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: rhods-admins
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rhods-admins-observability-dashboard-viewer
+  namespace: redhat-ods-monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-observability-dashboard-viewer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: rhods-admins
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rhods-admins-observability-dashboard-viewer
+  namespace: redhat-ods-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+  labels:
+    app.kubernetes.io/name: rhoai-observability-dashboard-viewer
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "110"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-observability-dashboard-viewer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: rhods-admins
+

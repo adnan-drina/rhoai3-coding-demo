@@ -1,0 +1,37 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: ai-safety-guardrails
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: ai-safety-guardrails
+    app.kubernetes.io/component: maas-subscription
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Dedicated subscription for the Stage 240 NeMo Guardrails service. Every
+  # guarded request adds LLM self-check calls on input and output, so one
+  # user turn can cost three model calls; the quota is sized for that
+  # amplification while governance stays enforced.
+  owner:
+    groups:
+      - name: rhoai-developers
+      - name: rhods-admins
+    users:
+      - kube:admin
+  modelRefs:
+    - name: nemotron-3-nano-30b-a3b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 500000
+          window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: guardrails-safety

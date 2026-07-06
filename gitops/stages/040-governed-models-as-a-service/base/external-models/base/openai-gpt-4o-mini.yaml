@@ -1,0 +1,35 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: gpt-4o-mini
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: gpt-4o-mini
+    app.kubernetes.io/component: external-model
+    demo.rhoai.io/provider: openai
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider: openai
+  endpoint: api.openai.com
+  targetModel: gpt-4o-mini
+  credentialRef:
+    name: openai-provider-api-key
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: gpt-4o-mini
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: gpt-4o-mini
+    app.kubernetes.io/component: maas-model-ref
+    demo.rhoai.io/provider: openai
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: gpt-4o-mini

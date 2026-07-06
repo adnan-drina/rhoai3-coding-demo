@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    openshift.io/display-name: RHOAI Demo Grafana
+    openshift.io/description: Grafana dashboards for the model-serving baseline demo.

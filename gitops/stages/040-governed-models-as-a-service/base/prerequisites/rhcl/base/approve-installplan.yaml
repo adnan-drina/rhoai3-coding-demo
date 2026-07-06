@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: approve-rhcl-installplan
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: approve-rhcl-installplan
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-demo-approve-rhcl-installplan
+  labels:
+    app.kubernetes.io/name: approve-rhcl-installplan
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+rules:
+  - apiGroups:
+      - operators.coreos.com
+    resources:
+      - installplans
+    verbs:
+      - get
+      - list
+      - patch
+  - apiGroups:
+      - operators.coreos.com
+    resources:
+      - clusterserviceversions
+      - subscriptions
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhoai-demo-approve-rhcl-installplan
+  labels:
+    app.kubernetes.io/name: approve-rhcl-installplan
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-approve-rhcl-installplan
+subjects:
+  - kind: ServiceAccount
+    name: approve-rhcl-installplan
+    namespace: openshift-operators
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: approve-rhcl-installplan
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: approve-rhcl-installplan
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  activeDeadlineSeconds: 900
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: approve-rhcl-installplan
+      containers:
+        - name: approve
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PINNED_CSV
+              value: rhcl-operator.v1.3.4
+            - name: PACKAGE_LABEL
+              value: operators.coreos.com/rhcl-operator.openshift-operators
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              set -euo pipefail
+
+              installed="$(oc get subscription rhcl-operator -n openshift-operators \
+                -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
+
+              if [[ "$installed" == "$PINNED_CSV" ]]; then
+                echo "RHCL already installed at pinned CSV ${PINNED_CSV}."
+                exit 0
+              fi
+
+              if [[ -n "$installed" && "$installed" != "$PINNED_CSV" ]]; then
+                echo "ERROR: RHCL installedCSV is ${installed}; Stage 220 is pinned to ${PINNED_CSV}."
+                echo "Perform one-time RHCL remediation before relying on MaaS gateway policy resources."
+                exit 1
+              fi
+
+              for _ in $(seq 1 90); do
+                while read -r plan_ref; do
+                  [[ -n "$plan_ref" ]] || continue
+
+                  csvs="$(oc get "$plan_ref" -n openshift-operators \
+                    -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || true)"
+
+                  if [[ " ${csvs} " == *" ${PINNED_CSV} "* ]]; then
+                    approved="$(oc get "$plan_ref" -n openshift-operators \
+                      -o jsonpath='{.spec.approved}' 2>/dev/null || true)"
+
+                    if [[ "$approved" != "true" ]]; then
+                      oc patch "$plan_ref" -n openshift-operators \
+                        --type=merge -p '{"spec":{"approved":true}}'
+                    fi
+
+                    echo "Approved RHCL InstallPlan ${plan_ref} for ${PINNED_CSV}."
+                    exit 0
+                  fi
+                done < <(oc get installplans -n openshift-operators \
+                  -l "$PACKAGE_LABEL" -o name 2>/dev/null || true)
+
+                sleep 10
+              done
+
+              echo "ERROR: Timed out waiting for RHCL InstallPlan containing ${PINNED_CSV}."
+              exit 1

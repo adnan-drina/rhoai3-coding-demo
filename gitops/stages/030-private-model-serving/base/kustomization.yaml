@@ -1,15 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Private model serving — local LLMInferenceService resources and model metadata.
-# Private model publication now follows the RHOAI 3.4 MaaS model: the serving
-# resources are published through MaaSModelRef, then access is controlled by
-# MaaSSubscription and MaaSAuthPolicy in Stage 040.
-
 resources:
-  - models/admin-rbac.yaml
-  - model-registry/seed-networkpolicy.yaml
-  - models/qwen3-6-35b-a3b.yaml
-  - models/nemotron-3-nano-30b.yaml
-  - observability/vllm-metrics-alias-prometheusrule.yaml
-  - model-registry/seed-models.yaml
+  - rhoai-dsc/base
+  - benchmark-data/base
+  - monitoring/base
+  - grafana/aggregate/overlays/demo

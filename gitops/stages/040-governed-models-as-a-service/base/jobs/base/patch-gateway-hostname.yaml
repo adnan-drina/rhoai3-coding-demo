@@ -1,0 +1,251 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - create
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-prepare-maas-gateway-tls
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+rules:
+  - apiGroups:
+      - operator.openshift.io
+    resources:
+      - ingresscontrollers
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-prepare-maas-gateway-tls
+subjects:
+  - kind: ServiceAccount
+    name: job-prepare-maas-gateway-tls
+    namespace: openshift-ingress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-prepare-maas-gateway-tls
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-prepare-maas-gateway-tls
+subjects:
+  - kind: ServiceAccount
+    name: job-prepare-maas-gateway-tls
+    namespace: openshift-ingress
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-prepare-maas-gateway-tls
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: prepare-maas-gateway-tls
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: job-prepare-maas-gateway-tls
+      restartPolicy: Never
+      containers:
+        - name: prepare
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              cert_name="$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.spec.defaultCertificate.name}' 2>/dev/null || true)"
+              if [[ -z "$cert_name" ]]; then
+                cert_name="cert-manager-ingress-cert"
+              fi
+
+              for i in $(seq 1 30); do
+                if oc get secret "$cert_name" -n openshift-ingress >/dev/null 2>&1; then
+                  crt="$(oc get secret "$cert_name" -n openshift-ingress -o jsonpath='{.data.tls\.crt}')"
+                  key="$(oc get secret "$cert_name" -n openshift-ingress -o jsonpath='{.data.tls\.key}')"
+                  if [[ -n "$crt" && -n "$key" ]]; then
+                    tmp_dir="$(mktemp -d)"
+                    printf '%s' "$crt" | base64 -d > "${tmp_dir}/tls.crt"
+                    printf '%s' "$key" | base64 -d > "${tmp_dir}/tls.key"
+                    oc create secret tls maas-gateway-tls \
+                      -n openshift-ingress \
+                      --cert="${tmp_dir}/tls.crt" \
+                      --key="${tmp_dir}/tls.key" \
+                      --dry-run=client -o yaml | oc apply -f -
+                    rm -rf "$tmp_dir"
+                    oc label secret maas-gateway-tls -n openshift-ingress --overwrite \
+                      app.kubernetes.io/name=maas-gateway-tls \
+                      app.kubernetes.io/component=maas-gateway \
+                      app.kubernetes.io/part-of=rhoai3-coding-demo \
+                      demo.rhoai.io/stage=220
+                    echo "Prepared maas-gateway-tls from ${cert_name}"
+                    exit 0
+                  fi
+                fi
+                echo "Waiting for ingress certificate ${cert_name}... ($i/30)"
+                sleep 10
+              done
+
+              echo "Ingress certificate ${cert_name} did not appear in time."
+              exit 1
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-patch-maas-gateway
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: patch-maas-gateway
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-patch-maas-gateway
+  labels:
+    app.kubernetes.io/name: patch-maas-gateway
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - gateways
+    verbs:
+      - get
+      - patch
+  - apiGroups:
+      - operator.openshift.io
+    resources:
+      - ingresscontrollers
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-patch-maas-gateway
+  labels:
+    app.kubernetes.io/name: patch-maas-gateway
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-patch-maas-gateway
+subjects:
+  - kind: ServiceAccount
+    name: job-patch-maas-gateway
+    namespace: openshift-ingress
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-patch-maas-gateway-hostname
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: patch-maas-gateway
+    app.kubernetes.io/component: maas-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: job-patch-maas-gateway
+      restartPolicy: Never
+      containers:
+        - name: patch
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              domain="$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')"
+              hostname="maas.${domain}"
+              cert_name="maas-gateway-tls"
+
+              for i in $(seq 1 60); do
+                if oc get gateway maas-default-gateway -n openshift-ingress >/dev/null 2>&1; then
+                  oc patch gateway maas-default-gateway -n openshift-ingress --type=json -p "
+                    [
+                      {\"op\":\"replace\",\"path\":\"/spec/listeners/0/hostname\",\"value\":\"${hostname}\"},
+                      {\"op\":\"replace\",\"path\":\"/spec/listeners/1/hostname\",\"value\":\"${hostname}\"},
+                      {\"op\":\"replace\",\"path\":\"/spec/listeners/1/tls/certificateRefs/0/name\",\"value\":\"${cert_name}\"}
+                    ]"
+                  echo "MaaS gateway hostname=${hostname}, tlsCertificate=${cert_name}"
+                  exit 0
+                fi
+                echo "Waiting for MaaS gateway... ($i/60)"
+                sleep 10
+              done
+
+              echo "MaaS gateway did not appear in time."
+              exit 1

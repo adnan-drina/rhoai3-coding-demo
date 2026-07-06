@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: models-as-a-service-db
+  labels:
+    app.kubernetes.io/name: models-as-a-service-db
+    app.kubernetes.io/component: maas-database
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    openshift.io/display-name: Models-as-a-Service Database
+    openshift.io/description: Demo-local PostgreSQL database namespace for MaaS API key lifecycle data.

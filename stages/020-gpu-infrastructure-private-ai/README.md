@@ -1,99 +1,174 @@
-# Stage 020: GPU Infrastructure for Private AI
+# Stage 120: GPU-as-a-Service
+
+**Theme:** AI Platform Foundation
+**Concept:** Make scarce GPU capacity available as a governed, self-service
+platform capability.
+
+---
 
 ## Why This Matters
 
-Private model serving needs accelerator capacity that can be discovered, scheduled, shared, observed, and governed. If every model deployment uses hand-built node selectors and local exceptions, private AI becomes difficult to operate and expensive to scale.
+Before teams can build or serve AI models, the platform must make scarce GPU
+capacity available in a controlled way. A GPU worker costs materially more than
+a CPU worker, and demand will always exceed supply once multiple teams start
+building AI workloads.
 
-Stage 020 adds a demo-scale GPU-as-a-Service foundation. It prepares NVIDIA GPU capacity for OpenShift AI workloads and introduces queue-based admission, quota, hardware profiles, autoscaling readiness, and observability.
+The enterprise problem is not just "add a GPU node." Platform teams need to
+decide who can use GPUs, how much capacity each team can consume, which work
+gets admitted first, and how to shut capacity down when the demo or project is
+idle. Data scientists should not have to understand node taints, tolerations,
+device-plugin labels, or queue objects to get started.
+
+This stage turns the GPU into a platform service. OpenShift Machine API creates
+the worker capacity. Node Feature Discovery publishes hardware facts about the
+nodes. The NVIDIA GPU Operator installs the NVIDIA runtime stack and exposes
+GPU capacity to Kubernetes. Red Hat build of Kueue turns that capacity into
+quota-controlled queues. Red Hat OpenShift AI hardware profiles present those
+queues as simple dashboard choices: CPU Default, GPU Shared, GPU Priority, and
+GPU Reserved.
+
+---
+
+## What Enables It
+
+This stage builds the GPU-as-a-Service layer on top of the Stage 110 base
+platform.
+
+### GPU Worker Capacity
+
+The demo uses one AWS `g6e.2xlarge` GPU worker by default. This instance type
+provides one NVIDIA L40S GPU with 48 GB of GPU memory. The MachineSet is tracked
+in GitOps so a fresh environment can create the GPU worker consistently.
+
+Default node count is one GPU worker. Operators can manually scale the GPU
+MachineSet to zero between sessions to control cost; the Argo CD Application
+ignores `MachineSet.spec.replicas` drift so intentional scale-down is not
+self-healed back to one.
+
+### Hardware Discovery (NFD Operator)
+
+The Node Feature Discovery Operator installs the OpenShift hardware-discovery
+layer. Its `NodeFeatureDiscovery` instance publishes node feature labels from
+hardware sources such as PCI devices. In this stage, NFD is the discovery
+prerequisite that lets accelerator-aware operators and scheduling policy rely
+on verified node metadata instead of hand-maintained labels.
+
+NFD does not provide GPU capacity by itself. It hands discovered hardware
+context to the accelerator stack; the NVIDIA GPU Operator and its GPU Feature
+Discovery/device-plugin components expose the `nvidia.com/gpu` scheduling
+resource and NVIDIA-specific GPU labels used by Kueue placement.
+
+### NVIDIA GPU Enablement
+
+The NVIDIA GPU Operator installs the driver stack, container toolkit, GPU
+feature discovery, DCGM exporter, and device plugin. The stage configures GPU
+time-slicing so one physical L40S is advertised as four schedulable
+`nvidia.com/gpu` units.
+
+Time-slicing is a demo and development density mechanism. It shares compute
+without memory isolation. It is useful for showing multiple self-service
+profiles on a single card, but it is not presented as strict production
+isolation.
+
+### Queue-Based GPU Governance
+
+Red Hat build of Kueue provides admission control and quota. This stage enables
+RHOAI integration with the standalone Kueue operator by patching the shared
+`DataScienceCluster` to `kueue.managementState: Unmanaged` via an Argo CD Sync
+hook Job (`job-enable-dsc-kueue`) that uses a dedicated ServiceAccount and
+ClusterRole in `redhat-ods-applications`. The GPU `ResourceFlavor` uses the
+GPU Feature Discovery label (`nvidia.com/gpu.present: "true"`) and GPU-only
+taint, so users do not need to know node placement details.
+
+This stage creates:
+
+- one CPU `ResourceFlavor`
+- one GPU `ResourceFlavor` targeting GPU-labeled nodes and tolerating the GPU
+  taint
+- four `ClusterQueue` objects
+- four `LocalQueue` objects in `demo-sandbox`
+- one Kueue `WorkloadPriorityClass` (`gpu-high-priority`, value 1000) for future priority experiments
+
+The `cq-gpu-shared` and `cq-gpu-priority` queues share a `gpu-pool` cohort,
+enabling future fair-sharing and borrowing between them. The
+`cq-gpu-reserved-demo` queue has no cohort — true isolation for the demo team.
+The `cq-cpu-default` queue provides `cpu: 40`, `memory: 128Gi` — sized for
+Stage 230's CPU model plane (Qwen3 reranker, granite-30m, MiniLM embedding
+InferenceServices, plus the Enterprise RAG Workbench).
+
+The initial queue design is intentionally non-preemptive because RHOAI
+workbenches are not suspendable. The "GPU Priority" profile is a dedicated
+quota lane, not a preemption demonstration.
+
+### RHOAI Hardware Profiles
+
+Hardware profiles turn queue and resource choices into dashboard-friendly
+options. Users select a profile; RHOAI adds the queue binding to the workload.
+The low-level scheduling authority remains in Kueue `ResourceFlavor` and
+`LocalQueue` resources.
+
+| Hardware profile | Backing queue | GPU quota | User-facing intent |
+|---|---|---:|---|
+| CPU Default | `lq-cpu-default` | 0 | CPU-only workbench or small job |
+| GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 2 | Shared GPU capacity when available |
+| GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 1 | Dedicated higher-importance lane |
+| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 1 | Reserved demo-team capacity |
+
+---
 
 ## Architecture
 
-![Stage 020 layered capability map](../../docs/assets/architecture/stage-020-capability-map.svg)
+```text
+AWS GPU MachineSet (g6e.2xlarge, 1x L40S, default replicas=1)
+   |
+   v
+NFD Operator -> NodeFeatureDiscovery -> node hardware feature labels
+   |
+   v
+NVIDIA GPU Operator -> driver, toolkit, GFD, DCGM, device plugin
+   |
+   v
+time-slicing: 1 physical GPU -> 4 schedulable nvidia.com/gpu units
+   |
+   v
+Red Hat build of Kueue -> ResourceFlavor -> ClusterQueue -> LocalQueue
+   |
+   v
+RHOAI Hardware Profiles -> CPU Default / GPU Shared / GPU Priority / GPU Reserved
+   |
+   v
+Data scientist selects governed capacity from the RHOAI dashboard
+```
 
-## What This Stage Adds
+Stage 210 uses this capacity to prove vLLM model serving with Nemotron and
+capture a lightweight serving baseline. Stage 220 exposes validated model
+access through Models-as-a-Service.
 
-This stage adds governed GPU infrastructure for private AI workloads.
-
-- Hardware discovery through Node Feature Discovery.
-- NVIDIA GPU enablement through the NVIDIA GPU Operator and managed NVIDIA L4 worker capacity.
-- Red Hat build of Kueue with `ResourceFlavor`, `ClusterQueue`, and `LocalQueue` resources.
-- LeaderWorkerSet operator, required by the Kueue LeaderWorkerSet framework integration and later by Stage 030 llm-d serving.
-- Queue-based OpenShift AI hardware profiles for approved GPU choices, plus the direct-scheduling NVIDIA L4 profiles (the 4-GPU profile ships disabled until the cluster carries that capacity).
-- OpenShift Custom Metrics Autoscaler and KEDA readiness for metric-driven scaling patterns.
-- GPU, Kueue, and quota observability dashboards.
-
-The preferred path is queue-managed GPU consumption. Direct node-scheduling hardware profiles remain only for compatibility with existing OpenShift AI usage patterns.
-
-## What To Notice And Why It Matters
-
-Stage 020 turns scarce GPU capacity into a platform service.
-
-- `ResourceFlavor` maps NVIDIA L4 nodes to the labels and tolerations needed for scheduling.
-- `ClusterQueue` and `LocalQueue` express quota and admission control for model workloads.
-- Queue-backed OpenShift AI hardware profiles hide scheduler details from users while preserving platform control.
-- GPU and Kueue metrics support capacity planning, cost control, and utilization review.
-
-This matters because private and sovereign AI depend on expensive accelerator capacity. A GPU-as-a-Service pattern helps reduce fragmented pools, idle capacity, tenant-isolation risk, and undocumented scheduling exceptions.
-
-## How Red Hat And Open Source Make It Work
-
-Red Hat OpenShift provides machine management, scheduling, RBAC, monitoring, Operator Lifecycle Manager, and GitOps delivery. Red Hat OpenShift AI consumes that foundation through hardware profiles. Red Hat build of Kueue adds the supported queueing and quota layer for AI workloads.
-
-Node Feature Discovery labels accelerator-capable nodes. The NVIDIA GPU Operator manages the driver stack and DCGM telemetry. Kueue supplies Kubernetes-native workload admission. KEDA supplies the autoscaling extension point used by the OpenShift Custom Metrics Autoscaler Operator.
-
-## Trust Boundaries
-
-This stage does not process prompts or source code. Its trust boundary is operational control over accelerator capacity through OpenShift projects, RBAC, Kueue queues, quotas, hardware profiles, telemetry, and GitOps-managed state.
-
-## Red Hat Products Used
-
-- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides scheduling, machine management, RBAC, monitoring, networking, and operator lifecycle.
-- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides hardware profiles and Kueue-aware workload integration.
-- **[Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index)** provides queueing and quota control for AI workloads.
-- **[Custom Metrics Autoscaler Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator)** provides the Red Hat-supported KEDA integration.
-- **[Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops)** reconciles the GPUaaS desired state.
-
-## Open Source Projects To Know
-
-- [Node Feature Discovery](https://kubernetes-sigs.github.io/node-feature-discovery/stable/get-started/index.html) labels nodes based on hardware capabilities.
-- [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/index.html) automates the NVIDIA software stack for GPU workloads.
-- [DCGM Exporter](https://github.com/NVIDIA/dcgm-exporter) exposes GPU health, utilization, and memory metrics.
-- [Kueue](https://kueue.sigs.k8s.io/) provides workload queueing, quota accounting, and admission control.
-- [KEDA](https://keda.sh/) provides event-driven autoscaling patterns.
+---
 
 ## Demo
 
-The screenshots below show Stage 020 running on a live OpenShift cluster with NVIDIA L4 GPU workers provisioned and managed through GitOps.
+![Stage 120 walkthrough](docs/assets/demos/stage-120/stage-120-demo.gif)
 
-### Key Screens
+| Screenshot | What it shows |
+|------------|---------------|
+| ![Workbench form](../docs/assets/demos/stage-120/01-create-workbench-form.png) | Create workbench form with deployment size section |
+| ![Hardware profiles](../docs/assets/demos/stage-120/02-hardware-profiles-dropdown.png) | Hardware profile dropdown showing GPU options |
+| ![GPU selected](../docs/assets/demos/stage-120/03-gpu-shared-selected.png) | GPU Shared Time-Slicing profile selected |
+| ![MachineSet](../docs/assets/demos/stage-120/04-machineset-gpu-node.png) | GPU MachineSet managing the g5.2xlarge node |
+| ![Kueue](../docs/assets/demos/stage-120/05-kueue-clusterqueues.png) | Kueue ClusterQueues for GPU quota management |
 
-| Screen | Component | What it shows |
-|--------|-----------|---------------|
-| ![GPU Worker Nodes](../../docs/assets/demos/stage-020/01-gpu-worker-nodes.png) | GPU Worker Nodes | Two g6e.2xlarge nodes with `gpu, worker` roles joined to the cluster, each providing NVIDIA L4 accelerator capacity |
-| ![Hardware Profiles](../../docs/assets/demos/stage-020/02-hardware-profiles.png) | Hardware Profiles | CPU-only, direct L4, and queue-managed GPU profiles — the disabled NVIDIA L4 4GPUs profile shows the "approved but not provisioned" governance pattern |
-| ![GPU Dashboard](../../docs/assets/demos/stage-020/03-gpu-dashboard.png) | DCGM GPU Metrics | NVIDIA DCGM Exporter dashboard showing live GPU temperature and power usage from the L4 accelerators |
-| ![Argo CD Synced](../../docs/assets/demos/stage-020/04-argocd-synced.png) | Argo CD Application | The `020-gpu-infrastructure-private-ai` application showing Healthy and Synced status in the `rhoai-demo` project |
-| ![Kueue ClusterQueues](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png) | Kueue ClusterQueue | The `private-model-serving-gpu` queue with BestEffortFIFO strategy providing queue-based GPU admission control |
-
-## Deploy And Validate
-
-```bash
-./stages/020-gpu-infrastructure-private-ai/deploy.sh
-./stages/020-gpu-infrastructure-private-ai/validate.sh
-```
-
-Manifests: [`gitops/stages/020-gpu-infrastructure-private-ai/base/`](../../gitops/stages/020-gpu-infrastructure-private-ai/base/)
+---
 
 ## References
 
-- [Unlocking AI innovation: GPU-as-a-Service with Red Hat](https://www.redhat.com/en/blog/unlocking-ai-innovation-gpu-service-red-hat)
-- [GPU-as-a-Service for AI at scale with Red Hat OpenShift AI](https://www.redhat.com/en/blog/gpu-service-ai-scale-practical-strategies-red-hat-openshift-ai)
-- [Red Hat OpenShift AI 3.4: Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue)
-- [Red Hat OpenShift AI 3.4: Working with hardware profiles](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_accelerators/working-with-hardware-profiles_accelerators)
-- [OpenShift 4.20: Red Hat build of Kueue](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/ai_workloads/)
-- [OpenShift 4.20: Custom Metrics Autoscaler Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator)
-- [NVIDIA GPU Operator on OpenShift](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/openshift/contents.html)
-
-## Next Stage
-
-[Stage 030: Private Model Serving](../030-private-model-serving/README.md) deploys private model serving resources that consume the queue-backed GPU capacity.
+| Source | Role |
+|---|---|
+| [RHOAI 3.4 - Working with accelerators](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/working_with_accelerators/index) | NVIDIA GPU enablement and hardware profiles |
+| [RHOAI 3.4 - Managing workloads with Kueue](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-workloads-with-kueue) | Kueue integration posture |
+| [RHOAI 3.4 - Managing distributed workloads](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai/managing-distributed-workloads_managing-rhoai) | ResourceFlavor, ClusterQueue, LocalQueue concepts |
+| [OCP 4.20 - Machine management](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/machine_management/index) | AWS MachineSet management |
+| [OCP 4.20 - Node Feature Discovery](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html-single/specialized_hardware_and_driver_enablement/index#psap-node-feature-discovery-operator) | NFD Operator, `NodeFeatureDiscovery`, and hardware feature labels |
+| [redhat-cop/gitops-catalog - gpu-operator-certified](https://github.com/redhat-cop/gitops-catalog/tree/main/gpu-operator-certified) | GitOps operator/instance reference pattern |
+| [redhat-cop/gitops-catalog - nfd](https://github.com/redhat-cop/gitops-catalog/tree/main/nfd) | GitOps NFD reference pattern |
+| `docs/PLATFORM_BASELINE.md` | Active product version targets |

@@ -1,0 +1,115 @@
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+    instance: rhoai-demo-grafana
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  serviceAccount:
+    metadata:
+      annotations:
+        serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"grafana-route"}}'
+  route:
+    spec:
+      port:
+        targetPort: https
+      tls:
+        termination: reencrypt
+      to:
+        kind: Service
+        name: grafana-service
+        weight: 100
+      wildcardPolicy: None
+  deployment:
+    spec:
+      template:
+        spec:
+          volumes:
+            - name: grafana-tls
+              secret:
+                secretName: grafana-tls
+            - name: grafana-proxy
+              secret:
+                secretName: grafana-proxy
+            - name: ocp-injected-certs
+              configMap:
+                name: ocp-injected-certs
+          containers:
+            - name: grafana
+            - args:
+                - -provider=openshift
+                - -pass-basic-auth=false
+                - -https-address=:9091
+                - -http-address=
+                - -email-domain=*
+                - -upstream=http://localhost:3000
+                - '-openshift-sar={"namespace":"rhoai-demo-grafana","resource":"services","verb":"get"}'
+                - '-openshift-delegate-urls={"/":{"namespace":"rhoai-demo-grafana","resource":"services","verb":"get"}}'
+                - -tls-cert=/etc/tls/private/tls.crt
+                - -tls-key=/etc/tls/private/tls.key
+                - -client-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+                - -cookie-secret-file=/etc/proxy/secrets/session_secret
+                - -openshift-service-account=grafana-sa
+                - -openshift-ca=/etc/pki/tls/cert.pem
+                - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - -openshift-ca=/etc/proxy/certs/ca-bundle.crt
+                - -skip-auth-regex=^/metrics
+              image: quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:2789935eb78cb8983314ea417a41e41b73e1f57adc8a7c6585d28dcc0868fad7
+              name: grafana-proxy
+              ports:
+                - containerPort: 9091
+                  name: https
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              volumeMounts:
+                - mountPath: /etc/tls/private
+                  name: grafana-tls
+                  readOnly: false
+                - mountPath: /etc/proxy/secrets
+                  name: grafana-proxy
+                  readOnly: true
+                - mountPath: /etc/proxy/certs
+                  name: ocp-injected-certs
+                  readOnly: true
+  service:
+    metadata:
+      annotations:
+        service.beta.openshift.io/serving-cert-secret-name: grafana-tls
+    spec:
+      ports:
+        - name: https
+          port: 9091
+          protocol: TCP
+          targetPort: https
+  client:
+    preferIngress: false
+  config:
+    log:
+      mode: console
+    auth:
+      disable_login_form: "true"
+      disable_signout_menu: "true"
+    auth.anonymous:
+      enabled: "false"
+    auth.basic:
+      # The operator uses Grafana's internal API during reconciliation.
+      # Browser access remains protected by the OpenShift OAuth proxy route.
+      enabled: "true"
+    auth.proxy:
+      enabled: "true"
+      enable_login_token: "true"
+      header_name: X-Forwarded-User
+      header_property: username
+      auto_sign_up: "true"

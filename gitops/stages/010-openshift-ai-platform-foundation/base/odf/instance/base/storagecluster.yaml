@@ -1,0 +1,19 @@
+apiVersion: ocs.openshift.io/v1
+kind: StorageCluster
+metadata:
+  name: ocs-storagecluster
+  namespace: openshift-storage
+  annotations:
+    # CRD does not exist until the ODF operator CSV reaches Succeeded.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # Standalone Multicloud Object Gateway (NooBaa) only — no Ceph block/file.
+  # ODF 4.20 removed the odf.openshift.io StorageSystem wrapper API; the
+  # operator-managed standalone-MCG path is a StorageCluster with
+  # reconcileStrategy: standalone (verified live: ocs.openshift.io/v1,
+  # spec.multiCloudGateway.reconcileStrategy in {manage, standalone, ignore}).
+  # No storageDeviceSets are defined, so no OSDs/Ceph are provisioned.
+  multiCloudGateway:
+    reconcileStrategy: standalone
+    dbStorageClassName: gp3-csi

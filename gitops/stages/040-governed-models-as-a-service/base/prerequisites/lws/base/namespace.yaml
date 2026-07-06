@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-lws-operator
+  labels:
+    app.kubernetes.io/name: openshift-lws-operator
+    app.kubernetes.io/component: distributed-inference
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"

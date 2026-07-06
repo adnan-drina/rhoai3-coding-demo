@@ -1,0 +1,84 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vllm-serving-health
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/part-of: models-as-a-service
+    app.kubernetes.io/name: vllm-serving-health
+    app.kubernetes.io/component: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # Evaluated by User Workload Monitoring against the KServe-generated vLLM
+  # metrics for models in this namespace. Alerts describe serving-capacity
+  # health for the demo; thresholds are conservative demo defaults, not a
+  # production SLA.
+  groups:
+    - name: vllm-serving-health.rules
+      rules:
+        # Recording rules give the dashboards and alerts one canonical
+        # expression per signal.
+        - record: vllm:ttft_p95_seconds:5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (model_name, le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))
+        - record: vllm:itl_p95_seconds:5m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (model_name, le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))
+        - record: vllm:kv_cache_utilization:ratio
+          expr: max by (model_name) (vllm:kv_cache_usage_perc)
+    - name: vllm-serving-health.alerts
+      rules:
+        - alert: VLLMHighTimeToFirstToken
+          expr: vllm:ttft_p95_seconds:5m > 2
+          for: 10m
+          labels:
+            severity: warning
+            demo_stage: "220"
+          annotations:
+            summary: "High time-to-first-token for {{ $labels.model_name }}"
+            description: >-
+              p95 TTFT for {{ $labels.model_name }} has exceeded 2s for 10m
+              ({{ $value | humanizeDuration }}). The model is under load;
+              consider adding a replica or reducing concurrency.
+        - alert: VLLMRequestQueueBacklog
+          expr: sum by (model_name) (vllm:num_requests_waiting) > 8
+          for: 10m
+          labels:
+            severity: warning
+            demo_stage: "220"
+          annotations:
+            summary: "Request queue backing up for {{ $labels.model_name }}"
+            description: >-
+              {{ $labels.model_name }} has more than 8 requests waiting for
+              10m ({{ $value }}). Sustained queueing indicates the serving
+              replica is at capacity.
+        - alert: VLLMKVCachePressure
+          expr: vllm:kv_cache_utilization:ratio > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            demo_stage: "220"
+          annotations:
+            summary: "KV cache pressure for {{ $labels.model_name }}"
+            description: >-
+              KV cache utilization for {{ $labels.model_name }} has been above
+              90% for 10m. New requests may be preempted; this is the signal
+              to scale out or cap concurrency.
+        - alert: VLLMModelServingDown
+          expr: |
+            absent(vllm:num_requests_running{namespace="models-as-a-service"})
+          for: 15m
+          labels:
+            severity: info
+            demo_stage: "220"
+          annotations:
+            summary: "No vLLM serving metrics in models-as-a-service"
+            description: >-
+              No vLLM serving metrics have been scraped for 15m. Expected when
+              the demo model is intentionally parked (scaled to zero); if the
+              model should be up, check the LLMInferenceService and the GPU
+              node.

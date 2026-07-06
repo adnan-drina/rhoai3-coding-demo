@@ -1,0 +1,73 @@
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: openshift-gitops
+  namespace: openshift-gitops
+spec:
+  # Project constraint: all demo Applications must use annotation-based resource tracking.
+  # Source: AGENTS.md — resourceTrackingMethod MUST be annotation.
+  resourceTrackingMethod: annotation
+  # The operator-default 2Gi controller limit OOM-loops once the demo grows
+  # past three stages of CRD-heavy operands (RHOAI, KServe, GPU stack);
+  # observed live 2026-07-05 as a grayed-out Application with null status
+  # and 25 controller restarts.
+  controller:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+  extraConfig:
+    resource.customizations.health.operators.coreos.com_Subscription: |
+      hs = {}
+
+      if obj.status ~= nil then
+        if obj.spec ~= nil and
+          obj.spec.installPlanApproval == "Manual" and
+          obj.spec.startingCSV ~= nil and
+          obj.status.installedCSV == obj.spec.startingCSV then
+          hs.status = "Healthy"
+          hs.message = "Installed pinned CSV " .. obj.status.installedCSV .. "; newer InstallPlan may remain pending by design"
+          return hs
+        end
+
+        if obj.status.conditions ~= nil then
+          for _, condition in ipairs(obj.status.conditions) do
+            if condition.type == "CatalogSourcesUnhealthy" and condition.status == "True" then
+              hs.status = "Degraded"
+              hs.message = condition.message or "CatalogSourcesUnhealthy"
+              return hs
+            end
+          end
+        end
+
+        if obj.status.state == "AtLatestKnown" then
+          hs.status = "Healthy"
+          hs.message = "AtLatestKnown"
+          return hs
+        end
+
+        if obj.status.state ~= nil and obj.status.state ~= "" then
+          hs.status = "Progressing"
+          hs.message = obj.status.state
+          return hs
+        end
+      end
+
+      hs.status = "Progressing"
+      hs.message = "Waiting for Subscription status"
+      return hs
+  rbac:
+    policy: |
+      g, system:cluster-admins, role:admin
+      g, cluster-admins, role:admin
+    scopes: '[groups]'
+  server:
+    route:
+      enabled: true
+  sso:
+    dex:
+      openShiftOAuth: true
+    provider: dex

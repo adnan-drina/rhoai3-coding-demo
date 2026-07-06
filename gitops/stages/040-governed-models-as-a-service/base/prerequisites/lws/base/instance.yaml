@@ -1,0 +1,14 @@
+apiVersion: operator.openshift.io/v1
+kind: LeaderWorkerSetOperator
+metadata:
+  name: cluster
+  labels:
+    app.kubernetes.io/name: leader-worker-set
+    app.kubernetes.io/component: distributed-inference
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  logLevel: Normal
+  managementState: Managed
+  operatorLogLevel: Normal

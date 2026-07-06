@@ -1,0 +1,14 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: lws-operator
+  namespace: openshift-lws-operator
+  labels:
+    app.kubernetes.io/name: leader-worker-set
+    app.kubernetes.io/component: distributed-inference
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  targetNamespaces:
+    - openshift-lws-operator
+  upgradeStrategy: Default

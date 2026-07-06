@@ -1,0 +1,18 @@
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: rhoai-demo-grafana
+  labels:
+    app.kubernetes.io/part-of: observability
+    app.kubernetes.io/name: rhoai-demo-grafana
+    app.kubernetes.io/component: monitoring
+    demo.rhoai.io/stage: "210"
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  href: https://grafana.placeholder.example.com/d/llm-performance/llm-inference-performance
+  location: ApplicationMenu
+  text: RHOAI Demo Grafana
+  applicationMenu:
+    section: RHOAI Demo
+    imageURL: https://grafana.placeholder.example.com/public/img/grafana_icon.svg

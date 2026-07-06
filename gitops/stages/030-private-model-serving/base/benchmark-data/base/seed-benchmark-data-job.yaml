@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-stage210-benchmark-data
+  namespace: demo-sandbox
+  labels:
+    app.kubernetes.io/part-of: benchmarking
+    app.kubernetes.io/name: seed-stage210-benchmark-data
+    app.kubernetes.io/component: job
+    demo.rhoai.io/stage: "210"
+  annotations:
+    # Same wave as the PVC so WaitForFirstConsumer storage classes can bind
+    # when this normal Job pod is scheduled.
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: benchmarking
+        app.kubernetes.io/name: seed-stage210-benchmark-data
+        demo.rhoai.io/stage: "210"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              cp /config/prompts.csv /data/prompts.csv
+              chmod 0644 /data/prompts.csv
+              wc -l /data/prompts.csv
+              head -1 /data/prompts.csv
+          volumeMounts:
+            - name: prompts
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: prompts
+          configMap:
+            name: stage210-guidellm-prompts
+        - name: data
+          persistentVolumeClaim:
+            claimName: benchmark-data
