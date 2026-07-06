@@ -161,6 +161,37 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 - If pressure already cleared, the pull resumes on its own; disk usage
   growth in /var confirms progress.
 
+## InstallPlan Approval Carries Hidden Passenger CSVs
+
+**Affected stage:** any operator in `openshift-operators` (shared namespace)
+
+**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one
+InstallPlan. Approving a plan to unblock one operator can silently upgrade
+others past their pins (observed live: approving the Stage 080
+pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and
+dependency-generated subscriptions (authorino, created by OLM for RHCL)
+then sit in `UpgradePending` toward versions we never approve — which
+wedged every Stage 040 sync until the Argo Subscription health check
+learned that an installed CSV with a pending channel upgrade is Healthy
+by policy.
+
+**Diagnose:**
+
+```bash
+oc get installplan -n openshift-operators -o json |   jq -r '.items[] | select(.spec.approved==false) | "\(.metadata.name) \(.spec.clusterServiceVersionNames)"'
+```
+
+**Recover:**
+
+- Read every CSV in a plan BEFORE approving; pick the minimal plan that
+  contains only versions compatible with your pins (there is usually one
+  per generation).
+- If a pin was jumped: verify the affected stage live, then move the pin
+  to the installed version and document the event inline.
+- The bootstrap Subscription health check (gitops/bootstrap overlays)
+  treats installed-with-pending-upgrade as Healthy; keep that rule when
+  regenerating Argo configuration.
+
 ## Argo CD Operation Stuck On A Hook Job
 
 **Affected stage:** any stage with Sync-hook Jobs (waits, seeds, patches)
