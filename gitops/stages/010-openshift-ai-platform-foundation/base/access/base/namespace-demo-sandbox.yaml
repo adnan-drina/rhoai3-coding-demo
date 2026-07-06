@@ -12,5 +12,7 @@ metadata:
     # hardware profiles.
     kueue.openshift.io/managed: "true"
   annotations:
-    openshift.io/display-name: "Demo Sandbox"
+    # Display name is coding-demo-specific; the demo-sandbox resource name stays
+    # aligned with the shared rhoai3-demo foundation for diffability.
+    openshift.io/display-name: "AI Coding Sandbox"
     openshift.io/description: "Shared project for platform validation and ad-hoc demos."
