@@ -49,6 +49,15 @@ spec:
           return hs
         end
 
+        -- Dependency-generated or unpinned subscriptions in a namespace with
+        -- Manual approval: an installed CSV is healthy even when the channel
+        -- offers a newer version we deliberately do not approve.
+        if obj.status.installedCSV ~= nil and obj.status.state == "UpgradePending" then
+          hs.status = "Healthy"
+          hs.message = "Installed " .. obj.status.installedCSV .. "; channel upgrade pending by policy"
+          return hs
+        end
+
         if obj.status.state ~= nil and obj.status.state ~= "" then
           hs.status = "Progressing"
           hs.message = obj.status.state
