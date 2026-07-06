@@ -35,7 +35,7 @@ check "Tackle LLM model is private MaaS model" \
   "nemotron-3-nano-30b-a3b"
 check "Tackle LLM base URL uses MaaS route" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}'" \
-  "/maas/nemotron-3-nano-30b-a3b/v1"
+  "/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
 
 log_step "MTA Core Deployments"
 check "mta-ui deployment ready" \
@@ -135,7 +135,7 @@ MAAS_KEY_VAL=$(oc get secret kai-api-keys -n openshift-mta \
   -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
 if [[ -n "$MAAS_HOST" ]] && [[ "$MAAS_KEY_VAL" == sk-oai-* ]]; then
     MAAS_HTTP=$(curl -sk -H "Authorization: Bearer ${MAAS_KEY_VAL}" \
-      "https://${MAAS_HOST}/maas/nemotron-3-nano-30b-a3b/v1/models" \
+      "https://${MAAS_HOST}/models-as-a-service/nemotron-3-nano-30b-a3b/v1/models" \
       -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
     if [[ "$MAAS_HTTP" == "200" ]]; then
         echo -e "${GREEN}[PASS]${NC} MaaS auth works with kai-api-keys key (HTTP ${MAAS_HTTP})"

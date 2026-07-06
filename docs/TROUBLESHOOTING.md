@@ -706,7 +706,7 @@ MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
 MAAS_KEY=$(oc get secret kai-api-keys -n openshift-mta \
   -o jsonpath='{.data.OPENAI_API_KEY}' | base64 -d)
 curl -sk -H "Authorization: Bearer ${MAAS_KEY}" \
-  "https://${MAAS_HOST}/maas/nemotron-3-nano-30b-a3b/v1/models"
+  "https://${MAAS_HOST}/models-as-a-service/nemotron-3-nano-30b-a3b/v1/models"
 sleep 60
 ./stages/040-governed-models-as-a-service/validate.sh
 ```

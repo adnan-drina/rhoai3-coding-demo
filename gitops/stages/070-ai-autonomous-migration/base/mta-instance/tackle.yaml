@@ -15,4 +15,4 @@ spec:
   kai_solution_server_enabled: true
   kai_llm_provider: openai
   kai_llm_model: nemotron-3-nano-30b-a3b
-  kai_llm_baseurl: "https://maas.placeholder.example.com/maas/nemotron-3-nano-30b-a3b/v1"
+  kai_llm_baseurl: "https://maas.placeholder.example.com/models-as-a-service/nemotron-3-nano-30b-a3b/v1"

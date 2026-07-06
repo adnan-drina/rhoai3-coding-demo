@@ -304,7 +304,7 @@ data:
       - name: NVIDIA Nemotron 3 Nano 30B-A3B
         provider: openai
         model: "nemotron-3-nano-30b-a3b"
-        apiBase: "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1"
+        apiBase: "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
         apiKey: "${MAAS_API_KEY_NEMOTRON}"
         contextLength: 131072
         capabilities:
@@ -318,7 +318,7 @@ data:
       - name: Qwen3.6 35B A3B
         provider: openai
         model: "qwen3-6-35b-a3b"
-        apiBase: "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1"
+        apiBase: "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1"
         apiKey: "${MAAS_API_KEY_QWEN}"
         contextLength: 32768
         defaultCompletionOptions:
@@ -399,7 +399,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "baseURL": "${MAAS_BASE_URL}/maas/nemotron-3-nano-30b-a3b/v1",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
@@ -415,7 +415,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
-            "baseURL": "${MAAS_BASE_URL}/maas/qwen3-6-35b-a3b/v1",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }

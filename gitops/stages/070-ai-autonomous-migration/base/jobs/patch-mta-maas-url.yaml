@@ -135,7 +135,7 @@ spec:
             exit 1
           fi
 
-          MAAS_BASE_URL="https://${MAAS_HOST}/maas/${MODEL_NAME}/v1"
+          MAAS_BASE_URL="https://${MAAS_HOST}/models-as-a-service/${MODEL_NAME}/v1"
           echo "MaaS base URL: ${MAAS_BASE_URL}"
 
           echo "Waiting for Tackle CR to be ready..."
