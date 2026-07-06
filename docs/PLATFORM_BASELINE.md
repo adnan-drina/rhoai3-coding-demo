@@ -101,6 +101,13 @@ links should use:
 https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/
 ```
 
+For the current baseline, Red Hat Advanced Developer Suite - software supply
+chain documentation links should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/
+```
+
 Do not use `latest` or another product version for product configuration unless
 the Red Hat documentation landing page intentionally links to an unversioned
 Customer Portal article or no version-specific document exists. Record that as
@@ -282,6 +289,30 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
   [Using OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/operate/index)
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
+
+## Red Hat Advanced Developer Suite - Software Supply Chain 1.9 Documentation Index
+
+Use the official RHADS-SSC 1.9 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9
+
+- **Discover**:
+  [Understanding RHADS-SSC](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/understanding_red_hat_advanced_developer_suite_-_software_supply_chain/index),
+  [Release notes](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/release_notes_for_red_hat_advanced_developer_suite_-_software_supply_chain_1.9/index)
+- **Get started**:
+  [Getting Started](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/getting_started_with_red_hat_advanced_developer_suite_-_software_supply_chain/index),
+  [Using standalone CLIs](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/using_standalone_clis/index)
+- **Install**:
+  [Installing](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/installing_red_hat_advanced_developer_suite_-_software_supply_chain/index)
+- **CI/CD**:
+  [Azure Pipelines](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_azure_pipelines/index),
+  [GitHub Actions](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_github_actions/index),
+  [GitLab CI](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_gitlab_ci/index),
+  [Jenkins](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_jenkins/index),
+  [Tekton](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/defining_pipelines_with_tekton/index)
+- **Secure Your Software Supply Chain**:
+  [Customizing](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/customizing_red_hat_advanced_developer_suite_-_software_supply_chain/index),
+  [Inspecting SBOMs](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/inspecting_sboms/index),
+  [Managing compliance](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/managing_compliance/index)
 
 ## Migration Toolkit for Applications 8.1 Documentation Index
 

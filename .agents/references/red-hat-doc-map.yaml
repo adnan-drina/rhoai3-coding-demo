@@ -762,6 +762,68 @@ products:
             status: active
             skill: tpa-admin
 
+  rhads:
+    name: Red Hat Advanced Developer Suite - software supply chain
+    baseline_component: Red Hat Advanced Developer Suite - software supply chain
+    skill_prefix: rhads-
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/
+    categories:
+      discover:
+        description: Product overview, architecture, Trusted Application Pipeline, and release notes.
+        routes:
+          - book: understanding_red_hat_advanced_developer_suite_-_software_supply_chain
+            status: active
+            skill: rhads-about
+          - book: release_notes_for_red_hat_advanced_developer_suite_-_software_supply_chain_1.9
+            status: active
+            skill: rhads-release-notes
+      get_started:
+        description: Getting started workflows and standalone CLI tools.
+        routes:
+          - book: getting_started_with_red_hat_advanced_developer_suite_-_software_supply_chain
+            status: active
+            skill: rhads-getting-started
+          - book: using_standalone_clis
+            status: active
+            skill: rhads-standalone-clis
+      install:
+        description: Installing Trusted Application Pipeline on OpenShift.
+        routes:
+          - book: installing_red_hat_advanced_developer_suite_-_software_supply_chain
+            status: active
+            skill: rhads-install
+      cicd:
+        description: CI/CD integrations for Azure Pipelines, GitHub Actions, GitLab CI, Jenkins, and Tekton.
+        routes:
+          - book: integrating_azure_pipelines
+            status: active
+            skill: rhads-cicd-azure
+          - book: integrating_github_actions
+            status: active
+            skill: rhads-cicd-github
+          - book: integrating_gitlab_ci
+            status: active
+            skill: rhads-cicd-gitlab
+          - book: integrating_jenkins
+            status: active
+            skill: rhads-cicd-jenkins
+          - book: defining_pipelines_with_tekton
+            status: active
+            skill: rhads-cicd-tekton
+      secure:
+        description: Template and pipeline customization, SBOM inspection, and Conforma compliance management.
+        routes:
+          - book: customizing_red_hat_advanced_developer_suite_-_software_supply_chain
+            status: active
+            skill: rhads-customize
+          - book: inspecting_sboms
+            status: active
+            skill: rhads-sbom
+          - book: managing_compliance
+            status: active
+            skill: rhads-compliance
+
   mta:
     name: Migration Toolkit for Applications
     baseline_component: Migration Toolkit for Applications
