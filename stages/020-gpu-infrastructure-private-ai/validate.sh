@@ -109,8 +109,8 @@ check "GPU MachineSet has a ready worker" "$R"
 GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
   -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' \
   --insecure-skip-tls-verify=true 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
-[[ "$GPU_ALLOCATABLE" -ge 4 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
-check "GPU node advertises at least 4 time-sliced GPU units" "$R"
+[[ "$GPU_ALLOCATABLE" -ge 2 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
+check "GPU nodes advertise at least 2 full-card GPU units (no time-slicing)" "$R"
 
 DSC_KUEUE=$(oc get datasciencecluster default-dsc \
   -o jsonpath='{.spec.components.kueue.managementState}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")

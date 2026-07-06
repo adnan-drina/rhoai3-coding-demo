@@ -484,8 +484,8 @@ check "Stage 020 GPU Reserved hardware profile present" "$R"
 GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
   -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' \
   --insecure-skip-tls-verify=true 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
-[[ "$GPU_ALLOCATABLE" -ge 4 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
-check "GPU node advertises at least 4 time-sliced GPU units" "$R"
+[[ "$GPU_ALLOCATABLE" -ge 2 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
+check "GPU nodes advertise at least 2 full-card GPU units (no time-slicing)" "$R"
 
 REGISTRY_AVAILABLE=$(oc get modelregistries.modelregistry.opendatahub.io "$REGISTRY_NAME" -n "$REGISTRY_NS" \
   -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")

@@ -109,6 +109,5 @@ spec:
         - name: gpu-l40s
           resources:
             - name: nvidia.com/gpu
-              # Two L40S cards, 4 time-sliced units each; every private model
-              # requests a full card (4 units) for exclusive VRAM.
-              nominalQuota: "8"
+              # Two L40S cards, one private model per card (no time-slicing).
+              nominalQuota: "2"

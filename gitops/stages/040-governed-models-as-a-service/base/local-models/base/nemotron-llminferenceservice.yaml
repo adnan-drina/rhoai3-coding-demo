@@ -96,14 +96,13 @@ spec:
           requests:
             cpu: "2"
             memory: 16Gi
-            # All 4 time-sliced units of one L40S: the KServe webhook strips
-            # template affinity, so exclusive-card placement is enforced by
-            # resource accounting (two models cannot fit on one node).
-            nvidia.com/gpu: "4"
+            # One full L40S per model: time-slicing is disabled in Stage 020,
+            # so a 1-GPU request is exclusive-card placement by definition.
+            nvidia.com/gpu: "1"
           limits:
             cpu: "4"
             memory: 24Gi
-            nvidia.com/gpu: "4"
+            nvidia.com/gpu: "1"
         volumeMounts:
           - mountPath: /dev/shm
             name: shm

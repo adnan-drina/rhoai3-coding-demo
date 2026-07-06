@@ -74,11 +74,10 @@ spec:
         effect: NoSchedule
   devicePlugin:
     enabled: true
-    config:
-      name: time-slicing-config
-      default: any
-    mps:
-      root: /run/nvidia/mps
+    # No time-slicing config: each L40S advertises 1 GPU so every private
+    # model claims a full card (vLLM needs exclusive VRAM; slicing has no
+    # memory isolation). Divergence from the rhoai3-demo foundation, which
+    # slices for multi-queue sharing around a single model.
   gfd:
     enabled: true
   migManager:

@@ -1,0 +1,606 @@
+schema_version: 1
+owner: project-red-hat-doc-skill-authoring
+baseline_source: docs/PLATFORM_BASELINE.md
+purpose: >
+  Route official Red Hat documentation sources to flat repo skills. This file
+  references Red Hat documentation products, versions, categories, books, and
+  topics, but uses repo-specific routing categories where useful. It does not
+  mirror the documentation hierarchy in .agents/skills/.
+
+usage:
+  - Read docs/PLATFORM_BASELINE.md first and verify the product version.
+  - Match a source by product, version, category, book, and chapter topic.
+  - Prefer an existing mapped skill before creating a new one.
+  - If a required topic is missing, create or update a flat skill folder and
+    add a new route here.
+  - Do not create nested skill folders to match documentation categories.
+  - Keep exact product versions in docs/PLATFORM_BASELINE.md; this map points
+    to that baseline and may include current root URLs for discoverability.
+
+status_values:
+  active: Skill exists and is the preferred route.
+  planned: Skill does not exist yet but the route is expected.
+  blocked-baseline: Do not create until docs/PLATFORM_BASELINE.md pins a version.
+
+source_types:
+  docs_redhat_com: Versioned Red Hat product documentation on docs.redhat.com.
+  customer_portal_article: Red Hat Customer Portal article or lifecycle policy
+    outside docs.redhat.com.
+  external_redhat_product_docs: Versioned docs.redhat.com documentation for a
+    Red Hat product outside the current product family.
+  repo_specific: Repo-owned guidance that is grounded in official docs but is
+    not itself a Red Hat documentation book.
+
+products:
+  rhoai:
+    name: Red Hat OpenShift AI Self-Managed
+    baseline_component: Red Hat OpenShift AI Self-Managed
+    skill_prefix: rhoai-
+    rule: .agents/rules/rhoai.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/
+    categories:
+      whats_new:
+        description: Release posture, lifecycle, API tiers, and support notes.
+        routes:
+          - book: release_notes
+            status: active
+            skill: rhoai-release-and-support-posture
+          - book: red_hat_openshift_ai_self_managed_lifecycle
+            source_type: customer_portal_article
+            source_url: https://access.redhat.com/support/policy/updates/rhoai-sm/lifecycle
+            status: active
+            skill: rhoai-release-and-support-posture
+          - book: api_tiers
+            source_type: customer_portal_article
+            source_url: https://access.redhat.com/articles/7047935
+            status: active
+            skill: rhoai-api-tiers
+      plan:
+        description: Platform planning, supported configurations, hardware, and validated models.
+        routes:
+          - book: red_hat_ai_supported_product_and_hardware_configurations
+            status: active
+            skill: rhoai-platform-planning
+          - book: rhoai_supported_configurations_3_x
+            source_type: customer_portal_article
+            source_url: https://access.redhat.com/articles/rhoai-supported-configs-3.x
+            status: active
+            skill: rhoai-platform-planning
+          - book: red_hat_ai_validated_models
+            status: active
+            skill: rhoai-nvidia-gpu-accelerators
+      install:
+        description: Install, upgrade-channel, accelerator, certificate, logs, troubleshooting, and uninstall workflows.
+        routes:
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - architecture
+            status: active
+            skill: rhoai-architecture-overview
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - update_channels
+            status: active
+            skill: rhoai-update-channels
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - installing_and_deploying
+            status: active
+            skill: rhoai-self-managed-installation
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - custom_namespaces
+              - datasciencecluster
+              - dscinitialization
+              - component_management
+            status: active
+            skill: rhoai-dsci-dsc-configuration
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - distributed_workloads_components
+            status: active
+            skill: rhoai-distributed-workloads
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - accelerators
+              - nvidia_gpus
+            status: active
+            skill: rhoai-nvidia-gpu-accelerators
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - certificates
+            status: active
+            skill: rhoai-certificate-management
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - logs
+              - audit_records
+            status: active
+            skill: rhoai-logs-and-audit-records
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - troubleshooting
+            status: active
+            skill: rhoai-installation-troubleshooting
+          - book: installing_and_uninstalling_openshift_ai_self-managed
+            topics:
+              - uninstalling
+            status: active
+            skill: rhoai-uninstallation
+          - book: installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment
+            topics:
+              - disconnected_installation
+              - mirroring_images
+              - private_registry
+              - operator_installation
+              - component_management
+              - certificates
+              - logs
+              - troubleshooting
+              - uninstalling
+            status: planned
+            skill: rhoai-disconnected-installation
+      administer:
+        description: Administrator workflows for RHOAI access, dashboard, resources, workloads, and observability.
+        routes:
+          - book: managing_openshift_ai
+            topics:
+              - users
+              - groups
+            status: active
+            skill: rhoai-users-groups-access
+          - book: managing_openshift_ai
+            topics:
+              - custom_workbench_images
+            status: active
+            skill: rhoai-workbenches-custom-images
+          - book: managing_openshift_ai
+            topics:
+              - dashboard_applications
+            status: active
+            skill: rhoai-dashboard-applications
+          - book: managing_openshift_ai
+            topics:
+              - project_scoped_resources
+            status: active
+            skill: rhoai-project-scoped-resources
+          - book: managing_openshift_ai
+            topics:
+              - component_deployment_resources
+            status: active
+            skill: rhoai-component-resource-customization
+          - book: managing_openshift_ai
+            topics:
+              - kueue
+            status: active
+            skill: rhoai-kueue-workload-management
+          - book: managing_openshift_ai
+            topics:
+              - distributed_workloads
+            status: active
+            skill: rhoai-distributed-workload-operations
+          - book: managing_openshift_ai
+            topics:
+              - external_oidc_provider
+              - central_authentication_service
+            status: active
+            skill: rhoai-central-authentication-service
+          - book: managing_openshift_ai
+            topics:
+              - observability
+            status: active
+            skill: rhoai-observability
+          - book: managing_openshift_ai
+            topics:
+              - logs
+              - audit_records
+            status: active
+            skill: rhoai-logs-and-audit-records
+          - book: working_with_accelerators
+            topics:
+              - hardware_profiles
+              - recommended_accelerators
+            status: active
+            skill: rhoai-hardware-profiles
+          - book: managing_resources
+            topics:
+              - admin_groups
+              - user_groups
+            status: active
+            skill: rhoai-access-group-selection
+          - book: managing_resources
+            topics:
+              - dashboard_customization
+            status: active
+            skill: rhoai-dashboard-customization
+          - book: managing_resources
+            topics:
+              - custom_workbench_image_import
+            status: active
+            skill: rhoai-workbench-image-import
+          - book: managing_resources
+            topics:
+              - gateway_api
+            status: active
+            skill: rhoai-workbench-gateway-api-migration
+          - book: managing_resources
+            topics:
+              - cluster_pvc_size
+            status: active
+            skill: rhoai-cluster-pvc-size
+          - book: managing_resources
+            topics:
+              - connection_types
+            status: active
+            skill: rhoai-connection-types
+          - book: managing_resources
+            topics:
+              - storage_classes
+            status: active
+            skill: rhoai-storage-classes
+          - book: managing_resources
+            topics:
+              - basic_workbenches
+            status: active
+            skill: rhoai-basic-workbenches
+          - book: managing_resources
+            topics:
+              - usage_data_collection
+              - telemetry
+              - disable_tracking
+            status: active
+            skill: rhoai-telemetry-admin-settings
+      develop:
+        description: Data scientist, AI engineer, and app developer workflows.
+        routes:
+          - book: creating_a_workbench
+            status: active
+            skill: rhoai-basic-workbenches
+          - book: working_with_machine_learning_features
+            status: active
+            skill: rhoai-feature-store
+          - book: working_with_model_registries
+            status: active
+            skill: rhoai-model-registry-workflows
+          - book: working_with_the_model_catalog
+            status: active
+            skill: rhoai-model-catalog-workflows
+          - book: experimenting_with_models_in_the_gen_ai_playground
+            status: active
+            skill: rhoai-gen-ai-playground
+          - book: working_with_distributed_workloads
+            status: active
+            skill: rhoai-distributed-workload-workflows
+          - book: working_with_data_in_an_s3-compatible_object_store
+            status: active
+            skill: rhoai-s3-object-storage-data
+          - book: working_on_projects
+            status: active
+            skill: rhoai-project-workflows
+          - book: working_in_your_data_science_ide
+            status: active
+            skill: rhoai-data-science-ide-workflows
+          - book: working_with_ai_pipelines
+            status: active
+            skill: rhoai-ai-pipelines
+          - book: working_with_connected_applications
+            status: active
+            skill: rhoai-connected-applications
+          - book: creating_distributed_data_processing_applications_with_the_kubeflow_spark_operator
+            status: active
+            skill: rhoai-kubeflow-spark-operator
+          - book: working_with_automl
+            status: active
+            skill: rhoai-automl
+          - book: working_with_autorag
+            status: active
+            skill: rhoai-autorag
+          - book: working_with_mlflow
+            status: active
+            skill: rhoai-mlflow
+      deploy_and_operate_ai:
+        description: Model serving, registries, catalog governance, MaaS, Llama Stack, llm-d, monitoring, safety, and evaluation.
+        routes:
+          - book: configuring_your_model-serving_platform
+            status: active
+            skill: rhoai-model-serving-platform
+          - book: managing_and_monitoring_models
+            status: active
+            skill: rhoai-model-management-monitoring
+          - book: manage_and_govern_model_catalog_sources
+            status: active
+            skill: rhoai-model-catalog-sources
+          - book: managing_model_registries
+            status: active
+            skill: rhoai-model-registry
+          - book: working_with_llama_stack
+            status: active
+            skill: rhoai-llama-stack
+          - book: customize_models_for_gen_ai_and_agentic_ai_applications
+            status: active
+            skill: rhoai-model-customization-training
+          - book: evaluating_ai_systems
+            status: active
+            skill: rhoai-evaluation
+          - book: enabling_ai_safety_with_guardrails
+            status: active
+            skill: rhoai-guardrails-safety
+          - book: monitoring_your_ai_systems
+            status: active
+            skill: rhoai-monitoring-trustyai
+          - book: deploying_models
+            status: active
+            skill: rhoai-model-deployment
+          - book: govern_llm_access_with_models-as-a-service
+            status: active
+            skill: rhoai-maas-governance
+          - book: govern_llm_access_with_models-as-a-service
+            topics:
+              - maas_telemetry
+              - usage_dashboard
+              - csv_export
+            status: active
+            skill: rhoai-telemetry-admin-settings
+          - book: deploy_models_using_distributed_inference_with_llm-d
+            status: active
+            skill: rhoai-distributed-inference-llmd
+      repo_specific_extensions:
+        description: Skills grounded in official docs but specialized for this repo implementation.
+        routes:
+          - book: repo_kfp_pipeline_authoring
+            source_type: repo_specific
+            status: active
+            skill: rhoai-kfp-pipeline-authoring
+          - book: repo_model_evaluation_implementation
+            source_type: repo_specific
+            status: active
+            skill: rhoai-model-evaluation
+          - book: repo_chatbot_customization
+            source_type: repo_specific
+            status: active
+            skill: rhoai-chatbot-customization
+
+  ocp:
+    name: Red Hat OpenShift Container Platform
+    baseline_component: Red Hat OpenShift Container Platform
+    skill_prefix: ocp-
+    rule: .agents/rules/ocp.md
+    documentation_root: https://docs.redhat.com/en/documentation/openshift_container_platform/
+    active_baseline_root: https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/
+    categories:
+      configure:
+        routes:
+          - book: etcd
+            status: active
+            skill: ocp-etcd
+      update_and_migrate:
+        routes:
+          - book: updating_clusters
+            status: planned
+            skill: ocp-cluster-updates
+      authentication_and_authorization:
+        routes:
+          - book: authentication_and_authorization
+            status: active
+            skill: ocp-authentication-identity-providers
+          - book: authentication_and_authorization
+            topics:
+              - rbac
+              - scc
+            status: active
+            skill: ocp-security-rbac-scc
+      observability:
+        routes:
+          - book: observability_overview
+            status: active
+            skill: ocp-observability
+          - book: monitoring
+            status: active
+            skill: ocp-observability
+          - book: logging
+            status: active
+            skill: ocp-observability
+          - book: cluster_observability_operator
+            status: active
+            skill: ocp-observability
+          - book: grafana_operator_gitops
+            source_type: repo_specific
+            source_url: https://github.com/redhat-cop/gitops-catalog/tree/main/grafana-operator
+            topics:
+              - grafana_operator
+              - grafana_instance
+              - grafana_datasource
+              - grafana_dashboard
+              - openshift_oauth_proxy
+              - monitoring_datasource
+            status: active
+            skill: ocp-grafana-operator
+          - book: red_hat_build_of_opentelemetry
+            source_type: external_redhat_product_docs
+            status: active
+            skill: ocp-opentelemetry
+          - book: red_hat_openshift_distributed_tracing_platform
+            source_type: external_redhat_product_docs
+            status: active
+            skill: ocp-distributed-tracing
+      ai_workloads:
+        routes:
+          - book: ai_workloads
+            status: active
+            skill: ocp-ai-workloads
+      cicd_gitops_and_builds:
+        routes:
+          - book: cicd_overview
+            status: active
+            skill: ocp-cicd-builds
+          - book: builds_using_shipwright
+            status: active
+            skill: ocp-cicd-builds
+          - book: builds_using_buildconfig
+            status: active
+            skill: ocp-cicd-builds
+          - book: gitops
+            status: active
+            skill: ocp-gitops-operator
+      machine_management_configuration_and_nodes:
+        routes:
+          - book: machine_management
+            status: active
+            skill: ocp-machine-management
+          - book: machine_configuration
+            status: active
+            skill: ocp-machine-configuration
+          - book: nodes
+            status: active
+            skill: ocp-nodes
+      specialized_hardware_and_driver_enablement:
+        routes:
+          - book: specialized_hardware_and_driver_enablement
+            topics:
+              - node_feature_discovery
+            status: active
+            skill: ocp-node-feature-discovery
+          - book: specialized_hardware_and_driver_enablement
+            topics:
+              - kernel_module_management
+              - driver_toolkit
+            status: planned
+            skill: ocp-kernel-module-management
+      cli_and_web_console:
+        routes:
+          - book: cli_tools
+            status: planned
+            skill: ocp-cli-tools
+          - book: web_console
+            status: active
+            skill: ocp-web-console
+      networking:
+        routes:
+          - book: networking
+            topics:
+              - ingress
+              - routes
+              - gateway_api
+            status: active
+            skill: ocp-ingress-gateway-routes
+      storage:
+        routes:
+          - book: storage
+            status: active
+            skill: ocp-storage
+          - book: storage
+            topics:
+              - aws_ebs_csi
+              - snapshots
+              - local_storage
+            status: planned
+            skill: ocp-storage-extensions
+      image_registry_and_mirroring:
+        routes:
+          - book: images
+            status: active
+            skill: ocp-image-registry-and-mirroring
+          - book: registry
+            status: active
+            skill: ocp-image-registry-and-mirroring
+          - book: disconnected_environments
+            topics:
+              - oc_mirror
+              - mirroring
+              - imagedigestmirrorset
+              - imagetagmirrorset
+            status: active
+            skill: ocp-image-registry-and-mirroring
+
+  odf:
+    name: Red Hat OpenShift Data Foundation
+    baseline_component: Red Hat OpenShift Data Foundation
+    skill_prefix: odf-
+    rule: .agents/rules/odf.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/
+    status: active
+    note: >
+      ODF is pinned to 4.20 to match the OCP 4.20 baseline. The demo should
+      start with the minimum ODF footprint needed for RHOAI object storage:
+      standalone Multicloud Object Gateway, NooBaa, and ObjectBucketClaims.
+      Full StorageCluster/Ceph guidance is covered for cases where the demo
+      needs ODF-provided block or file storage.
+    categories:
+      planning:
+        routes:
+          - book: planning_your_deployment
+            status: active
+            skill: odf-storagecluster
+          - book: red_hat_openshift_data_foundation_architecture
+            status: active
+            skill: odf-storagecluster
+      install_and_configure:
+        routes:
+          - book: deploying_openshift_data_foundation_using_amazon_web_services
+            topics:
+              - operator_installation
+              - storagecluster
+              - standalone_multicloud_object_gateway
+            status: active
+            skill: odf-storagecluster
+          - book: deploying_openshift_data_foundation_using_amazon_web_services
+            topics:
+              - standalone_multicloud_object_gateway
+              - noobaa
+              - minimum_s3_object_storage
+            status: active
+            skill: odf-multicloud-gateway
+      storage_classes:
+        routes:
+          - book: managing_and_allocating_storage_resources
+            status: active
+            skill: odf-storage-classes
+      object_storage:
+        routes:
+          - book: managing_hybrid_and_multicloud_resources
+            topics:
+              - object_bucket_claims
+            status: active
+            skill: odf-object-bucket-claims
+          - book: managing_hybrid_and_multicloud_resources
+            topics:
+              - multicloud_gateway
+              - noobaa
+              - s3_endpoint
+              - bucket_classes
+            status: active
+            skill: odf-multicloud-gateway
+      monitoring_and_troubleshooting:
+        routes:
+          - book: monitoring_openshift_data_foundation
+            status: active
+            skill: odf-storagecluster
+          - book: troubleshooting_openshift_data_foundation
+            status: active
+            skill: odf-storagecluster
+      supporting_red_hat_articles:
+        routes:
+          - book: red_hat_openshift_data_foundation_for_developers_and_data_scientists
+            status: active
+            skill: odf-multicloud-gateway
+          - book: red_hat_openshift_data_foundation_for_developers_and_data_scientists
+            topics:
+              - object_bucket_claims
+              - s3_credentials
+            status: active
+            skill: odf-object-bucket-claims
+
+route_update_rules:
+  when_adding_skill:
+    - Add a route with product, category, book, status, and skill.
+    - Keep the skill path flat under .agents/skills/<skill-name>/.
+    - Update the matching .agents/rules/<family>.md file.
+    - Update AGENTS.md and project skill inventories only if they explicitly
+      list skill names.
+  when_upgrading_product:
+    - Update docs/PLATFORM_BASELINE.md first.
+    - Review active_baseline_root values here.
+    - Recheck routes whose official documentation book or chapter changed.
+    - Prefer updating existing skills over creating versioned skill names.

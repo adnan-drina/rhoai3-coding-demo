@@ -70,14 +70,17 @@ resource and NVIDIA-specific GPU labels used by Kueue placement.
 ### NVIDIA GPU Enablement
 
 The NVIDIA GPU Operator installs the driver stack, container toolkit, GPU
-feature discovery, DCGM exporter, and device plugin. The stage configures GPU
-time-slicing so one physical L40S is advertised as four schedulable
-`nvidia.com/gpu` units.
+feature discovery, DCGM exporter, and device plugin. Each physical L40S is
+advertised as one schedulable `nvidia.com/gpu` unit — this demo deliberately
+does not enable time-slicing.
 
-Time-slicing is a demo and development density mechanism. It shares compute
-without memory isolation. It is useful for showing multiple self-service
-profiles on a single card, but it is not presented as strict production
-isolation.
+Time-slicing shares compute without memory isolation, which is useful for
+workbench density around a single model (the rhoai3-demo foundation uses it
+that way) but unsafe for this demo's two vLLM servers: a second model
+co-scheduled onto a sliced card OOMs at weight load. Full-card placement is
+the RHOAI 3.4-aligned mechanism because hardware profiles carry no affinity
+concept and the KServe webhook strips LLMInferenceService template
+anti-affinity.
 
 ### Queue-Based GPU Governance
 
@@ -121,7 +124,7 @@ The low-level scheduling authority remains in Kueue `ResourceFlavor` and
 | CPU Default | `lq-cpu-default` | 0 | CPU-only workbench or small job |
 | GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 2 | Shared GPU capacity when available |
 | GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 1 | Dedicated higher-importance lane |
-| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 8 | Reserved capacity: two L40S cards as 4 time-sliced units each; every private model claims a full card |
+| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 2 | Reserved capacity: two L40S cards, one private model per card |
 
 ---
 
@@ -137,7 +140,7 @@ NFD Operator -> NodeFeatureDiscovery -> node hardware feature labels
 NVIDIA GPU Operator -> driver, toolkit, GFD, DCGM, device plugin
    |
    v
-time-slicing: 1 physical GPU -> 4 schedulable nvidia.com/gpu units
+device plugin: 1 physical GPU -> 1 schedulable nvidia.com/gpu unit
    |
    v
 Red Hat build of Kueue -> ResourceFlavor -> ClusterQueue -> LocalQueue
