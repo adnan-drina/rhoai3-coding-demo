@@ -176,11 +176,13 @@ check "DCGM dashboard ConfigMap exists" \
 check "GPUaaS dashboard ConfigMap exists" \
     "oc get configmap rhoai-gpuaas-dashboard -n openshift-config-managed -o jsonpath='{.metadata.name}'" \
     "rhoai-gpuaas-dashboard"
+# Query platform Prometheus from inside the pod: the API-server service proxy
+# does not forward bearer tokens, so external /proxy queries always get 401.
 check_warn "GPU utilization metric available" \
-    "oc get --raw '/api/v1/namespaces/openshift-monitoring/services/https:prometheus-k8s:9091/proxy/api/v1/query?query=DCGM_FI_DEV_GPU_UTIL' | jq -r '.status' 2>/dev/null" \
+    "oc exec -n openshift-monitoring prometheus-k8s-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=DCGM_FI_DEV_GPU_UTIL' | jq -r '(.status + \" \" + (.data.result | length | tostring))'" \
     "success"
 check_warn "Kueue pending workload metric available" \
-    "oc get --raw '/api/v1/namespaces/openshift-monitoring/services/https:prometheus-k8s:9091/proxy/api/v1/query?query=kueue_pending_workloads' | jq -r '.status' 2>/dev/null" \
+    "oc exec -n openshift-monitoring prometheus-k8s-0 -c prometheus -- sh -c 'curl -sG http://localhost:9090/api/v1/query --data-urlencode query=kueue_pending_workloads' | jq -r '(.status + \" \" + (.data.result | length | tostring))'" \
     "success"
 
 echo ""
