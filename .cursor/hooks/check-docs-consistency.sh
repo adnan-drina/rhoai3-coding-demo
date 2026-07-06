@@ -1,9 +1,9 @@
 #!/bin/bash
-# afterFileEdit hook: enforce code-docs-GitOps consistency
+# afterFileEdit hook: remind agents to keep code, docs, and GitOps aligned.
 #
-# When a gitops manifest is edited, warn if the companion README wasn't also
-# edited. When a README is edited, warn if no manifest was touched.
-# Tracks edits in a session-local temp file to detect partial changes.
+# When a gitops manifest or stage script is edited, warn if the companion
+# README wasn't also edited. When a README is edited, warn if no manifest
+# or script was touched.
 
 input=$(cat)
 file_path=$(echo "$input" | jq -r '.file_path // empty' 2>/dev/null)
@@ -12,59 +12,52 @@ if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
-# Session tracking file (one per conversation, cleaned up by OS temp policy)
 SESSION_ID=$(echo "$input" | jq -r '.conversation_id // "unknown"' 2>/dev/null)
 TRACK_FILE="/tmp/cursor-edit-track-${SESSION_ID}.log"
 
-# Record this edit
 echo "$file_path" >> "$TRACK_FILE"
 
-if [[ "$file_path" == *flows/*.yaml ]]; then
-    cat << EOF
-{"additional_context": "REMINDER: You edited demo flow metadata. Run scripts/validate-stage-flow.sh and check README.md, docs/OPERATIONS.md, and stage READMEs for ordering or dependency changes."}
+# Extract stage name from path (supports both gitops/ and stages/ trees)
+stage_name=""
+if [[ "$file_path" == *gitops/stages/* ]]; then
+    stage_name=$(echo "$file_path" | grep -o '[0-9]\{3\}-[a-z-]*' | head -1)
+elif [[ "$file_path" == stages/* ]]; then
+    stage_name=$(echo "$file_path" | grep -o '[0-9]\{3\}-[a-z-]*' | head -1)
+elif [[ "$file_path" == *.agents/skills/* ]]; then
+    skill_name=$(echo "$file_path" | grep -o 'skills/[^/]*' | head -1 | sed 's|skills/||')
+    if [[ -n "$skill_name" ]]; then
+        cat << EOF
+{"additional_context": "REMINDER: You edited skill '$skill_name'. If this skill references implementation details from a stage, verify those details still match the GitOps manifests."}
 EOF
+    fi
     exit 0
 fi
 
-# Extract stage name from path
-stage_name=""
-is_stage_path=false
-if [[ "$file_path" == *gitops/stages/* ]]; then
-    stage_name=$(echo "$file_path" | grep -o 'stages/[0-9][0-9][0-9]-[a-z0-9-]*' | cut -d/ -f2 | head -1)
-    is_stage_path=true
-elif [[ "$file_path" == *stages/[0-9][0-9][0-9]-* ]]; then
-    stage_name=$(echo "$file_path" | grep -o 'stages/[0-9][0-9][0-9]-[a-z0-9-]*' | cut -d/ -f2 | head -1)
-    is_stage_path=true
-fi
-
-# Only check for stage-related files
 if [[ -z "$stage_name" ]]; then
     exit 0
 fi
 
-# Determine what was edited and what the companion is
 edited_type=""
 companion_hint=""
 
-if [[ "$file_path" == *gitops/stages/*/*.yaml ]]; then
+if [[ "$file_path" == gitops/*/*.yaml ]] || [[ "$file_path" == gitops/*/*.yml ]]; then
     edited_type="manifest"
     companion_hint="stages/$stage_name/README.md"
 elif [[ "$file_path" == */README.md ]]; then
     edited_type="readme"
-    companion_hint="gitops/stages/$stage_name/base/"
-elif [[ "$file_path" == */deploy.sh ]] || [[ "$file_path" == */validate.sh ]]; then
+    companion_hint="gitops/stages/$stage_name/"
+elif [[ "$file_path" == *deploy.sh ]] || [[ "$file_path" == *validate.sh ]]; then
     edited_type="script"
-    companion_hint="stages/$stage_name/README.md and gitops/stages/$stage_name/base/"
+    companion_hint="stages/$stage_name/README.md and gitops/stages/$stage_name/"
 fi
 
 if [[ -z "$edited_type" ]]; then
     exit 0
 fi
 
-# Check if the companion was already edited in this session
 companion_edited=false
 if [[ "$edited_type" == "manifest" ]]; then
-    if grep -q "stages/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null; then
+    if grep -q "$stage_name/README.md" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
 elif [[ "$edited_type" == "readme" ]]; then
@@ -72,7 +65,7 @@ elif [[ "$edited_type" == "readme" ]]; then
         companion_edited=true
     fi
 elif [[ "$edited_type" == "script" ]]; then
-    if grep -q "stages/$stage_name/README.md" "$TRACK_FILE" 2>/dev/null || \
+    if grep -q "$stage_name/README.md" "$TRACK_FILE" 2>/dev/null || \
        grep -q "gitops/stages/$stage_name" "$TRACK_FILE" 2>/dev/null; then
         companion_edited=true
     fi
@@ -80,7 +73,7 @@ fi
 
 if [[ "$companion_edited" == "false" ]]; then
     cat << EOF
-{"additional_context": "REMINDER: You edited a $edited_type in $stage_name but haven't touched $companion_hint yet. Code and documentation must be aligned — every change must be atomic: code + docs in the same commit."}
+{"additional_context": "REMINDER: You edited a $edited_type in $stage_name but have not touched $companion_hint yet. Code and documentation must stay aligned."}
 EOF
 else
     exit 0

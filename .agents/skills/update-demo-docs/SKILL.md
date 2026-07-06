@@ -1,0 +1,161 @@
+---
+name: update-demo-docs
+metadata:
+  author: rhoai3-coding-demo
+  version: 1.2.0
+  platform-family: "rhoai"
+  platform-baseline: "repo"
+  ocp-baseline: "repo"
+  skill-group: "Documentation"
+description: >
+  Check and update documentation consistency after a change. Use when scripts,
+  manifests, or demo flow change and documentation might be stale. Inspects
+  README.md, stage READMEs, OPERATIONS.md, TROUBLESHOOTING.md, and BACKLOG.md
+  for consistency with the current implementation. Do NOT use for writing
+  operational docs from scratch (use demo-operations-docs skill), rewriting
+  educational narrative (use README rules), or troubleshooting (use
+  rhoai-troubleshoot).
+---
+
+# Update Demo Docs
+
+Use this skill after any behavior change to ensure documentation stays
+consistent with the implementation.
+
+## When to invoke
+
+- After changing deploy scripts, validate scripts, or GitOps manifests
+- After adding, removing, or modifying a demo stage
+- After resolving or adding a workaround
+- After changing model serving, MaaS, or gateway behavior
+- After changing Dev Spaces, MTA, or Developer Hub configuration
+- When a PR touches code but no docs
+
+## Documents to check
+
+| Document | Check for |
+|----------|-----------|
+| `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
+| `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", "What To Notice And Why It Matters", trust boundary language |
+| `docs/assets/architecture/*.svg` and `scripts/generate-architecture-diagrams.mjs` | Root/stage diagram synchronization, canonical capability labels, product-layer colors |
+| `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
+| `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
+| `BACKLOG.md` | Workaround status, new limitations, resolved items |
+
+## Consistency checks
+
+### 1. Stage table matches reality
+
+Verify the root README stage table matches:
+- Actual directories under `stages/`
+- Actual Argo CD applications under `gitops/argocd/app-of-apps/`
+- Stage numbering and names
+
+### 2. Deploy commands match scripts
+
+Verify commands in README and OPERATIONS.md match what the scripts actually do.
+
+### 3. Trust boundary language is accurate
+
+After model-serving or gateway changes:
+- Private model claims still hold
+- External model descriptions are accurate
+- MaaS role is correctly described
+- MCP/tool-context boundaries are described separately from model access when relevant
+- `Trust Boundaries` sections stay concise, preferably one paragraph
+- EU AI Act language is readiness-oriented and does not claim compliance
+
+### 4. Product and version references
+
+After operator or version changes:
+- Product versions in README match manifests
+- Official doc links are for the correct version
+- No stale version references
+
+### 5. Workaround documentation
+
+After resolving or adding a workaround:
+- `BACKLOG.md` reflects the current state
+- `docs/TROUBLESHOOTING.md` has relevant entries
+- Workaround code has comments explaining why
+
+### 6. Cross-references
+
+- Stage READMEs link to their next stage correctly
+- Operations doc references real namespaces and resource names
+- Troubleshooting entries reference real commands
+
+### 7. Stage README narrative style
+
+When checking a stage README:
+- The opening should lead with this repository's demo storyline, not with a summary of an external article, blog, or product document.
+- Read the stage's relevant `## References` links before rewriting product-positioning language, prioritizing official Red Hat product pages and documentation.
+- Red Hat blogs and documentation should appear as alignment, implementation baseline, or reference material after the stage's role in the workshop is clear.
+- The stage should connect the previous stage and the capability being introduced without over-emphasizing capabilities planned for later stages.
+- Stage continuity should be carried by the opening narrative, architecture diagram, trust boundary, and `Next Stage` link rather than a dedicated `Where This Fits In The Full Platform` section.
+- `What This Stage Adds` should be concise and capability-oriented, not a low-level manifest inventory.
+- `What This Stage Adds` should normally be one short capability sentence plus four to six bullets.
+- `What This Stage Adds` should prefer product/platform language and mention CRs or resource names only when they are important teaching concepts.
+- `What This Stage Adds` should avoid per-bullet manifest links; the stage manifest directory belongs in `Deploy And Validate`.
+- `What This Stage Adds` should avoid YAML field paths, probe timings, patch jobs, sync hooks, generated resource names, and validation behavior unless they are central to the architecture story.
+- `How Red Hat And Open Source Make It Work` should be concise, normally one to three short paragraphs.
+- `How Red Hat And Open Source Make It Work` should explain the Red Hat product integration pattern plus relevant upstream projects without duplicating the product and open source lists.
+- `How Red Hat And Open Source Make It Work` should keep important support-posture or demo-deviation notes, but move operational detail to `docs/OPERATIONS.md` or `BACKLOG.md`.
+- `Red Hat Products Used` should list only products or productized components used by the current stage.
+- `Red Hat Products Used` should avoid downstream consumers, future-stage integrations, and products mentioned only for platform context.
+- `Red Hat Products Used` should link product names to official Red Hat product pages when available, or official Red Hat documentation for productized components.
+- The section order should follow `.agents/rules/docs.md`, including `What To Notice And Why It Matters` immediately after `What This Stage Adds`.
+- `Trust Boundaries`, when present, should appear before `Red Hat Products Used`.
+- The merged `What To Notice And Why It Matters` section should preserve essential demo proof points and the enterprise WHY without excessive length.
+- The merged section should be clear for enterprise architects and platform engineers in regulated hybrid cloud environments.
+- The merged section should emphasize privacy, sovereignty, identity, quota, telemetry, credential, and external-provider boundaries when those are relevant to the stage.
+- `Trust Boundaries` should focus only on the most important privacy, sovereignty, model-provider, credential, or tool-context boundary for the stage.
+- `Trust Boundaries` should mention EU AI Act only as readiness or supporting controls, never as compliance.
+- The README should explain why the capability matters before listing YAML, resources, or commands.
+
+### 8. Architecture diagram consistency
+
+When checking architecture diagrams:
+- Treat `scripts/generate-architecture-diagrams.mjs` as the source of truth for root and stage SVGs.
+- Verify root and stage SVGs share the same product rail, logical layers, and capability labels.
+- Verify root capability boxes use dark fill with product-colored left stripes.
+- Verify stage SVGs only change capability visual state: new in stage, previously introduced with a product-colored left stripe, and not introduced yet.
+- Preserve the agreed dark transparent Layout B visual design: purple Advanced Developer Suite, teal OpenShift AI, red OpenShift, dark neutral table, gray borders, and white text.
+- Keep capability labels logical and product-aligned rather than manifest-internal.
+
+## Workflow
+
+1. Identify the behavior change (from git diff or task context).
+2. Check each document in the table above for staleness.
+3. For each stale section, determine the correct content from manifests/scripts.
+4. Update the document following its rules:
+   - READMEs: educational, blog-like (`.agents/rules/docs.md`)
+   - OPERATIONS.md: operational, copy-pastable (`.agents/rules/docs.md`)
+   - TROUBLESHOOTING.md: symptom-driven (`.agents/rules/docs.md`)
+   - BACKLOG.md: status tracking with removal conditions
+5. Run `git diff --check` after edits.
+
+## Output format
+
+```markdown
+## Documentation consistency check
+
+### Changed behavior
+- [describe what changed]
+
+### Documents updated
+- [list of files updated with brief description]
+
+### Documents verified (no update needed)
+- [list of files checked and confirmed current]
+
+### Documents that could not be verified
+- [any docs requiring live cluster confirmation]
+```
+
+## What this skill must never do
+
+- Turn READMEs into runbooks (operational content belongs in OPERATIONS.md)
+- Claim capabilities that are not backed by manifests/scripts
+- Remove workaround documentation without confirmed resolution
+- Add operational detail to stage READMEs (use OPERATIONS.md)

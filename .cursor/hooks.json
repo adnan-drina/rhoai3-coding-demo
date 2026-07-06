@@ -8,19 +8,13 @@
       },
       {
         "command": ".cursor/hooks/check-docs-consistency.sh",
-        "matcher": "Write",
-        "fileMatcher": "flows/*.yaml,gitops/stages/**,stages/**"
+        "matcher": "Write"
       }
     ],
     "beforeShellExecution": [
       {
-        "command": "python3 .cursor/hooks/guard-oc-commands.py",
-        "matcher": "oc delete|oc scale.*--replicas=0"
-      }
-    ],
-    "sessionStart": [
-      {
-        "command": ".cursor/hooks/session-init.sh"
+        "command": "python3 .agents/hooks/guard-openshift-command.py",
+        "matcher": "\\b(oc|kubectl)\\s+(apply|create|delete|patch|replace|scale|adm|annotate|label|rollout|edit|expose|set)\\b|scripts/bootstrap\\.sh|scripts/resume-gpu-demo\\.sh|deploy\\.sh"
       }
     ]
   }

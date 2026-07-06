@@ -40,9 +40,9 @@ Important paths:
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `flows/default.yaml` — ordered source of truth for the demo flow.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
+- `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
 ## Demo stages
 
@@ -65,8 +65,7 @@ Current implemented stages:
 10. 100 Governed Vibe Coding With Continue
 
 Developer workflow stages after 100 are deferred until each has a concrete
-implementation plan and validation path. Treat placeholder ideas as backlog
-topics, not implemented stages.
+implementation plan and validation path.
 
 When changing one stage, check whether related changes are also needed in:
 
@@ -77,6 +76,62 @@ When changing one stage, check whether related changes are also needed in:
 - `BACKLOG.md`
 - GitOps manifests
 - deploy or validate scripts
+
+## Detailed Rules
+
+For project structure, coding discipline, change conventions, and shared agent
+guidance, read `.agents/rules/project.md`.
+
+For live demo environment deployment, secrets, certs, and cluster safety, read
+`.agents/rules/env.md`.
+
+For GitOps authoring, manifests, labels, and schema validation, read
+`.agents/rules/gitops.md`.
+
+For documentation standards, README structure, and operations docs, read
+`.agents/rules/docs.md`.
+
+## OpenShift Safety Guard
+
+- Open this repository as its own project; do not open `/Users/adrina/Sandbox`
+  as the active project for live cluster work.
+- Before running live `oc`/`kubectl` commands, call `load_env` and
+  `check_oc_logged_in` from `scripts/lib.sh`.
+- Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target
+  API-server substring before deploy, validate, bootstrap, or
+  resource-management scripts run.
+- Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the
+  user explicitly confirms the current cluster and the command is low risk.
+
+## Security and privacy
+
+Never commit:
+
+- API keys
+- OpenShift tokens
+- kubeconfigs
+- Hugging Face tokens
+- OpenAI or external model provider keys
+- private cluster URLs if they are not intended for publication
+- real user passwords
+- customer data
+- internal/private source code from another project
+
+Use placeholders in examples.
+
+Sensitive areas include:
+
+- MaaS auth and API key handling
+- Authorino and Kuadrant policies
+- Gateway routing
+- RBAC
+- NetworkPolicy
+- OpenShift OAuth and identity configuration
+- External model credentials
+- Red Hat OpenShift Dev Spaces workspace configuration
+- MCP integrations
+
+For these areas, include explicit validation notes in the PR.
 
 ## Agent workflow
 
@@ -110,12 +165,6 @@ Shell scripts:
 - Quote variables.
 - Keep scripts repeatable.
 - Prefer explicit error messages.
-- Do not assume a specific cluster name unless documented.
-- Avoid destructive commands unless clearly labeled and confirmed by the user.
-- Open this repository as its own Codex project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
-- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/lib.sh`.
-- Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
-- Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the user explicitly confirms the current cluster and the command is low risk.
 
 YAML and Kubernetes manifests:
 
@@ -124,42 +173,27 @@ YAML and Kubernetes manifests:
 - Treat gateway, auth, model access, and credential-related manifests as security-sensitive.
 - Do not place real credentials in Git.
 
-Documentation:
+## Shared Skills
 
-- Keep the workshop useful for readers who do not have the original author present.
-- Explain why a step exists, not only how to run it.
-- Update troubleshooting when changing deployment behavior.
-- Update `BACKLOG.md` when adding, resolving, or changing workarounds.
+Canonical skills live in `.agents/skills/`, the shared tool-neutral skill
+discovery path. Keep skill folders flat and use the prefix plus
+`metadata.skill-group` taxonomy for skill review:
 
-## Security and privacy
+| Group | Skills | Purpose |
+|-------|--------|---------|
+| Project Structure | `maintain-rules-and-skills`, `prepare-pr-summary`, `project-demo-stage-authoring` | Governance, PR output, stage lifecycle |
+| GitOps & Manifests | `review-gitops-change` | Review changes, explain risk |
+| Documentation | `update-demo-docs`, `demo-operations-docs`, `project-documentation-authoring`, `project-architecture-diagrams` | Keep docs aligned, author READMEs, maintain diagrams |
+| Demo Environment | `validate-demo-step`, `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test`, `workaround-review` | Deploy, validate, diagnose, scale |
+| Assets & Miscellaneous | `red-hat-quick-deck` | Red Hat-aligned presentations |
 
-Never commit:
+Skills are invoked workflows. Rules are always-on behavior constraints.
 
-- API keys
-- OpenShift tokens
-- kubeconfigs
-- Hugging Face tokens
-- OpenAI or external model provider keys
-- private cluster URLs if they are not intended for publication
-- real user passwords
-- customer data
-- internal/private source code from another project
+## Subagents
 
-Use placeholders in examples.
-
-Sensitive areas include:
-
-- MaaS auth and API key handling
-- Authorino and Kuadrant policies
-- Gateway routing
-- RBAC
-- NetworkPolicy
-- OpenShift OAuth and identity configuration
-- External model credentials
-- Red Hat OpenShift Dev Spaces workspace configuration
-- MCP integrations
-
-For these areas, include explicit validation notes in the PR.
+No shared subagents are currently tracked. Add tool-specific subagents only for
+genuinely tool-specific context isolation needs; shared workflows belong in
+`.agents/skills/`.
 
 ## Validation expectations
 
@@ -192,31 +226,6 @@ are available.
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 
 > Not validated against a live cluster. Static review only.
-
-## Shared skills
-
-This repository includes shared skills for repeatable project workflows. Keep skill folders flat for tool discovery and use this taxonomy for review:
-
-| Category | Skills | Purpose |
-|----------|--------|---------|
-| Review and delivery | `review-gitops-change`, `prepare-pr-summary`, `workaround-review` | Review changes, explain risk, and prepare PR output |
-| Validation and documentation | `validate-demo-step`, `update-demo-docs`, `demo-operations-docs` | Keep stage behavior, docs, and operations material aligned |
-| Live operations | `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test` | Diagnose or intentionally change live cluster resources |
-| Deliverables | `red-hat-quick-deck` | Create Red Hat-aligned quick decks from demo content |
-| Governance | `maintain-rules-and-skills` | Add, update, or audit shared rules, skills, hooks, and agents |
-
-Skills are invoked workflows. Rules are always-on behavior constraints. See [docs/AI_COLLABORATION.md](docs/AI_COLLABORATION.md) for the full governance model.
-
-## AI prompt discipline
-
-When using Cursor Agent, Claude, GPT, Continue, or OpenCode:
-
-- Provide the task, acceptance criteria, and relevant files.
-- Ask for a plan before large edits.
-- Ask the agent to keep changes minimal.
-- Ask the agent to explain validation steps.
-- Review the full diff manually.
-- Reject changes that are plausible but not grounded in this repo.
 
 ## Pull request output expected from agents
 
