@@ -152,16 +152,35 @@ Extended by later stages
 
 ## Demo
 
-![Stage 010 walkthrough](../../docs/assets/demos/stage-010/stage-010-demo.gif)
+### OpenShift AI Dashboard
 
-| Screenshot | What it shows |
-|------------|---------------|
-| ![Login](../../docs/assets/demos/stage-010/01-login-identity-providers.png) | OpenShift login with htpasswd identity providers (ai-developer, ai-admin) |
-| ![Dashboard](../../docs/assets/demos/stage-010/02-dashboard-home.png) | RHOAI Dashboard home after first login |
-| ![Project](../../docs/assets/demos/stage-010/03-demo-sandbox-project.png) | Demo Sandbox data science project overview |
-| ![Connections](../../docs/assets/demos/stage-010/04-connections-tab.png) | S3 object storage connection (OBC-sourced) |
-| ![Model Registry](../../docs/assets/demos/stage-010/05-model-registry.png) | AI Hub Models catalog with validated models |
-| ![Argo CD](../../docs/assets/demos/stage-010/06-argocd-applications.png) | Argo CD applications managing GitOps state |
+The platform control plane with the Demo Sandbox project, AI Hub, Observe & Monitor, and Settings navigation.
+
+![RHOAI Dashboard](../../docs/assets/demos/stage-010/01-rhoai-dashboard-projects.png)
+
+### Serving Runtimes
+
+Serving runtimes configuration ready for custom runtime definitions in later stages.
+
+![Serving Runtimes](../../docs/assets/demos/stage-010/03-serving-runtimes.png)
+
+### Hardware Profiles
+
+CPU Default, GPU Priority, GPU Reserved, and GPU Shared profiles make workload sizing explicit through the platform.
+
+![Hardware Profiles](../../docs/assets/demos/stage-010/04-hardware-profiles.png)
+
+### DataScienceCluster
+
+The `default-dsc` DataScienceCluster resource showing Ready status.
+
+![DataScienceCluster](../../docs/assets/demos/stage-010/05-datasciencecluster.png)
+
+### OpenShift Groups
+
+Demo groups (`rhoai-admins`, `rhoai-developers`, `demo-registry-users`) establishing the identity base for RBAC.
+
+![OpenShift Groups](../../docs/assets/demos/stage-010/06-openshift-groups.png)
 
 ---
 
