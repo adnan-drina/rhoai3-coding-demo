@@ -20,6 +20,9 @@ spec:
       # Stage 050 workspace key provisioner: creates per-developer MaaS keys
       # for Dev Spaces (Continue/OpenCode) on this subscription.
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
+      # Stage 070 MTA hook: provisions the kai-api-keys MaaS key so Developer
+      # Lightspeed for MTA calls models through the governed gateway.
+      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
@@ -65,6 +68,9 @@ spec:
     users:
       - kube:admin
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
+      # Stage 070 MTA hook: provisions the kai-api-keys MaaS key so Developer
+      # Lightspeed for MTA calls models through the governed gateway.
+      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
