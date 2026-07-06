@@ -157,5 +157,19 @@ check "MTA Hub deployment ready" \
   "oc get deployment mta-hub -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
 
+log_step "Agentic migration workspace (Wave 2)"
+check "agentic-migration DevWorkspace exists" \
+  "oc get devworkspace agentic-migration -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+  "agentic-migration"
+check "workspace clones the migiq sample" \
+  "oc get devworkspace agentic-migration -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" \
+  "migiq-spring-boot-sample"
+check "elevated key provisioning job completed" \
+  "oc get job provision-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.status.succeeded}' 2>/dev/null || echo hook-cleaned" \
+  "1"
+check "elevated MaaS key Secret exists" \
+  "oc get secret maas-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+  "maas-agentic-migration-key"
+
 echo ""
 validation_summary

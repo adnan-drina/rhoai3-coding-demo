@@ -1,0 +1,96 @@
+apiVersion: workspace.devfile.io/v1alpha2
+kind: DevWorkspace
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: '10'
+  labels:
+    demo.rhoai.io/stage: '070'
+  name: agentic-migration
+  namespace: wksp-ai-developer
+spec:
+  contributions:
+  - name: ide
+    uri: http://devspaces-dashboard.openshift-devspaces.svc.cluster.local:8080/dashboard/api/editors/devfile?che-editor=che-incubator/che-code/latest
+  routingClass: che
+  started: false
+  template:
+    commands:
+    - exec:
+        commandLine: "cd /projects/agentic-migration && npx --yes @sshaaf/migiq@0.2.2\
+          \ >/tmp/migiq-install.log 2>&1 || echo \"migiq install failed; see /tmp/migiq-install.log\"\
+          \ ; PROJECT_DIR=\"/projects/agentic-migration\"\njava21_home=\"${JAVA_HOME:-}\"\
+          \nif [ -z \"${java21_home}\" ] || [ ! -x \"${java21_home}/bin/java\" ];\
+          \ then\n  for candidate in \\\n    \"${HOME}/.sdkman/candidates/java/21.0.5-tem\"\
+          \ \\\n    /home/tooling/.sdkman/candidates/java/21.0.5-tem \\\n    /usr/lib/jvm/java-21-openjdk;\
+          \ do\n    if [ -x \"${candidate}/bin/java\" ]; then\n      java21_home=\"\
+          ${candidate}\"\n      break\n    fi\n  done\nfi\nif [ -n \"${java21_home}\"\
+          \ ] && [ -x \"${java21_home}/bin/java\" ]; then\n  export JAVA_HOME=\"${java21_home}\"\
+          \n  export PATH=\"${JAVA_HOME}/bin:${PATH}\"\n  for rc in \"${HOME}/.bashrc\"\
+          \ \"${HOME}/.zshrc\"; do\n    touch \"${rc}\"\n    if ! grep -q \"rhoai3-coding-demo:\
+          \ java 21 default\" \"${rc}\"; then\n      {\n        printf '\\n'\n   \
+          \     printf '# rhoai3-coding-demo: java 21 default\\n'\n        printf\
+          \ 'export JAVA_HOME=\"%s\"\\n' \"${java21_home}\"\n        printf 'export\
+          \ PATH=\"${JAVA_HOME}/bin:${PATH}\"\\n'\n      } >> \"${rc}\"\n    fi\n\
+          \  done\n  echo \"Configured Java 21 as the default shell runtime.\"\nelse\n\
+          \  echo \"Java 21 runtime not found; use a Dev Spaces tooling image with\
+          \ OpenJDK 21.\"\nfi\ncurl -fsSL --max-time 120 -o /tmp/continue.vsix \"\
+          https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix\"\
+          \ntest -s /tmp/continue.vsix\nfor i in $(seq 1 30); do [ -f \"${PROJECT_DIR}/.continue/config.yaml\"\
+          \ ] && break; sleep 2; done\nKUBE_API=\"https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}\"\
+          \nKUBE_CA=\"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt\"\nKUBE_TOKEN=\"\
+          $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\"\nif curl -fsS\
+          \ --cacert \"${KUBE_CA}\"                 -H \"Authorization: Bearer ${KUBE_TOKEN}\"\
+          \                 \"${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init\"\
+          \                 | jq -r '.data[\"init-ai-tools.sh\"] // empty' >/tmp/init-ai-tools.sh\
+          \                 && [ -s /tmp/init-ai-tools.sh ]; then\n  chmod 700 /tmp/init-ai-tools.sh\n\
+          \  /tmp/init-ai-tools.sh \"${PROJECT_DIR}\" \"agentic-migration\"\nelse\n\
+          \  mkdir -p ~/.continue ~/.config/opencode ~/.opencode\n  if [ ! -f ~/.continue/config.yaml\
+          \ ]; then\n    cp \"${PROJECT_DIR}/.continue/config.yaml\" ~/.continue/config.yaml\
+          \ 2>/dev/null || true\n    echo \"Created ~/.continue/config.yaml from the\
+          \ repo template.\"\n  else\n    echo \"Kept existing ~/.continue/config.yaml.\"\
+          \n  fi\n  if [ ! -f ~/.config/opencode/opencode.json ]; then\n    cp \"\
+          ${PROJECT_DIR}/.opencode/opencode.template.json\" ~/.config/opencode/opencode.json\
+          \ 2>/dev/null || true\n    echo \"Created ~/.config/opencode/opencode.json\
+          \ from the repo template.\"\n  else\n    echo \"Kept existing ~/.config/opencode/opencode.json.\"\
+          \n  fi\nfi\n"
+        component: tooling-container
+      id: init-ai-tools
+    components:
+    - container:
+        cpuLimit: '2'
+        cpuRequest: 500m
+        env:
+        - name: DEFAULT_EXTENSIONS
+          value: /tmp/continue.vsix
+        - name: SHELL
+          value: /usr/bin/bash
+        - name: JAVA_HOME
+          value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+        - name: MAAS_AGENTIC_KEY
+          valueFrom:
+            secretKeyRef:
+              key: MAAS_API_KEY
+              name: maas-agentic-migration-key
+              optional: true
+        - name: MAAS_AGENTIC_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              key: MAAS_BASE_URL
+              name: maas-agentic-migration-key
+              optional: true
+        image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+        memoryLimit: 6Gi
+        memoryRequest: 2Gi
+        sourceMapping: /projects
+      name: tooling-container
+    events:
+      postStart:
+      - init-ai-tools
+    projects:
+    - git:
+        checkoutFrom:
+          revision: main
+        remotes:
+          origin: https://github.com/adnan-drina/migiq-spring-boot-sample.git
+      name: agentic-migration

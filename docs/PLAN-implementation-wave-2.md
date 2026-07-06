@@ -1,6 +1,6 @@
 # Plan: Implementation Wave 2 — 070 Agentic Migration, 080 Pipeline, 090 Templates, AI-Enhanced App
 
-Status: PLANNED. Prereq state: all nine stages deployed and validated on a
+Status: IN EXECUTION. Decisions 2026-07-06: sample repo approved; quay.io for signed images (robot-account credentials needed from user for workstream B); template repo-scaffolding (C iteration two) in scope (GitHub credentials for RHDH scaffolder needed). Prereq state: all nine stages deployed and validated on a
 fresh environment; showroom mapping in docs/PLAN-showroom-concept-mapping.md.
 
 ## Workstream A — Stage 070 agentic migration (MigIQ pattern)
