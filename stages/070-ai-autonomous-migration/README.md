@@ -74,6 +74,46 @@ Modernization context can include source code, static-analysis findings, depende
 - [Kai](https://github.com/konveyor/kai) is the upstream AI-assisted modernization effort.
 - [Coolstore](https://github.com/konveyor-ecosystem/coolstore) is the Java EE sample application used in this stage.
 
+## Demo Script
+
+### Part 1 — The supported path: analysis-grounded modernization
+
+**Know.** Coolstore carries the classic enterprise backlog: a legacy Java EE
+application (`konveyor-ecosystem/coolstore`) that is expensive to maintain
+and impossible to staff. Manual migration quotes came back in
+engineer-years. The first answer is the supported product path: analysis
+before generation.
+
+**Show.**
+- Open MTA from the console launcher; log in with OpenShift (point out the
+  Keycloak-federated identity — same SSO as everything else).
+- Show the application inventory and the analysis report for coolstore:
+  rules-based findings, effort estimates, migration issues by category.
+- Open Developer Lightspeed for MTA on one finding: "the suggestion is
+  grounded in this specific finding, and the model behind it is our private
+  Nemotron — reached through the same governed MaaS gateway as every other
+  AI call on this platform. Modernization context never leaves the cluster."
+
+### Part 2 — The agentic path: end-to-end migration under governance
+
+**Know.** Analysis-grounded assistance is production-ready today; the
+frontier is autonomous execution. The question enterprises actually ask is
+not "can agents migrate code?" but "what happens to control when they do?"
+
+**Show.**
+- Walk the [agentic migration exercise](agentic-migration-exercise.md):
+  MigIQ-pattern phases (graphify → plan → parallel execute → test-gen) on
+  the Spring Boot sample, executed by MaaS-published models.
+- While agents run, switch to the RHOAI Usage dashboard: "every one of
+  those parallel agents is metered — this burst is drawing from an elevated
+  subscription the platform team sized for exactly this workload."
+- Stop at the human review gate: diff against the MTA findings; approve or
+  reject. "Nothing merges on agent authority. Autonomy multiplied
+  throughput; governance kept the control points."
+- **Business value callout:** "The backlog conversation changes from
+  'engineer-years' to 'agent-hours plus review time' — without a single
+  line of source leaving your platform."
+
 ## Deploy And Validate
 
 ```bash

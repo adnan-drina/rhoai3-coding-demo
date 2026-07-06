@@ -70,6 +70,44 @@ Developer Hub is a discovery and self-service surface. It should link to approve
 - Add OpenShift and Argo CD plugins for resource and GitOps visibility.
 - Evaluate the OpenShift AI Connector after the base portal story is stable.
 
+## Demo Script
+
+### Part 1 — Everything discoverable, one identity
+
+**Know.** Coolstore now runs a governed AI development platform — but a
+platform nobody can find is shelf-ware. Developer Hub is where the whole arc
+becomes one self-service surface: catalog, docs, workspaces, and AI
+assistance behind a single OpenShift-federated login.
+
+**Show.**
+- Open Developer Hub from the console launcher; sign in with OpenShift
+  (the OIDC chain runs through the same Keycloak as MTA — one identity,
+  end to end).
+- Open the catalog: the demo components (`getting-started-ai-coding`,
+  `coolstore-inventory-service`, `mca-coolstore`) with ownership,
+  lifecycle, source links.
+- Click a component's Dev Spaces link: "one click from catalog entry to
+  the exact governed workspace we used in Stages 050 and 060 — no
+  assembling repository URLs, no tribal knowledge."
+- Open TechDocs for the developer workspace guide: the platform documents
+  itself where developers already are.
+
+### Part 2 — The arc, wrapped
+
+**Know.** Each stage of this demo added one layer: private models, governed
+access, assisted coding, agentic development, autonomous migration, trusted
+delivery. The portal is where a new team member experiences all of it as one
+product.
+
+**Show.** Walk the stage tiles backwards from the catalog: workspace →
+AI-assisted change → skills-guided agent → migration evidence → pipeline
+readiness — "every capability you saw today is discoverable, documented,
+and reachable from this page. That is the difference between a pile of
+AI tools and an AI development platform."
+
+(Upgrade tracked in BACKLOG: RHDH software templates for self-service
+scaffolding of components + governed workspaces, per showroom module 4.)
+
 ## Deploy And Validate
 
 ```bash

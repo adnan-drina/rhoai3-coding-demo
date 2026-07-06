@@ -42,6 +42,46 @@ feedback.
 - A comparison exercise: the Stage 050 one-shot task re-run under skills.
 - A skill-improvement exercise: review feedback turned into a skill update.
 
+## Demo Script
+
+### Part 1 — The same task, with the team's standards loaded
+
+**Know.** Stage 050 ended with plausible-but-unreviewable code. Enterprises
+fix that by encoding standards where agents can execute them: AGENT.md and
+reusable skills in the repository, versioned and reviewed like code.
+
+**Show.**
+- Open the `agentic-coolstore` workspace (Dev Spaces). Show the repository's
+  `AGENTS.md` and `.opencode/skills/` — four skills that encode how this
+  team builds Quarkus services (REST conventions, domain model, test
+  standards, docs consistency).
+- In the terminal, start OpenCode and give it the same class of task the
+  one-shot attempt fumbled in Stage 050 (for example: "add a reservation
+  endpoint for inventory items").
+- Narrate what is different: the agent consults the skills, follows the
+  `/api/` path conventions, writes behavior-named tests with RestAssured,
+  and updates the README API table in the same change — because the
+  definition of done lives in the skill, not in the prompt.
+- **What they should notice:** nobody wrote a long prompt. The standards
+  did the steering, and they are a pull request away from improving.
+
+### Part 2 — Fail forward: the gate fails, the agent fixes it under rules
+
+**Know.** The most convincing demo beat is a failure handled well (adapted
+from the platform showroom's pipeline-fails moment). Quality gates exist
+precisely so AI-generated code cannot skip review discipline.
+
+**Show.**
+- Introduce a deliberate smell into the change (a `System.out.println` and
+  an empty catch block) or use a prepared branch, and run `./mvnw test` /
+  the project's quality checks so a gate fails visibly.
+- Hand the failure back to OpenCode. The `project-test-standards` skill
+  forbids weakening assertions, and the REST skill mandates proper error
+  contracts — so the agent fixes the code, not the test.
+- Close the loop: "Review feedback that recurs becomes a skill update —
+  the guideline is now enforced on every future run. That is what it means
+  for internal standards to be living assets."
+
 ## Deploy And Validate
 
 ```bash

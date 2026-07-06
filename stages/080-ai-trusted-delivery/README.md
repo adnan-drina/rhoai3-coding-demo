@@ -44,6 +44,27 @@ reaches a cluster because the pipeline proves where it came from.
 - Optional: Red Hat Trusted Software Supply Chain (Konflux-based) once a
   sandbox-deployable path exists.
 
+## Demo Script (base setup)
+
+**Know.** Stage 070 ends with agents producing code faster than humans can
+hand-verify provenance. Auditors do not accept "the agent said it was fine".
+The Trusted Software Factory answer: prove what was built and how — SLSA
+provenance, signatures, SBOMs — on the same pipelines the platform already
+runs.
+
+**Show (today, base setup).**
+- OpenShift console → Pipelines: the Tekton stack is operator-managed and
+  ready; the coolstore-inventory-service repository already carries a
+  Pipelines-as-Code PipelineRun from its delivery exercises.
+- Operators view: Trusted Artifact Signer installed — the sigstore stack
+  (Fulcio, Rekor) awaiting the Securesign instance.
+- Talk track for the implementation phase (tracked in BACKLOG, recipe from
+  the platform showroom modules 5-6): the Stage 070 migrated application
+  goes through build → sign (TAS) → SLSA attestation (Tekton Chains) →
+  SBOM → TPA analysis, and the attestation evidence lands next to the
+  agentic-migration evidence. "The same platform that let agents write the
+  code proves what was built from it."
+
 ## Deploy And Validate
 
 ```bash

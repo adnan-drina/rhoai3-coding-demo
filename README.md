@@ -32,7 +32,7 @@ The central design choice is simple: consumers do not connect directly to scatte
 
 ## What The Demo Shows
 
-The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml).
+The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml). Each developer-arc stage README (050-090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
 
 | Stage | Capability | Why it matters |
 |-------|------------|----------------|

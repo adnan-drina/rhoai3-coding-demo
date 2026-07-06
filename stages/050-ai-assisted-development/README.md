@@ -108,6 +108,42 @@ Manifests: [`gitops/stages/050-ai-assisted-development/base/`](../../gitops/stag
 - [Continue](https://www.continue.dev/)
 - [rhpds/mca-devspaces](https://github.com/rhpds/mca-devspaces)
 
+## Demo Script
+
+### Part 1 — A developer's first hour (governed workspace)
+
+**Know.** Coolstore's engineering team is under pressure to adopt AI coding
+tools. Developers were already pasting code into public chatbots; security
+wants that stopped without blocking productivity. Onboarding a developer to a
+correctly configured AI toolchain used to mean days of local setup and a
+personal API key nobody tracked.
+
+**Show.**
+- Log in to the RHOAI dashboard as `ai-developer` and open Dev Spaces; start
+  the `getting-started-ai-coding` workspace.
+- While it starts, say: "No local setup, no personal model keys. The
+  platform team provisioned this workspace — the AI assistant inside it is
+  already connected to company-approved models through governed endpoints."
+- When the IDE opens, show Continue in the sidebar and open
+  `~/.continue/config.yaml`: point at the MaaS base URL and the fact that
+  the API key was issued by the platform, scoped to this developer, with
+  token limits and full usage telemetry.
+- **What they should notice:** the developer never saw a provider console,
+  never handled a raw key, and the first AI-assisted line of code happens
+  minutes after joining.
+
+### Part 2 — One-shot vibe coding: the possibilities and the wall
+
+**Know.** One-shot prompting is the entry drug of AI coding: brilliant for
+scaffolding and exploration, unreliable for production-shaped work. The demo
+does not hide this — the limitation IS the lesson that motivates Stage 060.
+
+**Show.** Run the [vibe-coding exercise](vibe-coding-exercise.md): ask
+Continue for the small Quarkus app, watch it scaffold in seconds, then review
+like a senior engineer. Let the audience find the gaps with you (naming,
+missing tests, no docs alignment). Close with: "The model is not wrong — it
+just doesn't know how WE build software. Teaching it that is the next stage."
+
 ## Demo Exercise: One-Shot Vibe Coding
 
 The [vibe-coding exercise](vibe-coding-exercise.md) is the hands-on part of
