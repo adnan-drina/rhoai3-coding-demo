@@ -161,6 +161,38 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 - If pressure already cleared, the pull resumes on its own; disk usage
   growth in /var confirms progress.
 
+## Argo CD Operation Stuck On A Hook Job
+
+**Affected stage:** any stage with Sync-hook Jobs (waits, seeds, patches)
+
+**Likely cause:** a hook Job that waits on external state (an API that never
+answers, a webhook that is not up yet) keeps the sync operation Running
+indefinitely — and a running operation silently blocks every newer Git
+revision from syncing. Variants seen live: "waiting for completion of hook",
+"waiting for deletion of hook", and a retry loop after a hook was deleted
+mid-operation.
+
+**Diagnose:**
+
+```bash
+oc get application <app> -n openshift-gitops   -o jsonpath='{.status.operationState.phase} {.status.operationState.startedAt} {.status.operationState.message}'
+# startedAt far in the past + Running = stuck operation
+```
+
+**Recover:**
+
+```bash
+# 1. Terminate the operation
+oc patch application <app> -n openshift-gitops --type=merge   -p '{"status":{"operationState":{"phase":"Terminating"}}}'
+# 2. Remove the offending hook Job if it lingers
+oc delete job <hook-job> -n <ns> --ignore-not-found
+# 3. Start a clean sync
+oc patch application <app> -n openshift-gitops --type=merge   -p '{"operation":{"initiatedBy":{"username":"operator"},"sync":{"prune":true}}}'
+```
+
+Prevention: hook jobs must have bounded retries and fail fast; never let a
+wait-loop hook depend on state created by a later wave of the same sync.
+
 ## Argo CD Reports Synced But New Manifests Are Missing
 
 **Affected stage:** any
