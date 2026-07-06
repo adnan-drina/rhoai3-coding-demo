@@ -82,7 +82,11 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: PINNED_CSV
-              value: rhcl-operator.v1.3.4
+              # v1.3.5: upgraded 2026-07-06 as a side effect of approving the shared
+              # openshift-operators InstallPlan that carried the Stage 080
+              # pipelines/rhtas CSVs (OLM bundles co-pending CSVs into one plan).
+              # MaaS re-verified green on v1.3.5.
+              value: rhcl-operator.v1.3.5
             - name: PACKAGE_LABEL
               value: operators.coreos.com/rhcl-operator.openshift-operators
           command:

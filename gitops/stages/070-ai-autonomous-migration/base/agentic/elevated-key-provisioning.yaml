@@ -132,3 +132,29 @@ subjects:
   - kind: Group
     name: system:serviceaccounts:wksp-ai-developer
     apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentic-migration-gateway-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agentic-migration-gateway-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agentic-migration-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: agentic-migration-key-provisioner
+    namespace: wksp-ai-developer
