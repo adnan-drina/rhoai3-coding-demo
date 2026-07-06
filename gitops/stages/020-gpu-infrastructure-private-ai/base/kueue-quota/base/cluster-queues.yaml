@@ -4,8 +4,11 @@
 # yields the non-preemptive default).
 #
 # GPU quota sums to 4 = the time-sliced capacity (1 physical L40S -> 4 units):
-#   shared 2 + priority 1  (cohort "gpu-pool", grouped for later fair-share work)
-#   reserved 1             (no cohort: isolated, never lent — a true reservation)
+#   shared 0 + priority 0  (cohort "gpu-pool"; both physical cards are claimed
+#                           by the private models — raise when GPU nodes are added)
+#   reserved 2             (no cohort: isolated, never lent — one card per model)
+# Invariant: GPU nominal totals match schedulable capacity (2 cards, no
+# time-slicing) so Kueue never admits a workload the scheduler cannot place.
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
@@ -55,7 +58,8 @@ spec:
         - name: gpu-l40s
           resources:
             - name: nvidia.com/gpu
-              nominalQuota: "2"
+              # No spare capacity: both cards are model-reserved. Raise when GPU nodes are added.
+              nominalQuota: "0"
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue
@@ -81,7 +85,8 @@ spec:
         - name: gpu-l40s
           resources:
             - name: nvidia.com/gpu
-              nominalQuota: "1"
+              # No spare capacity: both cards are model-reserved. Raise when GPU nodes are added.
+              nominalQuota: "0"
 ---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ClusterQueue

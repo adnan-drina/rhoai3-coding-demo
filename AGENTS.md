@@ -211,6 +211,30 @@ No shared subagents are currently tracked. Add tool-specific subagents only for
 genuinely tool-specific context isolation needs; shared workflows belong in
 `.agents/skills/`.
 
+## Stage deployment skill map
+
+When deploying, validating, or changing a stage, consult the matching
+doc-grounded skills BEFORE making decisions; their doc-backed procedures are
+authoritative for Red Hat alignment, while repo-specific defaults live in the
+stage READMEs:
+
+| Stage | Primary skills |
+|-------|----------------|
+| 010 foundation | `rhoai-self-managed-installation`, `rhoai-dsci-dsc-configuration`, `rhoai-update-channels`, `rhoai-users-groups-access`, `rhoai-observability`, `ocp-gitops-operator`, `ocp-authentication-identity-providers`, `odf-multicloud-gateway`, `odf-object-bucket-claims` |
+| 020 GPU infra | `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workloads`, `ocp-machine-management`, `ocp-node-feature-discovery` |
+| 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
+| 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
+| 050 assisted dev | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces` |
+| 060 agentic dev | `rhoai-maas-governance` (key consumption), workspace-repo skills |
+| 070 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
+| 080 trusted delivery | `ocp-cicd-builds`, TAS/TSSC product docs |
+| 090 portal | `ocp-authentication-identity-providers`, `ocp-web-console`, RHDH product docs |
+
+Skill project-default sections were authored in rhoai3-demo; where this repo
+deliberately diverges (no GPU time-slicing, two GPU workers, two private
+models), the stage README is the source of truth and the skill defaults have
+been updated to match.
+
 ## Validation expectations
 
 Use the most specific validation possible.

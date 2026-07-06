@@ -122,8 +122,8 @@ The low-level scheduling authority remains in Kueue `ResourceFlavor` and
 | Hardware profile | Backing queue | GPU quota | User-facing intent |
 |---|---|---:|---|
 | CPU Default | `lq-cpu-default` | 0 | CPU-only workbench or small job |
-| GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 2 | Shared GPU capacity when available |
-| GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 1 | Dedicated higher-importance lane |
+| GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 0 | No spare capacity while both cards serve the private models; raise when GPU nodes are added |
+| GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 0 | Higher-importance lane, currently zero until GPU capacity grows |
 | GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 2 | Reserved capacity: two L40S cards, one private model per card |
 
 ---
