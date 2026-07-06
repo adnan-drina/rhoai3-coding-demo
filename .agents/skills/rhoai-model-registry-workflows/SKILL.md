@@ -112,6 +112,17 @@ For this repo:
   architecture, quantization, deployed context, capabilities).
 - Registration is idempotent: check /registered_models for the display name
   before POSTing; skip when present.
+- Model card schema conventions (align both private models):
+  - first-class fields carry owner (`rhoai3-coding-demo`), `provider`,
+    `license`, `licenseLink`, and `tasks` — do not push these into
+    customProperties;
+  - empty-string customProperties render as dashboard labels (e.g. `qwen`,
+    `code-generation`, `validated`); key=value customProperties render as
+    properties and carry the extended card (source_repo, architecture,
+    quantization, context_window_deployed, capabilities);
+  - model version names use the modelcar tag (`v3.0`) and are IMMUTABLE via
+    the API — a PATCH of the name is silently ignored, so get the name right
+    at creation time.
 
 ## Workflow
 

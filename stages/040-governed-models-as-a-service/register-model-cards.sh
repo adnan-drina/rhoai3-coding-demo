@@ -34,12 +34,19 @@ register_qwen() {
     return 0
   fi
 
+  # Registry schema alignment (matches the Stage 030 Nemotron pattern):
+  # first-class fields for owner/provider/license/tasks; empty-value
+  # customProperties render as dashboard labels; key=value properties carry
+  # the extended model card.
   local props
-  props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s' \
-    "$(prop provider Alibaba-Qwen)" \
+  props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' \
+    "$(prop qwen '')" \
+    "$(prop code-generation '')" \
+    "$(prop text-generation '')" \
+    "$(prop tool-calling '')" \
+    "$(prop validated '')" \
     "$(prop validated_by RedHatAI)" \
     "$(prop source_repo https://huggingface.co/RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic)" \
-    "$(prop license apache-2.0)" \
     "$(prop architecture MoE-35B-A3B)" \
     "$(prop quantization FP8-dynamic)" \
     "$(prop context_window_deployed 32768)" \
@@ -50,7 +57,11 @@ register_qwen() {
   rm_id=$(mr_post "/registered_models" '{
     "name": "'"$name"'",
     "description": "Qwen3.6 35B A3B (FP8-dynamic) - Red Hat AI validated mixture-of-experts model (35B total, 3B active) for coding, reasoning, and multimodal tasks. Quantized with llm-compressor for single-GPU serving on NVIDIA L40S; deployed with a 32K context window through the private vLLM runtime and published via MaaS as qwen3-6-35b-a3b.",
-    "owner": "ai-admin",
+    "owner": "rhoai3-coding-demo",
+    "provider": "Alibaba Cloud (Red Hat AI validated)",
+    "license": "apache-2.0",
+    "licenseLink": "https://huggingface.co/RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic/blob/main/LICENSE",
+    "tasks": ["text-generation", "code-generation"],
     "customProperties": {'"$props"'}
   }' | jq -r '.id // empty')
   [[ -n "$rm_id" ]] || { log_error "Failed to create registered model ${name}"; exit 1; }
