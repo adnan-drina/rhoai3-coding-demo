@@ -85,5 +85,15 @@ Audit result:
   PrometheusOperatorRejectedResources warning documented as benign
   (operator-shipped ServiceMonitors with bearerTokenFile).
   Dashboard: https://data-science-gateway.apps.<cluster-domain>
+  Post-completion: MaaS component moved to Stage 040 (job-enable-rhoai-maas),
+  GPU hardware profiles moved to Stage 020, strict DSC Ready check restored;
+  re-validated 36 pass / 0 warn / 0 fail.
+- Stage 020: COMPLETE. 47 pass / 0 warn / 0 fail. Fixes made: LWS operator
+  moved from 030 (Kueue framework dependency, operator reported
+  Degraded/MissingDependencies without it); direct L4 profiles moved from
+  010 (4-GPU profile disabled, quota is 2 GPUs); Prometheus metric checks
+  switched to in-pod queries (API-server proxy strips bearer tokens);
+  stale Argo manifest cache trap documented (refresh=hard + manual sync).
+  2x g6e.2xlarge GPU nodes, ClusterPolicy ready, DSC Ready in-stage.
 
 (filled in as each stage deploys on the fresh cluster)
