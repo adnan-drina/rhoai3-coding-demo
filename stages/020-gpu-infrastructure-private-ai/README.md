@@ -148,15 +148,29 @@ access through Models-as-a-Service.
 
 ## Demo
 
-![Stage 020 walkthrough](../../docs/assets/demos/stage-020/stage-020-demo.gif)
+### Hardware Profile Selection
 
-| Screenshot | What it shows |
-|------------|---------------|
-| ![Workbench form](../../docs/assets/demos/stage-020/01-create-workbench-form.png) | Create workbench form with deployment size section |
-| ![Hardware profiles](../../docs/assets/demos/stage-020/02-hardware-profiles-dropdown.png) | Hardware profile dropdown showing GPU options |
-| ![GPU selected](../../docs/assets/demos/stage-020/03-gpu-shared-selected.png) | GPU Shared Time-Slicing profile selected |
-| ![MachineSet](../../docs/assets/demos/stage-020/04-machineset-gpu-node.png) | GPU MachineSet managing the g5.2xlarge node |
-| ![Kueue](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png) | Kueue ClusterQueues for GPU quota management |
+The workbench creation form exposes GPU capacity as simple dropdown choices — no node taints or tolerations required.
+
+![Hardware Profiles Dropdown](../../docs/assets/demos/stage-020/02-hardware-profiles-dropdown.png)
+
+### GPU Shared Profile Selected
+
+Selecting "GPU Shared - 1x NVIDIA" shows the resource specifications: CPU, memory, and one NVIDIA GPU from the shared capacity pool.
+
+![GPU Shared Selected](../../docs/assets/demos/stage-020/03-gpu-shared-selected.png)
+
+### GPU MachineSet
+
+The AWS g6e.2xlarge GPU MachineSet providing L40S capacity, managed by OpenShift Machine API and tracked in GitOps.
+
+![GPU MachineSet](../../docs/assets/demos/stage-020/04-machineset-gpu-node.png)
+
+### Kueue ClusterQueues
+
+Queue-based GPU governance with cohort-based fair sharing between `cq-gpu-priority` and `cq-gpu-shared`, plus isolated `cq-gpu-reserved-demo` capacity.
+
+![Kueue ClusterQueues](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png)
 
 ---
 

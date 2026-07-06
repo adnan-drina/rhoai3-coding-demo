@@ -99,12 +99,15 @@ spec:
         - name: default-flavor
           resources:
             - name: cpu
-              nominalQuota: "8"
+              nominalQuota: "12"
             - name: memory
-              nominalQuota: "32Gi"
+              # Two single-GPU models: nemotron (16Gi request) + qwen (20Gi
+              # request for the ~36GB FP8 modelcar page cache headroom).
+              nominalQuota: "48Gi"
     - coveredResources: ["nvidia.com/gpu"]
       flavors:
         - name: gpu-l40s
           resources:
             - name: nvidia.com/gpu
-              nominalQuota: "1"
+              # One L40S per private model (nemotron + qwen).
+              nominalQuota: "2"
