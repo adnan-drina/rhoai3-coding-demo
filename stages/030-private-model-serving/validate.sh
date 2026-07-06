@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate.sh - Stage 210: Model Serving Foundation
+# validate.sh - Stage 030: Model Serving Foundation
 # Proves KServe, vLLM, the demo registry metadata, and the Nemotron endpoint are
 # ready for model-serving baseline work.
 set -euo pipefail
@@ -110,18 +110,18 @@ APP_SYNC=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation 
 APP_HEALTH=$(oc get applications.argoproj.io 010-openshift-ai-platform-foundation -n openshift-gitops \
   -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 [[ "$APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${APP_SYNC:-not found}"
-check "Stage 110 shared owner Application Synced" "$R"
+check "Stage 010 shared owner Application Synced" "$R"
 [[ "$APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${APP_HEALTH:-not found}"
-check "Stage 110 shared owner Application Healthy" "$R"
+check "Stage 010 shared owner Application Healthy" "$R"
 
 OBS_APP_SYNC=$(oc get applications.argoproj.io 030-private-model-serving -n openshift-gitops \
   -o jsonpath='{.status.sync.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 OBS_APP_HEALTH=$(oc get applications.argoproj.io 030-private-model-serving -n openshift-gitops \
   -o jsonpath='{.status.health.status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 [[ "$OBS_APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${OBS_APP_SYNC:-not found}"
-check "Stage 210 observability Application Synced" "$R"
+check "Stage 030 observability Application Synced" "$R"
 [[ "$OBS_APP_HEALTH" == "Healthy" ]] && R="pass" || R="health=${OBS_APP_HEALTH:-not found}"
-check "Stage 210 observability Application Healthy" "$R"
+check "Stage 030 observability Application Healthy" "$R"
 
 DSC_PHASE=$(oc get datasciencecluster default-dsc \
   -o jsonpath='{.status.phase}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
@@ -479,7 +479,7 @@ check "vLLM ServingRuntime discoverable" "$R"
 GPU_PROFILE=$(oc get hardwareprofile gpu-reserved-demo -n redhat-ods-applications \
   -o jsonpath='{.metadata.name}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 [[ "$GPU_PROFILE" == "gpu-reserved-demo" ]] && R="pass" || R="missing"
-check "Stage 120 GPU Reserved hardware profile present" "$R"
+check "Stage 020 GPU Reserved hardware profile present" "$R"
 
 GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
   -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' \

@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: benchmarking
     app.kubernetes.io/name: benchmark-data
     app.kubernetes.io/component: storage
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "13"
 spec:

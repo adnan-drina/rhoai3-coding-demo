@@ -9,7 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 rules:
   - apiGroups:
       - perses.dev
@@ -32,7 +32,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -52,7 +52,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 rules:
   - apiGroups:
       - monitoring.coreos.com
@@ -76,7 +76,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -96,7 +96,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -116,7 +116,7 @@ metadata:
   labels:
     app.kubernetes.io/name: rhoai-observability-dashboard-viewer
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

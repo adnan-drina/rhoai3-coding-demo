@@ -6,6 +6,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
     openshift.io/cluster-monitoring: "true"
 

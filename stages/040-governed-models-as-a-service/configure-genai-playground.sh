@@ -136,7 +136,7 @@ store_playground_api_key() {
     app.kubernetes.io/name="$PLAYGROUND_SECRET" \
     app.kubernetes.io/component=genai-playground \
     app.kubernetes.io/part-of=rhoai3-coding-demo \
-    demo.rhoai.io/stage=220 \
+    demo.rhoai.io/stage=040 \
     --insecure-skip-tls-verify=true >/dev/null
 
   echo "✓ Project Secret ${PROJECT_NS}/${PLAYGROUND_SECRET} contains a MaaS API key for the playground"

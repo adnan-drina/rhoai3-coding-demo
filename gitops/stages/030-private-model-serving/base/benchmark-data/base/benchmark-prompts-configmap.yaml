@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: benchmarking
     app.kubernetes.io/name: stage210-guidellm-prompts
     app.kubernetes.io/component: configuration
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "13"
 data:

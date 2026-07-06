@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — Stage 120: GPU-as-a-Service
+# deploy.sh — Stage 020: GPU-as-a-Service
 # Hands GPU infrastructure, Kueue quotas, and hardware profiles to Argo CD.
 set -euo pipefail
 

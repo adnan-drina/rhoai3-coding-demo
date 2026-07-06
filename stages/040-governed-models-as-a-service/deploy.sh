@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh - Stage 220: Models-as-a-Service
+# deploy.sh - Stage 040: Models-as-a-Service
 # Enables MaaS prerequisites through GitOps, while generating environment-local
 # secrets that must never be committed.
 set -euo pipefail
@@ -163,7 +163,7 @@ patch_stage_220_application() {
   oc patch applications.argoproj.io 040-governed-models-as-a-service -n openshift-gitops \
     --type=merge -p "$patch_json" --insecure-skip-tls-verify=true >/dev/null
 
-  echo "✓ Stage 220 Application uses MaaS Gateway hostname=${hostname}, tlsCertificate=maas-gateway-tls"
+  echo "✓ Stage 040 Application uses MaaS Gateway hostname=${hostname}, tlsCertificate=maas-gateway-tls"
 }
 
 apply_argocd_application() {
@@ -254,7 +254,7 @@ ensure_openai_provider_secret() {
       app.kubernetes.io/name="$OPENAI_PROVIDER_SECRET" \
       app.kubernetes.io/component=external-model-provider \
       app.kubernetes.io/part-of=rhoai3-coding-demo \
-      demo.rhoai.io/stage=220 \
+      demo.rhoai.io/stage=040 \
       demo.rhoai.io/provider=openai \
       inference.networking.k8s.io/bbr-managed=true \
       --insecure-skip-tls-verify=true >/dev/null
@@ -269,7 +269,7 @@ ensure_openai_provider_secret() {
       app.kubernetes.io/name="$OPENAI_PROVIDER_SECRET" \
       app.kubernetes.io/component=external-model-provider \
       app.kubernetes.io/part-of=rhoai3-coding-demo \
-      demo.rhoai.io/stage=220 \
+      demo.rhoai.io/stage=040 \
       demo.rhoai.io/provider=openai \
       inference.networking.k8s.io/bbr-managed=true \
       --insecure-skip-tls-verify=true >/dev/null
@@ -278,7 +278,7 @@ ensure_openai_provider_secret() {
   fi
 
   echo "ERROR: Missing OpenAI provider Secret ${OPENAI_PROVIDER_SECRET} in ${MAAS_NS}." >&2
-  echo "Set OPENAI_API_KEY or RHOAI_OPENAI_API_KEY locally before deploying Stage 220 model publication." >&2
+  echo "Set OPENAI_API_KEY or RHOAI_OPENAI_API_KEY locally before deploying Stage 040 model publication." >&2
   exit 1
 }
 
@@ -294,7 +294,7 @@ cleanup_demo_sandbox_nemotron() {
 
   if oc get inferenceservice "$DIRECT_NEMOTRON_NAME" -n "$DEMO_PROJECT_NS" \
     --insecure-skip-tls-verify=true >/dev/null 2>&1; then
-    echo "Deleting direct InferenceService ${DIRECT_NEMOTRON_NAME} from ${DEMO_PROJECT_NS}; Stage 220 will recreate Nemotron through MaaS in ${MAAS_NS}."
+    echo "Deleting direct InferenceService ${DIRECT_NEMOTRON_NAME} from ${DEMO_PROJECT_NS}; Stage 040 will recreate Nemotron through MaaS in ${MAAS_NS}."
     oc delete inferenceservice "$DIRECT_NEMOTRON_NAME" -n "$DEMO_PROJECT_NS" \
       --wait=false --ignore-not-found=true --insecure-skip-tls-verify=true >/dev/null
     wait_for_delete "InferenceService/${DIRECT_NEMOTRON_NAME}" \
@@ -394,34 +394,61 @@ ensure_known_monitoring_noise_is_excluded() {
 }
 
 if ! oc get crd certificates.cert-manager.io --insecure-skip-tls-verify=true >/dev/null 2>&1; then
-  echo "ERROR: cert-manager CRDs are missing. Install cert-manager Operator for Red Hat OpenShift before Stage 220." >&2
+  echo "ERROR: cert-manager CRDs are missing. Install cert-manager Operator for Red Hat OpenShift before Stage 040." >&2
   exit 1
 fi
 
 if ! oc get certmanager cluster --insecure-skip-tls-verify=true >/dev/null 2>&1; then
-  echo "ERROR: cert-manager cluster resource is missing. Configure the cert-manager operand before Stage 220." >&2
+  echo "ERROR: cert-manager cluster resource is missing. Configure the cert-manager operand before Stage 040." >&2
   exit 1
 fi
 
 ensure_maas_secrets
+ensure_optional_mcp_secrets() {
+  echo "── Ensuring optional MCP credential Secrets (rhoai-mcp) ──"
+
+  ensure_namespace_exists "rhoai-mcp"
+
+  if [[ -n "${SLACK_BOT_TOKEN:-}" ]]; then
+    oc create secret generic slack-mcp-credentials \
+      -n rhoai-mcp \
+      --from-literal=SLACK_BOT_TOKEN="${SLACK_BOT_TOKEN}" \
+      --dry-run=client -o yaml | oc apply -f - >/dev/null
+    echo "✓ slack-mcp-credentials provisioned"
+  else
+    echo "· SLACK_BOT_TOKEN not set — Slack MCP stays credential-gated"
+  fi
+
+  if [[ -n "${BRIGHTDATA_API_TOKEN:-}" ]]; then
+    oc create secret generic brightdata-mcp-credentials \
+      -n rhoai-mcp \
+      --from-literal=API_TOKEN="${BRIGHTDATA_API_TOKEN}" \
+      --dry-run=client -o yaml | oc apply -f - >/dev/null
+    echo "✓ brightdata-mcp-credentials provisioned"
+  else
+    echo "· BRIGHTDATA_API_TOKEN not set — BrightData MCP stays credential-gated"
+  fi
+}
+
 ensure_openai_provider_secret
+ensure_optional_mcp_secrets
 cleanup_demo_sandbox_nemotron
 
-echo "── Applying shared Stage 110 Argo CD Application ──"
+echo "── Applying shared Stage 010 Argo CD Application ──"
 apply_argocd_application \
   "010-openshift-ai-platform-foundation" \
   "$ROOT_DIR/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml"
 
-echo "── Applying Stage 220 Argo CD Application ──"
+echo "── Applying Stage 040 Argo CD Application ──"
 apply_argocd_application \
   "040-governed-models-as-a-service" \
   "$ROOT_DIR/gitops/argocd/app-of-apps/040-governed-models-as-a-service.yaml"
 
-wait_for_jsonpath "Stage 110 shared owner Application sync" \
+wait_for_jsonpath "Stage 010 shared owner Application sync" \
   "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
   "{.status.sync.status}" "Synced" 90
 
-wait_for_jsonpath "Stage 220 Application sync" \
+wait_for_jsonpath "Stage 040 Application sync" \
   "applications.argoproj.io/040-governed-models-as-a-service" "openshift-gitops" \
   "{.status.sync.status}" "Synced" 90
 
@@ -460,5 +487,5 @@ fi
 
 ensure_known_monitoring_noise_is_excluded
 
-echo "✓ Stage 220 rollout requested"
+echo "✓ Stage 040 rollout requested"
 echo "  Run ./040-governed-models-as-a-service/validate.sh to check MaaS prerequisites, local Nemotron publication, external model publication, and access policy."

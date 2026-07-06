@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: opentelemetry-product
     app.kubernetes.io/component: observability
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
     openshift.io/cluster-monitoring: "true"
   annotations:
     openshift.io/display-name: "Red Hat build of OpenTelemetry"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# generate-gpu-machineset.sh - derive a Stage 120 AWS GPU MachineSet from a
+# generate-gpu-machineset.sh - derive a Stage 020 AWS GPU MachineSet from a
 # live worker MachineSet in the currently guarded OpenShift environment.
 set -euo pipefail
 
@@ -183,7 +183,7 @@ if [[ "$WRITE" == "true" ]]; then
   mkdir -p "$(dirname "$ROOT_DIR/$OUTPUT_PATH")"
   printf "%s\n" "$GENERATED_YAML" >"$ROOT_DIR/$OUTPUT_PATH"
   echo "✓ Wrote $OUTPUT_PATH from source MachineSet $SOURCE_MACHINESET"
-  echo "  Review providerSpec, render with kustomize, then deploy Stage 120."
+  echo "  Review providerSpec, render with kustomize, then deploy Stage 020."
 else
   printf "%s\n" "$GENERATED_YAML"
   echo >&2

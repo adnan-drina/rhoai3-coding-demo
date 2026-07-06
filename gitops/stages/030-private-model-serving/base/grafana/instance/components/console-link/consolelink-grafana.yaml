@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: rhoai-demo-grafana
     app.kubernetes.io/component: monitoring
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "14"
 spec:

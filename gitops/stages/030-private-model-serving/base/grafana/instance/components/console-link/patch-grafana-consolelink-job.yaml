@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: job
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
 ---
@@ -20,7 +20,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: rbac
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
 rules:
@@ -41,7 +41,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: rbac
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
 roleRef:
@@ -61,7 +61,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: rbac
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
 rules:
@@ -82,7 +82,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: rbac
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "15"
 roleRef:
@@ -103,7 +103,7 @@ metadata:
     app.kubernetes.io/part-of: observability
     app.kubernetes.io/name: patch-grafana-consolelink
     app.kubernetes.io/component: job
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/hook: Sync
@@ -115,7 +115,7 @@ spec:
       labels:
         app.kubernetes.io/part-of: observability
         app.kubernetes.io/name: patch-grafana-consolelink
-        demo.rhoai.io/stage: "210"
+        demo.rhoai.io/stage: "030"
     spec:
       serviceAccountName: patch-grafana-consolelink
       restartPolicy: Never

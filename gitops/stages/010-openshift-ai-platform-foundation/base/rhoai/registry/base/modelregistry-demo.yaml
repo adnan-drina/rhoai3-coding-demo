@@ -5,7 +5,7 @@ metadata:
   namespace: rhoai-model-registries
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
   annotations:
     # The ModelRegistry CRD is installed by the modelregistry DSC component.
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true

@@ -135,7 +135,7 @@ spec:
                       app.kubernetes.io/name=maas-gateway-tls \
                       app.kubernetes.io/component=maas-gateway \
                       app.kubernetes.io/part-of=rhoai3-coding-demo \
-                      demo.rhoai.io/stage=220
+                      demo.rhoai.io/stage=040
                     echo "Prepared maas-gateway-tls from ${cert_name}"
                     exit 0
                   fi

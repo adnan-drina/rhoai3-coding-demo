@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate.sh - Stage 220: Models-as-a-Service
+# validate.sh - Stage 040: Models-as-a-Service
 # Checks the MaaS prerequisite boundary before model publication/subscription CRs
 # are authored.
 set -euo pipefail
@@ -661,11 +661,11 @@ validate_known_monitoring_noise_is_resolved() {
 
 APP_SYNC=$(jsonpath "applications.argoproj.io/040-governed-models-as-a-service" "openshift-gitops" "{.status.sync.status}")
 [[ "$APP_SYNC" == "Synced" ]] && R="pass" || R="sync=${APP_SYNC:-not found}"
-check "Stage 220 Application Synced" "$R"
+check "Stage 040 Application Synced" "$R"
 
 STAGE110_SYNC=$(jsonpath "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" "{.status.sync.status}")
 [[ "$STAGE110_SYNC" == "Synced" ]] && R="pass" || R="sync=${STAGE110_SYNC:-not found}"
-check "Stage 110 shared owner Application Synced" "$R"
+check "Stage 010 shared owner Application Synced" "$R"
 
 DSC_PHASE=$(jsonpath "datasciencecluster/default-dsc" "" "{.status.phase}")
 [[ "$DSC_PHASE" == "Ready" ]] && R="pass" || R="phase=${DSC_PHASE:-not found}"
@@ -1397,7 +1397,7 @@ validate_playground_if_present
 validate_known_monitoring_noise_is_resolved
 
 echo
-echo "Stage 220 validation summary: ${PASS} passed, ${WARN} warned, ${FAIL} failed"
+echo "Stage 040 validation summary: ${PASS} passed, ${WARN} warned, ${FAIL} failed"
 if (( FAIL > 0 )); then
   exit 1
 fi

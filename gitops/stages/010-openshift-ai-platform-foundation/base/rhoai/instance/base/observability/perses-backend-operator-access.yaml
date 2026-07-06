@@ -12,7 +12,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perses-backend-operator-access
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 spec:
   podSelector:
     matchLabels:

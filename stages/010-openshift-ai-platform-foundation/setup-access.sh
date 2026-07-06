@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-access.sh — Stage 110 platform access layer.
+# setup-access.sh — Stage 010 platform access layer.
 # Creates the htpasswd identity provider with ai-admin (RHOAI admin) and
 # ai-developer (regular user), and builds the demo-sandbox S3 connection from the
 # GitOps-provisioned ObjectBucketClaim. Run AFTER the platform is healthy

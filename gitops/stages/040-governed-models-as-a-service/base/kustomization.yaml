@@ -5,7 +5,7 @@ labels:
   - includeSelectors: false
     pairs:
       app.kubernetes.io/part-of: rhoai3-coding-demo
-      demo.rhoai.io/stage: "220"
+      demo.rhoai.io/stage: "040"
 
 resources:
   - prerequisites/lws/base
@@ -20,4 +20,12 @@ resources:
   - policies/base
   - mcp/base
   - jobs/base
+  - model-registry-seed
   - monitoring/base
+
+# Optional external-context MCP servers (credential-gated; Secrets are
+# provisioned by deploy.sh only when SLACK_BOT_TOKEN / BRIGHTDATA_API_TOKEN
+# are set locally; pods start without them via optional secret refs).
+components:
+  - mcp/components/slack-mcp
+  - mcp/components/brightdata-mcp

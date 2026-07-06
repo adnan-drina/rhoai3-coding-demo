@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# deploy.sh - Stage 210: Model Serving Foundation
-# Reconciles the shared Stage 110 RHOAI owner, then ensures the demo registry,
+# deploy.sh - Stage 030: Model Serving Foundation
+# Reconciles the shared Stage 010 RHOAI owner, then ensures the demo registry,
 # Nemotron registry metadata, and vLLM endpoint exist for fresh environments.
 set -euo pipefail
 
@@ -135,7 +135,7 @@ apply_argocd_application() {
     --insecure-skip-tls-verify=true >/dev/null
 }
 
-echo "── Applying shared Stage 110 Argo CD Application ──"
+echo "── Applying shared Stage 010 Argo CD Application ──"
 apply_argocd_application \
   "010-openshift-ai-platform-foundation" \
   "$ROOT_DIR/gitops/argocd/app-of-apps/010-openshift-ai-platform-foundation.yaml"
@@ -143,24 +143,24 @@ apply_argocd_application \
 echo "✓ Application 010-openshift-ai-platform-foundation applied"
 echo "  Argo CD will reconcile the base shared DSC owner."
 
-wait_for_jsonpath "Stage 110 shared owner Application sync" \
+wait_for_jsonpath "Stage 010 shared owner Application sync" \
   "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
   "{.status.sync.status}" "Synced"
 
-wait_for_jsonpath "Stage 110 shared owner Application health" \
+wait_for_jsonpath "Stage 010 shared owner Application health" \
   "applications.argoproj.io/010-openshift-ai-platform-foundation" "openshift-gitops" \
   "{.status.health.status}" "Healthy"
 
-echo "── Applying Stage 210 Argo CD Application ──"
+echo "── Applying Stage 030 Argo CD Application ──"
 apply_argocd_application \
   "030-private-model-serving" \
   "$ROOT_DIR/gitops/argocd/app-of-apps/030-private-model-serving.yaml"
 
-wait_for_jsonpath "Stage 210 Application sync" \
+wait_for_jsonpath "Stage 030 Application sync" \
   "applications.argoproj.io/030-private-model-serving" "openshift-gitops" \
   "{.status.sync.status}" "Synced"
 
-wait_for_jsonpath "Stage 210 Application health" \
+wait_for_jsonpath "Stage 030 Application health" \
   "applications.argoproj.io/030-private-model-serving" "openshift-gitops" \
   "{.status.health.status}" "Healthy"
 
@@ -516,7 +516,7 @@ metadata:
     kueue.x-k8s.io/queue-name: ${MODEL_QUEUE_NAME}
   annotations:
     openshift.io/display-name: "${MODEL_DISPLAY_NAME} - ${MODEL_VERSION_NAME}"
-    openshift.io/description: "Nemotron vLLM endpoint for the Stage 210 model serving baseline."
+    openshift.io/description: "Nemotron vLLM endpoint for the Stage 030 model serving baseline."
     opendatahub.io/model-type: generative
     opendatahub.io/hardware-profile-name: ${MODEL_HARDWARE_PROFILE}
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
@@ -571,5 +571,5 @@ wait_for_jsonpath "Nemotron InferenceService readiness" \
   "{.status.conditions[?(@.type==\"Ready\")].status}" "True" \
   "${RHOAI_STAGE210_MODEL_READY_ATTEMPTS:-180}" 10
 
-echo "✓ Stage 210 deployment baseline is ready"
+echo "✓ Stage 030 deployment baseline is ready"
 echo "  Run ./030-private-model-serving/validate.sh to confirm readiness."

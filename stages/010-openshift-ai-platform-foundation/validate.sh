@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate.sh — Stage 110: RHOAI Base Platform
+# validate.sh — Stage 010: RHOAI Base Platform
 # Proves all foundation components are healthy and the RHOAI dashboard is reachable.
 set -euo pipefail
 

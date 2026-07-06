@@ -5,3 +5,5 @@ resources:
   - local-queue.yaml
   - nemotron-llminferenceservice.yaml
   - nemotron-maas-modelref.yaml
+  - qwen-llminferenceservice.yaml
+  - qwen-maas-modelref.yaml

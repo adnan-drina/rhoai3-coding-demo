@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: cluster-observability-operator
     app.kubernetes.io/component: observability
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 ---
@@ -20,7 +20,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: cluster-observability-operator
     app.kubernetes.io/component: observability
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 rules:
@@ -44,7 +44,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: cluster-observability-operator
     app.kubernetes.io/component: observability
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 roleRef:
@@ -65,7 +65,7 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
     app.kubernetes.io/name: cluster-observability-operator
     app.kubernetes.io/component: observability
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
   annotations:
     # Manual InstallPlans keep the Subscription unhealthy until approved.
     # Keep the approver in the same wave as the Subscription so Argo CD does

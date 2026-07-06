@@ -37,7 +37,7 @@ spec:
           for: 10m
           labels:
             severity: warning
-            demo_stage: "220"
+            demo_stage: "040"
           annotations:
             summary: "High time-to-first-token for {{ $labels.model_name }}"
             description: >-
@@ -49,7 +49,7 @@ spec:
           for: 10m
           labels:
             severity: warning
-            demo_stage: "220"
+            demo_stage: "040"
           annotations:
             summary: "Request queue backing up for {{ $labels.model_name }}"
             description: >-
@@ -61,7 +61,7 @@ spec:
           for: 10m
           labels:
             severity: warning
-            demo_stage: "220"
+            demo_stage: "040"
           annotations:
             summary: "KV cache pressure for {{ $labels.model_name }}"
             description: >-
@@ -74,7 +74,7 @@ spec:
           for: 15m
           labels:
             severity: info
-            demo_stage: "220"
+            demo_stage: "040"
           annotations:
             summary: "No vLLM serving metrics in models-as-a-service"
             description: >-

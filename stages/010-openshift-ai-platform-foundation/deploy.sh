@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — Stage 110: RHOAI Base Platform
+# deploy.sh — Stage 010: RHOAI Base Platform
 # Bootstraps OpenShift GitOps, then hands off ODF + RHOAI to Argo CD.
 set -euo pipefail
 

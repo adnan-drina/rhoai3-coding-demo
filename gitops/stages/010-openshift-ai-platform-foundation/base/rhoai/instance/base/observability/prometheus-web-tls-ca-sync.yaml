@@ -12,7 +12,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "14"
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -23,7 +23,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "14"
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -41,7 +41,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "14"
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -62,7 +62,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
   labels:
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "110"
+    demo.rhoai.io/stage: "010"
 spec:
   backoffLimit: 8
   template:

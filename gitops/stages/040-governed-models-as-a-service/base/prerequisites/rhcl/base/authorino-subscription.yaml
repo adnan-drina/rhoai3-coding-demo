@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: authorino-operator
     app.kubernetes.io/component: api-gateway-governance
     app.kubernetes.io/part-of: rhoai3-coding-demo
-    demo.rhoai.io/stage: "220"
+    demo.rhoai.io/stage: "040"
   annotations:
     argocd.argoproj.io/ignore-healthcheck: "true"
     argocd.argoproj.io/sync-wave: "3"

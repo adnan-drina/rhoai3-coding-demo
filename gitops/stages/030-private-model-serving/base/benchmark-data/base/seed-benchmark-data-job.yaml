@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/part-of: benchmarking
     app.kubernetes.io/name: seed-stage210-benchmark-data
     app.kubernetes.io/component: job
-    demo.rhoai.io/stage: "210"
+    demo.rhoai.io/stage: "030"
   annotations:
     # Same wave as the PVC so WaitForFirstConsumer storage classes can bind
     # when this normal Job pod is scheduled.
@@ -19,7 +19,7 @@ spec:
       labels:
         app.kubernetes.io/part-of: benchmarking
         app.kubernetes.io/name: seed-stage210-benchmark-data
-        demo.rhoai.io/stage: "210"
+        demo.rhoai.io/stage: "030"
     spec:
       restartPolicy: Never
       containers:

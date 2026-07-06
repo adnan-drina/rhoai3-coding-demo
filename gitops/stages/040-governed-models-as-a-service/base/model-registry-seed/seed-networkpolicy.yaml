@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-registry-seed-access
+  namespace: rhoai-model-registries
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-registry
+      component: model-registry
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: model-registry-seed
+      ports:
+        - protocol: TCP
+          port: 8080

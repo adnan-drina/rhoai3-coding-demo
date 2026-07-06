@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate.sh — Stage 120: GPU-as-a-Service
+# validate.sh — Stage 020: GPU-as-a-Service
 # Proves the GPU node, NVIDIA stack, Kueue queues, and RHOAI hardware profiles
 # are ready for self-service use.
 set -euo pipefail
