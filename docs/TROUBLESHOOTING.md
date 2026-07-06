@@ -71,6 +71,29 @@ oc get application "$APP" -n openshift-gitops -o json \
 - If drift is not expected, fix the Git manifest or re-sync the app.
 - Avoid broad ignores such as a whole CR `spec` unless the operator truly owns that full field.
 
+## Model Shows "Starting" In The RHOAI Console But Its Pod Is Ready
+
+**Affected stage:** Stage 030 (until Stage 040 is deployed)
+
+**Likely cause:** The RHOAI console shows "Starting" for any
+`LLMInferenceService` whose CR-level `Ready` condition is not True. After
+Stage 030 the model workload itself is healthy (`MainWorkloadReady=True`,
+pod `2/2 Running`, in-cluster OpenAI API answering), but `RouterReady` and
+`HTTPRoutesReady` stay False with `GatewayPreconditionNotMet` because the
+maas-default-gateway and the Kuadrant AuthPolicy CRD only arrive with
+Stage 040 (Red Hat Connectivity Link).
+
+**Diagnose:**
+
+```bash
+oc get llminferenceservice -n maas <model> \
+  -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
+```
+
+**Recover:** Deploy Stage 040. The router conditions reconcile once the
+gateway and policy CRDs exist, and the console flips to green. No action
+is needed on the model itself.
+
 ## Argo CD Reports Synced But New Manifests Are Missing
 
 **Affected stage:** any
