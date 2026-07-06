@@ -1,0 +1,109 @@
+# openshift-operators carries Manual-approval subscriptions (Stage 040 RHCL),
+# and OLM applies the most restrictive approval to shared InstallPlans — so
+# the Automatic intent of the trusted-delivery subscriptions never fires on
+# its own. This hook approves pending plans that carry the pipelines/rhtas
+# CSVs (channel-resolved, unpinned by design; see the stage README image
+# policy).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: approve-trusted-delivery-installplans
+    app.kubernetes.io/component: trusted-delivery
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-demo-approve-trusted-delivery-installplans
+  labels:
+    app.kubernetes.io/name: approve-trusted-delivery-installplans
+    app.kubernetes.io/component: trusted-delivery
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+rules:
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["installplans"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["subscriptions", "clusterserviceversions"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhoai-demo-approve-trusted-delivery-installplans
+  labels:
+    app.kubernetes.io/name: approve-trusted-delivery-installplans
+    app.kubernetes.io/component: trusted-delivery
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-approve-trusted-delivery-installplans
+subjects:
+  - kind: ServiceAccount
+    name: approve-trusted-delivery-installplans
+    namespace: openshift-operators
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: approve-trusted-delivery-installplans
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: approve-trusted-delivery-installplans
+    app.kubernetes.io/component: trusted-delivery
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: approve-trusted-delivery-installplans
+      restartPolicy: Never
+      containers:
+        - name: approve
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              # Bounded wait: approve pending plans carrying our CSVs until
+              # both subscriptions report an installed CSV.
+              for attempt in $(seq 1 60); do
+                for plan in $(oc get installplans -n openshift-operators \
+                    -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{" "}{end}'); do
+                  csvs="$(oc get installplan "$plan" -n openshift-operators \
+                    -o jsonpath='{.spec.clusterServiceVersionNames[*]}')"
+                  case " ${csvs} " in
+                    *" openshift-pipelines-operator-rh."*|*" rhtas-operator."*)
+                      oc patch installplan "$plan" -n openshift-operators \
+                        --type=merge -p '{"spec":{"approved":true}}'
+                      echo "Approved ${plan} (${csvs})"
+                      ;;
+                  esac
+                done
+                p="$(oc get subscription openshift-pipelines-operator-rh -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
+                t="$(oc get subscription rhtas-operator -n openshift-operators -o jsonpath='{.status.installedCSV}' 2>/dev/null || true)"
+                if [[ -n "$p" && -n "$t" ]]; then
+                  echo "Installed: ${p}, ${t}"
+                  exit 0
+                fi
+                sleep 10
+              done
+              echo "ERROR: trusted-delivery operators did not install in time" >&2
+              exit 1

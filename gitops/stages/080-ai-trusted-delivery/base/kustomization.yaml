@@ -14,3 +14,4 @@ labels:
 resources:
   - operators/pipelines-subscription.yaml
   - operators/rhtas-subscription.yaml
+  - operators/approve-installplans.yaml
