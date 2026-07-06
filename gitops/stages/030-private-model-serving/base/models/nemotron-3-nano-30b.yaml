@@ -50,7 +50,9 @@ spec:
   template:
     containers:
       - name: main
-        image: registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b
+        # No image override: the RHOAI operator supplies the supported vLLM
+        # runtime through the versioned kserve-config-llm-template config and
+        # rolls it with each z-stream.
         command:
           - python
           - -m
