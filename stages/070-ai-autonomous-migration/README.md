@@ -2,9 +2,14 @@
 
 ## Why This Matters
 
-Enterprise AI is most useful when it is embedded in real engineering workflows, not isolated chat sessions. Application modernization is a strong example: Java EE and JBoss EAP portfolios need analysis, migration rules, code understanding, remediation suggestions, tests, and human review.
+Most enterprises carry a backlog of legacy applications they cannot afford to migrate by hand — and cannot afford to send to an external AI service either. The question this stage answers is: how far can AI take application migration when it runs on governed, private infrastructure, and where must humans stay in the loop?
 
-Stage 070 shows how Migration Toolkit for Applications (MTA) and Red Hat Developer Lightspeed for MTA connect static analysis, modernization context, IDE workflow, and governed model access.
+Stage 070 answers it with two complementary paths on the same platform:
+
+- **Assisted modernization (supported product path):** Migration Toolkit for Applications (MTA) analyzes the portfolio with rules and static analysis; Red Hat Developer Lightspeed for MTA turns findings into focused, reviewable remediation suggestions through governed model access.
+- **Autonomous migration (agentic path):** a multi-agent workflow (following the experimental [MigIQ](https://github.com/sshaaf/migIQ) pattern) takes a Spring Boot service end-to-end to Quarkus: graph-based code analysis, dependency-ordered planning, parallel execution, test generation, containerization, and OpenShift deployment — with a mandatory human review gate before anything merges, and every agent request metered through MaaS.
+
+The contrast is the message: analysis-grounded assistance is production-supported today; autonomous agents multiply throughput on the well-understood migrations — and both run under the same identity, token limits, and telemetry.
 
 ## Architecture
 
@@ -12,7 +17,9 @@ Stage 070 shows how Migration Toolkit for Applications (MTA) and Red Hat Develop
 
 ## What This Stage Adds
 
-This stage adds an AI-assisted modernization workflow.
+This stage adds both migration paths.
+
+Assisted modernization (deployed by this stage):
 
 - Migration Toolkit for Applications 8.1 with MTA Hub and UI.
 - Red Hat Developer Lightspeed for MTA services for AI-assisted remediation suggestions.
@@ -20,7 +27,15 @@ This stage adds an AI-assisted modernization workflow.
 - OpenShift OAuth federation through the MTA Keycloak / Red Hat build of Keycloak identity path.
 - Red Hat OpenShift Dev Spaces integration through the MTA VS Code extension.
 
-The sample modernization target is [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore). Its `main` branch is the legacy Java EE / JBoss-style starting point and its `quarkus` branch is the completed reference target.
+Autonomous migration (workspace workflow, see the
+[agentic migration exercise](agentic-migration-exercise.md)):
+
+- The MigIQ skill set (pinned npm package `@sshaaf/migiq@0.2.2`, experimental) installed into the Dev Spaces workspace.
+- Multi-agent Spring Boot to Quarkus migration driven by MaaS-published models: `qwen3-6-35b-a3b` as the execution model and `nemotron-3-nano-30b-a3b` for long-context planning.
+- A human review gate between planning/execution and merge, consistent with the review discipline from Stages 050 and 060.
+- Agent token consumption visible on the Stage 040 MaaS usage dashboards — governance of autonomous workloads is part of the demo, not an afterthought.
+
+The assisted-path sample is [konveyor-ecosystem/coolstore](https://github.com/konveyor-ecosystem/coolstore) (`main` = legacy Java EE starting point, `quarkus` = completed reference). The autonomous-path sample is the Spring Boot service from the MigIQ examples; the exercise document tracks its workspace wiring.
 
 ## What To Notice And Why It Matters
 
