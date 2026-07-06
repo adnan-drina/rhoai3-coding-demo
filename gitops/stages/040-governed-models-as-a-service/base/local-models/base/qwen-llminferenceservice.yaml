@@ -46,6 +46,16 @@ spec:
           targetPorts:
             - number: 8000
   template:
+    # One private LLM per physical GPU node: two vLLM runtimes on one
+    # time-sliced L40S would both try to allocate ~90% of its VRAM.
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/part-of: llminferenceservice
+                kserve.io/component: workload
+            topologyKey: kubernetes.io/hostname
     containers:
       - name: main
         # No image override: the RHOAI operator supplies the supported vLLM
