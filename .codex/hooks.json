@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-openshift-command.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking OpenShift cluster guard"
+          }
+        ]
+      }
+    ]
+  }
+}

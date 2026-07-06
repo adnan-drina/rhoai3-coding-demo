@@ -23,7 +23,36 @@ load_env() {
 }
 
 check_oc_logged_in() {
-    oc whoami &>/dev/null || { log_error "Not logged in. Run: oc login <cluster>"; exit 1; }
+    local request_timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}"
+
+    oc --request-timeout="$request_timeout" whoami &>/dev/null || {
+        log_error "Not logged in or OpenShift API did not respond within ${request_timeout}."
+        log_error "Run: oc login <cluster>"
+        exit 1
+    }
+
+    local server expected
+    server="$(oc --request-timeout="$request_timeout" whoami --show-server 2>/dev/null || true)"
+    expected="${RHOAI_EXPECTED_API_SERVER:-${RHOAI_EXPECTED_CLUSTER:-}}"
+
+    if [[ -z "$expected" && "${RHOAI_ALLOW_UNGUARDED_CLUSTER:-false}" != "true" ]]; then
+        log_error "OpenShift API server guard is not configured"
+        log_error "  Set RHOAI_EXPECTED_API_SERVER in .env to a unique target API-server substring."
+        log_error "  Current API: ${server:-unknown}"
+        log_error "  To bypass intentionally, set RHOAI_ALLOW_UNGUARDED_CLUSTER=true."
+        exit 43
+    fi
+
+    if [[ -n "$expected" && "$server" != *"$expected"* ]]; then
+        log_error "OpenShift API server guard failed"
+        log_error "  expected: $expected"
+        log_error "  actual:   $server"
+        exit 42
+    fi
+
+    if [[ -n "$server" ]]; then
+        log_info "OpenShift API: $server"
+    fi
 }
 
 ensure_namespace() {

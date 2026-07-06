@@ -18,6 +18,7 @@ VALIDATE_FAIL=0
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 source "$REPO_ROOT/scripts/lib.sh"
+check_oc_logged_in
 
 check() {
     local label="$1" cmd="$2" expected="$3"
