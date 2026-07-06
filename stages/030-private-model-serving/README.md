@@ -51,6 +51,13 @@ then this stage captures a simple GuideLLM/Grafana serving baseline, and Stage
 This stage uses direct model serving, not Models-as-a-Service and not llm-d.
 MaaS governance and external OpenAI `gpt-4o-mini` registration belong to
 Stage 040. Distributed inference with llm-d remains a later scale-out option.
+
+> **Lifecycle note:** the direct Nemotron `InferenceService` deployed here is a
+> serving baseline, not a permanent resident. Stage 040's deploy retires it to
+> free its GPU for the MaaS-published models — so between the Stage 040 cleanup
+> and the MaaS models becoming Ready, the platform intentionally shows no
+> deployed model for a few minutes. Validation evidence for this stage is
+> captured before that handover.
 EvalHub, MLflow, LMEval, judge-based evaluation, and risk assessment remain
 deferred to later MLOps/evaluation stages.
 

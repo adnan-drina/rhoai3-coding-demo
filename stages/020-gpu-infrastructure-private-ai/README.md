@@ -40,7 +40,16 @@ The demo uses one AWS `g6e.2xlarge` GPU worker by default. This instance type
 provides one NVIDIA L40S GPU with 48 GB of GPU memory. The MachineSet is tracked
 in GitOps so a fresh environment can create the GPU worker consistently.
 
-Default node count is one GPU worker. Operators can manually scale the GPU
+This demo provisions two GPU workers — one NVIDIA L40S per private model (nemotron and qwen each claim a full card; see Stage 040). On every fresh environment, regenerate the MachineSet from the cluster's own worker pool before or right after deploy:
+
+```bash
+RHOAI_GPU_MACHINESET_REPLICAS=2 \
+  ./stages/020-gpu-infrastructure-private-ai/generate-gpu-machineset.sh --write
+```
+
+The committed manifest carries cluster-specific identity (AMI, subnet,
+cluster labels) and cannot provision on a different cluster.
+Operators can manually scale the GPU
 MachineSet to zero between sessions to control cost; the Argo CD Application
 ignores `MachineSet.spec.replicas` drift so intentional scale-down is not
 self-healed back to one.
@@ -112,14 +121,14 @@ The low-level scheduling authority remains in Kueue `ResourceFlavor` and
 | CPU Default | `lq-cpu-default` | 0 | CPU-only workbench or small job |
 | GPU Shared - 1x NVIDIA | `lq-gpu-shared` | 2 | Shared GPU capacity when available |
 | GPU Priority - 1x NVIDIA | `lq-gpu-priority` | 1 | Dedicated higher-importance lane |
-| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 1 | Reserved demo-team capacity |
+| GPU Reserved - Demo Team | `lq-gpu-reserved-demo` | 2 | Reserved capacity: one L40S per private model (nemotron + qwen) |
 
 ---
 
 ## Architecture
 
 ```text
-AWS GPU MachineSet (g6e.2xlarge, 1x L40S, default replicas=1)
+AWS GPU MachineSet (g6e.2xlarge, 1x L40S each, replicas=2 for the two private models)
    |
    v
 NFD Operator -> NodeFeatureDiscovery -> node hardware feature labels

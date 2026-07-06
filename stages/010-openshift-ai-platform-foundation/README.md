@@ -87,7 +87,7 @@ The base platform ships ready for a user to log in and start working. An htpassw
 - **Identity provider:** htpasswd (`demo-htpasswd`); `kubeadmin` retained as the cluster-admin recovery path
 - **`ai-admin`:** RHOAI administrator (member of the `rhods-admins` group referenced by the RHOAI `auth` CR `adminGroups`), and project-admin on `demo-sandbox` — the RHOAI dashboard-admin role alone does not grant access to an individual project namespace, so `rhods-admins` is bound to `admin` on the project
 - **`ai-developer`:** regular user; Contributor (`edit`) on the `demo-sandbox` project via the `rhoai-developers` group
-- **`demo-sandbox`:** the first data science project, used for platform validation and ad-hoc demos
+- **`demo-sandbox`:** the first data science project (displayed as "AI Coding Sandbox" in the dashboard), used for platform validation and the developer-facing exercises
 - **`demo-sandbox-s3`:** an S3 connection backed by a project-scoped `ObjectBucketClaim` on MCG, using the dashboard's pre-installed S3 connection type
 - **Secrets posture:** htpasswd, user passwords, and the connection secret are created imperatively by `setup-access.sh` and never committed; passwords are stored in the gitignored `.env`
 - **Docs:** [RHOAI 3.4 — Managing users and groups](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/managing_openshift_ai); [OCP 4.20 — htpasswd identity provider](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/authentication_and_authorization/index)

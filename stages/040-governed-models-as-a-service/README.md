@@ -8,10 +8,14 @@ subscription boundaries, API key lifecycle management, user-facing model
 discovery, usage reporting, and consistent controls across local and external
 models.
 
-Models-as-a-Service (MaaS) adds that product layer. In this demo it turns the
-validated Nemotron endpoint from Stage 030 and an external OpenAI
-`gpt-4o-mini` provider model into managed AI assets that can be discovered,
-subscribed to, monitored, and consumed through OpenAI-compatible APIs.
+Models-as-a-Service (MaaS) adds that product layer. In this demo it publishes
+two private local models — `nemotron-3-nano-30b-a3b` (131K-context reasoning)
+and `qwen3-6-35b-a3b` (Qwen3.6 35B A3B FP8-dynamic, the coding specialist,
+32K deployed context) — plus an external OpenAI `gpt-4o-mini` provider model
+as managed AI assets that can be discovered, subscribed to, monitored, and
+consumed through OpenAI-compatible APIs. Each private model claims a full
+L40S; required pod anti-affinity keeps one LLM per GPU node because two vLLM
+runtimes cannot share one card's memory.
 
 ## What Enables It
 
@@ -70,11 +74,14 @@ This stage is implemented in phases:
    using the same MaaS resource name and upstream provider model ID,
    developer subscription quota, developer authorization policy, and MaaS
    namespace admin access for `rhods-admins`.
-3. Migrate the local Nemotron serving path into the MaaS namespace by creating
-   a schema-validated `LLMInferenceService`, a MaaS `MaaSModelRef`, and the
-   matching subscription/auth policy. The deployment wrapper removes a stale
-   dashboard-created direct Nemotron `InferenceService` from `demo-sandbox`
-   before the MaaS-owned backend is reconciled.
+3. Migrate the local serving path into the MaaS namespace by creating
+   schema-validated `LLMInferenceService` resources for Nemotron and Qwen3.6,
+   their `MaaSModelRef` entries, and the matching subscription/auth policy.
+   The deployment wrapper removes the Stage 030 baseline Nemotron
+   `InferenceService` from `demo-sandbox` before the MaaS-owned backends are
+   reconciled (see the Stage 030 lifecycle note), and the model registry seed
+   job writes rich model cards (provider, validated-by, source repo, license,
+   quantization, deployed context, capabilities) for both private models.
 4. Validate user access with real demo users, temporary MaaS API keys,
    Nemotron tool-calling inference, external OpenAI function calling, and MaaS
    observability prerequisites. Nemotron remains the primary model for the
@@ -85,11 +92,18 @@ This stage is implemented in phases:
    giving the model write permissions or access to Secrets, ConfigMaps, or
    RBAC resources.
 
-A dedicated `enterprise-rag-autorag` MaaSSubscription provides elevated token
-rate limits (Nemotron: 2M tokens/h, GPT-4o-mini: 1M tokens/h) for Stage 230
-AutoRAG optimization runs, which evaluate many RAG patterns in a burst and
-would exhaust the interactive developer subscription budgets. This keeps
-governance enforced while sizing quota for the optimization workload.
+A dedicated `enterprise-rag-autorag` MaaSSubscription (name inherited from the
+shared rhoai3-demo foundation) provides elevated token rate limits
+(Nemotron: 2M tokens/h, GPT-4o-mini: 1M tokens/h) for burst workloads that
+would exhaust interactive developer budgets. In this demo that consumer is
+the Stage 070 multi-agent migration, whose parallel agents are deliberately
+token-heavy. This keeps governance enforced while sizing quota for
+autonomous workloads.
+
+Coding-demo additions on top of the shared foundation: the Qwen3.6 second
+local model, the rich model-card registry seed, and optional credential-gated
+Slack and BrightData MCP servers in `rhoai-mcp` (Secrets provisioned by
+deploy.sh only when `SLACK_BOT_TOKEN` / `BRIGHTDATA_API_TOKEN` are set).
 
 Serving-health monitoring rides on the same User Workload Monitoring pipeline
 that feeds the Stage 030 Grafana dashboards. A `vllm-serving-health`
