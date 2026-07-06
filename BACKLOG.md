@@ -138,3 +138,11 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 ## Stage 070 agentic migration provenance
 
 - [ ] **MigIQ is experimental and Claude-Code-first** — the Stage 070 multi-agent migration follows the MigIQ pattern (github.com/sshaaf/migIQ, npm @sshaaf/migiq). Pin the npm version in workspace provisioning, document its experimental status in the stage README, and run an OpenCode-compatibility proving run inside Dev Spaces before the stage README promises OpenCode support. Models route through MaaS (qwen3-6-35b-a3b executor, nemotron long-context planning) so agent token usage is visible on the Stage 040 usage dashboards.
+
+## Showroom-derived topics (adv-app-platform-demo-showroom mapping)
+
+- [ ] **Stage 080 implementation recipe** — adopt showroom modules 5-6 as the reference: Tekton pipeline for the Stage 070 migrated app with SonarQube gate, Tekton Chains SLSA attestation, TAS signing, SBOM generation, TPA SBOM/vulnerability management. See docs/PLAN-showroom-concept-mapping.md.
+- [ ] **Stage 090 self-service template** — RHDH software template scaffolding a component + governed workspace (showroom module 4 pattern) and topology wrap-up view (module 6).
+- [ ] **Stage 060 demo beat** — pipeline/quality-gate fails, skills-guided agent fixes it (showroom module 2 loop adapted to OpenCode + skills).
+- [ ] **Stage 050 workspace addition** — Dependency Analytics extension in the editor policy (showroom module 5 part 1).
+- [ ] **AI-enhanced application development (future stage candidate)** — Quarkus + LangChain4j service consuming MaaS endpoints on the same golden path (showroom module 7 email-triage pattern adapted to our governed models).
