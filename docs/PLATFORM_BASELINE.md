@@ -15,6 +15,7 @@ Update it first when preparing an upgrade.
 | Red Hat build of OpenTelemetry | 3.9 | https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9 |
 | Red Hat OpenShift distributed tracing platform | 3.9 | https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9 |
 | Red Hat OpenShift Pipelines | 1.22 | https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/ |
+| Red Hat OpenShift Lightspeed | 1.0 | https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0 |
 
 ## Version Match Rule
 
@@ -59,6 +60,13 @@ should use:
 
 ```text
 https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
+```
+
+For the current baseline, Red Hat OpenShift Lightspeed documentation links
+should use:
+
+```text
+https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/
 ```
 
 Do not use `latest` or another product version for product configuration unless
@@ -224,6 +232,24 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
   [Custom Tekton Hub instance](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/custom_tekton_hub_instance/index)
 - **Reference**:
   [Pipelines CLI (tkn) reference](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/html/pipelines_cli_tkn_reference/index)
+
+## Red Hat OpenShift Lightspeed 1.0 Documentation Index
+
+Use the official OpenShift Lightspeed 1.0 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
+
+- **About**:
+  [Introduction to OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/about/index),
+  [Release Notes](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/release_notes/index),
+  [Verifying version compatibility](https://access.redhat.com/support/policy/updates/openshift_operators)
+- **Installing**:
+  [Installing OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/install/index)
+- **Configuring**:
+  [Configuring OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/configure/index)
+- **Operations**:
+  [Using OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/operate/index)
+- **Troubleshoot**:
+  [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
 
 ## OpenShift Data Foundation 4.20 Documentation Index
 

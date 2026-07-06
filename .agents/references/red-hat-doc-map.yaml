@@ -513,6 +513,69 @@ products:
             status: active
             skill: ocp-image-registry-and-mirroring
 
+  ocp_pipelines:
+    name: Red Hat OpenShift Pipelines
+    baseline_component: Red Hat OpenShift Pipelines
+    skill_prefix: ocp-pipelines-
+    rule: .agents/rules/ocp.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/1.22/
+    categories:
+      about:
+        description: Release notes, concepts, Tekton CRDs, and key features.
+        routes:
+          - book: release_notes
+            status: active
+            skill: ocp-pipelines-release-notes
+          - book: about_openshift_pipelines
+            status: active
+            skill: ocp-pipelines-about
+      installing_and_configuring:
+        description: Operator installation, TektonConfig customization, pruner, resolvers, and performance tuning.
+        routes:
+          - book: installing_and_configuring
+            status: active
+            skill: ocp-pipelines-install-config
+          - book: managing_performance_and_resource_use
+            status: active
+            skill: ocp-pipelines-performance
+      security:
+        description: Tekton Chains, supply chain security, signing, authentication, and security contexts.
+        routes:
+          - book: securing_openshift_pipelines
+            status: active
+            skill: ocp-pipelines-security
+      observability:
+        description: Tekton Results, metrics, log forwarding, and opc CLI queries.
+        routes:
+          - book: observability_in_openshift_pipelines
+            status: active
+            skill: ocp-pipelines-observability
+      pipelines_as_code:
+        description: Repository CR, GitHub App, webhooks, .tekton conventions, CEL expressions, and PAC administration.
+        routes:
+          - book: pipelines_as_code
+            status: active
+            skill: ocp-pipelines-as-code
+      creating_cicd_pipelines:
+        description: CI/CD solution creation, triggers, resolvers, pipeline templates, and image mirroring.
+        routes:
+          - book: creating_cicd_pipelines
+            status: active
+            skill: ocp-pipelines-cicd
+      custom_tekton_hub_instance:
+        description: TektonHub CR, custom database, catalog management, and user scopes.
+        routes:
+          - book: custom_tekton_hub_instance
+            status: active
+            skill: ocp-pipelines-tekton-hub
+      reference:
+        description: tkn CLI command reference and opc Technology Preview CLI.
+        routes:
+          - book: pipelines_cli_tkn_reference
+            status: active
+            skill: ocp-pipelines-cli-reference
+
   odf:
     name: Red Hat OpenShift Data Foundation
     baseline_component: Red Hat OpenShift Data Foundation
