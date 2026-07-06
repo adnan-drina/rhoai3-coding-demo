@@ -164,9 +164,11 @@ check "agentic-migration DevWorkspace exists" \
 check "workspace clones the migiq sample" \
   "oc get devworkspace agentic-migration -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" \
   "migiq-spring-boot-sample"
-check "elevated key provisioning job completed" \
-  "oc get job provision-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.status.succeeded}' 2>/dev/null || echo hook-cleaned" \
-  "1"
+# The provisioning hook deletes itself on success (HookSucceeded policy);
+# the durable evidence is the Secret and a live authorization check.
+check "elevated key authenticates against the governed gateway" \
+  "KEY=\$(oc get secret maas-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY}' | base64 -d); HOST=\$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}'); curl -sk -o /dev/null -w '%{http_code}' -H \"Authorization: Bearer \$KEY\" \"https://\$HOST/models-as-a-service/qwen3-6-35b-a3b/v1/models\"" \
+  "200"
 check "elevated MaaS key Secret exists" \
   "oc get secret maas-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "maas-agentic-migration-key"
