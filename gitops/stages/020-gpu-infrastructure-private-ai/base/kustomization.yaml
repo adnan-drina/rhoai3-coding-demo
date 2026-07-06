@@ -37,6 +37,10 @@ resources:
   - keda/kedacontroller.yaml
   # Wave 10-15: GPU Operator instances and dashboards
   - gpu-operator/clusterpolicy.yaml
+  # Direct-scheduling GPU hardware profiles: GPU sizing choices belong to the
+  # stage that provides GPU capacity; Stage 010 keeps only the CPU profile.
+  - gpu-operator/hardware-profile-l4-1gpu.yaml
+  - gpu-operator/hardware-profile-l4-4gpu.yaml
   - gpu-operator/dcgm-dashboard-configmap.yaml
   - observability/gpuaas-dashboard-configmap.yaml
   # Wave 20: GPU MachineSet Job

@@ -9,7 +9,9 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     opendatahub.io/display-name: "NVIDIA L4 4GPUs"
     opendatahub.io/description: "Multi-GPU for distributed inference"
-    opendatahub.io/disabled: "false"
+    # Disabled until the demo cluster carries 4-GPU capacity; the ClusterQueue
+    # advertises 2 GPUs and an enabled 4-GPU choice would queue forever.
+    opendatahub.io/disabled: "true"
   labels:
     app.kubernetes.io/part-of: hardwareprofile
     app.opendatahub.io/hardwareprofile: "true"

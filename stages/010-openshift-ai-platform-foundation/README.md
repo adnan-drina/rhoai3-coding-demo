@@ -18,7 +18,7 @@ This stage adds the shared OpenShift AI foundation.
 - Core OpenShift AI services for dashboard access, GenAI Studio, model serving, model registry, and Llama Stack. The Models-as-a-Service component stays disabled here; Stage 040 enables it after the MaaS gateway exists, so the DataScienceCluster reaches Ready within this stage.
 - A PostgreSQL-backed model registry for model metadata.
 - Demo users, OpenShift groups, and OpenShift OAuth integration.
-- CPU and NVIDIA L4 hardware profiles for explicit workload sizing.
+- A CPU hardware profile for explicit workload sizing; GPU profiles arrive with Stage 020 GPU capacity.
 - User workload monitoring and CA trust configuration for observability and internal TLS handling.
 
 The stage enables the services required by later stages. It does not try to enable every OpenShift AI feature.
@@ -29,7 +29,7 @@ Stage 010 makes OpenShift AI the shared control plane before any model endpoint 
 
 - Platform teams get one entry point for model discovery, model metadata, dashboard access, and workload choices.
 - OpenShift OAuth, groups, and RBAC establish the identity base for later model and workspace access.
-- Hardware profiles make CPU and NVIDIA L4 choices visible through the platform rather than local assumptions.
+- Hardware profiles make approved workload sizes visible through the platform rather than local assumptions.
 - Monitoring prerequisites are installed early so later model, MaaS, and GPU signals have a place to land.
 
 This matters because privacy-sensitive and regulated environments need repeatable platform controls before teams start sending source code or modernization context to AI services.
