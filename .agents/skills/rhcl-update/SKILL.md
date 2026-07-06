@@ -8,113 +8,123 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Use when updating or upgrading Red Hat Connectivity Link to a newer version,
-  including operator updates, migration steps, and compatibility considerations.
-  Do NOT use for installing (use rhcl-install), configuring (use
-  rhcl-configure), or troubleshooting (use rhcl-troubleshoot).
+  Use when updating Red Hat Connectivity Link within the 1.3.x line or
+  understanding upgrade constraints. Covers supported configurations, OCP
+  version compatibility, dependent operator versions, and the web console
+  update procedure. Note: RHCL 1.4.0 is deprecated per official 1.4 release
+  notes; the demo stays pinned at rhcl-operator.v1.3.4. Do NOT upgrade to 1.4.
 ---
 
 # RHCL Update
 
-Use this skill to ground Red Hat Connectivity Link update and upgrade guidance
-in the official RHCL 1.4 documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+Use this skill to ground Connectivity Link update decisions in official RHCL 1.3
+documentation for the active baseline in `docs/PLATFORM_BASELINE.md`.
 
 ## Source Grounding
 
 Read `references/source-capture.md` before using product behavior. Official Red
 Hat documentation is product authority.
 
-## RHCL 1.4.0 Deprecation Notice
+## RHCL 1.4.0 Deprecation Warning
 
-The official RHCL 1.4 update page carries a critical deprecation warning:
+RHCL 1.4.0 is deprecated. Per the official 1.4 release notes
+(RHBA-2026:25234), clusters running 1.4.0 may experience authentication
+failures, API key management errors, gateway instability, or gateway pod memory
+pressure due to integration incompatibilities across OCP and Service Mesh
+combinations.
 
-> Red Hat Connectivity Link 1.4.0 is deprecated. OpenShift Container Platform
-> clusters running Connectivity Link 1.4.0 might experience authentication
-> failures, API key management errors, gateway instability, or gateway pod
-> memory pressure because of integration changes that are not fully compatible
-> on all supported OpenShift Container Platform and OpenShift Service Mesh
-> combinations.
+Official guidance:
 
-Red Hat advises:
+- **New installations:** Do NOT install RHCL 1.4.0.
+- **Existing 1.3.x installations:** Pin the Connectivity Link and its dependent
+  operators to the latest 1.3.z release. Prevent upgrades to 1.4.0.
 
-- **New customers**: Do not install Red Hat Connectivity Link 1.4.0.
-- **Upgrade customers**: Pin Connectivity Link and its dependent Operators to
-  the latest Red Hat Connectivity Link 1.3.z release. Prevent upgrades to
-  Connectivity Link 1.4.0.
+This demo pins `rhcl-operator.v1.3.4`. Do NOT change the Subscription to allow
+automatic upgrade to 1.4.
 
-## Demo Update Posture
+## Demo Posture
 
-For this RHOAI demo:
+For this demo:
 
-- The platform baseline holds RHCL at `rhcl-operator.v1.3.4` per
-  `docs/PLATFORM_BASELINE.md`.
-- Stage 040 GitOps-manages the RHCL dependency Subscriptions for Authorino,
-  DNS, and Limitador with manual approval and 1.3.x `startingCSV` values.
-- Do not approve RHCL 1.4.x InstallPlans until Red Hat publishes a supported
-  replacement path and the Stage 040 MaaS Gateway, dashboard, API-key,
-  local-model, external-model, and Playground regression gates pass.
+- The Subscription `startingCSV` is pinned to `rhcl-operator.v1.3.4`.
+- Update approval should be `Manual` to prevent unintended minor-version jumps.
+- The `stable` channel delivers 1.3.z patch updates; verify the channel does
+  not auto-resolve to 1.4 before approving an InstallPlan.
+- Before approving any InstallPlan, confirm the CSV version with
+  `oc get installplan -n <ns>` and reject plans that resolve to 1.4.x.
 
-## Known Risks from RHCL 1.4.0
+## Supported Configurations (RHCL 1.3)
 
-The official update page documents these risks for clusters running 1.4.0:
+### OCP Versions
 
-- Authentication failures
-- API key management errors
-- Gateway instability
-- Gateway pod memory pressure
+| RHCL | OCP | OSD | ROSA | ARO |
+|------|-----|-----|------|-----|
+| 1.3  | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.19 |
 
-These originate from integration changes not fully compatible across all
-supported OCP and OpenShift Service Mesh combinations.
+### Dependent Operators
 
-## Update Prerequisites
+| RHCL | Service Mesh | cert-manager Operator |
+|------|-------------|----------------------|
+| 1.3  | 3.2         | 1.18                 |
 
-Before considering any RHCL version change:
+### Gateway API CRD Constraint
 
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Verify current Subscription state and installed CSV version.
-3. Verify dependent operator Subscriptions (Authorino, DNS, Limitador).
-4. Review the RHCL release notes for the target version.
-5. If the target is 1.4.x, stop: the version is deprecated per official docs.
+On OCP 4.19+, if updating from a previous OCP version that contains Gateway API
+CRDs, ensure those resources exactly match the Gateway API version supported by
+your OCP version before updating RHCL.
+
+## Lifecycle
+
+With the release of RHCL 1.4, maintenance support for 1.3 was shortened:
+maintenance support for 1.3 ends with the release of RHCL 1.5 (previously
+announced as ending with 1.6). See the Red Hat Connectivity Link Life Cycle
+Policy for current support dates.
+
+## Update Procedure (1.2.x to 1.3)
+
+Prerequisites:
+
+- RHCL 1.2.x installed on OCP 4.19 or later.
+- OCP version compatible with RHCL 1.3 (see table above).
+
+Steps (web console):
+
+1. Navigate to **Ecosystem > Installed Operators > Red Hat Connectivity Link**.
+2. Ensure the **Update channel** is set to `stable`.
+3. If **Update approval** is `Automatic`, the update installs immediately.
+4. If **Update approval** is `Manual`, click **Install**.
+5. Wait for the Connectivity Link Operator deployment to complete.
+6. Verify RHCL 1.3 is installed and running.
+
+## Validation Signals
+
+```bash
+oc get csv -n <ns> | grep connectivity
+oc get sub -n <ns> -o yaml | grep -E 'currentCSV|installedCSV|startingCSV'
+oc get installplan -n <ns>
+```
+
+Healthy state: CSV phase is `Succeeded`, installedCSV matches the expected
+1.3.z version, and no pending InstallPlans resolve to 1.4.x.
 
 ## Workflow
 
-1. Read `references/source-capture.md` and confirm the baseline version.
-2. Read `references/official-doc-extraction.md` for extracted product behavior.
+1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
+2. Read `references/official-doc-extraction.md`.
 3. Identify whether the task concerns:
-   - Evaluating an RHCL version upgrade path
-   - Pinning or holding RHCL operator Subscriptions
-   - Managing RHCL dependency operator versions
-   - Recovering from an unintended upgrade to 1.4.0
-4. For Subscription management, verify all InstallPlan approval policies,
-   `startingCSV` values, and dependent operator channel configurations.
-5. For live operations, use the repo environment guard and pair this skill
-   with `rhoai-troubleshoot` or `validate-demo-step`.
-
-## Verification Commands
-
-```bash
-# Check RHCL operator Subscription and installed CSV
-oc get subscription -n redhat-connectivity-link-operator \
-  -o custom-columns='NAME:.metadata.name,CSV:.status.installedCSV,APPROVAL:.spec.installPlanApproval'
-
-# Check for pending InstallPlans
-oc get installplan -n redhat-connectivity-link-operator \
-  -o custom-columns='NAME:.metadata.name,CSV:.spec.clusterServiceVersionNames[*],APPROVED:.spec.approved'
-
-# Check dependent operator Subscriptions
-oc get subscription -n redhat-connectivity-link-operator \
-  -o custom-columns='NAME:.metadata.name,CHANNEL:.spec.channel,CSV:.spec.startingCSV,APPROVAL:.spec.installPlanApproval'
-```
+   - a 1.3.z patch update within the pinned line
+   - verifying supported configuration (OCP, Service Mesh, cert-manager)
+   - blocking an unintended upgrade to 1.4
+   - understanding the lifecycle and support window for 1.3
+4. For Subscription or InstallPlan changes, verify the target CSV version.
+5. Validate with the commands above.
 
 ## Related Skills
 
-- Use `rhcl-install` for initial Connectivity Link installation.
-- Use `rhcl-configure` for deploying and configuring Connectivity Link
-  components.
-- Use `rhcl-troubleshoot` for diagnosing Connectivity Link issues.
-- Use `rhoai-maas-governance` for MaaS Gateway configuration that depends on
-  the RHCL stack.
+- `rhcl-install` for Connectivity Link core operator installation.
+- `rhcl-configure` for gateway policy deployment.
+- `rhcl-mcp-config` for MCP server registration (RHCL 1.4 Tech Preview).
+- `rhcl-troubleshoot` for diagnostics and recovery.
 
 ## References
 

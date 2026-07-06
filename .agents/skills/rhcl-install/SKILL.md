@@ -8,74 +8,139 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Use when installing Red Hat Connectivity Link on single or multiple clusters,
-  including operator installation, prerequisites, and Istio/Envoy gateway setup.
-  Do NOT use for deploying policies (AuthPolicy, RateLimitPolicy, DNSPolicy,
-  TLSPolicy); use rhcl-configure. Do NOT use for MCP gateway installation; use
-  rhcl-install-mcp.
+  Install Red Hat Connectivity Link 1.3 on single or multiple OpenShift
+  Container Platform clusters, including the RHCL Operator, Kuadrant CR,
+  Istio/Envoy gateway controller configuration, DNS provider credentials, Redis
+  storage for rate limiting, and the console dynamic plugin. Use when deploying
+  Connectivity Link for the first time or adding it to additional clusters. Do
+  NOT use for policy configuration (use rhcl-configure); do NOT use for MCP
+  gateway installation (use rhcl-install-mcp).
 ---
 
-# RHCL Install
+# Red Hat Connectivity Link 1.3 — Installation
 
-Use this skill to ground Red Hat Connectivity Link installation decisions in
-official RHCL 1.4 documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md`.
+## When to use
 
-## Source Grounding
+- Installing RHCL Operator via OLM (web console or CLI)
+- Creating the Kuadrant CR to activate Connectivity Link
+- Configuring Istio as an alternative gateway controller
+- Setting up DNS provider credentials (AWS, GCP, Azure)
+- Configuring Redis storage for rate-limit counters
+- Enabling the Connectivity Link console dynamic plugin
+- Setting up CoreDNS for on-premise DNS
 
-Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is product authority.
+## Key facts
 
-## Demo Posture
+- Operator: `rhcl-operator`, channel: `stable`, source: `redhat-operators`
+- Demo pins: `rhcl-operator.v1.3.4`
+- Namespace: `kuadrant-system` (default)
+- Kuadrant CR: `apiVersion: kuadrant.io/v1beta1`, kind: `Kuadrant`
+- Default gateway controller: OpenShift Cluster Ingress Operator
+- Alternative: Istio (via `ISTIO_GATEWAY_CONTROLLER_NAMES` env on Subscription)
+- Supported OCP: 4.19, 4.20, 4.21
+- Required companion: cert-manager Operator for Red Hat OpenShift 1.18
+- Optional: OpenShift Service Mesh 3.2 (auto-detected if present)
 
-The demo pins RHCL at `rhcl-operator.v1.3.4` for MaaS Gateway stability. RHCL
-1.4.0 is deprecated in official release notes. Skills document the 1.4
-documentation as the canonical reference but Stage 040 GitOps-manages the
-Subscription at 1.3.x. Do not approve RHCL 1.4.x InstallPlans until Red Hat
-publishes a supported replacement path.
+## Supported configurations
 
-## Key Concepts
+| Component | RHCL 1.3 version |
+|-----------|------------------|
+| OCP | 4.19, 4.20, 4.21 |
+| OpenShift Service Mesh | 3.2 |
+| cert-manager Operator | 1.18 |
+| Red Hat build of Keycloak | 26.4 |
+| Redis datastores | latest (Redis Enterprise, ElastiCache, Dragonfly) |
 
-- Connectivity Link installs via OLM (`rhcl-operator`) from `redhat-operators`
-  on the `stable` channel.
-- Component operators: Authorino Operator, DNS Operator, Limitador Operator.
-- The `Kuadrant` CR (apiVersion `kuadrant.io/v1beta1`) activates the platform.
-- Default gateway controller: OpenShift Container Platform Cluster Ingress
-  Operator (`gatewayClassName: openshift-default`).
-- Alternative: Istio via OpenShift Service Mesh (set
-  `ISTIO_GATEWAY_CONTROLLER_NAMES=istio.io/gateway-controller` on
-  Subscription).
-- Supported OCP versions: 4.18–4.21.
-- Required: cert-manager Operator for Red Hat OpenShift 1.18.
-- Optional: Redis for RateLimitPolicy, Keycloak for AuthPolicy, cloud DNS.
+## Installation — CLI (OCP Ingress controller)
 
-## Workflow
+```yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhcl-operator
+  namespace: kuadrant-system
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: rhcl-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+---
+kind: OperatorGroup
+apiVersion: operators.coreos.com/v1
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+spec:
+  upgradeStrategy: Default
+```
 
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task is:
-   - new install via web console or CLI
-   - install with Istio as gateway controller
-   - DNS provider credentials configuration
-   - multicluster install
-   - disconnected install
-4. For manifests, verify API versions against official docs and cluster schema.
-5. Validate with verification commands from the extraction.
+## Installation — CLI (Istio gateway controller)
 
-## Validation Signals
+Add `config.env` to Subscription spec:
 
-- `oc wait kuadrant/kuadrant --for="condition=Ready=true" -n <ns> --timeout=300s`
-- All component operator pods Running in the install namespace.
-- No image pull failures: `oc get events -n <ns> --field-selector reason=Failed`
+```yaml
+spec:
+  config:
+    env:
+    - name: ISTIO_GATEWAY_CONTROLLER_NAMES
+      value: istio.io/gateway-controller
+```
 
-## Related Skills
+## Kuadrant CR
 
-- `rhcl-install-mcp` for MCP gateway operator installation.
-- `rhcl-configure` for deploying gateway policies.
-- `rhoai-maas-governance` for RHOAI MaaS integration with Connectivity Link.
-- `ocp-ingress-gateway-routes` for OCP Gateway API primitives.
+```yaml
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+```
+
+## Validation
+
+```bash
+oc wait kuadrant/kuadrant --for="condition=Ready=true" \
+  -n kuadrant-system --timeout=300s
+```
+
+Component operators installed:
+- Authorino Operator (auth)
+- DNS Operator (north-south traffic)
+- Limitador Operator (rate limiting)
+
+## DNS provider secrets
+
+Secrets must reside in the same namespace as the Gateway.
+
+| Provider | Secret type |
+|----------|-------------|
+| AWS | `kuadrant.io/aws` |
+| GCP | `kuadrant.io/gcp` |
+| Azure | `kuadrant.io/azure` |
+| CoreDNS | `kuadrant.io/coredns` |
+
+## Redis for rate limiting
+
+```bash
+oc -n kuadrant-system create secret generic redis-config \
+  --from-literal=URL=$REDIS_URL
+oc patch limitador limitador --type=merge -n kuadrant-system -p '
+spec:
+  storage:
+    redis:
+      configSecretRef:
+        name: redis-config
+'
+```
+
+## Console dynamic plugin
+
+Enable `kuadrant-console-plugin` via Administrator > Home > Overview >
+Dynamic Plugins > kuadrant-console-plugin > Enable.
 
 ## References
 
-- `references/source-capture.md`
-- `references/official-doc-extraction.md`
+- `references/source-capture.md` — source provenance
+- `references/official-doc-extraction.md` — full extraction
+- Official: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/installing_connectivity_link/index

@@ -9,133 +9,132 @@ metadata:
   skill-group: "OpenShift Platform"
 description: >
   Use when explaining MCP gateway concepts, Model Context Protocol connectivity
-  for agentic AI applications, and MCP gateway architecture. Do NOT use for
-  installing MCP gateway (use rhcl-install-mcp) or configuring MCP servers (use
-  rhcl-mcp-config).
+  for agentic AI, MCP gateway architecture (router, broker, controller),
+  MCPServerRegistration CRs, MCPGatewayExtension, tool aggregation, session
+  management, and Envoy ext_proc integration from the official Red Hat
+  Connectivity Link 1.3 documentation. Do NOT use for installing MCP gateway
+  (use rhcl-install-mcp), configuring MCP servers (use rhcl-mcp-config), or
+  general Connectivity Link concepts (use rhcl-about).
 ---
 
 # RHCL MCP Gateway
 
-Use this skill to ground MCP gateway conceptual and architectural content in
-the official RHCL 1.4 MCP gateway documentation.
+Use this skill to ground MCP gateway conceptual guidance in the official Red Hat
+Connectivity Link 1.3 MCP gateway documentation. The MCP gateway is a
+Technology Preview feature available on the `preview` update channel since
+RHCL 1.3.3.
 
 ## Source Grounding
 
 Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is the product authority. This skill captures the MCP gateway
-introduction, architecture, and component descriptions.
+Hat documentation is product authority.
 
-## Support Posture
+## MCP Gateway Overview
 
-MCP gateway is a **Technology Preview** feature in RHCL 1.4. Technology Preview
-features are not supported with Red Hat production SLAs and might not be
-functionally complete. Red Hat does not recommend using them in production.
+The MCP gateway centralizes and manages connectivity for agentic AI applications
+that access Model Context Protocol (MCP) servers. Application teams and platform
+engineers can expose MCP servers as secure, protected services — the same way
+they manage existing RESTful APIs.
 
-## Product Definition
+Key capabilities:
 
-The MCP gateway centralizes and manages connectivity for agentic AI
-applications that access Model Context Protocol (MCP) servers. Application
-teams and platform engineers can expose MCP servers as secure, protected
-services — just as with existing RESTful APIs.
+- Aggregate MCP servers behind a single endpoint
+- Scale agentic AI applications with connectivity outside of application code
+- Manage access to and security of AI tools and MCP servers
+- Add and remove MCP servers without restarting systems (dynamic state updates)
+- Curate MCP server tools by creating virtual MCP servers
 
-Key goals:
+## Technology Preview Status
 
-- Aggregate MCP servers behind a single endpoint.
-- Scale agentic AI applications while keeping connectivity outside application
-  code.
-- Manage access to and security of AI tools and MCP servers.
-
-The Connectivity Link MCP gateway extends Envoy proxy capabilities to
-customized AI agent systems. Envoy handles traffic from agentic AI clients to
-backend MCP servers at the gateway ingress and is a conformance-tested
-implementation of the Kubernetes Gateway API.
+The MCP gateway is a Technology Preview feature. It is not supported with Red
+Hat production SLAs and might not be functionally complete. Available on the
+`preview` update channel. See Technology Preview Features Support Scope on the
+Red Hat Customer Portal.
 
 ## Architecture
 
-The MCP gateway builds on top of Envoy proxy routing capabilities with
-MCP-specific handling.
+The MCP gateway extends the Envoy proxy server to handle MCP traffic from
+agentic AI clients to backend MCP servers at the gateway ingress. Design goals:
 
-Design principles:
+- Works with the Gateway API as a routing configuration
+- Envoy controls routing and traffic as the Gateway API implementation
+- Istio serves as the gateway control plane in OpenShift with the Gateway API
+- Connectivity Link provides AuthPolicy and rate-limiting via custom resources
+- The MCP gateway focuses specifically on the MCP Protocol layer
 
-- Works with Gateway API as routing configuration.
-- Envoy controls routing and traffic as the Gateway API implementation.
-- MCP gateway focuses on the MCP Protocol layer.
-- Istio serves as the gateway control plane in OCP with Gateway API.
-- Connectivity Link provides AuthPolicy and rate-limiting CRs.
+### MCP Router
 
-### Architectural Components
+An Envoy `ext_proc` component that parses the MCP protocol and sets headers to
+force correct routing to the correct MCP server.
 
-#### MCP Router
+Responsibilities:
 
-An Envoy `ext_proc` component that parses the MCP protocol:
+- Parsing and validating the JSON-RPC request object (MCP message body)
+- Setting key request headers: `:authority`, `:path`, `x-mcp-method`,
+  `x-mcp-servername`, `x-mcp-toolname`, `mcp-session-id`
+- Watching for `404` responses and invalidating the session store
+- Handling session initialization and storage during tools call requests
 
-- Parses and validates JSON-RPC request objects (MCP message body).
-- Sets key request headers: `:authority`, `:path`, `x-mcp-method`,
-  `x-mcp-servername`, `x-mcp-toolname`, `mcp-session-id`.
-- Watches for 404 responses and invalidates the session store.
-- Handles session initialization and storage during tool call requests.
+### MCP Broker
 
-#### MCP Broker
+A backend service that aggregates multiple MCP servers and presents them as a
+unified MCP server to clients. Acts as the default backend for the `/mcp`
+endpoint.
 
-A backend service that aggregates multiple MCP servers into a unified endpoint:
+Responsibilities:
 
-- Handles the MCP handshake (`init`).
+- Handles the handshake (`init`)
 - Discovers tools from connected MCP servers and aggregates them into a
-  unified list.
-- Validates that discovered servers meet minimum protocol version and
-  capabilities before including their tools.
-- Listens for updates and maintains current state.
-- Handles `notifications/tools/list_changed` from backend servers.
-- Proxies notifications between MCP servers and registered clients.
+  unified list
+- Validates that discovered MCP servers meet minimum protocol version and
+  capabilities before including their tools
+- Listens for updates and changes state dynamically
+- Handles `notifications/tools/list_changed` from backend MCP servers
+- Proxies notifications between MCP servers and registered clients
+- Supports elicitation if the client supports it (interactive user input)
 
-The broker is the default MCP server backend for the `/mcp` endpoint.
+### MCP Discovery Controller
 
-#### MCP Discovery Controller
+A Kubernetes-based controller that watches for changes to custom resources.
 
-A Kubernetes controller that watches custom resources:
+Responsibilities:
 
-- Watches `MCPServerRegistration` CRs.
-- Maintains configuration from both `HTTPRoute` and `MCPServerRegistration`
-  CRs.
-- Updates the MCP broker and router config secret based on discovered
-  registrations and their targeted HTTPRoutes.
-- Reports status of `MCPServerRegistration` CRs.
+- Watches `MCPServerRegistration` CRs
+- Maintains configuration from both `HTTPRoute` and `MCPServerRegistration` CRs
+- Updates MCP broker and router config secret based on discovered
+  `MCPServerRegistration` CRs and their target `HTTPRoutes`
+- Reports status of `MCPServerRegistration` CRs
 
 ## Custom Resources
 
-| CR | Purpose |
-|----|---------|
-| `MCPServerRegistration` | Register MCP servers with the gateway |
-| `HTTPRoute` | Gateway API routing targeted by registrations |
+| Resource | Purpose |
+|----------|---------|
+| `MCPServerRegistration` | Register an MCP server with the gateway |
+| `MCPGatewayExtension` | Configure the MCP gateway behavior |
+| `HTTPRoute` | Gateway API routing (auto-managed or manual) |
 
-## Demo Relevance
+## Known Issue (RHCL 1.3.3)
 
-The MCP gateway enables governed connectivity between agentic AI coding
-assistants (Continue, OpenCode) and backend MCP servers through the same
-gateway infrastructure used for LLM model access. This aligns with the demo's
-trust boundary model where all external AI tool access flows through governed
-infrastructure.
+When the default `httpRouteManagement: Enabled` is set on an
+`MCPGatewayExtension` CR, the controller only creates a single rule for `/mcp`
+endpoints. The `/.well-known/oauth-protected-resource` rule is missing.
+
+Workaround: set `httpRouteManagement: Disabled` in the `MCPGatewayExtension` CR
+and use a manually managed `HTTPRoute` CR.
 
 ## Workflow
 
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - MCP gateway concepts and architecture (this skill)
-   - RHCL product overview and API policies (use `rhcl-about`)
-   - MCP gateway installation (use `rhcl-install-mcp` when available)
-   - MCP server registration and policies (use `rhcl-mcp-config` when
-     available)
-4. Do not invent MCPServerRegistration fields, controller behavior, or
-   protocol handling beyond what is documented.
-5. Always note Technology Preview support posture when referencing MCP gateway.
+1. Read `references/official-doc-extraction.md` for detailed architecture.
+2. Identify the component concern (router, broker, controller, CR).
+3. For GitOps manifests, verify CRD availability on the cluster before
+   committing (`oc get crd mcpserverregistrations.kuadrant.io`).
+4. For live operations, use the repo environment guard.
 
 ## Related Skills
 
-- Use `rhcl-about` for RHCL product concepts and policy APIs.
-- Use `rhcl-release-notes` for MCP gateway feature announcements and changes.
-- Use `rhoai-maas-governance` for RHOAI MaaS integration.
-- Use `ocp-ingress-gateway-routes` for OCP Gateway API and routing.
+- Use `rhcl-about` for general Connectivity Link concepts and policy APIs.
+- Use `rhcl-install-mcp` for installing the MCP gateway.
+- Use `rhcl-release-notes` for version history and known issues.
 
 ## References
 

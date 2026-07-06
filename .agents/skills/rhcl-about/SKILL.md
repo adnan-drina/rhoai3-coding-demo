@@ -8,108 +8,133 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Use when explaining Connectivity Link concepts, architecture, multicloud API
-  connectivity, Kuadrant, Istio/Envoy gateway, and API management capabilities.
-  Do NOT use for MCP gateway (use rhcl-mcp-gateway), installing (use
-  rhcl-install), or configuring (use rhcl-configure).
+  Use when explaining Connectivity Link concepts, architecture, Kuadrant,
+  Istio/Envoy gateway, API management, AuthPolicy, RateLimitPolicy, DNSPolicy,
+  TLSPolicy, supported configurations, user workflows, and policy attachment
+  patterns from the official Red Hat Connectivity Link 1.3 documentation. Do NOT
+  use for MCP gateway (use rhcl-mcp-gateway), installing Connectivity Link or
+  MCP gateway (use rhcl-install or rhcl-install-mcp), or release notes (use
+  rhcl-release-notes).
 ---
 
 # RHCL About
 
-Use this skill to ground Red Hat Connectivity Link conceptual and architectural
-guidance in the official RHCL 1.4 product documentation.
+Use this skill to ground Red Hat Connectivity Link conceptual guidance in the
+official RHCL 1.3 documentation. The demo pins `rhcl-operator.v1.3.4`.
 
 ## Source Grounding
 
 Read `references/source-capture.md` before using product behavior. Official Red
-Hat documentation is the product authority. This skill captures the RHCL
-product definition, architecture, features, user workflows, policy APIs, and
-supported configurations.
+Hat documentation is product authority.
 
-## Product Definition
+## Connectivity Link Overview
 
 Red Hat Connectivity Link is a control plane for configuring the Gateway API
 data plane in OpenShift Container Platform clusters. It applies authentication,
-rate limiting, and DNS policies to gateway resources.
+rate limiting, DNS, and TLS policies to gateway resources using a
+Kubernetes-native policy attachment pattern.
 
-Connectivity Link consists of four Operators bundled in a single combined
-catalog:
+Based on the Kuadrant community project, Connectivity Link supports OpenShift
+Service Mesh 3.2 as the Gateway API provider (Istio-based, Envoy data plane).
 
-- Connectivity Link Operator (policy attachment, Gateway API integration)
-- Authorino Operator (authentication and authorization engine)
-- Limitador Operator (rate limiting engine)
-- DNS Operator (multi-cluster DNS management)
+## Core Policy APIs
 
-Connectivity Link is based on the Kuadrant community project and supports
-OpenShift Service Mesh 3.2 as the Gateway API provider.
+### TLSPolicy
 
-## Core Capabilities
+Lightweight wrapper to manage TLS for targeted gateways. Automatically
+provisions TLS certificates via `cert-manager` and ACME providers (e.g. Let's
+Encrypt) based on gateway listener hosts.
 
-- Multicloud application connectivity (DNS, HA/DR, global load balancing)
-- Kubernetes ingress policy management (TLSPolicy, AuthPolicy,
-  RateLimitPolicy, DNSPolicy)
-- Composable API management (security, governance, advanced metrics)
-- Policy attachment to Gateway API resources (defaults and overrides)
-- Observability dashboards and alerts (Grafana, Prometheus, Alertmanager)
+### AuthPolicy
 
-## Policy APIs
+Applies authentication and authorization at the Gateway, HTTPRoute, or
+HTTPRouteRule level. Supports hierarchical defaults and overrides. Integrates
+with Red Hat build of Keycloak and dedicated OIDC providers. Mechanisms include
+OAuth 2, JWT, API keys, Kubernetes tokens, RBAC, ReBAC, and OPA.
 
-| Policy | Purpose |
-|--------|---------|
-| `TLSPolicy` | Automatic TLS certificate provisioning via cert-manager/ACME |
-| `AuthPolicy` | Authentication and authorization at Gateway or HTTPRoute level |
-| `RateLimitPolicy` | Rate limiting with defaults/overrides and conditional limits |
-| `DNSPolicy` | DNS record reconciliation with cloud DNS providers |
+### RateLimitPolicy
 
-All policies use the Gateway API policy attachment pattern with hierarchical
-defaults and overrides for role-oriented collaboration.
+Applies rate-limiting rules at the Gateway, HTTPRoute, or HTTPRouteRule level.
+Uses hierarchical defaults and overrides. Supports conditional limits based on
+metadata and request data. Shares counters via Redis-based backend stores in
+multicluster environments.
 
-## Supported Configurations (1.4)
+```yaml
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: gw-rlp
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: external
+  defaults:
+    limits:
+      "global":
+        rates:
+        - limit: 5
+          window: 10s
+```
 
-- OCP: 4.21, 4.20, 4.19, 4.18
-- OpenShift Service Mesh: 3.2
-- cert-manager Operator: 1.18
-- Cloud providers: AWS, GCP, Azure
-- DNS providers: Route 53, Google Cloud DNS, Azure DNS, CoreDNS
-- Rate-limiting stores: Redis Enterprise/Cloud, Amazon Elasticache, Dragonfly
-- Identity: Red Hat build of Keycloak 26.4, API keys
+### DNSPolicy
+
+Automatically populates DNS records from listener hosts and addresses.
+Configures multicluster connectivity (geographic, weighted responses). Supports
+Amazon Route 53, Azure DNS, Google Cloud DNS, and CoreDNS (GA in 1.3). Includes
+endpoint health checks for DNS failover.
+
+## Supported Configurations (RHCL 1.3)
+
+| Component | Supported Versions |
+|-----------|-------------------|
+| OpenShift Container Platform | 4.21, 4.20, 4.19 |
+| OpenShift Service Mesh | 3.2 |
+| cert-manager Operator | 1.18 |
+| Red Hat build of Keycloak | Version 26.4 |
+| Cloud DNS Providers | Route 53, Azure DNS, Google Cloud DNS |
+| On-premise DNS | CoreDNS |
+| Rate-limit data stores | Redis Enterprise/Cloud, Amazon Elasticache, Dragonfly |
 
 ## User Workflows
 
-- **Platform engineer**: Create gateways, configure DNS/TLS/Auth/RateLimit
-  policies, observe connectivity metrics.
-- **Application developer**: Deploy apps and APIs, protect with AuthPolicy,
-  observe performance.
-- **Business user**: Monitor API metrics (uptime, latency, errors) via Grafana.
+### Platform Engineer
 
-## Demo Posture
+- Create and configure ingress gateways across clusters
+- Apply DNS, TLS, auth, and rate-limiting policies uniformly
+- Configure observability dashboards and alerts
 
-For this demo, RHCL provides the MaaS Gateway for governed external model
-access. The repo pins `rhcl-operator.v1.3.4` per `docs/PLATFORM_BASELINE.md`
-(compatibility hold). RHCL 1.4 documentation is used for skill content because
-it is the target upgrade path once RHCL 1.4.1+ is validated.
+### Application Developer
+
+- Deploy applications and APIs on pre-configured gateways
+- Protect routes with AuthPolicy (OAuth 2, JWT, API keys)
+- Monitor workload performance via observability dashboards
+
+### Business User
+
+- View API metrics (uptime, requests/sec, latency, errors/min)
+- Monitor regional data center performance via Grafana dashboards
+
+## Key Technologies
+
+- **Policy attachment**: attach behavior to Gateway API objects via CRs
+- **Defaults and overrides**: hierarchical role-based policy merging
+- **WebAssembly plugin**: lightweight Envoy WASM plugin for rate limiting
+- **Multicluster mirroring**: consistent policy deployment across clouds
 
 ## Workflow
 
-1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
-2. Read `references/official-doc-extraction.md`.
-3. Identify whether the task concerns:
-   - RHCL product concepts, architecture, or features (this skill)
-   - MCP gateway concepts (use `rhcl-mcp-gateway`)
-   - Installation (use `rhcl-install` when available)
-   - Configuration and deployment (use `rhcl-configure` when available)
-   - Release notes and known issues (use `rhcl-release-notes`)
-4. Do not invent CR fields, policy schemas, or operator configurations
-   beyond what is documented in the official source.
-5. For live operations, verify against cluster schema with `oc explain` and
-   `oc get crd`.
+1. Read `references/official-doc-extraction.md` for detailed product behavior.
+2. Identify the relevant policy type or architectural concern.
+3. For GitOps manifests, verify API versions (`kuadrant.io/v1`) against the
+   extraction before committing.
+4. For live operations, use the repo environment guard.
 
 ## Related Skills
 
-- Use `rhcl-mcp-gateway` for MCP gateway architecture and concepts.
-- Use `rhcl-release-notes` for RHCL 1.4 release notes and known issues.
-- Use `rhoai-maas-governance` for RHOAI MaaS integration that consumes RHCL.
-- Use `ocp-ingress-gateway-routes` for OCP-level Gateway API and routing.
+- Use `rhcl-mcp-gateway` for MCP gateway concepts and architecture.
+- Use `rhcl-install-mcp` for installing the MCP gateway.
+- Use `rhcl-release-notes` for version history and known issues.
 
 ## References
 

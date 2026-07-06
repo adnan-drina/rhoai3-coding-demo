@@ -10,7 +10,7 @@ Update it first when preparing an upgrade.
 | Red Hat OpenShift AI Self-Managed | 3.4 | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/ |
 | Red Hat OpenShift Container Platform | 4.20 | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/ |
 | Red Hat OpenShift Data Foundation | 4.20 | https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation/4.20/ |
-| Red Hat Connectivity Link | 1.3.4 compatibility hold | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/release_notes/rhcl-release-notes |
+| Red Hat Connectivity Link | 1.3.4 (1.4.0 deprecated) | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3 |
 | Red Hat OpenShift Cluster Observability Operator | 1.4.0 compatibility hold | https://docs.redhat.com/en/documentation/red_hat_openshift_cluster_observability_operator/1-latest/ |
 | Red Hat build of OpenTelemetry | 3.9 | https://docs.redhat.com/en/documentation/red_hat_build_of_opentelemetry/3.9 |
 | Red Hat OpenShift distributed tracing platform | 3.9 | https://docs.redhat.com/en/documentation/red_hat_openshift_distributed_tracing_platform/3.9 |
@@ -290,30 +290,30 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
 
-## Red Hat Connectivity Link 1.4 Documentation Index
+## Red Hat Connectivity Link 1.3 Documentation Index
 
-Use the official RHCL 1.4 landing page as the entry point:
-https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4
+The demo pins `rhcl-operator.v1.3.4`. RHCL 1.4.0 is deprecated per the
+official 1.4 release notes. Skills are based on the 1.3 documentation.
+
+Use the official RHCL 1.3 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3
 
 - **Discover**:
-  [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/red_hat_connectivity_link/index),
-  [MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/mcp_gateway/index)
+  [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/red_hat_connectivity_link/index),
+  [MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/mcp_gateway/index)
 - **What's New**:
-  [Release notes](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/release_notes/index)
+  [Release notes](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/release_notes/index)
 - **Install**:
-  [Installing Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_connectivity_link/index),
-  [Installing the MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_the_mcp_gateway/index)
-- **Configure**:
-  [Deploying Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/deploying_red_hat_connectivity_link/index),
-  [Registering MCP servers and creating policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/registering_mcp_servers_and_creating_policies/index)
-- **Develop**:
-  [Developing APIs with the web console](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/developing_apis_with_the_web_console/index)
-- **Observe**:
-  [Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/observability/index)
-- **Troubleshoot**:
-  [Troubleshooting](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/troubleshooting/index)
-- **Update**:
-  [Updating Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/updating_red_hat_connectivity_link/index)
+  [Installing Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/installing_connectivity_link/index),
+  [Installing the MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/installing_the_mcp_gateway/index)
+- **Configure and Secure**:
+  [Deploying Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/deploying_red_hat_connectivity_link/index),
+  [Registering MCP servers and creating policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/registering_mcp_servers_and_creating_policies/index)
+- **Observe and Troubleshoot**:
+  [Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/observability/index),
+  [Troubleshooting](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/troubleshooting/index)
+- **Upgrade**:
+  [Updating Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/updating_red_hat_connectivity_link/index)
 
 ## Red Hat Advanced Developer Suite - Software Supply Chain 1.9 Documentation Index
 

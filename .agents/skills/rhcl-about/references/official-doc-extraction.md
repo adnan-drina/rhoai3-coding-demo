@@ -1,86 +1,95 @@
 # Official Doc Extraction
 
-Use this extraction to ground RHCL conceptual and architectural content in the
-official documentation. When implementation needs exact Operator, CR, policy,
-or gateway field definitions, verify against the separate RHCL installation,
-deployment, and configuration documentation and active cluster schema.
+Use this extraction to keep Connectivity Link conceptual content grounded in
+official Red Hat sources. When implementation needs exact CR fields, verify the
+active cluster schema with `oc explain` or `oc get crd` before authoring GitOps
+manifests.
 
-## Product Definition
+## Product Overview
 
-Red Hat Connectivity Link is a control plane for configuring the Gateway API
-data plane in OpenShift Container Platform clusters. You can use it to apply
-authentication, rate limiting, and DNS policies to gateway resources.
+Red Hat Connectivity Link is a single data plane used to apply policies to
+Gateway API resources in OpenShift Container Platform clusters. You can use it
+to connect, secure, observe, and protect service endpoints in multicloud and
+hybrid cloud environments.
 
-Connectivity Link is a modular and flexible solution for application
-connectivity, policy management, and API management in multicloud and hybrid
-cloud environments.
+Based on the Kuadrant community project, Connectivity Link provides a control
+plane for configuring and deploying ingress gateways with the role-oriented
+resources and components of the Kubernetes Gateway API. Policies attach to
+Gateway API resources so that networking code is not embedded in applications.
 
-## Operator Composition
+Connectivity Link supports OpenShift Service Mesh 3.2 as the Gateway API
+provider.
 
-Connectivity Link consists of four Operators bundled in a single combined
-catalog:
+## Key Features
 
-1. **Connectivity Link Operator** — policy attachment and Gateway API
-   integration; includes wasm-shim and console-plugin runtime images.
-2. **Authorino Operator** — authentication and authorization engine; includes
-   the `authorino` runtime image.
-3. **Limitador Operator** — rate limiting engine; includes the `limitador`
-   runtime image.
-4. **DNS Operator** — multi-cluster DNS management.
+Multicloud application connectivity:
 
-The Connectivity Link Operator declares the other three as OLM dependencies.
+- DNS provider integrations (Route 53, Azure DNS, Google Cloud DNS, CoreDNS)
+- High availability and disaster recovery
+- Global load balancing (round-robin, weighted, geo-based)
+- Endpoint health and status checks
+- Automatic TLS certificate generation
+- Universal authentication
 
-## Architectural Foundation
+Kubernetes ingress policy management:
 
-- Based on the Kuadrant community project.
-- Provides a control plane to configure and deploy ingress gateways and
-  policies based on the Kubernetes Gateway API standard.
-- Supports OpenShift Service Mesh 3.2 as the Gateway API provider (Istio-based).
-- Uses a policy attachment pattern: add behavior to Kubernetes objects via
-  configuration that cannot be described in the object `spec` field.
-- Supports defaults and overrides for role-oriented policy collaboration.
-- Uses WebAssembly (WASM) plugin for Envoy proxy — lightweight, hardware
-  independent, non-intrusive, and secure.
+- Global DNS policy
+- TLS policy
+- Auth policy
+- Rate-limiting policy
+- Token rate-limiting policy
+- Traffic weighting and distribution
+- User-role-based design
+- Multicluster administration
+- Observability dashboards and alerts
+- OpenShift Container Platform web console dynamic plugin
 
-## Gateway API Integration
+Composable API management:
 
-Gateway API is structured to meet different organizational team needs:
+- API security and governance
+- Advanced API metrics collection
+- API-level policies for authentication, authorization, and rate limiting
+- Flexible integration with open source tools
 
-- Platform engineers create and secure gateways.
-- Application developers deploy apps and attach route-level policies.
-- Business users consume observability metrics.
+## TLSPolicy
 
-Connectivity Link attaches policies to Gateway API resources, enabling a
-code-as-infrastructure approach without embedding networking code in
-applications.
+`TLSPolicy` is a lightweight wrapper API to manage TLS for targeted gateways.
+It automatically provisions TLS certificates based on gateway listener hosts
+by using integration with `cert-manager` and ACME providers such as Let's
+Encrypt. Configures secrets so that the gateway automatically retrieves them.
 
-## Policy APIs
+## AuthPolicy
 
-### TLSPolicy
+Use `AuthPolicy` objects to apply authentication and authorization across
+selected listeners in a gateway or at the `HTTPRoute` or `HTTPRouteRule` level.
+Uses the hierarchical and role-based concept of defaults and overrides to
+improve collaboration and ensure compliance.
 
-- Lightweight wrapper API to manage TLS for targeted gateways.
-- Automatically provisions TLS certificates based on gateway listener hosts
-  via cert-manager and ACME providers (e.g., Let's Encrypt).
-- Configures secrets for automatic gateway retrieval.
+Supported mechanisms:
 
-### AuthPolicy
+- OAuth 2
+- JWT authorization policies
+- API keys
+- Kubernetes tokens
+- Role-based access (RBAC)
+- Relationship-based access control (ReBAC)
+- Open Policy Agent (OPA)
+- Dedicated OIDC authentication providers (Red Hat build of Keycloak)
+- Fine-grained authorization based on `request` and `metadata` attributes
 
-- Applies authentication and authorization at Gateway listener or
-  HTTPRoute/HTTPRouteRule level.
-- Supports hierarchical defaults and overrides for compliance.
-- Integrates with dedicated OIDC providers (Red Hat build of Keycloak).
-- Applies fine-grained authorization based on request and metadata attributes.
+## RateLimitPolicy
 
-### RateLimitPolicy
+Apply rate-limiting rules across all listeners in a gateway or at the
+`HTTPRoute` or `HTTPRouteRule` level. Uses the role-based and hierarchical
+concept of defaults and overrides.
 
-- Applies rate-limiting rules at Gateway listener or HTTPRoute/HTTPRouteRule
-  level.
-- Supports hierarchical defaults and overrides.
-- Configures limits conditionally based on metadata and request data.
-- Shares counters via backend store in multicluster environments.
-- API version: `kuadrant.io/v1`
+Configuration:
 
-Example shape:
+- Conditional limits based on metadata and request data
+- Share counters via backend store in multicluster environments
+- Supported data stores: Redis Enterprise/Cloud, Amazon Elasticache, Dragonfly
+
+Example (official docs):
 
 ```yaml
 apiVersion: kuadrant.io/v1
@@ -100,89 +109,99 @@ spec:
           window: 10s
 ```
 
-### DNSPolicy
+Known issue: when Redis or RedisCached storage is set in a `Limitador` CR and
+the pod restarts, the first request to the gateway is never rate-limited. All
+subsequent requests are rate-limited. (CONNLINK-856)
 
-- Standard API (not custom-annotation based).
-- Automatically populates DNS records based on listener hosts and addresses.
-- Configures multicluster connectivity (geographic, weighted responses).
-- Supports: Amazon Route 53, Azure DNS, Google Cloud DNS, CoreDNS.
-- Configures health checks for DNS failover.
+## DNSPolicy
 
-## Supported Configurations (RHCL 1.4)
+`DNSPolicy` is a standard API that is not based on custom annotations. It
+automatically populates DNS records based on listener hosts and addresses
+expressed by Gateway API resources.
 
-### OpenShift Container Platform
+Features:
 
-RHCL 1.4 supports: OCP 4.21, 4.20, 4.19, 4.18
+- Multicluster connectivity and routing (geographic, weighted responses)
+- Common cloud DNS providers: Amazon Route 53, Microsoft Azure DNS, Google
+  Cloud DNS, CoreDNS (GA in RHCL 1.3)
+- Health checks to enable DNS failover
 
-Also supported: OpenShift Dedicated, ROSA, Azure Red Hat OpenShift on the same
-OCP versions.
+## Policy Attachment Pattern
 
-### Required Operators
+Connectivity Link uses the policy attachment pattern to add behavior to a
+Kubernetes object by using configuration that cannot be described in the object
+`spec` field.
 
-- Red Hat OpenShift Service Mesh: 3.2
-- cert-manager Operator for Red Hat OpenShift: 1.18
+With policy attachments comes defaults and overrides. Different roles operate
+with policy APIs at different levels of the object hierarchy. Policies are
+merged with specific rules and strategies to form an effective policy across
+the organization.
 
-### Cloud Providers
-
-AWS, Google Cloud Platform, Microsoft Azure
-
-### DNS Providers
-
-Amazon Route 53, Google Cloud Platform DNS, Microsoft Azure DNS, CoreDNS
-(on-premise)
-
-### Rate-Limiting Data Stores
-
-Redis Enterprise or Cloud (latest), Amazon Elasticache (latest), Dragonfly
-Community or Cloud (latest)
-
-### Identity Access Management
-
-Red Hat build of Keycloak version 26.4, plus API keys.
-
-## User Workflow Summary
+## User Workflows
 
 ### Platform Engineer
 
-1. Create gateways.
-2. Configure DNS policies for geographic routing and load balancing.
-3. Configure TLS policies for automatic certificate generation.
-4. Configure Auth and RateLimit policies for security and performance.
-5. Observe connectivity and runtime metrics via dashboards and alerts.
+1. Create at least one gateway
+2. Connect gateways with DNSPolicy (global load balancing)
+3. Secure gateways with TLSPolicy (automatic certificate requests)
+4. Set up security defaults with AuthPolicy and RateLimitPolicy
+5. Configure observability stack (dashboards, alerts)
 
 ### Application Developer
 
-1. Deploy applications and API routes on platform-provided gateways.
-2. Protect applications with AuthPolicy (OAuth 2, JWT, API keys, RBAC, ReBAC,
-   OPA, Kubernetes tokens).
-3. Observe API performance metrics (uptime, RPS, latency, errors).
+1. Configure routes (HTTPRoute) and API definitions
+2. Protect applications with AuthPolicy (OAuth 2, JWT, API keys, RBAC)
+3. Observe application and API performance via dashboards
 
 ### Business User
 
-1. Monitor application and API status via Grafana-based dashboards.
-2. View regional API metrics for customer SLA compliance.
+1. Monitor application and API status in regional data centers
+2. View API metrics: uptime, requests/sec, latency, errors/min
+3. Work with customers on specific performance metrics
 
-## Technologies and Patterns
+## Supported Configurations (RHCL 1.3)
 
-- **Policy-based configuration** — defaults and overrides across object
-  hierarchy for multi-role collaboration.
-- **WebAssembly plugin** — lightweight Envoy extension; no major changes to
-  existing ingress objects.
-- **Multicluster configuration mirroring** — consistent policy deployment
-  across cloud providers.
-- **API connectivity and management** — scalable multi-gateway connectivity
-  with observability, auth, and rate limiting.
+### OpenShift Container Platform
 
-## Verification Before Implementation
+| Red Hat Connectivity Link | OCP | OSD | ROSA | ARO |
+|--------------------------|-----|-----|------|-----|
+| 1.3 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.19 |
 
-Before implementing RHCL resources, verify:
+### Supported Operators
 
-- Installed Connectivity Link Operator subscription and CSV
-- Authorino, Limitador, and DNS Operator CRDs and health
-- Available Gateway API CRDs (Gateway, HTTPRoute, GRPCRoute)
-- OpenShift Service Mesh 3.2 deployment and health
-- cert-manager Operator installation and ClusterIssuer
-- Kuadrant CR status
+| Red Hat Connectivity Link | OpenShift Service Mesh | cert-manager Operator |
+|--------------------------|----------------------|---------------------|
+| 1.3 | 3.2 | 1.18 |
 
-Discovery commands belong in validation checklists; do not run without
-confirming the target cluster via the OpenShift safety guard.
+### Identity Access Management
+
+| Red Hat Connectivity Link | Red Hat build of Keycloak |
+|--------------------------|--------------------------|
+| 1.3 | Version 26.4 |
+
+### Cloud DNS Providers
+
+- Amazon Route 53
+- Google Cloud Platform DNS
+- Microsoft Azure DNS
+- CoreDNS (on-premise, GA in 1.3)
+
+### Rate-Limit Data Stores
+
+- Redis Enterprise or Cloud (latest)
+- Amazon Elasticache (latest)
+- Dragonfly Community or Cloud (latest)
+
+## WebAssembly Plugin
+
+As a WASM plugin developed for the Envoy proxy, Connectivity Link is
+lightweight, hardware independent, non-intrusive, and secure. Clusters using
+OpenShift Service Mesh, Istio, or Envoy for ingress do not require major
+changes to existing ingress objects to begin using Connectivity Link.
+
+## Multicluster Configuration Mirroring
+
+Deploy policies across different cloud service providers consistently.
+Development, test, and production environments can be consistent through one
+interface. Provides unified experiences, global administration, and security
+compliance.

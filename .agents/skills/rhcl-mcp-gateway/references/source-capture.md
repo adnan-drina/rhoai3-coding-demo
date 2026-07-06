@@ -1,48 +1,63 @@
 # Source Capture
 
-## Official Source
+## Official Sources
 
 | Field | Value |
 |-------|-------|
 | Product family | Red Hat Connectivity Link |
+| Product version | 1.3 (demo pins rhcl-operator.v1.3.4) |
 | Baseline source | `docs/PLATFORM_BASELINE.md` |
 | Documentation category | Discover |
 | Official guide | MCP gateway |
-| Source URL | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html-single/mcp_gateway/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/mcp_gateway/index |
+| Source URL | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/mcp_gateway/index |
+| Multi-page URL | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html/mcp_gateway/index |
 | Capture date | 2026-07-06 |
 
 ## Captured Sections
 
+From MCP gateway guide:
+
 - Chapter 1: Introduction to the MCP gateway
-  - About the MCP gateway (purpose, goals, Envoy proxy, Gateway API)
-  - MCP gateway architecture (design considerations, high-level goals)
+  - About the MCP gateway (purpose, goals, Envoy proxy extension)
+  - MCP gateway architecture (design goals, Istio control plane, Gateway API)
   - MCP gateway architectural components:
-    - MCP router (ext_proc, JSON-RPC parsing, headers, session handling)
-    - MCP broker (aggregation, tool discovery, notifications, init handling)
-    - MCP discovery controller (MCPServerRegistration CRs, HTTPRoute, config)
+    - MCP router (ext_proc, JSON-RPC parsing, header setting, session management)
+    - MCP broker (aggregation, tool discovery, notifications, elicitation)
+    - MCP discovery controller (MCPServerRegistration CRs, HTTPRoute, config secret)
 
 ## Source Boundaries
 
-This source covers only the introductory and architectural content. It does not
-provide:
+This skill covers the "MCP gateway" conceptual guide only. It provides
+understanding of the MCP gateway architecture, components, and their
+responsibilities. It does not cover:
 
-- MCP gateway installation procedures
-- MCPServerRegistration CR schema or field-level documentation
-- MCP server registration and configuration procedures
-- AuthPolicy or RateLimitPolicy configuration for MCP endpoints
-- Vault credential injection configuration
-- Audit trail configuration
-- Prompt federation configuration details
-- Troubleshooting MCP gateway issues
+- Installing and deploying the MCP gateway (separate guide)
+- Configuring MCP servers and MCPServerRegistration CRs (separate guide)
+- General Connectivity Link policy APIs (separate guide)
+- Release notes (separate guide)
 
-## Related Official Sources
+## Custom Resources Documented
 
-- RHCL 1.4 Installing the MCP gateway:
-  https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_the_mcp_gateway/index
-- RHCL 1.4 Registering MCP servers and creating policies:
-  https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/registering_mcp_servers_and_creating_policies/index
-- RHCL 1.4 Release notes (MCP gateway 0.7.0 features):
-  https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/release_notes/index
-- RHCL 1.4 Connectivity Link overview:
-  https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/red_hat_connectivity_link/index
+| Resource | API Group | Purpose |
+|----------|-----------|---------|
+| MCPServerRegistration | `kuadrant.io` | Register MCP servers with the gateway |
+| MCPGatewayExtension | `kuadrant.io` | Configure MCP gateway behavior |
+| HTTPRoute | `gateway.networking.k8s.io` | Gateway API routing |
+
+## Technology Preview Notice
+
+The MCP gateway is a Technology Preview feature introduced in RHCL 1.3.3
+(released 30 April 2026). It is available on the `preview` update channel and
+is not supported with Red Hat production SLAs.
+
+## Version Deprecation Notice
+
+RHCL 1.4.0 is deprecated. The demo stays on RHCL 1.3.4. All guidance in this
+skill is grounded in RHCL 1.3 documentation only.
+
+## Related Official Sources To Add Later
+
+- Installing the MCP gateway
+- Configuring MCP server registrations
+- MCP gateway operational procedures
+- MCP specification (external)

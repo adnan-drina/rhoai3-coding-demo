@@ -1023,6 +1023,63 @@ products:
             status: active
             skill: rhdh-helm-reference
 
+  rhcl:
+    name: Red Hat Connectivity Link
+    baseline_component: Red Hat Connectivity Link
+    skill_prefix: rhcl-
+    rule: .agents/rules/rhcl.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/
+    categories:
+      discover:
+        description: Connectivity Link concepts, architecture, and MCP gateway overview.
+        routes:
+          - book: red_hat_connectivity_link
+            status: active
+            skill: rhcl-about
+          - book: mcp_gateway
+            status: active
+            skill: rhcl-mcp-gateway
+      whats_new:
+        description: Release notes, new features, bug fixes, and known issues.
+        routes:
+          - book: release_notes
+            status: active
+            skill: rhcl-release-notes
+      install:
+        description: Installing Connectivity Link and MCP gateway on single and multiple clusters.
+        routes:
+          - book: installing_connectivity_link
+            status: active
+            skill: rhcl-install
+          - book: installing_the_mcp_gateway
+            status: active
+            skill: rhcl-install-mcp
+      configure_and_secure:
+        description: Deploying, configuring, and securing APIs and MCP servers.
+        routes:
+          - book: deploying_red_hat_connectivity_link
+            status: active
+            skill: rhcl-configure
+          - book: registering_mcp_servers_and_creating_policies
+            status: active
+            skill: rhcl-mcp-config
+      observe_and_troubleshoot:
+        description: Observability, monitoring, and troubleshooting.
+        routes:
+          - book: observability
+            status: active
+            skill: rhcl-observability
+          - book: troubleshooting
+            status: active
+            skill: rhcl-troubleshoot
+      upgrade:
+        description: Updating Connectivity Link within the 1.3.x line.
+        routes:
+          - book: updating_red_hat_connectivity_link
+            status: active
+            skill: rhcl-update
+
 route_update_rules:
   when_adding_skill:
     - Add a route with product, category, book, status, and skill.

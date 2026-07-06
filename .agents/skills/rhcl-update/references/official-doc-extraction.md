@@ -1,80 +1,148 @@
 # Official Doc Extraction
 
-Use this extraction to keep RHCL update content grounded in the official RHCL
-1.4 source. The update page is minimal and dominated by a deprecation notice.
+Use this extraction to keep RHCL update content grounded in official sources.
+Verify exact operator versions with `oc get csv` before changing Subscriptions.
 
-## Update Availability Statement
+## RHCL 1.4.0 Deprecation (from 1.4 release notes)
 
-The official RHCL 1.4 update page states that you can update Red Hat
-Connectivity Link from one version to the next if your supported configuration
-meets the requirements of the version you want to update to.
+RHCL 1.4.0 (RHBA-2026:25234) is deprecated. Clusters running 1.4.0 may
+experience:
 
-## RHCL 1.4.0 Deprecation Warning
+- Authentication failures
+- API key management errors
+- Gateway instability
+- Gateway pod memory pressure
 
-The official page carries a Warning-level notice:
+These issues stem from integration incompatibilities across certain OCP and
+Service Mesh version combinations.
 
-> Red Hat Connectivity Link 1.4.0 is deprecated. OpenShift Container Platform
-> clusters running Connectivity Link 1.4.0 might experience authentication
-> failures, API key management errors, gateway instability, or gateway pod
-> memory pressure because of integration changes that are not fully compatible
-> on all supported OpenShift Container Platform and OpenShift Service Mesh
-> combinations.
+Official remediation:
 
-## Official Recommended Actions
+- **New customers:** Do not install RHCL 1.4.0.
+- **Upgrade customers:** Pin Connectivity Link and its dependent operators to
+  the latest RHCL 1.3.z release. Prevent upgrades to 1.4.0.
 
-The official page prescribes two actions based on scenario:
+## Demo Pin Strategy
 
-1. **New customers**: Do not install Red Hat Connectivity Link 1.4.0.
-2. **Upgrade customers**: Pin Connectivity Link and its dependent Operators to
-   the latest Red Hat Connectivity Link 1.3.z release. Prevent upgrades to
-   Connectivity Link 1.4.0.
+This demo pins `rhcl-operator.v1.3.4` in the Subscription CR:
 
-The phrase "pin Connectivity Link and its dependent Operators" indicates that
-the hold applies not only to the RHCL operator itself but also to dependent
-operators (Authorino, DNS, Limitador) whose versions may be coupled to the
-RHCL release train.
+```yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: connectivity-link-operator
+  namespace: <operator_ns>
+spec:
+  channel: stable
+  installPlanApproval: Manual
+  name: connectivity-link-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  startingCSV: rhcl-operator.v1.3.4
+```
 
-## Implications for This Repo
+Before approving any InstallPlan:
 
-The official deprecation directly validates the demo's compatibility hold:
+```bash
+oc get installplan -n <operator_ns> \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.clusterServiceVersionNames[*]}{"\n"}{end}'
+```
 
-- The `docs/PLATFORM_BASELINE.md` hold at `rhcl-operator.v1.3.4` aligns with
-  the official guidance to pin to the latest 1.3.z release.
-- Stage 040 GitOps management of dependent operator Subscriptions with manual
-  approval and 1.3.x `startingCSV` values aligns with the official guidance
-  to pin dependent Operators.
-- The official warning's mention of authentication failures, API key management
-  errors, gateway instability, and gateway pod memory pressure are the specific
-  failure modes that the Stage 040 regression gates should detect.
+Reject any InstallPlan that resolves to a 1.4.x CSV.
 
-## Content Not Available in This Source
+## Supported Configurations (RHCL 1.3)
 
-The official RHCL 1.4 update page does not provide:
+### OCP Version Matrix
 
-- Step-by-step update procedures or operator lifecycle commands
-- Subscription channel, `startingCSV`, or `installPlanApproval` guidance
-- Rollback procedures from 1.4.0 to 1.3.z
-- Compatibility matrix for OCP versions, Service Mesh versions, or Istio
-  versions
-- Dependent operator version coordination details
-- Timeline or criteria for a supported 1.4.x patch release
+| RHCL | OCP | OSD | ROSA | ARO |
+|------|-----|-----|------|-----|
+| 1.3 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.21, 4.20, 4.19 | 4.19 |
+| 1.2 | 4.20, 4.19, 4.18 | 4.20, 4.19, 4.18 | 4.20, 4.19, 4.18 | 4.17 |
+| 1.1 | 4.19, 4.18, 4.17 | 4.19, 4.18, 4.17 | 4.19, 4.18, 4.17 | 4.17 |
 
-These gaps mean that update implementation must rely on:
+### Dependent Operator Matrix
 
-- RHCL release notes for version-specific compatibility
-- RHCL installation guide for operator and Subscription management
-- OLM documentation for InstallPlan approval and Subscription pinning
-- Live cluster verification with `oc get subscription`, `oc get installplan`,
-  and `oc get csv` commands
+| RHCL | Service Mesh | cert-manager Operator |
+|------|-------------|----------------------|
+| 1.3 | 3.2 | 1.18 |
+| 1.2 | 3.1 | 1.17 |
+| 1.1 | 3.0 | 1.15 |
 
-## Verification Before Any Update Action
+### Supported Cloud Providers
 
-Before changing RHCL operator versions, verify:
+AWS, GCP, Azure (all RHCL versions).
 
-- Current RHCL operator Subscription, channel, and installed CSV
-- Current dependent operator Subscriptions and installed CSVs
-- Pending InstallPlans and their target CSVs
-- RHCL release notes for the target version
-- OCP and Service Mesh version compatibility for the target RHCL version
-- Stage 040 MaaS Gateway health: gateway pods, Authorino, auth policies,
-  rate limit policies, API key management, and Playground connectivity
+### Supported Cloud DNS Providers
+
+Amazon Route 53, GCP DNS, Azure DNS (all RHCL versions).
+
+### Supported On-Premise DNS
+
+CoreDNS for on-cluster DNS zones (all RHCL versions).
+
+### Supported Rate Limiting Data Stores
+
+Redis Enterprise or Cloud, Amazon ElastiCache, Dragonfly Community or Cloud
+(latest versions, all RHCL versions).
+
+### Supported Identity Access Management
+
+| RHCL | Red Hat build of Keycloak |
+|------|--------------------------|
+| 1.3 | 26.4 |
+| 1.2 | 26.4 |
+| 1.1 | 26.2 |
+
+## Gateway API CRD Constraint
+
+On OCP 4.19 or later, if updating from a previous OCP version that contains
+Gateway API CRDs, the CRD resources must exactly match the Gateway API version
+supported by the target OCP version. See the OpenShift documentation on managing
+Gateway API resources.
+
+On OCP 4.18 or older, Red Hat OpenShift Service Mesh must be used as the
+Gateway API provider.
+
+## Update Procedure (1.2.x to 1.3 via Web Console)
+
+Prerequisites:
+
+- RHCL 1.2.x installed on OCP 4.19 or later.
+
+Procedure:
+
+1. Navigate to **Ecosystem > Installed Operators > Red Hat Connectivity Link**.
+2. Ensure the **Update channel** is set to `stable`.
+3. If **Update approval** is `Automatic`, the update installs when the channel
+   resolves the new version.
+4. If **Update approval** is `Manual`, click **Install** to approve.
+5. Wait for the Connectivity Link Operator deployment to complete.
+6. Verify RHCL 1.3 is installed and running.
+
+## Lifecycle Notes
+
+Starting with RHCL 1.4, full support ends with the release of the next minor
+version. Maintenance support ends with the minor version after that.
+
+The maintenance support lifecycle for RHCL 1.3 was shortened: it now ends with
+the release of RHCL 1.5 (previously announced as ending with 1.6).
+
+## Verification Commands
+
+```bash
+oc get csv -n <operator_ns> | grep connectivity
+
+oc get sub connectivity-link-operator -n <operator_ns> \
+  -o jsonpath='{.status.installedCSV}'
+
+oc get installplan -n <operator_ns>
+
+oc get pods -n <operator_ns> -l app=connectivity-link-operator
+```
+
+Healthy state:
+
+- CSV phase is `Succeeded` with a 1.3.z version.
+- `installedCSV` matches the pinned `startingCSV`.
+- No pending InstallPlans resolve to 1.4.x.
+- Operator pod is Running and Ready.
