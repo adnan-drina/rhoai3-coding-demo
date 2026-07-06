@@ -762,6 +762,53 @@ products:
             status: active
             skill: tpa-admin
 
+  mta:
+    name: Migration Toolkit for Applications
+    baseline_component: Migration Toolkit for Applications
+    skill_prefix: mta-
+    documentation_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/
+    active_baseline_root: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/
+    categories:
+      whats_new:
+        description: Release notes, new features, bug fixes, known issues, and removed features.
+        routes:
+          - book: release_notes
+            status: active
+            skill: mta-release-notes
+      install:
+        description: Operator installation, Tackle CR, CLI zip install, disconnected install.
+        routes:
+          - book: installing_the_migration_toolkit_for_applications
+            status: active
+            skill: mta-install
+      ai:
+        description: Developer Lightspeed AI-assisted code migration, LLM providers, Solution Server, Agent AI mode.
+        routes:
+          - book: configuring_and_using_red_hat_developer_lightspeed_for_mta
+            status: active
+            skill: mta-lightspeed
+      using_tools:
+        description: CLI, web UI, VS Code extension, and IntelliJ IDEA plugin for analysis and modernization.
+        routes:
+          - book: using_the_migration_toolkit_for_applications_command-line_interface
+            status: active
+            skill: mta-cli
+          - book: configuring_and_managing_the_migration_toolkit_for_applications_user_interface
+            status: active
+            skill: mta-ui
+          - book: configuring_and_using_the_visual_studio_code_extension_for_mta
+            status: active
+            skill: mta-vscode
+          - book: intellij_idea_plugin_guide
+            status: active
+            skill: mta-intellij
+      rules_development:
+        description: Custom rule authoring, YAML rules, providers, conditions, rulesets.
+        routes:
+          - book: configuring_and_using_rules_for_an_mta_analysis
+            status: active
+            skill: mta-rules
+
   rhdh:
     name: Red Hat Developer Hub
     baseline_component: Red Hat Developer Hub

@@ -23,6 +23,11 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    - name: qwen3-6-35b-a3b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 100000
+          window: 1h
     - name: gpt-4o-mini
       namespace: models-as-a-service
       tokenRateLimits:
@@ -35,7 +40,7 @@ spec:
     labels:
       environment: demo
       provider: governed-models
-      modelSet: nemotron-and-gpt-4o-mini
+      modelSet: nemotron-qwen-and-gpt-4o-mini
 ---
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSAuthPolicy
@@ -59,6 +64,8 @@ spec:
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
+    - name: qwen3-6-35b-a3b
+      namespace: models-as-a-service
     - name: gpt-4o-mini
       namespace: models-as-a-service
   meteringMetadata:
@@ -67,4 +74,4 @@ spec:
     labels:
       environment: demo
       provider: governed-models
-      modelSet: nemotron-and-gpt-4o-mini
+      modelSet: nemotron-qwen-and-gpt-4o-mini
