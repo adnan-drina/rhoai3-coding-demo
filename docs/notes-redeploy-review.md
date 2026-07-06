@@ -7,9 +7,21 @@ move to BACKLOG.md, TROUBLESHOOTING.md, and stage READMEs.
 ## Status
 
 - [x] Working tree committed (guard, stage 070 Continue VSIX, skills taxonomy)
-- [ ] Commits pushed to origin/main (push denied by permission mode — needs user approval; Argo deploys from GitHub main, so this blocks deployment)
+- [x] Commits pushed to origin/main (through ae43e99, script refactor included)
 - [ ] New cluster credentials in .env (environment provisioning; update OPENSHIFT_API_URL, OPENSHIFT_PASSWORD, RHOAI_EXPECTED_API_SERVER)
 - [x] Static validation green: bash -n all scripts, validate-stage-flow.sh
+
+## Script refactor completed pre-deploy (commits 5e27296, ae43e99)
+
+- validate-lib.sh: load_env before guard (fixes exit-43 on every stage
+  validate), Ready-condition pod counting, unified check_argocd_app
+  semantics (sync drift WARN, Progressing WARN, else FAIL), new
+  check_secret_value and check_http_code helpers
+- validate-demo-flow.sh: mapfile removed (bash 3.2 on macOS)
+- bootstrap.sh: bounded wait_until, ArgoCD patches fail loudly
+- deploy scripts: shared apply_stage_app; audit-maas-cleanup.sh now guarded
+- First live bootstrap+validate run on the fresh cluster must confirm all
+  of this end-to-end.
 
 ## Stage 010 static findings (pre-deploy)
 
