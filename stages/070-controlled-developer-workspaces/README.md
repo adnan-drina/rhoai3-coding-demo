@@ -17,8 +17,9 @@ This stage adds a governed cloud development workspace layer.
 - Red Hat OpenShift Dev Spaces deployed through operator-managed resources.
 - Pre-provisioned DevWorkspace definitions for the demo personas.
 - Single-repository workspaces for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
-- Continue and OpenCode configuration for MaaS-published OpenAI-compatible endpoints.
-- `vscode-editor-configurations` for Continue, OpenShift Toolkit, and bash terminal defaults.
+- Continue installed as a Che Code default extension and configured for MaaS-published OpenAI-compatible endpoints.
+- OpenCode configuration for MaaS-published OpenAI-compatible endpoints.
+- `vscode-editor-configurations` for editor recommendations and bash terminal defaults.
 - Java 21 configured as the default workspace shell and Maven runtime for the
   Quarkus demo exercises.
 - MTA VS Code extensions scoped only to the `mca-coolstore` workspace through `DEFAULT_EXTENSIONS`.
@@ -46,7 +47,7 @@ After deployment, the developer opens Red Hat OpenShift Dev Spaces from the sele
 - `coolstore-inventory-service` for AI-assisted engineering and delivery.
 - `mca-coolstore` for migration and modernization.
 
-Stage deployment creates MaaS API keys for the demo models and stores them in `Secret/wksp-ai-developer/maas-devspace-api-keys`. Workspace startup renders:
+Stage deployment creates MaaS API keys for the demo models and stores them in `Secret/wksp-ai-developer/maas-devspace-api-keys`. Workspace startup installs the Continue VSIX through `DEFAULT_EXTENSIONS` and renders:
 
 - `~/.continue/config.yaml`
 - `~/.config/opencode/opencode.json`

@@ -54,8 +54,11 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration defaults to bash: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
-    check "mca-coolstore workspace declares MTA default extensions: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
+    check "mca-coolstore workspace declares Continue and MTA default extensions: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/continue.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads Continue extension 1.3.38: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'Continue.continue-1.3.38@linux-x64.vsix' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace downloads MTA VS Code extension 8.1.2: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.2.vsix' && echo present || echo missing" \
@@ -78,6 +81,12 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
             "present"
         check "Workspace startup configures Java 21 shell default: $ns/$workspace" \
             "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
+            "present"
+        check "Workspace declares Continue default extension: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o yaml | grep -q '/tmp/continue.vsix' && echo present || echo missing" \
+            "present"
+        check "Workspace downloads Continue extension 1.3.38: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'Continue.continue-1.3.38@linux-x64.vsix' && echo present || echo missing" \
             "present"
         phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
         if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then

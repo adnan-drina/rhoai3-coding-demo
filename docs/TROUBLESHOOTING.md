@@ -692,6 +692,32 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 070 validation.
 
+## Continue Is Missing From A Dev Spaces Workspace
+
+**Affected stage:** Stage 070
+
+**Likely cause:** The workspace was started from an older DevWorkspace spec that only recommended Continue through `extensions.json`, or the workspace did not restart after the `DEFAULT_EXTENSIONS` policy changed.
+
+**Diagnose:**
+
+```bash
+oc get devworkspace getting-started-ai-coding -n wksp-ai-developer -o yaml \
+  | grep -E 'DEFAULT_EXTENSIONS|continue.vsix|Continue.continue'
+
+POD=$(oc get pod -n wksp-ai-developer \
+  -l controller.devfile.io/devworkspace_name=getting-started-ai-coding \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
+  test -f ~/.continue/config.yaml && echo "Continue config present"
+```
+
+**Recover:**
+
+- Sync Stage 070 so each DevWorkspace downloads `/tmp/continue.vsix` and sets `DEFAULT_EXTENSIONS`.
+- Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
+- Confirm the Continue sidebar appears in Che Code and that `~/.continue/config.yaml` exists in the tooling container.
+
 ## Coding Assistant Project Is Missing From OpenShift AI Projects
 
 **Affected stage:** Stage 060

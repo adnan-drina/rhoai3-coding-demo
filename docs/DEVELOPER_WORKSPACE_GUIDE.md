@@ -77,11 +77,11 @@ terminals make both `java -version` and `mvn -v` resolve to Java 21. If a fresh
 workspace still reports Java 17, fix the workspace image or startup
 configuration; do not add Java-version workarounds to the application prompt.
 
-Che Code editor policy is also platform-managed. Stage 070 provides a
-`vscode-editor-configurations` ConfigMap in each workspace namespace. It
-recommends the Continue and OpenShift Toolkit extensions from Open VSX and sets
-the integrated terminal default profile to bash. The modernization-only MTA
-extensions are scoped to the `mca-coolstore` DevWorkspace with
+Che Code editor policy is also platform-managed. Stage 070 installs Continue
+from Open VSX through the DevWorkspace `DEFAULT_EXTENSIONS` setting and
+provides a `vscode-editor-configurations` ConfigMap in each workspace namespace
+for editor recommendations and bash terminal defaults. The modernization-only
+MTA extensions are scoped to the `mca-coolstore` DevWorkspace with
 `DEFAULT_EXTENSIONS`, so they do not install into the onboarding or inventory
 engineering workspaces.
 

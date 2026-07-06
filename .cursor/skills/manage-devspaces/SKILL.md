@@ -1,10 +1,18 @@
 ---
 name: manage-devspaces
+metadata:
+  author: rhoai3-coding-demo
+  version: 1.0.0
+  rhoai-version: "3.4"
+  ocp-version: "4.20"
 description: >-
   Manage OpenShift Dev Spaces workspaces for the RHOAI coding demo. Use when
   creating, deleting, recreating, debugging, or updating DevWorkspace resources
   in wksp-* namespaces, or when troubleshooting workspace startup failures,
-  OOM crashes, or DevWorkspace configuration.
+  OOM crashes, or DevWorkspace configuration. Do NOT use for general cluster
+  troubleshooting (use rhoai-troubleshoot), GPU/model resource lifecycle
+  actions (use manage-resources), or GitOps manifest review (use
+  review-gitops-change).
 ---
 
 # Managing Dev Spaces Workspaces
@@ -12,11 +20,12 @@ description: >-
 ## Environment
 
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle)
-- **Workspaces**: 3 DevWorkspace CRs named `exercises` in `wksp-kubeadmin`, `wksp-ai-admin`, `wksp-ai-developer`
+- **Workspaces**: 3 DevWorkspace CRs in each `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` namespace: `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore`
 - **Cloned repos**:
-  - `https://github.com/adnan-drina/coding-exercises.git` (devfile + exercises + Continue config) — all workspaces
-  - `https://github.com/konveyor-ecosystem/coolstore.git` (Java EE migration target) — ai-admin, ai-developer only
-- **Extensions**: Continue 1.3.38 + MTA 8.1.1 (pack + core + java) via `DEFAULT_EXTENSIONS` and `postStart` curl
+  - `https://github.com/adnan-drina/getting-started-ai-coding.git` — Stage 100 onboarding and MaaS checks
+  - `https://github.com/adnan-drina/coolstore-inventory-service.git` — deferred engineering workflows
+  - `https://github.com/rhpds/mca-coolstore.git` — modernization workflow
+- **Extensions**: Continue 1.3.38 via `DEFAULT_EXTENSIONS` in all workspaces; MTA 8.1.2 (pack + core + java) via `DEFAULT_EXTENSIONS` only in `mca-coolstore`
 - **GitOps**: Managed by ArgoCD `070-controlled-developer-workspaces` Application with `Replace=true` sync option
 - **Manifest**: `gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml`
 
@@ -36,11 +45,11 @@ commands:
     exec:
       commandLine: |
         for i in $(seq 1 30); do
-          [ -f /projects/coding-exercises/.vscode/config.yaml ] && break
+          [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break
           sleep 2
         done
         mkdir -p ~/.continue
-        cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml 2>/dev/null
+        cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null
       component: tooling-container
 events:
   postStart:
@@ -50,7 +59,7 @@ events:
 **Known issue**: postStart exec commands in GitOps-managed DevWorkspace CRs may not execute reliably. The manual fallback is:
 
 ```bash
-cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
+cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml
 ```
 
 ### Extension Downloads in postStart
@@ -58,21 +67,22 @@ cp /projects/coding-exercises/.vscode/config.yaml ~/.continue/config.yaml
 VSIX downloads from OpenVSX use CDN redirects that can time out silently. Always use `--max-time 120`:
 
 ```bash
-curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.1/file/redhat.mta-vscode-extension-8.1.1.vsix" 2>/dev/null || true
+curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix" 2>/dev/null || true
 ```
 
 The MTA extension pack (`mta-vscode-extension`) does not reliably resolve its dependencies (`mta-core`, `mta-java`) from a local VSIX in Dev Spaces. Pin and download all three individually.
 
 ### Project Order Matters for MTA
 
-The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! Only the first workspace folder will be analyzed." List `coolstore` before `coding-exercises` so MTA analyzes the migration target by default.
+The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! Only the first workspace folder will be analyzed." Keep `mca-coolstore` as a single-repository workspace so MTA analyzes the migration target by default.
 
 ### Memory Requirements
 
 The default tooling container memory (~1152Mi) is insufficient for VS Code + Continue + MTA + Java/Maven. Use:
 
-- **kubeadmin**: 4Gi limit / 1Gi request (coding-exercises only)
-- **ai-admin, ai-developer**: 6Gi limit / 2Gi request (coolstore + MTA analysis + Maven builds)
+- **getting-started-ai-coding** and **coolstore-inventory-service**: 4Gi limit / 1Gi request
+- **mca-coolstore**: 6Gi limit / 2Gi request for MTA analysis and Maven builds
 
 ```yaml
 components:
@@ -86,11 +96,11 @@ components:
 
 ### ArgoCD ServerSideDiff Issues
 
-ArgoCD with `ServerSideDiff=true` may not detect changes in nested arrays (e.g., `projects[0].git.remotes.origin`). Use `Replace=true` sync option:
+Earlier demo revisions used `Replace=true` for nested DevWorkspace changes. Current GitOps should not keep `Replace=true` on DevWorkspaces because controller-assigned IDs are immutable; use the repair hook to remove stale annotations and let Argo CD patch the spec while ignoring only `/spec/started`.
 
 ```yaml
 annotations:
-  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Replace=true
+  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 ```
 
 ### Operator Reconciliation
@@ -112,9 +122,9 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 NS=wksp-ai-developer
 oc patch application 070-controlled-developer-workspaces -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
-oc patch devworkspace exercises -n $NS --type=merge -p '{"spec":{"started":false}}'
+oc patch devworkspace getting-started-ai-coding -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
-oc delete devworkspace exercises -n $NS --force --grace-period=0
+oc delete devworkspace getting-started-ai-coding -n $NS --force --grace-period=0
 oc delete pvc --all -n $NS --force --grace-period=0
 sleep 5
 oc apply -f gitops/stages/070-controlled-developer-workspaces/base/devspaces/workspaces.yaml
@@ -148,7 +158,7 @@ oc exec $POD -n wksp-ai-developer -c tooling-container -- ls /projects/ 2>/dev/n
 ```bash
 NS=wksp-ai-developer
 # Check failure reason
-oc get devworkspace exercises -n $NS -o jsonpath='{.status.message}'
+oc get devworkspace getting-started-ai-coding -n $NS -o jsonpath='{.status.message}'
 
 # Check events
 oc get events -n $NS --sort-by='.lastTimestamp' | tail -15
