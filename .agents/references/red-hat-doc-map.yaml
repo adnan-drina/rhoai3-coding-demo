@@ -513,6 +513,42 @@ products:
             status: active
             skill: ocp-image-registry-and-mirroring
 
+  ocp_devspaces:
+    name: Red Hat OpenShift Dev Spaces
+    baseline_component: Red Hat OpenShift Dev Spaces
+    skill_prefix: ocp-devspaces-
+    rule: .agents/rules/ocp.md
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/
+    categories:
+      discover:
+        description: Product overview, architecture, DevWorkspace operator, supported IDEs, and workspace lifecycle.
+        routes:
+          - book: discover_openshift_dev_spaces
+            status: active
+            skill: ocp-devspaces-about
+      whats_new:
+        description: Release notes, new features, bug fixes, known issues for 3.28.x sub-releases.
+        routes:
+          - book: release_notes_and_known_issues
+            status: active
+            skill: ocp-devspaces-release-notes
+      install:
+        description: Operator installation, dsc CLI, CheCluster CR, restricted network, Keycloak OIDC.
+        routes:
+          - book: installation_guide
+            status: active
+            skill: ocp-devspaces-install
+      usage_and_administration:
+        description: CheCluster CR customization, storage, workspace limits, RBAC, networking, user workflows, devfiles, Git integration.
+        routes:
+          - book: administration_guide
+            status: active
+            skill: ocp-devspaces-admin
+          - book: user_guide
+            status: active
+            skill: ocp-devspaces-user-guide
+
   ocp_lightspeed:
     name: Red Hat OpenShift Lightspeed
     baseline_component: Red Hat OpenShift Lightspeed
@@ -696,6 +732,158 @@ products:
               - s3_credentials
             status: active
             skill: odf-object-bucket-claims
+
+  rhdh:
+    name: Red Hat Developer Hub
+    baseline_component: Red Hat Developer Hub
+    skill_prefix: rhdh-
+    documentation_root: https://docs.redhat.com/en/documentation/red_hat_developer_hub/
+    active_baseline_root: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/
+    categories:
+      discover:
+        description: Product overview, architecture, software catalog, deployment methods, sizing, HA, integrations, and supported platforms.
+        routes:
+          - book: about_red_hat_developer_hub
+            status: active
+            skill: rhdh-about
+      whats_new:
+        description: Release notes, new features, bug fixes, known issues, deprecated features, and preview capabilities.
+        routes:
+          - book: red_hat_developer_hub_release_notes
+            status: active
+            skill: rhdh-release-notes
+          - book: explore_preview_of_emerging_and_supplemental_capabilities
+            status: active
+            skill: rhdh-preview-features
+      get_started:
+        description: First-instance setup, navigation, developer onboarding, and initial configuration.
+        routes:
+          - book: setting_up_and_configuring_your_first_red_hat_developer_hub_instance
+            status: active
+            skill: rhdh-getting-started-setup
+          - book: navigate_red_hat_developer_hub_on_your_first_day
+            status: active
+            skill: rhdh-getting-started-navigate
+      install:
+        description: Installation on OCP, AKS, EKS, OSD-GCP, GKE, and air-gapped environments using Operator or Helm chart.
+        routes:
+          - book: installing_red_hat_developer_hub_on_openshift_container_platform
+            status: active
+            skill: rhdh-install-ocp
+          - book: installing_red_hat_developer_hub_on_microsoft_azure_kubernetes_service_aks
+            status: active
+            skill: rhdh-install-aks
+          - book: installing_red_hat_developer_hub_on_amazon_elastic_kubernetes_service_eks
+            status: active
+            skill: rhdh-install-eks
+          - book: installing_red_hat_developer_hub_on_openshift_dedicated_on_google_cloud
+            status: active
+            skill: rhdh-install-osd-gcp
+          - book: installing_red_hat_developer_hub_on_google_kubernetes_engine_gke
+            status: active
+            skill: rhdh-install-gke
+          - book: installing_red_hat_developer_hub_in_an_air-gapped_environment
+            status: active
+            skill: rhdh-install-airgapped
+      upgrade:
+        description: Upgrading RHDH using Operator or Helm chart, migration paths.
+        routes:
+          - book: upgrading_red_hat_developer_hub
+            status: active
+            skill: rhdh-upgrade
+      configure:
+        description: Config maps, secrets, Backstage CR, Helm values, customization, branding, TechDocs plugin.
+        routes:
+          - book: configuring_red_hat_developer_hub
+            status: active
+            skill: rhdh-configure
+          - book: customizing_red_hat_developer_hub
+            status: active
+            skill: rhdh-customize
+          - book: techdocs_for_red_hat_developer_hub
+            status: active
+            skill: rhdh-techdocs-config
+      control_access:
+        description: Authentication providers, SSO, RBAC, permission policies, and role management.
+        routes:
+          - book: authentication_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-authentication
+          - book: authorization_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-authorization
+      integrate:
+        description: Git providers, Developer Lightspeed AI, MCP server tools, and OpenShift AI Connector.
+        routes:
+          - book: integrating_red_hat_developer_hub_with_your_git_provider
+            status: active
+            skill: rhdh-git-integration
+          - book: interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub
+            status: active
+            skill: rhdh-developer-lightspeed
+          - book: interacting_with_model_context_protocol_tools_for_red_hat_developer_hub
+            status: active
+            skill: rhdh-mcp-tools
+          - book: accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub
+            status: active
+            skill: rhdh-openshift-ai-connector
+      develop:
+        description: Software development workflows, CI/CD management, service monitoring, code quality, and documentation lifecycle.
+        routes:
+          - book: streamline_software_development_and_management_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-develop
+          - book: manage_and_consume_technical_documentation_within_red_hat_developer_hub
+            status: active
+            skill: rhdh-techdocs-manage
+      observability:
+        description: Adoption analytics, audit logs, monitoring, telemetry, scorecards, and diagnostic data.
+        routes:
+          - book: adoption_insights_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-adoption-insights
+          - book: audit_logs_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-audit-logs
+          - book: monitoring_and_logging
+            status: active
+            skill: rhdh-monitoring
+          - book: telemetry_data_collection_and_analysis
+            status: active
+            skill: rhdh-telemetry
+          - book: evaluate_project_health_using_scorecards
+            status: active
+            skill: rhdh-scorecards
+          - book: collect_diagnostic_data_to_streamline_support_resolution
+            status: active
+            skill: rhdh-diagnostic-data
+      extend:
+        description: Orchestrator, dynamic plugin development, installation, usage, catalog, and configuration.
+        routes:
+          - book: orchestrator_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-orchestrator
+          - book: develop_and_deploy_dynamic_plugins_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-dynamic-plugins-develop
+          - book: installing_and_viewing_plugins_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-dynamic-plugins-install
+          - book: using_dynamic_plugins_in_red_hat_developer_hub
+            status: active
+            skill: rhdh-dynamic-plugins-usage
+          - book: dynamic_plugins_reference
+            status: active
+            skill: rhdh-dynamic-plugins-reference
+          - book: configuring_dynamic_plugins
+            status: active
+            skill: rhdh-dynamic-plugins-configure
+      reference:
+        description: Helm Chart configuration values, parameters, and customization options.
+        routes:
+          - book: helm_chart_configuration_reference
+            status: active
+            skill: rhdh-helm-reference
 
 route_update_rules:
   when_adding_skill:

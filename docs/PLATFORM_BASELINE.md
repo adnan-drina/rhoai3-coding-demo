@@ -266,6 +266,60 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
 
+## Red Hat Developer Hub 1.10 Documentation Index
+
+Use the official Red Hat Developer Hub 1.10 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10
+
+- **Discover**:
+  [About Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/about_red_hat_developer_hub/index)
+- **What's New**:
+  [Release notes](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/red_hat_developer_hub_release_notes/index),
+  [Explore preview of emerging and supplemental capabilities](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/explore_preview_of_emerging_and_supplemental_capabilities/index)
+- **Get started**:
+  [Setting up and configuring your first instance](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/setting_up_and_configuring_your_first_red_hat_developer_hub_instance/index),
+  [Navigate on your first day](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/navigate_red_hat_developer_hub_on_your_first_day/index)
+- **Install**:
+  [On OpenShift Container Platform](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_on_openshift_container_platform/index),
+  [On AKS](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_on_microsoft_azure_kubernetes_service_aks/index),
+  [On EKS](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_on_amazon_elastic_kubernetes_service_eks/index),
+  [On OpenShift Dedicated on Google Cloud](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_on_openshift_dedicated_on_google_cloud/index),
+  [On GKE](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_on_google_kubernetes_engine_gke/index),
+  [In an air-gapped environment](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_red_hat_developer_hub_in_an_air-gapped_environment/index)
+- **Upgrade**:
+  [Upgrading Red Hat Developer Hub](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/upgrading_red_hat_developer_hub/index)
+- **Configure**:
+  [Configuring](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_red_hat_developer_hub/index),
+  [Customizing](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/customizing_red_hat_developer_hub/index),
+  [TechDocs](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/techdocs_for_red_hat_developer_hub/index)
+- **Control access**:
+  [Authentication](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/authentication_in_red_hat_developer_hub/index),
+  [Authorization](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/authorization_in_red_hat_developer_hub/index)
+- **Integrate**:
+  [Git provider](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/integrating_red_hat_developer_hub_with_your_git_provider/index),
+  [Developer Lightspeed](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index),
+  [MCP tools](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/interacting_with_model_context_protocol_tools_for_red_hat_developer_hub/index),
+  [OpenShift AI Connector](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/accelerate_ai_development_with_openshift_ai_connector_for_red_hat_developer_hub/index)
+- **Develop**:
+  [Software development and management](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/streamline_software_development_and_management_in_red_hat_developer_hub/index),
+  [Technical documentation management](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/manage_and_consume_technical_documentation_within_red_hat_developer_hub/index)
+- **Observability**:
+  [Adoption Insights](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/adoption_insights_in_red_hat_developer_hub/index),
+  [Audit logs](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/audit_logs_in_red_hat_developer_hub/index),
+  [Monitoring and logging](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/monitoring_and_logging/index),
+  [Telemetry](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/telemetry_data_collection_and_analysis/index),
+  [Scorecards](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/evaluate_project_health_using_scorecards/index),
+  [Diagnostic data](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/collect_diagnostic_data_to_streamline_support_resolution/index)
+- **Extend**:
+  [Orchestrator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/index),
+  [Develop and deploy dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/develop_and_deploy_dynamic_plugins_in_red_hat_developer_hub/index),
+  [Installing and viewing plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/installing_and_viewing_plugins_in_red_hat_developer_hub/index),
+  [Using dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/using_dynamic_plugins_in_red_hat_developer_hub/index),
+  [Dynamic plugins reference](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/dynamic_plugins_reference/index),
+  [Configuring dynamic plugins](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/configuring_dynamic_plugins/index)
+- **Reference**:
+  [Helm Chart configuration reference](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/helm_chart_configuration_reference/index)
+
 ## Red Hat OpenShift Dev Spaces 3.28 Documentation Index
 
 Use the official OpenShift Dev Spaces 3.28 landing page as the entry point:
