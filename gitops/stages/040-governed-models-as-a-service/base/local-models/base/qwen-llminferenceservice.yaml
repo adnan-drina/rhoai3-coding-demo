@@ -78,20 +78,15 @@ spec:
           # multimodal encoder cache (16K-token budget profiled with a
           # max-size image) that consumed the remaining KV headroom.
           - --limit-mm-per-prompt={"image":0,"video":0}
-          # 2048, not 8192: chunked-prefill activation workspace scales with
-          # this on the 256-expert MoE (~8.9GiB peak at 8192 profiled on the
-          # L40S), and the profiling peak is what sizes the KV budget.
-          - --max-num-batched-tokens=2048
+          # 4096: must exceed the mamba-aligned attention block size (2096
+          # tokens with fp8 KV) while keeping the MoE prefill workspace small;
+          # 8192 pushed the profiling peak past the KV budget on this card.
+          - --max-num-batched-tokens=4096
           # Hybrid GDN/mamba models allocate persistent per-slot state for
           # max_num_seqs sequences (~8.5GiB resident at the default): cap
           # concurrency to demo scale so the state cache fits next to 34.4GiB
           # of weights on the 44.4GiB card.
           - --max-num-seqs=64
-          # Final fit lever: skip CUDA graph capture + inductor compilation,
-          # reclaiming their resident memory. Costs decode throughput; if the
-          # engine still reports zero KV blocks, swap to the 30B coder model
-          # instead of shrinking the context below 32K.
-          - --enforce-eager
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --reasoning-parser=qwen3
