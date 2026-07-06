@@ -33,6 +33,7 @@ platform components in this project.
 | Complex multi-step task needing context isolation | **Subagent** (`.cursor/agents/*.md`) | Own context window; parallel execution; readonly option |
 | Automated validation after file edits | **Hook** (`.cursor/hooks.json`) | Runs scripts automatically; no agent decision needed |
 | Gate risky shell commands | **Hook** (`beforeShellExecution`) | Blocks or warns before dangerous operations |
+| Gate risky Codex shell commands | **Codex hook** (`.codex/hooks.json`) | Blocks unsafe `oc`/`kubectl` mutations before execution |
 
 ## Design Decision: Where Should This Guidance Live?
 
@@ -50,6 +51,7 @@ When asked to create guidance, first determine the right home:
 Before proposing a new shared rule or skill, inspect existing files to avoid duplication:
 - `.cursor/rules/` (all existing rules)
 - `.cursor/skills/` (all existing skills)
+- `.codex/hooks.json` and `.codex/hooks/` (Codex command-safety hooks)
 - `AGENTS.md`
 - `CONTRIBUTING.md`
 - `docs/AI_COLLABORATION.md`
@@ -83,16 +85,18 @@ How the team should review or test this change.
 |------|-------|----------|
 | Rules | 13 | `.cursor/rules/*.mdc` |
 | Skills | 13 | `.cursor/skills/*/SKILL.md` |
-| Hooks | 4 | `.cursor/hooks.json` |
+| Cursor hooks | 4 | `.cursor/hooks.json`, `.cursor/hooks/` |
+| Codex hooks | 1 | `.codex/hooks.json`, `.codex/hooks/` |
 | Subagents | 3 | `.cursor/agents/*.md` |
 
 ## Instructions
 
 ### Before Creating Any Component
 
-1. Read `references/conventions.md` for detailed patterns
-2. Check for overlaps — does an existing rule/skill already cover this?
-3. Decide the component type using the decision framework above
+1. Read `docs/AI_COLLABORATION.md` for governance, taxonomy, and inventory
+2. Read `references/conventions.md` for detailed patterns
+3. Check for overlaps — does an existing rule/skill already cover this?
+4. Decide the component type using the decision framework above
 
 ### Creating a Rule
 
@@ -127,6 +131,14 @@ How the team should review or test this change.
 - Use matchers to filter by file pattern or command
 - Test hooks manually before relying on them
 
+### Creating a Codex Hook
+
+- Define in `.codex/hooks.json` only for project-local Codex behavior
+- Scripts go in `.codex/hooks/`
+- Keep hooks deterministic and non-secret; never print full commands containing credentials
+- Use them for safety checks such as blocking risky `oc`/`kubectl` mutations when the expected cluster guard is absent or mismatched
+- Document user-visible behavior in `AGENTS.md` and `docs/AI_COLLABORATION.md`
+
 ### Auditing All Components
 
 Run this audit periodically (monthly or after major changes):
@@ -137,5 +149,6 @@ Run this audit periodically (monthly or after major changes):
 4. Verify skill `name` fields match folder names
 5. Verify always-apply budget hasn't crept up
 6. Check Red Hat doc links still resolve
+7. Update `docs/AI_COLLABORATION.md` when inventory or taxonomy changes
 
 For detailed conventions and patterns, read `references/conventions.md`.

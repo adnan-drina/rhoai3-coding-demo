@@ -22,6 +22,9 @@ Shared rules live in:
 
 - `AGENTS.md` — tool-neutral agent guidance (read by Cursor, Copilot, and other agents)
 - `.cursor/rules/*.mdc` — Cursor-specific behavior rules
+- `.cursor/agents/*.md` — context-isolated specialist agents
+- `.cursor/hooks.json` and `.cursor/hooks/` — Cursor automation hooks
+- `.codex/hooks.json` and `.codex/hooks/` — Codex command-safety hooks
 
 These files define project-wide behavior for agents and contributors. They include repository structure, GitOps expectations, security boundaries, validation expectations, and PR requirements.
 
@@ -127,27 +130,46 @@ Good rules (specific and actionable):
 - "Do not bypass MaaS unless the issue explicitly requests and documents an exception."
 - "For changes under `gitops/`, include validation notes and rollback guidance in the PR."
 
-## Shared skills in this repo
+## Skill taxonomy
 
-| Skill | When to use |
-|-------|-------------|
-| `review-gitops-change` | Reviewing changes under `gitops/` or platform YAML |
-| `validate-demo-step` | After changing a stage deploy script, manifests, or validate script |
-| `update-demo-docs` | After any change that might affect documentation consistency |
-| `prepare-pr-summary` | Before opening a pull request |
-| `workaround-review` | When touching known RHOAI, MaaS, or gateway workarounds |
-| `demo-operations-docs` | When writing or updating OPERATIONS.md or TROUBLESHOOTING.md |
-| `rhoai-troubleshoot` | When diagnosing live cluster failures |
-| `manage-devspaces` | When managing Dev Spaces workspaces |
-| `manage-resources` | When managing demo resource lifecycle actions |
-| `resume-gpu-demo` | When recovering GPU-backed stages after GPU nodes were scaled to zero |
-| `run-guidellm-load-test` | When generating on-demand GuideLLM load against MaaS-published models |
-| `red-hat-quick-deck` | When creating Red Hat-aligned quick decks from demo content |
-| `maintain-rules-and-skills` | When adding or modifying rules/skills/hooks |
+Keep skill folders flat under `.cursor/skills/` so tool discovery continues to work. Use this taxonomy for review, ownership, and cleanup instead of nesting folders.
 
-## Cursor hooks
+| Category | Skills | Purpose |
+|----------|--------|---------|
+| Review and delivery | `review-gitops-change`, `prepare-pr-summary`, `workaround-review` | Review changes, explain risk, and prepare PR output |
+| Validation and documentation | `validate-demo-step`, `update-demo-docs`, `demo-operations-docs` | Keep stage behavior, docs, and operations material aligned |
+| Live operations | `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test` | Diagnose or intentionally change live cluster resources |
+| Deliverables | `red-hat-quick-deck` | Create Red Hat-aligned presentation artifacts from demo content |
+| Governance | `maintain-rules-and-skills` | Add, update, audit, or retire shared AI guidance |
 
-Hooks provide automated enforcement beyond prose rules. They are defined in `.cursor/hooks.json` and run automatically at specific events.
+Current inventory:
+
+| Type | Count | Location |
+|------|-------|----------|
+| Cursor rules | 13 | `.cursor/rules/*.mdc` |
+| Cursor skills | 13 | `.cursor/skills/*/SKILL.md` |
+| Cursor hooks | 4 | `.cursor/hooks.json`, `.cursor/hooks/` |
+| Codex hooks | 1 | `.codex/hooks.json`, `.codex/hooks/` |
+| Subagents | 3 | `.cursor/agents/*.md` |
+
+## Skill quality bar
+
+Shared skills should:
+
+- have a `name` matching the parent folder
+- include metadata with version and platform targets when project-specific
+- have a specific trigger description and negative triggers
+- keep `SKILL.md` under 500 lines when practical
+- move large detail into `references/`
+- avoid duplicating companion rules
+- avoid secrets, local paths, private URLs, and local cluster assumptions
+- mark destructive or expensive workflows with `disable-model-invocation: true`
+
+`red-hat-quick-deck` is intentionally shared between both demo repos and is organized as a lean entry-point `SKILL.md` plus detailed `references/` files. Keep future deck-system detail in references instead of expanding the entry point.
+
+## Automation hooks
+
+Cursor hooks provide automated enforcement beyond prose rules. They are defined in `.cursor/hooks.json` and run automatically at specific events.
 
 | Hook | Trigger | What it does | Failure behavior |
 |------|---------|--------------|-----------------|
@@ -161,6 +183,16 @@ Hooks provide automated enforcement beyond prose rules. They are defined in `.cu
 **Bypassing hooks:** Hooks cannot be bypassed per-invocation. If a hook is consistently wrong for your workflow, disable it by commenting the entry in `.cursor/hooks.json` and propose a fix via PR.
 
 **Hook logs:** Hooks write to stdout/stderr which appears in the agent context. The `check-docs-consistency.sh` hook tracks edits per session in `/tmp/cursor-edit-track-*.log` (cleaned by OS temp policy).
+
+Codex hooks are defined in `.codex/hooks.json` and `.codex/hooks/`. They guard risky `oc` and `kubectl` commands before shell execution. The OpenShift safety hook should fail closed when no expected cluster guard is configured or when the active cluster does not match the repo-local guard.
+
+Before any live OpenShift operation:
+
+- open this repo as its own Codex project, not `/Users/adrina/Sandbox`
+- load the repo-local `.env`
+- require `RHOAI_EXPECTED_API_SERVER` or an explicitly approved override
+- do not read credentials from another repo by default
+- do not add cross-project `.env` fallbacks
 
 ## Simple rule of thumb
 

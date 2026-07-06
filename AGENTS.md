@@ -112,6 +112,10 @@ Shell scripts:
 - Prefer explicit error messages.
 - Do not assume a specific cluster name unless documented.
 - Avoid destructive commands unless clearly labeled and confirmed by the user.
+- Open this repository as its own Codex project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
+- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/lib.sh`.
+- Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
+- Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the user explicitly confirms the current cluster and the command is low risk.
 
 YAML and Kubernetes manifests:
 
@@ -191,23 +195,15 @@ If validation requires a live OpenShift cluster and one is not available, do not
 
 ## Shared skills
 
-This repository includes shared skills for repeatable project workflows:
+This repository includes shared skills for repeatable project workflows. Keep skill folders flat for tool discovery and use this taxonomy for review:
 
-| Skill | Purpose |
-|-------|---------|
-| `review-gitops-change` | Review GitOps and manifest changes for safety and completeness |
-| `validate-demo-step` | Validate a step after changes with static and live checks |
-| `update-demo-docs` | Check documentation consistency after behavior changes |
-| `prepare-pr-summary` | Generate a PR summary following the project template |
-| `workaround-review` | Review workaround status before modifying or removing |
-| `demo-operations-docs` | Maintain OPERATIONS.md and TROUBLESHOOTING.md |
-| `rhoai-troubleshoot` | Diagnose and fix live cluster failures |
-| `manage-devspaces` | Manage Red Hat OpenShift Dev Spaces workspaces |
-| `manage-resources` | Manage demo resource lifecycle actions such as GPU scale-down and recovery |
-| `resume-gpu-demo` | Resume Stage 020/030 after GPU nodes were scaled to zero or the environment restarted |
-| `run-guidellm-load-test` | Run on-demand GuideLLM load tests against MaaS-published model endpoints |
-| `red-hat-quick-deck` | Create Red Hat-aligned quick decks from demo content |
-| `maintain-rules-and-skills` | Add, update, or audit shared rules, skills, hooks, and agents |
+| Category | Skills | Purpose |
+|----------|--------|---------|
+| Review and delivery | `review-gitops-change`, `prepare-pr-summary`, `workaround-review` | Review changes, explain risk, and prepare PR output |
+| Validation and documentation | `validate-demo-step`, `update-demo-docs`, `demo-operations-docs` | Keep stage behavior, docs, and operations material aligned |
+| Live operations | `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test` | Diagnose or intentionally change live cluster resources |
+| Deliverables | `red-hat-quick-deck` | Create Red Hat-aligned quick decks from demo content |
+| Governance | `maintain-rules-and-skills` | Add, update, or audit shared rules, skills, hooks, and agents |
 
 Skills are invoked workflows. Rules are always-on behavior constraints. See [docs/AI_COLLABORATION.md](docs/AI_COLLABORATION.md) for the full governance model.
 
