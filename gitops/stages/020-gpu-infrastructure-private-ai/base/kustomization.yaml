@@ -18,6 +18,12 @@ resources:
   - kueue/namespace.yaml
   - kueue/operatorgroup.yaml
   - kueue/subscription.yaml
+  # LeaderWorkerSet operator: required by the Kueue LeaderWorkerSet framework
+  # integration below and by Stage 030 llm-d multi-node serving.
+  - leaderworkerset/namespace.yaml
+  - leaderworkerset/operatorgroup.yaml
+  - leaderworkerset/subscription.yaml
+  - leaderworkerset/instance.yaml
   - keda/namespace.yaml
   - keda/operatorgroup.yaml
   - keda/subscription.yaml

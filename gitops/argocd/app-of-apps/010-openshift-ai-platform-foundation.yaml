@@ -70,6 +70,8 @@ spec:
         # Stage 020 enables Red Hat build of Kueue after the external Kueue
         # Operator exists, keeping Stage 010 independently deployable.
         - /spec/components/kueue
+        # Stage 040 enables Models-as-a-Service after the MaaS gateway exists.
+        - /spec/components/kserve/modelsAsService
     - group: opendatahub.io
       kind: OdhDashboardConfig
       name: odh-dashboard-config

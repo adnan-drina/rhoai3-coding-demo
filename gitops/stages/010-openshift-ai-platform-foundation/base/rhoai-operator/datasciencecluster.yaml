@@ -20,8 +20,11 @@ spec:
         managementState: Removed
     kserve:
       managementState: Managed
+      # Stage 040 enables Models-as-a-Service after it creates the
+      # maas-default-gateway the MaaS controller requires. Keeping the
+      # baseline Removed lets the DSC reach Ready within Stage 010.
       modelsAsService:
-        managementState: Managed
+        managementState: Removed
       nim:
         managementState: Removed
       rawDeploymentServiceConfig: Headless

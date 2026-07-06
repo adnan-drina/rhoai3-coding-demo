@@ -17,6 +17,7 @@ This stage adds governed GPU infrastructure for private AI workloads.
 - Hardware discovery through Node Feature Discovery.
 - NVIDIA GPU enablement through the NVIDIA GPU Operator and managed NVIDIA L4 worker capacity.
 - Red Hat build of Kueue with `ResourceFlavor`, `ClusterQueue`, and `LocalQueue` resources.
+- LeaderWorkerSet operator, required by the Kueue LeaderWorkerSet framework integration and later by Stage 030 llm-d serving.
 - Queue-based OpenShift AI hardware profiles for approved GPU choices.
 - OpenShift Custom Metrics Autoscaler and KEDA readiness for metric-driven scaling patterns.
 - GPU, Kueue, and quota observability dashboards.

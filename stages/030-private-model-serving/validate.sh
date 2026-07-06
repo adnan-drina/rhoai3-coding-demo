@@ -12,9 +12,6 @@ echo ""
 log_step "Argo CD Application"
 check_argocd_app "030-private-model-serving"
 
-log_step "LeaderWorkerSet"
-check_crd_exists "leaderworkersets.leaderworkerset.x-k8s.io"
-
 log_step "Model Serving Project"
 check "maas namespace exists" \
   "oc get namespace maas -o jsonpath='{.metadata.name}'" \

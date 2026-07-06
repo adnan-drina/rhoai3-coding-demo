@@ -7,10 +7,6 @@ kind: Kustomization
 # MaaSSubscription and MaaSAuthPolicy in Stage 040.
 
 resources:
-  - leaderworkerset/namespace.yaml
-  - leaderworkerset/operatorgroup.yaml
-  - leaderworkerset/subscription.yaml
-  - leaderworkerset/instance.yaml
   - models/admin-rbac.yaml
   - model-registry/seed-networkpolicy.yaml
   - models/gpt-oss-20b.yaml

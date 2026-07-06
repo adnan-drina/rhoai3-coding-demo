@@ -30,6 +30,12 @@ check_csv_succeeded "nvidia-gpu-operator" "gpu"
 check_csv_succeeded "openshift-kueue-operator" "kueue"
 check_csv_succeeded "openshift-keda" "custom-metrics-autoscaler"
 
+log_step "LeaderWorkerSet (Kueue framework dependency)"
+check_crd_exists "leaderworkersets.leaderworkerset.x-k8s.io"
+check "Kueue cluster reports no missing dependencies" \
+    "oc get kueue.kueue.openshift.io cluster -o jsonpath='{.status.conditions[?(@.type==\"Degraded\")].status}'" \
+    "False"
+
 log_step "GPUaaS Queue Control Plane"
 check "Kueue cluster instance exists" \
     "oc get kueues.kueue.openshift.io cluster -o jsonpath='{.metadata.name}'" \

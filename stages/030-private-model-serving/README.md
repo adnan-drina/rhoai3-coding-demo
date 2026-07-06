@@ -18,7 +18,7 @@ This stage adds the private inference layer.
 - Red Hat AI Inference Server / vLLM serving with an OpenAI-compatible API surface.
 - Kueue-backed GPU placement with single-GPU demo sizing for each model replica.
 - Platform authentication, RBAC, and gateway posture so model endpoints are not unmanaged routes.
-- llm-d, LeaderWorkerSet, readiness, and metric foundations for scale-aware inference operations.
+- llm-d, readiness, and metric foundations for scale-aware inference operations (the LeaderWorkerSet operator arrives with Stage 020 as a Kueue dependency).
 - Model registry seed data so private models are discoverable as named platform assets.
 
 The stage demonstrates a controlled private-serving baseline, not a multi-node inference benchmark.

@@ -16,6 +16,7 @@ resources:
   - governance/kuadrant.yaml
   - governance/authorino.yaml
   - jobs/configure-kuadrant.yaml
+  - jobs/enable-rhoai-maas.yaml
   - jobs/restart-kserve-controller.yaml
   - jobs/label-observability-dashboard-tabs.yaml
   - models-maas-crds/

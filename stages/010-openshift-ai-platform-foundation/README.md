@@ -15,7 +15,7 @@ This stage installs the Red Hat OpenShift AI foundation for the workshop. It cre
 This stage adds the shared OpenShift AI foundation.
 
 - Red Hat OpenShift AI 3.4 installed through the Red Hat OpenShift AI Operator.
-- Core OpenShift AI services for dashboard access, GenAI Studio, model serving, model registry, Llama Stack, and MaaS-related features.
+- Core OpenShift AI services for dashboard access, GenAI Studio, model serving, model registry, and Llama Stack. The Models-as-a-Service component stays disabled here; Stage 040 enables it after the MaaS gateway exists, so the DataScienceCluster reaches Ready within this stage.
 - A PostgreSQL-backed model registry for model metadata.
 - Demo users, OpenShift groups, and OpenShift OAuth integration.
 - CPU and NVIDIA L4 hardware profiles for explicit workload sizing.
@@ -51,6 +51,21 @@ Open Data Hub, KServe, Model Registry, Kubernetes, and related serving projects 
 - [Open Data Hub](https://opendatahub.io/) is the upstream foundation for many OpenShift AI capabilities.
 - [KServe](https://kserve.github.io/website/) provides Kubernetes-native model serving concepts.
 - [Model Registry](https://github.com/opendatahub-io/model-registry) provides model metadata and lifecycle foundations.
+
+## Demo
+
+The screenshots below show Stage 010 running on a live OpenShift cluster after GitOps deployment.
+
+### Key Screens
+
+| Screen | Component | What it shows |
+|--------|-----------|---------------|
+| ![RHOAI Dashboard](../../docs/assets/demos/stage-010/01-rhoai-dashboard-projects.png) | OpenShift AI Dashboard | The platform control plane with the Models-as-a-Service project, navigation to AI Hub, Gen AI Studio, Observe & Monitor, and Settings |
+| ![Gen AI Studio](../../docs/assets/demos/stage-010/02-genai-studio-playground.png) | Gen AI Studio Playground | The Playground interface ready for model interaction once model endpoints are deployed in later stages |
+| ![Serving Runtimes](../../docs/assets/demos/stage-010/03-serving-runtimes.png) | Serving Runtimes | Pre-installed model serving runtimes including vLLM variants (Gaudi, CUDA, ROCm, Spyre), OpenVINO, and MLServer |
+| ![Hardware Profiles](../../docs/assets/demos/stage-010/04-hardware-profiles.png) | Hardware Profiles | CPU-only and NVIDIA L4 GPU profiles that make workload sizing explicit through the platform |
+| ![DataScienceCluster](../../docs/assets/demos/stage-010/05-datasciencecluster.png) | DataScienceCluster | The `default-dsc` cluster resource that controls which OpenShift AI components are enabled |
+| ![OpenShift Groups](../../docs/assets/demos/stage-010/06-openshift-groups.png) | OpenShift Groups | Demo groups (`rhoai-admins`, `rhoai-users`, `demo-registry-users`, `rhods-admins`) that establish the identity base for RBAC |
 
 ## Deploy And Validate
 

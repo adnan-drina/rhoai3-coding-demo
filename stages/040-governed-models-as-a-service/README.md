@@ -14,6 +14,7 @@ Models-as-a-Service (MaaS) lets platform teams publish approved model choices wh
 
 This stage adds the governed MaaS access layer for private models.
 
+- Enablement of the OpenShift AI Models-as-a-Service component (`job-enable-rhoai-maas`) once the MaaS gateway exists; Stages 010-030 keep it disabled so each stage validates cleanly.
 - A MaaS model catalog and API path for local model consumption.
 - `MaaSModelRef`, `MaaSAuthPolicy`, and `MaaSSubscription` resources for the private model portfolio.
 - Central MaaS API key issuance so consumers do not manage direct model credentials.
