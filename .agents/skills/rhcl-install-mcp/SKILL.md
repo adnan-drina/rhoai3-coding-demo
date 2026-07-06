@@ -8,159 +8,73 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "OpenShift Platform"
 description: >
-  Install and configure the MCP gateway component of Red Hat Connectivity Link
-  1.3 on single or multiple OpenShift Container Platform clusters. Use when
-  installing the MCP gateway Operator, creating Gateway objects with MCP
-  listeners, deploying MCPGatewayExtension CRs, configuring cross-namespace
-  ReferenceGrants, custom HTTPRoutes, or verifying MCP endpoint accessibility.
-  Do NOT use for registering MCP servers or creating auth policies (use
-  rhcl-mcp-config). Do NOT use for RHCL core installation (use rhcl-install).
+  Use when installing the MCP gateway on single or multiple clusters, including
+  the mcp-gateway operator, MCPGatewayExtension CR, Gateway object listeners,
+  ReferenceGrant for cross-namespace, and session store configuration. Do NOT
+  use for registering MCP servers or creating auth policies for MCP; use
+  rhcl-mcp-config. Do NOT use for Connectivity Link core operator installation;
+  use rhcl-install.
 ---
 
-# Red Hat Connectivity Link 1.3 — MCP Gateway Installation
+# RHCL Install MCP
 
-## Technology Preview notice
+Use this skill to ground MCP gateway installation decisions in official RHCL
+1.4 documentation for the active baseline in `docs/PLATFORM_BASELINE.md`.
 
-MCP gateway is a Technology Preview feature. It is not supported with Red Hat
-production SLAs and might not be functionally complete.
+## Source Grounding
 
-## When to use
+Read `references/source-capture.md` before using product behavior. Official Red
+Hat documentation is product authority.
 
-- Installing the MCP gateway Operator via OLM
-- Creating a Gateway object with MCP listeners
-- Configuring MCP gateway listeners (HTTP, HTTPS, MCP)
-- Applying MCPGatewayExtension CR to finish deployment
-- Creating ReferenceGrant for cross-namespace isolation
-- Creating custom HTTPRoute objects (CORS, OAuth paths)
-- DNS management for MCP gateway hostnames
-- Verifying MCP endpoint accessibility
+## Technology Preview Notice
 
-## Key facts
+MCP gateway is a Technology Preview feature in RHCL 1.4. It is not supported
+with Red Hat production SLAs and might not be functionally complete.
 
-- Operator: `mcp-gateway`, channel: `preview`, source: `redhat-operators`
-- MCPGatewayExtension API: `mcp.kuadrant.io/v1alpha1`
-- Broker service port: 8080
-- MCP endpoint path: `/mcp`
-- MCP protocol version: `2025-11-25`
-- One MCPGatewayExtension per namespace; one per Gateway object
-- Auto-creates HTTPRoute named `mcp-gateway-route` (unless disabled)
-- sectionName in MCPGatewayExtension must match Gateway listener name
+## Key Concepts
 
-## Installation — CLI
+- Separate operator: `mcp-gateway` from `redhat-operators` on the `preview`
+  channel.
+- Uses `OperatorGroup` with `targetNamespaces` (namespaced install).
+- `MCPGatewayExtension` CR (apiVersion `mcp.kuadrant.io/v1alpha1`) deploys the
+  MCP broker-router and links to a Gateway listener.
+- Each namespace can have only one `MCPGatewayExtension`. Each Gateway can have
+  only one targeting it.
+- Automatic HTTPRoute creation (`mcp-gateway-route`) routes `/mcp` traffic.
+- `httpRouteManagement: Disabled` for custom route control.
+- `sessionStore` references a Redis secret for persistent sessions.
+- `trustedHeadersKey` enables JWT-based tool filtering.
+- `backendPingIntervalSeconds` controls upstream MCP server health (10–7200s,
+  default 60).
 
-```bash
-oc create ns mcp-system
+## Workflow
 
-oc apply -n mcp-system -f - <<EOF
-apiVersion: operators.coreos.com/v1alpha1
-kind: Subscription
-metadata:
-  name: mcp-gateway
-spec:
-  source: redhat-operators
-  sourceNamespace: openshift-marketplace
-  name: mcp-gateway
-  channel: preview
----
-apiVersion: operators.coreos.com/v1
-kind: OperatorGroup
-metadata:
-  name: mcp-gateway
-spec:
-  targetNamespaces:
-  - mcp-system
-EOF
-```
+1. Confirm the active RHCL baseline in `docs/PLATFORM_BASELINE.md`.
+2. Read `references/official-doc-extraction.md`.
+3. Identify whether the task is:
+   - initial MCP gateway operator install
+   - Gateway object with MCP listener creation
+   - MCPGatewayExtension CR deployment
+   - cross-namespace ReferenceGrant setup
+   - session store or trusted-headers configuration
+4. For manifests, verify API versions against official docs and cluster schema.
+5. Validate with verification commands from the extraction.
 
-## Validation — operator install
+## Validation Signals
 
-```bash
-oc wait --for=jsonpath={.status.installPlanRef.name} \
-  subscription mcp-gateway -n mcp-system --timeout=10s
-ip=$(oc get subscription mcp-gateway -n mcp-system \
-  -o=jsonpath={.status.installPlanRef.name})
-oc wait --for=condition=Installed installplan -n mcp-system ${ip} --timeout=60s
-oc wait csv -n mcp-system \
-  -l operators.coreos.com/mcp-gateway.mcp-system="" \
-  --for=jsonpath='{.status.phase}'=Succeeded --timeout=5m
-```
+- `oc wait csv -n <ns> -l operators.coreos.com/mcp-gateway.<ns>="" --for=jsonpath='{.status.phase}'=Succeeded --timeout=5m`
+- `oc wait --for=condition=Ready mcpgatewayextension/<name> -n <ns>`
+- Automatic HTTPRoute exists: `oc get httproute mcp-gateway-route -n <ns>`
+- EnvoyFilter present: `oc get envoyfilter -n <gw-ns> -l app.kubernetes.io/managed-by=mcp-gateway-controller`
 
-## Gateway object with MCP listener
+## Related Skills
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: mcp-gateway
-  namespace: gateway-namespace
-spec:
-  gatewayClassName: openshift-default
-  listeners:
-    - name: mcps
-      hostname: mcp.example.com
-      port: 8080
-      protocol: HTTP
-      allowedRoutes:
-        namespaces:
-          from: All
-```
-
-## MCPGatewayExtension CR
-
-```yaml
-apiVersion: mcp.kuadrant.io/v1alpha1
-kind: MCPGatewayExtension
-metadata:
-  name: mcp-gateway-ext
-  namespace: mcp-system
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: mcp-gateway
-    namespace: gateway-namespace
-    sectionName: mcps
-  httpRouteManagement: Enabled
-```
-
-## Validation — MCPGatewayExtension ready
-
-```bash
-oc wait --for=condition=Ready mcpgatewayextension/mcp-gateway-ext \
-  -n mcp-system --timeout=60s
-oc get httproute mcp-gateway-route -n mcp-system
-```
-
-## Cross-namespace ReferenceGrant
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-mcp-system
-  namespace: gateway-namespace
-spec:
-  from:
-    - group: mcp.kuadrant.io
-      kind: MCPGatewayExtension
-      namespace: mcp-system
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-```
-
-## Verify MCP endpoint
-
-```bash
-curl -X POST http://mcp.example.com:8080/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize"}'
-```
-
-Expected: `{"jsonrpc":"2.0","id":1,"result":{...,"serverInfo":{"name":"Kuadrant MCP Gateway","version":"0.6.0"}}}`
+- `rhcl-install` for Connectivity Link core operator installation.
+- `rhcl-mcp-config` for registering MCP servers and creating policies.
+- `rhcl-configure` for general gateway policy deployment.
+- `ocp-ingress-gateway-routes` for OCP Gateway API primitives.
 
 ## References
 
-- `references/source-capture.md` — source provenance
-- `references/official-doc-extraction.md` — full extraction
-- Official: https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/installing_the_mcp_gateway/index
+- `references/source-capture.md`
+- `references/official-doc-extraction.md`
