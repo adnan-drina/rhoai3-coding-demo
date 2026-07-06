@@ -103,3 +103,32 @@ spec:
                 --from-literal=MAAS_SUBSCRIPTION="$SUBSCRIPTION" \
                 --dry-run=client -o yaml | oc apply -f -
               echo "Elevated agentic-migration key provisioned."
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentic-migration-key-reader
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["maas-agentic-migration-key"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agentic-migration-key-readers
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agentic-migration-key-reader
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:wksp-ai-developer
+    apiGroup: rbac.authorization.k8s.io
