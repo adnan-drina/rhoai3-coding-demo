@@ -290,6 +290,31 @@ https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0
 - **Troubleshoot**:
   [Troubleshooting OpenShift Lightspeed](https://docs.redhat.com/en/documentation/red_hat_openshift_lightspeed/1.0/html/troubleshoot/index)
 
+## Red Hat Connectivity Link 1.4 Documentation Index
+
+Use the official RHCL 1.4 landing page as the entry point:
+https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4
+
+- **Discover**:
+  [Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/red_hat_connectivity_link/index),
+  [MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/mcp_gateway/index)
+- **What's New**:
+  [Release notes](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/release_notes/index)
+- **Install**:
+  [Installing Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_connectivity_link/index),
+  [Installing the MCP gateway](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/installing_the_mcp_gateway/index)
+- **Configure**:
+  [Deploying Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/deploying_red_hat_connectivity_link/index),
+  [Registering MCP servers and creating policies](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/registering_mcp_servers_and_creating_policies/index)
+- **Develop**:
+  [Developing APIs with the web console](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/developing_apis_with_the_web_console/index)
+- **Observe**:
+  [Observability](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/observability/index)
+- **Troubleshoot**:
+  [Troubleshooting](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/troubleshooting/index)
+- **Update**:
+  [Updating Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.4/html/updating_red_hat_connectivity_link/index)
+
 ## Red Hat Advanced Developer Suite - Software Supply Chain 1.9 Documentation Index
 
 Use the official RHADS-SSC 1.9 landing page as the entry point:

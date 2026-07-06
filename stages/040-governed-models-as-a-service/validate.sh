@@ -943,6 +943,8 @@ else
   R="groups=${SUB_OWNER_GROUPS:-missing},users=${SUB_OWNER_USERS:-missing},models=${SUB_MODELS:-missing},openaiLimit=${SUB_OPENAI_LIMIT:-missing}/${SUB_OPENAI_WINDOW:-missing},nemotronLimit=${SUB_NEMOTRON_LIMIT:-missing}/${SUB_NEMOTRON_WINDOW:-missing}"
 fi
 check "demo users have MaaS subscription quota for local and external models" "$R"
+check "qwen is covered by the developer MaaS subscription and auth policy" \
+  "$(oc get maassubscription rhoai-developers-gpt-4o-mini -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)" "1"
 
 AUTH_SUBJECT_GROUPS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.groups[*].name}")
 AUTH_SUBJECT_USERS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.users[*]}")

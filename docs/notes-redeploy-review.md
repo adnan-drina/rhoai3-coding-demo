@@ -97,3 +97,16 @@ Audit result:
   2x g6e.2xlarge GPU nodes, ClusterPolicy ready, DSC Ready in-stage.
 
 (filled in as each stage deploys on the fresh cluster)
+
+### Fresh environment #2 (cluster-24vkd, 2026-07-06) — FOUNDATION COMPLETE
+
+- 010: 35/35 (COO 1.4 pin fixes observability; personas; AI Coding Sandbox)
+- 020: 23/23 (machineset regenerated per-cluster, 2x g6e.2xlarge, 200GB gp3
+  forward fix, no time-slicing — one L40S per model)
+- 030: 54/54 (nemotron baseline, registry cards)
+- 040: 72/1/0 + qwen governed-inference proof (QWEN-VIA-MAAS-OK, 272 tokens
+  metered, key lifecycle verified). Qwen fit recipe: fp8 KV, text-only,
+  batch 4096 (> 2096 mamba block), seqs 64 -> 5GiB KV / 130K tokens / 11x
+  32K concurrency. Qwen added to developer subscription (100K/h) and
+  elevated agent subscription (2M/h).
+- Remaining: 050 Dev Spaces, 070 MTA, 080 base, 090 portal.
