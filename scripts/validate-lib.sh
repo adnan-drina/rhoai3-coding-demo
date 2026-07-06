@@ -120,6 +120,40 @@ check_csv_succeeded() {
     fi
 }
 
+# PASS when the secret key exists and is not a placeholder (case-insensitive
+# "placeholder"/"replace"). Bad-case severity is "fail" (default) or "warn".
+check_secret_value() {
+    local label="$1" ns="$2" secret="$3" key="$4" severity="${5:-fail}"
+    local value value_lc
+    value=$(oc get secret "$secret" -n "$ns" -o jsonpath="{.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    value_lc=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')
+    if [[ -n "$value" && "$value_lc" != *placeholder* && "$value_lc" != *replace* ]]; then
+        echo -e "${GREEN}[PASS]${NC} $label: set"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    elif [[ "$severity" == "warn" ]]; then
+        echo -e "${YELLOW}[WARN]${NC} $label is placeholder or missing"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} $label is placeholder or missing"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+}
+
+# PASS when the URL answers with one of the expected comma-separated HTTP
+# codes; WARN otherwise (endpoints behind auth redirects vary per cluster).
+check_http_code() {
+    local label="$1" url="$2" expected="${3:-200}"
+    local code
+    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 20 "$url" 2>/dev/null || echo "000")
+    if [[ ",${expected}," == *",${code},"* ]]; then
+        echo -e "${GREEN}[PASS]${NC} $label (HTTP ${code})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} $label (HTTP ${code})"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+}
+
 validation_summary() {
     local total=$((VALIDATE_PASS + VALIDATE_WARN + VALIDATE_FAIL))
     echo ""

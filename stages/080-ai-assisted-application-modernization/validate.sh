@@ -76,23 +76,8 @@ check_tackle_condition "LLMProxyReady"
 check_tackle_condition "KaiSolutionServerReady"
 
 log_step "MaaS Credentials (non-placeholder)"
-MAAS_URL=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-if [[ -n "$MAAS_URL" ]] && [[ "$MAAS_URL" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} OPENAI_API_BASE: ${MAAS_URL}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} OPENAI_API_BASE is placeholder or missing (got: ${MAAS_URL:-empty})"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-MAAS_KEY=$(oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-if [[ -n "$MAAS_KEY" ]] && [[ "$MAAS_KEY" != *"REPLACE"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} OPENAI_API_KEY: set (sk-oai-...)"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} OPENAI_API_KEY is placeholder or missing"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
+check_secret_value "OPENAI_API_BASE" "openshift-mta" "kai-api-keys" "OPENAI_API_BASE"
+check_secret_value "OPENAI_API_KEY" "openshift-mta" "kai-api-keys" "OPENAI_API_KEY"
 
 log_step "OpenShift OAuth Federation"
 check "OAuthClient mta-keycloak exists" \
@@ -127,14 +112,7 @@ fi
 log_step "MTA UI Route"
 MTA_ROUTE=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
 if [[ -n "$MTA_ROUTE" ]]; then
-    HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${MTA_ROUTE}" 2>/dev/null || echo "000")
-    if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
-        echo -e "${GREEN}[PASS]${NC} MTA UI: https://${MTA_ROUTE} (HTTP ${HTTP_CODE})"
-        VALIDATE_PASS=$((VALIDATE_PASS + 1))
-    else
-        echo -e "${YELLOW}[WARN]${NC} MTA UI: https://${MTA_ROUTE} (HTTP ${HTTP_CODE})"
-        VALIDATE_WARN=$((VALIDATE_WARN + 1))
-    fi
+    check_http_code "MTA UI: https://${MTA_ROUTE}" "https://${MTA_ROUTE}" "200,302"
 else
     echo -e "${YELLOW}[WARN]${NC} MTA UI route not found"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
