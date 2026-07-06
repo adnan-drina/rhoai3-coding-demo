@@ -94,6 +94,16 @@ For GitOps authoring, manifests, labels, and schema validation, read
 For documentation standards, README structure, and operations docs, read
 `.agents/rules/docs.md`.
 
+For RHOAI platform component guidance backed by official Red Hat documentation,
+read `.agents/rules/rhoai.md`.
+
+For OpenShift Container Platform infrastructure, control plane, networking,
+authentication, monitoring, GitOps, cluster, and storage integration guidance,
+read `.agents/rules/ocp.md`.
+
+For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage
+classes, read `.agents/rules/odf.md`.
+
 ## OpenShift Safety Guard
 
 - Open this repository as its own project; do not open `/Users/adrina/Sandbox`
@@ -182,13 +192,16 @@ Canonical skills live in `.agents/skills/`, the shared tool-neutral skill
 discovery path. Keep skill folders flat and use the prefix plus
 `metadata.skill-group` taxonomy for skill review:
 
-| Group | Skills | Purpose |
-|-------|--------|---------|
-| Project Structure | `maintain-rules-and-skills`, `prepare-pr-summary`, `project-demo-stage-authoring` | Governance, PR output, stage lifecycle |
-| GitOps & Manifests | `review-gitops-change` | Review changes, explain risk |
-| Documentation | `update-demo-docs`, `demo-operations-docs`, `project-documentation-authoring`, `project-architecture-diagrams` | Keep docs aligned, author READMEs, maintain diagrams |
-| Demo Environment | `validate-demo-step`, `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test`, `workaround-review` | Deploy, validate, diagnose, scale |
-| Assets & Miscellaneous | `red-hat-quick-deck` | Red Hat-aligned presentations |
+| Group | Prefix | Skills | Purpose |
+|-------|--------|--------|---------|
+| Project Structure | `project-*` | `maintain-rules-and-skills`, `prepare-pr-summary`, `project-demo-stage-authoring`, `project-documentation-authoring`, `project-architecture-diagrams`, `project-red-hat-doc-skill-authoring`, `project-rhoai-doc-chapter-skill-authoring` | Governance, PR output, stage lifecycle, documentation structure, Red Hat docs-to-skill generation |
+| GitOps & Manifests | | `review-gitops-change` | Review changes, explain risk |
+| Documentation | | `update-demo-docs`, `demo-operations-docs` | Keep docs aligned, author operational docs |
+| Demo Environment | | `validate-demo-step`, `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test`, `workaround-review` | Deploy, validate, diagnose, scale |
+| RHOAI Platform | `rhoai-*` | `rhoai-architecture-overview`, `rhoai-release-and-support-posture`, `rhoai-platform-planning`, `rhoai-api-tiers`, `rhoai-update-channels`, `rhoai-self-managed-installation`, `rhoai-dsci-dsc-configuration`, `rhoai-distributed-workloads`, `rhoai-kueue-workload-management`, `rhoai-distributed-workload-operations`, `rhoai-distributed-workload-workflows`, `rhoai-kubeflow-spark-operator`, `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-certificate-management`, `rhoai-observability`, `rhoai-logs-and-audit-records`, `rhoai-installation-troubleshooting`, `rhoai-uninstallation`, `rhoai-users-groups-access`, `rhoai-access-group-selection`, `rhoai-central-authentication-service`, `rhoai-dashboard-applications`, `rhoai-connected-applications`, `rhoai-dashboard-customization`, `rhoai-cluster-pvc-size`, `rhoai-storage-classes`, `rhoai-connection-types`, `rhoai-s3-object-storage-data`, `rhoai-project-workflows`, `rhoai-data-science-ide-workflows`, `rhoai-project-scoped-resources`, `rhoai-component-resource-customization`, `rhoai-telemetry-admin-settings`, `rhoai-feature-store`, `rhoai-automl`, `rhoai-basic-workbenches`, `rhoai-workbenches-custom-images`, `rhoai-workbench-image-import`, `rhoai-workbench-gateway-api-migration`, `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-model-management-monitoring`, `rhoai-monitoring-trustyai`, `rhoai-model-catalog-sources`, `rhoai-model-catalog-workflows`, `rhoai-gen-ai-playground`, `rhoai-autorag`, `rhoai-enterprise-rag`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `rhoai-llama-stack`, `rhoai-ai-pipelines`, `rhoai-mlflow`, `rhoai-model-customization-training`, `rhoai-evaluation`, `rhoai-guardrails-safety`, `rhoai-chatbot-customization`, `rhoai-model-evaluation`, `rhoai-kfp-pipeline-authoring` | Official-doc-backed RHOAI 3.4 component installation, configuration, and usage |
+| OpenShift Platform | `ocp-*` | `ocp-ai-workloads`, `ocp-authentication-identity-providers`, `ocp-cicd-builds`, `ocp-distributed-tracing`, `ocp-etcd`, `ocp-grafana-operator`, `ocp-gitops-operator`, `ocp-image-registry-and-mirroring`, `ocp-ingress-gateway-routes`, `ocp-machine-configuration`, `ocp-machine-management`, `ocp-node-feature-discovery`, `ocp-nodes`, `ocp-observability`, `ocp-opentelemetry`, `ocp-security-rbac-scc`, `ocp-storage`, `ocp-web-console` | Official-doc-backed OCP 4.20 infrastructure, networking, auth, monitoring, GitOps, and storage integration |
+| OpenShift Data Foundation | `odf-*` | `odf-storagecluster`, `odf-storage-classes`, `odf-object-bucket-claims`, `odf-multicloud-gateway` | Official-doc-backed ODF storage, object storage, Ceph, NooBaa, and storage class guidance |
+| Assets & Miscellaneous | | `red-hat-quick-deck` | Red Hat-aligned presentations |
 
 Skills are invoked workflows. Rules are always-on behavior constraints.
 

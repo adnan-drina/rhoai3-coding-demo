@@ -7,6 +7,7 @@ applies-to:
   - docs/**/*.md
   - gitops/**
   - scripts/**
+  - stages/**
   - .agents/skills/ocp-*/**
 ---
 

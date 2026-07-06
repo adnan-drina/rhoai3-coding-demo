@@ -6,9 +6,9 @@ applies-to:
   - docs/PLATFORM_BASELINE.md
   - docs/rhoai-*/**
   - gitops/**
-  - stage-*/**/*.py
-  - stage-*/**/*.ipynb
-  - stage-*/**/kfp/**
+  - stages/**/*.py
+  - stages/**/*.ipynb
+  - stages/**/kfp/**
 ---
 
 # RHOAI Platform
@@ -88,12 +88,6 @@ official RHOAI source is not mapped yet, use
 `project-red-hat-doc-skill-authoring` to update the map and create or update
 the relevant flat skill; do not create nested skill folders that mirror Red Hat
 documentation categories.
-
-The active implementation is being rewritten. RHOAI manifests, notebooks,
-pipelines, chatbot code, and evaluation workflows under
-`backup/legacy-implementation-2026-06-09/` are legacy references only until
-corresponding active content is recreated under `gitops/`, root-level
-`stage-YXX-slug/` folders, or `scripts/`.
 
 When a README introduces a RHOAI capability, pair the concept narrative with an
 official documentation link for each technical component used. When a manifest

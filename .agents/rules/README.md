@@ -12,3 +12,6 @@ the relevant skill instead of duplicating procedure text.
 | `env.md` | Live demo environment, secrets, certs, cluster safety |
 | `gitops.md` | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | Documentation standards, README structure, operations docs |
+| `rhoai.md` | RHOAI platform component guidance backed by official Red Hat documentation |
+| `ocp.md` | OpenShift Container Platform infrastructure, control plane, networking, auth, monitoring, GitOps, cluster, and storage integration guidance |
+| `odf.md` | OpenShift Data Foundation storage, object storage, NooBaa, OBC, and storage-class guidance |

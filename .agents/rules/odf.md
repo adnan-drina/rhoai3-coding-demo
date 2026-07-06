@@ -8,6 +8,7 @@ applies-to:
   - "gitops/**/*.yaml"
   - "gitops/**/*.yml"
   - "scripts/**/*"
+  - "stages/**"
   - ".agents/skills/odf-*/**"
 ---
 
