@@ -45,9 +45,8 @@ spec:
   sourceNamespace: openshift-marketplace
 EOF
 
-log_info "Waiting for GitOps operator..."
-sleep 30
-until oc get namespace openshift-gitops &>/dev/null; do sleep 5; done
+wait_until "openshift-gitops namespace (GitOps operator install)" 600 \
+    oc get namespace openshift-gitops
 
 log_step "Configuring Argo CD RBAC"
 
@@ -68,11 +67,11 @@ EOF
 
 log_step "Configuring resource tracking and controller resources"
 
-until oc get argocd openshift-gitops -n openshift-gitops &>/dev/null; do sleep 5; done
+wait_until "ArgoCD CR openshift-gitops" 600 \
+    oc get argocd openshift-gitops -n openshift-gitops
 oc patch argocd openshift-gitops -n openshift-gitops --type merge \
-    -p '{"spec":{"resourceTrackingMethod":"annotation","controller":{"resources":{"requests":{"cpu":"250m","memory":"2Gi"},"limits":{"cpu":"2","memory":"4Gi"}}}}}' 2>/dev/null \
-    && log_success "Resource tracking and controller resources configured" \
-    || log_warn "Could not patch ArgoCD tracking method (may not be ready yet)"
+    -p '{"spec":{"resourceTrackingMethod":"annotation","controller":{"resources":{"requests":{"cpu":"250m","memory":"2Gi"},"limits":{"cpu":"2","memory":"4Gi"}}}}}'
+log_success "Resource tracking and controller resources configured"
 
 log_step "Configuring custom resource health checks"
 
@@ -113,9 +112,8 @@ oc patch argocd openshift-gitops -n openshift-gitops --type merge -p '{
       }
     ]
   }
-}' 2>/dev/null \
-    && log_success "Subscription + CRD + PVC + InferenceService + TrustyAIService health checks configured" \
-    || log_warn "Could not configure health checks"
+}'
+log_success "Subscription + CRD + PVC + InferenceService + TrustyAIService health checks configured"
 
 log_step "Creating Argo CD project"
 

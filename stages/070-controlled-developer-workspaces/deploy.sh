@@ -14,8 +14,7 @@ check_oc_logged_in
 
 log_step "Stage 070: Dev Spaces & AI Code Assistant"
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
-log_success "ArgoCD Application '${STAGE_NAME}' applied"
+apply_stage_app "$STAGE_NAME"
 
 log_info "Monitor progress:"
 echo "  oc get application ${STAGE_NAME} -n openshift-gitops -w"

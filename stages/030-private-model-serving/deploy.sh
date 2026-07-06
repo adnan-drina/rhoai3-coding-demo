@@ -13,8 +13,7 @@ check_oc_logged_in
 
 log_step "Stage 030: Private Model Serving"
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
-log_success "ArgoCD Application '${STAGE_NAME}' applied"
+apply_stage_app "$STAGE_NAME"
 
 log_info "ArgoCD handles orchestration via sync waves:"
 log_info "  Wave 0-2:   LeaderWorkerSet operator prerequisites"

@@ -12,7 +12,11 @@ check_oc_logged_in
 
 log_step "E2E Demo Flow Validation"
 
-mapfile -t stages < <(
+# while-read instead of mapfile: macOS ships bash 3.2
+stages=()
+while IFS= read -r stage; do
+    stages+=("$stage")
+done < <(
     python3 - "$REPO_ROOT/flows/default.yaml" <<'PY'
 from pathlib import Path
 import sys

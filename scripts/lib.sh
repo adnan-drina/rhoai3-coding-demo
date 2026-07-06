@@ -60,20 +60,30 @@ ensure_namespace() {
     oc get namespace "$ns" &>/dev/null || oc create namespace "$ns"
 }
 
+# Apply the Argo CD Application for a stage.
+apply_stage_app() {
+    local stage="$1"
+    oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${stage}.yaml"
+    log_success "Argo CD Application '${stage}' applied"
+}
+
 ensure_secret_from_env() {
     local name="$1" ns="$2"; shift 2
     oc create secret generic "$name" -n "$ns" "${@/#/--from-literal=}" \
         --dry-run=client -o yaml | oc apply -f -
 }
 
-wait_for_crd() {
-    local crd="$1" timeout="${2:-120}" elapsed=0
-    log_info "Waiting for CRD $crd (timeout ${timeout}s)..."
-    until oc get crd "$crd" &>/dev/null; do
+# Poll a command until it succeeds or the timeout (seconds) expires.
+# Usage: wait_until "description" 300 oc get namespace foo
+wait_until() {
+    local desc="$1" timeout="$2" elapsed=0
+    shift 2
+    log_info "Waiting for ${desc} (timeout ${timeout}s)..."
+    until "$@" &>/dev/null; do
         sleep 5
         elapsed=$((elapsed + 5))
-        if [ $elapsed -ge $timeout ]; then
-            log_error "Timeout waiting for CRD $crd after ${timeout}s"
+        if [[ $elapsed -ge $timeout ]]; then
+            log_error "Timeout waiting for ${desc} after ${timeout}s"
             return 1
         fi
     done

@@ -18,6 +18,7 @@ VALIDATE_FAIL=0
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 source "$REPO_ROOT/scripts/lib.sh"
+load_env
 check_oc_logged_in
 
 check() {
@@ -46,6 +47,8 @@ check_warn() {
     fi
 }
 
+# Sync drift is a WARN because operator-managed resources routinely drift;
+# health is the real signal: Progressing warns, anything else non-Healthy fails.
 check_argocd_app() {
     local app_name="$1"
     local sync health
@@ -56,24 +59,29 @@ check_argocd_app() {
         echo -e "${GREEN}[PASS]${NC} Argo CD app '$app_name' sync: Synced"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${RED}[FAIL]${NC} Argo CD app '$app_name' sync (expected: Synced, got: $sync)"
-        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+        echo -e "${YELLOW}[WARN]${NC} Argo CD app '$app_name' sync: $sync (operator-managed resources may drift)"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
     fi
 
     if [[ "$health" == "Healthy" ]]; then
         echo -e "${GREEN}[PASS]${NC} Argo CD app '$app_name' health: Healthy"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
-    else
-        echo -e "${YELLOW}[WARN]${NC} Argo CD app '$app_name' health (expected: Healthy, got: $health)"
+    elif [[ "$health" == "Progressing" ]]; then
+        echo -e "${YELLOW}[WARN]${NC} Argo CD app '$app_name' health: Progressing (re-run validation once settled)"
         VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} Argo CD app '$app_name' health (expected: Healthy, got: $health)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 }
 
+# Counts pods whose Ready condition is True; a "0/1 Running" pod does not count.
 check_pods_ready() {
     local ns="$1" selector="$2" min_count="${3:-1}"
     local ready_count
-    ready_count=$(oc get pods -n "$ns" -l "$selector" --no-headers 2>/dev/null \
-        | grep -c "Running" || true)
+    ready_count=$(oc get pods -n "$ns" -l "$selector" \
+        -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null \
+        | grep -c "True" || true)
 
     if [[ "$ready_count" -ge "$min_count" ]]; then
         echo -e "${GREEN}[PASS]${NC} Pods ready ($selector in $ns): $ready_count >= $min_count"

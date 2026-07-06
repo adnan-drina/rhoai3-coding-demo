@@ -12,22 +12,7 @@ echo "╚═══════════════════════�
 echo ""
 
 log_step "Argo CD Application"
-SYNC=$(oc get application 010-openshift-ai-platform-foundation -n openshift-gitops -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "NOT_FOUND")
-HEALTH=$(oc get application 010-openshift-ai-platform-foundation -n openshift-gitops -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NOT_FOUND")
-if [[ "$SYNC" == "Synced" ]]; then
-    echo -e "${GREEN}[PASS]${NC} Argo CD app sync: Synced"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} Argo CD app sync: $SYNC (operator-managed resources may drift)"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
-if [[ "$HEALTH" == "Healthy" ]]; then
-    echo -e "${GREEN}[PASS]${NC} Argo CD app health: Healthy"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} Argo CD app health: $HEALTH"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
+check_argocd_app "010-openshift-ai-platform-foundation"
 
 log_step "Platform Dependencies"
 check_crd_exists "certificates.cert-manager.io"

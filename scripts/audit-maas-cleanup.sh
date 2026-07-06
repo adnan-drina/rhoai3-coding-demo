@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$REPO_ROOT/scripts/lib.sh"
 
+load_env
+check_oc_logged_in
+
 PASS=0
 WARN=0
 FAIL=0

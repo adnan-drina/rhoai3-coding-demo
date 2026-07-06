@@ -15,8 +15,7 @@ check_oc_logged_in
 
 log_step "Stage 010: Red Hat OpenShift AI Platform"
 
-oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/${STAGE_NAME}.yaml"
-log_success "ArgoCD Application '${STAGE_NAME}' applied"
+apply_stage_app "$STAGE_NAME"
 
 log_info "ArgoCD handles all orchestration via sync waves:"
 log_info "  Wave -10..0: Namespaces, OperatorGroups, Subscriptions"
