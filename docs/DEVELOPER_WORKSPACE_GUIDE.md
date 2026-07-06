@@ -177,7 +177,6 @@ Use a model endpoint that matches the exercise and data policy:
 |----------|-------------|
 | `nemotron-3-nano-30b-a3b` | Default private model for sensitive code and enterprise demo tasks |
 | `qwen3-6-35b-a3b` | Private coding-focused model (Qwen3.6 35B A3B, FP8-dynamic) |
-| `gpt-4o` | Approved external model when provider-side processing is allowed |
 | `gpt-4o-mini` | Lower-cost approved external model when provider-side processing is allowed |
 
 The default Stage 050 source-code path is:
@@ -221,7 +220,7 @@ grep -E "model:|apiBase:" ~/.continue/config.yaml
 ```
 
 Do not print `apiKey` values. The generated config should include
-`nemotron-3-nano-30b-a3b`, `qwen3-6-35b-a3b`, `gpt-4o`, and `gpt-4o-mini` with
+`nemotron-3-nano-30b-a3b`, `qwen3-6-35b-a3b`, and `gpt-4o-mini` with
 MaaS OpenAI-compatible endpoints.
 
 The generated Continue model entries set a 600000 millisecond request timeout.

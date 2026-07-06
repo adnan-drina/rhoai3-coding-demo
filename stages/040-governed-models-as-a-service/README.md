@@ -123,7 +123,7 @@ conservative demo defaults, not a production SLA.
 
 The prerequisite, local Nemotron, external OpenAI, and model-policy resources
 use schemas observed on the current RHOAI 3.4 cluster. Stage 040 pins Red Hat
-Connectivity Link to `rhcl-operator.v1.3.4` with manual InstallPlan approval
+Connectivity Link to `rhcl-operator.v1.3.5` with manual InstallPlan approval (moved from v1.3.4 on 2026-07-06 when a shared InstallPlan approval carried the upgrade; see TROUBLESHOOTING "hidden passenger CSVs")
 and also GitOps-manages the RHCL dependency Subscriptions for Authorino, DNS,
 and Limitador at their validated 1.3.x CSVs. This is a deliberate
 compatibility guard because the official RHCL 1.4 release notes deprecate

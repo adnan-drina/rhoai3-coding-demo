@@ -281,13 +281,11 @@ data:
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
-    MAAS_API_KEY_GPT_4O="$(secret_value MAAS_API_KEY_GPT_4O)"
     MAAS_API_KEY_GPT_4O_MINI="$(secret_value MAAS_API_KEY_GPT_4O_MINI)"
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
       || [ -z "${MAAS_API_KEY_QWEN}" ] \
-      || [ -z "${MAAS_API_KEY_GPT_4O}" ] \
       || [ -z "${MAAS_API_KEY_GPT_4O_MINI}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
@@ -326,18 +324,6 @@ data:
         requestOptions:
           timeout: 600000
 
-      - name: OpenAI GPT-4o
-        provider: openai
-        model: "gpt-4o"
-        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1"
-        apiKey: "${MAAS_API_KEY_GPT_4O}"
-        contextLength: 128000
-        capabilities:
-          - tool_use
-        defaultCompletionOptions:
-          maxTokens: 4096
-        requestOptions:
-          timeout: 600000
 
       - name: OpenAI GPT-4o Mini
         provider: openai
@@ -416,22 +402,6 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 600000,
-            "chunkTimeout": 120000
-          }
-        },
-        "gpt-4o": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS GPT-4o",
-          "models": {
-            "gpt-4o": {
-              "name": "OpenAI GPT-4o (External)",
-              "limit": { "context": 128000, "output": 16384 }
-            }
-          },
-          "options": {
-            "apiKey": "${MAAS_API_KEY_GPT_4O}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
@@ -603,7 +573,6 @@ spec:
 
               write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
               write_model_key "QWEN" "qwen3-6-35b-a3b"
-              write_model_key "GPT_4O" "gpt-4o"
               write_model_key "GPT_4O_MINI" "gpt-4o-mini"
 
               oc create secret generic "${SECRET_NAME}" \

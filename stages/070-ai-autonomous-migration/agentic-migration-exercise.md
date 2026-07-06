@@ -60,8 +60,12 @@ demo's honesty about what autonomy costs and why token limits exist.
 
 - [ ] Proving run: MigIQ skills under OpenCode (project is Claude-Code-first;
       `.opencode/skills` compatibility must be verified in Dev Spaces).
-- [ ] Workspace wiring: DevWorkspace entry for the Spring Boot sample with
-      the pinned MigIQ install in postStart (Stage 050 pattern).
+- [x] Workspace wiring: DONE — the `agentic-migration` DevWorkspace clones
+      `adnan-drina/migiq-spring-boot-sample`, installs `@sshaaf/migiq@0.2.2`
+      into `.claude/` on postStart, and the init command writes the elevated
+      MaaS key to `~/.agentic-maas.env` (source it before agent runs; key
+      drawn from `enterprise-rag-autorag`, model access via the developer
+      MaaSAuthPolicy).
 - [ ] Model behavior: confirm the qwen tool-call parser handles MigIQ's
       structured prompts; fall back to nemotron as executor if needed.
 - [ ] Evidence capture: scripted before/after test + MaaS usage screenshots

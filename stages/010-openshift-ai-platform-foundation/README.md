@@ -154,7 +154,7 @@ Extended by later stages
 
 ### OpenShift AI Dashboard
 
-The platform control plane with the Demo Sandbox project, AI Hub, Observe & Monitor, and Settings navigation.
+The platform control plane with the AI Coding Sandbox project (resource name demo-sandbox), AI Hub, Observe & Monitor, and Settings navigation.
 
 ![RHOAI Dashboard](../../docs/assets/demos/stage-010/01-rhoai-dashboard-projects.png)
 
