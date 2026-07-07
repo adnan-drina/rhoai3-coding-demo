@@ -13,7 +13,7 @@ if [[ -z "$file_path" ]]; then
 fi
 
 SESSION_ID=$(echo "$input" | jq -r '.conversation_id // "unknown"' 2>/dev/null)
-TRACK_FILE="/tmp/cursor-edit-track-${SESSION_ID}.log"
+TRACK_FILE="/tmp/agent-edit-track-${SESSION_ID}.log"
 
 echo "$file_path" >> "$TRACK_FILE"
 

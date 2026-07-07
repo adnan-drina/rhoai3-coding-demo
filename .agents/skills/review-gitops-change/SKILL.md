@@ -10,11 +10,12 @@ metadata:
 description: >
   Review GitOps and platform manifest changes for safety, consistency, and
   completeness. Use when a contributor changes anything under gitops/, platform
-  YAML, or Argo CD applications. Complements the manifest-reviewer subagent
-  with a workflow-level review that includes security impact, MaaS implications,
-  and PR-ready output. Do NOT use for educational README writing (use README
-  rules), live troubleshooting (use rhoai-troubleshoot), or deep manifest
-  schema validation (use manifest-reviewer agent).
+  YAML, or Argo CD applications.   Complements review-manifest-compliance (label/selector/YAML checks) and
+  review-doc-alignment (official doc verification) with a workflow-level review
+  that includes security impact, MaaS implications, and PR-ready output.
+  Do NOT use for educational README writing (use README rules), live
+  troubleshooting (use rhoai-troubleshoot), or deep manifest schema validation
+  (use review-manifest-compliance or review-doc-alignment).
 ---
 
 # Review GitOps Change

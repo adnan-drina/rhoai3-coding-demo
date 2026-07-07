@@ -12,37 +12,68 @@ The contribution flow:
 
 This model fits the project because the demo itself is about governed AI development: private and external models through MaaS, controlled developer tooling, GitOps repeatability, and clear trust boundaries. The repo should practice the same governance pattern that it demonstrates.
 
-## Rules and skills policy
+## Architecture: tool-neutral by design
 
-This repository uses shared AI-agent rules and skills to make Cursor-based collaboration consistent and safe.
+All project governance — rules, skills, hooks, and reference data — lives in
+`.agents/`. Tool-specific configuration is kept to the minimum needed for each
+tool to discover and invoke the shared layer.
+
+```
+.agents/                        # canonical, tool-neutral (tracked in git)
+├── rules/*.md                  # always-on behavior constraints
+├── skills/*/SKILL.md           # invocable workflows
+├── hooks/                      # shared hook implementations
+│   ├── guard-openshift-command.py
+│   ├── session-init.sh
+│   ├── check-docs-consistency.sh
+│   └── validate-yaml.sh
+└── references/                 # shared reference maps
+
+AGENTS.md                       # root agent contract (tool-neutral)
+
+.cursor/                        # thin Cursor bridge (tracked in git)
+├── hooks.json                  # wires Cursor events to .agents/hooks/
+└── agents/*.md                 # Cursor subagent stubs → shared skills
+
+.claude/                        # gitignored — local Claude Code config
+.codex/                         # gitignored — local Codex config
+```
+
+### Adding support for a new tool
+
+To add a new AI tool (e.g. Copilot, Continue, Windsurf):
+
+1. The tool reads `AGENTS.md` for the project contract.
+2. If the tool has a hook/plugin system, create a thin bridge file that points
+   to `.agents/hooks/` implementations.
+3. Do not duplicate rules, skills, or hook logic into the tool-specific folder.
+
+## Rules and skills policy
 
 ### Shared project rules
 
-Shared rules live in:
+Rules live in `.agents/rules/*.md`. They define project-wide always-on behavior
+constraints: repository structure, GitOps expectations, security boundaries,
+validation expectations, and PR requirements.
 
-- `AGENTS.md` — tool-neutral agent guidance (read by Cursor, Copilot, and other agents)
-- `.cursor/rules/*.mdc` — Cursor-specific behavior rules
-- `.cursor/agents/*.md` — context-isolated specialist agents
-- `.cursor/hooks.json` and `.cursor/hooks/` — Cursor automation hooks
-- `.codex/hooks.json` and `.codex/hooks/` — Codex command-safety hooks
-
-These files define project-wide behavior for agents and contributors. They include repository structure, GitOps expectations, security boundaries, validation expectations, and PR requirements.
+The root `AGENTS.md` is the tool-neutral entry point that all tools should read.
 
 Rules should be stable, short, and applicable to all contributors.
 
 ### Shared project skills
 
-Shared skills live in:
+Skills live in `.agents/skills/*/SKILL.md`. They define repeatable project
+workflows such as reviewing GitOps changes, validating demo stages, updating
+documentation, preparing PR summaries, and reviewing workarounds.
 
-- `.cursor/skills/*/SKILL.md`
-
-Shared skills define repeatable project workflows such as reviewing GitOps changes, validating demo stages, updating documentation, preparing PR summaries, and reviewing workarounds.
-
-A skill may be shared when it is useful to all contributors, contains no secrets, and represents a workflow that should be performed consistently.
+A skill may be shared when it is useful to all contributors, contains no
+secrets, and represents a workflow that should be performed consistently.
 
 ### Local/private rules and skills
 
-Contributors may maintain private rules and skills for personal workflows at `~/.cursor/rules/` and `~/.cursor/skills/`. These must not be committed if they include:
+Contributors may maintain private rules and skills for personal workflows in
+their user-level tool configuration (e.g. `~/.cursor/rules/`). These must not
+be committed if they include:
 
 - personal credentials
 - local cluster names or URLs
@@ -132,25 +163,19 @@ Good rules (specific and actionable):
 
 ## Skill taxonomy
 
-Keep skill folders flat under `.cursor/skills/` so tool discovery continues to work. Use this taxonomy for review, ownership, and cleanup instead of nesting folders.
+Skills use a flat folder structure under `.agents/skills/` with a
+`metadata.skill-group` taxonomy for organization. See `AGENTS.md` for the
+complete skill inventory table.
 
-| Category | Skills | Purpose |
-|----------|--------|---------|
-| Review and delivery | `review-gitops-change`, `prepare-pr-summary`, `workaround-review` | Review changes, explain risk, and prepare PR output |
+| Category | Example skills | Purpose |
+|----------|---------------|---------|
+| Review and delivery | `review-gitops-change`, `review-manifest-compliance`, `review-doc-alignment`, `prepare-pr-summary` | Review changes, explain risk, and prepare PR output |
 | Validation and documentation | `validate-demo-step`, `update-demo-docs`, `demo-operations-docs` | Keep stage behavior, docs, and operations material aligned |
-| Live operations | `rhoai-troubleshoot`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test` | Diagnose or intentionally change live cluster resources |
-| Deliverables | `red-hat-quick-deck` | Create Red Hat-aligned presentation artifacts from demo content |
+| Live operations | `rhoai-troubleshoot`, `inspect-cluster`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo` | Diagnose or intentionally change live cluster resources |
+| RHOAI platform | `rhoai-*` skills | Official-doc-backed RHOAI component guidance |
+| OCP platform | `ocp-*` skills | Official-doc-backed OCP infrastructure guidance |
+| Deliverables | `red-hat-quick-deck` | Create Red Hat-aligned presentation artifacts |
 | Governance | `maintain-rules-and-skills` | Add, update, audit, or retire shared AI guidance |
-
-Current inventory:
-
-| Type | Count | Location |
-|------|-------|----------|
-| Cursor rules | 13 | `.cursor/rules/*.mdc` |
-| Cursor skills | 13 | `.cursor/skills/*/SKILL.md` |
-| Cursor hooks | 4 | `.cursor/hooks.json`, `.cursor/hooks/` |
-| Codex hooks | 1 | `.codex/hooks.json`, `.codex/hooks/` |
-| Subagents | 3 | `.cursor/agents/*.md` |
 
 ## Skill quality bar
 
@@ -165,34 +190,29 @@ Shared skills should:
 - avoid secrets, local paths, private URLs, and local cluster assumptions
 - mark destructive or expensive workflows with `disable-model-invocation: true`
 
-`red-hat-quick-deck` is intentionally shared between both demo repos and is organized as a lean entry-point `SKILL.md` plus detailed `references/` files. Keep future deck-system detail in references instead of expanding the entry point.
-
 ## Automation hooks
 
-Cursor hooks provide automated enforcement beyond prose rules. They are defined in `.cursor/hooks.json` and run automatically at specific events.
+Shared hook implementations live in `.agents/hooks/`. Tool-specific bridge
+files (e.g. `.cursor/hooks.json`) wire tool events to the shared
+implementations.
 
 | Hook | Trigger | What it does | Failure behavior |
 |------|---------|--------------|-----------------|
 | `validate-yaml.sh` | After editing a `gitops/**/*.yaml` file | Runs `kustomize build` on the nearest base; warns if it fails | Adds a warning to agent context; does not block the edit |
 | `check-docs-consistency.sh` | After editing `gitops/stages/**` or `stages/**` | Tracks edits per session; reminds if manifest was changed without README or vice versa | Adds a reminder to agent context; does not block |
-| `guard-oc-commands.py` | Before running `oc delete`, `oc scale`, or `oc patch` | If the command targets a protected namespace (`redhat-ods-applications`, `redhat-ods-operator`, `openshift-gitops`, `openshift-operators`), asks user for confirmation | Prompts "ask" permission; agent must confirm with user |
+| `guard-openshift-command.py` | Before running mutating `oc`/`kubectl` commands or deploy scripts | Verifies `RHOAI_EXPECTED_API_SERVER` matches the active cluster; blocks if no guard is set or cluster doesn't match | Blocks the command with an error message |
 | `session-init.sh` | On session start | Checks `oc whoami` and injects cluster login status into agent context | Warns "Not logged in" if oc is unavailable or not authenticated |
 
-**Recovering from a false positive:** Hooks do not hard-block operations. If a hook produces an incorrect warning (e.g., `kustomize build` fails due to a CRD not yet installed), acknowledge the warning and proceed. For `guard-oc-commands.py`, the user can confirm destructive operations when prompted.
-
-**Bypassing hooks:** Hooks cannot be bypassed per-invocation. If a hook is consistently wrong for your workflow, disable it by commenting the entry in `.cursor/hooks.json` and propose a fix via PR.
+**Recovering from a false positive:** Hooks do not hard-block file edits. If a hook produces an incorrect warning (e.g., `kustomize build` fails due to a CRD not yet installed), acknowledge the warning and proceed. For `guard-openshift-command.py`, set `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` in `.env` to bypass the guard when explicitly confirmed.
 
 **Hook logs:** Hooks write to stdout/stderr which appears in the agent context. The `check-docs-consistency.sh` hook tracks edits per session in `/tmp/cursor-edit-track-*.log` (cleaned by OS temp policy).
 
-Codex hooks are defined in `.codex/hooks.json` and `.codex/hooks/`. They guard risky `oc` and `kubectl` commands before shell execution. The OpenShift safety hook should fail closed when no expected cluster guard is configured or when the active cluster does not match the repo-local guard.
-
 Before any live OpenShift operation:
 
-- open this repo as its own Codex project, not `/Users/adrina/Sandbox`
+- open this repo as its own project, not a parent directory
 - load the repo-local `.env`
 - require `RHOAI_EXPECTED_API_SERVER` or an explicitly approved override
 - do not read credentials from another repo by default
-- do not add cross-project `.env` fallbacks
 
 ## Simple rule of thumb
 

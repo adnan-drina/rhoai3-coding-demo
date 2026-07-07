@@ -3,11 +3,11 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": ".cursor/hooks/validate-yaml.sh",
+        "command": ".agents/hooks/validate-yaml.sh",
         "matcher": "Write"
       },
       {
-        "command": ".cursor/hooks/check-docs-consistency.sh",
+        "command": ".agents/hooks/check-docs-consistency.sh",
         "matcher": "Write"
       }
     ],

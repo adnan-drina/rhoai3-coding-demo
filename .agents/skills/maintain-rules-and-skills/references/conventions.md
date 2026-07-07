@@ -1,7 +1,7 @@
 # Shared Agent Guidance Conventions
 
-Use these conventions when changing `AGENTS.md`, `.agents/`, or `.cursor/`
-in this repository.
+Use these conventions when changing `AGENTS.md`, `.agents/`, or tool bridge
+files (e.g. `.cursor/hooks.json`) in this repository.
 
 ## AGENTS.md
 
@@ -114,42 +114,37 @@ Reusable hook implementations live under `.agents/hooks/`.
 - Keep hook logic deterministic and non-secret.
 - Hooks should validate, remind, or block; they should not rewrite project files.
 - Security-critical hooks should fail closed when the tool supports that mode.
-- Cursor-only hook scripts may remain in `.cursor/hooks/` when they depend on
-  Cursor event payloads.
-
 ## Tool Bridges
 
 Keep tool-specific directories minimal:
 
-| Directory | Shared repo purpose |
-|-----------|---------------------|
-| `.cursor/` | Cursor hook config and Cursor-only hook scripts only |
+| Directory | Tracked in git? | Contains |
+|-----------|----------------|----------|
+| `.cursor/` | Yes | `hooks.json` (event wiring) and `agents/*.md` (thin subagent stubs pointing to shared skills) |
+| `.claude/` | No (gitignored) | Local Claude Code runtime preferences |
+| `.codex/` | No (gitignored) | Local Codex runtime preferences |
 
-Do not reintroduce tool-specific rules, skills, agents, or worktree state unless
-there is a concrete tool-only gap and the bridge is reviewed as source.
+Do not reintroduce tool-specific rules, skills, or hook implementations.
+Tool bridge files should only wire tool events to `.agents/hooks/` and
+provide thin subagent stubs that delegate to `.agents/skills/`.
 
-## Cursor Rules (`.cursor/rules/`)
+### Cursor subagents (`.cursor/agents/`)
 
-Cursor rules use `.mdc` files with their own frontmatter format:
+Cursor subagents use a YAML frontmatter format specific to Cursor:
 
 ```yaml
 ---
-description: One-line description shown in rule picker
-globs: "gitops/**/*.yaml"
-alwaysApply: false
+name: agent-name
+description: >
+  Short description. Thin Cursor wrapper around the shared <skill-name> skill.
+model: inherit  # or "fast" for lightweight inspection
+readonly: true
 ---
 ```
 
-Four rule types in Cursor:
-
-| Type | Frontmatter | When it activates |
-|------|-------------|-------------------|
-| Always Apply | `alwaysApply: true`, no globs | Every chat session |
-| Apply to Specific Files | `alwaysApply: false`, globs set | When matching files are in context |
-| Apply Intelligently | `alwaysApply: false`, no globs | When agent decides based on description |
-| Apply Manually | `alwaysApply: false`, no globs, no description | Only when @-mentioned |
-
-Naming convention: `XX-descriptive-name.mdc` where XX is a priority number.
+Subagent bodies should be minimal — instruct the subagent to read and follow
+the shared skill, point to relevant rules, and state safety constraints.
+Keep the actual checklist content in `.agents/skills/`.
 
 ## Red Hat Documentation Alignment
 

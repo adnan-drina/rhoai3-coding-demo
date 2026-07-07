@@ -19,7 +19,11 @@ Thumbs.db
 .vscode/
 *.code-workspace
 
-# Cursor IDE (shared rules, skills, agents, hooks are tracked in git)
+# Tool-specific agent config (local runtime preferences, not project governance)
+# Shared rules, skills, and hooks live in .agents/ and are tracked in git.
+# .cursor/ tracks only hooks.json and agents/*.md as thin tool bridges.
+.claude/
+.codex/
 .cursor/.DS_Store
 .cursor/chat/
 .cursor/context/
