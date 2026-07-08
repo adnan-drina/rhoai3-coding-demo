@@ -20,25 +20,11 @@ profiles have no affinity concept, and the KServe webhook strips
 template-level anti-affinity on RHOAI 3.4, so full-card requests are the
 documented-behavior-aligned placement mechanism.
 
-## What Enables It
-
-| Component | Role |
-|-----------|------|
-| RHOAI MaaS | Subscription-based governance, API keys, model publication, authorization policies, and usage telemetry. |
-| KServe and vLLM | Local model-serving foundation for Nemotron. vLLM with MaaS is Technology Preview in RHOAI 3.4. |
-| Leader Worker Set Operator | Required distributed-inference prerequisite for the RHOAI `LLMInferenceService` path. |
-| Red Hat Connectivity Link and Kuadrant | Gateway policy, authorization integration, rate-limit enforcement, and observability substrate. |
-| Gateway API | Cluster ingress path for MaaS model and API traffic. |
-| Authorino | Authentication and authorization service used by the gateway policy chain. |
-| PostgreSQL | Stores MaaS API key lifecycle data; OpenShift AI requires an externally managed PostgreSQL 14+ database. |
-| Llama Stack Operator and Gen AI Studio | User-facing GenAI Playground and AI asset endpoint experience. |
-| OpenShift MCP Server | Read-only cluster-context tool server registered in Gen AI Playground for controlled MCP tool use. |
-
-## Architecture Delta
+## Architecture
 
 ```mermaid
 flowchart LR
-  previous["Stage 030: vLLM baseline configuration"] --> maas["RHOAI MaaS"]
+  previous["Stage 030: vLLM baseline"] --> maas["RHOAI MaaS"]
   openai["OpenAI gpt-4o-mini"] --> maas
   maas --> sub["MaaS subscriptions"]
   maas --> auth["MaaS auth policies"]
@@ -53,110 +39,6 @@ flowchart LR
   mcp["OpenShift MCP Server"] --> playground
 ```
 
-## Source Alignment
-
-- [RHOAI 3.4 - Govern LLM access with Models-as-a-Service](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index)
-- [RHOAI 3.4 - Configuring authentication for llm-d using Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/deploy_models_using_distributed_inference_with_llm-d/configuring-authentication-for-llmd_distributed-inference)
-- [OpenShift 4.20 - Leader Worker Set Operator](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/ai_workloads/leader-worker-set-operator)
-- [Red Hat Connectivity Link 1.3 - Installing Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/installing_connectivity_link/index)
-- [OpenShift 4.20 - cert-manager Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift)
-- [Red Hat Ecosystem Catalog - PostgreSQL 16 RHEL 9 image](https://catalog.redhat.com/en/software/containers/rhel9/postgresql-16/657b03866783e1b1fb87e142)
-- [Centralized routing for external and self-hosted LLMs on OpenShift AI](https://developers.redhat.com/articles/2026/05/25/route-external-and-local-llms-models-as-a-service)
-- [Red Hat - Model Context Protocol server for Red Hat OpenShift now available as Technology Preview](https://www.redhat.com/en/blog/model-context-protocol-server-red-hat-openshift-now-available-technology-preview)
-- [OpenShift MCP Server repository](https://github.com/openshift/openshift-mcp-server)
-- [OpenAI API - GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini)
-
-## Current Scope
-
-This stage is implemented in phases:
-
-1. Enable MaaS prerequisites and validate CRD/schema availability. cert-manager
-   is treated as a required platform prerequisite, not as a Stage 040-owned
-   operator lifecycle resource.
-2. Add schema-validated external OpenAI `gpt-4o-mini` publication resources
-   using the same MaaS resource name and upstream provider model ID,
-   developer subscription quota, developer authorization policy, and MaaS
-   namespace admin access for `rhods-admins`.
-3. Migrate the local serving path into the MaaS namespace by creating
-   schema-validated `LLMInferenceService` resources for Nemotron and Qwen3.6,
-   their `MaaSModelRef` entries, and the matching subscription/auth policy.
-   The deployment wrapper removes the Stage 030 baseline Nemotron
-   `InferenceService` from `demo-sandbox` before the MaaS-owned backends are
-   reconciled (see the Stage 030 lifecycle note), and
-   `register-model-cards.sh` (invoked by deploy.sh) registers the Qwen3.6
-   rich model card (provider, validated-by, source repo, license,
-   quantization, deployed context, capabilities) through the authenticated
-   registry route, alongside the Nemotron entry Stage 030 registers.
-4. Validate user access with real demo users, temporary MaaS API keys,
-   Nemotron tool-calling inference, external OpenAI function calling, and MaaS
-   observability prerequisites. Nemotron remains the primary model for the
-   OpenShift MCP demo because it keeps cluster context on the private
-   inference path.
-5. Register a read-only OpenShift MCP server in Gen AI Playground discovery so
-   users can test model tool use against OpenShift cluster context without
-   giving the model write permissions or access to Secrets, ConfigMaps, or
-   RBAC resources.
-
-A dedicated `enterprise-rag-autorag` MaaSSubscription (name inherited from the
-shared rhoai3-demo foundation) provides elevated token rate limits
-(Nemotron: 2M tokens/h, GPT-4o-mini: 1M tokens/h) for burst workloads that
-would exhaust interactive developer budgets. In this demo that consumer is
-the Stage 070 multi-agent migration, whose parallel agents are deliberately
-token-heavy. This keeps governance enforced while sizing quota for
-autonomous workloads.
-
-Coding-demo additions on top of the shared foundation: the Qwen3.6 second
-local model, the rich model-card registry seed, and optional credential-gated
-Slack and BrightData MCP servers in `rhoai-mcp` (Secrets provisioned by
-deploy.sh only when `SLACK_BOT_TOKEN` / `BRIGHTDATA_API_TOKEN` are set).
-
-Serving-health monitoring rides on the same User Workload Monitoring pipeline
-that feeds the Stage 030 Grafana dashboards. A `vllm-serving-health`
-PrometheusRule in `models-as-a-service` (recording rules for TTFT/ITL p95 and
-KV-cache utilization, plus alerts for high TTFT, request-queue backlog,
-KV-cache pressure, and a parked-model info alert) turns the `vllm:*` metrics
-into serving-capacity signals, and a `monitoring-rules-view` RoleBinding lets
-the demo user groups read those rules without cluster-admin. The signals match
-what the Stage 030 GuideLLM capacity benchmark measures, so the alert
-thresholds and the benchmark's breaking point tell the same story. These are
-conservative demo defaults, not a production SLA.
-
-The prerequisite, local Nemotron, external OpenAI, and model-policy resources
-use schemas observed on the current RHOAI 3.4 cluster. Stage 040 pins Red Hat
-Connectivity Link to `rhcl-operator.v1.3.5` with manual InstallPlan approval (moved from v1.3.4 on 2026-07-06 when a shared InstallPlan approval carried the upgrade; see TROUBLESHOOTING "hidden passenger CSVs")
-and also GitOps-manages the RHCL dependency Subscriptions for Authorino, DNS,
-and Limitador at their validated 1.3.x CSVs. This is a deliberate
-compatibility guard because the official RHCL 1.4 release notes deprecate
-RHCL 1.4.0 and direct upgrade customers to pin Connectivity Link and dependent
-operators to the latest 1.3.z release. The live MaaS API group is
-`maas.opendatahub.io/v1alpha1`; Stage 040 model publication and policy
-resources use that installed schema.
-
-Stage 040 intentionally does not patch generated Kuadrant `AuthPolicy` or
-EnvoyFilter resources. The implementation follows the documented MaaS/RHCL
-setup and leaves generated gateway behavior to supported RHOAI, RHCL,
-Kuadrant, and OpenShift Service Mesh versions.
-
-The external OpenAI path is credential-gated. `deploy.sh` creates
-`openai-provider-api-key` in `models-as-a-service` from local
-`OPENAI_API_KEY` or `RHOAI_OPENAI_API_KEY`, or reuses the Secret if it already
-exists. The provider key is never committed.
-
-The OpenShift MCP path uses the newer Red Hat/OpenShift MCP server project. The
-server runs in `rhoai-mcp`, uses in-cluster ServiceAccount authentication, is
-configured `read_only = true`, enables only the `core` and `config` toolsets,
-and denies `Secret`, `ConfigMap`, and RBAC resource access in the MCP server
-configuration. The server is registered for Gen AI Playground through the
-platform-level `gen-ai-aa-mcp-servers` ConfigMap in
-`redhat-ods-applications`. MCP and Gen AI Playground are preview surfaces in
-this demo, so use them to demonstrate governed tool context, not production
-automation. External GPT can complete tightly bounded MCP calls, but broad
-OpenShift MCP prompts can send large tool schemas or results to the external
-provider and hit provider token limits; use Nemotron for the standard MCP demo
-flow.
-
----
-
 ## Demo
 
 ![Stage 040 walkthrough](../../docs/assets/demos/stage-040/stage-040-demo.gif)
@@ -167,3 +49,91 @@ flow.
 | ![Gateway](../../docs/assets/demos/stage-040/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
 | ![HTTPRoutes](../../docs/assets/demos/stage-040/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
 | ![AuthPolicy](../../docs/assets/demos/stage-040/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |
+
+## What This Stage Adds
+
+This stage turns model endpoints into governed platform services with subscription-based access control, token quotas, API key lifecycle, and observability.
+
+- MaaS prerequisites: cert-manager (hard prerequisite), Leader Worker Set Operator, Red Hat Connectivity Link v1.3.5, PostgreSQL database, Kuadrant configure Job.
+- Local model migration: `LLMInferenceService` resources for Nemotron and Qwen3.6 in `models-as-a-service`, replacing the Stage 030 baseline `InferenceService`.
+- External model publication: OpenAI `gpt-4o-mini` as a governed MaaS model with credential-gated provider key.
+- Subscription and authorization policies with per-model token rate limits for developer and burst workloads.
+- Gateway hostname patched to `maas.<ingress-domain>` via hook Job at deploy time with TLS from the cluster ingress certificate.
+- vLLM PrometheusRule: recording rules for TTFT/ITL p95 and KV-cache utilization, plus serving-health alerts.
+- Read-only OpenShift MCP server registered in Gen AI Playground for controlled tool use.
+- Optional Slack and BrightData MCP servers (replicas 0 by default, activated when credentials are set).
+
+## What To Notice And Why It Matters
+
+Stage 040 is the governance control point for all model consumption that follows.
+
+- **Subscription-based quotas.** Developer tokens are budgeted, not unlimited. The primary `rhoai-developers-gpt-4o-mini` subscription provides: Nemotron 100k tokens/h, Qwen 100k tokens/h, GPT-4o-mini 20k tokens/h. Separate burst subscriptions serve autonomous workloads without exhausting interactive developer budgets.
+- **Elevated burst subscriptions.** `enterprise-rag-autorag` (Nemotron 2M/h, Qwen 2M/h, GPT-4o-mini 1M/h) for multi-agent migration. `model-evaluation` (Nemotron 2M/h, GPT-4o-mini 1M/h) for benchmark runs. `ai-safety-guardrails` (Nemotron 500k/h) for NeMo guardrails self-check amplification.
+- **Cross-stage wiring.** Stage 050 (`devspace-maas-key-provisioner`) and Stage 070 (`agentic-migration-key-provisioner`, `job-patch-mta-maas-url`) service accounts are authorized on subscriptions and auth policies — keys minted under those service accounts inherit the matching token budget.
+- **Operator version pinning.** The RHCL Subscription declares `startingCSV: rhcl-operator.v1.3.4` with manual InstallPlan approval; a hook Job (`approve-rhcl-installplan`) pins installation to `v1.3.5`. The Subscription anchors CatalogSource selection; the Job controls which InstallPlan is approved. This two-resource mechanism is deliberate because RHCL 1.4.0 is deprecated and Red Hat directs customers to pin to the latest 1.3.z release.
+- **Generated resources stay operator-managed.** AuthPolicy, TokenRateLimitPolicy, EnvoyFilter, and HTTPRoutes are created by the MaaS/RHCL/Kuadrant operators from the declared subscriptions and model refs — they are NOT authored in GitOps.
+- **Serving-health monitoring.** The `vllm-serving-health` PrometheusRule fires: high TTFT (>2s for 10m), request queue backlog (>8 for 10m), KV-cache pressure (>90% for 10m), and a parked-model info alert when no metrics flow for 15m. These match the Stage 030 GuideLLM benchmark breakpoints.
+- **OpenShift MCP bounded access.** The MCP server uses HTTP rate limiting (2 rps / burst 4) and enables only three tools: `pods_list_in_namespace`, `pods_get`, `nodes_top`. It denies Secret, ConfigMap, and RBAC resource access.
+- **Optional MCP servers.** Slack and BrightData deployments run at replicas 0 and activate only when `SLACK_BOT_TOKEN` / `BRIGHTDATA_API_TOKEN` are set. Both use SSE transport on port 8080.
+
+## How Red Hat And Open Source Make It Work
+
+Red Hat OpenShift AI MaaS provides subscription-based model governance: model publication, API key lifecycle, authorization policies, token rate limits, and usage telemetry — all scoped through the `maas.opendatahub.io/v1alpha1` API. Red Hat Connectivity Link and Kuadrant handle gateway policy enforcement, rate limiting through Limitador, and authentication through Authorino. Gateway API provides the ingress data plane. vLLM serves the local models through KServe InferenceServices backed by LLMInferenceService resources, with the Leader Worker Set Operator as a distributed-inference prerequisite. PostgreSQL stores the MaaS API key lifecycle state.
+
+The Gen AI Playground (Llama Stack Operator) provides the user-facing model interaction surface. The OpenShift MCP Server adds bounded read-only cluster context as a registered tool.
+
+## Trust Boundaries
+
+- Local models (Nemotron, Qwen) keep all prompts and completions inside the OpenShift platform boundary.
+- The external GPT-4o-mini path sends prompts to OpenAI — governed by MaaS token limits but processed by the provider.
+- The MaaS gateway authenticates every request via API key against subscription and auth policy; unauthenticated requests are rejected.
+- The OpenShift MCP server is read-only, denies sensitive resource types, and rate-limits HTTP access — models cannot write to or escalate within the cluster.
+- The provider API key (`openai-provider-api-key`) is credential-gated and never committed to Git.
+
+## Red Hat Products Used
+
+- **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides MaaS model governance, vLLM model serving, Gen AI Playground, and the Llama Stack Operator.
+- **[Red Hat Connectivity Link](https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3)** provides gateway policy enforcement, Kuadrant rate limiting, Authorino authentication, and DNS integration.
+- **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides Gateway API, cert-manager, User Workload Monitoring, and the cluster infrastructure.
+
+## Open Source Projects To Know
+
+- [vLLM](https://vllm.ai/) is the high-throughput model serving engine behind the private inference endpoints.
+- [KServe](https://kserve.github.io/website/) provides the Kubernetes-native model serving control plane.
+- [Kuadrant](https://kuadrant.io/) provides policy-based API management for rate limiting and authentication.
+- [Authorino](https://github.com/Kuadrant/authorino) is the external authorization service in the gateway policy chain.
+- [Limitador](https://github.com/Kuadrant/limitador) is the rate-limiting engine enforcing token quotas.
+- [OpenShift MCP Server](https://github.com/openshift/openshift-mcp-server) provides read-only cluster context as an MCP tool server.
+- [Leader Worker Set](https://github.com/kubernetes-sigs/lws) is the distributed-inference scheduling prerequisite.
+
+## Deploy And Validate
+
+```bash
+./stages/040-governed-models-as-a-service/deploy.sh
+./stages/040-governed-models-as-a-service/validate.sh
+```
+
+Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops/stages/040-governed-models-as-a-service/base/)
+
+Prerequisites: cert-manager must be installed before deploy.sh runs (the script fails without it). The `register-model-cards.sh` script (invoked by deploy.sh) registers the Qwen3.6 rich model card through the authenticated registry route; the Nemotron card is registered by Stage 030.
+
+## References
+
+| Resource | Link |
+|----------|------|
+| RHOAI 3.4 — Govern LLM access with MaaS | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html-single/govern_llm_access_with_models-as-a-service/index |
+| RHOAI 3.4 — Authentication for llm-d using RHCL | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/deploy_models_using_distributed_inference_with_llm-d/configuring-authentication-for-llmd_distributed-inference |
+| Red Hat Connectivity Link 1.3 — Installing | https://docs.redhat.com/en/documentation/red_hat_connectivity_link/1.3/html-single/installing_connectivity_link/index |
+| OCP 4.20 — Leader Worker Set Operator | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/ai_workloads/leader-worker-set-operator |
+| OCP 4.20 — cert-manager Operator | https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift |
+| Red Hat Ecosystem Catalog — PostgreSQL 16 | https://catalog.redhat.com/en/software/containers/rhel9/postgresql-16/657b03866783e1b1fb87e142 |
+| Centralized routing for LLMs on OpenShift AI | https://developers.redhat.com/articles/2026/05/25/route-external-and-local-llms-models-as-a-service |
+| OpenShift MCP Server — Technology Preview | https://www.redhat.com/en/blog/model-context-protocol-server-red-hat-openshift-now-available-technology-preview |
+| OpenShift MCP Server repository | https://github.com/openshift/openshift-mcp-server |
+| OpenAI API — GPT-4o mini | https://developers.openai.com/api/docs/models/gpt-4o-mini |
+
+## Next Stage
+
+[Stage 050: AI-Assisted Development](../050-ai-assisted-development/README.md)
+moves governed model access into developer workspaces with IDE-integrated AI
+coding tools that consume MaaS endpoints instead of personal provider keys.

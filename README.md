@@ -2,15 +2,26 @@
 
 ## Why This Workshop Exists
 
-AI-assisted development is now a normal expectation for software teams. The enterprise problem is not whether AI can help with code, tests, documentation, or modernization. The problem is how to make that help available without losing control of source code, credentials, model access, cost, telemetry, and operational risk.
+AI-assisted development is now a normal expectation for software teams. But enterprises adopting it face two problems at once, and solving only one of them fails:
 
-This workshop shows a governed platform pattern for that problem:
+**The control problem.** The question is not whether AI can help with code, tests, documentation, or modernization — it is how to offer that help without losing control of source code, credentials, model access, cost, telemetry, and operational risk. This workshop answers with a governed platform pattern:
 
 - private models run on Red Hat OpenShift for sensitive workloads;
 - approved external models are exposed only through a governed access layer;
-- developers use familiar IDE, terminal, modernization, and portal workflows;
 - platform teams control identity, API keys, subscriptions, rate limits, token limits, quotas, telemetry, and lifecycle;
 - GitOps keeps platform state reproducible.
+
+**The maturity problem.** Developers do not arrive at autonomous AI workflows in one step — and tooling that skips the journey gets rejected or misused. This workshop structures the developer experience as an **AI development maturity ladder**, with familiar tools at each rung, every one consuming models through the same governed platform:
+
+| Rung | Developer experience | Tooling |
+|------|----------------------|---------|
+| **Assisted** (050) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Continue via MaaS |
+| **Agentic** (060) | Enterprise standards as reusable skills that agents follow and improve | OpenCode + AGENT.md + skills |
+| **Autonomous** (070) | Multi-agent legacy migration with human review gates | MTA + Developer Lightspeed |
+| **Trusted delivery** (080) | Provenance, signing, and SBOMs for AI-generated changes | OpenShift Pipelines + Trusted Artifact Signer |
+| **Self-service** (090) | The whole journey as one discoverable portal | Developer Hub + Lightspeed for RHDH |
+
+Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills; skill-guided agents motivate autonomous workflows; autonomy demands supply-chain trust; and everything lands in the portal as the end-user experience.
 
 The workshop does not claim regulatory compliance. It shows controls and boundaries that help architects design AI-enabled development platforms for privacy-sensitive, sovereignty-sensitive, and regulated environments.
 
@@ -20,7 +31,7 @@ The workshop does not claim regulatory compliance. It shows controls and boundar
 
 ## What We Are Building
 
-The demo builds an AI-enabled development platform on Red Hat OpenShift:
+Underneath the ladder sits the governed platform foundation that every rung consumes. The demo builds it on Red Hat OpenShift:
 
 - a Red Hat OpenShift AI foundation with dashboard access, GenAI Studio, model registry, model serving, MaaS, shared identity, and monitoring;
 - GPU infrastructure for private AI with NVIDIA GPU enablement, Red Hat build of Kueue, OpenShift Custom Metrics Autoscaler readiness, and observability;
@@ -32,7 +43,9 @@ The central design choice is simple: consumers do not connect directly to scatte
 
 ## What The Demo Shows
 
-The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml). Each developer-arc stage README (050-090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
+The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml): stages 010-040 build the governed platform foundation, and stages 050-090 climb the maturity ladder introduced above.
+
+Each developer-arc stage README (050-090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
 
 | Stage | Capability | Why it matters |
 |-------|------------|----------------|
@@ -46,7 +59,7 @@ The executable platform path is the nine-stage flow in [`flows/default.yaml`](fl
 | [080 - AI in Trusted Delivery](stages/080-ai-trusted-delivery/README.md) | OpenShift Pipelines and Trusted Artifact Signer base for provenance, signing, and SBOMs of AI-generated changes | Autonomous output needs supply-chain proof, not trust-me claims (base setup; implementation tracked in backlog) |
 | [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | The whole arc becomes one discoverable self-service experience |
 
-Developer workflow use cases start with [Stage 050 - AI-Assisted Development (vibe-coding exercise)](stages/050-ai-assisted-development/README.md). Stages 010-070 are primarily for platform engineers building the trusted AI development platform. Stage 050 and later topics shift to enterprise developers using that platform for governed coding, documentation, modernization, delivery, and review. The former Stage 110 spec and README-alignment placeholder has been merged into Stage 050 as vibe-coding review discipline. Later developer workflow topics `120-170` have been moved to the backlog so they can be implemented one-by-one when each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
+Developer workflow use cases start with [Stage 050 - AI-Assisted Development (vibe-coding exercise)](stages/050-ai-assisted-development/README.md). Stages 010-040 are primarily for platform engineers building the trusted AI development platform; stages 050-090 shift to enterprise developers using that platform for governed coding, agentic development, modernization, delivery, and self-service. A recurring demo beat makes the ladder tangible: Stage 060 reruns Stage 050's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly. Additional developer workflow topics stay in the backlog until each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
 
 ## Why This Is Worth Knowing
 
@@ -131,6 +144,7 @@ Deploy the implemented stages in order:
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-ai-assisted-development/deploy.sh
+./stages/060-ai-agentic-development/deploy.sh
 ./stages/070-ai-autonomous-migration/deploy.sh
 ./stages/080-ai-trusted-delivery/deploy.sh
 ./stages/090-ai-self-service-portal/deploy.sh
@@ -148,16 +162,24 @@ For deployment detail, validation strategy, and recovery procedures, use:
 ```text
 rhoai3-coding-demo/
 |-- README.md
-|-- BACKLOG.md
+|-- AGENTS.md                        # Entry point for AI coding agents working on this repo
+|-- BACKLOG.md                       # Workarounds, limitations, and deferred work
+|-- CONTRIBUTING.md
 |-- env.example
-|-- flows/default.yaml
-|-- scripts/                         # Bootstrap, shared helpers, validation, recovery
+|-- flows/default.yaml               # Ordered source of truth for the demo flow
+|-- scripts/                         # Shared helpers, validation, recovery
+|-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
-|   |-- argocd/app-of-apps/          # Argo CD Applications for stages 010-070
-|   `-- stages/                      # GitOps source for implemented stage manifests
-|-- stages/                          # Stage READMEs and implemented deploy/validate scripts
+|   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
+|   |-- argocd/app-of-apps/          # Argo CD Applications for stages 010-090
+|   `-- stages/                      # GitOps source for stage manifests
+|-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs
 ```
+
+## This Repository Practices What It Demonstrates
+
+Stage 060 teaches agentic development with `AGENT.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
 
 ## Demo Personas
 
