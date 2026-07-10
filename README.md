@@ -64,7 +64,7 @@ The executable platform path is the eight-stage flow in [`flows/default.yaml`](f
 
 Each developer-arc stage README (060–080) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
 
-A recurring demo beat makes the ladder tangible: Stage 070 reruns Stage 060's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly.
+**How to present it.** For platform-engineering audiences, walk 010–050 in order and treat Section 3 as the payoff; for developer audiences, deploy everything beforehand, open with stage 050's portal, and spend the time on 060–080. Two deliberate "aha" moments carry the ladder: Stage 060 ends with the quality gate *failing* on AI-written code and a human prompting the fix; Stage 070 ends with the gate *passing on the first push* because the standards steered the agent — the maturity jump is measurable, not asserted. Stage 080's wrap-up walks the arc backwards through the portal catalog and the MaaS usage dashboard: every AI consumer identified, metered, and governed by one gateway. The recurring line that ties every rung together: *self-service in, trusted delivery out.*
 
 ## Why This Is Worth Knowing
 

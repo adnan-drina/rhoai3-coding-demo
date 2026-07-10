@@ -202,7 +202,17 @@ webhook step — the GitHub App delivers push events (see Status note).
 
 ## Phases
 
-Status 2026-07-10: Phase 1 executed (commit 941de02). Phase 3 executed
+Status 2026-07-10: Phases 1-4 executed on the repo side. Phase 4: dev-stage
+READMEs rebuilt around the golden-path flow (060: template -> Continue ->
+gate fails -> AI fix; 070: scaffold template -> spec-driven OpenCode build
+incl. MaaS LLM feature -> gate green first push; 080: template entry +
+arc-closing wrap-up beat); root README gained presenter guidance. Golden
+repos bootstrapped live under github.com/adnan-drina (parasol-insurance
+derived+build-verified, agentic-quarkus-scaffold authored+build-verified,
+migiq-spring-boot-sample pre-existing). Remaining before demo-ready: user
+setup (PAT, GitHub App, quay values, GITHUB_WEBHOOK_SECRET), live cluster
+deploy + e2e template->pipeline->gate run, Continue env-interpolation check,
+Phase 5 (Lightspeed overlay + Chains). Phase 3 executed
 (repo side): three golden-path templates registered via the runtime catalog,
 RHDH GitHub integration (preinstalled scaffolder module enabled, PAT via
 rhdh-github secret), quay wiring behind .env placeholders with runtime

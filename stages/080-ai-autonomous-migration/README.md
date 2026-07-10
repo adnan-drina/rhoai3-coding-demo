@@ -69,6 +69,18 @@ The agentic path uses an elevated MaaS key (`enterprise-rag-autorag`) stored as 
 
 ## Demo Script
 
+### Part 0 — Self-service in: your own legacy estate
+
+**Know.** Even the migration rung starts in the portal. The
+`autonomous-migration` golden-path template provisions a personal copy of the
+legacy Spring Boot sample — so every run of this demo works on a fresh,
+isolated repository and the golden source is never touched.
+
+**Show.**
+- Developer Hub → Create → **AI-Autonomous Migration: legacy Spring Boot
+  application**. One field (e.g. `legacy-claims-alice`), run, show the new
+  repository and catalog component.
+
 ### Part 1 — The supported path: analysis-grounded modernization
 
 **Know.** Coolstore carries the classic enterprise backlog: a legacy Java EE application (`konveyor-ecosystem/coolstore`) that is expensive to maintain and impossible to staff. Manual migration quotes came back in engineer-years. The first answer is the supported product path: analysis before generation.
@@ -83,10 +95,32 @@ The agentic path uses an elevated MaaS key (`enterprise-rag-autorag`) stored as 
 **Know.** Analysis-grounded assistance is production-ready today; the frontier is autonomous execution. The question enterprises actually ask is not "can agents migrate code?" but "what happens to control when they do?" This path is experimental — MigIQ is a community project, Claude-Code-first, with an OpenCode-compatibility proving run still pending.
 
 **Show.**
-- Walk the [agentic migration exercise](agentic-migration-exercise.md): MigIQ-pattern phases (graphify, plan, parallel execute, test-gen) on the Spring Boot sample, executed by MaaS-published models.
+- Walk the [agentic migration exercise](agentic-migration-exercise.md): MigIQ-pattern phases (graphify, plan, parallel execute, test-gen) on the per-run copy of the Spring Boot sample from Part 0, executed by MaaS-published models.
 - While agents run, switch to the RHOAI Usage dashboard: "every one of those parallel agents is metered — this burst is drawing from an elevated subscription the platform team sized for exactly this workload."
 - Stop at the human review gate: diff against the MTA findings; approve or reject. "Nothing merges on agent authority. Autonomy multiplied throughput; governance kept the control points."
 - **Business value callout:** "The backlog conversation changes from 'engineer-years' to 'agent-hours plus review time' — without a single line of source leaving your platform."
+- Push the approved migrated code to the repo's `main`: it exits through the
+  same shared pipeline and SonarQube gate as every other rung. *Self-service
+  in, trusted delivery out — even for agent-migrated legacy code.*
+
+### Part 3 — Wrap-up: the whole arc, one platform
+
+**Know.** This is the last rung. Walk the arc backwards so the audience sees
+one platform, not a pile of tools.
+
+**Show.**
+- Return to Developer Hub: three golden-path templates, and the catalog now
+  holds every component this session created — assisted, agentic, migrated —
+  each one clicks through to its repo and its pipeline runs.
+- Open the RHOAI MaaS usage dashboard: the assisted developer's Continue
+  traffic, the agent bursts, the application's own LLM calls — every AI
+  consumer on this platform is identified, metered, and governed by the same
+  gateway.
+- Close: "Assisted, agentic, autonomous — the maturity ladder changed how
+  developers work. What never changed: every rung entered through the portal,
+  exited through the pipeline, and reached models only through MaaS. That is
+  the difference between adopting AI tools and running an AI development
+  platform."
 
 ## Deploy And Validate
 
@@ -121,5 +155,5 @@ Flow dependency: Stage 060 (AI-Assisted Development).
 
 This is the final rung of the maturity ladder. The delivery proof for what
 the agents built — pipelines, quality gates, provenance — lives in
-[Stage 060: Advanced Application Platform](../050-advanced-app-platform/README.md),
+[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md),
 which every rung of the ladder entered through and exited through.

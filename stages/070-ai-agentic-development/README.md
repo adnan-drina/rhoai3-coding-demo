@@ -1,13 +1,14 @@
-# Stage 070: Agentic Development
+# Stage 070: AI-Agentic Development
 
-> **Status:** workflow-only stage. The `agentic-coolstore` DevWorkspace it
-> uses — coolstore-inventory-service checked out on the `demo/agentic-skills`
-> branch (AGENTS.md + `.opencode/skills` Quarkus standards) with agent-scale
-> resources for OpenCode multi-step runs — is provisioned by Stage 050
-> (`devspaces` component) as an interim workspace until the
-> agentic-quarkus-scaffold golden-path template replaces it (Phase 3 of the
-> restructure plan). It consumes the Stage 050 Dev Spaces platform and the
-> Stage 040 MaaS keys.
+> **Status:** workflow-only stage. The primary flow uses the
+> `agentic-quarkus-scaffold` golden-path template (Stage 050) to provision a
+> brand-new Quarkus application repository carrying corporate standards as
+> agent-executable assets, then builds it spec-driven with OpenCode. The
+> legacy `agentic-coolstore` DevWorkspace (coolstore-inventory-service,
+> `demo/agentic-skills` branch) remains provisioned by Stage 050 as an
+> optional comparison workspace until retired. Consumes the Stage 050 Dev
+> Spaces platform and Stage 040 MaaS keys. Not yet validated live end to
+> end.
 
 ## Why This Matters
 
@@ -17,12 +18,16 @@ and forgets hidden requirements. Enterprises do not fix that by writing
 longer prompts — they fix it by teaching the agent how the team builds
 software.
 
-This stage shows that path: OpenCode running in the same governed workspace,
-now with `AGENTS.md` (project identity, build and test commands) and a set of
-reusable skills that encode how this team builds Quarkus applications —
-REST resource conventions, Panache entity patterns, test standards, and
-OpenAPI documentation rules. The same task that produced a mediocre one-shot
-result in Stage 060 is repeated here with the agent following the skills.
+This stage shows that path, and goes one step further than fixing existing
+code: the developer scaffolds a **brand-new Quarkus application** from the
+portal. The scaffold contains no application code — it contains the
+corporate operating system for building one: `AGENTS.md` (project identity,
+workflow, commands), reusable skills (REST conventions, test standards, and
+the mandatory MaaS-only LLM integration pattern), and a `specs/` directory
+for spec-driven development. OpenCode reads the spec and the skills and
+builds the application — including an LLM-powered feature that consumes the
+same MaaS gateway that serves the developer's own coding assistant. One
+governed access layer for developers' tools *and* their applications.
 
 The bigger message for platform teams: internal development guidelines stop
 being wiki pages that nobody reads and become living, versioned assets that
@@ -33,34 +38,44 @@ feedback.
 
 ```mermaid
 flowchart TD
-  devspaces["Stage 060: Dev Spaces platform"] --> workspace["agentic-coolstore workspace"]
+  portal["Stage 050: Developer Hub template"] --> repo["per-run repo from agentic-quarkus-scaffold"]
+  devspaces["Stage 050: Dev Spaces platform"] --> workspace["developer workspace on the repo"]
   maas["Stage 040: MaaS keys"] --> workspace
+  repo --> workspace
   workspace --> opencode["OpenCode agent"]
+  opencode --> spec["specs/ (the contract)"]
   opencode --> agentsmd["AGENTS.md"]
   opencode --> skills[".opencode/skills/"]
   skills --> rest["REST conventions"]
-  skills --> entity["Panache entities"]
   skills --> tests["Test standards"]
-  skills --> docs["API docs rules"]
+  skills --> llm["LLM integration (MaaS-only)"]
   opencode --> review["Human review gate"]
+  workspace --> pipeline["Stage 050: shared pipeline + SonarQube gate"]
 ```
 
-The `agentic-coolstore` DevWorkspace clones the external repository
-`adnan-drina/coolstore-inventory-service` on branch `demo/agentic-skills`.
-Skills content lives in that external repository and is not verifiable from
-this repo — the validate script uses `git ls-remote` to confirm the branch
-exists upstream.
+The golden source is
+[`adnan-drina/agentic-quarkus-scaffold`](https://github.com/adnan-drina/agentic-quarkus-scaffold)
+(authored in this repository under `golden-repos/` and pushed by
+`scripts/bootstrap-golden-repos.sh`). The template copies it into a fresh
+per-run repository, so the golden standards are never mutated by a demo.
 
 ## What This Stage Adds
 
-This stage adds skill-guided agentic development to the governed workspace pattern established in Stage 060.
+This stage adds spec-driven, skill-guided agentic development on the
+platform rails established by Stage 050.
 
-- A dedicated `agentic-coolstore` DevWorkspace with 6Gi memory (vs 4Gi for standard workspaces) for OpenCode multi-step agent runs.
-- `AGENTS.md` in the workspace repository: project map, build/test commands, and pointers to reusable skills.
-- Reusable Quarkus skills (`.opencode/skills/`): REST endpoint conventions, Panache entity patterns, project test standards, API documentation rules.
-- The workspace is `started: false` by default — the developer starts it at runtime when entering the agentic flow.
-- A comparison exercise: the Stage 060 one-shot task re-run under skills guidance.
+- The `agentic-quarkus-scaffold` golden-path template: one field, a
+  brand-new repository carrying `AGENTS.md`, `.opencode/skills/`
+  (REST conventions, test standards, MaaS-only LLM integration), and
+  `specs/` with a template plus a worked example
+  (`claims-triage-service.md` — includes an LLM feature through MaaS with a
+  deterministic fallback).
+- Spec-driven workflow: the spec is the contract; skills are the standards;
+  the agent does the work; `mvn test` and the pipeline gate are the proof.
 - A skill-improvement exercise: review feedback turned into a skill update.
+- Optional comparison workspace: the legacy `agentic-coolstore`
+  DevWorkspace (6Gi, `started: false`) re-runs the Stage 060 one-shot task
+  under skills guidance.
 
 ## What To Notice And Why It Matters
 
@@ -104,7 +119,9 @@ prerequisites read-only:
 
 Manifests: [`gitops/stages/050-advanced-app-platform/base/devspaces/`](../../gitops/stages/050-advanced-app-platform/base/devspaces/)
 
-The validate script checks that the `demo/agentic-skills` branch exists upstream via `git ls-remote`. Note: the manifest sets `revision: demo/agentic-skills` (the full branch name including the path separator).
+The validate script checks the legacy comparison workspace's
+`demo/agentic-skills` branch upstream via `git ls-remote`; the primary flow's
+golden repo is `adnan-drina/agentic-quarkus-scaffold`.
 
 ## References
 
@@ -115,47 +132,68 @@ The validate script checks that the `demo/agentic-skills` branch exists upstream
 | Red Hat OpenShift Dev Spaces documentation | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/ |
 | MaaS code assistant quickstart | https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant |
 | OpenCode for OpenShift Dev Spaces | https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces |
-| coolstore-inventory-service (skills branch) | https://github.com/adnan-drina/coolstore-inventory-service/tree/demo/agentic-skills |
+| agentic-quarkus-scaffold golden repo | https://github.com/adnan-drina/agentic-quarkus-scaffold |
+| coolstore-inventory-service (legacy skills branch) | https://github.com/adnan-drina/coolstore-inventory-service/tree/demo/agentic-skills |
 
 ## Demo Script
 
-### Part 1 — The same task, with the team's standards loaded
+### Part 1 — Self-service in: a repo with standards but no code
 
-**Know.** Stage 060 ended with plausible-but-unreviewable code. Enterprises
-fix that by encoding standards where agents can execute them: AGENTS.md and
-reusable skills in the repository, versioned and reviewed like code.
-
-**Show.**
-- Open the `agentic-coolstore` workspace (Dev Spaces). Show the repository's
-  `AGENTS.md` and `.opencode/skills/` — four skills that encode how this
-  team builds Quarkus services (REST conventions, domain model, test
-  standards, docs consistency).
-- In the terminal, start OpenCode and give it the same class of task the
-  one-shot attempt fumbled in Stage 060 (for example: "add a reservation
-  endpoint for inventory items").
-- Narrate what is different: the agent consults the skills, follows the
-  `/api/` path conventions, writes behavior-named tests with RestAssured,
-  and updates the README API table in the same change — because the
-  definition of done lives in the skill, not in the prompt.
-- **What they should notice:** nobody wrote a long prompt. The standards
-  did the steering, and they are a pull request away from improving.
-
-### Part 2 — Fail forward: the gate fails, the agent fixes it under rules
-
-**Know.** The most convincing demo beat is a failure handled well (adapted
-from the platform showroom's pipeline-fails moment). Quality gates exist
-precisely so AI-generated code cannot skip review discipline.
+**Know.** Stage 060 ended with plausible code the *human* had to catch.
+Enterprises fix that by encoding standards where agents execute them:
+AGENTS.md and reusable skills, versioned and reviewed like code. Here the
+developer starts a brand-new application — and the standards exist in the
+repository before the first line of code does.
 
 **Show.**
-- Introduce a deliberate smell into the change (a `System.out.println` and
-  an empty catch block) or use a prepared branch, and run `./mvnw test` /
-  the project's quality checks so a gate fails visibly.
-- Hand the failure back to OpenCode. The `project-test-standards` skill
-  forbids weakening assertions, and the REST skill mandates proper error
-  contracts — so the agent fixes the code, not the test.
-- Close the loop: "Review feedback that recurs becomes a skill update —
-  the guideline is now enforced on every future run. That is what it means
-  for internal standards to be living assets."
+- Developer Hub → Create → **AI-Agentic Development: new Quarkus
+  application**. One field (e.g. `claims-triage-alice`), run, open the new
+  repository.
+- Walk the tree: no application code. Instead `AGENTS.md` (identity,
+  workflow, commands), `.opencode/skills/` (REST conventions, test
+  standards, MaaS-only LLM integration), `specs/TEMPLATE.md`, and the
+  worked example spec `specs/claims-triage-service.md`.
+- Say: "In Stage 060 the standards lived in the reviewer's head. Here they
+  are files the agent is required to read."
+
+### Part 2 — Spec-driven: the agent builds the application
+
+**Know.** The spec is the contract, the skills are the standards, the agent
+does the work, and the tests plus the pipeline gate are the proof. Nobody
+writes a long prompt.
+
+**Show.**
+- Open the repo in Dev Spaces; open the example spec: behavior statements,
+  API table, acceptance criteria — including an LLM-powered triage feature
+  that must go through the MaaS gateway with a deterministic fallback.
+- Start OpenCode in the terminal: "Implement specs/claims-triage-service.md."
+- Narrate while it works: it consults the skills, uses `/api/` paths and
+  constructor injection, writes behavior-named RestAssured tests including
+  the fallback path (no live LLM needed in tests), wires LangChain4j to
+  `${MAAS_API_BASE_URL}` because the llm-integration skill forbids anything
+  else, and updates the README API table — the definition of done lives in
+  the skills, not the prompt.
+- Run `mvn -q test`; call the triage endpoint in dev mode.
+- **What they should notice:** the same MaaS gateway that serves the
+  developer's coding assistant now serves the application's AI feature —
+  one governed access layer for both. And in the MaaS telemetry, the agent
+  and the app show up as consumers under governance.
+
+### Part 3 — Trusted delivery out: green on the first push
+
+**Know.** Stage 060's push failed the gate and a human prompted the fix.
+The maturity jump is measurable: skill-guided code exits clean.
+
+**Show.**
+- Push to `main` → the shared pipeline runs → SonarQube gate **passes on
+  the first attempt**. Contrast explicitly with Stage 060's red run.
+- Fail-forward option: introduce a deliberate smell, push, watch the gate
+  fail, and hand the failure back to OpenCode — the `project-test-standards`
+  skill forbids weakening assertions, so the agent fixes the code, not the
+  test.
+- Close the loop: "Review feedback that recurs becomes a skill update — the
+  guideline is enforced on every future run. Internal standards stopped
+  being wiki pages; they are living assets now."
 
 ## Next Stage
 

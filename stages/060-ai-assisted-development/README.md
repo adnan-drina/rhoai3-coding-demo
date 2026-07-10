@@ -4,7 +4,14 @@
 
 AI-assisted development is useful when it appears where developers already work: IDEs, terminals, tests, and review workflows. The enterprise concern is how to offer that experience without personal provider keys, unmanaged plugins, or local machine drift.
 
-Stage 060 moves the coding experience into Red Hat OpenShift Dev Spaces. Developers still use familiar IDE and terminal workflows, while model access flows through MaaS and workspace configuration is managed by the platform.
+Stage 060 is the first rung of the maturity ladder, and it runs entirely on
+platform rails: the developer **enters through the portal** (the
+`assisted-quarkus-feature` golden-path template provisions a personal copy of
+the Parasol Insurance application), codes with Continue in a governed Dev
+Spaces workspace, and **exits through the pipeline** (every push to `main`
+runs the shared build with a SonarQube gate that fails on any new issue).
+One-shot prompting shows its power — and its limits, which motivate Stage
+070.
 
 ## Architecture
 
@@ -12,7 +19,9 @@ Stage 060 moves the coding experience into Red Hat OpenShift Dev Spaces. Develop
 
 ## What This Stage Adds
 
-This stage adds a governed cloud development workspace layer with IDE-integrated AI coding tools consuming MaaS-published models.
+This is a workflow-only stage: the infrastructure below is owned by Stage
+050 (`devspaces` component and golden-path templates); this stage owns the
+developer experience that runs on it.
 
 - Red Hat OpenShift Dev Spaces deployed via the `stable` operator channel with automatic InstallPlan approval.
 - 9 pre-provisioned DevWorkspaces (3 per persona: `kubeadmin`, `ai-developer`, `ai-admin`) for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
@@ -93,7 +102,66 @@ Detailed user steps for workspace onboarding: [`docs/DEVELOPER_WORKSPACE_GUIDE.m
 
 ## Demo Script
 
-### Part 1 — A developer's first hour (governed workspace)
+### Part 1 — Self-service in: one field, a full environment
+
+**Know.** Every rung of the ladder starts the same way: not a ticket, not a
+wiki page — a golden-path template in Developer Hub. The platform team
+defined it; the developer consumes it.
+
+**Show.**
+- Open Developer Hub → Create → **AI-Assisted Development: Parasol Insurance
+  workspace**. Fill the one field (repository name, e.g.
+  `parasol-insurance-alice`) and run it.
+- Show the output links: a fresh GitHub repository (their own copy of the
+  Parasol app — golden repos are never mutated) and the new catalog
+  component.
+- Say: "That initial commit already ran the pipeline once — the SonarQube
+  baseline for this repo is seeded. Whatever the AI writes next is *new
+  code* against a gate that fails on any new issue."
+- **What they should notice:** one field. Repo, catalog entry, CI wiring,
+  and quality baseline all existed before the developer wrote a line.
+
+### Part 2 — Continue in the governed workspace: the one-shot high
+
+**Know.** One-shot prompting is the entry drug of AI coding: brilliant for
+scaffolding, unreliable for production-shaped work. The demo does not hide
+this — the limitation IS the lesson.
+
+**Show.**
+- Open the new repository in Dev Spaces (`<Dev Spaces URL>/#<repo URL>`);
+  run **Start Development mode** and open the Parasol dashboard.
+- Show `.continue/config.yaml`: MaaS base URL, platform-issued key, token
+  limits, usage telemetry. No provider console, no raw key.
+- Ask Continue for the new endpoint using
+  [`demo-assets/continue-prompts.md`](demo-assets/continue-prompts.md) — or
+  paste the prepared
+  [`demo-assets/ClaimsStatsResource-with-smells.java`](demo-assets/ClaimsStatsResource-with-smells.java)
+  (the reliable path; live generation is the bonus). Hot reload: the
+  `/api/claims/stats` endpoint works instantly.
+- **What they should notice:** the code *works*. It also carries
+  `System.out.println`, an empty catch block, and field injection — plausible
+  code that ignores the team's standards.
+
+### Part 3 — Trusted delivery out: the gate catches the AI
+
+**Know.** The platform does not rely on the developer noticing. Every push
+exits through the shared pipeline, and the quality gate fails on any new
+issue — deliberately, deterministically.
+
+**Show.**
+- Commit and push to `main`. Watch the PipelineRun: clone → build →
+  **sonar-scan FAILS** on the intentional smells.
+- Open SonarQube: the three new issues, on exactly the new code.
+- Back in the workspace, ask Continue to fix them (proper logging,
+  constructor injection, logged exception —
+  [`demo-assets/ClaimsStatsResource-fixed.java`](demo-assets/ClaimsStatsResource-fixed.java)
+  is the reference). Push again → pipeline green.
+- Close: "Self-service in, trusted delivery out. The AI wrote the code; the
+  platform proved it. But notice what *we* had to do — spot the smells, know
+  the standards, prompt the fix. Teaching the agent our standards so we
+  don't have to is Stage 070."
+
+### Optional — A developer's first hour (onboarding workspace)
 
 **Know.** Coolstore's engineering team is under pressure to adopt AI coding
 tools. Developers were already pasting code into public chatbots; security
@@ -115,33 +183,13 @@ personal API key nobody tracked.
   never handled a raw key, and the first AI-assisted line of code happens
   minutes after joining.
 
-### Part 2 — One-shot vibe coding: the possibilities and the wall
+## Demo Exercise: One-Shot Vibe Coding (optional deep-dive)
 
-**Know.** One-shot prompting is the entry drug of AI coding: brilliant for
-scaffolding and exploration, unreliable for production-shaped work. The demo
-does not hide this — the limitation IS the lesson that motivates Stage 070.
-
-**Show.** Run the [vibe-coding exercise](vibe-coding-exercise.md): ask
-Continue for the small Quarkus app, watch it scaffold in seconds, then review
-like a senior engineer. Let the audience find the gaps with you (naming,
-missing tests, no docs alignment). Close with: "The model is not wrong — it
-just doesn't know how WE build software. Teaching it that is the next stage."
-
-## Demo Exercise: One-Shot Vibe Coding
-
-The [vibe-coding exercise](vibe-coding-exercise.md) is the hands-on part of
-this stage: a developer opens the governed workspace and builds with Continue
-using one-shot prompts — the most basic form of AI-assisted coding. Run it to
-see both sides:
-
-- what one-shot prompting does well: scaffolding, boilerplate, explanation,
-  and quick exploration with private models;
-- where it falls short: project standards, multi-file consistency, hidden
-  requirements, and repeatability — the limits that motivate the agentic
-  workflow in Stage 070.
-
-Human review discipline applies from the first prompt; the exercise includes
-the review gates that stay mandatory through Stages 060 and 070.
+The [vibe-coding exercise](vibe-coding-exercise.md) is an optional hands-on
+onboarding walkthrough using the `getting-started-ai-coding` workspace. The
+stage's primary demo is the golden-path flow above; the exercise remains
+useful for workshops where each attendee codes along, and its human-review
+discipline applies from the first prompt onward.
 
 ## Next Stage
 
