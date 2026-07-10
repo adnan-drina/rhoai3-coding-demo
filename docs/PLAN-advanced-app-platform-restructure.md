@@ -11,10 +11,10 @@ Inputs: `tmp/REVIEW-FINDINGS.md` (enrichment review), user decisions 2026-07-10.
 |---|----------|
 | 1 | Combine old 080 (trusted delivery) + old 090 (portal) into a new stage `050-advanced-app-platform`, positioned directly after 040. |
 | 2 | Dev stages shift up: 050→`060-ai-assisted-development`, 060→`070-ai-agentic-development`, 070→`080-ai-autonomous-migration`. No stage 090. |
-| 3 | Stage 050 owns deployment/config of **everything the dev stages consume**: identity (RHBK), Dev Spaces (CheCluster), OpenShift Pipelines + shared push pipeline, SonarQube + custom quality gate, Developer Hub (catalog, plugins, golden-path templates), ArgoCD wiring. |
+| 3 | Stage 050 owns deployment/config of **everything the dev stages consume**: identity (RHBK), Dev Spaces (CheCluster), OpenShift Pipelines + shared push pipeline, SonarQube + custom quality gate, Developer Hub (catalog, plugins, golden-path templates), the MigIQ stack (MTA operator + Tackle + Lightspeed config), ArgoCD wiring. Decided 2026-07-10: this includes MTA — the dev stages carry **no gitops of their own**. |
 | 4 | Templates provision **per-run isolated GitHub repos** (copy source into a fresh repo, wire webhook + catalog entity automatically). Solves demo reset; pipeline triggers on each new repo's `main`. |
 | 5 | Developer Lightspeed for RHDH ships as an **optional overlay**, not base — the LCS↔MaaS protocol question stays open and must not block the platform stage. |
-| 6 | MigIQ = the MTA + Developer Lightspeed stack the migration stage already deploys (`sshaaf/migIQ`, Kai, MTA operator). Rebrand references; the template provisions the legacy Spring app (`migiq-spring-boot-sample`) and wires it to that stack. |
+| 6 | MigIQ = the MTA + Developer Lightspeed stack (`sshaaf/migIQ`, Kai, MTA operator). It deploys from stage 050 alongside the other platform components (moved out of the migration stage in Phase 2); the template provisions the legacy Spring app (`migiq-spring-boot-sample`) and wires it to that stack. |
 | 7 | Identity: stage 050 deploys **RHBK as the platform identity broker** (brokered to OpenShift OAuth), realm `platform`, clients `rhdh` + `mta`. The migration stage reuses it — inverting today's dependency (RHDH depending on MTA's Keycloak). |
 
 ## Target stage map
@@ -57,39 +57,54 @@ gitops/stages/050-advanced-app-platform/
 │   │                    # TriggerBinding/Template (payload-derived repo)
 │   ├── sonarqube/       # SonarQube + PostgreSQL, PostSync job provisioning
 │   │                    # token secret + CUSTOM quality gate ("new issues > 0")
-│   └── rhdh/            # RHDH operator + instance (from old 090 base),
+│   ├── rhdh/            # RHDH operator + instance (from old 090 base),
 │   │                    # Parasol-centric catalog, three golden-path
 │   │                    # templates, plugins: K8s/topology, Tekton, ArgoCD,
 │   │                    # GitHub scaffolder (NO bulk-import, NO global-header)
+│   └── migiq/           # MTA operator + Tackle + Lightspeed/MaaS wiring
+│                        # (moved from the migration stage's gitops base)
 └── overlays/
     └── lightspeed/      # LCS + MCP plugins + llama-stack adapter Deployment
                          # (blocked on LCS↔MaaS protocol verification)
 ```
 
+Structure the base as kustomize components (devspaces, pipelines, sonarqube,
+rhdh, identity, migiq) so heavy single-rung pieces — MigIQ above all — can be
+excluded via a slim overlay when that rung is not being demoed. This keeps
+the "050 owns all infrastructure" model without forcing an MTA install on
+every deployment.
+
 Old 090's coolstore catalog entities are retired in favor of the
 Parasol/template-centric catalog (per review: one app carries the dev arc;
 coolstore appears only as the legacy estate in stage 080).
 
-### Dev-stage gitops ownership (decided 2026-07-10)
+### Dev-stage gitops ownership (decided 2026-07-10, revised same day)
 
-- **060 (assisted)** — becomes README + scripts only after Phase 2: the
-  CheCluster and MaaS key provisioning move into 050's `devspaces/`
-  component, and per-run workspaces come from the golden-path template
-  instead of Git-tracked DevWorkspace manifests. Until Phase 2 executes, 060
-  keeps its current `devspaces/` gitops base.
-- **070 (agentic)** — already thin (one static workspace manifest); becomes
-  README-only once the `agentic-quarkus-scaffold` template replaces the
-  static `agentic-coolstore` DevWorkspace.
-- **080 (migration)** — **keeps its gitops base.** The MigIQ stack (MTA
-  operator, Tackle instance, Lightspeed config, hook jobs) is stage-specific
-  migration infrastructure consumed by exactly one rung — moving it into 050
-  would bloat the platform stage and force MTA deployment even when the
-  migration rung is not being demoed. Only the Keycloak moves out (to 050's
-  `identity/`) in Phase 2.
-- Flow implication: README-only stages keep thin `deploy.sh`/`validate.sh`
-  wrappers (validate-only), and `flows/default.yaml` entries drop their
-  `gitopsApplication`/`gitopsPath` keys — `scripts/validate-stage-flow.sh`
-  must learn to accept stages without gitops ownership.
+**All three dev stages become README-only after Phase 2.** Stage 050 owns
+every piece of infrastructure, including MTA/MigIQ. The maturity-ladder
+stages are pure workflow/demo stages: narrative, demo script, and read-only
+validation of prerequisites that stage 050 provisioned.
+
+- **060 (assisted)** — CheCluster, Dev Spaces operator, editor policy, and
+  MaaS key provisioning move to 050 `devspaces/`. Per-run workspaces come
+  from the `assisted-quarkus-feature` template.
+- **070 (agentic)** — the static `agentic-coolstore` DevWorkspace is retired
+  in favor of the `agentic-quarkus-scaffold` template; nothing remains to
+  own in gitops.
+- **080 (migration)** — MTA operator, Tackle instance, Lightspeed/MaaS hook
+  jobs, and the elevated-key provisioning move to 050 `migiq/`; the Keycloak
+  moves to 050 `identity/`. The `autonomous-migration` template provisions
+  the legacy app repo.
+- Mechanics: delete `gitops/stages/{060,070,080}-*` and their app-of-apps
+  Applications in Phase 2; dev-stage dirs keep `README.md` + a validate-only
+  `validate.sh` (checks live prerequisites read-only: workspace reachable,
+  MigIQ healthy, template present); `deploy.sh` is removed. Flow entries
+  drop `gitopsApplication`/`gitopsPath`; `scripts/validate-stage-flow.sh`
+  must accept stages without gitops ownership.
+- Tradeoff accepted: 050 becomes a heavyweight stage (RHBK + Dev Spaces +
+  Pipelines + SonarQube + RHDH + MTA). Mitigation: kustomize components per
+  capability with a slim overlay that omits `migiq/` when the migration rung
+  is not demoed.
 
 ## Golden-path templates
 
@@ -190,9 +205,13 @@ DevSpaces, PipelineRuns, SonarQube).
 1. **Mechanical restructure** — renames, merged 050 skeleton, all reference
    updates, flows/app-of-apps. Repo stays internally coherent; stage content
    otherwise unchanged.
-2. **Stage 050 build-out** — identity (RHBK), move devspaces, pipelines +
-   SonarQube (adapting `tmp/stage-050-enrichment/` tekton + sonarqube assets),
-   RHDH core with trimmed plugin list, Parasol-centric catalog.
+2. **Stage 050 build-out** — identity (RHBK), move devspaces (from 060) and
+   the MigIQ stack (from 080), pipelines + SonarQube (adapting
+   `tmp/stage-050-enrichment/` tekton + sonarqube assets), RHDH core with
+   trimmed plugin list, Parasol-centric catalog. Retire the
+   `gitops/stages/{060,070,080}-*` bases and their Argo CD Applications;
+   convert dev stages to README-only with validate-only scripts; teach
+   `validate-stage-flow.sh` about gitops-less stages.
 3. **Templates + golden repos** — three templates, webhook flow, per-run
    catalog-info templating, end-to-end test of template → repo → pipeline →
    gate.
