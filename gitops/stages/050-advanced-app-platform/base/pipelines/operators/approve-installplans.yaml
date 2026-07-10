@@ -91,6 +91,18 @@ spec:
                     -o jsonpath='{.spec.clusterServiceVersionNames[*]}')"
                   case " ${csvs} " in
                     *" openshift-pipelines-operator-rh."*|*" rhtas-operator."*)
+                      # NEVER carry the kuadrant family along: approving a
+                      # shared plan bundling rhcl/authorino/limitador/dns is
+                      # how RHCL 1.4.1 got deployed and broke the MaaS
+                      # gateway on 2026-07-10. Kuadrant upgrades go through
+                      # the Stage 040 pinned guard only.
+                      case " ${csvs} " in
+                        *" rhcl-operator."*|*" authorino-operator."*|*" limitador-operator."*|*" dns-operator."*)
+                          echo "REFUSING ${plan}: bundles kuadrant-family CSVs (${csvs})."
+                          echo "Resolve kuadrant pending state via Stage 040 first, then re-sync."
+                          continue
+                          ;;
+                      esac
                       oc patch installplan "$plan" -n openshift-operators \
                         --type=merge -p '{"spec":{"approved":true}}'
                       echo "Approved ${plan} (${csvs})"

@@ -89,6 +89,12 @@ spec:
               value: rhcl-operator.v1.3.5
             - name: PACKAGE_LABEL
               value: operators.coreos.com/rhcl-operator.openshift-operators
+            - name: ALLOWED_CSVS
+              # Every CSV an approvable plan may carry (kuadrant family
+              # pins). A plan bundling anything else is REFUSED - the
+              # guard against the 2026-07-10 incident class (shared
+              # openshift-operators plans bundling unexpected upgrades).
+              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 limitador-operator.v1.3.1 dns-operator.v1.3.1"
           command:
             - /bin/bash
             - -c
@@ -118,6 +124,18 @@ spec:
                     -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || true)"
 
                   if [[ " ${csvs} " == *" ${PINNED_CSV} "* ]]; then
+                    # Refuse plans bundling anything outside the allowlist;
+                    # approving a mixed plan is how unexpected kuadrant
+                    # versions got deployed on 2026-07-10.
+                    unexpected=""
+                    for c in ${csvs}; do
+                      [[ " ${ALLOWED_CSVS} " == *" ${c} "* ]] || unexpected="${unexpected} ${c}"
+                    done
+                    if [[ -n "$unexpected" ]]; then
+                      echo "REFUSING ${plan_ref}: bundles unexpected CSVs:${unexpected}"
+                      echo "Review manually; update ALLOWED_CSVS + pins together if intentional."
+                      continue
+                    fi
                     approved="$(oc get "$plan_ref" -n openshift-operators \
                       -o jsonpath='{.spec.approved}' 2>/dev/null || true)"
 
