@@ -70,12 +70,11 @@ spec:
                 -o jsonpath='{.spec.listeners[0].hostname}')"
               [[ -n "$MAAS_HOST" ]] || { echo "ERROR: no MaaS gateway hostname"; exit 1; }
               BASE="https://${MAAS_HOST}"
-              # Pin TCP to the gateway's cluster Service while keeping the
-              # external hostname for SNI/Host routing: pods that land on the
-              # envoy's node black-hole hairpin connections through the AWS
-              # NLB (observed live: same curl 000 here, 401 from other nodes).
-              GW_SVC="maas-default-gateway-data-science-gateway-class.openshift-ingress.svc"
-              CURL=(curl -sk --max-time 20 --connect-to "${MAAS_HOST}:443:${GW_SVC}:443")
+              # External hostname via the NLB is the working in-cluster path
+              # (verified live from this namespace and the job's node); the
+              # gateway ClusterIP does NOT accept direct connections. Timeouts
+              # keep a dead gateway from hanging the hook.
+              CURL=(curl -sk --max-time 20)
 
               existing_key="$(oc get secret maas-agentic-migration-key \
                 -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY}' 2>/dev/null | base64 -d || true)"
