@@ -962,6 +962,63 @@ oc annotate application 060-mcp-context-integrations -n openshift-gitops \
 ./stages/060-mcp-context-integrations/validate.sh
 ```
 
+## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
+
+**Affected stage:** Stage 040 (breaks every AI consumer: Continue, key provisioning, app LLM calls)
+
+**Symptoms (observed live 2026-07-10):** `curl https://maas.<apps-domain>/maas-api/v1/models`
+returns 000 from outside AND from in-cluster pods (even via the gateway
+Service ClusterIP); the `maas-default-gateway-*` envoy pod shows repeated
+OOMKills and logs
+`Unknown field ... 'allow_on_headers_stop_iteration'` wasm config rejections.
+
+**Likely cause:** the cluster drifted past the RHCL 1.3.z pin — a shared
+`openshift-operators` Manual InstallPlan bundled the kuadrant family
+(rhcl/authorino/limitador/dns) to 1.4.x when some other operator's plan was
+approved. RHCL 1.4.0-line is deprecated with documented gateway
+instability/memory pressure (see the `rhcl-update` skill).
+
+**Diagnose:**
+
+```bash
+oc get csv -n openshift-operators | grep -E "rhcl|authorino|limitador|dns-oper"
+oc logs deploy/maas-default-gateway-data-science-gateway-class -n openshift-ingress --tail=10
+```
+
+**Recover (documented 1.3.z rollback; OLM cannot downgrade in place):**
+
+1. `oc delete csv rhcl-operator.v1.4.x authorino-operator.v1.4.x limitador-operator.v1.4.x dns-operator.v1.4.x -n openshift-operators`
+2. Delete the four kuadrant Subscriptions (gitops names are OLM-style:
+   `<pkg>-stable-redhat-operators-openshift-marketplace`, plus `rhcl-operator`).
+3. Re-sync Stage 040 so Argo recreates the pinned Manual Subscriptions.
+4. Delete any leftover unapproved 1.4.x InstallPlan, then approve the plan
+   whose `clusterServiceVersionNames` lists ONLY the pinned 1.3.x set.
+5. Verify: all four CSVs Succeeded; `curl .../maas-api/v1/models` returns 401
+   (serving, auth required) instead of 000.
+
+## Operator Subscription Claims A CSV That No Longer Exists
+
+**Affected stage:** any OLM operator (observed live 2026-07-10 on
+devworkspace-operator: webhook server CrashLoopBackOff for 26h with
+`serviceaccounts "devworkspace-controller-serviceaccount" not found`)
+
+**Likely cause:** the Subscription's `status.installedCSV` references a CSV
+object that was deleted (e.g., during catalog churn or manual cleanup). OLM
+will not reinstall because the Subscription believes the operator is
+installed; dependent workloads (controller Deployment, ServiceAccounts) are
+gone.
+
+**Diagnose:**
+
+```bash
+oc get subscription <sub> -n <ns> -o jsonpath='{.status.installedCSV}{" / state: "}{.status.state}'
+oc get csv <that-csv> -n <ns>   # NotFound = orphaned subscription
+```
+
+**Recover:** back up the Subscription spec, delete it, and recreate it clean
+(same channel/source; drop or update `startingCSV`). OLM resolves fresh and
+reinstalls. Argo-managed subscriptions are recreated by a stage re-sync.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)

@@ -219,6 +219,36 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-10 Stage 050 advanced-app-platform first live deploy (new numbering)
+
+Actions:
+
+- Deleted the five pre-restructure Argo CD Applications (no finalizers, so
+  non-cascading) and deployed the consolidated `050-advanced-app-platform`.
+- Fixed live and committed upstream: Subscription health lua gap (installed
+  CSV with empty OLM `status.state` wedged wave 2), PVC health for
+  WaitForFirstConsumer storage (unbound PVCs deadlocked wave 5), SonarQube
+  image env contract (missing empty `LDAP_REALM`/`SONAR_SECURITY_REALM`
+  crash-looped the web process).
+- Repaired two pre-existing cluster faults: orphaned devworkspace-operator
+  Subscription (CSV deleted; webhook server CrashLoopBackOff 26h) and the
+  RHCL 1.4.x drift that killed the MaaS gateway at 08:50 (rolled back to the
+  pinned 1.3.x set per the deprecation advisory; both procedures recorded in
+  TROUBLESHOOTING).
+
+Validation evidence:
+
+- `050-advanced-app-platform` reached Synced/Healthy/Succeeded including all
+  PostSync hooks (SonarQube admin rotation + scanner token + fail-on-new-issue
+  default gate, RHDH OIDC, MigIQ MaaS hooks).
+- MaaS gateway restored: `/maas-api/v1/models` answers 401 (serving) after
+  the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 /
+  limitador 1.3.1 / dns 1.3.1.
+- End-to-end golden-path delivery chain verified: push to
+  `adnan-drina/parasol-insurance` main → GitHub App webhook → EventListener
+  (HMAC verified) → `parasol-insurance-push-*` PipelineRun created within
+  seconds. (Pipeline stage results recorded when the run completes.)
+
 This section records the current validation run against the disposable demo environment.
 
 ### 2026-05-01 validation run
