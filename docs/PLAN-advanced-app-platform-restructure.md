@@ -254,8 +254,8 @@ only.
 4. **Dev-stage rewrites** — stage 060/070/080 READMEs and demo scripts rebuilt
    around the template-driven flow; README maturity-ladder reframe; wrap-up
    beat at end of 080.
-5. **Lightspeed overlay + Chains** — after LCS↔MaaS protocol verification;
-   Tekton Chains provenance enhancement.
+5. **Lightspeed overlay + Chains** — moved to BACKLOG.md ("Stage 050
+   Phase 5 items", 2026-07-10) together with the standalone platform RHBK.
 
 ## Open items
 
