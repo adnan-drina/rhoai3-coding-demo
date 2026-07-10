@@ -246,8 +246,16 @@ Validation evidence:
   limitador 1.3.1 / dns 1.3.1.
 - End-to-end golden-path delivery chain verified: push to
   `adnan-drina/parasol-insurance` main → GitHub App webhook → EventListener
-  (HMAC verified) → `parasol-insurance-push-*` PipelineRun created within
-  seconds. (Pipeline stage results recorded when the run completes.)
+  (HMAC verified) → PipelineRun within seconds; clone → Maven build →
+  SonarQube analysis + custom gate all green (fixes applied live:
+  coschedule=pipelineruns for dual PVC workspaces, image-provided mvn, CEL
+  topic scoping). Final buildah push pending quay org setup (robot needs an
+  organization team with the Creator role for repo-creation-on-push).
+- Post-rollback follow-up: RHCL upgraded 1.3.4→1.3.5 to match the stage 040
+  guard; stale 1.4-rendered WasmPlugin/EnvoyFilters caused valid-key
+  requests to hang in the gateway filter chain until deleted and
+  re-rendered by the 1.3 operator (recipe extended in TROUBLESHOOTING);
+  after cleanup, model-route requests answer in milliseconds.
 
 This section records the current validation run against the disposable demo environment.
 

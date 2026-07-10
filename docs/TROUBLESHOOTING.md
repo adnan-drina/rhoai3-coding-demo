@@ -995,6 +995,24 @@ oc logs deploy/maas-default-gateway-data-science-gateway-class -n openshift-ingr
    whose `clusterServiceVersionNames` lists ONLY the pinned 1.3.x set.
 5. Verify: all four CSVs Succeeded; `curl .../maas-api/v1/models` returns 401
    (serving, auth required) instead of 000.
+6. **The operator rollback is not sufficient by itself** (observed live):
+   1.4-rendered Istio artifacts persist and requests carrying a valid-format
+   API key hang forever in the filter chain (dummy keys 403 instantly —
+   they never reach the rate-limit callout). Delete the rendered artifacts
+   and let the 1.3 operator re-render, then restart the gateway:
+
+   ```bash
+   oc delete wasmplugin kuadrant-maas-default-gateway -n openshift-ingress
+   oc delete envoyfilter kuadrant-auth-maas-default-gateway \
+     kuadrant-ratelimiting-maas-default-gateway \
+     kuadrant-maas-default-gateway -n openshift-ingress
+   oc rollout restart deployment kuadrant-operator-controller-manager -n openshift-operators
+   # wait for the WasmPlugin + EnvoyFilters to be recreated, then:
+   oc rollout restart deployment maas-default-gateway-data-science-gateway-class -n openshift-ingress
+   ```
+
+   Verify with a real key: `curl -H "Authorization: Bearer <key>"
+   .../models-as-a-service/<model>/v1/models` answers in milliseconds.
 
 ## Operator Subscription Claims A CSV That No Longer Exists
 
