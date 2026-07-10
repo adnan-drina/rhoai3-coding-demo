@@ -20,6 +20,31 @@ spec:
         cpu: "2"
         memory: 4Gi
   extraConfig:
+    # gp3-csi (default) uses WaitForFirstConsumer: PVCs stay Pending until a
+    # pod mounts them, but consumers are scheduled in later sync waves. Treat
+    # Pending as healthy so waves do not deadlock on unbound PVCs.
+    resource.customizations.health.PersistentVolumeClaim: |
+      hs = {}
+      if obj.status ~= nil and obj.status.phase ~= nil then
+        if obj.status.phase == "Bound" then
+          hs.status = "Healthy"
+          hs.message = "Bound"
+          return hs
+        end
+        if obj.status.phase == "Pending" then
+          hs.status = "Healthy"
+          hs.message = "Pending; WaitForFirstConsumer binds on first pod"
+          return hs
+        end
+        if obj.status.phase == "Lost" then
+          hs.status = "Degraded"
+          hs.message = "Lost"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for PVC status"
+      return hs
     resource.customizations.health.operators.coreos.com_Subscription: |
       hs = {}
 
