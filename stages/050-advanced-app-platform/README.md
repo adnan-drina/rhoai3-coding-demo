@@ -106,9 +106,11 @@ repositories delivers push events to the shared EventListener.
    installation tokens cannot create repositories under a personal account.
 3. **GitHub App** (Settings → Developer settings → GitHub Apps) for webhook
    delivery: webhook URL = the `app-platform-listener` Route URL, webhook
-   secret = `GITHUB_WEBHOOK_SECRET` from `.env`, subscribe to **Push**
-   events, install on **All repositories** (covers future template-created
-   repos). No other permissions needed beyond metadata (read-only).
+   secret = `GITHUB_WEBHOOK_SECRET` from `.env`. Repository permissions:
+   **Contents: Read-only** (required to subscribe to push events) plus the
+   mandatory Metadata: Read-only. Subscribe to **Push** events and install
+   on **All repositories** (covers future template-created repos). No
+   client secret or private key is needed — the App only delivers webhooks.
 4. **quay.io** (optional): create an organization/namespace and a robot
    account with push permission; set `IMAGE_REGISTRY`, `QUAY_ROBOT_USER`,
    `QUAY_ROBOT_TOKEN` in `.env`. Without these the pipeline pushes to the
