@@ -16,7 +16,7 @@ AI-assisted development is now a normal expectation for software teams. But ente
 | Rung | Developer experience | Tooling |
 |------|----------------------|---------|
 | **Assisted** (050) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Continue via MaaS |
-| **Agentic** (060) | Enterprise standards as reusable skills that agents follow and improve | OpenCode + AGENT.md + skills |
+| **Agentic** (060) | Enterprise standards as reusable skills that agents follow and improve | OpenCode + AGENTS.md + skills |
 | **Autonomous** (070) | Multi-agent legacy migration with human review gates | MTA + Developer Lightspeed |
 | **Trusted delivery** (080) | Provenance, signing, and SBOMs for AI-generated changes | OpenShift Pipelines + Trusted Artifact Signer |
 | **Self-service** (090) | The whole journey as one discoverable portal | Developer Hub + Lightspeed for RHDH |
@@ -34,8 +34,8 @@ The workshop does not claim regulatory compliance. It shows controls and boundar
 Underneath the ladder sits the governed platform foundation that every rung consumes. The demo builds it on Red Hat OpenShift:
 
 - a Red Hat OpenShift AI foundation with dashboard access, GenAI Studio, model registry, model serving, MaaS, shared identity, and monitoring;
-- GPU infrastructure for private AI with NVIDIA GPU enablement, Red Hat build of Kueue, OpenShift Custom Metrics Autoscaler readiness, and observability;
-- private model serving with Red Hat AI Inference Server, vLLM, llm-d, and OpenAI-compatible APIs;
+- GPU infrastructure for private AI with NVIDIA GPU enablement, Red Hat build of Kueue, and observability;
+- private model serving with vLLM and OpenAI-compatible APIs;
 - governed Models-as-a-Service access for private and approved external models;
 - developer workflows through Red Hat OpenShift Dev Spaces, Continue, OpenCode, Migration Toolkit for Applications, Developer Lightspeed, and Red Hat Developer Hub.
 
@@ -43,23 +43,26 @@ The central design choice is simple: consumers do not connect directly to scatte
 
 ## What The Demo Shows
 
-The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml): stages 010-040 build the governed platform foundation, and stages 050-090 climb the maturity ladder introduced above.
+The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml), organized in two progressive sections.
 
-Each developer-arc stage README (050-090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
+**Section 1: Governed platform foundation** — *Build the trusted AI infrastructure before a single developer prompt is issued.*
 
-| Stage | Capability | Why it matters |
-|-------|------------|----------------|
-| [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) | OpenShift AI control plane, identity, dashboard, model registry, and platform services | Trusted AI starts with a managed platform foundation, not isolated notebooks or unmanaged credentials |
-| [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) | NVIDIA GPU enablement, Red Hat build of Kueue, quotas, hardware profiles, and observability | Private AI needs scarce accelerator capacity to be scheduled, shared, and reviewed |
-| [030 - Private Model Serving](stages/030-private-model-serving/README.md) | Local LLMs served with OpenAI-compatible APIs | Sensitive source code and modernization context need a private inference path |
-| [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) | MaaS access with subscriptions, API keys, token limits, rate limits, telemetry, approved external models, and platform-managed MCP context | Model serving becomes a platform service when access, external use, and tool context are centralized |
-| [050 - AI-Assisted Development](stages/050-ai-assisted-development/README.md) | Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise | The most basic form of AI-assisted coding shows both the possibilities and the limits that motivate agentic workflows |
-| [060 - Agentic Development](stages/060-ai-agentic-development/README.md) | The agentic workspace: OpenCode with AGENT.md and reusable skills that encode enterprise Quarkus standards | Internal development guidelines become living assets that agents follow and improve |
-| [070 - Autonomous Application Migration](stages/070-ai-autonomous-migration/README.md) | MTA and Developer Lightspeed analysis plus a multi-agent Spring Boot to Quarkus migration through MaaS | Legacy backlogs need secure, affordable, reviewable autonomous migration |
-| [080 - AI in Trusted Delivery](stages/080-ai-trusted-delivery/README.md) | OpenShift Pipelines and Trusted Artifact Signer base for provenance, signing, and SBOMs of AI-generated changes | Autonomous output needs supply-chain proof, not trust-me claims (base setup; implementation tracked in backlog) |
-| [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) | Developer Hub catalog, TechDocs, identity, and Developer Lightspeed for RHDH | The whole arc becomes one discoverable self-service experience |
+- [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) — AI control plane, identity, dashboard, model registry, and observability
+- [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) — NVIDIA GPU enablement, Kueue quotas, and hardware profiles
+- [030 - Private Model Serving](stages/030-private-model-serving/README.md) — Local LLMs served with vLLM and OpenAI-compatible APIs
+- [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) — MaaS subscriptions, API keys, token limits, external models, and MCP context
 
-Developer workflow use cases start with [Stage 050 - AI-Assisted Development (vibe-coding exercise)](stages/050-ai-assisted-development/README.md). Stages 010-040 are primarily for platform engineers building the trusted AI development platform; stages 050-090 shift to enterprise developers using that platform for governed coding, agentic development, modernization, delivery, and self-service. A recurring demo beat makes the ladder tangible: Stage 060 reruns Stage 050's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly. Additional developer workflow topics stay in the backlog until each has a concrete scope, artifacts, and validation path. See [Deferred developer workflow topics](BACKLOG.md#deferred-developer-workflow-topics).
+**Section 2: AI development maturity ladder** — *Climb from assisted prompts to autonomous agents to trusted delivery, each rung consuming the same governed platform.*
+
+- [050 - AI-Assisted Development](stages/050-ai-assisted-development/README.md) — Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise
+- [060 - Agentic Development](stages/060-ai-agentic-development/README.md) — OpenCode with AGENTS.md and reusable skills that encode enterprise standards
+- [070 - Autonomous Application Migration](stages/070-ai-autonomous-migration/README.md) — MTA analysis plus multi-agent Spring Boot to Quarkus migration through MaaS
+- [080 - AI in Trusted Delivery](stages/080-ai-trusted-delivery/README.md) — OpenShift Pipelines and Trusted Artifact Signer for provenance and SBOMs (base setup)
+- [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) — Developer Hub catalog, TechDocs, identity, and self-service discovery
+
+Each developer-arc stage README (050–090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
+
+A recurring demo beat makes the ladder tangible: Stage 060 reruns Stage 050's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly.
 
 ## Why This Is Worth Knowing
 
@@ -85,41 +88,6 @@ Red Hat's role in this architecture is integration, lifecycle, support posture, 
 ## Trust Boundaries
 
 Private local models keep prompts and code inside the OpenShift platform boundary. Governed external models use centralized MaaS credentials, subscriptions, rate limits, token limits, and telemetry, but prompts are still processed by the external provider. MCP integrations have their own data boundary because tool context can expose cluster state, documents, chat data, web data, or actions against other systems. These boundaries support governance, traceability, documentation, and EU AI Act readiness; they do not replace legal review, data classification, human review, or production security assessment.
-
-## Red Hat Products Demonstrated
-
-| Red Hat product | Role in the workshop |
-|-----------------|----------------------|
-| [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite) | Product family for the developer productivity layer represented by Dev Spaces, MTA, Developer Hub, and Developer Lightspeed |
-| [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | Kubernetes application platform for identity, RBAC, networking, routing, scheduling, monitoring, and operations |
-| [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai) | AI platform for model serving, GenAI Studio, model registry, and MaaS |
-| [Red Hat AI Inference Server](https://www.redhat.com/en/products/ai) | vLLM-based runtime used for private LLM serving |
-| [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | Argo CD based reconciliation of stage manifests |
-| [Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index) | Queueing, quota, and admission control for AI workloads |
-| [Custom Metrics Autoscaler Operator for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/nodes/automatically-scaling-pods-with-the-custom-metrics-autoscaler-operator) | Red Hat-supported KEDA integration for metric-driven autoscaling patterns |
-| [Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces) | Managed cloud development workspaces |
-| [Migration Toolkit for Applications](https://developers.redhat.com/products/mta) | Application inventory, static analysis, migration rules, and modernization workflow |
-| [Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index) | AI-assisted modernization suggestions grounded in MTA findings |
-| [Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub) | Enterprise developer portal, software catalog, and TechDocs surface |
-| [Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/developer-lightspeed) | AI-assisted portal experience |
-| [Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link) | Gateway and policy layer used in the MaaS governance path |
-| [Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak) | Identity broker used by MTA and Developer Hub authentication flows |
-
-## Open Source Projects You Will Meet
-
-| Project | Where it appears | What it contributes |
-|---------|------------------|---------------------|
-| [Open Data Hub](https://opendatahub.io/) and [models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) | OpenShift AI and MaaS | Upstream AI platform and model access patterns |
-| [KServe](https://kserve.github.io/website/) | Model serving | Kubernetes-native serving primitives |
-| [vLLM](https://docs.vllm.ai/) | Private inference | Efficient LLM serving with OpenAI-compatible APIs |
-| [llm-d](https://llm-d.ai/) | Distributed inference | Kubernetes-native distributed LLM serving architecture |
-| [Gateway API](https://gateway-api.sigs.k8s.io/) | MaaS routing | Kubernetes-native API routing |
-| [Kuadrant](https://kuadrant.io/) and [Authorino](https://www.authorino.io/) | MaaS policy | AuthN/AuthZ, rate limiting, token limiting, and protection patterns |
-| [Kueue](https://kueue.sigs.k8s.io/) and [KEDA](https://keda.sh/) | GPUaaS | Queueing, quota, admission, and autoscaling primitives |
-| [Eclipse Che](https://www.eclipse.org/che/) and [DevWorkspace](https://github.com/devfile/devworkspace-operator) | Dev Spaces | Cloud workspace orchestration |
-| [Continue](https://www.continue.dev/) and [OpenCode](https://opencode.ai/) | Coding assistance | IDE and terminal AI coding workflows that can consume MaaS endpoints |
-| [Konveyor](https://www.konveyor.io/) and [Kai](https://github.com/konveyor/kai) | MTA and Developer Lightspeed | Modernization analysis and AI-assisted remediation foundations |
-| [Backstage](https://backstage.io/) and [TechDocs](https://backstage.io/docs/features/techdocs/) | Developer Hub | Software catalog and documentation publishing |
 
 ## Running The Workshop
 
@@ -179,7 +147,7 @@ rhoai3-coding-demo/
 
 ## This Repository Practices What It Demonstrates
 
-Stage 060 teaches agentic development with `AGENT.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
+Stage 060 teaches agentic development with `AGENTS.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
 
 ## Demo Personas
 
@@ -188,6 +156,40 @@ Stage 060 teaches agentic development with `AGENT.md` and reusable skills. This 
 | `ai-admin` | Platform administrator persona for OpenShift AI, MTA, portal, and model administration |
 | `ai-developer` | Developer persona consuming workspaces, models, and modernization workflows |
 | `kubeadmin` | Cluster administrator for platform setup and recovery |
+
+## Red Hat Products Demonstrated
+
+| Red Hat product | Role in the workshop |
+|-----------------|----------------------|
+| [Red Hat Advanced Developer Suite](https://www.redhat.com/en/products/advanced-developer-suite) | Product family for the developer productivity layer represented by Dev Spaces, MTA, Developer Hub, and Developer Lightspeed |
+| [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) | Kubernetes application platform for identity, RBAC, networking, routing, scheduling, monitoring, and operations |
+| [Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai) | AI platform for model serving, GenAI Studio, model registry, and MaaS |
+| [Red Hat AI Inference Server](https://www.redhat.com/en/products/ai) | vLLM-based runtime used for private LLM serving |
+| [Red Hat OpenShift GitOps](https://www.redhat.com/en/technologies/cloud-computing/openshift/gitops) | Argo CD based reconciliation of stage manifests |
+| [Red Hat build of Kueue](https://docs.redhat.com/en/documentation/red_hat_build_of_kueue/1.0/html/overview/index) | Queueing, quota, and admission control for AI workloads |
+| [Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces) | Managed cloud development workspaces |
+| [Migration Toolkit for Applications](https://developers.redhat.com/products/mta) | Application inventory, static analysis, migration rules, and modernization workflow |
+| [Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index) | AI-assisted modernization suggestions grounded in MTA findings |
+| [Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub) | Enterprise developer portal, software catalog, and TechDocs surface |
+| [Developer Lightspeed for Red Hat Developer Hub](https://developers.redhat.com/products/rhdh/developer-lightspeed) | AI-assisted portal experience |
+| [Red Hat Connectivity Link](https://www.redhat.com/en/technologies/cloud-computing/connectivity-link) | Gateway and policy layer used in the MaaS governance path |
+| [Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak) | Identity broker used by MTA and Developer Hub authentication flows |
+
+## Open Source Projects You Will Meet
+
+| Project | Where it appears | What it contributes |
+|---------|------------------|---------------------|
+| [Open Data Hub](https://opendatahub.io/) and [models-as-a-service](https://github.com/opendatahub-io/models-as-a-service) | OpenShift AI and MaaS | Upstream AI platform and model access patterns |
+| [KServe](https://kserve.github.io/website/) | Model serving | Kubernetes-native serving primitives |
+| [vLLM](https://docs.vllm.ai/) | Private inference | Efficient LLM serving with OpenAI-compatible APIs |
+| [llm-d](https://llm-d.ai/) | Distributed inference | Kubernetes-native distributed LLM serving architecture |
+| [Gateway API](https://gateway-api.sigs.k8s.io/) | MaaS routing | Kubernetes-native API routing |
+| [Kuadrant](https://kuadrant.io/) and [Authorino](https://www.authorino.io/) | MaaS policy | AuthN/AuthZ, rate limiting, token limiting, and protection patterns |
+| [Kueue](https://kueue.sigs.k8s.io/) | GPUaaS | Queueing, quota, and admission control primitives |
+| [Eclipse Che](https://www.eclipse.org/che/) and [DevWorkspace](https://github.com/devfile/devworkspace-operator) | Dev Spaces | Cloud workspace orchestration |
+| [Continue](https://www.continue.dev/) and [OpenCode](https://opencode.ai/) | Coding assistance | IDE and terminal AI coding workflows that can consume MaaS endpoints |
+| [Konveyor](https://www.konveyor.io/) and [Kai](https://github.com/konveyor/kai) | MTA and Developer Lightspeed | Modernization analysis and AI-assisted remediation foundations |
+| [Backstage](https://backstage.io/) and [TechDocs](https://backstage.io/docs/features/techdocs/) | Developer Hub | Software catalog and documentation publishing |
 
 ## References
 
