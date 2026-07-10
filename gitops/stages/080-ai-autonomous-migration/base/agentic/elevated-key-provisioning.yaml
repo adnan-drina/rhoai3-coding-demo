@@ -1,0 +1,160 @@
+# Provisions the elevated MaaS API key for the Stage 080 agentic migration
+# workspace. The key draws from the enterprise-rag-autorag subscription
+# (2M tokens/h) sized for parallel-agent bursts; developer-tier keys from
+# Stage 060 stay untouched. The job SA must be an owner/subject of that
+# subscription (added in Stage 040 policies).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agentic-migration-key-provisioner
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentic-migration-key-secret-writer
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agentic-migration-key-secret-writer
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agentic-migration-key-secret-writer
+subjects:
+  - kind: ServiceAccount
+    name: agentic-migration-key-provisioner
+    namespace: wksp-ai-developer
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-agentic-migration-key
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: agentic-migration-key-provisioner
+      restartPolicy: Never
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              SUBSCRIPTION="enterprise-rag-autorag"
+              SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+              MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress \
+                -o jsonpath='{.spec.listeners[0].hostname}')"
+              [[ -n "$MAAS_HOST" ]] || { echo "ERROR: no MaaS gateway hostname"; exit 1; }
+              BASE="https://${MAAS_HOST}"
+
+              existing_key="$(oc get secret maas-agentic-migration-key \
+                -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY}' 2>/dev/null | base64 -d || true)"
+              if [[ "$existing_key" == sk-oai-* ]]; then
+                echo "Elevated key already provisioned; verifying it still authenticates..."
+                code=$(curl -sk -o /dev/null -w '%{http_code}' \
+                  -H "Authorization: Bearer ${existing_key}" \
+                  "${BASE}/models-as-a-service/qwen3-6-35b-a3b/v1/models" || echo 000)
+                if [[ "$code" == "200" ]]; then
+                  echo "Existing key valid; nothing to do."
+                  exit 0
+                fi
+                echo "Existing key rejected (HTTP ${code}); rotating."
+              fi
+
+              resp="$(curl -sk -X POST \
+                -H "Authorization: Bearer ${SA_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"name\":\"agentic-migration\",\"subscription\":\"${SUBSCRIPTION}\"}" \
+                "${BASE}/maas-api/v1/api-keys")"
+              key="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("key",""))' "$resp" 2>/dev/null || true)"
+              if [[ "$key" != sk-oai-* ]]; then
+                echo "ERROR: MaaS API did not return a valid key: ${resp:0:160}"
+                exit 1
+              fi
+
+              oc create secret generic maas-agentic-migration-key \
+                -n wksp-ai-developer \
+                --from-literal=MAAS_API_KEY="$key" \
+                --from-literal=MAAS_BASE_URL="$BASE" \
+                --from-literal=MAAS_SUBSCRIPTION="$SUBSCRIPTION" \
+                --dry-run=client -o yaml | oc apply -f -
+              echo "Elevated agentic-migration key provisioned."
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentic-migration-key-reader
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["maas-agentic-migration-key"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agentic-migration-key-readers
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agentic-migration-key-reader
+subjects:
+  - kind: Group
+    name: system:serviceaccounts:wksp-ai-developer
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentic-migration-gateway-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agentic-migration-gateway-reader
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agentic-migration-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: agentic-migration-key-provisioner
+    namespace: wksp-ai-developer

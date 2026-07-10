@@ -83,7 +83,7 @@ spec:
           env:
             - name: PINNED_CSV
               # v1.3.5: upgraded 2026-07-06 as a side effect of approving the shared
-              # openshift-operators InstallPlan that carried the Stage 080
+              # openshift-operators InstallPlan that carried the Stage 050
               # pipelines/rhtas CSVs (OLM bundles co-pending CSVs into one plan).
               # MaaS re-verified green on v1.3.5.
               value: rhcl-operator.v1.3.5

@@ -114,9 +114,9 @@ For stage changes, run the relevant stage validation if a live cluster is availa
 ./stages/040-governed-models-as-a-service/validate.sh
 ./stages/050-approved-external-model-access/validate.sh
 ./stages/060-mcp-context-integrations/validate.sh
-./stages/050-ai-assisted-development/validate.sh
-./stages/070-ai-autonomous-migration/validate.sh
-./stages/090-ai-self-service-portal/validate.sh
+./stages/060-ai-assisted-development/validate.sh
+./stages/080-ai-autonomous-migration/validate.sh
+./stages/050-advanced-app-platform/validate.sh
 ```
 
 If live validation is not possible, say:

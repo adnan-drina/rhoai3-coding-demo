@@ -1,0 +1,177 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ai-admin
+spec:
+  memberOf: [ai-modernization-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ai-developer
+spec:
+  memberOf: [ai-modernization-team]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: ai-modernization-team
+  description: Platform and developer team for AI-assisted application modernization
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: coolstore
+  description: Coolstore modernization system for the governed AI developer workflow.
+  tags:
+    - coolstore
+    - modernization
+    - agentic-engineering
+spec:
+  owner: ai-modernization-team
+  domain: application-modernization
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: getting-started-ai-coding
+  title: Getting Started with AI Coding
+  description: |
+    Onboarding workspace for Stage 060. Developers use Developer Hub, Dev
+    Spaces, Continue, and MaaS for the governed vibe-coding increment before moving
+    into specs, skills, and agentic engineering stages.
+  annotations:
+    backstage.io/source-location: url:https://github.com/adnan-drina/getting-started-ai-coding
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+    github.com/project-slug: adnan-drina/getting-started-ai-coding
+    rhoai3.redhat.com/stage-050-role: onboarding
+  links:
+    - url: https://github.com/adnan-drina/getting-started-ai-coding
+      title: Source Repo
+      icon: github
+    - url: "https://devspaces-getting-started.placeholder.example.com"
+      title: Dev Spaces
+      icon: docs
+    - url: https://rhdh.placeholder.example.com/docs/default/component/getting-started-ai-coding
+      title: Getting Started
+      icon: docs
+  tags:
+    - onboarding
+    - ai-coding
+    - devspaces
+    - maas
+spec:
+  type: documentation
+  lifecycle: experimental
+  owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: coolstore
+  title: MCA Coolstore
+  description: |
+    Brownfield MCA Coolstore application used for the AI-powered migration and
+    modernization stages of the workflow.
+  annotations:
+    backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+    github.com/project-slug: rhpds/mca-coolstore
+    rhoai3.redhat.com/stage-050-role: brownfield-source
+  links:
+    - url: https://github.com/rhpds/mca-coolstore
+      title: Source Repo
+      icon: github
+    - url: "https://devspaces-coolstore.placeholder.example.com"
+      title: Dev Spaces
+      icon: docs
+    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore
+      title: Getting Started
+      icon: docs
+  tags:
+    - java
+    - javaee
+    - eap
+    - mta
+    - modernization
+    - brownfield
+spec:
+  type: service
+  lifecycle: modernizing
+  owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: coolstore-inventory-service
+  title: Coolstore Inventory Service
+  description: |
+    Quarkus inventory service used for AI-assisted engineering and golden-path
+    delivery work connected to the Coolstore domain.
+  annotations:
+    backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+    github.com/project-slug: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
+    rhoai3.redhat.com/gitops-path: gitops/overlays/dev
+    rhoai3.redhat.com/pipelines-as-code-path: .tekton/pull-request.yaml
+    rhoai3.redhat.com/evidence-path: docs/evidence/
+    rhoai3.redhat.com/stage-050-role: target-service
+  links:
+    - url: https://github.com/adnan-drina/coolstore-inventory-service
+      title: Source Repo
+      icon: github
+    - url: "https://devspaces-inventory.placeholder.example.com"
+      title: Dev Spaces
+      icon: docs
+    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore-inventory-service
+      title: Getting Started
+      icon: docs
+  tags:
+    - java
+    - quarkus
+    - inventory
+    - coolstore
+    - agentic-engineering
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ai-modernization-team
+  system: coolstore
+  dependsOn:
+    - component:default/coolstore
+    - resource:default/maas-private-code-model-nemotron
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: maas-private-code-model-nemotron
+  title: Nemotron Private Code Model
+  description: Private MaaS model path selected for source-code work in the governed developer workflow.
+  annotations:
+    rhoai3.redhat.com/model-id: nemotron-3-nano-30b-a3b
+    rhoai3.redhat.com/model-path: private-maas
+    rhoai3.redhat.com/data-classification: source-code-context
+  links:
+    - url: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+      title: Getting Started
+      icon: docs
+  tags:
+    - maas
+    - private-model
+    - source-code
+spec:
+  type: ai-model
+  owner: ai-modernization-team
+  system: coolstore

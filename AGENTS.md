@@ -49,7 +49,7 @@ Important paths:
 The workshop has two parts:
 
 - Stages 010-070 build the trusted AI development platform for platform engineers.
-- Stages 050 and later show enterprise developer workflows that consume that platform.
+- Stages 060 and later show enterprise developer workflows that consume that platform.
 
 Current implemented stages:
 
@@ -258,15 +258,16 @@ bash -n stages/*/*.sh
 ./stages/020-gpu-infrastructure-private-ai/validate.sh
 ./stages/030-private-model-serving/validate.sh
 ./stages/040-governed-models-as-a-service/validate.sh
-./stages/050-ai-assisted-development/validate.sh
-./stages/070-ai-autonomous-migration/validate.sh
-./stages/090-ai-self-service-portal/validate.sh
+./stages/050-advanced-app-platform/validate.sh
+./stages/060-ai-assisted-development/validate.sh
+./stages/070-ai-agentic-development/validate.sh
+./stages/080-ai-autonomous-migration/validate.sh
 ```
 
-Stage 050 currently consumes Stage 050 Dev Spaces and Stage 090 Developer Hub
-assets. It does not have a standalone deploy or validate script; validate its
-documentation changes with `./scripts/validate-stage-flow.sh` and any specific
-commands documented in the Stage 050 README when a live workspace and cluster
+Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer
+Hub assets; its skills content lives in an external repository, so beyond its
+validate script use `./scripts/validate-stage-flow.sh` and any specific
+commands documented in the Stage 070 README when a live workspace and cluster
 are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:

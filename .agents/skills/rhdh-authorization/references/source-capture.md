@@ -35,7 +35,7 @@
 ## Unresolved Or Environment-Specific Items
 
 - Exact policy administrator username for the demo environment.
-  Verification: confirm from the RHDH deployment ConfigMap or stage 090
+  Verification: confirm from the RHDH deployment ConfigMap or stage 050
   configuration.
 - Which plugins need `pluginsWithPermission` entries beyond catalog,
   scaffolder, and permission.

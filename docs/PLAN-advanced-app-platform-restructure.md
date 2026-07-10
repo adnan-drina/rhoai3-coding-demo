@@ -70,6 +70,27 @@ Old 090's coolstore catalog entities are retired in favor of the
 Parasol/template-centric catalog (per review: one app carries the dev arc;
 coolstore appears only as the legacy estate in stage 080).
 
+### Dev-stage gitops ownership (decided 2026-07-10)
+
+- **060 (assisted)** — becomes README + scripts only after Phase 2: the
+  CheCluster and MaaS key provisioning move into 050's `devspaces/`
+  component, and per-run workspaces come from the golden-path template
+  instead of Git-tracked DevWorkspace manifests. Until Phase 2 executes, 060
+  keeps its current `devspaces/` gitops base.
+- **070 (agentic)** — already thin (one static workspace manifest); becomes
+  README-only once the `agentic-quarkus-scaffold` template replaces the
+  static `agentic-coolstore` DevWorkspace.
+- **080 (migration)** — **keeps its gitops base.** The MigIQ stack (MTA
+  operator, Tackle instance, Lightspeed config, hook jobs) is stage-specific
+  migration infrastructure consumed by exactly one rung — moving it into 050
+  would bloat the platform stage and force MTA deployment even when the
+  migration rung is not being demoed. Only the Keycloak moves out (to 050's
+  `identity/`) in Phase 2.
+- Flow implication: README-only stages keep thin `deploy.sh`/`validate.sh`
+  wrappers (validate-only), and `flows/default.yaml` entries drop their
+  `gitopsApplication`/`gitopsPath` keys — `scripts/validate-stage-flow.sh`
+  must learn to accept stages without gitops ownership.
+
 ## Golden-path templates
 
 All three follow the same step shape: `fetch` golden source → `publish:github`

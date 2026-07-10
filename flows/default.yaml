@@ -55,59 +55,56 @@ stages:
     dependsOn:
       - "030"
   - id: "050"
+    name: Advanced Application Platform
+    productFocus:
+      - Red Hat Advanced Developer Suite
+      - Red Hat Developer Hub
+      - Red Hat OpenShift Pipelines
+      - Red Hat Trusted Artifact Signer
+    deployScript: stages/050-advanced-app-platform/deploy.sh
+    validateScript: stages/050-advanced-app-platform/validate.sh
+    gitopsApplication: 050-advanced-app-platform
+    gitopsPath: gitops/stages/050-advanced-app-platform/base
+    dependsOn:
+      - "040"
+    # Transitional: the RHDH PostSync OIDC job brokers through the MTA
+    # Keycloak deployed by stage 080 until Phase 2 of the restructure plan
+    # lands the platform RHBK here. Re-sync 050 after 080 on fresh clusters.
+  - id: "060"
     name: AI-Assisted Development
     productFocus:
       - Red Hat OpenShift Dev Spaces
       - Continue
       - OpenCode
-    deployScript: stages/050-ai-assisted-development/deploy.sh
-    validateScript: stages/050-ai-assisted-development/validate.sh
-    gitopsApplication: 050-ai-assisted-development
-    gitopsPath: gitops/stages/050-ai-assisted-development/base
+    deployScript: stages/060-ai-assisted-development/deploy.sh
+    validateScript: stages/060-ai-assisted-development/validate.sh
+    gitopsApplication: 060-ai-assisted-development
+    gitopsPath: gitops/stages/060-ai-assisted-development/base
     dependsOn:
       - "040"
-  - id: "060"
-    name: Agentic Development
+      - "050"
+  - id: "070"
+    name: AI-Agentic Development
     productFocus:
       - Red Hat OpenShift Dev Spaces
       - Red Hat OpenShift AI
-    deployScript: stages/060-ai-agentic-development/deploy.sh
-    validateScript: stages/060-ai-agentic-development/validate.sh
-    gitopsApplication: 060-ai-agentic-development
-    gitopsPath: gitops/stages/060-ai-agentic-development/base
+    deployScript: stages/070-ai-agentic-development/deploy.sh
+    validateScript: stages/070-ai-agentic-development/validate.sh
+    gitopsApplication: 070-ai-agentic-development
+    gitopsPath: gitops/stages/070-ai-agentic-development/base
     dependsOn:
+      - "040"
       - "050"
-  - id: "070"
-    name: Autonomous Application Migration
+      - "060"
+  - id: "080"
+    name: AI-Autonomous Migration
     productFocus:
       - Migration Toolkit for Applications
       - Red Hat Developer Lightspeed for MTA
-    deployScript: stages/070-ai-autonomous-migration/deploy.sh
-    validateScript: stages/070-ai-autonomous-migration/validate.sh
-    gitopsApplication: 070-ai-autonomous-migration
-    gitopsPath: gitops/stages/070-ai-autonomous-migration/base
+    deployScript: stages/080-ai-autonomous-migration/deploy.sh
+    validateScript: stages/080-ai-autonomous-migration/validate.sh
+    gitopsApplication: 080-ai-autonomous-migration
+    gitopsPath: gitops/stages/080-ai-autonomous-migration/base
     dependsOn:
+      - "040"
       - "050"
-  - id: "080"
-    name: AI in Trusted Delivery
-    productFocus:
-      - Red Hat OpenShift Pipelines
-      - Red Hat Trusted Artifact Signer
-    deployScript: stages/080-ai-trusted-delivery/deploy.sh
-    validateScript: stages/080-ai-trusted-delivery/validate.sh
-    gitopsApplication: 080-ai-trusted-delivery
-    gitopsPath: gitops/stages/080-ai-trusted-delivery/base
-    dependsOn:
-      - "070"
-  - id: "090"
-    name: AI Self-Service Portal
-    productFocus:
-      - Red Hat Advanced Developer Suite
-      - Red Hat Developer Hub
-      - Developer Lightspeed for Red Hat Developer Hub
-    deployScript: stages/090-ai-self-service-portal/deploy.sh
-    validateScript: stages/090-ai-self-service-portal/validate.sh
-    gitopsApplication: 090-ai-self-service-portal
-    gitopsPath: gitops/stages/090-ai-self-service-portal/base
-    dependsOn:
-      - "070"

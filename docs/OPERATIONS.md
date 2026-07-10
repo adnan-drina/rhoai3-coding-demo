@@ -49,7 +49,7 @@ git remote -v
 git status --short
 ```
 
-MCP integrations have their own prerequisites. Stage 070 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
+MCP integrations have their own prerequisites. Stage 040 includes the read-only OpenShift MCP server (uses ServiceAccount RBAC, no token needed). Slack and BrightData are credential-gated integrations. Set `SLACK_BOT_TOKEN` and `BRIGHTDATA_API_TOKEN` in `.env` when those integrations are approved; missing credentials produce validation warnings, not failures.
 
 ## Bootstrap
 
@@ -90,12 +90,15 @@ Deploy stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-approved-external-model-access/deploy.sh
-./stages/060-mcp-context-integrations/deploy.sh
-./stages/050-ai-assisted-development/deploy.sh
-./stages/070-ai-autonomous-migration/deploy.sh
-./stages/090-ai-self-service-portal/deploy.sh
+./stages/050-advanced-app-platform/deploy.sh
+./stages/060-ai-assisted-development/deploy.sh
+./stages/070-ai-agentic-development/deploy.sh
+./stages/080-ai-autonomous-migration/deploy.sh
 ```
+
+Transitional (Phase 1 of the restructure plan): stage 050's RHDH PostSync
+OIDC job brokers through the MTA Keycloak owned by stage 080. On a fresh
+cluster, re-sync `050-advanced-app-platform` after stage 080 is healthy.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
@@ -104,12 +107,11 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 010 | `010-openshift-ai-platform-foundation` | OpenShift AI platform foundation |
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
-| 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, observability |
-| 050 | `050-approved-external-model-access` | External OpenAI models behind MaaS |
-| 060 | `060-mcp-context-integrations` | OpenShift, Slack, and BrightData MCP integrations |
-| 070 | `050-ai-assisted-development` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
-| 080 | `070-ai-autonomous-migration` | MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
-| 090 | `090-ai-self-service-portal` | Red Hat Developer Hub portal |
+| 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
+| 050 | `050-advanced-app-platform` | Developer Hub portal, OpenShift Pipelines, Trusted Artifact Signer |
+| 060 | `060-ai-assisted-development` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
+| 070 | `070-ai-agentic-development` | Agentic workspace for OpenCode + skills |
+| 080 | `080-ai-autonomous-migration` | MigIQ: MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
 
 ## Validation Strategy
 
@@ -171,23 +173,23 @@ Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml
 yet. When validating developer-workflow changes on a sandbox cluster, patch only
 the existing platform applications that own the affected live resources.
 
-For Stage 050 vibe-coding changes, patch only Stage 050 and Stage 090 to the
+For Stage 060 vibe-coding changes, patch only Stage 060 and Stage 050 to the
 feature branch being validated:
 
 ```bash
-oc patch application 050-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc patch application 090-ai-self-service-portal -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc annotate application 050-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-oc annotate application 090-ai-self-service-portal -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
+oc annotate application 060-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Rollback to the stable platform branch:
 
 ```bash
-oc patch application 050-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc patch application 090-ai-self-service-portal -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc annotate application 050-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-oc annotate application 090-ai-self-service-portal -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+oc annotate application 060-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Do not merge a feature branch to `main` only to validate developer workflow
@@ -210,6 +212,12 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 ```
 
 ## Live Validation Log
+
+> **Historical numbering.** Entries below are point-in-time records and keep
+> the stage numbering that was in effect when they were written (before the
+> 2026-07-06 developer-arc restructure and the 2026-07-10 advanced-app-platform
+> restructure). Do not renumber them. Current numbering lives in
+> `flows/default.yaml`.
 
 This section records the current validation run against the disposable demo environment.
 
@@ -630,7 +638,7 @@ RHOAI 3.4 uses MaaS subscriptions instead of the 3.3 tier model. The active GitO
 
 Stage 040 validation runs a short GuideLLM load test when a MaaS API key is available. Red Hat OpenShift AI 3.4 lists GuideLLM support through the Evaluation Stack control plane as a Developer Preview capability; this demo currently uses the upstream GuideLLM container directly to generate repeatable load against the MaaS OpenAI-compatible endpoint. Results are stored as `ConfigMap` objects in the `maas` namespace with names beginning `guidellm-`.
 
-The Gen AI Playground token path uses the dashboard BFF to request a MaaS token, then passes that token to Llama Stack as request provider data. Llama Stack's `remote::vllm` provider gives that request token precedence over provider-specific environment tokens. To keep one Playground usable with private and approved external MaaS models, the demo uses one consumer subscription named `demo-models-subscription`. Stage 040 creates it with private model refs; Stage 050 expands it after the approved external `MaaSModelRef` resources are Ready. Product MaaS API key creation is validated through `/maas-api/v1/api-keys`.
+The Gen AI Playground token path uses the dashboard BFF to request a MaaS token, then passes that token to Llama Stack as request provider data. Llama Stack's `remote::vllm` provider gives that request token precedence over provider-specific environment tokens. To keep one Playground usable with private and approved external MaaS models, the demo uses one consumer subscription named `demo-models-subscription`. Stage 040 creates it with private model refs and expands it after the approved external `MaaSModelRef` resources are Ready. Product MaaS API key creation is validated through `/maas-api/v1/api-keys`.
 
 To compare the two private models with the same governed MaaS traffic shape, run:
 
@@ -664,9 +672,10 @@ GUIDELLM_PROMPT="Explain why governed model access matters for enterprise softwa
 ./stages/040-governed-models-as-a-service/run-guidellm-load-test.sh
 ```
 
-### Stage 050
+### Stage 040 — approved external model access
 
-Stage 050 deploys approved external model access through MaaS.
+Stage 040 owns approved external model access through MaaS (folded in from
+the former external-models stage by the 2026-07-06 restructure).
 
 External models share MaaS governance, subscription, API-key, rate-limit, token-limit, and gateway telemetry controls with private models. They do not share the same runtime observability boundary. OpenShift can observe local vLLM/GPU/Kueue signals for Stage 030 models, but external providers expose only gateway-visible request behavior and provider API success/failure from the demo platform perspective.
 
@@ -706,7 +715,7 @@ GUIDELLM_OUTPUT_TOKENS=32 \
 ./stages/050-approved-external-model-access/validate.sh
 ```
 
-The opt-in check creates a MaaS API key for `demo-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. Stage 050 disables GuideLLM's default `/health` backend probe for this external path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
+The opt-in check creates a MaaS API key for `demo-models-subscription` at runtime and passes it to the GuideLLM Job without printing or committing it. The external-model validation disables GuideLLM's default `/health` backend probe for this path because the MaaS route validates external access through the OpenAI-compatible inference API rather than a vLLM-style health endpoint.
 
 To validate the same dashboard path used by the Gen AI Playground, set:
 
@@ -717,9 +726,10 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 That check sends small non-streaming requests through the dashboard BFF to all four Playground MaaS model entries. It is intentionally opt-in because it can exercise approved external provider credentials.
 
-### Stage 070
+### Stage 040 — MCP context integrations
 
-Stage 070 deploys MCP context integrations.
+Stage 040 owns the MCP context integrations (folded in from the former MCP
+stage by the 2026-07-06 restructure).
 
 | `.env` variable | Secret created | Namespace | Purpose |
 |----------------|----------------|-----------|---------|
@@ -733,9 +743,9 @@ oc get pods -n coding-assistant
 oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 ```
 
-### Stage 050
+### Stage 060
 
-Stage 050 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
+Stage 060 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
 
 Validation now checks both service readiness and persona workspace readiness.
 The stage is not considered fully validated unless `wksp-kubeadmin`,
@@ -752,9 +762,9 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
-### Stage 070
+### Stage 080
 
-Stage 070 installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS.
+Stage 080 installs Migration Toolkit for Applications (the MigIQ stack) and configures Red Hat Developer Lightspeed for MTA to use MaaS.
 
 Useful checks:
 
@@ -764,11 +774,11 @@ oc get deployment -n openshift-mta
 oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
-### Stage 090
+### Stage 050
 
-Stage 090 installs Red Hat Developer Hub and configures OIDC through MTA Keycloak.
+Stage 050 installs Red Hat Developer Hub (plus the OpenShift Pipelines and Trusted Artifact Signer operators) and configures OIDC through the stage 080 MTA Keycloak (transitional; see the restructure plan).
 
-The RHDH catalog location is runtime-derived from the Stage 090 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
+The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 
 Useful checks:
 
@@ -821,11 +831,10 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete 090-ai-self-service-portal --cascade
-argocd app delete 070-ai-autonomous-migration --cascade
-argocd app delete 050-ai-assisted-development --cascade
-argocd app delete 060-mcp-context-integrations --cascade
-argocd app delete 050-approved-external-model-access --cascade
+argocd app delete 080-ai-autonomous-migration --cascade
+argocd app delete 070-ai-agentic-development --cascade
+argocd app delete 060-ai-assisted-development --cascade
+argocd app delete 050-advanced-app-platform --cascade
 argocd app delete 040-governed-models-as-a-service --cascade
 argocd app delete 030-private-model-serving --cascade
 argocd app delete 020-gpu-infrastructure-private-ai --cascade

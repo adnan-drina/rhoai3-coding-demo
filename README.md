@@ -15,13 +15,13 @@ AI-assisted development is now a normal expectation for software teams. But ente
 
 | Rung | Developer experience | Tooling |
 |------|----------------------|---------|
-| **Assisted** (050) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Continue via MaaS |
-| **Agentic** (060) | Enterprise standards as reusable skills that agents follow and improve | OpenCode + AGENTS.md + skills |
-| **Autonomous** (070) | Multi-agent legacy migration with human review gates | MTA + Developer Lightspeed |
-| **Trusted delivery** (080) | Provenance, signing, and SBOMs for AI-generated changes | OpenShift Pipelines + Trusted Artifact Signer |
-| **Self-service** (090) | The whole journey as one discoverable portal | Developer Hub + Lightspeed for RHDH |
+| **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Continue via MaaS |
+| **Agentic** (070) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
+| **Autonomous** (080) | Multi-agent legacy migration with human review gates | MigIQ (MTA + Developer Lightspeed) |
 
-Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills; skill-guided agents motivate autonomous workflows; autonomy demands supply-chain trust; and everything lands in the portal as the end-user experience.
+Self-service and trusted delivery are not rungs — they are constants supplied by the **Advanced Application Platform** (stage 050) underneath the ladder: every rung enters through the developer portal (a golden-path template) and exits through pipelines with quality gates and provenance. *Self-service in, trusted delivery out, at every maturity level.*
+
+Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills and specs; skill-guided agents motivate autonomous multi-agent workflows — and every step lands on the same platform rails.
 
 The workshop does not claim regulatory compliance. It shows controls and boundaries that help architects design AI-enabled development platforms for privacy-sensitive, sovereignty-sensitive, and regulated environments.
 
@@ -43,26 +43,28 @@ The central design choice is simple: consumers do not connect directly to scatte
 
 ## What The Demo Shows
 
-The executable platform path is the nine-stage flow in [`flows/default.yaml`](flows/default.yaml), organized in two progressive sections.
+The executable platform path is the eight-stage flow in [`flows/default.yaml`](flows/default.yaml), organized in three progressive sections.
 
-**Section 1: Governed platform foundation** — *Build the trusted AI infrastructure before a single developer prompt is issued.*
+**Section 1: Governed model platform** — *Build the trusted AI infrastructure before a single developer prompt is issued.*
 
 - [010 - OpenShift AI Platform Foundation](stages/010-openshift-ai-platform-foundation/README.md) — AI control plane, identity, dashboard, model registry, and observability
 - [020 - GPU Infrastructure for Private AI](stages/020-gpu-infrastructure-private-ai/README.md) — NVIDIA GPU enablement, Kueue quotas, and hardware profiles
 - [030 - Private Model Serving](stages/030-private-model-serving/README.md) — Local LLMs served with vLLM and OpenAI-compatible APIs
 - [040 - Governed Models-as-a-Service](stages/040-governed-models-as-a-service/README.md) — MaaS subscriptions, API keys, token limits, external models, and MCP context
 
-**Section 2: AI development maturity ladder** — *Climb from assisted prompts to autonomous agents to trusted delivery, each rung consuming the same governed platform.*
+**Section 2: Advanced application platform** — *The app-platform layer every rung of the ladder consumes: self-service in, trusted delivery out.*
 
-- [050 - AI-Assisted Development](stages/050-ai-assisted-development/README.md) — Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise
-- [060 - Agentic Development](stages/060-ai-agentic-development/README.md) — OpenCode with AGENTS.md and reusable skills that encode enterprise standards
-- [070 - Autonomous Application Migration](stages/070-ai-autonomous-migration/README.md) — MTA analysis plus multi-agent Spring Boot to Quarkus migration through MaaS
-- [080 - AI in Trusted Delivery](stages/080-ai-trusted-delivery/README.md) — OpenShift Pipelines and Trusted Artifact Signer for provenance and SBOMs (base setup)
-- [090 - AI Self-Service Portal](stages/090-ai-self-service-portal/README.md) — Developer Hub catalog, TechDocs, identity, and self-service discovery
+- [050 - Advanced Application Platform](stages/050-advanced-app-platform/README.md) — Developer Hub portal with golden-path templates, OpenShift Pipelines with quality gates, and Trusted Artifact Signer for provenance
 
-Each developer-arc stage README (050–090) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
+**Section 3: AI development maturity ladder** — *Climb from assisted prompts to agentic development to autonomous migration, each rung entering through the portal and exiting through the pipeline.*
 
-A recurring demo beat makes the ladder tangible: Stage 060 reruns Stage 050's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly.
+- [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) — Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise
+- [070 - AI-Agentic Development](stages/070-ai-agentic-development/README.md) — OpenCode with AGENTS.md, reusable skills, and spec-driven development of a brand-new Quarkus application
+- [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) — MigIQ analysis plus multi-agent Spring Boot to Quarkus migration through MaaS
+
+Each developer-arc stage README (060–080) carries a **Demo Script** section in Know/Show form — the business beat to say, the exact clicks to show, and the deliberately scripted fail-forward moments — so the demo can be delivered by someone who did not build it.
+
+A recurring demo beat makes the ladder tangible: Stage 070 reruns Stage 060's one-shot coding task with a skills-guided agent so the audience sees the maturity jump directly.
 
 ## Why This Is Worth Knowing
 
@@ -111,12 +113,17 @@ Deploy the implemented stages in order:
 ./stages/020-gpu-infrastructure-private-ai/deploy.sh
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
-./stages/050-ai-assisted-development/deploy.sh
-./stages/060-ai-agentic-development/deploy.sh
-./stages/070-ai-autonomous-migration/deploy.sh
-./stages/080-ai-trusted-delivery/deploy.sh
-./stages/090-ai-self-service-portal/deploy.sh
+./stages/050-advanced-app-platform/deploy.sh
+./stages/060-ai-assisted-development/deploy.sh
+./stages/070-ai-agentic-development/deploy.sh
+./stages/080-ai-autonomous-migration/deploy.sh
 ```
+
+Transitional note: stage 050's RHDH OIDC configuration brokers through the
+MTA Keycloak deployed by stage 080 until the platform identity broker lands
+in 050 (Phase 2 of the [restructure plan](docs/PLAN-advanced-app-platform-restructure.md)).
+On a fresh cluster, re-run stage 050's PostSync (or re-sync the Argo CD
+application) after stage 080 is healthy.
 
 For deployment detail, validation strategy, and recovery procedures, use:
 
@@ -147,7 +154,7 @@ rhoai3-coding-demo/
 
 ## This Repository Practices What It Demonstrates
 
-Stage 060 teaches agentic development with `AGENTS.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
+Stage 070 teaches agentic development with `AGENTS.md` and reusable skills. This repository is maintained the same way: [`AGENTS.md`](AGENTS.md) is the agent entry point, and [`.agents/`](.agents/README.md) holds tool-neutral rules, doc-grounded skills for every Red Hat product in the demo, and safety hooks (including a cluster guard that blocks mutating `oc`/`kubectl` commands against unintended clusters). Tool-specific directories such as `.cursor/` contain only thin bridge files that point at the shared layer.
 
 ## Demo Personas
 

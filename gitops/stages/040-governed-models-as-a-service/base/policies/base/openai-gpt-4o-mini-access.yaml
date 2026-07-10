@@ -17,10 +17,10 @@ spec:
       - name: rhods-admins
     users:
       - kube:admin
-      # Stage 050 workspace key provisioner: creates per-developer MaaS keys
+      # Stage 060 workspace key provisioner: creates per-developer MaaS keys
       # for Dev Spaces (Continue/OpenCode) on this subscription.
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
-      # Stage 070 MTA hook: provisions the kai-api-keys MaaS key so Developer
+      # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
       # Lightspeed for MTA calls models through the governed gateway.
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
   modelRefs:
@@ -68,11 +68,11 @@ spec:
     users:
       - kube:admin
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
-      # Stage 070 agentic migration: model access for keys issued by the
+      # Stage 080 agentic migration: model access for keys issued by the
       # elevated-subscription provisioner (token limits come from
       # enterprise-rag-autorag, model authorization from this policy).
       - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
-      # Stage 070 MTA hook: provisions the kai-api-keys MaaS key so Developer
+      # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
       # Lightspeed for MTA calls models through the governed gateway.
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
   modelRefs:
