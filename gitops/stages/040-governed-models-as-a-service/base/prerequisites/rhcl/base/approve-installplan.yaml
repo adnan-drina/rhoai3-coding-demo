@@ -94,7 +94,7 @@ spec:
               # pins). A plan bundling anything else is REFUSED - the
               # guard against the 2026-07-10 incident class (shared
               # openshift-operators plans bundling unexpected upgrades).
-              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 limitador-operator.v1.3.1 dns-operator.v1.3.1"
+              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 authorino-operator.v1.3.2 limitador-operator.v1.3.1 dns-operator.v1.3.1"
           command:
             - /bin/bash
             - -c
