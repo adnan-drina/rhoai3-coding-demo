@@ -244,13 +244,18 @@ Validation evidence:
 - MaaS gateway restored: `/maas-api/v1/models` answers 401 (serving) after
   the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 /
   limitador 1.3.1 / dns 1.3.1.
-- End-to-end golden-path delivery chain verified: push to
+- End-to-end golden-path delivery chain FULLY GREEN: push to
   `adnan-drina/parasol-insurance` main → GitHub App webhook → EventListener
-  (HMAC verified) → PipelineRun within seconds; clone → Maven build →
-  SonarQube analysis + custom gate all green (fixes applied live:
-  coschedule=pipelineruns for dual PVC workspaces, image-provided mvn, CEL
-  topic scoping). Final buildah push pending quay org setup (robot needs an
-  organization team with the Creator role for repo-creation-on-push).
+  (HMAC verified) → PipelineRun in seconds → clone → Maven build (warm
+  cache: full run 1m38s) → SonarQube analysis + custom quality gate →
+  buildah push to `quay.io/rhoai3-coding-demo/parasol-insurance:<sha>`,
+  with quay auto-creating the repository via the org `pipeline` team's
+  Creator role (robot `rhoai3-coding-demo+pipeline`). Fixes applied live
+  along the way: coschedule=pipelineruns for dual PVC workspaces,
+  image-provided mvn (build image lacks gzip for the wrapper), CEL topic
+  scoping of the webhook. Note: org default repository visibility should
+  be Public or auto-created image repos are private (pull secrets needed
+  for deploys).
 - Post-rollback follow-up: RHCL upgraded 1.3.4→1.3.5 to match the stage 040
   guard; stale 1.4-rendered WasmPlugin/EnvoyFilters caused valid-key
   requests to hang in the gateway filter chain until deleted and
