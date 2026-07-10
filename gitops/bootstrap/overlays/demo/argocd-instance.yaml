@@ -58,6 +58,15 @@ spec:
           return hs
         end
 
+        -- OLM transiently reports an empty state (e.g. after catalog pod
+        -- restarts) even when the installed CSV Succeeded. An installed CSV
+        -- is healthy; do not wedge sync waves on the missing state field.
+        if obj.status.installedCSV ~= nil and (obj.status.state == nil or obj.status.state == "") then
+          hs.status = "Healthy"
+          hs.message = "Installed " .. obj.status.installedCSV .. "; Subscription state not reported by OLM"
+          return hs
+        end
+
         if obj.status.state ~= nil and obj.status.state ~= "" then
           hs.status = "Progressing"
           hs.message = obj.status.state
