@@ -1,10 +1,12 @@
 # Sync hook: allow multiple PVC-backed workspaces per TaskRun.
 # The shared push pipeline binds the per-run source PVC plus the persistent
-# maven-cache PVC; with the affinity assistant enabled (default), TaskRuns
+# maven-cache PVC; with the default coschedule mode ("workspaces") TaskRuns
 # fail validation with "more than one PersistentVolumeClaim is bound"
-# (observed live). disable-affinity-assistant is the documented TektonConfig
-# field for PVC workspace sharing. Patched by a hook because the operator
-# owns the TektonConfig singleton.
+# (observed live). This operator version migrates the deprecated
+# disable-affinity-assistant flag to spec.pipeline.coschedule (verified
+# live); "pipelineruns" permits multiple PVC workspaces while keeping all
+# pods of a run co-scheduled on one node (no RWO volume reattach latency).
+# Patched by a hook because the operator owns the TektonConfig singleton.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -74,5 +76,5 @@ spec:
                 echo "waiting for TektonConfig ($i/30)"; sleep 10
               done
               oc patch tektonconfig config --type merge \
-                -p '{"spec":{"pipeline":{"disable-affinity-assistant":true}}}'
-              echo "disable-affinity-assistant set"
+                -p '{"spec":{"pipeline":{"coschedule":"pipelineruns"}}}'
+              echo "coschedule=pipelineruns set"
