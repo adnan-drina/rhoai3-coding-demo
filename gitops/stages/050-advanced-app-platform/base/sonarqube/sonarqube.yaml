@@ -58,6 +58,18 @@ spec:
                 secretKeyRef:
                   name: sonardb
                   key: database-password
+            # The image's sonar.properties references these; they must exist
+            # (empty) or the web process fails with "Realm '${env:LDAP_REALM}'
+            # not found" (observed live). Values mirror the proven reference
+            # deployment from the source demo.
+            - name: SONAR_SECURITY_REALM
+              value: ""
+            - name: LDAP_REALM
+              value: ""
+            - name: SONAR_AUTOCREATE_USERS
+              value: "true"
+            - name: FORCE_AUTHENTICATION
+              value: "false"
           readinessProbe:
             httpGet:
               path: /
