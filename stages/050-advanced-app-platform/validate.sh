@@ -26,6 +26,35 @@ check_warn "Securesign instance exists (arrives with stage implementation)" \
   "oc get securesign -A --no-headers 2>/dev/null | wc -l | tr -d ' '" \
   "1"
 
+log_step "Shared push pipeline"
+check "app-platform-push pipeline exists" \
+  "oc get pipeline app-platform-push -n app-platform-build -o jsonpath='{.metadata.name}'" \
+  "app-platform-push"
+check "EventListener exists" \
+  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.metadata.name}'" \
+  "app-platform-listener"
+check_warn "GitHub webhook secret provisioned (set GITHUB_WEBHOOK_SECRET in .env)" \
+  "oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
+  "github-webhook-secret"
+
+log_step "SonarQube"
+check "SonarQube deployment ready" \
+  "oc get deployment sonarqube -n sonarqube -o jsonpath='{.status.readyReplicas}'" \
+  "1"
+check "Quality-gate scanner credentials provisioned" \
+  "oc get secret sonarqube-credentials -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
+  "sonarqube-credentials"
+
+log_step "Dev Spaces (devspaces component)"
+check "CheCluster phase Active" \
+  "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" \
+  "Active"
+
+log_step "MigIQ (migiq component)"
+check "Tackle CR exists" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
+  "mta"
+
 log_step "RHDH Operator"
 check_csv_succeeded "rhdh-operator" "rhdh"
 
@@ -71,7 +100,7 @@ APP_TARGET_REVISION=$(oc get application 050-advanced-app-platform -n openshift-
 REPO_NO_GIT="${APP_REPO_URL%.git}"
 EXPECTED_CATALOG_URL=""
 if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] && [[ -n "$APP_TARGET_REVISION" ]]; then
-    EXPECTED_CATALOG_URL="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${APP_TARGET_REVISION}/gitops/stages/050-advanced-app-platform/base/catalog/all.yaml"
+    EXPECTED_CATALOG_URL="https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${APP_TARGET_REVISION}/gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml"
 fi
 if [[ "$CATALOG_URL" == "/opt/app-root/src/catalog/all.yaml" ]]; then
     echo -e "${GREEN}[PASS]${NC} RHDH_CATALOG_URL uses generated runtime catalog: ${CATALOG_URL}"

@@ -11,8 +11,8 @@ echo "║  Stage 080: Autonomous Application Migration (MTA 8.1)     ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
-log_step "Argo CD Application"
-check_argocd_app "080-ai-autonomous-migration"
+log_step "Argo CD Application (platform stage owns the resources)"
+check_argocd_app "050-advanced-app-platform"
 
 log_step "MTA Operator"
 check_csv_succeeded "openshift-mta" "mta-operator"

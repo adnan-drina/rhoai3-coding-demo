@@ -1,0 +1,31 @@
+# Maven build task for Quarkus/Spring golden-path repositories.
+# Uses the Maven wrapper when the repository carries one, plain mvn
+# otherwise. The maven-cache workspace persists the local repository
+# between runs.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-build
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  workspaces:
+    - name: source
+    - name: maven-cache
+      optional: true
+  steps:
+    - name: maven-build
+      image: registry.access.redhat.com/ubi9/openjdk-21:1.20
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository"
+      script: |
+        #!/usr/bin/env bash
+        set -ex
+        if [ -x ./mvnw ]; then
+          ./mvnw -B package
+        else
+          mvn -B package
+        fi

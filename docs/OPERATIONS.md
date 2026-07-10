@@ -91,14 +91,14 @@ Deploy stages in order:
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-advanced-app-platform/deploy.sh
-./stages/060-ai-assisted-development/deploy.sh
-./stages/070-ai-agentic-development/deploy.sh
-./stages/080-ai-autonomous-migration/deploy.sh
 ```
 
-Transitional (Phase 1 of the restructure plan): stage 050's RHDH PostSync
-OIDC job brokers through the MTA Keycloak owned by stage 080. On a fresh
-cluster, re-sync `050-advanced-app-platform` after stage 080 is healthy.
+Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications
+of their own): stage 050 owns their infrastructure as components (devspaces,
+pipelines, sonarqube, rhdh, migiq). Validate their demo prerequisites with
+each stage's read-only `validate.sh`. Stage 050's deploy script provisions
+`app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`,
+`GITHUB_TOKEN`) before applying the Application.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
@@ -108,10 +108,10 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Developer Hub portal, OpenShift Pipelines, Trusted Artifact Signer |
-| 060 | `060-ai-assisted-development` | Red Hat OpenShift Dev Spaces, workspaces, AI coding tools |
-| 070 | `070-ai-agentic-development` | Agentic workspace for OpenCode + skills |
-| 080 | `080-ai-autonomous-migration` | MigIQ: MTA, Red Hat Developer Lightspeed for MTA, MaaS integration |
+| 050 | `050-advanced-app-platform` | Dev Spaces, shared push pipeline + SonarQube gate, Developer Hub, Trusted Artifact Signer, MigIQ (MTA + Lightspeed) |
+| 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
+| 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
+| 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MigIQ stack |
 
 ## Validation Strategy
 
@@ -743,9 +743,9 @@ oc get pods -n coding-assistant
 oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 ```
 
-### Stage 060
+### Stage 050 — Dev Spaces (devspaces component)
 
-Stage 060 installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces.
+The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces (consumed by the workflow-only stages 060/070).
 
 Validation now checks both service readiness and persona workspace readiness.
 The stage is not considered fully validated unless `wksp-kubeadmin`,
@@ -762,9 +762,9 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
-### Stage 080
+### Stage 050 — MigIQ (migiq component)
 
-Stage 080 installs Migration Toolkit for Applications (the MigIQ stack) and configures Red Hat Developer Lightspeed for MTA to use MaaS.
+The stage 050 `migiq` component installs Migration Toolkit for Applications (the MigIQ stack) and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080).
 
 Useful checks:
 
@@ -774,9 +774,9 @@ oc get deployment -n openshift-mta
 oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
-### Stage 050
+### Stage 050 — Developer Hub (rhdh component)
 
-Stage 050 installs Red Hat Developer Hub (plus the OpenShift Pipelines and Trusted Artifact Signer operators) and configures OIDC through the stage 080 MTA Keycloak (transitional; see the restructure plan).
+The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the MTA Keycloak from the `migiq` component of the same stage (a standalone platform RHBK remains an open item in the restructure plan).
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 
@@ -831,9 +831,6 @@ The Argo CD Applications intentionally do not include finalizers. Deleting an Ap
 For a full cleanup, prefer an explicit Argo CD cascade delete from the OpenShift GitOps UI or CLI:
 
 ```bash
-argocd app delete 080-ai-autonomous-migration --cascade
-argocd app delete 070-ai-agentic-development --cascade
-argocd app delete 060-ai-assisted-development --cascade
 argocd app delete 050-advanced-app-platform --cascade
 argocd app delete 040-governed-models-as-a-service --cascade
 argocd app delete 030-private-model-serving --cascade

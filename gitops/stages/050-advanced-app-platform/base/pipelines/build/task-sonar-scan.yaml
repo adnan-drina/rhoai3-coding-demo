@@ -1,0 +1,51 @@
+# SonarQube scan with quality-gate enforcement.
+# Runs the Maven Sonar scanner against the platform SonarQube and waits for
+# the quality-gate result (-Dsonar.qualitygate.wait=true): the task — and
+# therefore the pipeline — fails when the gate fails. The custom platform
+# gate fails on any new issue, which makes the demo's fail-forward moment
+# deterministic.
+# Credentials come from the sonarqube-credentials Secret provisioned by the
+# SonarQube PostSync configuration job.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sonar-scan
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  params:
+    - name: SONAR_PROJECT_KEY
+      type: string
+      description: SonarQube project key (the repository name)
+  workspaces:
+    - name: source
+    - name: maven-cache
+      optional: true
+  steps:
+    - name: sonar-scan
+      image: registry.access.redhat.com/ubi9/openjdk-21:1.20
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository"
+        - name: SONAR_HOST_URL
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-credentials
+              key: host
+        - name: SONAR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-credentials
+              key: token
+      script: |
+        #!/usr/bin/env bash
+        set -ex
+        MVN=./mvnw
+        [ -x "$MVN" ] || MVN=mvn
+        "$MVN" -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.projectKey="$(params.SONAR_PROJECT_KEY)" \
+          -Dsonar.qualitygate.wait=true

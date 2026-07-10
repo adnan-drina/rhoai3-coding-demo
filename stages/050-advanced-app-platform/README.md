@@ -1,12 +1,14 @@
 # Stage 050: Advanced Application Platform
 
-> **Status:** merged base (Phase 1 of
+> **Status:** consolidated platform stage (Phase 2 of
 > [PLAN-advanced-app-platform-restructure](../../docs/PLAN-advanced-app-platform-restructure.md)).
-> This stage combines the former trusted-delivery stage (OpenShift Pipelines +
-> Trusted Artifact Signer operators) and the former portal stage (Red Hat
-> Developer Hub). Phase 2 adds the platform identity broker (RHBK), SonarQube
-> with a custom quality gate, the shared push pipeline, and the golden-path
-> templates for the AI development stages.
+> This stage owns every component the AI development stages consume, as
+> kustomize components: `devspaces` (Dev Spaces + workspaces + MaaS keys),
+> `pipelines` (Pipelines/TAS operators + the shared push pipeline),
+> `sonarqube` (fail-on-new-issue quality gate), `rhdh` (Developer Hub), and
+> `migiq` (MTA + Developer Lightspeed). Golden-path templates and the golden
+> repositories arrive with Phase 3. Pipeline and SonarQube components are not
+> yet validated against a live cluster.
 > Anchor article: [Trusted software factory: Building trust in the agentic AI era](https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era).
 
 ## Why This Matters
@@ -33,7 +35,7 @@ begins.
 ![Stage 050 portal capability map](../../docs/assets/architecture/stage-050-capability-map.svg)
 
 Red Hat Developer Hub provides the portal surface: software catalog, TechDocs,
-and (in Phase 2) golden-path templates that provision per-run repositories for
+and (in Phase 3) golden-path templates that provision per-run repositories for
 the AI development stages. Red Hat OpenShift Pipelines provides the Tekton
 runtime for build pipelines; Red Hat Trusted Artifact Signer provides the
 sigstore stack (Fulcio CA, Rekor transparency log) for signing and attestation
@@ -46,37 +48,42 @@ and OLM applies the most restrictive approval to shared InstallPlans. A Sync
 hook Job (`approve-installplans.yaml`) approves pending InstallPlans that
 carry the Pipelines or TAS CSVs.
 
-**Identity transition:** RHDH OIDC currently brokers through the MTA Keycloak
-deployed by stage 080 (ai-autonomous-migration) — a leftover of the previous
-stage ordering. Until Phase 2 lands the platform RHBK here, the PostSync OIDC
-job requires stage 080 MTA/RHBK to be healthy first. Deploy-order caveat:
-for a fresh cluster, deploy 080 before this stage's PostSync can complete, or
-re-sync this stage after 080 is up.
+**Identity:** RHDH OIDC brokers through the MTA Keycloak that this stage's
+own `migiq` component deploys. The PostSync jobs wait and retry, so ordering
+resolves within a single Application sync — there is no cross-stage
+dependency anymore. A standalone platform RHBK (realm `platform`) remains an
+open refinement in the restructure plan; until it lands, the `slim` overlay
+(platform without MigIQ) cannot serve RHDH sign-in.
 
 ## What This Stage Adds
 
-This stage adds the application-platform layer every dev-arc rung consumes.
+This stage adds the application-platform layer every dev-arc rung consumes,
+organized as five components under
+[`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
 
-- Red Hat OpenShift Pipelines operator (channel `pipelines-1.22`): Tekton
-  pipelines and Pipelines-as-Code for the delivery path.
-- Red Hat Trusted Artifact Signer operator (channel `stable-v1.4`): the
-  sigstore stack (Fulcio, Rekor) that will sign and attest artifacts.
-- An InstallPlan approval hook Job for the shared-namespace Manual-approval
-  interaction with Stage 040 subscriptions.
-- Red Hat Developer Hub 1.9 through the RHDH operator (channel `fast-1.9`).
-- OIDC authentication brokered to OpenShift OAuth (via MTA Keycloak realm
-  `mta` until the Phase 2 platform RHBK lands).
-- Runtime catalog generated from the Git-tracked template by a Sync hook Job,
-  with cluster-specific Dev Spaces links resolved at deploy time.
-- TechDocs publishing for the governed developer workspace guide
-  (`builder: local`, `publisher: local`).
-- OpenShift ConsoleLink for the launcher menu.
+- **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona
+  workspaces, Che Code editor policy with Continue, MaaS API key
+  provisioning, and the interim `agentic-coolstore` workspace.
+- **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted
+  Artifact Signer (channel `stable-v1.4`) operators, the InstallPlan approval
+  hook for Stage 040 co-tenancy, and the shared `app-platform-push` pipeline
+  in `app-platform-build`: clone → Maven build → SonarQube gate → image
+  build, with a GitHub EventListener that derives the repository from the
+  webhook payload so one pipeline serves every golden-path repo.
+- **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the
+  admin password, provisions the scanner token, and sets a custom default
+  quality gate that fails on any new issue.
+- **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via
+  the MigIQ Keycloak, runtime-generated catalog, TechDocs, ConsoleLink.
+- **migiq** — Migration Toolkit for Applications with Developer Lightspeed
+  wired to MaaS, plus the agentic migration workspace.
 
-Phase 2 (tracked in the restructure plan): platform RHBK identity, SonarQube
-with custom quality gate, the shared `app-platform-build` push pipeline with
-webhook triggers, and the three golden-path templates
-(`assisted-quarkus-feature`, `agentic-quarkus-scaffold`,
-`autonomous-migration`).
+The `overlays/slim` variant deploys the platform without MigIQ (usable once
+the standalone platform RHBK lands). Phase 3 (tracked in the restructure
+plan) adds the three golden-path templates (`assisted-quarkus-feature`,
+`agentic-quarkus-scaffold`, `autonomous-migration`) and their golden
+repositories, plus external quay.io wiring for the pipeline's image pushes
+(internal registry by default until then).
 
 ## What To Notice And Why It Matters
 
@@ -182,12 +189,14 @@ signatures, SBOMs — on the same pipelines the platform already runs.
 
 Manifests: [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/)
 
-Flow dependency: Stage 040 (Governed Models-as-a-Service). Transitional: the
-PostSync OIDC job needs stage 080 MTA/RHBK healthy (see Identity transition
-above) until Phase 2 lands the platform RHBK in this stage.
+Flow dependency: Stage 040 (Governed Models-as-a-Service). `deploy.sh`
+provisions the build-pipeline secrets from `.env` (`GITHUB_WEBHOOK_SECRET`,
+`GITHUB_TOKEN`) before applying the Application.
 
 Validation notes: `validate.sh` treats a missing Securesign instance as a
-warning, not a failure — it arrives with the implementation phase.
+warning, not a failure — it arrives with the implementation phase. Stages
+060–080 each keep a read-only `validate.sh` that checks this stage's
+resources from their demo's perspective.
 
 ## References
 

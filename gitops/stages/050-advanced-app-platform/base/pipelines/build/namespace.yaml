@@ -1,0 +1,27 @@
+# Build namespace for the shared app-platform push pipeline.
+# The OpenShift Pipelines operator provisions the `pipeline` ServiceAccount
+# in this namespace with internal-registry push permissions.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app-platform-build
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    openshift.io/description: "Shared build pipeline for golden-path application repositories"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maven-cache
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

@@ -136,7 +136,7 @@ spec:
             REPO_OWNER="${BASH_REMATCH[1]}"
             REPO_NAME="${BASH_REMATCH[2]}"
           SOURCE_REF="${APP_SYNC_REVISION:-$APP_TARGET_REVISION}"
-          SOURCE_CATALOG_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${SOURCE_REF}/gitops/stages/050-advanced-app-platform/base/catalog/all.yaml"
+          SOURCE_CATALOG_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${SOURCE_REF}/gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml"
           else
             echo "ERROR: Unsupported repo URL '${APP_REPO_URL}'"
             exit 1

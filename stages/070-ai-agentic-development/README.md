@@ -1,12 +1,13 @@
 # Stage 070: Agentic Development
 
-> **Status:** deployable. This stage provisions the `agentic-coolstore`
-> DevWorkspace: coolstore-inventory-service checked out on the
-> `demo/agentic-skills` branch (AGENTS.md + `.opencode/skills` Quarkus
-> standards, authored and pushed), with agent-scale resources for OpenCode
-> multi-step runs. It consumes the Stage 060 Dev Spaces platform and the
-> Stage 040 MaaS keys. Flip the workspace checkout to `main` once the skills
-> branch merges.
+> **Status:** workflow-only stage. The `agentic-coolstore` DevWorkspace it
+> uses — coolstore-inventory-service checked out on the `demo/agentic-skills`
+> branch (AGENTS.md + `.opencode/skills` Quarkus standards) with agent-scale
+> resources for OpenCode multi-step runs — is provisioned by Stage 050
+> (`devspaces` component) as an interim workspace until the
+> agentic-quarkus-scaffold golden-path template replaces it (Phase 3 of the
+> restructure plan). It consumes the Stage 050 Dev Spaces platform and the
+> Stage 040 MaaS keys.
 
 ## Why This Matters
 
@@ -91,12 +92,17 @@ The agent operates within the same trust boundary as Stage 060: prompts to local
 
 ## Deploy And Validate
 
+This is a workflow-only stage: it deploys no cluster resources of its own.
+The agentic workspace (interim; replaced by the golden-path scaffold template in Phase 3) is owned by
+[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md)
+(`devspaces` component). Deploy stage 050 first, then validate this stage's
+prerequisites read-only:
+
 ```bash
-./stages/070-ai-agentic-development/deploy.sh
 ./stages/070-ai-agentic-development/validate.sh
 ```
 
-Manifests: [`gitops/stages/070-ai-agentic-development/base/`](../../gitops/stages/070-ai-agentic-development/base/)
+Manifests: [`gitops/stages/050-advanced-app-platform/base/devspaces/`](../../gitops/stages/050-advanced-app-platform/base/devspaces/)
 
 The validate script checks that the `demo/agentic-skills` branch exists upstream via `git ls-remote`. Note: the manifest sets `revision: demo/agentic-skills` (the full branch name including the path separator).
 

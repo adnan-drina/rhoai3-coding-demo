@@ -59,3 +59,37 @@ spec:
       jsonPointers:
         - /spec/href
         - /spec/applicationMenu/imageURL
+    # Developers and Dev Spaces toggle started at runtime. Keep the rest of the
+    # DevWorkspace spec GitOps-owned so workspace definitions can be updated.
+    - group: workspace.devfile.io
+      kind: DevWorkspace
+      jsonPointers:
+        - /spec/started
+    - group: ""
+      kind: PersistentVolumeClaim
+      jsonPointers:
+        - /spec
+    - group: ""
+      kind: Secret
+      name: kai-api-keys
+      namespace: openshift-mta
+      jsonPointers:
+        - /data
+    - group: tackle.konveyor.io
+      kind: Tackle
+      name: mta
+      namespace: openshift-mta
+      jsonPointers:
+        - /spec/kai_llm_baseurl
+    - group: console.openshift.io
+      kind: ConsoleLink
+      name: mta
+      jsonPointers:
+        - /spec/href
+        - /spec/applicationMenu/imageURL
+    - group: oauth.openshift.io
+      kind: OAuthClient
+      name: mta-keycloak
+      jsonPointers:
+        - /secret
+        - /redirectURIs

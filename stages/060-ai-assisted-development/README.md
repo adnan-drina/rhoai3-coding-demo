@@ -65,12 +65,17 @@ Real keys are never committed to Git. Continue terminal execution is not treated
 
 ## Deploy And Validate
 
+This is a workflow-only stage: it deploys no cluster resources of its own.
+The Dev Spaces platform, persona workspaces, and MaaS key provisioning is owned by
+[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md)
+(`devspaces` component). Deploy stage 050 first, then validate this stage's
+prerequisites read-only:
+
 ```bash
-./stages/060-ai-assisted-development/deploy.sh
 ./stages/060-ai-assisted-development/validate.sh
 ```
 
-Manifests: [`gitops/stages/060-ai-assisted-development/base/`](../../gitops/stages/060-ai-assisted-development/base/)
+Manifests: [`gitops/stages/050-advanced-app-platform/base/devspaces/`](../../gitops/stages/050-advanced-app-platform/base/devspaces/)
 
 Detailed user steps for workspace onboarding: [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md)
 

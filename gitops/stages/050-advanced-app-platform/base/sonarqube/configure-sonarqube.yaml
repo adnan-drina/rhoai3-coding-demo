@@ -1,0 +1,169 @@
+# PostSync: configure SonarQube for the app-platform pipeline.
+# 1. Rotates the default admin password to a generated one stored in the
+#    sonarqube-admin Secret (sonarqube namespace).
+# 2. Provisions a scanner token into the sonarqube-credentials Secret in
+#    app-platform-build for the sonar-scan pipeline task.
+# 3. Creates the "AI Platform Gate" quality gate — fails on any new issue —
+#    and sets it as the default, making the demo's fail-forward moment
+#    deterministic.
+# Idempotent: safe to re-run on every sync.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-configure-sonarqube
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-sonarqube
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "apply", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-sonarqube
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-configure-sonarqube
+subjects:
+  - kind: ServiceAccount
+    name: job-configure-sonarqube
+    namespace: sonarqube
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-sonarqube
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "apply", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-sonarqube
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-configure-sonarqube
+subjects:
+  - kind: ServiceAccount
+    name: job-configure-sonarqube
+    namespace: sonarqube
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-configure-sonarqube
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1200
+  template:
+    spec:
+      serviceAccountName: job-configure-sonarqube
+      restartPolicy: Never
+      containers:
+        - name: configure
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              SONAR="http://sonarqube.sonarqube.svc:9000"
+              GATE="AI Platform Gate"
+
+              echo "Waiting for SonarQube API..."
+              up=""
+              for i in $(seq 1 60); do
+                status=$(curl -s "${SONAR}/api/system/status" | grep -o '"status":"[A-Z]*"' || true)
+                if [ "${status}" = '"status":"UP"' ]; then up=yes; break; fi
+                echo "  not up yet (${i}/60): ${status:-no response}"
+                sleep 10
+              done
+              [ -n "${up}" ] || { echo "ERROR: SonarQube did not come up"; exit 1; }
+
+              # --- 1. Admin password ---
+              if oc get secret sonarqube-admin -n sonarqube >/dev/null 2>&1; then
+                ADMIN_PASS=$(oc get secret sonarqube-admin -n sonarqube -o jsonpath='{.data.password}' | base64 -d)
+                echo "Using existing admin password secret"
+              else
+                ADMIN_PASS=$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 24)
+                code=$(curl -s -o /dev/null -w '%{http_code}' -u admin:admin \
+                  -X POST "${SONAR}/api/users/change_password" \
+                  --data-urlencode "login=admin" \
+                  --data-urlencode "previousPassword=admin" \
+                  --data-urlencode "password=${ADMIN_PASS}")
+                if [ "${code}" != "204" ]; then
+                  echo "ERROR: could not rotate default admin password (HTTP ${code})"
+                  echo "If the password was changed manually, create the sonarqube-admin secret."
+                  exit 1
+                fi
+                oc create secret generic sonarqube-admin -n sonarqube \
+                  --from-literal=username=admin \
+                  --from-literal=password="${ADMIN_PASS}"
+                echo "Admin password rotated and stored in sonarqube-admin secret"
+              fi
+              AUTH="admin:${ADMIN_PASS}"
+
+              # --- 2. Scanner token for the pipeline ---
+              curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/revoke" \
+                --data-urlencode "name=platform-pipeline" >/dev/null || true
+              TOKEN_RESPONSE=$(curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/generate" \
+                --data-urlencode "name=platform-pipeline")
+              TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+              [ -n "${TOKEN}" ] || { echo "ERROR: token generation failed: ${TOKEN_RESPONSE}"; exit 1; }
+              oc create secret generic sonarqube-credentials -n app-platform-build \
+                --from-literal=host="${SONAR}" \
+                --from-literal=token="${TOKEN}" \
+                --dry-run=client -o yaml | oc apply -f -
+              echo "Scanner token provisioned into app-platform-build/sonarqube-credentials"
+
+              # --- 3. Custom quality gate: fail on any new issue ---
+              curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/create" \
+                --data-urlencode "name=${GATE}" >/dev/null || true
+              conditions=$(curl -s -u "${AUTH}" \
+                "${SONAR}/api/qualitygates/show?name=$(echo ${GATE} | sed 's/ /%20/g')")
+              if ! echo "${conditions}" | grep -q '"metric":"new_violations"'; then
+                curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/create_condition" \
+                  --data-urlencode "gateName=${GATE}" \
+                  --data-urlencode "metric=new_violations" \
+                  --data-urlencode "op=GT" \
+                  --data-urlencode "error=0" >/dev/null
+                echo "Gate condition added: new issues > 0 fails"
+              else
+                echo "Gate condition already present"
+              fi
+              curl -s -u "${AUTH}" -X POST "${SONAR}/api/qualitygates/set_as_default" \
+                --data-urlencode "name=${GATE}" >/dev/null
+              echo "'${GATE}' set as default quality gate"

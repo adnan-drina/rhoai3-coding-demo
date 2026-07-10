@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# SonarQube component: static analysis with a custom quality gate that
+# fails on any new issue. The shared push pipeline's sonar-scan task waits
+# on this gate, which makes the demo's "gate catches AI code smells"
+# moment deterministic (the template's initial push seeds the baseline
+# analysis; developer commits are then genuinely new code).
+
+resources:
+  # Wave 0: namespace
+  - namespace.yaml
+  # Wave 4 (Sync hook): generate DB credentials if missing
+  - ensure-db-secret.yaml
+  # Wave 5: PostgreSQL
+  - postgresql.yaml
+  # Wave 10: SonarQube deployment + service + route
+  - sonarqube.yaml
+  # PostSync: rotate admin password, provision pipeline token, custom gate
+  - configure-sonarqube.yaml

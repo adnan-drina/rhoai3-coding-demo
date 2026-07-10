@@ -90,12 +90,17 @@ The agentic path uses an elevated MaaS key (`enterprise-rag-autorag`) stored as 
 
 ## Deploy And Validate
 
+This is a workflow-only stage: it deploys no cluster resources of its own.
+The MigIQ stack (MTA operator, Tackle, Developer Lightspeed/MaaS wiring, migration workspace) is owned by
+[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md)
+(`migiq` component). Deploy stage 050 first, then validate this stage's
+prerequisites read-only:
+
 ```bash
-./stages/080-ai-autonomous-migration/deploy.sh
 ./stages/080-ai-autonomous-migration/validate.sh
 ```
 
-Manifests: [`gitops/stages/080-ai-autonomous-migration/base/`](../../gitops/stages/080-ai-autonomous-migration/base/)
+Manifests: [`gitops/stages/050-advanced-app-platform/base/migiq/`](../../gitops/stages/050-advanced-app-platform/base/migiq/)
 
 Flow dependency: Stage 060 (AI-Assisted Development).
 

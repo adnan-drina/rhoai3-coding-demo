@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Slim variant of the Advanced Application Platform: everything except the
+# MigIQ migration stack. Use when the autonomous-migration rung (stage 080)
+# is not part of the demo — MTA is the heaviest single-rung component.
+# NOTE: RHDH OIDC currently brokers through the MigIQ MTA Keycloak, so this
+# overlay is only usable once the standalone platform RHBK lands (open item
+# in docs/PLAN-advanced-app-platform-restructure.md).
+
+resources:
+  - ../../base/devspaces
+  - ../../base/pipelines
+  - ../../base/sonarqube
+  - ../../base/rhdh

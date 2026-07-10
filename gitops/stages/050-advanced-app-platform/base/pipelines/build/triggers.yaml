@@ -1,0 +1,115 @@
+# GitHub webhook triggers for the shared app-platform push pipeline.
+# The TriggerBinding derives repository URL and name from the webhook
+# payload, so every golden-path repo reuses this single EventListener —
+# templates only need to register a webhook pointing at the Route below.
+# The CEL filter accepts pushes to main and ignores branch deletions.
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: app-platform-push-binding
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  params:
+    - name: repo-url
+      value: $(body.repository.clone_url)
+    - name: repo-name
+      value: $(body.repository.name)
+    - name: revision
+      value: $(body.after)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: app-platform-push-template
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  params:
+    - name: repo-url
+    - name: repo-name
+    - name: revision
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: $(tt.params.repo-name)-push-
+      spec:
+        pipelineRef:
+          name: app-platform-push
+        params:
+          - name: repo-url
+            value: $(tt.params.repo-url)
+          - name: repo-name
+            value: $(tt.params.repo-name)
+          - name: revision
+            value: $(tt.params.revision)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+          - name: basic-auth
+            secret:
+              secretName: github-basic-auth
+          - name: maven-cache
+            persistentVolumeClaim:
+              claimName: maven-cache
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: app-platform-listener
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: push
+      bindings:
+        - ref: app-platform-push-binding
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value:
+                - "push"
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000'"
+      template:
+        ref: app-platform-push-template
+---
+# Route exposing the EventListener for GitHub webhooks
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: app-platform-listener
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  to:
+    kind: Service
+    name: el-app-platform-listener
+  port:
+    targetPort: http-listener
+  tls:
+    termination: edge

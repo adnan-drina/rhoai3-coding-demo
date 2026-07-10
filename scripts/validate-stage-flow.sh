@@ -55,14 +55,13 @@ if flow.get("kind") != "DemoFlow":
 if not stages:
     fail("stages must be a non-empty list")
 
+# Workflow-only stages (README + validate script, no cluster resources of
+# their own) may omit deployScript, gitopsApplication, and gitopsPath.
 required = {
     "id",
     "name",
     "productFocus",
-    "deployScript",
     "validateScript",
-    "gitopsApplication",
-    "gitopsPath",
     "dependsOn",
 }
 
@@ -92,39 +91,53 @@ for index, stage in enumerate(stages):
         if not isinstance(stage.get(key), list):
             fail(f"stage {stage_id} {key} must be a list")
 
-    deploy_path = repo / stage["deployScript"]
     validate_path = repo / stage["validateScript"]
-    stage_dir = deploy_path.parent
+    stage_dir = validate_path.parent
     readme_path = stage_dir / "README.md"
-    gitops_path = repo / stage["gitopsPath"]
-    app_path = repo / "gitops" / "argocd" / "app-of-apps" / f"{stage['gitopsApplication']}.yaml"
+    deploy_path = repo / stage["deployScript"] if "deployScript" in stage else None
+    gitops_path = repo / stage["gitopsPath"] if "gitopsPath" in stage else None
+    app_path = (
+        repo / "gitops" / "argocd" / "app-of-apps" / f"{stage['gitopsApplication']}.yaml"
+        if "gitopsApplication" in stage
+        else None
+    )
+
+    if ("gitopsApplication" in stage) != ("gitopsPath" in stage):
+        fail(f"stage {stage_id} must set gitopsApplication and gitopsPath together")
 
     if not stage_dir.name.startswith(f"{stage_id}-"):
-        fail(f"stage {stage_id} deployScript directory should start with {stage_id}-")
-    if validate_path.parent != stage_dir:
+        fail(f"stage {stage_id} validateScript directory should start with {stage_id}-")
+    if deploy_path is not None and deploy_path.parent != stage_dir:
         fail(f"stage {stage_id} deployScript and validateScript should be in the same directory")
 
-    for label, path in (
-        ("deployScript", deploy_path),
+    checks = [
         ("validateScript", validate_path),
         ("README", readme_path),
-        ("gitopsPath", gitops_path),
-        ("Argo CD app", app_path),
-    ):
+    ]
+    if deploy_path is not None:
+        checks.append(("deployScript", deploy_path))
+    if gitops_path is not None:
+        checks.append(("gitopsPath", gitops_path))
+    if app_path is not None:
+        checks.append(("Argo CD app", app_path))
+    for label, path in checks:
         if not path.exists():
             fail(f"stage {stage_id} {label} does not exist: {path.relative_to(repo)}")
 
-    for label, path in (("deployScript", deploy_path), ("validateScript", validate_path)):
+    exec_checks = [("validateScript", validate_path)]
+    if deploy_path is not None:
+        exec_checks.append(("deployScript", deploy_path))
+    for label, path in exec_checks:
         if path.exists() and not path.stat().st_mode & 0o111:
             fail(f"stage {stage_id} {label} is not executable: {path.relative_to(repo)}")
 
-    if gitops_path.exists():
+    if gitops_path is not None and gitops_path.exists():
         if not (gitops_path / "kustomization.yaml").exists():
             fail(f"stage {stage_id} gitopsPath has no kustomization.yaml: {gitops_path.relative_to(repo)}")
         else:
             gitops_paths.append(stage["gitopsPath"])
 
-    if app_path.exists():
+    if app_path is not None and app_path.exists():
         app = load_yaml(app_path)
         metadata = app.get("metadata") or {}
         spec = app.get("spec") or {}

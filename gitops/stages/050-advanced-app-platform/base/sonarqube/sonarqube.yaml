@@ -1,0 +1,121 @@
+# SonarQube server.
+# Image: OpenShift-adapted community build proven in the source
+# advanced-app-platform demo (runs under the restricted SCC without
+# elasticsearch bootstrap sysctls).
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarqube-data
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonarqube
+  namespace: sonarqube
+  labels:
+    app: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      name: sonarqube
+  template:
+    metadata:
+      labels:
+        app: sonarqube
+        name: sonarqube
+    spec:
+      containers:
+        - name: sonarqube
+          image: quay.io/kenmoini/sonarqube:34b8fd8
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          env:
+            - name: SONAR_JDBC_URL
+              value: jdbc:postgresql://sonardb:5432/sonar
+            - name: SONAR_JDBC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sonardb
+                  key: database-user
+            - name: SONAR_JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sonardb
+                  key: database-password
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 90
+            periodSeconds: 60
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              memory: 3Gi
+          volumeMounts:
+            - name: sonarqube-data
+              mountPath: /opt/sonarqube/data
+      volumes:
+        - name: sonarqube-data
+          persistentVolumeClaim:
+            claimName: sonarqube-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarqube
+  namespace: sonarqube
+  labels:
+    app: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  selector:
+    name: sonarqube
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sonarqube
+  namespace: sonarqube
+  labels:
+    app: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  to:
+    kind: Service
+    name: sonarqube
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

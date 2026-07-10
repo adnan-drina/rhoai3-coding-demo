@@ -1,0 +1,103 @@
+# PostgreSQL backing store for SonarQube.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonardb-data
+  namespace: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sonardb
+  namespace: sonarqube
+  labels:
+    app: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      name: sonardb
+  template:
+    metadata:
+      labels:
+        app: sonarqube
+        name: sonardb
+    spec:
+      containers:
+        - name: postgresql
+          image: registry.redhat.io/rhel9/postgresql-15:latest
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sonardb
+                  key: database-user
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sonardb
+                  key: database-password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: sonardb
+                  key: database-name
+          readinessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+                - --live
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: sonardb-data
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        - name: sonardb-data
+          persistentVolumeClaim:
+            claimName: sonardb-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonardb
+  namespace: sonarqube
+  labels:
+    app: sonarqube
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  selector:
+    name: sonardb
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432

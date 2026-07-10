@@ -9,8 +9,8 @@ source "$REPO_ROOT/scripts/validate-lib.sh"
 echo "Stage 070: Agentic Development — Validation"
 echo ""
 
-log_step "Argo CD Application"
-check_argocd_app "070-ai-agentic-development"
+log_step "Argo CD Application (platform stage owns the resources)"
+check_argocd_app "050-advanced-app-platform"
 
 log_step "Agentic workspace"
 check "agentic-coolstore DevWorkspace exists" \

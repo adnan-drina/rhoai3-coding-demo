@@ -29,7 +29,7 @@ description: >-
   - `https://github.com/rhpds/mca-coolstore.git` — modernization workflow
 - **Extensions**: Continue 1.3.38 via `DEFAULT_EXTENSIONS` in all workspaces; MTA 8.1.2 (pack + core + java) via `DEFAULT_EXTENSIONS` only in `mca-coolstore`
 - **GitOps**: Managed by ArgoCD `060-ai-assisted-development` Application with `Replace=true` sync option
-- **Manifest**: `gitops/stages/060-ai-assisted-development/base/devspaces/workspaces.yaml`
+- **Manifest**: `gitops/stages/050-advanced-app-platform/base/devspaces/workspaces.yaml`
 
 ## Key Behaviors Learned
 
@@ -129,7 +129,7 @@ sleep 10
 oc delete devworkspace getting-started-ai-coding -n $NS --force --grace-period=0
 oc delete pvc --all -n $NS --force --grace-period=0
 sleep 5
-oc apply -f gitops/stages/060-ai-assisted-development/base/devspaces/workspaces.yaml
+oc apply -f gitops/stages/050-advanced-app-platform/base/devspaces/workspaces.yaml
 oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```

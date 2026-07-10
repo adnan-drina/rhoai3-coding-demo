@@ -114,16 +114,17 @@ Deploy the implemented stages in order:
 ./stages/030-private-model-serving/deploy.sh
 ./stages/040-governed-models-as-a-service/deploy.sh
 ./stages/050-advanced-app-platform/deploy.sh
-./stages/060-ai-assisted-development/deploy.sh
-./stages/070-ai-agentic-development/deploy.sh
-./stages/080-ai-autonomous-migration/deploy.sh
 ```
 
-Transitional note: stage 050's RHDH OIDC configuration brokers through the
-MTA Keycloak deployed by stage 080 until the platform identity broker lands
-in 050 (Phase 2 of the [restructure plan](docs/PLAN-advanced-app-platform-restructure.md)).
-On a fresh cluster, re-run stage 050's PostSync (or re-sync the Argo CD
-application) after stage 080 is healthy.
+Stages 060–080 are workflow-only: all of their infrastructure (workspaces,
+pipelines, quality gates, the MigIQ stack) is deployed by stage 050. Each
+keeps a read-only `validate.sh` for its demo prerequisites:
+
+```bash
+./stages/060-ai-assisted-development/validate.sh
+./stages/070-ai-agentic-development/validate.sh
+./stages/080-ai-autonomous-migration/validate.sh
+```
 
 For deployment detail, validation strategy, and recovery procedures, use:
 

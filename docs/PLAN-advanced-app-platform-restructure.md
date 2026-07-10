@@ -202,6 +202,19 @@ DevSpaces, PipelineRuns, SonarQube).
 
 ## Phases
 
+Status 2026-07-10: Phase 1 executed (commit 941de02). Phase 2 executed
+(structural consolidation): 050 owns all five components; dev stages are
+workflow-only; shared pipeline + SonarQube gate landed. Phase 2 deltas from
+the original sketch: (a) the standalone platform RHBK was deferred — moving
+MigIQ into 050 dissolved the cross-stage identity dependency, and RHDH keeps
+brokering through the MTA Keycloak (now stage-internal, PostSync jobs wait);
+building a fresh RHBK chain blind without a live cluster was judged
+higher-risk than the working transitional path. The `slim` overlay depends
+on that RHBK landing. (b) External quay.io wiring is deferred to Phase 3
+(needs the org/robot account anyway); the pipeline defaults to the internal
+OpenShift registry. Not validated against a live cluster — static review
+only.
+
 1. **Mechanical restructure** — renames, merged 050 skeleton, all reference
    updates, flows/app-of-apps. Repo stays internally coherent; stage content
    otherwise unchanged.

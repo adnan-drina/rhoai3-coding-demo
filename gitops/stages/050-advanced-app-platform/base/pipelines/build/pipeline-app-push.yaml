@@ -1,0 +1,102 @@
+# Shared push pipeline for golden-path application repositories.
+# Generic by design: the repository URL, name, and revision arrive from the
+# GitHub webhook payload, so one pipeline serves every repo the portal
+# templates provision. Stages: clone -> maven build -> SonarQube quality
+# gate -> image build and push.
+#
+# Image registry: defaults to the internal OpenShift registry (no external
+# credentials needed). External quay.io wiring is finalized in Phase 3 of
+# the restructure plan together with the golden repos — override the
+# image-registry param then. TLS verification stays enabled.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: app-platform-push
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  params:
+    - name: repo-url
+      type: string
+      description: Clone URL of the repository that triggered the run
+    - name: repo-name
+      type: string
+      description: Repository name (used as SonarQube project key and image name)
+    - name: revision
+      type: string
+      description: Git revision to build (webhook head SHA)
+    - name: image-registry
+      type: string
+      description: Registry/namespace prefix for the built image
+      default: image-registry.openshift-image-registry.svc:5000/app-platform-build
+  workspaces:
+    - name: source
+    - name: basic-auth
+    - name: maven-cache
+  tasks:
+    - name: clone-source
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.repo-url)
+        - name: REVISION
+          value: $(params.revision)
+      workspaces:
+        - name: output
+          workspace: source
+        - name: basic-auth
+          workspace: basic-auth
+    - name: maven-build
+      runAfter:
+        - clone-source
+      taskRef:
+        name: maven-build
+      workspaces:
+        - name: source
+          workspace: source
+        - name: maven-cache
+          workspace: maven-cache
+    - name: sonar-scan
+      runAfter:
+        - maven-build
+      taskRef:
+        name: sonar-scan
+      params:
+        - name: SONAR_PROJECT_KEY
+          value: $(params.repo-name)
+      workspaces:
+        - name: source
+          workspace: source
+        - name: maven-cache
+          workspace: maven-cache
+    - name: build-and-push
+      runAfter:
+        - sonar-scan
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: "$(params.image-registry)/$(params.repo-name):$(params.revision)"
+        - name: DOCKERFILE
+          value: Containerfile
+        - name: STORAGE_DRIVER
+          value: vfs
+      workspaces:
+        - name: source
+          workspace: source

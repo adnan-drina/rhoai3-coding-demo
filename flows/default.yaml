@@ -67,19 +67,18 @@ stages:
     gitopsPath: gitops/stages/050-advanced-app-platform/base
     dependsOn:
       - "040"
-    # Transitional: the RHDH PostSync OIDC job brokers through the MTA
-    # Keycloak deployed by stage 080 until Phase 2 of the restructure plan
-    # lands the platform RHBK here. Re-sync 050 after 080 on fresh clusters.
+    # RHDH OIDC brokers through the MTA Keycloak in this stage's migiq
+    # component; the PostSync jobs wait, so ordering resolves in one sync.
+    # A standalone platform RHBK remains an open item in the restructure plan.
   - id: "060"
     name: AI-Assisted Development
     productFocus:
       - Red Hat OpenShift Dev Spaces
       - Continue
       - OpenCode
-    deployScript: stages/060-ai-assisted-development/deploy.sh
     validateScript: stages/060-ai-assisted-development/validate.sh
-    gitopsApplication: 060-ai-assisted-development
-    gitopsPath: gitops/stages/060-ai-assisted-development/base
+    # Workflow-only stage: infrastructure (Dev Spaces, workspaces, MaaS keys)
+    # is owned by stage 050 advanced-app-platform.
     dependsOn:
       - "040"
       - "050"
@@ -88,10 +87,8 @@ stages:
     productFocus:
       - Red Hat OpenShift Dev Spaces
       - Red Hat OpenShift AI
-    deployScript: stages/070-ai-agentic-development/deploy.sh
     validateScript: stages/070-ai-agentic-development/validate.sh
-    gitopsApplication: 070-ai-agentic-development
-    gitopsPath: gitops/stages/070-ai-agentic-development/base
+    # Workflow-only stage: the agentic workspace is owned by stage 050.
     dependsOn:
       - "040"
       - "050"
@@ -101,10 +98,9 @@ stages:
     productFocus:
       - Migration Toolkit for Applications
       - Red Hat Developer Lightspeed for MTA
-    deployScript: stages/080-ai-autonomous-migration/deploy.sh
     validateScript: stages/080-ai-autonomous-migration/validate.sh
-    gitopsApplication: 080-ai-autonomous-migration
-    gitopsPath: gitops/stages/080-ai-autonomous-migration/base
+    # Workflow-only stage: the MigIQ stack (MTA + Lightspeed) is owned by
+    # stage 050 advanced-app-platform (migiq component).
     dependsOn:
       - "040"
       - "050"

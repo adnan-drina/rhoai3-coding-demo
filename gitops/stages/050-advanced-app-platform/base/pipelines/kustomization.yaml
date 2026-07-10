@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Pipelines component: trusted-delivery operators plus the shared
+# app-platform push pipeline. Every golden-path repo pushes through this
+# pipeline: clone -> maven build -> SonarQube quality gate -> image build.
+# The EventListener derives the repository from the GitHub webhook payload,
+# so one pipeline serves every template-provisioned repository.
+#
+# Secrets expected in app-platform-build (provisioned by deploy.sh from
+# .env, never committed): github-webhook-secret, github-basic-auth.
+# sonarqube-credentials is provisioned by the SonarQube PostSync job.
+
+resources:
+  # Operators (Pipelines, TAS) + InstallPlan approval hook
+  - operators/pipelines-subscription.yaml
+  - operators/rhtas-subscription.yaml
+  - operators/approve-installplans.yaml
+  # Build namespace + maven cache
+  - build/namespace.yaml
+  # Tasks + Pipeline (wave 12: after the Pipelines operator settles)
+  - build/task-maven-build.yaml
+  - build/task-sonar-scan.yaml
+  - build/pipeline-app-push.yaml
+  # Webhook triggers (wave 13) + Route (wave 14)
+  - build/triggers.yaml
