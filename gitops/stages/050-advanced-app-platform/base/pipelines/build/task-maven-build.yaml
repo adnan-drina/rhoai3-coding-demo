@@ -1,6 +1,7 @@
 # Maven build task for Quarkus/Spring golden-path repositories.
-# Uses the Maven wrapper when the repository carries one, plain mvn
-# otherwise. The maven-cache workspace persists the local repository
+# Uses the image's preinstalled mvn (NOT the repo's mvnw: the wrapper
+# downloads a Maven tarball and the ubi9/openjdk image lacks gzip —
+# observed live). The maven-cache workspace persists the local repository
 # between runs.
 apiVersion: tekton.dev/v1
 kind: Task
@@ -24,8 +25,4 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -ex
-        if [ -x ./mvnw ]; then
-          ./mvnw -B package
-        else
-          mvn -B package
-        fi
+        mvn -B package

@@ -42,9 +42,8 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -ex
-        MVN=./mvnw
-        [ -x "$MVN" ] || MVN=mvn
-        "$MVN" -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+        # Image-provided mvn (repo wrappers need gzip the image lacks)
+        mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
           -Dsonar.host.url="${SONAR_HOST_URL}" \
           -Dsonar.token="${SONAR_TOKEN}" \
           -Dsonar.projectKey="$(params.SONAR_PROJECT_KEY)" \
