@@ -18,6 +18,8 @@ resources:
   - operators/approve-installplans.yaml
   # Build namespace + maven cache
   - build/namespace.yaml
+  # TektonConfig hook (wave 11): allow multiple PVC workspaces per TaskRun
+  - build/tektonconfig-affinity.yaml
   # Tasks + Pipeline (wave 12: after the Pipelines operator settles)
   - build/task-resolve-image-registry.yaml
   - build/task-maven-build.yaml

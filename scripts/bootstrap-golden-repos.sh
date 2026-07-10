@@ -32,6 +32,8 @@ ensure_repo() {
     log "Creating github.com/${GITHUB_OWNER}/${repo}"
     gh repo create "${GITHUB_OWNER}/${repo}" --public --description "${description}"
   fi
+  # Topic scopes the shared EventListener's CEL filter to golden-path repos.
+  gh repo edit "${GITHUB_OWNER}/${repo}" --add-topic rhoai3-golden-path >/dev/null
 }
 
 push_golden() {
@@ -130,7 +132,8 @@ push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
 
 # --- 3. migiq-spring-boot-sample (verify only) ---
 if gh repo view "${GITHUB_OWNER}/migiq-spring-boot-sample" >/dev/null 2>&1; then
-  log "migiq-spring-boot-sample exists (left untouched — already golden)"
+  gh repo edit "${GITHUB_OWNER}/migiq-spring-boot-sample" --add-topic rhoai3-golden-path >/dev/null
+  log "migiq-spring-boot-sample exists (topic ensured; content untouched)"
 else
   warn "migiq-spring-boot-sample not found under ${GITHUB_OWNER} — the autonomous-migration template needs it"
 fi

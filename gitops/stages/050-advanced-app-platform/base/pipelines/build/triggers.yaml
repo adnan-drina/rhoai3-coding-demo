@@ -96,7 +96,13 @@ spec:
             kind: ClusterInterceptor
           params:
             - name: filter
-              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000'"
+              # main-branch pushes on golden-path repos only: the GitHub App
+              # is installed account-wide, so scope by the rhoai3-golden-path
+              # topic (set on golden repos by the bootstrap script and on
+              # per-run repos by the templates). Observed live: without this,
+              # pushes to unrelated repos (including this GitOps repo)
+              # triggered pipeline runs.
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-golden-path' in body.repository.topics)"
       template:
         ref: app-platform-push-template
 ---
