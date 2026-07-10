@@ -1,6 +1,9 @@
 # Plan: Developer-Arc Restructure (stages 050–090)
 
-Status: APPROVED — naming finalized to the maturity-ladder scheme; phase 1 (renumber/rename/merge) executed 2026-07-06.
+Status: SUPERSEDED by `PLAN-advanced-app-platform-restructure.md` (2026-07-10).
+Phase 1 of this plan (renumber/rename/merge) was executed 2026-07-06; the new
+plan reorganizes its result (080+090 fold into a new 050-advanced-app-platform;
+dev stages shift to 060/070/080).
 Decisions (2026-07-06): MTA folds into stage 070; portal takes 090 with 080
 reserved for AI-in-CI/CD; stage 060 targets coolstore-inventory-service.
 
