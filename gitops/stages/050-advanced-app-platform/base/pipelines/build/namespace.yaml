@@ -25,3 +25,32 @@ spec:
   resources:
     requests:
       storage: 5Gi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-read-build-config
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["app-platform-build-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-read-build-config
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipeline-read-build-config
+subjects:
+  - kind: ServiceAccount
+    name: pipeline
+    namespace: app-platform-build

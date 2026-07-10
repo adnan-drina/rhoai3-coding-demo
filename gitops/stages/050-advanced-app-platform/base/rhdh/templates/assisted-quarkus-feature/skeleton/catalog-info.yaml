@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.name }} (Parasol Insurance)
+  description: |
+    Per-developer copy of the Parasol Insurance Quarkus application,
+    provisioned by the assisted-quarkus-feature golden-path template.
+  annotations:
+    github.com/project-slug: adnan-drina/${{ values.name }}
+    backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+  tags:
+    - golden-path
+    - assisted
+    - quarkus
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ai-modernization-team

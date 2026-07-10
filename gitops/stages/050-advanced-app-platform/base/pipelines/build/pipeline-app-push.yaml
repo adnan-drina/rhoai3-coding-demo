@@ -4,10 +4,10 @@
 # templates provision. Stages: clone -> maven build -> SonarQube quality
 # gate -> image build and push.
 #
-# Image registry: defaults to the internal OpenShift registry (no external
-# credentials needed). External quay.io wiring is finalized in Phase 3 of
-# the restructure plan together with the golden repos — override the
-# image-registry param then. TLS verification stays enabled.
+# Image registry: resolved at run time from the app-platform-build-config
+# ConfigMap (IMAGE_REGISTRY key, provisioned by deploy.sh from .env). Falls
+# back to the internal OpenShift registry when unset — no external
+# credentials needed for the default path. TLS verification stays enabled.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -26,15 +26,15 @@ spec:
     - name: revision
       type: string
       description: Git revision to build (webhook head SHA)
-    - name: image-registry
-      type: string
-      description: Registry/namespace prefix for the built image
-      default: image-registry.openshift-image-registry.svc:5000/app-platform-build
   workspaces:
     - name: source
     - name: basic-auth
+    - name: dockerconfig
     - name: maven-cache
   tasks:
+    - name: resolve-image-registry
+      taskRef:
+        name: resolve-image-registry
     - name: clone-source
       taskRef:
         resolver: cluster
@@ -81,6 +81,7 @@ spec:
     - name: build-and-push
       runAfter:
         - sonar-scan
+        - resolve-image-registry
       taskRef:
         resolver: cluster
         params:
@@ -92,7 +93,7 @@ spec:
             value: openshift-pipelines
       params:
         - name: IMAGE
-          value: "$(params.image-registry)/$(params.repo-name):$(params.revision)"
+          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
         - name: DOCKERFILE
           value: Containerfile
         - name: STORAGE_DRIVER
@@ -100,3 +101,5 @@ spec:
       workspaces:
         - name: source
           workspace: source
+        - name: dockerconfig
+          workspace: dockerconfig

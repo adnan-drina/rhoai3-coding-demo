@@ -19,6 +19,7 @@ resources:
   # Build namespace + maven cache
   - build/namespace.yaml
   # Tasks + Pipeline (wave 12: after the Pipelines operator settles)
+  - build/task-resolve-image-registry.yaml
   - build/task-maven-build.yaml
   - build/task-sonar-scan.yaml
   - build/pipeline-app-push.yaml

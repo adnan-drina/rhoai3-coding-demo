@@ -6,9 +6,10 @@
 > kustomize components: `devspaces` (Dev Spaces + workspaces + MaaS keys),
 > `pipelines` (Pipelines/TAS operators + the shared push pipeline),
 > `sonarqube` (fail-on-new-issue quality gate), `rhdh` (Developer Hub), and
-> `migiq` (MTA + Developer Lightspeed). Golden-path templates and the golden
-> repositories arrive with Phase 3. Pipeline and SonarQube components are not
-> yet validated against a live cluster.
+> `migiq` (MTA + Developer Lightspeed). Phase 3 adds the three golden-path
+> templates (registered in the catalog) and the golden repositories
+> (bootstrap: `scripts/bootstrap-golden-repos.sh`). Pipeline, SonarQube, and
+> template flows are not yet validated against a live cluster.
 > Anchor article: [Trusted software factory: Building trust in the agentic AI era](https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era).
 
 ## Why This Matters
@@ -79,11 +80,39 @@ organized as five components under
   wired to MaaS, plus the agentic migration workspace.
 
 The `overlays/slim` variant deploys the platform without MigIQ (usable once
-the standalone platform RHBK lands). Phase 3 (tracked in the restructure
-plan) adds the three golden-path templates (`assisted-quarkus-feature`,
-`agentic-quarkus-scaffold`, `autonomous-migration`) and their golden
-repositories, plus external quay.io wiring for the pipeline's image pushes
-(internal registry by default until then).
+the standalone platform RHBK lands).
+
+**Golden-path templates** (Phase 3, in `base/rhdh/templates/`): each copies
+a golden repository into a fresh per-run GitHub repo (topic
+`rhoai3-golden-path`), adds a templated `catalog-info.yaml`, and registers
+the component — verified against the Backstage GitHub scaffolder module
+(`publish:github` with `protectDefaultBranch: false` so the demo can push to
+`main`). Webhooks are not created per repo: a GitHub App installed on all
+repositories delivers push events to the shared EventListener.
+
+- `assisted-quarkus-feature` (stage 060) — copies `parasol-insurance`.
+- `agentic-quarkus-scaffold` (stage 070) — copies the corporate Quarkus
+  scaffold (AGENTS.md + OpenCode skills + specs for spec-driven development).
+- `autonomous-migration` (stage 080) — copies `migiq-spring-boot-sample`.
+
+## External Setup (one-time, outside the cluster)
+
+1. **Golden repositories** under `github.com/adnan-drina`: run
+   `./scripts/bootstrap-golden-repos.sh` (requires `gh` auth with `repo`
+   scope). Re-running force-pushes golden state — that is the reset.
+2. **GitHub PAT** (classic, `repo` scope) in `.env` as `GITHUB_TOKEN`: used
+   by RHDH (scaffolder repo creation + catalog reads) and the pipeline's
+   git-clone for private repos. A GitHub App cannot replace it here —
+   installation tokens cannot create repositories under a personal account.
+3. **GitHub App** (Settings → Developer settings → GitHub Apps) for webhook
+   delivery: webhook URL = the `app-platform-listener` Route URL, webhook
+   secret = `GITHUB_WEBHOOK_SECRET` from `.env`, subscribe to **Push**
+   events, install on **All repositories** (covers future template-created
+   repos). No other permissions needed beyond metadata (read-only).
+4. **quay.io** (optional): create an organization/namespace and a robot
+   account with push permission; set `IMAGE_REGISTRY`, `QUAY_ROBOT_USER`,
+   `QUAY_ROBOT_TOKEN` in `.env`. Without these the pipeline pushes to the
+   internal OpenShift registry.
 
 ## What To Notice And Why It Matters
 

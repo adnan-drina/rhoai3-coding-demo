@@ -26,3 +26,4 @@ spec:
     extraEnvs:
       secrets:
         - name: rhdh-secrets
+        - name: rhdh-github

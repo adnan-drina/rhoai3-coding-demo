@@ -1,5 +1,9 @@
-# Dynamic plugins — Phase 1: defaults only, no additional plugins.
-# Phase 2 will add OpenShift, ArgoCD, TechDocs plugins.
+# Dynamic plugins.
+# backstage-plugin-scaffolder-backend-module-github is preinstalled in the
+# RHDH image but disabled by default (verified against the RHDH dynamic
+# plugins reference); it provides publish:github for the golden-path
+# templates. Further plugins (Topology, Tekton, ArgoCD) are tracked in the
+# restructure plan.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,4 +15,6 @@ data:
   dynamic-plugins.yaml: |
     includes:
       - dynamic-plugins.default.yaml
-    plugins: []
+    plugins:
+      - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
+        disabled: false

@@ -1,0 +1,89 @@
+# Golden-path template for Stage 070 (AI-Agentic Development).
+# Scaffolds a brand-new Quarkus application repository carrying corporate
+# standards as executable assets: AGENTS.md, .opencode/skills/, and a
+# specs/ directory for spec-driven development. The developer builds the
+# application with OpenCode following the spec — the standards steer the
+# agent, not the prompt.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: agentic-quarkus-scaffold
+  title: "AI-Agentic Development: new Quarkus application"
+  description: |
+    Scaffolds a brand-new Quarkus application repository with corporate
+    standards as agent-executable assets (AGENTS.md + OpenCode skills) and a
+    spec template for spec-driven development. Registered in the catalog and
+    wired to the shared build pipeline with SonarQube quality gate.
+  tags:
+    - golden-path
+    - agentic
+    - quarkus
+    - spec-driven
+spec:
+  owner: ai-modernization-team
+  type: service
+
+  parameters:
+    - title: Application repository
+      required:
+        - name
+      properties:
+        name:
+          title: Application name
+          type: string
+          description: |
+            Name for the new application (e.g. claims-notification-service).
+            Lowercase letters, numbers, and hyphens.
+          pattern: "^[a-z][a-z0-9-]{2,40}$"
+          ui:autofocus: true
+
+  steps:
+    - id: fetch-golden
+      name: Fetch Quarkus scaffold golden repository
+      action: fetch:plain
+      input:
+        url: https://github.com/adnan-drina/agentic-quarkus-scaffold/tree/main
+
+    - id: add-catalog-info
+      name: Add catalog metadata
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=adnan-drina&repo=${{ parameters.name }}
+        description: "Quarkus application scaffold (golden path: agentic, spec-driven development)"
+        repoVisibility: public
+        defaultBranch: main
+        protectDefaultBranch: false
+        topics:
+          - rhoai3-golden-path
+
+    - id: register
+      name: Register in catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Source repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+    text:
+      - title: Next steps
+        content: |
+          Open the repository in Dev Spaces, copy `specs/TEMPLATE.md` to a new
+          spec (or use the provided example spec), start OpenCode in the
+          terminal, and ask it to implement the spec. The agent reads
+          AGENTS.md and `.opencode/skills/` — corporate standards steer the
+          build. Every push to `main` runs the shared pipeline with the
+          SonarQube quality gate.

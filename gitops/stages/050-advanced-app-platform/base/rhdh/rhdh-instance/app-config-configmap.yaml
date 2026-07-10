@@ -36,9 +36,13 @@ data:
                 - resolver: preferredUsernameMatchingUserEntityName
                   dangerouslyAllowSignInWithoutUserInCatalog: true
     signInPage: oidc
+    integrations:
+      github:
+        - host: github.com
+          token: ${GITHUB_TOKEN}
     catalog:
       rules:
-        - allow: [Component, System, API, Resource, Location, User, Group]
+        - allow: [Component, System, API, Resource, Location, Template, User, Group]
       locations:
         - type: file
           target: ${RHDH_CATALOG_URL}

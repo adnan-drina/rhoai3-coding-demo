@@ -1,0 +1,50 @@
+schemaVersion: 2.2.0
+metadata:
+  name: agentic-quarkus-app
+components:
+  - name: development-tooling
+    container:
+      image: registry.redhat.io/devspaces/udi-rhel9:3.26.1
+      env:
+        - name: QUARKUS_HTTP_HOST
+          value: 0.0.0.0
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=/home/user/.m2/repository"
+        - name: QUARKUS_ANALYTICS_DISABLED
+          value: "true"
+      memoryLimit: 6Gi
+      cpuLimit: 2500m
+      volumeMounts:
+        - name: m2
+          path: /home/user/.m2
+      endpoints:
+        - name: quarkus-dev
+          targetPort: 8080
+          exposure: public
+          secure: false
+          protocol: https
+        - name: debug
+          targetPort: 5005
+          exposure: none
+          secure: false
+          protocol: tcp
+  - name: m2
+    volume:
+      size: 1G
+commands:
+  - id: test
+    exec:
+      label: "1. Run tests"
+      component: development-tooling
+      commandLine: "mvn -q test"
+      group:
+        kind: test
+        isDefault: true
+  - id: start-dev
+    exec:
+      label: "2. Start Development mode (Hot reload + debug)"
+      component: development-tooling
+      commandLine: "mvn compile quarkus:dev"
+      group:
+        kind: run
+        isDefault: true

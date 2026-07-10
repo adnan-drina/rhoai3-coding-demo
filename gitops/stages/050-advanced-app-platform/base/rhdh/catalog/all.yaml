@@ -175,3 +175,32 @@ spec:
   type: ai-model
   owner: ai-modernization-team
   system: coolstore
+---
+# Golden-path templates (Phase 3): registered from this repository at the
+# deployed revision (placeholder resolved by the generate-rhdh-catalog job).
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: template-assisted-quarkus-feature
+  description: Golden-path template for stage 060 AI-assisted development
+spec:
+  type: url
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/assisted-quarkus-feature/template.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: template-agentic-quarkus-scaffold
+  description: Golden-path template for stage 070 AI-agentic development
+spec:
+  type: url
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: template-autonomous-migration
+  description: Golden-path template for stage 080 AI-autonomous migration
+spec:
+  type: url
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/autonomous-migration/template.yaml

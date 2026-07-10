@@ -1,0 +1,89 @@
+# Golden-path template for Stage 060 (AI-Assisted Development).
+# Copies the parasol-insurance golden repository into a fresh per-run repo,
+# adds a templated catalog-info.yaml, and registers the component. The
+# GitHub App webhook (installed account-wide) triggers the shared
+# app-platform-push pipeline on every push to main — no per-repo webhook
+# step needed. protectDefaultBranch is false because the demo pushes to
+# main directly.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: assisted-quarkus-feature
+  title: "AI-Assisted Development: Parasol Insurance workspace"
+  description: |
+    Provisions your own copy of the Parasol Insurance Quarkus application
+    (fresh GitHub repository, registered in the catalog, wired to the shared
+    build pipeline with SonarQube quality gate). Open it in Dev Spaces and
+    add a feature with the Continue AI assistant.
+  tags:
+    - golden-path
+    - assisted
+    - quarkus
+    - parasol
+spec:
+  owner: ai-modernization-team
+  type: service
+
+  parameters:
+    - title: Application repository
+      required:
+        - name
+      properties:
+        name:
+          title: Repository name
+          type: string
+          description: |
+            Name for your copy of the application (e.g. parasol-insurance-alice).
+            Lowercase letters, numbers, and hyphens.
+          pattern: "^[a-z][a-z0-9-]{2,40}$"
+          ui:autofocus: true
+
+  steps:
+    - id: fetch-golden
+      name: Fetch Parasol Insurance golden repository
+      action: fetch:plain
+      input:
+        url: https://github.com/adnan-drina/parasol-insurance/tree/main
+
+    - id: add-catalog-info
+      name: Add catalog metadata
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+
+    - id: publish
+      name: Publish to GitHub
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=adnan-drina&repo=${{ parameters.name }}
+        description: "Parasol Insurance workspace (golden path: assisted development)"
+        repoVisibility: public
+        defaultBranch: main
+        protectDefaultBranch: false
+        topics:
+          - rhoai3-golden-path
+
+    - id: register
+      name: Register in catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Source repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+    text:
+      - title: Next steps
+        content: |
+          Open the repository in Dev Spaces (`<Dev Spaces URL>/#<repository URL>`),
+          run **Start Development mode**, and use Continue to add your feature.
+          Every push to `main` runs the shared pipeline with the SonarQube
+          quality gate — the initial commit above already seeded the clean
+          baseline analysis.

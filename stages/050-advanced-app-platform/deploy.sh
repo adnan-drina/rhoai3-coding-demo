@@ -41,6 +41,38 @@ else
   log_info "GITHUB_TOKEN not set — github-basic-auth left empty (public repos only)"
 fi
 
+if [[ -n "${IMAGE_REGISTRY:-}" && -n "${QUAY_ROBOT_USER:-}" && -n "${QUAY_ROBOT_TOKEN:-}" ]]; then
+  REGISTRY_HOST="${IMAGE_REGISTRY%%/*}"
+  oc create secret docker-registry quay-push-secret -n app-platform-build \
+    --docker-server="${REGISTRY_HOST}" \
+    --docker-username="${QUAY_ROBOT_USER}" \
+    --docker-password="${QUAY_ROBOT_TOKEN}" \
+    --dry-run=client -o yaml | oc apply -f -
+  oc create configmap app-platform-build-config -n app-platform-build \
+    --from-literal=IMAGE_REGISTRY="${IMAGE_REGISTRY}" \
+    --dry-run=client -o yaml | oc apply -f -
+  log_info "quay push secret + IMAGE_REGISTRY=${IMAGE_REGISTRY} provisioned"
+else
+  # Empty secret keeps the PipelineRun workspace binding satisfied; the
+  # pipeline falls back to the internal OpenShift registry.
+  oc get secret quay-push-secret -n app-platform-build >/dev/null 2>&1 || \
+    oc create secret generic quay-push-secret -n app-platform-build
+  log_info "IMAGE_REGISTRY/QUAY_* not set — pipeline uses the internal registry"
+fi
+
+# --- RHDH GitHub integration (scaffolder templates publish to GitHub) ---
+oc get namespace rhdh >/dev/null 2>&1 || oc create namespace rhdh
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  oc create secret generic rhdh-github -n rhdh \
+    --from-literal=GITHUB_TOKEN="${GITHUB_TOKEN}" \
+    --dry-run=client -o yaml | oc apply -f -
+  log_info "rhdh-github secret provisioned (scaffolder + catalog access)"
+else
+  oc get secret rhdh-github -n rhdh >/dev/null 2>&1 || \
+    oc create secret generic rhdh-github -n rhdh --from-literal=GITHUB_TOKEN=""
+  log_warn "GITHUB_TOKEN not set — RHDH golden-path templates cannot publish repositories"
+fi
+
 apply_stage_app "$STAGE_NAME"
 
 log_info "ArgoCD handles orchestration via sync waves (per component):"

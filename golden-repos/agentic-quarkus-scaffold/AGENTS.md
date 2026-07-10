@@ -1,0 +1,39 @@
+# Agent Guide
+
+This is a corporate Quarkus application scaffold. You (the coding agent)
+build the application described by a spec in `specs/`, following the
+standards in `.opencode/skills/`. The standards steer the work — do not ask
+the user to restate them in prompts.
+
+## Project identity
+
+- Quarkus 3.17 application, Java 21, Maven (no wrapper — use `mvn`).
+- Package root: `com.demo`.
+- REST resources under `/api/`; JSON via Jackson.
+- Health endpoints come from `quarkus-smallrye-health` (`/q/health`).
+
+## Workflow
+
+1. Read the active spec in `specs/` (the user names it; otherwise the most
+   recent non-TEMPLATE file).
+2. Consult every skill in `.opencode/skills/` before writing code.
+3. Implement in small, verifiable increments. Run `mvn -q test` after each.
+4. Update the README API table in the same change as any endpoint change —
+   the definition of done lives in the skills.
+
+## Build and test commands
+
+```bash
+mvn quarkus:dev          # dev mode with hot reload
+mvn -q test              # unit + component tests
+mvn -q package           # full build (what the platform pipeline runs)
+```
+
+## Platform integration
+
+- LLM access is only through the MaaS gateway. The workspace injects
+  `MAAS_API_BASE_URL`, `MAAS_API_KEY`, and `MAAS_MODEL_NAME`; the
+  `llm-integration` skill defines the required wiring and error handling.
+- Every push to `main` runs the shared platform pipeline: Maven build →
+  SonarQube quality gate (fails on any new issue) → image build. Write code
+  that passes the gate; never weaken tests to get past it.

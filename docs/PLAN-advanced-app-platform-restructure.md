@@ -108,11 +108,11 @@ validation of prerequisites that stage 050 provisioned.
 
 ## Golden-path templates
 
-All three follow the same step shape: `fetch` golden source → `publish:github`
-(new repo under `${GITHUB_ORG}`) → `github:webhook` (pointing at the shared
-EventListener route, shared secret) → `catalog:register` (catalog-info
-templated per run with a unique component name) → output links (repo,
-DevSpaces, PipelineRuns, SonarQube).
+All three follow the same step shape (as implemented): `fetch:plain` golden
+source → `fetch:template` skeleton (per-run `catalog-info.yaml`) →
+`publish:github` (new public repo, `protectDefaultBranch: false`, topic
+`rhoai3-golden-path`) → `catalog:register` from the publish output. No
+webhook step — the GitHub App delivers push events (see Status note).
 
 1. **`assisted-quarkus-feature`** (stage 060). Param: app/repo name. Source:
    golden `parasol-insurance` repo (existing Quarkus Claims app; carries
@@ -202,7 +202,20 @@ DevSpaces, PipelineRuns, SonarQube).
 
 ## Phases
 
-Status 2026-07-10: Phase 1 executed (commit 941de02). Phase 2 executed
+Status 2026-07-10: Phase 1 executed (commit 941de02). Phase 3 executed
+(repo side): three golden-path templates registered via the runtime catalog,
+RHDH GitHub integration (preinstalled scaffolder module enabled, PAT via
+rhdh-github secret), quay wiring behind .env placeholders with runtime
+registry resolution, golden repos staged in golden-repos/ +
+scripts/bootstrap-golden-repos.sh. Webhook decision (supersedes the
+github:webhook step in the template sketch): RHDH's dynamic module wiring
+passes no defaultWebhookSecret to github:webhook and templates cannot read
+secrets, so per-repo webhooks would need the secret pasted per run; instead
+a user-owned GitHub App (push events, installed on All repositories)
+delivers webhooks for every current and future repo to the shared
+EventListener with one HMAC secret. Note: GitHub App installation tokens
+cannot create repos under a personal account, so the scaffolder keeps a
+classic PAT. Phase 2 executed
 (structural consolidation): 050 owns all five components; dev stages are
 workflow-only; shared pipeline + SonarQube gate landed. Phase 2 deltas from
 the original sketch: (a) the standalone platform RHBK was deferred — moving

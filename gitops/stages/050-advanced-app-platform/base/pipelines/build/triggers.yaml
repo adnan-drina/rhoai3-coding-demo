@@ -59,6 +59,9 @@ spec:
           - name: basic-auth
             secret:
               secretName: github-basic-auth
+          - name: dockerconfig
+            secret:
+              secretName: quay-push-secret
           - name: maven-cache
             persistentVolumeClaim:
               claimName: maven-cache

@@ -1,0 +1,32 @@
+# Resolves the image registry prefix for pipeline runs.
+# Reads IMAGE_REGISTRY from the app-platform-build-config ConfigMap
+# (provisioned by deploy.sh from .env when quay.io is configured) and falls
+# back to the internal OpenShift registry. Keeps registry selection a
+# deploy-time platform decision without templating GitOps manifests.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: resolve-image-registry
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  results:
+    - name: registry
+      description: Registry/namespace prefix for the built image
+  steps:
+    - name: resolve
+      image: registry.redhat.io/openshift4/ose-cli:latest
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        REGISTRY=$(oc get configmap app-platform-build-config \
+          -n app-platform-build \
+          -o jsonpath='{.data.IMAGE_REGISTRY}' 2>/dev/null || true)
+        if [ -z "${REGISTRY}" ]; then
+          REGISTRY="image-registry.openshift-image-registry.svc:5000/app-platform-build"
+          echo "IMAGE_REGISTRY not configured — using internal registry"
+        else
+          echo "Using external registry: ${REGISTRY}"
+        fi
+        printf '%s' "${REGISTRY}" > "$(results.registry.path)"
