@@ -70,12 +70,18 @@ spec:
                 -o jsonpath='{.spec.listeners[0].hostname}')"
               [[ -n "$MAAS_HOST" ]] || { echo "ERROR: no MaaS gateway hostname"; exit 1; }
               BASE="https://${MAAS_HOST}"
+              # Pin TCP to the gateway's cluster Service while keeping the
+              # external hostname for SNI/Host routing: pods that land on the
+              # envoy's node black-hole hairpin connections through the AWS
+              # NLB (observed live: same curl 000 here, 401 from other nodes).
+              GW_SVC="maas-default-gateway-data-science-gateway-class.openshift-ingress.svc"
+              CURL=(curl -sk --max-time 20 --connect-to "${MAAS_HOST}:443:${GW_SVC}:443")
 
               existing_key="$(oc get secret maas-agentic-migration-key \
                 -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY}' 2>/dev/null | base64 -d || true)"
               if [[ "$existing_key" == sk-oai-* ]]; then
                 echo "Elevated key already provisioned; verifying it still authenticates..."
-                code=$(curl -sk -o /dev/null -w '%{http_code}' \
+                code=$("${CURL[@]}" -o /dev/null -w '%{http_code}' \
                   -H "Authorization: Bearer ${existing_key}" \
                   "${BASE}/models-as-a-service/qwen3-6-35b-a3b/v1/models" || echo 000)
                 if [[ "$code" == "200" ]]; then
@@ -85,7 +91,7 @@ spec:
                 echo "Existing key rejected (HTTP ${code}); rotating."
               fi
 
-              resp="$(curl -sk -X POST \
+              resp="$("${CURL[@]}" -X POST \
                 -H "Authorization: Bearer ${SA_TOKEN}" \
                 -H "Content-Type: application/json" \
                 -d "{\"name\":\"agentic-migration\",\"subscription\":\"${SUBSCRIPTION}\"}" \
