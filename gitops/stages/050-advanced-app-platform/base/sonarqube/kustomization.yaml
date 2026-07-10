@@ -8,8 +8,9 @@ kind: Kustomization
 # analysis; developer commits are then genuinely new code).
 
 resources:
-  # Wave 0: namespace
+  # Wave 0: namespace + persona access
   - namespace.yaml
+  - persona-rbac.yaml
   # Wave 4 (Sync hook): generate DB credentials if missing
   - ensure-db-secret.yaml
   # Wave 5: PostgreSQL

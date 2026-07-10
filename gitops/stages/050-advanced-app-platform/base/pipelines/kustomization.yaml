@@ -16,8 +16,9 @@ resources:
   - operators/pipelines-subscription.yaml
   - operators/rhtas-subscription.yaml
   - operators/approve-installplans.yaml
-  # Build namespace + maven cache
+  # Build namespace + maven cache + persona access
   - build/namespace.yaml
+  - build/persona-rbac.yaml
   # TektonConfig hook (wave 11): allow multiple PVC workspaces per TaskRun
   - build/tektonconfig-affinity.yaml
   # Tasks + Pipeline (wave 12: after the Pipelines operator settles)
