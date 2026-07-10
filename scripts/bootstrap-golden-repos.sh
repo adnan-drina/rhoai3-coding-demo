@@ -16,6 +16,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_OWNER="${GITHUB_OWNER:-adnan-drina}"
 UPSTREAM_PARASOL="redhat-ads-tech/parasol-insurance"
+UPSTREAM_REF="${UPSTREAM_REF:-main}"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -50,20 +51,24 @@ push_golden() {
 
 # --- 1. parasol-insurance (derived from upstream, stripped) ---
 log "Deriving parasol-insurance from ${UPSTREAM_PARASOL}"
-git clone -q --depth 1 "https://github.com/${UPSTREAM_PARASOL}.git" "$WORKDIR/parasol-insurance"
-UPSTREAM_SHA="$(git -C "$WORKDIR/parasol-insurance" rev-parse --short HEAD)"
+git clone -q --depth 1 --branch "$UPSTREAM_REF" "https://github.com/${UPSTREAM_PARASOL}.git" "$WORKDIR/parasol-insurance"
+UPSTREAM_SHA="$(git -C "$WORKDIR/parasol-insurance" rev-parse HEAD)"
 (
   cd "$WORKDIR/parasol-insurance"
   rm -rf .git
 
   # Strip Kafka/messaging components (tolerant: warn when absent so upstream
   # drift is visible instead of silently ignored).
+  # InboxResource depends on EmailStore/Email, and inbox.html on the API —
+  # the minimal golden main is Claims-only (email routing was deliberately
+  # deferred; see the restructure plan).
   removed=0
   for f in $(find src -name "EmailRouter.java" -o -name "EmailGenerator.java" \
-             -o -name "EmailStore.java" -o -name "Email.java" 2>/dev/null); do
+             -o -name "EmailStore.java" -o -name "Email.java" \
+             -o -name "InboxResource.java" -o -name "inbox.html" 2>/dev/null); do
     rm -f "$f"; removed=$((removed+1)); echo "  removed $f"
   done
-  [ "$removed" -gt 0 ] || warn "no Email* classes found — upstream layout may have changed"
+  [ "$removed" -gt 0 ] || warn "no Email*/Inbox files found — upstream layout may have changed"
 
   if grep -q "quarkus-messaging-kafka\|quarkus-smallrye-reactive-messaging-kafka" pom.xml; then
     python3 - <<'PY'
@@ -84,6 +89,28 @@ PY
     [ -f "$props" ] || continue
     sed -i.bak '/mp\.messaging\./d; /^kafka\./d; /%prod\.kafka\./d' "$props" && rm -f "${props}.bak"
   done
+
+  # Provenance note (upstream carries no license file; keep attribution)
+  cat >> README.md <<PROV
+
+## Provenance
+
+Golden repository for the rhoai3-coding-demo assisted golden path. Derived
+from https://github.com/${UPSTREAM_PARASOL} (commit ${UPSTREAM_SHA}) with the
+Kafka/email-routing path removed. Managed by
+rhoai3-coding-demo/scripts/bootstrap-golden-repos.sh — do not commit demo
+changes here; the portal template copies this repo per run.
+PROV
+
+  # Verify the stripped app still builds before publishing
+  if command -v mvn >/dev/null || [ -x ./mvnw ]; then
+    echo "  verifying stripped build (mvn -q -DskipTests package)..."
+    MVN=./mvnw; [ -x "$MVN" ] || MVN=mvn
+    "$MVN" -q -DskipTests package
+    echo "  build OK"
+  else
+    warn "maven not available — skipping build verification"
+  fi
 
   # Overlay platform assets (devfile + Continue config pointing at MaaS)
   cp "$REPO_ROOT/golden-repos/parasol-insurance-overlay/devfile.yaml" devfile.yaml
