@@ -99,8 +99,13 @@ spec:
         end
       end
 
-      hs.status = "Progressing"
-      hs.message = "Waiting for Subscription status"
+      -- Statusless subscriptions: OLM leaves adopted/dependency
+      -- subscriptions entirely without status (observed live 2026-07-10,
+      -- twice) and the sync-wave wait does not honor ignore-healthcheck.
+      -- Version safety is enforced by startingCSV pins, Manual approval,
+      -- and the allowlist approval guards - not by this status field.
+      hs.status = "Healthy"
+      hs.message = "Subscription status not reported by OLM; version pins + approval guards apply"
       return hs
   rbac:
     policy: |
