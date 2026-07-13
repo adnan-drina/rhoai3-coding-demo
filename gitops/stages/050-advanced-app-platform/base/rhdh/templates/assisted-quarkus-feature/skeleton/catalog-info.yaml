@@ -17,3 +17,51 @@ spec:
   type: service
   lifecycle: experimental
   owner: ai-modernization-team
+  providesApis:
+    - ${{ values.name }}-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: ${{ values.name }}-api
+  title: ${{ values.name }} Claims API
+  description: REST API for managing insurance claims in this Parasol Insurance workspace.
+  tags:
+    - rest
+    - quarkus
+    - parasol
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: ai-modernization-team
+  definition: |
+    openapi: "3.0.0"
+    info:
+      title: Parasol Insurance Claims API
+      version: "1.0"
+      description: |
+        REST API for managing insurance claims at Parasol Insurance.
+        Built with Quarkus on Red Hat OpenShift.
+    paths:
+      /api/claims:
+        get:
+          summary: List all claims
+          description: Returns a list of all insurance claims
+          responses:
+            '200':
+              description: A JSON array of claims
+      /api/claims/{claimNumber}:
+        get:
+          summary: Get a claim by number
+          description: Returns a single claim by its claim number
+          parameters:
+            - name: claimNumber
+              in: path
+              required: true
+              schema:
+                type: string
+          responses:
+            '200':
+              description: The claim object
+            '404':
+              description: Claim not found
