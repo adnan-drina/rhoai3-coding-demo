@@ -125,7 +125,12 @@ spec:
             -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
           APP_TARGET_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
             -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
+          # Prefer the in-flight operation revision: this Job runs as a Sync
+          # hook, and status.sync.revision still holds the PREVIOUS revision
+          # until the operation completes (regenerating a stale catalog).
           APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
+            -o jsonpath='{.status.operationState.operation.sync.revision}' 2>/dev/null || true)
+          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
             -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
           [ -z "$APP_REPO_URL" ] && APP_REPO_URL="https://github.com/adnan-drina/rhoai3-coding-demo.git"
           [ -z "$APP_TARGET_REVISION" ] && APP_TARGET_REVISION="main"
