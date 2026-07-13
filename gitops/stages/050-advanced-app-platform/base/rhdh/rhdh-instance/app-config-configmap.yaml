@@ -49,7 +49,10 @@ data:
             - name: local-cluster
               url: https://kubernetes.default.svc
               authProvider: serviceAccount
-              skipTLSVerify: true
+              # In-cluster CA (skipTLSVerify is not honored on the plugin's
+              # fetch path — observed live: FETCH_ERROR "self-signed
+              # certificate in certificate chain" on every object query).
+              caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
               serviceAccountToken: ${RHDH_KUBERNETES_SA_TOKEN}
       customResources:
         - group: tekton.dev
