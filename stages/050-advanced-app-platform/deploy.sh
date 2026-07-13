@@ -136,11 +136,11 @@ seed_coolstore() {
   log_info "Waiting for the app-platform-push pipeline (Argo sync)…"
   local i
   for i in $(seq 1 60); do
-    oc get pipeline app-platform-push -n app-platform-build >/dev/null 2>&1 \
-      && oc get task tag-latest -n app-platform-build >/dev/null 2>&1 && break
+    oc get pipeline.tekton.dev app-platform-push -n app-platform-build >/dev/null 2>&1 \
+      && oc get task.tekton.dev tag-latest -n app-platform-build >/dev/null 2>&1 && break
     sleep 10
   done
-  if ! oc get task tag-latest -n app-platform-build >/dev/null 2>&1; then
+  if ! oc get task.tekton.dev tag-latest -n app-platform-build >/dev/null 2>&1; then
     log_warn "pipeline/tasks not present yet — re-run deploy.sh after the Application syncs"
     return 1
   fi
