@@ -150,8 +150,14 @@ spec:
           echo "Fetching catalog template..."
           curl -fsSL "${SOURCE_CATALOG_URL}" -o /tmp/catalog-template.yaml
 
+          # Coolstore dev route (deployed-app link on the inventory component);
+          # tolerate absence — the wave-21 Route may not exist on first sync.
+          COOLSTORE_HOST=$(oc get route coolstore-inventory-service -n coolstore-dev \
+            -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          COOLSTORE_URL="https://${COOLSTORE_HOST:-coolstore-pending.local}"
+
           echo "Generating runtime catalog..."
-          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" <<'PY'
+          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" <<'PY'
           import pathlib
           import sys
 
@@ -160,8 +166,11 @@ spec:
           devspaces_url = sys.argv[3].rstrip("/")
           rhdh_url = sys.argv[4].rstrip("/")
           revision = sys.argv[5]
+          coolstore_url = sys.argv[6].rstrip("/")
 
           content = source.read_text()
+          content = content.replace(
+              "https://coolstore-inventory-route.placeholder.example.com", coolstore_url)
           devspaces_links = {
               "https://devspaces.placeholder.example.com": devspaces_url,
               "https://devspaces-getting-started.placeholder.example.com": (

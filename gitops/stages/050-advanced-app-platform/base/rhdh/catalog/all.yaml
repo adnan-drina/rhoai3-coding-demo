@@ -140,6 +140,9 @@ metadata:
     backstage.io/source-location: url:https://github.com/adnan-drina/coolstore-inventory-service
     backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
     github.com/project-slug: adnan-drina/coolstore-inventory-service
+    backstage.io/kubernetes-id: coolstore-inventory-service
+    janus-idp.io/tekton: coolstore-inventory-service
+    argocd/app-name: 050-advanced-app-platform
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/gitops-path: gitops/overlays/dev
@@ -150,6 +153,9 @@ metadata:
     - url: https://github.com/adnan-drina/coolstore-inventory-service
       title: Source Repo
       icon: github
+    - url: "https://coolstore-inventory-route.placeholder.example.com"
+      title: Deployed App (dev)
+      icon: web
     - url: "https://devspaces-inventory.placeholder.example.com"
       title: Dev Spaces
       icon: docs

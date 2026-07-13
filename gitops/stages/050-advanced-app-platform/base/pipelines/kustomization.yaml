@@ -25,6 +25,7 @@ resources:
   - build/task-resolve-image-registry.yaml
   - build/task-maven-build.yaml
   - build/task-sonar-scan.yaml
+  - build/task-tag-latest.yaml
   - build/pipeline-app-push.yaml
   # Webhook triggers (wave 13) + Route (wave 14)
   - build/triggers.yaml

@@ -13,3 +13,4 @@ resources:
   - ../../base/pipelines
   - ../../base/sonarqube
   - ../../base/rhdh
+  - ../../base/coolstore

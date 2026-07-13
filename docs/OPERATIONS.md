@@ -843,6 +843,25 @@ oc get deployment -n openshift-mta
 oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
+### Stage 050 — Coolstore dev environment (coolstore component)
+
+The `coolstore` component keeps a running `coolstore-inventory-service` in
+`coolstore-dev` so the demo starts from a deployed brownfield system. The
+Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared
+pipeline's `tag-latest` task republishes that tag on every green run.
+`deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions
+`quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on
+a fresh cluster, the seed run has not completed yet — re-run
+`stages/050-advanced-app-platform/deploy.sh`.
+
+Useful checks:
+
+```bash
+oc get pipelinerun -n app-platform-build -l backstage.io/kubernetes-id=coolstore-inventory-service
+oc get deployment,route -n coolstore-dev
+curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}')/q/health/ready
+```
+
 ### Stage 050 — Developer Hub (rhdh component)
 
 The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the MTA Keycloak from the `migiq` component of the same stage (a standalone platform RHBK remains an open item in the restructure plan).

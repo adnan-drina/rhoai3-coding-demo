@@ -1,0 +1,40 @@
+# Retags the freshly pushed revision image as :latest so long-running
+# deployments (e.g. the coolstore-dev environment) can pin a stable tag
+# that every successful pipeline run updates. Skips gracefully when no
+# registry credentials are provisioned (internal-registry fallback path,
+# where the pipeline SA pushes but this copy step has no authfile).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: tag-latest
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  params:
+    - name: IMAGE
+      type: string
+      description: Revision-tagged image just pushed (registry/name:sha)
+  workspaces:
+    - name: dockerconfig
+      description: Registry credentials (docker-registry secret)
+  steps:
+    - name: retag
+      image: registry.redhat.io/rhel9/skopeo:latest
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        IMAGE="$(params.IMAGE)"
+        LATEST="${IMAGE%:*}:latest"
+        AUTHFILE="$(workspaces.dockerconfig.path)/.dockerconfigjson"
+
+        if [ ! -s "${AUTHFILE}" ]; then
+          echo "No registry credentials in dockerconfig workspace; skipping :latest retag."
+          exit 0
+        fi
+
+        echo "Retagging ${IMAGE} -> ${LATEST}"
+        skopeo copy --authfile "${AUTHFILE}" \
+          "docker://${IMAGE}" "docker://${LATEST}"
+        echo "Retag complete."

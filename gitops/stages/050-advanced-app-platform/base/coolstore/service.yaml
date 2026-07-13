@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: coolstore-inventory-service
+  namespace: coolstore-dev
+  labels:
+    app.kubernetes.io/name: coolstore-inventory-service
+    app.kubernetes.io/component: inventory
+    app.kubernetes.io/part-of: coolstore
+    backstage.io/kubernetes-id: coolstore-inventory-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+spec:
+  selector:
+    app.kubernetes.io/name: coolstore-inventory-service
+    app.kubernetes.io/component: inventory
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

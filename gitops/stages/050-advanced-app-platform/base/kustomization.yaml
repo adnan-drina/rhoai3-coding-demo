@@ -10,6 +10,8 @@ kind: Kustomization
 #   rhdh       — Developer Hub portal + runtime catalog + OIDC jobs
 #   migiq      — MTA + Developer Lightspeed migration stack (single-rung;
 #                use overlays/slim to deploy the platform without it)
+#   coolstore  — deployed Coolstore Inventory Service dev environment
+#                (image seeded by deploy.sh via the shared pipeline)
 # Identity note: RHDH OIDC brokers through the migiq component's MTA
 # Keycloak; the PostSync jobs wait/retry, so ordering resolves within one
 # Application sync. A standalone platform RHBK remains an open refinement
@@ -21,3 +23,4 @@ resources:
   - sonarqube
   - rhdh
   - migiq
+  - coolstore

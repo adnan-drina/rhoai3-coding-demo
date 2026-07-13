@@ -1,0 +1,21 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: coolstore-inventory-service
+  namespace: coolstore-dev
+  labels:
+    app.kubernetes.io/name: coolstore-inventory-service
+    app.kubernetes.io/component: inventory
+    app.kubernetes.io/part-of: coolstore
+    backstage.io/kubernetes-id: coolstore-inventory-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+spec:
+  to:
+    kind: Service
+    name: coolstore-inventory-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

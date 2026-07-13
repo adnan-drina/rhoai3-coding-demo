@@ -1,0 +1,70 @@
+# Deployed Coolstore Inventory Service (dev environment).
+# Image: pushed by the shared pipeline as :<sha> and retagged :latest by
+# the tag-latest task; imagePullPolicy Always picks up the newest :latest
+# on pod restart. Until the first successful pipeline run the tag does not
+# exist — deploy.sh seeds that run; ignore-healthcheck keeps the brief
+# ImagePullBackOff window from degrading the Application health.
+# The backstage.io/kubernetes-id label feeds the RHDH Kubernetes/Topology
+# plugins; app.kubernetes.io/part-of groups the topology view.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coolstore-inventory-service
+  namespace: coolstore-dev
+  labels:
+    app.kubernetes.io/name: coolstore-inventory-service
+    app.kubernetes.io/component: inventory
+    app.kubernetes.io/part-of: coolstore
+    app.openshift.io/runtime: quarkus
+    backstage.io/kubernetes-id: coolstore-inventory-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "21"
+    argocd.argoproj.io/ignore-healthcheck: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coolstore-inventory-service
+      app.kubernetes.io/component: inventory
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: coolstore-inventory-service
+        app.kubernetes.io/component: inventory
+        app.kubernetes.io/part-of: coolstore
+        backstage.io/kubernetes-id: coolstore-inventory-service
+    spec:
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: coolstore-inventory-service
+          image: quay.io/rhoai3-coding-demo/coolstore-inventory-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

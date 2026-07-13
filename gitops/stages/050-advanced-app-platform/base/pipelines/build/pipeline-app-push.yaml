@@ -103,3 +103,14 @@ spec:
           workspace: source
         - name: dockerconfig
           workspace: dockerconfig
+    - name: tag-latest
+      runAfter:
+        - build-and-push
+      taskRef:
+        name: tag-latest
+      params:
+        - name: IMAGE
+          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
+      workspaces:
+        - name: dockerconfig
+          workspace: dockerconfig

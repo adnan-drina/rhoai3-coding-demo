@@ -55,6 +55,30 @@ check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"
 
+log_step "Coolstore dev environment (coolstore component)"
+check "coolstore-inventory-service deployment ready" \
+  "oc get deployment coolstore-inventory-service -n coolstore-dev -o jsonpath='{.status.availableReplicas}'" \
+  "1"
+COOLSTORE_ROUTE=$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+if [[ -n "$COOLSTORE_ROUTE" ]]; then
+    check_http_code "Coolstore inventory health: https://${COOLSTORE_ROUTE}/q/health/ready" \
+      "https://${COOLSTORE_ROUTE}/q/health/ready" "200"
+else
+    echo -e "${YELLOW}[WARN]${NC} coolstore-inventory-service route not found"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+COOLSTORE_GREEN_RUNS=$(oc get pipelinerun -n app-platform-build \
+  -l backstage.io/kubernetes-id=coolstore-inventory-service \
+  -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Succeeded")].status}{"\n"}{end}' 2>/dev/null \
+  | grep -c "True" || true)
+if [[ "$COOLSTORE_GREEN_RUNS" -ge 1 ]]; then
+    echo -e "${GREEN}[PASS]${NC} Successful coolstore pipeline run exists (${COOLSTORE_GREEN_RUNS} green)"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} No successful coolstore pipeline run — run stages/050-advanced-app-platform/deploy.sh to seed it"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
 log_step "RHDH Operator"
 check_csv_succeeded "rhdh-operator" "rhdh"
 

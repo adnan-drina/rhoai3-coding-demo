@@ -60,6 +60,21 @@ else
   log_info "IMAGE_REGISTRY/QUAY_* not set — pipeline uses the internal registry"
 fi
 
+# --- Coolstore dev environment: image pull secret ---
+# The coolstore component deploys quay.io/.../coolstore-inventory-service:latest;
+# auto-created quay repos are private by default, so pulls need the robot creds.
+oc get namespace coolstore-dev >/dev/null 2>&1 || oc create namespace coolstore-dev
+if [[ -n "${IMAGE_REGISTRY:-}" && -n "${QUAY_ROBOT_USER:-}" && -n "${QUAY_ROBOT_TOKEN:-}" ]]; then
+  oc create secret docker-registry quay-pull-secret -n coolstore-dev \
+    --docker-server="${IMAGE_REGISTRY%%/*}" \
+    --docker-username="${QUAY_ROBOT_USER}" \
+    --docker-password="${QUAY_ROBOT_TOKEN}" \
+    --dry-run=client -o yaml | oc apply -f -
+  log_info "quay-pull-secret provisioned in coolstore-dev"
+else
+  log_warn "IMAGE_REGISTRY/QUAY_* not set — coolstore-dev pulls work only for public images"
+fi
+
 # --- RHDH GitHub integration (scaffolder templates publish to GitHub) ---
 oc get namespace rhdh >/dev/null 2>&1 || oc create namespace rhdh
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -74,6 +89,125 @@ else
 fi
 
 apply_stage_app "$STAGE_NAME"
+
+# --- Coolstore dev environment: seed build ---
+# The demo starts from a DEPLOYED brownfield system: the coolstore
+# component's Deployment pins :latest, which only exists after one
+# successful pipeline run. Seed it here so a green PipelineRun and a
+# running app exist before the first demo exercise.
+COOLSTORE_REPO="coolstore-inventory-service"
+COOLSTORE_REPO_URL="https://github.com/adnan-drina/${COOLSTORE_REPO}.git"
+
+seed_coolstore() {
+  log_step "Coolstore seed: golden-path topic, pipeline run, deployment"
+
+  # 1. Golden-path topic — the EventListener CEL filter only admits pushes
+  #    from repos carrying it, so future coolstore pushes rebuild :latest.
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    local topics
+    topics=$(curl -fsS -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/adnan-drina/${COOLSTORE_REPO}/topics" \
+      | python3 -c "import sys,json; print(' '.join(json.load(sys.stdin).get('names',[])))" 2>/dev/null || echo "")
+    if [[ " ${topics} " != *" rhoai3-golden-path "* ]]; then
+      local names_json
+      names_json=$(python3 -c "import json,sys; print(json.dumps({'names': sorted(set(sys.argv[1].split() + ['rhoai3-golden-path']))}))" "${topics}")
+      curl -fsS -X PUT -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/adnan-drina/${COOLSTORE_REPO}/topics" \
+        -d "${names_json}" >/dev/null \
+        && log_info "rhoai3-golden-path topic set on ${COOLSTORE_REPO}" \
+        || log_warn "could not set repo topic — webhook pushes will not trigger builds"
+    else
+      log_info "rhoai3-golden-path topic already present on ${COOLSTORE_REPO}"
+    fi
+  else
+    log_warn "GITHUB_TOKEN not set — skipping repo topic; set it so pushes trigger builds"
+  fi
+
+  # 2. Skip the seed when the environment is already running.
+  if [[ "$(oc get deployment coolstore-inventory-service -n coolstore-dev \
+      -o jsonpath='{.status.availableReplicas}' 2>/dev/null)" == "1" ]]; then
+    log_info "coolstore-inventory-service already Available — skipping seed run"
+    return 0
+  fi
+
+  # 3. Wait for Argo to materialize the shared pipeline.
+  log_info "Waiting for the app-platform-push pipeline (Argo sync)…"
+  local i
+  for i in $(seq 1 60); do
+    oc get pipeline app-platform-push -n app-platform-build >/dev/null 2>&1 \
+      && oc get task tag-latest -n app-platform-build >/dev/null 2>&1 && break
+    sleep 10
+  done
+  if ! oc get task tag-latest -n app-platform-build >/dev/null 2>&1; then
+    log_warn "pipeline/tasks not present yet — re-run deploy.sh after the Application syncs"
+    return 1
+  fi
+
+  # 4. Seed PipelineRun at the repo HEAD (labels feed the RHDH Tekton tab).
+  local head_sha
+  head_sha=$(curl -fsS ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/adnan-drina/${COOLSTORE_REPO}/commits/main" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+  log_info "Seeding pipeline run for ${COOLSTORE_REPO}@${head_sha:0:7}"
+
+  local run_name
+  run_name=$(oc create -f - -o jsonpath='{.metadata.name}' <<EOF
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: ${COOLSTORE_REPO}-seed-
+  namespace: app-platform-build
+  labels:
+    backstage.io/kubernetes-id: ${COOLSTORE_REPO}
+    app.kubernetes.io/name: ${COOLSTORE_REPO}
+spec:
+  pipelineRef:
+    name: app-platform-push
+  params:
+    - name: repo-url
+      value: ${COOLSTORE_REPO_URL}
+    - name: repo-name
+      value: ${COOLSTORE_REPO}
+    - name: revision
+      value: ${head_sha}
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
+    - name: basic-auth
+      secret:
+        secretName: github-basic-auth
+    - name: dockerconfig
+      secret:
+        secretName: quay-push-secret
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: maven-cache
+EOF
+)
+  log_info "PipelineRun ${run_name} created — waiting for it to succeed (cold cache can take ~15 min)"
+  if ! oc wait pipelinerun "${run_name}" -n app-platform-build \
+      --for=condition=Succeeded --timeout=1800s; then
+    log_error "Seed PipelineRun did not succeed. Inspect it with:"
+    echo "  tkn pipelinerun logs ${run_name} -n app-platform-build  # or the Pipelines console view"
+    return 1
+  fi
+  log_info "Seed PipelineRun succeeded — :latest image published"
+
+  # 5. Roll the deployment onto the fresh image and wait for readiness.
+  oc rollout restart deployment/coolstore-inventory-service -n coolstore-dev
+  oc rollout status deployment/coolstore-inventory-service -n coolstore-dev --timeout=300s
+  log_info "coolstore-inventory-service is running: https://$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}')"
+}
+
+seed_coolstore || log_warn "Coolstore seed incomplete — see messages above; re-run deploy.sh to retry"
 
 log_info "ArgoCD handles orchestration via sync waves (per component):"
 log_info "  devspaces:   operator -> CheCluster -> workspaces -> MaaS keys"

@@ -75,9 +75,18 @@ organized as five components under
   admin password, provisions the scanner token, and sets a custom default
   quality gate that fails on any new issue.
 - **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via
-  the MigIQ Keycloak, runtime-generated catalog, TechDocs, ConsoleLink.
+  the MigIQ Keycloak, runtime-generated catalog, TechDocs, ConsoleLink, and
+  the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab,
+  Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
 - **migiq** — Migration Toolkit for Applications with Developer Lightspeed
   wired to MaaS, plus the agentic migration workspace.
+- **coolstore** — the deployed Coolstore dev environment
+  (`coolstore-inventory-service` in `coolstore-dev`): the demo starts from a
+  running brownfield system, not an empty cluster. The Deployment pins the
+  `:latest` image that every successful pipeline run republishes
+  (`tag-latest` task); `deploy.sh` seeds the first green run. The brownfield
+  `mca-coolstore` monolith itself stays source-only — it is the MTA analysis
+  target, not a workload this pipeline can build.
 
 The `overlays/slim` variant deploys the platform without MigIQ (usable once
 the standalone platform RHBK lands).
@@ -222,7 +231,12 @@ Manifests: [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages
 
 Flow dependency: Stage 040 (Governed Models-as-a-Service). `deploy.sh`
 provisions the build-pipeline secrets from `.env` (`GITHUB_WEBHOOK_SECRET`,
-`GITHUB_TOKEN`) before applying the Application.
+`GITHUB_TOKEN`) before applying the Application, then seeds the coolstore
+dev environment: it sets the `rhoai3-golden-path` topic on
+`coolstore-inventory-service`, creates a seed PipelineRun, waits for it to
+go green (cold cache ~15 min), and rolls the `coolstore-dev` deployment
+onto the fresh `:latest` image. Re-running `deploy.sh` skips the seed when
+the deployment is already Available.
 
 Validation notes: `validate.sh` treats a missing Securesign instance as a
 warning, not a failure — it arrives with the implementation phase. Stages
