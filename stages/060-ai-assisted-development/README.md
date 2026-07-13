@@ -5,11 +5,13 @@
 AI-assisted development is useful when it appears where developers already work: IDEs, terminals, tests, and review workflows. The enterprise concern is how to offer that experience without personal provider keys, unmanaged plugins, or local machine drift.
 
 Stage 060 is the first rung of the maturity ladder, and it runs entirely on
-platform rails: the developer **enters through the portal** (the
-`assisted-quarkus-feature` golden-path template provisions a personal copy of
-the Parasol Insurance application), codes with Continue in a governed Dev
-Spaces workspace, and **exits through the pipeline** (every push to `main`
-runs the shared build with a SonarQube gate that fails on any new issue).
+platform rails: the developer **enters through the portal catalog** — the
+`coolstore-inventory-service` component is the single entry point, a
+deployed brownfield Quarkus service discovered in Developer Hub, with links
+straight into its governed Dev Spaces workspace — extends the service with
+Continue ("vibe coding" a new component), and **exits through the
+pipeline** (every push to `main` runs coolstore's own `app-push` pipeline
+in `coolstore-dev`, with a SonarQube gate that fails on any new issue).
 One-shot prompting shows its power — and its limits, which motivate Stage
 070.
 

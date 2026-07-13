@@ -857,7 +857,7 @@ a fresh cluster, the seed run has not completed yet — re-run
 Useful checks:
 
 ```bash
-oc get pipelinerun -n app-platform-build -l backstage.io/kubernetes-id=coolstore-inventory-service
+oc get pipelinerun -n coolstore-dev -l backstage.io/kubernetes-id=coolstore-inventory-service
 oc get deployment,route -n coolstore-dev
 curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o jsonpath='{.spec.host}')/q/health/ready
 ```

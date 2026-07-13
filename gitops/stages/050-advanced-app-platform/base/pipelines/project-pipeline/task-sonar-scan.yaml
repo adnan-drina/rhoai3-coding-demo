@@ -4,15 +4,15 @@
 # therefore the pipeline — fails when the gate fails. The custom platform
 # gate fails on any new issue, which makes the demo's fail-forward moment
 # deterministic.
-# Credentials come from the sonarqube-credentials Secret provisioned by the
-# SonarQube PostSync configuration job.
+# Credentials come from the sonarqube-credentials Secret that the SonarQube
+# PostSync configuration job provisions into every namespace labeled
+# rhoai3.redhat.com/pipeline-project=true.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: sonar-scan
-  namespace: app-platform-build
   annotations:
-    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   params:
     - name: SONAR_PROJECT_KEY

@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reusable per-project delivery pipeline (clone -> maven -> SonarQube gate
+# -> image build/push -> :latest retag). Every project namespace gets its
+# OWN pipeline instantiated from this one template — there is no shared
+# central pipeline. Instantiate with a namespace transformer:
+#
+#   namespace: <project-namespace>
+#   resources:
+#     - ../../pipelines/project-pipeline
+#
+# Expected per-namespace provisioning (deploy.sh / SonarQube PostSync job,
+# driven by the rhoai3.redhat.com/pipeline-project=true namespace label):
+# github-basic-auth and quay-push-secret Secrets, app-platform-build-config
+# ConfigMap (IMAGE_REGISTRY), sonarqube-credentials Secret. The OpenShift
+# Pipelines operator provides the `pipeline` ServiceAccount per namespace.
+# PipelineRuns are created here by the shared webhook dispatcher in
+# app-platform-build (single GitHub App endpoint).
+
+resources:
+  - pvc-maven-cache.yaml
+  - rbac-build-config.yaml
+  - task-resolve-image-registry.yaml
+  - task-maven-build.yaml
+  - task-sonar-scan.yaml
+  - task-tag-latest.yaml
+  - pipeline.yaml

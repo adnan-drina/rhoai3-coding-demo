@@ -152,3 +152,5 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [ ] **Stage 070 demo beat** — pipeline/quality-gate fails, skills-guided agent fixes it (showroom module 2 loop adapted to OpenCode + skills).
 - [ ] **Stage 060 workspace addition** — Dependency Analytics extension in the editor policy (showroom module 5 part 1).
 - [ ] **AI-enhanced application development (future stage candidate)** — Quarkus + LangChain4j service consuming MaaS endpoints on the same golden path (showroom module 7 pattern). Implementation plan: docs/PLAN-implementation-wave-2.md (workstream D; introduces the service-identity MaaSSubscription persona).
+
+- [ ] **Stage 080 RHDH entry point (deferred)** — reintroduce a golden-path template (self-service per-run copy of `migiq-spring-boot-sample` + catalog registration) once the MigIQ migration flow is settled; until then MTA is the stage entry point (2026-07-13 decision).

@@ -67,10 +67,13 @@ organized as five components under
   provisioning, and the interim `agentic-coolstore` workspace.
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted
   Artifact Signer (channel `stable-v1.4`) operators, the InstallPlan approval
-  hook for Stage 040 co-tenancy, and the shared `app-platform-push` pipeline
-  in `app-platform-build`: clone → Maven build → SonarQube gate → image
-  build, with a GitHub EventListener that derives the repository from the
-  webhook payload so one pipeline serves every golden-path repo.
+  hook for Stage 040 co-tenancy, and the **per-project pipeline model**:
+  every project namespace runs its own `app-push` pipeline (clone → Maven
+  build → SonarQube gate → image build → `:latest` retag) instantiated from
+  the `pipelines/project-pipeline` kustomize template. `app-platform-build`
+  hosts only the webhook dispatcher (the GitHub App has a single endpoint)
+  and the `project-provisioner` CronJob that reconciles build credentials
+  into every namespace labeled `rhoai3.redhat.com/pipeline-project=true`.
 - **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the
   admin password, provisions the scanner token, and sets a custom default
   quality gate that fails on any new issue.
@@ -91,18 +94,24 @@ organized as five components under
 The `overlays/slim` variant deploys the platform without MigIQ (usable once
 the standalone platform RHBK lands).
 
-**Golden-path templates** (Phase 3, in `base/rhdh/templates/`): each copies
-a golden repository into a fresh per-run GitHub repo (topic
-`rhoai3-golden-path`), adds a templated `catalog-info.yaml`, and registers
-the component — verified against the Backstage GitHub scaffolder module
-(`publish:github` with `protectDefaultBranch: false` so the demo can push to
-`main`). Webhooks are not created per repo: a GitHub App installed on all
-repositories delivers push events to the shared EventListener.
+**Developer entry points per stage:**
 
-- `assisted-quarkus-feature` (stage 060) — copies `parasol-insurance`.
-- `agentic-quarkus-scaffold` (stage 070) — copies the corporate Quarkus
-  scaffold (AGENTS.md + OpenCode skills + specs for spec-driven development).
-- `autonomous-migration` (stage 080) — copies `migiq-spring-boot-sample`.
+- **Stage 060** enters through the **catalog**, not a template: the
+  `coolstore-inventory-service` component links straight into the governed
+  Dev Spaces workspace; pushes to its repo run coolstore's own pipeline in
+  `coolstore-dev`.
+- **Stage 070** enters through the one **golden-path template**
+  (`agentic-quarkus-scaffold`, in `base/rhdh/templates/`): it scaffolds a
+  fresh corporate-standard Quarkus app into a per-run GitHub repo (topic
+  `rhoai3-golden-path`) with its own namespace and pipeline instance —
+  verified against the Backstage GitHub scaffolder module (`publish:github`
+  with `protectDefaultBranch: false` so the demo can push to `main`).
+- **Stage 080** enters through **MTA directly** for now (RHDH template
+  deferred until the MigIQ migration flow is settled).
+
+Webhooks are not created per repo: a GitHub App installed on all
+repositories delivers push events to the shared dispatcher EventListener,
+which routes each repository to its project's own pipeline.
 
 ## External Setup (one-time, outside the cluster)
 

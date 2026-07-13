@@ -1,15 +1,13 @@
 # Retags the freshly pushed revision image as :latest so long-running
-# deployments (e.g. the coolstore-dev environment) can pin a stable tag
-# that every successful pipeline run updates. Skips gracefully when no
-# registry credentials are provisioned (internal-registry fallback path,
-# where the pipeline SA pushes but this copy step has no authfile).
+# deployments can pin a stable tag that every successful pipeline run
+# updates. Skips gracefully when no registry credentials are provisioned
+# (internal-registry fallback path).
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: tag-latest
-  namespace: app-platform-build
   annotations:
-    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   params:
     - name: IMAGE

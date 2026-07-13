@@ -1,20 +1,14 @@
-# Shared push pipeline for golden-path application repositories.
-# Generic by design: the repository URL, name, and revision arrive from the
-# GitHub webhook payload, so one pipeline serves every repo the portal
-# templates provision. Stages: clone -> maven build -> SonarQube quality
-# gate -> image build and push.
-#
-# Image registry: resolved at run time from the app-platform-build-config
-# ConfigMap (IMAGE_REGISTRY key, provisioned by deploy.sh from .env). Falls
-# back to the internal OpenShift registry when unset — no external
-# credentials needed for the default path. TLS verification stays enabled.
+# Per-project delivery pipeline (instantiated from the project-pipeline
+# template into each project namespace). Stages: clone -> maven build ->
+# SonarQube quality gate -> image build and push -> :latest retag.
+# PipelineRuns are created by the shared webhook dispatcher (single GitHub
+# App endpoint) in this pipeline's own namespace.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: app-platform-push
-  namespace: app-platform-build
+  name: app-push
   annotations:
-    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-wave: "20"
 spec:
   params:
     - name: repo-url

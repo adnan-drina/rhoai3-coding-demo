@@ -41,38 +41,31 @@ else
   log_info "GITHUB_TOKEN not set — github-basic-auth left empty (public repos only)"
 fi
 
+# Source-of-truth pipeline credentials live in app-platform-build; the
+# project-provisioner CronJob copies them into every namespace labeled
+# rhoai3.redhat.com/pipeline-project=true (each project runs its own
+# pipeline instantiated from pipelines/project-pipeline).
 if [[ -n "${IMAGE_REGISTRY:-}" && -n "${QUAY_ROBOT_USER:-}" && -n "${QUAY_ROBOT_TOKEN:-}" ]]; then
   REGISTRY_HOST="${IMAGE_REGISTRY%%/*}"
-  oc create secret docker-registry quay-push-secret -n app-platform-build \
-    --docker-server="${REGISTRY_HOST}" \
-    --docker-username="${QUAY_ROBOT_USER}" \
-    --docker-password="${QUAY_ROBOT_TOKEN}" \
-    --dry-run=client -o yaml | oc apply -f -
+  for quay_secret in quay-push-secret quay-pull-secret; do
+    oc create secret docker-registry "$quay_secret" -n app-platform-build \
+      --docker-server="${REGISTRY_HOST}" \
+      --docker-username="${QUAY_ROBOT_USER}" \
+      --docker-password="${QUAY_ROBOT_TOKEN}" \
+      --dry-run=client -o yaml | oc apply -f -
+  done
   oc create configmap app-platform-build-config -n app-platform-build \
     --from-literal=IMAGE_REGISTRY="${IMAGE_REGISTRY}" \
     --dry-run=client -o yaml | oc apply -f -
-  log_info "quay push secret + IMAGE_REGISTRY=${IMAGE_REGISTRY} provisioned"
+  log_info "quay push/pull secrets + IMAGE_REGISTRY=${IMAGE_REGISTRY} provisioned (source)"
 else
   # Empty secret keeps the PipelineRun workspace binding satisfied; the
   # pipeline falls back to the internal OpenShift registry.
-  oc get secret quay-push-secret -n app-platform-build >/dev/null 2>&1 || \
-    oc create secret generic quay-push-secret -n app-platform-build
-  log_info "IMAGE_REGISTRY/QUAY_* not set — pipeline uses the internal registry"
-fi
-
-# --- Coolstore dev environment: image pull secret ---
-# The coolstore component deploys quay.io/.../coolstore-inventory-service:latest;
-# auto-created quay repos are private by default, so pulls need the robot creds.
-oc get namespace coolstore-dev >/dev/null 2>&1 || oc create namespace coolstore-dev
-if [[ -n "${IMAGE_REGISTRY:-}" && -n "${QUAY_ROBOT_USER:-}" && -n "${QUAY_ROBOT_TOKEN:-}" ]]; then
-  oc create secret docker-registry quay-pull-secret -n coolstore-dev \
-    --docker-server="${IMAGE_REGISTRY%%/*}" \
-    --docker-username="${QUAY_ROBOT_USER}" \
-    --docker-password="${QUAY_ROBOT_TOKEN}" \
-    --dry-run=client -o yaml | oc apply -f -
-  log_info "quay-pull-secret provisioned in coolstore-dev"
-else
-  log_warn "IMAGE_REGISTRY/QUAY_* not set — coolstore-dev pulls work only for public images"
+  for quay_secret in quay-push-secret quay-pull-secret; do
+    oc get secret "$quay_secret" -n app-platform-build >/dev/null 2>&1 || \
+      oc create secret generic "$quay_secret" -n app-platform-build
+  done
+  log_info "IMAGE_REGISTRY/QUAY_* not set — pipelines use the internal registry"
 fi
 
 # --- RHDH GitHub integration (scaffolder templates publish to GitHub) ---
@@ -132,17 +125,31 @@ seed_coolstore() {
     return 0
   fi
 
-  # 3. Wait for Argo to materialize the shared pipeline.
-  log_info "Waiting for the app-platform-push pipeline (Argo sync)…"
+  # 3. Wait for Argo to materialize coolstore's own pipeline instance.
+  log_info "Waiting for the coolstore-dev app-push pipeline (Argo sync)…"
   local i
   for i in $(seq 1 60); do
-    oc get pipeline.tekton.dev app-platform-push -n app-platform-build >/dev/null 2>&1 \
-      && oc get task.tekton.dev tag-latest -n app-platform-build >/dev/null 2>&1 && break
+    oc get pipeline.tekton.dev app-push -n coolstore-dev >/dev/null 2>&1 \
+      && oc get task.tekton.dev tag-latest -n coolstore-dev >/dev/null 2>&1 && break
     sleep 10
   done
-  if ! oc get task.tekton.dev tag-latest -n app-platform-build >/dev/null 2>&1; then
+  if ! oc get task.tekton.dev tag-latest -n coolstore-dev >/dev/null 2>&1; then
     log_warn "pipeline/tasks not present yet — re-run deploy.sh after the Application syncs"
     return 1
+  fi
+
+  # 3b. Distribute pipeline credentials into project namespaces NOW (the
+  # CronJob reconciles every 2 minutes; the seed needs them immediately).
+  log_info "Running project-provisioner to distribute pipeline credentials…"
+  oc delete job project-provisioner-seed -n app-platform-build --ignore-not-found >/dev/null 2>&1
+  if oc create job project-provisioner-seed -n app-platform-build \
+      --from=cronjob/project-provisioner >/dev/null 2>&1; then
+    oc wait job/project-provisioner-seed -n app-platform-build \
+      --for=condition=Complete --timeout=180s >/dev/null \
+      && log_info "project credentials distributed" \
+      || log_warn "project-provisioner run did not complete — the CronJob retries every 2 minutes"
+  else
+    log_warn "could not trigger project-provisioner — the CronJob reconciles on schedule"
   fi
 
   # 4. Seed PipelineRun at the repo HEAD (labels feed the RHDH Tekton tab).
@@ -159,13 +166,13 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: ${COOLSTORE_REPO}-seed-
-  namespace: app-platform-build
+  namespace: coolstore-dev
   labels:
     backstage.io/kubernetes-id: ${COOLSTORE_REPO}
     app.kubernetes.io/name: ${COOLSTORE_REPO}
 spec:
   pipelineRef:
-    name: app-platform-push
+    name: app-push
   params:
     - name: repo-url
       value: ${COOLSTORE_REPO_URL}
@@ -193,10 +200,10 @@ spec:
 EOF
 )
   log_info "PipelineRun ${run_name} created — waiting for it to succeed (cold cache can take ~15 min)"
-  if ! oc wait pipelinerun "${run_name}" -n app-platform-build \
+  if ! oc wait pipelinerun "${run_name}" -n coolstore-dev \
       --for=condition=Succeeded --timeout=1800s; then
     log_error "Seed PipelineRun did not succeed. Inspect it with:"
-    echo "  tkn pipelinerun logs ${run_name} -n app-platform-build  # or the Pipelines console view"
+    echo "  tkn pipelinerun logs ${run_name} -n coolstore-dev  # or the Pipelines console view"
     return 1
   fi
   log_info "Seed PipelineRun succeeded — :latest image published"

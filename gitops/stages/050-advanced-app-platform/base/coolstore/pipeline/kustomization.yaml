@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Coolstore's own delivery pipeline: the project-pipeline template
+# instantiated into coolstore-dev. The shared webhook dispatcher creates
+# PipelineRuns here for pushes to coolstore-inventory-service.
+
+namespace: coolstore-dev
+
+resources:
+  - ../../pipelines/project-pipeline
+
+# The namespace transformer does not fill ServiceAccount subject namespaces
+# left unset in the template — pin it to this instance's namespace.
+patches:
+  - target:
+      kind: RoleBinding
+      name: pipeline-read-build-config
+    patch: |-
+      - op: replace
+        path: /subjects/0/namespace
+        value: coolstore-dev

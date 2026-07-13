@@ -1,0 +1,106 @@
+# Reconciles per-project pipeline credentials: copies the source Secrets
+# and registry ConfigMap from app-platform-build (written there by
+# deploy.sh and the SonarQube PostSync job) into every namespace labeled
+# rhoai3.redhat.com/pipeline-project=true. Runs every 2 minutes so
+# namespaces scaffolded by the stage 070 golden-path template become
+# build-ready without a platform redeploy; deploy.sh also triggers one
+# immediate run before seeding coolstore.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: project-provisioner
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: project-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: project-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: project-provisioner
+    namespace: app-platform-build
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: project-provisioner
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: project-provisioner
+          containers:
+            - name: provision
+              image: registry.redhat.io/openshift4/ose-cli:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  SOURCE_NS="app-platform-build"
+                  SECRETS="github-basic-auth quay-push-secret quay-pull-secret sonarqube-credentials"
+                  CONFIGMAPS="app-platform-build-config"
+
+                  NAMESPACES=$(oc get namespaces \
+                    -l rhoai3.redhat.com/pipeline-project=true \
+                    -o jsonpath='{.items[*].metadata.name}')
+                  if [ -z "${NAMESPACES}" ]; then
+                    echo "No project namespaces labeled rhoai3.redhat.com/pipeline-project=true"
+                    exit 0
+                  fi
+
+                  copy() {  # <kind> <name> <target-ns>
+                    if ! oc get "$1" "$2" -n "${SOURCE_NS}" >/dev/null 2>&1; then
+                      echo "  source $1/$2 missing in ${SOURCE_NS} — skipping"
+                      return 0
+                    fi
+                    oc get "$1" "$2" -n "${SOURCE_NS}" -o json \
+                      | python3 -c '
+                  import json, sys
+                  o = json.load(sys.stdin)
+                  o["metadata"] = {"name": o["metadata"]["name"], "namespace": sys.argv[1]}
+                  print(json.dumps(o))' "$3" \
+                      | oc apply -f - >/dev/null
+                    echo "  $1/$2 -> $3"
+                  }
+
+                  for NS in ${NAMESPACES}; do
+                    [ "${NS}" = "${SOURCE_NS}" ] && continue
+                    echo "Provisioning ${NS}:"
+                    for S in ${SECRETS}; do copy secret "${S}" "${NS}"; done
+                    for C in ${CONFIGMAPS}; do copy configmap "${C}" "${NS}"; done
+                  done
+                  echo "Project provisioning complete."

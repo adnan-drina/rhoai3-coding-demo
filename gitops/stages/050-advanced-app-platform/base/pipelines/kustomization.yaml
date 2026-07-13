@@ -1,31 +1,30 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Pipelines component: trusted-delivery operators plus the shared
-# app-platform push pipeline. Every golden-path repo pushes through this
-# pipeline: clone -> maven build -> SonarQube quality gate -> image build.
-# The EventListener derives the repository from the GitHub webhook payload,
-# so one pipeline serves every template-provisioned repository.
+# Pipelines component: trusted-delivery operators plus the webhook
+# DISPATCHER for per-project pipelines. Each project namespace runs its own
+# pipeline instantiated from pipelines/project-pipeline (clone -> maven ->
+# SonarQube gate -> image build -> :latest retag); the GitHub App's single
+# webhook endpoint lands on the shared EventListener here, which routes
+# each repository's pushes to a PipelineRun in that project's namespace.
 #
 # Secrets expected in app-platform-build (provisioned by deploy.sh from
-# .env, never committed): github-webhook-secret, github-basic-auth.
-# sonarqube-credentials is provisioned by the SonarQube PostSync job.
+# .env, never committed): github-webhook-secret. Project namespaces
+# (labeled rhoai3.redhat.com/pipeline-project=true) get github-basic-auth,
+# quay-push-secret, and the registry ConfigMap from deploy.sh, and
+# sonarqube-credentials from the SonarQube PostSync job.
 
 resources:
   # Operators (Pipelines, TAS) + InstallPlan approval hook
   - operators/pipelines-subscription.yaml
   - operators/rhtas-subscription.yaml
   - operators/approve-installplans.yaml
-  # Build namespace + maven cache + persona access
+  # Dispatcher namespace + persona access
   - build/namespace.yaml
   - build/persona-rbac.yaml
   # TektonConfig hook (wave 11): allow multiple PVC workspaces per TaskRun
   - build/tektonconfig-affinity.yaml
-  # Tasks + Pipeline (wave 12: after the Pipelines operator settles)
-  - build/task-resolve-image-registry.yaml
-  - build/task-maven-build.yaml
-  - build/task-sonar-scan.yaml
-  - build/task-tag-latest.yaml
-  - build/pipeline-app-push.yaml
-  # Webhook triggers (wave 13) + Route (wave 14)
+  # Webhook dispatcher (wave 13) + Route (wave 14)
   - build/triggers.yaml
+  # Per-project credential reconciler (wave 13)
+  - build/project-provisioner.yaml

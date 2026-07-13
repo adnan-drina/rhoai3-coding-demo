@@ -1,0 +1,27 @@
+# Lets the project's pipeline SA read the registry configuration ConfigMap
+# in its own namespace (resolve-image-registry task).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pipeline-read-build-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["app-platform-build-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pipeline-read-build-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pipeline-read-build-config
+subjects:
+  - kind: ServiceAccount
+    name: pipeline

@@ -69,17 +69,13 @@ The agentic path uses an elevated MaaS key (`enterprise-rag-autorag`) stored as 
 
 ## Demo Script
 
-### Part 0 — Self-service in: your own legacy estate
+### Part 0 — The entry point: MTA
 
-**Know.** Even the migration rung starts in the portal. The
-`autonomous-migration` golden-path template provisions a personal copy of the
-legacy Spring Boot sample — so every run of this demo works on a fresh,
-isolated repository and the golden source is never touched.
-
-**Show.**
-- Developer Hub → Create → **AI-Autonomous Migration: legacy Spring Boot
-  application**. One field (e.g. `legacy-claims-alice`), run, show the new
-  repository and catalog component.
+**Know.** For this rung the entry point is MTA itself — the legacy estate
+(`migiq-spring-boot-sample`, `konveyor-ecosystem/coolstore`) lives in MTA's
+application inventory as source to analyze; it does not need to run on the
+cluster. An RHDH golden-path template for self-service migration runs is
+deferred until the MigIQ migration flow is settled (see BACKLOG).
 
 ### Part 1 — The supported path: analysis-grounded modernization
 

@@ -1,8 +1,10 @@
-# GitHub webhook triggers for the shared app-platform push pipeline.
-# The TriggerBinding derives repository URL and name from the webhook
-# payload, so every golden-path repo reuses this single EventListener —
-# templates only need to register a webhook pointing at the Route below.
-# The CEL filter accepts pushes to main and ignores branch deletions.
+# GitHub webhook DISPATCHER for per-project pipelines.
+# The GitHub App has a single webhook endpoint, so this EventListener stays
+# the shared ingress — but it owns no pipeline: each trigger routes a
+# repository's push events to a PipelineRun in that project's OWN namespace,
+# where the project-pipeline instance (Pipeline `app-push`) lives.
+# Adding a project = adding a trigger with the repo name and target
+# namespace (stage 070's golden-path template scaffolds both).
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
@@ -32,19 +34,21 @@ spec:
     - name: repo-url
     - name: repo-name
     - name: revision
+    - name: target-namespace
   resourcetemplates:
     - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
         generateName: $(tt.params.repo-name)-push-
+        namespace: $(tt.params.target-namespace)
         labels:
           # RHDH Tekton plugin discovers PipelineRuns by this label; the
-          # per-run catalog components carry the matching kubernetes-id.
+          # catalog components carry the matching kubernetes-id.
           backstage.io/kubernetes-id: $(tt.params.repo-name)
           app.kubernetes.io/name: $(tt.params.repo-name)
       spec:
         pipelineRef:
-          name: app-platform-push
+          name: app-push
         params:
           - name: repo-url
             value: $(tt.params.repo-url)
@@ -81,9 +85,11 @@ metadata:
 spec:
   serviceAccountName: pipeline
   triggers:
-    - name: push
+    - name: coolstore-inventory-service-push
       bindings:
         - ref: app-platform-push-binding
+        - name: target-namespace
+          value: coolstore-dev
       interceptors:
         - ref:
             name: github
@@ -101,15 +107,42 @@ spec:
             kind: ClusterInterceptor
           params:
             - name: filter
-              # main-branch pushes on golden-path repos only: the GitHub App
-              # is installed account-wide, so scope by the rhoai3-golden-path
-              # topic (set on golden repos by the bootstrap script and on
-              # per-run repos by the templates). Observed live: without this,
-              # pushes to unrelated repos (including this GitOps repo)
-              # triggered pipeline runs.
-              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-golden-path' in body.repository.topics)"
+              # This project's repo only: main-branch pushes, no deletions.
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && body.repository.name == 'coolstore-inventory-service'"
       template:
         ref: app-platform-push-template
+---
+# The EventListener's ServiceAccount creates PipelineRuns in project
+# namespaces (the dispatcher pattern above). Read access on pipelines lets
+# Triggers resolve the target.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: app-platform-dispatcher
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+rules:
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns"]
+    verbs: ["create"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelines"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: app-platform-dispatcher
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: app-platform-dispatcher
+subjects:
+  - kind: ServiceAccount
+    name: pipeline
+    namespace: app-platform-build
 ---
 # Route exposing the EventListener for GitHub webhooks
 apiVersion: route.openshift.io/v1

@@ -4,6 +4,10 @@ metadata:
   name: coolstore-dev
   labels:
     app.kubernetes.io/part-of: coolstore
+    # Marks this namespace for per-project pipeline provisioning: deploy.sh
+    # (github/quay secrets, registry ConfigMap) and the SonarQube PostSync
+    # job (scanner credentials) target namespaces carrying this label.
+    rhoai3.redhat.com/pipeline-project: "true"
   annotations:
     argocd.argoproj.io/sync-wave: "20"
     openshift.io/description: Deployed Coolstore dev environment for the AI development demo stages

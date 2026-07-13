@@ -26,13 +26,16 @@ check_warn "Securesign instance exists (arrives with stage implementation)" \
   "oc get securesign -A --no-headers 2>/dev/null | wc -l | tr -d ' '" \
   "1"
 
-log_step "Shared push pipeline"
-check "app-platform-push pipeline exists" \
-  "oc get pipeline app-platform-push -n app-platform-build -o jsonpath='{.metadata.name}'" \
-  "app-platform-push"
-check "EventListener exists" \
+log_step "Pipeline dispatcher + per-project pipelines"
+check "Webhook dispatcher EventListener exists" \
   "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.metadata.name}'" \
   "app-platform-listener"
+check "project-provisioner CronJob exists" \
+  "oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.metadata.name}'" \
+  "project-provisioner"
+check "coolstore-dev owns its app-push pipeline" \
+  "oc get pipeline.tekton.dev app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" \
+  "app-push"
 check_warn "GitHub webhook secret provisioned (set GITHUB_WEBHOOK_SECRET in .env)" \
   "oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
   "github-webhook-secret"
@@ -41,8 +44,11 @@ log_step "SonarQube"
 check "SonarQube deployment ready" \
   "oc get deployment sonarqube -n sonarqube -o jsonpath='{.status.readyReplicas}'" \
   "1"
-check "Quality-gate scanner credentials provisioned" \
+check "Quality-gate scanner credentials provisioned (source)" \
   "oc get secret sonarqube-credentials -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
+  "sonarqube-credentials"
+check "Scanner credentials distributed to coolstore-dev" \
+  "oc get secret sonarqube-credentials -n coolstore-dev -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
   "sonarqube-credentials"
 
 log_step "Dev Spaces (devspaces component)"
@@ -67,7 +73,7 @@ else
     echo -e "${YELLOW}[WARN]${NC} coolstore-inventory-service route not found"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
-COOLSTORE_GREEN_RUNS=$(oc get pipelinerun -n app-platform-build \
+COOLSTORE_GREEN_RUNS=$(oc get pipelinerun -n coolstore-dev \
   -l backstage.io/kubernetes-id=coolstore-inventory-service \
   -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Succeeded")].status}{"\n"}{end}' 2>/dev/null \
   | grep -c "True" || true)

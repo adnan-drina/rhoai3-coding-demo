@@ -11,6 +11,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - pipeline
   - deployment.yaml
   - service.yaml
   - route.yaml
