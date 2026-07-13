@@ -166,9 +166,9 @@ elif [[ "$RUNTIME_CATALOG" == *"feature/coolstore-inventory-service-plan"* ]] ||
      [[ "$RUNTIME_CATALOG" == *"coolstore-inventory-service/tree/feature"* ]]; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog still points coolstore-inventory-service at the retired feature branch"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/getting-started-ai-coding"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"#https://github.com/rhpds/mca-coolstore"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service"* ]]; then
+elif [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service"* ]]; then
+    # coolstore-inventory-service is the only Component (2026-07-13 catalog
+    # scope decision) — its Dev Spaces factory link is the generated one.
     echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated component-specific Dev Spaces links"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
