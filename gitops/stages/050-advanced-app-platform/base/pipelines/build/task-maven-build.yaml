@@ -25,4 +25,7 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -ex
-        mvn -B package
+        # -U retries downloads that a previous run negative-cached in the
+        # shared maven-cache PVC (observed live: a transient CDN 404 on
+        # maven.repository.redhat.com poisoned the cache for later runs).
+        mvn -B -U package
