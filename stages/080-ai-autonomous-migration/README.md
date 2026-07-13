@@ -96,8 +96,9 @@ deferred until the MigIQ migration flow is settled (see BACKLOG).
 - Stop at the human review gate: diff against the MTA findings; approve or reject. "Nothing merges on agent authority. Autonomy multiplied throughput; governance kept the control points."
 - **Business value callout:** "The backlog conversation changes from 'engineer-years' to 'agent-hours plus review time' — without a single line of source leaving your platform."
 - Push the approved migrated code to the repo's `main`: it exits through the
-  same shared pipeline and SonarQube gate as every other rung. *Self-service
-  in, trusted delivery out — even for agent-migrated legacy code.*
+  same per-project pipeline pattern and SonarQube gate as every other rung.
+  *Self-service in, trusted delivery out — even for agent-migrated legacy
+  code.*
 
 ### Part 3 — Wrap-up: the whole arc, one platform
 
@@ -105,9 +106,10 @@ deferred until the MigIQ migration flow is settled (see BACKLOG).
 one platform, not a pile of tools.
 
 **Show.**
-- Return to Developer Hub: three golden-path templates, and the catalog now
-  holds every component this session created — assisted, agentic, migrated —
-  each one clicks through to its repo and its pipeline runs.
+- Return to Developer Hub: the catalog holds the brownfield entry point
+  (`coolstore-inventory-service`, stage 060) plus every component this
+  session created — the agentic scaffold and the migrated app — each one
+  clicking through to its repo, its own namespace, and its pipeline runs.
 - Open the RHOAI MaaS usage dashboard: the assisted developer's Continue
   traffic, the agent bursts, the application's own LLM calls — every AI
   consumer on this platform is identified, metered, and governed by the same

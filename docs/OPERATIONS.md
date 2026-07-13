@@ -108,7 +108,7 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Dev Spaces, shared push pipeline + SonarQube gate, Developer Hub, Trusted Artifact Signer, MigIQ (MTA + Lightspeed) |
+| 050 | `050-advanced-app-platform` | Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MigIQ (MTA + Lightspeed), coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MigIQ stack |

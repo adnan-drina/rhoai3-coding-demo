@@ -32,7 +32,7 @@ This stage turns the platform into a developer workflow.
 
 ## Developer Workflow
 
-The developer opens the `getting-started-ai-coding` workspace in Red Hat OpenShift Dev Spaces. The workspace is already prepared with the repository, IDE, runtime, and AI assistant configuration needed for the exercise. (Stage 050 later adds Developer Hub as the discovery entry point, so developers reach this same workspace from the portal catalog.)
+The developer opens the `getting-started-ai-coding` workspace in Red Hat OpenShift Dev Spaces. The workspace is already prepared with the repository, IDE, runtime, and AI assistant configuration needed for the exercise. (This onboarding workspace is opened directly from Dev Spaces; the portal catalog's single entry point is the `coolstore-inventory-service` component used by the stage's primary demo.)
 
 Inside the workspace, the developer first checks that the AI coding assistant is using the governed model path. After that, the developer asks Continue to create a small Quarkus project, reviews the generated files, and validates the result outside the assistant.
 

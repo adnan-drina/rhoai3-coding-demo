@@ -22,8 +22,8 @@ One-shot prompting shows its power — and its limits, which motivate Stage
 ## What This Stage Adds
 
 This is a workflow-only stage: the infrastructure below is owned by Stage
-050 (`devspaces` component and golden-path templates); this stage owns the
-developer experience that runs on it.
+050 (`devspaces`, `coolstore`, `pipelines`, and `rhdh` components); this
+stage owns the developer experience that runs on it.
 
 - Red Hat OpenShift Dev Spaces deployed via the `stable` operator channel with automatic InstallPlan approval.
 - 9 pre-provisioned DevWorkspaces (3 per persona: `kubeadmin`, `ai-developer`, `ai-admin`) for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
@@ -104,24 +104,25 @@ Detailed user steps for workspace onboarding: [`docs/DEVELOPER_WORKSPACE_GUIDE.m
 
 ## Demo Script
 
-### Part 1 — Self-service in: one field, a full environment
+### Part 1 — Self-service in: discover a running service in the catalog
 
-**Know.** Every rung of the ladder starts the same way: not a ticket, not a
-wiki page — a golden-path template in Developer Hub. The platform team
-defined it; the developer consumes it.
+**Know.** The first rung starts brownfield: a real service, already deployed,
+already wired to CI — discovered in the portal, not assembled from a wiki
+page. The platform team put it there; the developer consumes it.
 
 **Show.**
-- Open Developer Hub → Create → **AI-Assisted Development: Parasol Insurance
-  workspace**. Fill the one field (repository name, e.g.
-  `parasol-insurance-alice`) and run it.
-- Show the output links: a fresh GitHub repository (their own copy of the
-  Parasol app — golden repos are never mutated) and the new catalog
-  component.
-- Say: "That initial commit already ran the pipeline once — the SonarQube
-  baseline for this repo is seeded. Whatever the AI writes next is *new
-  code* against a gate that fails on any new issue."
-- **What they should notice:** one field. Repo, catalog entry, CI wiring,
-  and quality baseline all existed before the developer wrote a line.
+- Open Developer Hub → Catalog → **Coolstore Inventory Service** (the only
+  component — that is deliberate; this is the single developer entry point).
+- Walk the component page: the **Topology** tab shows the service running in
+  `coolstore-dev`; the **CI** tab shows its own `app-push` pipeline history
+  (green); the **API** tab shows `inventory-api`; the deployed-app link
+  answers at `/api/inventory`.
+- Say: "This isn't a scaffold — it's the team's service, live in its dev
+  environment, with its own pipeline in its own namespace. Whatever the AI
+  writes next lands against a SonarQube gate that fails on any new issue."
+- **What they should notice:** catalog entry, running dev deployment, CI
+  wiring, and quality baseline all existed before the developer wrote a
+  line — and the pipeline belongs to this project, not to a central queue.
 
 ### Part 2 — Continue in the governed workspace: the one-shot high
 
@@ -130,16 +131,17 @@ scaffolding, unreliable for production-shaped work. The demo does not hide
 this — the limitation IS the lesson.
 
 **Show.**
-- Open the new repository in Dev Spaces (`<Dev Spaces URL>/#<repo URL>`);
-  run **Start Development mode** and open the Parasol dashboard.
-- Show `.continue/config.yaml`: MaaS base URL, platform-issued key, token
+- From the component page, click the **Dev Spaces** link — the workspace
+  opens on the `coolstore-inventory-service` repository; run
+  `mvn quarkus:dev`.
+- Show `~/.continue/config.yaml`: MaaS base URL, platform-issued key, token
   limits, usage telemetry. No provider console, no raw key.
 - Ask Continue for the new endpoint using
   [`demo-assets/continue-prompts.md`](demo-assets/continue-prompts.md) — or
   paste the prepared
-  [`demo-assets/ClaimsStatsResource-with-smells.java`](demo-assets/ClaimsStatsResource-with-smells.java)
-  (the reliable path; live generation is the bonus). Hot reload: the
-  `/api/claims/stats` endpoint works instantly.
+  [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java)
+  (the reliable path; live generation is the bonus). Hot reload:
+  `/api/inventory/stats` answers instantly.
 - **What they should notice:** the code *works*. It also carries
   `System.out.println`, an empty catch block, and field injection — plausible
   code that ignores the team's standards.
@@ -147,17 +149,20 @@ this — the limitation IS the lesson.
 ### Part 3 — Trusted delivery out: the gate catches the AI
 
 **Know.** The platform does not rely on the developer noticing. Every push
-exits through the shared pipeline, and the quality gate fails on any new
-issue — deliberately, deterministically.
+to `main` exits through the project's own pipeline in `coolstore-dev`, and
+the quality gate fails on any new issue — deliberately, deterministically.
 
 **Show.**
-- Commit and push to `main`. Watch the PipelineRun: clone → build →
-  **sonar-scan FAILS** on the intentional smells.
+- Commit and push to `main`. Watch the PipelineRun appear on the component's
+  **CI** tab: clone → build → **sonar-scan FAILS** on the intentional
+  smells.
 - Open SonarQube: the three new issues, on exactly the new code.
 - Back in the workspace, ask Continue to fix them (proper logging,
   constructor injection, logged exception —
-  [`demo-assets/ClaimsStatsResource-fixed.java`](demo-assets/ClaimsStatsResource-fixed.java)
-  is the reference). Push again → pipeline green.
+  [`demo-assets/InventoryStatsResource-fixed.java`](demo-assets/InventoryStatsResource-fixed.java)
+  is the reference). Push again → pipeline green → `tag-latest` republishes
+  `:latest`, so the running dev deployment picks the endpoint up on its
+  next rollout.
 - Close: "Self-service in, trusted delivery out. The AI wrote the code; the
   platform proved it. But notice what *we* had to do — spot the smells, know
   the standards, prompt the fix. Teaching the agent our standards so we

@@ -4,12 +4,15 @@
 > [PLAN-advanced-app-platform-restructure](../../docs/PLAN-advanced-app-platform-restructure.md)).
 > This stage owns every component the AI development stages consume, as
 > kustomize components: `devspaces` (Dev Spaces + workspaces + MaaS keys),
-> `pipelines` (Pipelines/TAS operators + the shared push pipeline),
-> `sonarqube` (fail-on-new-issue quality gate), `rhdh` (Developer Hub), and
-> `migiq` (MTA + Developer Lightspeed). Phase 3 adds the three golden-path
-> templates (registered in the catalog) and the golden repositories
-> (bootstrap: `scripts/bootstrap-golden-repos.sh`). Pipeline, SonarQube, and
-> template flows are not yet validated against a live cluster.
+> `pipelines` (Pipelines/TAS operators, the webhook dispatcher, and the
+> reusable `project-pipeline` base — every project runs its OWN pipeline in
+> its own namespace), `sonarqube` (fail-on-new-issue quality gate), `rhdh`
+> (Developer Hub), `migiq` (MTA + Developer Lightspeed), and `coolstore`
+> (the deployed stage 060 dev environment). The `agentic-quarkus-scaffold`
+> golden-path template (stage 070) is registered in the catalog; golden
+> repositories bootstrap via `scripts/bootstrap-golden-repos.sh`. Pipeline,
+> SonarQube, dispatcher, and scaffolded-project flows are live-validated
+> (see docs/OPERATIONS.md, 2026-07-13 entries).
 > Anchor article: [Trusted software factory: Building trust in the agentic AI era](https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era).
 
 ## Why This Matters
@@ -220,8 +223,9 @@ Software Factory answer: prove what was built and how — SLSA provenance,
 signatures, SBOMs — on the same pipelines the platform already runs.
 
 **Show (today, base setup).**
-- OpenShift console, Pipelines view: the Tekton stack is operator-managed and
-  ready for the shared push pipeline (Phase 2).
+- OpenShift console, Pipelines view: the Tekton stack is operator-managed;
+  each project namespace runs its own `app-push` pipeline instantiated from
+  the shared `project-pipeline` base.
 - Operators view: Trusted Artifact Signer installed — the sigstore stack
   awaiting its Securesign instance.
 - Talk track: in the implementation phase, every push from stages 060–080
