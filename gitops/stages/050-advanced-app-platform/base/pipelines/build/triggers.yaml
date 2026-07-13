@@ -132,7 +132,8 @@ spec:
         finalizers:
           - resources-finalizer.argocd.argoproj.io
       spec:
-        project: default
+        # Scoped AppProject: platform repo source + *-dev destinations only.
+        project: scaffolded-projects
         source:
           repoURL: https://github.com/adnan-drina/rhoai3-coding-demo
           targetRevision: main

@@ -24,6 +24,8 @@ resources:
   - build/persona-rbac.yaml
   # TektonConfig hook (wave 11): allow multiple PVC workspaces per TaskRun
   - build/tektonconfig-affinity.yaml
+  # Governance boundary for scaffolded-project Applications (wave 12)
+  - build/appproject-scaffolded.yaml
   # Webhook dispatcher (wave 13) + Route (wave 14)
   - build/triggers.yaml
   # Per-project credential reconciler (wave 13)

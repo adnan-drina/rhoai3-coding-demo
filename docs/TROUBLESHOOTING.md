@@ -238,7 +238,13 @@ carry an `operation.sync.resources` filter. A later `oc patch --type=merge`
 of `.operation` inherits that filter (merge patches keep fields you omit),
 and partial syncs skip hooks by design. Even a `--type=json` replace can be
 clobbered when self-heal immediately overwrites the operation with a new
-partial one. Observed live 2026-07-13.
+partial one. Observed live 2026-07-13. Also observed the same evening: the
+automated sync that picks up a NEWLY PUSHED revision can itself arrive as a
+partial operation (2-resource filter) rendered from a stale manifest cache —
+new resources in the pushed commit were neither applied nor listed until
+`argocd.argoproj.io/refresh=hard` was annotated, after which the missing
+resources applied within seconds (hooks still skipped; converge hook output
+by hand per below).
 
 **Recover:**
 

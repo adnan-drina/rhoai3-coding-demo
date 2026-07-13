@@ -45,6 +45,9 @@ check "Scaffolded-project push trigger wired" \
 check "Dispatcher may create per-project Argo Applications" \
   "oc auth can-i create applications.argoproj.io -n openshift-gitops --as=system:serviceaccount:app-platform-build:pipeline" \
   "yes"
+check "scaffolded-projects AppProject scopes self-service stacks" \
+  "oc get appproject scaffolded-projects -n openshift-gitops -o jsonpath='{.spec.destinations[0].namespace}'" \
+  "*-dev"
 check_warn "GitHub webhook secret provisioned (set GITHUB_WEBHOOK_SECRET in .env)" \
   "oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
   "github-webhook-secret"

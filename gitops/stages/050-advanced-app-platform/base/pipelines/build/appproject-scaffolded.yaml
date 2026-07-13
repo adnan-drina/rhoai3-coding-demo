@@ -1,0 +1,27 @@
+# Governance boundary for template-scaffolded projects (stage 070 golden
+# path). The dispatcher's bootstrap trigger creates per-project Argo CD
+# Applications in THIS AppProject, so self-service projects can only draw
+# from the platform repo's project-pipeline base and only land in their own
+# *-dev namespace — "self-service in, trusted delivery out".
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: scaffolded-projects
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  description: Template-scaffolded per-project delivery stacks (stage 070)
+  sourceRepos:
+    - https://github.com/adnan-drina/rhoai3-coding-demo
+  destinations:
+    - namespace: '*-dev'
+      server: https://kubernetes.default.svc
+  # CreateNamespace=true needs the cluster-scoped Namespace kind; nothing
+  # else cluster-scoped is allowed.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

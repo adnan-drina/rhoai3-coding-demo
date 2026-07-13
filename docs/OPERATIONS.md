@@ -219,6 +219,46 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-13 (evening) Phase C: scaffolded-project bootstrap live; catalog slimmed
+
+Actions:
+
+- Phase B closed out with a webhook-equivalence test: a signed synthetic
+  push payload POSTed to the `app-platform-listener` Route produced
+  `coolstore-inventory-service-push-zs2dx` in `coolstore-dev` — Succeeded
+  (interceptor chain, cross-namespace dispatch, credentials, gate, image
+  push, `:latest` retag all proven; only GitHub's own delivery leg was not
+  re-exercised, it was proven pre-restructure).
+- Catalog scope decision executed: `coolstore-inventory-service` is the one
+  and only Component; `getting-started-ai-coding` and MCA `coolstore`
+  removed from `catalog/all.yaml`. RHDH `orphanStrategy: delete` removed
+  both live entities once the runtime catalog was regenerated (verified in
+  the catalog database).
+- Phase C delivered: template-published repos carry a `rhoai3-scaffolded`
+  topic; the dispatcher's new bootstrap trigger creates a per-project Argo
+  CD Application (source = this repo's `project-pipeline` base,
+  kustomize-namespaced to `<repo>-dev`, `CreateNamespace` +
+  `managedNamespaceMetadata` stamping the `pipeline-project` label), and a
+  second topic-filtered trigger routes every push to an `app-push`
+  PipelineRun in `<repo>-dev` via CEL overlay. Applications land in the new
+  `scaffolded-projects` AppProject (platform repo source + `*-dev`
+  destinations only). Scaffold pom aligned to the corporate Red Hat build
+  of Quarkus BOM (3.27.3.SP1-redhat-00002) — requires a
+  `bootstrap-golden-repos.sh` re-push of `agentic-quarkus-scaffold`.
+- Live verification with a synthetic scaffolded push for
+  `agentic-quarkus-scaffold`: bootstrap Application Synced/Healthy in
+  seconds, namespace created with the provisioning label, provisioner
+  distributed credentials on its next tick, and the follow-up push produced
+  a fully green 6-task `app-push` run in `agentic-quarkus-scaffold-dev`
+  (test stack removed afterwards; the auto-created
+  `quay.io/rhoai3-coding-demo/agentic-quarkus-scaffold` image repository is
+  demo debris that can be deleted in the Quay UI).
+- Sync gotcha recurrence: the automated sync that picked up the pushed
+  revision arrived as a PARTIAL operation rendered from a stale manifest
+  cache — new trigger resources were neither applied nor listed until
+  `argocd.argoproj.io/refresh=hard`; hooks stayed skipped, so the runtime
+  catalog was converged by hand per the TROUBLESHOOTING recipe.
+
 ### 2026-07-13 Stage 050 per-project pipeline seeding after the restructure
 
 Actions:
