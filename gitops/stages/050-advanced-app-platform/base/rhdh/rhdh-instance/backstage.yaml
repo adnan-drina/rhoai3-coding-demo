@@ -23,6 +23,13 @@ spec:
           mountPath: /opt/app-root/src/catalog
           containers:
             - backstage-backend
+        # Cluster CA for the kubernetes plugin's caFile: the operator sets
+        # automountServiceAccountToken false, so the usual
+        # /var/run/secrets/... path does not exist in the pod.
+        - name: kube-root-ca.crt
+          mountPath: /opt/app-root/src/k8s-ca
+          containers:
+            - backstage-backend
     extraEnvs:
       secrets:
         - name: rhdh-secrets

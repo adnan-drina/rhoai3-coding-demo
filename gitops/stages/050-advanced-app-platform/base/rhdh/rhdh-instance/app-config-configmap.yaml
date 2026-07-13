@@ -52,7 +52,10 @@ data:
               # In-cluster CA (skipTLSVerify is not honored on the plugin's
               # fetch path — observed live: FETCH_ERROR "self-signed
               # certificate in certificate chain" on every object query).
-              caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              # Mounted from the kube-root-ca.crt ConfigMap via the
+              # Backstage CR extraFiles: the operator disables SA token
+              # automount, so /var/run/secrets/... is absent in the pod.
+              caFile: /opt/app-root/src/k8s-ca/ca.crt
               serviceAccountToken: ${RHDH_KUBERNETES_SA_TOKEN}
       customResources:
         - group: tekton.dev
