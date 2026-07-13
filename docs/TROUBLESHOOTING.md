@@ -911,6 +911,49 @@ Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to
 Keycloak). Expect this after any overnight cluster suspend — bounce RHDH as
 part of demo-day preparation after a cluster resume.
 
+## Developer Hub Topology/CI/Kubernetes Tabs Show "Problem Retrieving Kubernetes Objects"
+
+**Affected stage:** Stage 050
+
+**Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding
+it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate
+chain` for every object query, while cluster discovery (the cluster dropdown)
+works and the Argo CD card is fine.
+
+**Likely cause:** Two stacked quirks, both observed live 2026-07-13:
+
+1. `skipTLSVerify: true` in the `kubernetes` cluster config is **not honored**
+   on the plugin's object-fetch path (the upstream reference config in
+   `tmp/ocp-app-platform-demo-developer-hub-config` hit the same wall and
+   worked around it with pod-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid
+   that; it disables TLS validation for ALL RHDH egress).
+2. The fix is `caFile`, but the RHDH operator sets
+   `automountServiceAccountToken: false`, so the usual
+   `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` path does not exist
+   in the pod.
+
+**Recover:** mount the namespace `kube-root-ca.crt` ConfigMap into the pod via
+the Backstage CR `extraFiles` and point the cluster config at it:
+
+```yaml
+# backstage.yaml (CR)
+extraFiles:
+  configMaps:
+    - name: kube-root-ca.crt
+      mountPath: /opt/app-root/src/k8s-ca
+
+# app-config kubernetes cluster entry
+caFile: /opt/app-root/src/k8s-ca/ca.crt
+```
+
+Diagnose the underlying access independently of the plugin with:
+
+```bash
+oc auth can-i list pods --as=system:serviceaccount:rhdh:rhdh-kubernetes-reader -A
+oc exec deployment/backstage-developer-hub -n rhdh -c backstage-backend -- \
+  sh -c 'echo ${RHDH_KUBERNETES_SA_TOKEN:+token-present}'
+```
+
 ## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
 **Affected stage:** Stage 050
