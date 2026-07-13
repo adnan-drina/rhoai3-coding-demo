@@ -3,8 +3,20 @@
 # the shared ingress — but it owns no pipeline: each trigger routes a
 # repository's push events to a PipelineRun in that project's OWN namespace,
 # where the project-pipeline instance (Pipeline `app-push`) lives.
-# Adding a project = adding a trigger with the repo name and target
-# namespace (stage 070's golden-path template scaffolds both).
+#
+# Two kinds of projects:
+# - Platform-owned (coolstore): an explicit trigger with a fixed target
+#   namespace; the project stack is a kustomize sub-dir of this stage.
+# - Template-scaffolded (stage 070): repos published by the RHDH scaffolder
+#   carry the `rhoai3-scaffolded` topic. Their FIRST push (which happens at
+#   publish time) hits the bootstrap trigger below, which creates an Argo CD
+#   Application instantiating the project stack (namespace with the
+#   pipeline-project label + project-pipeline base) in `<repo>-dev`; the
+#   project-provisioner CronJob then distributes build credentials within
+#   two minutes. Every push also hits the scaffolded push trigger, which
+#   routes to an app-push PipelineRun in `<repo>-dev` (the first push's run
+#   fails namespace resolution while Argo is still creating the stack —
+#   harmless; developer pushes build from then on).
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
@@ -75,6 +87,72 @@ spec:
             persistentVolumeClaim:
               claimName: maven-cache
 ---
+# Binding for template-scaffolded projects: the target namespace is computed
+# by the CEL overlay on the trigger (repo name + "-dev"), not hardcoded.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: scaffolded-target-binding
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  params:
+    - name: target-namespace
+      value: $(extensions.target-namespace)
+---
+# Bootstrap for template-scaffolded projects: instantiates the per-project
+# stack as an Argo CD Application (declarative from then on: self-heal,
+# prune, and platform updates to project-pipeline propagate automatically).
+# Argo creates the namespace itself (CreateNamespace) and stamps the
+# pipeline-project label via managedNamespaceMetadata — the label CANNOT
+# come from a synced manifest (see the namespace-label recipe in
+# TROUBLESHOOTING). Subsequent pushes fail this template's create with
+# AlreadyExists, which the EventListener logs and ignores.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: scaffolded-project-bootstrap-template
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/sync-wave: "13"
+spec:
+  params:
+    - name: repo-url
+    - name: repo-name
+    - name: revision
+  resourcetemplates:
+    - apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: project-$(tt.params.repo-name)
+        namespace: openshift-gitops
+        labels:
+          rhoai3.redhat.com/scaffolded-project: "true"
+        finalizers:
+          - resources-finalizer.argocd.argoproj.io
+      spec:
+        project: default
+        source:
+          repoURL: https://github.com/adnan-drina/rhoai3-coding-demo
+          targetRevision: main
+          path: gitops/stages/050-advanced-app-platform/base/pipelines/project-pipeline
+          kustomize:
+            namespace: $(tt.params.repo-name)-dev
+        destination:
+          server: https://kubernetes.default.svc
+          namespace: $(tt.params.repo-name)-dev
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+          syncOptions:
+            - CreateNamespace=true
+          managedNamespaceMetadata:
+            labels:
+              rhoai3.redhat.com/pipeline-project: "true"
+              app.kubernetes.io/part-of: $(tt.params.repo-name)
+---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
@@ -111,6 +189,59 @@ spec:
               value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && body.repository.name == 'coolstore-inventory-service'"
       template:
         ref: app-platform-push-template
+    - name: scaffolded-project-bootstrap
+      bindings:
+        - ref: app-platform-push-binding
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value:
+                - "push"
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              # Template-published repos only (topic set by publish:github in
+              # the agentic-quarkus-scaffold template).
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-scaffolded' in body.repository.topics)"
+      template:
+        ref: scaffolded-project-bootstrap-template
+    - name: scaffolded-project-push
+      bindings:
+        - ref: app-platform-push-binding
+        - ref: scaffolded-target-binding
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: token
+            - name: eventTypes
+              value:
+                - "push"
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-scaffolded' in body.repository.topics)"
+            - name: overlays
+              value:
+                - key: target-namespace
+                  expression: "body.repository.name + '-dev'"
+      template:
+        ref: app-platform-push-template
 ---
 # The EventListener's ServiceAccount creates PipelineRuns in project
 # namespaces (the dispatcher pattern above). Read access on pipelines lets
@@ -128,6 +259,11 @@ rules:
   - apiGroups: ["tekton.dev"]
     resources: ["pipelines"]
     verbs: ["get", "list"]
+  # Scaffolded-project bootstrap: the trigger creates the per-project Argo CD
+  # Application (openshift-gitops namespace).
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

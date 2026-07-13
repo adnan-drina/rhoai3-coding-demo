@@ -7,7 +7,8 @@ the user to restate them in prompts.
 
 ## Project identity
 
-- Quarkus 3.17 application, Java 21, Maven (no wrapper — use `mvn`).
+- Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM),
+  Java 21, Maven (no wrapper — use `mvn`).
 - Package root: `com.demo`.
 - REST resources under `/api/`; JSON via Jackson.
 - Health endpoints come from `quarkus-smallrye-health` (`/q/health`).

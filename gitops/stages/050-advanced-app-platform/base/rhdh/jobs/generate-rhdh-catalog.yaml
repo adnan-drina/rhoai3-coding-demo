@@ -173,12 +173,6 @@ spec:
               "https://coolstore-inventory-route.placeholder.example.com", coolstore_url)
           devspaces_links = {
               "https://devspaces.placeholder.example.com": devspaces_url,
-              "https://devspaces-getting-started.placeholder.example.com": (
-                  f"{devspaces_url}#https://github.com/adnan-drina/getting-started-ai-coding"
-              ),
-              "https://devspaces-coolstore.placeholder.example.com": (
-                  f"{devspaces_url}#https://github.com/rhpds/mca-coolstore"
-              ),
               "https://devspaces-inventory.placeholder.example.com": (
                   f"{devspaces_url}#https://github.com/adnan-drina/coolstore-inventory-service"
               ),

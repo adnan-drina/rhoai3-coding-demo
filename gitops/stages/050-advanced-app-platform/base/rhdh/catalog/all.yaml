@@ -52,76 +52,11 @@ spec:
   owner: ai-modernization-team
   domain: application-modernization
 ---
-apiVersion: backstage.io/v1alpha1
-kind: Component
-metadata:
-  name: getting-started-ai-coding
-  title: Getting Started with AI Coding
-  description: |
-    Onboarding workspace for Stage 060. Developers use Developer Hub, Dev
-    Spaces, Continue, and MaaS for the governed vibe-coding increment before moving
-    into specs, skills, and agentic engineering stages.
-  annotations:
-    backstage.io/source-location: url:https://github.com/adnan-drina/getting-started-ai-coding
-    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
-    github.com/project-slug: adnan-drina/getting-started-ai-coding
-    rhoai3.redhat.com/stage-050-role: onboarding
-  links:
-    - url: https://github.com/adnan-drina/getting-started-ai-coding
-      title: Source Repo
-      icon: github
-    - url: "https://devspaces-getting-started.placeholder.example.com"
-      title: Dev Spaces
-      icon: docs
-  tags:
-    - onboarding
-    - ai-coding
-    - devspaces
-    - maas
-spec:
-  type: documentation
-  lifecycle: experimental
-  owner: ai-modernization-team
-  system: coolstore
-  dependsOn:
-    - resource:default/maas-private-code-model-nemotron
-    - resource:default/maas-private-code-model-qwen
----
-apiVersion: backstage.io/v1alpha1
-kind: Component
-metadata:
-  name: coolstore
-  title: MCA Coolstore
-  description: |
-    Brownfield MCA Coolstore application used for the AI-powered migration and
-    modernization stages of the workflow.
-  annotations:
-    backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
-    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
-    github.com/project-slug: rhpds/mca-coolstore
-    rhoai3.redhat.com/stage-050-role: brownfield-source
-  links:
-    - url: https://github.com/rhpds/mca-coolstore
-      title: Source Repo
-      icon: github
-    - url: "https://devspaces-coolstore.placeholder.example.com"
-      title: Dev Spaces
-      icon: docs
-  tags:
-    - java
-    - javaee
-    - eap
-    - mta
-    - modernization
-    - brownfield
-spec:
-  type: service
-  lifecycle: modernizing
-  owner: ai-modernization-team
-  system: coolstore
-  consumesApis:
-    - inventory-api
----
+# Catalog scope (2026-07-13 decision): coolstore-inventory-service is the
+# one and only Component — the getting-started-ai-coding onboarding entry
+# and the MCA Coolstore brownfield entry were removed; the MCA legacy app
+# returns with the stage 080 template once the MigIQ flow is settled.
+# The MaaS model Resources stay as unattached AI assets.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:

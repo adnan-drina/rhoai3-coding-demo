@@ -39,6 +39,8 @@ feedback.
 ```mermaid
 flowchart TD
   portal["Stage 050: Developer Hub template"] --> repo["per-run repo from agentic-quarkus-scaffold"]
+  repo --> bootstrap["first push: dispatcher bootstraps Argo CD app"]
+  bootstrap --> project["namespace name-dev + project's own pipeline"]
   devspaces["Stage 050: Dev Spaces platform"] --> workspace["developer workspace on the repo"]
   maas["Stage 040: MaaS keys"] --> workspace
   repo --> workspace
@@ -50,7 +52,7 @@ flowchart TD
   skills --> tests["Test standards"]
   skills --> llm["LLM integration (MaaS-only)"]
   opencode --> review["Human review gate"]
-  workspace --> pipeline["Stage 050: shared pipeline + SonarQube gate"]
+  workspace --> pipeline["project's own pipeline + SonarQube gate in name-dev"]
 ```
 
 The golden source is
@@ -70,6 +72,13 @@ platform rails established by Stage 050.
   `specs/` with a template plus a worked example
   (`claims-triage-service.md` — includes an LLM feature through MaaS with a
   deterministic fallback).
+- Full project provisioning from the repository's first push: the platform
+  dispatcher recognizes the `rhoai3-scaffolded` topic and creates an Argo CD
+  Application that instantiates the `<name>-dev` namespace (carrying the
+  `pipeline-project` provisioning label) and the project's own delivery
+  pipeline from the shared `project-pipeline` base; the project-provisioner
+  CronJob distributes build credentials within two minutes. No catalog entry
+  exists before the run — the scaffolded repo registers itself.
 - Spec-driven workflow: the spec is the contract; skills are the standards;
   the agent does the work; `mvn test` and the pipeline gate are the proof.
 - A skill-improvement exercise: review feedback turned into a skill update.
@@ -108,9 +117,10 @@ The agent operates within the same trust boundary as Stage 060: prompts to local
 ## Deploy And Validate
 
 This is a workflow-only stage: it deploys no cluster resources of its own.
-The agentic workspace (interim; replaced by the golden-path scaffold template in Phase 3) is owned by
-[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md)
-(`devspaces` component). Deploy stage 050 first, then validate this stage's
+The template, dispatcher, and Dev Spaces platform are owned by
+[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md);
+per-run project stacks are created on demand by the scaffolded-project
+bootstrap trigger. Deploy stage 050 first, then validate this stage's
 prerequisites read-only:
 
 ```bash
@@ -185,8 +195,9 @@ writes a long prompt.
 The maturity jump is measurable: skill-guided code exits clean.
 
 **Show.**
-- Push to `main` → the shared pipeline runs → SonarQube gate **passes on
-  the first attempt**. Contrast explicitly with Stage 060's red run.
+- Push to `main` → the project's own pipeline runs in `<name>-dev` →
+  SonarQube gate **passes on the first attempt**. Contrast explicitly with
+  Stage 060's red run.
 - Fail-forward option: introduce a deliberate smell, push, watch the gate
   fail, and hand the failure back to OpenCode — the `project-test-standards`
   skill forbids weakening assertions, so the agent fixes the code, not the

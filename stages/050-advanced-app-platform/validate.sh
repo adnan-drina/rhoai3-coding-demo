@@ -36,6 +36,15 @@ check "project-provisioner CronJob exists" \
 check "coolstore-dev owns its app-push pipeline" \
   "oc get pipeline.tekton.dev app-push -n coolstore-dev -o jsonpath='{.metadata.name}'" \
   "app-push"
+check "Scaffolded-project bootstrap trigger wired (stage 070 entry)" \
+  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.spec.triggers[?(@.name==\"scaffolded-project-bootstrap\")].name}'" \
+  "scaffolded-project-bootstrap"
+check "Scaffolded-project push trigger wired" \
+  "oc get eventlistener app-platform-listener -n app-platform-build -o jsonpath='{.spec.triggers[?(@.name==\"scaffolded-project-push\")].name}'" \
+  "scaffolded-project-push"
+check "Dispatcher may create per-project Argo Applications" \
+  "oc auth can-i create applications.argoproj.io -n openshift-gitops --as=system:serviceaccount:app-platform-build:pipeline" \
+  "yes"
 check_warn "GitHub webhook secret provisioned (set GITHUB_WEBHOOK_SECRET in .env)" \
   "oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.metadata.name}' 2>/dev/null || echo missing" \
   "github-webhook-secret"

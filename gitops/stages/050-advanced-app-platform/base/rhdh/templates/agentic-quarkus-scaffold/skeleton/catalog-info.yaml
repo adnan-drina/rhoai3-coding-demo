@@ -9,6 +9,12 @@ metadata:
   annotations:
     github.com/project-slug: adnan-drina/${{ values.name }}
     backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+    # RHDH OpenShift tabs: PipelineRuns in <name>-dev carry this label
+    # (set by the dispatcher TriggerTemplate); the project stack is the
+    # Argo CD app created by the scaffolded-project bootstrap trigger.
+    backstage.io/kubernetes-id: ${{ values.name }}
+    janus-idp.io/tekton: ${{ values.name }}
+    argocd/app-name: project-${{ values.name }}
   tags:
     - golden-path
     - agentic
