@@ -1167,6 +1167,35 @@ oc get csv <that-csv> -n <ns>   # NotFound = orphaned subscription
 (same channel/source; drop or update `startingCSV`). OLM resolves fresh and
 reinstalls. Argo-managed subscriptions are recreated by a stage re-sync.
 
+## A Namespace Label Added In Git Never Reaches The Cluster
+
+**Affected stage:** any Argo-managed namespace (observed live 2026-07-13:
+`coolstore-dev` missing `rhoai3.redhat.com/pipeline-project=true`, so the
+project-provisioner CronJob completed with "No project namespaces labeled"
+and never distributed pipeline credentials, while the 050 Application
+reported Synced).
+
+**Likely cause:** the stage Application ignores Namespace metadata diffs
+(`ignoreDifferences: /metadata/labels` + the `RespectIgnoreDifferences=true`
+sync option). Ignored fields are excluded from sync patches, so a label added
+to an *existing* namespace manifest is never applied — labels from git only
+land when Argo first creates the namespace. Because the diff is ignored, the
+app stays Synced and self-heal never notices.
+
+**Diagnose:**
+
+```bash
+oc get ns <ns> -o jsonpath='{.metadata.labels}'   # label missing live
+git show HEAD:<path>/namespace.yaml                # label present in git
+oc get application <app> -n openshift-gitops -o json \
+  | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
+```
+
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value
+--overwrite`). For labels a controller depends on (like the
+pipeline-project provisioning label), the stage deploy.sh must assert the
+label on every run — see `seed_coolstore` step 0 in stage 050.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)

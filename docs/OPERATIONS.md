@@ -219,6 +219,34 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-13 Stage 050 per-project pipeline seeding after the restructure
+
+Actions:
+
+- After the per-project-pipelines restructure synced (all five Applications
+  Synced/Healthy at `e3a473f`), `validate.sh` failed twice: no
+  `sonarqube-credentials` in `coolstore-dev` and no green pipeline run
+  there. Root cause: the `rhoai3.redhat.com/pipeline-project=true` label
+  added to `coolstore-dev`'s manifest never reached the live namespace —
+  the 050 Application ignores Namespace label diffs
+  (`ignoreDifferences` + `RespectIgnoreDifferences=true`), so labels only
+  land at namespace creation. The project-provisioner CronJob therefore
+  found "No project namespaces labeled" and distributed nothing, while the
+  Application reported Synced. New TROUBLESHOOTING recipe: "A Namespace
+  Label Added In Git Never Reaches The Cluster".
+- Fixed `deploy.sh`: `seed_coolstore` now asserts the provisioning label
+  imperatively (step 0) and skips the seed only when the deployment is
+  Available AND a green per-project run exists (previously a deployment
+  left over from the retired shared pipeline was enough to skip, so the
+  seed never ran).
+- Re-ran `deploy.sh`: label applied, provisioner distributed
+  `github-basic-auth`/`quay-push-secret`/`sonarqube-credentials`/
+  `app-platform-build-config` into `coolstore-dev`, seed PipelineRun
+  (clone → maven → sonar gate → build/push → tag-latest) succeeded on the
+  per-project `app-push` pipeline, deployment rolled onto the fresh
+  `:latest`. `validate.sh`: 34 passed, 0 failed, 1 expected warning
+  (Securesign arrives with a later phase).
+
 ### 2026-07-13 Stage 050 pre-validation check and RHDH OIDC recovery after cluster resume
 
 Actions:

@@ -94,6 +94,15 @@ COOLSTORE_REPO_URL="https://github.com/adnan-drina/${COOLSTORE_REPO}.git"
 seed_coolstore() {
   log_step "Coolstore seed: golden-path topic, pipeline run, deployment"
 
+  # 0. Provisioning label — the 050 Application ignores Namespace label diffs
+  #    (ignoreDifferences + RespectIgnoreDifferences), so the label in
+  #    namespace.yaml only lands when Argo first CREATES the namespace; a
+  #    label added to an existing namespace never reaches the cluster via
+  #    sync. Assert it here so the project-provisioner picks the namespace up.
+  if oc get namespace coolstore-dev >/dev/null 2>&1; then
+    oc label namespace coolstore-dev rhoai3.redhat.com/pipeline-project=true --overwrite >/dev/null
+  fi
+
   # 1. Golden-path topic — the EventListener CEL filter only admits pushes
   #    from repos carrying it, so future coolstore pushes rebuild :latest.
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -118,10 +127,17 @@ seed_coolstore() {
     log_warn "GITHUB_TOKEN not set — skipping repo topic; set it so pushes trigger builds"
   fi
 
-  # 2. Skip the seed when the environment is already running.
+  # 2. Skip the seed only when the environment is running AND its own
+  #    per-project pipeline has a green run (a deployment left over from an
+  #    earlier pipeline generation is not enough — validate.sh checks both).
+  local green_runs
+  green_runs=$(oc get pipelinerun -n coolstore-dev \
+    -l backstage.io/kubernetes-id=${COOLSTORE_REPO} \
+    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Succeeded")].status}{"\n"}{end}' 2>/dev/null \
+    | grep -c "True" || true)
   if [[ "$(oc get deployment coolstore-inventory-service -n coolstore-dev \
-      -o jsonpath='{.status.availableReplicas}' 2>/dev/null)" == "1" ]]; then
-    log_info "coolstore-inventory-service already Available — skipping seed run"
+      -o jsonpath='{.status.availableReplicas}' 2>/dev/null)" == "1" && "${green_runs}" -ge 1 ]]; then
+    log_info "coolstore-inventory-service already Available with a green pipeline run — skipping seed run"
     return 0
   fi
 
