@@ -42,7 +42,7 @@ data:
           token: ${GITHUB_TOKEN}
     catalog:
       rules:
-        - allow: [Component, System, API, Resource, Location, Template, User, Group]
+        - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]
       locations:
         - type: file
           target: ${RHDH_CATALOG_URL}
