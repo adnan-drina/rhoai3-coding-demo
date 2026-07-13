@@ -37,6 +37,13 @@ kind: System
 metadata:
   name: coolstore
   description: Coolstore modernization system for the governed AI developer workflow.
+  annotations:
+    backstage.io/source-location: url:https://github.com/rhpds/mca-coolstore
+    backstage.io/techdocs-ref: url:https://github.com/adnan-drina/rhoai3-coding-demo/tree/__RHOAI3_DEMO_REVISION__
+  links:
+    - url: https://github.com/rhpds/mca-coolstore
+      title: Source Repo
+      icon: github
   tags:
     - coolstore
     - modernization

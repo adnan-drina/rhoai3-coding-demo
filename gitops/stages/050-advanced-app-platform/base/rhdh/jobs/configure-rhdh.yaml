@@ -45,6 +45,37 @@ rules:
   verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-configure-rhdh-gitops-reader
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["openshift-gitops-cluster"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-configure-rhdh-gitops-reader
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+subjects:
+- kind: ServiceAccount
+  name: job-configure-rhdh
+  namespace: rhdh
+roleRef:
+  kind: Role
+  name: job-configure-rhdh-gitops-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: job-configure-rhdh
@@ -242,6 +273,22 @@ spec:
             echo "RHDH client created"
           fi
 
+          # --- 5b. Kubernetes SA token + Argo CD access for plugins ---
+          KUBE_SA_TOKEN=$(oc get secret rhdh-kubernetes-reader-token -n rhdh \
+            -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -z "$KUBE_SA_TOKEN" ]; then
+            echo "WARNING: rhdh-kubernetes-reader-token not populated yet"
+          fi
+
+          ARGOCD_HOST=$(oc get route openshift-gitops-server -n openshift-gitops \
+            -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+          ARGOCD_URL="https://${ARGOCD_HOST}"
+          ARGOCD_PASSWORD=$(oc get secret openshift-gitops-cluster -n openshift-gitops \
+            -o jsonpath='{.data.admin\.password}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          if [ -z "$ARGOCD_HOST" ] || [ -z "$ARGOCD_PASSWORD" ]; then
+            echo "WARNING: Argo CD route or admin password not found"
+          fi
+
           # --- 6. Reuse or generate session secret ---
           CURRENT_SESSION_SECRET=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.SESSION_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
@@ -259,12 +306,21 @@ spec:
             -o jsonpath='{.data.RHBK_METADATA_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_CATALOG_URL=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.RHDH_CATALOG_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_KUBE_SA_TOKEN=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_KUBERNETES_SA_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_ARGOCD_URL=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_ARGOCD_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_ARGOCD_PASSWORD=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.RHDH_ARGOCD_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           SECRETS_CHANGED=false
           if [ "$CURRENT_BASE_URL" != "$RHDH_URL" ] || \
              [ "$CURRENT_METADATA_URL" != "$RHBK_METADATA_URL" ] || \
              [ "$CURRENT_CATALOG_URL" != "$RHDH_CATALOG_URL" ] || \
              [ "$CURRENT_CLIENT_SECRET" != "$CLIENT_SECRET" ] || \
-             [ "$CURRENT_SESSION_SECRET" != "$SESSION_SECRET" ]; then
+             [ "$CURRENT_SESSION_SECRET" != "$SESSION_SECRET" ] || \
+             [ "$CURRENT_KUBE_SA_TOKEN" != "$KUBE_SA_TOKEN" ] || \
+             [ "$CURRENT_ARGOCD_URL" != "$ARGOCD_URL" ] || \
+             [ "$CURRENT_ARGOCD_PASSWORD" != "$ARGOCD_PASSWORD" ]; then
             SECRETS_CHANGED=true
           fi
 
@@ -273,6 +329,9 @@ spec:
           ENCODED_BASE_URL=$(echo -n "${RHDH_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_URL}" | base64)
           ENCODED_METADATA_URL=$(echo -n "${RHBK_METADATA_URL}" | base64 -w0 2>/dev/null || echo -n "${RHBK_METADATA_URL}" | base64)
           ENCODED_CATALOG_URL=$(echo -n "${RHDH_CATALOG_URL}" | base64 -w0 2>/dev/null || echo -n "${RHDH_CATALOG_URL}" | base64)
+          ENCODED_KUBE_SA_TOKEN=$(echo -n "${KUBE_SA_TOKEN}" | base64 -w0 2>/dev/null || echo -n "${KUBE_SA_TOKEN}" | base64)
+          ENCODED_ARGOCD_URL=$(echo -n "${ARGOCD_URL}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_URL}" | base64)
+          ENCODED_ARGOCD_PASSWORD=$(echo -n "${ARGOCD_PASSWORD}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_PASSWORD}" | base64)
 
           if [ "$SECRETS_CHANGED" = "true" ]; then
             echo "Patching rhdh-secrets..."
@@ -282,7 +341,10 @@ spec:
                 \"RHDH_OIDC_CLIENT_SECRET\":\"${ENCODED_CLIENT_SECRET}\",
                 \"RHDH_BASE_URL\":\"${ENCODED_BASE_URL}\",
                 \"RHBK_METADATA_URL\":\"${ENCODED_METADATA_URL}\",
-                \"RHDH_CATALOG_URL\":\"${ENCODED_CATALOG_URL}\"
+                \"RHDH_CATALOG_URL\":\"${ENCODED_CATALOG_URL}\",
+                \"RHDH_KUBERNETES_SA_TOKEN\":\"${ENCODED_KUBE_SA_TOKEN}\",
+                \"RHDH_ARGOCD_URL\":\"${ENCODED_ARGOCD_URL}\",
+                \"RHDH_ARGOCD_PASSWORD\":\"${ENCODED_ARGOCD_PASSWORD}\"
               }}"
             echo "rhdh-secrets patched"
           else

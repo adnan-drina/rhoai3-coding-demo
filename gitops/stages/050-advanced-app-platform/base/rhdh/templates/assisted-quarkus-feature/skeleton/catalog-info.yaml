@@ -9,6 +9,11 @@ metadata:
   annotations:
     github.com/project-slug: adnan-drina/${{ values.name }}
     backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+    # CI tab: the shared push pipeline labels PipelineRuns with
+    # backstage.io/kubernetes-id=<repo-name> in app-platform-build.
+    backstage.io/kubernetes-id: ${{ values.name }}
+    backstage.io/kubernetes-namespace: app-platform-build
+    janus-idp.io/tekton: ${{ values.name }}
   tags:
     - golden-path
     - assisted

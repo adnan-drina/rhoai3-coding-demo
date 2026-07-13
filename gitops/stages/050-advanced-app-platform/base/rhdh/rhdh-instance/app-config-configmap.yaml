@@ -40,6 +40,35 @@ data:
       github:
         - host: github.com
           token: ${GITHUB_TOKEN}
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - name: local-cluster
+              url: https://kubernetes.default.svc
+              authProvider: serviceAccount
+              skipTLSVerify: true
+              serviceAccountToken: ${RHDH_KUBERNETES_SA_TOKEN}
+      customResources:
+        - group: tekton.dev
+          apiVersion: v1
+          plural: pipelineruns
+        - group: tekton.dev
+          apiVersion: v1
+          plural: taskruns
+        - group: route.openshift.io
+          apiVersion: v1
+          plural: routes
+    argocd:
+      appLocatorMethods:
+        - type: config
+          instances:
+            - name: main
+              url: ${RHDH_ARGOCD_URL}
+              username: admin
+              password: ${RHDH_ARGOCD_PASSWORD}
     catalog:
       rules:
         - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]

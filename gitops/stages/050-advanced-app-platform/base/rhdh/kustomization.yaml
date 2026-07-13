@@ -17,6 +17,7 @@ resources:
   - rhdh-instance/rhdh-secrets.yaml
   - rhdh-instance/dynamic-plugins-configmap.yaml
   - rhdh-instance/catalog-runtime-configmap.yaml
+  - rhdh-instance/kubernetes-reader.yaml
   # Sync hook: Generate runtime catalog with cluster-local Dev Spaces link
   - jobs/generate-rhdh-catalog.yaml
   # Wave 10: Backstage CR (RHDH instance)

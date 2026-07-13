@@ -37,6 +37,11 @@ spec:
       kind: PipelineRun
       metadata:
         generateName: $(tt.params.repo-name)-push-
+        labels:
+          # RHDH Tekton plugin discovers PipelineRuns by this label; the
+          # per-run catalog components carry the matching kubernetes-id.
+          backstage.io/kubernetes-id: $(tt.params.repo-name)
+          app.kubernetes.io/name: $(tt.params.repo-name)
       spec:
         pipelineRef:
           name: app-platform-push

@@ -1,9 +1,15 @@
 # Dynamic plugins.
-# backstage-plugin-scaffolder-backend-module-github is preinstalled in the
-# RHDH image but disabled by default (verified against the RHDH dynamic
-# plugins reference); it provides publish:github for the golden-path
-# templates. Further plugins (Topology, Tekton, ArgoCD) are tracked in the
-# restructure plan.
+# All packages below ship with the RHDH 1.9 image (verified against the
+# image's dynamic-plugins.default.yaml); enabling them here flips
+# disabled -> false while inheriting the default pluginConfig (mount
+# points, entity tabs) from the include.
+# - scaffolder github module: publish:github for the golden-path templates
+# - kubernetes backend+frontend, topology: OpenShift workload views
+#   (cluster access via the rhdh-kubernetes-reader ServiceAccount token)
+# - tekton: CI tab showing app-platform-build PipelineRuns (PipelineRuns
+#   are labeled backstage.io/kubernetes-id=<repo-name> by the trigger)
+# - argocd (roadie backend + community frontend): deployment status for
+#   entities annotated argocd/app-name
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,4 +23,16 @@ data:
       - dynamic-plugins.default.yaml
     plugins:
       - package: ./dynamic-plugins/dist/backstage-plugin-scaffolder-backend-module-github-dynamic
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-kubernetes-backend-dynamic
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-plugin-kubernetes
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-community-plugin-topology
+        disabled: false
+      - package: ./dynamic-plugins/dist/backstage-community-plugin-tekton
+        disabled: false
+      - package: ./dynamic-plugins/dist/roadiehq-backstage-plugin-argo-cd-backend
+        disabled: false
+      - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-community-plugin-argocd:bs_1.45.3__2.4.3
         disabled: false
