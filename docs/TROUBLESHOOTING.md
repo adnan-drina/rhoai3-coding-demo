@@ -224,6 +224,36 @@ oc patch application <app> -n openshift-gitops --type=merge   -p '{"operation":{
 Prevention: hook jobs must have bounded retries and fail fast; never let a
 wait-loop hook depend on state created by a later wave of the same sync.
 
+## Manually Triggered Sync Finishes In Seconds And Skips Hooks
+
+**Affected stage:** Any, observed on Stage 050 catalog changes
+
+**Symptom:** A sync operation triggered by patching `.operation` on the
+Application completes in ~15 seconds, applies only a handful of resources,
+and never runs Sync/PostSync hook Jobs (e.g. `job-generate-rhdh-catalog`).
+The controller logs `Partial sync operation to <rev> succeeded`.
+
+**Likely cause:** The self-heal auto-sync writes partial operations that
+carry an `operation.sync.resources` filter. A later `oc patch --type=merge`
+of `.operation` inherits that filter (merge patches keep fields you omit),
+and partial syncs skip hooks by design. Even a `--type=json` replace can be
+clobbered when self-heal immediately overwrites the operation with a new
+partial one. Observed live 2026-07-13.
+
+**Recover:**
+
+- Prefer the OpenShift GitOps UI **Sync** button (full sync, proper
+  operation object) for hook re-runs.
+- For the RHDH catalog specifically, the hook's output can be converged by
+  hand: fetch `catalog/all.yaml` at the synced revision, apply the same
+  placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces
+  route, empty RHDH URL, revision), and `oc patch` the
+  `catalog-runtime-rhdh` ConfigMap in `rhdh`.
+- Related fix (committed 2026-07-13): the generate hook now reads
+  `status.operationState.operation.sync.revision` (the in-flight revision)
+  instead of `status.sync.revision`, which still holds the previous
+  revision while the operation runs and regenerated stale catalogs.
+
 ## Argo CD Reports Synced But New Manifests Are Missing
 
 **Affected stage:** any
