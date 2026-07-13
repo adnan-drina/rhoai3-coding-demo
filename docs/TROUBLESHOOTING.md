@@ -833,6 +833,54 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 - Confirm the MTA route exists before the auth configuration job runs.
 - Re-run Stage 080 validation.
 
+## Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout
+
+**Affected stage:** Stage 050
+
+**Symptom:** The RHDH sign-in popup fails with
+`OPError: expected 200 OK, got: 504 Gateway Timeout` and
+`/api/auth/oidc/start` returns 500, while Keycloak itself is healthy — the
+OIDC discovery URL answers 200 from outside the cluster and even from a
+fresh process inside the RHDH pod.
+
+**Likely cause:** The cluster was suspended and resumed (sandbox stop/start)
+and Keycloak restarted while the long-running RHDH backend process kept
+stale connection state toward the router. Every OIDC issuer discovery from
+the live process then gets 504 from the router, while fresh connections
+succeed. Observed live 2026-07-13 after a 06:16 UTC cluster resume; RHDH
+configuration, secrets, and the Keycloak client were all correct.
+
+**Diagnose:**
+
+```bash
+# 1. Keycloak discovery healthy from outside? (expect 200)
+curl -sk -o /dev/null -w "%{http_code}\n" \
+  "https://$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}')/auth/realms/mta/.well-known/openid-configuration"
+
+# 2. RHDH backend still failing on every sign-in attempt?
+oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i "OPError\|504"
+
+# 3. Did Keycloak restart more recently than RHDH?
+oc get pod mta-rhbk-0 -n openshift-mta \
+  -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}{"\n"}'
+oc get pods -n rhdh
+```
+
+If check 1 returns 200 while check 2 shows fresh `Issuer.discover` 504
+errors, the fault is stale state inside the running RHDH process, not the
+configuration — do not rotate secrets or re-run the configure hook.
+
+**Recover:**
+
+```bash
+oc rollout restart deployment/backstage-developer-hub -n rhdh
+oc rollout status deployment/backstage-developer-hub -n rhdh --timeout=600s
+```
+
+Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to
+Keycloak). Expect this after any overnight cluster suspend — bounce RHDH as
+part of demo-day preparation after a cluster resume.
+
 ## Red Hat Developer Hub Catalog Does Not Load Coolstore
 
 **Affected stage:** Stage 050

@@ -219,6 +219,32 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-13 Stage 050 pre-validation check and RHDH OIDC recovery after cluster resume
+
+Actions:
+
+- Pre-work for manual stage 050 validation (RHDH access with the ai users,
+  catalog state, golden-path templates): ran `validate.sh` (29 passed,
+  0 failed, 1 expected warning — Securesign instance arrives with a later
+  phase), confirmed `ai-admin`/`ai-developer` OpenShift users exist for the
+  Keycloak federated-identity pre-creation, confirmed the runtime catalog's
+  three template Locations resolve to a pushed commit with no drift against
+  `origin/main`, and confirmed all three golden repositories answer on
+  GitHub.
+- RHDH OIDC sign-in failed with `OPError ... 504 Gateway Timeout` after the
+  sandbox cluster resumed at 06:16 UTC (Keycloak restarted; the RHDH backend
+  process, up since before the suspend, kept failing issuer discovery while
+  fresh connections from the same pod succeeded). Recovered with
+  `oc rollout restart deployment/backstage-developer-hub -n rhdh`;
+  `/api/auth/oidc/start` answers 302 afterwards. New recipe recorded in
+  TROUBLESHOOTING ("Red Hat Developer Hub OIDC Sign-In Fails With 504
+  Gateway Timeout").
+- Operator note (outside the cluster): quay.io offers no org-wide default
+  visibility setting, so each pipeline-auto-created image repository is
+  created private and must be flipped to Public manually
+  (`parasol-insurance` already flipped; expect the same step for new app
+  images from the 070/080 flows).
+
 ### 2026-07-10 Stage 050 advanced-app-platform first live deploy (new numbering)
 
 Actions:
@@ -823,6 +849,8 @@ The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OID
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 
+After a cluster suspend/resume, restart RHDH before demoing: the long-running backend can hold stale connections from before the suspend and fail OIDC sign-in with 504 errors even though Keycloak is healthy (`oc rollout restart deployment/backstage-developer-hub -n rhdh`; see TROUBLESHOOTING "Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout").
+
 Useful checks:
 
 ```bash
@@ -866,6 +894,8 @@ To scale GPU capacity down for shutdown:
 ```
 
 Kueue queue resources survive normal cluster restarts because they are Kubernetes API objects. Kueue does not create cloud GPU nodes by itself; GPU node lifecycle remains a platform capacity action through the MachineSet.
+
+After any cluster suspend/resume, also restart the Stage 050 Developer Hub deployment — its long-running backend holds stale connections across the suspend and OIDC sign-in fails with 504 errors until it is bounced (see the Stage 050 Developer Hub notes and TROUBLESHOOTING).
 
 ## Cleanup Guidance
 
