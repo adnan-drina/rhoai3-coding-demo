@@ -81,6 +81,7 @@ spec:
   system: coolstore
   dependsOn:
     - resource:default/maas-private-code-model-nemotron
+    - resource:default/maas-private-code-model-qwen
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -214,9 +215,36 @@ kind: Resource
 metadata:
   name: maas-private-code-model-nemotron
   title: Nemotron Private Code Model
-  description: Private MaaS model path selected for source-code work in the governed developer workflow.
+  description: |
+    Private MaaS model path selected for source-code work in the governed
+    developer workflow (default model for Continue assisted development).
   annotations:
     rhoai3.redhat.com/model-id: nemotron-3-nano-30b-a3b
+    rhoai3.redhat.com/model-path: private-maas
+    rhoai3.redhat.com/data-classification: source-code-context
+  links:
+    - url: https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant
+      title: Getting Started
+      icon: docs
+  tags:
+    - maas
+    - private-model
+    - source-code
+spec:
+  type: ai-model
+  owner: ai-modernization-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: maas-private-code-model-qwen
+  title: Qwen3.6 Private Code Model
+  description: |
+    Private MaaS model path used alongside Nemotron for source-code work,
+    enabling side-by-side model comparison in the governed developer workflow
+    (default model for OpenCode agentic development).
+  annotations:
+    rhoai3.redhat.com/model-id: qwen3-6-35b-a3b
     rhoai3.redhat.com/model-path: private-maas
     rhoai3.redhat.com/data-classification: source-code-context
   links:
