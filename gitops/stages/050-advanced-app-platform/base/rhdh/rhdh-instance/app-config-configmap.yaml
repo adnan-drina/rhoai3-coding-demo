@@ -76,6 +76,9 @@ data:
               username: admin
               password: ${RHDH_ARGOCD_PASSWORD}
     catalog:
+      # Entities dropped from the runtime catalog file (e.g. retired
+      # golden-path templates) are removed instead of lingering as orphans.
+      orphanStrategy: delete
       rules:
         - allow: [Component, System, API, Resource, Location, Template, User, Group, Domain]
       locations:
