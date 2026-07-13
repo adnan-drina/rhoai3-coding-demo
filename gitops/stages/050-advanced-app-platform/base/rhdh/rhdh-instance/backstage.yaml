@@ -31,6 +31,17 @@ spec:
           containers:
             - backstage-backend
     extraEnvs:
+      envs:
+        # RHDH bootstraps global-agent, which forces every https request
+        # through its own agent and DROPS the kubernetes plugin's custom
+        # agent (and its caFile CA) — observed live: "self-signed
+        # certificate in certificate chain" on all Topology/CI/Kubernetes
+        # queries despite correct caFile config. Adding the cluster CA to
+        # Node's trust store fixes every path without disabling TLS
+        # (the upstream reference project used NODE_TLS_REJECT_UNAUTHORIZED=0
+        # instead — a global TLS off-switch we deliberately avoid).
+        - name: NODE_EXTRA_CA_CERTS
+          value: /opt/app-root/src/k8s-ca/ca.crt
       secrets:
         - name: rhdh-secrets
         - name: rhdh-github
