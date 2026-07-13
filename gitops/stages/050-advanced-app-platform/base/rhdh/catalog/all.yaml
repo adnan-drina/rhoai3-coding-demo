@@ -73,9 +73,6 @@ metadata:
     - url: "https://devspaces-getting-started.placeholder.example.com"
       title: Dev Spaces
       icon: docs
-    - url: https://rhdh.placeholder.example.com/docs/default/component/getting-started-ai-coding
-      title: Getting Started
-      icon: docs
   tags:
     - onboarding
     - ai-coding
@@ -109,9 +106,6 @@ metadata:
       icon: github
     - url: "https://devspaces-coolstore.placeholder.example.com"
       title: Dev Spaces
-      icon: docs
-    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore
-      title: Getting Started
       icon: docs
   tags:
     - java
@@ -153,14 +147,11 @@ metadata:
     - url: https://github.com/adnan-drina/coolstore-inventory-service
       title: Source Repo
       icon: github
-    - url: "https://coolstore-inventory-route.placeholder.example.com"
+    - url: "https://coolstore-inventory-route.placeholder.example.com/api/inventory"
       title: Deployed App (dev)
       icon: web
     - url: "https://devspaces-inventory.placeholder.example.com"
       title: Dev Spaces
-      icon: docs
-    - url: https://rhdh.placeholder.example.com/docs/default/component/coolstore-inventory-service
-      title: Getting Started
       icon: docs
   tags:
     - java

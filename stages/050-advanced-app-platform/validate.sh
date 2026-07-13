@@ -158,16 +158,19 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* ]]; then
-    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains TechDocs placeholders"
+    echo -e "${RED}[FAIL]${NC} Runtime catalog still contains unresolved placeholders"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"/docs/default/component/getting-started-ai-coding"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore-inventory-service"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"/docs/default/component/coolstore"* ]] && \
-     [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated TechDocs links"
+# Entity links must be absolute: the catalog entity policy rejects relative
+# URLs and silently drops the whole entity (observed live 2026-07-13 — all
+# Components vanished from the catalog over /docs/... TechDocs links).
+elif echo "$RUNTIME_CATALOG" | grep -qE '^\s+- url: "?/'; then
+    echo -e "${RED}[FAIL]${NC} Runtime catalog contains relative link URLs — entities will be rejected at ingestion"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+elif [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog has TechDocs refs and no relative link URLs"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
-    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs links"
+    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs refs"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
