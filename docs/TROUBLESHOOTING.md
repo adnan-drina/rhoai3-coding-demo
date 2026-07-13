@@ -920,29 +920,38 @@ it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate
 chain` for every object query, while cluster discovery (the cluster dropdown)
 works and the Argo CD card is fine.
 
-**Likely cause:** Two stacked quirks, both observed live 2026-07-13:
+**Likely cause:** RHDH bootstraps `global-agent` (proxy support), which by
+default (`GLOBAL_AGENT_FORCE_GLOBAL_AGENT=true`) routes every https request
+through its own agent and **discards the kubernetes plugin's per-request
+agent** — so neither `skipTLSVerify: true` nor `caFile`/`caData` in the
+cluster config ever reach the TLS handshake. Reproduced both ways in-pod
+2026-07-13: the identical fetch succeeds without global-agent, fails with
+it, and succeeds again once the cluster CA is in Node's trust store. This
+is why the upstream reference config in
+`tmp/ocp-app-platform-demo-developer-hub-config` resorted to pod-wide
+`NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid that; it disables TLS validation
+for ALL RHDH egress.
 
-1. `skipTLSVerify: true` in the `kubernetes` cluster config is **not honored**
-   on the plugin's object-fetch path (the upstream reference config in
-   `tmp/ocp-app-platform-demo-developer-hub-config` hit the same wall and
-   worked around it with pod-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid
-   that; it disables TLS validation for ALL RHDH egress).
-2. The fix is `caFile`, but the RHDH operator sets
-   `automountServiceAccountToken: false`, so the usual
-   `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt` path does not exist
-   in the pod.
-
-**Recover:** mount the namespace `kube-root-ca.crt` ConfigMap into the pod via
-the Backstage CR `extraFiles` and point the cluster config at it:
+**Recover:** add the cluster CA to Node's trust store. Two pieces are
+needed because the RHDH operator sets `automountServiceAccountToken:
+false` (the usual `/var/run/secrets/.../ca.crt` path does not exist in the
+pod):
 
 ```yaml
-# backstage.yaml (CR)
+# backstage.yaml (CR): mount the namespace kube-root-ca.crt ConfigMap
 extraFiles:
   configMaps:
     - name: kube-root-ca.crt
       mountPath: /opt/app-root/src/k8s-ca
 
-# app-config kubernetes cluster entry
+# backstage.yaml (CR): trust it process-wide (adds trust; nothing disabled)
+extraEnvs:
+  envs:
+    - name: NODE_EXTRA_CA_CERTS
+      value: /opt/app-root/src/k8s-ca/ca.crt
+
+# app-config kubernetes cluster entry (correct per docs; kept although
+# global-agent bypasses it — harmless once NODE_EXTRA_CA_CERTS is set)
 caFile: /opt/app-root/src/k8s-ca/ca.crt
 ```
 
