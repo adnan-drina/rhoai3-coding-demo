@@ -161,5 +161,19 @@ for key_name in \
         "present"
 done
 
+log_step "Demo Reset Readiness"
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    GOLDEN_EXISTS=$(gh api repos/adnan-drina/coolstore-inventory-service/git/refs/heads/golden --jq '.object.sha' 2>/dev/null || echo "")
+    if [[ -n "$GOLDEN_EXISTS" ]]; then
+        echo -e "${GREEN}[PASS]${NC} coolstore-inventory-service golden branch exists (${GOLDEN_EXISTS:0:12})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} coolstore-inventory-service golden branch not found"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+else
+    echo -e "${YELLOW}[WARN]${NC} gh CLI not available or not authenticated — skipping golden branch check"
+fi
+
 echo ""
 validation_summary

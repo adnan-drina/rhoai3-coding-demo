@@ -345,17 +345,22 @@ returns the statistics.
 
 ### Resetting the demo
 
-To reset the `coolstore-inventory-service` repository for the next run:
+To reset the `coolstore-inventory-service` repository for the next run, use the
+reset script from the demo repo:
 
 ```bash
-git revert HEAD --no-edit    # revert the fix commit
-git push
-git revert HEAD --no-edit    # revert the stats-endpoint commit
-git push
+./scripts/reset-coolstore-demo.sh
 ```
 
-Each revert push triggers a pipeline run — this is expected. After both
-reverts, the repository is back to its pre-demo state.
+The script rewinds `main` to the `golden` branch baseline via the GitHub API,
+recreates the `agentic-coolstore` DevWorkspace, and optionally clears SonarQube
+history (`--fresh-sonar`). The force-push fires one expected pipeline run in
+`coolstore-dev` that re-validates the chain and re-tags `:latest`. The next
+workspace start clones pristine `main`.
+
+Add `--yes` to skip the confirmation prompt. See
+`docs/OPERATIONS.md` (Coolstore Demo Reset) for advancing the baseline when
+the demo app legitimately evolves.
 
 ---
 

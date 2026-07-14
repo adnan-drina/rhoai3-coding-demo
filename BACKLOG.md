@@ -139,6 +139,10 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 ## Post-migration documentation rewrite
 
 - [ ] **Rewrite OPERATIONS.md and TROUBLESHOOTING.md per-stage sections for the migrated 010-040 foundation** — the current sections describe the pre-migration implementation. Rewrite with live evidence from the first fresh-environment deployment of the migrated stages. Carry over rhoai3-demo known-issue entries (COO 1.4 pin rationale, MaaS quirks) where they apply.
+## Stage 060 demo reset enhancements
+
+- [ ] **`reset-coolstore-demo --prune-quay`** — optional flag to delete per-SHA demo image tags accumulated in quay.io/rhoai3-coding-demo/coolstore-inventory-service (cosmetic; requires quay robot with delete permission).
+
 ## Stage 050 Phase 5 items (deferred from the restructure plan, 2026-07-10)
 
 - [ ] **Tekton Chains signed provenance** — enable Tekton Chains on the stage 050 shared `app-platform-push` pipeline so every golden-path build gets SLSA provenance and sigstore signatures via the already-installed Trusted Artifact Signer stack (Securesign instance required first). Restores the "trusted delivery" claim materially; demo beat: `cosign verify-attestation` on a pipeline-built image.

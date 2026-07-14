@@ -1083,6 +1083,42 @@ Kueue queue resources survive normal cluster restarts because they are Kubernete
 
 After any cluster suspend/resume, also restart the Stage 050 Developer Hub deployment — its long-running backend holds stale connections across the suspend and OIDC sign-in fails with 504 errors until it is bounced (see the Stage 050 Developer Hub notes and TROUBLESHOOTING).
 
+## Coolstore Demo Reset
+
+The stage 060 coding exercise pushes real commits to
+`coolstore-inventory-service` `main` (required — pipeline triggers listen only
+on `refs/heads/main`). To make demo runs repeatable, a `golden` branch in that
+repo pins the pristine baseline.
+
+```bash
+./scripts/reset-coolstore-demo.sh
+```
+
+| Flag | Effect |
+|------|--------|
+| `--yes` | Skip the confirmation prompt |
+| `--fresh-sonar` | Delete the SonarQube project (cosmetic history cleanup) |
+| `--skip-workspace` | Leave the DevWorkspace as-is |
+| `--wait-pipeline` | Poll the reset PipelineRun until Succeeded/Failed (max 15 min) |
+
+The script rewinds `main` to `golden` via the GitHub API, recreates the
+`agentic-coolstore` DevWorkspace (Argo CD self-heals it to `Stopped`), and
+optionally clears SonarQube history. The force-push fires one expected
+`app-push` PipelineRun in `coolstore-dev` that re-validates the chain and
+re-tags `:latest`.
+
+**Advancing the baseline:** when the demo app legitimately evolves, push the
+new baseline commit to `main`, verify the pipeline is green, then update the
+golden branch:
+
+```bash
+gh api -X PATCH "repos/adnan-drina/coolstore-inventory-service/git/refs/heads/golden" \
+  -f sha="$(gh api repos/adnan-drina/coolstore-inventory-service/git/refs/heads/main --jq .object.sha)" \
+  -F force=true
+```
+
+Or: `git push origin main:golden --force`.
+
 ## Cleanup Guidance
 
 The Argo CD Applications intentionally do not include finalizers. Deleting an Application by itself orphans the resources that it created.
