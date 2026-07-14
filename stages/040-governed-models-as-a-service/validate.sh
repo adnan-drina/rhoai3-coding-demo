@@ -1234,8 +1234,11 @@ if command -v python3 >/dev/null 2>&1; then
 
     BODY=$(mktemp "${TMPDIR:-/tmp}/rhoai-stage220-maas-api.XXXXXX")
     TMP_FILES+=("$BODY")
+    # The caller discovers THEIR OWN subscriptions: ai-developer sees
+    # personal-ai-developer (per-user model from the 2026-07-14 restructure),
+    # not the kube:admin-owned $OPENAI_ACCESS_RESOURCE.
     STATUS=$(http_get "https://${GATEWAY_HOST}/maas-api/v1/subscriptions" "$AI_DEVELOPER_TOKEN" "$BODY")
-    if [[ "$STATUS" == "200" ]] && grep -q "$OPENAI_ACCESS_RESOURCE" "$BODY"; then
+    if [[ "$STATUS" == "200" ]] && grep -q "personal-ai-developer" "$BODY"; then
       R="pass"
     else
       R="status=${STATUS},body=$(head -c 180 "$BODY" | tr '\n' ' ')"
