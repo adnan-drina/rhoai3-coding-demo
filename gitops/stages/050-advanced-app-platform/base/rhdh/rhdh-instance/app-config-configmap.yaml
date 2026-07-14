@@ -94,6 +94,12 @@ data:
       frontend:
         red-hat-developer-hub.backstage-plugin-global-header:
           mountPoints:
+            # The launcher items below need the launcher BUTTON itself
+            # mounted - it is not part of the default header composition.
+            - mountPoint: global.header/component
+              importName: ApplicationLauncherDropdown
+              config:
+                priority: 82
             - mountPoint: global.header/application-launcher
               importName: MenuItemLink
               config:
