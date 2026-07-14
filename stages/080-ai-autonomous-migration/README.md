@@ -110,7 +110,7 @@ one platform, not a pile of tools.
   (`coolstore-inventory-service`, stage 060) plus every component this
   session created — the agentic scaffold and the migrated app — each one
   clicking through to its repo, its own namespace, and its pipeline runs.
-- Open the RHOAI MaaS usage dashboard: the assisted developer's Continue
+- Open the RHOAI MaaS usage dashboard: the assisted developer's Kilo Code
   traffic, the agent bursts, the application's own LLM calls — every AI
   consumer on this platform is identified, metered, and governed by the same
   gateway.

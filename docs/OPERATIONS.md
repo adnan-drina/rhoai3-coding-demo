@@ -219,6 +219,28 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-14 (afternoon) AI assistant swap: Continue → Cline → Kilo Code; subscription rename
+
+Actions:
+
+- Completed the AI coding assistant swap in Dev Spaces workspaces:
+  Continue (original) → Cline (interim) → Kilo Code (current). Kilo Code
+  is now the primary IDE AI assistant installed as a default extension in
+  all persona workspaces. OpenCode remains the terminal-based agentic
+  assistant. GitHub Copilot is available as a third option but is not
+  provisioned by the platform.
+- Renamed the MaaS developer-tools subscription from
+  `rhoai-developers-gpt-4o-mini` to `rhoai-developers-coding-models` to
+  reflect multi-model developer tooling rather than a single model name.
+  Manifests, validate scripts, and Stage 080 MaaS key references updated
+  in the same commit.
+- Lifecycle hardening: workspace init script updated for Kilo Code
+  configuration rendering; Che Code editor default-extensions policy
+  updated; `DEFAULT_EXTENSIONS` references updated in DevWorkspace specs.
+- Documentation sweep: all stage READMEs (050, 060, 070, 080),
+  root README, TROUBLESHOOTING, and BACKLOG updated to reference
+  Kilo Code as the current assistant. Historical log entries preserved.
+
 ### 2026-07-14 (morning) Post-resume eviction wave; OLM upgrade cleanup audited
 
 Context: the sandbox cluster was resumed in the morning (GPU nodes are

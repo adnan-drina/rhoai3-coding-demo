@@ -1110,31 +1110,60 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
 
-## Continue Is Missing From A Dev Spaces Workspace
+## Kilo Code Is Missing From A Dev Spaces Workspace
 
 **Affected stage:** Stage 060
 
-**Likely cause:** The workspace was started from an older DevWorkspace spec that only recommended Continue through `extensions.json`, or the workspace did not restart after the `DEFAULT_EXTENSIONS` policy changed.
+**Likely cause:** The workspace was started from an older DevWorkspace spec that predates the Kilo Code extension policy, or the workspace did not restart after the `DEFAULT_EXTENSIONS` policy changed.
 
 **Diagnose:**
 
 ```bash
 oc get devworkspace getting-started-ai-coding -n wksp-ai-developer -o yaml \
-  | grep -E 'DEFAULT_EXTENSIONS|continue.vsix|Continue.continue'
+  | grep -E 'DEFAULT_EXTENSIONS|kilo-code'
 
 POD=$(oc get pod -n wksp-ai-developer \
   -l controller.devfile.io/devworkspace_name=getting-started-ai-coding \
   -o jsonpath='{.items[0].metadata.name}')
 
 oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
-  test -f ~/.continue/config.yaml && echo "Continue config present"
+  ls ~/.kilo-code/ 2>/dev/null && echo "Kilo Code config present"
 ```
 
 **Recover:**
 
-- Sync Stage 060 so each DevWorkspace downloads `/tmp/continue.vsix` and sets `DEFAULT_EXTENSIONS`.
+- Sync Stage 050 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
-- Confirm the Continue sidebar appears in Che Code and that `~/.continue/config.yaml` exists in the tooling container.
+- Confirm the Kilo Code sidebar appears in Che Code and that the MaaS configuration has been rendered by the init script.
+
+## Kilo Code Cannot Reach MaaS Endpoint
+
+**Affected stage:** Stage 060
+
+**Likely cause:** The `devspace-ai-tools-init` ConfigMap init script did not
+run or failed to render the Kilo Code configuration with the correct MaaS
+base URL and API key. The workspace may have started before the MaaS key
+provisioner completed, or the `devspace-maas-key-provisioner` ServiceAccount
+lacks authorization on the `rhoai-developers-coding-models` subscription.
+
+**Diagnose:**
+
+```bash
+POD=$(oc get pod -n wksp-ai-developer \
+  -l controller.devfile.io/devworkspace_name=getting-started-ai-coding \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc logs -n wksp-ai-developer "$POD" -c tooling-container --tail=200 \
+  | grep -iE 'kilo|maas|api.key|init'
+
+oc get secret -n wksp-ai-developer -l app.kubernetes.io/part-of=devspaces-maas
+```
+
+**Recover:**
+
+- Confirm the MaaS key Secret exists in the workspace namespace.
+- Restart the workspace so the init script re-renders tool configuration.
+- If the key Secret is missing, re-run `stages/050-advanced-app-platform/deploy.sh` to re-provision keys.
 
 ## Coding Assistant Project Is Missing From OpenShift AI Projects
 
@@ -1167,7 +1196,7 @@ oc annotate application 060-mcp-context-integrations -n openshift-gitops \
 
 ## MaaS Gateway Times Out On Every Path (RHCL 1.4.x Drift)
 
-**Affected stage:** Stage 040 (breaks every AI consumer: Continue, key provisioning, app LLM calls)
+**Affected stage:** Stage 040 (breaks every AI consumer: Kilo Code, key provisioning, app LLM calls)
 
 **Symptoms (observed live 2026-07-10):** `curl https://maas.<apps-domain>/maas-api/v1/models`
 returns 000 from outside AND from in-cluster pods (even via the gateway

@@ -9,7 +9,7 @@ platform rails: the developer **enters through the portal catalog** — the
 `coolstore-inventory-service` component is the single entry point, a
 deployed brownfield Quarkus service discovered in Developer Hub, with links
 straight into its governed Dev Spaces workspace — extends the service with
-Continue ("vibe coding" a new component), and **exits through the
+Kilo Code ("vibe coding" a new component), and **exits through the
 pipeline** (every push to `main` runs coolstore's own `app-push` pipeline
 in `coolstore-dev`, with a SonarQube gate that fails on any new issue).
 One-shot prompting shows its power — and its limits, which motivate Stage
@@ -27,7 +27,7 @@ stage owns the developer experience that runs on it.
 
 - Red Hat OpenShift Dev Spaces deployed via the `stable` operator channel with automatic InstallPlan approval.
 - 9 pre-provisioned DevWorkspaces (3 per persona: `kubeadmin`, `ai-developer`, `ai-admin`) for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
-- Continue v1.3.38 installed as a default extension and configured for MaaS-published OpenAI-compatible endpoints.
+- Kilo Code installed as a default extension and configured for MaaS-published OpenAI-compatible endpoints.
 - OpenCode configured for the same MaaS endpoints via rendered `opencode.json`.
 - A `devspace-ai-tools-init` ConfigMap with a centralized init script that renders tool configuration from MaaS environment variables at workspace startup.
 - Java 21 configured as the default workspace shell and Maven runtime for the Quarkus demo exercises.
@@ -38,13 +38,13 @@ stage owns the developer experience that runs on it.
 Stage 060 turns governed model access into a developer experience.
 
 - Workspaces are reproducible and isolated by OpenShift identity and namespace.
-- Continue and OpenCode use MaaS endpoints instead of personal provider keys.
+- Kilo Code and OpenCode use MaaS endpoints instead of personal provider keys.
 - Local models keep source-code prompts inside the OpenShift platform boundary.
 - Approved external models can use the same workflow only when provider-side processing is allowed.
 - The MTA workspace gets modernization extensions without polluting the onboarding or inventory workspaces.
 - The tooling image is `che-incubator/cli-ai-tools` (community incubator image, documented as a workaround in BACKLOG until an official Red Hat UDI variant includes the required CLI tooling).
 - MaaS API key provisioning uses a `devspace-maas-key-provisioner` ServiceAccount authorized on the Stage 040 developer subscription — keys are minted per-developer at deploy, stored in a workspace namespace Secret, and consumed by the init script at startup.
-- The MCP URL in rendered Continue/OpenCode config depends on Stage 040 deploying the OpenShift MCP server to `rhoai-mcp` namespace on port 8080. The init script uses environment variables from the ConfigMap to render the correct cluster-internal endpoint.
+- The MCP URL in rendered Kilo Code/OpenCode config depends on Stage 040 deploying the OpenShift MCP server to `rhoai-mcp` namespace on port 8080. The init script uses environment variables from the ConfigMap to render the correct cluster-internal endpoint.
 
 This matters because regulated enterprises need AI coding assistance to fit existing controls for identity, network access, approved tooling, credential handling, and data residency.
 
@@ -52,13 +52,13 @@ This matters because regulated enterprises need AI coding assistance to fit exis
 
 Red Hat OpenShift Dev Spaces provides Kubernetes-based cloud development environments built on Eclipse Che and DevWorkspace. Red Hat OpenShift supplies OAuth, routing, namespace isolation, RBAC, and runtime controls. Red Hat OpenShift AI MaaS supplies the governed OpenAI-compatible model endpoint and API key pattern.
 
-Continue and OpenCode can consume standard OpenAI-compatible endpoints, so the workflow remains tool-flexible while platform teams keep workspace configuration and model access centralized.
+Kilo Code and OpenCode can consume standard OpenAI-compatible endpoints, so the workflow remains tool-flexible while platform teams keep workspace configuration and model access centralized.
 
 ## Trust Boundaries
 
 Dev Spaces keeps workspaces, source access, tool configuration, and MaaS credentials under platform control, but the selected model still determines where prompts and code are processed. Local models stay inside OpenShift. External models are governed through MaaS but processed by the provider.
 
-Real keys are never committed to Git. Continue terminal execution is not treated as validated unless the tool returns captured output; for shell evidence, use the tooling-container terminal or the later OpenCode workflow.
+Real keys are never committed to Git. Kilo Code terminal execution is not treated as validated unless the tool returns captured output; for shell evidence, use the tooling-container terminal or the later OpenCode workflow.
 
 ## Red Hat Products Used
 
@@ -70,7 +70,7 @@ Real keys are never committed to Git. Continue terminal execution is not treated
 
 - [Eclipse Che](https://www.eclipse.org/che/) is the upstream cloud development environment behind Dev Spaces.
 - [DevWorkspace Operator](https://github.com/devfile/devworkspace-operator) provides Kubernetes-native workspace orchestration.
-- [Continue](https://www.continue.dev/) provides the IDE AI assistant workflow (chat, edits, code assistance).
+- [Kilo Code](https://kilocode.ai/) provides the IDE AI assistant workflow (chat, edits, code assistance).
 - [OpenCode](https://opencode.ai/) provides terminal-based AI coding workflows for agentic development.
 - [OpenShift Toolkit](https://developers.redhat.com/products/openshift-ide-extensions) provides IDE-integrated OpenShift and Kubernetes resource workflows.
 
@@ -99,7 +99,7 @@ Detailed user steps for workspace onboarding: [`docs/DEVELOPER_WORKSPACE_GUIDE.m
 | MaaS code assistant quickstart | https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant |
 | AI code assistants with Dev Spaces | https://developers.redhat.com/articles/2026/01/28/guide-ai-code-assistants-red-hat-openshift-dev-spaces |
 | OpenCode for OpenShift Dev Spaces | https://developers.redhat.com/articles/2026/04/22/opencode-model-neutral-ai-coding-assistant-openshift-dev-spaces |
-| Continue | https://www.continue.dev/ |
+| Kilo Code | https://kilocode.ai/ |
 | rhpds/mca-devspaces | https://github.com/rhpds/mca-devspaces |
 
 ## Demo Script
@@ -124,7 +124,7 @@ page. The platform team put it there; the developer consumes it.
   wiring, and quality baseline all existed before the developer wrote a
   line — and the pipeline belongs to this project, not to a central queue.
 
-### Part 2 — Continue in the governed workspace: the one-shot high
+### Part 2 — Kilo Code in the governed workspace: the one-shot high
 
 **Know.** One-shot prompting is the entry drug of AI coding: brilliant for
 scaffolding, unreliable for production-shaped work. The demo does not hide
@@ -134,9 +134,9 @@ this — the limitation IS the lesson.
 - From the component page, click the **Dev Spaces** link — the workspace
   opens on the `coolstore-inventory-service` repository; run
   `mvn quarkus:dev`.
-- Show `~/.continue/config.yaml`: MaaS base URL, platform-issued key, token
+- Show Kilo Code's MaaS configuration: base URL, platform-issued key, token
   limits, usage telemetry. No provider console, no raw key.
-- Ask Continue for the new endpoint using
+- Ask Kilo Code for the new endpoint using
   [`demo-assets/continue-prompts.md`](demo-assets/continue-prompts.md) — or
   paste the prepared
   [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java)
@@ -157,7 +157,7 @@ the quality gate fails on any new issue — deliberately, deterministically.
   **CI** tab: clone → build → **sonar-scan FAILS** on the intentional
   smells.
 - Open SonarQube: the three new issues, on exactly the new code.
-- Back in the workspace, ask Continue to fix them (proper logging,
+- Back in the workspace, ask Kilo Code to fix them (proper logging,
   constructor injection, logged exception —
   [`demo-assets/InventoryStatsResource-fixed.java`](demo-assets/InventoryStatsResource-fixed.java)
   is the reference). Push again → pipeline green → `tag-latest` republishes
@@ -182,8 +182,8 @@ personal API key nobody tracked.
 - While it starts, say: "No local setup, no personal model keys. The
   platform team provisioned this workspace — the AI assistant inside it is
   already connected to company-approved models through governed endpoints."
-- When the IDE opens, show Continue in the sidebar and open
-  `~/.continue/config.yaml`: point at the MaaS base URL and the fact that
+- When the IDE opens, show Kilo Code in the sidebar and open
+  its MaaS configuration: point at the MaaS base URL and the fact that
   the API key was issued by the platform, scoped to this developer, with
   token limits and full usage telemetry.
 - **What they should notice:** the developer never saw a provider console,

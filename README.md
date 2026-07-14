@@ -15,7 +15,7 @@ AI-assisted development is now a normal expectation for software teams. But ente
 
 | Rung | Developer experience | Tooling |
 |------|----------------------|---------|
-| **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Continue via MaaS |
+| **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Kilo Code via MaaS |
 | **Agentic** (070) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
 | **Autonomous** (080) | Multi-agent legacy migration with human review gates | MigIQ (MTA + Developer Lightspeed) |
 
@@ -37,7 +37,7 @@ Underneath the ladder sits the governed platform foundation that every rung cons
 - GPU infrastructure for private AI with NVIDIA GPU enablement, Red Hat build of Kueue, and observability;
 - private model serving with vLLM and OpenAI-compatible APIs;
 - governed Models-as-a-Service access for private and approved external models;
-- developer workflows through Red Hat OpenShift Dev Spaces, Continue, OpenCode, Migration Toolkit for Applications, Developer Lightspeed, and Red Hat Developer Hub.
+- developer workflows through Red Hat OpenShift Dev Spaces, Kilo Code, OpenCode, Migration Toolkit for Applications, Developer Lightspeed, and Red Hat Developer Hub.
 
 The central design choice is simple: consumers do not connect directly to scattered model endpoints. They connect through MaaS, where platform teams publish approved model choices and enforce access policy.
 
@@ -58,7 +58,7 @@ The executable platform path is the eight-stage flow in [`flows/default.yaml`](f
 
 **Section 3: AI development maturity ladder** — *Climb from assisted prompts to agentic development to autonomous migration, each rung entering through the portal and exiting through the pipeline.*
 
-- [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) — Dev Spaces workspaces with Continue via MaaS and the one-shot vibe-coding exercise
+- [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) — Dev Spaces workspaces with Kilo Code via MaaS and the one-shot vibe-coding exercise
 - [070 - AI-Agentic Development](stages/070-ai-agentic-development/README.md) — OpenCode with AGENTS.md, reusable skills, and spec-driven development of a brand-new Quarkus application
 - [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) — MigIQ analysis plus multi-agent Spring Boot to Quarkus migration through MaaS
 
@@ -77,13 +77,13 @@ The reusable pattern is larger than this repository. Enterprises need to answer 
 - Can usage be measured, limited, traced, and reviewed?
 - Can modernization and portal workflows use AI without bypassing platform governance?
 
-This demo treats AI assistance as a platform capability. Red Hat OpenShift AI supplies model serving and MaaS. Red Hat OpenShift supplies the application platform. Red Hat OpenShift Dev Spaces, MTA, Developer Lightspeed, and Developer Hub bring the governed model path into developer workflows.
+This demo treats AI assistance as a platform capability. Red Hat OpenShift AI supplies model serving and MaaS. Red Hat OpenShift supplies the application platform. Red Hat OpenShift Dev Spaces, Kilo Code, MTA, Developer Lightspeed, and Developer Hub bring the governed model path into developer workflows.
 
 ## How Red Hat And Open Source Make It Work
 
 Red Hat OpenShift provides the enterprise Kubernetes foundation: identity, RBAC, networking, routing, scheduling, storage integration, monitoring, and GitOps patterns. Red Hat OpenShift AI adds the AI control plane for model serving, GenAI Studio, model registry, and MaaS. Red Hat Advanced Developer Suite capabilities bring workspaces, modernization, portal discovery, and AI-assisted developer experiences into the same platform story.
 
-Open source projects provide the building blocks: Open Data Hub and models-as-a-service for the upstream AI platform pattern, KServe and vLLM for inference, llm-d for distributed serving architecture, Gateway API with Kuadrant and Authorino for policy enforcement, Eclipse Che and DevWorkspace for workspaces, Continue and OpenCode for coding assistants, Konveyor and Kai for modernization, and Backstage for the developer portal.
+Open source projects provide the building blocks: Open Data Hub and models-as-a-service for the upstream AI platform pattern, KServe and vLLM for inference, llm-d for distributed serving architecture, Gateway API with Kuadrant and Authorino for policy enforcement, Eclipse Che and DevWorkspace for workspaces, Kilo Code and OpenCode for coding assistants, Konveyor and Kai for modernization, and Backstage for the developer portal.
 
 Red Hat's role in this architecture is integration, lifecycle, support posture, and operational consistency across those pieces.
 
@@ -196,7 +196,7 @@ Stage 070 teaches agentic development with `AGENTS.md` and reusable skills. This
 | [Kuadrant](https://kuadrant.io/) and [Authorino](https://www.authorino.io/) | MaaS policy | AuthN/AuthZ, rate limiting, token limiting, and protection patterns |
 | [Kueue](https://kueue.sigs.k8s.io/) | GPUaaS | Queueing, quota, and admission control primitives |
 | [Eclipse Che](https://www.eclipse.org/che/) and [DevWorkspace](https://github.com/devfile/devworkspace-operator) | Dev Spaces | Cloud workspace orchestration |
-| [Continue](https://www.continue.dev/) and [OpenCode](https://opencode.ai/) | Coding assistance | IDE and terminal AI coding workflows that can consume MaaS endpoints |
+| [Kilo Code](https://kilocode.ai/) and [OpenCode](https://opencode.ai/) | Coding assistance | IDE and terminal AI coding workflows that can consume MaaS endpoints |
 | [Konveyor](https://www.konveyor.io/) and [Kai](https://github.com/konveyor/kai) | MTA and Developer Lightspeed | Modernization analysis and AI-assisted remediation foundations |
 | [Backstage](https://backstage.io/) and [TechDocs](https://backstage.io/docs/features/techdocs/) | Developer Hub | Software catalog and documentation publishing |
 

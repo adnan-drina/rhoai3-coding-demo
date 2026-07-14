@@ -66,7 +66,7 @@ organized as five components under
 [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
 
 - **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona
-  workspaces, Che Code editor policy with Continue, MaaS API key
+  workspaces, Che Code editor policy with Kilo Code, MaaS API key
   provisioning, and the interim `agentic-coolstore` workspace.
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted
   Artifact Signer (channel `stable-v1.4`) operators, the InstallPlan approval
