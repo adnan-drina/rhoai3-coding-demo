@@ -85,9 +85,9 @@ metadata:
     - url: "https://coolstore-inventory-route.placeholder.example.com/api/inventory"
       title: Deployed App (dev)
       icon: web
-    - url: "https://devspaces-inventory.placeholder.example.com"
+    - url: "https://devspaces-inventory.placeholder.example.com/dashboard/#/ide/wksp-ai-developer/agentic-coolstore"
       title: Dev Spaces
-      icon: docs
+      icon: catalog
   tags:
     - java
     - quarkus

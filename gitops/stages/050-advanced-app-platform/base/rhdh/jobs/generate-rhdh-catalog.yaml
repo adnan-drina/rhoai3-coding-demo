@@ -173,9 +173,7 @@ spec:
               "https://coolstore-inventory-route.placeholder.example.com", coolstore_url)
           devspaces_links = {
               "https://devspaces.placeholder.example.com": devspaces_url,
-              "https://devspaces-inventory.placeholder.example.com": (
-                  f"{devspaces_url}#https://github.com/adnan-drina/coolstore-inventory-service"
-              ),
+              "https://devspaces-inventory.placeholder.example.com": devspaces_url,
           }
           for placeholder, replacement in devspaces_links.items():
               content = content.replace(placeholder, replacement)
