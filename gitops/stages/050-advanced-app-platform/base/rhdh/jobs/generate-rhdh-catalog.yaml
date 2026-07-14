@@ -125,10 +125,13 @@ spec:
             -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
           APP_TARGET_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
             -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
-          # Prefer the in-flight operation revision: this Job runs as a Sync
-          # hook, and status.sync.revision still holds the PREVIOUS revision
-          # until the operation completes (regenerating a stale catalog).
+          # Prefer the completed sync result revision, then the in-flight
+          # operation revision, then the live sync revision.
+          # operationState.operation.sync.revision can retain a stale value
+          # from a previous explicit-revision sync, so check syncResult first.
           APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
+            -o jsonpath='{.status.operationState.syncResult.revision}' 2>/dev/null || true)
+          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
             -o jsonpath='{.status.operationState.operation.sync.revision}' 2>/dev/null || true)
           [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
             -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
