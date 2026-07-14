@@ -1,7 +1,6 @@
 # Stage 050: Advanced Application Platform
 
-> **Status:** consolidated platform stage (Phase 2 of
-> [PLAN-advanced-app-platform-restructure](../../docs/PLAN-advanced-app-platform-restructure.md)).
+> **Status:** consolidated platform stage.
 > This stage owns every component the AI development stages consume, as
 > kustomize components: `devspaces` (Dev Spaces + workspaces + MaaS keys),
 > `pipelines` (Pipelines/TAS operators, the webhook dispatcher, and the

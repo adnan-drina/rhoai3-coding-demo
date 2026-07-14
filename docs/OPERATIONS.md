@@ -1,10 +1,9 @@
 # Operations Guide
 
 > **Foundation migration (2026-07-06):** stages 010-040 now import the
-> validated rhoai3-demo foundation (former 050/060 folded into 040; see
-> `docs/MIGRATION-PLAN-foundation-from-rhoai3-demo.md`). Sections below that
-> describe the pre-migration 010-060 implementation are historical until
-> rewritten after the first migrated deployment.
+> validated rhoai3-demo foundation (former 050/060 folded into 040). Sections
+> below that describe the pre-migration 010-060 implementation are historical
+> until rewritten after the first migrated deployment.
 
 This document explains how to deploy, validate, and operate the workshop environment. The README files teach the architecture and product story; this guide is the operational companion for people running the demo.
 
