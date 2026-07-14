@@ -28,7 +28,7 @@ stage owns the developer experience that runs on it.
 - Red Hat OpenShift Dev Spaces deployed via the `stable` operator channel with automatic InstallPlan approval.
 - 9 pre-provisioned DevWorkspaces (3 per persona: `kubeadmin`, `ai-developer`, `ai-admin`) for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
 - **Kilo Code 7.4.7** installed as a default extension and configured for MaaS-published OpenAI-compatible endpoints. Config at `~/.config/kilo/kilo.json` (OpenCode-schema JSON) with four providers: Nemotron (default), local Qwen, qwen3-235b (16K-context external), and minimax-m2 (196K-context external). Governance rules at `~/.config/kilo/AGENTS.md`. MCP `openshift` server at `http://openshift-mcp.rhoai-mcp.svc:8080/mcp`.
-- OpenCode configured for the same MaaS endpoints via rendered `opencode.json`.
+- **One tool per stage by design:** 060 workspaces are Kilo-only, 070 workspaces are OpenCode-only — never both configured in the same workspace. The project's `.opencode/` directory is the paradigm signal: present selects OpenCode, absent selects Kilo. The init script removes the other tool's config on every start.
 - A `devspace-ai-tools-init` ConfigMap with a centralized init script that renders tool configuration from MaaS environment variables at workspace startup.
 - Java 21 configured as the default workspace shell and Maven runtime for the Quarkus demo exercises.
 - MTA VS Code extensions scoped only to the `mca-coolstore` workspace through `DEFAULT_EXTENSIONS`.

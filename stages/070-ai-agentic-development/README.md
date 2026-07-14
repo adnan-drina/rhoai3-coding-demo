@@ -89,7 +89,7 @@ platform rails established by Stage 050.
 ## What To Notice And Why It Matters
 
 - **Standards become executable.** AGENTS.md and skills files are versioned alongside code. The agent reads them on every task, so internal conventions are applied consistently without longer prompts.
-- **Same governance, different workflow.** OpenCode uses the same MaaS keys, token quotas, and model endpoints as Kilo Code in Stage 060. The platform boundary is unchanged.
+- **Same governance, different workflow.** OpenCode uses the same MaaS keys, token quotas, and model endpoints as Kilo Code in Stage 060. The platform boundary is unchanged. 070 workspaces are OpenCode-only (no Kilo config is generated); the scaffolded repo's `.opencode/` directory selects OpenCode automatically.
 - **Agent-scale resources.** The workspace allocates 6Gi memory to support OpenCode holding multi-file context during iterative agent runs.
 - **Skills are a pull request away from improving.** When review feedback recurs, it becomes a skill update — the guideline is now enforced on every future run.
 - **No separate exercise file.** The demo is the README narrative (Demo Script below); the agentic workflow happens live in the workspace terminal.
