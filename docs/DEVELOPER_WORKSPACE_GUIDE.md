@@ -288,7 +288,7 @@ plain `New Terminal` path if it opens a broken session; the workspace pod also
 contains `che-gateway`, which is a non-interactive routing sidecar and not a
 developer shell.
 
-This is the Stage 060 vibe-coding check: a lightweight, human-led interaction
+This is the Stage 060 coding-exercise check: a lightweight, human-led interaction
 that verifies IDE integration with the configured model path before any
 source-code change is requested.
 

@@ -58,7 +58,7 @@ The executable platform path is the eight-stage flow in [`flows/default.yaml`](f
 
 **Section 3: AI development maturity ladder** — *Climb from assisted prompts to agentic development to autonomous migration, each rung entering through the portal and exiting through the pipeline.*
 
-- [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) — Dev Spaces workspaces with Kilo Code via MaaS and the one-shot vibe-coding exercise
+- [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) — Dev Spaces workspaces with Kilo Code via MaaS and the golden-path coding exercise
 - [070 - AI-Agentic Development](stages/070-ai-agentic-development/README.md) — OpenCode with AGENTS.md, reusable skills, and spec-driven development of a brand-new Quarkus application
 - [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) — MigIQ analysis plus multi-agent Spring Boot to Quarkus migration through MaaS
 

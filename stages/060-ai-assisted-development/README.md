@@ -171,33 +171,17 @@ the quality gate fails on any new issue — deliberately, deterministically.
 
 ### Optional — A developer's first hour (onboarding workspace)
 
-**Know.** Coolstore's engineering team is under pressure to adopt AI coding
-tools. Developers were already pasting code into public chatbots; security
-wants that stopped without blocking productivity. Onboarding a developer to a
-correctly configured AI toolchain used to mean days of local setup and a
-personal API key nobody tracked.
+The onboarding flow using the `getting-started-ai-coding` workspace has been
+retired in favor of the hands-on coding exercise below, which covers the same
+concepts within the golden-path loop.
 
-**Show.**
-- Log in to the RHOAI dashboard as `ai-developer` and open Dev Spaces; start
-  the `getting-started-ai-coding` workspace.
-- While it starts, say: "No local setup, no personal model keys. The
-  platform team provisioned this workspace — the AI assistant inside it is
-  already connected to company-approved models through governed endpoints."
-- When the IDE opens, show Kilo Code in the sidebar and open
-  its MaaS configuration: point at the MaaS base URL and the fact that
-  the API key was issued by the platform, scoped to this developer, with
-  token limits and full usage telemetry.
-- **What they should notice:** the developer never saw a provider console,
-  never handled a raw key, and the first AI-assisted line of code happens
-  minutes after joining.
+## Demo Exercise: AI-Assisted Development on the Golden Path
 
-## Demo Exercise: One-Shot Vibe Coding (optional deep-dive)
-
-The [vibe-coding exercise](vibe-coding-exercise.md) is an optional hands-on
-onboarding walkthrough using the `getting-started-ai-coding` workspace. The
-stage's primary demo is the golden-path flow above; the exercise remains
-useful for workshops where each attendee codes along, and its human-review
-discipline applies from the first prompt onward.
+The [coding exercise](coding-exercise.md) is the hands-on user guide for the
+full golden-path loop: discover a service in the catalog, extend it with Kilo
+Code, push through a SonarQube quality gate, read the failure report, fix the
+code with a stronger model, and push until the pipeline goes green. Use it for
+live demos, workshops, and self-paced developer onboarding.
 
 ## Next Stage
 
