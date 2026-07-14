@@ -93,9 +93,46 @@ data:
     dynamicPlugins:
       frontend:
         red-hat-developer-hub.backstage-plugin-global-header:
+          # IMPORTANT: this mountPoints list REPLACES the plugin's default
+          # composition (it does not merge). It must therefore restate the
+          # full default header (from dynamic-plugins.default.yaml in the
+          # RHDH image) and append our demo tiles at the end. Losing the
+          # GlobalHeader entry removes the entire top header (observed live
+          # 2026-07-14).
           mountPoints:
-            # The launcher items below need the launcher BUTTON itself
-            # mounted - it is not part of the default header composition.
+            - mountPoint: application/header
+              importName: GlobalHeader
+              config:
+                position: above-sidebar
+            - mountPoint: global.header/component
+              importName: CompanyLogo
+              config:
+                priority: 200
+                props:
+                  to: /
+            - mountPoint: global.header/component
+              importName: SearchComponent
+              config:
+                priority: 100
+            - mountPoint: global.header/component
+              importName: Spacer
+              config:
+                priority: 99
+                props:
+                  growFactor: 0
+            - mountPoint: global.header/component
+              importName: HeaderIconButton
+              config:
+                priority: 90
+                props:
+                  icon: add
+                  title: Self-service
+                  titleKey: create.title
+                  to: create
+            - mountPoint: global.header/component
+              importName: StarredDropdown
+              config:
+                priority: 85
             - mountPoint: global.header/component
               importName: ApplicationLauncherDropdown
               config:
@@ -103,18 +140,81 @@ data:
             - mountPoint: global.header/application-launcher
               importName: MenuItemLink
               config:
+                priority: 150
+                section: Documentation
+                props:
+                  icon: developerHub
+                  link: https://docs.redhat.com/en/documentation/red_hat_developer_hub
+                  title: Developer Hub
+                  titleKey: applicationLauncher.developerHub
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 100
                 section: Developer Tools
+                props:
+                  icon: developerHub
+                  link: https://github.com/redhat-developer/rhdh-local
+                  title: RHDH Local
+                  titleKey: applicationLauncher.rhdhLocal
+            - mountPoint: global.header/component
+              importName: HelpDropdown
+              config:
+                priority: 80
+            - mountPoint: global.header/help
+              importName: SupportButton
+              config:
+                priority: 10
+            - mountPoint: global.header/component
+              importName: NotificationButton
+              config:
+                priority: 70
+            - mountPoint: global.header/component
+              importName: Divider
+              config:
+                priority: 50
+            - mountPoint: global.header/component
+              importName: ProfileDropdown
+              config:
+                priority: 10
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
                 priority: 100
                 props:
+                  icon: manageAccounts
+                  link: /settings
+                  title: Settings
+                  titleKey: profile.settings
+            - mountPoint: global.header/profile
+              importName: MenuItemLink
+              config:
+                priority: 90
+                props:
+                  icon: account
+                  title: My profile
+                  titleKey: profile.myProfile
+                  type: myProfile
+            - mountPoint: global.header/profile
+              importName: LogoutButton
+              config:
+                priority: 10
+            # --- demo additions (stage 060 golden path) ---
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                priority: 60
+                section: Developer Tools
+                props:
+                  icon: developerHub
                   title: SonarQube
-                  icon: dashboard
                   link: ${SONARQUBE_URL}
             - mountPoint: global.header/application-launcher
               importName: MenuItemLink
               config:
+                priority: 55
                 section: Developer Tools
-                priority: 90
                 props:
+                  icon: developerHub
                   title: Dev Spaces
-                  icon: catalog
                   link: ${DEVSPACES_URL}
