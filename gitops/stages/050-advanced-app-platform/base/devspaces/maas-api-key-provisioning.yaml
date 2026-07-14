@@ -275,8 +275,56 @@ data:
       sleep 2
     done
 
+    ensure_in_cluster_kubeconfig() {
+      if [ -z "${KUBERNETES_SERVICE_HOST:-}" ] || [ -z "${KUBERNETES_SERVICE_PORT:-}" ]; then
+        echo "Not running in-cluster; skipping kubeconfig generation."
+        return
+      fi
+
+      local sa_dir="/var/run/secrets/kubernetes.io/serviceaccount"
+      if [ ! -r "${sa_dir}/token" ] || [ ! -r "${sa_dir}/ca.crt" ]; then
+        echo "Service account credentials not found; skipping kubeconfig generation."
+        return
+      fi
+
+      local kube_dir="${HOME}/.kube"
+      mkdir -p "${kube_dir}"
+
+      if [ -f "${kube_dir}/config" ]; then
+        echo "Kept existing ~/.kube/config."
+        return
+      fi
+
+      local ns
+      ns="$(cat "${sa_dir}/namespace" 2>/dev/null || echo "default")"
+
+      cat > "${kube_dir}/config" <<KUBEEOF
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - cluster:
+        certificate-authority: ${sa_dir}/ca.crt
+        server: https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
+      name: in-cluster
+    contexts:
+    - context:
+        cluster: in-cluster
+        namespace: ${ns}
+        user: devworkspace-sa
+      name: in-cluster
+    current-context: in-cluster
+    users:
+    - name: devworkspace-sa
+      user:
+        tokenFile: ${sa_dir}/token
+    KUBEEOF
+      chmod 600 "${kube_dir}/config"
+      echo "Generated ~/.kube/config from in-cluster service account (namespace: ${ns})."
+    }
+
     ensure_vscode_shell_integration
     ensure_java21_default
+    ensure_in_cluster_kubeconfig
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
