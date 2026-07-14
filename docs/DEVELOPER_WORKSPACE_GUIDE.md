@@ -2,7 +2,7 @@
 
 This guide is for demo users working in Stage 060 and later. It explains how to
 start from Red Hat Developer Hub, open the governed Red Hat OpenShift Dev Spaces
-workspace, and use MaaS-backed Continue for developer onboarding and enterprise
+workspace, and use MaaS-backed Kilo Code for developer onboarding and enterprise
 vibe coding without using personal provider credentials.
 
 The guide is published through Developer Hub TechDocs so the developer can read
@@ -35,17 +35,18 @@ At the end of Stage 060, the developer has verified:
 - Developer Hub opens this TechDocs guide from the `Getting Started` link.
 - Each `Dev Spaces` link opens a single-repository workspace for the selected
   component.
-- Continue is configured locally by the workspace startup command with MaaS
-  routes and API keys.
+- Kilo Code is configured locally by the workspace startup command with MaaS
+  routes and API keys (four providers: Nemotron default, local Qwen, qwen3-235b,
+  minimax-m2).
 - OpenShift Toolkit is available in Che Code for IDE-based OpenShift resource
   navigation.
-- Continue can reach `nemotron-3-nano-30b-a3b` through MaaS with the opening
+- Kilo Code can reach `nemotron-3-nano-30b-a3b` through MaaS with the opening
   onboarding and vibes prompt.
 - No route URL, API key, token, kubeconfig, or provider credential is committed.
 
 ## What Is Already Prepared
 
-Stage 060 creates the Dev Spaces environment and pre-provisions separate
+Stage 050 creates the Dev Spaces environment and pre-provisions separate
 single-repository workspaces for the demo personas:
 
 - `getting-started-ai-coding` for onboarding and MaaS client verification.
@@ -59,7 +60,7 @@ so the workspace opens with only the selected repository. The platform owns the
 workspace definition, tooling image, source repositories, model access path, and
 workspace-local AI tool configuration. Stage deployment stores MaaS API keys in
 `Secret/wksp-ai-developer/maas-devspace-api-keys`; the workspace startup command
-renders local Continue configuration from that Secret. Some workspaces also
+renders local Kilo Code configuration from that Secret. Some workspaces also
 render OpenCode configuration for later agentic engineering stages, but OpenCode
 is not part of the Stage 060 demo flow.
 
@@ -77,7 +78,7 @@ terminals make both `java -version` and `mvn -v` resolve to Java 21. If a fresh
 workspace still reports Java 17, fix the workspace image or startup
 configuration; do not add Java-version workarounds to the application prompt.
 
-Che Code editor policy is also platform-managed. Stage 060 installs Continue
+Che Code editor policy is also platform-managed. Stage 050 installs Kilo Code
 from Open VSX through the DevWorkspace `DEFAULT_EXTENSIONS` setting and
 provides a `vscode-editor-configurations` ConfigMap in each workspace namespace
 for editor recommendations and bash terminal defaults. The modernization-only
@@ -114,13 +115,13 @@ overview.
 During startup, the onboarding workspace renders local home-directory config
 from the platform-managed MaaS API key Secret:
 
-- `~/.continue/config.yaml`
+- `~/.config/kilo/kilo.json` (four providers, OpenCode-schema JSON)
+- `~/.config/kilo/AGENTS.md` (governance rules)
 - `~/.config/opencode/opencode.json`
 
 If the Secret is not ready, the startup command falls back to the checked-in
 templates so the workspace still opens. Do not put real route URLs or API keys
-into `/projects/<repo>/.continue/config.yaml`; that file remains a Git-tracked
-template.
+into checked-in template files; they remain Git-tracked placeholders.
 
 For Stage 060, the selected workspace should show only one project directory:
 
@@ -136,7 +137,8 @@ From the Dev Spaces terminal:
 
 ```bash
 find /projects -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort
-test -f ~/.continue/config.yaml && echo "Continue config present"
+test -f ~/.config/kilo/kilo.json && echo "Kilo Code config present"
+grep '"model"' ~/.config/kilo/kilo.json
 ```
 
 Expected project directories:
@@ -161,23 +163,30 @@ copying keys from the OpenShift AI dashboard.
 From the workspace terminal, confirm the local config files were generated:
 
 ```bash
-test -f ~/.continue/config.yaml && echo "Continue config present"
+test -f ~/.config/kilo/kilo.json && echo "Kilo Code config present"
+grep '"model"' ~/.config/kilo/kilo.json
 ```
+
+Expect four model entries (Nemotron, Qwen local, qwen3-235b, minimax-m2).
+Confirm the Kilo Code approval-gate is active: Kilo Code requests user
+approval before executing file edits, keeping the human in the loop.
 
 Platform operators can inspect key records in Red Hat OpenShift AI by opening
 `Gen AI studio` and then `API keys`. MaaS shows generated key values only once,
 so do not rely on the dashboard as a source for workspace startup. The
-workspace reads the values from the Kubernetes Secret created by Stage 060.
+workspace reads the values from the Kubernetes Secret created by Stage 050.
 
 ## Step 5: Choose The Model Endpoint
 
 Use a model endpoint that matches the exercise and data policy:
 
-| Model ID | Typical use |
-|----------|-------------|
-| `nemotron-3-nano-30b-a3b` | Default private model for sensitive code and enterprise demo tasks |
-| `qwen3-6-35b-a3b` | Private coding-focused model (Qwen3.6 35B A3B, FP8-dynamic) |
-| `gpt-4o-mini` | Lower-cost approved external model when provider-side processing is allowed |
+| Model ID | Typical use | MaaS path prefix |
+|----------|-------------|------------------|
+| `nemotron-3-nano-30b-a3b` | Default private model for sensitive code and enterprise demo tasks | `/models-as-a-service/<model>/v1` |
+| `qwen3-6-35b-a3b` | Private coding-focused model (Qwen3.6 35B A3B, FP8-dynamic) | `/models-as-a-service/<model>/v1` |
+| `qwen3-235b` | External 16K-context reasoning model via LiteLLM proxy | `/redhat-ods-applications/<model>/v1` |
+| `minimax-m2` | External 196K-context model via LiteLLM proxy | `/redhat-ods-applications/<model>/v1` |
+| `gpt-4o-mini` | Lower-cost approved external model when provider-side processing is allowed | `/redhat-ods-applications/<model>/v1` |
 
 The default Stage 060 source-code path is:
 
@@ -207,57 +216,50 @@ you are updating templates for several models, replace `YOUR_MAAS_ROUTE` with
 only the gateway base URL, such as `https://<maas-gateway-host>`, and preserve
 the model-specific path shown by the platform.
 
-## Step 6: Verify Continue Configuration
+## Step 6: Verify Kilo Code Configuration
 
-Continue is used for IDE-based chat, code explanation, edits, and code
-generation. It is useful when the developer wants assistance while reading or
-changing files in the browser-based IDE.
+Kilo Code is used for IDE-based chat, code explanation, edits, and code
+generation in Act mode. It is useful when the developer wants assistance while
+reading or changing files in the browser-based IDE.
 
 Inspect the generated config from the Dev Spaces terminal:
 
 ```bash
-grep -E "model:|apiBase:" ~/.continue/config.yaml
+grep '"model"' ~/.config/kilo/kilo.json
 ```
 
-Do not print `apiKey` values. The generated config should include
-`nemotron-3-nano-30b-a3b`, `qwen3-6-35b-a3b`, and `gpt-4o-mini` with
-MaaS OpenAI-compatible endpoints.
+Do not print `apiKey` values. The generated config should include four
+providers: `nemotron-3-nano-30b-a3b`, `qwen3-6-35b-a3b`, `qwen3-235b`, and
+`minimax-m2` with MaaS OpenAI-compatible endpoints.
 
-The generated Continue model entries set a 600000 millisecond request timeout.
-This is intended for long coding-agent generations through the MaaS gateway; it
-does not change the model output token limits or make oversized prompts cheaper.
+Kilo Code uses the OpenCode JSON schema for `kilo.json`. The generated
+provider entries set a 600000 millisecond request timeout. This is intended
+for long coding-agent generations through the MaaS gateway; it does not change
+the model output token limits or make oversized prompts cheaper.
 
-![Sanitized Continue local configuration](assets/techdocs/continue-config.svg)
+Kilo Code's Act mode requests user approval before executing file edits,
+keeping the human in the review loop. For shell commands, open
+`Terminal > New Terminal (Select a Container) > tooling-container` and run the
+command yourself, or use OpenCode when that workflow is introduced.
 
-Continue's Agent mode exposes terminal command execution as the built-in
-`run_terminal_command` tool, but this Dev Spaces workspace is a remote Che Code
-environment. In the current Continue extension, that remote path can write a
-command into the active terminal without executing it or capturing output. Use
-Continue for repository inspection, edits, model checks, and read-only
-OpenShift MCP context. For shell commands, open `Terminal > New Terminal (Select
-a Container) > tooling-container` and run the command yourself, or use OpenCode
-when that workflow is introduced.
+Governance rules at `~/.config/kilo/AGENTS.md` carry durable workspace
+behavior: file edits should be written to disk, repository-relative paths
+should be used, edits should stay inside the requested project directory,
+examples should stay minimal, and secrets or concrete route hosts must not be
+printed.
 
-Select `Local Config` in the Continue sidebar.
-
-The local Continue config uses `rules:` as workspace-level system guidance.
-Keep those rules durable and exercise-neutral: file edits should be written to
-disk, repository-relative paths should be used, edits should stay inside the
-requested project directory, examples should stay minimal, and secrets or
-concrete route hosts must not be printed.
-
-Keep exercise details out of the general rules. Product versions, Maven
+Keep exercise details out of the governance rules. Product versions, Maven
 coordinates, Java imports, generated file names, and validation commands belong
-in the one-shot task prompt or later specs/skills. This keeps the same workspace
-rules useful when the demo moves from the Stage 060 Quarkus exercise to later
-spec-driven and agentic workflows.
+in the one-shot task prompt or later specs/skills. This keeps the same
+workspace rules useful when the demo moves from the Stage 060 Quarkus exercise
+to later spec-driven and agentic workflows.
 
 Likewise, Java 21 is not a prompt guardrail. It is part of the controlled Dev
 Spaces runtime contract. The prompt can ask for a Java 21 Quarkus application,
 but the workspace must make Maven run on Java 21 before the developer validates
 the generated project.
 
-## Step 7: Verify Continue
+## Step 7: Verify Kilo Code
 
 Send the opening prompt that verifies the AI coding assistants configuration
 for this workspace:
@@ -274,7 +276,7 @@ Return exactly four bullets:
 
 Record only:
 
-- client: `Continue`
+- client: `Kilo Code`
 - selected model ID
 - prompt result: pass/fail
 - blocker, if any
@@ -284,9 +286,7 @@ Do not copy the MaaS route, API key, or full cluster hostname into evidence.
 For command evidence, use a terminal attached to `tooling-container`. Avoid the
 plain `New Terminal` path if it opens a broken session; the workspace pod also
 contains `che-gateway`, which is a non-interactive routing sidecar and not a
-developer shell. If Continue attempts a terminal command and cannot execute or
-capture output, the assistant must stop, report the exact command to run
-manually, and record the blocker instead of claiming that the command passed.
+developer shell.
 
 This is the Stage 060 vibe-coding check: a lightweight, human-led interaction
 that verifies IDE integration with the configured model path before any
@@ -317,7 +317,7 @@ Record:
 - `Dev Spaces` opens the selected workspace: yes/no
 - workspace project:
 - private model ready: `nemotron-3-nano-30b-a3b`
-- Continue opening prompt passed: yes/no
+- Kilo Code opening prompt passed: yes/no
 - secrets committed: no
 
 Do not record:
@@ -333,7 +333,7 @@ Do not record:
 
 OpenCode, project rules, skills, and Scribe MCP are introduced in later
 agentic-engineering and modernization segments. They are not part of the Stage
-100 onboarding and Continue vibes validation. When Scribe is running
+060 onboarding and Kilo Code vibes validation. When Scribe is running
 locally or exposed as an approved MCP service, OpenCode can load it as a remote
 MCP server for reviewed modernization rule work.
 

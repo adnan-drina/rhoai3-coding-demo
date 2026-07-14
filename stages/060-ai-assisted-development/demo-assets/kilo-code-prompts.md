@@ -1,11 +1,11 @@
-# Continue Plugin Prompts for Demo
+# Kilo Code Prompts for Demo
 
 Target application: `coolstore-inventory-service` (the stage 060 catalog
 entry point — the developer opens it in Dev Spaces from the component page).
 
 ## Module 1: Generate code with intentional smells
 
-**Prompt (one-shot to Continue):**
+**Prompt (Act mode in Kilo Code — select a governed model from the four-provider picker: Nemotron default, local Qwen, qwen3-235b 16K-context, or minimax-m2 196K-context):**
 
 > Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
 > statistics including total item count, a breakdown by location, and
@@ -22,6 +22,12 @@ the pre-prepared version from `InventoryStatsResource-with-smells.java` and
 explain to the audience that "for demo purposes, our developer took some
 shortcuts."
 
+**Model picker beat:** before running the prompt, briefly show the model
+picker in Kilo Code. Four governed models are available — two local (Nemotron,
+Qwen) and two external (qwen3-235b, minimax-m2 with 196K context). All four
+route through the same MaaS gateway with the same API key; the developer
+chooses by task, not by credential.
+
 Verify with hot reload: `curl localhost:8080/api/inventory/stats` answers
 immediately — Quarkus dev mode picks the new class up without a restart.
 
@@ -29,7 +35,7 @@ immediately — Quarkus dev mode picks the new class up without a restart.
 
 ## Module 2: Fix code smells after SonarQube failure
 
-**Prompt (to Continue after the coolstore-dev pipeline's gate fails):**
+**Prompt (Act mode in Kilo Code after the coolstore-dev pipeline's gate fails):**
 
 > The pipeline's SonarQube gate failed on InventoryStatsResource.java. It
 > found System.out.println usage, field injection, and an empty catch block.
@@ -44,6 +50,6 @@ immediately — Quarkus dev mode picks the new class up without a restart.
 **Reference:** See `InventoryStatsResource-fixed.java` for the expected
 result.
 
-**Talk track note:** the fix loop stays in Continue at this stage — one-shot
+**Talk track note:** the fix loop stays in Kilo Code at this stage — one-shot
 in, gate out. Stage 070 is where the agent (OpenCode + skills) internalizes
 the standards so the smells never ship in the first place.

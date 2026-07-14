@@ -68,13 +68,32 @@ This stage turns model endpoints into governed platform services with subscripti
 Stage 040 is the governance control point for all model consumption that follows.
 
 - **Subscription-based quotas.** Developer tokens are budgeted, not unlimited. Service-account subscriptions (`devspaces-coding-models`, `mta-migration-models`) provide workspace-level budgets at priority 100. Personal subscriptions (`personal-kube-admin`, `personal-ai-developer`, `personal-ai-admin`) at priority 150 win subscription selection for interactive use (e.g. GenAI Playground), so personal usage is metered separately. The `developer-hub-models` subscription is reserved for the planned RHDH integration.
-- **Purpose-built subscriptions.** `devspaces-coding-models` (Nemotron 1M/h, Qwen-local 1M/h, Qwen3-235b 1M/h, MiniMax-M2 1M/h — no GPT-4o-mini). `mta-migration-models` (Nemotron 1M/h, Qwen-local 1M/h — locals only). `model-evaluation` (Nemotron 2M/h, GPT-4o-mini 1M/h) for benchmark runs. `ai-safety-guardrails` (Nemotron 500k/h) for NeMo guardrails self-check amplification.
+
+**Subscription architecture:**
+
+| Name | Owners | Models (limit/1h) | Priority | Purpose |
+|------|--------|-------------------|----------|---------|
+| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | nemotron, qwen3-6-35b-a3b, qwen3-235b, minimax-m2 @1M | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
+| `mta-migration-models` | 2 SAs (MTA hook + agentic migration) | nemotron, qwen3-6-35b-a3b @1M | 100 | MTA Developer Lightspeed + agentic migration |
+| `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | nemotron, qwen3-6-35b-a3b, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
+| `developer-hub-models` | rhods-admins, kube:admin | nemotron, qwen3-6-35b-a3b @1M | 100 | Reserved for RHDH integration |
+| `model-evaluation` | unchanged | nemotron, gpt-4o-mini | 100 | Eval workloads |
+| `ai-safety-guardrails` | unchanged | nemotron | 100 | NeMo Guardrails |
+
+Retired: `rhoai-developers-coding-models`, `enterprise-rag-autorag`.
+
 - **Cross-stage wiring.** Stage 050 (`devspace-maas-key-provisioner`) service account uses the `devspaces-coding-models` subscription. Stage 050 MTA wiring (`job-patch-mta-maas-url`, `agentic-migration-key-provisioner`) uses the `mta-migration-models` subscription — keys minted under those service accounts inherit the matching token budget.
 - **Operator version pinning.** The RHCL Subscription declares `startingCSV: rhcl-operator.v1.3.4` with manual InstallPlan approval; a hook Job (`approve-rhcl-installplan`) pins installation to `v1.3.5`. The Subscription anchors CatalogSource selection; the Job controls which InstallPlan is approved. This two-resource mechanism is deliberate because RHCL 1.4.0 is deprecated and Red Hat directs customers to pin to the latest 1.3.z release.
 - **Generated resources stay operator-managed.** AuthPolicy, TokenRateLimitPolicy, EnvoyFilter, and HTTPRoutes are created by the MaaS/RHCL/Kuadrant operators from the declared subscriptions and model refs — they are NOT authored in GitOps.
 - **Serving-health monitoring.** The `vllm-serving-health` PrometheusRule fires: high TTFT (>2s for 10m), request queue backlog (>8 for 10m), KV-cache pressure (>90% for 10m), and a parked-model info alert when no metrics flow for 15m. These match the Stage 030 GuideLLM benchmark breakpoints.
 - **OpenShift MCP bounded access.** The MCP server uses HTTP rate limiting (2 rps / burst 4) and enables only three tools: `pods_list_in_namespace`, `pods_get`, `nodes_top`. It denies Secret, ConfigMap, and RBAC resource access.
 - **Optional MCP servers.** Slack and BrightData deployments run at replicas 0 and activate only when `SLACK_BOT_TOKEN` / `BRIGHTDATA_API_TOKEN` are set. Both use SSE transport on port 8080.
+
+**Red Hat internal external models:** `qwen3-235b` (16K context) and `minimax-m2` (196K context) are published as governed MaaS models via a LiteLLM proxy at `maas-rhdp.apps.maas.redhatworkshops.io`. One shared API key (`.env` `REDHAT_MODELS_API_KEY` → Secret `redhat-models-provider-api-key`, `inference.networking.k8s.io/bbr-managed=true` label) authenticates both models. The MaaS integration uses the `ExternalModel` + `MaaSModelRef` pattern so both models appear in subscriptions and the Playground alongside the local models and gpt-4o-mini.
+
+**Visibility semantics:** what a user sees in the MaaS dashboard = what their own subscriptions authorize. Admin users (kube:admin) may see grayed-out subscription links for SA-owned subscriptions (like `devspaces-coding-models`); this is correct behavior — the admin is not an owner of that subscription.
+
+**Usage attribution:** external-model rows in the MaaS usage dashboard show the upstream response's model id (e.g. `minimaxai/minimax-m2-maas`), not the MaaS alias (`minimax-m2`). This is expected when the provider returns a different model identifier than the one the MaaS gateway advertises.
 
 ## How Red Hat And Open Source Make It Work
 

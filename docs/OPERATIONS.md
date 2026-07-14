@@ -240,6 +240,44 @@ Actions:
   root README, TROUBLESHOOTING, and BACKLOG updated to reference
   Kilo Code as the current assistant. Historical log entries preserved.
 
+### 2026-07-14 (evening) Subscription restructure, external models, key lifecycle, Prometheus persistence
+
+Actions:
+
+- **Assistant saga completed:** Continue (EOL — Cursor acquisition) → Cline
+  (rejected — 4.0.8 keeps provider config in VS Code `globalState`, not
+  headlessly provisionable) → Kilo Code 7.4.7 (current). Key commits:
+  `7307f2b` Cline in, `ab31efd` Kilo pivot, `6ad5253` MCP URL fix,
+  `6e01e76` VSIX skip-guard.
+- **Subscription restructure + Red Hat internal external models:** commits
+  `153bd5d` + `2a753d9` and fix chain. Retired
+  `rhoai-developers-coding-models` (renamed from the earlier
+  `rhoai-developers-gpt-4o-mini`). New architecture: six purpose-built
+  subscriptions (`devspaces-coding-models`, `mta-migration-models`,
+  three personal subscriptions at priority 150, `developer-hub-models`
+  reserved) plus `model-evaluation` and `ai-safety-guardrails`. Two Red Hat
+  internal external models added: `qwen3-235b` (16K ctx) and `minimax-m2`
+  (196K ctx) via LiteLLM proxy, ExternalModel + MaaSModelRef pattern, one
+  shared key (`REDHAT_MODELS_API_KEY`).
+- **Key lifecycle proven:** orphaned and test keys from earlier sessions
+  reaped via `DELETE /maas-api/v1/api-keys/{id}` (admin cross-identity
+  path).
+- **Prometheus persistence fix:** commit `561c13a` (if present) — platform
+  and UWM Prometheus replicas moved from emptyDir to gp3-csi
+  volumeClaimTemplates (platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB),
+  resolving the growing component of the worker disk-pressure eviction
+  feedback loop.
+
+Validation evidence:
+
+- Stage 040: 79 passed, 1 warning, 0 failed.
+- Stage 050: 38 passed, 1 warning, 0 failed.
+- Stage 060: 113 passed, 0 warnings, 0 failed.
+- **Live proving:** all 5 models (Nemotron, Qwen-local, qwen3-235b,
+  minimax-m2, gpt-4o-mini) accessible in GenAI Playground per-user
+  subscriptions. Kilo Code: 4 governed providers + MCP `openshift` server
+  tool-calling green.
+
 ### 2026-07-14 (morning) Post-resume eviction wave; OLM upgrade cleanup audited
 
 Context: the sandbox cluster was resumed in the morning (GPU nodes are

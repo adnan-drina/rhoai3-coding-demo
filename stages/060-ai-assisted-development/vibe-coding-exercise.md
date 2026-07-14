@@ -4,20 +4,20 @@
 
 Stages 010-040 build the governed AI platform for platform teams. Stage 060 changes the point of view: an enterprise developer now uses that platform to perform real development work. This is the moment where the architecture has to prove that productivity, governance, and human accountability can coexist.
 
-The developer workflow should start from the platform, not from personal tools, copied API keys, and undocumented model choices. This stage shows the first developer-facing path after the platform is installed: Developer Hub for discovery, Dev Spaces for the workspace, MaaS for governed model access, and Continue for IDE assistance.
+The developer workflow should start from the platform, not from personal tools, copied API keys, and undocumented model choices. This stage shows the first developer-facing path after the platform is installed: Developer Hub for discovery, Dev Spaces for the workspace, MaaS for governed model access, and Kilo Code for IDE assistance.
 
 For enterprise architects, the business value is the same value demonstrated in the platform stages, but now seen from the developer side: sensitive source code can use a private model path, approved external models can still be centrally controlled, and developers can use familiar tools without bypassing policy.
 
-Stage 060 is intentionally small. It proves the governed entry point and the first useful Continue workflow before introducing reusable skills, OpenCode agents, or multi-file autonomous work. The former Stage 110 spec and README-alignment placeholder has been merged into this stage as review discipline for responsible vibe coding, not as a separate stage.
+Stage 060 is intentionally small. It proves the governed entry point and the first useful Kilo Code workflow before introducing reusable skills, OpenCode agents, or multi-file autonomous work. The former Stage 110 spec and README-alignment placeholder has been merged into this stage as review discipline for responsible vibe coding, not as a separate stage.
 
 ## Key Concepts
 
 | Concept | Meaning in this demo |
 |---------|----------------------|
 | **Governed model** | A model made available through MaaS with platform-owned access controls, credentials, identity, quotas, telemetry, and policy. Developers consume the approved model from the workspace instead of bringing personal model endpoints or API keys. |
-| **AI coding assistant** | An IDE-integrated assistant, here Continue, configured inside Dev Spaces to use the governed model path. It helps the developer inspect context and produce small reviewable changes while the workspace and model access remain platform-managed. |
+| **AI coding assistant** | An IDE-integrated assistant, here Kilo Code, configured inside Dev Spaces to use the governed model path. It helps the developer inspect context and produce small reviewable changes while the workspace and model access remain platform-managed. |
 | **Vibe coding** | Human-led, prompt-driven exploration in the IDE. The developer describes intent in natural language, uses the assistant to create or explain small artifacts, and reviews every result. Vibe coding is useful for fast discovery and small testable changes, but it is not a substitute for tests, review, or engineering judgment. |
-| **Prompt engineering** | The practice of writing instructions, context, constraints, and acceptance criteria so the model produces relevant, reviewable output. In this stage, durable behavior belongs in the Continue system prompt and Quarkus-specific requirements belong in the one-shot prompt. |
+| **Prompt engineering** | The practice of writing instructions, context, constraints, and acceptance criteria so the model produces relevant, reviewable output. In this stage, durable behavior belongs in the Kilo Code governance rules (`~/.config/kilo/AGENTS.md`) and Quarkus-specific requirements belong in the one-shot prompt. |
 
 The order matters: the platform publishes a governed model, the IDE assistant consumes it, the developer uses vibe coding for a bounded task, and prompt engineering makes the request specific enough to review.
 
@@ -34,13 +34,13 @@ This stage turns the platform into a developer workflow.
 
 The developer opens the `getting-started-ai-coding` workspace in Red Hat OpenShift Dev Spaces. The workspace is already prepared with the repository, IDE, runtime, and AI assistant configuration needed for the exercise. (This onboarding workspace is opened directly from Dev Spaces; the portal catalog's single entry point is the `coolstore-inventory-service` component used by the stage's primary demo.)
 
-Inside the workspace, the developer first checks that the AI coding assistant is using the governed model path. After that, the developer asks Continue to create a small Quarkus project, reviews the generated files, and validates the result outside the assistant.
+Inside the workspace, the developer first checks that the AI coding assistant is using the governed model path. After that, the developer asks Kilo Code to create a small Quarkus project, reviews the generated files, and validates the result outside the assistant.
 
-## Continue
+## Kilo Code
 
-Continue is an open source AI coding assistant extension for IDEs. It gives developers control over model choice, provider endpoints, context sources, prompts, and assistant behavior through configuration files. Because Continue is fully open source, teams can inspect how it works and adapt it to their own development standards.
+Kilo Code is an open source AI coding assistant extension for IDEs. It gives developers control over model choice, provider endpoints, context sources, and assistant behavior through configuration files (`~/.config/kilo/kilo.json` uses the OpenCode JSON schema). Governance rules live in `~/.config/kilo/AGENTS.md`. Because Kilo Code is fully open source, teams can inspect how it works and adapt it to their own development standards.
 
-In this stage, Continue is preconfigured by Dev Spaces with the MaaS model catalog. `nemotron-3-nano-30b-a3b` is the default model for the hands-on flow, while other approved MaaS models remain available when policy allows. That keeps the developer experience familiar while model access, credentials, and policy remain platform-managed.
+In this stage, Kilo Code is preconfigured by Dev Spaces with four MaaS-governed providers: Nemotron (default), local Qwen, qwen3-235b (16K-context external), and minimax-m2 (196K-context external). `nemotron-3-nano-30b-a3b` is the default model for the hands-on flow, while other approved MaaS models remain available when policy allows. That keeps the developer experience familiar while model access, credentials, and policy remain platform-managed.
 
 ## Opening Prompt
 
@@ -60,7 +60,7 @@ Return exactly four bullets:
 
 Vibe coding is useful when the task is small, the reviewer understands the code, and validation is close at hand. The practice breaks down when intent, constraints, and decisions live only in a chat transcript. Stage 060 therefore treats assistant output as a draft and teaches the developer to move from conversation to durable engineering artifacts.
 
-In this stage, vibe coding means asking Continue for a small, bounded application and then treating the generated output as something to review, test, and own.
+In this stage, vibe coding means asking Kilo Code for a small, bounded application and then treating the generated output as something to review, test, and own.
 
 Run the exercise with both outcomes in mind:
 
@@ -108,7 +108,7 @@ content makes the prompt more expensive and can make the answer less focused.
 The prompt also demonstrates the tradeoff between big and small prompts. A
 single large prompt is easier to run live and is useful for Stage 060 vibe coding: one
 request can create a small app and explain assumptions. Validation stays
-outside the prompt because this Continue workflow does not provide reliable
+outside the prompt because this Kilo Code workflow does not provide reliable
 terminal evidence. The downside is that a big prompt costs more context, can
 drift, and still needs review. Later stages move this same intent into specs,
 skills, and agents so the work can be split into smaller, more focused,
@@ -120,7 +120,7 @@ in control of direction while still using the model for acceleration.
 
 Prompt split used in this demo:
 
-- **Continue system prompt** in `~/.continue/config.yaml` carries durable workspace behavior: write files to disk, use repository-relative paths, keep edits inside the requested project directory, keep examples minimal, and avoid printing secrets or concrete route hosts.
+- **Kilo Code governance rules** in `~/.config/kilo/AGENTS.md` carry durable workspace behavior: write files to disk, use repository-relative paths, keep edits inside the requested project directory, keep examples minimal, and avoid printing secrets or concrete route hosts.
 - **Quarkus one-shot prompt** carries task-specific details: Red Hat build of Quarkus coordinates, Maven repository and plugin XML, Jakarta imports, OpenShift deployment properties, and generated-file requirements.
 
 ## Good Practices
@@ -248,7 +248,7 @@ tokens, credentials, private hostnames, or full environment variables.
 
 ## Human Validation
 
-After reviewing the generated files, run validation outside Continue:
+After reviewing the generated files, run validation outside Kilo Code:
 
 ```bash
 cd hello-quarkus-vibe
@@ -275,8 +275,8 @@ curl -k -fsS "https://${ROUTE_HOST}/hello"
 
 - Stage 040 provides governed MaaS access.
 - Stage 060 can provide approved external models for non-sensitive tasks when policy allows.
-- Stage 080 provides MCP context integration.
-- Stage 060 provides Dev Spaces with Continue and OpenCode tooling.
+- Stage 040 provides MCP context integration.
+- Stage 060 provides Dev Spaces with Kilo Code and OpenCode tooling.
 - Stage 050 later surfaces this workspace through Developer Hub catalog entries and component-specific Dev Spaces links.
 
 ## Red Hat Products Used
@@ -289,7 +289,7 @@ curl -k -fsS "https://${ROUTE_HOST}/hello"
 ## Open Source Projects To Know
 
 - [Eclipse Che](https://www.eclipse.org/che/) and DevWorkspace provide the workspace foundation.
-- [Continue](https://www.continue.dev/) provides the IDE assistant workflow.
+- [Kilo Code](https://kilocode.ai/) provides the IDE assistant workflow.
 
 ## References
 

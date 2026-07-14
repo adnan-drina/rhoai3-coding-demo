@@ -394,16 +394,34 @@ Spaces server, SonarQube, kuadrant operator, among others). Secondary
 failures look like their own incidents — Argo CD syncs abort with
 repo-server restarts, Dev Spaces workspace postStart hooks time out.
 
-**Likely cause:** The llm-d `*-kserve-router-scheduler` pods are CPU-side
-components, but by operator design they carry the full modelcar image as
-an init container and a sidecar (the KV-cache-aware tokenizer reads the
-model files). Each served model therefore pins its entire model image
-(~30–37 GiB for the demo's Nemotron/Qwen modelcars) on whichever CPU
-worker the router-scheduler landed on — and image GC can never reclaim it
-because the image is in use. With 100 GiB of `/var` per worker and the
-rest of the workshop stack's images, those nodes idle just under the
-kubelet disk-pressure threshold. The restart churn and fresh image pulls
-after a cluster resume (or an operator upgrade) tip them over.
+**Likely cause (two components):**
+
+(a) **Fixed cost — modelcar images on CPU workers:** the llm-d
+`*-kserve-router-scheduler` pods are CPU-side components, but by operator
+design they carry the full modelcar image as an init container and a sidecar
+(the KV-cache-aware tokenizer reads the model files). Each served model
+therefore pins its entire model image (~30–37 GiB for the demo's
+Nemotron/Qwen modelcars) on whichever CPU worker the router-scheduler landed
+on — and image GC can never reclaim it because the image is in use. These are
+NOT relocatable: `LLMInferenceService.spec.router.scheduler` has no
+scheduling fields (toleration, nodeSelector, affinity), so they cannot be
+co-located with the GPU nodes that already hold the model images.
+
+(b) **The grower — Prometheus emptyDir TSDBs:** four Prometheus replicas
+(2 platform + 2 UWM) with emptyDir TSDBs on the three workers grow in
+lockstep. After a cluster resume, eviction → churn → new-series creates a
+feedback loop that amplifies disk pressure.
+
+**FIXED** by `gitops/stages/030-.../monitoring/base/` volumeClaimTemplates
+(gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the
+TSDB growth off ephemeral storage. The modelcar cost remains fixed.
+
+**Diagnostic gold:** `oc get --raw /api/v1/nodes/<node>/proxy/stats/summary`
+returns per-pod ephemeral storage usage — use this to identify which pods
+dominate `/var` on a suspect worker.
+
+**Note:** limitador counters are in-memory: a restart resets all
+usage-metrics counters (subscriptions, rate limits, token limits).
 
 **Diagnose:**
 
@@ -1296,6 +1314,83 @@ oc get application <app> -n openshift-gitops -o json \
 --overwrite`). For labels a controller depends on (like the
 pipeline-project provisioning label), the stage deploy.sh must assert the
 label on every run — see `seed_coolstore` step 0 in stage 050.
+
+## Kilo Code Shows "Move Your OpenCode Configuration"
+
+**Affected stage:** Stage 060
+
+**Likely cause:** Kilo Code detects an OpenCode-schema config and offers to
+adopt it. Dismissal is stored in VS Code `globalState`. Kilo-only workspaces
+(coolstore, getting-started) have no triggers after the self-scoping.
+Scaffolded 070 workspaces show it once on first open — just close the
+notification.
+
+**Recover:** dismiss the notification. It does not reappear in the same
+workspace volume.
+
+## MaaS Gateway Returns 429
+
+**Affected stage:** Stage 040 (affects all downstream consumers)
+
+**Likely cause:** token-rate-limit budget for the subscription/user/model/hour
+combination has been exhausted. Each `MaaSSubscription` carries per-model
+token-rate-limit entries (e.g. 1M tokens/hour for coding-tier models).
+
+**Diagnose:**
+
+```bash
+oc get tokenratelimitpolicy -n models-as-a-service
+oc get maassubscription -n models-as-a-service -o yaml | grep -A5 tokenRateLimit
+```
+
+**Recover:**
+
+- Wait for the hourly window to roll over, or
+- adjust the limit in `gitops/stages/040-.../base/policies/` files and
+  re-sync Stage 040. The coding tier uses 1M tokens/hour per model.
+
+## ose-cli curl Version Does Not Support --retry-all-errors
+
+**Affected stage:** any stage using Job-based hook scripts with `curl`
+
+**Likely cause:** the `ose-cli` image ships curl 7.61, which does not
+support `--retry-all-errors` (added in curl 7.71). Hook Job scripts that
+retry on transient failures must use `--retry` alone or a shell loop
+instead of `--retry-all-errors`.
+
+**Recover:** replace `--retry-all-errors` with `--retry <n>` (retries on
+connection errors and some HTTP errors) or wrap in a shell retry loop
+with explicit HTTP status checks.
+
+## API-Key Admin Cleanup Path
+
+**Affected stage:** Stage 040
+
+**Symptom:** orphaned or revoked MaaS API keys need to be cleaned up, but
+the search endpoint is non-trivial.
+
+**Admin cleanup commands:**
+
+```bash
+MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
+  -o jsonpath='{.spec.listeners[0].hostname}')
+ADMIN_KEY="<admin-api-key>"
+
+# List all keys (returns {"object":"list","data":[...]})
+# Note: the name filter parameter is ignored — filter client-side.
+# Results include revoked keys and keys from other identities.
+curl -sk -H "Authorization: Bearer ${ADMIN_KEY}" \
+  "https://${MAAS_HOST}/maas-api/v1/api-keys" | jq '.data[] | {id, name, identity, revoked}'
+
+# Delete a specific key by ID (works cross-identity as admin)
+curl -sk -X DELETE -H "Authorization: Bearer ${ADMIN_KEY}" \
+  "https://${MAAS_HOST}/maas-api/v1/api-keys/{id}"
+```
+
+**Recover:** use the commands above to identify and delete orphaned keys.
+The search API ignores the `name` query parameter and returns all keys
+visible to the admin identity — always filter the JSON response
+client-side.
 
 ## References
 

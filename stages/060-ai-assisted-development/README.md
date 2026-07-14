@@ -27,7 +27,7 @@ stage owns the developer experience that runs on it.
 
 - Red Hat OpenShift Dev Spaces deployed via the `stable` operator channel with automatic InstallPlan approval.
 - 9 pre-provisioned DevWorkspaces (3 per persona: `kubeadmin`, `ai-developer`, `ai-admin`) for onboarding, Coolstore inventory engineering, and MCA Coolstore modernization.
-- Kilo Code installed as a default extension and configured for MaaS-published OpenAI-compatible endpoints.
+- **Kilo Code 7.4.7** installed as a default extension and configured for MaaS-published OpenAI-compatible endpoints. Config at `~/.config/kilo/kilo.json` (OpenCode-schema JSON) with four providers: Nemotron (default), local Qwen, qwen3-235b (16K-context external), and minimax-m2 (196K-context external). Governance rules at `~/.config/kilo/AGENTS.md`. MCP `openshift` server at `http://openshift-mcp.rhoai-mcp.svc:8080/mcp`.
 - OpenCode configured for the same MaaS endpoints via rendered `opencode.json`.
 - A `devspace-ai-tools-init` ConfigMap with a centralized init script that renders tool configuration from MaaS environment variables at workspace startup.
 - Java 21 configured as the default workspace shell and Maven runtime for the Quarkus demo exercises.
@@ -45,6 +45,7 @@ Stage 060 turns governed model access into a developer experience.
 - The tooling image is `che-incubator/cli-ai-tools` (community incubator image, documented as a workaround in BACKLOG until an official Red Hat UDI variant includes the required CLI tooling).
 - MaaS API key provisioning uses a `devspace-maas-key-provisioner` ServiceAccount authorized on the Stage 040 developer subscription — keys are minted per-developer at deploy, stored in a workspace namespace Secret, and consumed by the init script at startup.
 - The MCP URL in rendered Kilo Code/OpenCode config depends on Stage 040 deploying the OpenShift MCP server to `rhoai-mcp` namespace on port 8080. The init script uses environment variables from the ConfigMap to render the correct cluster-internal endpoint.
+- **Demo notes:** the first fresh workspace start downloads a 111 MB Kilo Code VSIX from Open VSX (the skip-guard in the init script makes restarts instant after the first download). The `minimax-m2` provider emits `<think>` reasoning blocks through LiteLLM — the presenter should know this appears in Kilo Code output and is expected behavior, not an error. The coolstore workspace is Kilo-only (OpenCode lives in Stage 070's scaffolded workspaces).
 
 This matters because regulated enterprises need AI coding assistance to fit existing controls for identity, network access, approved tooling, credential handling, and data residency.
 
@@ -137,7 +138,7 @@ this — the limitation IS the lesson.
 - Show Kilo Code's MaaS configuration: base URL, platform-issued key, token
   limits, usage telemetry. No provider console, no raw key.
 - Ask Kilo Code for the new endpoint using
-  [`demo-assets/continue-prompts.md`](demo-assets/continue-prompts.md) — or
+  [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md) — or
   paste the prepared
   [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java)
   (the reliable path; live generation is the bonus). Hot reload:
