@@ -101,8 +101,6 @@ spec:
   system: coolstore
   providesApis:
     - inventory-api
-  dependsOn:
-    - component:default/coolstore
 ---
 apiVersion: backstage.io/v1alpha1
 kind: API
