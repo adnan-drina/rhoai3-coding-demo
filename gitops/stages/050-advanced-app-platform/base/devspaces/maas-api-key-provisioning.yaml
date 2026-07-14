@@ -128,7 +128,7 @@ data:
     PROJECT_DIR="${1:?project directory is required}"
     PROFILE="${2:-default}"
 
-    mkdir -p "${HOME}/.cline/data/settings" "${HOME}/.cline/rules" "${HOME}/.config/opencode" "${HOME}/.opencode"
+    mkdir -p "${HOME}/.config/kilo" "${HOME}/.config/opencode" "${HOME}/.opencode"
 
     ensure_vscode_shell_integration() {
       local shell_integration=""
@@ -204,7 +204,7 @@ data:
     }
 
     fallback_from_repo() {
-      echo "MaaS Secret not ready; Cline not configured — use Cline settings UI to add providers manually."
+      echo "MaaS Secret not ready; Kilo Code not configured."
 
       if [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
         if [ -f "${HOME}/.opencode/opencode.json" ]; then
@@ -321,55 +321,24 @@ data:
     ensure_java21_default
     ensure_in_cluster_kubeconfig
 
-    write_cline_providers() {
-      cat > "${HOME}/.cline/data/settings/providers.json" <<PROVEOF
-    {
-      "version": 1,
-      "lastUsedProvider": "openai-compatible",
-      "providers": {
-        "openai-compatible": {
-          "settings": {
-            "provider": "openai-compatible",
-            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "model": "nemotron-3-nano-30b-a3b",
-            "baseUrl": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
-          },
-          "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
-          "tokenSource": "manual"
-        }
-      }
-    }
-    PROVEOF
-      echo "Wrote Cline providers.json (default: nemotron-3-nano-30b-a3b)."
+    cleanup_stale_assistants() {
+      local removed=0
+      for d in \
+        /checode/remote/extensions/continue.continue-* \
+        /checode/remote/extensions/saoudrizwan.claude-dev-* \
+        "${HOME}/.continue" \
+        "${HOME}/.cline"; do
+        if [ -e "${d}" ]; then
+          rm -rf "${d}"
+          echo "Removed stale assistant artifact: ${d}"
+          removed=$((removed + 1))
+        fi
+      done
+      [ "${removed}" -eq 0 ] && echo "No stale assistant artifacts found."
     }
 
-    write_cline_global_settings() {
-      cat > "${HOME}/.cline/data/settings/global-settings.json" <<GSEOF
-    {
-      "telemetryOptOut": true
-    }
-    GSEOF
-      echo "Wrote Cline global-settings.json (telemetry disabled)."
-    }
-
-    write_cline_mcp_settings() {
-      cat > "${HOME}/.cline/data/settings/cline_mcp_settings.json" <<MCPEOF
-    {
-      "mcpServers": {
-        "openshift": {
-          "transport": {
-            "type": "streamableHttp",
-            "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp"
-          }
-        }
-      }
-    }
-    MCPEOF
-      echo "Wrote Cline MCP settings (OpenShift MCP server)."
-    }
-
-    write_cline_rules() {
-      cat > "${HOME}/.cline/rules/governance.md" <<RULESEOF
+    write_kilo_rules() {
+      cat > "${HOME}/.config/kilo/AGENTS.md" <<RULESEOF
     You are assisting inside Red Hat OpenShift Dev Spaces for a governed AI
     coding demo. When asked to create or edit files, use IDE file editing
     capabilities and write files to disk. Do not answer with file contents only
@@ -383,11 +352,71 @@ data:
     cluster hostnames, or full environment variables. Use shell variables such
     as ROUTE_HOST in commands instead of printing sensitive values.
     RULESEOF
-      echo "Wrote Cline governance rules."
+      echo "Wrote Kilo Code governance rules."
     }
 
-    write_cline_mcp_settings
-    write_cline_rules
+    write_kilo_config() {
+      cat > "${HOME}/.config/kilo/kilo.json" <<KILOEOF
+    {
+      "model": "nemotron/nemotron-3-nano-30b-a3b",
+      "provider": {
+        "nemotron": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "NVIDIA Nemotron 3 Nano (private MaaS)",
+          "options": {
+            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+          },
+          "models": {
+            "nemotron-3-nano-30b-a3b": {
+              "name": "Nemotron 3 Nano 30B-A3B",
+              "limit": { "context": 131072, "output": 16384 }
+            }
+          }
+        },
+        "qwen": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "Qwen3.6 35B (private MaaS)",
+          "options": {
+            "apiKey": "${MAAS_API_KEY_QWEN}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1"
+          },
+          "models": {
+            "qwen3-6-35b-a3b": {
+              "name": "Qwen3.6 35B A3B",
+              "limit": { "context": 32768, "output": 4096 }
+            }
+          }
+        },
+        "gpt-4o-mini": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "OpenAI GPT-4o Mini (external via MaaS)",
+          "options": {
+            "apiKey": "${MAAS_API_KEY_GPT_4O_MINI}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1"
+          },
+          "models": {
+            "gpt-4o-mini": {
+              "name": "GPT-4o Mini",
+              "limit": { "context": 128000, "output": 4096 }
+            }
+          }
+        }
+      },
+      "mcp": {
+        "openshift": {
+          "type": "remote",
+          "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
+          "enabled": true
+        }
+      }
+    }
+    KILOEOF
+      echo "Wrote Kilo Code config (default: nemotron-3-nano-30b-a3b)."
+    }
+
+    cleanup_stale_assistants
+    write_kilo_rules
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
@@ -405,8 +434,7 @@ data:
     fi
 
     umask 077
-    write_cline_providers
-    write_cline_global_settings
+    write_kilo_config
 
     cat > "${HOME}/.config/opencode/opencode.json" <<EOF
     {
@@ -485,7 +513,7 @@ data:
     EOF
 
     ensure_opencode_compat_path
-    echo "Configured Cline for Stage 060 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
+    echo "Configured Kilo Code for Stage 060 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
 ---
 apiVersion: batch/v1
 kind: Job

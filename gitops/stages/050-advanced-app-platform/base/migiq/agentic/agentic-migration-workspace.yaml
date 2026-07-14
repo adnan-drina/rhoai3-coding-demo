@@ -44,9 +44,9 @@ spec:
           \ PATH=\"${JAVA_HOME}/bin:${PATH}\"\\n'\n      } >> \"${rc}\"\n    fi\n\
           \  done\n  echo \"Configured Java 21 as the default shell runtime.\"\nelse\n\
           \  echo \"Java 21 runtime not found; use a Dev Spaces tooling image with\
-          \ OpenJDK 21.\"\nfi\ncurl -fsSL --max-time 120 -o /tmp/cline.vsix \"\
-          https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix\"\
-          \ntest -s /tmp/cline.vsix\nfor i in $(seq 1 30); do [ -f \"${PROJECT_DIR}/.opencode/opencode.template.json\"\
+          \ OpenJDK 21.\"\nfi\ncurl -fsSL --max-time 300 -o /tmp/kilo.vsix \"\
+          https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix\"\
+          \ntest -s /tmp/kilo.vsix\nfor i in $(seq 1 30); do [ -f \"${PROJECT_DIR}/.opencode/opencode.template.json\"\
           \ ] && break; sleep 2; done\nKUBE_API=\"https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}\"\
           \nKUBE_CA=\"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt\"\nKUBE_TOKEN=\"\
           $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\"\nif curl -fsS\
@@ -68,7 +68,7 @@ spec:
         cpuRequest: 500m
         env:
         - name: DEFAULT_EXTENSIONS
-          value: /tmp/cline.vsix
+          value: /tmp/kilo.vsix
         - name: SHELL
           value: /usr/bin/bash
         - name: JAVA_HOME

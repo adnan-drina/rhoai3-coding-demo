@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Dev Spaces component (moved from the former assisted-development stage
-# base). OpenShift Dev Spaces with Cline AI code assistant, persona
+# base). OpenShift Dev Spaces with Kilo Code AI code assistant, persona
 # workspaces, and MaaS API key provisioning.
 # The agentic-coolstore workspace is interim: it is retired when the
 # agentic-quarkus-scaffold golden-path template lands (Phase 3 of

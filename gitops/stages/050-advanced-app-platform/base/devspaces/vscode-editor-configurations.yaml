@@ -21,7 +21,7 @@ data:
     {
       "recommendations": [
         "redhat.fabric8-analytics",
-        "saoudrizwan.claude-dev",
+        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -38,7 +38,9 @@ data:
       "terminal.integrated.automationProfile.linux": {
         "path": "/usr/bin/bash"
       },
-      "terminal.integrated.inheritEnv": true
+      "terminal.integrated.inheritEnv": true,
+      "kilo-code.new.model.providerID": "nemotron",
+      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
     }
 ---
 apiVersion: v1
@@ -55,7 +57,7 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "saoudrizwan.claude-dev",
+        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -72,7 +74,9 @@ data:
       "terminal.integrated.automationProfile.linux": {
         "path": "/usr/bin/bash"
       },
-      "terminal.integrated.inheritEnv": true
+      "terminal.integrated.inheritEnv": true,
+      "kilo-code.new.model.providerID": "nemotron",
+      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
     }
 ---
 apiVersion: v1
@@ -89,7 +93,7 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "saoudrizwan.claude-dev",
+        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -106,5 +110,7 @@ data:
       "terminal.integrated.automationProfile.linux": {
         "path": "/usr/bin/bash"
       },
-      "terminal.integrated.inheritEnv": true
+      "terminal.integrated.inheritEnv": true,
+      "kilo-code.new.model.providerID": "nemotron",
+      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
     }
