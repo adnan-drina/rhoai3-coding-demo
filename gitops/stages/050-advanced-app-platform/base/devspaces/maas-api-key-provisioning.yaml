@@ -406,7 +406,7 @@ data:
       "mcp": {
         "openshift": {
           "type": "remote",
-          "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
+          "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
           "enabled": true
         }
       }
@@ -494,7 +494,7 @@ data:
       "mcp": {
         "openshift": {
           "type": "remote",
-          "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp",
+          "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
           "enabled": true,
           "timeout": 10000
         }
