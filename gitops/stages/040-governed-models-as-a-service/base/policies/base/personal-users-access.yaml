@@ -34,6 +34,19 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    # Red Hat internal models added to the Playground surface 2026-07-14
+    # (flipped the earlier coding-stages-only decision); internal platform,
+    # so they carry the local-model budget.
+    - name: qwen3-235b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: minimax-m2
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
   priority: 150
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -66,6 +79,10 @@ spec:
       namespace: models-as-a-service
     - name: gpt-4o-mini
       namespace: models-as-a-service
+    - name: qwen3-235b
+      namespace: models-as-a-service
+    - name: minimax-m2
+      namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo
     costCenter: ai-platform
@@ -106,6 +123,19 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    # Red Hat internal models added to the Playground surface 2026-07-14
+    # (flipped the earlier coding-stages-only decision); internal platform,
+    # so they carry the local-model budget.
+    - name: qwen3-235b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: minimax-m2
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
   priority: 150
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -137,6 +167,10 @@ spec:
     - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
     - name: gpt-4o-mini
+      namespace: models-as-a-service
+    - name: qwen3-235b
+      namespace: models-as-a-service
+    - name: minimax-m2
       namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo
@@ -178,6 +212,19 @@ spec:
       tokenRateLimits:
         - limit: 100000
           window: 1h
+    # Red Hat internal models added to the Playground surface 2026-07-14
+    # (flipped the earlier coding-stages-only decision); internal platform,
+    # so they carry the local-model budget.
+    - name: qwen3-235b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: minimax-m2
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
   priority: 150
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -209,6 +256,10 @@ spec:
     - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
     - name: gpt-4o-mini
+      namespace: models-as-a-service
+    - name: qwen3-235b
+      namespace: models-as-a-service
+    - name: minimax-m2
       namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo
