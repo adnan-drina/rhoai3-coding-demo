@@ -1,10 +1,10 @@
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
-  name: rhoai-developers-coding-models
+  name: devspaces-coding-models
   namespace: models-as-a-service
   labels:
-    app.kubernetes.io/name: rhoai-developers-coding-models
+    app.kubernetes.io/name: devspaces-coding-models
     app.kubernetes.io/component: maas-subscription
     demo.rhoai.io/provider: governed-models
   annotations:
@@ -12,27 +12,14 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   owner:
-    groups:
-      - name: rhoai-developers
-      - name: rhods-admins
     users:
-      - kube:admin
-      # Stage 060 workspace key provisioner: creates per-developer MaaS keys
-      # for Dev Spaces (Kilo Code/OpenCode) on this subscription.
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
-      # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
-      # Lightspeed for MTA calls models through the governed gateway.
-      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
-      # Stage 080 agentic migration workspace key (moved from the
-      # enterprise-rag-autorag tier 2026-07-14 — a developer-workflow key
-      # belongs on the developer tier).
-      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     # Sized for agentic assistants (Kilo Code in 060, OpenCode in 070): a
     # single agent turn carries system prompt + rules + file context, so the
     # old 100K/h chat-era budget exhausted within a few turns (observed live
     # 2026-07-14 as gateway 429s mid-demo). Local models ride our own GPUs;
-    # the external model keeps a visibly tighter budget on purpose.
+    # external Red Hat internal models keep a generous demo budget.
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
       tokenRateLimits:
@@ -43,10 +30,15 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: gpt-4o-mini
+    - name: qwen3-235b
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 100000
+        - limit: 1000000
+          window: 1h
+    - name: minimax-m2
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
           window: 1h
   priority: 100
   tokenMetadata:
@@ -55,15 +47,15 @@ spec:
     labels:
       environment: demo
       provider: governed-models
-      modelSet: nemotron-qwen-and-gpt-4o-mini
+      modelSet: devspaces-coding
 ---
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSAuthPolicy
 metadata:
-  name: rhoai-developers-coding-models
+  name: devspaces-coding-models
   namespace: models-as-a-service
   labels:
-    app.kubernetes.io/name: rhoai-developers-coding-models
+    app.kubernetes.io/name: devspaces-coding-models
     app.kubernetes.io/component: maas-auth-policy
     demo.rhoai.io/provider: governed-models
   annotations:
@@ -71,29 +63,16 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   subjects:
-    groups:
-      - name: rhoai-developers
-      - name: rhods-admins
     users:
-      - kube:admin
       - system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner
-      # Stage 080 agentic migration: model access for keys issued by the
-      # elevated-subscription provisioner (token limits come from
-      # enterprise-rag-autorag, model authorization from this policy).
-      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
-      # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
-      # Lightspeed for MTA calls models through the governed gateway.
-      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
-      # Stage 080 agentic migration workspace key (moved from the
-      # enterprise-rag-autorag tier 2026-07-14 — a developer-workflow key
-      # belongs on the developer tier).
-      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
     - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
-    - name: gpt-4o-mini
+    - name: qwen3-235b
+      namespace: models-as-a-service
+    - name: minimax-m2
       namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo
@@ -101,4 +80,4 @@ spec:
     labels:
       environment: demo
       provider: governed-models
-      modelSet: nemotron-qwen-and-gpt-4o-mini
+      modelSet: devspaces-coding

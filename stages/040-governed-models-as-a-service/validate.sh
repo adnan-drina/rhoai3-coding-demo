@@ -28,7 +28,7 @@ PINNED_LIMITADOR_CSV="${RHOAI_PINNED_LIMITADOR_CSV:-limitador-operator.v1.3.1}"
 OPENAI_MODEL_ID="${RHOAI_OPENAI_MODEL_ID:-gpt-4o-mini}"
 OPENAI_MODEL_RESOURCE="${RHOAI_OPENAI_MODEL_RESOURCE:-gpt-4o-mini}"
 OPENAI_PROVIDER_SECRET="${RHOAI_OPENAI_PROVIDER_SECRET:-openai-provider-api-key}"
-OPENAI_ACCESS_RESOURCE="${RHOAI_OPENAI_ACCESS_RESOURCE:-rhoai-developers-coding-models}"
+OPENAI_ACCESS_RESOURCE="${RHOAI_OPENAI_ACCESS_RESOURCE:-personal-kube-admin}"
 NEMOTRON_MODEL_RESOURCE="${RHOAI_MAAS_NEMOTRON_MODEL_NAME:-nemotron-3-nano-30b-a3b}"
 DIRECT_NEMOTRON_NAME="${RHOAI_NEMOTRON_DEPLOYMENT_NAME:-nvidia-nemotron-3-nano-30b-a3b}"
 PROJECT_NS="${RHOAI_DEMO_PROJECT_NAMESPACE:-demo-sandbox}"
@@ -811,6 +811,20 @@ else
 fi
 check "OpenAI provider Secret present with api-key data key and BBR label" "$R"
 
+if resource_exists "secret/redhat-models-provider-api-key" "$MAAS_NS"; then
+  REDHAT_SECRET_LABEL=$(jsonpath "secret/redhat-models-provider-api-key" "$MAAS_NS" "{.metadata.labels.inference\\.networking\\.k8s\\.io/bbr-managed}")
+  if oc get "secret/redhat-models-provider-api-key" -n "$MAAS_NS" -o jsonpath='{.data}' \
+    --insecure-skip-tls-verify=true 2>/dev/null | grep -q 'api-key' &&
+    [[ "$REDHAT_SECRET_LABEL" == "true" ]]; then
+    R="pass"
+  else
+    R="missing data key api-key or inference.networking.k8s.io/bbr-managed=true label"
+  fi
+else
+  R="missing"
+fi
+check "Red Hat internal models provider Secret present with api-key data key and BBR label" "$R"
+
 if resource_exists "rolebinding/rhods-admins-maas-admin" "$MAAS_NS"; then
   R="pass"
 else
@@ -921,69 +935,83 @@ else
 fi
 check "MaaSModelRef points to the local Nemotron LLMInferenceService" "$R"
 
-EXTERNAL_PROVIDER=$(jsonpath "externalmodels.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.provider}")
-EXTERNAL_ENDPOINT=$(jsonpath "externalmodels.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.endpoint}")
-EXTERNAL_TARGET=$(jsonpath "externalmodels.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.targetModel}")
-EXTERNAL_SECRET=$(jsonpath "externalmodels.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.credentialRef.name}")
-if [[ "$EXTERNAL_PROVIDER" == "openai" && "$EXTERNAL_ENDPOINT" == "api.openai.com" && "$EXTERNAL_TARGET" == "$OPENAI_MODEL_ID" && "$EXTERNAL_SECRET" == "$OPENAI_PROVIDER_SECRET" ]]; then
-  R="pass"
-else
-  R="provider=${EXTERNAL_PROVIDER:-missing},endpoint=${EXTERNAL_ENDPOINT:-missing},target=${EXTERNAL_TARGET:-missing},secret=${EXTERNAL_SECRET:-missing}"
-fi
-check "External OpenAI model is registered through MaaS schema" "$R"
+for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key qwen3-235b:maas-rhdp.apps.maas.redhatworkshops.io:redhat-models-provider-api-key minimax-m2:maas-rhdp.apps.maas.redhatworkshops.io:redhat-models-provider-api-key; do
+  IFS=: read -r EXT_NAME EXT_ENDPOINT EXT_SECRET <<< "$ext_model"
+  EXT_PROVIDER=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.provider}")
+  EXT_EP=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.endpoint}")
+  EXT_TARGET=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.targetModel}")
+  EXT_CRED=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.credentialRef.name}")
+  if [[ "$EXT_PROVIDER" == "openai" && "$EXT_EP" == "$EXT_ENDPOINT" && "$EXT_TARGET" == "$EXT_NAME" && "$EXT_CRED" == "$EXT_SECRET" ]]; then
+    R="pass"
+  else
+    R="provider=${EXT_PROVIDER:-missing},endpoint=${EXT_EP:-missing},target=${EXT_TARGET:-missing},secret=${EXT_CRED:-missing}"
+  fi
+  check "External model ${EXT_NAME} is registered through MaaS schema" "$R"
 
-MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
-MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${OPENAI_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
-if [[ "$MODELREF_KIND" == "ExternalModel" && "$MODELREF_NAME" == "$OPENAI_MODEL_RESOURCE" ]]; then
-  R="pass"
-else
-  R="kind=${MODELREF_KIND:-missing},name=${MODELREF_NAME:-missing}"
-fi
-check "MaaSModelRef points to the external OpenAI model" "$R"
+  MR_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.modelRef.kind}")
+  MR_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.modelRef.name}")
+  if [[ "$MR_KIND" == "ExternalModel" && "$MR_NAME" == "$EXT_NAME" ]]; then
+    R="pass"
+  else
+    R="kind=${MR_KIND:-missing},name=${MR_NAME:-missing}"
+  fi
+  check "MaaSModelRef points to external model ${EXT_NAME}" "$R"
+done
 
-SUB_OWNER_GROUPS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.owner.groups[*].name}")
-SUB_OWNER_USERS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.owner.users[*]}")
-SUB_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
-SUB_OPENAI_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${OPENAI_MODEL_RESOURCE}\")].tokenRateLimits[0].limit}")
-SUB_OPENAI_WINDOW=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${OPENAI_MODEL_RESOURCE}\")].tokenRateLimits[0].window}")
-SUB_NEMOTRON_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${NEMOTRON_MODEL_RESOURCE}\")].tokenRateLimits[0].limit}")
-SUB_NEMOTRON_WINDOW=$(jsonpath "maassubscriptions.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"${NEMOTRON_MODEL_RESOURCE}\")].tokenRateLimits[0].window}")
-if contains_word "$SUB_OWNER_GROUPS" "rhoai-developers" &&
-  contains_word "$SUB_OWNER_GROUPS" "rhods-admins" &&
-  contains_word "$SUB_OWNER_USERS" "kube:admin" &&
-  contains_word "$SUB_MODELS" "$OPENAI_MODEL_RESOURCE" &&
-  contains_word "$SUB_MODELS" "$NEMOTRON_MODEL_RESOURCE" &&
-  [[ "$SUB_OPENAI_LIMIT" == "100000" && "$SUB_OPENAI_WINDOW" == "1h" &&
-    "$SUB_NEMOTRON_LIMIT" == "1000000" && "$SUB_NEMOTRON_WINDOW" == "1h" ]]; then
+DS_SUB="devspaces-coding-models"
+DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
+DS_NEMOTRON_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"nemotron-3-nano-30b-a3b\")].tokenRateLimits[0].limit}")
+DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-35b-a3b\")].tokenRateLimits[0].limit}")
+DS_QWEN_EXT_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-235b\")].tokenRateLimits[0].limit}")
+DS_MINIMAX_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"minimax-m2\")].tokenRateLimits[0].limit}")
+if contains_word "$DS_MODELS" "nemotron-3-nano-30b-a3b" &&
+  contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
+  contains_word "$DS_MODELS" "qwen3-235b" &&
+  contains_word "$DS_MODELS" "minimax-m2" &&
+  ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
+  [[ "$DS_NEMOTRON_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" && "$DS_QWEN_EXT_LIMIT" == "1000000" && "$DS_MINIMAX_LIMIT" == "1000000" ]]; then
   R="pass"
 else
-  R="groups=${SUB_OWNER_GROUPS:-missing},users=${SUB_OWNER_USERS:-missing},models=${SUB_MODELS:-missing},openaiLimit=${SUB_OPENAI_LIMIT:-missing}/${SUB_OPENAI_WINDOW:-missing},nemotronLimit=${SUB_NEMOTRON_LIMIT:-missing}/${SUB_NEMOTRON_WINDOW:-missing}"
+  R="models=${DS_MODELS:-missing},nemotron=${DS_NEMOTRON_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing},qwenExt=${DS_QWEN_EXT_LIMIT:-missing},minimax=${DS_MINIMAX_LIMIT:-missing}"
 fi
-check "demo users have MaaS subscription quota for local and external models" "$R"
-QWEN_IN_SUB=$(oc get maassubscription rhoai-developers-coding-models -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)
-QWEN_IN_AUTH=$(oc get maasauthpolicy rhoai-developers-coding-models -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)
-if [[ "$QWEN_IN_SUB" == "1" && "$QWEN_IN_AUTH" == "1" ]]; then
-  R="pass"
-else
-  R="subscriptionRefs=${QWEN_IN_SUB},authPolicyRefs=${QWEN_IN_AUTH}"
-fi
-check "qwen is covered by the developer MaaS subscription and auth policy" "$R"
+check "devspaces-coding-models subscription has 4 coding models @1M (no gpt-4o-mini)" "$R"
 
-AUTH_SUBJECT_GROUPS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.groups[*].name}")
+PK_SUB="personal-kube-admin"
+PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
+PK_GPT_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"gpt-4o-mini\")].tokenRateLimits[0].limit}")
+PK_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
+if contains_word "$PK_MODELS" "gpt-4o-mini" &&
+  contains_word "$PK_MODELS" "nemotron-3-nano-30b-a3b" &&
+  [[ "$PK_GPT_LIMIT" == "100000" && "$PK_PRIORITY" == "150" ]]; then
+  R="pass"
+else
+  R="models=${PK_MODELS:-missing},gptLimit=${PK_GPT_LIMIT:-missing},priority=${PK_PRIORITY:-missing}"
+fi
+check "personal-kube-admin subscription has gpt-4o-mini @100K and priority 150" "$R"
+
+MTA_SUB="mta-migration-models"
+MTA_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${MTA_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
+if contains_word "$MTA_MODELS" "nemotron-3-nano-30b-a3b" &&
+  contains_word "$MTA_MODELS" "qwen3-6-35b-a3b" &&
+  ! contains_word "$MTA_MODELS" "gpt-4o-mini"; then
+  R="pass"
+else
+  R="models=${MTA_MODELS:-missing}"
+fi
+check "mta-migration-models subscription has locals-only (no gpt-4o-mini)" "$R"
+
 AUTH_SUBJECT_USERS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.users[*]}")
 AUTH_MODELS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 AUTH_ORG=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.meteringMetadata.organizationId}")
-if contains_word "$AUTH_SUBJECT_GROUPS" "rhoai-developers" &&
-  contains_word "$AUTH_SUBJECT_GROUPS" "rhods-admins" &&
-  contains_word "$AUTH_SUBJECT_USERS" "kube:admin" &&
+if contains_word "$AUTH_SUBJECT_USERS" "kube:admin" &&
   contains_word "$AUTH_MODELS" "$OPENAI_MODEL_RESOURCE" &&
   contains_word "$AUTH_MODELS" "$NEMOTRON_MODEL_RESOURCE" &&
   [[ "$AUTH_ORG" == "rhoai3-coding-demo" ]]; then
   R="pass"
 else
-  R="groups=${AUTH_SUBJECT_GROUPS:-missing},users=${AUTH_SUBJECT_USERS:-missing},models=${AUTH_MODELS:-missing},org=${AUTH_ORG:-missing}"
+  R="users=${AUTH_SUBJECT_USERS:-missing},models=${AUTH_MODELS:-missing},org=${AUTH_ORG:-missing}"
 fi
-check "demo users have MaaS auth policy for local and external models" "$R"
+check "personal-kube-admin auth policy covers local and external models" "$R"
 
 GATEWAY_FILTERS=$(oc get envoyfilter -n openshift-ingress -o name \
   --insecure-skip-tls-verify=true 2>/dev/null || true)
@@ -1000,6 +1028,10 @@ OPENAI_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-gpt-4o-mini" "$MAAS_NS" "{
 NEMOTRON_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 OPENAI_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 NEMOTRON_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+QWEN_EXT_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-qwen3-235b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+MINIMAX_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-minimax-m2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+QWEN_EXT_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-qwen3-235b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+MINIMAX_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-minimax-m2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 if [[ -n "$GATEWAY_LOG_ERRORS" ]]; then
   R="gateway Envoy log reports recent generated filter rejection"
 elif ! contains_word "$GATEWAY_READY" "True"; then
@@ -1010,8 +1042,12 @@ elif ! grep -q 'kuadrant-auth-maas-default-gateway' <<<"$GATEWAY_FILTERS" ||
 elif [[ "$OPENAI_AUTH_ENFORCED" != "True" ||
   "$NEMOTRON_AUTH_ENFORCED" != "True" ||
   "$OPENAI_TRLP_ENFORCED" != "True" ||
-  "$NEMOTRON_TRLP_ENFORCED" != "True" ]]; then
-  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},nemotronAuth=${NEMOTRON_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},nemotronLimit=${NEMOTRON_TRLP_ENFORCED:-missing}"
+  "$NEMOTRON_TRLP_ENFORCED" != "True" ||
+  "$QWEN_EXT_AUTH_ENFORCED" != "True" ||
+  "$MINIMAX_AUTH_ENFORCED" != "True" ||
+  "$QWEN_EXT_TRLP_ENFORCED" != "True" ||
+  "$MINIMAX_TRLP_ENFORCED" != "True" ]]; then
+  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},nemotronAuth=${NEMOTRON_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},nemotronLimit=${NEMOTRON_TRLP_ENFORCED:-missing},qwenExtAuth=${QWEN_EXT_AUTH_ENFORCED:-missing},minimaxAuth=${MINIMAX_AUTH_ENFORCED:-missing},qwenExtLimit=${QWEN_EXT_TRLP_ENFORCED:-missing},minimaxLimit=${MINIMAX_TRLP_ENFORCED:-missing}"
 else
   R="pass"
 fi

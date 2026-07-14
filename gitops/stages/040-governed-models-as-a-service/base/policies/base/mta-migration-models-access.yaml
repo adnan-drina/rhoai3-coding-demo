@@ -1,0 +1,73 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: mta-migration-models
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: mta-migration-models
+    app.kubernetes.io/component: maas-subscription
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # MTA hook provisions kai-api-keys MaaS key so Developer Lightspeed for
+  # MTA calls models through the governed gateway. The agentic-migration
+  # provisioner creates an elevated key for parallel-agent token bursts.
+  owner:
+    users:
+      # Stage 050 MTA hook: provisions the kai-api-keys MaaS key so Developer
+      # Lightspeed for MTA calls models through the governed gateway.
+      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
+      # Stage 080 agentic migration workspace key: elevated key for
+      # parallel-agent token bursts during autonomous migration runs.
+      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
+  modelRefs:
+    - name: nemotron-3-nano-30b-a3b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+    - name: qwen3-6-35b-a3b
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000
+          window: 1h
+  priority: 100
+  tokenMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: mta-migration
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: mta-migration-models
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: mta-migration-models
+    app.kubernetes.io/component: maas-auth-policy
+    demo.rhoai.io/provider: governed-models
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  subjects:
+    users:
+      - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
+      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
+  modelRefs:
+    - name: nemotron-3-nano-30b-a3b
+      namespace: models-as-a-service
+    - name: qwen3-6-35b-a3b
+      namespace: models-as-a-service
+  meteringMetadata:
+    organizationId: rhoai3-coding-demo
+    costCenter: ai-platform
+    labels:
+      environment: demo
+      provider: governed-models
+      modelSet: mta-migration

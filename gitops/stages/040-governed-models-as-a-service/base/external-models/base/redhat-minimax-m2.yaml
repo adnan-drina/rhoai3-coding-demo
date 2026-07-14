@@ -1,0 +1,35 @@
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: minimax-m2
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: minimax-m2
+    app.kubernetes.io/component: external-model
+    demo.rhoai.io/provider: redhat-internal
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  provider: openai
+  endpoint: maas-rhdp.apps.maas.redhatworkshops.io
+  targetModel: minimax-m2
+  credentialRef:
+    name: redhat-models-provider-api-key
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: minimax-m2
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: minimax-m2
+    app.kubernetes.io/component: maas-model-ref
+    demo.rhoai.io/provider: redhat-internal
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: minimax-m2

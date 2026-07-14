@@ -64,7 +64,7 @@ demo's honesty about what autonomy costs and why token limits exist.
       `adnan-drina/migiq-spring-boot-sample`, installs `@sshaaf/migiq@0.2.2`
       into `.claude/` on postStart, and the init command writes the elevated
       MaaS key to `~/.agentic-maas.env` (source it before agent runs; key
-      drawn from `enterprise-rag-autorag`, model access via the developer
+      drawn from `mta-migration-models`, model access via the MTA migration
       MaaSAuthPolicy).
 - [ ] Model behavior: confirm the qwen tool-call parser handles MigIQ's
       structured prompts; fall back to nemotron as executor if needed.

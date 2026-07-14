@@ -2,7 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - developers-coding-models-access.yaml
-  - autorag-optimization-access.yaml
+  - devspaces-coding-models-access.yaml
+  - mta-migration-models-access.yaml
+  - personal-users-access.yaml
+  - developer-hub-models-access.yaml
   - ai-safety-guardrails-access.yaml
   - model-evaluation-access.yaml

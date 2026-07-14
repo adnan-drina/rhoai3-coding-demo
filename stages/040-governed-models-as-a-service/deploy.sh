@@ -62,6 +62,8 @@ PINNED_RHCL_CSV="${RHOAI_PINNED_RHCL_CSV:-rhcl-operator.v1.3.4}"
 OPENAI_MODEL_ID="${RHOAI_OPENAI_MODEL_ID:-gpt-4o-mini}"
 OPENAI_PROVIDER_SECRET="${RHOAI_OPENAI_PROVIDER_SECRET:-openai-provider-api-key}"
 OPENAI_API_KEY_VALUE="${RHOAI_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+REDHAT_MODELS_API_KEY_VALUE="${RHOAI_REDHAT_MODELS_API_KEY:-${REDHAT_MODELS_API_KEY:-}}"
+REDHAT_MODELS_BASE_URL="${RHOAI_REDHAT_MODELS_BASE_URL:-${REDHAT_MODELS_BASE_URL:-}}"
 DEMO_PROJECT_NS="${RHOAI_DEMO_PROJECT_NAMESPACE:-demo-sandbox}"
 DIRECT_NEMOTRON_NAME="${RHOAI_NEMOTRON_DEPLOYMENT_NAME:-nvidia-nemotron-3-nano-30b-a3b}"
 MAAS_NEMOTRON_NAME="${RHOAI_MAAS_NEMOTRON_MODEL_NAME:-nemotron-3-nano-30b-a3b}"
@@ -282,6 +284,57 @@ ensure_openai_provider_secret() {
   exit 1
 }
 
+ensure_redhat_models_provider_secret() {
+  echo "── Ensuring environment-local Red Hat internal models provider Secret ──"
+
+  ensure_namespace_exists "$MAAS_NS"
+
+  if [[ -n "$REDHAT_MODELS_BASE_URL" ]]; then
+    local rh_host
+    rh_host=$(printf '%s' "$REDHAT_MODELS_BASE_URL" | sed -E 's|^https?://||; s|/.*||; s|:.*||')
+    if [[ "$rh_host" != "maas-rhdp.apps.maas.redhatworkshops.io" ]]; then
+      echo "WARNING: REDHAT_MODELS_BASE_URL host differs from expected maas-rhdp.apps.maas.redhatworkshops.io — verify endpoint." >&2
+    fi
+  fi
+
+  if [[ -n "$REDHAT_MODELS_API_KEY_VALUE" ]]; then
+    oc create secret generic redhat-models-provider-api-key \
+      -n "$MAAS_NS" \
+      --from-literal=api-key="$REDHAT_MODELS_API_KEY_VALUE" \
+      --dry-run=client -o yaml | oc apply -f - --insecure-skip-tls-verify=true >/dev/null
+
+    oc label secret redhat-models-provider-api-key -n "$MAAS_NS" --overwrite \
+      app.kubernetes.io/name=redhat-models-provider-api-key \
+      app.kubernetes.io/component=external-model-provider \
+      app.kubernetes.io/part-of=rhoai3-coding-demo \
+      demo.rhoai.io/stage=040 \
+      demo.rhoai.io/provider=redhat-internal \
+      inference.networking.k8s.io/bbr-managed=true \
+      --insecure-skip-tls-verify=true >/dev/null
+
+    echo "✓ Red Hat internal models provider Secret is present"
+    return 0
+  fi
+
+  if oc get secret redhat-models-provider-api-key -n "$MAAS_NS" \
+    --insecure-skip-tls-verify=true >/dev/null 2>&1; then
+    oc label secret redhat-models-provider-api-key -n "$MAAS_NS" --overwrite \
+      app.kubernetes.io/name=redhat-models-provider-api-key \
+      app.kubernetes.io/component=external-model-provider \
+      app.kubernetes.io/part-of=rhoai3-coding-demo \
+      demo.rhoai.io/stage=040 \
+      demo.rhoai.io/provider=redhat-internal \
+      inference.networking.k8s.io/bbr-managed=true \
+      --insecure-skip-tls-verify=true >/dev/null
+    echo "✓ Existing Red Hat internal models provider Secret found"
+    return 0
+  fi
+
+  echo "WARNING: REDHAT_MODELS_API_KEY not set — Red Hat internal models (qwen3-235b, minimax-m2) will register but inference calls will fail." >&2
+  echo "Set REDHAT_MODELS_API_KEY in .env to enable them." >&2
+  return 0
+}
+
 cleanup_demo_sandbox_nemotron() {
   local deleted="false"
 
@@ -431,6 +484,7 @@ ensure_optional_mcp_secrets() {
 }
 
 ensure_openai_provider_secret
+ensure_redhat_models_provider_secret
 ensure_optional_mcp_secrets
 "$SCRIPT_DIR/register-model-cards.sh"
 cleanup_demo_sandbox_nemotron

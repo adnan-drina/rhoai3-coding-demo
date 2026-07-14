@@ -3,3 +3,5 @@ kind: Kustomization
 
 resources:
   - openai-gpt-4o-mini.yaml
+  - redhat-qwen3-235b.yaml
+  - redhat-minimax-m2.yaml
