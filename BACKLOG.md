@@ -64,6 +64,10 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [x] Preserved historical upstream `maas-controller` and `maas-api` override language only as completed historical context.
 - [x] Added `scripts/audit-maas-cleanup.sh` and Stage 040 validation coverage so retired 3.3 tier resources, the tokens bridge, upstream MaaS controller/image overrides, and the old community Grafana binding are caught if they reappear.
 
+## Cluster capacity watch items
+
+- [ ] **CPU workers run near the disk-pressure eviction threshold** — each served model's llm-d `*-kserve-router-scheduler` pod is a CPU-side component that carries the full modelcar image (~30–37 GiB) as an init container and sidecar. The stage 020 `nvidia-gpu-only:NoSchedule` taint correctly keeps these non-GPU pods off GPU nodes, so each router-scheduler pins its model image on a CPU worker with 100 GiB of `/var` — observed tipping two workers into a kubelet eviction wave after the 2026-07-14 cluster resume (recipe in TROUBLESHOOTING: "Worker Nodes Evict Pods After A Cluster Resume"). Options to evaluate: (a) check whether the RHOAI `LLMInferenceService` CR supports scheduling overrides (toleration + node selector) for the router/scheduler pods so they co-locate with the GPU nodes that already hold the modelcar images — negligible CPU/memory footprint, no extra image weight there; (b) larger worker root disks in the sandbox machine spec; (c) accept and monitor `/var` headroom as a demo-prep check. Do not work around it by removing the stage 020 taint.
+
 ## Deferred Developer Workflow Topics
 
 - [ ] **Stage 110 merged into Stage 060; developer workflow topics 120-170 moved out of `stages/`** — Stage `110` is no longer a separate stage. Its Continue prompt-pack, README/API alignment, gap-list, Code-to-Docs, trust-boundary, and human-review guidance now lives in Stage 060 as the review discipline for vibe coding. Topics `120` through `170` are intentionally no longer stage directories. Recreate each remaining topic as a stage only when it has an implementation plan, deploy and validate scripts if needed, GitOps ownership where applicable, and validation evidence.

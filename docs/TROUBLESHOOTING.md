@@ -255,10 +255,13 @@ by hand per below).
   placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces
   route, empty RHDH URL, revision), and `oc patch` the
   `catalog-runtime-rhdh` ConfigMap in `rhdh`.
-- Related fix (committed 2026-07-13): the generate hook now reads
-  `status.operationState.operation.sync.revision` (the in-flight revision)
-  instead of `status.sync.revision`, which still holds the previous
-  revision while the operation runs and regenerated stale catalogs.
+- Related fix (committed 2026-07-13, refined 2026-07-14): the generate hook
+  resolves the revision as `status.operationState.syncResult.revision`
+  first (what the operation actually synced), then
+  `status.operationState.operation.sync.revision` (the in-flight request,
+  which merge-patched partial operations can inherit stale from a previous
+  explicit-revision sync), then `status.sync.revision` (which still holds
+  the previous revision while an operation runs).
 
 ## Argo CD Reports Synced But New Manifests Are Missing
 
@@ -376,6 +379,70 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications \
 ```
 
 The recovery script syncs Stage 020, scales GPU capacity back up, waits for allocatable GPUs, validates GPUaaS, syncs Stage 030, clears stale old model ReplicaSets if needed, waits for private models, and validates Stage 030.
+
+## Worker Nodes Evict Pods After A Cluster Resume (KubeNodeEviction)
+
+**Affected stage:** platform-wide (observed via Stage 030 model routing and
+Stage 050 components)
+
+**Symptom:** `KubeNodeEviction` fires shortly after a sandbox cluster
+resume. Node events show `NodeHasDiskPressure` and
+`EvictionThresholdMet ... Attempting to reclaim ephemeral-storage` on CPU
+worker nodes, and a wave of pods across unrelated namespaces lands in
+`Failed` with reason `Evicted` (observed live 2026-07-14: GitOps
+repo-server, RHOAI dashboard, Perses, Thanos, NooBaa, Authorino, Dev
+Spaces server, SonarQube, kuadrant operator, among others). Secondary
+failures look like their own incidents — Argo CD syncs abort with
+repo-server restarts, Dev Spaces workspace postStart hooks time out.
+
+**Likely cause:** The llm-d `*-kserve-router-scheduler` pods are CPU-side
+components, but by operator design they carry the full modelcar image as
+an init container and a sidecar (the KV-cache-aware tokenizer reads the
+model files). Each served model therefore pins its entire model image
+(~30–37 GiB for the demo's Nemotron/Qwen modelcars) on whichever CPU
+worker the router-scheduler landed on — and image GC can never reclaim it
+because the image is in use. With 100 GiB of `/var` per worker and the
+rest of the workshop stack's images, those nodes idle just under the
+kubelet disk-pressure threshold. The restart churn and fresh image pulls
+after a cluster resume (or an operator upgrade) tip them over.
+
+**Diagnose:**
+
+```bash
+# Which nodes hit the threshold, and for which resource?
+oc get events -n default --field-selector reason=EvictionThresholdMet
+
+# Disk headroom on a suspect worker
+oc debug node/<node> -q -- chroot /host df -h /var
+
+# Confirm the modelcar is the dominant image on that node
+oc debug node/<node> -q -- chroot /host crictl images | sort -k7 -h | tail -5
+
+# Which router-scheduler pinned it there
+oc get pods -n models-as-a-service -o wide | grep router-scheduler
+```
+
+**Recover:**
+
+- The pressure usually clears on its own: kubelet image GC plus the
+  evictions reclaim space, and workloads reschedule. Verify no node still
+  reports `DiskPressure` in `oc describe node`.
+- Delete the evicted pod husks (`oc get pods -A --field-selector
+  status.phase=Failed`) — controllers have already replaced them, and the
+  husks keep the alert noisy.
+- Do not chase the evicted components individually: a repo-server crash or
+  a workspace postStart timeout during the wave is a symptom, not a
+  separate incident.
+- If a worker stays above ~85% on `/var`, prune unused images
+  (`oc debug node/<node> -- chroot /host crictl rmi --prune`) — the in-use
+  modelcar itself cannot be reclaimed. Longer-term options are tracked in
+  `BACKLOG.md` (bigger worker disks or co-locating router-schedulers with
+  the GPU nodes that already hold the model images).
+
+`TaintManagerEviction` events around the resume timestamp are a different,
+benign artifact: nodes briefly go NotReady while the sandbox restores and
+the taint manager clears leftover pods (for example finished pipeline pods
+in `coolstore-dev`).
 
 ## Private Models Do Not Produce Kueue Workloads
 

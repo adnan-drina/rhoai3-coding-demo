@@ -219,6 +219,46 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > restructure). Do not renumber them. Current numbering lives in
 > `flows/default.yaml`.
 
+### 2026-07-14 (morning) Post-resume eviction wave; OLM upgrade cleanup audited
+
+Context: the sandbox cluster was resumed in the morning (GPU nodes are
+recreated on every resume). A separate assistant session worked the
+cluster and repo first (commits `015b605`, `586072d`, `d205da8`,
+`30369de`), including OLM surgery on two stuck operator upgrades.
+
+Actions and findings:
+
+- OLM audit after the other session's remediation (it deleted stuck
+  NFD/DevWorkspace CSVs and InstallPlans and restarted OLM pods in
+  `openshift-operators`): end state verified clean. All pins intact —
+  `rhcl-operator.v1.3.5`, `authorino-operator.v1.3.2`,
+  `limitador-operator.v1.3.1`, `dns-operator.v1.3.1`,
+  `cluster-observability-operator.v1.4.0`, all Succeeded. Neither touched
+  operator is pinned (NFD and DevWorkspace are `Automatic`);
+  `devworkspace-operator.v0.42.0` and Dev Spaces 3.29.0 completed their
+  upgrades (Succeeded).
+- `KubeNodeEviction` root-caused: kubelet disk-pressure eviction wave on
+  workers `ip-10-0-20-23` and `ip-10-0-32-234`
+  (`EvictionThresholdMet ... ephemeral-storage`). Each node permanently
+  holds a full modelcar image (30.5 GiB Nemotron / 36.7 GiB Qwen) pinned
+  by the llm-d `*-kserve-router-scheduler` pods — CPU-side components
+  that carry the modelcar as init container + sidecar and cannot schedule
+  on the tainted GPU nodes. Post-resume restart churn plus fresh operator
+  image pulls tipped both 100 GiB `/var` filesystems over the threshold.
+  Evicted along the way: GitOps repo-server (the "repo-server crash" seen
+  by the morning session), RHOAI dashboard, Perses (3x), Thanos, NooBaa,
+  Authorino, Dev Spaces server, SonarQube, kuadrant operator, and others.
+  Pressure cleared on its own (nodes at 80%/74% after image GC +
+  evictions); model serving itself never left the GPU nodes. New recipe
+  in TROUBLESHOOTING ("Worker Nodes Evict Pods After A Cluster Resume"),
+  capacity watch item in BACKLOG. Evicted `Failed` pod husks (10) left
+  for manual cleanup.
+- Repo follow-ups from reviewing the morning session's commits: stage 050
+  `validate.sh` Dev Spaces links check updated for the direct
+  `agentic-coolstore` workspace link (was still passing only on the
+  retired factory URL), TROUBLESHOOTING catalog-hook recipe updated for
+  the `syncResult.revision`-first resolution order.
+
 ### 2026-07-13 (evening) Phase C: scaffolded-project bootstrap live; catalog slimmed
 
 Actions:

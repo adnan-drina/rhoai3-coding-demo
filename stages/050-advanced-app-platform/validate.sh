@@ -166,13 +166,15 @@ elif [[ "$RUNTIME_CATALOG" == *"feature/coolstore-inventory-service-plan"* ]] ||
      [[ "$RUNTIME_CATALOG" == *"coolstore-inventory-service/tree/feature"* ]]; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog still points coolstore-inventory-service at the retired feature branch"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-elif [[ "$RUNTIME_CATALOG" == *"#https://github.com/adnan-drina/coolstore-inventory-service"* ]]; then
+elif [[ "$RUNTIME_CATALOG" == *"/dashboard/#/ide/wksp-ai-developer/agentic-coolstore"* ]]; then
     # coolstore-inventory-service is the only Component (2026-07-13 catalog
-    # scope decision) — its Dev Spaces factory link is the generated one.
-    echo -e "${GREEN}[PASS]${NC} Runtime catalog contains generated component-specific Dev Spaces links"
+    # scope decision) — its Dev Spaces link opens the pre-provisioned
+    # agentic-coolstore workspace directly (factory URL retired 2026-07-14;
+    # the direct link only resolves for the ai-developer persona).
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog links the pre-provisioned agentic-coolstore workspace"
     VALIDATE_PASS=$((VALIDATE_PASS + 1))
 else
-    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing component-specific Dev Spaces links"
+    echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing the agentic-coolstore Dev Spaces link"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* ]]; then
