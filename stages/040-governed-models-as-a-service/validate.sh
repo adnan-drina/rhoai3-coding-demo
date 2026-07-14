@@ -21,7 +21,7 @@ fi
 MAAS_NS="${RHOAI_MAAS_NAMESPACE:-models-as-a-service}"
 MAAS_DB_NS="${RHOAI_MAAS_DATABASE_NAMESPACE:-models-as-a-service-db}"
 MAAS_DB_CONFIG_SECRET="${RHOAI_MAAS_DB_CONFIG_SECRET:-maas-db-config}"
-PINNED_RHCL_CSV="${RHOAI_PINNED_RHCL_CSV:-rhcl-operator.v1.3.4}"
+PINNED_RHCL_CSV="${RHOAI_PINNED_RHCL_CSV:-rhcl-operator.v1.3.5}"
 PINNED_AUTHORINO_CSV="${RHOAI_PINNED_AUTHORINO_CSV:-authorino-operator.v1.3.1}"
 PINNED_DNS_CSV="${RHOAI_PINNED_DNS_CSV:-dns-operator.v1.3.1}"
 PINNED_LIMITADOR_CSV="${RHOAI_PINNED_LIMITADOR_CSV:-limitador-operator.v1.3.1}"
@@ -714,22 +714,39 @@ else
 fi
 check "Red Hat Connectivity Link Operator is pinned to the MaaS-compatible CSV" "$R"
 
-while IFS='|' read -r sub_name expected_csv label; do
+# Dependency subscriptions are OLM-adopted and can be statusless (installedCSV
+# empty) — the same behavior the Argo Subscription health check tolerates.
+# Fall back to the CSV object, and accept any CSV in the per-operator allowed
+# set (the version-safety allowlist admits authorino 1.3.1 and 1.3.2).
+while IFS='|' read -r sub_name pin_csv allowed_csvs label; do
   DEP_CSV=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.status.installedCSV}")
   DEP_APPROVAL=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.spec.installPlanApproval}")
   DEP_STARTING_CSV=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.spec.startingCSV}")
-  if [[ "$DEP_CSV" == "$expected_csv" &&
+  if [[ -z "$DEP_CSV" ]]; then
+    for candidate in $allowed_csvs; do
+      phase=$(oc get csv "$candidate" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)
+      if [[ "$phase" == "Succeeded" ]]; then
+        DEP_CSV="$candidate"
+        break
+      fi
+    done
+  fi
+  installed_ok="no"
+  for candidate in $allowed_csvs; do
+    [[ "$DEP_CSV" == "$candidate" ]] && installed_ok="yes"
+  done
+  if [[ "$installed_ok" == "yes" &&
     "$DEP_APPROVAL" == "Manual" &&
-    "$DEP_STARTING_CSV" == "$expected_csv" ]]; then
+    "$DEP_STARTING_CSV" == "$pin_csv" ]]; then
     R="pass"
   else
-    R="installedCSV=${DEP_CSV:-missing},approval=${DEP_APPROVAL:-missing},startingCSV=${DEP_STARTING_CSV:-missing},expected=${expected_csv}"
+    R="installedCSV=${DEP_CSV:-missing},approval=${DEP_APPROVAL:-missing},startingCSV=${DEP_STARTING_CSV:-missing},pin=${pin_csv},allowed=${allowed_csvs}"
   fi
   check "${label} Operator is pinned to the MaaS-compatible CSV" "$R"
 done <<EOF
-authorino-operator-stable-redhat-operators-openshift-marketplace|${PINNED_AUTHORINO_CSV}|Authorino
-dns-operator-stable-redhat-operators-openshift-marketplace|${PINNED_DNS_CSV}|DNS
-limitador-operator-stable-redhat-operators-openshift-marketplace|${PINNED_LIMITADOR_CSV}|Limitador
+authorino-operator-stable-redhat-operators-openshift-marketplace|${PINNED_AUTHORINO_CSV}|authorino-operator.v1.3.1 authorino-operator.v1.3.2|Authorino
+dns-operator-stable-redhat-operators-openshift-marketplace|${PINNED_DNS_CSV}|dns-operator.v1.3.1|DNS
+limitador-operator-stable-redhat-operators-openshift-marketplace|${PINNED_LIMITADOR_CSV}|limitador-operator.v1.3.1|Limitador
 EOF
 
 for crd in \
@@ -936,15 +953,21 @@ if contains_word "$SUB_OWNER_GROUPS" "rhoai-developers" &&
   contains_word "$SUB_OWNER_USERS" "kube:admin" &&
   contains_word "$SUB_MODELS" "$OPENAI_MODEL_RESOURCE" &&
   contains_word "$SUB_MODELS" "$NEMOTRON_MODEL_RESOURCE" &&
-  [[ "$SUB_OPENAI_LIMIT" == "20000" && "$SUB_OPENAI_WINDOW" == "1h" &&
-    "$SUB_NEMOTRON_LIMIT" == "100000" && "$SUB_NEMOTRON_WINDOW" == "1h" ]]; then
+  [[ "$SUB_OPENAI_LIMIT" == "100000" && "$SUB_OPENAI_WINDOW" == "1h" &&
+    "$SUB_NEMOTRON_LIMIT" == "1000000" && "$SUB_NEMOTRON_WINDOW" == "1h" ]]; then
   R="pass"
 else
   R="groups=${SUB_OWNER_GROUPS:-missing},users=${SUB_OWNER_USERS:-missing},models=${SUB_MODELS:-missing},openaiLimit=${SUB_OPENAI_LIMIT:-missing}/${SUB_OPENAI_WINDOW:-missing},nemotronLimit=${SUB_NEMOTRON_LIMIT:-missing}/${SUB_NEMOTRON_WINDOW:-missing}"
 fi
 check "demo users have MaaS subscription quota for local and external models" "$R"
-check "qwen is covered by the developer MaaS subscription and auth policy" \
-  "$(oc get maassubscription rhoai-developers-coding-models -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)" "1"
+QWEN_IN_SUB=$(oc get maassubscription rhoai-developers-coding-models -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)
+QWEN_IN_AUTH=$(oc get maasauthpolicy rhoai-developers-coding-models -n models-as-a-service -o jsonpath='{.spec.modelRefs[*].name}' 2>/dev/null | grep -c qwen3-6-35b-a3b || true)
+if [[ "$QWEN_IN_SUB" == "1" && "$QWEN_IN_AUTH" == "1" ]]; then
+  R="pass"
+else
+  R="subscriptionRefs=${QWEN_IN_SUB},authPolicyRefs=${QWEN_IN_AUTH}"
+fi
+check "qwen is covered by the developer MaaS subscription and auth policy" "$R"
 
 AUTH_SUBJECT_GROUPS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.groups[*].name}")
 AUTH_SUBJECT_USERS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.users[*]}")
