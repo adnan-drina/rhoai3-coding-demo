@@ -623,31 +623,37 @@ spec:
                       echo "WARNING: failed to revoke old key ${current_id} (${name}), HTTP ${delete_status}; it will linger until TTL"
                     fi
                   fi
-                  # Search-by-name cleanup: revoke any orphaned keys with this name
-                  search_response="$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -X POST \
-                    -H "Authorization: Bearer ${SA_TOKEN}" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"name\":\"${name}\"}" \
-                    "${MAAS_BASE_URL}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
-                  orphan_ids="$(echo "${search_response}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1]]' "${name}" 2>/dev/null || true)"
-                  if [ -n "${orphan_ids}" ]; then
-                    while IFS= read -r orphan_id; do
-                      [ -z "${orphan_id}" ] && continue
-                      ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
-                        -H "Authorization: Bearer ${SA_TOKEN}" \
-                        "${MAAS_BASE_URL}/maas-api/v1/api-keys/${orphan_id}")
-                      if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
-                        echo "Revoked orphaned key ${orphan_id} (${name})"
-                      else
-                        echo "WARNING: failed to revoke orphaned key ${orphan_id} (${name}), HTTP ${ds}"
-                      fi
-                    done <<< "${orphan_ids}"
-                  fi
                   mapfile -t created < <(create_key "${name}")
                   key="${created[0]}"
                   id="${created[1]}"
                   expires_at="${created[2]}"
                   echo "Provisioned MaaS API key for ${model}"
+                fi
+
+                # Search-by-name cleanup: revoke every key with this name except
+                # the one we are keeping/just minted. Runs on EVERY invocation so
+                # orphans from failed revocations are reaped on the next run, not
+                # only when a re-mint happens.
+                search_response="$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -X POST \
+                  -H "Authorization: Bearer ${SA_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"name\":\"${name}\"}" \
+                  "${MAAS_BASE_URL}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
+                orphan_ids="$(echo "${search_response}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1] and e.get("id") and e.get("id")!=sys.argv[2]]' "${name}" "${id}" 2>/dev/null || true)"
+                if [ -n "${orphan_ids}" ]; then
+                  while IFS= read -r orphan_id; do
+                    [ -z "${orphan_id}" ] && continue
+                    ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
+                      -H "Authorization: Bearer ${SA_TOKEN}" \
+                      "${MAAS_BASE_URL}/maas-api/v1/api-keys/${orphan_id}")
+                    if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
+                      echo "Revoked orphaned key ${orphan_id} (${name})"
+                    else
+                      echo "WARNING: failed to revoke orphaned key ${orphan_id} (${name}), HTTP ${ds}"
+                    fi
+                  done <<< "${orphan_ids}"
+                else
+                  echo "No orphaned keys found for ${name}."
                 fi
 
                 {
