@@ -90,3 +90,25 @@ data:
         runIn: local
       publisher:
         type: local
+    dynamicPlugins:
+      frontend:
+        red-hat-developer-hub.backstage-plugin-global-header:
+          mountPoints:
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                section: Developer Tools
+                priority: 100
+                props:
+                  title: SonarQube
+                  icon: dashboard
+                  link: ${SONARQUBE_URL}
+            - mountPoint: global.header/application-launcher
+              importName: MenuItemLink
+              config:
+                section: Developer Tools
+                priority: 90
+                props:
+                  title: Dev Spaces
+                  icon: catalog
+                  link: ${DEVSPACES_URL}

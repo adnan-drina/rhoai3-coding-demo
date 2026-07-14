@@ -102,6 +102,31 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     done
 done
 
+log_step "Agentic Coolstore Workspace (stage 060 golden path)"
+check "agentic-coolstore tracks main branch" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | grep -q 'revision: main' && echo main || echo other" \
+    "main"
+check "agentic-coolstore exposes quarkus-dev endpoint" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'name: quarkus-dev' && echo present || echo missing" \
+    "present"
+check "agentic-coolstore has package command" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'id: package' && echo present || echo missing" \
+    "present"
+check "agentic-coolstore has start-dev command" \
+    "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -q 'id: start-dev' && echo present || echo missing" \
+    "present"
+
+log_step "RHDH Platform Integration"
+check "Runtime catalog contains SonarQube URL" \
+    "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -q 'sonarqube-sonarqube' && echo present || echo missing" \
+    "present"
+check "rhdh-secrets contains SONARQUBE_URL key" \
+    "[ -n \"\$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.SONARQUBE_URL}' 2>/dev/null)\" ] && echo present || echo missing" \
+    "present"
+check "rhdh-secrets contains DEVSPACES_URL key" \
+    "[ -n \"\$(oc get secret rhdh-secrets -n rhdh -o jsonpath='{.data.DEVSPACES_URL}' 2>/dev/null)\" ] && echo present || echo missing" \
+    "present"
+
 check "ai-admin workspace edit RoleBinding exists" \
     "oc get rolebinding wksp-edit-ai-admin -n wksp-ai-admin -o jsonpath='{.subjects[0].name}'" \
     "ai-admin"

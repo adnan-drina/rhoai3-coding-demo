@@ -159,8 +159,12 @@ spec:
             -o jsonpath='{.spec.host}' 2>/dev/null || true)
           COOLSTORE_URL="https://${COOLSTORE_HOST:-coolstore-pending.local}"
 
+          SONARQUBE_HOST=$(oc get route sonarqube -n sonarqube \
+            -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          SONARQUBE_URL="https://${SONARQUBE_HOST:-sonarqube-pending.local}"
+
           echo "Generating runtime catalog..."
-          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" <<'PY'
+          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" <<'PY'
           import pathlib
           import sys
 
@@ -170,6 +174,7 @@ spec:
           rhdh_url = sys.argv[4].rstrip("/")
           revision = sys.argv[5]
           coolstore_url = sys.argv[6].rstrip("/")
+          sonarqube_url = sys.argv[7].rstrip("/")
 
           content = source.read_text()
           content = content.replace(
@@ -181,11 +186,14 @@ spec:
           for placeholder, replacement in devspaces_links.items():
               content = content.replace(placeholder, replacement)
           content = content.replace("https://rhdh.placeholder.example.com", rhdh_url)
+          content = content.replace("https://sonarqube.placeholder.example.com", sonarqube_url)
           content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
           if "devspaces" in content and "placeholder.example.com" in content:
               raise SystemExit("Dev Spaces placeholder was not replaced")
           if "rhdh.placeholder.example.com" in content:
               raise SystemExit("RHDH placeholder was not replaced")
+          if "sonarqube.placeholder.example.com" in content:
+              raise SystemExit("SonarQube placeholder was not replaced")
           if "__RHOAI3_DEMO_REVISION__" in content:
               raise SystemExit("Repository revision placeholder was not replaced")
           target.write_text(content)

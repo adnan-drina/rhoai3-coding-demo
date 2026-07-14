@@ -273,7 +273,18 @@ spec:
             echo "RHDH client created"
           fi
 
-          # --- 5b. Kubernetes SA token + Argo CD access for plugins ---
+          # --- 5b. Discover SonarQube and Dev Spaces URLs for app-launcher tiles ---
+          SONARQUBE_HOST=$(oc get route sonarqube -n sonarqube \
+            -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          SONARQUBE_URL="https://${SONARQUBE_HOST:-sonarqube-pending.local}"
+          echo "SonarQube URL: ${SONARQUBE_URL}"
+
+          DEVSPACES_HOST=$(oc get route devspaces -n openshift-devspaces \
+            -o jsonpath='{.spec.host}' 2>/dev/null || true)
+          DEVSPACES_URL="https://${DEVSPACES_HOST:-devspaces-pending.local}"
+          echo "Dev Spaces URL: ${DEVSPACES_URL}"
+
+          # --- 5c. Kubernetes SA token + Argo CD access for plugins ---
           KUBE_SA_TOKEN=$(oc get secret rhdh-kubernetes-reader-token -n rhdh \
             -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           if [ -z "$KUBE_SA_TOKEN" ]; then
@@ -312,6 +323,10 @@ spec:
             -o jsonpath='{.data.RHDH_ARGOCD_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_ARGOCD_PASSWORD=$(oc get secret rhdh-secrets -n rhdh \
             -o jsonpath='{.data.RHDH_ARGOCD_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_SONARQUBE_URL=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.SONARQUBE_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          CURRENT_DEVSPACES_URL=$(oc get secret rhdh-secrets -n rhdh \
+            -o jsonpath='{.data.DEVSPACES_URL}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           SECRETS_CHANGED=false
           if [ "$CURRENT_BASE_URL" != "$RHDH_URL" ] || \
              [ "$CURRENT_METADATA_URL" != "$RHBK_METADATA_URL" ] || \
@@ -320,7 +335,9 @@ spec:
              [ "$CURRENT_SESSION_SECRET" != "$SESSION_SECRET" ] || \
              [ "$CURRENT_KUBE_SA_TOKEN" != "$KUBE_SA_TOKEN" ] || \
              [ "$CURRENT_ARGOCD_URL" != "$ARGOCD_URL" ] || \
-             [ "$CURRENT_ARGOCD_PASSWORD" != "$ARGOCD_PASSWORD" ]; then
+             [ "$CURRENT_ARGOCD_PASSWORD" != "$ARGOCD_PASSWORD" ] || \
+             [ "$CURRENT_SONARQUBE_URL" != "$SONARQUBE_URL" ] || \
+             [ "$CURRENT_DEVSPACES_URL" != "$DEVSPACES_URL" ]; then
             SECRETS_CHANGED=true
           fi
 
@@ -332,6 +349,8 @@ spec:
           ENCODED_KUBE_SA_TOKEN=$(echo -n "${KUBE_SA_TOKEN}" | base64 -w0 2>/dev/null || echo -n "${KUBE_SA_TOKEN}" | base64)
           ENCODED_ARGOCD_URL=$(echo -n "${ARGOCD_URL}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_URL}" | base64)
           ENCODED_ARGOCD_PASSWORD=$(echo -n "${ARGOCD_PASSWORD}" | base64 -w0 2>/dev/null || echo -n "${ARGOCD_PASSWORD}" | base64)
+          ENCODED_SONARQUBE_URL=$(echo -n "${SONARQUBE_URL}" | base64 -w0 2>/dev/null || echo -n "${SONARQUBE_URL}" | base64)
+          ENCODED_DEVSPACES_URL=$(echo -n "${DEVSPACES_URL}" | base64 -w0 2>/dev/null || echo -n "${DEVSPACES_URL}" | base64)
 
           if [ "$SECRETS_CHANGED" = "true" ]; then
             echo "Patching rhdh-secrets..."
@@ -344,7 +363,9 @@ spec:
                 \"RHDH_CATALOG_URL\":\"${ENCODED_CATALOG_URL}\",
                 \"RHDH_KUBERNETES_SA_TOKEN\":\"${ENCODED_KUBE_SA_TOKEN}\",
                 \"RHDH_ARGOCD_URL\":\"${ENCODED_ARGOCD_URL}\",
-                \"RHDH_ARGOCD_PASSWORD\":\"${ENCODED_ARGOCD_PASSWORD}\"
+                \"RHDH_ARGOCD_PASSWORD\":\"${ENCODED_ARGOCD_PASSWORD}\",
+                \"SONARQUBE_URL\":\"${ENCODED_SONARQUBE_URL}\",
+                \"DEVSPACES_URL\":\"${ENCODED_DEVSPACES_URL}\"
               }}"
             echo "rhdh-secrets patched"
           else

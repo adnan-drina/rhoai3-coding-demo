@@ -88,6 +88,9 @@ metadata:
     - url: "https://devspaces-inventory.placeholder.example.com/dashboard/#/ide/wksp-ai-developer/agentic-coolstore"
       title: Dev Spaces
       icon: catalog
+    - url: "https://sonarqube.placeholder.example.com/dashboard?id=coolstore-inventory-service"
+      title: SonarQube (code quality)
+      icon: dashboard
   tags:
     - java
     - quarkus

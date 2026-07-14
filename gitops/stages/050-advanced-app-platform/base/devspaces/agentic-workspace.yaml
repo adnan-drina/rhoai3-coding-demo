@@ -75,6 +75,20 @@ spec:
           fi
         component: tooling-container
       id: init-ai-tools
+    - exec:
+        label: "1. Package the application"
+        component: tooling-container
+        workingDir: ${PROJECT_SOURCE}
+        commandLine: "./mvnw package"
+        group: {kind: build, isDefault: true}
+      id: package
+    - exec:
+        label: "2. Start Development mode (Hot reload)"
+        component: tooling-container
+        workingDir: ${PROJECT_SOURCE}
+        commandLine: "./mvnw compile quarkus:dev -Dquarkus.analytics.disabled=true"
+        group: {kind: run, isDefault: true}
+      id: start-dev
     components:
     - container:
         cpuLimit: '2'
@@ -86,6 +100,19 @@ spec:
           value: /usr/bin/bash
         - name: JAVA_HOME
           value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+        - name: QUARKUS_HTTP_HOST
+          value: 0.0.0.0
+        endpoints:
+        - name: quarkus-dev
+          targetPort: 8080
+          exposure: public
+          secure: false
+          protocol: https
+        - name: debug
+          targetPort: 5005
+          exposure: none
+          secure: false
+          protocol: tcp
         image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
         memoryLimit: 6Gi
         memoryRequest: 2Gi
@@ -97,7 +124,7 @@ spec:
     projects:
     - git:
         checkoutFrom:
-          revision: demo/agentic-skills
+          revision: main
         remotes:
           origin: https://github.com/adnan-drina/coolstore-inventory-service.git
       name: agentic-coolstore
