@@ -100,7 +100,7 @@ spec:
         - name: MODEL_NAME
           value: "nemotron-3-nano-30b-a3b"
         - name: MAAS_SUBSCRIPTION
-          value: "rhoai-developers-coding-models"
+          value: "mta-migration-models"
         command:
         - /bin/bash
         - -c
@@ -183,6 +183,7 @@ spec:
             fi
 
             SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            SA_PRINCIPAL="system:serviceaccount:openshift-mta:job-patch-mta-maas-url"
 
             echo "Searching for orphaned ${KEY_NAME} keys..."
             search_resp=$(curl -sk -X POST \
@@ -190,7 +191,8 @@ spec:
               -H "Content-Type: application/json" \
               -d "{\"name\":\"${KEY_NAME}\"}" \
               "https://${MAAS_HOST}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")
-            orphan_ids=$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1]]' "${KEY_NAME}" 2>/dev/null || true)
+            orphan_ids=$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin).get("data",[]);[print(e["id"]) for e in data if e.get("name")==sys.argv[1] and e.get("username")==sys.argv[2] and e.get("status")=="active"]' "${KEY_NAME}" "${SA_PRINCIPAL}" 2>/dev/null || true)
+            echo "Searched $(echo "${search_resp}" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("data",[]);print(len(d))' 2>/dev/null || echo '?') keys, $(echo -n "${orphan_ids}" | grep -c . || echo 0) matched ${KEY_NAME}"
             if [ -n "${orphan_ids}" ]; then
               while IFS= read -r oid; do
                 [ -z "${oid}" ] && continue

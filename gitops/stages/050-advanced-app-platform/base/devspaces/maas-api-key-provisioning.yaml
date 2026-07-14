@@ -388,17 +388,31 @@ data:
             }
           }
         },
-        "gpt-4o-mini": {
+        "qwen3-235b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "OpenAI GPT-4o Mini (external via MaaS)",
+          "name": "Qwen3 235B (Red Hat internal)",
           "options": {
-            "apiKey": "${MAAS_API_KEY_GPT_4O_MINI}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1"
+            "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/qwen3-235b/v1"
           },
           "models": {
-            "gpt-4o-mini": {
-              "name": "GPT-4o Mini",
-              "limit": { "context": 128000, "output": 4096 }
+            "qwen3-235b": {
+              "name": "Qwen3 235B",
+              "limit": { "context": 16384, "output": 4096 }
+            }
+          }
+        },
+        "minimax-m2": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MiniMax M2 (Red Hat internal)",
+          "options": {
+            "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/minimax-m2/v1"
+          },
+          "models": {
+            "minimax-m2": {
+              "name": "MiniMax M2",
+              "limit": { "context": 196608, "output": 16384 }
             }
           }
         }
@@ -421,12 +435,14 @@ data:
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
-    MAAS_API_KEY_GPT_4O_MINI="$(secret_value MAAS_API_KEY_GPT_4O_MINI)"
+    MAAS_API_KEY_QWEN3_235B="$(secret_value MAAS_API_KEY_QWEN3_235B)"
+    MAAS_API_KEY_MINIMAX_M2="$(secret_value MAAS_API_KEY_MINIMAX_M2)"
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
       || [ -z "${MAAS_API_KEY_QWEN}" ] \
-      || [ -z "${MAAS_API_KEY_GPT_4O_MINI}" ]; then
+      || [ -z "${MAAS_API_KEY_QWEN3_235B}" ] \
+      || [ -z "${MAAS_API_KEY_MINIMAX_M2}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
       ensure_opencode_compat_path
@@ -472,25 +488,41 @@ data:
             "chunkTimeout": 120000
           }
         },
-        "gpt-4o-mini": {
+        "qwen3-235b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS GPT-4o Mini",
+          "name": "MaaS Qwen3 235B",
           "models": {
-            "gpt-4o-mini": {
-              "name": "OpenAI GPT-4o Mini (External)",
-              "limit": { "context": 128000, "output": 16384 }
+            "qwen3-235b": {
+              "name": "Qwen3 235B (Red Hat Internal)",
+              "limit": { "context": 16384, "output": 4096 }
             }
           },
           "options": {
-            "apiKey": "${MAAS_API_KEY_GPT_4O_MINI}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1",
+            "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/qwen3-235b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
+          }
+        },
+        "minimax-m2": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "MaaS MiniMax M2",
+          "models": {
+            "minimax-m2": {
+              "name": "MiniMax M2 (Red Hat Internal)",
+              "limit": { "context": 196608, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
+            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/minimax-m2/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
         }
       },
       "model": "qwen/qwen3-6-35b-a3b",
-      "small_model": "gpt-4o-mini/gpt-4o-mini",
+      "small_model": "qwen/qwen3-6-35b-a3b",
       "mcp": {
         "openshift": {
           "type": "remote",
@@ -539,7 +571,8 @@ spec:
               SECRET_NAME="maas-devspace-api-keys"
               SECRET_NAMESPACE="wksp-ai-developer"
               # Developer-tier subscription from the migrated MaaS governance (Stage 040).
-              SUBSCRIPTION="rhoai-developers-coding-models"
+              SUBSCRIPTION="devspaces-coding-models"
+              SA_PRINCIPAL="system:serviceaccount:wksp-ai-developer:devspace-maas-key-provisioner"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 
               if [ -z "${MAAS_HOST}" ] || echo "${MAAS_HOST}" | grep -q "placeholder"; then
@@ -639,8 +672,9 @@ spec:
                   -H "Content-Type: application/json" \
                   -d "{\"name\":\"${name}\"}" \
                   "${MAAS_BASE_URL}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
-                orphan_ids="$(echo "${search_response}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1] and e.get("id") and e.get("id")!=sys.argv[2]]' "${name}" "${id}" 2>/dev/null || true)"
-                if [ -n "${orphan_ids}" ]; then
+              orphan_ids="$(echo "${search_response}" | python3 -c 'import json,sys;data=json.load(sys.stdin).get("data",[]);[print(e["id"]) for e in data if e.get("name")==sys.argv[1] and e.get("username")==sys.argv[3] and e.get("status")=="active" and e.get("id","")!=sys.argv[2]]' "${name}" "${id}" "${SA_PRINCIPAL}" 2>/dev/null || true)"
+              echo "Searched $(echo "${search_response}" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("data",[]);print(len(d))' 2>/dev/null || echo '?') keys, $(echo -n "${orphan_ids}" | grep -c . || echo 0) matched ${name}"
+              if [ -n "${orphan_ids}" ]; then
                   while IFS= read -r orphan_id; do
                     [ -z "${orphan_id}" ] && continue
                     ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
@@ -670,7 +704,8 @@ spec:
 
               write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
               write_model_key "QWEN" "qwen3-6-35b-a3b"
-              write_model_key "GPT_4O_MINI" "gpt-4o-mini"
+              write_model_key "QWEN3_235B" "qwen3-235b"
+              write_model_key "MINIMAX_M2" "minimax-m2"
 
               oc create secret generic "${SECRET_NAME}" \
                 -n "${SECRET_NAMESPACE}" \

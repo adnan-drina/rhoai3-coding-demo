@@ -129,7 +129,8 @@ for key_name in \
     MAAS_BASE_URL \
     MAAS_API_KEY_NEMOTRON \
     MAAS_API_KEY_QWEN \
-    MAAS_API_KEY_GPT_4O_MINI; do
+    MAAS_API_KEY_QWEN3_235B \
+    MAAS_API_KEY_MINIMAX_M2; do
     check "DevWorkspace MaaS Secret contains $key_name" \
         "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \
         "present"

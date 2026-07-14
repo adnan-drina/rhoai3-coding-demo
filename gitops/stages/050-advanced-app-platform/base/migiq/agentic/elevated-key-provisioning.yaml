@@ -1,7 +1,7 @@
 # Provisions the elevated MaaS API key for the Stage 080 agentic migration
-# workspace. The key draws from the rhoai-developers-coding-models subscription
-# (developer-tier budget) on the same tier as workspace keys; the job SA must
-# be an owner/subject of that subscription (added in Stage 040 policies).
+# workspace. The key draws from the mta-migration-models subscription
+# (dedicated tier for MTA + agentic migration); the job SA must be an
+# owner/subject of that subscription (added in Stage 040 policies).
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -63,7 +63,8 @@ spec:
             - -c
             - |
               set -euo pipefail
-              SUBSCRIPTION="rhoai-developers-coding-models"
+              SUBSCRIPTION="mta-migration-models"
+              SA_PRINCIPAL="system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner"
               SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress \
                 -o jsonpath='{.spec.listeners[0].hostname}')"
@@ -95,7 +96,8 @@ spec:
                 -H "Content-Type: application/json" \
                 -d '{"name":"agentic-migration"}' \
                 "${BASE}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
-              orphan_ids="$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")=="agentic-migration"]' 2>/dev/null || true)"
+              orphan_ids="$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin).get("data",[]);[print(e["id"]) for e in data if e.get("name")=="agentic-migration" and e.get("username")==sys.argv[1] and e.get("status")=="active"]' "${SA_PRINCIPAL}" 2>/dev/null || true)"
+              echo "Searched $(echo "${search_resp}" | python3 -c 'import json,sys;d=json.load(sys.stdin).get("data",[]);print(len(d))' 2>/dev/null || echo '?') keys, $(echo -n "${orphan_ids}" | grep -c . || echo 0) matched agentic-migration"
               if [ -n "${orphan_ids}" ]; then
                 while IFS= read -r oid; do
                   [ -z "${oid}" ] && continue
