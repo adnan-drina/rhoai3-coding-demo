@@ -189,14 +189,14 @@ spec:
               -H "Authorization: Bearer ${SA_TOKEN}" \
               -H "Content-Type: application/json" \
               -d "{\"name\":\"${KEY_NAME}\"}" \
-              "${INTERNAL_API}/internal/v1/api-keys/search" 2>/dev/null || echo "[]")
+              "https://${MAAS_HOST}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")
             orphan_ids=$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1]]' "${KEY_NAME}" 2>/dev/null || true)
             if [ -n "${orphan_ids}" ]; then
               while IFS= read -r oid; do
                 [ -z "${oid}" ] && continue
-                ds=$(curl -sk -o /dev/null -w '%{http_code}' -X DELETE \
+                ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
                   -H "Authorization: Bearer ${SA_TOKEN}" \
-                  "${INTERNAL_API}/maas-api/v1/api-keys/${oid}")
+                  "https://${MAAS_HOST}/maas-api/v1/api-keys/${oid}")
                 if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
                   echo "Revoked orphaned key ${oid} (${KEY_NAME})"
                 else

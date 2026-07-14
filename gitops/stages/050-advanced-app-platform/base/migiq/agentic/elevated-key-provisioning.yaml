@@ -94,14 +94,14 @@ spec:
                 -H "Authorization: Bearer ${SA_TOKEN}" \
                 -H "Content-Type: application/json" \
                 -d '{"name":"agentic-migration"}' \
-                "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/search" 2>/dev/null || echo "[]")"
+                "${BASE}/maas-api/v1/api-keys/search" 2>/dev/null || echo "[]")"
               orphan_ids="$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")=="agentic-migration"]' 2>/dev/null || true)"
               if [ -n "${orphan_ids}" ]; then
                 while IFS= read -r oid; do
                   [ -z "${oid}" ] && continue
                   ds=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X DELETE \
                     -H "Authorization: Bearer ${SA_TOKEN}" \
-                    "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/maas-api/v1/api-keys/${oid}")
+                    "${BASE}/maas-api/v1/api-keys/${oid}")
                   if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
                     echo "Revoked orphaned key ${oid} (agentic-migration)"
                   else
