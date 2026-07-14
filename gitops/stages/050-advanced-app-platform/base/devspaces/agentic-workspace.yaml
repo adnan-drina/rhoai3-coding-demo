@@ -17,37 +17,60 @@ spec:
   template:
     commands:
     - exec:
-        commandLine: "PROJECT_DIR=\"/projects/agentic-coolstore\"\njava21_home=\"\
-          ${JAVA_HOME:-}\"\nif [ -z \"${java21_home}\" ] || [ ! -x \"${java21_home}/bin/java\"\
-          \ ]; then\n  for candidate in \\\n    \"${HOME}/.sdkman/candidates/java/21.0.5-tem\"\
-          \ \\\n    /home/tooling/.sdkman/candidates/java/21.0.5-tem \\\n    /usr/lib/jvm/java-21-openjdk;\
-          \ do\n    if [ -x \"${candidate}/bin/java\" ]; then\n      java21_home=\"\
-          ${candidate}\"\n      break\n    fi\n  done\nfi\nif [ -n \"${java21_home}\"\
-          \ ] && [ -x \"${java21_home}/bin/java\" ]; then\n  export JAVA_HOME=\"${java21_home}\"\
-          \n  export PATH=\"${JAVA_HOME}/bin:${PATH}\"\n  for rc in \"${HOME}/.bashrc\"\
-          \ \"${HOME}/.zshrc\"; do\n    touch \"${rc}\"\n    if ! grep -q \"rhoai3-coding-demo:\
-          \ java 21 default\" \"${rc}\"; then\n      {\n        printf '\\n'\n   \
-          \     printf '# rhoai3-coding-demo: java 21 default\\n'\n        printf\
-          \ 'export JAVA_HOME=\"%s\"\\n' \"${java21_home}\"\n        printf 'export\
-          \ PATH=\"${JAVA_HOME}/bin:${PATH}\"\\n'\n      } >> \"${rc}\"\n    fi\n\
-          \  done\n  echo \"Configured Java 21 as the default shell runtime.\"\nelse\n\
-          \  echo \"Java 21 runtime not found; use a Dev Spaces tooling image with\
-          \ OpenJDK 21.\"\nfi\ncurl -fsSL --max-time 300 -o /tmp/kilo.vsix \"\
-          https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix\"\
-          \ntest -s /tmp/kilo.vsix\nfor i in $(seq 1 30); do [ -f \"${PROJECT_DIR}/.opencode/opencode.template.json\"\
-          \ ] && break; sleep 2; done\nKUBE_API=\"https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}\"\
-          \nKUBE_CA=\"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt\"\nKUBE_TOKEN=\"\
-          $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\"\nif curl -fsS\
-          \ --cacert \"${KUBE_CA}\"                 -H \"Authorization: Bearer ${KUBE_TOKEN}\"\
-          \                 \"${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init\"\
-          \                 | jq -r '.data[\"init-ai-tools.sh\"] // empty' >/tmp/init-ai-tools.sh\
-          \                 && [ -s /tmp/init-ai-tools.sh ]; then\n  chmod 700 /tmp/init-ai-tools.sh\n\
-          \  /tmp/init-ai-tools.sh \"${PROJECT_DIR}\" \"agentic-coolstore\"\nelse\n\
-          \  mkdir -p ~/.config/opencode ~/.opencode\n  if [ ! -f ~/.config/opencode/opencode.json ]; then\n    cp \"\
-          ${PROJECT_DIR}/.opencode/opencode.template.json\" ~/.config/opencode/opencode.json\
-          \ 2>/dev/null || true\n    echo \"Created ~/.config/opencode/opencode.json\
-          \ from the repo template.\"\n  else\n    echo \"Kept existing ~/.config/opencode/opencode.json.\"\
-          \n  fi\nfi\n"
+        commandLine: |
+          PROJECT_DIR="/projects/agentic-coolstore"
+          java21_home="${JAVA_HOME:-}"
+          if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+            for candidate in \
+              "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+              /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+              /usr/lib/jvm/java-21-openjdk; do
+              if [ -x "${candidate}/bin/java" ]; then
+                java21_home="${candidate}"
+                break
+              fi
+            done
+          fi
+          if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+            export JAVA_HOME="${java21_home}"
+            export PATH="${JAVA_HOME}/bin:${PATH}"
+            for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+              touch "${rc}"
+              if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+                {
+                  printf '\n'
+                  printf '# rhoai3-coding-demo: java 21 default\n'
+                  printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                  printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+                } >> "${rc}"
+              fi
+            done
+            echo "Configured Java 21 as the default shell runtime."
+          else
+            echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
+          fi
+          if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+            echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+          else
+            curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+            test -s /tmp/kilo.vsix
+          fi
+          for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
+          KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+          KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          if curl -fsS --cacert "${KUBE_CA}"                 -H "Authorization: Bearer ${KUBE_TOKEN}"                 "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init"                 | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh                 && [ -s /tmp/init-ai-tools.sh ]; then
+            chmod 700 /tmp/init-ai-tools.sh
+            /tmp/init-ai-tools.sh "${PROJECT_DIR}" "agentic-coolstore"
+          else
+            mkdir -p ~/.config/opencode ~/.opencode
+            if [ ! -f ~/.config/opencode/opencode.json ]; then
+              cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+              echo "Created ~/.config/opencode/opencode.json from the repo template."
+            else
+              echo "Kept existing ~/.config/opencode/opencode.json."
+            fi
+          fi
         component: tooling-container
       id: init-ai-tools
     components:
@@ -76,4 +99,3 @@ spec:
         remotes:
           origin: https://github.com/adnan-drina/coolstore-inventory-service.git
       name: agentic-coolstore
-

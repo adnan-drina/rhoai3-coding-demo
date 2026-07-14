@@ -89,8 +89,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
             mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
@@ -192,8 +196,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
             mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
@@ -295,8 +303,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -408,8 +420,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
             mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
@@ -511,8 +527,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
             mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
@@ -614,8 +634,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -728,8 +752,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -824,8 +852,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -919,8 +951,12 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
-            test -s /tmp/kilo.vsix
+            if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
+              echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+            else
+              curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+              test -s /tmp/kilo.vsix
+            fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
