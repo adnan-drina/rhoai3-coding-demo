@@ -128,7 +128,14 @@ data:
     PROJECT_DIR="${1:?project directory is required}"
     PROFILE="${2:-default}"
 
-    mkdir -p "${HOME}/.config/kilo" "${HOME}/.config/opencode" "${HOME}/.opencode"
+    mkdir -p "${HOME}/.config/kilo"
+
+    OPENCODE_ENABLED="false"
+    if [ -d "${PROJECT_DIR}/.opencode" ]; then OPENCODE_ENABLED="true"; fi
+
+    if [ "${OPENCODE_ENABLED}" = "true" ]; then
+      mkdir -p "${HOME}/.config/opencode" "${HOME}/.opencode"
+    fi
 
     ensure_vscode_shell_integration() {
       local shell_integration=""
@@ -206,16 +213,18 @@ data:
     fallback_from_repo() {
       echo "MaaS Secret not ready; Kilo Code not configured."
 
-      if [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
-        if [ -f "${HOME}/.opencode/opencode.json" ]; then
-          cp "${HOME}/.opencode/opencode.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
-          echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+      if [ "${OPENCODE_ENABLED}" = "true" ]; then
+        if [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
+          if [ -f "${HOME}/.opencode/opencode.json" ]; then
+            cp "${HOME}/.opencode/opencode.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
+            echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+          else
+            cp "${PROJECT_DIR}/.opencode/opencode.template.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
+            echo "Created ~/.config/opencode/opencode.json from the repo template."
+          fi
         else
-          cp "${PROJECT_DIR}/.opencode/opencode.template.json" "${HOME}/.config/opencode/opencode.json" 2>/dev/null || true
-          echo "Created ~/.config/opencode/opencode.json from the repo template."
+          echo "Kept existing ~/.config/opencode/opencode.json."
         fi
-      else
-        echo "Kept existing ~/.config/opencode/opencode.json."
       fi
     }
 
@@ -445,14 +454,15 @@ data:
       || [ -z "${MAAS_API_KEY_MINIMAX_M2}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
-      ensure_opencode_compat_path
+      if [ "${OPENCODE_ENABLED}" = "true" ]; then ensure_opencode_compat_path; fi
       exit 0
     fi
 
     umask 077
     write_kilo_config
 
-    cat > "${HOME}/.config/opencode/opencode.json" <<EOF
+    if [ "${OPENCODE_ENABLED}" = "true" ]; then
+      cat > "${HOME}/.config/opencode/opencode.json" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
       "provider": {
@@ -544,7 +554,11 @@ data:
     }
     EOF
 
-    ensure_opencode_compat_path
+      ensure_opencode_compat_path
+    else
+      rm -rf "${HOME}/.config/opencode" "${HOME}/.opencode"
+      echo "OpenCode config removed — project does not carry .opencode/"
+    fi
     echo "Configured Kilo Code for Stage 060 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
 ---
 apiVersion: batch/v1

@@ -95,29 +95,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
-            mkdir -p ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
+            for i in $(seq 1 30); do [ -d /projects/getting-started-ai-coding/.git ] && break; sleep 2; done
+            if [ -d /projects/getting-started-ai-coding/.opencode ]; then
+              mkdir -p ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                if [ -f ~/.opencode/opencode.json ]; then
+                  cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+                else
+                  cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                fi
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
+              if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-              else
-                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -L ~/.opencode/opencode.json ]; then
+                rm -f ~/.opencode/opencode.json
+                ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+                echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+              else
+                echo "Kept compatibility ~/.opencode/opencode.json link."
+              fi
             fi
           component: tooling-container
     events:
@@ -202,29 +204,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
-            mkdir -p ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
+            for i in $(seq 1 30); do [ -d /projects/coolstore-inventory-service/.git ] && break; sleep 2; done
+            if [ -d /projects/coolstore-inventory-service/.opencode ]; then
+              mkdir -p ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                if [ -f ~/.opencode/opencode.json ]; then
+                  cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+                else
+                  cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                fi
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
+              if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-              else
-                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -L ~/.opencode/opencode.json ]; then
+                rm -f ~/.opencode/opencode.json
+                ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+                echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+              else
+                echo "Kept compatibility ~/.opencode/opencode.json link."
+              fi
             fi
           component: tooling-container
     events:
@@ -426,29 +430,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
-            mkdir -p ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
+            for i in $(seq 1 30); do [ -d /projects/getting-started-ai-coding/.git ] && break; sleep 2; done
+            if [ -d /projects/getting-started-ai-coding/.opencode ]; then
+              mkdir -p ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                if [ -f ~/.opencode/opencode.json ]; then
+                  cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+                else
+                  cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                fi
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
+              if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-              else
-                cp /projects/getting-started-ai-coding/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -L ~/.opencode/opencode.json ]; then
+                rm -f ~/.opencode/opencode.json
+                ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+                echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+              else
+                echo "Kept compatibility ~/.opencode/opencode.json link."
+              fi
             fi
           component: tooling-container
     events:
@@ -533,29 +539,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
-            mkdir -p ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              if [ -f ~/.opencode/opencode.json ]; then
+            for i in $(seq 1 30); do [ -d /projects/coolstore-inventory-service/.git ] && break; sleep 2; done
+            if [ -d /projects/coolstore-inventory-service/.opencode ]; then
+              mkdir -p ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                if [ -f ~/.opencode/opencode.json ]; then
+                  cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
+                else
+                  cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                fi
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
+              if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-              else
-                cp /projects/coolstore-inventory-service/.opencode/opencode.template.json ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
               fi
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
-            fi
-            if [ -f ~/.opencode/opencode.json ] && [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Migrated existing ~/.opencode/opencode.json to ~/.config/opencode/opencode.json."
-            fi
-            if [ ! -L ~/.opencode/opencode.json ]; then
-              rm -f ~/.opencode/opencode.json
-              ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
-              echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
-            else
-              echo "Kept compatibility ~/.opencode/opencode.json link."
+              if [ ! -L ~/.opencode/opencode.json ]; then
+                rm -f ~/.opencode/opencode.json
+                ln -s ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || cp ~/.config/opencode/opencode.json ~/.opencode/opencode.json 2>/dev/null || true
+                echo "Refreshed compatibility ~/.opencode/opencode.json for the installed OpenCode build."
+              else
+                echo "Kept compatibility ~/.opencode/opencode.json link."
+              fi
             fi
           component: tooling-container
     events:
@@ -758,7 +766,7 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
+            for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -766,12 +774,14 @@ spec:
               chmod 700 /tmp/init-ai-tools.sh
               /tmp/init-ai-tools.sh "${PROJECT_DIR}" "getting-started-ai-coding"
             else
-              mkdir -p ~/.config/opencode ~/.opencode
-              if [ ! -f ~/.config/opencode/opencode.json ]; then
-                cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
-              else
-                echo "Kept existing ~/.config/opencode/opencode.json."
+              if [ -d "${PROJECT_DIR}/.opencode" ]; then
+                mkdir -p ~/.config/opencode ~/.opencode
+                if [ ! -f ~/.config/opencode/opencode.json ]; then
+                  cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                else
+                  echo "Kept existing ~/.config/opencode/opencode.json."
+                fi
               fi
             fi
           component: tooling-container
@@ -858,7 +868,7 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
+            for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -866,12 +876,14 @@ spec:
               chmod 700 /tmp/init-ai-tools.sh
               /tmp/init-ai-tools.sh "${PROJECT_DIR}" "coolstore-inventory-service"
             else
-              mkdir -p ~/.config/opencode ~/.opencode
-              if [ ! -f ~/.config/opencode/opencode.json ]; then
-                cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
-                echo "Created ~/.config/opencode/opencode.json from the repo template."
-              else
-                echo "Kept existing ~/.config/opencode/opencode.json."
+              if [ -d "${PROJECT_DIR}/.opencode" ]; then
+                mkdir -p ~/.config/opencode ~/.opencode
+                if [ ! -f ~/.config/opencode/opencode.json ]; then
+                  cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+                  echo "Created ~/.config/opencode/opencode.json from the repo template."
+                else
+                  echo "Kept existing ~/.config/opencode/opencode.json."
+                fi
               fi
             fi
           component: tooling-container

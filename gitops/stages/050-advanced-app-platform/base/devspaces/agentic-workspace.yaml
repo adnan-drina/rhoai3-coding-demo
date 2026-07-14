@@ -55,7 +55,7 @@ spec:
             curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
             test -s /tmp/kilo.vsix
           fi
-          for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
+          for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
           KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
           KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
           KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -63,12 +63,14 @@ spec:
             chmod 700 /tmp/init-ai-tools.sh
             /tmp/init-ai-tools.sh "${PROJECT_DIR}" "agentic-coolstore"
           else
-            mkdir -p ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.config/opencode/opencode.json ]; then
-              cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
-              echo "Created ~/.config/opencode/opencode.json from the repo template."
-            else
-              echo "Kept existing ~/.config/opencode/opencode.json."
+            if [ -d "${PROJECT_DIR}/.opencode" ]; then
+              mkdir -p ~/.config/opencode ~/.opencode
+              if [ ! -f ~/.config/opencode/opencode.json ]; then
+                cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
+                echo "Created ~/.config/opencode/opencode.json from the repo template."
+              else
+                echo "Kept existing ~/.config/opencode/opencode.json."
+              fi
             fi
           fi
         component: tooling-container
