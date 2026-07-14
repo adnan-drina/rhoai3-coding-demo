@@ -196,7 +196,7 @@ spec:
             if [ -n "${orphan_ids}" ]; then
               while IFS= read -r oid; do
                 [ -z "${oid}" ] && continue
-                ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
+                ds=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE \
                   -H "Authorization: Bearer ${SA_TOKEN}" \
                   "https://${MAAS_HOST}/maas-api/v1/api-keys/${oid}")
                 if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then

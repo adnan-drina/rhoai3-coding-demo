@@ -647,7 +647,7 @@ spec:
                   echo "Keeping existing MaaS API key for ${model}"
                 else
                   if [ -n "${current_id}" ]; then
-                    delete_status=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
+                    delete_status=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE \
                       -H "Authorization: Bearer ${SA_TOKEN}" \
                       "${MAAS_BASE_URL}/maas-api/v1/api-keys/${current_id}")
                     if [ "${delete_status}" -ge 200 ] && [ "${delete_status}" -lt 300 ]; then
@@ -667,7 +667,7 @@ spec:
                 # the one we are keeping/just minted. Runs on EVERY invocation so
                 # orphans from failed revocations are reaped on the next run, not
                 # only when a re-mint happens.
-                search_response="$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -X POST \
+                search_response="$(curl -sk --retry 3 --retry-delay 3 -X POST \
                   -H "Authorization: Bearer ${SA_TOKEN}" \
                   -H "Content-Type: application/json" \
                   -d "{\"name\":\"${name}\"}" \
@@ -677,7 +677,7 @@ spec:
               if [ -n "${orphan_ids}" ]; then
                   while IFS= read -r orphan_id; do
                     [ -z "${orphan_id}" ] && continue
-                    ds=$(curl -sk --retry 3 --retry-delay 3 --retry-all-errors -o /dev/null -w '%{http_code}' -X DELETE \
+                    ds=$(curl -sk --retry 3 --retry-delay 3 -o /dev/null -w '%{http_code}' -X DELETE \
                       -H "Authorization: Bearer ${SA_TOKEN}" \
                       "${MAAS_BASE_URL}/maas-api/v1/api-keys/${orphan_id}")
                     if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
