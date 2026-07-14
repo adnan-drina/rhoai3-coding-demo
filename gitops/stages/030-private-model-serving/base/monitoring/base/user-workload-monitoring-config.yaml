@@ -10,4 +10,15 @@ metadata:
 data:
   config.yaml: |
     prometheus:
-      retention: 15d
+      # Persisted + capped (2026-07-14) for the same reason as
+      # cluster-monitoring-config: emptyDir TSDBs on worker disks drove
+      # disk-pressure evictions. UWM scrapes the demo's high-cardinality
+      # targets (limitador per-user/model series, RHOAI, Kuadrant).
+      retention: 7d
+      retentionSize: 5GB
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3-csi
+          resources:
+            requests:
+              storage: 20Gi

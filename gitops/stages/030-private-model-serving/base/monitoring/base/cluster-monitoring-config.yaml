@@ -10,3 +10,16 @@ metadata:
 data:
   config.yaml: |
     enableUserWorkload: true
+    # Platform Prometheus persisted to PVCs (2026-07-14): the default
+    # emptyDir TSDBs grew unbounded on worker node disks (15d retention,
+    # high demo cardinality) and drove repeated kubelet disk-pressure
+    # eviction waves. See TROUBLESHOOTING "Worker Nodes Evict Pods".
+    prometheusK8s:
+      retention: 7d
+      retentionSize: 8GB
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3-csi
+          resources:
+            requests:
+              storage: 40Gi
