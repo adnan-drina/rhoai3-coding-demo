@@ -128,7 +128,7 @@ data:
     PROJECT_DIR="${1:?project directory is required}"
     PROFILE="${2:-default}"
 
-    mkdir -p "${HOME}/.continue" "${HOME}/.config/opencode" "${HOME}/.opencode"
+    mkdir -p "${HOME}/.cline/data/settings" "${HOME}/.cline/rules" "${HOME}/.config/opencode" "${HOME}/.opencode"
 
     ensure_vscode_shell_integration() {
       local shell_integration=""
@@ -204,12 +204,7 @@ data:
     }
 
     fallback_from_repo() {
-      if [ ! -f "${HOME}/.continue/config.yaml" ]; then
-        cp "${PROJECT_DIR}/.continue/config.yaml" "${HOME}/.continue/config.yaml" 2>/dev/null || true
-        echo "Created ~/.continue/config.yaml from the repo template."
-      else
-        echo "Kept existing ~/.continue/config.yaml."
-      fi
+      echo "MaaS Secret not ready; Cline not configured — use Cline settings UI to add providers manually."
 
       if [ ! -f "${HOME}/.config/opencode/opencode.json" ]; then
         if [ -f "${HOME}/.opencode/opencode.json" ]; then
@@ -326,6 +321,74 @@ data:
     ensure_java21_default
     ensure_in_cluster_kubeconfig
 
+    write_cline_providers() {
+      cat > "${HOME}/.cline/data/settings/providers.json" <<PROVEOF
+    {
+      "version": 1,
+      "lastUsedProvider": "openai-compatible",
+      "providers": {
+        "openai-compatible": {
+          "settings": {
+            "provider": "openai-compatible",
+            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
+            "model": "nemotron-3-nano-30b-a3b",
+            "baseUrl": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+          },
+          "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+          "tokenSource": "manual"
+        }
+      }
+    }
+    PROVEOF
+      echo "Wrote Cline providers.json (default: nemotron-3-nano-30b-a3b)."
+    }
+
+    write_cline_global_settings() {
+      cat > "${HOME}/.cline/data/settings/global-settings.json" <<GSEOF
+    {
+      "telemetryOptOut": true
+    }
+    GSEOF
+      echo "Wrote Cline global-settings.json (telemetry disabled)."
+    }
+
+    write_cline_mcp_settings() {
+      cat > "${HOME}/.cline/data/settings/cline_mcp_settings.json" <<MCPEOF
+    {
+      "mcpServers": {
+        "openshift": {
+          "transport": {
+            "type": "streamableHttp",
+            "url": "http://openshift-mcp.coding-assistant.svc:8000/mcp"
+          }
+        }
+      }
+    }
+    MCPEOF
+      echo "Wrote Cline MCP settings (OpenShift MCP server)."
+    }
+
+    write_cline_rules() {
+      cat > "${HOME}/.cline/rules/governance.md" <<RULESEOF
+    You are assisting inside Red Hat OpenShift Dev Spaces for a governed AI
+    coding demo. When asked to create or edit files, use IDE file editing
+    capabilities and write files to disk. Do not answer with file contents only
+    unless file writing is unavailable; if unavailable, say so clearly.
+
+    Use repository-relative paths with no leading slash. Do not edit files
+    outside the requested project directory. Keep generated examples minimal and
+    reviewable.
+
+    Do not print API keys, tokens, kubeconfigs, concrete route hosts, private
+    cluster hostnames, or full environment variables. Use shell variables such
+    as ROUTE_HOST in commands instead of printing sensitive values.
+    RULESEOF
+      echo "Wrote Cline governance rules."
+    }
+
+    write_cline_mcp_settings
+    write_cline_rules
+
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
@@ -342,81 +405,8 @@ data:
     fi
 
     umask 077
-    cat > "${HOME}/.continue/config.yaml" <<EOF
-    name: MaaS Code Assistant
-    version: 1.0.0
-    schema: v1
-    models:
-      - name: NVIDIA Nemotron 3 Nano 30B-A3B
-        provider: openai
-        model: "nemotron-3-nano-30b-a3b"
-        apiBase: "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
-        apiKey: "${MAAS_API_KEY_NEMOTRON}"
-        contextLength: 131072
-        capabilities:
-          - tool_use
-        defaultCompletionOptions:
-          reasoning: true
-          maxTokens: 16384
-        requestOptions:
-          timeout: 600000
-
-      - name: Qwen3.6 35B A3B
-        provider: openai
-        model: "qwen3-6-35b-a3b"
-        apiBase: "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1"
-        apiKey: "${MAAS_API_KEY_QWEN}"
-        contextLength: 32768
-        defaultCompletionOptions:
-          maxTokens: 4096
-        requestOptions:
-          timeout: 600000
-
-
-      - name: OpenAI GPT-4o Mini
-        provider: openai
-        model: "gpt-4o-mini"
-        apiBase: "${MAAS_BASE_URL}/redhat-ods-applications/gpt-4o-mini/v1"
-        apiKey: "${MAAS_API_KEY_GPT_4O_MINI}"
-        contextLength: 128000
-        capabilities:
-          - tool_use
-        defaultCompletionOptions:
-          maxTokens: 4096
-        requestOptions:
-          timeout: 600000
-
-    rules:
-      - >-
-        You are assisting inside Red Hat OpenShift Dev Spaces for a governed AI
-        coding demo. When asked to create or edit files, use IDE file editing
-        capabilities and write files to disk. Do not answer with file contents only
-        unless file writing is unavailable; if unavailable, say so clearly.
-
-      - >-
-        Use repository-relative paths with no leading slash. Do not edit files
-        outside the requested project directory. Keep generated examples minimal and
-        reviewable.
-
-      - >-
-        Do not print API keys, tokens, kubeconfigs, concrete route hosts, private
-        cluster hostnames, or full environment variables. Use shell variables such
-        as ROUTE_HOST in commands instead of printing sensitive values.
-
-    context:
-      - provider: code
-      - provider: docs
-      - provider: diff
-      - provider: terminal
-      - provider: problems
-      - provider: folder
-      - provider: codebase
-
-    mcpServers:
-      - name: OpenShift MCP
-        type: streamable-http
-        url: http://openshift-mcp.coding-assistant.svc:8000/mcp
-    EOF
+    write_cline_providers
+    write_cline_global_settings
 
     cat > "${HOME}/.config/opencode/opencode.json" <<EOF
     {
@@ -495,7 +485,7 @@ data:
     EOF
 
     ensure_opencode_compat_path
-    echo "Configured Continue for Stage 060 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
+    echo "Configured Cline for Stage 060 and OpenCode for later agentic engineering from the MaaS API key Secret for ${PROFILE}."
 ---
 apiVersion: batch/v1
 kind: Job

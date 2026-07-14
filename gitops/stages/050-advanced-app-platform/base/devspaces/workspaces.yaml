@@ -89,16 +89,10 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
-            else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
+            mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
               if [ -f ~/.opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
@@ -136,7 +130,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -198,16 +192,10 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
-            else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
+            mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
               if [ -f ~/.opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
@@ -245,7 +233,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -307,8 +295,8 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -330,7 +318,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/cline.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -420,16 +408,10 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
-            else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f /projects/getting-started-ai-coding/.opencode/opencode.template.json ] && break; sleep 2; done
+            mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
               if [ -f ~/.opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
@@ -467,7 +449,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -529,16 +511,10 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.continue/config.yaml ] && break; sleep 2; done
-            mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-            if [ ! -f ~/.continue/config.yaml ]; then
-              cp /projects/coolstore-inventory-service/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null || true
-              echo "Created ~/.continue/config.yaml from the repo template."
-            else
-              echo "Kept existing ~/.continue/config.yaml."
-            fi
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f /projects/coolstore-inventory-service/.opencode/opencode.template.json ] && break; sleep 2; done
+            mkdir -p ~/.config/opencode ~/.opencode
             if [ ! -f ~/.config/opencode/opencode.json ]; then
               if [ -f ~/.opencode/opencode.json ]; then
                 cp ~/.opencode/opencode.json ~/.config/opencode/opencode.json 2>/dev/null || true
@@ -576,7 +552,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -638,8 +614,8 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -661,7 +637,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/cline.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -752,9 +728,9 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -762,13 +738,7 @@ spec:
               chmod 700 /tmp/init-ai-tools.sh
               /tmp/init-ai-tools.sh "${PROJECT_DIR}" "getting-started-ai-coding"
             else
-              mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-              if [ ! -f ~/.continue/config.yaml ]; then
-                cp "${PROJECT_DIR}/.continue/config.yaml" ~/.continue/config.yaml 2>/dev/null || true
-                echo "Created ~/.continue/config.yaml from the repo template."
-              else
-                echo "Kept existing ~/.continue/config.yaml."
-              fi
+              mkdir -p ~/.config/opencode ~/.opencode
               if [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Created ~/.config/opencode/opencode.json from the repo template."
@@ -791,7 +761,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -854,9 +824,9 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
-            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.continue/config.yaml" ] && break; sleep 2; done
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
+            for i in $(seq 1 30); do [ -f "${PROJECT_DIR}/.opencode/opencode.template.json" ] && break; sleep 2; done
             KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
             KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
@@ -864,13 +834,7 @@ spec:
               chmod 700 /tmp/init-ai-tools.sh
               /tmp/init-ai-tools.sh "${PROJECT_DIR}" "coolstore-inventory-service"
             else
-              mkdir -p ~/.continue ~/.config/opencode ~/.opencode
-              if [ ! -f ~/.continue/config.yaml ]; then
-                cp "${PROJECT_DIR}/.continue/config.yaml" ~/.continue/config.yaml 2>/dev/null || true
-                echo "Created ~/.continue/config.yaml from the repo template."
-              else
-                echo "Kept existing ~/.continue/config.yaml."
-              fi
+              mkdir -p ~/.config/opencode ~/.opencode
               if [ ! -f ~/.config/opencode/opencode.json ]; then
                 cp "${PROJECT_DIR}/.opencode/opencode.template.json" ~/.config/opencode/opencode.json 2>/dev/null || true
                 echo "Created ~/.config/opencode/opencode.json from the repo template."
@@ -893,7 +857,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix"
+              value: "/tmp/cline.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -955,8 +919,8 @@ spec:
             else
               echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
             fi
-            curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/2.1.0/file/Continue.continue-2.1.0@linux-x64.vsix"
-            test -s /tmp/continue.vsix
+            curl -fsSL --max-time 120 -o /tmp/cline.vsix "https://open-vsx.org/api/saoudrizwan/claude-dev/4.0.8/file/saoudrizwan.claude-dev-4.0.8.vsix"
+            test -s /tmp/cline.vsix
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
@@ -978,7 +942,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/continue.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/cline.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME

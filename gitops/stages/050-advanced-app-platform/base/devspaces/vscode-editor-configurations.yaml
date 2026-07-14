@@ -21,7 +21,7 @@ data:
     {
       "recommendations": [
         "redhat.fabric8-analytics",
-        "Continue.continue",
+        "saoudrizwan.claude-dev",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -55,7 +55,7 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "Continue.continue",
+        "saoudrizwan.claude-dev",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -89,7 +89,7 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "Continue.continue",
+        "saoudrizwan.claude-dev",
         "redhat.vscode-openshift-connector"
       ]
     }

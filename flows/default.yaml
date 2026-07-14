@@ -74,7 +74,7 @@ stages:
     name: AI-Assisted Development
     productFocus:
       - Red Hat OpenShift Dev Spaces
-      - Continue
+      - Cline
       - OpenCode
     validateScript: stages/060-ai-assisted-development/validate.sh
     # Workflow-only stage: infrastructure (Dev Spaces, workspaces, MaaS keys)
