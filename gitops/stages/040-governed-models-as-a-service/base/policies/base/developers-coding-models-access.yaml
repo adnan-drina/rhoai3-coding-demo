@@ -23,6 +23,10 @@ spec:
       # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
       # Lightspeed for MTA calls models through the governed gateway.
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
+      # Stage 080 agentic migration workspace key (moved from the
+      # enterprise-rag-autorag tier 2026-07-14 — a developer-workflow key
+      # belongs on the developer tier).
+      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     # Sized for agentic assistants (Kilo Code in 060, OpenCode in 070): a
     # single agent turn carries system prompt + rules + file context, so the
@@ -80,6 +84,10 @@ spec:
       # Stage 080 MTA hook: provisions the kai-api-keys MaaS key so Developer
       # Lightspeed for MTA calls models through the governed gateway.
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
+      # Stage 080 agentic migration workspace key (moved from the
+      # enterprise-rag-autorag tier 2026-07-14 — a developer-workflow key
+      # belongs on the developer tier).
+      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
