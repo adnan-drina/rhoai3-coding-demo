@@ -393,7 +393,7 @@ data:
           "name": "Qwen3 235B (Red Hat internal)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/qwen3-235b/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1"
           },
           "models": {
             "qwen3-235b": {
@@ -407,7 +407,7 @@ data:
           "name": "MiniMax M2 (Red Hat internal)",
           "options": {
             "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/minimax-m2/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1"
           },
           "models": {
             "minimax-m2": {
@@ -499,7 +499,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/qwen3-235b/v1",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
@@ -515,7 +515,7 @@ data:
           },
           "options": {
             "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
-            "baseURL": "${MAAS_BASE_URL}/redhat-ods-applications/minimax-m2/v1",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
