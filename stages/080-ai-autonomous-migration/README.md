@@ -22,7 +22,7 @@ This stage adds both migration paths on a single governed platform.
 - Migration Toolkit for Applications 8.1 with MTA Hub, UI, and a ConsoleLink for the OpenShift launcher.
 - Red Hat Developer Lightspeed for MTA (Technology Preview) with `kai_llm_proxy_enabled`, `kai_solution_server_enabled`, and `kai_llm_model: nemotron-3-nano-30b-a3b` configured in the Tackle CR.
 - OpenShift OAuth federation through a `mta-keycloak` OAuthClient, RHBK realm `mta`, and pre-created demo users (`ai-admin` mapped to `tackle-admin`, `ai-developer` mapped to `tackle-migrator`) — configured by a PostSync hook Job.
-- MaaS-backed LLM proxy credentials provisioned automatically: the `kai-api-keys` Secret uses the `rhoai-developers-gpt-4o-mini` subscription (key name `mta-kai-auto`), with the cluster-specific MaaS URL patched by a PostSync Job.
+- MaaS-backed LLM proxy credentials provisioned automatically: the `kai-api-keys` Secret uses the `rhoai-developers-coding-models` subscription (key name `mta-kai-auto`), with the cluster-specific MaaS URL patched by a PostSync Job.
 - An `agentic-migration` DevWorkspace that clones `adnan-drina/migiq-spring-boot-sample`, installs `@sshaaf/migiq@0.2.2`, and writes an elevated MaaS key to `~/.agentic-maas.env` — drawn from the `enterprise-rag-autorag` subscription (key name `agentic-migration`), sized for parallel-agent token bursts.
 
 ## What To Notice And Why It Matters
@@ -32,7 +32,7 @@ Stage 080 grounds AI assistance in modernization evidence.
 - MTA provides findings from rules, static analysis, and application inventory — the migration starts with evidence, not a prompt.
 - Developer Lightspeed for MTA uses that context to produce focused remediation suggestions through the private `nemotron-3-nano-30b-a3b` model on MaaS.
 - The LLM proxy centralizes model access: developers do not manage provider credentials in the workspace, and every request flows through MaaS identity and rate-limit policies.
-- The assisted path and the agentic path use different MaaS subscriptions (`rhoai-developers-gpt-4o-mini` for MTA, `enterprise-rag-autorag` for agents), so platform teams can size token budgets independently.
+- The assisted path and the agentic path use different MaaS subscriptions (`rhoai-developers-coding-models` for MTA, `enterprise-rag-autorag` for agents), so platform teams can size token budgets independently.
 - The Coolstore sample for the assisted path is the external `konveyor-ecosystem/coolstore` repository — it is not imported by Stage 080 GitOps. The MTA VS Code extensions used in Dev Spaces are provisioned by Stage 060 workspace assets (`mca-coolstore` DevWorkspace), not by this stage.
 - MaaS usage dashboards showing token consumption depend on Stage 040 observability — they are not configured by Stage 080.
 

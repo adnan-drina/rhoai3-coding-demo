@@ -14,7 +14,7 @@ spec:
   # Dedicated subscription for Stage 230 AutoRAG optimization runs. An
   # optimization run evaluates many RAG patterns in a burst (per pattern:
   # benchmark questions x retrieved context), which exhausts the interactive
-  # rhoai-developers-gpt-4o-mini token budgets and surfaces as silent 429
+  # rhoai-developers-coding-models token budgets and surfaces as silent 429
   # pattern failures on the AutoRAG leaderboard. Governance stays enforced;
   # the quota is sized for the optimization workload.
   owner:

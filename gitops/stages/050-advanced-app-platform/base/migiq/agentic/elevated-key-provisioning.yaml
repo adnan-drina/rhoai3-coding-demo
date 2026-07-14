@@ -1,8 +1,7 @@
 # Provisions the elevated MaaS API key for the Stage 080 agentic migration
-# workspace. The key draws from the enterprise-rag-autorag subscription
-# (2M tokens/h) sized for parallel-agent bursts; developer-tier keys from
-# Stage 060 stay untouched. The job SA must be an owner/subject of that
-# subscription (added in Stage 040 policies).
+# workspace. The key draws from the rhoai-developers-coding-models subscription
+# (developer-tier budget) on the same tier as workspace keys; the job SA must
+# be an owner/subject of that subscription (added in Stage 040 policies).
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -64,7 +63,7 @@ spec:
             - -c
             - |
               set -euo pipefail
-              SUBSCRIPTION="enterprise-rag-autorag"
+              SUBSCRIPTION="rhoai-developers-coding-models"
               SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
               MAAS_HOST="$(oc get gateway maas-default-gateway -n openshift-ingress \
                 -o jsonpath='{.spec.listeners[0].hostname}')"
@@ -88,6 +87,27 @@ spec:
                   exit 0
                 fi
                 echo "Existing key rejected (HTTP ${code}); rotating."
+              fi
+
+              echo "Searching for orphaned agentic-migration keys..."
+              search_resp="$("${CURL[@]}" -X POST \
+                -H "Authorization: Bearer ${SA_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"name":"agentic-migration"}' \
+                "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/search" 2>/dev/null || echo "[]")"
+              orphan_ids="$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")=="agentic-migration"]' 2>/dev/null || true)"
+              if [ -n "${orphan_ids}" ]; then
+                while IFS= read -r oid; do
+                  [ -z "${oid}" ] && continue
+                  ds=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X DELETE \
+                    -H "Authorization: Bearer ${SA_TOKEN}" \
+                    "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/maas-api/v1/api-keys/${oid}")
+                  if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
+                    echo "Revoked orphaned key ${oid} (agentic-migration)"
+                  else
+                    echo "WARNING: failed to revoke orphaned key ${oid} (agentic-migration), HTTP ${ds}"
+                  fi
+                done <<< "${orphan_ids}"
               fi
 
               resp="$("${CURL[@]}" -X POST \

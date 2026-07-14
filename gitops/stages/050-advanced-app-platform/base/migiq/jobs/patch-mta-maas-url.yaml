@@ -100,7 +100,7 @@ spec:
         - name: MODEL_NAME
           value: "nemotron-3-nano-30b-a3b"
         - name: MAAS_SUBSCRIPTION
-          value: "rhoai-developers-gpt-4o-mini"
+          value: "rhoai-developers-coding-models"
         command:
         - /bin/bash
         - -c
@@ -160,6 +160,8 @@ spec:
           echo "OPENAI_API_BASE patched"
 
           echo "Checking OPENAI_API_KEY..."
+          KEY_NAME="mta-kai-auto"
+          INTERNAL_API="https://maas-api.redhat-ods-applications.svc.cluster.local:8443"
           CURRENT_KEY=$(oc get secret kai-api-keys -n openshift-mta \
             -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
           CURRENT_SUBSCRIPTION=""
@@ -167,21 +169,46 @@ spec:
             CURRENT_SUBSCRIPTION=$(curl -sk -X POST \
               -H "Content-Type: application/json" \
               -d "{\"key\":\"${CURRENT_KEY}\"}" \
-              "https://maas-api.redhat-ods-applications.svc.cluster.local:8443/internal/v1/api-keys/validate" 2>/dev/null \
+              "${INTERNAL_API}/internal/v1/api-keys/validate" 2>/dev/null \
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('subscription',''))" 2>/dev/null || echo "")
           fi
 
-          if [ -z "$CURRENT_KEY" ] || echo "$CURRENT_KEY" | grep -q "REPLACE" || [ "$CURRENT_SUBSCRIPTION" != "$MAAS_SUBSCRIPTION" ]; then
+          if [ "$CURRENT_SUBSCRIPTION" = "$MAAS_SUBSCRIPTION" ]; then
+            echo "OPENAI_API_KEY already set for ${MAAS_SUBSCRIPTION}"
+          else
             if [ -n "$CURRENT_SUBSCRIPTION" ]; then
               echo "Existing MaaS API key uses subscription '${CURRENT_SUBSCRIPTION}', expected '${MAAS_SUBSCRIPTION}'. Rotating key..."
             else
               echo "Provisioning MaaS API key via MaaS API..."
             fi
+
             SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+            echo "Searching for orphaned ${KEY_NAME} keys..."
+            search_resp=$(curl -sk -X POST \
+              -H "Authorization: Bearer ${SA_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"${KEY_NAME}\"}" \
+              "${INTERNAL_API}/internal/v1/api-keys/search" 2>/dev/null || echo "[]")
+            orphan_ids=$(echo "${search_resp}" | python3 -c 'import json,sys;data=json.load(sys.stdin);entries=data if isinstance(data,list) else data.get("items",[]);[print(e.get("id","")) for e in entries if e.get("name")==sys.argv[1]]' "${KEY_NAME}" 2>/dev/null || true)
+            if [ -n "${orphan_ids}" ]; then
+              while IFS= read -r oid; do
+                [ -z "${oid}" ] && continue
+                ds=$(curl -sk -o /dev/null -w '%{http_code}' -X DELETE \
+                  -H "Authorization: Bearer ${SA_TOKEN}" \
+                  "${INTERNAL_API}/maas-api/v1/api-keys/${oid}")
+                if [ "${ds}" -ge 200 ] && [ "${ds}" -lt 300 ]; then
+                  echo "Revoked orphaned key ${oid} (${KEY_NAME})"
+                else
+                  echo "WARNING: failed to revoke orphaned key ${oid} (${KEY_NAME}), HTTP ${ds}"
+                fi
+              done <<< "${orphan_ids}"
+            fi
+
             API_KEY=$(curl -sk -X POST \
               -H "Authorization: Bearer ${SA_TOKEN}" \
               -H "Content-Type: application/json" \
-              -d "{\"name\":\"mta-kai-auto\",\"subscription\":\"${MAAS_SUBSCRIPTION}\"}" \
+              -d "{\"name\":\"${KEY_NAME}\",\"subscription\":\"${MAAS_SUBSCRIPTION}\"}" \
               "https://${MAAS_HOST}/maas-api/v1/api-keys" 2>/dev/null \
               | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
             if [ -n "$API_KEY" ] && echo "$API_KEY" | grep -q "^sk-oai-"; then
@@ -195,8 +222,6 @@ spec:
               echo "  Developer Lightspeed will not be able to call MaaS."
               exit 1
             fi
-          else
-            echo "OPENAI_API_KEY already set for ${MAAS_SUBSCRIPTION}"
           fi
 
           echo "Waiting for MTA route..."
