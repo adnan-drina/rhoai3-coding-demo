@@ -29,13 +29,14 @@ spec:
           namespace: openshift-ingress
     route: {}
     scheduler:
-      # Lean scheduler profile (2026-07-14): the default EPP config enables
-      # prefix-cache scoring, which requires the tokenizer sidecar and a full
-      # modelcar container on the CPU-side scheduler pod (30-37 GiB image
-      # pinned per worker; re-pulls exceed 100 GiB worker disks). Prefix-cache
-      # scoring picks among REPLICAS - at replicas: 1 it scores nothing.
-      # Dropping it removes the tokenizer/modelcar from the scheduler pod
-      # entirely. Revisit if a model ever scales beyond one replica.
+      # Lean scheduler profile (2026-07-14): prefix-cache scoring picks among
+      # REPLICAS - at replicas: 1 it scores nothing, so it is disabled here.
+      # NOTE: this operator build stamps the tokenizer + modelcar containers
+      # onto the scheduler pod REGARDLESS of the plugin config, so the 30-37
+      # GiB modelcar image still lands on a CPU worker (verified live; RFE
+      # candidate - container composition should follow the config). Removing
+      # them entirely needs a bring-your-own EPP via pool.endpointPickerRef
+      # (BACKLOG). Revisit this profile if a model scales beyond one replica.
       config:
         inline:
           apiVersion: inference.networking.x-k8s.io/v1alpha1
