@@ -358,12 +358,19 @@ data:
     unless file writing is unavailable; if unavailable, say so clearly.
 
     Use repository-relative paths with no leading slash. Do not edit files
-    outside the requested project directory. Keep generated examples minimal and
-    reviewable.
+    outside the requested project directory.
 
     Do not print API keys, tokens, kubeconfigs, concrete route hosts, private
     cluster hostnames, or full environment variables. Use shell variables such
     as ROUTE_HOST in commands instead of printing sensitive values.
+
+    Format chat responses as Markdown: short paragraphs, bullet lists for
+    enumerations, and fenced code blocks with a language identifier for any
+    code, commands, or file content. Use headings only for long answers.
+
+    When calling a tool, always provide every required argument with a concrete
+    value; never emit a tool call with empty or missing arguments. If unsure of
+    an argument value, state your assumption and pick one rather than omitting it.
     RULESEOF
       echo "Wrote Kilo Code governance rules."
     }
@@ -378,7 +385,9 @@ data:
           "name": "NVIDIA Nemotron 3 Nano (private MaaS)",
           "options": {
             "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           },
           "models": {
             "nemotron-3-nano-30b-a3b": {
@@ -392,7 +401,9 @@ data:
           "name": "Qwen3.6 35B (private MaaS)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           },
           "models": {
             "qwen3-6-35b-a3b": {
@@ -406,7 +417,9 @@ data:
           "name": "Qwen3 235B (Red Hat internal)",
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           },
           "models": {
             "qwen3-235b": {
@@ -420,7 +433,9 @@ data:
           "name": "MiniMax M2 (Red Hat internal)",
           "options": {
             "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1"
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1",
+            "timeout": 600000,
+            "chunkTimeout": 120000
           },
           "models": {
             "minimax-m2": {
