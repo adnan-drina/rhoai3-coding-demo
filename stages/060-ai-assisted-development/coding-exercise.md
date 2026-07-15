@@ -142,6 +142,7 @@ Explore our project code and report what REST endpoints this service exposes.
 four providers, and a streamed answer to your first prompt.
 
 ![Kilo Code panel with model picker](images/kilo-panel-models.png)
+![Kilo first prompt response](images/kilo-first-prompt-response.png)
 
 ---
 
@@ -328,8 +329,7 @@ In SonarQube (anonymous browsing is enabled):
 
 1. Back in the workspace, open Kilo Code.
 2. Switch the model to **minimax-m2** (196K context). Note: this model emits
-   visible `<think>` reasoning blocks — this is normal behavior from the
-   LiteLLM proxy, not an error.
+   visible `<think>` reasoning blocks — this is normal behavior, not an error.
 3. Build the fix prompt from the report: the gate judges **every file you
    touched**, so include *all* new issues SonarQube listed — not just the
    ones you expected. With the flawed spec the report typically shows:
@@ -363,15 +363,11 @@ make sure the tests still pass.
     ```bash
     curl localhost:8080/api/inventory/stats
     ```
-7. Run the tests:
-    ```bash
-    ./mvnw test
-    ```
 
 **What you should see:** tests pass, and the endpoint still returns correct
 data.
 
-![Kilo Code fix diff](images/kilo-fix-diff.png)
+![Kilo Code fix](images/kilo-fix.png)
 
 ---
 
