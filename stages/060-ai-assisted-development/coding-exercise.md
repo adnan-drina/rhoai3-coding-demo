@@ -94,7 +94,10 @@ the sidebar.
    - A popup may appear offering to open the port — click **Open in New Tab**.
    - Or use the **ENDPOINTS** panel in the bottom bar to find the
      `quarkus-dev` endpoint.
-5. In the browser tab that opens, navigate to `/api/inventory` to see the seed
+5. The tab that opens lands on **HTTP ERROR 403** — this is expected. The
+   route root redirects to the Quarkus **Dev UI** (`/q/dev-ui`), which only
+   accepts localhost connections by design. Your service is unaffected:
+   replace the path in the address bar with `/api/inventory` to see the seed
    inventory data.
 
 **What you should see:** a JSON array of inventory records with 3 items.
