@@ -197,43 +197,17 @@ Durable rules vs. one-shot prompts:
 
 ---
 
-## Step 7 — Enhance the prompt, generate, and verify
+## Step 7 — Generate and verify the stats endpoint
 
 Time to apply Step 6 in practice.
 
-### Try the Enhance Prompt feature
-
-1. Type a realistic big one-shot prompt in the Kilo Code chat input. It looks
-   thorough — but some details are missing and some are actively wrong, the
-   way real prompts fail:
-
-```
-Create a new REST endpoint /api/inventory/stats in this Quarkus service that
-returns inventory statistics as JSON: total item count, a count per location,
-and how many items are in stock vs out of stock. Use the existing
-InventoryRepository to read the data and inject it directly into a field.
-Return a Map<String, Object>. Print each request and the computed values to
-the console so we can follow what is happening, and if anything goes wrong
-just catch the exception and return an empty map so the endpoint never breaks.
-```
-
-2. Click the **✨ Enhance Prompt** button next to the input.
-3. Hold both versions against the anatomy from Step 6 — and notice what
-   enhancement can and cannot fix:
-   - **Context** — present (Quarkus, the repository), though no `@/...` file
-     mentions (principle 2: structure).
-   - **Task** — specific about the path and payload (principle 1).
-   - **Constraints** — this is where it goes wrong: "print to the console"
-     and "catch everything, return an empty map" are *instructions to write
-     code smells*. Enhance Prompt trusts your stated intent — it polishes
-     wrong instructions, it does not veto them.
-   - **Acceptance criteria** — "the endpoint never breaks" sounds like a
-     criterion but actually mandates swallowing errors.
-4. The lesson: enhancement raises the floor on vague prompts, but a flawed
-   specification stays flawed — you are still the editor (principle 7).
-   Discard the draft; you will generate with the curated prompt below.
-
-![Enhance Prompt feature](images/kilo-enhance-prompt.png)
+> **Optional — the ✨ Enhance Prompt button.** If your draft is a vague
+> one-liner, Enhance Prompt raises its floor by rewriting it with more
+> structure before sending. Know its limit: it polishes your stated intent,
+> it does not veto it — flawed instructions ("print to the console", "catch
+> everything and return an empty map") come back better worded and still
+> flawed. On an already-detailed prompt it changes little. You remain the
+> editor (principle 7).
 
 ### Generate the endpoint
 
