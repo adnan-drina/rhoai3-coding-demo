@@ -49,10 +49,10 @@ spec:
           else
             echo "Java 21 runtime not found; use a Dev Spaces tooling image with OpenJDK 21."
           fi
-          if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.7"; then
-            echo "Kilo Code 7.4.7 already installed; skipping VSIX download."
+          if ls /checode/remote/extensions 2>/dev/null | grep -q "^kilocode.kilo-code-7.4.8"; then
+            echo "Kilo Code 7.4.8 already installed; skipping VSIX download."
           else
-            curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix"
+            curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.8/file/kilocode.kilo-code-7.4.8@linux-x64.vsix"
             test -s /tmp/kilo.vsix
           fi
           for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done

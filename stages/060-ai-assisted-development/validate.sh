@@ -60,8 +60,8 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
         "present"
-    check "mca-coolstore workspace downloads Kilo Code extension 7.4.7: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'kilo-code-7.4.7' && echo present || echo missing" \
+    check "mca-coolstore workspace downloads Kilo Code extension 7.4.8: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace downloads MTA VS Code extension 8.1.2: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.2.vsix' && echo present || echo missing" \
@@ -88,8 +88,8 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         check "Workspace declares Kilo Code default extension: $ns/$workspace" \
             "oc get devworkspace $workspace -n $ns -o yaml | grep -q '/tmp/kilo.vsix' && echo present || echo missing" \
             "present"
-        check "Workspace downloads Kilo Code extension 7.4.7: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'kilo-code-7.4.7' && echo present || echo missing" \
+        check "Workspace downloads Kilo Code extension 7.4.8: $ns/$workspace" \
+            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
             "present"
         phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
         if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
