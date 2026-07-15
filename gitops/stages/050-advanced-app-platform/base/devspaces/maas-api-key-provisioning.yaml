@@ -726,6 +726,7 @@ spec:
               write_model_key "QWEN" "qwen3-6-35b-a3b"
               write_model_key "QWEN3_235B" "qwen3-235b"
               write_model_key "MINIMAX_M2" "minimax-m2"
+              write_model_key "GRANITE_EMBEDDING" "granite-embedding-english-r2"
 
               oc create secret generic "${SECRET_NAME}" \
                 -n "${SECRET_NAMESPACE}" \

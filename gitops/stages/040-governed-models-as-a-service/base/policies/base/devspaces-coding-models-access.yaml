@@ -40,6 +40,11 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
+    - name: granite-embedding-english-r2
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 500000
+          window: 1h
   priority: 100
   tokenMetadata:
     organizationId: rhoai3-coding-demo
@@ -73,6 +78,8 @@ spec:
     - name: qwen3-235b
       namespace: models-as-a-service
     - name: minimax-m2
+      namespace: models-as-a-service
+    - name: granite-embedding-english-r2
       namespace: models-as-a-service
   meteringMetadata:
     organizationId: rhoai3-coding-demo
