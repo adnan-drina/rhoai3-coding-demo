@@ -126,9 +126,9 @@ behind the inventory link a JSON array of inventory records with 3 items.
 4. Send a first prompt to see the model respond — this is your "hello world";
    ask whatever you like. For example:
 
-    ```
-    What REST endpoints does this service expose?
-    ```
+```
+What REST endpoints does this service expose?
+```
 
 **What you should see:** the Kilo Code panel with the model picker showing all
 four providers, and a streamed answer to your first prompt.
