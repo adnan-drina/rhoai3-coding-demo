@@ -94,13 +94,13 @@ the sidebar.
    - A popup may appear offering to open the port — click **Open in New Tab**.
    - Or use the **ENDPOINTS** panel in the bottom bar to find the
      `quarkus-dev` endpoint.
-5. The tab that opens lands on **HTTP ERROR 403** — this is expected. The
-   route root redirects to the Quarkus **Dev UI** (`/q/dev-ui`), which only
-   accepts localhost connections by design. Your service is unaffected:
-   replace the path in the address bar with `/api/inventory` to see the seed
-   inventory data.
+5. The tab that opens shows the **Coolstore Inventory Service** landing page.
+   Click **`GET /api/inventory`** to see the seed inventory data. (The Quarkus
+   Dev UI at `/q/dev-ui` only accepts localhost connections by design — it is
+   not part of this exercise.)
 
-**What you should see:** a JSON array of inventory records with 3 items.
+**What you should see:** the landing page listing the service endpoints, and
+behind the inventory link a JSON array of inventory records with 3 items.
 
 ![Running a devfile Task Run](images/devspaces-run-task.png)
 
