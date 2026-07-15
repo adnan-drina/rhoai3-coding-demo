@@ -47,6 +47,14 @@ This is the brownfield service you will extend. It is already deployed, already
 wired to CI, and already has a SonarQube quality baseline. Whatever the AI
 writes next lands against a gate that fails on any new issue.
 
+> **Why the catalog matters:** without it, developers spend their first weeks
+> discovering services, owners, APIs, and docs across fragmented tools — and
+> interrupting teammates for tribal knowledge. Here everything you just
+> explored — ownership, running state, CI history, API contract, quality
+> baseline — lives in one searchable place, linked with explicit
+> relationships. No tickets, no asking around: the single source of truth for
+> what exists and how it relates.
+
 ![Catalog — Coolstore Inventory Service](images/rhdh-catalog-coolstore.png)
 
 ![Component tabs: Topology, CI, API](images/rhdh-component-tabs.png)
@@ -256,6 +264,13 @@ EventListener creates an `app-push` PipelineRun in the `coolstore-dev`
 namespace → the pipeline runs clone, build, sonar-scan, build/push image, and
 tag-latest.
 
+> You just left the **inner loop** (edit → hot reload → verify, seconds of
+> feedback) and entered the **outer loop**: the platform's guardrails that
+> ensure quality and security standards are met before anything reaches
+> production. A simple `git push` is the only trigger a developer needs —
+> every code change goes through the exact same stages. No shortcuts, no
+> skipping steps, no variation between teams.
+
 ---
 
 ## Step 9 — Watch the pipeline
@@ -373,6 +388,15 @@ data.
 
 **What you should see:** the CI tab shows all green, and the deployed endpoint
 returns the statistics.
+
+> **Why this matters at scale:** code smells like these accumulate across
+> hundreds of developers and thousands of commits. Each one seems minor, but
+> together they create a codebase that is difficult to debug, difficult to
+> maintain, and prone to silent failures. Here, the platform caught the
+> problems automatically and the AI fixed them in seconds — the developer
+> never had to look up the Quarkus logging API or research exception-handling
+> best practices. The platform enforced the standard, the AI resolved it, and
+> the code is production-ready.
 
 ![CI tab showing green pipeline](images/rhdh-ci-tab-green.png)
 
