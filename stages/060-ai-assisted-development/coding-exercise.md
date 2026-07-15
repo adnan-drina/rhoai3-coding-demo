@@ -133,8 +133,6 @@ Explore our project code and report what REST endpoints this service exposes.
 **What you should see:** the Kilo Code panel with the model picker showing all
 four providers, and a streamed answer to your first prompt.
 
-![Kilo Code first interaction](images/kilo-first-interaction.png)
-
 ![Kilo Code panel with model picker](images/kilo-panel-models.png)
 
 ---
@@ -232,18 +230,6 @@ Create a new REST endpoint /api/inventory/stats in this Quarkus service that ret
     ```bash
     curl localhost:8080/api/inventory/stats
     ```
-7. Look honestly at the generated code. The specification *instructed* three
-   code smells, and a good model implements its instructions faithfully:
-   - "print to the console" → `System.out.println` instead of a proper logger
-   - "catch the exception and return an empty map" → swallowed exceptions
-   - "inject it directly into a field" → `@Inject` field injection instead of
-     constructor injection
-
-   The model is not the weakest link here — the specification is. Humans
-   write vague or wrong requirements every day; this one sets up the
-   pipeline failure on purpose. (If your generated code somehow avoided the
-   smells, check the diff — then tighten the flawed instructions and
-   regenerate.)
 
 > **If Kilo stalls mid-task** — reasoning trails off with no diff and no
 > answer — that is small-model drift on multi-step work, not a platform
@@ -279,6 +265,13 @@ tag-latest.
 3. A new `app-push` PipelineRun appears. Watch it progress through the steps.
 4. **Expect `sonar-scan` to fail.** The quality gate is configured to fail on
    any new issue — by design.
+
+> The model is not the weakest link here — the specification is. Humans
+> write vague or wrong requirements every day; this one sets up the
+> pipeline failure on purpose. (If your generated code somehow avoided the
+> smells, check the diff — then tighten the flawed instructions and
+> regenerate.)
+
 
 **What you should see:** the pipeline's sonar-scan step turns red.
 
@@ -319,23 +312,32 @@ In SonarQube (anonymous browsing is enabled):
 2. Switch the model to **minimax-m2** (196K context). Note: this model emits
    visible `<think>` reasoning blocks — this is normal behavior from the
    LiteLLM proxy, not an error.
-3. Paste this fix prompt into the chat input:
+3. Build the fix prompt from the report: the gate judges **every file you
+   touched**, so include *all* new issues SonarQube listed — not just the
+   ones you expected. With the flawed spec the report typically shows:
 
 ```
-The pipeline's SonarQube gate failed on InventoryStatsResource.java. It
-found System.out.println usage, field injection, and an empty catch block.
-Fix all three issues following project conventions. Use Logger for output,
-constructor injection, and proper error logging in the catch block.
+The pipeline's SonarQube quality gate failed. The report lists these new
+issues:
+- Replace System.out by a proper logger (three occurrences in
+  InventoryResource.java)
+- Remove the @Inject field injection and use constructor injection instead
+  (InventoryResource.java)
+- Define a constant instead of duplicating the "http://redhat.com" literal
+  (InventoryRepository.java)
+Fix all of them following project conventions. Keep behavior unchanged and
+make sure the tests still pass.
 ```
 
-   (Also in
+   If your report shows different issues, edit the list to match — the
+   prompt pattern stays the same. (Also in
    [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
    with presenter notes.)
 
 4. Review the proposed diff:
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
    - `@Inject` field injection → constructor injection
-   - Empty `catch (Exception e) {}` → `LOG.error("...", e)`
+   - The repeated URL literal → a single constant in `InventoryRepository`
 5. Approve the changes.
 6. Hot-reload verify:
     ```bash

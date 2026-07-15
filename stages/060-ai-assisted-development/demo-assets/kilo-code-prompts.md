@@ -44,17 +44,29 @@ immediately — Quarkus dev mode picks the new class up without a restart.
 
 ## Module 2: Fix code smells after SonarQube failure
 
-**Prompt (Act mode in Kilo Code after the coolstore-dev pipeline's gate fails):**
+**Prompt (Act mode in Kilo Code after the coolstore-dev pipeline's gate
+fails — build it from the actual report; the gate judges every touched file,
+so list ALL new issues):**
 
-> The pipeline's SonarQube gate failed on InventoryStatsResource.java. It
-> found System.out.println usage, field injection, and an empty catch block.
-> Fix all three issues following project conventions. Use Logger for output,
-> constructor injection, and proper error logging in the catch block.
+> The pipeline's SonarQube quality gate failed. The report lists these new
+> issues:
+> - Replace System.out by a proper logger (three occurrences in
+>   InventoryResource.java)
+> - Remove the @Inject field injection and use constructor injection instead
+>   (InventoryResource.java)
+> - Define a constant instead of duplicating the "http://redhat.com" literal
+>   (InventoryRepository.java)
+> Fix all of them following project conventions. Keep behavior unchanged and
+> make sure the tests still pass.
+
+**Presenter beat:** the third issue is pre-existing debt in
+InventoryRepository that surfaced because the AI touched that file — the
+gate reviews everything you change, not just what you meant to write.
 
 **Expected fixes:**
 1. `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
 2. `@Inject` field injection → constructor injection
-3. Empty `catch (Exception e) {}` → `LOG.error("...", e)`
+3. The duplicated URL literal → a single constant in `InventoryRepository`
 
 **Expected result:** `System.out.println` replaced by
 `org.jboss.logging.Logger` calls, the repository injected via constructor,
