@@ -39,8 +39,9 @@ the global header including the application launcher (nine-dots grid).
 5. Click the **CI** tab — past `app-push` PipelineRun history (all green).
 6. Click the **API** tab — `inventory-api` (the REST contract the service
    implements).
-7. Open the **Deployed App (dev)** link and append `/api/inventory` — the
-   service answers with its seed inventory data.
+7. Open the **Deployed App (dev)** link — the service landing page lists the
+   endpoints; click **`GET /api/inventory`** and the service answers with its
+   seed inventory data.
 
 This is the brownfield service you will extend. It is already deployed, already
 wired to CI, and already has a SonarQube quality baseline. Whatever the AI
