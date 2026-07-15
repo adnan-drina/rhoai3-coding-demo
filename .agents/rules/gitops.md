@@ -174,6 +174,15 @@ When creating or modifying manifests, verify:
 | `app.openshift.io/connects-to` | Dependency arrows |
 | `app.openshift.io/vcs-uri` | Source code link |
 
+## Workflow-Only Stages
+
+Stages 060, 070, and 080 are workflow-only: they have no Argo CD Application
+and no `deploy.sh`. Their `validate.sh` scripts validate against resources
+owned by the `050-advanced-app-platform` Argo CD Application.
+
+Stage 050 is a multi-component owner managing: devspaces, pipelines, sonarqube,
+rhdh, migiq (MTA), and coolstore resources.
+
 ## MaaS and Model Access
 
 Model consumers should go through MaaS, not directly to scattered endpoints.

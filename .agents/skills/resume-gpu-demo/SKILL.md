@@ -88,9 +88,29 @@ After a successful resume:
 - `qwen3-6-35b-a3b` and `nemotron-3-nano-30b-a3b` are `Ready=True`.
 - Stage 020 and Stage 030 validation pass, or only known metric warnings remain.
 
+## Key Functions
+
+### `recreate_stopped_gpu_machines`
+
+Handles stuck Machine objects that remain in Stopped state after cloud provider
+shutdown/start cycles. The function:
+1. Scales the GPU MachineSet to 0
+2. Deletes stopped Machine objects that will never recover
+3. Rescales the MachineSet to the desired replica count so new Machines are provisioned
+
+### `repair_gpu_node_labels`
+
+Reapplies expected GPU node metadata after node replacement or reprovisioning:
+- Adds `node-role.kubernetes.io/gpu=""` label
+- Applies `nvidia.com/gpu=:NoSchedule` taint
+
+These are required for pod scheduling and NVIDIA operator DaemonSet targeting.
+
 ## Notes
 
 - Kueue persists across restarts, but it does not create cloud GPU nodes by itself.
 - The script treats GPU capacity as a platform lifecycle action and Kueue as the admission/quota control plane.
+- Kueue resource names: ClusterQueue `cq-gpu-reserved-demo`, LocalQueue `lq-gpu-reserved-demo`, ResourceFlavor `gpu-l40s`.
 - The stale ReplicaSet cleanup is demo-specific. It handles the known two-GPU quota rollout case where old model ReplicaSets can keep admitted Kueue reservations while new model pods wait.
 - Do not scale GPU nodes down unless the user asks for cost-saving or shutdown.
+- Models are served in the `models-as-a-service` namespace.

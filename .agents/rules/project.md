@@ -39,7 +39,7 @@ implemented by the manifests and scripts.
 
 Current target posture:
 - Red Hat OpenShift Container Platform 4.20
-- Red Hat OpenShift AI 3.3 plus selected 3.4 early-access MaaS capabilities where explicitly documented
+- Red Hat OpenShift AI 3.4 with MaaS governance as the active model-access path
 - Red Hat OpenShift GitOps for Argo CD based reconciliation
 - Red Hat OpenShift Dev Spaces for cloud development environments
 - Migration Toolkit for Applications 8.1 for modernization analysis and Developer Lightspeed

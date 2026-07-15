@@ -15,13 +15,12 @@ description: >
   InferenceServices are not Ready, or the user reports any problem with their
   OpenShift AI environment. Also use when the user asks "why isn't X working?"
   for any demo component.
-  Do NOT use for manifest review (use manifest-reviewer agent) or
-  resource scaling (use manage-resources skill).
+  Do NOT use for resource scaling (use manage-resources skill).
 ---
 
 # RHOAI Troubleshooting
 
-Structured diagnostic workflow for resolving issues with the RHOAI demo on OpenShift 4.20. The implemented manifests target OpenShift AI 3.3 with selected early-access MaaS resources where explicitly documented.
+Structured diagnostic workflow for resolving issues with the RHOAI demo on OpenShift 4.20. The implemented manifests target OpenShift AI 3.4 with MaaS governance as the active model-access path.
 
 ## When to Use
 

@@ -16,7 +16,7 @@ description: >
   use the resume-gpu-demo skill instead.
   Do NOT use for deploying or re-deploying stages (use deploy.sh scripts),
   troubleshooting failures (use rhoai-troubleshoot), or manifest review
-  (use manifest-reviewer agent).
+  (use review-gitops-change skill).
 ---
 
 # Manage Demo Resources
@@ -37,7 +37,7 @@ state for the demo.
 ## Prerequisites
 
 - Logged in with `oc` (cluster-admin)
-- ArgoCD Applications for scaling-managed stages have `selfHeal: false`
+- ArgoCD Applications 020/030 use `selfHeal: true` with `ignoreDifferences` on MachineSet `/spec/replicas` and model replicas — manual scaling is tolerated via ignoreDifferences, not by disabling selfHeal
 
 ## Resource Inventory
 
@@ -45,7 +45,7 @@ Discover the current state before making changes:
 
 ```bash
 # Models (if any deployed)
-oc get isvc -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,MIN_REPLICAS:.spec.predictor.minReplicas'
+oc get llminferenceservice -n models-as-a-service -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
 
 # GPU-backed demo path
 ./scripts/resume-gpu-demo.sh status
@@ -56,12 +56,12 @@ oc get applications -n openshift-gitops -o custom-columns='APP:.metadata.name,SY
 
 ## Scale Down a Model
 
-Set `minReplicas: 0` — KServe scales the predictor pod to zero after the
-grace period (~60s). The ISVC resource remains; only the pod is removed.
+Patch the LLMInferenceService replicas to 0. The resource remains; only the
+serving pods are removed.
 
 ```bash
-oc patch isvc <MODEL_NAME> -n <NAMESPACE> --type merge \
-  -p '{"spec":{"predictor":{"minReplicas":0}}}'
+oc patch llminferenceservice <MODEL_NAME> -n models-as-a-service --type merge \
+  -p '{"spec":{"replicas":0}}'
 ```
 
 ## Scale Down a GPU MachineSet
@@ -108,7 +108,7 @@ oc get applications -n openshift-gitops \
   -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
 
 # Check model readiness (if applicable)
-oc get isvc -A
+oc get llminferenceservice -n models-as-a-service
 
 # Check node availability
 oc get nodes -l node-role.kubernetes.io/gpu
@@ -118,7 +118,7 @@ oc get nodes -l node-role.kubernetes.io/gpu
 
 | Action | ArgoCD Status | Auto-heal? |
 |--------|---------------|------------|
-| Manual scale down model | OutOfSync | No (selfHeal=false on that stage) |
-| Manual scale down MachineSet | OutOfSync | No (selfHeal=false on that stage) |
-| Push Git change to the stage | Auto-syncs | Yes (automated=true) |
+| Manual scale down model | Synced (ignored field) | Tolerated via ignoreDifferences |
+| Manual scale down MachineSet | Synced (ignored field) | Tolerated via ignoreDifferences on `/spec/replicas` |
+| Push Git change to the stage | Auto-syncs | Yes (automated=true, selfHeal=true) |
 | Click Sync in ArgoCD UI | Synced | Restores Git state |

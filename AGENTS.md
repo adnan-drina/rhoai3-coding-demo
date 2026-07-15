@@ -57,11 +57,10 @@ Current implemented stages:
 2. 020 GPU Infrastructure for Private AI
 3. 030 Private Model Serving
 4. 040 Governed Models-as-a-Service
-5. 050 AI-Assisted Development (workspaces + one-shot vibe coding)
-6. 060 Agentic Development (OpenCode, AGENT.md, skills — workflow stage)
-7. 070 Autonomous Application Migration (MTA + multi-agent migration)
-8. 080 AI in Trusted Delivery (base setup: Pipelines + Trusted Artifact Signer operators)
-9. 090 AI Self-Service Portal
+5. 050 Advanced Application Platform (Dev Spaces, RHDH, Pipelines, SonarQube, MTA, Coolstore)
+6. 060 AI-Assisted Development (Kilo Code, one-shot coding — workflow stage)
+7. 070 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
+8. 080 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
 
 The stages renumbered when stage 040 absorbed the former external-model and
 MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became
@@ -232,11 +231,10 @@ stage READMEs:
 | 020 GPU infra | `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workloads`, `ocp-machine-management`, `ocp-node-feature-discovery` |
 | 030 serving | `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `ocp-grafana-operator` |
 | 040 MaaS | `rhoai-maas-governance`, `rhoai-distributed-inference-llmd`, `rhoai-gen-ai-playground`, `rhoai-model-catalog-sources`, `ocp-ingress-gateway-routes` |
-| 050 assisted dev | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces` |
-| 060 agentic dev | `rhoai-maas-governance` (key consumption), workspace-repo skills |
-| 070 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
-| 080 trusted delivery | `ocp-cicd-builds`, TAS/TSSC product docs |
-| 090 portal | `ocp-authentication-identity-providers`, `ocp-web-console`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-develop`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference` |
+| 050 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
+| 060 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
+| 070 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
+| 080 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
 
 Skill project-default sections were authored in rhoai3-demo; where this repo
 deliberately diverges (no GPU time-slicing, two GPU workers, two private

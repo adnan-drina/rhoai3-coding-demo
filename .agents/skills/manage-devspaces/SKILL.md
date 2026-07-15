@@ -27,8 +27,9 @@ description: >-
   - `https://github.com/adnan-drina/getting-started-ai-coding.git` — Stage 060 onboarding and MaaS checks
   - `https://github.com/adnan-drina/coolstore-inventory-service.git` — deferred engineering workflows
   - `https://github.com/rhpds/mca-coolstore.git` — modernization workflow
-- **Extensions**: Continue 1.3.38 via `DEFAULT_EXTENSIONS` in all workspaces; MTA 8.1.2 (pack + core + java) via `DEFAULT_EXTENSIONS` only in `mca-coolstore`
-- **GitOps**: Managed by ArgoCD `060-ai-assisted-development` Application with `Replace=true` sync option
+- **Extensions**: Kilo Code 7.4.7 via `DEFAULT_EXTENSIONS` in all workspaces; MTA 8.1.2 (pack + core + java) via `DEFAULT_EXTENSIONS` only in `mca-coolstore`
+- **GitOps**: Managed by ArgoCD `050-advanced-app-platform` Application with repair hook (no Replace on DevWorkspaces)
+- **AI tool selection**: `.opencode/` directory in repo selects OpenCode; absent selects Kilo Code (mutually exclusive)
 - **Manifest**: `gitops/stages/050-advanced-app-platform/base/devspaces/workspaces.yaml`
 
 ## Key Behaviors Learned
@@ -37,39 +38,20 @@ description: >-
 
 GitOps-created DevWorkspaces use the **inline CR spec only**. The `devfile.yaml` in the cloned repo is ignored. All commands, events, components, and resource limits must be defined inline in the DevWorkspace CR.
 
-### postStart Race Condition
+### postStart Initialization
 
-postStart `exec` commands run before git clone completes. Always include a wait loop:
+The postStart event runs the `init-ai-tools` command, which executes the centralized init script from the `devspace-ai-tools-init` ConfigMap. This script handles Kilo Code configuration, extension installation, and tool setup.
 
-```yaml
-commands:
-  - id: copy-continue-config
-    exec:
-      commandLine: |
-        for i in $(seq 1 30); do
-          [ -f /projects/getting-started-ai-coding/.continue/config.yaml ] && break
-          sleep 2
-        done
-        mkdir -p ~/.continue
-        cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml 2>/dev/null
-      component: tooling-container
-events:
-  postStart:
-    - copy-continue-config
-```
+postStart `exec` commands run before git clone completes. The init script includes a wait loop to handle the race condition.
 
-**Known issue**: postStart exec commands in GitOps-managed DevWorkspace CRs may not execute reliably. The manual fallback is:
-
-```bash
-cp /projects/getting-started-ai-coding/.continue/config.yaml ~/.continue/config.yaml
-```
+**Known issue**: postStart exec commands in GitOps-managed DevWorkspace CRs may not execute reliably. The manual fallback is to exec into the pod and run the init script manually.
 
 ### Extension Downloads in postStart
 
 VSIX downloads from OpenVSX use CDN redirects that can time out silently. Always use `--max-time 120`:
 
 ```bash
-curl -fsSL --max-time 120 -o /tmp/continue.vsix "https://open-vsx.org/api/Continue/continue/linux-x64/1.3.38/file/Continue.continue-1.3.38@linux-x64.vsix" 2>/dev/null || true
+curl -fsSL --max-time 120 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.7/file/kilocode.kilo-code-7.4.7@linux-x64.vsix" 2>/dev/null || true
 curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix" 2>/dev/null || true
 ```
 
@@ -81,7 +63,7 @@ The MTA Konveyor Core extension warns "Multi-root workspaces are not supported! 
 
 ### Memory Requirements
 
-The default tooling container memory (~1152Mi) is insufficient for VS Code + Continue + MTA + Java/Maven. Use:
+The default tooling container memory (~1152Mi) is insufficient for VS Code + Kilo Code + MTA + Java/Maven. Use:
 
 - **getting-started-ai-coding** and **coolstore-inventory-service**: 4Gi limit / 1Gi request
 - **mca-coolstore**: 6Gi limit / 2Gi request for MTA analysis and Maven builds
@@ -98,7 +80,7 @@ components:
 
 ### ArgoCD ServerSideDiff Issues
 
-Earlier demo revisions used `Replace=true` for nested DevWorkspace changes. Current GitOps should not keep `Replace=true` on DevWorkspaces because controller-assigned IDs are immutable; use the repair hook to remove stale annotations and let Argo CD patch the spec while ignoring only `/spec/started`.
+Earlier demo revisions used `Replace=true` for nested DevWorkspace changes. Current GitOps does not use `Replace=true` on DevWorkspaces because controller-assigned IDs are immutable. Instead, a repair hook removes stale annotations and lets Argo CD patch the spec while ignoring only `/spec/started`.
 
 ```yaml
 annotations:
@@ -122,7 +104,7 @@ The Dev Spaces operator reconciles DevWorkspaces. Manual `oc apply` changes may 
 
 ```bash
 NS=wksp-ai-developer
-oc patch application 060-ai-assisted-development -n openshift-gitops --type=json \
+oc patch application 050-advanced-app-platform -n openshift-gitops --type=json \
   -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
 oc patch devworkspace getting-started-ai-coding -n $NS --type=merge -p '{"spec":{"started":false}}'
 sleep 10
@@ -130,7 +112,7 @@ oc delete devworkspace getting-started-ai-coding -n $NS --force --grace-period=0
 oc delete pvc --all -n $NS --force --grace-period=0
 sleep 5
 oc apply -f gitops/stages/050-advanced-app-platform/base/devspaces/workspaces.yaml
-oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge \
+oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge \
   -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
 ```
 
@@ -145,8 +127,8 @@ POD=$(oc get pods -n wksp-ai-developer --no-headers -o name | head -1)
 oc exec $POD -n wksp-ai-developer -c tooling-container -- cat /sys/fs/cgroup/memory.current 2>/dev/null | awk '{printf "Current: %.0f MB\n", $1/1024/1024}'
 oc exec $POD -n wksp-ai-developer -c tooling-container -- cat /sys/fs/cgroup/memory.max 2>/dev/null | awk '{printf "Limit:   %.0f MB\n", $1/1024/1024}'
 
-# Check if Continue config was copied
-oc exec $POD -n wksp-ai-developer -c tooling-container -- head -3 ~/.continue/config.yaml 2>/dev/null
+# Check if Kilo Code config exists
+oc exec $POD -n wksp-ai-developer -c tooling-container -- cat ~/.config/kilo/kilo.json 2>/dev/null | head -5
 
 # Check VSIX files downloaded
 oc exec $POD -n wksp-ai-developer -c tooling-container -- ls -lh /tmp/*.vsix 2>/dev/null
@@ -191,6 +173,10 @@ subjects:
   kind: User
   name: "b64:a3ViZTphZG1pbg=="
 ```
+
+## Agentic Workspace
+
+The `agentic-coolstore` DevWorkspace is the Stage 060/070 golden-path entry point. It clones `rhpds/mca-coolstore` with an `.opencode/` directory, selecting OpenCode as the AI tool instead of Kilo Code. This workspace is used for agentic development demos.
 
 ## Users
 

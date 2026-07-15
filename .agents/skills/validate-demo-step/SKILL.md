@@ -13,7 +13,7 @@ description: >
   static validation commands, stage-specific checks, and a clear statement of
   what was or was not validated against a live cluster. Do NOT use for
   troubleshooting failures (use rhoai-troubleshoot) or reviewing manifest
-  quality (use manifest-reviewer agent or review-gitops-change skill).
+  quality (use review-gitops-change skill).
 ---
 
 # Validate Demo Stage
@@ -30,7 +30,7 @@ and complete.
 
 ## Inputs needed
 
-- Stage number (010-090)
+- Stage number (010-080)
 - List of changed files
 - Whether a live OpenShift cluster is available
 
@@ -54,16 +54,15 @@ kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
 ### Phase 2: Stage-specific validation (requires live cluster)
 
 | Stage | Validation script | Key checks |
-|------|-------------------|------------|
+|-------|-------------------|------------|
 | 010 | `./stages/010-openshift-ai-platform-foundation/validate.sh` | RHOAI operator, DSC, DSCI, dashboard |
-| 020 | `./stages/020-gpu-infrastructure-private-ai/validate.sh` | GPU nodes, NFD, NVIDIA operator |
-| 030 | `./stages/030-private-model-serving/validate.sh` | Local model serving resources |
-| 040 | `./stages/040-governed-models-as-a-service/validate.sh` | MaaS API, local model refs, gateway, governance |
-| 050 | `./stages/050-approved-external-model-access/validate.sh` | ExternalModel resources and external subscriptions |
-| 060 | `./stages/060-mcp-context-integrations/validate.sh` | MCP server registrations and credential-gated runtimes |
-| 070 | `./stages/060-ai-assisted-development/validate.sh` | Dev Spaces operator, workspaces, coding tools |
-| 080 | `./stages/080-ai-autonomous-migration/validate.sh` | MTA operator, Tackle, Developer Lightspeed |
-| 090 | `./stages/050-advanced-app-platform/validate.sh` | RHDH operator, Backstage CR, catalog |
+| 020 | `./stages/020-gpu-infrastructure-private-ai/validate.sh` | GPU nodes, NFD, NVIDIA operator, Kueue |
+| 030 | `./stages/030-private-model-serving/validate.sh` | KServe, local model serving, Grafana |
+| 040 | `./stages/040-governed-models-as-a-service/validate.sh` | MaaS API, models, gateway, governance policies |
+| 050 | `./stages/050-advanced-app-platform/validate.sh` | Dev Spaces, RHDH, pipelines, SonarQube, MTA |
+| 060 | `./stages/060-ai-assisted-development/validate.sh` | Workspace config, Kilo Code, MaaS keys (workflow-only) |
+| 070 | `./stages/070-ai-agentic-development/validate.sh` | Golden-path template, OpenCode readiness (workflow-only) |
+| 080 | `./stages/080-ai-autonomous-migration/validate.sh` | MTA operator, Tackle, Developer Lightspeed (workflow-only) |
 
 ### Phase 3: Cross-stage verification
 

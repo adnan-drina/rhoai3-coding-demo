@@ -66,13 +66,13 @@ oc get csv -n redhat-ods-operator | grep rhods
 oc get datasciencecluster -A
 
 # For MaaS workarounds
-oc get gateway -n maas
-oc get authpolicy -n maas
-oc get inferenceservice -n maas
+oc get gateway -n models-as-a-service
+oc get authpolicy -n models-as-a-service
+oc get llminferenceservice -n models-as-a-service
 
 # For gateway workarounds
-oc get httproute -n maas
-oc get envoyfilter -n maas
+oc get httproute -n models-as-a-service
+oc get envoyfilter -n models-as-a-service
 ```
 
 Do NOT remove a workaround based on documentation alone. Verify on the live
@@ -129,9 +129,24 @@ From `BACKLOG.md`:
 
 | Category | Examples |
 |----------|----------|
-| RHOAI 3.3 → 3.4 GA | AuthPolicy patches, Authorino SSL, gateway hostname, tier-to-group ConfigMap |
+| RHOAI 3.4 GA | AuthPolicy patches, Authorino SSL, gateway hostname |
 | Upstream maas-controller | maas-api image pinning, models-as-a-service namespace, tokens-bridge |
 | Known limitations | ExternalModel naming, AI asset endpoints dropdown, /v1/responses support |
+
+## Active workarounds
+
+These workarounds are currently implemented and required:
+
+- **Monitoring service-ca Secret sync**: The monitoring stack requires a
+  service-ca Secret that must be synced/created for TLS to work correctly
+  between monitoring components.
+- **ExternalModel credential label requirement**: ExternalModel credential
+  Secrets must carry the label `inference.networking.k8s.io/bbr-managed=true`
+  for the BBR controller to discover and mount them.
+- **UDI image (cli-ai-tools community image workaround)**: The default UDI
+  image lacks AI CLI tools; workspaces use a community image with pre-installed
+  `opencode`, `aider`, and supporting CLI tools until an official image includes
+  them.
 
 ## What this skill must never do
 
