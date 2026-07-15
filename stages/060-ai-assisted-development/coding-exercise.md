@@ -216,10 +216,7 @@ Time to apply Step 6 in practice.
 3. Paste this prompt into the chat input:
 
 ```
-Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
-statistics including total item count, a breakdown by location, and
-in-stock vs out-of-stock counts. Inject InventoryRepository and use its
-list() method. Return a Map<String, Object> as JSON.
+Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory statistics including total item count, a breakdown by location, and in-stock vs out-of-stock counts. Inject InventoryRepository and use its list() method. Return a Map<String, Object> as JSON.
 ```
 
    (The same prompt lives in
@@ -241,6 +238,12 @@ list() method. Return a Map<String, Object> as JSON.
    These are intentional — they set up the pipeline failure. If the model
    produces clean code, use the pre-prepared version from
    [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java).
+
+> **If Kilo stalls mid-task** — reasoning trails off with no diff and no
+> answer — that is small-model drift on multi-step work, not a platform
+> error. Send `continue` or resend the prompt; a drifted turn usually
+> recovers on retry. If it keeps happening, switch to a stronger model —
+> that tradeoff is exactly what the model picker is for.
 
 **What you should see:** `/api/inventory/stats` returns a JSON object with
 `totalItems`, `byLocation`, `inStock`, and `outOfStock` counts.
