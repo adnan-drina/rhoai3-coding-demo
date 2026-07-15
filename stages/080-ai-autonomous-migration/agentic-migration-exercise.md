@@ -18,8 +18,10 @@ a human approves the result before it merges.
 ## Workflow
 
 1. **Open the migration workspace** (Dev Spaces). The workspace clones the
-   Spring Boot sample service (from the MigIQ examples) and carries the
-   OpenCode + MaaS configuration from Stage 060.
+   Spring Boot sample service (from the MigIQ examples) and has Kilo Code
+   installed (no `.opencode/` directory). The agentic path uses MigIQ/Claude
+   Code in the terminal with an elevated `maas-agentic-migration-key` from
+   the `mta-migration-models` subscription (not Stage 060 devspace keys).
 2. **Install the pinned MigIQ skill set** into the workspace project:
 
    ```bash

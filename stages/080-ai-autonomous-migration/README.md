@@ -134,7 +134,7 @@ prerequisites read-only:
 
 Manifests: [`gitops/stages/050-advanced-app-platform/base/migiq/`](../../gitops/stages/050-advanced-app-platform/base/migiq/)
 
-Flow dependency: Stage 060 (AI-Assisted Development).
+Flow dependency: Stages 040 and 050 (matching `flows/default.yaml` `dependsOn: [040, 050]`).
 
 ## References
 

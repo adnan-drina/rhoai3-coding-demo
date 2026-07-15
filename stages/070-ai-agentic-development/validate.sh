@@ -16,9 +16,9 @@ log_step "Agentic workspace"
 check "agentic-coolstore DevWorkspace exists" \
   "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "agentic-coolstore"
-check "workspace clones the skills-bearing revision" \
+check "workspace clones the main revision" \
   "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.checkoutFrom.revision}'" \
-  "agentic-skills"
+  "main"
 check "workspace has agent-scale memory" \
   "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.spec.template.components[0].container.memoryLimit}'" \
   "6Gi"
@@ -26,9 +26,9 @@ check "workspace DevWorkspace is not failed" \
   "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o jsonpath='{.status.phase}' | grep -vq Failed && echo ok" \
   "ok"
 
-log_step "Skills exist on the workspace revision (remote check)"
-check "demo/agentic-skills branch exists upstream" \
-  "git ls-remote --heads https://github.com/adnan-drina/coolstore-inventory-service.git demo/agentic-skills | wc -l | tr -d ' '" \
+log_step "Golden-path template readiness (remote check)"
+check "golden branch exists upstream for scaffold template" \
+  "git ls-remote --heads https://github.com/adnan-drina/agentic-quarkus-scaffold.git golden | wc -l | tr -d ' '" \
   "1"
 
 log_step "MaaS prerequisites from earlier stages"

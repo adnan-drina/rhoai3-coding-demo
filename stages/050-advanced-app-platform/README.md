@@ -61,7 +61,7 @@ open refinement in the restructure plan; until it lands, the `slim` overlay
 ## What This Stage Adds
 
 This stage adds the application-platform layer every dev-arc rung consumes,
-organized as five components under
+organized as six components under
 [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
 
 - **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona
@@ -183,7 +183,7 @@ success alone.
 - **[Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub)** provides the enterprise developer portal and software catalog.
 - **[Red Hat OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/)** provides Tekton-based CI/CD, Pipelines-as-Code, and Tekton Chains for provenance.
 - **[Red Hat Trusted Artifact Signer](https://access.redhat.com/products/red-hat-trusted-artifact-signer)** provides the sigstore stack (Fulcio, Rekor, Cosign) for signing and attestation.
-- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the OIDC identity broker (via stage 080 MTA until Phase 2 moves it here).
+- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the OIDC identity broker, deployed by this stage's `migiq` component; Stage 080 consumes this Keycloak for MTA identity federation.
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, routes, console launcher integration, and OAuth identity foundation.
 
 ## Open Source Projects To Know
@@ -206,8 +206,9 @@ maturity ladder you are about to climb (060–080) enters through this portal
 and exits through these pipelines at every rung.
 
 **Show.**
-- Open Developer Hub from the console launcher; sign in with OpenShift
-  identity (one identity chain, end to end).
+- Open Developer Hub from the console launcher; sign in via OIDC to the
+  MTA Keycloak realm (OpenShift identity is federated into Keycloak as a
+  broker — one identity chain, end to end).
 - Open the catalog: components with ownership, lifecycle, source links, and
   Dev Spaces links that open the exact governed workspace — no assembling
   repository URLs.

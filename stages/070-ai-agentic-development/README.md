@@ -4,11 +4,10 @@
 > `agentic-quarkus-scaffold` golden-path template (Stage 050) to provision a
 > brand-new Quarkus application repository carrying corporate standards as
 > agent-executable assets, then builds it spec-driven with OpenCode. The
-> legacy `agentic-coolstore` DevWorkspace (coolstore-inventory-service,
-> `demo/agentic-skills` branch) remains provisioned by Stage 050 as an
-> optional comparison workspace until retired. Consumes the Stage 050 Dev
-> Spaces platform and Stage 040 MaaS keys. Not yet validated live end to
-> end.
+> `agentic-coolstore` DevWorkspace (coolstore-inventory-service, `main`
+> branch, Kilo Code configured) now serves as the Stage 060 catalog entry
+> point. Consumes the Stage 050 Dev Spaces platform and Stage 040 MaaS keys.
+> Not yet validated live end to end.
 
 ## Why This Matters
 
@@ -129,9 +128,9 @@ prerequisites read-only:
 
 Manifests: [`gitops/stages/050-advanced-app-platform/base/devspaces/`](../../gitops/stages/050-advanced-app-platform/base/devspaces/)
 
-The validate script checks the legacy comparison workspace's
-`demo/agentic-skills` branch upstream via `git ls-remote`; the primary flow's
-golden repo is `adnan-drina/agentic-quarkus-scaffold`.
+The validate script checks that the `agentic-coolstore` workspace tracks
+`main`; the primary flow's golden repo is
+`adnan-drina/agentic-quarkus-scaffold`.
 
 ## References
 

@@ -33,7 +33,7 @@ GPU Reserved hardware profile from Stage 020
 OpenAI-compatible /v1 inference endpoint (no auth)
         │
         ▼
-ServiceMonitor → user workload monitoring (15d retention)
+ServiceMonitor → user workload monitoring (7d retention)
         │
         ▼
 Grafana demo dashboards (LLM Performance, vLLM Baseline)
@@ -57,7 +57,7 @@ KServe model serving and a baseline Nemotron inference endpoint with observabili
 - **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
 - **Nemotron InferenceService** — `nvidia-nemotron-3-nano-30b-a3b` in `demo-sandbox` using OCI modelcar artifact (`oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0`), vLLM runtime with 8192-token context, prefix caching, tool calling, and `enable-auth: false`
 - **Model Registry metadata** — registered model, version, and OCI artifact pointer created via REST API in `demo-registry`
-- **User workload monitoring** — enables `prometheus.retention: 15d` for the user workload Prometheus instance; configures Alertmanager with three receivers routing to a demo-local webhook
+- **User workload monitoring** — enables `prometheus.retention: 7d` for the user workload Prometheus instance (reduced from 15d to avoid disk pressure on the demo cluster); configures Alertmanager with three receivers routing to a demo-local webhook
 - **Grafana dashboards** — community Grafana Operator (v5 channel) with LLM Performance and vLLM/KServe/GPU dashboards; ConsoleLink patched from the live Grafana route via hook Job
 - **GuideLLM benchmark harness** — `benchmark-guidellm.sh` for on-demand capacity testing with synthetic data (defaults to the `models-as-a-service` namespace targeting the Stage 040 LLMInferenceService)
 

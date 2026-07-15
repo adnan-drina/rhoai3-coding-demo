@@ -140,6 +140,9 @@ OpenShift GitOps provides declarative reconciliation through Argo CD. OpenShift 
 # Bootstrap GitOps and deploy stage
 ./stages/010-openshift-ai-platform-foundation/deploy.sh
 
+# Configure htpasswd identity, group membership, and S3 connection secrets
+./stages/010-openshift-ai-platform-foundation/setup-access.sh
+
 # Validate
 ./stages/010-openshift-ai-platform-foundation/validate.sh
 ```

@@ -216,7 +216,9 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > the stage numbering that was in effect when they were written (before the
 > 2026-07-06 developer-arc restructure and the 2026-07-10 advanced-app-platform
 > restructure). Do not renumber them. Current numbering lives in
-> `flows/default.yaml`.
+> `flows/default.yaml`. Stage 090 (AI Self-Service Portal) was absorbed into
+> Stage 050 during the 2026-07-10 renumbering; validation paths referencing
+> `090-ai-self-service-portal` in entries before that date are historical.
 
 ### 2026-07-14 (afternoon) AI assistant swap: Continue → Cline → Kilo Code; subscription rename
 
