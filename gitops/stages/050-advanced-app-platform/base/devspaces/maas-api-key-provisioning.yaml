@@ -379,6 +379,7 @@ data:
       cat > "${HOME}/.config/kilo/kilo.json" <<KILOEOF
     {
       "model": "nemotron/nemotron-3-nano-30b-a3b",
+      "disabled_providers": ["kilo", "zai"],
       "provider": {
         "nemotron": {
           "npm": "@ai-sdk/openai-compatible",
