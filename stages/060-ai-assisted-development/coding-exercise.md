@@ -116,8 +116,8 @@ behind the inventory link a JSON array of inventory records with 3 items.
 
 | Model | Context | When to use |
 |-------|---------|-------------|
-| `nemotron-3-nano-30b-a3b` | 131K | Default — fast local model for code generation and chat |
-| `qwen3-6-35b-a3b` | 32K | Local alternative — good for comparison and second opinions |
+| `qwen3-6-35b-a3b` | 32K | Default — local workhorse with the most reliable tool calling; mind the smaller context on very long sessions |
+| `nemotron-3-nano-30b-a3b` | 131K | Local alternative — fast, large context; can drift on multi-step agentic tasks |
 | `qwen3-235b` | 16K | External (Red Hat internal) — larger model, shorter context |
 | `minimax-m2` | 196K | External (Red Hat internal) — large context for complex fixes; emits visible `<think>` reasoning blocks (normal, not an error) |
 
@@ -212,7 +212,7 @@ Time to apply Step 6 in practice.
 ### Generate the endpoint
 
 1. Make sure you are in **Act mode** in Kilo Code.
-2. Select the **Nemotron** model (the default).
+2. Select the **Qwen3.6** model (the default).
 3. Paste this prompt into the chat input:
 
 ```

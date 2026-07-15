@@ -378,7 +378,7 @@ data:
     write_kilo_config() {
       cat > "${HOME}/.config/kilo/kilo.json" <<KILOEOF
     {
-      "model": "nemotron/nemotron-3-nano-30b-a3b",
+      "model": "qwen/qwen3-6-35b-a3b",
       "disabled_providers": ["kilo", "zai"],
       "provider": {
         "nemotron": {
@@ -455,7 +455,7 @@ data:
       }
     }
     KILOEOF
-      echo "Wrote Kilo Code config (default: nemotron-3-nano-30b-a3b)."
+      echo "Wrote Kilo Code config (default: qwen3-6-35b-a3b)."
     }
 
     cleanup_stale_assistants

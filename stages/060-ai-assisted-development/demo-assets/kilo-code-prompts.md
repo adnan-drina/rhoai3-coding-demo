@@ -5,7 +5,7 @@ entry point — the developer opens it in Dev Spaces from the component page).
 
 ## Module 1: Generate code with intentional smells
 
-**Prompt (Act mode in Kilo Code — select a governed model from the four-provider picker: Nemotron default, local Qwen, qwen3-235b 16K-context, or minimax-m2 196K-context):**
+**Prompt (Act mode in Kilo Code — select a governed model from the four-provider picker: Qwen3.6 default, local Nemotron, qwen3-235b 16K-context, or minimax-m2 196K-context):**
 
 > Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
 > statistics including total item count, a breakdown by location, and
