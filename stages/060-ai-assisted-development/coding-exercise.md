@@ -123,9 +123,20 @@ behind the inventory link a JSON array of inventory records with 3 items.
 
 3. Configuration comes from `~/.config/kilo/kilo.json` — platform-provisioned,
    no personal API keys. Governance rules live in `~/.config/kilo/AGENTS.md`.
+4. Say hello — send a first prompt on the default Nemotron model to verify the
+   governed model path end to end (workspace → MaaS gateway → local GPU):
+
+   ```
+   Look at src/main/java/com/redhat/coolstore/inventory/InventoryResource.java
+   and summarize each REST endpoint this service exposes in one line each.
+   ```
 
 **What you should see:** the Kilo Code panel with the model picker showing all
-four providers.
+four providers, and a streamed answer listing the three inventory endpoints —
+proof that your workspace is talking to the private model through the platform
+gateway, with no API key ever touching your hands.
+
+![Kilo Code first interaction](images/kilo-first-interaction.png)
 
 ![Kilo Code panel with model picker](images/kilo-panel-models.png)
 
