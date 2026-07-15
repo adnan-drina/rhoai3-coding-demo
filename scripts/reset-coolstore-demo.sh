@@ -23,7 +23,7 @@
 #   Or: git push origin main:golden --force
 #
 # Usage:
-#   ./scripts/reset-coolstore-demo.sh [--yes] [--fresh-sonar] [--skip-workspace] [--wait-pipeline]
+#   ./scripts/reset-coolstore-demo.sh [--yes] [--keep-sonar] [--skip-workspace] [--wait-pipeline]
 #
 set -euo pipefail
 
@@ -39,14 +39,15 @@ WORKSPACE_NAME="${WORKSPACE_NAME:-agentic-coolstore}"
 SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-coolstore-inventory-service}"
 
 FLAG_YES=false
-FLAG_FRESH_SONAR=false
+FLAG_FRESH_SONAR=true
 FLAG_SKIP_WORKSPACE=false
 FLAG_WAIT_PIPELINE=false
 
 for arg in "$@"; do
   case "$arg" in
     --yes)            FLAG_YES=true ;;
-    --fresh-sonar)    FLAG_FRESH_SONAR=true ;;
+    --fresh-sonar)    FLAG_FRESH_SONAR=true ;;   # default; kept for compatibility
+    --keep-sonar)     FLAG_FRESH_SONAR=false ;;
     --skip-workspace) FLAG_SKIP_WORKSPACE=true ;;
     --wait-pipeline)  FLAG_WAIT_PIPELINE=true ;;
     *) log_error "Unknown flag: $arg"; exit 1 ;;
@@ -133,9 +134,11 @@ fi
 # --- 4. Fresh SonarQube (optional) ---
 if [[ "$FLAG_FRESH_SONAR" == "true" ]]; then
   log_step "Clearing SonarQube project history"
-  # The gate is deterministic across resets even without this: new-code
-  # violations are counted against the previous analysis. This is cosmetic
-  # history cleanup.
+  # REQUIRED after a completed demo (default ON): the rewind re-introduces
+  # the baseline's intentional debt on lines SonarQube last saw fixed, so
+  # the next analysis counts them as NEW violations and the expected-green
+  # validation run goes red. Deleting the project makes the rewound state
+  # the fresh baseline. --keep-sonar opts out (e.g. mid-demo re-rewind).
   SONAR_USER=$(oc get secret sonarqube-admin -n sonarqube \
     -o jsonpath='{.data.username}' 2>/dev/null | base64 -d 2>/dev/null || true)
   SONAR_PASS=$(oc get secret sonarqube-admin -n sonarqube \

@@ -439,12 +439,12 @@ local clone of the platform repo:
 
 ```bash
 cd rhoai3-coding-demo
-./scripts/reset-coolstore-demo.sh --fresh-sonar
+./scripts/reset-coolstore-demo.sh
 ```
 
 The script rewinds `main` to the `golden` branch baseline via the GitHub API,
-recreates the `agentic-coolstore` DevWorkspace, and optionally clears SonarQube
-history (`--fresh-sonar`). The force-push fires one expected pipeline run in
+recreates the `agentic-coolstore` DevWorkspace, and clears the SonarQube
+project so the rewound code becomes the fresh quality baseline. The force-push fires one expected pipeline run in
 `coolstore-dev` that re-validates the chain and re-tags `:latest`. The next
 workspace start clones pristine `main`.
 

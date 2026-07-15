@@ -1099,7 +1099,7 @@ repo pins the pristine baseline.
 | Flag | Effect |
 |------|--------|
 | `--yes` | Skip the confirmation prompt |
-| `--fresh-sonar` | Delete the SonarQube project (cosmetic history cleanup) |
+| `--keep-sonar` | Skip the SonarQube project deletion (deletion is the default: a post-demo rewind re-introduces fixed lines as new violations and the validation run goes red without it) |
 | `--skip-workspace` | Leave the DevWorkspace as-is |
 | `--wait-pipeline` | Poll the reset PipelineRun until Succeeded/Failed (max 15 min) |
 
