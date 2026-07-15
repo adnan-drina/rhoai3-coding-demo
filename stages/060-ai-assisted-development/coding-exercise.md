@@ -213,13 +213,18 @@ Time to apply Step 6 in practice.
 
 1. Make sure you are in **Act mode** in Kilo Code.
 2. Select the **Nemotron** model (the default).
-3. Open the curated prompt from [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md) and paste
-   the **Module 1** prompt verbatim:
+3. Paste this prompt into the chat input:
 
-   > Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
-   > statistics including total item count, a breakdown by location, and
-   > in-stock vs out-of-stock counts. Inject InventoryRepository and use its
-   > list() method. Return a Map<String, Object> as JSON.
+```
+Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
+statistics including total item count, a breakdown by location, and
+in-stock vs out-of-stock counts. Inject InventoryRepository and use its
+list() method. Return a Map<String, Object> as JSON.
+```
+
+   (The same prompt lives in
+   [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
+   with presenter notes on what tends to work and what does not.)
 
 4. Kilo Code proposes file changes. **Read the diff carefully** before
    approving — this is the human review gate.
@@ -305,12 +310,18 @@ In SonarQube (anonymous browsing is enabled):
 2. Switch the model to **minimax-m2** (196K context). Note: this model emits
    visible `<think>` reasoning blocks — this is normal behavior from the
    LiteLLM proxy, not an error.
-3. Paste the **Module 2** fix prompt from [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md):
+3. Paste this fix prompt into the chat input:
 
-   > The pipeline's SonarQube gate failed on InventoryStatsResource.java. It
-   > found System.out.println usage, field injection, and an empty catch block.
-   > Fix all three issues following project conventions. Use Logger for output,
-   > constructor injection, and proper error logging in the catch block.
+```
+The pipeline's SonarQube gate failed on InventoryStatsResource.java. It
+found System.out.println usage, field injection, and an empty catch block.
+Fix all three issues following project conventions. Use Logger for output,
+constructor injection, and proper error logging in the catch block.
+```
+
+   (Also in
+   [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
+   with presenter notes.)
 
 4. Review the proposed diff:
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
