@@ -197,16 +197,22 @@ Durable rules vs. one-shot prompts:
 
 ### Try the Enhance Prompt feature
 
-1. Type a lazy prompt in the Kilo Code chat input:
+1. Type a lazy prompt in the Kilo Code chat input — deliberately missing all
+   four anatomy elements:
     ```
-    add a stats endpoint
+    add a stats endpoint to this service
     ```
 2. Click the **✨ Enhance Prompt** button next to the input.
-3. Compare the enhanced prompt against the anatomy and principles above —
-   notice how it adds context, constraints, and expected behavior
-   automatically (an automated pass over principles 1 and 2).
-4. You can edit the enhanced prompt before sending. For the demo, discard it
-   and use the curated prompt in the next step instead.
+3. Hold the enhanced prompt against the anatomy and check what it filled in:
+   - **Context** — does it now reference the project, framework, or files
+     (principle 2: structure; in Kilo you would add `@/...` mentions)?
+   - **Task** — did "a stats endpoint" become a concrete path, shape, and
+     payload (principle 1: be specific)?
+   - **Constraints** — does it say what not to touch or invent?
+   - **Acceptance criteria** — is there now a definition of done?
+4. You can edit the enhanced prompt before sending — treat it as a draft, not
+   an answer (principle 7: you are the editor). For the demo, discard it and
+   use the curated prompt in the next step instead.
 
 ![Enhance Prompt feature](images/kilo-enhance-prompt.png)
 
