@@ -195,6 +195,12 @@ Durable rules vs. one-shot prompts:
 - Task-specific details (Quarkus coordinates, endpoint shape, acceptance
   criteria) belong in the one-shot prompt.
 
+---
+
+## Step 7 — Enhance the prompt, generate, and verify
+
+Time to apply Step 6 in practice.
+
 ### Try the Enhance Prompt feature
 
 1. Type a realistic big one-shot prompt in the Kilo Code chat input. It looks
@@ -212,8 +218,8 @@ just catch the exception and return an empty map so the endpoint never breaks.
 ```
 
 2. Click the **✨ Enhance Prompt** button next to the input.
-3. Hold both versions against the anatomy — and notice what enhancement can
-   and cannot fix:
+3. Hold both versions against the anatomy from Step 6 — and notice what
+   enhancement can and cannot fix:
    - **Context** — present (Quarkus, the repository), though no `@/...` file
      mentions (principle 2: structure).
    - **Task** — specific about the path and payload (principle 1).
@@ -224,15 +230,12 @@ just catch the exception and return an empty map so the endpoint never breaks.
    - **Acceptance criteria** — "the endpoint never breaks" sounds like a
      criterion but actually mandates swallowing errors.
 4. The lesson: enhancement raises the floor on vague prompts, but a flawed
-   specification stays flawed — you are still the editor (principle 7). Keep
-   this prompt in mind: in the next step you will run one very much like it,
-   and the quality gate will have opinions about the result.
+   specification stays flawed — you are still the editor (principle 7).
+   Discard the draft; you will generate with the curated prompt below.
 
 ![Enhance Prompt feature](images/kilo-enhance-prompt.png)
 
----
-
-## Step 7 — Generate and verify
+### Generate the endpoint
 
 1. Make sure you are in **Act mode** in Kilo Code.
 2. Select the **Nemotron** model (the default).
