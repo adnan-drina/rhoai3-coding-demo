@@ -127,7 +127,7 @@ behind the inventory link a JSON array of inventory records with 3 items.
    ask whatever you like. For example:
 
 ```
-What REST endpoints does this service expose?
+Explore our project code and report what REST endpoints this service exposes.
 ```
 
 **What you should see:** the Kilo Code panel with the model picker showing all
