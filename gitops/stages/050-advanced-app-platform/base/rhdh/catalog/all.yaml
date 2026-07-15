@@ -74,9 +74,6 @@ metadata:
     argocd/app-name: 050-advanced-app-platform
     rhoai3.redhat.com/current-repository: adnan-drina/coolstore-inventory-service
     rhoai3.redhat.com/repository: adnan-drina/coolstore-inventory-service
-    rhoai3.redhat.com/gitops-path: gitops/overlays/dev
-    rhoai3.redhat.com/pipelines-as-code-path: .tekton/pull-request.yaml
-    rhoai3.redhat.com/evidence-path: docs/evidence/
     rhoai3.redhat.com/stage-050-role: target-service
   links:
     - url: https://github.com/adnan-drina/coolstore-inventory-service

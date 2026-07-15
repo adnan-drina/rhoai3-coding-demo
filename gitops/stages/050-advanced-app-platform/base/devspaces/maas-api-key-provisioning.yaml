@@ -339,7 +339,8 @@ data:
         /checode/remote/extensions/continue.continue-* \
         /checode/remote/extensions/saoudrizwan.claude-dev-* \
         "${HOME}/.continue" \
-        "${HOME}/.cline"; do
+        "${HOME}/.cline" \
+        "${PROJECT_DIR}/.continue"; do
         if [ -e "${d}" ]; then
           rm -rf "${d}"
           echo "Removed stale assistant artifact: ${d}"
