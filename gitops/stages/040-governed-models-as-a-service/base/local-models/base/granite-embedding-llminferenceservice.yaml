@@ -1,0 +1,85 @@
+# CPU-served embedding model for Kilo Code codebase indexing.
+# Runs on general workers (no GPU), served via plain vLLM (no llm-d scheduler).
+# llm-d cannot route /v1/embeddings — omitting router.scheduler produces a
+# catch-all HTTPRoute so the embeddings path reaches vLLM directly.
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: granite-embedding-english-r2
+  namespace: models-as-a-service
+  labels:
+    app.kubernetes.io/name: granite-embedding-english-r2
+    app.kubernetes.io/component: local-embedding
+    kueue.x-k8s.io/queue-name: default
+    opendatahub.io/dashboard: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "16"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    openshift.io/display-name: Granite Embedding English R2
+    opendatahub.io/model-type: embedding
+    security.opendatahub.io/enable-auth: "true"
+spec:
+  model:
+    name: granite-embedding-english-r2
+    uri: oci://registry.redhat.io/rhai/modelcar-granite-embedding-english-r2:3.0
+  replicas: 1
+  router:
+    gateway:
+      refs:
+        - name: maas-default-gateway
+          namespace: openshift-ingress
+    route: {}
+  template:
+    containers:
+      - name: main
+        # CPU vLLM runtime — overrides the operator-supplied CUDA image.
+        # GA since Red Hat AI Inference 3.4.1 for embedding/SLM workloads.
+        image: registry.redhat.io/rhaii/vllm-cpu-rhel9:3.4.1
+        command:
+          - python
+          - -m
+          - vllm.entrypoints.openai.api_server
+        args:
+          - "--served-model-name={{.Name}}"
+          - --model=/mnt/models
+          - --enable-ssl-refresh
+          - --ssl-certfile=/var/run/kserve/tls/tls.crt
+          - --ssl-keyfile=/var/run/kserve/tls/tls.key
+          - --enable-force-include-usage
+          - --disable-uvicorn-access-log
+          - --runner=pooling
+          - --max-model-len=8192
+          - --dtype=float32
+          - --max-num-seqs=32
+        env:
+          - name: VLLM_CPU_KVCACHE_SPACE
+            value: "2"
+        ports:
+          - containerPort: 8000
+            name: http
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTPS
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 6Gi

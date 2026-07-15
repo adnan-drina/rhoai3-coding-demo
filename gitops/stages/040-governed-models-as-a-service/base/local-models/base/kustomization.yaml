@@ -7,3 +7,5 @@ resources:
   - nemotron-maas-modelref.yaml
   - qwen-llminferenceservice.yaml
   - qwen-maas-modelref.yaml
+  - granite-embedding-llminferenceservice.yaml
+  - granite-embedding-maas-modelref.yaml
