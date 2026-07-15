@@ -452,6 +452,35 @@ Add `--yes` to skip the confirmation prompt. See
 `docs/OPERATIONS.md` (Coolstore Demo Reset) for advancing the baseline when
 the demo app legitimately evolves.
 
+### BONUS for platform admins — the cost of everything you just did
+
+Every prompt in this exercise — chat, generation, fix, even the embedding
+calls — went through the MaaS gateway with a platform-issued key. That means
+every token was **metered, attributed, and rate-limited**, and the
+organization can see it all in one place: the **RHOAI Observability
+dashboard** (OpenShift AI console → **Observability**, admin access).
+
+The **Usage** tab breaks token consumption down by **user, subscription, and
+model**, over a selectable time period, with request counts and any
+rate-limited calls — exportable as CSV:
+
+- **Who** consumed: real identities (users and service accounts), not a
+  shared anonymous key.
+- **Under which budget**: the subscription that authorized each call — the
+  same object that enforces the token-per-hour limits you worked within
+  today.
+- **On which model**: local GPU models and external endpoints side by side,
+  so the cost profile of "fast local generation" vs "large-context fixes" is
+  visible, not guessed.
+
+For organizations, this closes the loop that ungoverned AI tooling leaves
+open: AI coding assistance becomes a **measurable, budgetable platform
+service** — chargeback/showback per team, capacity planning per model, and
+early warning when a workload approaches its budget — with zero effort from
+the developers being measured.
+
+![RHOAI Observability dashboard — token consumption by user, subscription, and model](images/rhoai-observability-dashboard.png)
+
 ---
 
 ## References
