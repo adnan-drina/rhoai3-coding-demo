@@ -76,6 +76,13 @@ spec:
           - python
           - -m
           - vllm.entrypoints.openai.api_server
+        # Serve flags follow the RedHatAI/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+        # model card. Deviation: --max-model-len 131072 instead of the card's
+        # 262144 — sized for L40S 48GB (card validated on H100-80GB) and
+        # matched by every client context limit (Kilo/OpenCode configs).
+        env:
+          - name: VLLM_USE_FLASHINFER_MOE_FP8
+            value: "1"
         args:
           - "--served-model-name={{.Name}}"
           - --model=/mnt/models
@@ -87,6 +94,8 @@ spec:
           - --enable-prefix-caching
           - --max-model-len=131072
           - --max-num-batched-tokens=8192
+          - --max-num-seqs=8
+          - --kv-cache-dtype=fp8
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --trust-remote-code
