@@ -96,6 +96,12 @@ spec:
           - --max-num-batched-tokens=8192
           - --max-num-seqs=8
           - --kv-cache-dtype=fp8
+          # Model card sampling for tool calling (0.6/0.95); the shipped
+          # generation_config.json carries the reasoning defaults (1.0/1.0).
+          # Our consumers are tool-calling coding agents, so the tool-calling
+          # profile is the correct server default; explicit client sampling
+          # still wins.
+          - --override-generation-config={"temperature":0.6,"top_p":0.95}
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
           - --trust-remote-code
