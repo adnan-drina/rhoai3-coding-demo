@@ -150,6 +150,35 @@ Before generating code, understand the anatomy of a good prompt:
   unnecessary files, use deprecated APIs).
 - **Acceptance criteria** — how you will know the output is correct.
 
+### Seven principles that hold across every source
+
+1. **Be specific and explicit** — vague prompts ("fix the code") produce vague
+   results; name the function, the bug, and the expected behavior.
+2. **Provide structure** — delimiters around data, output format specs, and
+   examples constrain the model. In Kilo, context mentions
+   (`@/src/main/java/...`) point the model at the right files.
+3. **Assign roles / personas** — shaping identity shapes response quality and
+   tone.
+4. **Break complex tasks into steps** — chain-of-thought, decomposition, or
+   multi-stage chaining; think-then-do (analyze → plan → execute → review).
+5. **Use few-shot examples** when consistency matters more than brevity —
+   2–5 input/output demonstrations beat instructions for structured output.
+6. **Iterate and test** — treat prompts as code: refine, version, validate.
+   Reject an AI action with an explanation rather than silently redoing it.
+7. **Always verify** — the model does not comprehend; you are the editor.
+   Review accuracy, especially citations and domain-specific claims.
+
+### Go deeper — four sources worth your time
+
+| Source | What you will find |
+|---|---|
+| [Kilo Code — Prompt Engineering](https://kilo.ai/docs/customize/prompt-engineering) | Practitioner guide for AI coding assistants: context mentions, task decomposition, think-then-do workflow, custom instructions. |
+| [Anthropic — Prompt Engineering Interactive Tutorial](https://github.com/anthropics/prompt-eng-interactive-tutorial) | A 9-chapter hands-on course from basics to advanced: roles, delimiters, chain-of-thought, few-shot, avoiding hallucinations — each chapter with an exercise playground. |
+| [Red Hat — Tips for Gen AI LLM Prompt Patterns](https://www.redhat.com/en/blog/tips-for-gen-ai-prompts) | A pattern catalog with when-and-why guidance: Persona, New Information, Refining Questions, Cognitive Verifier, Citation Generator, Few-Shot. |
+| [Quarkus LangChain4j — Prompt Engineering Techniques](https://docs.quarkiverse.io/quarkus-langchain4j/dev/guide-prompt-engineering.html) | Java-first technical guide: input delimiters, zero/few-shot, step-back, ReAct, reflection, multi-stage prompting — with code, temperature, and testing advice. |
+
+### Applying it on this platform
+
 The tradeoff between big and small prompts matters:
 - A **big one-shot prompt** (like the one you will use) is fast for live demos
   and quick exploration. Downside: it costs more context, can drift, and still
@@ -160,7 +189,9 @@ The tradeoff between big and small prompts matters:
 
 Durable rules vs. one-shot prompts:
 - Durable behavior (file paths, security boundaries, response shape) belongs in
-  `~/.config/kilo/AGENTS.md` — it applies to every prompt.
+  `~/.config/kilo/AGENTS.md` — it applies to every prompt. Our platform
+  provisions these rules for every workspace; this is the same principle as
+  "custom instructions", applied with governance.
 - Task-specific details (Quarkus coordinates, endpoint shape, acceptance
   criteria) belong in the one-shot prompt.
 
@@ -171,8 +202,9 @@ Durable rules vs. one-shot prompts:
     add a stats endpoint
     ```
 2. Click the **✨ Enhance Prompt** button next to the input.
-3. Compare the enhanced prompt against the anatomy above — notice how it adds
-   context, constraints, and expected behavior automatically.
+3. Compare the enhanced prompt against the anatomy and principles above —
+   notice how it adds context, constraints, and expected behavior
+   automatically (an automated pass over principles 1 and 2).
 4. You can edit the enhanced prompt before sending. For the demo, discard it
    and use the curated prompt in the next step instead.
 
