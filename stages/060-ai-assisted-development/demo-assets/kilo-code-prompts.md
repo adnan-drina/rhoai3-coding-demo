@@ -14,7 +14,9 @@ entry point — the developer opens it in Dev Spaces from the component page).
 > Return a Map<String, Object>. Print each request and the computed values to
 > the console so we can follow what is happening, and if anything goes wrong
 > just catch the exception and return an empty map so the endpoint never
-> breaks.
+> breaks. Also add unit tests for the new endpoint in
+> InventoryResourceTest.java, following the existing test style, so the
+> change meets our coverage requirement.
 
 **Why the prompt is flawed on purpose:** the smells are *instructed*, not
 hoped for — "print to the console" (System.out.println), "catch the exception
@@ -57,18 +59,13 @@ so list ALL new issues):**
 > - Define a constant instead of duplicating the "http://redhat.com" literal
 >   (InventoryRepository.java)
 > Fix all of them following project conventions. Keep behavior unchanged and
-> make sure the tests still pass.
->
-> The gate also requires at least 80% test coverage on new code. Add unit
-> tests to InventoryResourceTest.java for the /api/inventory/stats endpoint,
-> following the existing RestAssured style: with the seed data, assert
-> totalCount=3, inStock=2, outOfStock=1, and the byLocation breakdown
-> (Raleigh=2, Boston=1).
+> make sure the existing tests — including the stats endpoint tests — still
+> pass.
 
-**Coverage beat:** the first fix attempt that only cleans the smells goes
-red again — new_coverage 0% vs the 80% requirement. The gate teaches two
-lessons for the price of one: clean code AND tested code. Asking the AI for
-the tests in the same prompt closes the loop in one round.
+**Coverage note:** the gate also requires 80% coverage on new code, which is
+why the Module 1 prompt asks for unit tests up front — the generation and
+its tests land together, so the red gate is about the smells, and the fix
+round is about the smells only.
 
 **Presenter beat:** the third issue is pre-existing debt in
 InventoryRepository that surfaced because the AI touched that file — the

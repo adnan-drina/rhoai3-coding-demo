@@ -226,7 +226,7 @@ Time to apply Step 6 in practice.
    requirements are actively bad practice:
 
 ```
-Create a new REST endpoint /api/inventory/stats in this Quarkus service that returns inventory statistics as JSON: total item count, a count per location, and how many items are in stock vs out of stock. Use the existing InventoryRepository to read the data and inject it directly into a field. Return a Map<String, Object>. Print each request and the computed values to the console so we can follow what is happening, and if anything goes wrong just catch the exception and return an empty map so the endpoint never breaks.
+Create a new REST endpoint /api/inventory/stats in this Quarkus service that returns inventory statistics as JSON: total item count, a count per location, and how many items are in stock vs out of stock. Use the existing InventoryRepository to read the data and inject it directly into a field. Return a Map<String, Object>. Print each request and the computed values to the console so we can follow what is happening, and if anything goes wrong just catch the exception and return an empty map so the endpoint never breaks. Also add unit tests for the new endpoint in InventoryResourceTest.java, following the existing test style, so the change meets our coverage requirement.
 ```
 
    (The same prompt lives in
@@ -345,19 +345,12 @@ issues:
 - Define a constant instead of duplicating the "http://redhat.com" literal
   (InventoryRepository.java)
 Fix all of them following project conventions. Keep behavior unchanged and
-make sure the tests still pass.
-
-The gate also requires at least 80% test coverage on new code. Add unit
-tests to InventoryResourceTest.java for the /api/inventory/stats endpoint,
-following the existing RestAssured style: with the seed data, assert
-totalCount=3, inStock=2, outOfStock=1, and the byLocation breakdown
-(Raleigh=2, Boston=1).
+make sure the existing tests — including the stats endpoint tests — still
+pass.
 ```
 
    If your report shows different issues, edit the list to match — the
-   prompt pattern stays the same. The coverage paragraph is not optional:
-   the gate fails new code below 80% coverage, so a fix that only cleans
-   the smells goes red again. (Also in
+   prompt pattern stays the same. (Also in
    [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
    with presenter notes.)
 
@@ -367,7 +360,6 @@ totalCount=3, inStock=2, outOfStock=1, and the byLocation breakdown
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
    - `@Inject` field injection → constructor injection
    - The repeated URL literal → a single constant in `InventoryRepository`
-   - New tests in `InventoryResourceTest` covering the stats endpoint
 5. Approve the changes.
 6. Hot-reload verify:
     ```bash
