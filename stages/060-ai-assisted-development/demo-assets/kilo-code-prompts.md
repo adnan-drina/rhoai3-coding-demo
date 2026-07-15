@@ -26,10 +26,10 @@ specification is. (Earlier drafts used a clean prompt and relied on a small
 model to produce smells by accident; Qwen3.6 one-shots clean code, so the
 accident never happens.)
 
-**Alternative (copy-paste approach):** If the generated code somehow avoids
-the smells, use the pre-prepared version from
-`InventoryStatsResource-with-smells.java` and explain that "for demo purposes,
-our developer took some shortcuts."
+**If the generated code somehow avoids the smells:** the instructions were
+softened by the model — tighten them ("you MUST print with
+System.out.println") and regenerate; the spec drives the smells, so no
+pre-prepared file is needed.
 
 **Model picker beat:** before running the prompt, briefly show the model
 picker in Kilo Code. Four governed models are available — two local (Nemotron,
@@ -56,8 +56,9 @@ immediately — Quarkus dev mode picks the new class up without a restart.
 2. `@Inject` field injection → constructor injection
 3. Empty `catch (Exception e) {}` → `LOG.error("...", e)`
 
-**Reference:** See `InventoryStatsResource-fixed.java` for the expected
-result.
+**Expected result:** `System.out.println` replaced by
+`org.jboss.logging.Logger` calls, the repository injected via constructor,
+and the catch block logging the error instead of hiding it.
 
 **Talk track note:** the fix loop stays in Kilo Code at this stage — one-shot
 in, gate out. Stage 070 is where the agent (OpenCode + skills) internalizes

@@ -138,11 +138,10 @@ this — the limitation IS the lesson.
 - Show Kilo Code's MaaS configuration: base URL, platform-issued key, token
   limits, usage telemetry. No provider console, no raw key.
 - Ask Kilo Code for the new endpoint using
-  [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md) — or
-  paste the prepared
-  [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java)
-  (the reliable path; live generation is the bonus). Hot reload:
-  `/api/inventory/stats` answers instantly.
+  [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md) —
+  the deliberately flawed spec makes the smells deterministic, so live
+  generation is the reliable path. Hot reload: `/api/inventory/stats`
+  answers instantly.
 - **What they should notice:** the code *works*. It also carries
   `System.out.println`, an empty catch block, and field injection — plausible
   code that ignores the team's standards.
@@ -159,9 +158,7 @@ the quality gate fails on any new issue — deliberately, deterministically.
   smells.
 - Open SonarQube: the three new issues, on exactly the new code.
 - Back in the workspace, ask Kilo Code to fix them (proper logging,
-  constructor injection, logged exception —
-  [`demo-assets/InventoryStatsResource-fixed.java`](demo-assets/InventoryStatsResource-fixed.java)
-  is the reference). Push again → pipeline green → `tag-latest` republishes
+  constructor injection, logged exception). Push again → pipeline green → `tag-latest` republishes
   `:latest`, so the running dev deployment picks the endpoint up on its
   next rollout.
 - Close: "Self-service in, trusted delivery out. The AI wrote the code; the

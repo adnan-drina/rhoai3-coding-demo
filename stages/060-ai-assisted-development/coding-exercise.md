@@ -242,8 +242,8 @@ Create a new REST endpoint /api/inventory/stats in this Quarkus service that ret
    The model is not the weakest link here — the specification is. Humans
    write vague or wrong requirements every day; this one sets up the
    pipeline failure on purpose. (If your generated code somehow avoided the
-   smells, use the pre-prepared version from
-   [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java).)
+   smells, check the diff — then tighten the flawed instructions and
+   regenerate.)
 
 > **If Kilo stalls mid-task** — reasoning trails off with no diff and no
 > answer — that is small-model drift on multi-step work, not a platform
