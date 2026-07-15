@@ -123,8 +123,10 @@ behind the inventory link a JSON array of inventory records with 3 items.
 
 3. Configuration comes from `~/.config/kilo/kilo.json` — platform-provisioned,
    no personal API keys. Governance rules live in `~/.config/kilo/AGENTS.md`.
-4. Say hello — send a first prompt on the default Nemotron model to verify the
-   governed model path end to end (workspace → MaaS gateway → local GPU):
+4. Send a first prompt on the default Nemotron model — a code-grounded
+   question rather than a plain "hello", because its answer is verifiable
+   against the source and it proves the governed model path end to end
+   (workspace → MaaS gateway → local GPU):
 
    ```
    Look at src/main/java/com/redhat/coolstore/inventory/InventoryResource.java
