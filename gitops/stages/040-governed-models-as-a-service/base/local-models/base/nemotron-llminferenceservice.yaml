@@ -77,12 +77,11 @@ spec:
           - -m
           - vllm.entrypoints.openai.api_server
         # Serve flags follow the RedHatAI/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
-        # model card. Deviation: --max-model-len 131072 instead of the card's
-        # 262144 — sized for L40S 48GB (card validated on H100-80GB) and
-        # matched by every client context limit (Kilo/OpenCode configs).
-        env:
-          - name: VLLM_USE_FLASHINFER_MOE_FP8
-            value: "1"
+        # model card. Deviations for L40S 48GB (card validated on H100-80GB):
+        # --max-model-len 131072 instead of 262144 (matched by every client
+        # context limit), and no VLLM_USE_FLASHINFER_MOE_FP8 — FlashInfer's
+        # FP8 MoE kernels reject sm89; the engine crashes at startup with
+        # "no FlashInfer FP8 MoE backend supports the configuration".
         args:
           - "--served-model-name={{.Name}}"
           - --model=/mnt/models
