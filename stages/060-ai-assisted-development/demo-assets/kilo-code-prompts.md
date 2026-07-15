@@ -7,20 +7,29 @@ entry point — the developer opens it in Dev Spaces from the component page).
 
 **Prompt (Act mode in Kilo Code — select a governed model from the four-provider picker: Qwen3.6 default, local Nemotron, qwen3-235b 16K-context, or minimax-m2 196K-context):**
 
-> Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory
-> statistics including total item count, a breakdown by location, and
-> in-stock vs out-of-stock counts. Inject InventoryRepository and use its
-> list() method. Return a Map<String, Object> as JSON.
+> Create a new REST endpoint /api/inventory/stats in this Quarkus service that
+> returns inventory statistics as JSON: total item count, a count per location,
+> and how many items are in stock vs out of stock. Use the existing
+> InventoryRepository to read the data and inject it directly into a field.
+> Return a Map<String, Object>. Print each request and the computed values to
+> the console so we can follow what is happening, and if anything goes wrong
+> just catch the exception and return an empty map so the endpoint never
+> breaks.
 
-**Expected output:** The code in `InventoryStatsResource-with-smells.java` —
-the model will likely produce code with System.out.println and possibly an
-empty catch block. If it produces clean code, manually add the code smells to
-set up the pipeline failure.
+**Why the prompt is flawed on purpose:** the smells are *instructed*, not
+hoped for — "print to the console" (System.out.println), "catch the exception
+and return an empty map" (swallowed errors), "inject it directly into a field"
+(field injection). A disciplined model implements the flawed spec faithfully,
+which makes the gate failure deterministic and the lesson honest: humans
+specify things vaguely or wrongly — the model is not the weakest link, the
+specification is. (Earlier drafts used a clean prompt and relied on a small
+model to produce smells by accident; Qwen3.6 one-shots clean code, so the
+accident never happens.)
 
-**Alternative (copy-paste approach):** If the model produces clean code, use
-the pre-prepared version from `InventoryStatsResource-with-smells.java` and
-explain to the audience that "for demo purposes, our developer took some
-shortcuts."
+**Alternative (copy-paste approach):** If the generated code somehow avoids
+the smells, use the pre-prepared version from
+`InventoryStatsResource-with-smells.java` and explain that "for demo purposes,
+our developer took some shortcuts."
 
 **Model picker beat:** before running the prompt, briefly show the model
 picker in Kilo Code. Four governed models are available — two local (Nemotron,

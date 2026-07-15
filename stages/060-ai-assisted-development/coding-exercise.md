@@ -213,10 +213,12 @@ Time to apply Step 6 in practice.
 
 1. Make sure you are in **Act mode** in Kilo Code.
 2. Select the **Qwen3.6** model (the default).
-3. Paste this prompt into the chat input:
+3. Paste this prompt into the chat input. Read it first — it is a *realistic
+   flawed specification*: the kind a developer writes in a hurry, where some
+   requirements are actively bad practice:
 
 ```
-Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory statistics including total item count, a breakdown by location, and in-stock vs out-of-stock counts. Inject InventoryRepository and use its list() method. Return a Map<String, Object> as JSON.
+Create a new REST endpoint /api/inventory/stats in this Quarkus service that returns inventory statistics as JSON: total item count, a count per location, and how many items are in stock vs out of stock. Use the existing InventoryRepository to read the data and inject it directly into a field. Return a Map<String, Object>. Print each request and the computed values to the console so we can follow what is happening, and if anything goes wrong just catch the exception and return an empty map so the endpoint never breaks.
 ```
 
    (The same prompt lives in
@@ -230,14 +232,18 @@ Create a new JAX-RS endpoint at /api/inventory/stats that returns inventory stat
     ```bash
     curl localhost:8080/api/inventory/stats
     ```
-7. Look honestly at the generated code. Common smells the model may produce:
-   - `System.out.println` instead of a proper logger
-   - Empty `catch` block that swallows exceptions
-   - `@Inject` field injection instead of constructor injection
+7. Look honestly at the generated code. The specification *instructed* three
+   code smells, and a good model implements its instructions faithfully:
+   - "print to the console" → `System.out.println` instead of a proper logger
+   - "catch the exception and return an empty map" → swallowed exceptions
+   - "inject it directly into a field" → `@Inject` field injection instead of
+     constructor injection
 
-   These are intentional — they set up the pipeline failure. If the model
-   produces clean code, use the pre-prepared version from
-   [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java).
+   The model is not the weakest link here — the specification is. Humans
+   write vague or wrong requirements every day; this one sets up the
+   pipeline failure on purpose. (If your generated code somehow avoided the
+   smells, use the pre-prepared version from
+   [`demo-assets/InventoryStatsResource-with-smells.java`](demo-assets/InventoryStatsResource-with-smells.java).)
 
 > **If Kilo stalls mid-task** — reasoning trails off with no diff and no
 > answer — that is small-model drift on multi-step work, not a platform
