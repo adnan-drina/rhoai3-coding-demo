@@ -329,9 +329,21 @@ data:
       echo "Generated ~/.kube/config from in-cluster service account (namespace: ${ns})."
     }
 
+    ensure_git_identity() {
+      if [ -z "$(git config --global user.name 2>/dev/null)" ]; then
+        local ws_user="${DEVWORKSPACE_NAMESPACE#wksp-}"
+        git config --global user.name "${ws_user:-developer}"
+        git config --global user.email "${ws_user:-developer}@rhoai3-coding-demo.local"
+        echo "Configured git identity: ${ws_user:-developer} (fresh volume)."
+      else
+        echo "Git identity already configured."
+      fi
+    }
+
     ensure_vscode_shell_integration
     ensure_java21_default
     ensure_in_cluster_kubeconfig
+    ensure_git_identity
 
     cleanup_stale_assistants() {
       local removed=0
