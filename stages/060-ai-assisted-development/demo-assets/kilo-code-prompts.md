@@ -3,21 +3,6 @@
 Target application: `coolstore-inventory-service` (the stage 060 catalog
 entry point — the developer opens it in Dev Spaces from the component page).
 
-## Module 0: First interaction — prove the governed model path
-
-**Prompt (default Nemotron model, right after opening the Kilo Code panel):**
-
-> Look at src/main/java/com/redhat/coolstore/inventory/InventoryResource.java
-> and summarize each REST endpoint this service exposes in one line each.
-
-**Expected output:** three one-liners — list all items, item by `itemId`,
-availability by `itemId`. A code-grounded question beats a plain "hello":
-the answer is verifiable against the source, and a streamed response proves
-the whole chain (workspace → MaaS gateway → local GPU) before the audience
-invests in the big generation prompt.
-
----
-
 ## Module 1: Generate code with intentional smells
 
 **Prompt (Act mode in Kilo Code — select a governed model from the four-provider picker: Nemotron default, local Qwen, qwen3-235b 16K-context, or minimax-m2 196K-context):**
