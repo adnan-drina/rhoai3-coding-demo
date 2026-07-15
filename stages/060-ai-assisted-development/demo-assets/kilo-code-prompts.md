@@ -58,6 +58,17 @@ so list ALL new issues):**
 >   (InventoryRepository.java)
 > Fix all of them following project conventions. Keep behavior unchanged and
 > make sure the tests still pass.
+>
+> The gate also requires at least 80% test coverage on new code. Add unit
+> tests to InventoryResourceTest.java for the /api/inventory/stats endpoint,
+> following the existing RestAssured style: with the seed data, assert
+> totalCount=3, inStock=2, outOfStock=1, and the byLocation breakdown
+> (Raleigh=2, Boston=1).
+
+**Coverage beat:** the first fix attempt that only cleans the smells goes
+red again — new_coverage 0% vs the 80% requirement. The gate teaches two
+lessons for the price of one: clean code AND tested code. Asking the AI for
+the tests in the same prompt closes the loop in one round.
 
 **Presenter beat:** the third issue is pre-existing debt in
 InventoryRepository that surfaced because the AI touched that file — the

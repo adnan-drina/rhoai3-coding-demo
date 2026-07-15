@@ -45,7 +45,8 @@ the global header including the application launcher (nine-dots grid).
 
 This is the brownfield service you will extend. It is already deployed, already
 wired to CI, and already has a SonarQube quality baseline. Whatever the AI
-writes next lands against a gate that fails on any new issue.
+writes next lands against a gate that fails on any new issue and requires
+80% test coverage on new code.
 
 > **Why the catalog matters:** without it, developers spend their first weeks
 > discovering services, owners, APIs, and docs across fragmented tools — and
@@ -280,7 +281,7 @@ tag-latest.
 2. Navigate to the Coolstore Inventory Service component's **CI** tab.
 3. A new `app-push` PipelineRun appears. Watch it progress through the steps.
 4. **Expect `sonar-scan` to fail.** The quality gate is configured to fail on
-   any new issue — by design.
+   any new issue and on new code below 80% test coverage — by design.
 
 > The model is not the weakest link here — the specification is. Humans
 > write vague or wrong requirements every day.
@@ -345,10 +346,18 @@ issues:
   (InventoryRepository.java)
 Fix all of them following project conventions. Keep behavior unchanged and
 make sure the tests still pass.
+
+The gate also requires at least 80% test coverage on new code. Add unit
+tests to InventoryResourceTest.java for the /api/inventory/stats endpoint,
+following the existing RestAssured style: with the seed data, assert
+totalCount=3, inStock=2, outOfStock=1, and the byLocation breakdown
+(Raleigh=2, Boston=1).
 ```
 
    If your report shows different issues, edit the list to match — the
-   prompt pattern stays the same. (Also in
+   prompt pattern stays the same. The coverage paragraph is not optional:
+   the gate fails new code below 80% coverage, so a fix that only cleans
+   the smells goes red again. (Also in
    [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
    with presenter notes.)
 
@@ -358,6 +367,7 @@ make sure the tests still pass.
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
    - `@Inject` field injection → constructor injection
    - The repeated URL literal → a single constant in `InventoryRepository`
+   - New tests in `InventoryResourceTest` covering the stats endpoint
 5. Approve the changes.
 6. Hot-reload verify:
     ```bash
