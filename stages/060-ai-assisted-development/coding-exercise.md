@@ -379,8 +379,11 @@ data.
 2. Switch to the component's **CI** tab in Developer Hub.
 3. Watch the new PipelineRun progress. This time the full pipeline completes:
    clone → build → sonar-scan (passes) → build/push → **tag-latest**.
-4. The `:latest` tag republish rolls the dev environment — the running
-   deployment picks up the new code.
+4. The pipeline republishes the `:latest` image. The dev Deployment picks it
+   up on its next rollout — in this demo the platform team triggers it
+   (`oc rollout restart deployment/coolstore-inventory-service -n
+   coolstore-dev`); an automatic re-rollout stage in the pipeline is on the
+   roadmap.
 5. Verify on the deployed service: open the component's **Deployed App (dev)**
    link and navigate to `/api/inventory/stats`.
 
