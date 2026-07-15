@@ -1,10 +1,8 @@
 # NVIDIA ClusterPolicy — normalized from the GPU operator's alm-example
-# (gpu-operator-certified.v26.3.2) with two demo-specific changes:
+# (gpu-operator-certified.v26.3.2) with one demo-specific change:
 #   1. daemonsets.tolerations: tolerate the nvidia-gpu-only taint so the operator
 #      DaemonSets (driver, device-plugin, toolkit, dcgm) schedule on the tainted
 #      GPU node.
-#   2. devicePlugin.config: reference the time-slicing-config ConfigMap so each
-#      physical GPU is advertised as 4 nvidia.com/gpu units.
 # All other fields are operator defaults. Do not handwrite ClusterPolicy fields.
 apiVersion: nvidia.com/v1
 kind: ClusterPolicy

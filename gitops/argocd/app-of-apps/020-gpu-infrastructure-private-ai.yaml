@@ -36,7 +36,7 @@ spec:
         maxDuration: 3m
   ignoreDifferences:
     # Operators may manually scale the GPU MachineSet to zero between demo
-    # sessions. Git keeps the default one-node intent for fresh environments.
+    # sessions. Git keeps the default two-node intent for fresh environments.
     - group: machine.openshift.io
       kind: MachineSet
       jsonPointers:

@@ -5,7 +5,7 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
     argocd.argoproj.io/sync-wave: '10'
   labels:
-    demo.rhoai.io/stage: '070'
+    demo.rhoai.io/stage: '080'
   name: agentic-migration
   namespace: wksp-ai-developer
 spec:
