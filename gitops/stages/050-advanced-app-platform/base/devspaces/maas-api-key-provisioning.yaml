@@ -331,7 +331,8 @@ data:
 
     ensure_git_identity() {
       if [ -z "$(git config --global user.name 2>/dev/null)" ]; then
-        local ws_user="${DEVWORKSPACE_NAMESPACE#wksp-}"
+        local ws_ns="${DEVWORKSPACE_NAMESPACE:-}"
+        local ws_user="${ws_ns#wksp-}"
         git config --global user.name "${ws_user:-developer}"
         git config --global user.email "${ws_user:-developer}@rhoai3-coding-demo.local"
         echo "Configured git identity: ${ws_user:-developer} (fresh volume)."
