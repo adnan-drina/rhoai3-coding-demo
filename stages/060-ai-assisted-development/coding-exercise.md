@@ -432,11 +432,14 @@ returns the statistics.
 
 ### Resetting the demo
 
-To reset the `coolstore-inventory-service` repository for the next run, use the
-reset script from the demo repo:
+Resetting is an **operator action**, not a workspace action: the script lives
+in the platform repository (`rhoai3-coding-demo`) and needs the operator
+credentials from `.env`, which never enter a developer workspace. From your
+local clone of the platform repo:
 
 ```bash
-./scripts/reset-coolstore-demo.sh
+cd rhoai3-coding-demo
+./scripts/reset-coolstore-demo.sh --fresh-sonar
 ```
 
 The script rewinds `main` to the `golden` branch baseline via the GitHub API,
