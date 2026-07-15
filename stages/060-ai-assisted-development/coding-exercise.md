@@ -267,11 +267,13 @@ tag-latest.
    any new issue — by design.
 
 > The model is not the weakest link here — the specification is. Humans
-> write vague or wrong requirements every day; this one sets up the
-> pipeline failure on purpose. (If your generated code somehow avoided the
-> smells, check the diff — then tighten the flawed instructions and
-> regenerate.)
-
+> write vague or wrong requirements every day.
+> Automated quality gates in the pipeline catch code smells that manual
+> processes miss. SonarQube enforces organizational coding standards —
+> proper logging frameworks, meaningful exception handling, code complexity
+> limits — on every commit. When the pipeline fails, the developer gets
+> specific, actionable feedback and can fix the issues immediately in
+> Dev Spaces. The platform enforces quality without becoming a bottleneck.
 
 **What you should see:** the pipeline's sonar-scan step turns red.
 
@@ -302,6 +304,7 @@ In SonarQube (anonymous browsing is enabled):
    - **Field injection** — untestable wiring; the class cannot be constructed
      outside the CDI container.
 
+![SonarQube Quality Gate: Failed](images/sonar-quality-gate-failed.png)
 ![SonarQube report showing new issues](images/sonar-report-issues.png)
 
 ---
@@ -333,6 +336,8 @@ make sure the tests still pass.
    prompt pattern stays the same. (Also in
    [`demo-assets/kilo-code-prompts.md`](demo-assets/kilo-code-prompts.md)
    with presenter notes.)
+
+![Kilo fix prompt](images/kilo-fix-prompt.png)
 
 4. Review the proposed diff:
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
