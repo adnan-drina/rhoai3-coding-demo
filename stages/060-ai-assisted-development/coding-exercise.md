@@ -52,7 +52,7 @@ writes next lands against a gate that fails on any new issue.
 
 ---
 
-## Step 3 — Open the workspace
+## Step 3 — Open the workspace and tour the project
 
 1. On the component page, click the **Dev Spaces** link. This opens the
    `agentic-coolstore` workspace directly — no factory URL needed.
@@ -62,34 +62,28 @@ writes next lands against a gate that fails on any new issue.
    - VS Code may show a **workspace trust** dialog — accept it.
 3. Wait for the IDE to finish loading extensions.
 
-**What you should see:** VS Code in the browser with the `coolstore-inventory-
-service` project loaded. The Kilo Code icon appears in the sidebar.
-
 ![Dev Spaces workspace starting](images/devspaces-workspace-start.png)
 
----
+4. While it loads — or once the IDE is up — explore the project structure:
+   - `src/main/java/com/redhat/coolstore/inventory/` — the Quarkus
+     application code. `InventoryResource` is the existing REST endpoint.
+     `InventoryRepository` seeds 3 items across 2 locations, with 1 item
+     out-of-stock.
+   - `pom.xml` — uses the Red Hat build of Quarkus BOM.
+   - `Containerfile` — the container build definition.
+   - `devfile.yaml` — defines the Task Runs you will use to build and run
+     the application.
 
-## Step 4 — Tour the project
-
-Explore the project structure:
-
-- `src/main/java/com/redhat/coolstore/inventory/` — the Quarkus application
-  code. `InventoryResource` is the existing REST endpoint.
-  `InventoryRepository` seeds 3 items across 2 locations, with 1 item
-  out-of-stock.
-- `pom.xml` — uses the Red Hat build of Quarkus BOM.
-- `Containerfile` — the container build definition.
-- `devfile.yaml` — defines the Task Runs you will use to build and run the
-  application.
-
-**What you should see:** a standard Quarkus project structure with seed data
-ready for extension.
+**What you should see:** VS Code in the browser with the
+`coolstore-inventory-service` project loaded — a standard Quarkus project
+structure with seed data ready for extension. The Kilo Code icon appears in
+the sidebar.
 
 ![Project tree in the workspace](images/devspaces-project-tree.png)
 
 ---
 
-## Step 5 — Run Quarkus dev mode
+## Step 4 — Run Quarkus dev mode
 
 1. Open the Command Palette: `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS).
 2. Type **Tasks: Run Task** → select **devfile** → select **2. Start
@@ -111,7 +105,7 @@ ready for extension.
 
 ---
 
-## Step 6 — Meet Kilo Code
+## Step 5 — Meet Kilo Code
 
 1. Click the **Kilo Code** icon in the sidebar to open the assistant panel.
 2. Notice the model picker at the top. Four governed models are available:
@@ -133,7 +127,7 @@ four providers.
 
 ---
 
-## Step 7 — Prompt engineering that pays off
+## Step 6 — Prompt engineering that pays off
 
 Before generating code, understand the anatomy of a good prompt:
 
@@ -174,7 +168,7 @@ Durable rules vs. one-shot prompts:
 
 ---
 
-## Step 8 — Generate and verify
+## Step 7 — Generate and verify
 
 1. Make sure you are in **Act mode** in Kilo Code.
 2. Select the **Nemotron** model (the default).
@@ -209,7 +203,7 @@ Durable rules vs. one-shot prompts:
 
 ---
 
-## Step 9 — Commit and push
+## Step 8 — Commit and push
 
 1. Open the **Source Control** view (`Ctrl+Shift+G`).
 2. Stage the changed files.
@@ -223,7 +217,7 @@ tag-latest.
 
 ---
 
-## Step 10 — Watch the pipeline
+## Step 9 — Watch the pipeline
 
 1. Switch back to Developer Hub.
 2. Navigate to the Coolstore Inventory Service component's **CI** tab.
@@ -237,7 +231,7 @@ tag-latest.
 
 ---
 
-## Step 11 — Read the SonarQube report
+## Step 10 — Read the SonarQube report
 
 Open the SonarQube report using either method:
 
@@ -264,7 +258,7 @@ In SonarQube (anonymous browsing is enabled):
 
 ---
 
-## Step 12 — Fix with a stronger model
+## Step 11 — Fix with a stronger model
 
 1. Back in the workspace, open Kilo Code.
 2. Switch the model to **minimax-m2** (196K context). Note: this model emits
@@ -298,7 +292,7 @@ data.
 
 ---
 
-## Step 13 — Push again and go green
+## Step 12 — Push again and go green
 
 1. Stage, commit (`Fix SonarQube code smells`), and push.
 2. Switch to the component's **CI** tab in Developer Hub.
