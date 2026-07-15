@@ -1392,6 +1392,158 @@ The search API ignores the `name` query parameter and returns all keys
 visible to the admin identity — always filter the JSON response
 client-side.
 
+## Argo CD Reports Synced But The Cluster Has Stale Manifests
+
+**Affected stage:** any (observed twice on 2026-07-15: 050 ConfigMap, 040
+LLMInferenceService)
+
+**Symptom:** the Application shows `Synced`/`Succeeded` at the correct git
+revision, but a resource in the cluster lacks the change; the sync result
+message says `<resource> unchanged`.
+
+**Likely cause:** the Argo CD repo-server served a stale cached render for
+the new revision.
+
+**Diagnose:** compare the local render against the live object:
+
+```bash
+oc kustomize gitops/stages/<app path> | grep <your change>
+oc get <kind> <name> -n <ns> -o yaml | grep <your change>
+```
+
+If git and the local render have the change while the live object does not —
+and the app claims Synced at the right SHA — it is the stale cache.
+
+**Recover:** hard refresh, then sync:
+
+```bash
+oc annotate application <app> -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+```
+
+Auto-sync apps re-sync on their own after the refresh; manual apps need a
+Sync click. Root cause in the repo-server cache is not yet identified.
+
+## Model Rollout Deadlocks With The New Pod SchedulingGated
+
+**Affected stage:** Stage 040 (any LLMInferenceService config change while
+GPU quota is fully allocated)
+
+**Symptom:** after a spec change, the new kserve pod sits in
+`SchedulingGated` with gates `kueue.x-k8s.io/admission`; the old pod keeps
+running. The Kueue Workload says `insufficient unused quota for
+nvidia.com/gpu ... 1 more needed`.
+
+**Likely cause:** rolling update with replicas=1 while the ClusterQueue's
+GPUs are all admitted — the new pod cannot get quota until the old one
+releases it, and the old one waits for the new one to become ready.
+
+**Recover:** delete the old pod to free its GPU:
+
+```bash
+oc get workload -n models-as-a-service | grep <model>
+oc delete pod -n models-as-a-service <old-kserve-pod>
+```
+
+Kueue admits the gated pod immediately; expect the usual model load time.
+If a crash-looping pod holds the quota (bad config baked into its spec),
+delete that one — its ReplicaSet will not recreate it once the new
+ReplicaSet's pod is admitted and ready.
+
+## Pipeline Or Workspace Pods Evicted For Ephemeral Storage
+
+**Affected stage:** any pipeline or workspace scheduling onto a
+modelcar-hosting CPU node
+
+**Symptom:** a TaskRun fails with `The node was low on resource:
+ephemeral-storage`; the node sits at ~85% disk with kubelet image GC
+oscillating at the threshold.
+
+**Likely cause:** cached container images — multi-GB modelcars plus
+accumulating build/task images. Per-pod ephemeral usage is usually
+innocent (verify via the node's `stats/summary`).
+
+**Recover:** prune unused images on the pressured node:
+
+```bash
+oc debug node/<node> -- chroot /host sh -c 'crictl rmi --prune'
+```
+
+Caveats: `--prune` never removes in-use images (a modelcar backing a
+running scheduler stays); if the debug pod itself fails with "container not
+available", the node is too full to pull the tools image — wait for kubelet
+GC to free a little headroom and retry. `DeadlineExceeded` errors on large
+image deletions are harmless. Structural fix: the 200GiB worker-disk
+resize (backlog).
+
+## SonarQube Gate Fails On new_coverage 0% Despite Passing Tests
+
+**Affected stage:** Stage 060 (any Quarkus app in the pipeline)
+
+**Symptom:** `new_violations` is 0, tests run green in `maven-build`, yet
+the gate fails `new_coverage: 0.0 < 80`.
+
+**Likely cause:** the application produces no coverage report — SonarQube
+reads "no data" as 0%. Prompting an AI (or a human) for more tests changes
+nothing.
+
+**Recover:** wire coverage into the build. For Quarkus:
+`io.quarkus:quarkus-jacoco` dependency (test scope) plus
+`<sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>`
+in the pom (coolstore fix: `7236899`). A plain jacoco-maven-plugin agent
+fights Quarkus class transformation — use the extension.
+
+## Usage Dashboard Shows Zeros Or Gaps (Limitador PodMonitor Churn)
+
+**Affected stage:** Stage 040 observability
+
+**Symptom:** the RHOAI Observability Usage tab intermittently shows zero
+tokens; `authorized_hits` instant queries return no data while limitador's
+own `/metrics` endpoint has the counters.
+
+**Likely cause (two distinct):**
+
+1. Before the first Kuadrant reconcile enables observability, no
+   `kuadrant-limitador-monitor` PodMonitor exists at all — nothing scrapes
+   the per-user metrics.
+2. The kuadrant-operator deletes and recreates that PodMonitor every
+   ~10 minutes on its resync (log signature: `event logger ...
+   eventTypes:{"delete":1}` followed by `ObservabilityReconciler "create
+   object" v1.PodMonitor`), causing brief scrape gaps. RFE candidate.
+
+Also verify the boring explanation first: a short "Last 30 minutes" window
+with genuinely no model traffic correctly shows zeros — check
+`sum(increase(authorized_hits[30m]))` in Thanos before suspecting the
+pipeline.
+
+**Recover:** for (1), ensure `spec.observability.enable: true` on the
+Kuadrant CR (it is, in git) and wait for the operator reconcile. For (2),
+no configuration fix exists on our side; widen the dashboard time window.
+
+## External Models Missing From Per-Model Token Consumption
+
+**Affected stage:** Stage 040 observability
+
+**Symptom:** `minimax-m2` and `qwen3-235b` never appear in the Usage tab's
+Token Consumption table even during active use.
+
+**Likely cause:** the ExternalModel route policy exports request counters
+with subscription/user labels but no `model` label and no token-usage
+counters — the wasm usage-extraction pass (`--enable-force-include-usage`
++ model descriptor) is wired only for LLMInferenceService kserve routes in
+this RHOAI 3.4 MaaS build. Enforcement is intact (request limits + defined
+token budgets); per-model token visibility is not. RFE candidate.
+
+**Diagnose:**
+
+```bash
+oc port-forward -n kuadrant-system svc/limitador-limitador 18080:8080 &
+curl -s http://localhost:18080/metrics | grep minimax
+```
+
+**Recover:** no platform-side fix; track via the subscription-level
+counters and the maas-rhdp provider's own accounting.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)

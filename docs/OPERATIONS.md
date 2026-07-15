@@ -220,6 +220,92 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > Stage 050 during the 2026-07-10 renumbering; validation paths referencing
 > `090-ai-self-service-portal` in entries before that date are historical.
 
+### 2026-07-15 Stage 060 validated end-to-end; model quality arc; governed embeddings; reset hardened
+
+The full 12-step coding exercise ran live twice (demo + reset lifecycle).
+Every failure encountered was folded back into code, config, or docs the
+same day.
+
+Model quality arc (Nemotron → Qwen default):
+
+- Nemotron stalls mid-task in Kilo traced to tool calls leaking into the
+  reasoning channel (Nano-class drift on multi-step agentic work). Serving
+  config aligned to the RedHatAI/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8 model
+  card (`9d966b9`, `b6851e7`): `--max-num-seqs=8`, `--kv-cache-dtype=fp8`,
+  tool-calling sampling default `temperature 0.6 / top_p 0.95` via
+  `--override-generation-config`. Two documented L40S deviations:
+  `--max-model-len` stays 131072 (48Gi vs the card's H100-80Gi), and
+  `VLLM_USE_FLASHINFER_MOE_FP8` dropped — no FlashInfer FP8 MoE backend
+  supports sm89; the engine crashes at startup (`c398076`). vLLM's own
+  backend choice (Triton FP8 MoE) is correct for L40S.
+- Sampling + a new always-provide-tool-arguments rule reduced but did not
+  eliminate drift. Live head-to-head on the Module 1 generation prompt:
+  Qwen3.6 35B one-shot clean where Nemotron drifted twice. **Qwen3.6 is now
+  the Kilo default** (`ef4fe64`); Nemotron stays as the large-context local
+  alternative. Rollout hit the GPU-quota rolling deadlock twice (see new
+  TROUBLESHOOTING recipe).
+
+Governed embeddings (Cursor-executed, audited):
+
+- `granite-embedding-english-r2` (149M) serves on CPU workers via
+  `vllm-cpu-rhel9:3.4.1` with `--runner=pooling` (no llm-d scheduler — it
+  cannot route `/v1/embeddings`); registered in MaaS, added to
+  `devspaces-coding-models` at 500K tokens/h, key minted into the workspace
+  Secret (`5833f3d`, `79914c9`, `0a219eb`). Gateway smoke test: 768-dim
+  vector, 11 tokens metered. Kilo codebase indexing can now be pointed at a
+  governed embedder (wiring via `kilo-code.new.indexing.*` VS Code settings
+  is backlog).
+
+Workspace tooling:
+
+- Kilo Code 7.4.8 (patch published same day, `e9e7be6`). The bump surfaced
+  its commercial "Kilo Gateway" catalog plus z.ai models inside governed
+  workspaces — suppressed via `disabled_providers: ["kilo", "zai"]` in the
+  provisioned config (`22658cf`). **Treat `disabled_providers` as part of
+  the governance surface: review it on every Kilo version bump.**
+- Provisioned rules gained Markdown-formatting and tool-argument rules;
+  all Kilo providers gained timeout/chunkTimeout parity with OpenCode;
+  init script now configures git identity on fresh volumes and sweeps
+  project-level `.continue` (`bf6ab32`, `11daafa`, `975d9b5`).
+
+Stage 060 exercise redesign (validated live):
+
+- The generation prompt is now a deliberately flawed specification
+  (console printing, exception swallowing, field injection, plus a demand
+  for unit tests) — smells are instructed, not hoped for, making the red
+  gate deterministic with any obedient model. Lesson reframed: the model
+  is not the weakest link; the specification is.
+- Coverage lesson: the gate's `new_coverage >= 80%` condition could never
+  pass — the app had no coverage tooling. `quarkus-jacoco` added to the
+  coolstore pom (`7236899`). Final green run: 92.5% new-code coverage,
+  0 violations, deployed endpoint verified.
+- Guide fully illustrated (17 live screenshots) with value-statement
+  callouts adapted from the Parasol workshop, prompt-engineering theory
+  (7 principles, 4 linked sources) in step 6, and an admin BONUS section
+  on token-consumption observability (`bd3c503`).
+
+Demo reset hardened:
+
+- Live reset exposed two traps: resetting against a stale `golden` (order:
+  bless golden FIRST), and SonarQube counting re-introduced baseline debt
+  as new violations after a post-demo rewind. Fresh-sonar is now the reset
+  default (`--keep-sonar` opts out, `b8bde43`). Baseline: `a55ace5`
+  (landing page + jacoco, no stats endpoint). Reset validated end-to-end:
+  rewind → fresh baseline analysis green → workspace recreated.
+
+Observability findings:
+
+- The Usage dashboard's per-user/subscription/model metrics come from a
+  `kuadrant-limitador-monitor` PodMonitor the operator creates — and
+  deletes/recreates every 10 minutes (RFE candidate; recipe recorded).
+- External-model routes (`minimax-m2`, `qwen3-235b`) are enforced
+  (request counters + defined token budgets) but export no `model` label
+  and no token-usage counters — invisible in the per-model consumption
+  view (RFE candidate; recipe recorded).
+- Disk pressure struck a third time (cached images on the qwen
+  modelcar node evicted a maven-build pod mid-demo); user added one CPU
+  node; the 200GiB worker-disk resize is promoted on the backlog.
+
 ### 2026-07-14 (afternoon) AI assistant swap: Continue → Cline → Kilo Code; subscription rename
 
 Actions:

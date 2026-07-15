@@ -11,7 +11,7 @@ deployed brownfield Quarkus service discovered in Developer Hub, with links
 straight into its governed Dev Spaces workspace — extends the service with
 Kilo Code ("vibe coding" a new component), and **exits through the
 pipeline** (every push to `main` runs coolstore's own `app-push` pipeline
-in `coolstore-dev`, with a SonarQube gate that fails on any new issue).
+in `coolstore-dev`, with a SonarQube gate that fails on any new issue or under-tested new code).
 One-shot prompting shows its power — and its limits, which motivate Stage
 070.
 
@@ -133,8 +133,8 @@ this — the limitation IS the lesson.
 
 **Show.**
 - From the component page, click the **Dev Spaces** link — the workspace
-  opens on the `coolstore-inventory-service` repository; run
-  `mvn quarkus:dev`.
+  opens on the `coolstore-inventory-service` repository; start dev mode via
+  **Tasks: Run Task → devfile → 2. Start Development mode (Hot reload)**.
 - Show Kilo Code's MaaS configuration: base URL, platform-issued key, token
   limits, usage telemetry. No provider console, no raw key.
 - Ask Kilo Code for the new endpoint using
@@ -150,13 +150,17 @@ this — the limitation IS the lesson.
 
 **Know.** The platform does not rely on the developer noticing. Every push
 to `main` exits through the project's own pipeline in `coolstore-dev`, and
-the quality gate fails on any new issue — deliberately, deterministically.
+the quality gate fails on any new issue and on new code below 80% test
+coverage — deliberately, deterministically. (The generation prompt asks for
+unit tests up front, so the red gate is about the smells, not coverage.)
 
 **Show.**
 - Commit and push to `main`. Watch the PipelineRun appear on the component's
   **CI** tab: clone → build → **sonar-scan FAILS** on the intentional
   smells.
-- Open SonarQube: the three new issues, on exactly the new code.
+- Open SonarQube: the new issues on exactly the new code — the instructed
+  smells plus pre-existing debt in the touched repository file (the gate
+  reviews everything you change, not just what you meant to write).
 - Back in the workspace, ask Kilo Code to fix them (proper logging,
   constructor injection, logged exception). Push again → pipeline green → `tag-latest` republishes
   `:latest`, so the running dev deployment picks the endpoint up on its

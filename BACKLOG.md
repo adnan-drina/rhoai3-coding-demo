@@ -142,6 +142,17 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 ## Stage 060 demo reset enhancements
 
 - [ ] **`reset-coolstore-demo --prune-quay`** — optional flag to delete per-SHA demo image tags accumulated in quay.io/rhoai3-coding-demo/coolstore-inventory-service (cosmetic; requires quay robot with delete permission).
+- [ ] **Reset stale-golden guard** — the script rewinds to whatever `golden` points at with no sanity check (2026-07-15: a reset ran against a stale golden and silently dropped the jacoco fix until re-run). Add a `--golden <sha>` override and a warning when `golden` differs from the last blessed baseline.
+
+## Items from the 2026-07-15 stage 060 dry-run
+
+- [ ] **Pipeline re-rollout stage** — `app-push` republishes `:latest` but nothing rolls the dev Deployment; the guide documents a manual `oc rollout restart`. Add a final pipeline task (workshop parity: "Re-rollout app") with the pipeline SA granted deployment restart in `coolstore-dev`.
+- [ ] **Dev Spaces git-credentials Secret** — fresh workspaces get git identity (init script) but no push credentials; developers are prompted for a GitHub PAT at guide step 8. Provision a `controller.devfile.io/git-credential` Secret in `wksp-*` namespaces so Commit & Push works out of the box.
+- [ ] **Kilo codebase indexing wired to the governed embedder** — `granite-embedding-english-r2` serves `/v1/embeddings` through MaaS with a minted key in the workspace Secret; Kilo's indexing settings live under `kilo-code.new.indexing.*` VS Code settings (plus a secret-stored embedder key). Seed them from `init-ai-tools.sh`; prototype live in a workspace first.
+- [ ] **Worker ephemeral disk resize to 200GiB** — three eviction incidents in two days (Prometheus TSDBs — fixed; modelcar transient pulls — structural; cached-image pressure evicting a mid-demo pipeline pod). MachineSet volume-size change with rolling node replacement.
+- [ ] **RFE: kuadrant-operator PodMonitor churn** — the operator deletes/recreates `kuadrant-limitador-monitor` every ~10 min on resync, causing scrape gaps in the Usage dashboard (TROUBLESHOOTING has the log signature).
+- [ ] **RFE: external-model token telemetry** — ExternalModel routes export no `model` label and no token-usage counters; external models are invisible in per-model consumption views (TROUBLESHOOTING has the diagnosis).
+- [ ] **RFE/investigation: Argo CD repo-server stale render** — Synced-at-new-SHA with stale applied manifests, hit twice on 2026-07-15; recipe recorded, root cause unidentified.
 
 ## Stage 050 Phase 5 items (deferred from the restructure plan, 2026-07-10)
 

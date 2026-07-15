@@ -55,7 +55,7 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
@@ -147,6 +147,15 @@ check "DevWorkspace MaaS key provisioner Job completed" \
 check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
+check "Init script defaults Kilo to qwen3-6-35b-a3b" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen/qwen3-6-35b-a3b' && echo present || echo missing" \
+    "present"
+check "Init script disables ungoverned Kilo providers (kilo gateway, z.ai)" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'disabled_providers' && echo present || echo missing" \
+    "present"
+check "Init script configures git identity on fresh volumes" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'ensure_git_identity' && echo present || echo missing" \
+    "present"
 check "DevWorkspace MaaS API key Secret exists" \
     "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "maas-devspace-api-keys"

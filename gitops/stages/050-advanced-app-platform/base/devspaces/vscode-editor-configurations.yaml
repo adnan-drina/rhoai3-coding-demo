@@ -39,8 +39,8 @@ data:
         "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true,
-      "kilo-code.new.model.providerID": "nemotron",
-      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
+      "kilo-code.new.model.providerID": "qwen",
+      "kilo-code.new.model.modelID": "qwen3-6-35b-a3b"
     }
 ---
 apiVersion: v1
@@ -75,8 +75,8 @@ data:
         "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true,
-      "kilo-code.new.model.providerID": "nemotron",
-      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
+      "kilo-code.new.model.providerID": "qwen",
+      "kilo-code.new.model.modelID": "qwen3-6-35b-a3b"
     }
 ---
 apiVersion: v1
@@ -111,6 +111,6 @@ data:
         "path": "/usr/bin/bash"
       },
       "terminal.integrated.inheritEnv": true,
-      "kilo-code.new.model.providerID": "nemotron",
-      "kilo-code.new.model.modelID": "nemotron-3-nano-30b-a3b"
+      "kilo-code.new.model.providerID": "qwen",
+      "kilo-code.new.model.modelID": "qwen3-6-35b-a3b"
     }
