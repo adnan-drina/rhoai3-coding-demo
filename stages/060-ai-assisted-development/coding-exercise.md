@@ -126,9 +126,9 @@ behind the inventory link a JSON array of inventory records with 3 items.
 4. Send a first prompt to see the model respond — this is your "hello world";
    ask whatever you like. For example:
 
-   ```
-   What REST endpoints does this service expose?
-   ```
+    ```
+    What REST endpoints does this service expose?
+    ```
 
 **What you should see:** the Kilo Code panel with the model picker showing all
 four providers, and a streamed answer to your first prompt.
@@ -167,9 +167,9 @@ Durable rules vs. one-shot prompts:
 ### Try the Enhance Prompt feature
 
 1. Type a lazy prompt in the Kilo Code chat input:
-   ```
-   add a stats endpoint
-   ```
+    ```
+    add a stats endpoint
+    ```
 2. Click the **✨ Enhance Prompt** button next to the input.
 3. Compare the enhanced prompt against the anatomy above — notice how it adds
    context, constraints, and expected behavior automatically.
@@ -196,9 +196,9 @@ Durable rules vs. one-shot prompts:
    approving — this is the human review gate.
 5. Approve the changes.
 6. Hot-reload check — in the terminal or browser:
-   ```bash
-   curl localhost:8080/api/inventory/stats
-   ```
+    ```bash
+    curl localhost:8080/api/inventory/stats
+    ```
 7. Look honestly at the generated code. Common smells the model may produce:
    - `System.out.println` instead of a proper logger
    - Empty `catch` block that swallows exceptions
@@ -289,13 +289,13 @@ In SonarQube (anonymous browsing is enabled):
    - Empty `catch (Exception e) {}` → `LOG.error("...", e)`
 5. Approve the changes.
 6. Hot-reload verify:
-   ```bash
-   curl localhost:8080/api/inventory/stats
-   ```
+    ```bash
+    curl localhost:8080/api/inventory/stats
+    ```
 7. Run the tests:
-   ```bash
-   ./mvnw test
-   ```
+    ```bash
+    ./mvnw test
+    ```
 
 **What you should see:** tests pass, and the endpoint still returns correct
 data.
