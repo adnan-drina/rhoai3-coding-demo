@@ -6,3 +6,4 @@ resources:
   - configure-kuadrant.yaml
   - patch-dsc-maas.yaml
   - restart-kserve-controllers.yaml
+  - enable-kuadrant-console-plugin.yaml

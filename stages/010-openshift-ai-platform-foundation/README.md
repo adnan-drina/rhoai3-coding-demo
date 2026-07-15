@@ -76,7 +76,7 @@ Demo groups (`rhods-admins`, `rhoai-developers`) establishing the identity base 
 
 A production-ready AI platform foundation that all subsequent stages build on.
 
-- **OpenShift GitOps** — Argo CD (channel `gitops-1.20`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git
+- **OpenShift GitOps** — Argo CD (channel `gitops-1.20`) with AppProject `rhoai-demo` and annotation-based resource tracking, reconciling all platform resources from Git; `gitops-plugin` console plugin enabled via sync-wave Job for Argo CD visibility in the OpenShift web console
 - **OpenShift Data Foundation MCG** — standalone Multicloud Object Gateway (NooBaa) providing S3-compatible object storage via `ObjectBucketClaim`; StorageCluster uses `dbStorageClassName: gp3-csi`
 - **Red Hat OpenShift AI 3.4** — operator on `stable-3.4` channel; DSCInitialization (v2) with monitoring in `redhat-ods-monitoring`, trace retention 2160h, trustedCABundle Managed; DataScienceCluster (v2) enabling Dashboard, Workbenches, and Model Registry; components removed until later stages: `kueue`, `kserve`, `aipipelines`, `feastoperator`, `ray`, `trainingoperator`, `trustyai`, `llamastackoperator`
 - **Model Registry** — `demo-registry` CR in `rhoai-model-registries` namespace with embedded PostgreSQL; RBAC grants `rhods-admins` and `rhoai-developers` the operator-generated `registry-user-demo-registry` Role

@@ -54,7 +54,7 @@ flowchart LR
 
 This stage turns model endpoints into governed platform services with subscription-based access control, token quotas, API key lifecycle, and observability.
 
-- MaaS prerequisites: cert-manager (hard prerequisite), Leader Worker Set Operator, Red Hat Connectivity Link v1.3.5, PostgreSQL database, Kuadrant configure Job.
+- MaaS prerequisites: cert-manager (hard prerequisite), Leader Worker Set Operator, Red Hat Connectivity Link v1.3.5, PostgreSQL database, Kuadrant configure Job, `kuadrant-console-plugin` enablement (sync-wave 14) for Connectivity Link gateway and policy visibility in the OpenShift web console.
 - Local model migration: `LLMInferenceService` resources for Nemotron and Qwen3.6 in `models-as-a-service`, replacing the Stage 030 baseline `InferenceService`.
 - External model publication: OpenAI `gpt-4o-mini` as a governed MaaS model with credential-gated provider key.
 - Subscription and authorization policies with per-model token rate limits for developer and burst workloads.

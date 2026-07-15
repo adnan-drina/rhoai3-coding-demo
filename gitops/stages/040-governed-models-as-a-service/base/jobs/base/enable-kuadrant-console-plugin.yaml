@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: enable-kuadrant-console-plugin
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: enable-kuadrant-console-plugin
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+rules:
+  - apiGroups:
+      - operator.openshift.io
+    resources:
+      - consoles
+    verbs:
+      - get
+      - list
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: enable-kuadrant-console-plugin
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+subjects:
+  - kind: ServiceAccount
+    name: enable-kuadrant-console-plugin
+    namespace: kuadrant-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: enable-kuadrant-console-plugin
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enable-kuadrant-console-plugin
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+data:
+  enable-console-plugin.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    function noisy {
+        set -x
+        "${@}"
+        { set +x; } 2>/dev/null
+    }
+    PLUGIN_NAME="${PLUGIN_NAME:-kuadrant-console-plugin}"
+
+    echo "Ensuring ${PLUGIN_NAME} plugin is enabled"
+    echo ""
+
+    if [ -z "$(oc get consoles.operator.openshift.io cluster -o=jsonpath='{.spec.plugins}' 2>/dev/null)" ]; then
+        echo "Creating plugins object"
+        noisy oc patch consoles.operator.openshift.io cluster --patch '{ "spec": { "plugins": [] } }' --type=merge
+    fi
+
+    installed_plugins=$(oc get consoles.operator.openshift.io cluster -o=jsonpath='{.spec.plugins}')
+    echo "Current plugins:"
+    echo "${installed_plugins}"
+
+    if [[ "${installed_plugins}" == *"${PLUGIN_NAME}"* ]]; then
+        echo "${PLUGIN_NAME} is already enabled"
+    else
+        echo "Enabling plugin: ${PLUGIN_NAME}"
+        noisy oc patch consoles.operator.openshift.io cluster --type=json --patch '[{"op": "add", "path": "/spec/plugins/-", "value": "'"${PLUGIN_NAME}"'"}]'
+    fi
+
+    sleep 6
+    noisy oc get consoles.operator.openshift.io cluster -o=jsonpath='{.spec.plugins}'
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enable-kuadrant-console-plugin
+  namespace: kuadrant-system
+  labels:
+    app.kubernetes.io/name: enable-kuadrant-console-plugin
+    app.kubernetes.io/component: api-gateway-governance
+  annotations:
+    argocd.argoproj.io/sync-wave: "14"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: enable-kuadrant-console-plugin
+      containers:
+        - name: enable-plugin
+          image: 'image-registry.openshift-image-registry.svc:5000/openshift/tools:latest'
+          env:
+            - name: PLUGIN_NAME
+              value: kuadrant-console-plugin
+          command: ["/bin/bash"]
+          args:
+            - /app/enable-console-plugin.sh
+          volumeMounts:
+            - name: enable-plugin
+              mountPath: /app
+      volumes:
+        - name: enable-plugin
+          configMap:
+            name: enable-kuadrant-console-plugin
+            defaultMode: 0755

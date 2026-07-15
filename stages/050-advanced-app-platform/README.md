@@ -68,8 +68,10 @@ organized as six components under
   workspaces, Che Code editor policy with Kilo Code, MaaS API key
   provisioning, and the interim `agentic-coolstore` workspace.
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted
-  Artifact Signer (channel `stable-v1.4`) operators, the InstallPlan approval
-  hook for Stage 040 co-tenancy, and the **per-project pipeline model**:
+  Artifact Signer (channel `stable-v1.4`) operators, `pipelines-console-plugin`
+  enablement (sync-wave 10) for pipeline execution statistics and approval
+  tasks in the web console, the InstallPlan approval hook for Stage 040
+  co-tenancy, and the **per-project pipeline model**:
   every project namespace runs its own `app-push` pipeline (clone → Maven
   build → SonarQube gate → image build → `:latest` retag) instantiated from
   the `pipelines/project-pipeline` kustomize template. `app-platform-build`

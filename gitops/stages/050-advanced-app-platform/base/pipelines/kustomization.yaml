@@ -19,6 +19,8 @@ resources:
   - operators/pipelines-subscription.yaml
   - operators/rhtas-subscription.yaml
   - operators/approve-installplans.yaml
+  # Console plugin enablement (wave 10): activates pipelines-console-plugin
+  - console-plugin
   # Dispatcher namespace + persona access
   - build/namespace.yaml
   - build/persona-rbac.yaml
