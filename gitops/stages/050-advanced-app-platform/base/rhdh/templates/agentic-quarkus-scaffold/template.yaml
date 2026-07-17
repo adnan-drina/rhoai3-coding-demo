@@ -109,9 +109,11 @@ spec:
           creating the `<name>-dev` namespace with the project's own delivery
           pipeline, and build credentials arrive within two minutes.
 
-          Open the repository in Dev Spaces, copy `specs/TEMPLATE.md` to a new
-          spec (or use the provided example spec), start OpenCode in the
-          terminal, and ask it to implement the spec. The agent reads
-          AGENTS.md and `.opencode/skills/` — corporate standards steer the
-          build. Every push to `main` runs the project's own pipeline in
-          `<name>-dev` with the SonarQube quality gate.
+          Open the repository in Dev Spaces and start OpenCode in the
+          terminal. The project ships spec-kit: run `/speckit.specify` with
+          your requirements (the stage 070 exercise provides a claims-triage
+          brief) — it creates `specs/<n>-<feature>/spec.md` — then
+          `/speckit.plan`, `/speckit.tasks`, and `/speckit.implement`. The
+          agent reads AGENTS.md and `.opencode/skills/` — corporate
+          standards steer the build. Every push to `main` runs the project's
+          own pipeline in `<name>-dev` with the SonarQube quality gate.
