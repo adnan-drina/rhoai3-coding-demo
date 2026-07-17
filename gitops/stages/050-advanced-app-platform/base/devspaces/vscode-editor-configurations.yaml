@@ -21,7 +21,6 @@ data:
     {
       "recommendations": [
         "redhat.fabric8-analytics",
-        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -57,7 +56,6 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }
@@ -93,7 +91,6 @@ data:
   extensions.json: |
     {
       "recommendations": [
-        "kilocode.kilo-code",
         "redhat.vscode-openshift-connector"
       ]
     }

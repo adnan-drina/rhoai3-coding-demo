@@ -45,9 +45,9 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration exists: $ns/vscode-editor-configurations" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.metadata.name}'" \
         "vscode-editor-configurations"
-    check "Che Code editor configuration recommends Kilo Code: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'kilocode.kilo-code' && echo present || echo missing" \
-        "present"
+    check "Che Code editor configuration does not force Kilo into factory workspaces: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'kilocode.kilo-code' && echo present || echo absent" \
+        "absent"
     check "Che Code editor configuration recommends OpenShift Toolkit: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.extensions\\.json}' | grep -q 'redhat.vscode-openshift-connector' && echo present || echo missing" \
         "present"
