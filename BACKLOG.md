@@ -169,6 +169,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Stage 080 agentic migration provenance
 
+- [ ] **quarkusio/quarkus-skills for stage 080** — the official skills repo currently ships `migrate-spring-to-quarkus` (compat-extension and full-migration paths) — a direct fit for the stage 080 MigIQ story; `quarkus-update` is a maintenance nice-to-have. Install via `npx skills add quarkusio/skills` into the migration workspace when 080 is reworked. (070 relies on the quarkus-agent MCP's dynamic `quarkus_skills` tool instead.)
 - [ ] **MigIQ is experimental and Claude-Code-first** — the Stage 080 multi-agent migration follows the MigIQ pattern (github.com/sshaaf/migIQ, npm @sshaaf/migiq). Pin the npm version in workspace provisioning, document its experimental status in the stage README, and run an OpenCode-compatibility proving run inside Dev Spaces before the stage README promises OpenCode support. Models route through MaaS (qwen3-6-35b-a3b executor, nemotron long-context planning) so agent token usage is visible on the Stage 040 usage dashboards.
 
 ## Showroom-derived topics (adv-app-platform-demo-showroom mapping)
