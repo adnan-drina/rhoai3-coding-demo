@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - kuadrant.yaml
+  - ipp-response-passthrough-envoyfilter.yaml
   - authorino-service.yaml
   - authorino.yaml
