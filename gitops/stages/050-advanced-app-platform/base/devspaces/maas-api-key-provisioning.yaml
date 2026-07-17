@@ -514,8 +514,22 @@ data:
       done
     }
 
+    ensure_quarkus_agent_mcp() {
+      # Official Quarkus MCP for coding agents (app lifecycle, extension
+      # skills, doc search). Native binary: no jbang/Java-version needs.
+      # Doc search requires a container runtime and degrades gracefully in
+      # workspaces. Pinned; bump deliberately.
+      local ver="1.2.3"
+      local bin="${HOME}/.local/bin/quarkus-agent-mcp"
+      if [ ! -x "${bin}" ]; then
+        mkdir -p "${HOME}/.local/bin"
+        curl -fsSL --retry 3 --max-time 600 -o "${bin}"           "https://github.com/quarkusio/quarkus-agent-mcp/releases/download/${ver}/quarkus-agent-mcp-${ver}-linux-x86_64"           && chmod 755 "${bin}"           && echo "Installed quarkus-agent-mcp ${ver}."           || { rm -f "${bin}"; echo "quarkus-agent-mcp download failed; MCP entry will stay disabled at runtime."; }
+      fi
+    }
+
     if [ "${AI_TOOL}" = "opencode" ]; then
       ensure_opencode_latest
+      ensure_quarkus_agent_mcp
       cat > "${HOME}/.config/opencode/opencode.json" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
@@ -595,6 +609,11 @@ data:
           "url": "http://openshift-mcp.rhoai-mcp.svc:8080/mcp",
           "enabled": true,
           "timeout": 10000
+        },
+        "quarkus-agent": {
+          "type": "local",
+          "command": ["${HOME}/.local/bin/quarkus-agent-mcp"],
+          "enabled": true
         }
       },
       "permission": {
