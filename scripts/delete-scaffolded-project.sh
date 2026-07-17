@@ -51,12 +51,13 @@ fi
 
 # --- 1. Factory workspaces referencing the repo ---
 log_step "Dev Spaces workspaces"
-mapfile -t WORKSPACES < <(oc get devworkspace -n "$WORKSPACE_NS" -o json \
+# macOS ships bash 3.2 (no mapfile) — stay portable.
+WORKSPACES=$(oc get devworkspace -n "$WORKSPACE_NS" -o json \
   | jq -r --arg r "/${NAME}" '.items[] | select([.spec.template.projects[]?.git.remotes.origin // ""] | any(endswith($r) or endswith($r + ".git"))) | .metadata.name')
-if [[ ${#WORKSPACES[@]} -eq 0 ]]; then
+if [[ -z "$WORKSPACES" ]]; then
   log_info "No workspace references ${NAME}"
 else
-  for ws in "${WORKSPACES[@]}"; do
+  for ws in $WORKSPACES; do
     oc patch devworkspace "$ws" -n "$WORKSPACE_NS" --type merge -p '{"spec":{"started":false}}' >/dev/null 2>&1 || true
     oc delete devworkspace "$ws" -n "$WORKSPACE_NS" --wait=true
     log_success "Deleted workspace ${ws}"
