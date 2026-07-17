@@ -8,7 +8,7 @@ apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
   name: agentic-quarkus-scaffold
-  title: "AI-Agentic Development: new Quarkus application"
+  title: "New Quarkus app"
   description: |
     Scaffolds a brand-new Quarkus application repository with corporate
     standards as agent-executable assets (AGENTS.md + OpenCode skills) and a
