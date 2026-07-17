@@ -17,6 +17,9 @@ Before upgrading this demo, verify the target RHOAI build against the following 
 
 The following items use manual configuration or post-deploy patches because the demo validates MaaS, dashboard, gateway, and observability behavior across several product surfaces. Review each item against the exact Red Hat OpenShift AI 3.4 build in the target cluster and remove it only after the replacement behavior has been validated in this demo.
 
+- [ ] **IPP response passthrough EnvoyFilter** (`governance/base/ipp-response-passthrough-envoyfilter.yaml`) — RHOAI 3.4's Ingress Payload Processing buffers streaming responses through the MaaS gateway (KB: "MaaS streaming responses buffered through gateway"); external-model streams starve clients (~60s silence) and reset at ~310KB. Our variant keeps request-side IPP (external models need model resolution + key injection) and disables only response processing (all external providers are OpenAI-compatible).
+  **Revert:** RHOAI 3.5 ships the product fix — delete the EnvoyFilter and this entry on upgrade.
+
 - [ ] **Gateway AuthPolicy patch for user OAuth tokens** — The operator-managed gateway policy path accepts ServiceAccount tokens (`maas-default-gateway-sa` audience). The dashboard's `gen-ai-ui` forwards user OAuth tokens. The `configure-kuadrant` Job patches `gateway-default-auth` to add `user-tokens` authentication and patches `maas-api-auth-policy` to add empty `authorization: {}` so `/maas-api/*` management endpoints do not inherit the gateway-level access check.
   **Revert:** A supported MaaS operator path should configure AuthPolicies that accept dashboard-forwarded tokens natively.
 
