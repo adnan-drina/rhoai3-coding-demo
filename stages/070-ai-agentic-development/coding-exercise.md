@@ -137,33 +137,96 @@ standards are discoverable, not tribal.
 
 ---
 
-## Step 6 — Standards as executable assets
+## Step 6 — Two ideas that make agentic development work
 
-One minute of theory before the build. In stage 060, quality lived in two
-places: your prompt (which was flawed) and the pipeline gate (which caught
-it). Here, quality is layered *into the project*:
+In stage 060, quality lived in two places: your prompt (which was flawed)
+and the pipeline gate (which caught it). This stage moves quality *into
+the project* — and the mental model for how comes from Martin Fowler's
+team: an agent consumes two distinct kinds of context.
 
-| Layer | File | Scope |
-|-------|------|-------|
-| Constitution | `.specify/memory/constitution.md` | Project principles every spec-kit command consults |
-| Standing rules | `AGENTS.md` | How any agent behaves in this repo |
-| Skills | `.opencode/skills/*.md` | Domain conventions: REST shapes, LLM integration, test standards |
-| Spec | `specs/<n>-<feature>/spec.md` | What to build — requirements, API, acceptance |
+![Memory bank vs Specs — the two kinds of agent context](images/memory-bank-specs.png)
+*(Source: [martinfowler.com — Exploring Gen AI: SDD tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html))*
 
-The spec-kit workflow turns a requirements brief into implementation
-through reviewable artifacts:
+- The **memory bank** is durable, cross-session knowledge — "relevant
+  across all AI coding sessions in the codebase": standing rules,
+  architecture, conventions.
+- **Specs** are per-feature intent — "only relevant to the tasks that
+  actually create or change that particular functionality."
+
+Everything this project ships maps onto that picture:
+
+| Context kind | Layer | File | Scope |
+|--------------|-------|------|-------|
+| Memory bank | Constitution | `.specify/memory/constitution.md` | Project principles every spec-kit command consults |
+| Memory bank | Standing rules | `AGENTS.md` | How any agent behaves in this repo, always |
+| Memory bank | Skills | `.opencode/skills/*.md` | On-demand know-how: REST shapes, LLM integration, test standards |
+| Specs | Feature spec | `specs/<n>-<feature>/spec.md` | What to build — requirements, API, acceptance |
+
+### Concept 1 — The memory bank: AGENTS.md and skills
+
+**AGENTS.md** is an open standard — "a README for agents" — stewarded
+under the Linux Foundation and used by 60,000+ projects across every
+major agent (Copilot, Cursor, OpenCode, Claude, and more). Where
+README.md serves humans, AGENTS.md carries the extra context agents
+need: setup and test commands, code style, security boundaries, commit
+conventions. Agents read the *closest* AGENTS.md in the tree, so
+standards can be scoped per subproject.
+
+**Skills** are the modular complement: reusable procedures an agent
+*discovers and loads on demand* rather than carrying always. Each is a
+`SKILL.md` with a name and description in frontmatter; OpenCode lists
+them via its native skill tool and pulls the full content only when the
+task calls for it. The distinction matters: AGENTS.md is always-on
+behavior, skills are just-in-time expertise — the same way a team has
+both working agreements and runbooks.
+
+This project carries three skills (REST conventions, LLM integration,
+test standards) — and the **Quarkus Agent MCP** adds a dynamic layer:
+its `quarkus_skills` tool derives extension-specific guidance from what
+is actually in your pom, straight from the Quarkus team.
+
+### Concept 2 — Spec-Driven Development
+
+Prompt-by-prompt "vibe coding" is, in Red Hat's phrase, "speedy but not
+always sturdy" — flexible for prototypes, brittle under real-world
+pressure. SDD's answer is a power inversion: **the spec becomes the
+primary artifact, and code becomes its expression**. For that to work,
+specs must be precise, complete, and unambiguous enough to generate
+working systems — which is exactly what the spec-kit workflow
+manufactures, step by reviewable step:
 
 ```
-/speckit.specify  →  spec.md      (what and why)
-/speckit.plan     →  plan.md      (how — stack, structure)
-/speckit.tasks    →  tasks.md     (ordered, checkable work items)
-/speckit.implement →  code + tests (steered by all the layers above)
+/speckit.specify   →  spec.md      (what and why)
+/speckit.plan      →  plan.md      (how — stack, structure)
+/speckit.tasks     →  tasks.md     (ordered, checkable work items)
+/speckit.implement →  code + tests (steered by every layer above)
 ```
 
-You review each artifact before the next step — the same human-review
-discipline as 060, moved earlier where it is cheap. As the Quarkus team
-puts it: treat agents as skilled junior developers — give them structure,
-review their work.
+Fowler's team describes three maturity levels — spec-first (specs
+precede code, then fade), spec-anchored (specs persist and evolve with
+the feature), and spec-as-source (humans edit only specs). This
+exercise practices **spec-anchored**: your artifacts live in the repo
+and evolve with the service.
+
+Two honest counterweights, so this stays engineering and not ideology:
+Fowler's team cautions that SDD workflows can feel disproportionate to
+small problems and that agents sometimes ignore or over-interpret specs
+— which is why every step below has you **review the artifact before
+the next step amplifies it**. And as the Quarkus team puts it: treat
+agents as skilled junior developers — give them structure, review their
+work.
+
+### Go deeper — the sources behind this step
+
+| Source | What you will find |
+|---|---|
+| [Fowler — Exploring Gen AI: SDD tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html) | The memory-bank/specs frame, three SDD maturity levels, and honest critique |
+| [agents.md](https://agents.md/) | The AGENTS.md open standard: format, adoption, nested scoping |
+| [agentskills.io](https://agentskills.io/home) | The agent skills specification |
+| [OpenCode — Skills](https://opencode.ai/docs/skills/) | SKILL.md format, discovery paths, the on-demand skill tool |
+| [Red Hat — How SDD improves AI coding quality](https://developers.redhat.com/articles/2025/10/22/how-spec-driven-development-improves-ai-coding-quality) | The case for specs over vibes, and five get-started steps |
+| [spec-kit — spec-driven.md](https://github.com/github/spec-kit/blob/main/spec-driven.md) | The philosophy: power inversion, executable specs, the constitution |
+| [spec-kit repository](https://github.com/github/spec-kit) | The toolkit you are about to use |
 
 ---
 
