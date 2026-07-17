@@ -92,14 +92,18 @@ LOC_IDS=$(oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_pl
 if [[ -z "$LOC_IDS" ]]; then
   log_info "No catalog Location references ${NAME}"
 else
-  # No externalAccess API token is provisioned, so the Location row is
-  # removed directly; the catalog's orphan strategy (delete) removes the
-  # entity on the next processing loop (~2 min).
+  # No externalAccess API token is provisioned, so the records are removed
+  # directly. catalog:register creates TWO records: the locations table row
+  # AND a Location ENTITY (location:default/generated-*) in refresh_state —
+  # the entity keeps re-emitting the component unless it is deleted too;
+  # orphan strategy (delete) then removes the component within ~2 min.
   for id in $LOC_IDS; do
     oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_plugin_catalog -c \
       "delete from locations where id='${id}'" >/dev/null
     log_success "Deleted catalog Location ${id}"
   done
+  oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_plugin_catalog -c \
+    "delete from refresh_state where unprocessed_entity like '%/${NAME}/%' and entity_ref like 'location%'" >/dev/null 2>&1 || true
   log_info "Component entity disappears on the next catalog processing cycle"
 fi
 
