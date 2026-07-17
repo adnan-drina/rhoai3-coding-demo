@@ -133,7 +133,9 @@ fi
 # --- 6. GitHub repository ---
 if [[ "$FLAG_KEEP_REPO" != "true" ]]; then
   log_step "GitHub repository"
-  if gh repo delete "${REPO_OWNER}/${NAME}" --yes 2>/dev/null; then
+  # load_env exports GITHUB_TOKEN (the pipeline PAT, no delete_repo scope);
+  # gh prefers an env token over the user's oauth login, so drop it here.
+  if env -u GITHUB_TOKEN gh repo delete "${REPO_OWNER}/${NAME}" --yes 2>/dev/null; then
     log_success "Deleted ${REPO_OWNER}/${NAME}"
   else
     log_warn "Could not delete ${REPO_OWNER}/${NAME} (PAT lacks delete_repo scope?)"
