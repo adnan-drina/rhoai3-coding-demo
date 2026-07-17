@@ -218,6 +218,8 @@ that steers the agent is versioned in the repository.
 opencode
 ```
 
+![OpenCode start page](images/opencode-start-page.png)
+
 2. Check the governed setup:
    - `/models` lists exactly four models — the platform's private MaaS
      models (Qwen3.6 default, Nemotron, qwen3-235b, minimax-m2). No
