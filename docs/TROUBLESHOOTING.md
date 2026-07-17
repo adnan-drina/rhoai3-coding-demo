@@ -1544,6 +1544,43 @@ curl -s http://localhost:18080/metrics | grep minimax
 **Recover:** no platform-side fix; track via the subscription-level
 counters and the maas-rhdp provider's own accounting.
 
+## External Model Streaming Resets Through The MaaS Gateway ("Connection reset by server")
+
+**Affected stage:** Stage 040 external models (minimax-m2, qwen3-235b, gpt-4o-mini)
+
+**Symptom:** streaming chat completions through the gateway stall (client
+sees nothing for ~60s, then "Connection reset") or die mid-stream around
+310KB; the identical request sent directly to the upstream provider
+completes cleanly. Short non-streaming requests work.
+
+**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) —
+the `payload-processing` ext_proc (gateway-api-inference-extension BBR) —
+processes response bodies in `FULL_DUPLEX_STREAMED` mode for all gateway
+traffic, and its response handler mishandles SSE (logs
+`Failed to parse response body as JSON ... invalid character 'd'` on every
+`data:` chunk). Red Hat KB: "MaaS streaming responses buffered through
+gateway (RHOAI 3.4)"; product fix planned for RHOAI 3.5.
+
+**Diagnose:**
+
+```bash
+# Envoy access log: 200 DC downstream_remote_disconnect with bytes_sent 0
+GW=$(oc get pods -n openshift-ingress --no-headers | grep maas-default | awk '{print $1}')
+oc logs -n openshift-ingress "$GW" --since=30m | grep chat/completions | tail -3
+# BBR SSE parse errors
+oc logs -n openshift-ingress deploy/payload-processing --since=30m | grep "Failed to parse"
+```
+
+**Fix (deployed):** `gitops/stages/040-.../governance/base/ipp-response-passthrough-envoyfilter.yaml`
+— a separate EnvoyFilter (priority 10) that MERGEs
+`response_body_mode: NONE` + `response_trailer_mode: SKIP` onto the bbr
+filter. Do NOT edit the operator-owned `payload-processing` EnvoyFilter:
+the MaaS controller reverts it, and `response_body_mode: NONE` with
+`response_trailer_mode: SEND` breaks ALL external-model requests (504).
+The KB's full-removal workaround only suits internal-models-only clusters —
+external models need IPP's request-side plugins (model resolution, API-key
+injection). Remove the overlay on RHOAI 3.5 (BACKLOG entry).
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)
