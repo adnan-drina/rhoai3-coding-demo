@@ -211,8 +211,14 @@ The hands-on, step-by-step walkthrough lives in
 [`coding-exercise.md`](coding-exercise.md): scaffold a brand-new service
 from the New Quarkus app template, meet OpenCode with governed models and
 the Quarkus Agent MCP, drive spec-kit from requirements brief to
-implementation, and push straight to green. The requirements brief is
-[`demo-assets/claims-triage-service.md`](demo-assets/claims-triage-service.md).
+implementation, push straight to green, then evolve the service with a
+second spec. The service is `coolstore-catalog` — the product-catalog
+sibling of stage 060's inventory service, rebuilt in Quarkus from the
+original coolstore Spring Boot behavior. Briefs:
+[`demo-assets/001-catalog-products.md`](demo-assets/001-catalog-products.md),
+[`demo-assets/002-catalog-availability.md`](demo-assets/002-catalog-availability.md),
+and the optional
+[`demo-assets/003-catalog-ai-search.md`](demo-assets/003-catalog-ai-search.md).
 
 ## Next Stage
 

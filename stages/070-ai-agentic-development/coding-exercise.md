@@ -11,9 +11,12 @@ corporate standards live in the project itself (constitution, AGENTS.md,
 skills), **turn a requirements brief into executable artifacts** with
 spec-kit (specify → plan → tasks), **let the agent implement** the service
 with its tests, and **push straight to green** — the gate confirms quality
-instead of catching its absence. The service you build is itself
-AI-enhanced: it classifies insurance claims through the same governed MaaS
-gateway that serves your coding assistant.
+instead of catching its absence. Then you **evolve the service with a
+second spec** — integrating it with the stage 060 inventory service — the
+way real systems grow. The service is `coolstore-catalog`: the product
+catalog sibling of the inventory service you extended in stage 060,
+rebuilt fresh in Quarkus from the behavior of the original coolstore
+Spring Boot implementation.
 
 ---
 
@@ -29,8 +32,8 @@ gateway that serves your coding assistant.
 
 1. Click **Create** in the sidebar (or **Self-service** on the home page).
 2. Choose the **New Quarkus app** template.
-3. Application name: `claims-triage` (lowercase, hyphens; this becomes the
-   repository, namespace, and workspace name).
+3. Application name: `coolstore-catalog` (lowercase, hyphens; this becomes
+   the repository, namespace, and workspace name).
 4. Click **Review**, then **Create**, and watch the five steps run: fetch
    the golden scaffold → read platform link endpoints → add catalog
    metadata → publish to GitHub → register in the catalog.
@@ -56,10 +59,10 @@ gateway that serves your coding assistant.
 2. On the Overview page, notice:
    - **Links**: Source Repo, Dev Spaces, SonarQube (code quality) — real
      URLs for this project, derived at scaffold time.
-   - **Deployment Summary**: the `project-claims-triage` Argo CD app,
+   - **Deployment Summary**: the `project-coolstore-catalog` Argo CD app,
      Synced — your namespace and pipeline are being managed by GitOps.
 3. Open the **CI** tab. Within ~3 minutes of scaffolding, a
-   `claims-triage-seed-*` PipelineRun appears and goes green: clone →
+   `coolstore-catalog-seed-*` PipelineRun appears and goes green: clone →
    build → SonarQube gate → image build/push.
 
 **What you should see:** a green first PipelineRun for a project you have
@@ -232,22 +235,29 @@ work.
 
 ## Step 7 — Specify: turn the brief into a spec
 
-1. Open the requirements brief the exercise provides:
-   [`demo-assets/claims-triage-service.md`](demo-assets/claims-triage-service.md)
-   (in the platform repository, stage 070). Skim it: an insurance claims
-   triage service — LLM-first classification through the MaaS gateway with
-   a deterministic keyword fallback, priorities, stats, error handling,
-   acceptance criteria.
+1. Open the first requirements brief the exercise provides:
+   [`demo-assets/001-catalog-products.md`](demo-assets/001-catalog-products.md)
+   (in the platform repository, stage 070). Skim it: the product-listing
+   core of the coolstore catalog — the same behavior as the original
+   coolstore `catalog-spring-boot` service, captured as intent rather
+   than code. Note the seed itemIds: three of them deliberately match
+   the inventory service's data — that pays off in step 11.
 2. In OpenCode, run `/speckit.specify` and paste the brief's content as
    the description.
-3. spec-kit creates `specs/001-claims-triage/spec.md` (the `specs/`
-   directory appears now — created by the tool, owned by the workflow).
-4. **Review the spec.** Check the API table, the fallback rules, and the
-   acceptance criteria survived translation. Edit if anything drifted —
-   this document steers everything downstream.
+3. spec-kit creates `specs/001-.../spec.md` (the `specs/` directory
+   appears now — created by the tool, owned by the workflow).
+4. **Review the spec.** Check the API, the seed data, and the acceptance
+   criteria survived translation. Edit if anything drifted — this
+   document steers everything downstream.
 
 **What you should see:** a structured spec in spec-kit's format, faithful
 to the brief.
+
+> **Spec from behavior, not from code:** the brief was written against
+> the original Spring Boot implementation's observed behavior. The agent
+> never sees the Spring code — it builds Quarkus-native from intent.
+> That is the difference between spec-driven rebuild (this stage) and
+> automated migration (stage 080 does that to real legacy code).
 
 ![Generated spec under review](images/speckit-spec.png)
 
@@ -256,9 +266,8 @@ to the brief.
 ## Step 8 — Plan and tasks
 
 1. Run `/speckit.plan`. Review `plan.md`: expect Quarkus REST with
-   Jackson, the LLM call through the MaaS endpoint per the
-   `llm-integration` skill, constructor injection and proper logging per
-   the REST conventions skill.
+   Jackson, an in-memory repository seeded at startup, constructor
+   injection and proper logging per the REST conventions skill.
 2. Run `/speckit.tasks`. Review `tasks.md`: ordered, individually
    verifiable work items, tests included — the test standards skill makes
    the agent plan tests as first-class tasks, not an afterthought.
@@ -283,11 +292,15 @@ because it is steered by them.
    2. Start Development mode**) and exercise the service:
 
 ```
-curl -s -X POST localhost:8080/api/claims/triage -H "Content-Type: application/json" -d '{"id":"C-1001","summary":"Kitchen fire, tenant reports smoke injury"}'
+curl -s localhost:8080/api/catalog
 ```
 
 ```
-curl -s localhost:8080/api/claims/triage/stats
+curl -s localhost:8080/api/catalog/329299
+```
+
+```
+curl -s -i localhost:8080/api/catalog/999999
 ```
 
 3. Run the tests:
@@ -296,15 +309,9 @@ curl -s localhost:8080/api/claims/triage/stats
 mvn -q test
 ```
 
-**What you should see:** the triage endpoint answering with a priority and
-a `source` (`llm` when the MaaS call classified, `fallback` when the
-keyword path did), stats counting, and tests green — including fallback
-tests that pass without a live LLM.
-
-> **The double governance beat:** the application you just built calls the
-> same MaaS gateway, with the same key discipline and token metering, as
-> the assistant that built it. Developer AI and application AI ride one
-> governed platform — one credential model, one usage dashboard, one gate.
+**What you should see:** four seed products on the list endpoint, the
+Quarkus T-shirt by id, a proper 404 body for the unknown id, and tests
+green.
 
 ![Local verification of the triage endpoint](images/local-verify.png)
 
@@ -313,7 +320,7 @@ tests that pass without a live LLM.
 ## Step 10 — Push straight to green
 
 1. Commit and push from the Source Control view (message:
-   `Implement claims triage per spec 001`).
+   `Implement catalog products per spec 001`).
 2. Watch the **CI** tab: your project's own `app-push` pipeline runs
    clone → build → **sonar-scan** → image build/push.
 3. Open the **SonarQube (code quality)** link: quality gate **Passed** —
@@ -333,6 +340,62 @@ tests that pass without a live LLM.
 
 ---
 
+## Step 11 — Evolve the service with a second spec
+
+Real services grow spec by spec — this is Fowler's *spec-anchored* level
+in practice, on the codebase you just shipped.
+
+1. Open the second brief:
+   [`demo-assets/002-catalog-availability.md`](demo-assets/002-catalog-availability.md)
+   — the catalog enriches products with live stock data from the
+   **stage 060 inventory service** (deployed in `coolstore-dev`), with
+   config-driven wiring and graceful degradation.
+2. Run the cycle again: `/speckit.specify` (paste brief 002) → review →
+   `/speckit.plan` → review → `/speckit.tasks` → `/speckit.implement`.
+3. Verify locally — the catalog now decorates products with availability
+   (in dev mode the inventory URL points at the cluster service; the
+   degradation path answers even when inventory is unreachable):
+
+```
+curl -s localhost:8080/api/catalog/329299
+```
+
+```
+mvn -q test
+```
+
+4. Commit (`Add availability from inventory per spec 002`) and push —
+   second pipeline run, green again.
+5. Back in Developer Hub, look at the two components side by side:
+   `coolstore-catalog` consuming what `coolstore-inventory-service`
+   provides — two stages of the maturity ladder, one product domain,
+   integrated on the platform.
+
+**What you should see:** products carrying `available`/`quantity` from
+the live inventory service — itemIds `329299`, `329199`, `165613` show
+real stock; `100000` (unknown to inventory) degrades gracefully to
+`available: false`.
+
+> **Why the second spec matters more than the first:** any tool can
+> one-shot a greenfield service. Evolving a *running* service against a
+> *live* dependency — with tests that mock it and configuration that
+> targets it — is what daily engineering looks like. The spec captured
+> the intent; the artifacts stayed in the repo; the service grew.
+
+![Catalog products enriched with inventory availability](images/catalog-availability.png)
+
+### Optional — Spec 003: AI product search through the governed gateway
+
+For presenters with time:
+[`demo-assets/003-catalog-ai-search.md`](demo-assets/003-catalog-ai-search.md)
+adds natural-language product search via the platform LLM (with a
+deterministic fallback). It lands the **double governance beat**: the
+application consumes the same MaaS gateway — same keys, token limits,
+and usage telemetry — as the coding assistant that built it. Developer
+AI and application AI, one governed platform.
+
+---
+
 ## Wrap-up
 
 ### What you proved
@@ -345,15 +408,18 @@ tests that pass without a live LLM.
   spec made quality an input, not a hoped-for output.
 - **Spec-driven beats prompt-driven for real work**: every artifact was
   reviewable before the next step amplified it.
-- **One governed AI platform**: the assistant that wrote the app and the
-  app itself share the same gateway, keys, limits, and telemetry.
+- **Services evolve by spec**: the second cycle grew a running service
+  against a live dependency — artifacts in the repo, gate green twice.
+- **One governed AI platform** (with the optional spec 003): the
+  assistant that writes the app and the app itself share the same
+  gateway, keys, limits, and telemetry.
 
 ### Resetting the demo
 
 Teardown is an operator action from the platform repository:
 
 ```
-./scripts/delete-scaffolded-project.sh claims-triage --yes
+./scripts/delete-scaffolded-project.sh coolstore-catalog --yes
 ```
 
 It removes the workspace, catalog entries, Argo app and namespace,

@@ -111,8 +111,8 @@ spec:
 
           Open the repository in Dev Spaces and start OpenCode in the
           terminal. The project ships spec-kit: run `/speckit.specify` with
-          your requirements (the stage 070 exercise provides a claims-triage
-          brief) — it creates `specs/<n>-<feature>/spec.md` — then
+          your requirements (the stage 070 exercise provides coolstore-catalog
+          briefs) — it creates `specs/<n>-<feature>/spec.md` — then
           `/speckit.plan`, `/speckit.tasks`, and `/speckit.implement`. The
           agent reads AGENTS.md and `.opencode/skills/` — corporate
           standards steer the build. Every push to `main` runs the project's
