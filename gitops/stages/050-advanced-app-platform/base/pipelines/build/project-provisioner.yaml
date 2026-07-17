@@ -76,6 +76,10 @@ spec:
           containers:
             - name: provision
               image: registry.redhat.io/openshift4/ose-cli:latest
+              # :latest defaults to Always; a 2-minute CronJob must survive
+              # registry outages on nodes that already cache the image
+              # (observed live: registry.redhat.io 503s starved provisioning).
+              imagePullPolicy: IfNotPresent
               command:
                 - /bin/bash
                 - -c
