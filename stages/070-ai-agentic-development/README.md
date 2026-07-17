@@ -205,6 +205,15 @@ The maturity jump is measurable: skill-guided code exits clean.
   guideline is enforced on every future run. Internal standards stopped
   being wiki pages; they are living assets now."
 
+## Demo Exercise: Spec-Driven Agentic Development on the Golden Path
+
+The hands-on, step-by-step walkthrough lives in
+[`coding-exercise.md`](coding-exercise.md): scaffold a brand-new service
+from the New Quarkus app template, meet OpenCode with governed models and
+the Quarkus Agent MCP, drive spec-kit from requirements brief to
+implementation, and push straight to green. The requirements brief is
+[`demo-assets/claims-triage-service.md`](demo-assets/claims-triage-service.md).
+
 ## Next Stage
 
 [Stage 080: Autonomous Application Migration](../080-ai-autonomous-migration/README.md)
