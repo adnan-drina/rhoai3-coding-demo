@@ -220,6 +220,101 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > Stage 050 during the 2026-07-10 renumbering; validation paths referencing
 > `090-ai-self-service-portal` in entries before that date are historical.
 
+### 2026-07-17 Stage 070 platform complete; coolstore-catalog exercise authored; IPP streaming fix; registry-outage resilience
+
+Stage 070 (OpenCode agentic development) went from known-gap to
+demo-ready in one day, validated by live scaffold cycles throughout.
+
+Scaffold hardening (golden repo agentic-quarkus-scaffold, each fix
+found by a live run):
+
+- OpenCode devfile wiring (`cb13ed8`): cli-ai-tools image + platform
+  init-script postStart — factory workspaces previously got NO tool
+  (only repo devfiles apply to factory starts; no platform CR carries
+  wiring for them).
+- quarkus-jacoco (`5ca6fb3`, the 060 lesson applied proactively) and
+  the redhat-ga repository declaration (`d4a19bf` + structure fix) —
+  the corporate BOM is not on Maven Central; a fresh namespace's
+  cold-cache first build failed resolving the build extension.
+- spec-kit pre-baked (`36c700b`): `specify init --integration opencode`
+  committed — ten /speckit.* commands + .specify/ templates. The
+  scaffold ships ONLY .specify/; spec-kit's own scripts create specs/
+  at runtime (SPECS_DIR is hardcoded upstream). Hand-rolled
+  specs/TEMPLATE.md retired.
+- Official Quarkus Agent MCP (`c845789`): pinned 1.2.3 native binary
+  installed to the persistent volume, joins the generated OpenCode
+  config next to openshift-mcp. Doc search needs a container runtime —
+  workspace pods block nested podman twice over (no /dev/net/tun; crun
+  proc-mount denied) — degraded gracefully, options in BACKLOG. The
+  MCP stays workspace-local stdio BY DESIGN (project-scoped tools);
+  do not centralize.
+
+Template/platform:
+
+- Per-run catalog links via a scaffolder catalog:fetch of the platform
+  coolstore entity (`0ab27bb`) — no cluster hostname in git; link order
+  in catalog/all.yaml is load-bearing. Proven on a live scaffold.
+- fetch:template `replace: true` (`4527487`): skeleton files now
+  overwrite golden-repo copies — without it the per-run devfile name
+  never landed (fetch:template keeps existing files by default).
+- Birth-certificate seed runs (`b7ef42f`): project-provisioner seeds
+  exactly one app-push run per scaffolded project (guards: bootstrap
+  Argo app exists, creds, pipeline, zero runs). The publish-time push
+  races namespace creation by design, so first runs never materialized
+  and CI tabs started empty. Self-healing: delete a failed seed and the
+  next tick re-seeds.
+- delete-scaffolded-project.sh: seven-surface teardown (workspace,
+  optional volume wipe, catalog Location AND its location entity in
+  refresh_state — catalog:register creates TWO records and the entity
+  keeps re-emitting the component; Argo app + namespace; SonarQube;
+  GitHub repo via the user's gh oauth — `env -u GITHUB_TOKEN`, the
+  pipeline PAT deliberately lacks delete_repo; Quay manual). macOS
+  bash-3.2 portable.
+- OpenCode current + governed (`585a120`): official installer to the
+  persistent home (image binary is root-owned/stale), autoupdate on,
+  `enabled_providers` allowlist restricts /models to the four MaaS
+  providers. Kilo removed from 070 factory workspaces (`a3393b6`) —
+  the namespace-wide editor recommendation was auto-installing it;
+  every Kilo workspace installs explicitly, so removal is safe.
+
+External-model streaming (IPP) fix:
+
+- MiniMax "Connection reset" root-caused to RHOAI 3.4 Ingress Payload
+  Processing buffering streaming responses (Red Hat KB confirms; fix in
+  3.5). Clients starve ~60s then reset; hard cut ~310KB. Fix deployed
+  (`c54f7ec`): a separate non-operator-owned EnvoyFilter MERGEs
+  response_body_mode NONE + response_trailer_mode SKIP onto the bbr
+  filter — keeps request-side IPP that external models need (model
+  resolution, API-key injection; all our providers are OpenAI-
+  compatible so response translation is unnecessary). Trap recorded:
+  NONE with trailer SEND breaks ALL external requests (504); never edit
+  the operator-owned filter (controller reverts). Long streams now
+  match direct-upstream latency. Recipe in TROUBLESHOOTING; BACKLOG
+  pins removal on RHOAI 3.5.
+
+Registry-outage resilience (registry.redhat.io / access 502/503 wave):
+
+- The 2-minute provisioner starved on ose-cli:latest (implicit Always)
+  despite node caches → `imagePullPolicy: IfNotPresent` (`631c8be`).
+- A seed run died fetching the UBI base image; deleting the failed run
+  let the next tick re-seed to green — the self-healing path working
+  as designed on its first real incident.
+
+Stage 070 exercise (`85ec059`..`b94114f`): 11-step coding-exercise.md
+around **coolstore-catalog** — spec-driven Quarkus rebuild of the
+original coolstore catalog-spring-boot behavior (reference clone in
+tmp/). Three spec-kit-shaped briefs in demo-assets: 001 product listing
+(original seed data; itemIds shared with the 060 inventory service),
+002 availability from the deployed inventory service (spec-anchored
+evolution, cross-service integration), 003 optional AI search via MaaS
+(double-governance beat). Education step framed by Fowler's
+memory-bank/specs model with a seven-source go-deeper table; concepts
+precede the workspace tour. Framing per review: the gate STAYS — specs
+and skills improve the input, not replace inspection. Dry-run validated
+through step 3 live (template links, per-run naming, seed run green
+after the outage). quarkus-skills repo earmarked for stage 080
+(migrate-spring-to-quarkus).
+
 ### 2026-07-15 Stage 060 validated end-to-end; model quality arc; governed embeddings; reset hardened
 
 The full 12-step coding exercise ran live twice (demo + reset lifecycle).

@@ -1581,6 +1581,41 @@ The KB's full-removal workaround only suits internal-models-only clusters —
 external models need IPP's request-side plugins (model resolution, API-key
 injection). Remove the overlay on RHOAI 3.5 (BACKLOG entry).
 
+## Red Hat Registry Outage Starves Scaffolded-Project Provisioning
+
+**Affected stage:** Stage 050/070 (project-provisioner, seed runs, any
+pipeline building from UBI base images)
+
+**Symptom:** freshly scaffolded projects get no credentials and no seed
+PipelineRun; the provisioner CronJob's `lastSuccessfulTime` stops
+advancing; pods show `ErrImagePull` with `503 Service Unavailable` from
+registry.redhat.io, or a seed run fails at `build-and-push` with
+`502 Bad Gateway` from registry.access.redhat.com.
+
+**Likely cause:** transient Red Hat registry outage. The provisioner ran
+`ose-cli:latest` with the implicit Always pull policy, so every 2-minute
+tick required a live registry even though nodes cache the image (fixed:
+`imagePullPolicy: IfNotPresent`, `631c8be`).
+
+**Diagnose:**
+
+```bash
+oc get cronjob project-provisioner -n app-platform-build -o jsonpath='{.status.lastSuccessfulTime}'
+oc get pods -n app-platform-build | grep provisioner
+curl -s -o /dev/null -w '%{http_code}' https://registry.access.redhat.com/v2/
+```
+
+**Recover:** nothing to fix once the registry returns — provisioning
+self-heals on the next tick. If a seed run failed mid-outage, delete it;
+the zero-runs guard re-seeds automatically:
+
+```bash
+oc delete pipelinerun <name>-seed-<hash> -n <name>-dev
+```
+
+Stuck pre-fix Jobs (pull policy Always baked into their pods) must be
+deleted for the CronJob to mint fresh ones.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)
