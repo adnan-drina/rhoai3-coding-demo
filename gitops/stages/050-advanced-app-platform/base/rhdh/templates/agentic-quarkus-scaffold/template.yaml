@@ -64,6 +64,9 @@ spec:
       action: fetch:template
       input:
         url: ./skeleton
+        # The skeleton's devfile.yaml must overwrite the golden repo's copy
+        # (per-run metadata.name); without replace, existing files win.
+        replace: true
         values:
           name: ${{ parameters.name }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
