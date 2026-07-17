@@ -494,10 +494,33 @@ data:
     umask 077
     if [ "${AI_TOOL}" = "kilo" ]; then write_kilo_config; fi
 
+    ensure_opencode_latest() {
+      # The image-bundled opencode binary is root-owned and ages with the
+      # image; the official installer puts a user-writable copy in HOME
+      # (persistent volume), and autoupdate keeps it current afterwards.
+      if [ ! -x "${HOME}/.opencode/bin/opencode" ] && [ ! -x "${HOME}/.local/bin/opencode" ]; then
+        curl -fsSL --retry 3 --max-time 300 https://opencode.ai/install | bash \
+          || echo "opencode installer failed; falling back to the image-bundled binary"
+      fi
+      for d in "${HOME}/.opencode/bin" "${HOME}/.local/bin"; do
+        if [ -x "${d}/opencode" ] && ! grep -q "rhoai3-coding-demo: opencode path" "${HOME}/.bashrc" 2>/dev/null; then
+          {
+            printf '\n# rhoai3-coding-demo: opencode path\n'
+            printf 'export PATH="%s:${PATH}"\n' "${d}"
+          } >> "${HOME}/.bashrc"
+          echo "opencode on PATH from ${d}."
+          break
+        fi
+      done
+    }
+
     if [ "${AI_TOOL}" = "opencode" ]; then
+      ensure_opencode_latest
       cat > "${HOME}/.config/opencode/opencode.json" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
+      "autoupdate": true,
+      "enabled_providers": ["nemotron", "qwen", "qwen3-235b", "minimax-m2"],
       "provider": {
         "nemotron": {
           "npm": "@ai-sdk/openai-compatible",
