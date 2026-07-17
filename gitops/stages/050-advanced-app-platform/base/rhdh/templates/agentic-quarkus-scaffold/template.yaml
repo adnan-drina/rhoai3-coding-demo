@@ -46,6 +46,19 @@ spec:
       input:
         url: https://github.com/adnan-drina/agentic-quarkus-scaffold/tree/main
 
+    # The platform coolstore entity carries cluster-real link URLs (the
+    # generate-rhdh-catalog hook substitutes route hostnames at sync time).
+    # Fetching it here lets the per-run component derive the same links
+    # without baking any cluster hostname into this template. Link order in
+    # catalog/all.yaml is load-bearing: [0] Source Repo, [1] Deployed App,
+    # [2] Dev Spaces, [3] SonarQube — stage 060 validate guards absolute
+    # URLs, and changing that order breaks the derivations below.
+    - id: platform-entity
+      name: Read platform link endpoints from the catalog
+      action: catalog:fetch
+      input:
+        entityRef: component:default/coolstore-inventory-service
+
     - id: add-catalog-info
       name: Add catalog metadata
       action: fetch:template
@@ -53,6 +66,8 @@ spec:
         url: ./skeleton
         values:
           name: ${{ parameters.name }}
+          sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
+          devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 
     - id: publish
       name: Publish to GitHub

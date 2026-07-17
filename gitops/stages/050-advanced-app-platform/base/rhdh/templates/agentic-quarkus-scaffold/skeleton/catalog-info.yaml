@@ -20,6 +20,16 @@ metadata:
     - agentic
     - quarkus
     - spec-driven
+  links:
+    - url: https://github.com/adnan-drina/${{ values.name }}
+      title: Source Repo
+      icon: github
+    - url: ${{ values.devspacesUrl }}
+      title: Dev Spaces
+      icon: catalog
+    - url: ${{ values.sonarqubeUrl }}
+      title: SonarQube (code quality)
+      icon: dashboard
 spec:
   type: service
   lifecycle: experimental
