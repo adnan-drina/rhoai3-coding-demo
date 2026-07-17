@@ -27,6 +27,17 @@ rules:
   - apiGroups: [""]
     resources: ["secrets", "configmaps"]
     verbs: ["get", "create", "update", "patch"]
+  # Seed-run support: detect scaffolded projects (bootstrap Argo app) and
+  # create the birth-certificate PipelineRun where none exists yet.
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelines"]
+    verbs: ["get"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns"]
+    verbs: ["get", "list", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -82,6 +93,65 @@ spec:
                     exit 0
                   fi
 
+                  REPO_OWNER="${REPO_OWNER:-adnan-drina}"
+
+                  # Scaffolded projects' publish-time push races namespace
+                  # creation, so their first PipelineRun never materializes
+                  # (the dispatcher's create fails while Argo is still
+                  # provisioning). Seed exactly one run - the project's
+                  # birth-certificate build - once credentials and the
+                  # pipeline are in place and no run exists yet. Guarded to
+                  # scaffolded projects via the bootstrap Argo app, so
+                  # platform-owned namespaces (coolstore-dev, seeded by
+                  # deploy.sh) are never touched.
+                  seed_run() {  # <target-ns>
+                    NS="$1"
+                    REPO_NAME="${NS%-dev}"
+                    oc get application.argoproj.io "project-${REPO_NAME}" -n openshift-gitops >/dev/null 2>&1 || return 0
+                    oc get pipeline.tekton.dev app-push -n "${NS}" >/dev/null 2>&1 || return 0
+                    oc get secret github-basic-auth -n "${NS}" >/dev/null 2>&1 || return 0
+                    RUNS=$(oc get pipelinerun.tekton.dev -n "${NS}" --no-headers 2>/dev/null | wc -l | tr -d " ")
+                    [ "${RUNS}" != "0" ] && return 0
+                    echo "  seeding birth-certificate PipelineRun for ${REPO_NAME}"
+                    cat <<SEEDEOF | oc create -f - >/dev/null
+                  apiVersion: tekton.dev/v1
+                  kind: PipelineRun
+                  metadata:
+                    generateName: ${REPO_NAME}-seed-
+                    namespace: ${NS}
+                    labels:
+                      backstage.io/kubernetes-id: ${REPO_NAME}
+                      app.kubernetes.io/name: ${REPO_NAME}
+                  spec:
+                    pipelineRef:
+                      name: app-push
+                    params:
+                      - name: repo-url
+                        value: https://github.com/${REPO_OWNER}/${REPO_NAME}.git
+                      - name: repo-name
+                        value: ${REPO_NAME}
+                      - name: revision
+                        value: main
+                    workspaces:
+                      - name: source
+                        volumeClaimTemplate:
+                          spec:
+                            accessModes: ["ReadWriteOnce"]
+                            resources:
+                              requests:
+                                storage: 1Gi
+                      - name: basic-auth
+                        secret:
+                          secretName: github-basic-auth
+                      - name: dockerconfig
+                        secret:
+                          secretName: quay-push-secret
+                      - name: maven-cache
+                        persistentVolumeClaim:
+                          claimName: maven-cache
+                  SEEDEOF
+                  }
+
                   copy() {  # <kind> <name> <target-ns>
                     if ! oc get "$1" "$2" -n "${SOURCE_NS}" >/dev/null 2>&1; then
                       echo "  source $1/$2 missing in ${SOURCE_NS} — skipping"
@@ -102,5 +172,6 @@ spec:
                     echo "Provisioning ${NS}:"
                     for S in ${SECRETS}; do copy secret "${S}" "${NS}"; done
                     for C in ${CONFIGMAPS}; do copy configmap "${C}" "${NS}"; done
+                    seed_run "${NS}"
                   done
                   echo "Project provisioning complete."
