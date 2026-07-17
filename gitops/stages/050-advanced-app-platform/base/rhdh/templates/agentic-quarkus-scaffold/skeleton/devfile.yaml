@@ -1,0 +1,107 @@
+schemaVersion: 2.2.0
+metadata:
+  name: ${{ values.name }}
+components:
+  - name: development-tooling
+    container:
+      # cli-ai-tools ships the OpenCode CLI (plus Java 21 + Maven) — the
+      # scaffolded workspace is OpenCode-only by design; the project's
+      # .opencode/ directory is the tool-selector signal for the shared
+      # init script (present -> OpenCode, absent -> Kilo).
+      image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+      env:
+        - name: QUARKUS_HTTP_HOST
+          value: 0.0.0.0
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=/home/user/.m2/repository"
+        - name: QUARKUS_ANALYTICS_DISABLED
+          value: "true"
+      memoryLimit: 6Gi
+      cpuLimit: 2500m
+      volumeMounts:
+        - name: m2
+          path: /home/user/.m2
+      endpoints:
+        - name: quarkus-dev
+          targetPort: 8080
+          exposure: public
+          secure: false
+          protocol: https
+        - name: debug
+          targetPort: 5005
+          exposure: none
+          secure: false
+          protocol: tcp
+  - name: m2
+    volume:
+      size: 1G
+commands:
+  - id: init-ai-tools
+    exec:
+      component: development-tooling
+      commandLine: |
+        PROJECT_DIR="${PROJECT_SOURCE:-$(ls -d /projects/* 2>/dev/null | head -1)}"
+        PROFILE="$(basename "${PROJECT_DIR}")"
+        java21_home="${JAVA_HOME:-}"
+        if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+          for candidate in \
+            "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+            /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+            /usr/lib/jvm/java-21-openjdk; do
+            if [ -x "${candidate}/bin/java" ]; then
+              java21_home="${candidate}"
+              break
+            fi
+          done
+        fi
+        if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+          export JAVA_HOME="${java21_home}"
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+            touch "${rc}"
+            if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+              {
+                printf '\n'
+                printf '# rhoai3-coding-demo: java 21 default\n'
+                printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+              } >> "${rc}"
+            fi
+          done
+          echo "Configured Java 21 as the default shell runtime."
+        fi
+        for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
+        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+        if curl -fsS --cacert "${KUBE_CA}" \
+            -H "Authorization: Bearer ${KUBE_TOKEN}" \
+            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
+            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
+            && [ -s /tmp/init-ai-tools.sh ]; then
+          chmod 700 /tmp/init-ai-tools.sh
+          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
+        else
+          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
+          echo "installed but not configured — governed MaaS credentials come"
+          echo "from the platform init script."
+        fi
+  - id: test
+    exec:
+      label: "1. Run tests"
+      component: development-tooling
+      commandLine: "mvn -q test"
+      group:
+        kind: test
+        isDefault: true
+  - id: start-dev
+    exec:
+      label: "2. Start Development mode (Hot reload + debug)"
+      component: development-tooling
+      commandLine: "mvn compile quarkus:dev"
+      group:
+        kind: run
+        isDefault: true
+events:
+  postStart:
+    - init-ai-tools
