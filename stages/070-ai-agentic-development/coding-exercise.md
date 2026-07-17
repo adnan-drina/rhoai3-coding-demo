@@ -90,10 +90,13 @@ written zero lines of code for.
 
 ## Step 4 — Two ideas that make agentic development work
 
-In stage 060, quality lived in two places: your prompt (which was flawed)
-and the pipeline gate (which caught it). This stage moves quality *into
-the project* — and the mental model for how comes from Martin Fowler's
-team: an agent consumes two distinct kinds of context.
+In stage 060, the quality gate caught what a flawed prompt produced. The
+gate stays — every push still exits through it. What changes in this
+stage is the *input*: instead of hand-written one-shot prompts, the
+agent works from structured, reviewable context — specs and skills —
+so what reaches the gate is right the first time. The mental model for
+that context comes from Martin Fowler's team: an agent consumes two
+distinct kinds of it.
 
 ![Memory bank vs Specs — the two kinds of agent context](images/memory-bank-specs.png)
 *(Source: [martinfowler.com — Exploring Gen AI: SDD tools](https://martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html))*
