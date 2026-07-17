@@ -26,14 +26,22 @@ Spring Boot implementation.
 
 **What you should see:** the RHDH home screen with the catalog search bar.
 
+![RHDH login screen](images/rhdh-login.png)
+
 ---
 
 ## Step 2 — Create your project from the golden-path template
 
-1. Click **Create** in the sidebar (or **Self-service** on the home page).
+1. Click **+** icon in the header (or scrol down to **Explore Templates** section on the home page).
+
+![RHDH Self-service](images/rhdh-self-service.png)
+
 2. Choose the **New Quarkus app** template.
 3. Application name: `coolstore-catalog` (lowercase, hyphens; this becomes
    the repository, namespace, and workspace name).
+
+![RHDH Templates](images/rhdh-template.png)
+
 4. Click **Review**, then **Create**, and watch the five steps run: fetch
    the golden scaffold → read platform link endpoints → add catalog
    metadata → publish to GitHub → register in the catalog.
@@ -49,13 +57,16 @@ Spring Boot implementation.
 > every piece pre-approved by the platform team. Developers provision, the
 > platform governs — nobody waits.
 
-![Template run with five green steps](images/template-run.png)
+![Template run with five green steps](images/rhdh-template-run.png)
 
 ---
 
 ## Step 3 — Explore your newborn component
 
 1. Click **Open in catalog**.
+
+![RHDH Catalog](images/rhdh-open-in-catalog.png)
+
 2. On the Overview page, notice:
    - **Links**: Source Repo, Dev Spaces, SonarQube (code quality) — real
      URLs for this project, derived at scaffold time.
@@ -73,74 +84,11 @@ written zero lines of code for.
 > — source access, build, quality gate, registry push — has proven itself.
 > If anything in the platform is broken, you find out now, not mid-feature.
 
-![Component page with links and deployment summary](images/component-newborn.png)
-
 ![CI tab with the seed run green](images/ci-seed-run.png)
 
 ---
 
-## Step 4 — Open the workspace and tour the project
-
-1. Click the **Dev Spaces** link on the component page and let the
-   workspace start (first start pulls the tooling image and installs the
-   latest OpenCode CLI — 1–2 minutes).
-2. Tour the project — note what is and is not here:
-   - `AGENTS.md` — the project's standing rules for any AI agent.
-   - `.opencode/skills/` — corporate standards as executable assets:
-     REST conventions, LLM integration, test standards.
-   - `.opencode/commands/` — the spec-kit commands (`/speckit.*`).
-   - `.specify/` — spec-kit's machinery: templates, scripts, and
-     `memory/constitution.md` (the project's governing principles).
-   - `pom.xml` — Red Hat Quarkus BOM, test deps, JaCoCo wired for the
-     coverage gate.
-   - **No `src/` directory.** The scaffold ships standards and structure,
-     not code. The agent writes the code; there is no `specs/` yet either —
-     spec-kit creates it when you write your first spec.
-
-**What you should see:** a standards-rich, code-empty project. Everything
-that steers the agent is versioned in the repository.
-
-![Workspace tour of the scaffold](images/workspace-scaffold-tour.png)
-
----
-
-## Step 5 — Meet OpenCode
-
-1. Open a terminal and run:
-
-```
-opencode
-```
-
-2. Check the governed setup:
-   - `/models` lists exactly four models — the platform's private MaaS
-     models (Qwen3.6 default, Nemotron, qwen3-235b, minimax-m2). No
-     public catalog, no personal keys.
-   - The config came from the platform at workspace start
-     (`~/.config/opencode/opencode.json`) — providers, keys, and two MCP
-     servers: `openshift` (cluster context) and `quarkus-agent` (the
-     official Quarkus MCP: project lifecycle, extension-aware skills,
-     doc search).
-3. Send a first probe that exercises the Quarkus MCP:
-
-```
-Using the quarkus-agent tools, list this project's extensions and summarize what our .opencode/skills recommend for REST endpoints and tests.
-```
-
-**What you should see:** the agent calls the MCP tools, reads the skills,
-and answers with the project's actual conventions — proof that the
-standards are discoverable, not tribal.
-
-> Note: `minimax-m2` emits visible `<think>` blocks through the external
-> provider — normal behavior, not an error. The local models render their
-> reasoning as collapsible blocks because the platform runs proper
-> reasoning parsers for them.
-
-![OpenCode with governed models and MCP tools](images/opencode-first-probe.png)
-
----
-
-## Step 6 — Two ideas that make agentic development work
+## Step 4 — Two ideas that make agentic development work
 
 In stage 060, quality lived in two places: your prompt (which was flawed)
 and the pipeline gate (which caught it). This stage moves quality *into
@@ -230,6 +178,68 @@ work.
 | [Red Hat — How SDD improves AI coding quality](https://developers.redhat.com/articles/2025/10/22/how-spec-driven-development-improves-ai-coding-quality) | The case for specs over vibes, and five get-started steps |
 | [spec-kit — spec-driven.md](https://github.com/github/spec-kit/blob/main/spec-driven.md) | The philosophy: power inversion, executable specs, the constitution |
 | [spec-kit repository](https://github.com/github/spec-kit) | The toolkit you are about to use |
+
+---
+
+## Step 5 — Open the workspace and tour the project
+
+1. Click the **Dev Spaces** link on the component page and let the
+   workspace start (first start pulls the tooling image and installs the
+   latest OpenCode CLI — 1–2 minutes).
+2. Tour the project — the two context kinds from Step 4, now as real
+   files:
+   - `AGENTS.md` — the project's standing rules for any AI agent.
+   - `.opencode/skills/` — corporate standards as executable assets:
+     REST conventions, LLM integration, test standards.
+   - `.opencode/commands/` — the spec-kit commands (`/speckit.*`).
+   - `.specify/` — spec-kit's machinery: templates, scripts, and
+     `memory/constitution.md` (the project's governing principles).
+   - `pom.xml` — Red Hat Quarkus BOM, test deps, JaCoCo wired for the
+     coverage gate.
+   - **No `src/` directory.** The scaffold ships standards and structure,
+     not code. The agent writes the code; there is no `specs/` yet either —
+     spec-kit creates it when you write your first spec.
+
+**What you should see:** a standards-rich, code-empty project. Everything
+that steers the agent is versioned in the repository.
+
+![Workspace tour of the scaffold](images/workspace-scaffold-tour.png)
+
+---
+
+## Step 6 — Meet OpenCode
+
+1. Open a terminal and run:
+
+```
+opencode
+```
+
+2. Check the governed setup:
+   - `/models` lists exactly four models — the platform's private MaaS
+     models (Qwen3.6 default, Nemotron, qwen3-235b, minimax-m2). No
+     public catalog, no personal keys.
+   - The config came from the platform at workspace start
+     (`~/.config/opencode/opencode.json`) — providers, keys, and two MCP
+     servers: `openshift` (cluster context) and `quarkus-agent` (the
+     official Quarkus MCP: project lifecycle, extension-aware skills,
+     doc search).
+3. Send a first probe that exercises the Quarkus MCP:
+
+```
+Using the quarkus-agent tools, list this project's extensions and summarize what our .opencode/skills recommend for REST endpoints and tests.
+```
+
+**What you should see:** the agent calls the MCP tools, reads the skills,
+and answers with the project's actual conventions — proof that the
+standards are discoverable, not tribal.
+
+> Note: `minimax-m2` emits visible `<think>` blocks through the external
+> provider — normal behavior, not an error. The local models render their
+> reasoning as collapsible blocks because the platform runs proper
+> reasoning parsers for them.
+
+![OpenCode with governed models and MCP tools](images/opencode-first-probe.png)
 
 ---
 
