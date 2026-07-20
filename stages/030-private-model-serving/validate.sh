@@ -17,7 +17,10 @@ MODEL_DEPLOYMENT_NAME="${RHOAI_NEMOTRON_DEPLOYMENT_NAME:-nvidia-nemotron-3-nano-
 MAAS_NS="${RHOAI_MAAS_NAMESPACE:-models-as-a-service}"
 MAAS_NEMOTRON_MODEL_NAME="${RHOAI_MAAS_NEMOTRON_MODEL_NAME:-nemotron-3-nano-30b-a3b}"
 MODEL_DISPLAY_NAME="${RHOAI_NEMOTRON_DISPLAY_NAME:-NVIDIA-Nemotron-3-Nano-30B-A3B-FP8}"
-MODEL_VERSION_NAME="${RHOAI_NEMOTRON_VERSION_NAME:-Version 1}"
+# Must match deploy.sh's default (v3.0 = the modelcar :3.0 tag); a stale
+# "Version 1" default here made the version + artifact metadata checks fail
+# against a correctly-registered model version.
+MODEL_VERSION_NAME="${RHOAI_NEMOTRON_VERSION_NAME:-v3.0}"
 MODEL_URI="${RHOAI_NEMOTRON_MODEL_URI:-oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0}"
 GRAFANA_NS="${RHOAI_GRAFANA_NAMESPACE:-rhoai-demo-grafana}"
 GUIDELLM_DATA_PVC="${RHOAI_GUIDELLM_DATA_PVC:-benchmark-data}"
