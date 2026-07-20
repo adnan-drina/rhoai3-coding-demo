@@ -40,6 +40,17 @@ check "scaffold carries the OpenCode selector signal (.opencode/skills)" \
   "curl -fsSL 'https://api.github.com/repos/adnan-drina/agentic-quarkus-scaffold/contents/.opencode/skills?ref=main' | grep -cq 'quarkus-rest-conventions' && echo present || echo missing" \
   "present"
 
+log_step "OpenCode gateway trust (Bun system-CA fix)"
+# OpenCode embeds Bun, and Bun 1.3+ dropped default system-CA trust
+# (oven-sh/bun#23735) — without NODE_USE_SYSTEM_CA it rejects the MaaS gateway's
+# ingress cert and reaches zero models. Validate both surfaces carry it.
+check "init script exports NODE_USE_SYSTEM_CA" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -q NODE_USE_SYSTEM_CA && echo present || echo missing" \
+  "present"
+check "scaffold devfile sets NODE_USE_SYSTEM_CA container env" \
+  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q NODE_USE_SYSTEM_CA && echo present || echo missing" \
+  "present"
+
 log_step "MaaS prerequisites from earlier stages"
 check "workspace MaaS key Secret exists (Stage 060)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \

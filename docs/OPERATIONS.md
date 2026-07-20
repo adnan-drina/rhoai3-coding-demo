@@ -33,6 +33,14 @@ Before deploying the workshop, confirm:
 
 - You are logged into the target OpenShift cluster with sufficient privileges.
 - The cluster has enough capacity for GPU nodes and model-serving workloads.
+  Specifically (AWS/RHPDS baseline): Stage 020's PreSync hook derives the GPU
+  MachineSet from an existing **worker** MachineSet — so the cluster must have a
+  worker pool whose region/AZ offers **`g6e.2xlarge` (NVIDIA L40S)** instances
+  (the hook inherits the worker's AZ). The hook scales the worker pool to **4**
+  (`m6a.4xlarge` or equivalent, ~16 vCPU / 64 GiB) and provisions **2** GPU
+  nodes; a smaller cluster will not fit RHOAI + model-serving + RHDH + pipelines
+  + Dev Spaces workspaces. On a non-AWS platform the derivation's GPU instance
+  type must be adjusted in `provision-gpu-machineset.yaml`.
 - `oc`, `git`, `bash`, `curl`, and `jq` are available locally.
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.

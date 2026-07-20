@@ -112,6 +112,20 @@ GPU_ALLOCATABLE=$(oc get node -l nvidia.com/gpu.present=true \
 [[ "$GPU_ALLOCATABLE" -ge 2 ]] && R="pass" || R="allocatable=${GPU_ALLOCATABLE:-0}"
 check "GPU nodes advertise at least 2 full-card GPU units (no time-slicing)" "$R"
 
+# The Stage 020 PreSync hook scales the CPU worker pool to 4 (demo baseline for
+# RHOAI + model-serving + RHDH + pipelines + workspaces). Sum replicas of every
+# worker-role MachineSet that is not the GPU pool.
+WORKER_REPLICAS=$(oc get machineset -n openshift-machine-api -o json \
+  --insecure-skip-tls-verify=true 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print(sum((m['spec'].get('replicas') or 0) for m in d['items']
+          if m['spec']['template']['metadata'].get('labels',{}).get('machine.openshift.io/cluster-api-machine-role')=='worker'
+          and 'cluster-api/accelerator' not in m['metadata'].get('labels',{})))
+" 2>/dev/null || echo 0)
+[[ "${WORKER_REPLICAS:-0}" -ge 4 ]] && R="pass" || R="workerReplicas=${WORKER_REPLICAS:-0}"
+check "CPU worker pool scaled to the demo baseline of 4" "$R"
+
 DSC_KUEUE=$(oc get datasciencecluster default-dsc \
   -o jsonpath='{.spec.components.kueue.managementState}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
 DSC_KSERVE=$(oc get datasciencecluster default-dsc \
