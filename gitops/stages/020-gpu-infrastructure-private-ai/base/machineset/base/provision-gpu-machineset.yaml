@@ -111,11 +111,15 @@ data:
     wname = worker["metadata"]["name"]
     print("worker MachineSet:", wname, flush=True)
 
-    # 2) Worker scale-up to >= 4 (idempotent).
+    # 2) Worker scale-up to >= 4 (idempotent). Patch spec.replicas directly
+    #    rather than `oc scale`: scale targets the machinesets/scale subresource,
+    #    which is a distinct RBAC resource from machinesets. Patching the object
+    #    itself only needs the `patch` verb this hook's ClusterRole already grants.
     cur = worker["spec"].get("replicas") or 0
     if cur < WORKER_REPLICAS:
         print("scaling %s: %d -> %d" % (wname, cur, WORKER_REPLICAS), flush=True)
-        sh("scale", "machineset", wname, "-n", MAPI, "--replicas=%d" % WORKER_REPLICAS)
+        sh("patch", "machineset", wname, "-n", MAPI, "--type=merge",
+           "-p", json.dumps({"spec": {"replicas": WORKER_REPLICAS}}))
     else:
         print("%s already at %d (>= %d), leaving" % (wname, cur, WORKER_REPLICAS), flush=True)
 
