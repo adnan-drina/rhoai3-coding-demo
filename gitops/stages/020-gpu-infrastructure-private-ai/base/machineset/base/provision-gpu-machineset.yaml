@@ -143,6 +143,12 @@ data:
         "machine.openshift.io/GPU": "1",
         "machine.openshift.io/memoryMb": "65536",
         "machine.openshift.io/vCPU": "8",
+        # This MachineSet is created imperatively (not from a git manifest), so
+        # tell Argo CD to leave it alone rather than treat it as extraneous and
+        # prune it — otherwise Stage 020's prune+selfHeal would delete the GPU
+        # node. Harmless on a clean install; essential when migrating a cluster
+        # that previously had the old git-managed MachineSet.
+        "argocd.argoproj.io/compare-options": "IgnoreExtraneous",
     }
     for k in ("uid", "resourceVersion", "creationTimestamp", "generation", "selfLink", "managedFields"):
         md.pop(k, None)
