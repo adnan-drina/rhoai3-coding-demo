@@ -62,10 +62,17 @@ spec:
         - /spec/applicationMenu/imageURL
     # Developers and Dev Spaces toggle started at runtime. Keep the rest of the
     # DevWorkspace spec GitOps-owned so workspace definitions can be updated.
+    # The devworkspace-controller also injects a HOST_USERS=true env var into the
+    # tooling container while the workspace is RUNNING (and removes it when
+    # stopped), so it can be declared in neither state without drifting the other.
+    # Ignore just that one controller-owned entry — by value, not list index, so
+    # it holds for every workspace regardless of component/env ordering.
     - group: workspace.devfile.io
       kind: DevWorkspace
       jsonPointers:
         - /spec/started
+      jqPathExpressions:
+        - '.spec.template.components[]?.container?.env[]? | select(.name == "HOST_USERS")'
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
