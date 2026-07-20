@@ -73,9 +73,9 @@ Stage 040 is the governance control point for all model consumption that follows
 
 | Name | Owners | Models (limit/1h) | Priority | Purpose |
 |------|--------|-------------------|----------|---------|
-| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | nemotron, qwen3-6-35b-a3b, qwen3-235b, minimax-m2 @1M | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
+| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | nemotron, qwen3-6-35b-a3b @1M | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
 | `mta-migration-models` | 2 SAs (MTA hook + agentic migration) | nemotron, qwen3-6-35b-a3b @1M | 100 | MTA Developer Lightspeed + agentic migration |
-| `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | nemotron @1M, qwen3-6-35b-a3b @1M, gpt-4o-mini @100K, qwen3-235b @1M, minimax-m2 @1M | **150** | Interactive/Playground — wins user-token selection |
+| `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | nemotron @1M, qwen3-6-35b-a3b @1M, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
 | `developer-hub-models` | rhods-admins, kube:admin | nemotron, qwen3-6-35b-a3b @1M | 100 | Reserved for RHDH integration |
 | `model-evaluation` | unchanged | nemotron @2M/1h, gpt-4o-mini @1M/1h | 100 | Eval workloads |
 | `ai-safety-guardrails` | unchanged | nemotron @500K/1h | 100 | NeMo Guardrails |

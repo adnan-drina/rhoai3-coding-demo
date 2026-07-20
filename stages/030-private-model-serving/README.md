@@ -4,7 +4,7 @@
 
 GPU capacity is useful only after the platform can turn it into a working model endpoint. For a regulated enterprise, this is the point where raw accelerator infrastructure becomes a controlled GenAI capability: model artifacts, runtime selection, endpoint exposure, and resource strategy all need to be explicit before teams can trust the service.
 
-This stage uses the smallest useful slice of the Red Hat AI inference story. It enables the standard KServe-based model serving platform, serves Nemotron with vLLM on the GPU profiles created in Stage 020, and captures a lightweight GuideLLM and Grafana serving baseline. The endpoint has no authentication — proving the serving platform works before MaaS governance is introduced in Stage 040.
+This stage stands up the smallest useful slice of the Red Hat AI inference platform: it enables the standard KServe-based model-serving platform, provisions the vLLM ServingRuntime and the model registry, and wires user-workload monitoring — the foundation that Stage 040 serves the governed Nemotron and Qwen models on. Stage 030 itself deploys no model; that keeps a single Nemotron and a single Qwen, deployed once and governed in Stage 040.
 
 The stage does not yet turn the model into a governed shared service. First we prove the platform can host a GPU-backed LLM endpoint; then Stage 040 publishes validated access through Models-as-a-Service.
 
@@ -52,19 +52,20 @@ Grafana demo dashboards (LLM Performance, vLLM Baseline)
 
 ## What This Stage Adds
 
-KServe model serving and a baseline Nemotron inference endpoint with observability.
+The KServe model-serving **foundation** — the platform, runtime, registry, and
+monitoring that the governed models in Stage 040 build on. Stage 030 does not
+deploy a model itself; the Nemotron and Qwen deployments are owned by Stage 040
+as governed MaaS `LLMInferenceService`s.
 
 - **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
-- **Nemotron InferenceService** — `nvidia-nemotron-3-nano-30b-a3b` in `demo-sandbox` using OCI modelcar artifact (`oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0`), vLLM runtime with 8192-token context, prefix caching, tool calling, and `enable-auth: false`
-- **Model Registry metadata** — registered model, version, and OCI artifact pointer created via REST API in `demo-registry`
+- **vLLM ServingRuntime** — the RHOAI-managed vLLM runtime the Stage 040 models are served on
+- **Model Registry** — the `demo-registry` instance plus the Nemotron model card (registered model, version, OCI artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
 - **User workload monitoring** — enables `prometheus.retention: 7d` for the user workload Prometheus instance (reduced from 15d to avoid disk pressure on the demo cluster); configures Alertmanager with three receivers routing to a demo-local webhook
-- **Grafana dashboards** — community Grafana Operator (v5 channel) with LLM Performance and vLLM/KServe/GPU dashboards; ConsoleLink patched from the live Grafana route via hook Job
-- **GuideLLM benchmark harness** — `benchmark-guidellm.sh` for on-demand capacity testing with synthetic data (defaults to the `models-as-a-service` namespace targeting the Stage 040 LLMInferenceService)
 
 ## What To Notice And Why It Matters
 
-- **Direct serving, not MaaS** — the InferenceService deploys in `demo-sandbox` with no authentication; MaaS governance belongs to Stage 040
-- **Deploy uses REST API, not dashboard workflow** — `deploy.sh` creates registry metadata and the InferenceService programmatically via `oc apply` and Model Registry REST calls, enabling repeatable GitOps-compatible deployment
+- **Foundation, not the models** — Stage 030 proves the serving platform is ready (KServe + vLLM runtime + registry + monitoring); the models themselves are deployed and governed in Stage 040 as MaaS. This keeps a single Nemotron and a single Qwen, deployed once.
+- **Deploy uses REST API, not dashboard workflow** — `deploy.sh` creates the registry metadata programmatically via `oc apply` and Model Registry REST calls, enabling repeatable GitOps-compatible deployment
 - **vLLM runtime from live cluster template** — the ServingRuntime image is not pinned in the repository; it comes from the RHOAI-managed template on the cluster
 - **Lifecycle handover** — the direct Nemotron InferenceService is a serving baseline; Stage 040's deploy retires it to free its GPU for MaaS-published models
 - **GuideLLM targets MaaS by default** — `benchmark-guidellm.sh` defaults to the `models-as-a-service` namespace (Stage 040 LLMInferenceService workload Service); for Stage 030 direct endpoint testing, override `RHOAI_MAAS_NAMESPACE=demo-sandbox`

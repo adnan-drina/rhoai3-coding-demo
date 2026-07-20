@@ -24,11 +24,9 @@ spec:
       flavors:
         - name: default-flavor
           resources:
-            # Sized for the Stage 230 CPU model plane (Qwen3 reranker plus
-            # the granite-30m and MiniLM embedding InferenceServices,
-            # including rolling-update overlap) and the Enterprise RAG
-            # Workbench. Worker allocatable is ~76 CPU, so the quota stays
-            # a governance ceiling, not a hardware one.
+            # CPU governance ceiling for Kueue-managed CPU workloads (workbenches
+            # and any future CPU-served models). Worker allocatable is ~76 CPU, so
+            # this quota is a governance ceiling, not a hardware one.
             - name: cpu
               nominalQuota: "40"
             - name: memory
