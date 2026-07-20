@@ -244,7 +244,9 @@ standards are discoverable, not tribal.
 > reasoning as collapsible blocks because the platform runs proper
 > reasoning parsers for them.
 
-![OpenCode with governed models and MCP tools](images/opencode-first-probe.png)
+![OpenCode first probe](images/opencode-first-probe.png)
+
+![OpenCode first probe result](images/opencode-first-probe-result.png)
 
 ---
 
@@ -253,8 +255,7 @@ standards are discoverable, not tribal.
 1. Open the first requirements brief the exercise provides:
    [`demo-assets/001-catalog-products.md`](demo-assets/001-catalog-products.md)
    (in the platform repository, stage 070). Skim it: the product-listing
-   core of the coolstore catalog — the same behavior as the original
-   coolstore `catalog-spring-boot` service, captured as intent rather
+   core of the coolstore catalog, captured as intent rather
    than code. Note the seed itemIds: three of them deliberately match
    the inventory service's data — that pays off in step 11.
 2. In OpenCode, run `/speckit.specify` and paste the brief's content as
@@ -274,7 +275,9 @@ to the brief.
 > That is the difference between spec-driven rebuild (this stage) and
 > automated migration (stage 080 does that to real legacy code).
 
-![Generated spec under review](images/speckit-spec.png)
+![Generated spec under review start](images/speckit-spec-start.png)
+
+![Generated spec under review end](images/speckit-spec-end.png)
 
 ---
 
