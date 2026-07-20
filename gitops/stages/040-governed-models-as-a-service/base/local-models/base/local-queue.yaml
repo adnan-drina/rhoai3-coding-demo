@@ -11,18 +11,3 @@ metadata:
     argocd.argoproj.io/sync-wave: "8"
 spec:
   clusterQueue: cq-gpu-reserved-demo
----
-# CPU queue for the governed cpu-default HardwareProfile (granite embedding).
-apiVersion: kueue.x-k8s.io/v1beta2
-kind: LocalQueue
-metadata:
-  name: lq-cpu-default
-  namespace: models-as-a-service
-  labels:
-    app.kubernetes.io/name: lq-cpu-default
-    app.kubernetes.io/component: cpu-scheduling
-  annotations:
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    argocd.argoproj.io/sync-wave: "8"
-spec:
-  clusterQueue: cq-cpu-default
