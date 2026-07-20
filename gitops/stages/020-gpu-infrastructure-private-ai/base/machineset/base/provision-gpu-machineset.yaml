@@ -1,0 +1,215 @@
+# Stage 020 PreSync hook — reproducible GPU MachineSet + worker scale-up.
+#
+# WHY a hook instead of a static MachineSet: a MachineSet hardcodes
+# cluster-specific infrastructure (infra id, RHCOS AMI, subnet/security-group
+# filters, IAM instance profile, resource tags) that is unique to the cluster
+# it was captured from. A static GitOps MachineSet therefore only provisions
+# on that one cluster; on a fresh install the subnet/SG filters match nothing
+# and no machine ever comes up. This hook instead DERIVES the GPU MachineSet
+# from the fresh cluster's own worker MachineSet at deploy time — inheriting
+# all the cluster-specific infra — and applies only the GPU-specific overrides
+# (instance type, GPU labels/taint, disk, replicas). It also scales the worker
+# pool to the demo's baseline of 4.
+#
+# Idempotent (runs on every Stage 020 sync):
+#   - worker pool: scaled UP to 4 only if currently below 4.
+#   - GPU MachineSet: created only if one does not already exist, so a manual
+#     GPU scale-down (scripts/resume-gpu-demo.sh) is never undone by a re-sync.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gpu-machineset-provisioner
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: gpu-machineset-provisioner
+    app.kubernetes.io/component: gpu-infra
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gpu-machineset-provisioner
+  labels:
+    app.kubernetes.io/name: gpu-machineset-provisioner
+    app.kubernetes.io/component: gpu-infra
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: ["machine.openshift.io"]
+    resources: ["machinesets"]
+    verbs: ["get", "list", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gpu-machineset-provisioner
+  labels:
+    app.kubernetes.io/name: gpu-machineset-provisioner
+    app.kubernetes.io/component: gpu-infra
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gpu-machineset-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: gpu-machineset-provisioner
+    namespace: redhat-ods-applications
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-machineset-provisioner-script
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: gpu-machineset-provisioner
+    app.kubernetes.io/component: gpu-infra
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  provision.py: |
+    #!/usr/bin/env python3
+    # Derive a portable GPU MachineSet from the cluster's worker MachineSet and
+    # scale the worker pool to 4. See the file header for rationale.
+    import json, subprocess, sys
+
+    MAPI = "openshift-machine-api"
+    GPU_INSTANCE_TYPE = "g6e.2xlarge"   # NVIDIA L40S — matches the demo's Qwen/Nemotron sizing
+    GPU_REPLICAS = 2
+    WORKER_REPLICAS = 4
+    GPU_DISK_GB = 200
+
+    def oc_json(*args):
+        return json.loads(subprocess.check_output(["oc", *args, "-o", "json"]))
+
+    def sh(*args, stdin=None):
+        subprocess.run(["oc", *args], input=stdin, check=True)
+
+    items = oc_json("get", "machineset", "-n", MAPI)["items"]
+
+    # 1) Discover a CPU worker MachineSet: worker role, no accelerator, name not GPU.
+    worker = next(
+        (m for m in items
+         if m["spec"]["template"]["metadata"].get("labels", {}).get(
+                "machine.openshift.io/cluster-api-machine-role") == "worker"
+         and "cluster-api/accelerator" not in m["metadata"].get("labels", {})
+         and "gpu" not in m["metadata"]["name"]),
+        None)
+    if worker is None:
+        sys.exit("ERROR: no CPU worker MachineSet found in %s" % MAPI)
+    wname = worker["metadata"]["name"]
+    print("worker MachineSet:", wname, flush=True)
+
+    # 2) Worker scale-up to >= 4 (idempotent).
+    cur = worker["spec"].get("replicas") or 0
+    if cur < WORKER_REPLICAS:
+        print("scaling %s: %d -> %d" % (wname, cur, WORKER_REPLICAS), flush=True)
+        sh("scale", "machineset", wname, "-n", MAPI, "--replicas=%d" % WORKER_REPLICAS)
+    else:
+        print("%s already at %d (>= %d), leaving" % (wname, cur, WORKER_REPLICAS), flush=True)
+
+    # 3) GPU MachineSet: create only if none exists (respect manual scale-down).
+    existing = next(
+        (m["metadata"]["name"] for m in items
+         if m["metadata"].get("labels", {}).get("cluster-api/accelerator") == "nvidia-gpu"),
+        None)
+    if existing:
+        print("GPU MachineSet already exists (%s); leaving replicas untouched" % existing, flush=True)
+        sys.exit(0)
+
+    # Derive from a fresh read of the worker so we inherit its exact infra spec.
+    w = oc_json("get", "machineset", wname, "-n", MAPI)
+    gpu = wname.replace("worker", "gpu") if "worker" in wname else wname + "-gpu"
+
+    md = w["metadata"]
+    md["name"] = gpu
+    md.setdefault("labels", {}).update({
+        "cluster-api/accelerator": "nvidia-gpu",
+        "app.kubernetes.io/part-of": "gpu-infra",
+        "app.kubernetes.io/component": "gpu-worker",
+    })
+    md["annotations"] = {
+        "machine.openshift.io/GPU": "1",
+        "machine.openshift.io/memoryMb": "65536",
+        "machine.openshift.io/vCPU": "8",
+    }
+    for k in ("uid", "resourceVersion", "creationTimestamp", "generation", "selfLink", "managedFields"):
+        md.pop(k, None)
+
+    sp = w["spec"]
+    sp["replicas"] = GPU_REPLICAS
+    sp["selector"]["matchLabels"]["machine.openshift.io/cluster-api-machineset"] = gpu
+
+    tmpl_md = sp["template"]["metadata"].setdefault("labels", {})
+    tmpl_md.update({
+        "machine.openshift.io/cluster-api-machineset": gpu,
+        "cluster-api/accelerator": "nvidia-gpu",
+        "node-role.kubernetes.io/gpu": "",
+    })
+
+    tmpl_spec = sp["template"]["spec"]
+    tmpl_spec.setdefault("metadata", {}).setdefault("labels", {}).update({
+        "cluster-api/accelerator": "nvidia-gpu",
+        "node-role.kubernetes.io/gpu": "",
+    })
+    val = tmpl_spec["providerSpec"]["value"]
+    val["instanceType"] = GPU_INSTANCE_TYPE
+    try:
+        val["blockDevices"][0]["ebs"]["volumeSize"] = GPU_DISK_GB
+    except (KeyError, IndexError, TypeError):
+        pass
+    if isinstance(val.get("metadata"), dict):
+        val["metadata"].pop("creationTimestamp", None)
+    tmpl_spec["taints"] = [{"effect": "NoSchedule", "key": "nvidia-gpu-only"}]
+
+    w.pop("status", None)
+    print("deriving GPU MachineSet %s (%s, replicas %d) from %s"
+          % (gpu, GPU_INSTANCE_TYPE, GPU_REPLICAS, wname), flush=True)
+    sh("apply", "-f", "-", stdin=json.dumps(w).encode())
+    print("GPU MachineSet %s created" % gpu, flush=True)
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-machineset-provisioner
+  namespace: redhat-ods-applications
+  labels:
+    app.kubernetes.io/name: gpu-machineset-provisioner
+    app.kubernetes.io/component: gpu-infra
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-machineset-provisioner
+    spec:
+      serviceAccountName: gpu-machineset-provisioner
+      restartPolicy: Never
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/scripts/provision.py"]
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: gpu-machineset-provisioner-script
