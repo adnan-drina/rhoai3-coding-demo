@@ -16,6 +16,13 @@ components:
           value: "-Dmaven.repo.local=/home/user/.m2/repository"
         - name: QUARKUS_ANALYTICS_DISABLED
           value: "true"
+        # OpenCode embeds Bun, and Bun 1.3+ no longer trusts the system CA
+        # store by default (oven-sh/bun#23735), so it rejects the MaaS
+        # gateway's ingress certificate. Setting this at the container level
+        # guarantees the trust is in place at process start regardless of
+        # shell timing (the init script also exports it into ~/.bashrc).
+        - name: NODE_USE_SYSTEM_CA
+          value: "1"
       memoryLimit: 6Gi
       cpuLimit: 2500m
       volumeMounts:
