@@ -11,6 +11,15 @@ STAGE_NAME="050-advanced-app-platform"
 load_env
 check_oc_logged_in
 
+# Pre-flight: these values have no safe default — the stage deploys broken
+# without them (Developer Hub crashes, pipelines never trigger). Fail here,
+# before anything is applied, rather than leave a green-but-broken platform.
+require_env GITHUB_TOKEN \
+  "GitHub personal access token (classic, 'repo' scope) for owner ${GITHUB_OWNER:-<your GitHub org/user>}. Developer Hub's scaffolder uses it to read and publish the golden-path template repositories, and every build pipeline uses it to clone the application repo. If it is empty, the Developer Hub backend crashes on startup (scaffolder plugin) and pipelines cannot fetch source. Create at https://github.com/settings/tokens and put it in .env as GITHUB_TOKEN=..."
+require_env GITHUB_WEBHOOK_SECRET \
+  "Shared secret configured on the GitHub repository webhook. The pipeline EventListener validates each push's HMAC signature against it, so a commit only triggers a build when the signature matches. Without it, commit-triggered pipeline runs never fire. Use any long random string and set the same value on the repo webhook; put it in .env as GITHUB_WEBHOOK_SECRET=..."
+assert_required_env
+
 log_step "Stage 050: Advanced Application Platform"
 log_info "Components: devspaces, pipelines, sonarqube, rhdh, migiq"
 

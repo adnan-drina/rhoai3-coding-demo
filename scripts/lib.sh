@@ -22,6 +22,40 @@ load_env() {
     fi
 }
 
+# ── Required .env pre-flight ───────────────────────────────────────────────────
+# A stage that starts mutating the cluster with a mandatory .env value missing
+# produces a broken-but-green deployment: Argo CD reports Synced/Healthy while a
+# component silently fails hours later (an empty GITHUB_TOKEN crashes Developer
+# Hub's scaffolder; a missing webhook secret means no pipeline ever triggers).
+# It is on the deploy script — not the user — to catch this at the door. Declare
+# each required value with require_env (naming what it is and how the stage uses
+# it), then call assert_required_env before the first cluster mutation.
+_REQUIRED_ENV_MISSING=()
+
+# require_env VAR "what this value is and how this stage uses it"
+require_env() {
+    local var="$1" desc="$2"
+    if [[ -z "${!var:-}" ]]; then
+        _REQUIRED_ENV_MISSING+=("${var}"$'\t'"${desc}")
+    fi
+}
+
+# assert_required_env — report every missing value at once (so it can be fixed in
+# one pass) and stop before the stage changes anything.
+assert_required_env() {
+    [[ ${#_REQUIRED_ENV_MISSING[@]} -eq 0 ]] && return 0
+    log_error "Cannot deploy ${STAGE_NAME:-this stage}: ${#_REQUIRED_ENV_MISSING[@]} required value(s) are not set in .env."
+    log_error "The deployment needs these to configure the stage. Add them to ${REPO_ROOT:-.}/.env and re-run — nothing has been applied to the cluster yet:"
+    echo "" >&2
+    local entry var desc
+    for entry in "${_REQUIRED_ENV_MISSING[@]}"; do
+        var="${entry%%$'\t'*}"; desc="${entry#*$'\t'}"
+        printf '  \033[1m%s\033[0m\n      %s\n\n' "$var" "$desc" >&2
+    done
+    _REQUIRED_ENV_MISSING=()
+    exit 44
+}
+
 check_oc_logged_in() {
     local request_timeout="${RHOAI_OC_REQUEST_TIMEOUT:-10s}"
 
