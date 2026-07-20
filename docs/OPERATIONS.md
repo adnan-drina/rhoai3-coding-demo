@@ -264,7 +264,11 @@ through the gateway is buffered for external models (KB "MaaS streaming
 responses buffered through gateway"). All three approaches tested live are
 worse (KB `ipp-disable` 404s external models; MERGE crashloops; REPLACE 504s) —
 see `docs/TROUBLESHOOTING.md`. Internal models stream fine; external models are
-non-streaming-only until RHOAI 3.5.
+non-streaming-only until RHOAI 3.5. **Decision: `qwen3-235b` and `minimax-m2`
+were removed from the deployment** (serving CRs, access-policy modelRefs, and
+OpenCode provider blocks/keys/`enabled_providers`) so a fresh install ships
+only working models; `gpt-4o-mini` kept (playground-only). Re-add both on the
+RHOAI 3.5 upgrade — see BACKLOG.
 
 
 
