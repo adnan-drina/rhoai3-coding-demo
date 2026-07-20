@@ -65,6 +65,9 @@ fi
 
 echo "✓ Cluster guard passed: $ACTUAL_SERVER"
 
+# Fail fast if the nodes are too small for the demo stack, before any changes.
+"$ROOT_DIR/scripts/require-node-sizing.sh"
+
 require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then

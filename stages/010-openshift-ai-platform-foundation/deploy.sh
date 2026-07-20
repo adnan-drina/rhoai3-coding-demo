@@ -31,6 +31,9 @@ fi
 
 echo "✓ Cluster guard passed: $ACTUAL_SERVER"
 
+# Fail fast if the nodes are too small for the demo stack, before any changes.
+"$ROOT_DIR/scripts/require-node-sizing.sh"
+
 # ── Portable wait helper (no GNU `timeout` dependency; macOS lacks it) ─────────
 # wait_for <timeout-seconds> <label> <command...>
 # Polls the command every 10s until it exits 0 or the deadline passes.

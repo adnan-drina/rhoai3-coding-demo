@@ -11,6 +11,9 @@ STAGE_NAME="050-advanced-app-platform"
 load_env
 check_oc_logged_in
 
+# Fail fast if the nodes are too small for the demo stack, before any changes.
+"$REPO_ROOT/scripts/require-node-sizing.sh"
+
 # Pre-flight: these values have no safe default — the stage deploys broken
 # without them (Developer Hub crashes, pipelines never trigger). Fail here,
 # before anything is applied, rather than leave a green-but-broken platform.
