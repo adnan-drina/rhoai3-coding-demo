@@ -10,7 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/name: granite-embedding-english-r2
     app.kubernetes.io/component: local-embedding
-    kueue.x-k8s.io/queue-name: default
+    kueue.x-k8s.io/queue-name: lq-cpu-default
     opendatahub.io/dashboard: "true"
   annotations:
     argocd.argoproj.io/sync-wave: "16"
@@ -18,6 +18,12 @@ metadata:
     openshift.io/display-name: Granite Embedding English R2
     opendatahub.io/model-type: embedding
     security.opendatahub.io/enable-auth: "true"
+    # CPU-only embedding model on the governed CPU profile, so the dashboard
+    # shows "CPU Default" instead of "Custom". The profile binds lq-cpu-default
+    # (added to models-as-a-service in local-queue.yaml) — matching the queue
+    # label above.
+    opendatahub.io/hardware-profile-name: cpu-default
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   model:
     name: granite-embedding-english-r2

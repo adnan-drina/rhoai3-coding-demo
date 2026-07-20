@@ -28,7 +28,7 @@ spec:
       resourceType: Memory
       defaultCount: 8Gi
       minCount: 2Gi
-      maxCount: 32Gi
+      maxCount: 64Gi
   scheduling:
     type: Queue
     kueue:
@@ -57,7 +57,7 @@ spec:
       resourceType: Memory
       defaultCount: 8Gi
       minCount: 2Gi
-      maxCount: 32Gi
+      maxCount: 64Gi
     - identifier: nvidia.com/gpu
       displayName: NVIDIA GPU
       resourceType: Accelerator
@@ -92,7 +92,7 @@ spec:
       resourceType: Memory
       defaultCount: 8Gi
       minCount: 2Gi
-      maxCount: 32Gi
+      maxCount: 64Gi
     - identifier: nvidia.com/gpu
       displayName: NVIDIA GPU
       resourceType: Accelerator
@@ -127,7 +127,7 @@ spec:
       resourceType: Memory
       defaultCount: 8Gi
       minCount: 2Gi
-      maxCount: 32Gi
+      maxCount: 64Gi
     - identifier: nvidia.com/gpu
       displayName: NVIDIA GPU
       resourceType: Accelerator

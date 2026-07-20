@@ -17,6 +17,11 @@ metadata:
     openshift.io/display-name: Qwen3.6 35B A3B FP8-dynamic
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
+    # Governed GPU quota via the Stage 020 HardwareProfile (Queue-based), so the
+    # dashboard shows "GPU Reserved - Demo Team" instead of "Custom". The profile
+    # binds lq-gpu-reserved-demo — matching this model's queue-name label above.
+    opendatahub.io/hardware-profile-name: gpu-reserved-demo
+    opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   model:
     name: qwen3-6-35b-a3b
