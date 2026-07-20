@@ -26,6 +26,15 @@ rules:
     verbs:
       - get
       - patch
+  # Patch the Kuadrant-created istio-pod-monitor to stop scraping the gateway's
+  # status port (15021), which serves health checks, not metrics.
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - podmonitors
+    verbs:
+      - get
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -86,3 +95,33 @@ spec:
                 REQUESTS_CA_BUNDLE=/etc/ssl/certs/openshift-service-ca/service-ca-bundle.crt
 
               echo "Authorino service CA trust configuration is present."
+
+              # Kuadrant observability creates istio-pod-monitor in openshift-ingress
+              # with a podMetricsEndpoint that has no explicit port, so Prometheus
+              # scrapes every istio-proxy container port at /stats/prometheus —
+              # including 15021 (status-port), which serves health checks, not
+              # metrics. That target is permanently up=0 and fires a false-positive
+              # TargetDown (33% of targets down) even though the gateways are
+              # healthy. Drop the status-port target by its final address. The
+              # PodMonitor has no ownerReferences and is not reconciled, so the
+              # patch sticks; this hook re-applies it idempotently on every sync.
+              PM_NS=openshift-ingress
+              PM=istio-pod-monitor
+              for i in $(seq 1 30); do
+                oc get podmonitor "$PM" -n "$PM_NS" >/dev/null 2>&1 && break
+                echo "Waiting for $PM PodMonitor... ($i/30)"
+                sleep 10
+              done
+              if oc get podmonitor "$PM" -n "$PM_NS" >/dev/null 2>&1; then
+                if oc get podmonitor "$PM" -n "$PM_NS" \
+                     -o jsonpath='{.spec.podMetricsEndpoints[0].relabelings[*].regex}' 2>/dev/null \
+                     | grep -q ':15021'; then
+                  echo "istio-pod-monitor already drops the status-port target."
+                else
+                  oc patch podmonitor "$PM" -n "$PM_NS" --type=json -p \
+                    '[{"op":"add","path":"/spec/podMetricsEndpoints/0/relabelings/-","value":{"action":"drop","sourceLabels":["__address__"],"regex":".*:15021"}}]'
+                  echo "Patched istio-pod-monitor to drop the status-port (15021) scrape target."
+                fi
+              else
+                echo "istio-pod-monitor not present (Kuadrant observability off?) — skipping status-port drop."
+              fi
