@@ -2,7 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - modelcar-limitrange.yaml
   - local-queue.yaml
   - nemotron-llminferenceservice.yaml
   - nemotron-maas-modelref.yaml

@@ -97,7 +97,7 @@ spec:
   namespaceSelector: {}
   # No cohort: this queue's GPU is isolated and never lent out.
   resourceGroups:
-    - coveredResources: ["cpu", "memory", "ephemeral-storage"]
+    - coveredResources: ["cpu", "memory"]
       flavors:
         - name: default-flavor
           resources:
@@ -107,17 +107,6 @@ spec:
               # Two single-GPU models: nemotron (16Gi request) + qwen (20Gi
               # request for the ~36GB FP8 modelcar page cache headroom).
               nominalQuota: "48Gi"
-            # Storage governance for the modelcar workloads. The router-scheduler
-            # pod carries the 30-37GiB modelcar image (operator RFE - it lands on
-            # a CPU worker regardless of the scheduler config), but the operator
-            # sets no ephemeral-storage request, so kube-scheduler is disk-blind
-            # and co-locates two schedulers on one worker until its disk fills
-            # (DiskPressure -> eviction churn). A namespace LimitRange supplies a
-            # 20Gi-per-container default request; covering ephemeral-storage here
-            # lets Kueue admit those pods and lets kube-scheduler spread the
-            # modelcars across workers. Aggregate ceiling, not a per-node value.
-            - name: ephemeral-storage
-              nominalQuota: "300Gi"
     - coveredResources: ["nvidia.com/gpu"]
       flavors:
         - name: gpu-l40s
