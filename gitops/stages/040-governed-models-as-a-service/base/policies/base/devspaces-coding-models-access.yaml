@@ -30,16 +30,6 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: qwen3-235b
-      namespace: models-as-a-service
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: minimax-m2
-      namespace: models-as-a-service
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
     - name: granite-embedding-english-r2
       namespace: models-as-a-service
       tokenRateLimits:
@@ -74,10 +64,6 @@ spec:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
     - name: qwen3-6-35b-a3b
-      namespace: models-as-a-service
-    - name: qwen3-235b
-      namespace: models-as-a-service
-    - name: minimax-m2
       namespace: models-as-a-service
     - name: granite-embedding-english-r2
       namespace: models-as-a-service

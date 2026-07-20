@@ -425,38 +425,6 @@ data:
               "limit": { "context": 32768, "output": 4096 }
             }
           }
-        },
-        "qwen3-235b": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "Qwen3 235B (Red Hat internal)",
-          "options": {
-            "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1",
-            "timeout": 600000,
-            "chunkTimeout": 120000
-          },
-          "models": {
-            "qwen3-235b": {
-              "name": "Qwen3 235B",
-              "limit": { "context": 16384, "output": 4096 }
-            }
-          }
-        },
-        "minimax-m2": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "MiniMax M2 (Red Hat internal)",
-          "options": {
-            "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1",
-            "timeout": 600000,
-            "chunkTimeout": 120000
-          },
-          "models": {
-            "minimax-m2": {
-              "name": "MiniMax M2",
-              "limit": { "context": 196608, "output": 16384 }
-            }
-          }
         }
       },
       "mcp": {
@@ -477,14 +445,10 @@ data:
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
-    MAAS_API_KEY_QWEN3_235B="$(secret_value MAAS_API_KEY_QWEN3_235B)"
-    MAAS_API_KEY_MINIMAX_M2="$(secret_value MAAS_API_KEY_MINIMAX_M2)"
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
-      || [ -z "${MAAS_API_KEY_QWEN}" ] \
-      || [ -z "${MAAS_API_KEY_QWEN3_235B}" ] \
-      || [ -z "${MAAS_API_KEY_MINIMAX_M2}" ]; then
+      || [ -z "${MAAS_API_KEY_QWEN}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
       if [ "${AI_TOOL}" = "opencode" ]; then ensure_opencode_compat_path; fi
@@ -550,7 +514,7 @@ data:
     {
       "\$schema": "https://opencode.ai/config.json",
       "autoupdate": true,
-      "enabled_providers": ["nemotron", "qwen", "qwen3-235b", "minimax-m2"],
+      "enabled_providers": ["nemotron", "qwen"],
       "provider": {
         "nemotron": {
           "npm": "@ai-sdk/openai-compatible",
@@ -580,38 +544,6 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 600000,
-            "chunkTimeout": 120000
-          }
-        },
-        "qwen3-235b": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS Qwen3 235B",
-          "models": {
-            "qwen3-235b": {
-              "name": "Qwen3 235B (Red Hat Internal)",
-              "limit": { "context": 16384, "output": 4096 }
-            }
-          },
-          "options": {
-            "apiKey": "${MAAS_API_KEY_QWEN3_235B}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-235b/v1",
-            "timeout": 600000,
-            "chunkTimeout": 120000
-          }
-        },
-        "minimax-m2": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS MiniMax M2",
-          "models": {
-            "minimax-m2": {
-              "name": "MiniMax M2 (Red Hat Internal)",
-              "limit": { "context": 196608, "output": 16384 }
-            }
-          },
-          "options": {
-            "apiKey": "${MAAS_API_KEY_MINIMAX_M2}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/minimax-m2/v1",
             "timeout": 600000,
             "chunkTimeout": 120000
           }
@@ -811,8 +743,6 @@ spec:
 
               write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
               write_model_key "QWEN" "qwen3-6-35b-a3b"
-              write_model_key "QWEN3_235B" "qwen3-235b"
-              write_model_key "MINIMAX_M2" "minimax-m2"
               write_model_key "GRANITE_EMBEDDING" "granite-embedding-english-r2"
 
               oc create secret generic "${SECRET_NAME}" \
