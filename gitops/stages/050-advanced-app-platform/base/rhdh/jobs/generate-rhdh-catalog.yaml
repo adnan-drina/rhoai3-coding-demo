@@ -43,6 +43,11 @@ rules:
 - apiGroups: ["argoproj.io"]
   resources: ["applications"]
   verbs: ["get"]
+# Read the cluster ingress domain to derive the Dev Spaces route host on a
+# first-ever sync, before the CheCluster (wave 10) has created that route.
+- apiGroups: ["config.openshift.io"]
+  resources: ["ingresses"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -111,7 +116,22 @@ spec:
               | awk '/devspaces/ {print $2; exit}' || true)
           fi
           if [ -z "$DEVSPACES_HOST" ]; then
-            echo "ERROR: Dev Spaces route not found"
+            # This job is a wave-8 hook, but the CheCluster that creates the Dev
+            # Spaces route is wave 10, and the Backstage CR (wave 10) consumes the
+            # ConfigMap this job produces — so the job cannot move past wave 10 to
+            # wait for the route without deadlocking. On a first-ever sync the route
+            # therefore does not exist yet. Break the dependency: the route host is
+            # deterministic (CheCluster name "devspaces" + default networking =>
+            # devspaces.<apps-domain>), so derive it from the cluster ingress domain.
+            APPS_DOMAIN=$(oc get ingresses.config.openshift.io cluster \
+              -o jsonpath='{.spec.domain}' 2>/dev/null || true)
+            if [ -n "$APPS_DOMAIN" ]; then
+              DEVSPACES_HOST="devspaces.${APPS_DOMAIN}"
+              echo "Dev Spaces route not created yet; derived host ${DEVSPACES_HOST} from cluster ingress domain"
+            fi
+          fi
+          if [ -z "$DEVSPACES_HOST" ]; then
+            echo "ERROR: Dev Spaces route not found and cluster ingress domain unavailable"
             exit 1
           fi
           DEVSPACES_URL="https://${DEVSPACES_HOST}"
