@@ -1315,6 +1315,49 @@ oc get application <app> -n openshift-gitops -o json \
 pipeline-project provisioning label), the stage deploy.sh must assert the
 label on every run — see `seed_coolstore` step 0 in stage 050.
 
+## OpenCode: "unknown certificate verification error" for Every Model
+
+**Affected stage:** Stage 070 (OpenCode workspaces)
+
+**Symptom:** OpenCode fails on *every* model (MiniMax, Qwen, Nemotron) with
+`Error: unknown certificate verification error`. The request never reaches the
+MaaS gateway (no access-log entry). Kilo Code and the VS Code Kubernetes tabs
+keep working against the same endpoint.
+
+**Likely cause:** OpenCode embeds Bun, and **Bun 1.3.0 stopped trusting the
+system CA store by default** ([oven-sh/bun#23735](https://github.com/oven-sh/bun/issues/23735)).
+The MaaS gateway serves the cluster's ingress (Let's Encrypt) certificate,
+whose chain root lives in the OS trust store but not in Bun's embedded Mozilla
+roots — so Bun rejects it. Kilo Code / VS Code are unaffected because Electron
+uses the OS trust store. The platform never set a CA env for OpenCode because
+it relied on Bun's pre-1.3 default of reading the system store; the
+"always-latest OpenCode" policy (`ensure_opencode_latest` + `autoupdate`)
+silently moved onto a Bun 1.3.x build.
+
+**Diagnose:**
+
+```bash
+# In the workspace terminal:
+strings ~/.opencode/bin/opencode | grep -m1 -aoE 'bun-v[0-9.]+'   # >= 1.3.0
+grep 'certificate verification' ~/.local/share/opencode/log/opencode.log
+# curl (system store) trusts it, opencode (Bun) does not:
+curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
+```
+
+**Recover:**
+
+- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1`
+  into `~/.bashrc` alongside the opencode PATH block, so every workspace start
+  trusts the gateway. See
+  `gitops/stages/050-.../devspaces/maas-api-key-provisioning.yaml`
+  (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
+- **Immediate (running workspace):** quit OpenCode, then
+  `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
+- **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x —
+  [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or
+  `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables
+  verification entirely).
+
 ## Kilo Code Shows "Move Your OpenCode Configuration"
 
 **Affected stage:** Stage 060
