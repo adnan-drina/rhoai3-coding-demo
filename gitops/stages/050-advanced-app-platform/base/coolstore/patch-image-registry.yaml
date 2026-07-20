@@ -1,0 +1,129 @@
+# PostSync hook — point the coolstore deployment at the deployer's registry.
+#
+# WHY: coolstore/deployment.yaml carries a fixed default image so the app is
+# pullable out of the box, but the build pipeline pushes the (re)built image to
+# whatever IMAGE_REGISTRY the operator set in .env (deploy.sh writes it into the
+# app-platform-build-config ConfigMap). On a portable install those differ, so
+# the running app would keep pulling the demo author's image instead of the one
+# its own pipeline produces. This hook rewrites the deployment image to
+# ${IMAGE_REGISTRY}/coolstore-inventory-service:latest after each sync, and the
+# 050 Application ignores that image field so Argo does not revert it. No-op when
+# IMAGE_REGISTRY already matches the default (the demo author's own install).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: patch-coolstore-image
+  namespace: coolstore-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patch-coolstore-image
+  namespace: coolstore-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["coolstore-inventory-service"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patch-coolstore-image
+  namespace: coolstore-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+subjects:
+  - kind: ServiceAccount
+    name: patch-coolstore-image
+    namespace: coolstore-dev
+roleRef:
+  kind: Role
+  name: patch-coolstore-image
+  apiGroup: rbac.authorization.k8s.io
+---
+# Read IMAGE_REGISTRY from the source ConfigMap deploy.sh provisions in
+# app-platform-build (the same value the resolve-image-registry pipeline task
+# reads), so the deployment and the pipeline always agree on the registry.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patch-coolstore-image-read-config
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["app-platform-build-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patch-coolstore-image-read-config
+  namespace: app-platform-build
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+subjects:
+  - kind: ServiceAccount
+    name: patch-coolstore-image
+    namespace: coolstore-dev
+roleRef:
+  kind: Role
+  name: patch-coolstore-image-read-config
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: patch-coolstore-image
+  namespace: coolstore-dev
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: patch-coolstore-image
+    spec:
+      restartPolicy: Never
+      serviceAccountName: patch-coolstore-image
+      containers:
+        - name: patch
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              REGISTRY=$(oc get configmap app-platform-build-config \
+                -n app-platform-build -o jsonpath='{.data.IMAGE_REGISTRY}' 2>/dev/null || true)
+              if [ -z "$REGISTRY" ]; then
+                echo "IMAGE_REGISTRY not set in app-platform-build-config — leaving the deployment's default image"
+                exit 0
+              fi
+              DESIRED="${REGISTRY}/coolstore-inventory-service:latest"
+              CURRENT=$(oc get deployment coolstore-inventory-service -n coolstore-dev \
+                -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+              if [ "$CURRENT" = "$DESIRED" ]; then
+                echo "coolstore image already ${DESIRED} — nothing to do"
+                exit 0
+              fi
+              echo "patching coolstore image: ${CURRENT:-<none>} -> ${DESIRED}"
+              oc set image deployment/coolstore-inventory-service \
+                coolstore-inventory-service="${DESIRED}" -n coolstore-dev

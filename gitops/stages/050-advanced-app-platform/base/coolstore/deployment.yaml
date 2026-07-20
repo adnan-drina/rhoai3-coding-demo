@@ -38,6 +38,12 @@ spec:
         - name: quay-pull-secret
       containers:
         - name: coolstore-inventory-service
+          # Default (demo author's public image) so the app is pullable out of
+          # the box. On a portable install the patch-image-registry PostSync hook
+          # rewrites this to ${IMAGE_REGISTRY}/coolstore-inventory-service:latest,
+          # and the 050 Application ignores this field so Argo keeps the hook's
+          # value. Do not rely on editing this line for portability — set
+          # IMAGE_REGISTRY in .env instead.
           image: quay.io/rhoai3-coding-demo/coolstore-inventory-service:latest
           imagePullPolicy: Always
           ports:

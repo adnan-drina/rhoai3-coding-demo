@@ -15,3 +15,6 @@ resources:
   - deployment.yaml
   - service.yaml
   - route.yaml
+  # PostSync hook: repoint the deployment image at the deployer's IMAGE_REGISTRY
+  # so the app pulls what its own pipeline builds (portable installs).
+  - patch-image-registry.yaml

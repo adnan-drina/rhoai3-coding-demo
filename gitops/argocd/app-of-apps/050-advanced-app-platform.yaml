@@ -73,6 +73,15 @@ spec:
         - /spec/started
       jqPathExpressions:
         - '.spec.template.components[]?.container?.env[]? | select(.name == "HOST_USERS")'
+    # The patch-coolstore-image PostSync hook rewrites this deployment's image to
+    # the deployer's ${IMAGE_REGISTRY}. Ignore the field so Argo keeps the hook's
+    # value instead of reverting to the git default (portable installs).
+    - group: apps
+      kind: Deployment
+      name: coolstore-inventory-service
+      namespace: coolstore-dev
+      jsonPointers:
+        - /spec/template/spec/containers/0/image
     - group: ""
       kind: PersistentVolumeClaim
       jsonPointers:
