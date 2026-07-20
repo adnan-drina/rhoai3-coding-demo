@@ -565,14 +565,15 @@ EOF
   echo "✓ InferenceService created: ${MODEL_NS}/${MODEL_DEPLOYMENT_NAME}"
 }
 
+# Stage 030 provides the model-serving FOUNDATION only: KServe enablement, the
+# vLLM ServingRuntime, and the model registry (including the Nemotron card that
+# the Stage 040 MaaSModelRef consumes). The model deployments (Nemotron + Qwen)
+# are owned by Stage 040 as governed MaaS LLMInferenceServices; Stage 030 no
+# longer deploys a direct InferenceService in demo-sandbox (that was copied from
+# another project and duplicated the governed Nemotron).
 ensure_registry_metadata
-runtime_name=$(ensure_serving_runtime | tail -1)
-ensure_inference_service "$runtime_name"
+ensure_serving_runtime
 
-wait_for_jsonpath "Nemotron InferenceService readiness" \
-  "inferenceservice/${MODEL_DEPLOYMENT_NAME}" "$MODEL_NS" \
-  "{.status.conditions[?(@.type==\"Ready\")].status}" "True" \
-  "${RHOAI_STAGE210_MODEL_READY_ATTEMPTS:-180}" 10
-
-echo "✓ Stage 030 deployment baseline is ready"
+echo "✓ Stage 030 serving foundation is ready (KServe + vLLM runtime + model registry)."
+echo "  Nemotron + Qwen are deployed by Stage 040 (governed MaaS)."
 echo "  Run ./030-private-model-serving/validate.sh to confirm readiness."

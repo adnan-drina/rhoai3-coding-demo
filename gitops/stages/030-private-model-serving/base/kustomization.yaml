@@ -3,6 +3,4 @@ kind: Kustomization
 
 resources:
   - rhoai-dsc/base
-  - benchmark-data/base
   - monitoring/base
-  - grafana/aggregate/overlays/demo

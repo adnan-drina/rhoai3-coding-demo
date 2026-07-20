@@ -935,31 +935,7 @@ else
 fi
 check "MaaSModelRef points to the local Nemotron LLMInferenceService" "$R"
 
-EMBEDDING_MODEL="${RHOAI_EMBEDDING_MODEL:-granite-embedding-english-r2}"
-if resource_exists "llminferenceservices.serving.kserve.io/${EMBEDDING_MODEL}" "$MAAS_NS"; then
-  EMBED_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${EMBEDDING_MODEL}" "$MAAS_NS" "{.spec.model.uri}")
-  EMBED_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${EMBEDDING_MODEL}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
-  if [[ "$EMBED_URI" == "oci://registry.redhat.io/rhai/modelcar-granite-embedding-english-r2:3.0" &&
-    "$EMBED_READY" == "True" ]]; then
-    R="pass"
-  else
-    R="uri=${EMBED_URI:-missing},ready=${EMBED_READY:-missing}"
-  fi
-else
-  R="missing"
-fi
-check "local Granite Embedding LLMInferenceService is ready in MaaS namespace" "$R"
-
-EMBED_MR_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${EMBEDDING_MODEL}" "$MAAS_NS" "{.spec.modelRef.kind}")
-EMBED_MR_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${EMBEDDING_MODEL}" "$MAAS_NS" "{.spec.modelRef.name}")
-if [[ "$EMBED_MR_KIND" == "LLMInferenceService" && "$EMBED_MR_NAME" == "$EMBEDDING_MODEL" ]]; then
-  R="pass"
-else
-  R="kind=${EMBED_MR_KIND:-missing},name=${EMBED_MR_NAME:-missing}"
-fi
-check "MaaSModelRef points to the local Granite Embedding LLMInferenceService" "$R"
-
-for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key qwen3-235b:maas-rhdp.apps.maas.redhatworkshops.io:redhat-models-provider-api-key minimax-m2:maas-rhdp.apps.maas.redhatworkshops.io:redhat-models-provider-api-key; do
+for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key; do
   IFS=: read -r EXT_NAME EXT_ENDPOINT EXT_SECRET <<< "$ext_model"
   EXT_PROVIDER=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.provider}")
   EXT_EP=$(jsonpath "externalmodels.maas.opendatahub.io/${EXT_NAME}" "$MAAS_NS" "{.spec.endpoint}")
@@ -986,21 +962,15 @@ DS_SUB="devspaces-coding-models"
 DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 DS_NEMOTRON_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"nemotron-3-nano-30b-a3b\")].tokenRateLimits[0].limit}")
 DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-35b-a3b\")].tokenRateLimits[0].limit}")
-DS_QWEN_EXT_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-235b\")].tokenRateLimits[0].limit}")
-DS_MINIMAX_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"minimax-m2\")].tokenRateLimits[0].limit}")
-DS_EMBED_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"granite-embedding-english-r2\")].tokenRateLimits[0].limit}")
 if contains_word "$DS_MODELS" "nemotron-3-nano-30b-a3b" &&
   contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
-  contains_word "$DS_MODELS" "qwen3-235b" &&
-  contains_word "$DS_MODELS" "minimax-m2" &&
-  contains_word "$DS_MODELS" "granite-embedding-english-r2" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_NEMOTRON_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" && "$DS_QWEN_EXT_LIMIT" == "1000000" && "$DS_MINIMAX_LIMIT" == "1000000" && "$DS_EMBED_LIMIT" == "500000" ]]; then
+  [[ "$DS_NEMOTRON_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" ]]; then
   R="pass"
 else
-  R="models=${DS_MODELS:-missing},nemotron=${DS_NEMOTRON_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing},qwenExt=${DS_QWEN_EXT_LIMIT:-missing},minimax=${DS_MINIMAX_LIMIT:-missing},embed=${DS_EMBED_LIMIT:-missing}"
+  R="models=${DS_MODELS:-missing},nemotron=${DS_NEMOTRON_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has 5 models (4 coding @1M + embedding @500K, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has 2 local coding models @1M (nemotron + qwen, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
@@ -1054,10 +1024,6 @@ OPENAI_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-gpt-4o-mini" "$MAAS_NS" "{
 NEMOTRON_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 OPENAI_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 NEMOTRON_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-QWEN_EXT_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-qwen3-235b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-MINIMAX_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-minimax-m2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-QWEN_EXT_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-qwen3-235b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-MINIMAX_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-minimax-m2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 if [[ -n "$GATEWAY_LOG_ERRORS" ]]; then
   R="gateway Envoy log reports recent generated filter rejection"
 elif ! contains_word "$GATEWAY_READY" "True"; then
@@ -1068,76 +1034,12 @@ elif ! grep -q 'kuadrant-auth-maas-default-gateway' <<<"$GATEWAY_FILTERS" ||
 elif [[ "$OPENAI_AUTH_ENFORCED" != "True" ||
   "$NEMOTRON_AUTH_ENFORCED" != "True" ||
   "$OPENAI_TRLP_ENFORCED" != "True" ||
-  "$NEMOTRON_TRLP_ENFORCED" != "True" ||
-  "$QWEN_EXT_AUTH_ENFORCED" != "True" ||
-  "$MINIMAX_AUTH_ENFORCED" != "True" ||
-  "$QWEN_EXT_TRLP_ENFORCED" != "True" ||
-  "$MINIMAX_TRLP_ENFORCED" != "True" ]]; then
-  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},nemotronAuth=${NEMOTRON_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},nemotronLimit=${NEMOTRON_TRLP_ENFORCED:-missing},qwenExtAuth=${QWEN_EXT_AUTH_ENFORCED:-missing},minimaxAuth=${MINIMAX_AUTH_ENFORCED:-missing},qwenExtLimit=${QWEN_EXT_TRLP_ENFORCED:-missing},minimaxLimit=${MINIMAX_TRLP_ENFORCED:-missing}"
+  "$NEMOTRON_TRLP_ENFORCED" != "True" ]]; then
+  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},nemotronAuth=${NEMOTRON_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},nemotronLimit=${NEMOTRON_TRLP_ENFORCED:-missing}"
 else
   R="pass"
 fi
 check "MaaS Gateway generated policy filters are healthy" "$R"
-
-if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  EMBED_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-granite-embedding-english-r2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-  EMBED_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-granite-embedding-english-r2" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-  if [[ "$EMBED_AUTH_ENFORCED" == "True" && "$EMBED_TRLP_ENFORCED" == "True" ]]; then
-    R="pass"
-  else
-    R="auth=${EMBED_AUTH_ENFORCED:-missing},trlp=${EMBED_TRLP_ENFORCED:-missing}"
-  fi
-  check "Granite Embedding MaaS gateway policy enforcement (auth + token rate limit)" "$R"
-
-  AI_DEVELOPER_TOKEN_EMBED=$(get_demo_user_token "ai-developer" "${AI_DEVELOPER_PASSWORD:-}" || true)
-  if [[ -n "$AI_DEVELOPER_TOKEN_EMBED" ]]; then
-    EMBED_KEY_BODY=$(mktemp "${TMPDIR:-/tmp}/rhoai-stage040-embed-key.XXXXXX")
-    TMP_FILES+=("$EMBED_KEY_BODY")
-    EMBED_KEY_STATUS=$(curl -sk --max-time 30 -o "$EMBED_KEY_BODY" -w '%{http_code}' \
-      -H "Authorization: Bearer ${AI_DEVELOPER_TOKEN_EMBED}" \
-      -H "Content-Type: application/json" \
-      "https://${GATEWAY_HOST}/maas-api/v1/api-keys" \
-      --data-binary "{\"name\":\"stage040-embed-validation\",\"subscriptionName\":\"devspaces-coding-models\"}" \
-      2>/dev/null || true)
-    EMBED_KEY_VALUE=$(jq -r '.key // empty' "$EMBED_KEY_BODY" 2>/dev/null || true)
-    EMBED_KEY_ID=$(jq -r '.id // empty' "$EMBED_KEY_BODY" 2>/dev/null || true)
-    if [[ "$EMBED_KEY_VALUE" == sk-oai-* ]]; then
-      EMBED_SMOKE_BODY=$(mktemp "${TMPDIR:-/tmp}/rhoai-stage040-embed-smoke.XXXXXX")
-      TMP_FILES+=("$EMBED_SMOKE_BODY")
-      EMBED_SMOKE_STATUS=$(curl -sk --max-time 60 -o "$EMBED_SMOKE_BODY" -w '%{http_code}' \
-        -H "Authorization: Bearer ${EMBED_KEY_VALUE}" \
-        -H "Content-Type: application/json" \
-        "https://${GATEWAY_HOST}/models-as-a-service/granite-embedding-english-r2/v1/embeddings" \
-        --data-binary '{"model":"granite-embedding-english-r2","input":["models as a service"]}' \
-        2>/dev/null || true)
-      if [[ "$EMBED_SMOKE_STATUS" == "200" ]] &&
-        jq -e '.data[0].embedding | length > 0' "$EMBED_SMOKE_BODY" >/dev/null 2>&1; then
-        EMBED_DIM=$(jq '.data[0].embedding | length' "$EMBED_SMOKE_BODY" 2>/dev/null || echo "?")
-        R="pass (dim=${EMBED_DIM})"
-      elif [[ "$EMBED_SMOKE_STATUS" == "429" ]]; then
-        R="warn: MaaS policy throttled embedding smoke test"
-      else
-        R="status=${EMBED_SMOKE_STATUS:-missing},body=$(head -c 180 "$EMBED_SMOKE_BODY" | tr '\n' ' ')"
-      fi
-      if [[ -n "$EMBED_KEY_ID" ]]; then
-        curl -sk --max-time 15 -o /dev/null -X DELETE \
-          -H "Authorization: Bearer ${AI_DEVELOPER_TOKEN_EMBED}" \
-          "https://${GATEWAY_HOST}/maas-api/v1/api-keys/${EMBED_KEY_ID}" 2>/dev/null || true
-      fi
-    else
-      R="could not mint embedding API key: status=${EMBED_KEY_STATUS}"
-    fi
-  else
-    R="AI_DEVELOPER_PASSWORD missing or login failed"
-  fi
-  if [[ "$R" == warn:* ]]; then
-    warn "Granite Embedding /v1/embeddings smoke test returns a vector" "${R#warn: }"
-  else
-    check "Granite Embedding /v1/embeddings smoke test returns a vector" "$R"
-  fi
-else
-  check "Granite Embedding smoke test can run" "curl or jq missing"
-fi
 
 if resource_exists "configmap/${MCP_DISCOVERY_CONFIGMAP}" "redhat-ods-applications"; then
   MCP_DISCOVERY_DATA=$(oc get configmap "$MCP_DISCOVERY_CONFIGMAP" -n redhat-ods-applications \
