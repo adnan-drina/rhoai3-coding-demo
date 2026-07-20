@@ -18,6 +18,12 @@ require_env GITHUB_TOKEN \
   "GitHub personal access token (classic, 'repo' scope) for owner ${GITHUB_OWNER:-<your GitHub org/user>}. Developer Hub's scaffolder uses it to read and publish the golden-path template repositories, and every build pipeline uses it to clone the application repo. If it is empty, the Developer Hub backend crashes on startup (scaffolder plugin) and pipelines cannot fetch source. Create at https://github.com/settings/tokens and put it in .env as GITHUB_TOKEN=..."
 require_env GITHUB_WEBHOOK_SECRET \
   "Shared secret configured on the GitHub repository webhook. The pipeline EventListener validates each push's HMAC signature against it, so a commit only triggers a build when the signature matches. Without it, commit-triggered pipeline runs never fire. Use any long random string and set the same value on the repo webhook; put it in .env as GITHUB_WEBHOOK_SECRET=..."
+require_env IMAGE_REGISTRY \
+  "Container image registry namespace the build pipeline pushes to, e.g. quay.io/<org>. The coolstore deployment pulls its image from here (tag :latest), and the seed + every exercise build push here. Without it the pipeline has nowhere to publish the image the running app expects. Set IMAGE_REGISTRY=quay.io/<your-org> in .env."
+require_env QUAY_ROBOT_USER \
+  "Robot account username with write access to \${IMAGE_REGISTRY}. The pipeline authenticates its image push with it. Create a robot account on your registry and set QUAY_ROBOT_USER=<org>+<robot> in .env."
+require_env QUAY_ROBOT_TOKEN \
+  "Robot account token paired with QUAY_ROBOT_USER. Without it the build cannot push and the coolstore :latest image is never (re)published, so pushes during the exercise produce no new deployment. Set QUAY_ROBOT_TOKEN=... in .env."
 assert_required_env
 
 log_step "Stage 050: Advanced Application Platform"
