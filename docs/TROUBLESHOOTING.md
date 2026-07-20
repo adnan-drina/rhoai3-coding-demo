@@ -1597,32 +1597,42 @@ sees nothing for ~60s, then "Connection reset") or die mid-stream around
 completes cleanly. Short non-streaming requests work.
 
 **Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) —
-the `payload-processing` ext_proc (gateway-api-inference-extension BBR) —
-processes response bodies in `FULL_DUPLEX_STREAMED` mode for all gateway
-traffic, and its response handler mishandles SSE (logs
-`Failed to parse response body as JSON ... invalid character 'd'` on every
-`data:` chunk). Red Hat KB: "MaaS streaming responses buffered through
-gateway (RHOAI 3.4)"; product fix planned for RHOAI 3.5.
+the operator-owned `payload-processing` ext_proc (gateway-api-inference-
+extension BBR) — buffers response bodies (`response_body_mode:
+FULL_DUPLEX_STREAMED`) for ALL gateway traffic, to translate non-OpenAI-native
+external APIs into OpenAI-compatible SSE. In 3.4 that response processing is
+applied even to already-OpenAI-compatible traffic, so streamed SSE is held and
+arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times
+out at ~60s. Internal vLLM models and the external endpoints hit directly both
+stream fine — the buffer is purely this stage. Red Hat KB: "MaaS streaming
+responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
 
 **Diagnose:**
 
 ```bash
-# Envoy access log: 200 DC downstream_remote_disconnect with bytes_sent 0
-GW=$(oc get pods -n openshift-ingress --no-headers | grep maas-default | awk '{print $1}')
-oc logs -n openshift-ingress "$GW" --since=30m | grep chat/completions | tail -3
-# BBR SSE parse errors
-oc logs -n openshift-ingress deploy/payload-processing --since=30m | grep "Failed to parse"
+GW=$(oc get pods -n openshift-ingress -l gateway.networking.k8s.io/gateway-name=maas-default-gateway -o jsonpath='{.items[0].metadata.name}')
+# Envoy access log: 200 DC downstream_remote_disconnect, bytes_sent 0, ~60s duration
+oc logs -n openshift-ingress "$GW" -c istio-proxy --since=30m | grep chat/completions | tail -3
+# IPP present on the gateway (count > 0 = active); compare stream direct-to-endpoint (works) vs via gateway (buffers)
+oc exec -n openshift-ingress "$GW" -c istio-proxy -- pilot-agent request GET config_dump | grep -c ext_proc.bbr
 ```
 
-**Fix (deployed):** `gitops/stages/040-.../governance/base/ipp-response-passthrough-envoyfilter.yaml`
-— a separate EnvoyFilter (priority 10) that MERGEs
-`response_body_mode: NONE` + `response_trailer_mode: SKIP` onto the bbr
-filter. Do NOT edit the operator-owned `payload-processing` EnvoyFilter:
-the MaaS controller reverts it, and `response_body_mode: NONE` with
-`response_trailer_mode: SEND` breaks ALL external-model requests (504).
-The KB's full-removal workaround only suits internal-models-only clusters —
-external models need IPP's request-side plugins (model resolution, API-key
-injection). Remove the overlay on RHOAI 3.5 (BACKLOG entry).
+**There is NO viable RHOAI 3.4 gateway fix for clusters that use external
+models.** All three approaches were tested live on 2026-07-20 and each is worse
+than the buffering — do NOT re-attempt them:
+
+| Attempt | Result |
+|---|---|
+| KB `ipp-disable` — separate EnvoyFilter, `operation: REMOVE` the bbr filter | **External models 404** — they need BBR for body-based routing + API-key injection. The KB is explicitly "internal models only (no External Models)." |
+| Separate filter, `MERGE` `response_body_mode: NONE` + `SKIP` | No-op — `NONE` is the protobuf zero-value a MERGE silently drops — AND the resulting `FULL_DUPLEX_STREAMED`+`SKIP` listener is invalid → istiod NACK → **gateway crashloop** (all MaaS down). |
+| Separate filter, `REPLACE` bbr with `response_body_mode: NONE` | **All traffic 504** — breaks the ext_proc full-duplex contract; `failure_mode_allow: false` then fails every request. |
+
+**Resolution (RHOAI 3.4):** do NOT patch the gateway; never edit the
+operator-owned `payload-processing` filter (the MaaS controller reverts it).
+Use **internal** models (`qwen3-6-35b-a3b`) for streaming-dependent flows
+(OpenCode's spec-kit cycle) — they stream cleanly. External models
+(`minimax-m2`, `qwen3-235b`) stay usable for **non-streaming / short** requests.
+Apply the product fix on the RHOAI 3.5 upgrade (BACKLOG).
 
 ## Red Hat Registry Outage Starves Scaffolded-Project Provisioning
 
