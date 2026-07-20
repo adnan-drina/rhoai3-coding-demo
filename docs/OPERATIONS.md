@@ -220,7 +220,45 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > Stage 050 during the 2026-07-10 renumbering; validation paths referencing
 > `090-ai-self-service-portal` in entries before that date are historical.
 
-### 2026-07-17 Stage 070 platform complete; coolstore-catalog exercise authored; IPP streaming fix; registry-outage resilience
+### 2026-07-20 Fresh-env reproducibility: GitOps↔live drift audit; GPU MachineSet derivation; OpenCode CA fix; IPP streaming verdict
+
+GitOps↔live drift audit ahead of a fresh-environment install.
+
+**Models — reproducible, no drift.** Qwen 3.6 and Nemotron are both fully in
+GitOps (`040-.../local-models/{qwen,nemotron}-llminferenceservice.yaml`) with
+portable OCI model sources (`oci://registry.redhat.io/rhai/modelcar-…`), full
+vLLM specs, `replicas: 2`; the `040` app is Synced/Healthy. A fresh install
+brings up both models. (Live currently runs 1 GPU node / Qwen only — a
+temporary cost-saving scale-down, not the target state.)
+
+**GPU MachineSet — was NOT reproducible; fixed.** The old
+`machineset-gpu.yaml` hardcoded cluster-specific infra (infra id, RHCOS AMI,
+subnet/SG filters, IAM profile, tags), so on any other cluster the filters
+match nothing and no GPU node provisions. Replaced it with a Stage 020 PreSync
+hook (`machineset/base/provision-gpu-machineset.yaml`) that **derives** the GPU
+MachineSet from the fresh cluster's own worker MachineSet — inheriting real
+infra — and applies only GPU overrides (g6e.2xlarge/L40S, GPU labels +
+`nvidia-gpu-only` taint, 200Gi disk, `replicas: 2`), and **scales the worker
+pool to 4**. Idempotent (worker scaled up only if <4; GPU MachineSet created
+only if absent, so `scripts/resume-gpu-demo.sh` scale-downs survive re-sync).
+Created MachineSets carry `argocd.argoproj.io/compare-options: IgnoreExtraneous`
+so Stage 020's prune+selfHeal never deletes the GPU node. Migration on the live
+cluster: the pre-existing Argo-managed GPU MachineSet was annotated
+`IgnoreExtraneous` so the transition did not prune the running node.
+
+**OpenCode CA fix (shipped earlier same day).** OpenCode embeds Bun, and Bun
+1.3+ dropped default system-CA trust (oven-sh/bun#23735) → it rejected the MaaS
+gateway's ingress cert for every model. Fix: `NODE_USE_SYSTEM_CA=1` exported by
+the init script and set as a devfile container env. Verified end-to-end.
+
+**IPP external-model streaming — no viable 3.4 fix (documented).** Streaming
+through the gateway is buffered for external models (KB "MaaS streaming
+responses buffered through gateway"). All three approaches tested live are
+worse (KB `ipp-disable` 404s external models; MERGE crashloops; REPLACE 504s) —
+see `docs/TROUBLESHOOTING.md`. Internal models stream fine; external models are
+non-streaming-only until RHOAI 3.5.
+
+
 
 Stage 070 (OpenCode agentic development) went from known-gap to
 demo-ready in one day, validated by live scaffold cycles throughout.
