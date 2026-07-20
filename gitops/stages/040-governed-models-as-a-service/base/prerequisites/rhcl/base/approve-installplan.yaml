@@ -90,11 +90,19 @@ spec:
             - name: PACKAGE_LABEL
               value: operators.coreos.com/rhcl-operator.openshift-operators
             - name: ALLOWED_CSVS
-              # Every CSV an approvable plan may carry (kuadrant family
-              # pins). A plan bundling anything else is REFUSED - the
-              # guard against the 2026-07-10 incident class (shared
-              # openshift-operators plans bundling unexpected upgrades).
-              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 authorino-operator.v1.3.2 limitador-operator.v1.3.1 dns-operator.v1.3.1"
+              # Every CSV an approvable plan may carry. The kuadrant family
+              # (rhcl/authorino/limitador/dns) are the pinned versions; a plan
+              # bundling anything else is REFUSED - the guard against the
+              # 2026-07-10 incident class (shared openshift-operators plans
+              # bundling unexpected upgrades).
+              #
+              # servicemeshoperator3 (OpenShift Service Mesh 3 = the Istio layer
+              # RHCL/Kuadrant runs on) is included because on a fresh cluster OLM
+              # co-bundles the SM3 upgrade into the RHCL InstallPlan (both live in
+              # openshift-operators). v3.4.0 is the demo-validated Service Mesh 3
+              # version; allowlisting it specifically still refuses any FUTURE
+              # untested SM3 upgrade, exactly like the kuadrant pins.
+              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 authorino-operator.v1.3.2 limitador-operator.v1.3.1 dns-operator.v1.3.1 servicemeshoperator3.v3.4.0"
           command:
             - /bin/bash
             - -c
