@@ -535,6 +535,34 @@ if [[ -n "$REGISTRY_HOST" ]]; then
   fi
 fi
 
+# Model catalog (rhoai-model-registries) — dashboard-facing but RHOAI-operator-managed,
+# so it lives OUTSIDE the demo's GitOps and stays invisible to every Argo app. Its
+# Postgres schema is created by a one-time migration at catalog startup; if Postgres
+# is later restarted (node drain, reschedule) the tables are lost and the catalog
+# serves HTTP 500 on every models query while deploy/model-catalog still reports
+# Available and all Argo apps stay green. Probe the same filter_options endpoint the
+# dashboard's Model Catalog page calls, so an empty-DB catalog FAILS validation
+# instead of silently rendering an empty catalog. Recovery: restart deploy/model-catalog
+# in rhoai-model-registries to re-run the migration.
+CATALOG_AVAILABLE=$(oc get deployment model-catalog -n "$REGISTRY_NS" \
+  -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+[[ "$CATALOG_AVAILABLE" == "True" ]] && R="pass" || R="available=${CATALOG_AVAILABLE:-not found}"
+check "Model catalog deployment Available" "$R"
+
+CATALOG_HOST=$(oc get route model-catalog-https -n "$REGISTRY_NS" \
+  -o jsonpath='{.spec.host}' --insecure-skip-tls-verify=true 2>/dev/null || echo "")
+if [[ -n "$CATALOG_HOST" ]]; then
+  CATALOG_TOKEN=$(oc whoami -t 2>/dev/null || echo "")
+  CATALOG_CODE=$(curl -sk -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${CATALOG_TOKEN}" \
+    "https://${CATALOG_HOST}/api/model_catalog/v1alpha1/models/filter_options" 2>/dev/null || echo "000")
+  [[ "$CATALOG_CODE" == "200" ]] && R="pass" \
+    || R="http=${CATALOG_CODE} (empty schema serves 500 — restart deploy/model-catalog to re-migrate)"
+  check "Model catalog API serves models (Postgres schema intact)" "$R"
+else
+  check "Model catalog API serves models (Postgres schema intact)" "route model-catalog-https missing"
+fi
+
 ISVC_JSON=""
 LLMISVC_JSON=""
 
