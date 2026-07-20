@@ -507,19 +507,27 @@ data:
           {
             printf '\n# rhoai3-coding-demo: opencode path\n'
             printf 'export PATH="%s:${PATH}"\n' "${d}"
-            # opencode embeds Bun, and Bun 1.3+ no longer trusts the system CA
-            # store by default (oven-sh/bun#23735). Without this, opencode
-            # rejects the MaaS gateway's ingress certificate ("unknown
-            # certificate verification error") for every model, while Kilo
-            # Code / VS Code keep working because they use the OS trust store.
-            # NODE_USE_SYSTEM_CA=1 restores Bun's system-CA trust; NOTE
-            # NODE_EXTRA_CA_CERTS does not work on Bun 1.3.x (oven-sh/bun#24581).
-            printf 'export NODE_USE_SYSTEM_CA=1\n'
           } >> "${HOME}/.bashrc"
-          echo "opencode on PATH from ${d} (NODE_USE_SYSTEM_CA=1 set for Bun system-CA trust)."
+          echo "opencode on PATH from ${d}."
           break
         fi
       done
+      # opencode embeds Bun, and Bun 1.3+ no longer trusts the system CA store
+      # by default (oven-sh/bun#23735), so it rejects the MaaS gateway's
+      # ingress certificate ("unknown certificate verification error") for
+      # every model while Kilo Code / VS Code keep working via the OS trust
+      # store. NODE_USE_SYSTEM_CA=1 restores Bun's system-CA trust. Guarded by
+      # its OWN marker (not the opencode-path one) so it also lands on existing
+      # persistent volumes that already carry the path block above. NOTE:
+      # NODE_EXTRA_CA_CERTS does not work on Bun 1.3.x (oven-sh/bun#24581).
+      if { [ -x "${HOME}/.opencode/bin/opencode" ] || [ -x "${HOME}/.local/bin/opencode" ]; } \
+         && ! grep -q "rhoai3-coding-demo: opencode system-ca" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: opencode system-ca\n'
+          printf 'export NODE_USE_SYSTEM_CA=1\n'
+        } >> "${HOME}/.bashrc"
+        echo "NODE_USE_SYSTEM_CA=1 set for opencode (Bun system-CA trust)."
+      fi
     }
 
     ensure_quarkus_agent_mcp() {
