@@ -95,6 +95,16 @@ Private local models keep prompts and code inside the OpenShift platform boundar
 
 The READMEs explain the architecture. Operators should use the commands below only in a prepared OpenShift environment.
 
+**Environment sizing (required).** The full stack (RHOAI + ODF + GPU + MaaS +
+model serving) puts heavy, sustained load on the control plane. Provision
+**`m6a.4xlarge`-class nodes (16 vCPU / 64 GiB) for the control plane *and* the
+CPU workers** — the control-plane sizing is the one that bites, and on RHDP it is
+often a separate setting from the workers. The default sandbox `m6a.xlarge`
+(4 vCPU / 16 GiB) control plane is **not** sufficient: kube-apiserver exhausts the
+node's CPU/memory and masters fail one after another. GPU nodes are sized by
+accelerator (e.g. `g6e.2xlarge`) and are exempt. Every stage's `deploy.sh` runs
+`scripts/require-node-sizing.sh` first and refuses to start on undersized nodes.
+
 ```bash
 git clone https://github.com/adnan-drina/rhoai3-coding-demo.git
 cd rhoai3-coding-demo
