@@ -42,23 +42,6 @@ spec:
       # candidate - container composition should follow the config). Removing
       # them entirely needs a bring-your-own EPP via pool.endpointPickerRef
       # (BACKLOG). Revisit this profile if a model scales beyond one replica.
-      #
-      # Anti-affinity (2026-07-21): because the modelcar lands on this CPU
-      # scheduler pod, two models' schedulers on one worker exhaust its disk
-      # (ImagePullBackOff - the scheduler pods carry no ephemeral-storage request,
-      # so the kube-scheduler is disk-blind). Repel other model scheduler pods
-      # (app.kubernetes.io/component=llminferenceservice-router-scheduler) from the
-      # same node so the modelcars spread across workers.
-      template:
-        affinity:
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  labelSelector:
-                    matchLabels:
-                      app.kubernetes.io/component: llminferenceservice-router-scheduler
-                  topologyKey: kubernetes.io/hostname
       config:
         inline:
           apiVersion: inference.networking.x-k8s.io/v1alpha1
