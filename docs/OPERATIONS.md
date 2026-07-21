@@ -228,6 +228,52 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > Stage 050 during the 2026-07-10 renumbering; validation paths referencing
 > `090-ai-self-service-portal` in entries before that date are historical.
 
+### 2026-07-21 cluster-kjbwr: OLM shared-InstallPlan merge fixed (kuadrant install-then-unsubscribe); model scheduler co-location findings; all five stages green
+
+Fresh-env deploy on cluster-kjbwr. Stages 010–050 all Synced/Healthy; 040 validation
+75/0-fail, 050 validation 39/0-fail (RHDH allowed its ~15 min first-boot plugin init).
+
+**OLM shared-InstallPlan merge blocked Stage 050 — root-caused and fixed reproducibly.**
+Pipelines + RHTAS could not install: OLM bundled the pinned-forbidden `rhcl-operator.v1.4.1`
+into their shared `openshift-operators` InstallPlan, which the trusted-delivery guard
+(correctly) refused (2026-07-10 incident policy). Root cause: RHCL's only channel (`stable`)
+heads at 1.4.x, so a standing Manual Subscription pends the MaaS-incompatible upgrade forever;
+because kuadrant (rhcl/authorino/dns/limitador) and pipelines/rhtas are all **AllNamespaces**
+operators sharing openshift-operators, OLM co-resolves every change into one plan. Namespace
+separation (Red Hat's documented remedy, KCS 6389681) is impossible here — two all-namespaces
+OperatorGroups make every namespace a member of two groups. **Fix:** replaced the standing
+kuadrant Subscriptions + rhcl approve-guard with one idempotent provisioning Job
+(`040-.../prerequisites/rhcl/base/provision-kuadrant.yaml`) that installs+pins the family then
+**deletes the Subscriptions**. CSVs / running operators persist (MaaS unaffected — models stayed
+Ready throughout); only OLM upgrade-tracking stops, which is the intent. With no kuadrant
+Subscription pending, OLM regenerated a clean `[rhtas v1.4.2, pipelines v1.22.4]` plan that
+auto-approved and completed. 040 validate now checks the pinned CSV is Succeeded **and** the
+Subscription is absent (the positive signal the pattern ran). This is the durable, reproducible
+form of the recurring 2026-07-06/-10/-14 "OLM bundled an unexpected CSV" incident class.
+
+**Model router-scheduler disk co-location — two candidate fixes empirically rejected.** The
+llm-d `LLMInferenceService` stamps the 30-37 GiB modelcar onto the CPU router-scheduler pod
+(operator RFE) with no `ephemeral-storage` request, so kube-scheduler is disk-blind and can
+co-locate both models' schedulers on one ~100 GiB worker → `DiskPressure` eviction churn (which
+also evicted cluster-wide pods incl. the OLM approve jobs, compounding the 050 block). Tested and
+**reverted**: (a) `podAntiAffinity` via `spec.router.scheduler.template` — the field is a full
+pod-template *replace*, so an affinity-only template drops the operator-injected containers and
+the operator fails reconcile (`containers: Required value`); (b) a namespace LimitRange default
+`ephemeral-storage` request — the scheduler pods route through the RHOAI-managed `default` Kueue
+queue (covers cpu/memory only), so the request makes them Kueue-inadmissible, and covering it
+means mutating shared RHOAI state. Interim remediation that works: delete the co-located scheduler
+pod once its node is `DiskPressure`-tainted — the NoSchedule taint repels it to a clean worker
+(no cordon needed). Durable fixes remain BYO-EPP (`pool.endpointPickerRef`, drops the modelcar) or
+a 200 GiB worker disk resize — see BACKLOG. In practice with 4 CPU workers + 2 models the
+schedulers usually spread on their own; both models ended Ready and stable.
+
+**Monitoring hygiene re-asserted.** The eviction churn regenerated four operator ServiceMonitors
+(kueue/nfd/odh-model-controller/lws) without `openshift.io/user-monitoring=false` and reset the
+Istio PodMonitor's metrics-port relabel → `PrometheusOperatorRejectedResources`/`TargetDown`.
+Re-applied the exclusions (deploy.sh `ensure_known_monitoring_noise_is_excluded` logic); alerts
+cleared. Note: these are imperative deploy.sh patches that operator regeneration can undo — a
+demo-prep re-check, not a durable guarantee.
+
 ### 2026-07-20 Fresh-env reproducibility: GitOps↔live drift audit; GPU MachineSet derivation; OpenCode CA fix; IPP streaming verdict
 
 GitOps↔live drift audit ahead of a fresh-environment install.
