@@ -322,6 +322,14 @@ curl -s localhost:8080/api/catalog/329299
 curl -s -i localhost:8080/api/catalog/999999
 ```
 
+> **Browser access:** dev mode's port 8080 gets its own public route —
+> when Quarkus starts, the IDE pops a notification for the new port, and
+> the **Endpoints** view (bottom of the Explorer sidebar) lists
+> `quarkus-dev` with the exact link. The URL pattern is
+> `https://<user>-<workspace>-quarkus-dev.apps.<cluster-domain>/api/catalog`
+> — note it is a dedicated subdomain, **not** a path under the IDE URL;
+> appending `/api/...` to the editor link routes to the IDE, not the app.
+
 ![Quarkus Dev Mode](images/quarkus-devmode.png)
 
 **What you should see:** four seed products on the list endpoint, the
