@@ -1,0 +1,196 @@
+# Kuadrant / Red Hat Connectivity Link provisioning.
+#
+# WHY A JOB INSTEAD OF STANDING SUBSCRIPTIONS
+# The kuadrant family (rhcl + authorino + dns + limitador) must stay pinned to
+# the 1.3.x line: RHCL 1.4.x ships a Wasm gateway config incompatible with the
+# RHOAI 3.4 Envoy and OOMKills the MaaS gateway (2026-07-10 incident). But the
+# only channel ("stable") has 1.4.x at its head, so a standing Manual-approval
+# Subscription pends a 1.4.x upgrade FOREVER. Because rhcl/authorino/dns/
+# limitador AND the Stage 050 pipelines/rhtas operators are all AllNamespaces
+# operators sharing openshift-operators, OLM co-resolves every namespace change
+# into ONE InstallPlan - so that perpetual kuadrant 1.4.x pending state gets
+# bundled into the pipelines/rhtas install plan, which the trusted-delivery
+# guard then (correctly) refuses. Result: Stage 050 operators never install.
+# Namespace separation (Red Hat's documented remedy) is impossible here: two
+# all-namespaces OperatorGroups make every namespace a member of two groups.
+#
+# This Job installs the kuadrant family at the pinned CSVs, then DELETES the
+# Subscriptions. The CSVs (running operators) persist and keep reconciling the
+# MaaS gateway - only OLM upgrade-tracking stops, which is exactly the intent
+# (the family is deliberately frozen at 1.3.x). With no kuadrant Subscription
+# pending, OLM generates a clean pipelines/rhtas InstallPlan and Stage 050
+# proceeds. Idempotent: re-running finds the CSVs Succeeded and just re-asserts
+# the unsubscribed state.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: provision-kuadrant-operators
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: provision-kuadrant-operators
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rhoai-demo-provision-kuadrant-operators
+  labels:
+    app.kubernetes.io/name: provision-kuadrant-operators
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+rules:
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["subscriptions"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["installplans"]
+    verbs: ["get", "list", "patch", "delete"]
+  - apiGroups: ["operators.coreos.com"]
+    resources: ["clusterserviceversions"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rhoai-demo-provision-kuadrant-operators
+  labels:
+    app.kubernetes.io/name: provision-kuadrant-operators
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rhoai-demo-provision-kuadrant-operators
+subjects:
+  - kind: ServiceAccount
+    name: provision-kuadrant-operators
+    namespace: openshift-operators
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-kuadrant-operators
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/name: provision-kuadrant-operators
+    app.kubernetes.io/component: api-gateway-governance
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  activeDeadlineSeconds: 1200
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: provision-kuadrant-operators
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # subName|package|pinnedCSV|channel  (the four pinned kuadrant operators)
+            - name: KUADRANT_SUBS
+              value: >-
+                rhcl-operator|rhcl-operator|rhcl-operator.v1.3.5|stable
+                authorino-operator-stable-redhat-operators-openshift-marketplace|authorino-operator|authorino-operator.v1.3.2|stable
+                dns-operator-stable-redhat-operators-openshift-marketplace|dns-operator|dns-operator.v1.3.1|stable
+                limitador-operator-stable-redhat-operators-openshift-marketplace|limitador-operator|limitador-operator.v1.3.1|stable
+            - name: ALLOWED_CSVS
+              # Every CSV an approvable plan may carry. Anything else is REFUSED -
+              # the guard against the 2026-07-10 incident class. servicemeshoperator3
+              # (the Istio layer RHCL runs on) co-bundles on fresh clusters; v3.4.0
+              # is the demo-validated Service Mesh 3 version.
+              value: "rhcl-operator.v1.3.5 authorino-operator.v1.3.1 authorino-operator.v1.3.2 limitador-operator.v1.3.1 dns-operator.v1.3.1 servicemeshoperator3.v3.4.0"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              NS=openshift-operators
+
+              csv_phase() { oc get csv "$1" -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null || true; }
+
+              # 1. Ensure each kuadrant operator is installed. Only create a
+              #    Subscription if its pinned CSV isn't Succeeded yet (idempotent).
+              for entry in $KUADRANT_SUBS; do
+                IFS='|' read -r subName package pinnedCSV channel <<< "$entry"
+                if [[ "$(csv_phase "$pinnedCSV")" == "Succeeded" ]]; then
+                  echo "${package}: ${pinnedCSV} already Succeeded."
+                  continue
+                fi
+                echo "${package}: creating pinned Subscription ${subName} (${pinnedCSV})."
+                printf 'apiVersion: operators.coreos.com/v1alpha1\nkind: Subscription\nmetadata:\n  name: %s\n  namespace: %s\nspec:\n  name: %s\n  channel: %s\n  installPlanApproval: Manual\n  source: redhat-operators\n  sourceNamespace: openshift-marketplace\n  startingCSV: %s\n' \
+                  "$subName" "$NS" "$package" "$channel" "$pinnedCSV" | oc apply -f -
+              done
+
+              # 2. Approve pending plans that carry a pinned kuadrant CSV and ONLY
+              #    allowlisted CSVs, until all four pinned CSVs are Succeeded.
+              deadline=$(( $(date +%s) + 900 ))
+              while :; do
+                all_ok=1
+                for entry in $KUADRANT_SUBS; do
+                  IFS='|' read -r _ _ pinnedCSV _ <<< "$entry"
+                  [[ "$(csv_phase "$pinnedCSV")" == "Succeeded" ]] || all_ok=0
+                done
+                [[ $all_ok -eq 1 ]] && break
+
+                for plan in $(oc get installplans -n "$NS" \
+                    -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true); do
+                  [[ -n "$plan" ]] || continue
+                  csvs="$(oc get installplan "$plan" -n "$NS" -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || true)"
+                  carries_pinned=0
+                  for entry in $KUADRANT_SUBS; do
+                    IFS='|' read -r _ _ pinnedCSV _ <<< "$entry"
+                    [[ " ${csvs} " == *" ${pinnedCSV} "* ]] && carries_pinned=1
+                  done
+                  [[ $carries_pinned -eq 1 ]] || continue
+                  unexpected=""
+                  for c in ${csvs}; do
+                    [[ " ${ALLOWED_CSVS} " == *" ${c} "* ]] || unexpected="${unexpected} ${c}"
+                  done
+                  if [[ -n "$unexpected" ]]; then
+                    echo "REFUSING ${plan}: bundles unexpected CSVs:${unexpected}"
+                    continue
+                  fi
+                  oc patch installplan "$plan" -n "$NS" --type=merge -p '{"spec":{"approved":true}}' >/dev/null 2>&1 || true
+                  echo "Approved ${plan} (${csvs})"
+                done
+
+                [[ "$(date +%s)" -lt "$deadline" ]] || { echo "ERROR: timed out installing kuadrant family"; exit 1; }
+                sleep 10
+              done
+              echo "All kuadrant CSVs Succeeded."
+
+              # 3. Unsubscribe: delete the kuadrant Subscriptions so OLM stops
+              #    perpetually pending the 1.4.x upgrade (the state that poisons the
+              #    shared pipelines/rhtas InstallPlan). CSVs / running operators stay.
+              for entry in $KUADRANT_SUBS; do
+                IFS='|' read -r subName _ _ _ <<< "$entry"
+                oc delete subscription "$subName" -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
+                echo "Unsubscribed ${subName} (CSV keeps running)."
+              done
+
+              # 4. Delete any lingering unapproved plan that still bundles a kuadrant
+              #    CSV (incl. the merged pipelines/rhtas plan) so OLM regenerates clean.
+              for plan in $(oc get installplans -n "$NS" \
+                  -o jsonpath='{range .items[?(@.spec.approved==false)]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true); do
+                [[ -n "$plan" ]] || continue
+                csvs="$(oc get installplan "$plan" -n "$NS" -o jsonpath='{.spec.clusterServiceVersionNames[*]}' 2>/dev/null || true)"
+                case " ${csvs} " in
+                  *" rhcl-operator."*|*" authorino-operator."*|*" limitador-operator."*|*" dns-operator."*)
+                    oc delete installplan "$plan" -n "$NS" --ignore-not-found >/dev/null 2>&1 || true
+                    echo "Cleared stale kuadrant-bundled plan ${plan}."
+                    ;;
+                esac
+              done
+
+              echo "Kuadrant family pinned and unsubscribed; shared InstallPlan resolution is clean."
