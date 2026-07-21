@@ -1,50 +1,52 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Coolstore Service Constitution
 
-## Core Principles
+Non-negotiable principles for this service. Every `/speckit.*` command
+consults this file; the plan's **Constitution Check must validate
+against these articles by name** — a check that lists generic
+principles instead is a failed check.
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## I. The skills are law
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+`.opencode/skills/` is the corporate standard, binding in **every
+phase** — specify, plan, tasks, and implement alike. Plans and data
+models that contradict a skill are defects, not alternatives:
+`quarkus-rest-conventions` (API shape, records, injection, errors,
+money), `project-test-standards` (test style, mocking, assertions),
+`spec-driven-workflow` (phase artifacts and completion rules),
+`llm-integration` (MaaS wiring).
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+## II. Spec fidelity
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Seed data, API paths, field names, and thresholds stated in a spec are
+contracts, not examples. Never round, substitute, or invent values.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+## III. Response shapes are dedicated records
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Never modify an existing record to add response fields — each distinct
+response shape is its own projection record (see the skills). Existing
+models are frozen unless the spec explicitly changes them.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## IV. Explicit dependencies
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Every library the design relies on (runtime or test) is named with
+exact coordinates in the plan and added by an explicit setup task.
+"Or"-options in a plan are unresolved decisions — resolve them before
+tasks.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## V. Simplicity (YAGNI)
+
+Build only what the spec requires. Extra config classes, wrapper DTOs,
+error taxonomies, and abstraction layers the spec does not demand are
+complexity-tracking violations that need written justification.
+
+## VI. Quality is an input
+
+Tests are first-class tasks; the SonarQube gate fails on any new issue;
+gate hygiene (no unused imports, no dead code, no field injection) is
+part of "done", not cleanup for later.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Any deviation from these articles must appear in the plan's Complexity
+Tracking table with a justification — silent deviations are review
+findings.

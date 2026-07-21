@@ -21,7 +21,10 @@ command order and the artifacts each phase must produce.
 
 1. Read the active spec in `specs/` (the user names it; otherwise the most
    recent non-TEMPLATE file).
-2. Consult every skill in `.opencode/skills/` before writing code.
+2. Consult every skill in `.opencode/skills/` before **every** workflow
+   phase — planning and task breakdown included, not just coding. Plans
+   and data models that contradict a skill are defects. The constitution
+   (`.specify/memory/constitution.md`) binds all `/speckit` phases.
 3. Implement in small, verifiable increments. Run `mvn -q test` after each.
 4. Update the README API table in the same change as any endpoint change —
    the definition of done lives in the skills.
