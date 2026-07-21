@@ -221,8 +221,8 @@ opencode
 ![OpenCode start page](images/opencode-start-page.png)
 
 2. Check the governed setup:
-   - `/models` lists exactly four models — the platform's private MaaS
-     models (Qwen3.6 default, Nemotron, qwen3-235b, minimax-m2). No
+   - `/models` lists exactly two models — the platform's private MaaS
+     models (Qwen3.6 default, Nemotron), both served on cluster GPUs. No
      public catalog, no personal keys.
    - The config came from the platform at workspace start
      (`~/.config/opencode/opencode.json`) — providers, keys, and two MCP
@@ -239,12 +239,8 @@ Using the quarkus-agent tools, list this project's extensions and summarize what
 and answers with the project's actual conventions — proof that the
 standards are discoverable, not tribal.
 
-> Note: `minimax-m2` emits visible `<think>` blocks through the external
-> provider — normal behavior, not an error. The local models render their
-> reasoning as collapsible blocks because the platform runs proper
-> reasoning parsers for them.
-
-![OpenCode first probe](images/opencode-first-probe.png)
+> Note: both models render their reasoning as collapsible blocks because
+> the platform runs proper reasoning parsers for them.
 
 ![OpenCode first probe result](images/opencode-first-probe-result.png)
 
@@ -294,8 +290,8 @@ to the brief.
 because it is steered by them.
 
 > Model tip: the default Qwen3.6 handles this well. For a heavier planning
-> pass on a larger spec, switch to `minimax-m2` (196K context) — the model
-> picker is a governed menu, not a credential decision.
+> pass on a larger spec, switch to `nemotron-3-nano-30b-a3b` (131K context)
+> — the model picker is a governed menu, not a credential decision.
 
 ![Plan and tasks artifacts](images/speckit-plan-tasks.png)
 
