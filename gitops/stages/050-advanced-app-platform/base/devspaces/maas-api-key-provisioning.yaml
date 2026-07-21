@@ -422,7 +422,7 @@ data:
           "models": {
             "qwen3-6-35b-a3b": {
               "name": "Qwen3.6 35B A3B",
-              "limit": { "context": 32768, "output": 4096 }
+              "limit": { "context": 32768, "output": 8192 }
             }
           }
         }
@@ -538,7 +538,7 @@ data:
           "models": {
             "qwen3-6-35b-a3b": {
               "name": "Qwen3.6 35B A3B (Local GPU)",
-              "limit": { "context": 32768, "output": 4096 }
+              "limit": { "context": 32768, "output": 8192 }
             }
           },
           "options": {
