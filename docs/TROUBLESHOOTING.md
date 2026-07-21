@@ -1669,6 +1669,85 @@ oc delete pipelinerun <name>-seed-<hash> -n <name>-dev
 Stuck pre-fix Jobs (pull policy Always baked into their pods) must be
 deleted for the CronJob to mint fresh ones.
 
+## Scaffolded Project Does Not Self-Provision (No Argo CD App / Pipeline)
+
+**Affected stage:** Stage 050 (RHDH scaffolder → dispatcher bootstrap)
+
+**Symptom:** a developer creates a project from the "New Quarkus App" template;
+the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`)
+and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev`
+namespace or `app-push` pipeline is created, and no build runs. Nothing is
+happening in the background.
+
+**Root cause:** the self-provisioning flow has NO per-repo webhook — it relies on
+the **GitHub App** delivering push events to the shared `app-platform-listener`
+dispatcher. If the App is installed on *Selected repositories* (not *All
+repositories*), a newly scaffolded repo is outside the App's scope, so its push
+never reaches the cluster and the bootstrap trigger never fires. The tell is an
+**EventListener with zero recent activity** for that repo.
+
+**Diagnose:**
+
+```bash
+# 1. Repo created with the scaffolded topic? (should be present)
+gh api repos/<owner>/<repo> --jq '.topics'
+# 2. Did the dispatcher receive ANYTHING? (empty output = webhook never arrived)
+EL=$(oc get pods -n app-platform-build -l eventlistener=app-platform-listener -o name | head -1)
+oc logs -n app-platform-build $EL --since=30m | grep -i "<repo>"
+# 3. No per-repo webhook exists (delivery is App-only by design):
+gh api repos/<owner>/<repo>/hooks --jq 'length'   # 0
+```
+
+**Durable fix (the intended design):** install the GitHub App on **All
+repositories** — GitHub → Settings → Applications → the demo App → *Configure* →
+Repository access → **All repositories**. This is already required in the Stage
+050 README "External Setup" step 3; on a fresh cluster VERIFY it rather than
+assuming, because a Selected-repositories install silently breaks scaffolded
+provisioning with no cluster-side signal. Once the App covers all repos, every
+scaffolded repo's first push bootstraps its stack automatically. (Note: the
+dispatcher CEL filter matches on `body.repository.topics`; validate one live
+scaffold end-to-end after fixing the App scope — if topics are absent from the
+push payload on your GitHub, switch the filter to a per-repo webhook created by
+the template instead.)
+
+**Recover an already-created project without waiting for the App fix** (what to
+run for a repo that was scaffolded while the App was still on Selected repos):
+
+```bash
+# Create the bootstrap Argo CD Application the dispatcher would have created:
+oc apply -f - <<'APP'
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: project-<repo>
+  namespace: openshift-gitops
+  labels: { rhoai3.redhat.com/scaffolded-project: "true" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: scaffolded-projects
+  source:
+    repoURL: https://github.com/<owner>/rhoai3-coding-demo
+    targetRevision: main
+    path: gitops/stages/050-advanced-app-platform/base/pipelines/project-pipeline
+    kustomize: { namespace: <repo>-dev }
+  destination: { server: https://kubernetes.default.svc, namespace: <repo>-dev }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ CreateNamespace=true ]
+    managedNamespaceMetadata:
+      labels:
+        rhoai3.redhat.com/pipeline-project: "true"
+        app.kubernetes.io/part-of: <repo>
+APP
+# Distribute build credentials immediately (else wait for the 2-min CronJob):
+oc create job -n app-platform-build provisioner-now --from=cronjob/project-provisioner
+# Verify: namespace Active, app-push pipeline present, github-basic-auth +
+# quay-push-secret secrets present in <repo>-dev.
+```
+
+The pipeline still needs a push to build — fix the App scope (or seed a run) for
+that.
+
 ## References
 
 - [OpenShift troubleshooting documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/support/troubleshooting)

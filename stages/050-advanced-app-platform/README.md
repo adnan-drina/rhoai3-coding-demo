@@ -133,6 +133,13 @@ which routes each repository to its project's own pipeline.
    mandatory Metadata: Read-only. Subscribe to **Push** events and install
    on **All repositories** (covers future template-created repos). No
    client secret or private key is needed — the App only delivers webhooks.
+   **Verify this is actually "All repositories," not "Only select
+   repositories."** A Selected-repositories install works for the pre-seeded
+   golden repos but silently breaks self-service: repos the RHDH scaffolder
+   creates fall outside the App's scope, their pushes never reach the
+   dispatcher, and the project gets no Argo CD app, pipeline, or build with no
+   cluster-side error. See TROUBLESHOOTING → "Scaffolded Project Does Not
+   Self-Provision."
 4. **quay.io** (optional): create an organization/namespace and a robot
    account with push permission; set `IMAGE_REGISTRY`, `QUAY_ROBOT_USER`,
    `QUAY_ROBOT_TOKEN` in `.env`. Without these the pipeline pushes to the
