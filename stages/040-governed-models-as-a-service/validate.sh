@@ -702,47 +702,39 @@ done
 [[ "$CERT_READY" == "3" ]] && R="pass" || R="readyDeployments=${CERT_READY}/3"
 check "cert-manager deployments available" "$R"
 
-RHCL_CSV=$(jsonpath "subscription/rhcl-operator" "openshift-operators" "{.status.installedCSV}")
-RHCL_APPROVAL=$(jsonpath "subscription/rhcl-operator" "openshift-operators" "{.spec.installPlanApproval}")
-RHCL_STARTING_CSV=$(jsonpath "subscription/rhcl-operator" "openshift-operators" "{.spec.startingCSV}")
-if [[ "$RHCL_CSV" == "$PINNED_RHCL_CSV" &&
-  "$RHCL_APPROVAL" == "Manual" &&
-  "$RHCL_STARTING_CSV" == "$PINNED_RHCL_CSV" ]]; then
+# The kuadrant family is installed, pinned to 1.3.x, then UNSUBSCRIBED by the
+# provision-kuadrant Job: a standing Subscription would perpetually pend the
+# MaaS-incompatible 1.4.x upgrade and (because these are AllNamespaces operators
+# sharing openshift-operators) poison the shared InstallPlan for the Stage 050
+# pipelines/rhtas operators. So the pin is proven by the running CSV, and the
+# Subscription being ABSENT is the positive signal that the pin+unsubscribe ran.
+RHCL_CSV_PHASE=$(oc get csv "$PINNED_RHCL_CSV" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)
+RHCL_SUB=$(oc get subscription rhcl-operator -n openshift-operators -o name 2>/dev/null || true)
+if [[ "$RHCL_CSV_PHASE" == "Succeeded" && -z "$RHCL_SUB" ]]; then
   R="pass"
 else
-  R="installedCSV=${RHCL_CSV:-missing},approval=${RHCL_APPROVAL:-missing},startingCSV=${RHCL_STARTING_CSV:-missing},expected=${PINNED_RHCL_CSV}"
+  R="csv=${PINNED_RHCL_CSV},phase=${RHCL_CSV_PHASE:-missing},subscription=${RHCL_SUB:-absent}(want absent)"
 fi
-check "Red Hat Connectivity Link Operator is pinned to the MaaS-compatible CSV" "$R"
+check "Red Hat Connectivity Link Operator is pinned to the MaaS-compatible CSV (installed + unsubscribed)" "$R"
 
-# Dependency subscriptions are OLM-adopted and can be statusless (installedCSV
-# empty) — the same behavior the Argo Subscription health check tolerates.
-# Fall back to the CSV object, and accept any CSV in the per-operator allowed
-# set (the version-safety allowlist admits authorino 1.3.1 and 1.3.2).
+# Dependency operators: same install-then-unsubscribe pattern. Verify a pinned
+# CSV from the per-operator allowlist is Succeeded and the Subscription is gone.
 while IFS='|' read -r sub_name pin_csv allowed_csvs label; do
-  DEP_CSV=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.status.installedCSV}")
-  DEP_APPROVAL=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.spec.installPlanApproval}")
-  DEP_STARTING_CSV=$(jsonpath "subscription/${sub_name}" "openshift-operators" "{.spec.startingCSV}")
-  if [[ -z "$DEP_CSV" ]]; then
-    for candidate in $allowed_csvs; do
-      phase=$(oc get csv "$candidate" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)
-      if [[ "$phase" == "Succeeded" ]]; then
-        DEP_CSV="$candidate"
-        break
-      fi
-    done
-  fi
-  installed_ok="no"
+  DEP_CSV=""
   for candidate in $allowed_csvs; do
-    [[ "$DEP_CSV" == "$candidate" ]] && installed_ok="yes"
+    phase=$(oc get csv "$candidate" -n openshift-operators -o jsonpath='{.status.phase}' 2>/dev/null || true)
+    if [[ "$phase" == "Succeeded" ]]; then
+      DEP_CSV="$candidate"
+      break
+    fi
   done
-  if [[ "$installed_ok" == "yes" &&
-    "$DEP_APPROVAL" == "Manual" &&
-    "$DEP_STARTING_CSV" == "$pin_csv" ]]; then
+  DEP_SUB=$(oc get subscription "${sub_name}" -n openshift-operators -o name 2>/dev/null || true)
+  if [[ -n "$DEP_CSV" && -z "$DEP_SUB" ]]; then
     R="pass"
   else
-    R="installedCSV=${DEP_CSV:-missing},approval=${DEP_APPROVAL:-missing},startingCSV=${DEP_STARTING_CSV:-missing},pin=${pin_csv},allowed=${allowed_csvs}"
+    R="installedCSV=${DEP_CSV:-missing},subscription=${DEP_SUB:-absent}(want absent),allowed=${allowed_csvs}"
   fi
-  check "${label} Operator is pinned to the MaaS-compatible CSV" "$R"
+  check "${label} Operator is pinned to the MaaS-compatible CSV (installed + unsubscribed)" "$R"
 done <<EOF
 authorino-operator-stable-redhat-operators-openshift-marketplace|${PINNED_AUTHORINO_CSV}|authorino-operator.v1.3.1 authorino-operator.v1.3.2|Authorino
 dns-operator-stable-redhat-operators-openshift-marketplace|${PINNED_DNS_CSV}|dns-operator.v1.3.1|DNS
