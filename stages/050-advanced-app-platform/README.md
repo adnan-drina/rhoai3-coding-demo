@@ -133,13 +133,22 @@ which routes each repository to its project's own pipeline.
    mandatory Metadata: Read-only. Subscribe to **Push** events and install
    on **All repositories** (covers future template-created repos). No
    client secret or private key is needed — the App only delivers webhooks.
-   **Verify this is actually "All repositories," not "Only select
-   repositories."** A Selected-repositories install works for the pre-seeded
-   golden repos but silently breaks self-service: repos the RHDH scaffolder
-   creates fall outside the App's scope, their pushes never reach the
-   dispatcher, and the project gets no Argo CD app, pipeline, or build with no
-   cluster-side error. See TROUBLESHOOTING → "Scaffolded Project Does Not
-   Self-Provision."
+
+   > **Two settings silently break self-service if wrong — recheck BOTH on
+   > every fresh cluster:**
+   > - **Webhook URL is cluster-specific.** The App has ONE App-level webhook
+   >   URL embedding the cluster ingress domain. Swapping `.env` re-points the
+   >   *cluster* but NOT the App — GitHub keeps delivering to the previous
+   >   cluster until you update the URL in GitHub → App settings → General →
+   >   Webhook. Set it to
+   >   `https://$(oc get route app-platform-listener -n app-platform-build -o jsonpath='{.spec.host}')`.
+   > - **Repository access must be "All repositories,"** not "Only select
+   >   repositories," or scaffolder-created repos fall outside the App's scope.
+   >
+   > Either mistake produces the same symptom: the repo is created but gets no
+   > Argo CD app, pipeline, or build, with no cluster-side error. Verify via
+   > App settings → Advanced → Recent Deliveries. See TROUBLESHOOTING →
+   > "Scaffolded Project Does Not Self-Provision."
 4. **quay.io** (optional): create an organization/namespace and a robot
    account with push permission; set `IMAGE_REGISTRY`, `QUAY_ROBOT_USER`,
    `QUAY_ROBOT_TOKEN` in `.env`. Without these the pipeline pushes to the

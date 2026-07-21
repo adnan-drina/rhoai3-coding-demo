@@ -1681,10 +1681,23 @@ happening in the background.
 
 **Root cause:** the self-provisioning flow has NO per-repo webhook — it relies on
 the **GitHub App** delivering push events to the shared `app-platform-listener`
-dispatcher. If the App is installed on *Selected repositories* (not *All
-repositories*), a newly scaffolded repo is outside the App's scope, so its push
-never reaches the cluster and the bootstrap trigger never fires. The tell is an
-**EventListener with zero recent activity** for that repo.
+dispatcher. The tell for every variant below is an **EventListener with zero
+recent activity** (`oc logs` the `el-app-platform-listener-*` pod shows nothing
+for the repo) even though the repo and its push exist on GitHub.
+
+1. **Stale webhook URL (the #1 fresh-env cause).** A GitHub App has a SINGLE,
+   App-level webhook URL. It is cluster-specific — it embeds the cluster's
+   ingress domain (`…apps.<cluster>.<base-domain>`). When you redeploy the demo
+   to a NEW cluster, GitHub keeps delivering to the OLD cluster's route until you
+   update the App's webhook URL. Symptom: NOTHING provisions (not even the
+   platform coolstore repo builds on push), because every delivery lands on a
+   dead/previous cluster. Confirm in GitHub → the App → **App settings → Advanced
+   → Recent Deliveries**: the target URL won't match this cluster, and/or
+   deliveries fail. Fresh-env redeploys almost always hit this.
+2. **Selected-repositories scope.** If the App is installed on *Only select
+   repositories*, a newly scaffolded repo is outside its scope, so ITS pushes
+   don't deliver (but the pre-seeded golden repos still do). Check GitHub → the
+   App → **Configure → Repository access = All repositories**.
 
 **Diagnose:**
 
@@ -1698,17 +1711,26 @@ oc logs -n app-platform-build $EL --since=30m | grep -i "<repo>"
 gh api repos/<owner>/<repo>/hooks --jq 'length'   # 0
 ```
 
-**Durable fix (the intended design):** install the GitHub App on **All
-repositories** — GitHub → Settings → Applications → the demo App → *Configure* →
-Repository access → **All repositories**. This is already required in the Stage
-050 README "External Setup" step 3; on a fresh cluster VERIFY it rather than
-assuming, because a Selected-repositories install silently breaks scaffolded
-provisioning with no cluster-side signal. Once the App covers all repos, every
-scaffolded repo's first push bootstraps its stack automatically. (Note: the
-dispatcher CEL filter matches on `body.repository.topics`; validate one live
-scaffold end-to-end after fixing the App scope — if topics are absent from the
-push payload on your GitHub, switch the filter to a per-repo webhook created by
-the template instead.)
+**Fix — re-point the App webhook URL to THIS cluster (do this on every fresh
+deploy):** GitHub → the App → **App settings → General → Webhook → URL**, set it
+to the current route:
+
+```bash
+echo "https://$(oc get route app-platform-listener -n app-platform-build -o jsonpath='{.spec.host}')"
+```
+
+Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify:
+`oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.data.token}' | base64 -d`).
+Then **Advanced → Recent Deliveries → Redeliver** a recent push, or push a commit.
+Also confirm **Repository access = All repositories** so scaffolder-created repos
+are in scope. This webhook-URL step is the piece most easily missed on a fresh
+env — the `.env` swap re-points the *cluster*, but the App's single endpoint
+still points at the previous cluster until you change it in GitHub.
+
+Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter
+matches on `body.repository.topics`; if topics turn out to be absent from the
+push payload on your GitHub, switch the trigger to a per-repo webhook created by
+the scaffolder template instead.
 
 **Recover an already-created project without waiting for the App fix** (what to
 run for a repo that was scaffolded while the App was still on Selected repos):
