@@ -10,6 +10,24 @@ metadata:
     argocd.argoproj.io/sync-wave: "10"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  # Prevent the RHDH first-boot migration surge-race. The operator's default
+  # Deployment uses RollingUpdate with maxSurge 25% — which rounds UP to 1 extra
+  # pod for this single replica. On a fresh/empty database that surge brings up
+  # TWO backend pods that race each other's Backstage per-plugin DB migrations
+  # and BOTH crash with `relation "casbin_rule" already exists` /
+  # `…public_keys…migrations_lock already exists`; RHDH then sits 0/1 (route 503)
+  # indefinitely (liveness passes, readiness never does — k8s never restarts it).
+  # maxSurge:0 removes the old pod before starting the new one, so only ONE
+  # migrator ever runs. (strategy.type: Recreate would also fix it, but the
+  # operator keeps its base rollingUpdate block and yields an invalid Deployment
+  # — "rollingUpdate may not be specified when type is Recreate".)
+  deployment:
+    patch:
+      spec:
+        strategy:
+          rollingUpdate:
+            maxSurge: 0
+            maxUnavailable: 1
   application:
     appConfig:
       mountPath: /opt/app-root/src
