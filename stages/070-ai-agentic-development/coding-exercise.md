@@ -427,6 +427,18 @@ AI and application AI, one governed platform.
   assistant that writes the app and the app itself share the same
   gateway, keys, limits, and telemetry.
 
+> **Good practice — close every cycle with a skills retro.** Whatever
+> the agent had to figure out the hard way this session — an API it
+> guessed wrong, a bug it fixed in its own tests, a pattern it needed
+> three attempts to land — dies with the session unless you promote it
+> into the memory bank. Before moving on, ask: *what did this run teach
+> us that the next run should already know?* — and write it into
+> `.opencode/skills/` as a rule with a copy-paste-complete example
+> (terse fragments become new hallucination seeds). The skills grow
+> from incidents into standards; each workflow cycle starts smarter
+> than the last. That is the step beyond spec-anchored development:
+> the *memory bank* itself is a living artifact.
+
 ### Resetting the demo
 
 Teardown is an operator action from the platform repository:
