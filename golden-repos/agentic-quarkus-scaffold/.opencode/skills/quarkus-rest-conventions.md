@@ -86,10 +86,15 @@ How this team builds REST endpoints. Apply on every endpoint change.
 - Gate hygiene before declaring any change done: the pipeline's
   SonarQube gate fails on **any** new issue, including minor smells.
   The hygiene pass is an action, not an attestation — never tick a
-  "verify no issues" task without performing it. For **each file you
-  touched**: read its import block and delete every import not
-  referenced in the file body (edit-cycle leftovers are the most common
-  gate failure), remove dead code and debugging artifacts. Java 17+
+  "verify no issues" task without performing it. The procedure:
+  1. `git status --short` / `git diff --name-only` to enumerate **every**
+     touched file yourself — main sources, tests, and test fixtures alike;
+     do not rely on a list from memory.
+  2. For each file: read the full import block — including
+     `import static` lines — and delete every import not referenced in
+     the file body (edit-cycle leftovers are the most common gate
+     failure).
+  3. Remove dead code and debugging artifacts. Java 17+
   API rules Sonar enforces: use `Stream.toList()` instead of
   `.collect(Collectors.toList())`.
 
