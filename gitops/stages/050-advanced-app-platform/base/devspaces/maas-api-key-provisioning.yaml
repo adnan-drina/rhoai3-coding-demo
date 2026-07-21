@@ -406,7 +406,7 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_NEMOTRON}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
-            "timeout": 600000,
+            "timeout": 1200000,
             "chunkTimeout": 120000
           },
           "models": {
@@ -422,7 +422,7 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 600000,
+            "timeout": 1200000,
             "chunkTimeout": 120000
           },
           "models": {
@@ -534,7 +534,7 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_NEMOTRON}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
-            "timeout": 600000,
+            "timeout": 1200000,
             "chunkTimeout": 120000
           }
         },
@@ -551,7 +551,7 @@ data:
           "options": {
             "apiKey": "${MAAS_API_KEY_QWEN}",
             "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 600000,
+            "timeout": 1200000,
             "chunkTimeout": 120000
           }
         }
