@@ -27,7 +27,8 @@ feature directory and verify before finishing.
 - **plan**: `plan.md` **and** its supporting documents — `research.md`,
   `data-model.md`, `quickstart.md`, `contracts/` with the API contract.
   A filled `plan.md` alone is not a completed plan phase.
-- **tasks**: `tasks.md` with ordered, individually verifiable items;
+- **tasks**: `tasks.md` with ordered, individually verifiable items —
+  task IDs strictly sequential and unique (renumber after inserting);
   tests are first-class tasks, not an afterthought. Test-infrastructure
   tasks (mock fixtures, test resources) name the exact class and file
   they create and are ordered **before** the test tasks that depend on

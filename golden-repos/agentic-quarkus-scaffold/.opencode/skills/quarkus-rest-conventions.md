@@ -27,7 +27,9 @@ How this team builds REST endpoints. Apply on every endpoint change.
   expose entities directly. Records are data-only: no business logic in
   records or their static factories — enrichment, mapping decisions, and
   fallbacks live in services and resources, where they can be injected
-  and tested. Each distinct response shape gets its own
+  and tested. Java records cannot extend anything — a projection
+  duplicates the base fields and adds its own; never plan a record
+  "extending" another type. Each distinct response shape gets its own
   record — a projection like an availability summary is its own record
   (`InventoryAvailability(itemId, available, quantity)`), not a trimmed
   reuse of the entity. (Reference: `coolstore-inventory-service`.)
