@@ -85,11 +85,13 @@ How this team builds REST endpoints. Apply on every endpoint change.
   landing page linking every endpoint.
 - Gate hygiene before declaring any change done: the pipeline's
   SonarQube gate fails on **any** new issue, including minor smells.
-  After the tests pass, do a final pass over every file you touched and
-  remove unused imports, dead code, and leftover debugging artifacts —
-  edit-cycle leftovers (an import kept after switching to a string
-  literal, a class that is no longer referenced) are the most common
-  gate failures.
+  The hygiene pass is an action, not an attestation — never tick a
+  "verify no issues" task without performing it. For **each file you
+  touched**: read its import block and delete every import not
+  referenced in the file body (edit-cycle leftovers are the most common
+  gate failure), remove dead code and debugging artifacts. Java 17+
+  API rules Sonar enforces: use `Stream.toList()` instead of
+  `.collect(Collectors.toList())`.
 
 ## Calling other services (REST client)
 
