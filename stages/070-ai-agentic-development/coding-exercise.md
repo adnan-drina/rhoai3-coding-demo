@@ -293,7 +293,9 @@ because it is steered by them.
 > pass on a larger spec, switch to `nemotron-3-nano-30b-a3b` (131K context)
 > — the model picker is a governed menu, not a credential decision.
 
-![Plan and tasks artifacts](images/speckit-plan-tasks.png)
+![Plan artifacts](images/speckit-plan.png)
+
+![Tasks artifacts](images/speckit-tasks.png)
 
 ---
 
@@ -302,6 +304,9 @@ because it is steered by them.
 1. Run `/speckit.implement`. The agent works through the tasks: source,
    configuration, and tests. Review and approve the diffs as they come —
    you are the senior on this pair.
+
+![Implement artifacts](images/speckit-implement.png)
+
 2. When it finishes, start dev mode (**Tasks: Run Task → devfile →
    2. Start Development mode**) and exercise the service:
 
@@ -317,17 +322,11 @@ curl -s localhost:8080/api/catalog/329299
 curl -s -i localhost:8080/api/catalog/999999
 ```
 
-3. Run the tests:
-
-```
-mvn -q test
-```
+![Quarkus Dev Mode](images/quarkus-devmode.png)
 
 **What you should see:** four seed products on the list endpoint, the
 Quarkus T-shirt by id, a proper 404 body for the unknown id, and tests
 green.
-
-![Local verification of the triage endpoint](images/local-verify.png)
 
 ---
 
