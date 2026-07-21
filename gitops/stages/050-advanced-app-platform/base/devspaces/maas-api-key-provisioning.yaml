@@ -570,7 +570,7 @@ data:
         "glob": "allow",
         "edit": "ask",
         "write": "ask",
-        "bash": "ask",
+        "bash": "allow",
         "webfetch": "ask",
         "*_mcp_*": "ask"
       }
