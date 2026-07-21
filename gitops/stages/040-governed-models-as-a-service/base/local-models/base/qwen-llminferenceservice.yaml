@@ -98,7 +98,11 @@ spec:
           # ~35GB FP8 weights on a 44.4GiB-usable L40S: cap the context,
           # store KV/mamba cache in fp8, and trim the CUDA-graph budget so
           # engine init fits (bf16 KV at 32K OOMed by ~1GiB at graph capture).
-          - --max-model-len=32768
+          # 65536: the model is natively 256K (text_config.max_position_embeddings
+          # = 262144); the fp8 KV pool holds ~130K tokens, so a 64K window keeps
+          # ~2x full-length concurrency. 32K starved spec-kit sessions (~27K
+          # baseline prompt + output budget exceeded the window).
+          - --max-model-len=65536
           - --kv-cache-dtype=fp8
           - --gpu-memory-utilization=0.92
           # Text/code serving only: dropping image+video inputs removes the
