@@ -190,6 +190,20 @@ The demo must deploy from any GitHub org and container registry, not just the au
 - [x] **Level 1 — image registry** — the coolstore deployment followed the author's Quay org, so a portable install ran the author's image while its own pipeline pushed elsewhere. Fixed (commit `e0d1633`): a `patch-image-registry` PostSync hook rewrites the deployment image to `${IMAGE_REGISTRY}/coolstore-inventory-service:latest` from the same `app-platform-build-config` ConfigMap the `resolve-image-registry` pipeline task reads, and the Stage 050 Application ignores that image field so Argo keeps the hook's value. `IMAGE_REGISTRY` + `QUAY_ROBOT_USER`/`QUAY_ROBOT_TOKEN` are now Stage 050 `.env` pre-flight requirements (commit `bc8789d`).
 - [ ] **Level 2 — GitHub owner** — `adnan-drina` is hardcoded across ~15 GitOps files + scripts for 4 source repos the deployer must fork (`coolstore-inventory-service`, `agentic-quarkus-scaffold`, `migiq-spring-boot-sample`, `getting-started-ai-coding`); the demo GitOps repo itself is already portable via `GIT_REPO_URL` + the catalog job's repoURL derivation. Concrete, file-by-file plan is written up in [`docs/github-owner-portability-plan.md`](docs/github-owner-portability-plan.md): a `GITHUB_OWNER` knob + `demo-repo-config` ConfigMap, placeholder + sync-hook substitution reusing the `generate-rhdh-catalog` pattern, a "no `adnan-drina` literal survives in rendered manifests" validation check, and the fork-drift / per-fork-webhook / scaffolder-scope / DevWorkspace-immutability risks. Land as one reviewed PR after the one-time fork step is documented — a half-applied owner change breaks the exercise chain.
 
+## RHDH first-boot migration surge-race (fresh-env, 2026-07-21)
+
+- [ ] **Backstage deployment surges two migrators on first boot** — the `backstage-developer-hub`
+  Deployment uses `RollingUpdate`/`maxSurge: 1`. When the deployment is (re)rolled against a fresh
+  or empty per-plugin DB set — e.g. the `configure-rhdh` job patching env mid-first-boot, or a
+  cluster resume — two backend pods start together and race the Backstage per-plugin DB migrations,
+  both crashing with `relation "casbin_rule" already exists` / `…migrations_lock already exists`;
+  RHDH sits `0/1` (route 503) indefinitely (liveness passes, readiness never does, so k8s never
+  restarts it). Recovery (non-destructive, do NOT drop the `backstage_plugin_*` DBs — data is fine):
+  `oc scale deploy backstage-developer-hub -n rhdh --replicas=0 && … --replicas=1` for a single
+  surge-free migrator. **Durable fix:** pin the Backstage Deployment to `Recreate` strategy (or a
+  fixed single replica) via the Backstage CR / rhdh-operator config so first-boot never runs two
+  concurrent migrators. Verify the rhdh-operator preserves the override.
+
 ## Model-serving scheduler disk co-location (fresh-env, 2026-07-20)
 
 - [ ] **llm-d router-scheduler modelcar exhausts co-located 100G workers** — This operator build stamps the 30-37 GiB modelcar (tokenizer + modelcar sidecars) onto the CPU **router-scheduler** pod regardless of the EndpointPicker plugin config (RFE candidate). The scheduler pods carry **no `ephemeral-storage` request**, so the kube-scheduler is disk-blind and can place *both* models' scheduler pods on one worker; the sandbox CPU workers are only 100G, so the second modelcar pull fails with `no space left on device` (ImagePullBackOff). Observed on cluster-kjbwr: nemotron + qwen schedulers both landed on one worker; the other three had 81G free. Deleting the pod re-schedules it to the same full node (disk-blind), unless that node has since gone `DiskPressure` (the NoSchedule taint then repels it to a clean worker — the safest interim remediation, no cordon needed).

@@ -267,6 +267,18 @@ pod once its node is `DiskPressure`-tainted — the NoSchedule taint repels it t
 a 200 GiB worker disk resize — see BACKLOG. In practice with 4 CPU workers + 2 models the
 schedulers usually spread on their own; both models ended Ready and stable.
 
+**RHDH first-boot recovered from a migration surge-race.** After the operators came up, Developer
+Hub stayed `0/1` (route 503) — the backend `Backend startup failed` on `relation "casbin_rule"
+already exists` / `"…public_keys…migrations_lock" already exists`. Root cause: the deployment
+strategy is `RollingUpdate` with `maxSurge: 1`, so a fresh-DB rollout brought up **two** backend
+pods that raced each other's Backstage per-plugin DB migrations and both crashed (not corrupted
+data — a pure concurrency collision, seeded by the configure-rhdh patch landing mid-first-boot).
+**Non-destructive fix:** `oc scale deploy backstage-developer-hub -n rhdh --replicas=0` then
+`--replicas=1` — a single pod runs migrations without a surge peer and starts clean (route 200,
+1/1). Do NOT drop the `backstage_plugin_*` databases; the data was fine, only the concurrent
+start was the problem. Durable follow-up (BACKLOG): pin the Backstage deployment to `Recreate`
+strategy (or replicas via the CR) so first-boot never surges two migrators.
+
 **Monitoring hygiene re-asserted.** The eviction churn regenerated four operator ServiceMonitors
 (kueue/nfd/odh-model-controller/lws) without `openshift.io/user-monitoring=false` and reset the
 Istio PodMonitor's metrics-port relabel → `PrometheusOperatorRejectedResources`/`TargetDown`.
