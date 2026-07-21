@@ -103,8 +103,10 @@ public interface InventoryClient {
 ```
 
 Wire the domain config property to the client key in
-`application.properties` — tests and clusters then only override the
-domain property:
+`application.properties`. When the spec names the property (e.g.
+`catalog.inventory.url`), that name is the contract — the rest-client
+key maps to it and never replaces it; tests and clusters then only
+override the domain property:
 
 ```properties
 catalog.inventory.url=http://coolstore-inventory-service.coolstore-dev.svc:8080

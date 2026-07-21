@@ -17,8 +17,11 @@ money), `project-test-standards` (test style, mocking, assertions),
 
 ## II. Spec fidelity
 
-Seed data, API paths, field names, and thresholds stated in a spec are
-contracts, not examples. Never round, substitute, or invent values.
+Seed data, API paths, field names, **configuration property names**,
+and thresholds stated in a spec are contracts, not examples. Never
+round, substitute, or invent values. A spec-named config property is
+the single override point — internal wiring (e.g. a REST client key)
+maps to it, never replaces it.
 
 ## III. Response shapes are dedicated records
 
@@ -29,9 +32,11 @@ models are frozen unless the spec explicitly changes them.
 ## IV. Explicit dependencies
 
 Every library the design relies on (runtime or test) is named with
-exact coordinates in the plan and added by an explicit setup task.
-"Or"-options in a plan are unresolved decisions — resolve them before
-tasks.
+exact coordinates in the plan's dependency list and added by an
+explicit setup task. Test-scope libraries count: a framework named in
+the plan's Testing section but absent from the dependency list fails
+this article. "Or"-options in a plan are unresolved decisions —
+resolve them before tasks.
 
 ## V. Simplicity (YAGNI)
 
