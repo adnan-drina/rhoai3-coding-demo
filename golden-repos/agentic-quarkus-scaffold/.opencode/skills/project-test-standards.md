@@ -89,10 +89,10 @@ How this team tests. Apply on every change.
   server.stubFor(get(urlPathMatching("/api/inventory/165613/.*"))
       .willReturn(okJson("{}").withFixedDelay(3000)));
   ```
-- There is **no** `@TestProperty` annotation in Quarkus — do not invent
-  it. Per-test config overrides come from a `QuarkusTestProfile` with
-  `getConfigOverrides()`, or from the WireMock
+- Per-test config overrides have exactly two mechanisms: a
+  `QuarkusTestProfile` with `getConfigOverrides()`, or the WireMock
   `QuarkusTestResourceLifecycleManager`'s `start()` override map (the
-  preferred pattern here).
+  preferred pattern here). Any other config-override annotation you
+  recall does not exist in Quarkus.
 - `mvn -q test` must pass locally before any push; the platform pipeline's
   SonarQube gate fails on any new issue.
