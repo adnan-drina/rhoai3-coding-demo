@@ -13,6 +13,14 @@ metadata:
     security.opendatahub.io/authorino-tls-bootstrap: "true"
 spec:
   gatewayClassName: data-science-gateway-class
+  infrastructure:
+    annotations:
+      # AWS Classic ELB defaults to a 60s idle timeout, which cut LLM streams
+      # mid-generation: vLLM's qwen3_coder tool parser buffers a whole tool
+      # call before emitting, so long file-writing turns send no bytes for
+      # >60s and the ELB closes the socket (observed 2026-07-21 as exact-60s
+      # stream drops during stage 070 /speckit.implement runs).
+      service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
   listeners:
     - name: http
       port: 80
