@@ -60,6 +60,9 @@ How this team builds REST endpoints. Apply on every endpoint change.
   Do not fall back to inlining error responses in resource methods, and
   never use `@RegisterProvider` — that annotation belongs to the
   MicroProfile REST *Client* and does not exist in `jakarta.ws.rs.ext`.
+  `jakarta.ws.rs.core.MediaType` has **no** problem+json constant
+  (`APPLICATION_PROBLEM_JSON` / `_TYPE` do not exist) — always use the
+  string literal `"application/problem+json"`.
 - Money and prices are `BigDecimal`, constructed from string literals
   (`new BigDecimal("34.99")`) — never `double` literals (they do not
   convert implicitly and lose precision). Jackson serializes `BigDecimal`

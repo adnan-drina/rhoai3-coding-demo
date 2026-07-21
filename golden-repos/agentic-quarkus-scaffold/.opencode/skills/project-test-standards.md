@@ -17,15 +17,33 @@ How this team tests. Apply on every change.
 - Business logic lives in `@ApplicationScoped` services tested with plain
   JUnit where possible; keep `@QuarkusTest` for the HTTP boundary.
 - Decimal JSON fields (prices, quantities): never assert with exact float
-  equality — Jackson may render `10.00` as `10.0`. Use the BigDecimal
-  comparator and write it once, correctly:
+  equality — Jackson may render `10.00` as `10.0`. The complete working
+  setup (copy exactly — `numberReturnType` takes the **enum**, not a
+  class):
 
   ```java
+  import static io.restassured.config.JsonConfig.jsonConfig;
   import static org.hamcrest.Matchers.comparesEqualTo;
-  // config once per test class:
-  // RestAssured.config = RestAssured.config().jsonConfig(
-  //     jsonConfig().numberReturnType(BIG_DECIMAL));
+  import io.restassured.RestAssured;
+  import io.restassured.path.json.config.JsonPathConfig;
+  import org.junit.jupiter.api.BeforeAll;
+
+  @BeforeAll
+  static void bigDecimalJson() {
+      RestAssured.config = RestAssured.config().jsonConfig(
+          jsonConfig().numberReturnType(JsonPathConfig.NumberReturnType.BIG_DECIMAL));
+  }
+  // then:
   .body("price", comparesEqualTo(new BigDecimal("10.00")))
+  ```
+- Never assert list responses by position (`[0].price`) — JSON array
+  order is not part of the API contract, and positional assertions
+  break on any seed reorder. Match by business key with a Groovy find
+  closure:
+
+  ```java
+  .body("find { it.itemId == '329299' }.price",
+        comparesEqualTo(new BigDecimal("10.00")))
   ```
 - External HTTP dependencies are mocked in tests with WireMock — the
   canonical dependency is `org.wiremock:wiremock` in `test` scope; tests
