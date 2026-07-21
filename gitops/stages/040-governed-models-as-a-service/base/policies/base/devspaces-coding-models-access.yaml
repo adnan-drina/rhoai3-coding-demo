@@ -18,17 +18,20 @@ spec:
     # Sized for agentic assistants (Kilo Code in 060, OpenCode in 070): a
     # single agent turn carries system prompt + rules + file context, so the
     # old 100K/h chat-era budget exhausted within a few turns (observed live
-    # 2026-07-14 as gateway 429s mid-demo). Local models ride our own GPUs;
-    # external Red Hat internal models keep a generous demo budget.
+    # 2026-07-14 as gateway 429s mid-demo). 1M/h then proved too small for a
+    # full stage 070 spec-kit workflow — specify+plan+tasks+implement runs
+    # 20-38K input tokens per turn across dozens of turns, and rehearsing
+    # twice in an hour hit 429 again (observed 2026-07-21). Local models ride
+    # our own GPUs, so the budget demonstrates governance, not cost control.
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 1000000
+        - limit: 5000000
           window: 1h
     - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 1000000
+        - limit: 5000000
           window: 1h
   priority: 100
   tokenMetadata:
