@@ -159,13 +159,22 @@ You **MUST** consider the user input before proceeding (if not empty).
    - For parallel tasks [P], continue with successful tasks, report failed ones
    - Provide clear error messages with context for debugging
    - Suggest next steps if implementation cannot proceed
-   - **IMPORTANT** For completed tasks, make sure to mark the task off as [X] in the tasks file.
+   - **IMPORTANT** Execute one task at a time in order. Mark each task [X]
+     in tasks.md **immediately after its verification passes — before
+     starting the next task**. Never batch checkbox updates at the end:
+     an interrupted session must leave tasks.md accurately reflecting
+     what is done (the spec-driven-workflow skill makes checkboxes the
+     source of truth on resume).
 
 9. Completion validation:
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
+   - Run the gate-hygiene procedure from the quarkus-rest-conventions
+     skill: enumerate every touched file via `git status --short`, audit
+     each import block (including `import static`), remove dead code —
+     the pipeline gate fails on any new issue
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit.tasks` first to regenerate the task list.
 

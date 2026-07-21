@@ -11,6 +11,9 @@ handoffs:
     send: true
 ---
 
+**Phase discipline**: this command writes `tasks.md` (and updates under
+`specs/`) only — never create or modify anything under `src/`.
+
 ## User Input
 
 ```text

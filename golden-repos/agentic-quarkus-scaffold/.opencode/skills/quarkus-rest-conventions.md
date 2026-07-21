@@ -62,6 +62,10 @@ How this team builds REST endpoints. Apply on every endpoint change.
   }
   ```
 
+  Name the mapper class after the domain (`CatalogExceptionMappers`) —
+  a class named `ServerExceptionMapper` collides with the imported
+  annotation and fails compilation with "already defined in this
+  compilation unit".
   Do not fall back to inlining error responses in resource methods, and
   never use `@RegisterProvider` — that annotation belongs to the
   MicroProfile REST *Client* and does not exist in `jakarta.ws.rs.ext`.
