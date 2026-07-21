@@ -24,7 +24,10 @@ How this team builds REST endpoints. Apply on every endpoint change.
 
   (No `@Inject` needed on a single constructor — CDI resolves it.)
 - Request/response bodies are Java records serialized with Jackson; never
-  expose entities directly. Each distinct response shape gets its own
+  expose entities directly. Records are data-only: no business logic in
+  records or their static factories — enrichment, mapping decisions, and
+  fallbacks live in services and resources, where they can be injected
+  and tested. Each distinct response shape gets its own
   record — a projection like an availability summary is its own record
   (`InventoryAvailability(itemId, available, quantity)`), not a trimmed
   reuse of the entity. (Reference: `coolstore-inventory-service`.)

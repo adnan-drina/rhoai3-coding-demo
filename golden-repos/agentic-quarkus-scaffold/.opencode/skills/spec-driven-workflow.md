@@ -21,7 +21,10 @@ feature directory and verify before finishing.
   `data-model.md`, `quickstart.md`, `contracts/` with the API contract.
   A filled `plan.md` alone is not a completed plan phase.
 - **tasks**: `tasks.md` with ordered, individually verifiable items;
-  tests are first-class tasks, not an afterthought. Every library any
+  tests are first-class tasks, not an afterthought. Test-infrastructure
+  tasks (mock fixtures, test resources) name the exact class and file
+  they create and are ordered **before** the test tasks that depend on
+  them — "add mock setup in test resources" is not a verifiable task. Every library any
   task uses (runtime or test — REST client, WireMock, …) must have an
   explicit setup task adding its `pom.xml` dependency; a task list that
   references a library nothing installs will fail at implement time.

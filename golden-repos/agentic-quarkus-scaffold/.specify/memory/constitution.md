@@ -41,8 +41,11 @@ resolve them before tasks.
 ## V. Simplicity (YAGNI)
 
 Build only what the spec requires. Extra config classes, wrapper DTOs,
-error taxonomies, and abstraction layers the spec does not demand are
-complexity-tracking violations that need written justification.
+error taxonomies, abstraction layers, and pre-flight checks or health
+probes of downstream services the spec does not demand are
+complexity-tracking violations that need written justification. If the
+spec says "degrade per request", failures are handled per request —
+not predicted in advance.
 
 ## VI. Quality is an input
 
