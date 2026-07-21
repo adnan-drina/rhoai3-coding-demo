@@ -19,7 +19,7 @@ spec:
     - exec:
         commandLine: |
           PROJECT_DIR="/projects/agentic-coolstore"
-          java21_home="${JAVA_HOME:-}"
+          java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
           if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
             for candidate in \
               "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -99,7 +99,7 @@ spec:
         - name: SHELL
           value: /usr/bin/bash
         - name: JAVA_HOME
-          value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+          value: /usr/lib/jvm/java-21-openjdk
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
         endpoints:
@@ -113,7 +113,7 @@ spec:
           exposure: none
           secure: false
           protocol: tcp
-        image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+        image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
         memoryLimit: 6Gi
         memoryRequest: 2Gi
         sourceMapping: /projects

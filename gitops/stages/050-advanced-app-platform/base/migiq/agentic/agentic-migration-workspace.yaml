@@ -19,7 +19,7 @@ spec:
     - exec:
         commandLine: |
           KUBE_CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt; KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token); KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"; curl -fsS --cacert "$KUBE_CA" -H "Authorization: Bearer $KUBE_TOKEN" "$KUBE_API/api/v1/namespaces/wksp-ai-developer/secrets/maas-agentic-migration-key" | python3 -c 'import json,sys,base64; d=json.load(sys.stdin)["data"]; print("export MAAS_API_KEY=%s\nexport MAAS_BASE_URL=%s" % (base64.b64decode(d["MAAS_API_KEY"]).decode(), base64.b64decode(d["MAAS_BASE_URL"]).decode()))' > "$HOME/.agentic-maas.env" 2>/dev/null && echo "elevated MaaS env written" || echo "WARN: elevated key not available yet"; cd /projects/agentic-migration && npx --yes @sshaaf/migiq@0.2.2 >/tmp/migiq-install.log 2>&1 || echo "migiq install failed; see /tmp/migiq-install.log" ; PROJECT_DIR="/projects/agentic-migration"
-          java21_home="${JAVA_HOME:-}"
+          java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
           if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
             for candidate in \
               "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -85,8 +85,8 @@ spec:
         - name: SHELL
           value: /usr/bin/bash
         - name: JAVA_HOME
-          value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
-        image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          value: /usr/lib/jvm/java-21-openjdk
+        image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
         memoryLimit: 6Gi
         memoryRequest: 2Gi
         sourceMapping: /projects

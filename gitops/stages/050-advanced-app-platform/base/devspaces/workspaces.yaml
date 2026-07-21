@@ -59,7 +59,7 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -128,7 +128,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -140,7 +140,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -168,7 +168,7 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -237,7 +237,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -249,7 +249,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -277,7 +277,7 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -326,7 +326,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi
@@ -338,7 +338,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 apiVersion: v1
 kind: Namespace
@@ -394,7 +394,7 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -463,7 +463,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -475,7 +475,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -503,7 +503,7 @@ spec:
       - id: init-ai-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -572,7 +572,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -584,7 +584,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -612,7 +612,7 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -661,7 +661,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi
@@ -673,7 +673,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 apiVersion: v1
 kind: Namespace
@@ -730,7 +730,7 @@ spec:
         exec:
           commandLine: |
             PROJECT_DIR="/projects/getting-started-ai-coding"
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -791,7 +791,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -803,7 +803,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -832,7 +832,7 @@ spec:
         exec:
           commandLine: |
             PROJECT_DIR="/projects/coolstore-inventory-service"
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -893,7 +893,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -905,7 +905,7 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -933,7 +933,7 @@ spec:
       - id: init-modernization-tools
         exec:
           commandLine: |
-            java21_home="${JAVA_HOME:-}"
+            java21_home="${JAVA_HOME_21:-${JAVA_HOME:-}}"
             if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
               for candidate in \
                 "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -982,7 +982,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
           sourceMapping: /projects
           memoryLimit: 6Gi
           memoryRequest: 2Gi
@@ -994,4 +994,4 @@ spec:
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
-              value: /home/tooling/.sdkman/candidates/java/21.0.5-tem
+              value: /usr/lib/jvm/java-21-openjdk
