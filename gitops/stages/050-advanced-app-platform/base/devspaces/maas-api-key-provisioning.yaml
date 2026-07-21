@@ -451,6 +451,41 @@ data:
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
+    # Optional: external Red Hat models via their direct endpoints. The
+    # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
+    # so they bypass the gateway. Keys are operator-provisioned into the
+    # Secret out of band (not in git); the provider is skipped when absent.
+    REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
+    REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
+    OPENCODE_ENABLED='["nemotron", "qwen"]'
+    OPENCODE_REDHAT_PROVIDER=""
+    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
+      OPENCODE_ENABLED='["nemotron", "qwen", "redhat"]'
+      OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
+,
+        "redhat": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "Red Hat Models (direct)",
+          "models": {
+            "minimax-m2": {
+              "name": "MiniMax M2 (196K)",
+              "limit": { "context": 196608, "output": 16384 }
+            },
+            "qwen3-235b": {
+              "name": "Qwen3 235B",
+              "limit": { "context": 131072, "output": 16384 }
+            }
+          },
+          "options": {
+            "apiKey": "${REDHAT_MODELS_API_KEY}",
+            "baseURL": "${REDHAT_MODELS_BASE_URL%/}",
+            "timeout": 1200000,
+            "chunkTimeout": 120000
+          }
+        }
+REDHATEOF
+)"
+    fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
@@ -520,7 +555,7 @@ data:
     {
       "\$schema": "https://opencode.ai/config.json",
       "autoupdate": true,
-      "enabled_providers": ["nemotron", "qwen"],
+      "enabled_providers": ${OPENCODE_ENABLED},
       "provider": {
         "nemotron": {
           "npm": "@ai-sdk/openai-compatible",
@@ -554,7 +589,7 @@ data:
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
-        }
+        }${OPENCODE_REDHAT_PROVIDER}
       },
       "model": "qwen/qwen3-6-35b-a3b",
       "small_model": "qwen/qwen3-6-35b-a3b",
