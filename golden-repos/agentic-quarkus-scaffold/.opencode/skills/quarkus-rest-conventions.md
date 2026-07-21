@@ -85,3 +85,41 @@ How this team builds REST endpoints. Apply on every endpoint change.
   edit-cycle leftovers (an import kept after switching to a string
   literal, a class that is no longer referenced) are the most common
   gate failures.
+
+## Calling other services (REST client)
+
+Service-to-service calls use the MicroProfile REST client — never a
+hand-rolled Vert.x/HTTP client. Dependency: `quarkus-rest-client-jackson`.
+The complete pattern (copy exactly):
+
+```java
+@RegisterRestClient(configKey = "inventory")
+@Path("/api/inventory")
+public interface InventoryClient {
+    @GET
+    @Path("/{itemId}/availability")
+    InventoryAvailability availability(@PathParam("itemId") String itemId);
+}
+```
+
+Wire the domain config property to the client key in
+`application.properties` — tests and clusters then only override the
+domain property:
+
+```properties
+catalog.inventory.url=http://coolstore-inventory-service.coolstore-dev.svc:8080
+quarkus.rest-client.inventory.url=${catalog.inventory.url}
+quarkus.rest-client.inventory.connect-timeout=2000
+quarkus.rest-client.inventory.read-timeout=2000
+```
+
+Inject with the `@RestClient` qualifier — still constructor injection:
+
+```java
+public CatalogResource(@RestClient InventoryClient inventory, ...) { ... }
+```
+
+Failure handling for graceful degradation: a 404 from the remote
+surfaces as `WebApplicationException`, timeouts and connection failures
+as `ProcessingException` — catch both, log a WARNING, return the
+degraded value. Do not invent wrapper/error DTOs for this.
