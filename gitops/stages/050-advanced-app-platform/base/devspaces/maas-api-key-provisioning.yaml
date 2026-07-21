@@ -112,6 +112,12 @@ subjects:
   - kind: Group
     name: system:serviceaccounts:wksp-ai-developer
     apiGroup: rbac.authorization.k8s.io
+  # ai-admin's workspaces bootstrap from the same Secret + init ConfigMap
+  # (workspace devfiles fetch both from wksp-ai-developer by fixed path),
+  # so the second demo user gets the identical AI-tooling experience.
+  - kind: Group
+    name: system:serviceaccounts:wksp-ai-admin
+    apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: v1
 kind: ConfigMap
