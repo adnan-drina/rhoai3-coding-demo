@@ -4,11 +4,15 @@ metadata:
 components:
   - name: development-tooling
     container:
-      # cli-ai-tools ships the OpenCode CLI (plus Java 21 + Maven) — the
-      # scaffolded workspace is OpenCode-only by design; the project's
-      # .opencode/ directory is the tool-selector signal for the shared
-      # init script (present -> OpenCode, absent -> Kilo).
-      image: quay.io/che-incubator/cli-ai-tools@sha256:56478aeb73ff761b743432d32ffaa940758ffa862acf37fd044eb7252873c84a
+      # Standard workspace base: the same Red Hat UDI every coolstore
+      # workspace uses (inventory, migration), so the Java/Maven foundation
+      # is uniform across stages — Maven 3.9.9 (Red Hat build), JDKs via the
+      # documented JAVA_HOME_<version> contract. The workspace is
+      # OpenCode-only by design: the platform init script installs the
+      # OpenCode CLI and quarkus-agent-mcp onto the persistent home; the
+      # project's .opencode/ directory is the tool-selector signal
+      # (present -> OpenCode, absent -> Kilo).
+      image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
       env:
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
@@ -49,7 +53,12 @@ commands:
       commandLine: |
         PROJECT_DIR="${PROJECT_SOURCE:-$(ls -d /projects/* 2>/dev/null | head -1)}"
         PROFILE="$(basename "${PROJECT_DIR}")"
-        java21_home="${JAVA_HOME:-}"
+        # The UDI base image documents JAVA_HOME_<version> variables as the
+        # supported way to select a JDK; its sdkman default (plain
+        # JAVA_HOME) is Java 17, while this project targets 21. Never
+        # trust the inherited JAVA_HOME — resolve 21 via the image
+        # contract, with a path probe as fallback for non-UDI images.
+        java21_home="${JAVA_HOME_21:-}"
         if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
           for candidate in \
             "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
@@ -93,11 +102,14 @@ commands:
           echo "installed but not configured — governed MaaS credentials come"
           echo "from the platform init script."
         fi
+  # The UDI base image documents JAVA_HOME_<version> variables as the
+  # supported way to select a JDK (sdkman default is Java 17; the pom
+  # targets 21). Each Maven command selects Java 21 through that contract.
   - id: test
     exec:
       label: "1. Run tests"
       component: development-tooling
-      commandLine: "mvn -q test"
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
       group:
         kind: test
         isDefault: true
@@ -105,7 +117,7 @@ commands:
     exec:
       label: "2. Start Development mode (Hot reload + debug)"
       component: development-tooling
-      commandLine: "mvn compile quarkus:dev"
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run
         isDefault: true

@@ -30,8 +30,8 @@ log_step "Golden-path template readiness (remote check)"
 check "golden branch exists upstream for scaffold template" \
   "git ls-remote --heads https://github.com/adnan-drina/agentic-quarkus-scaffold.git golden | wc -l | tr -d ' '" \
   "1"
-check "scaffold devfile uses the OpenCode tooling image (cli-ai-tools)" \
-  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q 'che-incubator/cli-ai-tools' && echo present || echo missing" \
+check "scaffold devfile uses the shared UDI base image (udi-rhel9)" \
+  "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q 'devspaces/udi-rhel9' && echo present || echo missing" \
   "present"
 check "scaffold devfile runs the platform init script on postStart" \
   "curl -fsSL https://raw.githubusercontent.com/adnan-drina/agentic-quarkus-scaffold/main/devfile.yaml | grep -q 'devspace-ai-tools-init' && echo present || echo missing" \
