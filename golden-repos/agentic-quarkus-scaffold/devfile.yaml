@@ -4,7 +4,15 @@ metadata:
 components:
   - name: development-tooling
     container:
-      image: registry.redhat.io/devspaces/udi-rhel9:3.26.1
+      # Standard workspace base: the same Red Hat UDI every coolstore
+      # workspace uses (inventory, migration), so the Java/Maven foundation
+      # is uniform across stages — Maven 3.9.9 (Red Hat build), JDKs via the
+      # documented JAVA_HOME_<version> contract. The workspace is
+      # OpenCode-only by design: the platform init script installs the
+      # OpenCode CLI and quarkus-agent-mcp onto the persistent home; the
+      # project's .opencode/ directory is the tool-selector signal
+      # (present -> OpenCode, absent -> Kilo).
+      image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
       env:
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
@@ -12,6 +20,13 @@ components:
           value: "-Dmaven.repo.local=/home/user/.m2/repository"
         - name: QUARKUS_ANALYTICS_DISABLED
           value: "true"
+        # OpenCode embeds Bun, and Bun 1.3+ no longer trusts the system CA
+        # store by default (oven-sh/bun#23735), so it rejects the MaaS
+        # gateway's ingress certificate. Setting this at the container level
+        # guarantees the trust is in place at process start regardless of
+        # shell timing (the init script also exports it into ~/.bashrc).
+        - name: NODE_USE_SYSTEM_CA
+          value: "1"
       memoryLimit: 6Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -32,11 +47,69 @@ components:
     volume:
       size: 1G
 commands:
+  - id: init-ai-tools
+    exec:
+      component: development-tooling
+      commandLine: |
+        PROJECT_DIR="${PROJECT_SOURCE:-$(ls -d /projects/* 2>/dev/null | head -1)}"
+        PROFILE="$(basename "${PROJECT_DIR}")"
+        # The UDI base image documents JAVA_HOME_<version> variables as the
+        # supported way to select a JDK; its sdkman default (plain
+        # JAVA_HOME) is Java 17, while this project targets 21. Never
+        # trust the inherited JAVA_HOME — resolve 21 via the image
+        # contract, with a path probe as fallback for non-UDI images.
+        java21_home="${JAVA_HOME_21:-}"
+        if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
+          for candidate in \
+            "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
+            /home/tooling/.sdkman/candidates/java/21.0.5-tem \
+            /usr/lib/jvm/java-21-openjdk; do
+            if [ -x "${candidate}/bin/java" ]; then
+              java21_home="${candidate}"
+              break
+            fi
+          done
+        fi
+        if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
+          export JAVA_HOME="${java21_home}"
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+            touch "${rc}"
+            if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+              {
+                printf '\n'
+                printf '# rhoai3-coding-demo: java 21 default\n'
+                printf 'export JAVA_HOME="%s"\n' "${java21_home}"
+                printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
+              } >> "${rc}"
+            fi
+          done
+          echo "Configured Java 21 as the default shell runtime."
+        fi
+        for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
+        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+        if curl -fsS --cacert "${KUBE_CA}" \
+            -H "Authorization: Bearer ${KUBE_TOKEN}" \
+            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
+            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
+            && [ -s /tmp/init-ai-tools.sh ]; then
+          chmod 700 /tmp/init-ai-tools.sh
+          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
+        else
+          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
+          echo "installed but not configured — governed MaaS credentials come"
+          echo "from the platform init script."
+        fi
+  # The UDI base image documents JAVA_HOME_<version> variables as the
+  # supported way to select a JDK (sdkman default is Java 17; the pom
+  # targets 21). Each Maven command selects Java 21 through that contract.
   - id: test
     exec:
       label: "1. Run tests"
       component: development-tooling
-      commandLine: "mvn -q test"
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
       group:
         kind: test
         isDefault: true
@@ -44,7 +117,10 @@ commands:
     exec:
       label: "2. Start Development mode (Hot reload + debug)"
       component: development-tooling
-      commandLine: "mvn compile quarkus:dev"
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run
         isDefault: true
+events:
+  postStart:
+    - init-ai-tools

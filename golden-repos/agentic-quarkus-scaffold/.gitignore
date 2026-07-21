@@ -1,0 +1,12 @@
+# Maven / Quarkus build output
+target/
+
+# OpenCode plugin-API scaffolding — generated at runtime whenever a project
+# has a .opencode/ directory (OpenCode installs @opencode-ai/plugin to expose
+# its plugin API). This project uses only markdown skills and speckit
+# commands, so none of it is used here, and it must never be committed.
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
+.opencode/.gitignore
