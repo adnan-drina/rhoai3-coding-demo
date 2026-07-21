@@ -25,6 +25,12 @@ spec:
   devEnvironments:
     startTimeoutSeconds: 1200
     secondsOfInactivityBeforeIdling: -1
+    # Default is 1 running workspace per user: starting any second workspace
+    # (e.g. a stray dashboard click on agentic-coolstore) silently stops the
+    # active one — observed 2026-07-21 killing an in-flight speckit session.
+    # Two lets the scaffolded project workspace coexist with one stage
+    # workspace.
+    maxNumberOfRunningWorkspacesPerUser: 2
     storage:
       pvcStrategy: per-user
     defaultNamespace:
