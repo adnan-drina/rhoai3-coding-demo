@@ -9,6 +9,13 @@ running any `/speckit` command.
 The human reviews each artifact before the next command amplifies it — stop
 after each command and let them review; do not chain commands yourself.
 
+**Phase discipline**: each command writes **only its own artifacts** and
+nothing else. Specify, plan, and tasks never create or modify anything
+under `src/` — writing implementation code before `/speckit.implement`
+skips the human review gates and is a defect even if the code is
+correct. If a phase is interrupted (errors, rate limits), resume the
+same phase; do not skip ahead.
+
 ## Artifacts each phase must produce
 
 A `/speckit` command is complete only when every artifact below exists.
