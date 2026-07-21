@@ -62,6 +62,18 @@ MCP integrations have their own prerequisites. Stage 040 includes the read-only 
 
 Run bootstrap once per cluster:
 
+> **Cluster-local step (not in GitOps):** on AWS clusters, raise the default
+> ingress ELB idle timeout or long-lived websockets (Dev Spaces IDE
+> terminals) and LLM streams die at the AWS Classic ELB default of 60s:
+>
+> ```
+> oc patch ingresscontroller default -n openshift-ingress-operator --type merge \
+>   -p '{"spec":{"endpointPublishingStrategy":{"type":"LoadBalancerService","loadBalancer":{"scope":"External","providerParameters":{"type":"AWS","aws":{"type":"Classic","classicLoadBalancer":{"connectionIdleTimeout":"1h"}}}}}}}'
+> ```
+>
+> The MaaS gateway's own ELB is covered in GitOps (`040 gateway.yaml`
+> `infrastructure.annotations`); this patch covers the `*.apps` router.
+
 ```bash
 cp env.example .env
 oc login --token=<token> --server=<api>
