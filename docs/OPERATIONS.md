@@ -276,8 +276,13 @@ data — a pure concurrency collision, seeded by the configure-rhdh patch landin
 **Non-destructive fix:** `oc scale deploy backstage-developer-hub -n rhdh --replicas=0` then
 `--replicas=1` — a single pod runs migrations without a surge peer and starts clean (route 200,
 1/1). Do NOT drop the `backstage_plugin_*` databases; the data was fine, only the concurrent
-start was the problem. Durable follow-up (BACKLOG): pin the Backstage deployment to `Recreate`
-strategy (or replicas via the CR) so first-boot never surges two migrators.
+start was the problem. **Durable fix (implemented, commit on 2026-07-21):** the Backstage CR now
+carries `spec.deployment.patch.spec.strategy.rollingUpdate.maxSurge: 0` (+ `maxUnavailable: 1`),
+so the operator's Deployment removes the old pod before starting the new one — only one migrator
+ever runs, on fresh deploys too. Note: `strategy.type: Recreate` does NOT work here — the operator
+merges it onto its base template but keeps the base `rollingUpdate` block, producing an invalid
+Deployment (`rollingUpdate may not be specified when type is 'Recreate'`) that the operator then
+refuses to apply, leaving RHDH with no Deployment at all. Use `maxSurge: 0`, not `Recreate`.
 
 **Monitoring hygiene re-asserted.** The eviction churn regenerated four operator ServiceMonitors
 (kueue/nfd/odh-model-controller/lws) without `openshift.io/user-monitoring=false` and reset the
