@@ -1,0 +1,232 @@
+# Post-deploy Job: writes the MTA hub URL into a ConfigMap in each workspace namespace.
+#
+# The mca-coolstore DevWorkspace sets HUB_URL directly to the internal cluster
+# service URL (http://mta-ui.openshift-mta.svc.cluster.local:8080) which is stable
+# and never requires patching. No placeholder, no per-sync patching needed.
+#
+# This Job's only remaining responsibility is to keep the mta-hub-config ConfigMap
+# populated with the external route URL for scripts/documentation that reference it.
+#
+# Hub connection behaviour (konveyor/editor-extensions hubConfigStorage.ts):
+#   HUB_URL             — MTA UI route URL (set directly in DevWorkspace spec)
+#   FORCE_HUB_ENABLED   — force hub active even before the user opens settings
+#   HUB_INSECURE        — skip SSL cert validation (not needed for internal HTTP)
+# NOTE: HUB_USERNAME is intentionally NOT set. Setting it without a matching
+# HUB_PASSWORD triggers a basic-auth attempt that always fails (401).
+# Users authenticate interactively through the extension's login UI.
+#
+# RBAC summary:
+#   - ClusterRole   job-mta-hub-workspace-config-reader : read routes (openshift-mta)
+#   - ClusterRoleBinding                                : bind SA to ClusterRole
+#   - SA + Role + RoleBinding in openshift-mta          : wave anchor for the Job SA
+#   - Role + RoleBinding in each wksp-* namespace       : ConfigMap + DevWorkspace write
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-mta-hub-workspace-config-reader
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+rules:
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-mta-hub-workspace-config
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+subjects:
+- kind: ServiceAccount
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+roleRef:
+  kind: ClusterRole
+  name: job-mta-hub-workspace-config-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# Role: write mta-hub-config ConfigMap + patch mca-coolstore DevWorkspace in wksp-kubeadmin
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["mta-hub-config"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-kubeadmin
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+subjects:
+- kind: ServiceAccount
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+roleRef:
+  kind: Role
+  name: job-mta-hub-workspace-config
+  apiGroup: rbac.authorization.k8s.io
+---
+# Role: write mta-hub-config ConfigMap in wksp-ai-admin
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["mta-hub-config"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-ai-admin
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+subjects:
+- kind: ServiceAccount
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+roleRef:
+  kind: Role
+  name: job-mta-hub-workspace-config
+  apiGroup: rbac.authorization.k8s.io
+---
+# Role: write mta-hub-config ConfigMap in wksp-ai-developer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["mta-hub-config"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+subjects:
+- kind: ServiceAccount
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+roleRef:
+  kind: Role
+  name: job-mta-hub-workspace-config
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-mta-hub-workspace-config
+  namespace: openshift-mta
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: job-mta-hub-workspace-config
+      restartPolicy: OnFailure
+      containers:
+      - name: configure
+        image: image-registry.openshift-image-registry.svc:5000/openshift/tools:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+
+          # --- 1. Wait for MTA route ---
+          echo "Waiting for MTA route..."
+          MTA_HOST=""
+          for i in $(seq 1 60); do
+            MTA_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || true)
+            if [ -n "${MTA_HOST}" ]; then break; fi
+            echo "Waiting for MTA route... (${i}/60)"
+            sleep 10
+          done
+
+          if [ -z "${MTA_HOST}" ]; then
+            echo "ERROR: MTA route not found after timeout"
+            exit 1
+          fi
+
+          MTA_URL="https://${MTA_HOST}"
+          echo "MTA URL: ${MTA_URL}"
+
+          # --- 2. Write mta-hub-config ConfigMap in each workspace namespace ---
+          for NS in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
+            echo "Provisioning mta-hub-config in ${NS}..."
+            if oc get configmap mta-hub-config -n "${NS}" &>/dev/null; then
+              oc patch configmap mta-hub-config -n "${NS}" --type=merge \
+                -p "{\"data\":{\"MTA_HUB_URL\":\"${MTA_URL}\"}}"
+              echo "Patched mta-hub-config in ${NS}"
+            else
+              oc create configmap mta-hub-config -n "${NS}" \
+                --from-literal=MTA_HUB_URL="${MTA_URL}"
+              echo "Created mta-hub-config in ${NS}"
+            fi
+          done
+
+          echo "Done. mta-hub-config ConfigMaps provisioned with external URL: ${MTA_URL}"
+          echo "Note: DevWorkspace HUB_URL uses the stable internal service URL directly."

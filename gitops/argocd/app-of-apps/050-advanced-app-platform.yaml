@@ -67,6 +67,9 @@ spec:
     # stopped), so it can be declared in neither state without drifting the other.
     # Ignore just that one controller-owned entry — by value, not list index, so
     # it holds for every workspace regardless of component/env ordering.
+    # HUB_URL is set directly to the stable internal cluster service URL
+    # (http://mta-ui.openshift-mta.svc.cluster.local:8080) in workspaces.yaml,
+    # so no PostSync patching or ignoreDifferences for HUB_URL is needed.
     - group: workspace.devfile.io
       kind: DevWorkspace
       jsonPointers:

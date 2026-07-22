@@ -19,3 +19,4 @@ resources:
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
+  - mta-hub-workspace-config.yaml
