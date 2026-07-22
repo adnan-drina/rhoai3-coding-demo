@@ -17,8 +17,6 @@ One-shot prompting shows its power — and its limits, which motivate Stage
 
 ## Architecture
 
-![Stage 060 layered capability map](../../docs/assets/architecture/stage-060-capability-map.svg)
-
 ## What This Stage Adds
 
 This is a workflow-only stage: the infrastructure below is owned by Stage

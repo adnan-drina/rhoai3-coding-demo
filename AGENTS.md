@@ -193,7 +193,7 @@ discovery path. Keep skill folders flat and use the prefix plus
 
 | Group | Prefix | Skills | Purpose |
 |-------|--------|--------|---------|
-| Project Structure | `project-*` | `maintain-rules-and-skills`, `prepare-pr-summary`, `project-demo-stage-authoring`, `project-documentation-authoring`, `project-architecture-diagrams`, `project-red-hat-doc-skill-authoring`, `project-rhoai-doc-chapter-skill-authoring` | Governance, PR output, stage lifecycle, documentation structure, Red Hat docs-to-skill generation |
+| Project Structure | `project-*` | `maintain-rules-and-skills`, `prepare-pr-summary`, `project-demo-stage-authoring`, `project-documentation-authoring`, `project-red-hat-doc-skill-authoring`, `project-rhoai-doc-chapter-skill-authoring` | Governance, PR output, stage lifecycle, documentation structure, Red Hat docs-to-skill generation |
 | GitOps & Manifests | | `review-gitops-change`, `review-manifest-compliance`, `review-doc-alignment` | Review changes, explain risk, verify compliance and doc alignment |
 | Documentation | | `update-demo-docs`, `demo-operations-docs` | Keep docs aligned, author operational docs |
 | Demo Environment | | `validate-demo-step`, `rhoai-troubleshoot`, `inspect-cluster`, `manage-devspaces`, `manage-resources`, `resume-gpu-demo`, `run-guidellm-load-test`, `workaround-review` | Deploy, validate, diagnose, scale |

@@ -17,7 +17,6 @@ Use the documentation-related skills for work that changes README files,
 operations docs, or troubleshooting guides:
 
 - `.agents/skills/project-documentation-authoring/SKILL.md` — authoring and structuring READMEs
-- `.agents/skills/project-architecture-diagrams/SKILL.md` — maintaining capability map SVGs
 - `.agents/skills/update-demo-docs/SKILL.md` — consistency checks after changes
 - `.agents/skills/demo-operations-docs/SKILL.md` — operational documentation
 
@@ -163,8 +162,6 @@ verification command.
 
 ## Architecture Diagrams
 
-- Diagrams live in `docs/assets/architecture/` as SVGs
-- Root diagram: `rhoai-capability-map.svg`
-- Stage diagrams: `stage-NNN-capability-map.svg`
-- Regenerate with `node scripts/generate-architecture-diagrams.mjs`
-- Do not hand-edit generated SVGs
+- Use ASCII diagrams directly in README files for architecture representation
+- Keep diagrams simple, showing the three platform layers and key components
+- Stage READMEs may include stage-specific Mermaid or ASCII diagrams inline

@@ -43,7 +43,7 @@ List the skills that will govern the stage:
 
 - coordinator: `project-demo-stage-authoring`
 - documentation: `project-documentation-authoring`
-- architecture: `project-architecture-diagrams`
+- architecture: inline ASCII or Mermaid diagram in the stage README
 - GitOps review: `review-gitops-change`
 - validation: `validate-demo-step`
 - operations: `demo-operations-docs`

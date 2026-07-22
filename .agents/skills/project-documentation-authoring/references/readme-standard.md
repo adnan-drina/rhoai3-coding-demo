@@ -72,8 +72,8 @@ Do not use generic market claims when a Red Hat source exists.
 This section is the source for slide 3: architecture delta.
 
 The stage diagram must make the current stage components visually distinct from
-previously introduced components. Preferred format is the generated SVG from
-`scripts/generate-architecture-diagrams.mjs`.
+previously introduced components. Preferred format is an ASCII or Mermaid
+diagram inline in the README.
 
 After the diagram, add a short architecture delta list:
 

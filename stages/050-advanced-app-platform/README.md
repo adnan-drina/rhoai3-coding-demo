@@ -35,8 +35,6 @@ begins.
 
 ## Architecture
 
-![Stage 050 portal capability map](../../docs/assets/architecture/stage-050-capability-map.svg)
-
 Red Hat Developer Hub provides the portal surface: software catalog, TechDocs,
 and (in Phase 3) golden-path templates that provision per-run repositories for
 the AI development stages. Red Hat OpenShift Pipelines provides the Tekton

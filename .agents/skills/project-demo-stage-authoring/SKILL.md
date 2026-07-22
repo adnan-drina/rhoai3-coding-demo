@@ -92,8 +92,8 @@ portal resources are now part of Stage 050's GitOps ownership.
 8. Generate manifests only from official docs, verified live schema (`oc explain`),
    or explicitly documented demo exceptions.
 9. Add `deploy.sh` and `validate.sh` following existing stage script patterns.
-10. Update `scripts/generate-architecture-diagrams.mjs` to include the new stage
-    capabilities (use `project-architecture-diagrams` skill).
+10. Add an Architecture section with an ASCII or Mermaid diagram showing new
+    capabilities (inline in the README).
 11. Update `docs/OPERATIONS.md` and `docs/TROUBLESHOOTING.md` when the stage
     creates reusable operational knowledge.
 12. Run the quality gates in `references/definition-of-done.md`.
@@ -103,7 +103,7 @@ portal resources are now part of Stage 050's GitOps ownership.
 
 - `project-documentation-authoring`: README, operations, troubleshooting, and
   backlog updates.
-- `project-architecture-diagrams`: update capability map SVGs.
+- `project-documentation-authoring`: README narrative and structure.
 - `review-gitops-change`: structural and security review of manifests.
 - `validate-demo-step`: static and live validation.
 - `demo-operations-docs`: operational documentation.

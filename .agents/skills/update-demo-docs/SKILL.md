@@ -37,7 +37,6 @@ consistent with the implementation.
 |----------|-----------|
 | `README.md` | Stage table accuracy, product map, trust boundaries, deploy commands |
 | `stages/NNN-*/README.md` | Demo storyline continuity, architecture claims, "What This Stage Adds", "What To Notice And Why It Matters", trust boundary language |
-| `docs/assets/architecture/*.svg` and `scripts/generate-architecture-diagrams.mjs` | Root/stage diagram synchronization, canonical capability labels, product-layer colors |
 | `docs/OPERATIONS.md` | Deployment order, validation strategy, Argo CD app names, commands |
 | `docs/TROUBLESHOOTING.md` | Affected symptoms, recovery steps, diagnostic commands |
 | `BACKLOG.md` | Workaround status, new limitations, resolved items |
@@ -115,13 +114,9 @@ When checking a stage README:
 
 ### 8. Architecture diagram consistency
 
-When checking architecture diagrams:
-- Treat `scripts/generate-architecture-diagrams.mjs` as the source of truth for root and stage SVGs.
-- Verify root and stage SVGs share the same product rail, logical layers, and capability labels.
-- Verify root capability boxes use dark fill with product-colored left stripes.
-- Verify stage SVGs only change capability visual state: new in stage, previously introduced with a product-colored left stripe, and not introduced yet.
-- Preserve the agreed dark transparent Layout B visual design: purple Advanced Developer Suite, teal OpenShift AI, red OpenShift, dark neutral table, gray borders, and white text.
-- Keep capability labels logical and product-aligned rather than manifest-internal.
+When checking architecture diagrams in READMEs:
+- Verify ASCII or Mermaid diagrams accurately reflect deployed components.
+- Verify the three-layer structure (Hybrid Cloud Platform, Private AI Platform, Enterprise Application Platform) is consistent across stages.
 
 ## Workflow
 

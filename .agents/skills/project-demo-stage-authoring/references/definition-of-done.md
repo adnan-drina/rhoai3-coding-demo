@@ -67,9 +67,8 @@ Use this checklist before declaring a stage ready.
 
 ## Architecture Diagrams
 
-- `scripts/generate-architecture-diagrams.mjs` includes the stage capabilities.
-- SVGs are regenerated with `node scripts/generate-architecture-diagrams.mjs`.
-- Root README references the correct root capability map SVG.
+- Stage README includes an ASCII or Mermaid architecture diagram if the stage introduces new components.
+- Root README ASCII diagram reflects all three platform layers and their key building blocks.
 - Stage README references the correct stage capability map SVG.
 
 ## Commit Boundary
