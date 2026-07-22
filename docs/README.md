@@ -4,7 +4,6 @@ This directory holds operational and governance documentation for the Red Hat Op
 
 | Document | Purpose |
 |----------|---------|
-| [index.md](index.md) | Published TechDocs landing page for the developer workspace guide |
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operations, day-2 notes, and cleanup guidance |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
 | [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |

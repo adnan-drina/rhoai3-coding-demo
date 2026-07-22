@@ -1,9 +1,0 @@
-site_name: RHOAI Coding Demo Developer Workspace Guide
-site_description: Governed Dev Spaces, MaaS, Continue, and OpenCode guide for the RHOAI coding demo.
-docs_dir: docs
-exclude_docs: |
-  README.md
-nav:
-  - Start Here: index.md
-  - Operations Notes: OPERATIONS.md
-  - Troubleshooting: TROUBLESHOOTING.md
