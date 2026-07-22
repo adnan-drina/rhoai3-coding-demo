@@ -84,7 +84,7 @@ official Red Hat messaging and the implemented demo story.
 - Each stage README should include a `## Demo` section with annotated
   screenshots (at least one per key component, at least one customer-facing
   result) when visual evidence is available. Visual evidence lives in
-  `docs/assets/demos/stage-NNN/`.
+  `images/` within the stage directory.
 
 ### Shared Principles
 

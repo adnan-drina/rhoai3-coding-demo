@@ -135,19 +135,19 @@ Screenshots should cover:
 
 > Animated walkthrough of the main user-facing feature.
 
-![Stage NNN demo](docs/assets/demos/stage-NNN/stage-NNN-demo.gif)
+![Stage NNN demo](images/stage-NNN-demo.gif)
 
 ### Key Screens
 
 | Screen | Component | What it shows |
 |--------|-----------|---------------|
-| ![alt](docs/assets/demos/stage-NNN/01-name.png) | Component Name | One-sentence description |
-| ![alt](docs/assets/demos/stage-NNN/02-name.png) | Component Name | One-sentence description |
+| ![alt](images/01-name.png) | Component Name | One-sentence description |
+| ![alt](images/02-name.png) | Component Name | One-sentence description |
 ```
 
 ### Naming Convention
 
-Screenshots live in `docs/assets/demos/stage-NNN/` with zero-padded sequence
+Screenshots live in `images/` within the stage directory with zero-padded sequence
 numbers: `01-descriptive-name.png`, `02-descriptive-name.png`, etc. The
 animated GIF is named `stage-NNN-demo.gif`.
 

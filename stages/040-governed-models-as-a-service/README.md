@@ -41,14 +41,14 @@ flowchart LR
 
 ## Demo
 
-![Stage 040 walkthrough](../../docs/assets/demos/stage-040/stage-040-demo.gif)
+![Stage 040 walkthrough](images/stage-040-demo.gif)
 
 | Screenshot | What it shows |
 |------------|---------------|
-| ![Playground](../../docs/assets/demos/stage-040/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
-| ![Gateway](../../docs/assets/demos/stage-040/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
-| ![HTTPRoutes](../../docs/assets/demos/stage-040/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
-| ![AuthPolicy](../../docs/assets/demos/stage-040/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |
+| ![Playground](images/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
+| ![Gateway](images/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
+| ![HTTPRoutes](images/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
+| ![AuthPolicy](images/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |
 
 ## What This Stage Adds
 

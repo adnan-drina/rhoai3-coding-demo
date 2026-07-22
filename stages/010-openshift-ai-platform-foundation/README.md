@@ -46,31 +46,31 @@ Red Hat OpenShift AI 3.4 delivers this as a metal-to-agent platform that runs co
 
 The platform control plane with the AI Coding Sandbox project (resource name `demo-sandbox`), AI Hub, Observe and Monitor, and Settings navigation.
 
-![RHOAI Dashboard](../../docs/assets/demos/stage-010/01-rhoai-dashboard-projects.png)
+![RHOAI Dashboard](images/01-rhoai-dashboard-projects.png)
 
 ### Serving Runtimes
 
 Serving runtimes configuration ready for custom runtime definitions in later stages.
 
-![Serving Runtimes](../../docs/assets/demos/stage-010/03-serving-runtimes.png)
+![Serving Runtimes](images/03-serving-runtimes.png)
 
 ### Hardware Profiles
 
 CPU Default, GPU Priority, GPU Reserved, and GPU Shared profiles. These are deployed by Stage 020 and visible here once that stage is applied.
 
-![Hardware Profiles](../../docs/assets/demos/stage-010/04-hardware-profiles.png)
+![Hardware Profiles](images/04-hardware-profiles.png)
 
 ### DataScienceCluster
 
 The `default-dsc` DataScienceCluster resource showing Ready status.
 
-![DataScienceCluster](../../docs/assets/demos/stage-010/05-datasciencecluster.png)
+![DataScienceCluster](images/05-datasciencecluster.png)
 
 ### OpenShift Groups
 
 Demo groups (`rhods-admins`, `rhoai-developers`) establishing the identity base for RBAC.
 
-![OpenShift Groups](../../docs/assets/demos/stage-010/06-openshift-groups.png)
+![OpenShift Groups](images/06-openshift-groups.png)
 
 ## What This Stage Adds
 

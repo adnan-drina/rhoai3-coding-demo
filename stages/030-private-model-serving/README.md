@@ -41,14 +41,14 @@ Grafana demo dashboards (LLM Performance, vLLM Baseline)
 
 ## Demo
 
-![Stage 030 walkthrough](../../docs/assets/demos/stage-030/stage-030-demo.gif)
+![Stage 030 walkthrough](images/stage-030-demo.gif)
 
 | Screenshot | What it shows |
 |------------|---------------|
-| ![Grafana folder](../../docs/assets/demos/stage-030/01-grafana-dashboards.png) | RHOAI Demo Grafana folder with LLM Performance and vLLM Baseline dashboards |
-| ![LLM Performance](../../docs/assets/demos/stage-030/02-llm-performance-dashboard.png) | Live LLM Inference Performance: TTFT (P50 ~67ms), ITL (P50 ~5ms), KV Cache metrics |
-| ![Nemotron pods](../../docs/assets/demos/stage-030/03-nemotron-pods-running.png) | Nemotron 3 Nano 30B pods running in `demo-sandbox` namespace |
-| ![Deployments](../../docs/assets/demos/stage-030/04-model-deployments.png) | RHOAI AI Hub Deployments tab showing active KServe model serving |
+| ![Grafana folder](images/01-grafana-dashboards.png) | RHOAI Demo Grafana folder with LLM Performance and vLLM Baseline dashboards |
+| ![LLM Performance](images/02-llm-performance-dashboard.png) | Live LLM Inference Performance: TTFT (P50 ~67ms), ITL (P50 ~5ms), KV Cache metrics |
+| ![Nemotron pods](images/03-nemotron-pods-running.png) | Nemotron 3 Nano 30B pods running in `demo-sandbox` namespace |
+| ![Deployments](images/04-model-deployments.png) | RHOAI AI Hub Deployments tab showing active KServe model serving |
 
 ## What This Stage Adds
 

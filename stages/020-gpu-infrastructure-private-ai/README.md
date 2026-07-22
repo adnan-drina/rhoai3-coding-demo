@@ -40,25 +40,25 @@ Stage 030 uses this capacity to serve a private LLM. Stage 040 exposes validated
 
 The workbench creation form exposes GPU capacity as simple dropdown choices — no node taints or tolerations required.
 
-![Hardware Profiles Dropdown](../../docs/assets/demos/stage-020/02-hardware-profiles-dropdown.png)
+![Hardware Profiles Dropdown](images/02-hardware-profiles-dropdown.png)
 
 ### GPU Shared Profile Selected
 
 Selecting "GPU Shared - 1x NVIDIA" shows the resource specifications: CPU, memory, and one NVIDIA GPU from the shared capacity pool.
 
-![GPU Shared Selected](../../docs/assets/demos/stage-020/03-gpu-shared-selected.png)
+![GPU Shared Selected](images/03-gpu-shared-selected.png)
 
 ### GPU MachineSet
 
 The AWS g6e.2xlarge GPU MachineSet providing L40S capacity (two replicas), managed by OpenShift Machine API and tracked in GitOps.
 
-![GPU MachineSet](../../docs/assets/demos/stage-020/04-machineset-gpu-node.png)
+![GPU MachineSet](images/04-machineset-gpu-node.png)
 
 ### Kueue ClusterQueues
 
 Queue-based GPU governance with cohort-based fair sharing between `cq-gpu-priority` and `cq-gpu-shared`, plus isolated `cq-gpu-reserved-demo` capacity.
 
-![Kueue ClusterQueues](../../docs/assets/demos/stage-020/05-kueue-clusterqueues.png)
+![Kueue ClusterQueues](images/05-kueue-clusterqueues.png)
 
 ## What This Stage Adds
 
