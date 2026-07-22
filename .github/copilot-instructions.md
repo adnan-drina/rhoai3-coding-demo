@@ -6,7 +6,6 @@ For detailed agent guidance, see:
 
 - [AGENTS.md](../AGENTS.md) — tool-neutral agent contract (repo map, workflow, security, validation)
 - [.agents/rules/](../.agents/rules/) — shared behavior rules (GitOps, manifests, docs, security)
-- [docs/AI_COLLABORATION.md](../docs/AI_COLLABORATION.md) — rules/skills governance model and hook documentation
 
 ## Key rules
 

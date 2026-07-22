@@ -161,7 +161,7 @@ When to use a feature branch:
 - Multi-stage changes spanning multiple files or stages
 - Parallel agent worktree work
 - Changes that need review before merging
-- Changes to `.agents/`, `.cursor/`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/` templates, or `docs/AI_COLLABORATION.md`
+- Changes to `.agents/`, `.cursor/`, `AGENTS.md`, `CONTRIBUTING.md`, or `.github/` templates
 
 ### Git Commit Conventions
 

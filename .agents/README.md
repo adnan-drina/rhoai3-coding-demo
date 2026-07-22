@@ -35,4 +35,4 @@ here.
 
 1. Write the implementation in `.agents/hooks/`.
 2. Add a bridge entry in each tool's config file (e.g. `.cursor/hooks.json`).
-3. Update this README and `docs/AI_COLLABORATION.md`.
+3. Update this README.

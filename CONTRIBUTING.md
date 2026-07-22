@@ -2,7 +2,7 @@
 
 This repository is maintained by a small team of human developers using Cursor IDE with Claude models. AI assistance is welcome, but human contributors remain responsible for all changes.
 
-For the full AI collaboration model including rules/skills governance, local vs shared boundaries, and promotion workflows, see [docs/AI_COLLABORATION.md](docs/AI_COLLABORATION.md).
+For the full AI collaboration model including rules/skills governance, local vs shared boundaries, and promotion workflows, see [AGENTS.md](AGENTS.md).
 
 ## Contribution Workflow
 

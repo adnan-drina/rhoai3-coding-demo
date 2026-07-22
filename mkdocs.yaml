@@ -6,7 +6,5 @@ exclude_docs: |
 nav:
   - Start Here: index.md
   - Developer Workspace Guide: DEVELOPER_WORKSPACE_GUIDE.md
-  - Developer Workflow Validation: DEVELOPER_WORKFLOW_VALIDATION.md
-  - AI Collaboration Rules: AI_COLLABORATION.md
   - Operations Notes: OPERATIONS.md
   - Troubleshooting: TROUBLESHOOTING.md

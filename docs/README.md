@@ -7,9 +7,7 @@ This directory holds operational and governance documentation for the Red Hat Op
 | [index.md](index.md) | Published TechDocs landing page for the developer workspace guide |
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operations, day-2 notes, and cleanup guidance |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
-| [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs guide for Developer Hub, Dev Spaces, Continue, MaaS, and Stage 060 vibe coding |
-| [DEVELOPER_WORKFLOW_VALIDATION.md](DEVELOPER_WORKFLOW_VALIDATION.md) | Quality gates and evidence expectations for Stage 060 and deferred developer workflow topics |
-| [AI_COLLABORATION.md](AI_COLLABORATION.md) | AI-assisted contribution rules, shared rules and skills governance, and local vs shared boundaries |
+| [DEVELOPER_WORKSPACE_GUIDE.md](DEVELOPER_WORKSPACE_GUIDE.md) | TechDocs guide for Developer Hub, Dev Spaces, Kilo Code, MaaS, and Stage 060 coding exercise |
 | [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |
 
 ## Learning Path
@@ -30,6 +28,6 @@ The implemented flow is defined in [`../flows/default.yaml`](../flows/default.ya
 
 ## AI Collaboration Rules
 
-Shared Cursor rules, skills, and agent definitions live under [`../.cursor/`](../.cursor/). They define project-wide AI agent behavior. Do not commit local rules, skills, credentials, personal paths, private cluster URLs, or personal preferences. See [AI_COLLABORATION.md](AI_COLLABORATION.md) before changing shared agent behavior.
+Shared rules, skills, and agent definitions live under [`../.agents/`](../.agents/). They define project-wide AI agent behavior. Do not commit local rules, skills, credentials, personal paths, private cluster URLs, or personal preferences. See [CONTRIBUTING.md](../CONTRIBUTING.md) before changing shared agent behavior.
 
 Claims in user-facing documentation must stay aligned with manifests, scripts, validation checks, and official product documentation.

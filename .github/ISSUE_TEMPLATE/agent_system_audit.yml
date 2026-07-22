@@ -45,7 +45,6 @@ body:
         - label: AGENTS.md reflects current repo map and demo stages
         - label: CONTRIBUTING.md workflow is still accurate
         - label: PR template checklist is still relevant
-        - label: docs/AI_COLLABORATION.md skill taxonomy is current
         - label: Tool-specific folders contain only thin bridge files
   - type: textarea
     id: findings
