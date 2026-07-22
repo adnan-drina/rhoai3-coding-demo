@@ -390,3 +390,40 @@ Migration Toolkit for Applications, Red Hat Developer Lightspeed for MTA, and
 the server-side MaaS-backed LLM proxy configuration. Do not put MaaS API keys
 directly into the MTA extension configuration unless a later exercise explicitly
 instructs you to do so.
+
+### MTA Hub Connection
+
+The `mca-coolstore` workspace is pre-configured to connect to the MTA hub
+(`mta-ui` in `openshift-mta`) when Stage 080 is deployed. The connection is
+driven by environment variables read by the extension at startup:
+
+| Variable | Source | Purpose |
+|---|---|---|
+| `HUB_URL` | `mta-hub-config` ConfigMap, key `MTA_HUB_URL` | MTA UI route URL |
+| `FORCE_HUB_ENABLED` | `"true"` (static) | Activates hub on first workspace start |
+| `HUB_INSECURE` | `"true"` (static) | Skips TLS verification (OpenShift custom CA) |
+| `HUB_USERNAME` | persona username (static) | Enables OIDC auth; user completes flow interactively |
+
+The `mta-hub-config` ConfigMap is provisioned in each workspace namespace by
+the `job-mta-hub-workspace-config` PostSync Job at sync-wave 25, after the MTA
+route is confirmed ready. The DevWorkspace container references the ConfigMap
+with `optional: true`, so the workspace starts gracefully before Stage 080 is
+deployed.
+
+On first workspace start after Stage 080 is deployed, the extension detects
+`FORCE_HUB_ENABLED=true` and `HUB_URL`, connects to the hub, and launches the
+OIDC authentication flow. The user authenticates with their OpenShift identity
+through the hub's Keycloak OIDC provider. Hub credentials are not stored in
+GitOps or in any ConfigMap.
+
+Live validation:
+
+```bash
+# Confirm ConfigMap is provisioned with actual route URL
+oc get configmap mta-hub-config -n wksp-ai-developer \
+  -o jsonpath='{.data.MTA_HUB_URL}'
+
+# Confirm DevWorkspace carries the env var block
+oc get devworkspace mca-coolstore -n wksp-ai-developer \
+  -o yaml | grep -A2 'FORCE_HUB_ENABLED'
+```

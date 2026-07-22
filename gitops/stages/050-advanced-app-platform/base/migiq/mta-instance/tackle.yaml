@@ -16,3 +16,9 @@ spec:
   kai_llm_provider: openai
   kai_llm_model: nemotron-3-nano-30b-a3b
   kai_llm_baseurl: "https://maas.placeholder.example.com/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+  # Disable hub authentication so the MTA VS Code extension and workshop
+  # participants can access the hub without Keycloak credentials.
+  # The kubeconfig injected into the workspace uses the workspace SA JWT
+  # (audience: kubernetes.default.svc), which Keycloak cannot validate.
+  # For a workshop/demo cluster, open access is the right trade-off.
+  feature_auth_required: false

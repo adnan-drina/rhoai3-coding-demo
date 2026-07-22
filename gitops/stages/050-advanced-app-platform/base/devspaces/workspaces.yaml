@@ -313,12 +313,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.8/file/kilocode.kilo-code-7.4.8@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.3/file/redhat.mta-vscode-extension-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.3/file/redhat.mta-core-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.3/file/redhat.mta-java-8.1.3.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
             test -s /tmp/mta-java.vsix
+            # Create kubeconfig from the workspace SA token so the MTA extension
+            # can connect to the cluster. OIDC auth to the hub is still interactive.
+            if [ ! -f /home/user/.kube/config ]; then
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
+              SA_CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              API_SERVER="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
+              if [ -n "${SA_TOKEN}" ]; then
+                oc login --token="${SA_TOKEN}" --server="${API_SERVER}" \
+                  --certificate-authority="${SA_CA}" 2>/dev/null || true
+                echo "kubeconfig created for MTA extension"
+              fi
+            fi
+            # Ensure JDT.LS starts in Standard mode so mta-java registers its
+            # analysis provider immediately without requiring the user to open a
+            # .java file first. Write into .code-workspace (PVC-backed at
+            # /projects) so the setting survives workspace pod restarts.
+            if [ -f /projects/.code-workspace ]; then
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+            fi
           component: tooling-container
     events:
       postStart:
@@ -339,6 +358,16 @@ spec:
               value: "/usr/bin/bash"
             - name: JAVA_HOME
               value: /usr/lib/jvm/java-21-openjdk
+            # MTA hub connection — uses the stable internal cluster service URL
+            # so no PostSync patching or ignoreDifferences is needed.
+            - name: HUB_URL
+              value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
+            # Force the hub active on first workspace start regardless of prior state.
+            - name: FORCE_HUB_ENABLED
+              value: "true"
+            # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
+            - name: HUB_INSECURE
+              value: "true"
 ---
 apiVersion: v1
 kind: Namespace
@@ -648,12 +677,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.8/file/kilocode.kilo-code-7.4.8@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.3/file/redhat.mta-vscode-extension-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.3/file/redhat.mta-core-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.3/file/redhat.mta-java-8.1.3.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
             test -s /tmp/mta-java.vsix
+            # Create kubeconfig from the workspace SA token so the MTA extension
+            # can connect to the cluster. OIDC auth to the hub is still interactive.
+            if [ ! -f /home/user/.kube/config ]; then
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
+              SA_CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              API_SERVER="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
+              if [ -n "${SA_TOKEN}" ]; then
+                oc login --token="${SA_TOKEN}" --server="${API_SERVER}" \
+                  --certificate-authority="${SA_CA}" 2>/dev/null || true
+                echo "kubeconfig created for MTA extension"
+              fi
+            fi
+            # Ensure JDT.LS starts in Standard mode so mta-java registers its
+            # analysis provider immediately without requiring the user to open a
+            # .java file first. Write into .code-workspace (PVC-backed at
+            # /projects) so the setting survives workspace pod restarts.
+            if [ -f /projects/.code-workspace ]; then
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+            fi
           component: tooling-container
     events:
       postStart:
@@ -674,6 +722,16 @@ spec:
               value: "/usr/bin/bash"
             - name: JAVA_HOME
               value: /usr/lib/jvm/java-21-openjdk
+            # MTA hub connection — uses the stable internal cluster service URL
+            # so no PostSync patching or ignoreDifferences is needed.
+            - name: HUB_URL
+              value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
+            # Force the hub active on first workspace start regardless of prior state.
+            - name: FORCE_HUB_ENABLED
+              value: "true"
+            # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
+            - name: HUB_INSECURE
+              value: "true"
 ---
 apiVersion: v1
 kind: Namespace
@@ -969,12 +1027,31 @@ spec:
               curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/kilo.vsix "https://open-vsx.org/api/kilocode/kilo-code/linux-x64/7.4.8/file/kilocode.kilo-code-7.4.8@linux-x64.vsix"
               test -s /tmp/kilo.vsix
             fi
-            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.2/file/redhat.mta-vscode-extension-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.2/file/redhat.mta-core-8.1.2.vsix"
-            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.2/file/redhat.mta-java-8.1.2.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.1.3/file/redhat.mta-vscode-extension-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.1.3/file/redhat.mta-core-8.1.3.vsix"
+            curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.1.3/file/redhat.mta-java-8.1.3.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
             test -s /tmp/mta-java.vsix
+            # Create kubeconfig from the workspace SA token so the MTA extension
+            # can connect to the cluster. OIDC auth to the hub is still interactive.
+            if [ ! -f /home/user/.kube/config ]; then
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null || true)
+              SA_CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              API_SERVER="https://${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}:${KUBERNETES_SERVICE_PORT:-443}"
+              if [ -n "${SA_TOKEN}" ]; then
+                oc login --token="${SA_TOKEN}" --server="${API_SERVER}" \
+                  --certificate-authority="${SA_CA}" 2>/dev/null || true
+                echo "kubeconfig created for MTA extension"
+              fi
+            fi
+            # Ensure JDT.LS starts in Standard mode so mta-java registers its
+            # analysis provider immediately without requiring the user to open a
+            # .java file first. Write into .code-workspace (PVC-backed at
+            # /projects) so the setting survives workspace pod restarts.
+            if [ -f /projects/.code-workspace ]; then
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+            fi
           component: tooling-container
     events:
       postStart:
@@ -995,3 +1072,13 @@ spec:
               value: "/usr/bin/bash"
             - name: JAVA_HOME
               value: /usr/lib/jvm/java-21-openjdk
+            # MTA hub connection — uses the stable internal cluster service URL
+            # so no PostSync patching or ignoreDifferences is needed.
+            - name: HUB_URL
+              value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
+            # Force the hub active on first workspace start regardless of prior state.
+            - name: FORCE_HUB_ENABLED
+              value: "true"
+            # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
+            - name: HUB_INSECURE
+              value: "true"
