@@ -89,8 +89,6 @@ prerequisites read-only:
 
 Manifests: [`gitops/stages/050-advanced-app-platform/base/devspaces/`](../../gitops/stages/050-advanced-app-platform/base/devspaces/)
 
-Detailed user steps for workspace onboarding: [`docs/DEVELOPER_WORKSPACE_GUIDE.md`](../../docs/DEVELOPER_WORKSPACE_GUIDE.md)
-
 ## References
 
 | Resource | Link |

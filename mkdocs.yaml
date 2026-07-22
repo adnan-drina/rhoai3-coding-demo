@@ -5,6 +5,5 @@ exclude_docs: |
   README.md
 nav:
   - Start Here: index.md
-  - Developer Workspace Guide: DEVELOPER_WORKSPACE_GUIDE.md
   - Operations Notes: OPERATIONS.md
   - Troubleshooting: TROUBLESHOOTING.md

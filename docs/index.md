@@ -1,12 +1,7 @@
 # RHOAI Coding Demo Developer Docs
 
 This TechDocs site is the Developer Hub entry point for the governed developer
-workspace used in the "From Vibe Coding to Agentic Engineering" demo.
-
-Start with the [Developer Workspace Guide](DEVELOPER_WORKSPACE_GUIDE.md). It
-shows how an enterprise developer moves from Developer Hub to Red Hat OpenShift
-Dev Spaces, verifies MaaS-backed Kilo Code, and records Stage 060 evidence
-outside Git without exposing secrets or private route details.
+workspace used in the AI development maturity ladder demo.
 
 The terminology follows Red Hat's enterprise guide to AI-assisted application
 development and the Red Hat "vibes, specs, skills, and agents" framing. The
