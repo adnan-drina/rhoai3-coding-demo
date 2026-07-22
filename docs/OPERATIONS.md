@@ -717,8 +717,7 @@ Actions:
 - Operator note (outside the cluster): quay.io offers no org-wide default
   visibility setting, so each pipeline-auto-created image repository is
   created private and must be flipped to Public manually
-  (`parasol-insurance` already flipped; expect the same step for new app
-  images from the 070/080 flows).
+  (expect this step for new app images from the 070/080 flows).
 
 ### 2026-07-10 Stage 050 advanced-app-platform first live deploy (new numbering)
 
@@ -746,10 +745,10 @@ Validation evidence:
   the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 /
   limitador 1.3.1 / dns 1.3.1.
 - End-to-end golden-path delivery chain FULLY GREEN: push to
-  `adnan-drina/parasol-insurance` main → GitHub App webhook → EventListener
+  golden-path repo main → GitHub App webhook → EventListener
   (HMAC verified) → PipelineRun in seconds → clone → Maven build (warm
   cache: full run 1m38s) → SonarQube analysis + custom quality gate →
-  buildah push to `quay.io/rhoai3-coding-demo/parasol-insurance:<sha>`,
+  buildah push to `quay.io/rhoai3-coding-demo/<app>:<sha>`,
   with quay auto-creating the repository via the org `pipeline` team's
   Creator role (robot `rhoai3-coding-demo+pipeline`). Fixes applied live
   along the way: coschedule=pipelineruns for dual PVC workspaces,

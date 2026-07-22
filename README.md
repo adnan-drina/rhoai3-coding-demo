@@ -151,7 +151,6 @@ rhoai3-coding-demo/
 |-- env.example
 |-- flows/default.yaml               # Ordered source of truth for the demo flow
 |-- scripts/                         # Shared helpers, validation, recovery
-|-- golden-repos/                    # Sources for the golden-path template repositories
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)

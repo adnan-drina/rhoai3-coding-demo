@@ -56,7 +56,7 @@ flowchart TD
 
 The golden source is
 [`adnan-drina/agentic-quarkus-scaffold`](https://github.com/adnan-drina/agentic-quarkus-scaffold)
-(authored in this repository under `golden-repos/` and pushed by
+(authored in this repository under `stages/060-ai-assisted-development/golden-repo/` and pushed by
 `scripts/bootstrap-golden-repos.sh`). The template copies it into a fresh
 per-run repository, so the golden standards are never mutated by a demo.
 

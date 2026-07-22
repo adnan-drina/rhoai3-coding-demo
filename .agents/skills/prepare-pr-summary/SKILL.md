@@ -11,7 +11,7 @@ description: >
   Prepare a pull request summary following the project template. Use before
   opening a PR to generate the summary, risk assessment, rollback plan, and AI
   disclosure. Reads the git diff and produces structured output matching
-  .github/pull_request_template.md. Do NOT use for making code changes (use
+  the PR format defined in AGENTS.md. Do NOT use for making code changes (use
   other skills/rules), reviewing manifests (use review-gitops-change), or
   validating steps (use validate-demo-step).
 ---
@@ -46,7 +46,7 @@ Use this skill to generate a complete PR summary before opening a pull request.
 
 ## Output format
 
-Use the structure from `.github/pull_request_template.md`:
+Use the following structure (from AGENTS.md):
 
 ```markdown
 ## Summary
