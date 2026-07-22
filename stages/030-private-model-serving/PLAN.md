@@ -7,54 +7,31 @@
 - Stage slug: `030-private-model-serving`
 - Concept introduced: Standard model serving baseline for a GPU-backed LLM.
 - Target audience: Platform engineer, solution architect, data scientist.
-- Enterprise value: Converts governed GPU capacity into a usable, measurable
-  model endpoint path before shared-service governance is introduced.
-- Depends on: `010-openshift-ai-platform-foundation` and
-  `020-gpu-infrastructure-private-ai`.
-- New components: KServe model serving platform through the RHOAI
-  `DataScienceCluster`, vLLM NVIDIA GPU runtime availability, idempotent
-  `demo-registry` and Nemotron metadata readiness, a deployment path for
-  `nemotron-3-nano-30b-a3b`, user workload monitoring, a GitOps-managed
-  Grafana dashboard, and an on-demand GuideLLM benchmark runner.
-- Existing components reused: Stage 010 OpenShift GitOps, RHOAI Dashboard,
-  `demo-sandbox`, ODF MCG, Model Registry, and Stage 020 GPU hardware
-  profiles.
+- Enterprise value: Converts governed GPU capacity into a usable, measurable model endpoint path before shared-service governance is introduced.
+- Depends on: `010-openshift-ai-platform-foundation` and `020-gpu-infrastructure-private-ai`.
+- New components: KServe model serving platform through the RHOAI `DataScienceCluster`, vLLM NVIDIA GPU runtime availability, idempotent `demo-registry` and Nemotron metadata readiness, a deployment path for `nemotron-3-nano-30b-a3b`, user workload monitoring, a GitOps-managed Grafana dashboard, and an on-demand GuideLLM benchmark runner.
+- Existing components reused: Stage 010 OpenShift GitOps, RHOAI Dashboard, `demo-sandbox`, ODF MCG, Model Registry, and Stage 020 GPU hardware profiles.
 - Non-goals:
-  - MaaS governance, subscriptions, quotas, external OpenAI model registration,
-    or API-key issuance; deferred to `040-governed-models-as-a-service`.
-  - EvalHub, MLflow, LMEval, LLM-as-judge, risk assessment, or formal model
-    quality evaluation; deferred to later MLOps/evaluation stages.
+  - MaaS governance, subscriptions, quotas, external OpenAI model registration, or API-key issuance; deferred to `040-governed-models-as-a-service`.
+  - EvalHub, MLflow, LMEval, LLM-as-judge, risk assessment, or formal model quality evaluation; deferred to later MLOps/evaluation stages.
   - llm-d distributed inference; later scale-out option only.
-  - Curated MaaS service configuration; deferred until baseline decisions are
-    captured.
+  - Curated MaaS service configuration; deferred until baseline decisions are captured.
   - NVIDIA NIM enablement.
 
 ## Acceptance Criteria
 
 - [x] README explains Why and What without runbook detail.
-- [x] Why and business value are grounded in Red Hat narrative sources from
-  `rh-brain/`.
-- [x] KServe/model serving enablement is grounded in active-baseline RHOAI
-  official docs and verified live schema.
-- [x] Red Hat-linked GitHub reference implementations are captured as patterns,
-  not API authority.
-- [x] GitOps ownership model is explicit: Stage 010 remains the sole
-  `DataScienceCluster` owner.
-- [x] Stage 030 carries a focused GitOps hook that patches the shared DSC
-  KServe component.
-- [x] Deploy script applies the shared owner Application and triggers Argo CD
-  reconciliation.
-- [x] Validate script proves the model serving platform is enabled, vLLM is
-  available, `demo-registry` is available, Nemotron metadata exists, and the
-  Nemotron `InferenceService` is ready with the curated vLLM argument and
-  resource profile.
-- [x] Fresh-environment deploy path discovers existing manual/dashboard state
-  and creates missing registry metadata and endpoint resources when absent.
-- [x] Lightweight GuideLLM benchmark script is added for baseline throughput
-  and latency evidence.
+- [x] Why and business value are grounded in Red Hat narrative sources from `rh-brain/`.
+- [x] KServe/model serving enablement is grounded in active-baseline RHOAI official docs and verified live schema.
+- [x] Red Hat-linked GitHub reference implementations are captured as patterns, not API authority.
+- [x] GitOps ownership model is explicit: Stage 010 remains the sole `DataScienceCluster` owner.
+- [x] Stage 030 carries a focused GitOps hook that patches the shared DSC KServe component.
+- [x] Deploy script applies the shared owner Application and triggers Argo CD reconciliation.
+- [x] Validate script proves the model serving platform is enabled, vLLM is available, `demo-registry` is available, Nemotron metadata exists, and the Nemotron `InferenceService` is ready with the curated vLLM argument and resource profile.
+- [x] Fresh-environment deploy path discovers existing manual/dashboard state and creates missing registry metadata and endpoint resources when absent.
+- [x] Lightweight GuideLLM benchmark script is added for baseline throughput and latency evidence.
 - [x] Grafana dashboard resources are added for vLLM/KServe/GPU metrics.
-- [x] Manifest and Red Hat source-alignment reviews pass for the KServe enablement
-  slice.
+- [x] Manifest and Red Hat source-alignment reviews pass for the KServe enablement slice.
 
 ## Source Capture
 
@@ -90,36 +67,20 @@
 
 ### `rh-brain` Article Selection
 
-- Candidate articles reviewed: Red Hat AI 3.4 inference-to-agents blog, vLLM
-  inference article, ModelCar/OCI governance article, OpenShift AI vLLM and
-  llm-d inference baseline, GuideLLM articles, vLLM performance triage, and
-  validated model timeline.
-- Selected articles: Red Hat AI 3.4 inference-to-agents blog, vLLM article,
-  ModelCar/OCI governance article, GuideLLM benchmark articles, vLLM
-  performance triage, and validated model timeline.
-- Reason selected: together they explain why production inference matters, why
-  vLLM is the runtime path, why OCI model artifacts fit enterprise governance,
-  why Nemotron 3 Nano is a reasonable demo model, and how to establish a
-  measured model-serving baseline.
+- Candidate articles reviewed: Red Hat AI 3.4 inference-to-agents blog, vLLM inference article, ModelCar/OCI governance article, OpenShift AI vLLM and llm-d inference baseline, GuideLLM articles, vLLM performance triage, and validated model timeline.
+- Selected articles: Red Hat AI 3.4 inference-to-agents blog, vLLM article, ModelCar/OCI governance article, GuideLLM benchmark articles, vLLM performance triage, and validated model timeline.
+- Reason selected: together they explain why production inference matters, why vLLM is the runtime path, why OCI model artifacts fit enterprise governance, why Nemotron 3 Nano is a reasonable demo model, and how to establish a measured model-serving baseline.
 - Links to GitHub/code examples: yes.
-- Linked implementation source: `redhat-ai-services/modelcar-catalog` for
-  ModelCar examples; Red Hat CoP `gitops-catalog/openshift-ai` for GitOps
-  layout pattern.
+- Linked implementation source: `redhat-ai-services/modelcar-catalog` for ModelCar examples; Red Hat CoP `gitops-catalog/openshift-ai` for GitOps layout pattern.
 
 ## Skill Routing
 
 - Coordinator: `project-demo-stage-authoring`
 - Documentation: `project-documentation-authoring`
 - GitOps: `project-gitops-authoring`, `project-red-hat-operator-gitops`
-- Product skills: `rhoai-dsci-dsc-configuration`,
-  `rhoai-model-serving-platform`, `rhoai-model-deployment`,
-  `rhoai-model-registry`, `rhoai-model-registry-workflows`,
-  `rhoai-model-management-monitoring`, `rhoai-hardware-profiles`,
-  `rhoai-nvidia-gpu-accelerators`
-- Review skills: `project-manifest-review`,
-  `project-red-hat-doc-alignment-review`, `rhoai-api-tiers`
-- Environment skills: `openshift-project-safety`,
-  `env-deploy-and-evaluate`, `env-troubleshoot`
+- Product skills: `rhoai-dsci-dsc-configuration`, `rhoai-model-serving-platform`, `rhoai-model-deployment`, `rhoai-model-registry`, `rhoai-model-registry-workflows`, `rhoai-model-management-monitoring`, `rhoai-hardware-profiles`, `rhoai-nvidia-gpu-accelerators`
+- Review skills: `project-manifest-review`, `project-red-hat-doc-alignment-review`, `rhoai-api-tiers`
+- Environment skills: `openshift-project-safety`, `env-deploy-and-evaluate`, `env-troubleshoot`
 
 ## GitOps Ownership
 
@@ -128,26 +89,17 @@
 - Shared RHOAI source path: `gitops/stages/010-openshift-ai-platform-foundation/base`.
 - Stage 030 observability Application: `030-private-model-serving`.
 - Stage 030 observability source path: `gitops/stages/030-private-model-serving/base`.
-- Shared resources touched: the single `DataScienceCluster` named
-  `default-dsc`; Stage 030 observability does not own or render a second DSC.
+- Shared resources touched: the single `DataScienceCluster` named `default-dsc`; Stage 030 observability does not own or render a second DSC.
 - Argo CD sync or ordering requirements:
   - Stage 010 must be installed and healthy first.
   - Stage 020 should be healthy before deploying a GPU model.
-  - Stage 030 patches only the KServe component on the shared
-    `DataScienceCluster` through a GitOps hook; no separate Argo CD
-    Application owns the DSC.
-  - Stage 030 also applies its own Argo CD Application for user workload
-    monitoring, Grafana, datasource, and dashboards.
-  - Argo CD console visibility is split: KServe/DSC in
-    `010-openshift-ai-platform-foundation`; observability in
-    `030-private-model-serving`.
+  - Stage 030 patches only the KServe component on the shared `DataScienceCluster` through a GitOps hook; no separate Argo CD Application owns the DSC.
+  - Stage 030 also applies its own Argo CD Application for user workload monitoring, Grafana, datasource, and dashboards.
+  - Argo CD console visibility is split: KServe/DSC in `010-openshift-ai-platform-foundation`; observability in `030-private-model-serving`.
 - Secret and credential handling:
-  - No model endpoint tokens, registry pull credentials, or provider API keys
-    are committed.
-  - The deploy script may copy the cluster pull-secret into `demo-sandbox` as a
-    runtime Kubernetes Secret when the Nemotron modelcar pull secret is absent.
-  - Endpoint auth is disabled for the Stage 030 controlled baseline endpoint;
-    MaaS provides governed shared access in Stage 040.
+  - No model endpoint tokens, registry pull credentials, or provider API keys are committed.
+  - The deploy script may copy the cluster pull-secret into `demo-sandbox` as a runtime Kubernetes Secret when the Nemotron modelcar pull secret is absent.
+  - Endpoint auth is disabled for the Stage 030 controlled baseline endpoint; MaaS provides governed shared access in Stage 040.
 
 ## Manifest Inventory
 
@@ -174,58 +126,34 @@
 
 ### `deploy.sh`
 
-- Guard behavior: loads `.env`, verifies `RHOAI_EXPECTED_API_SERVER` against
-  `oc whoami --show-server`, exits on mismatch.
-- First action: applies the Stage 010 Argo CD Application with local
-  `GIT_REPO_URL` and `GIT_REPO_BRANCH`.
-- Wait/report behavior: requests an Argo CD refresh and waits for Stage 010 to
-  report `Synced` and `Healthy`, then reports the KServe component state.
+- Guard behavior: loads `.env`, verifies `RHOAI_EXPECTED_API_SERVER` against `oc whoami --show-server`, exits on mismatch.
+- First action: applies the Stage 010 Argo CD Application with local `GIT_REPO_URL` and `GIT_REPO_BRANCH`.
+- Wait/report behavior: requests an Argo CD refresh and waits for Stage 010 to report `Synced` and `Healthy`, then reports the KServe component state.
 - Registry behavior:
   - waits for `demo-registry` to become `Available`
-  - uses existing Nemotron registered model, model version, and artifact
-    metadata when present
+  - uses existing Nemotron registered model, model version, and artifact metadata when present
   - creates missing Nemotron metadata through the Model Registry REST API
 - Endpoint behavior:
   - uses an existing Nemotron `InferenceService` when present
-  - reconciles the Nemotron `InferenceService` to the curated
-    quickstart/coding-demo-backed vLLM argument and resource profile
-  - creates the vLLM `ServingRuntime` from the active RHOAI template when
-    absent
+  - reconciles the Nemotron `InferenceService` to the curated quickstart/coding-demo-backed vLLM argument and resource profile
+  - creates the vLLM `ServingRuntime` from the active RHOAI template when absent
   - creates the Nemotron `InferenceService` when absent
   - waits for the endpoint to become `Ready`
 - Observability behavior:
   - applies the Stage 030 observability Argo CD Application
   - waits for it to report `Synced` and `Healthy`
-  - enables user workload monitoring and installs Grafana resources through
-    GitOps
+  - enables user workload monitoring and installs Grafana resources through GitOps
 
 ### `benchmark-guidellm.sh` and `scripts/analyze-guidellm.py`
 
-- Guard behavior: loads `.env`, verifies `RHOAI_EXPECTED_API_SERVER`, and exits
-  on mismatch.
-- Capacity benchmark behavior (retargeted 2026-07-05 from the retired
-  `demo-sandbox` InferenceService to the live model):
-  - targets the Nemotron `LLMInferenceService` workload Service directly
-    (`<model>-kserve-workload-svc.models-as-a-service.svc:8000`, HTTPS
-    self-signed → GuideLLM `--backend-args '{"verify": false}'`), bypassing
-    MaaS quotas so the model itself is measured; override
-    `RHOAI_GUIDELLM_TARGET` for the governed gateway path
-  - runs `ghcr.io/vllm-project/guidellm:v0.5.0` as a Kubernetes Job in
-    `models-as-a-service`, using the FP8 processor for token accounting
-  - profiles (`RHOAI_GUIDELLM_PROFILE`): `users` (stepped concurrency —
-    max stable concurrency + breaking point), `sweep` (throughput envelope +
-    optimal knee), `custom` (raw rate-type/rate)
-  - default data is GuideLLM synthetic (`prompt_tokens=1200,output_tokens=256`,
-    RAG-turn-shaped); a `/data/*` value mounts the `benchmark-data` PVC
-    instead
-  - writes JSON and CSV to `runs/stage-030-guidellm/<timestamp>/`, then runs
-    `scripts/analyze-guidellm.py` to produce `capacity-report.md`: optimal
-    load, max stable concurrency, breaking point, sustained token capacity,
-    answers/hour, concurrent RAG-chatbot users (discounting the 3 model calls
-    a guarded turn costs), and cost per 1M tokens (`--gpu-cost-per-hour`),
-    all against configurable latency SLOs
-  - deletes temporary Job, copy Job, and PVC unless
-    `RHOAI_GUIDELLM_KEEP_RESOURCES=true`
+- Guard behavior: loads `.env`, verifies `RHOAI_EXPECTED_API_SERVER`, and exits on mismatch.
+- Capacity benchmark behavior (retargeted 2026-07-05 from the retired `demo-sandbox` InferenceService to the live model):
+  - targets the Nemotron `LLMInferenceService` workload Service directly (`<model>-kserve-workload-svc.models-as-a-service.svc:8000`, HTTPS self-signed → GuideLLM `--backend-args '{"verify": false}'`), bypassing MaaS quotas so the model itself is measured; override `RHOAI_GUIDELLM_TARGET` for the governed gateway path
+  - runs `ghcr.io/vllm-project/guidellm:v0.5.0` as a Kubernetes Job in `models-as-a-service`, using the FP8 processor for token accounting
+  - profiles (`RHOAI_GUIDELLM_PROFILE`): `users` (stepped concurrency — max stable concurrency + breaking point), `sweep` (throughput envelope + optimal knee), `custom` (raw rate-type/rate)
+  - default data is GuideLLM synthetic (`prompt_tokens=1200,output_tokens=256`, RAG-turn-shaped); a `/data/*` value mounts the `benchmark-data` PVC instead
+  - writes JSON and CSV to `runs/stage-030-guidellm/<timestamp>/`, then runs `scripts/analyze-guidellm.py` to produce `capacity-report.md`: optimal load, max stable concurrency, breaking point, sustained token capacity, answers/hour, concurrent RAG-chatbot users (discounting the 3 model calls a guarded turn costs), and cost per 1M tokens (`--gpu-cost-per-hour`), all against configurable latency SLOs
+  - deletes temporary Job, copy Job, and PVC unless `RHOAI_GUIDELLM_KEEP_RESOURCES=true`
 
 ### `validate.sh`
 
@@ -238,14 +166,11 @@
   - Stage 020 GPU hardware profile and GPU capacity are still visible.
   - `demo-registry` is available and has a route host.
   - Nemotron registered model, version, and OCI artifact metadata exist.
-  - Nemotron `InferenceService` is `Ready`, has a runtime, and uses the
-    expected OCI modelcar source.
-  - Nemotron `InferenceService` uses the curated quickstart/coding-demo-backed vLLM
-    arguments and resource sizing.
+  - Nemotron `InferenceService` is `Ready`, has a runtime, and uses the expected OCI modelcar source.
+  - Nemotron `InferenceService` uses the curated quickstart/coding-demo-backed vLLM arguments and resource sizing.
   - Stage 030 observability Application is `Synced` and `Healthy`.
   - User workload monitoring is enabled.
-  - Grafana Operator, Grafana instance, Prometheus datasource, dashboards, and
-    route are present.
+  - Grafana Operator, Grafana instance, Prometheus datasource, dashboards, and route are present.
   - OpenShift ConsoleLink points to the `llm-performance` Grafana dashboard.
   - GuideLLM `benchmark-data` PVC is bound and prompt ConfigMap is present.
   - The Nemotron ServiceMonitor exists and the endpoint exposes vLLM metrics.
@@ -253,12 +178,9 @@
 
 ## Operations And Troubleshooting
 
-- `docs/OPERATIONS.md` update needed: yes - Stage 030 deployment sequence,
-  validation, and user-led Nemotron dashboard path.
-- `docs/TROUBLESHOOTING.md` update needed: yes - model serving component stuck,
-  missing runtime, KServe CRDs missing, GPU profile unavailable.
-- `docs/BACKLOG.md` update needed: yes - Stage 030 status and deferred
-  GuideLLM/Grafana baseline work.
+- `docs/OPERATIONS.md` update needed: yes - Stage 030 deployment sequence, validation, and user-led Nemotron dashboard path.
+- `docs/TROUBLESHOOTING.md` update needed: yes - model serving component stuck, missing runtime, KServe CRDs missing, GPU profile unavailable.
+- `docs/BACKLOG.md` update needed: yes - Stage 030 status and deferred GuideLLM/Grafana baseline work.
 
 ## Risks And Deferred Work
 
@@ -275,108 +197,25 @@
 
 ## Review Log
 
-- Local render: passed 2026-06-12.
-  `kustomize build gitops/stages/010-openshift-ai-platform-foundation/base`
-  rendered `kserve.managementState: Managed`.
-- Script syntax: passed 2026-06-12.
-  `bash -n 030-private-model-serving/deploy.sh 030-private-model-serving/validate.sh`.
-- Red Hat source-alignment review: passed for KServe enablement scope; product
-  fields are from RHOAI 3.4 docs plus live
-  `oc explain datasciencecluster.spec.components.kserve`.
-- Live deploy: succeeded on cluster-klvxt 2026-06-12; Argo CD Application
-  `010-openshift-ai-platform-foundation` synced revision
-  `df241586684739f8d1610e8a43bd875d686db896`.
-- Live validation: PASSED 2026-06-12 -
-  `030-private-model-serving/validate.sh` 49/49 after adding the
-  llm-d-showroom-style `benchmark-data` PVC, shared-prefix prompt ConfigMap,
-  `llm-performance` Grafana dashboard, OpenShift ConsoleLink, and dashboard
-  metric-alignment checks.
-- Direct inference smoke: PASSED 2026-06-12 -
-  `POST /v1/chat/completions` returned assistant content, reasoning metadata,
-  and usage tokens from `nvidia-nemotron-3-nano-30b-a3b` after the curated
-  configuration was applied.
-- Tool-calling smoke: PASSED 2026-06-12 -
-  forced `tool_choice` returned a structured `get_weather` tool call with
-  `{"city":"Amsterdam"}`, confirming
-  `--enable-auto-tool-choice`, `--tool-call-parser=qwen3_coder`, and the
-  Nemotron reasoning parser path are active.
-- GuideLLM smoke: PASSED 2026-06-12 -
-  ran `./030-private-model-serving/benchmark-guidellm.sh` with
-  `RHOAI_GUIDELLM_RATE=1`,
-  `RHOAI_GUIDELLM_MAX_SECONDS=10`, and
-  `RHOAI_GUIDELLM_OUTPUTS=benchmark-results.json`; the job targeted the
-  internal `/v1` endpoint and read `/data/prompts.csv` from `benchmark-data`.
-  Results stored under gitignored
-  `runs/stage-030-guidellm/20260612131009/`.
-- GuideLLM smoke values: completed 5 requests with no errors; observed p95
-  TTFT about 1.63 seconds, p95 ITL about 6.1 ms, p95 end-to-end latency about
-  3.0 seconds, and mean output throughput about 126.7 output tokens/second.
-  Treat this as harness proof only, not capacity evidence.
-- Serving-context optimization: APPLIED 2026-06-12 -
-  changed the curated Nemotron default from `--max-model-len=131072` to
-  `--max-model-len=8192` for the single-GPU chat/RAG operating envelope. The
-  live `InferenceService` was reconciled through
-  `030-private-model-serving/deploy.sh`, and a guarded read-only check
-  confirmed the active vLLM args include `--max-model-len=8192`,
-  `--max-num-batched-tokens=8192`, prefix caching, auto tool choice, the
-  `qwen3_coder` tool parser, and the Nemotron reasoning parser.
-- Policy benchmark data: ADDED 2026-06-12 -
-  `030-private-model-serving/prepare-policy-benchmark-data.sh` seeds
-  `/data/policy-chat.csv` and `/data/policy-rag-4k.csv` into the existing
-  `benchmark-data` PVC for repeatable MaaS-policy-oriented GuideLLM runs.
-- GuideLLM policy benchmark: PASSED 2026-06-12 -
-  ran chat concurrency `1,2,4,8,12,16` for 120 seconds per level and
-  4k-context RAG concurrency `1,2,4,8` for 120 seconds per level. Results are
-  stored under gitignored directories
-  `runs/stage-030-guidellm/20260612152549/` and
-  `runs/stage-030-guidellm/20260612153735/`.
-- GuideLLM policy values: short chat stayed usable through `8` concurrent
-  users with p95 TTFT about 4.6 seconds, p95 ITL about 12.6 ms, and p95
-  end-to-end latency about 6.0 seconds. Chat `12-16` concurrent users is a
-  stress lane, not the first public quota. RAG with about 3.6k input tokens and
-  512 output tokens should start at `2` concurrent users; `4` concurrent users
-  showed a p95 TTFT spike around 19.3 seconds and p95 end-to-end latency around
-  22.6 seconds.
-- GuideLLM note: HTML output from `ghcr.io/vllm-project/guidellm:v0.5.0`
-  failed on a redirected report-template URL, so the automation defaults to
-  JSON and CSV output and smoke tests can override to JSON-only.
-- Regression validation: PASSED 2026-06-12 -
-  Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23 after KServe
-  became `Managed`.
-- Manual dashboard validation: user created `demo-registry` in
-  `rhoai-model-registries`, registered Nemotron 3, and manually deployed
-  `nvidia-nemotron-3-nano-30b-a3b` in `demo-sandbox` from
-  `oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0`.
-  Guarded read-only check confirmed a ready `serving.kserve.io/v1beta1`
-  `InferenceService` and matching `ServingRuntime` using model format `vLLM`.
-- Idempotent deploy validation: PASSED 2026-06-12.
-  `030-private-model-serving/deploy.sh` reused existing
-  `demo-registry`, Nemotron registered model id `1`, version id `2`, artifact
-  id `1`, serving environment id `3`, and the existing
-  `demo-sandbox/nvidia-nemotron-3-nano-30b-a3b` `InferenceService`.
-- Expanded live validation: PASSED 2026-06-12 -
-  `030-private-model-serving/validate.sh` 17/17 for KServe, vLLM,
-  registry availability, Nemotron metadata, and endpoint readiness.
-- Regression validation after idempotent bootstrap changes: PASSED 2026-06-12 -
-  Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23.
-- Grafana OAuth RBAC fix: PASSED 2026-06-12 -
-  replaced the cluster-scoped `get namespaces` OAuth proxy SAR with a
-  namespace-scoped `get services` SAR in `rhoai-demo-grafana`, added
-  `grafana-viewer-demo-users` for `rhods-admins` and `rhoai-developers`, and
-  validated `oc auth can-i get services -n rhoai-demo-grafana --as ai-admin
-  --as-group rhods-admins` and the equivalent `ai-developer` check with
-  `rhoai-developers`.
-- Official Grafana Operator validation: PASSED 2026-06-12 -
-  checked the Stage 030 Grafana GitOps setup against the official Grafana
-  Operator docs, Argo CD dashboard guide, Kustomize installation docs, and API
-  reference. Confirmed active OLM package `grafana-operator`, channel `v5`,
-  CSV `grafana-operator.v5.24.0`, `grafana.integreatly.org/v1beta1` CRDs,
-  `GrafanaReady=True`, `DatasourceSynchronized=True`, and
-  `DashboardSynchronized=True` for both Stage 030 dashboards. The install path
-  remains an intentional OpenShift OLM/GitOps adaptation rather than the
-  official Grafana Helm or direct Kustomize install path.
-- Grafana dashboard datasource fix: PASSED 2026-06-12 -
-  confirmed the live Grafana datasource name and UID are `Prometheus`, replaced
-  unresolved `${DS_PROMETHEUS}` imports in the performance dashboard with that
-  concrete UID, and renamed dashboard titles to the functional names
-  `vLLM Model Serving Baseline` and `LLM Inference Performance`.
+- Local render: passed 2026-06-12. `kustomize build gitops/stages/010-openshift-ai-platform-foundation/base` rendered `kserve.managementState: Managed`.
+- Script syntax: passed 2026-06-12. `bash -n 030-private-model-serving/deploy.sh 030-private-model-serving/validate.sh`.
+- Red Hat source-alignment review: passed for KServe enablement scope; product fields are from RHOAI 3.4 docs plus live `oc explain datasciencecluster.spec.components.kserve`.
+- Live deploy: succeeded on cluster-klvxt 2026-06-12; Argo CD Application `010-openshift-ai-platform-foundation` synced revision `df241586684739f8d1610e8a43bd875d686db896`.
+- Live validation: PASSED 2026-06-12 - `030-private-model-serving/validate.sh` 49/49 after adding the llm-d-showroom-style `benchmark-data` PVC, shared-prefix prompt ConfigMap, `llm-performance` Grafana dashboard, OpenShift ConsoleLink, and dashboard metric-alignment checks.
+- Direct inference smoke: PASSED 2026-06-12 - `POST /v1/chat/completions` returned assistant content, reasoning metadata, and usage tokens from `nvidia-nemotron-3-nano-30b-a3b` after the curated configuration was applied.
+- Tool-calling smoke: PASSED 2026-06-12 - forced `tool_choice` returned a structured `get_weather` tool call with `{"city":"Amsterdam"}`, confirming `--enable-auto-tool-choice`, `--tool-call-parser=qwen3_coder`, and the Nemotron reasoning parser path are active.
+- GuideLLM smoke: PASSED 2026-06-12 - ran `./030-private-model-serving/benchmark-guidellm.sh` with `RHOAI_GUIDELLM_RATE=1`, `RHOAI_GUIDELLM_MAX_SECONDS=10`, and `RHOAI_GUIDELLM_OUTPUTS=benchmark-results.json`; the job targeted the internal `/v1` endpoint and read `/data/prompts.csv` from `benchmark-data`. Results stored under gitignored `runs/stage-030-guidellm/20260612131009/`.
+- GuideLLM smoke values: completed 5 requests with no errors; observed p95 TTFT about 1.63 seconds, p95 ITL about 6.1 ms, p95 end-to-end latency about 3.0 seconds, and mean output throughput about 126.7 output tokens/second. Treat this as harness proof only, not capacity evidence.
+- Serving-context optimization: APPLIED 2026-06-12 - changed the curated Nemotron default from `--max-model-len=131072` to `--max-model-len=8192` for the single-GPU chat/RAG operating envelope. The live `InferenceService` was reconciled through `030-private-model-serving/deploy.sh`, and a guarded read-only check confirmed the active vLLM args include `--max-model-len=8192`, `--max-num-batched-tokens=8192`, prefix caching, auto tool choice, the `qwen3_coder` tool parser, and the Nemotron reasoning parser.
+- Policy benchmark data: ADDED 2026-06-12 - `030-private-model-serving/prepare-policy-benchmark-data.sh` seeds `/data/policy-chat.csv` and `/data/policy-rag-4k.csv` into the existing `benchmark-data` PVC for repeatable MaaS-policy-oriented GuideLLM runs.
+- GuideLLM policy benchmark: PASSED 2026-06-12 - ran chat concurrency `1,2,4,8,12,16` for 120 seconds per level and 4k-context RAG concurrency `1,2,4,8` for 120 seconds per level. Results are stored under gitignored directories `runs/stage-030-guidellm/20260612152549/` and `runs/stage-030-guidellm/20260612153735/`.
+- GuideLLM policy values: short chat stayed usable through `8` concurrent users with p95 TTFT about 4.6 seconds, p95 ITL about 12.6 ms, and p95 end-to-end latency about 6.0 seconds. Chat `12-16` concurrent users is a stress lane, not the first public quota. RAG with about 3.6k input tokens and 512 output tokens should start at `2` concurrent users; `4` concurrent users showed a p95 TTFT spike around 19.3 seconds and p95 end-to-end latency around 22.6 seconds.
+- GuideLLM note: HTML output from `ghcr.io/vllm-project/guidellm:v0.5.0` failed on a redirected report-template URL, so the automation defaults to JSON and CSV output and smoke tests can override to JSON-only.
+- Regression validation: PASSED 2026-06-12 - Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23 after KServe became `Managed`.
+- Manual dashboard validation: user created `demo-registry` in `rhoai-model-registries`, registered Nemotron 3, and manually deployed `nvidia-nemotron-3-nano-30b-a3b` in `demo-sandbox` from `oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0`. Guarded read-only check confirmed a ready `serving.kserve.io/v1beta1` `InferenceService` and matching `ServingRuntime` using model format `vLLM`.
+- Idempotent deploy validation: PASSED 2026-06-12. `030-private-model-serving/deploy.sh` reused existing `demo-registry`, Nemotron registered model id `1`, version id `2`, artifact id `1`, serving environment id `3`, and the existing `demo-sandbox/nvidia-nemotron-3-nano-30b-a3b` `InferenceService`.
+- Expanded live validation: PASSED 2026-06-12 - `030-private-model-serving/validate.sh` 17/17 for KServe, vLLM, registry availability, Nemotron metadata, and endpoint readiness.
+- Regression validation after idempotent bootstrap changes: PASSED 2026-06-12 - Stage 010 `validate.sh` 17/17 and Stage 020 `validate.sh` 23/23.
+- Grafana OAuth RBAC fix: PASSED 2026-06-12 - replaced the cluster-scoped `get namespaces` OAuth proxy SAR with a namespace-scoped `get services` SAR in `rhoai-demo-grafana`, added `grafana-viewer-demo-users` for `rhods-admins` and `rhoai-developers`, and validated `oc auth can-i get services -n rhoai-demo-grafana --as ai-admin --as-group rhods-admins` and the equivalent `ai-developer` check with `rhoai-developers`.
+- Official Grafana Operator validation: PASSED 2026-06-12 - checked the Stage 030 Grafana GitOps setup against the official Grafana Operator docs, Argo CD dashboard guide, Kustomize installation docs, and API reference. Confirmed active OLM package `grafana-operator`, channel `v5`, CSV `grafana-operator.v5.24.0`, `grafana.integreatly.org/v1beta1` CRDs, `GrafanaReady=True`, `DatasourceSynchronized=True`, and `DashboardSynchronized=True` for both Stage 030 dashboards. The install path remains an intentional OpenShift OLM/GitOps adaptation rather than the official Grafana Helm or direct Kustomize install path.
+- Grafana dashboard datasource fix: PASSED 2026-06-12 - confirmed the live Grafana datasource name and UID are `Prometheus`, replaced unresolved `${DS_PROMETHEUS}` imports in the performance dashboard with that concrete UID, and renamed dashboard titles to the functional names `vLLM Model Serving Baseline` and `LLM Inference Performance`.

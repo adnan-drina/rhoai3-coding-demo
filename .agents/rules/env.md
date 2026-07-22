@@ -20,8 +20,7 @@ applies-to:
 
 # Demo Environment
 
-Use the `env-*` skills as the source of truth for work with live OpenShift demo
-environments:
+Use the `env-*` skills as the source of truth for work with live OpenShift demo environments:
 
 - `.agents/skills/rhoai-troubleshoot/SKILL.md`
 - `.agents/skills/resume-gpu-demo/SKILL.md`
@@ -29,16 +28,14 @@ environments:
 - `.agents/skills/validate-demo-step/SKILL.md`
 - `.agents/skills/manage-devspaces/SKILL.md`
 
-Before live cluster work, load the repo-local environment, verify the expected
-API server guard, and keep credentials scoped to this project.
+Before live cluster work, load the repo-local environment, verify the expected API server guard, and keep credentials scoped to this project.
 
 ## OpenShift Safety Guard
 
 - Before running live `oc`/`kubectl` commands, verify the target cluster against
   the repo-local environment guard.
 - Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target
-  API-server substring before deploy, validate, bootstrap, or
-  resource-management scripts run.
+  API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
 - Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the
   user explicitly confirms the current cluster and the command is low risk.
 
@@ -51,8 +48,7 @@ API server guard, and keep credentials scoped to this project.
 
 ## Self-Signed Certificates
 
-Use `--insecure-skip-tls-verify=true` (oc) and `-k` (curl) freely. Do not
-implement production PKI for this demo.
+Use `--insecure-skip-tls-verify=true` (oc) and `-k` (curl) freely. Do not implement production PKI for this demo.
 
 ## Secrets Handling
 
@@ -80,9 +76,7 @@ What we do NOT accept even for the demo:
 
 ### ODH Managed Label
 
-Do NOT add `opendatahub.io/managed: "true"` to secrets in GitOps manifests. The
-ODH model controller watches for this label and deletes secrets it didn't
-create, causing an infinite create-delete loop with ArgoCD.
+Do NOT add `opendatahub.io/managed: "true"` to secrets in GitOps manifests. The ODH model controller watches for this label and deletes secrets it didn't create, causing an infinite create-delete loop with ArgoCD.
 
 ## Environment File
 
@@ -96,6 +90,4 @@ create, causing an infinite create-delete loop with ArgoCD.
   context: `oc whoami` and `oc project`
 - Before modifying a stage, read its README first
 - Every implemented stage has at least three deliverables: `deploy.sh`,
-  `validate.sh`, and `README.md`. Workflow-only stages (060, 070, 080) have
-  only `validate.sh` and README — their platform resources are owned by
-  Stage 050.
+  `validate.sh`, and `README.md`. Workflow-only stages (060, 070, 080) have only `validate.sh` and README — their platform resources are owned by Stage 050.

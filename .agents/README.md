@@ -1,9 +1,6 @@
 # Agent Guidance
 
-This directory contains tool-neutral shared agent guidance. It is the canonical
-source for rules, skills, hooks, and reference data. Tool-specific
-configuration lives in thin bridge files (e.g. `.cursor/hooks.json`) that point
-here.
+This directory contains tool-neutral shared agent guidance. It is the canonical source for rules, skills, hooks, and reference data. Tool-specific configuration lives in thin bridge files (e.g. `.cursor/hooks.json`) that point here.
 
 ## Layout
 
@@ -26,8 +23,7 @@ here.
 ## Tool-specific directories
 
 - `.cursor/` contains only `hooks.json` (event wiring) and `agents/*.md`
-  (thin subagent stubs that point to shared skills). It must not contain
-  shared rules, skills, or hook implementations.
+  (thin subagent stubs that point to shared skills). It must not contain shared rules, skills, or hook implementations.
 - `.claude/` and `.codex/` are gitignored — they hold local runtime preferences
   only.
 

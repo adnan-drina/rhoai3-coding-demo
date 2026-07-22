@@ -5,25 +5,16 @@
 - Stage identifier: `120`
 - Stage family: `1xx AI Platform Foundation`
 - Stage slug: `020-gpu-infrastructure-private-ai`
-- Concept introduced: GPU capacity as a governed, self-service platform
-  capability.
+- Concept introduced: GPU capacity as a governed, self-service platform capability.
 - Target audience: Platform engineer, MLOps engineer, data scientist
-- Enterprise value: GPUs are scarce and expensive; the platform turns raw GPU
-  nodes into governed capacity with quotas, queues, hardware profiles, and a
-  documented scale-to-zero path.
+- Enterprise value: GPUs are scarce and expensive; the platform turns raw GPU nodes into governed capacity with quotas, queues, hardware profiles, and a documented scale-to-zero path.
 - Depends on: `010-openshift-ai-platform-foundation`
-- New components: Red Hat build of Kueue operator, NFD operator, NVIDIA GPU
-  Operator, AWS GPU MachineSet, Kueue quota objects, RHOAI hardware profiles.
-- Existing shared components touched: Stage 020 patches the shared
-  `DataScienceCluster` to `kueue.managementState: Unmanaged` so RHOAI
-  integrates with the standalone Kueue operator.
+- New components: Red Hat build of Kueue operator, NFD operator, NVIDIA GPU Operator, AWS GPU MachineSet, Kueue quota objects, RHOAI hardware profiles.
+- Existing shared components touched: Stage 020 patches the shared `DataScienceCluster` to `kueue.managementState: Unmanaged` so RHOAI integrates with the standalone Kueue operator.
 - Non-goals:
-  - model serving or KServe enablement; deferred to
-    `030-private-model-serving`
-  - GuideLLM or performance benchmarking; deferred to the Stage 030 serving
-    baseline work after endpoint readiness is repeatable
-  - Models-as-a-Service governance; deferred to
-    `040-governed-models-as-a-service`
+  - model serving or KServe enablement; deferred to `030-private-model-serving`
+  - GuideLLM or performance benchmarking; deferred to the Stage 030 serving baseline work after endpoint readiness is repeatable
+  - Models-as-a-Service governance; deferred to `040-governed-models-as-a-service`
   - MIG GPU partitioning
   - multi-GPU or multi-node serving
   - non-NVIDIA accelerators
@@ -33,27 +24,16 @@
 - AWS GPU instance type: `g6e.2xlarge`
 - Physical GPU: one NVIDIA L40S, 48 GB GPU memory
 - Default node count: one GPU worker
-- Manual cost-control path: scale the GPU MachineSet to zero between demo
-  sessions; Argo CD ignores `MachineSet.spec.replicas` drift for this stage.
+- Manual cost-control path: scale the GPU MachineSet to zero between demo sessions; Argo CD ignores `MachineSet.spec.replicas` drift for this stage.
 - Time-slicing: one physical GPU advertised as four `nvidia.com/gpu` units.
 
-The committed MachineSet is specific to the current `cluster-klvxt` AWS
-environment because MachineSet provider configuration includes cluster ID, AMI,
-subnet, security group, IAM profile, region, and zone values. A fresh demo
-environment must regenerate this manifest from a live worker MachineSet before
-Stage 020 is deployed.
+The committed MachineSet is specific to the current `cluster-klvxt` AWS environment because MachineSet provider configuration includes cluster ID, AMI, subnet, security group, IAM profile, region, and zone values. A fresh demo environment must regenerate this manifest from a live worker MachineSet before Stage 020 is deployed.
 
-Use `generate-gpu-machineset.sh` to create the replacement manifest from the
-guarded target cluster. The script preserves provider-specific AWS fields from
-an existing worker MachineSet and changes only the reviewed GPU intent:
-instance type, replicas, labels, taint, and MachineSet identity.
+Use `generate-gpu-machineset.sh` to create the replacement manifest from the guarded target cluster. The script preserves provider-specific AWS fields from an existing worker MachineSet and changes only the reviewed GPU intent: instance type, replicas, labels, taint, and MachineSet identity.
 
 ## Queue / Quota / Profile Design
 
-One CPU `ResourceFlavor` and one GPU `ResourceFlavor` are created. The GPU
-ResourceFlavor targets nodes labeled by GPU feature discovery and tolerates the
-GPU-only taint. Kueue-enabled hardware profiles carry no node selectors or
-tolerations; placement belongs to the ResourceFlavor.
+One CPU `ResourceFlavor` and one GPU `ResourceFlavor` are created. The GPU ResourceFlavor targets nodes labeled by GPU feature discovery and tolerates the GPU-only taint. Kueue-enabled hardware profiles carry no node selectors or tolerations; placement belongs to the ResourceFlavor.
 
 | Hardware profile | LocalQueue -> ClusterQueue | GPU nominal quota | Behavior |
 |---|---|---:|---|
@@ -62,23 +42,19 @@ tolerations; placement belongs to the ResourceFlavor.
 | `gpu-priority` | `lq-gpu-priority` -> `cq-gpu-priority` | 1 | Dedicated higher-importance lane |
 | `gpu-reserved-demo` | `lq-gpu-reserved-demo` -> `cq-gpu-reserved-demo` | 1 | Reserved demo-team quota |
 
-The queue set is non-preemptive. RHOAI workbenches are not suspendable, so this
-stage demonstrates governed admission and reservation, not preemption.
+The queue set is non-preemptive. RHOAI workbenches are not suspendable, so this stage demonstrates governed admission and reservation, not preemption.
 
 ## Acceptance Criteria
 
 - [ ] README explains Why and What without runbook detail.
-- [ ] Official Red Hat docs are captured for GPU enablement, hardware profiles,
-  Kueue, NFD, and MachineSet management.
+- [ ] Official Red Hat docs are captured for GPU enablement, hardware profiles, Kueue, NFD, and MachineSet management.
 - [ ] Relevant Red Hat-linked GitHub reference implementations are captured.
-- [ ] Argo CD Application follows project standards and uses project
-  `rhoai-demo`.
+- [ ] Argo CD Application follows project standards and uses project `rhoai-demo`.
 - [ ] GPU MachineSet exists and has one ready worker by default.
 - [ ] GPU node reports at least four allocatable `nvidia.com/gpu` units.
 - [ ] NFD, NVIDIA GPU Operator, and Kueue operator CSVs are `Succeeded`.
 - [ ] NVIDIA `ClusterPolicy` reports `ready`.
-- [ ] Shared `DataScienceCluster` has `kueue: Unmanaged`; `kserve`
-  is `Removed` before Stage 030 and may become `Managed` after Stage 030.
+- [ ] Shared `DataScienceCluster` has `kueue: Unmanaged`; `kserve` is `Removed` before Stage 030 and may become `Managed` after Stage 030.
 - [ ] Four ClusterQueues and four LocalQueues are `Active`.
 - [ ] Four RHOAI hardware profiles exist and are visible to users.
 - [ ] Deploy and validate scripts pass against the guarded cluster.
@@ -100,16 +76,10 @@ stage demonstrates governed admission and reservation, not preemption.
 - Coordinator: `project-demo-stage-authoring`
 - Documentation: `project-documentation-authoring`
 - GitOps: `project-gitops-authoring`, `project-red-hat-operator-gitops`
-- Platform: `ocp-machine-management`, `ocp-node-feature-discovery`,
-  `ocp-ai-workloads`
-- RHOAI: `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`,
-  `rhoai-kueue-workload-management`,
-  `rhoai-distributed-workload-operations`,
-  `rhoai-dsci-dsc-configuration`
-- Environment: `openshift-project-safety`, `env-deploy-and-evaluate`,
-  `env-manage-resources`, `env-troubleshoot`
-- Review: `project-manifest-review`,
-  `project-red-hat-doc-alignment-review`, `rhoai-api-tiers`
+- Platform: `ocp-machine-management`, `ocp-node-feature-discovery`, `ocp-ai-workloads`
+- RHOAI: `rhoai-nvidia-gpu-accelerators`, `rhoai-hardware-profiles`, `rhoai-kueue-workload-management`, `rhoai-distributed-workload-operations`, `rhoai-dsci-dsc-configuration`
+- Environment: `openshift-project-safety`, `env-deploy-and-evaluate`, `env-manage-resources`, `env-troubleshoot`
+- Review: `project-manifest-review`, `project-red-hat-doc-alignment-review`, `rhoai-api-tiers`
 
 ## GitOps Ownership
 
@@ -124,12 +94,9 @@ stage demonstrates governed admission and reservation, not preemption.
   - Kueue ResourceFlavor, ClusterQueue, LocalQueue, WorkloadPriorityClass
   - RHOAI HardwareProfile resources
 - Shared resources:
-  - Stage 010 creates the single `DataScienceCluster`; Stage 020 patches only
-    the Kueue component field through a GitOps hook and does not render a
-    competing DSC.
+  - Stage 010 creates the single `DataScienceCluster`; Stage 020 patches only the Kueue component field through a GitOps hook and does not render a competing DSC.
 - Intentional drift:
-  - The Argo CD Application ignores MachineSet `/spec/replicas` so operators can
-    manually scale GPU nodes down to zero.
+  - The Argo CD Application ignores MachineSet `/spec/replicas` so operators can manually scale GPU nodes down to zero.
 
 ## Manifest Inventory
 
@@ -161,17 +128,14 @@ stage demonstrates governed admission and reservation, not preemption.
 - checks operator CSV readiness
 - checks NFD and NVIDIA ClusterPolicy readiness
 - checks GPU MachineSet readiness and GPU allocatable count
-- checks DSC Kueue state and accepts either pre-Stage-210 or post-Stage-210
-  KServe state
+- checks DSC Kueue state and accepts either pre-Stage-210 or post-Stage-210 KServe state
 - checks ClusterQueue and LocalQueue Active conditions
 - checks hardware profile presence
 
 ## Operations And Troubleshooting
 
-- `docs/OPERATIONS.md`: Stage 020 deploy, validate, manual scale-down, and fresh
-  environment MachineSet regeneration guidance.
-- `docs/TROUBLESHOOTING.md`: GPU MachineSet, quota, ClusterPolicy, Kueue, and
-  hardware-profile failure patterns.
+- `docs/OPERATIONS.md`: Stage 020 deploy, validate, manual scale-down, and fresh environment MachineSet regeneration guidance.
+- `docs/TROUBLESHOOTING.md`: GPU MachineSet, quota, ClusterPolicy, Kueue, and hardware-profile failure patterns.
 
 ## Risks And Deferred Work
 
@@ -188,11 +152,6 @@ stage demonstrates governed admission and reservation, not preemption.
 - Source capture: complete
 - Manifest review: pending
 - Red Hat source-alignment review: pending
-- Live deploy: succeeded on cluster-klvxt 2026-06-12; Argo CD Applications
-  `010-openshift-ai-platform-foundation` and `020-gpu-infrastructure-private-ai` synced and
-  healthy at GitOps revision `d9963b1`.
-- Live validation: PASSED 2026-06-12 — `020-gpu-infrastructure-private-ai/validate.sh`
-  23/23 after validator fix commit `c1a2a66`.
-- Regression validation: PASSED 2026-06-12 — `validate.sh` 23/23 after
-  Stage 030 changed KServe from `Removed` to `Managed` through the shared
-  Stage 010 `DataScienceCluster` owner.
+- Live deploy: succeeded on cluster-klvxt 2026-06-12; Argo CD Applications `010-openshift-ai-platform-foundation` and `020-gpu-infrastructure-private-ai` synced and healthy at GitOps revision `d9963b1`.
+- Live validation: PASSED 2026-06-12 — `020-gpu-infrastructure-private-ai/validate.sh` 23/23 after validator fix commit `c1a2a66`.
+- Regression validation: PASSED 2026-06-12 — `validate.sh` 23/23 after Stage 030 changed KServe from `Removed` to `Managed` through the shared Stage 010 `DataScienceCluster` owner.

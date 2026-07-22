@@ -69,11 +69,7 @@ The agentic path uses an elevated MaaS key (`mta-migration-models`) stored as a 
 
 ### Part 0 — The entry point: MTA
 
-**Know.** For this rung the entry point is MTA itself — the legacy estate
-(`migiq-spring-boot-sample`, `konveyor-ecosystem/coolstore`) lives in MTA's
-application inventory as source to analyze; it does not need to run on the
-cluster. An RHDH golden-path template for self-service migration runs is
-deferred until the MigIQ migration flow is settled (see BACKLOG).
+**Know.** For this rung the entry point is MTA itself — the legacy estate (`migiq-spring-boot-sample`, `konveyor-ecosystem/coolstore`) lives in MTA's application inventory as source to analyze; it does not need to run on the cluster. An RHDH golden-path template for self-service migration runs is deferred until the MigIQ migration flow is settled (see BACKLOG).
 
 ### Part 1 — The supported path: analysis-grounded modernization
 
@@ -93,38 +89,20 @@ deferred until the MigIQ migration flow is settled (see BACKLOG).
 - While agents run, switch to the RHOAI Usage dashboard: "every one of those parallel agents is metered — this burst is drawing from an elevated subscription the platform team sized for exactly this workload."
 - Stop at the human review gate: diff against the MTA findings; approve or reject. "Nothing merges on agent authority. Autonomy multiplied throughput; governance kept the control points."
 - **Business value callout:** "The backlog conversation changes from 'engineer-years' to 'agent-hours plus review time' — without a single line of source leaving your platform."
-- Push the approved migrated code to the repo's `main`: it exits through the
-  same per-project pipeline pattern and SonarQube gate as every other rung.
-  *Self-service in, trusted delivery out — even for agent-migrated legacy
-  code.*
+- Push the approved migrated code to the repo's `main`: it exits through the same per-project pipeline pattern and SonarQube gate as every other rung. *Self-service in, trusted delivery out — even for agent-migrated legacy code.*
 
 ### Part 3 — Wrap-up: the whole arc, one platform
 
-**Know.** This is the last rung. Walk the arc backwards so the audience sees
-one platform, not a pile of tools.
+**Know.** This is the last rung. Walk the arc backwards so the audience sees one platform, not a pile of tools.
 
 **Show.**
-- Return to Developer Hub: the catalog holds the brownfield entry point
-  (`coolstore-inventory-service`, stage 060) plus every component this
-  session created — the agentic scaffold and the migrated app — each one
-  clicking through to its repo, its own namespace, and its pipeline runs.
-- Open the RHOAI MaaS usage dashboard: the assisted developer's Kilo Code
-  traffic, the agent bursts, the application's own LLM calls — every AI
-  consumer on this platform is identified, metered, and governed by the same
-  gateway.
-- Close: "Assisted, agentic, autonomous — the maturity ladder changed how
-  developers work. What never changed: every rung entered through the portal,
-  exited through the pipeline, and reached models only through MaaS. That is
-  the difference between adopting AI tools and running an AI development
-  platform."
+- Return to Developer Hub: the catalog holds the brownfield entry point (`coolstore-inventory-service`, stage 060) plus every component this session created — the agentic scaffold and the migrated app — each one clicking through to its repo, its own namespace, and its pipeline runs.
+- Open the RHOAI MaaS usage dashboard: the assisted developer's Kilo Code traffic, the agent bursts, the application's own LLM calls — every AI consumer on this platform is identified, metered, and governed by the same gateway.
+- Close: "Assisted, agentic, autonomous — the maturity ladder changed how developers work. What never changed: every rung entered through the portal, exited through the pipeline, and reached models only through MaaS. That is the difference between adopting AI tools and running an AI development platform."
 
 ## Deploy And Validate
 
-This is a workflow-only stage: it deploys no cluster resources of its own.
-The MigIQ stack (MTA operator, Tackle, Developer Lightspeed/MaaS wiring, migration workspace) is owned by
-[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md)
-(`migiq` component). Deploy stage 050 first, then validate this stage's
-prerequisites read-only:
+This is a workflow-only stage: it deploys no cluster resources of its own. The MigIQ stack (MTA operator, Tackle, Developer Lightspeed/MaaS wiring, migration workspace) is owned by [Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md) (`migiq` component). Deploy stage 050 first, then validate this stage's prerequisites read-only:
 
 ```bash
 ./stages/080-ai-autonomous-migration/validate.sh
@@ -149,7 +127,4 @@ Flow dependency: Stages 040 and 050 (matching `flows/default.yaml` `dependsOn: [
 
 ## Next Stage
 
-This is the final rung of the maturity ladder. The delivery proof for what
-the agents built — pipelines, quality gates, provenance — lives in
-[Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md),
-which every rung of the ladder entered through and exited through.
+This is the final rung of the maturity ladder. The delivery proof for what the agents built — pipelines, quality gates, provenance — lives in [Stage 050: Advanced Application Platform](../050-advanced-app-platform/README.md), which every rung of the ladder entered through and exited through.

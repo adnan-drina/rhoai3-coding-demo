@@ -21,9 +21,7 @@ description: >
 
 # Manage Demo Resources
 
-Scale MachineSets and model-serving resources without conflicting with Argo CD.
-For the Stage 020/030 private model-serving path, prefer the first-class resume
-script:
+Scale MachineSets and model-serving resources without conflicting with Argo CD. For the Stage 020/030 private model-serving path, prefer the first-class resume script:
 
 ```bash
 ./scripts/resume-gpu-demo.sh status
@@ -31,8 +29,7 @@ script:
 ./scripts/resume-gpu-demo.sh resume
 ```
 
-Manual scaling should remain operational and temporary. Git remains the desired
-state for the demo.
+Manual scaling should remain operational and temporary. Git remains the desired state for the demo.
 
 ## Prerequisites
 
@@ -56,8 +53,7 @@ oc get applications -n openshift-gitops -o custom-columns='APP:.metadata.name,SY
 
 ## Scale Down a Model
 
-Patch the LLMInferenceService replicas to 0. The resource remains; only the
-serving pods are removed.
+Patch the LLMInferenceService replicas to 0. The resource remains; only the serving pods are removed.
 
 ```bash
 oc patch llminferenceservice <MODEL_NAME> -n models-as-a-service --type merge \
@@ -66,8 +62,7 @@ oc patch llminferenceservice <MODEL_NAME> -n models-as-a-service --type merge \
 
 ## Scale Down a GPU MachineSet
 
-Scale the MachineSet to 0 replicas. The GPU node drains and terminates.
-Pods on that node are evicted (models become unavailable).
+Scale the MachineSet to 0 replicas. The GPU node drains and terminates. Pods on that node are evicted (models become unavailable).
 
 ```bash
 ./scripts/resume-gpu-demo.sh down

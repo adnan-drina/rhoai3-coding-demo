@@ -19,8 +19,7 @@ description: >
 
 # Update Demo Docs
 
-Use this skill after any behavior change to ensure documentation stays
-consistent with the implementation.
+Use this skill after any behavior change to ensure documentation stays consistent with the implementation.
 
 ## When to invoke
 

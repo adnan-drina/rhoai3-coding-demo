@@ -1,9 +1,6 @@
 # Implementation Detail Boundary
 
-Stage READMEs are not deployment runbooks, but they must contain enough
-implementation detail that a reader can understand the system without reading
-every manifest. This reference defines what belongs in a README versus what
-belongs in `docs/OPERATIONS.md` or the manifests alone.
+Stage READMEs are not deployment runbooks, but they must contain enough implementation detail that a reader can understand the system without reading every manifest. This reference defines what belongs in a README versus what belongs in `docs/OPERATIONS.md` or the manifests alone.
 
 ## The Boundary Rule
 
@@ -37,8 +34,7 @@ When a component is deployed through a non-obvious mechanism, name it:
 | Script creates imperative resources | "created imperatively by `script-name.sh`; not GitOps-managed" |
 | ConsoleLink patched from live route | "ConsoleLink URL patched at sync time from route via hook Job" |
 
-Naming the mechanism helps troubleshooting: when a sync fails, the reader knows
-whether to look at a Job, an overlay, or a script.
+Naming the mechanism helps troubleshooting: when a sync fails, the reader knows whether to look at a Job, an overlay, or a script.
 
 ### Quota, Sizing, and Rate Limit Rationale
 
@@ -58,8 +54,7 @@ When a resource in this stage serves a downstream stage, document it:
   developer workspaces and Stage 080 MTA"
 - "`gpu-pool` Kueue ClusterQueue is shared by Stage 030 private model serving"
 
-This prevents the downstream README from being the only place the dependency
-is documented.
+This prevents the downstream README from being the only place the dependency is documented.
 
 ### RBAC Topology
 

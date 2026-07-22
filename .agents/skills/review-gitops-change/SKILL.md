@@ -20,8 +20,7 @@ description: >
 
 # Review GitOps Change
 
-Use this skill when reviewing changes to files under `gitops/`, Argo CD
-applications, or any Kubernetes/OpenShift YAML in the repository.
+Use this skill when reviewing changes to files under `gitops/`, Argo CD applications, or any Kubernetes/OpenShift YAML in the repository.
 
 ## When to invoke
 

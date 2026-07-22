@@ -32,15 +32,7 @@ The deploy scripts do not imperatively install every component themselves. They 
 Before deploying the workshop, confirm:
 
 - You are logged into the target OpenShift cluster with sufficient privileges.
-- The cluster has enough capacity for GPU nodes and model-serving workloads.
-  Specifically (AWS/RHPDS baseline): Stage 020's PreSync hook derives the GPU
-  MachineSet from an existing **worker** MachineSet — so the cluster must have a
-  worker pool whose region/AZ offers **`g6e.2xlarge` (NVIDIA L40S)** instances
-  (the hook inherits the worker's AZ). The hook scales the worker pool to **4**
-  (`m6a.4xlarge` or equivalent, ~16 vCPU / 64 GiB) and provisions **2** GPU
-  nodes; a smaller cluster will not fit RHOAI + model-serving + RHDH + pipelines
-  + Dev Spaces workspaces. On a non-AWS platform the derivation's GPU instance
-  type must be adjusted in `provision-gpu-machineset.yaml`.
+- The cluster has enough capacity for GPU nodes and model-serving workloads. Specifically (AWS/RHPDS baseline): Stage 020's PreSync hook derives the GPU MachineSet from an existing **worker** MachineSet — so the cluster must have a worker pool whose region/AZ offers **`g6e.2xlarge` (NVIDIA L40S)** instances (the hook inherits the worker's AZ). The hook scales the worker pool to **4** (`m6a.4xlarge` or equivalent, ~16 vCPU / 64 GiB) and provisions **2** GPU nodes; a smaller cluster will not fit RHOAI + model-serving + RHDH + pipelines + Dev Spaces workspaces. On a non-AWS platform the derivation's GPU instance type must be adjusted in `provision-gpu-machineset.yaml`.
 - `oc`, `git`, `bash`, `curl`, and `jq` are available locally.
 - You are using the intended branch and remote for the GitOps source.
 - `env.example` has been copied to `.env` and configured with required credentials.
@@ -112,12 +104,7 @@ Deploy stages in order:
 ./stages/050-advanced-app-platform/deploy.sh
 ```
 
-Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications
-of their own): stage 050 owns their infrastructure as components (devspaces,
-pipelines, sonarqube, rhdh, migiq). Validate their demo prerequisites with
-each stage's read-only `validate.sh`. Stage 050's deploy script provisions
-`app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`,
-`GITHUB_TOKEN`) before applying the Application.
+Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (devspaces, pipelines, sonarqube, rhdh, migiq). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
@@ -188,12 +175,9 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ## Developer Workflow Branch Validation
 
-Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml)
-yet. When validating developer-workflow changes on a sandbox cluster, patch only
-the existing platform applications that own the affected live resources.
+Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml) yet. When validating developer-workflow changes on a sandbox cluster, patch only the existing platform applications that own the affected live resources.
 
-For Stage 060 vibe-coding changes, patch only Stage 060 and Stage 050 to the
-feature branch being validated:
+For Stage 060 vibe-coding changes, patch only Stage 060 and Stage 050 to the feature branch being validated:
 
 ```bash
 oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
@@ -211,10 +195,7 @@ oc annotate application 060-ai-assisted-development -n openshift-gitops argocd.a
 oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-Do not merge a feature branch to `main` only to validate developer workflow
-catalog or workspace changes. Do not create Stage `100-170` Argo CD
-applications until a workflow owns executable artifacts or dedicated cluster
-resources.
+Do not merge a feature branch to `main` only to validate developer workflow catalog or workspace changes. Do not create Stage `100-170` Argo CD applications until a workflow owns executable artifacts or dedicated cluster resources.
 
 ## Stage-Specific Operational Notes
 
@@ -242,525 +223,167 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 
 ### 2026-07-21 cluster-kjbwr: OLM shared-InstallPlan merge fixed (kuadrant install-then-unsubscribe); model scheduler co-location findings; all five stages green
 
-Fresh-env deploy on cluster-kjbwr. Stages 010–050 all Synced/Healthy; 040 validation
-75/0-fail, 050 validation 39/0-fail (RHDH allowed its ~15 min first-boot plugin init).
+Fresh-env deploy on cluster-kjbwr. Stages 010–050 all Synced/Healthy; 040 validation 75/0-fail, 050 validation 39/0-fail (RHDH allowed its ~15 min first-boot plugin init).
 
-**OLM shared-InstallPlan merge blocked Stage 050 — root-caused and fixed reproducibly.**
-Pipelines + RHTAS could not install: OLM bundled the pinned-forbidden `rhcl-operator.v1.4.1`
-into their shared `openshift-operators` InstallPlan, which the trusted-delivery guard
-(correctly) refused (2026-07-10 incident policy). Root cause: RHCL's only channel (`stable`)
-heads at 1.4.x, so a standing Manual Subscription pends the MaaS-incompatible upgrade forever;
-because kuadrant (rhcl/authorino/dns/limitador) and pipelines/rhtas are all **AllNamespaces**
-operators sharing openshift-operators, OLM co-resolves every change into one plan. Namespace
-separation (Red Hat's documented remedy, KCS 6389681) is impossible here — two all-namespaces
-OperatorGroups make every namespace a member of two groups. **Fix:** replaced the standing
-kuadrant Subscriptions + rhcl approve-guard with one idempotent provisioning Job
-(`040-.../prerequisites/rhcl/base/provision-kuadrant.yaml`) that installs+pins the family then
-**deletes the Subscriptions**. CSVs / running operators persist (MaaS unaffected — models stayed
-Ready throughout); only OLM upgrade-tracking stops, which is the intent. With no kuadrant
-Subscription pending, OLM regenerated a clean `[rhtas v1.4.2, pipelines v1.22.4]` plan that
-auto-approved and completed. 040 validate now checks the pinned CSV is Succeeded **and** the
-Subscription is absent (the positive signal the pattern ran). This is the durable, reproducible
-form of the recurring 2026-07-06/-10/-14 "OLM bundled an unexpected CSV" incident class.
+**OLM shared-InstallPlan merge blocked Stage 050 — root-caused and fixed reproducibly.** Pipelines + RHTAS could not install: OLM bundled the pinned-forbidden `rhcl-operator.v1.4.1` into their shared `openshift-operators` InstallPlan, which the trusted-delivery guard (correctly) refused (2026-07-10 incident policy). Root cause: RHCL's only channel (`stable`) heads at 1.4.x, so a standing Manual Subscription pends the MaaS-incompatible upgrade forever; because kuadrant (rhcl/authorino/dns/limitador) and pipelines/rhtas are all **AllNamespaces** operators sharing openshift-operators, OLM co-resolves every change into one plan. Namespace separation (Red Hat's documented remedy, KCS 6389681) is impossible here — two all-namespaces OperatorGroups make every namespace a member of two groups. **Fix:** replaced the standing kuadrant Subscriptions + rhcl approve-guard with one idempotent provisioning Job (`040-.../prerequisites/rhcl/base/provision-kuadrant.yaml`) that installs+pins the family then **deletes the Subscriptions**. CSVs / running operators persist (MaaS unaffected — models stayed Ready throughout); only OLM upgrade-tracking stops, which is the intent. With no kuadrant Subscription pending, OLM regenerated a clean `[rhtas v1.4.2, pipelines v1.22.4]` plan that auto-approved and completed. 040 validate now checks the pinned CSV is Succeeded **and** the Subscription is absent (the positive signal the pattern ran). This is the durable, reproducible form of the recurring 2026-07-06/-10/-14 "OLM bundled an unexpected CSV" incident class.
 
-**Model router-scheduler disk co-location — two candidate fixes empirically rejected.** The
-llm-d `LLMInferenceService` stamps the 30-37 GiB modelcar onto the CPU router-scheduler pod
-(operator RFE) with no `ephemeral-storage` request, so kube-scheduler is disk-blind and can
-co-locate both models' schedulers on one ~100 GiB worker → `DiskPressure` eviction churn (which
-also evicted cluster-wide pods incl. the OLM approve jobs, compounding the 050 block). Tested and
-**reverted**: (a) `podAntiAffinity` via `spec.router.scheduler.template` — the field is a full
-pod-template *replace*, so an affinity-only template drops the operator-injected containers and
-the operator fails reconcile (`containers: Required value`); (b) a namespace LimitRange default
-`ephemeral-storage` request — the scheduler pods route through the RHOAI-managed `default` Kueue
-queue (covers cpu/memory only), so the request makes them Kueue-inadmissible, and covering it
-means mutating shared RHOAI state. Interim remediation that works: delete the co-located scheduler
-pod once its node is `DiskPressure`-tainted — the NoSchedule taint repels it to a clean worker
-(no cordon needed). Durable fixes remain BYO-EPP (`pool.endpointPickerRef`, drops the modelcar) or
-a 200 GiB worker disk resize — see BACKLOG. In practice with 4 CPU workers + 2 models the
-schedulers usually spread on their own; both models ended Ready and stable.
+**Model router-scheduler disk co-location — two candidate fixes empirically rejected.** The llm-d `LLMInferenceService` stamps the 30-37 GiB modelcar onto the CPU router-scheduler pod (operator RFE) with no `ephemeral-storage` request, so kube-scheduler is disk-blind and can co-locate both models' schedulers on one ~100 GiB worker → `DiskPressure` eviction churn (which also evicted cluster-wide pods incl. the OLM approve jobs, compounding the 050 block). Tested and **reverted**: (a) `podAntiAffinity` via `spec.router.scheduler.template` — the field is a full pod-template *replace*, so an affinity-only template drops the operator-injected containers and the operator fails reconcile (`containers: Required value`); (b) a namespace LimitRange default `ephemeral-storage` request — the scheduler pods route through the RHOAI-managed `default` Kueue queue (covers cpu/memory only), so the request makes them Kueue-inadmissible, and covering it means mutating shared RHOAI state. Interim remediation that works: delete the co-located scheduler pod once its node is `DiskPressure`-tainted — the NoSchedule taint repels it to a clean worker (no cordon needed). Durable fixes remain BYO-EPP (`pool.endpointPickerRef`, drops the modelcar) or a 200 GiB worker disk resize — see BACKLOG. In practice with 4 CPU workers + 2 models the schedulers usually spread on their own; both models ended Ready and stable.
 
-**RHDH first-boot recovered from a migration surge-race.** After the operators came up, Developer
-Hub stayed `0/1` (route 503) — the backend `Backend startup failed` on `relation "casbin_rule"
-already exists` / `"…public_keys…migrations_lock" already exists`. Root cause: the deployment
-strategy is `RollingUpdate` with `maxSurge: 1`, so a fresh-DB rollout brought up **two** backend
-pods that raced each other's Backstage per-plugin DB migrations and both crashed (not corrupted
-data — a pure concurrency collision, seeded by the configure-rhdh patch landing mid-first-boot).
-**Non-destructive fix:** `oc scale deploy backstage-developer-hub -n rhdh --replicas=0` then
-`--replicas=1` — a single pod runs migrations without a surge peer and starts clean (route 200,
-1/1). Do NOT drop the `backstage_plugin_*` databases; the data was fine, only the concurrent
-start was the problem. **Durable fix (implemented, commit on 2026-07-21):** the Backstage CR now
-carries `spec.deployment.patch.spec.strategy.rollingUpdate.maxSurge: 0` (+ `maxUnavailable: 1`),
-so the operator's Deployment removes the old pod before starting the new one — only one migrator
-ever runs, on fresh deploys too. Note: `strategy.type: Recreate` does NOT work here — the operator
-merges it onto its base template but keeps the base `rollingUpdate` block, producing an invalid
-Deployment (`rollingUpdate may not be specified when type is 'Recreate'`) that the operator then
-refuses to apply, leaving RHDH with no Deployment at all. Use `maxSurge: 0`, not `Recreate`.
+**RHDH first-boot recovered from a migration surge-race.** After the operators came up, Developer Hub stayed `0/1` (route 503) — the backend `Backend startup failed` on `relation "casbin_rule" already exists` / `"…public_keys…migrations_lock" already exists`. Root cause: the deployment strategy is `RollingUpdate` with `maxSurge: 1`, so a fresh-DB rollout brought up **two** backend pods that raced each other's Backstage per-plugin DB migrations and both crashed (not corrupted data — a pure concurrency collision, seeded by the configure-rhdh patch landing mid-first-boot). **Non-destructive fix:** `oc scale deploy backstage-developer-hub -n rhdh --replicas=0` then `--replicas=1` — a single pod runs migrations without a surge peer and starts clean (route 200, 1/1). Do NOT drop the `backstage_plugin_*` databases; the data was fine, only the concurrent start was the problem. **Durable fix (implemented, commit on 2026-07-21):** the Backstage CR now carries `spec.deployment.patch.spec.strategy.rollingUpdate.maxSurge: 0` (+ `maxUnavailable: 1`), so the operator's Deployment removes the old pod before starting the new one — only one migrator ever runs, on fresh deploys too. Note: `strategy.type: Recreate` does NOT work here — the operator merges it onto its base template but keeps the base `rollingUpdate` block, producing an invalid Deployment (`rollingUpdate may not be specified when type is 'Recreate'`) that the operator then refuses to apply, leaving RHDH with no Deployment at all. Use `maxSurge: 0`, not `Recreate`.
 
-**Monitoring hygiene re-asserted.** The eviction churn regenerated four operator ServiceMonitors
-(kueue/nfd/odh-model-controller/lws) without `openshift.io/user-monitoring=false` and reset the
-Istio PodMonitor's metrics-port relabel → `PrometheusOperatorRejectedResources`/`TargetDown`.
-Re-applied the exclusions (deploy.sh `ensure_known_monitoring_noise_is_excluded` logic); alerts
-cleared. Note: these are imperative deploy.sh patches that operator regeneration can undo — a
-demo-prep re-check, not a durable guarantee.
+**Monitoring hygiene re-asserted.** The eviction churn regenerated four operator ServiceMonitors (kueue/nfd/odh-model-controller/lws) without `openshift.io/user-monitoring=false` and reset the Istio PodMonitor's metrics-port relabel → `PrometheusOperatorRejectedResources`/`TargetDown`. Re-applied the exclusions (deploy.sh `ensure_known_monitoring_noise_is_excluded` logic); alerts cleared. Note: these are imperative deploy.sh patches that operator regeneration can undo — a demo-prep re-check, not a durable guarantee.
 
 ### 2026-07-20 Fresh-env reproducibility: GitOps↔live drift audit; GPU MachineSet derivation; OpenCode CA fix; IPP streaming verdict
 
 GitOps↔live drift audit ahead of a fresh-environment install.
 
-**Models — reproducible, no drift.** Qwen 3.6 and Nemotron are both fully in
-GitOps (`040-.../local-models/{qwen,nemotron}-llminferenceservice.yaml`) with
-portable OCI model sources (`oci://registry.redhat.io/rhai/modelcar-…`), full
-vLLM specs, `replicas: 2`; the `040` app is Synced/Healthy. A fresh install
-brings up both models. (Live currently runs 1 GPU node / Qwen only — a
-temporary cost-saving scale-down, not the target state.)
+**Models — reproducible, no drift.** Qwen 3.6 and Nemotron are both fully in GitOps (`040-.../local-models/{qwen,nemotron}-llminferenceservice.yaml`) with portable OCI model sources (`oci://registry.redhat.io/rhai/modelcar-…`), full vLLM specs, `replicas: 2`; the `040` app is Synced/Healthy. A fresh install brings up both models. (Live currently runs 1 GPU node / Qwen only — a temporary cost-saving scale-down, not the target state.)
 
-**GPU MachineSet — was NOT reproducible; fixed.** The old
-`machineset-gpu.yaml` hardcoded cluster-specific infra (infra id, RHCOS AMI,
-subnet/SG filters, IAM profile, tags), so on any other cluster the filters
-match nothing and no GPU node provisions. Replaced it with a Stage 020 PreSync
-hook (`machineset/base/provision-gpu-machineset.yaml`) that **derives** the GPU
-MachineSet from the fresh cluster's own worker MachineSet — inheriting real
-infra — and applies only GPU overrides (g6e.2xlarge/L40S, GPU labels +
-`nvidia-gpu-only` taint, 200Gi disk, `replicas: 2`), and **scales the worker
-pool to 4**. Idempotent (worker scaled up only if <4; GPU MachineSet created
-only if absent, so `scripts/resume-gpu-demo.sh` scale-downs survive re-sync).
-Created MachineSets carry `argocd.argoproj.io/compare-options: IgnoreExtraneous`
-so Stage 020's prune+selfHeal never deletes the GPU node. Migration on the live
-cluster: the pre-existing Argo-managed GPU MachineSet was annotated
-`IgnoreExtraneous` so the transition did not prune the running node.
+**GPU MachineSet — was NOT reproducible; fixed.** The old `machineset-gpu.yaml` hardcoded cluster-specific infra (infra id, RHCOS AMI, subnet/SG filters, IAM profile, tags), so on any other cluster the filters match nothing and no GPU node provisions. Replaced it with a Stage 020 PreSync hook (`machineset/base/provision-gpu-machineset.yaml`) that **derives** the GPU MachineSet from the fresh cluster's own worker MachineSet — inheriting real infra — and applies only GPU overrides (g6e.2xlarge/L40S, GPU labels + `nvidia-gpu-only` taint, 200Gi disk, `replicas: 2`), and **scales the worker pool to 4**. Idempotent (worker scaled up only if <4; GPU MachineSet created only if absent, so `scripts/resume-gpu-demo.sh` scale-downs survive re-sync). Created MachineSets carry `argocd.argoproj.io/compare-options: IgnoreExtraneous` so Stage 020's prune+selfHeal never deletes the GPU node. Migration on the live cluster: the pre-existing Argo-managed GPU MachineSet was annotated `IgnoreExtraneous` so the transition did not prune the running node.
 
-**OpenCode CA fix (shipped earlier same day).** OpenCode embeds Bun, and Bun
-1.3+ dropped default system-CA trust (oven-sh/bun#23735) → it rejected the MaaS
-gateway's ingress cert for every model. Fix: `NODE_USE_SYSTEM_CA=1` exported by
-the init script and set as a devfile container env. Verified end-to-end.
+**OpenCode CA fix (shipped earlier same day).** OpenCode embeds Bun, and Bun 1.3+ dropped default system-CA trust (oven-sh/bun#23735) → it rejected the MaaS gateway's ingress cert for every model. Fix: `NODE_USE_SYSTEM_CA=1` exported by the init script and set as a devfile container env. Verified end-to-end.
 
-**IPP external-model streaming — no viable 3.4 fix (documented).** Streaming
-through the gateway is buffered for external models (KB "MaaS streaming
-responses buffered through gateway"). All three approaches tested live are
-worse (KB `ipp-disable` 404s external models; MERGE crashloops; REPLACE 504s) —
-see `docs/TROUBLESHOOTING.md`. Internal models stream fine; external models are
-non-streaming-only until RHOAI 3.5. **Decision: `qwen3-235b` and `minimax-m2`
-were removed from the deployment** (serving CRs, access-policy modelRefs, and
-OpenCode provider blocks/keys/`enabled_providers`) so a fresh install ships
-only working models; `gpt-4o-mini` kept (playground-only). Re-add both on the
-RHOAI 3.5 upgrade — see BACKLOG.
+**IPP external-model streaming — no viable 3.4 fix (documented).** Streaming through the gateway is buffered for external models (KB "MaaS streaming responses buffered through gateway"). All three approaches tested live are worse (KB `ipp-disable` 404s external models; MERGE crashloops; REPLACE 504s) — see `docs/TROUBLESHOOTING.md`. Internal models stream fine; external models are non-streaming-only until RHOAI 3.5. **Decision: `qwen3-235b` and `minimax-m2` were removed from the deployment** (serving CRs, access-policy modelRefs, and OpenCode provider blocks/keys/`enabled_providers`) so a fresh install ships only working models; `gpt-4o-mini` kept (playground-only). Re-add both on the RHOAI 3.5 upgrade — see BACKLOG.
 
 
 
-Stage 070 (OpenCode agentic development) went from known-gap to
-demo-ready in one day, validated by live scaffold cycles throughout.
+Stage 070 (OpenCode agentic development) went from known-gap to demo-ready in one day, validated by live scaffold cycles throughout.
 
-Scaffold hardening (golden repo agentic-quarkus-scaffold, each fix
-found by a live run):
+Scaffold hardening (golden repo agentic-quarkus-scaffold, each fix found by a live run):
 
-- OpenCode devfile wiring (`cb13ed8`): cli-ai-tools image + platform
-  init-script postStart — factory workspaces previously got NO tool
-  (only repo devfiles apply to factory starts; no platform CR carries
-  wiring for them).
-- quarkus-jacoco (`5ca6fb3`, the 060 lesson applied proactively) and
-  the redhat-ga repository declaration (`d4a19bf` + structure fix) —
-  the corporate BOM is not on Maven Central; a fresh namespace's
-  cold-cache first build failed resolving the build extension.
-- spec-kit pre-baked (`36c700b`): `specify init --integration opencode`
-  committed — ten /speckit.* commands + .specify/ templates. The
-  scaffold ships ONLY .specify/; spec-kit's own scripts create specs/
-  at runtime (SPECS_DIR is hardcoded upstream). Hand-rolled
-  specs/TEMPLATE.md retired.
-- Official Quarkus Agent MCP (`c845789`): pinned 1.2.3 native binary
-  installed to the persistent volume, joins the generated OpenCode
-  config next to openshift-mcp. Doc search needs a container runtime —
-  workspace pods block nested podman twice over (no /dev/net/tun; crun
-  proc-mount denied) — degraded gracefully, options in BACKLOG. The
-  MCP stays workspace-local stdio BY DESIGN (project-scoped tools);
-  do not centralize.
+- OpenCode devfile wiring (`cb13ed8`): cli-ai-tools image + platform init-script postStart — factory workspaces previously got NO tool (only repo devfiles apply to factory starts; no platform CR carries wiring for them).
+- quarkus-jacoco (`5ca6fb3`, the 060 lesson applied proactively) and the redhat-ga repository declaration (`d4a19bf` + structure fix) — the corporate BOM is not on Maven Central; a fresh namespace's cold-cache first build failed resolving the build extension.
+- spec-kit pre-baked (`36c700b`): `specify init --integration opencode` committed — ten /speckit.* commands + .specify/ templates. The scaffold ships ONLY .specify/; spec-kit's own scripts create specs/ at runtime (SPECS_DIR is hardcoded upstream). Hand-rolled specs/TEMPLATE.md retired.
+- Official Quarkus Agent MCP (`c845789`): pinned 1.2.3 native binary installed to the persistent volume, joins the generated OpenCode config next to openshift-mcp. Doc search needs a container runtime — workspace pods block nested podman twice over (no /dev/net/tun; crun proc-mount denied) — degraded gracefully, options in BACKLOG. The MCP stays workspace-local stdio BY DESIGN (project-scoped tools); do not centralize.
 
 Template/platform:
 
-- Per-run catalog links via a scaffolder catalog:fetch of the platform
-  coolstore entity (`0ab27bb`) — no cluster hostname in git; link order
-  in catalog/all.yaml is load-bearing. Proven on a live scaffold.
-- fetch:template `replace: true` (`4527487`): skeleton files now
-  overwrite golden-repo copies — without it the per-run devfile name
-  never landed (fetch:template keeps existing files by default).
-- Birth-certificate seed runs (`b7ef42f`): project-provisioner seeds
-  exactly one app-push run per scaffolded project (guards: bootstrap
-  Argo app exists, creds, pipeline, zero runs). The publish-time push
-  races namespace creation by design, so first runs never materialized
-  and CI tabs started empty. Self-healing: delete a failed seed and the
-  next tick re-seeds.
-- delete-scaffolded-project.sh: seven-surface teardown (workspace,
-  optional volume wipe, catalog Location AND its location entity in
-  refresh_state — catalog:register creates TWO records and the entity
-  keeps re-emitting the component; Argo app + namespace; SonarQube;
-  GitHub repo via the user's gh oauth — `env -u GITHUB_TOKEN`, the
-  pipeline PAT deliberately lacks delete_repo; Quay manual). macOS
-  bash-3.2 portable.
-- OpenCode current + governed (`585a120`): official installer to the
-  persistent home (image binary is root-owned/stale), autoupdate on,
-  `enabled_providers` allowlist restricts /models to the four MaaS
-  providers. Kilo removed from 070 factory workspaces (`a3393b6`) —
-  the namespace-wide editor recommendation was auto-installing it;
-  every Kilo workspace installs explicitly, so removal is safe.
+- Per-run catalog links via a scaffolder catalog:fetch of the platform coolstore entity (`0ab27bb`) — no cluster hostname in git; link order in catalog/all.yaml is load-bearing. Proven on a live scaffold.
+- fetch:template `replace: true` (`4527487`): skeleton files now overwrite golden-repo copies — without it the per-run devfile name never landed (fetch:template keeps existing files by default).
+- Birth-certificate seed runs (`b7ef42f`): project-provisioner seeds exactly one app-push run per scaffolded project (guards: bootstrap Argo app exists, creds, pipeline, zero runs). The publish-time push races namespace creation by design, so first runs never materialized and CI tabs started empty. Self-healing: delete a failed seed and the next tick re-seeds.
+- delete-scaffolded-project.sh: seven-surface teardown (workspace, optional volume wipe, catalog Location AND its location entity in refresh_state — catalog:register creates TWO records and the entity keeps re-emitting the component; Argo app + namespace; SonarQube; GitHub repo via the user's gh oauth — `env -u GITHUB_TOKEN`, the pipeline PAT deliberately lacks delete_repo; Quay manual). macOS bash-3.2 portable.
+- OpenCode current + governed (`585a120`): official installer to the persistent home (image binary is root-owned/stale), autoupdate on, `enabled_providers` allowlist restricts /models to the four MaaS providers. Kilo removed from 070 factory workspaces (`a3393b6`) — the namespace-wide editor recommendation was auto-installing it; every Kilo workspace installs explicitly, so removal is safe.
 
 External-model streaming (IPP) fix:
 
-- MiniMax "Connection reset" root-caused to RHOAI 3.4 Ingress Payload
-  Processing buffering streaming responses (Red Hat KB confirms; fix in
-  3.5). Clients starve ~60s then reset; hard cut ~310KB. Fix deployed
-  (`c54f7ec`): a separate non-operator-owned EnvoyFilter MERGEs
-  response_body_mode NONE + response_trailer_mode SKIP onto the bbr
-  filter — keeps request-side IPP that external models need (model
-  resolution, API-key injection; all our providers are OpenAI-
-  compatible so response translation is unnecessary). Trap recorded:
-  NONE with trailer SEND breaks ALL external requests (504); never edit
-  the operator-owned filter (controller reverts). Long streams now
-  match direct-upstream latency. Recipe in TROUBLESHOOTING; BACKLOG
-  pins removal on RHOAI 3.5.
+- MiniMax "Connection reset" root-caused to RHOAI 3.4 Ingress Payload Processing buffering streaming responses (Red Hat KB confirms; fix in 3.5). Clients starve ~60s then reset; hard cut ~310KB. Fix deployed (`c54f7ec`): a separate non-operator-owned EnvoyFilter MERGEs response_body_mode NONE + response_trailer_mode SKIP onto the bbr filter — keeps request-side IPP that external models need (model resolution, API-key injection; all our providers are OpenAI- compatible so response translation is unnecessary). Trap recorded: NONE with trailer SEND breaks ALL external requests (504); never edit the operator-owned filter (controller reverts). Long streams now match direct-upstream latency. Recipe in TROUBLESHOOTING; BACKLOG pins removal on RHOAI 3.5.
 
 Registry-outage resilience (registry.redhat.io / access 502/503 wave):
 
-- The 2-minute provisioner starved on ose-cli:latest (implicit Always)
-  despite node caches → `imagePullPolicy: IfNotPresent` (`631c8be`).
-- A seed run died fetching the UBI base image; deleting the failed run
-  let the next tick re-seed to green — the self-healing path working
-  as designed on its first real incident.
+- The 2-minute provisioner starved on ose-cli:latest (implicit Always) despite node caches → `imagePullPolicy: IfNotPresent` (`631c8be`).
+- A seed run died fetching the UBI base image; deleting the failed run let the next tick re-seed to green — the self-healing path working as designed on its first real incident.
 
-Stage 070 exercise (`85ec059`..`b94114f`): 11-step coding-exercise.md
-around **coolstore-catalog** — spec-driven Quarkus rebuild of the
-original coolstore catalog-spring-boot behavior (reference clone in
-tmp/). Three spec-kit-shaped briefs in demo-assets: 001 product listing
-(original seed data; itemIds shared with the 060 inventory service),
-002 availability from the deployed inventory service (spec-anchored
-evolution, cross-service integration), 003 optional AI search via MaaS
-(double-governance beat). Education step framed by Fowler's
-memory-bank/specs model with a seven-source go-deeper table; concepts
-precede the workspace tour. Framing per review: the gate STAYS — specs
-and skills improve the input, not replace inspection. Dry-run validated
-through step 3 live (template links, per-run naming, seed run green
-after the outage). quarkus-skills repo earmarked for stage 080
-(migrate-spring-to-quarkus).
+Stage 070 exercise (`85ec059`..`b94114f`): 11-step coding-exercise.md around **coolstore-catalog** — spec-driven Quarkus rebuild of the original coolstore catalog-spring-boot behavior (reference clone in tmp/). Three spec-kit-shaped briefs in demo-assets: 001 product listing (original seed data; itemIds shared with the 060 inventory service), 002 availability from the deployed inventory service (spec-anchored evolution, cross-service integration), 003 optional AI search via MaaS (double-governance beat). Education step framed by Fowler's memory-bank/specs model with a seven-source go-deeper table; concepts precede the workspace tour. Framing per review: the gate STAYS — specs and skills improve the input, not replace inspection. Dry-run validated through step 3 live (template links, per-run naming, seed run green after the outage). quarkus-skills repo earmarked for stage 080 (migrate-spring-to-quarkus).
 
 ### 2026-07-15 Stage 060 validated end-to-end; model quality arc; governed embeddings; reset hardened
 
-The full 12-step coding exercise ran live twice (demo + reset lifecycle).
-Every failure encountered was folded back into code, config, or docs the
-same day.
+The full 12-step coding exercise ran live twice (demo + reset lifecycle). Every failure encountered was folded back into code, config, or docs the same day.
 
 Model quality arc (Nemotron → Qwen default):
 
-- Nemotron stalls mid-task in Kilo traced to tool calls leaking into the
-  reasoning channel (Nano-class drift on multi-step agentic work). Serving
-  config aligned to the RedHatAI/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8 model
-  card (`9d966b9`, `b6851e7`): `--max-num-seqs=8`, `--kv-cache-dtype=fp8`,
-  tool-calling sampling default `temperature 0.6 / top_p 0.95` via
-  `--override-generation-config`. Two documented L40S deviations:
-  `--max-model-len` stays 131072 (48Gi vs the card's H100-80Gi), and
-  `VLLM_USE_FLASHINFER_MOE_FP8` dropped — no FlashInfer FP8 MoE backend
-  supports sm89; the engine crashes at startup (`c398076`). vLLM's own
-  backend choice (Triton FP8 MoE) is correct for L40S.
-- Sampling + a new always-provide-tool-arguments rule reduced but did not
-  eliminate drift. Live head-to-head on the Module 1 generation prompt:
-  Qwen3.6 35B one-shot clean where Nemotron drifted twice. **Qwen3.6 is now
-  the Kilo default** (`ef4fe64`); Nemotron stays as the large-context local
-  alternative. Rollout hit the GPU-quota rolling deadlock twice (see new
-  TROUBLESHOOTING recipe).
+- Nemotron stalls mid-task in Kilo traced to tool calls leaking into the reasoning channel (Nano-class drift on multi-step agentic work). Serving config aligned to the RedHatAI/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8 model card (`9d966b9`, `b6851e7`): `--max-num-seqs=8`, `--kv-cache-dtype=fp8`, tool-calling sampling default `temperature 0.6 / top_p 0.95` via `--override-generation-config`. Two documented L40S deviations: `--max-model-len` stays 131072 (48Gi vs the card's H100-80Gi), and `VLLM_USE_FLASHINFER_MOE_FP8` dropped — no FlashInfer FP8 MoE backend supports sm89; the engine crashes at startup (`c398076`). vLLM's own backend choice (Triton FP8 MoE) is correct for L40S.
+- Sampling + a new always-provide-tool-arguments rule reduced but did not eliminate drift. Live head-to-head on the Module 1 generation prompt: Qwen3.6 35B one-shot clean where Nemotron drifted twice. **Qwen3.6 is now the Kilo default** (`ef4fe64`); Nemotron stays as the large-context local alternative. Rollout hit the GPU-quota rolling deadlock twice (see new TROUBLESHOOTING recipe).
 
 Governed embeddings (Cursor-executed, audited):
 
-- `granite-embedding-english-r2` (149M) serves on CPU workers via
-  `vllm-cpu-rhel9:3.4.1` with `--runner=pooling` (no llm-d scheduler — it
-  cannot route `/v1/embeddings`); registered in MaaS, added to
-  `devspaces-coding-models` at 500K tokens/h, key minted into the workspace
-  Secret (`5833f3d`, `79914c9`, `0a219eb`). Gateway smoke test: 768-dim
-  vector, 11 tokens metered. Kilo codebase indexing can now be pointed at a
-  governed embedder (wiring via `kilo-code.new.indexing.*` VS Code settings
-  is backlog).
+- `granite-embedding-english-r2` (149M) serves on CPU workers via `vllm-cpu-rhel9:3.4.1` with `--runner=pooling` (no llm-d scheduler — it cannot route `/v1/embeddings`); registered in MaaS, added to `devspaces-coding-models` at 500K tokens/h, key minted into the workspace Secret (`5833f3d`, `79914c9`, `0a219eb`). Gateway smoke test: 768-dim vector, 11 tokens metered. Kilo codebase indexing can now be pointed at a governed embedder (wiring via `kilo-code.new.indexing.*` VS Code settings is backlog).
 
 Workspace tooling:
 
-- Kilo Code 7.4.8 (patch published same day, `e9e7be6`). The bump surfaced
-  its commercial "Kilo Gateway" catalog plus z.ai models inside governed
-  workspaces — suppressed via `disabled_providers: ["kilo", "zai"]` in the
-  provisioned config (`22658cf`). **Treat `disabled_providers` as part of
-  the governance surface: review it on every Kilo version bump.**
-- Provisioned rules gained Markdown-formatting and tool-argument rules;
-  all Kilo providers gained timeout/chunkTimeout parity with OpenCode;
-  init script now configures git identity on fresh volumes and sweeps
-  project-level `.continue` (`bf6ab32`, `11daafa`, `975d9b5`).
+- Kilo Code 7.4.8 (patch published same day, `e9e7be6`). The bump surfaced its commercial "Kilo Gateway" catalog plus z.ai models inside governed workspaces — suppressed via `disabled_providers: ["kilo", "zai"]` in the provisioned config (`22658cf`). **Treat `disabled_providers` as part of the governance surface: review it on every Kilo version bump.**
+- Provisioned rules gained Markdown-formatting and tool-argument rules; all Kilo providers gained timeout/chunkTimeout parity with OpenCode; init script now configures git identity on fresh volumes and sweeps project-level `.continue` (`bf6ab32`, `11daafa`, `975d9b5`).
 
 Stage 060 exercise redesign (validated live):
 
-- The generation prompt is now a deliberately flawed specification
-  (console printing, exception swallowing, field injection, plus a demand
-  for unit tests) — smells are instructed, not hoped for, making the red
-  gate deterministic with any obedient model. Lesson reframed: the model
-  is not the weakest link; the specification is.
-- Coverage lesson: the gate's `new_coverage >= 80%` condition could never
-  pass — the app had no coverage tooling. `quarkus-jacoco` added to the
-  coolstore pom (`7236899`). Final green run: 92.5% new-code coverage,
-  0 violations, deployed endpoint verified.
-- Guide fully illustrated (17 live screenshots) with value-statement
-  callouts adapted from the Parasol workshop, prompt-engineering theory
-  (7 principles, 4 linked sources) in step 6, and an admin BONUS section
-  on token-consumption observability (`bd3c503`).
+- The generation prompt is now a deliberately flawed specification (console printing, exception swallowing, field injection, plus a demand for unit tests) — smells are instructed, not hoped for, making the red gate deterministic with any obedient model. Lesson reframed: the model is not the weakest link; the specification is.
+- Coverage lesson: the gate's `new_coverage >= 80%` condition could never pass — the app had no coverage tooling. `quarkus-jacoco` added to the coolstore pom (`7236899`). Final green run: 92.5% new-code coverage, 0 violations, deployed endpoint verified.
+- Guide fully illustrated (17 live screenshots) with value-statement callouts adapted from the Parasol workshop, prompt-engineering theory (7 principles, 4 linked sources) in step 6, and an admin BONUS section on token-consumption observability (`bd3c503`).
 
 Demo reset hardened:
 
-- Live reset exposed two traps: resetting against a stale `golden` (order:
-  bless golden FIRST), and SonarQube counting re-introduced baseline debt
-  as new violations after a post-demo rewind. Fresh-sonar is now the reset
-  default (`--keep-sonar` opts out, `b8bde43`). Baseline: `a55ace5`
-  (landing page + jacoco, no stats endpoint). Reset validated end-to-end:
-  rewind → fresh baseline analysis green → workspace recreated.
+- Live reset exposed two traps: resetting against a stale `golden` (order: bless golden FIRST), and SonarQube counting re-introduced baseline debt as new violations after a post-demo rewind. Fresh-sonar is now the reset default (`--keep-sonar` opts out, `b8bde43`). Baseline: `a55ace5` (landing page + jacoco, no stats endpoint). Reset validated end-to-end: rewind → fresh baseline analysis green → workspace recreated.
 
 Observability findings:
 
-- The Usage dashboard's per-user/subscription/model metrics come from a
-  `kuadrant-limitador-monitor` PodMonitor the operator creates — and
-  deletes/recreates every 10 minutes (RFE candidate; recipe recorded).
-- External-model routes (`minimax-m2`, `qwen3-235b`) are enforced
-  (request counters + defined token budgets) but export no `model` label
-  and no token-usage counters — invisible in the per-model consumption
-  view (RFE candidate; recipe recorded).
-- Disk pressure struck a third time (cached images on the qwen
-  modelcar node evicted a maven-build pod mid-demo); user added one CPU
-  node; the 200GiB worker-disk resize is promoted on the backlog.
+- The Usage dashboard's per-user/subscription/model metrics come from a `kuadrant-limitador-monitor` PodMonitor the operator creates — and deletes/recreates every 10 minutes (RFE candidate; recipe recorded).
+- External-model routes (`minimax-m2`, `qwen3-235b`) are enforced (request counters + defined token budgets) but export no `model` label and no token-usage counters — invisible in the per-model consumption view (RFE candidate; recipe recorded).
+- Disk pressure struck a third time (cached images on the qwen modelcar node evicted a maven-build pod mid-demo); user added one CPU node; the 200GiB worker-disk resize is promoted on the backlog.
 
 ### 2026-07-14 (afternoon) AI assistant swap: Continue → Cline → Kilo Code; subscription rename
 
 Actions:
 
-- Completed the AI coding assistant swap in Dev Spaces workspaces:
-  Continue (original) → Cline (interim) → Kilo Code (current). Kilo Code
-  is now the primary IDE AI assistant installed as a default extension in
-  all persona workspaces. OpenCode remains the terminal-based agentic
-  assistant. GitHub Copilot is available as a third option but is not
-  provisioned by the platform.
-- Renamed the MaaS developer-tools subscription from
-  `rhoai-developers-gpt-4o-mini` to `rhoai-developers-coding-models` to
-  reflect multi-model developer tooling rather than a single model name.
-  Manifests, validate scripts, and Stage 080 MaaS key references updated
-  in the same commit.
-- Lifecycle hardening: workspace init script updated for Kilo Code
-  configuration rendering; Che Code editor default-extensions policy
-  updated; `DEFAULT_EXTENSIONS` references updated in DevWorkspace specs.
-- Documentation sweep: all stage READMEs (050, 060, 070, 080),
-  root README, TROUBLESHOOTING, and BACKLOG updated to reference
-  Kilo Code as the current assistant. Historical log entries preserved.
+- Completed the AI coding assistant swap in Dev Spaces workspaces: Continue (original) → Cline (interim) → Kilo Code (current). Kilo Code is now the primary IDE AI assistant installed as a default extension in all persona workspaces. OpenCode remains the terminal-based agentic assistant. GitHub Copilot is available as a third option but is not provisioned by the platform.
+- Renamed the MaaS developer-tools subscription from `rhoai-developers-gpt-4o-mini` to `rhoai-developers-coding-models` to reflect multi-model developer tooling rather than a single model name. Manifests, validate scripts, and Stage 080 MaaS key references updated in the same commit.
+- Lifecycle hardening: workspace init script updated for Kilo Code configuration rendering; Che Code editor default-extensions policy updated; `DEFAULT_EXTENSIONS` references updated in DevWorkspace specs.
+- Documentation sweep: all stage READMEs (050, 060, 070, 080), root README, TROUBLESHOOTING, and BACKLOG updated to reference Kilo Code as the current assistant. Historical log entries preserved.
 
 ### 2026-07-14 (evening) Subscription restructure, external models, key lifecycle, Prometheus persistence
 
 Actions:
 
-- **Assistant saga completed:** Continue (EOL — Cursor acquisition) → Cline
-  (rejected — 4.0.8 keeps provider config in VS Code `globalState`, not
-  headlessly provisionable) → Kilo Code 7.4.7 (current). Key commits:
-  `7307f2b` Cline in, `ab31efd` Kilo pivot, `6ad5253` MCP URL fix,
-  `6e01e76` VSIX skip-guard.
-- **Subscription restructure + Red Hat internal external models:** commits
-  `153bd5d` + `2a753d9` and fix chain. Retired
-  `rhoai-developers-coding-models` (renamed from the earlier
-  `rhoai-developers-gpt-4o-mini`). New architecture: six purpose-built
-  subscriptions (`devspaces-coding-models`, `mta-migration-models`,
-  three personal subscriptions at priority 150, `developer-hub-models`
-  reserved) plus `model-evaluation` and `ai-safety-guardrails`. Two Red Hat
-  internal external models added: `qwen3-235b` (16K ctx) and `minimax-m2`
-  (196K ctx) via LiteLLM proxy, ExternalModel + MaaSModelRef pattern, one
-  shared key (`REDHAT_MODELS_API_KEY`).
-- **Key lifecycle proven:** orphaned and test keys from earlier sessions
-  reaped via `DELETE /maas-api/v1/api-keys/{id}` (admin cross-identity
-  path).
-- **Prometheus persistence fix:** commit `561c13a` (if present) — platform
-  and UWM Prometheus replicas moved from emptyDir to gp3-csi
-  volumeClaimTemplates (platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB),
-  resolving the growing component of the worker disk-pressure eviction
-  feedback loop.
+- **Assistant saga completed:** Continue (EOL — Cursor acquisition) → Cline (rejected — 4.0.8 keeps provider config in VS Code `globalState`, not headlessly provisionable) → Kilo Code 7.4.7 (current). Key commits: `7307f2b` Cline in, `ab31efd` Kilo pivot, `6ad5253` MCP URL fix, `6e01e76` VSIX skip-guard.
+- **Subscription restructure + Red Hat internal external models:** commits `153bd5d` + `2a753d9` and fix chain. Retired `rhoai-developers-coding-models` (renamed from the earlier `rhoai-developers-gpt-4o-mini`). New architecture: six purpose-built subscriptions (`devspaces-coding-models`, `mta-migration-models`, three personal subscriptions at priority 150, `developer-hub-models` reserved) plus `model-evaluation` and `ai-safety-guardrails`. Two Red Hat internal external models added: `qwen3-235b` (16K ctx) and `minimax-m2` (196K ctx) via LiteLLM proxy, ExternalModel + MaaSModelRef pattern, one shared key (`REDHAT_MODELS_API_KEY`).
+- **Key lifecycle proven:** orphaned and test keys from earlier sessions reaped via `DELETE /maas-api/v1/api-keys/{id}` (admin cross-identity path).
+- **Prometheus persistence fix:** commit `561c13a` (if present) — platform and UWM Prometheus replicas moved from emptyDir to gp3-csi volumeClaimTemplates (platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), resolving the growing component of the worker disk-pressure eviction feedback loop.
 
 Validation evidence:
 
 - Stage 040: 79 passed, 1 warning, 0 failed.
 - Stage 050: 38 passed, 1 warning, 0 failed.
 - Stage 060: 113 passed, 0 warnings, 0 failed.
-- **Live proving:** all 5 models (Nemotron, Qwen-local, qwen3-235b,
-  minimax-m2, gpt-4o-mini) accessible in GenAI Playground per-user
-  subscriptions. Kilo Code: 4 governed providers + MCP `openshift` server
-  tool-calling green.
+- **Live proving:** all 5 models (Nemotron, Qwen-local, qwen3-235b, minimax-m2, gpt-4o-mini) accessible in GenAI Playground per-user subscriptions. Kilo Code: 4 governed providers + MCP `openshift` server tool-calling green.
 
 ### 2026-07-14 (morning) Post-resume eviction wave; OLM upgrade cleanup audited
 
-Context: the sandbox cluster was resumed in the morning (GPU nodes are
-recreated on every resume). A separate assistant session worked the
-cluster and repo first (commits `015b605`, `586072d`, `d205da8`,
-`30369de`), including OLM surgery on two stuck operator upgrades.
+Context: the sandbox cluster was resumed in the morning (GPU nodes are recreated on every resume). A separate assistant session worked the cluster and repo first (commits `015b605`, `586072d`, `d205da8`, `30369de`), including OLM surgery on two stuck operator upgrades.
 
 Actions and findings:
 
-- OLM audit after the other session's remediation (it deleted stuck
-  NFD/DevWorkspace CSVs and InstallPlans and restarted OLM pods in
-  `openshift-operators`): end state verified clean. All pins intact —
-  `rhcl-operator.v1.3.5`, `authorino-operator.v1.3.2`,
-  `limitador-operator.v1.3.1`, `dns-operator.v1.3.1`,
-  `cluster-observability-operator.v1.4.0`, all Succeeded. Neither touched
-  operator is pinned (NFD and DevWorkspace are `Automatic`);
-  `devworkspace-operator.v0.42.0` and Dev Spaces 3.29.0 completed their
-  upgrades (Succeeded).
-- `KubeNodeEviction` root-caused: kubelet disk-pressure eviction wave on
-  workers `ip-10-0-20-23` and `ip-10-0-32-234`
-  (`EvictionThresholdMet ... ephemeral-storage`). Each node permanently
-  holds a full modelcar image (30.5 GiB Nemotron / 36.7 GiB Qwen) pinned
-  by the llm-d `*-kserve-router-scheduler` pods — CPU-side components
-  that carry the modelcar as init container + sidecar and cannot schedule
-  on the tainted GPU nodes. Post-resume restart churn plus fresh operator
-  image pulls tipped both 100 GiB `/var` filesystems over the threshold.
-  Evicted along the way: GitOps repo-server (the "repo-server crash" seen
-  by the morning session), RHOAI dashboard, Perses (3x), Thanos, NooBaa,
-  Authorino, Dev Spaces server, SonarQube, kuadrant operator, and others.
-  Pressure cleared on its own (nodes at 80%/74% after image GC +
-  evictions); model serving itself never left the GPU nodes. New recipe
-  in TROUBLESHOOTING ("Worker Nodes Evict Pods After A Cluster Resume"),
-  capacity watch item in BACKLOG. Evicted `Failed` pod husks (10) left
-  for manual cleanup.
-- Repo follow-ups from reviewing the morning session's commits: stage 050
-  `validate.sh` Dev Spaces links check updated for the direct
-  `agentic-coolstore` workspace link (was still passing only on the
-  retired factory URL), TROUBLESHOOTING catalog-hook recipe updated for
-  the `syncResult.revision`-first resolution order.
+- OLM audit after the other session's remediation (it deleted stuck NFD/DevWorkspace CSVs and InstallPlans and restarted OLM pods in `openshift-operators`): end state verified clean. All pins intact — `rhcl-operator.v1.3.5`, `authorino-operator.v1.3.2`, `limitador-operator.v1.3.1`, `dns-operator.v1.3.1`, `cluster-observability-operator.v1.4.0`, all Succeeded. Neither touched operator is pinned (NFD and DevWorkspace are `Automatic`); `devworkspace-operator.v0.42.0` and Dev Spaces 3.29.0 completed their upgrades (Succeeded).
+- `KubeNodeEviction` root-caused: kubelet disk-pressure eviction wave on workers `ip-10-0-20-23` and `ip-10-0-32-234` (`EvictionThresholdMet ... ephemeral-storage`). Each node permanently holds a full modelcar image (30.5 GiB Nemotron / 36.7 GiB Qwen) pinned by the llm-d `*-kserve-router-scheduler` pods — CPU-side components that carry the modelcar as init container + sidecar and cannot schedule on the tainted GPU nodes. Post-resume restart churn plus fresh operator image pulls tipped both 100 GiB `/var` filesystems over the threshold. Evicted along the way: GitOps repo-server (the "repo-server crash" seen by the morning session), RHOAI dashboard, Perses (3x), Thanos, NooBaa, Authorino, Dev Spaces server, SonarQube, kuadrant operator, and others. Pressure cleared on its own (nodes at 80%/74% after image GC + evictions); model serving itself never left the GPU nodes. New recipe in TROUBLESHOOTING ("Worker Nodes Evict Pods After A Cluster Resume"), capacity watch item in BACKLOG. Evicted `Failed` pod husks (10) left for manual cleanup.
+- Repo follow-ups from reviewing the morning session's commits: stage 050 `validate.sh` Dev Spaces links check updated for the direct `agentic-coolstore` workspace link (was still passing only on the retired factory URL), TROUBLESHOOTING catalog-hook recipe updated for the `syncResult.revision`-first resolution order.
 
 ### 2026-07-13 (evening) Phase C: scaffolded-project bootstrap live; catalog slimmed
 
 Actions:
 
-- Phase B closed out with a webhook-equivalence test: a signed synthetic
-  push payload POSTed to the `app-platform-listener` Route produced
-  `coolstore-inventory-service-push-zs2dx` in `coolstore-dev` — Succeeded
-  (interceptor chain, cross-namespace dispatch, credentials, gate, image
-  push, `:latest` retag all proven; only GitHub's own delivery leg was not
-  re-exercised, it was proven pre-restructure).
-- Catalog scope decision executed: `coolstore-inventory-service` is the one
-  and only Component; `getting-started-ai-coding` and MCA `coolstore`
-  removed from `catalog/all.yaml`. RHDH `orphanStrategy: delete` removed
-  both live entities once the runtime catalog was regenerated (verified in
-  the catalog database).
-- Phase C delivered: template-published repos carry a `rhoai3-scaffolded`
-  topic; the dispatcher's new bootstrap trigger creates a per-project Argo
-  CD Application (source = this repo's `project-pipeline` base,
-  kustomize-namespaced to `<repo>-dev`, `CreateNamespace` +
-  `managedNamespaceMetadata` stamping the `pipeline-project` label), and a
-  second topic-filtered trigger routes every push to an `app-push`
-  PipelineRun in `<repo>-dev` via CEL overlay. Applications land in the new
-  `scaffolded-projects` AppProject (platform repo source + `*-dev`
-  destinations only). Scaffold pom aligned to the corporate Red Hat build
-  of Quarkus BOM (3.27.3.SP1-redhat-00002) — requires a
-  `bootstrap-golden-repos.sh` re-push of `agentic-quarkus-scaffold`.
-- Live verification with a synthetic scaffolded push for
-  `agentic-quarkus-scaffold`: bootstrap Application Synced/Healthy in
-  seconds, namespace created with the provisioning label, provisioner
-  distributed credentials on its next tick, and the follow-up push produced
-  a fully green 6-task `app-push` run in `agentic-quarkus-scaffold-dev`
-  (test stack removed afterwards; the auto-created
-  `quay.io/rhoai3-coding-demo/agentic-quarkus-scaffold` image repository is
-  demo debris that can be deleted in the Quay UI).
-- Sync gotcha recurrence: the automated sync that picked up the pushed
-  revision arrived as a PARTIAL operation rendered from a stale manifest
-  cache — new trigger resources were neither applied nor listed until
-  `argocd.argoproj.io/refresh=hard`; hooks stayed skipped, so the runtime
-  catalog was converged by hand per the TROUBLESHOOTING recipe.
+- Phase B closed out with a webhook-equivalence test: a signed synthetic push payload POSTed to the `app-platform-listener` Route produced `coolstore-inventory-service-push-zs2dx` in `coolstore-dev` — Succeeded (interceptor chain, cross-namespace dispatch, credentials, gate, image push, `:latest` retag all proven; only GitHub's own delivery leg was not re-exercised, it was proven pre-restructure).
+- Catalog scope decision executed: `coolstore-inventory-service` is the one and only Component; `getting-started-ai-coding` and MCA `coolstore` removed from `catalog/all.yaml`. RHDH `orphanStrategy: delete` removed both live entities once the runtime catalog was regenerated (verified in the catalog database).
+- Phase C delivered: template-published repos carry a `rhoai3-scaffolded` topic; the dispatcher's new bootstrap trigger creates a per-project Argo CD Application (source = this repo's `project-pipeline` base, kustomize-namespaced to `<repo>-dev`, `CreateNamespace` + `managedNamespaceMetadata` stamping the `pipeline-project` label), and a second topic-filtered trigger routes every push to an `app-push` PipelineRun in `<repo>-dev` via CEL overlay. Applications land in the new `scaffolded-projects` AppProject (platform repo source + `*-dev` destinations only). Scaffold pom aligned to the corporate Red Hat build of Quarkus BOM (3.27.3.SP1-redhat-00002) — requires a `bootstrap-golden-repos.sh` re-push of `agentic-quarkus-scaffold`.
+- Live verification with a synthetic scaffolded push for `agentic-quarkus-scaffold`: bootstrap Application Synced/Healthy in seconds, namespace created with the provisioning label, provisioner distributed credentials on its next tick, and the follow-up push produced a fully green 6-task `app-push` run in `agentic-quarkus-scaffold-dev` (test stack removed afterwards; the auto-created `quay.io/rhoai3-coding-demo/agentic-quarkus-scaffold` image repository is demo debris that can be deleted in the Quay UI).
+- Sync gotcha recurrence: the automated sync that picked up the pushed revision arrived as a PARTIAL operation rendered from a stale manifest cache — new trigger resources were neither applied nor listed until `argocd.argoproj.io/refresh=hard`; hooks stayed skipped, so the runtime catalog was converged by hand per the TROUBLESHOOTING recipe.
 
 ### 2026-07-13 Stage 050 per-project pipeline seeding after the restructure
 
 Actions:
 
-- After the per-project-pipelines restructure synced (all five Applications
-  Synced/Healthy at `e3a473f`), `validate.sh` failed twice: no
-  `sonarqube-credentials` in `coolstore-dev` and no green pipeline run
-  there. Root cause: the `rhoai3.redhat.com/pipeline-project=true` label
-  added to `coolstore-dev`'s manifest never reached the live namespace —
-  the 050 Application ignores Namespace label diffs
-  (`ignoreDifferences` + `RespectIgnoreDifferences=true`), so labels only
-  land at namespace creation. The project-provisioner CronJob therefore
-  found "No project namespaces labeled" and distributed nothing, while the
-  Application reported Synced. New TROUBLESHOOTING recipe: "A Namespace
-  Label Added In Git Never Reaches The Cluster".
-- Fixed `deploy.sh`: `seed_coolstore` now asserts the provisioning label
-  imperatively (step 0) and skips the seed only when the deployment is
-  Available AND a green per-project run exists (previously a deployment
-  left over from the retired shared pipeline was enough to skip, so the
-  seed never ran).
-- Re-ran `deploy.sh`: label applied, provisioner distributed
-  `github-basic-auth`/`quay-push-secret`/`sonarqube-credentials`/
-  `app-platform-build-config` into `coolstore-dev`, seed PipelineRun
-  (clone → maven → sonar gate → build/push → tag-latest) succeeded on the
-  per-project `app-push` pipeline, deployment rolled onto the fresh
-  `:latest`. `validate.sh`: 34 passed, 0 failed, 1 expected warning
-  (Securesign arrives with a later phase).
+- After the per-project-pipelines restructure synced (all five Applications Synced/Healthy at `e3a473f`), `validate.sh` failed twice: no `sonarqube-credentials` in `coolstore-dev` and no green pipeline run there. Root cause: the `rhoai3.redhat.com/pipeline-project=true` label added to `coolstore-dev`'s manifest never reached the live namespace — the 050 Application ignores Namespace label diffs (`ignoreDifferences` + `RespectIgnoreDifferences=true`), so labels only land at namespace creation. The project-provisioner CronJob therefore found "No project namespaces labeled" and distributed nothing, while the Application reported Synced. New TROUBLESHOOTING recipe: "A Namespace Label Added In Git Never Reaches The Cluster".
+- Fixed `deploy.sh`: `seed_coolstore` now asserts the provisioning label imperatively (step 0) and skips the seed only when the deployment is Available AND a green per-project run exists (previously a deployment left over from the retired shared pipeline was enough to skip, so the seed never ran).
+- Re-ran `deploy.sh`: label applied, provisioner distributed `github-basic-auth`/`quay-push-secret`/`sonarqube-credentials`/ `app-platform-build-config` into `coolstore-dev`, seed PipelineRun (clone → maven → sonar gate → build/push → tag-latest) succeeded on the per-project `app-push` pipeline, deployment rolled onto the fresh `:latest`. `validate.sh`: 34 passed, 0 failed, 1 expected warning (Securesign arrives with a later phase).
 
 ### 2026-07-13 Stage 050 pre-validation check and RHDH OIDC recovery after cluster resume
 
 Actions:
 
-- Pre-work for manual stage 050 validation (RHDH access with the ai users,
-  catalog state, golden-path templates): ran `validate.sh` (29 passed,
-  0 failed, 1 expected warning — Securesign instance arrives with a later
-  phase), confirmed `ai-admin`/`ai-developer` OpenShift users exist for the
-  Keycloak federated-identity pre-creation, confirmed the runtime catalog's
-  three template Locations resolve to a pushed commit with no drift against
-  `origin/main`, and confirmed all three golden repositories answer on
-  GitHub.
-- RHDH OIDC sign-in failed with `OPError ... 504 Gateway Timeout` after the
-  sandbox cluster resumed at 06:16 UTC (Keycloak restarted; the RHDH backend
-  process, up since before the suspend, kept failing issuer discovery while
-  fresh connections from the same pod succeeded). Recovered with
-  `oc rollout restart deployment/backstage-developer-hub -n rhdh`;
-  `/api/auth/oidc/start` answers 302 afterwards. New recipe recorded in
-  TROUBLESHOOTING ("Red Hat Developer Hub OIDC Sign-In Fails With 504
-  Gateway Timeout").
-- Operator note (outside the cluster): quay.io offers no org-wide default
-  visibility setting, so each pipeline-auto-created image repository is
-  created private and must be flipped to Public manually
-  (expect this step for new app images from the 070/080 flows).
+- Pre-work for manual stage 050 validation (RHDH access with the ai users, catalog state, golden-path templates): ran `validate.sh` (29 passed, 0 failed, 1 expected warning — Securesign instance arrives with a later phase), confirmed `ai-admin`/`ai-developer` OpenShift users exist for the Keycloak federated-identity pre-creation, confirmed the runtime catalog's three template Locations resolve to a pushed commit with no drift against `origin/main`, and confirmed all three golden repositories answer on GitHub.
+- RHDH OIDC sign-in failed with `OPError ... 504 Gateway Timeout` after the sandbox cluster resumed at 06:16 UTC (Keycloak restarted; the RHDH backend process, up since before the suspend, kept failing issuer discovery while fresh connections from the same pod succeeded). Recovered with `oc rollout restart deployment/backstage-developer-hub -n rhdh`; `/api/auth/oidc/start` answers 302 afterwards. New recipe recorded in TROUBLESHOOTING ("Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout").
+- Operator note (outside the cluster): quay.io offers no org-wide default visibility setting, so each pipeline-auto-created image repository is created private and must be flipped to Public manually (expect this step for new app images from the 070/080 flows).
 
 ### 2026-07-10 Stage 050 advanced-app-platform first live deploy (new numbering)
 
 Actions:
 
-- Deleted the five pre-restructure Argo CD Applications (no finalizers, so
-  non-cascading) and deployed the consolidated `050-advanced-app-platform`.
-- Fixed live and committed upstream: Subscription health lua gap (installed
-  CSV with empty OLM `status.state` wedged wave 2), PVC health for
-  WaitForFirstConsumer storage (unbound PVCs deadlocked wave 5), SonarQube
-  image env contract (missing empty `LDAP_REALM`/`SONAR_SECURITY_REALM`
-  crash-looped the web process).
-- Repaired two pre-existing cluster faults: orphaned devworkspace-operator
-  Subscription (CSV deleted; webhook server CrashLoopBackOff 26h) and the
-  RHCL 1.4.x drift that killed the MaaS gateway at 08:50 (rolled back to the
-  pinned 1.3.x set per the deprecation advisory; both procedures recorded in
-  TROUBLESHOOTING).
+- Deleted the five pre-restructure Argo CD Applications (no finalizers, so non-cascading) and deployed the consolidated `050-advanced-app-platform`.
+- Fixed live and committed upstream: Subscription health lua gap (installed CSV with empty OLM `status.state` wedged wave 2), PVC health for WaitForFirstConsumer storage (unbound PVCs deadlocked wave 5), SonarQube image env contract (missing empty `LDAP_REALM`/`SONAR_SECURITY_REALM` crash-looped the web process).
+- Repaired two pre-existing cluster faults: orphaned devworkspace-operator Subscription (CSV deleted; webhook server CrashLoopBackOff 26h) and the RHCL 1.4.x drift that killed the MaaS gateway at 08:50 (rolled back to the pinned 1.3.x set per the deprecation advisory; both procedures recorded in TROUBLESHOOTING).
 
 Validation evidence:
 
-- `050-advanced-app-platform` reached Synced/Healthy/Succeeded including all
-  PostSync hooks (SonarQube admin rotation + scanner token + fail-on-new-issue
-  default gate, RHDH OIDC, MigIQ MaaS hooks).
-- MaaS gateway restored: `/maas-api/v1/models` answers 401 (serving) after
-  the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 /
-  limitador 1.3.1 / dns 1.3.1.
-- End-to-end golden-path delivery chain FULLY GREEN: push to
-  golden-path repo main → GitHub App webhook → EventListener
-  (HMAC verified) → PipelineRun in seconds → clone → Maven build (warm
-  cache: full run 1m38s) → SonarQube analysis + custom quality gate →
-  buildah push to `quay.io/rhoai3-coding-demo/<app>:<sha>`,
-  with quay auto-creating the repository via the org `pipeline` team's
-  Creator role (robot `rhoai3-coding-demo+pipeline`). Fixes applied live
-  along the way: coschedule=pipelineruns for dual PVC workspaces,
-  image-provided mvn (build image lacks gzip for the wrapper), CEL topic
-  scoping of the webhook. Note: org default repository visibility should
-  be Public or auto-created image repos are private (pull secrets needed
-  for deploys).
-- Post-rollback follow-up: RHCL upgraded 1.3.4→1.3.5 to match the stage 040
-  guard; stale 1.4-rendered WasmPlugin/EnvoyFilters caused valid-key
-  requests to hang in the gateway filter chain until deleted and
-  re-rendered by the 1.3 operator (recipe extended in TROUBLESHOOTING);
-  after cleanup, model-route requests answer in milliseconds.
+- `050-advanced-app-platform` reached Synced/Healthy/Succeeded including all PostSync hooks (SonarQube admin rotation + scanner token + fail-on-new-issue default gate, RHDH OIDC, MigIQ MaaS hooks).
+- MaaS gateway restored: `/maas-api/v1/models` answers 401 (serving) after the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 / limitador 1.3.1 / dns 1.3.1.
+- End-to-end golden-path delivery chain FULLY GREEN: push to golden-path repo main → GitHub App webhook → EventListener (HMAC verified) → PipelineRun in seconds → clone → Maven build (warm cache: full run 1m38s) → SonarQube analysis + custom quality gate → buildah push to `quay.io/rhoai3-coding-demo/<app>:<sha>`, with quay auto-creating the repository via the org `pipeline` team's Creator role (robot `rhoai3-coding-demo+pipeline`). Fixes applied live along the way: coschedule=pipelineruns for dual PVC workspaces, image-provided mvn (build image lacks gzip for the wrapper), CEL topic scoping of the webhook. Note: org default repository visibility should be Public or auto-created image repos are private (pull secrets needed for deploys).
+- Post-rollback follow-up: RHCL upgraded 1.3.4→1.3.5 to match the stage 040 guard; stale 1.4-rendered WasmPlugin/EnvoyFilters caused valid-key requests to hang in the gateway filter chain until deleted and re-rendered by the 1.3 operator (recipe extended in TROUBLESHOOTING); after cleanup, model-route requests answer in milliseconds.
 
 This section records the current validation run against the disposable demo environment.
 
@@ -1003,11 +626,7 @@ Actions:
 
 Validation evidence:
 
-- Static checks passed:
-  - `bash -n stages/030-private-model-serving/deploy.sh stages/030-private-model-serving/validate.sh`
-  - `kustomize build gitops/stages/030-private-model-serving/base`
-  - `kustomize build gitops/stages/030-private-model-serving/base | oc apply --dry-run=server -f -`
-  - `git diff --check`
+- Static checks passed: - `bash -n stages/030-private-model-serving/deploy.sh stages/030-private-model-serving/validate.sh` - `kustomize build gitops/stages/030-private-model-serving/base` - `kustomize build gitops/stages/030-private-model-serving/base | oc apply --dry-run=server -f -` - `git diff --check`
 - Live validation after image pull, cold start, and probe remediation: `./stages/030-private-model-serving/validate.sh`: 30 passed, 0 warnings, 0 failed.
 - Both router-scheduler pods were created and running.
 - Both new model workloads were admitted by Kueue and assigned to GPU nodes.
@@ -1217,8 +836,7 @@ GUIDELLM_PROMPT="Explain why governed model access matters for enterprise softwa
 
 ### Stage 040 — approved external model access
 
-Stage 040 owns approved external model access through MaaS (folded in from
-the former external-models stage by the 2026-07-06 restructure).
+Stage 040 owns approved external model access through MaaS (folded in from the former external-models stage by the 2026-07-06 restructure).
 
 External models share MaaS governance, subscription, API-key, rate-limit, token-limit, and gateway telemetry controls with private models. They do not share the same runtime observability boundary. OpenShift can observe local vLLM/GPU/Kueue signals for Stage 030 models, but external providers expose only gateway-visible request behavior and provider API success/failure from the demo platform perspective.
 
@@ -1271,8 +889,7 @@ That check sends small non-streaming requests through the dashboard BFF to all f
 
 ### Stage 040 — MCP context integrations
 
-Stage 040 owns the MCP context integrations (folded in from the former MCP
-stage by the 2026-07-06 restructure).
+Stage 040 owns the MCP context integrations (folded in from the former MCP stage by the 2026-07-06 restructure).
 
 | `.env` variable | Secret created | Namespace | Purpose |
 |----------------|----------------|-----------|---------|
@@ -1290,12 +907,7 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 
 The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces (consumed by the workflow-only stages 060/070).
 
-Validation now checks both service readiness and persona workspace readiness.
-The stage is not considered fully validated unless `wksp-kubeadmin`,
-`wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the
-`getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore`
-DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings
-point at the expected OpenShift users.
+Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users.
 
 Useful checks:
 
@@ -1319,14 +931,7 @@ oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}
 
 ### Stage 050 — Coolstore dev environment (coolstore component)
 
-The `coolstore` component keeps a running `coolstore-inventory-service` in
-`coolstore-dev` so the demo starts from a deployed brownfield system. The
-Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared
-pipeline's `tag-latest` task republishes that tag on every green run.
-`deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions
-`quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on
-a fresh cluster, the seed run has not completed yet — re-run
-`stages/050-advanced-app-platform/deploy.sh`.
+The `coolstore` component keeps a running `coolstore-inventory-service` in `coolstore-dev` so the demo starts from a deployed brownfield system. The Deployment pins `quay.io/…/coolstore-inventory-service:latest`; the shared pipeline's `tag-latest` task republishes that tag on every green run. `deploy.sh` seeds the first run (topic, PipelineRun, rollout) and provisions `quay-pull-secret` from `.env`. If the deployment shows ImagePullBackOff on a fresh cluster, the seed run has not completed yet — re-run `stages/050-advanced-app-platform/deploy.sh`.
 
 Useful checks:
 
@@ -1392,10 +997,7 @@ After any cluster suspend/resume, also restart the Stage 050 Developer Hub deplo
 
 ## Coolstore Demo Reset
 
-The stage 060 coding exercise pushes real commits to
-`coolstore-inventory-service` `main` (required — pipeline triggers listen only
-on `refs/heads/main`). To make demo runs repeatable, a `golden` branch in that
-repo pins the pristine baseline.
+The stage 060 coding exercise pushes real commits to `coolstore-inventory-service` `main` (required — pipeline triggers listen only on `refs/heads/main`). To make demo runs repeatable, a `golden` branch in that repo pins the pristine baseline.
 
 ```bash
 ./scripts/reset-coolstore-demo.sh
@@ -1408,15 +1010,9 @@ repo pins the pristine baseline.
 | `--skip-workspace` | Leave the DevWorkspace as-is |
 | `--wait-pipeline` | Poll the reset PipelineRun until Succeeded/Failed (max 15 min) |
 
-The script rewinds `main` to `golden` via the GitHub API, recreates the
-`agentic-coolstore` DevWorkspace (Argo CD self-heals it to `Stopped`), and
-optionally clears SonarQube history. The force-push fires one expected
-`app-push` PipelineRun in `coolstore-dev` that re-validates the chain and
-re-tags `:latest`.
+The script rewinds `main` to `golden` via the GitHub API, recreates the `agentic-coolstore` DevWorkspace (Argo CD self-heals it to `Stopped`), and optionally clears SonarQube history. The force-push fires one expected `app-push` PipelineRun in `coolstore-dev` that re-validates the chain and re-tags `:latest`.
 
-**Advancing the baseline:** when the demo app legitimately evolves, push the
-new baseline commit to `main`, verify the pipeline is green, then update the
-golden branch:
+**Advancing the baseline:** when the demo app legitimately evolves, push the new baseline commit to `main`, verify the pipeline is green, then update the golden branch:
 
 ```bash
 gh api -X PATCH "repos/adnan-drina/coolstore-inventory-service/git/refs/heads/golden" \

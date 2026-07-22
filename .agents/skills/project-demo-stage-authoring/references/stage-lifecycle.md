@@ -1,8 +1,6 @@
 # Demo Stage Lifecycle
 
-Use this lifecycle for every new rhoai3-coding-demo stage. The goal is methodical
-product-demo delivery: each stage introduces a clear Red Hat-aligned concept,
-implements it with GitOps, and proves it with validation.
+Use this lifecycle for every new rhoai3-coding-demo stage. The goal is methodical product-demo delivery: each stage introduces a clear Red Hat-aligned concept, implements it with GitOps, and proves it with validation.
 
 ## Phase 0: Intake
 
@@ -21,8 +19,7 @@ Define the stage before creating files:
 - explicit non-goals
 - acceptance criteria
 
-If scope does not fit in one concise README and one deployable GitOps slice,
-split the stage or move future work to `BACKLOG.md`.
+If scope does not fit in one concise README and one deployable GitOps slice, split the stage or move future work to `BACKLOG.md`.
 
 ## Phase 1: Source Capture
 
@@ -34,8 +31,7 @@ Before writing implementation:
 - record unsupported, technology-preview, community, or demo-only exceptions
 - check existing stage patterns for reference
 
-Do not create manifests from memory. If the official documentation is unclear,
-propose a verification command (`oc explain`, CRD inspection).
+Do not create manifests from memory. If the official documentation is unclear, propose a verification command (`oc explain`, CRD inspection).
 
 ## Phase 2: Skill Routing
 
@@ -67,8 +63,7 @@ Before implementation, define:
 
 ## Phase 4: README
 
-Write `stages/NNN-descriptive-slug/README.md` using
-`project-documentation-authoring/references/readme-standard.md`.
+Write `stages/NNN-descriptive-slug/README.md` using `project-documentation-authoring/references/readme-standard.md`.
 
 The README should answer Why and What:
 
@@ -78,8 +73,7 @@ The README should answer Why and What:
 - `## What To Notice And Why It Matters`: enterprise proof points
 - `## References`: keep source links short and relevant
 
-Do not put runbooks, long command walkthroughs, or validation transcripts in
-the README.
+Do not put runbooks, long command walkthroughs, or validation transcripts in the README.
 
 ## Phase 5: GitOps Ownership
 
@@ -98,8 +92,7 @@ Use a shared-owner path when the stage changes global platform state:
 gitops/<shared-platform-owner>/base/
 ```
 
-Never render competing full copies of a shared resource from multiple Argo CD
-Applications.
+Never render competing full copies of a shared resource from multiple Argo CD Applications.
 
 ## Phase 6: Manifest Authoring
 
@@ -110,8 +103,7 @@ Author manifests from verified sources:
 - existing stage manifests as patterns
 - explicit demo exceptions documented in README
 
-Use Red Hat product images and registry sources unless a demo exception is
-approved and documented.
+Use Red Hat product images and registry sources unless a demo exception is approved and documented.
 
 ## Phase 7: Scripts
 
@@ -137,8 +129,7 @@ Run the narrowest useful checks before live deployment:
 - `./scripts/validate-stage-flow.sh` for overall flow integrity
 - Manifest review checklists
 
-Live validation should prove the user-visible stage outcome, not just resource
-existence.
+Live validation should prove the user-visible stage outcome, not just resource existence.
 
 ## Phase 9: Operations And Troubleshooting
 

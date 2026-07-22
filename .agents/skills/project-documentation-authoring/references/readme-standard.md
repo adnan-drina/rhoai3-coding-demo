@@ -1,17 +1,12 @@
 # Stage README Standard
 
-Each stage README is a concise Why/What document for a technical audience. It
-should educate a new reader, explain the RHOAI value introduced by the stage,
-and stay short enough to become a three-slide presentation segment.
+Each stage README is a concise Why/What document for a technical audience. It should educate a new reader, explain the RHOAI value introduced by the stage, and stay short enough to become a three-slide presentation segment.
 
-GitOps manifests, deploy scripts, validation scripts, and the live demo show
-How. Stage READMEs explain Why the stage matters and What Red Hat technologies
-make it possible.
+GitOps manifests, deploy scripts, validation scripts, and the live demo show How. Stage READMEs explain Why the stage matters and What Red Hat technologies make it possible.
 
 ## Reader Promise
 
-Each stage README should let an enterprise architect, platform engineer, or
-developer experience team quickly answer:
+Each stage README should let an enterprise architect, platform engineer, or developer experience team quickly answer:
 
 - What concept is introduced in this stage?
 - Why should a regulated enterprise care?
@@ -45,17 +40,13 @@ Use this shape for stage READMEs:
 ## Next Stage
 ```
 
-The `## Demo` section is optional but recommended for all implemented stages
-with a live environment. When present, place it after `## Architecture`. It
-provides visual evidence of the stage working on a real cluster.
+The `## Demo` section is optional but recommended for all implemented stages with a live environment. When present, place it after `## Architecture`. It provides visual evidence of the stage working on a real cluster.
 
 ## Why This Matters
 
 This section is the source for slide 1: concept and value.
 
-Keep it short. Define the concept introduced by the stage and explain why a
-regulated enterprise should care. Focus on the value to the audience, not
-implementation mechanics.
+Keep it short. Define the concept introduced by the stage and explain why a regulated enterprise should care. Focus on the value to the audience, not implementation mechanics.
 
 Include:
 
@@ -71,9 +62,7 @@ Do not use generic market claims when a Red Hat source exists.
 
 This section is the source for slide 3: architecture delta.
 
-The stage diagram must make the current stage components visually distinct from
-previously introduced components. Preferred format is an ASCII or Mermaid
-diagram inline in the README.
+The stage diagram must make the current stage components visually distinct from previously introduced components. Preferred format is an ASCII or Mermaid diagram inline in the README.
 
 After the diagram, add a short architecture delta list:
 
@@ -83,8 +72,7 @@ After the diagram, add a short architecture delta list:
 - Value of the integration: <why the combined architecture matters>
 ```
 
-The architecture diagram must accurately reflect all deployed components. If the
-implementation changes, update the diagram in the same commit.
+The architecture diagram must accurately reflect all deployed components. If the implementation changes, update the diagram in the same commit.
 
 ## What This Stage Adds
 
@@ -110,23 +98,17 @@ References should be short and source-focused:
 
 ## Demo Visual Evidence
 
-Each stage README can include a `## Demo` section that provides annotated
-screenshots and an animated GIF demonstrating the stage's customer-facing
-outcome. This visual evidence serves the "How" slide in the three-part
-presentation contract and proves the implementation works on a live cluster.
+Each stage README can include a `## Demo` section that provides annotated screenshots and an animated GIF demonstrating the stage's customer-facing outcome. This visual evidence serves the "How" slide in the three-part presentation contract and proves the implementation works on a live cluster.
 
 ### Coverage Requirements
 
 Screenshots should cover:
 
 1. **At least one screenshot per key component introduced in the stage.**
-   A "key component" is any technology listed in `## What This Stage Adds` that
-   has its own visible surface in the RHOAI dashboard, OpenShift console, Argo CD,
-   Grafana, or a custom application UI.
+   A "key component" is any technology listed in `## What This Stage Adds` that has its own visible surface in the RHOAI dashboard, OpenShift console, Argo CD, Grafana, or a custom application UI.
 
 2. **At least one screenshot showing the final customer-facing demo result.**
-   This is the moment a user (data scientist, AI engineer, platform admin)
-   would see and interact with.
+   This is the moment a user (data scientist, AI engineer, platform admin) would see and interact with.
 
 ### Section Format
 
@@ -147,9 +129,7 @@ Screenshots should cover:
 
 ### Naming Convention
 
-Screenshots live in `images/` within the stage directory with zero-padded sequence
-numbers: `01-descriptive-name.png`, `02-descriptive-name.png`, etc. The
-animated GIF is named `stage-NNN-demo.gif`.
+Screenshots live in `images/` within the stage directory with zero-padded sequence numbers: `01-descriptive-name.png`, `02-descriptive-name.png`, etc. The animated GIF is named `stage-NNN-demo.gif`.
 
 ### Screenshot Guidance
 
@@ -163,14 +143,11 @@ animated GIF is named `stage-NNN-demo.gif`.
 
 ### Animated GIF
 
-The GIF stitches the key screenshots into a ~15-second walkthrough at 2-3
-seconds per frame. It provides the "at a glance" demo experience for
-stakeholders who will not run the live environment.
+The GIF stitches the key screenshots into a ~15-second walkthrough at 2-3 seconds per frame. It provides the "at a glance" demo experience for stakeholders who will not run the live environment.
 
 ## Presentation Extraction Contract
 
-Write READMEs so a future deck-generation skill can create three slides per
-stage without guessing:
+Write READMEs so a future deck-generation skill can create three slides per stage without guessing:
 
 | Slide | README source | Purpose |
 |-------|---------------|---------|
@@ -178,8 +155,7 @@ stage without guessing:
 | 2 | `## What This Stage Adds` | Explain the RHOAI and Red Hat technologies used |
 | 3 | `## Architecture` + `## Demo` | Show new components in context; prove with visual evidence |
 
-Keep each section concise enough that the deck generator can lift the main
-message directly instead of summarizing long runbook content.
+Keep each section concise enough that the deck generator can lift the main message directly instead of summarizing long runbook content.
 
 ## Content Boundaries
 

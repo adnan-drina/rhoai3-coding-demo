@@ -62,12 +62,9 @@ Current implemented stages:
 7. 070 AI-Agentic Development (OpenCode, AGENTS.md, skills — workflow stage)
 8. 080 AI-Autonomous Migration (MTA + multi-agent migration — workflow stage)
 
-The stages renumbered when stage 040 absorbed the former external-model and
-MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became
-050/060/070/080.
+The stages renumbered when stage 040 absorbed the former external-model and MCP stages during the rhoai3-demo foundation import: 070/080/090/100 became 050/060/070/080.
 
-Developer workflow stages after 080 are deferred until each has a concrete
-implementation plan and validation path.
+Developer workflow stages after 080 are deferred until each has a concrete implementation plan and validation path.
 
 When changing one stage, check whether related changes are also needed in:
 
@@ -81,39 +78,26 @@ When changing one stage, check whether related changes are also needed in:
 
 ## Detailed Rules
 
-For project structure, coding discipline, change conventions, and shared agent
-guidance, read `.agents/rules/project.md`.
+For project structure, coding discipline, change conventions, and shared agent guidance, read `.agents/rules/project.md`.
 
-For live demo environment deployment, secrets, certs, and cluster safety, read
-`.agents/rules/env.md`.
+For live demo environment deployment, secrets, certs, and cluster safety, read `.agents/rules/env.md`.
 
-For GitOps authoring, manifests, labels, and schema validation, read
-`.agents/rules/gitops.md`.
+For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
-For documentation standards, README structure, and operations docs, read
-`.agents/rules/docs.md`.
+For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.
 
-For RHOAI platform component guidance backed by official Red Hat documentation,
-read `.agents/rules/rhoai.md`.
+For RHOAI platform component guidance backed by official Red Hat documentation, read `.agents/rules/rhoai.md`.
 
-For OpenShift Container Platform infrastructure, control plane, networking,
-authentication, monitoring, GitOps, cluster, and storage integration guidance,
-read `.agents/rules/ocp.md`.
+For OpenShift Container Platform infrastructure, control plane, networking, authentication, monitoring, GitOps, cluster, and storage integration guidance, read `.agents/rules/ocp.md`.
 
-For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage
-classes, read `.agents/rules/odf.md`.
+For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage classes, read `.agents/rules/odf.md`.
 
 ## OpenShift Safety Guard
 
-- Open this repository as its own project; do not open `/Users/adrina/Sandbox`
-  as the active project for live cluster work.
-- Before running live `oc`/`kubectl` commands, call `load_env` and
-  `check_oc_logged_in` from `scripts/lib.sh`.
-- Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target
-  API-server substring before deploy, validate, bootstrap, or
-  resource-management scripts run.
-- Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the
-  user explicitly confirms the current cluster and the command is low risk.
+- Open this repository as its own project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
+- Before running live `oc`/`kubectl` commands, call `load_env` and `check_oc_logged_in` from `scripts/lib.sh`.
+- Set `RHOAI_EXPECTED_API_SERVER` in the local `.env` to a unique target API-server substring before deploy, validate, bootstrap, or resource-management scripts run.
+- Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the user explicitly confirms the current cluster and the command is low risk.
 
 ## Security and privacy
 
@@ -187,9 +171,7 @@ YAML and Kubernetes manifests:
 
 ## Shared Skills
 
-Canonical skills live in `.agents/skills/`, the shared tool-neutral skill
-discovery path. Keep skill folders flat and use the prefix plus
-`metadata.skill-group` taxonomy for skill review:
+Canonical skills live in `.agents/skills/`, the shared tool-neutral skill discovery path. Keep skill folders flat and use the prefix plus `metadata.skill-group` taxonomy for skill review:
 
 | Group | Prefix | Skills | Purpose |
 |-------|--------|--------|---------|
@@ -214,16 +196,11 @@ Skills are invoked workflows. Rules are always-on behavior constraints.
 
 ## Subagents
 
-No shared subagents are currently tracked. Add tool-specific subagents only for
-genuinely tool-specific context isolation needs; shared workflows belong in
-`.agents/skills/`.
+No shared subagents are currently tracked. Add tool-specific subagents only for genuinely tool-specific context isolation needs; shared workflows belong in `.agents/skills/`.
 
 ## Stage deployment skill map
 
-When deploying, validating, or changing a stage, consult the matching
-doc-grounded skills BEFORE making decisions; their doc-backed procedures are
-authoritative for Red Hat alignment, while repo-specific defaults live in the
-stage READMEs:
+When deploying, validating, or changing a stage, consult the matching doc-grounded skills BEFORE making decisions; their doc-backed procedures are authoritative for Red Hat alignment, while repo-specific defaults live in the stage READMEs:
 
 | Stage | Primary skills |
 |-------|----------------|
@@ -236,10 +213,7 @@ stage READMEs:
 | 070 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
 | 080 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
 
-Skill project-default sections were authored in rhoai3-demo; where this repo
-deliberately diverges (no GPU time-slicing, two GPU workers, two private
-models), the stage README is the source of truth and the skill defaults have
-been updated to match.
+Skill project-default sections were authored in rhoai3-demo; where this repo deliberately diverges (no GPU time-slicing, two GPU workers, two private models), the stage README is the source of truth and the skill defaults have been updated to match.
 
 ## Validation expectations
 
@@ -262,11 +236,7 @@ bash -n stages/*/*.sh
 ./stages/080-ai-autonomous-migration/validate.sh
 ```
 
-Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer
-Hub assets; its skills content lives in an external repository, so beyond its
-validate script use `./scripts/validate-stage-flow.sh` and any specific
-commands documented in the Stage 070 README when a live workspace and cluster
-are available.
+Stage 070 consumes the Stage 060 Dev Spaces platform and Stage 050 Developer Hub assets; its skills content lives in an external repository, so beyond its validate script use `./scripts/validate-stage-flow.sh` and any specific commands documented in the Stage 070 README when a live workspace and cluster are available.
 
 If validation requires a live OpenShift cluster and one is not available, do not pretend validation passed. Say:
 

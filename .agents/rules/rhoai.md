@@ -13,8 +13,7 @@ applies-to:
 
 # RHOAI Platform
 
-Use the `rhoai-*` skills as the source of truth for RHOAI component behavior,
-configuration, pipelines, chatbot behavior, and evaluation workflows:
+Use the `rhoai-*` skills as the source of truth for RHOAI component behavior, configuration, pipelines, chatbot behavior, and evaluation workflows:
 
 - `.agents/skills/rhoai-chatbot-customization/SKILL.md`
 - `.agents/skills/rhoai-architecture-overview/SKILL.md`
@@ -79,32 +78,10 @@ configuration, pipelines, chatbot behavior, and evaluation workflows:
 - `.agents/skills/rhoai-model-evaluation/SKILL.md`
 - `.agents/skills/rhoai-kfp-pipeline-authoring/SKILL.md`
 
-Official Red Hat documentation for the active baseline in
-`docs/PLATFORM_BASELINE.md` is the product source of truth. Use Red Hat articles
-and `rh-brain` examples only as supporting implementation evidence.
-Use `.agents/references/red-hat-doc-map.yaml` to route RHOAI documentation by
-category, book, and chapter topic to the matching flat `rhoai-*` skill. If an
-official RHOAI source is not mapped yet, use
-`project-red-hat-doc-skill-authoring` to update the map and create or update
-the relevant flat skill; do not create nested skill folders that mirror Red Hat
-documentation categories.
+Official Red Hat documentation for the active baseline in `docs/PLATFORM_BASELINE.md` is the product source of truth. Use Red Hat articles and `rh-brain` examples only as supporting implementation evidence. Use `.agents/references/red-hat-doc-map.yaml` to route RHOAI documentation by category, book, and chapter topic to the matching flat `rhoai-*` skill. If an official RHOAI source is not mapped yet, use `project-red-hat-doc-skill-authoring` to update the map and create or update the relevant flat skill; do not create nested skill folders that mirror Red Hat documentation categories.
 
-When a README introduces a RHOAI capability, pair the concept narrative with an
-official documentation link for each technical component used. When a manifest
-introduces images or model artifacts, verify Red Hat registry, validated model,
-or explicitly documented demo-exception provenance before treating it as
-aligned.
+When a README introduces a RHOAI capability, pair the concept narrative with an official documentation link for each technical component used. When a manifest introduces images or model artifacts, verify Red Hat registry, validated model, or explicitly documented demo-exception provenance before treating it as aligned.
 
-RHOAI controllers and prerequisite operators can generate product-owned
-operands such as monitoring resources, KServe resources, MaaS gateway
-resources, model-serving controllers, or dashboard-backed resources. Do not
-patch generated operand image fields, generated datasources, or
-operator-created Deployments as durable fixes. Use the matching `rhoai-*`
-skill plus `project-red-hat-operator-gitops` to decide whether the fix belongs
-in `DataScienceCluster`/`DSCInitialization` configuration, Subscription
-lifecycle policy, product baseline alignment, or a documented product wait.
+RHOAI controllers and prerequisite operators can generate product-owned operands such as monitoring resources, KServe resources, MaaS gateway resources, model-serving controllers, or dashboard-backed resources. Do not patch generated operand image fields, generated datasources, or operator-created Deployments as durable fixes. Use the matching `rhoai-*` skill plus `project-red-hat-operator-gitops` to decide whether the fix belongs in `DataScienceCluster`/`DSCInitialization` configuration, Subscription lifecycle policy, product baseline alignment, or a documented product wait.
 
-Use `rhoai-api-tiers` to classify API support posture before treating an API as
-durable demo contract. Do not invent CR fields, API versions, annotations, or
-operator settings. If a field is uncertain, verify it through official docs or
-schema inspection.
+Use `rhoai-api-tiers` to classify API support posture before treating an API as durable demo contract. Do not invent CR fields, API versions, annotations, or operator settings. If a field is uncertain, verify it through official docs or schema inspection.

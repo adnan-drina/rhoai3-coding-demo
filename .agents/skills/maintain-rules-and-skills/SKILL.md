@@ -22,8 +22,7 @@ description: >
 
 # Maintain Rules, Skills, and Hooks
 
-Structured workflow for creating, updating, and auditing shared agent guidance
-and tool bridges in this project.
+Structured workflow for creating, updating, and auditing shared agent guidance and tool bridges in this project.
 
 ## Decision Framework: Which Component Type?
 
@@ -50,8 +49,7 @@ and tool bridges in this project.
 
 ## Skill Groups
 
-Keep folders flat and use the prefix plus frontmatter `metadata.skill-group`
-for logical ownership:
+Keep folders flat and use the prefix plus frontmatter `metadata.skill-group` for logical ownership:
 
 | Group | Prefix | Purpose |
 |-------|--------|---------|
@@ -62,10 +60,7 @@ for logical ownership:
 | OpenShift Data Foundation | `odf-*` | Official-doc-backed OpenShift Data Foundation storage, object storage, Ceph, NooBaa, storage class, and data-service integration guidance |
 | Assets & Miscellaneous | (none) | Visual, deck, and presentation assets |
 
-Use `project-red-hat-doc-skill-authoring` for new `rhoai-*`, `ocp-*`, and
-`odf-*` skills generated from official Red Hat docs, and use
-`.agents/references/red-hat-doc-map.yaml` to route Red Hat product
-documentation categories and books to flat skills.
+Use `project-red-hat-doc-skill-authoring` for new `rhoai-*`, `ocp-*`, and `odf-*` skills generated from official Red Hat docs, and use `.agents/references/red-hat-doc-map.yaml` to route Red Hat product documentation categories and books to flat skills.
 
 ## Instructions
 
@@ -76,9 +71,7 @@ documentation categories and books to flat skills.
 3. Check for overlaps — does an existing rule/skill already cover this?
 4. Decide the component type using the decision framework above
 5. If `AGENTS.md` or a rule references a canonical repo skill that exists under
-   `.agents/skills/` but is missing from the runtime-discovered skill list,
-   read the on-disk skill as project guidance and record the discovery gap in
-   the work summary or backlog.
+   `.agents/skills/` but is missing from the runtime-discovered skill list, read the on-disk skill as project guidance and record the discovery gap in the work summary or backlog.
 
 ### Creating a Rule
 
@@ -147,8 +140,7 @@ For detailed conventions and patterns, read `references/conventions.md`.
 
 ### Documentation Alignment Loop
 
-When a rules/skills/agent update changes how GitOps manifests or stage READMEs
-are authored, keep the product-documentation loop current:
+When a rules/skills/agent update changes how GitOps manifests or stage READMEs are authored, keep the product-documentation loop current:
 
 1. Check whether the change affects a GitOps-managed component, ArgoCD app, or
    stage README.
@@ -159,8 +151,7 @@ are authored, keep the product-documentation loop current:
 
 ## Tool Bridges
 
-This project keeps shared guidance in tool-neutral locations where possible,
-then exposes that guidance to tools through small bridge files only when needed.
+This project keeps shared guidance in tool-neutral locations where possible, then exposes that guidance to tools through small bridge files only when needed.
 
 ### Canonical shared sources
 
@@ -177,9 +168,7 @@ then exposes that guidance to tools through small bridge files only when needed.
 - Do not add tool-specific rule copies unless there is a proven tool-only gap
 - Prefer improving `AGENTS.md`, `.agents/rules/`, or a shared skill first
 
-Shared `.agents/` and `.cursor/` files in this repo are project guidance and
-should be reviewed like source. Personal or machine-specific guidance belongs
-in home-directory config, not the repo.
+Shared `.agents/` and `.cursor/` files in this repo are project guidance and should be reviewed like source. Personal or machine-specific guidance belongs in home-directory config, not the repo.
 
 ## Shared Versus Local
 
@@ -193,5 +182,4 @@ A shared rule or skill may be committed only when it:
 
 Rules should be: short, specific, durable, enforceable, non-duplicative.
 
-Skills should include: when to use, required inputs, files to inspect, steps to
-follow, validation commands, expected output, things the agent must not do.
+Skills should include: when to use, required inputs, files to inspect, steps to follow, validation commands, expected output, things the agent must not do.

@@ -1,7 +1,6 @@
 # Shared Agent Guidance Conventions
 
-Use these conventions when changing `AGENTS.md`, `.agents/`, or tool bridge
-files (e.g. `.cursor/hooks.json`) in this repository.
+Use these conventions when changing `AGENTS.md`, `.agents/`, or tool bridge files (e.g. `.cursor/hooks.json`) in this repository.
 
 ## AGENTS.md
 
@@ -18,9 +17,7 @@ files (e.g. `.cursor/hooks.json`) in this repository.
 
 ## Shared Rules
 
-Rules live under `.agents/rules/` and are short, tool-neutral domain guardrails.
-They are not a replacement for root `AGENTS.md`; they give agents a predictable
-place to look before work in a specific skill group.
+Rules live under `.agents/rules/` and are short, tool-neutral domain guardrails. They are not a replacement for root `AGENTS.md`; they give agents a predictable place to look before work in a specific skill group.
 
 Current rule taxonomy:
 
@@ -47,8 +44,7 @@ applies-to:
 ---
 ```
 
-Keep detailed procedure in skills, not rules. A rule should point to the
-relevant skills and state the non-negotiable constraints for that domain.
+Keep detailed procedure in skills, not rules. A rule should point to the relevant skills and state the non-negotiable constraints for that domain.
 
 ## Shared Skills
 
@@ -83,13 +79,11 @@ Conventions:
   helpers in `scripts/`, and reusable examples in `examples/` when needed.
 - Keep tool-specific copies out of the repo.
 - If a canonical repo skill exists on disk but is not listed by the current
-  runtime skill discovery output, treat the on-disk skill as project guidance
-  after reading it fully and note the discovery mismatch for follow-up.
+  runtime skill discovery output, treat the on-disk skill as project guidance after reading it fully and note the discovery mismatch for follow-up.
 
 ### Product documentation skills
 
-Product documentation skills (`rhoai-*`, `ocp-*`, `odf-*`) follow an extended
-structure:
+Product documentation skills (`rhoai-*`, `ocp-*`, `odf-*`) follow an extended structure:
 
 ```
 skill-name/
@@ -102,9 +96,7 @@ skill-name/
     component-patterns.md              # Reusable configuration patterns
 ```
 
-Use `project-red-hat-doc-skill-authoring` for the generation workflow and
-`.agents/references/red-hat-doc-map.yaml` to route documentation topics to
-skills.
+Use `project-red-hat-doc-skill-authoring` for the generation workflow and `.agents/references/red-hat-doc-map.yaml` to route documentation topics to skills.
 
 ## Shared Hooks
 
@@ -124,9 +116,7 @@ Keep tool-specific directories minimal:
 | `.claude/` | No (gitignored) | Local Claude Code runtime preferences |
 | `.codex/` | No (gitignored) | Local Codex runtime preferences |
 
-Do not reintroduce tool-specific rules, skills, or hook implementations.
-Tool bridge files should only wire tool events to `.agents/hooks/` and
-provide thin subagent stubs that delegate to `.agents/skills/`.
+Do not reintroduce tool-specific rules, skills, or hook implementations. Tool bridge files should only wire tool events to `.agents/hooks/` and provide thin subagent stubs that delegate to `.agents/skills/`.
 
 ### Cursor subagents (`.cursor/agents/`)
 
@@ -142,9 +132,7 @@ readonly: true
 ---
 ```
 
-Subagent bodies should be minimal — instruct the subagent to read and follow
-the shared skill, point to relevant rules, and state safety constraints.
-Keep the actual checklist content in `.agents/skills/`.
+Subagent bodies should be minimal — instruct the subagent to read and follow the shared skill, point to relevant rules, and state safety constraints. Keep the actual checklist content in `.agents/skills/`.
 
 ## Red Hat Documentation Alignment
 

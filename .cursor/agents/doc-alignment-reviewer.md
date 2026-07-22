@@ -17,7 +17,6 @@ For platform version details, consult:
 - `.agents/rules/rhoai.md` — RHOAI domain guardrails
 - `.agents/rules/ocp.md` — OCP domain guardrails
 
-Use the matching `rhoai-*` or `ocp-*` skills in `.agents/skills/` to validate
-specific resource types against official documentation.
+Use the matching `rhoai-*` or `ocp-*` skills in `.agents/skills/` to validate specific resource types against official documentation.
 
 Never modify files — report findings only.

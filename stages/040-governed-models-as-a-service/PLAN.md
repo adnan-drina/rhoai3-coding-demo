@@ -5,125 +5,51 @@
 - Stage identifier: `220`
 - Stage family: `2xx Production GenAI and Private Data`
 - Stage slug: `040-governed-models-as-a-service`
-- Concept introduced: Governed model access through Red Hat OpenShift AI
-  Models-as-a-Service.
-- Target audience: Platform engineer, solution architect, AI governance owner,
-  and application developer.
-- Enterprise value: Turns validated model endpoints into governed shared
-  services with subscriptions, authorization policies, API keys, quotas, usage
-  tracking, and clear separation between internal GPU-backed models and
-  external provider models.
-- Depends on: `010-openshift-ai-platform-foundation`,
-  `020-gpu-infrastructure-private-ai`, and `030-private-model-serving`.
-- New components planned: MaaS enablement on the shared
-  `DataScienceCluster`, Red Hat Connectivity Link and Kuadrant prerequisites,
-  MaaS Gateway API resources, Authorino TLS setup, PostgreSQL-backed API-key
-  storage, `Tenant`, `MaaSModelRef`, `MaaSSubscription`,
-  `MaaSAuthPolicy`, `ExternalModel`, a MaaS-published Nemotron endpoint, and a
-  read-only OpenShift MCP server registered for Gen AI Playground discovery.
-- Phase-one implementation: cert-manager preflight validation, GitOps-managed
-  RHCL, Kuadrant, Authorino TLS, `maas-default-gateway`, in-cluster PostgreSQL
-  16 demo database, `maas-db-config`, dashboard flags, DSC MaaS/Llama Stack
-  enablement, and `Tenant`.
-- Phase-two implementation: schema-validated external OpenAI `gpt-4o-mini`
-  provider routing through a matching `gpt-4o-mini` `ExternalModel`,
-  `MaaSModelRef`, `MaaSSubscription`, `MaaSAuthPolicy`, and MaaS namespace
-  admin RoleBinding for `rhods-admins`. Live rollout requires a local provider
-  key Secret; do not use placeholders.
-- Local model implementation: schema-validated Nemotron
-  `LLMInferenceService` and `MaaSModelRef` in `models-as-a-service`, with a
-  MaaS namespace `LocalQueue` and a deploy-time cleanup guard that removes any
-  stale direct Nemotron deployment from `demo-sandbox`.
-- Namespace decision: MaaS model references must point at the namespace that
-  contains the underlying backend. For the governed private model path, this
-  project intentionally makes `models-as-a-service` the backend namespace for
-  Nemotron rather than keeping the shared backend in the user-facing
-  `demo-sandbox` project.
-- Gateway TLS pattern: create stable `maas-gateway-tls` in `openshift-ingress`
-  from the active OpenShift ingress certificate before applying
-  `maas-default-gateway`; then patch listener hostnames to
-  `maas.<apps-domain>`.
-- External model planned: OpenAI `gpt-4o-mini` registered through the MaaS
-  `ExternalModel` path with `gpt-4o-mini` as both the Kubernetes resource name
-  and upstream provider model ID.
-- Validation priority: deterministic API and CLI validation first, with the
-  dashboard and Gen AI studio experience used as the audience-facing proof.
-- User-facing experience: `ai-admin` administers MaaS; `ai-developer` does not
-  get direct access to the `models-as-a-service` project and consumes models
-  through Gen AI studio AI asset endpoints and MaaS API keys.
-- Full experience scope: include MaaS subscriptions, authorization policies,
-  API keys, governed local Nemotron, governed external OpenAI, Gen AI
-  Playground consumption, read-only OpenShift MCP tool context, MaaS
-  observability, and clear Technology Preview or Developer Preview labeling for
-  preview features.
-- Existing components reused: Stage 030 Nemotron vLLM configuration,
-  Grafana/User Workload Monitoring, `demo-sandbox` as the consumer project,
-  and Stage 020 GPU hardware profiles.
+- Concept introduced: Governed model access through Red Hat OpenShift AI Models-as-a-Service.
+- Target audience: Platform engineer, solution architect, AI governance owner, and application developer.
+- Enterprise value: Turns validated model endpoints into governed shared services with subscriptions, authorization policies, API keys, quotas, usage tracking, and clear separation between internal GPU-backed models and external provider models.
+- Depends on: `010-openshift-ai-platform-foundation`, `020-gpu-infrastructure-private-ai`, and `030-private-model-serving`.
+- New components planned: MaaS enablement on the shared `DataScienceCluster`, Red Hat Connectivity Link and Kuadrant prerequisites, MaaS Gateway API resources, Authorino TLS setup, PostgreSQL-backed API-key storage, `Tenant`, `MaaSModelRef`, `MaaSSubscription`, `MaaSAuthPolicy`, `ExternalModel`, a MaaS-published Nemotron endpoint, and a read-only OpenShift MCP server registered for Gen AI Playground discovery.
+- Phase-one implementation: cert-manager preflight validation, GitOps-managed RHCL, Kuadrant, Authorino TLS, `maas-default-gateway`, in-cluster PostgreSQL 16 demo database, `maas-db-config`, dashboard flags, DSC MaaS/Llama Stack enablement, and `Tenant`.
+- Phase-two implementation: schema-validated external OpenAI `gpt-4o-mini` provider routing through a matching `gpt-4o-mini` `ExternalModel`, `MaaSModelRef`, `MaaSSubscription`, `MaaSAuthPolicy`, and MaaS namespace admin RoleBinding for `rhods-admins`. Live rollout requires a local provider key Secret; do not use placeholders.
+- Local model implementation: schema-validated Nemotron `LLMInferenceService` and `MaaSModelRef` in `models-as-a-service`, with a MaaS namespace `LocalQueue` and a deploy-time cleanup guard that removes any stale direct Nemotron deployment from `demo-sandbox`.
+- Namespace decision: MaaS model references must point at the namespace that contains the underlying backend. For the governed private model path, this project intentionally makes `models-as-a-service` the backend namespace for Nemotron rather than keeping the shared backend in the user-facing `demo-sandbox` project.
+- Gateway TLS pattern: create stable `maas-gateway-tls` in `openshift-ingress` from the active OpenShift ingress certificate before applying `maas-default-gateway`; then patch listener hostnames to `maas.<apps-domain>`.
+- External model planned: OpenAI `gpt-4o-mini` registered through the MaaS `ExternalModel` path with `gpt-4o-mini` as both the Kubernetes resource name and upstream provider model ID.
+- Validation priority: deterministic API and CLI validation first, with the dashboard and Gen AI studio experience used as the audience-facing proof.
+- User-facing experience: `ai-admin` administers MaaS; `ai-developer` does not get direct access to the `models-as-a-service` project and consumes models through Gen AI studio AI asset endpoints and MaaS API keys.
+- Full experience scope: include MaaS subscriptions, authorization policies, API keys, governed local Nemotron, governed external OpenAI, Gen AI Playground consumption, read-only OpenShift MCP tool context, MaaS observability, and clear Technology Preview or Developer Preview labeling for preview features.
+- Existing components reused: Stage 030 Nemotron vLLM configuration, Grafana/User Workload Monitoring, `demo-sandbox` as the consumer project, and Stage 020 GPU hardware profiles.
 
 ## Non-Goals
 
-- Do not run a second GPU-heavy Nemotron backend alongside the direct Stage
-  210 endpoint on the single default GPU node. Stage 040 must remove stale
-  direct dashboard-created Nemotron serving resources from `demo-sandbox`
-  before reconciling the MaaS-owned `LLMInferenceService`.
-- Do not commit OpenAI provider API keys, MaaS API keys, database passwords, or
-  generated tokens.
-- Do not claim billing-grade metering. MaaS usage data is for demo showback and
-  capacity planning.
-- Do not claim llm-d monitoring or MaaS observability as GA. Label Technology
-  Preview and Developer Preview surfaces explicitly.
-- Do not use external OpenAI models for workloads where provider-side
-  processing is not allowed by the demo scenario.
-- Do not hide the external-provider boundary. Prompts, context, and generated
-  content for `gpt-4o-mini` leave the cluster and must be limited to approved
-  demo workloads.
-- Do not use external `gpt-4o-mini` as the primary OpenShift MCP demo path.
-  Direct MaaS Chat Completions function calling works for the external model,
-  and bounded Playground MCP calls can work, but broad MCP prompts can produce
-  large tool schemas or tool outputs that hit external provider TPM limits.
-- Do not give `ai-developer` administrative access to the MaaS project. The
-  user-facing path is through OpenShift AI dashboard assets and MaaS-governed
-  API consumption, not namespace administration.
-- Serve the MaaS-published Nemotron backend with the working `131072` context
-  window for Gen AI Playground MCP/tool context headroom, but keep MaaS
-  subscription limits, output-token defaults, and user guidance conservative
-  until Stage 030/220 measurements justify higher shared-service usage.
-- Do not enable write-capable MCP tools in Stage 040. The OpenShift MCP server
-  is for read-only context inspection only, with Secrets, ConfigMaps, and RBAC
-  resources denied by configuration.
+- Do not run a second GPU-heavy Nemotron backend alongside the direct Stage 210 endpoint on the single default GPU node. Stage 040 must remove stale direct dashboard-created Nemotron serving resources from `demo-sandbox` before reconciling the MaaS-owned `LLMInferenceService`.
+- Do not commit OpenAI provider API keys, MaaS API keys, database passwords, or generated tokens.
+- Do not claim billing-grade metering. MaaS usage data is for demo showback and capacity planning.
+- Do not claim llm-d monitoring or MaaS observability as GA. Label Technology Preview and Developer Preview surfaces explicitly.
+- Do not use external OpenAI models for workloads where provider-side processing is not allowed by the demo scenario.
+- Do not hide the external-provider boundary. Prompts, context, and generated content for `gpt-4o-mini` leave the cluster and must be limited to approved demo workloads.
+- Do not use external `gpt-4o-mini` as the primary OpenShift MCP demo path. Direct MaaS Chat Completions function calling works for the external model, and bounded Playground MCP calls can work, but broad MCP prompts can produce large tool schemas or tool outputs that hit external provider TPM limits.
+- Do not give `ai-developer` administrative access to the MaaS project. The user-facing path is through OpenShift AI dashboard assets and MaaS-governed API consumption, not namespace administration.
+- Serve the MaaS-published Nemotron backend with the working `131072` context window for Gen AI Playground MCP/tool context headroom, but keep MaaS subscription limits, output-token defaults, and user guidance conservative until Stage 030/220 measurements justify higher shared-service usage.
+- Do not enable write-capable MCP tools in Stage 040. The OpenShift MCP server is for read-only context inspection only, with Secrets, ConfigMaps, and RBAC resources denied by configuration.
 
 ## Acceptance Criteria
 
-- [x] README explains MaaS value, subscriptions, quotas, API keys, and
-  internal/external model governance without runbook detail.
-- [x] Official RHOAI 3.4 MaaS, llm-d, Gateway/API, and dashboard feature-flag
-  sources are captured.
-- [x] Red Hat quickstart and sibling-demo references are bounded as
-  implementation examples, not product API authority.
-- [x] Live CRD/schema checks are completed after MaaS prerequisites are
-  installed.
+- [x] README explains MaaS value, subscriptions, quotas, API keys, and internal/external model governance without runbook detail.
+- [x] Official RHOAI 3.4 MaaS, llm-d, Gateway/API, and dashboard feature-flag sources are captured.
+- [x] Red Hat quickstart and sibling-demo references are bounded as implementation examples, not product API authority.
+- [x] Live CRD/schema checks are completed after MaaS prerequisites are installed.
 - [x] MaaS prerequisites are installed and healthy through GitOps.
-- [x] Stage 010 remains the base `DataScienceCluster` owner; Stage 040 patches
-  only the MaaS and Llama Stack component fields through a GitOps hook.
-- [x] Local Nemotron is published through a schema-verified MaaS model
-  reference.
-- [x] External OpenAI `gpt-4o-mini` GitOps resources are published through an
-  `ExternalModel` backed by a real Kubernetes Secret or approved secret store.
-- [x] Demo users have both `MaaSSubscription` quota and `MaaSAuthPolicy`
-  gateway authorization before access is claimed.
-- [x] Validation proves model listing, API-key creation, local Nemotron
-  tool-calling inference, external OpenAI function calling, generated
-  rate-limit policy enforcement, token usage, and forbidden access for an
-  unauthenticated subject.
-- [x] `ai-admin` can administer MaaS resources and policies; `ai-developer`
-  can discover and consume allowed MaaS models without direct access to the
-  MaaS administration namespace.
-- [x] Gen AI Playground can use the MaaS-published local and external models
-  through AI asset endpoints.
-- [x] OpenShift MCP server is registered in Gen AI Playground discovery and is
-  validated as read-only with denied sensitive resources.
-- [ ] MaaS observability is enabled and validates subscription/request/token
-  signals where the installed Technology Preview components expose them.
+- [x] Stage 010 remains the base `DataScienceCluster` owner; Stage 040 patches only the MaaS and Llama Stack component fields through a GitOps hook.
+- [x] Local Nemotron is published through a schema-verified MaaS model reference.
+- [x] External OpenAI `gpt-4o-mini` GitOps resources are published through an `ExternalModel` backed by a real Kubernetes Secret or approved secret store.
+- [x] Demo users have both `MaaSSubscription` quota and `MaaSAuthPolicy` gateway authorization before access is claimed.
+- [x] Validation proves model listing, API-key creation, local Nemotron tool-calling inference, external OpenAI function calling, generated rate-limit policy enforcement, token usage, and forbidden access for an unauthenticated subject.
+- [x] `ai-admin` can administer MaaS resources and policies; `ai-developer` can discover and consume allowed MaaS models without direct access to the MaaS administration namespace.
+- [x] Gen AI Playground can use the MaaS-published local and external models through AI asset endpoints.
+- [x] OpenShift MCP server is registered in Gen AI Playground discovery and is validated as read-only with denied sensitive resources.
+- [ ] MaaS observability is enabled and validates subscription/request/token signals where the installed Technology Preview components expose them.
 
 ## Source Capture
 
@@ -167,13 +93,7 @@ Read-only schema discovery on `cluster-klvxt` on 2026-06-12:
 | `llamastackdistributions.llamastack.io` | Present after MaaS/Llama Stack Operator enablement. | Gen AI Studio and Playground flows can be validated in the next phase. |
 | `OdhDashboardConfig.spec.dashboardConfig.vLLMDeploymentOnMaaS` | Present in live schema; exact casing confirmed. | Use `vLLMDeploymentOnMaaS`, not `vLLMDeploymentOnMaas`. |
 
-Observed `LLMInferenceService` `v1alpha2` fields include
-`spec.model.uri`, `spec.model.name`, `spec.router.gateway.refs[]`,
-`spec.router.route`, `spec.router.scheduler`, `spec.replicas`, `spec.worker`,
-`spec.prefill`, `spec.parallelism`, `spec.scaling`, and
-`spec.storageInitializer`. Use `oc explain` again immediately before writing
-GitOps because the examples and active CRD version differ from some older
-published snippets.
+Observed `LLMInferenceService` `v1alpha2` fields include `spec.model.uri`, `spec.model.name`, `spec.router.gateway.refs[]`, `spec.router.route`, `spec.router.scheduler`, `spec.replicas`, `spec.worker`, `spec.prefill`, `spec.parallelism`, `spec.scaling`, and `spec.storageInitializer`. Use `oc explain` again immediately before writing GitOps because the examples and active CRD version differ from some older published snippets.
 
 ## API Tier And Support Posture
 
@@ -187,8 +107,7 @@ published snippets.
 
 ## Completed Schema Checks Before MaaS Model GitOps
 
-Completed against `cluster-klvxt` on 2026-06-12 after the OpenShift safety
-guard confirmed the target cluster:
+Completed against `cluster-klvxt` on 2026-06-12 after the OpenShift safety guard confirmed the target cluster:
 
 ```bash
 oc get crd llminferenceservices.serving.kserve.io \
@@ -209,8 +128,7 @@ oc explain externalmodels.maas.opendatahub.io.spec
 oc explain tenants.maas.opendatahub.io.spec
 ```
 
-Rerun these checks after any RHOAI, RHCL, or OpenShift upgrade before changing
-model, subscription, or auth-policy manifests.
+Rerun these checks after any RHOAI, RHCL, or OpenShift upgrade before changing model, subscription, or auth-policy manifests.
 
 Phase-one deploy and validation commands:
 
@@ -221,29 +139,13 @@ Phase-one deploy and validation commands:
 
 ## GitOps Ownership Decision
 
-- Shared RHOAI owner: `010-openshift-ai-platform-foundation` continues to own the
-  single `DataScienceCluster`.
-- Stage 040 should add a focused GitOps hook for MaaS component enablement
-  instead of rendering a second `DataScienceCluster`.
-- Stage 040 should own its independent prerequisites and policy resources under
-  `gitops/stages/040-governed-models-as-a-service/base/` unless an operator or global platform
-  component clearly belongs to an existing shared owner.
-- Provider API keys, MaaS PostgreSQL credentials, and user API keys must be
-  created from local `.env` or an approved secret store, never committed.
-- Stage 040 creates an `LLMInferenceService` for Nemotron in
-  `models-as-a-service`, uses the Stage 030 benchmark result to choose initial
-  concurrency/token limits, and preserves the curated Nemotron vLLM/tool-calling
-  configuration where the `v1alpha2` schema allows it.
-- Stage 040 avoids running a second GPU-heavy Nemotron backend alongside the
-  direct Stage 030 endpoint on the single default GPU node. The deploy wrapper
-  deletes stale direct `demo-sandbox` Nemotron serving resources first, then
-  lets Argo CD reconcile the MaaS-owned backend.
-- Initial Nemotron policy should use the 2026-06-12 Stage 030 GuideLLM results:
-  start the chat assistant lane at `8` active concurrent requests per replica
-  with 256 output-token defaults; start the RAG lane at `2` active concurrent
-  requests per replica for about 4k-token prompts and 512 output-token
-  responses. Treat chat `12` and RAG `4` as burst or breakpoint candidates, not
-  public default quotas.
+- Shared RHOAI owner: `010-openshift-ai-platform-foundation` continues to own the single `DataScienceCluster`.
+- Stage 040 should add a focused GitOps hook for MaaS component enablement instead of rendering a second `DataScienceCluster`.
+- Stage 040 should own its independent prerequisites and policy resources under `gitops/stages/040-governed-models-as-a-service/base/` unless an operator or global platform component clearly belongs to an existing shared owner.
+- Provider API keys, MaaS PostgreSQL credentials, and user API keys must be created from local `.env` or an approved secret store, never committed.
+- Stage 040 creates an `LLMInferenceService` for Nemotron in `models-as-a-service`, uses the Stage 030 benchmark result to choose initial concurrency/token limits, and preserves the curated Nemotron vLLM/tool-calling configuration where the `v1alpha2` schema allows it.
+- Stage 040 avoids running a second GPU-heavy Nemotron backend alongside the direct Stage 030 endpoint on the single default GPU node. The deploy wrapper deletes stale direct `demo-sandbox` Nemotron serving resources first, then lets Argo CD reconcile the MaaS-owned backend.
+- Initial Nemotron policy should use the 2026-06-12 Stage 030 GuideLLM results: start the chat assistant lane at `8` active concurrent requests per replica with 256 output-token defaults; start the RAG lane at `2` active concurrent requests per replica for about 4k-token prompts and 512 output-token responses. Treat chat `12` and RAG `4` as burst or breakpoint candidates, not public default quotas.
 
 ## Planned Manifest Areas
 

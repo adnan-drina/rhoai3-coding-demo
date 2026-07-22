@@ -193,20 +193,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
 
 ## RHDH first-boot migration surge-race (fresh-env, 2026-07-21)
 
-- [x] **Backstage deployment surged two migrators on first boot — FIXED (2026-07-21).** The
-  operator's default `backstage-developer-hub` Deployment used `RollingUpdate`/`maxSurge: 25%`
-  (rounds up to 1 extra pod for the single replica). On a fresh/empty per-plugin DB set — e.g. the
-  `configure-rhdh` job patching env mid-first-boot, or a cluster resume — two backend pods started
-  together and raced the Backstage per-plugin DB migrations, both crashing with `relation
-  "casbin_rule" already exists` / `…migrations_lock already exists`; RHDH sat `0/1` (route 503)
-  indefinitely (liveness passes, readiness never does, so k8s never restarts it). **Fix:** the
-  Backstage CR now sets `spec.deployment.patch.spec.strategy.rollingUpdate.maxSurge: 0` (+
-  `maxUnavailable: 1`) in `rhdh-instance/backstage.yaml`, so the old pod is removed before the new
-  one starts — one migrator, fresh deploys included. `strategy.type: Recreate` is NOT usable: the
-  operator keeps its base `rollingUpdate` block and produces an invalid Deployment it then refuses
-  to apply (leaving RHDH with no Deployment). Non-destructive live recovery if it ever recurs:
-  `oc scale deploy backstage-developer-hub -n rhdh --replicas=0 && … --replicas=1` — do NOT drop
-  the `backstage_plugin_*` DBs, the data is fine.
+- [x] **Backstage deployment surged two migrators on first boot — FIXED (2026-07-21).** The operator's default `backstage-developer-hub` Deployment used `RollingUpdate`/`maxSurge: 25%` (rounds up to 1 extra pod for the single replica). On a fresh/empty per-plugin DB set — e.g. the `configure-rhdh` job patching env mid-first-boot, or a cluster resume — two backend pods started together and raced the Backstage per-plugin DB migrations, both crashing with `relation "casbin_rule" already exists` / `…migrations_lock already exists`; RHDH sat `0/1` (route 503) indefinitely (liveness passes, readiness never does, so k8s never restarts it). **Fix:** the Backstage CR now sets `spec.deployment.patch.spec.strategy.rollingUpdate.maxSurge: 0` (+ `maxUnavailable: 1`) in `rhdh-instance/backstage.yaml`, so the old pod is removed before the new one starts — one migrator, fresh deploys included. `strategy.type: Recreate` is NOT usable: the operator keeps its base `rollingUpdate` block and produces an invalid Deployment it then refuses to apply (leaving RHDH with no Deployment). Non-destructive live recovery if it ever recurs: `oc scale deploy backstage-developer-hub -n rhdh --replicas=0 && … --replicas=1` — do NOT drop the `backstage_plugin_*` DBs, the data is fine.
 
 ## Model-serving scheduler disk co-location (fresh-env, 2026-07-20)
 

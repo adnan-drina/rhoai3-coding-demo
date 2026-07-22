@@ -19,8 +19,7 @@ description: >
 
 # Resume GPU Demo
 
-This skill makes "resume from zero GPU nodes" a first-class workflow for the
-demo. Prefer the repo script over hand-running many `oc` commands.
+This skill makes "resume from zero GPU nodes" a first-class workflow for the demo. Prefer the repo script over hand-running many `oc` commands.
 
 ## When To Use
 
@@ -92,8 +91,7 @@ After a successful resume:
 
 ### `recreate_stopped_gpu_machines`
 
-Handles stuck Machine objects that remain in Stopped state after cloud provider
-shutdown/start cycles. The function:
+Handles stuck Machine objects that remain in Stopped state after cloud provider shutdown/start cycles. The function:
 1. Scales the GPU MachineSet to 0
 2. Deletes stopped Machine objects that will never recover
 3. Rescales the MachineSet to the desired replica count so new Machines are provisioned

@@ -18,8 +18,7 @@ description: >
 
 # Validate Demo Stage
 
-Use this skill after changing a demo stage to verify the change is correct
-and complete.
+Use this skill after changing a demo stage to verify the change is correct and complete.
 
 ## When to invoke
 
@@ -131,6 +130,4 @@ If a live OpenShift cluster is required and not available, say:
 
 > Not validated against a live OpenShift cluster. Static review only.
 
-Do not claim validation passed based on static checks alone when the change
-involves runtime behavior (model serving, operator reconciliation, gateway
-routing, workspace creation).
+Do not claim validation passed based on static checks alone when the change involves runtime behavior (model serving, operator reconciliation, gateway routing, workspace creation).

@@ -15,9 +15,7 @@ applies-to:
 
 # Project Structure
 
-Use the project-related skills as the source of truth for work that changes the
-repository layout, coding discipline, change conventions, or shared agent
-guidance:
+Use the project-related skills as the source of truth for work that changes the repository layout, coding discipline, change conventions, or shared agent guidance:
 
 - `.agents/skills/maintain-rules-and-skills/SKILL.md`
 - `.agents/skills/prepare-pr-summary/SKILL.md`
@@ -26,16 +24,11 @@ guidance:
 
 ## Project Purpose
 
-This repository demonstrates a governed enterprise AI developer platform on
-Red Hat OpenShift. The demo combines private/local models, governed external
-model access, GitOps, Dev Spaces, Migration Toolkit for Applications, and
-Developer Hub to support AI-assisted development and modernization.
+This repository demonstrates a governed enterprise AI developer platform on Red Hat OpenShift. The demo combines private/local models, governed external model access, GitOps, Dev Spaces, Migration Toolkit for Applications, and Developer Hub to support AI-assisted development and modernization.
 
 ## Product and Version Posture
 
-The demo evolves across Red Hat product releases and early-access features. Do
-not invent or normalize versions in documentation. Use the versions currently
-implemented by the manifests and scripts.
+The demo evolves across Red Hat product releases and early-access features. Do not invent or normalize versions in documentation. Use the versions currently implemented by the manifests and scripts.
 
 Current target posture:
 - Red Hat OpenShift Container Platform 4.20
@@ -46,8 +39,7 @@ Current target posture:
 - Red Hat Developer Hub 1.9 for the developer portal
 - Red Hat build of Keycloak where used by MTA authentication flows
 
-If changing a version, update the manifests, validation logic, README narrative,
-operations notes, and references together.
+If changing a version, update the manifests, validation logic, README narrative, operations notes, and references together.
 
 ## Absolute Priority: Official Documentation Alignment
 
@@ -62,8 +54,7 @@ operations notes, and references together.
 
 ## Coding Discipline
 
-Behavioral guardrails for all coding tasks. Bias toward caution over speed; for
-trivial tasks, use judgment.
+Behavioral guardrails for all coding tasks. Bias toward caution over speed; for trivial tasks, use judgment.
 
 ### Think Before Coding
 
@@ -107,20 +98,15 @@ Loop until verified. Weak criteria ("make it work") require clarification; ask f
 
 ### Human Review Boundary
 
-AI-generated code must be reviewed by a human before merge. Do not add
-`Signed-off-by` trailers. If asked to prepare commit messages or PR text,
-include AI assistance disclosure but leave human sign-off to the contributor.
+AI-generated code must be reviewed by a human before merge. Do not add `Signed-off-by` trailers. If asked to prepare commit messages or PR text, include AI assistance disclosure but leave human sign-off to the contributor.
 
 ### Validation Honesty
 
-If a change requires a live OpenShift cluster for validation and one is not
-available, say so clearly:
+If a change requires a live OpenShift cluster for validation and one is not available, say so clearly:
 
 > Not validated against a live OpenShift cluster. Static review only.
 
-Do not claim that a GitOps, OpenShift, MaaS, model-serving, or gateway change
-works unless it was actually validated or is directly covered by existing tested
-patterns.
+Do not claim that a GitOps, OpenShift, MaaS, model-serving, or gateway change works unless it was actually validated or is directly covered by existing tested patterns.
 
 ## Change Output Conventions
 
@@ -142,11 +128,9 @@ When changing implemented behavior, update all affected surfaces in the same cha
 - `docs/OPERATIONS.md` when deployment, validation, or day-2 operation changes
 - `docs/TROUBLESHOOTING.md` when a known failure mode, diagnostic command, or recovery path changes
 
-Documentation must not claim a capability is implemented unless it is backed by
-manifests/scripts and, where practical, validation checks.
+Documentation must not claim a capability is implemented unless it is backed by manifests/scripts and, where practical, validation checks.
 
-When changing workarounds, limitations, or validated status, update `BACKLOG.md`
-in the same change.
+When changing workarounds, limitations, or validated status, update `BACKLOG.md` in the same change.
 
 ### Branching Strategy: GitHub Flow + Trunk-Based Development
 
@@ -173,8 +157,7 @@ Use conventional commit messages: `type(scope): description`
 
 ### AI Assistance Disclosure in PRs
 
-Every PR must include AI assistance disclosure using the PR template. For
-security-sensitive changes, always include explicit risk and rollback notes.
+Every PR must include AI assistance disclosure using the PR template. For security-sensitive changes, always include explicit risk and rollback notes.
 
 ## Rules and Skills Governance
 
@@ -182,21 +165,17 @@ Treat changes to rules and skills like source code.
 
 ### Rule Versus Skill
 
-Create or edit a **rule** when the guidance should apply automatically.
-Create or edit a **skill** when the guidance is a repeatable workflow invoked for a specific task.
+Create or edit a **rule** when the guidance should apply automatically. Create or edit a **skill** when the guidance is a repeatable workflow invoked for a specific task.
 
 ### Shared Versus Local
 
-A shared rule or skill may be committed only when it applies to all
-contributors, contains no secrets, is stable enough to maintain, and can be
-reviewed.
+A shared rule or skill may be committed only when it applies to all contributors, contains no secrets, is stable enough to maintain, and can be reviewed.
 
 ### Quality Bar
 
 Rules should be: short, specific, durable, enforceable, non-duplicative.
 
-Skills should include: when to use, required inputs, files to inspect, steps to
-follow, validation commands, expected output, things the agent must not do.
+Skills should include: when to use, required inputs, files to inspect, steps to follow, validation commands, expected output, things the agent must not do.
 
 ## Plan Documents (PLAN.md)
 

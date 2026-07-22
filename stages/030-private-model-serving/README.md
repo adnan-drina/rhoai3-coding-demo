@@ -52,10 +52,7 @@ Grafana demo dashboards (LLM Performance, vLLM Baseline)
 
 ## What This Stage Adds
 
-The KServe model-serving **foundation** — the platform, runtime, registry, and
-monitoring that the governed models in Stage 040 build on. Stage 030 does not
-deploy a model itself; the Nemotron and Qwen deployments are owned by Stage 040
-as governed MaaS `LLMInferenceService`s.
+The KServe model-serving **foundation** — the platform, runtime, registry, and monitoring that the governed models in Stage 040 build on. Stage 030 does not deploy a model itself; the Nemotron and Qwen deployments are owned by Stage 040 as governed MaaS `LLMInferenceService`s.
 
 - **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
 - **vLLM ServingRuntime** — the RHOAI-managed vLLM runtime the Stage 040 models are served on

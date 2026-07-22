@@ -18,8 +18,7 @@ description: >
 
 # Review Manifest Compliance
 
-Systematically review GitOps manifests against project standards. Read the
-rules, read the manifests, report findings. Do not modify any files.
+Systematically review GitOps manifests against project standards. Read the rules, read the manifests, report findings. Do not modify any files.
 
 ## When to invoke
 

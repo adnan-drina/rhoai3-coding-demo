@@ -12,22 +12,18 @@ applies-to:
 
 # GitOps, Manifests, and Labels
 
-Use the GitOps-related skills for work that changes manifests, Kustomize
-structure, Argo CD applications, or Kubernetes labels:
+Use the GitOps-related skills for work that changes manifests, Kustomize structure, Argo CD applications, or Kubernetes labels:
 
 - `.agents/skills/review-gitops-change/SKILL.md`
 - `.agents/skills/validate-demo-step/SKILL.md`
 
 ## Golden Rule
 
-Every implemented demo stage must be reproducible from `gitops/` and operated
-through `deploy.sh` / `validate.sh` scripts. The README explains the demo
-value; `docs/OPERATIONS.md` explains operational usage.
+Every implemented demo stage must be reproducible from `gitops/` and operated through `deploy.sh` / `validate.sh` scripts. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
 
 ## Mandatory: ArgoCD Application in Every deploy.sh
 
-Every stage's `deploy.sh` MUST apply its ArgoCD Application as its first
-cluster-modifying action:
+Every stage's `deploy.sh` MUST apply its ArgoCD Application as its first cluster-modifying action:
 ```bash
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STAGE_NAME.yaml"
 ```
@@ -176,26 +172,20 @@ When creating or modifying manifests, verify:
 
 ## Workflow-Only Stages
 
-Stages 060, 070, and 080 are workflow-only: they have no Argo CD Application
-and no `deploy.sh`. Their `validate.sh` scripts validate against resources
-owned by the `050-advanced-app-platform` Argo CD Application.
+Stages 060, 070, and 080 are workflow-only: they have no Argo CD Application and no `deploy.sh`. Their `validate.sh` scripts validate against resources owned by the `050-advanced-app-platform` Argo CD Application.
 
-Stage 050 is a multi-component owner managing: devspaces, pipelines, sonarqube,
-rhdh, migiq (MTA), and coolstore resources.
+Stage 050 is a multi-component owner managing: devspaces, pipelines, sonarqube, rhdh, migiq (MTA), and coolstore resources.
 
 ## MaaS and Model Access
 
-Model consumers should go through MaaS, not directly to scattered endpoints.
-Preserve the distinction between:
+Model consumers should go through MaaS, not directly to scattered endpoints. Preserve the distinction between:
 - Private local models on OpenShift
 - Governed external models through MaaS
 - MCP/tool integrations with separate data boundaries
 
 ## Workaround Awareness
 
-Before modifying MaaS, gateway, RHOAI, or model-serving behavior, check
-`BACKLOG.md` for known workarounds. Do not remove workaround code only because
-it looks redundant.
+Before modifying MaaS, gateway, RHOAI, or model-serving behavior, check `BACKLOG.md` for known workarounds. Do not remove workaround code only because it looks redundant.
 
 ## Static Validation
 

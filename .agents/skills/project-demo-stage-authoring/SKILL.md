@@ -20,9 +20,7 @@ description: >
 
 # Demo Stage Authoring
 
-Use this skill as the repeatable process for turning a demo idea into a
-validated Red Hat product demo stage. A stage is not complete until its
-documentation, GitOps, scripts, validation, and operational notes move together.
+Use this skill as the repeatable process for turning a demo idea into a validated Red Hat product demo stage. A stage is not complete until its documentation, GitOps, scripts, validation, and operational notes move together.
 
 ## Core Rule
 
@@ -39,13 +37,9 @@ Every new stage must pass the same phase gates:
 9. operations and troubleshooting updates
 10. review and acceptance
 
-Do not start the next demo stage until the current stage has an explicit
-definition of done and the user accepts any deferred work.
+Do not start the next demo stage until the current stage has an explicit definition of done and the user accepts any deferred work.
 
-Do not silently defer or remove components from an agreed stage scope or user
-requirement. If a component is blocked, risky, expensive, or better suited for
-a later stage, stop and discuss the tradeoff with the user before marking it
-`deferred`, `future`, or backlog.
+Do not silently defer or remove components from an agreed stage scope or user requirement. If a component is blocked, risky, expensive, or better suited for a later stage, stop and discuss the tradeoff with the user before marking it `deferred`, `future`, or backlog.
 
 ## Stage Artifact Contract
 
@@ -61,21 +55,13 @@ gitops/
   stages/NNN-descriptive-slug/base/kustomization.yaml
 ```
 
-Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster,
-OpenShift GitOps bootstrap) record the shared owner path and avoid duplicate
-full-resource ownership.
+Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster, OpenShift GitOps bootstrap) record the shared owner path and avoid duplicate full-resource ownership.
 
 ### Workflow-Only Stage Pattern
 
-Stages 060, 070, and 080 are workflow-only stages. They have only `validate.sh`
-and `README.md` — no `deploy.sh` and no Argo CD Application. Their platform
-infrastructure (Dev Spaces workspaces, RHDH templates, MTA operator) is owned
-by Stage 050 (`050-advanced-app-platform`). These stages validate that the
-platform capabilities they depend on are healthy, and their READMEs describe
-developer workflows that consume those capabilities.
+Stages 060, 070, and 080 are workflow-only stages. They have only `validate.sh` and `README.md` — no `deploy.sh` and no Argo CD Application. Their platform infrastructure (Dev Spaces workspaces, RHDH templates, MTA operator) is owned by Stage 050 (`050-advanced-app-platform`). These stages validate that the platform capabilities they depend on are healthy, and their READMEs describe developer workflows that consume those capabilities.
 
-Note: Stage 050 absorbed the former Stage 090 (RHDH portal). All developer
-portal resources are now part of Stage 050's GitOps ownership.
+Note: Stage 050 absorbed the former Stage 090 (RHDH portal). All developer portal resources are now part of Stage 050's GitOps ownership.
 
 ## Workflow
 

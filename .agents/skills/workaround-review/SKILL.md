@@ -18,8 +18,7 @@ description: >
 
 # Workaround Review
 
-Use this skill when touching code or configuration related to known platform
-workarounds, or when evaluating whether a workaround can be removed.
+Use this skill when touching code or configuration related to known platform workarounds, or when evaluating whether a workaround can be removed.
 
 ## When to invoke
 
@@ -75,8 +74,7 @@ oc get httproute -n models-as-a-service
 oc get envoyfilter -n models-as-a-service
 ```
 
-Do NOT remove a workaround based on documentation alone. Verify on the live
-cluster that the platform now handles the behavior natively.
+Do NOT remove a workaround based on documentation alone. Verify on the live cluster that the platform now handles the behavior natively.
 
 ### 4. Document the decision
 
@@ -138,15 +136,11 @@ From `BACKLOG.md`:
 These workarounds are currently implemented and required:
 
 - **Monitoring service-ca Secret sync**: The monitoring stack requires a
-  service-ca Secret that must be synced/created for TLS to work correctly
-  between monitoring components.
+  service-ca Secret that must be synced/created for TLS to work correctly between monitoring components.
 - **ExternalModel credential label requirement**: ExternalModel credential
-  Secrets must carry the label `inference.networking.k8s.io/bbr-managed=true`
-  for the BBR controller to discover and mount them.
+  Secrets must carry the label `inference.networking.k8s.io/bbr-managed=true` for the BBR controller to discover and mount them.
 - **UDI image (cli-ai-tools community image workaround)**: The default UDI
-  image lacks AI CLI tools; workspaces use a community image with pre-installed
-  `opencode`, `aider`, and supporting CLI tools until an official image includes
-  them.
+  image lacks AI CLI tools; workspaces use a community image with pre-installed `opencode`, `aider`, and supporting CLI tools until an official image includes them.
 
 ## What this skill must never do
 

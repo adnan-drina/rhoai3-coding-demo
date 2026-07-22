@@ -13,8 +13,7 @@ applies-to:
 
 # Documentation Standards
 
-Use the documentation-related skills for work that changes README files,
-operations docs, or troubleshooting guides:
+Use the documentation-related skills for work that changes README files, operations docs, or troubleshooting guides:
 
 - `.agents/skills/project-documentation-authoring/SKILL.md` — authoring and structuring READMEs
 - `.agents/skills/update-demo-docs/SKILL.md` — consistency checks after changes
@@ -22,10 +21,7 @@ operations docs, or troubleshooting guides:
 
 ## Golden Rule: Read Before You Write
 
-Before implementing a change, consult the relevant stage README, GitOps
-manifests, scripts, and operations docs. The documentation describes the
-intended demo story; the manifests and scripts describe the implemented
-behavior.
+Before implementing a change, consult the relevant stage README, GitOps manifests, scripts, and operations docs. The documentation describes the intended demo story; the manifests and scripts describe the implemented behavior.
 
 ## Documentation Sources
 
@@ -54,14 +50,11 @@ Do not turn stage READMEs into runbooks.
 
 ## Stage README Standard
 
-Each stage README is an educational artifact first. Readers should understand
-the "why, what, how, and so what" even without running the demo.
+Each stage README is an educational artifact first. Readers should understand the "why, what, how, and so what" even without running the demo.
 
 ### Primary Audience
 
-Enterprise architects, solution architects, platform engineers, and developer
-experience teams evaluating Red Hat OpenShift AI for regulated or
-security-sensitive software development use cases.
+Enterprise architects, solution architects, platform engineers, and developer experience teams evaluating Red Hat OpenShift AI for regulated or security-sensitive software development use cases.
 
 ### Required Structure
 
@@ -100,8 +93,7 @@ security-sensitive software development use cases.
 
 ### Red Hat Product Requirements
 
-Every stage README must clearly identify relevant Red Hat products and explain
-their role. Use official product names and link to product pages.
+Every stage README must clearly identify relevant Red Hat products and explain their role. Use official product names and link to product pages.
 
 ### Trust Boundary Language
 
@@ -115,13 +107,9 @@ Avoid:
 
 ## Root README Standard
 
-The root README is a workshop landing article. It must explain the enterprise
-platform pattern before operational details.
+The root README is a workshop landing article. It must explain the enterprise platform pattern before operational details.
 
-Required sections: Why This Workshop Exists, Architecture, What We Are Building,
-What The Demo Shows, Why This Is Worth Knowing, How Red Hat And Open Source Make
-It Work, Trust Boundaries, Red Hat Products Demonstrated, Open Source Projects,
-Running The Workshop, Repository Map, References.
+Required sections: Why This Workshop Exists, Architecture, What We Are Building, What The Demo Shows, Why This Is Worth Knowing, How Red Hat And Open Source Make It Work, Trust Boundaries, Red Hat Products Demonstrated, Open Source Projects, Running The Workshop, Repository Map, References.
 
 ## Operations Documentation
 
@@ -150,9 +138,7 @@ Running The Workshop, Repository Map, References.
 
 ## Version-Sensitive Notes
 
-Tag version-sensitive information explicitly. When official documentation
-conflicts with the implementation, document the conflict and include a
-verification command.
+Tag version-sensitive information explicitly. When official documentation conflicts with the implementation, document the conflict and include a verification command.
 
 ## Official Docs Remain The Source Of Truth
 

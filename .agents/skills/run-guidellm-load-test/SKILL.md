@@ -20,8 +20,7 @@ description: >
 
 # Run GuideLLM Load Test
 
-Use the Stage 040 wrapper script as the source of truth. Do not recreate the
-Kubernetes `Job` manually unless the script itself is being debugged.
+Use the Stage 040 wrapper script as the source of truth. Do not recreate the Kubernetes `Job` manually unless the script itself is being debugged.
 
 ## Preconditions
 
@@ -30,9 +29,7 @@ Kubernetes `Job` manually unless the script itself is being debugged.
 - Confirm the target model is ready through MaaS.
 - Confirm a MaaS API key is available through `GUIDELLM_API_KEY`, `MAAS_API_KEY`, or the `kai-api-keys` Secret created by Stage 080.
 
-Never print, summarize, or store API key values. The wrapper creates a temporary
-in-cluster Secret, deletes it on exit, and stores only a safe console summary in
-a labeled `ConfigMap`.
+Never print, summarize, or store API key values. The wrapper creates a temporary in-cluster Secret, deletes it on exit, and stores only a safe console summary in a labeled `ConfigMap`.
 
 ## Default Command
 

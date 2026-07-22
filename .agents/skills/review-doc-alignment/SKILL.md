@@ -19,8 +19,7 @@ description: >
 
 # Review Documentation Alignment
 
-Verify that manifests match the official Red Hat documentation — not just that
-they are valid YAML.
+Verify that manifests match the official Red Hat documentation — not just that they are valid YAML.
 
 ## When to invoke
 

@@ -24,26 +24,19 @@ description: >
 
 # Documentation Authoring
 
-Use this skill to keep repo documentation clear, demonstrable, and aligned with
-official Red Hat messaging and the implemented demo story.
+Use this skill to keep repo documentation clear, demonstrable, and aligned with official Red Hat messaging and the implemented demo story.
 
 ## Workflow
 
 1. Identify the documentation home before writing:
-   root README for demo overview, stage README for concise Why/What story,
-   `docs/OPERATIONS.md` for runbooks, `docs/TROUBLESHOOTING.md` for recovery,
-   `BACKLOG.md` for deferred capabilities and future work.
-   For a new stage, start with `project-demo-stage-authoring`.
+   root README for demo overview, stage README for concise Why/What story, `docs/OPERATIONS.md` for runbooks, `docs/TROUBLESHOOTING.md` for recovery, `BACKLOG.md` for deferred capabilities and future work. For a new stage, start with `project-demo-stage-authoring`.
 2. Read the relevant existing document before changing it.
 3. Confirm whether a companion manifest, script, README, or operations document
    change is required.
 4. For README concept introductions, consult official Red Hat documentation and
-   product pages for the relevant product versions to define the concept and
-   enterprise value.
+   product pages for the relevant product versions to define the concept and enterprise value.
 5. For the **root README** structure, narrative, and section ordering, read
-   `references/root-readme-standard.md`. The root README is the project home
-   page: story-first, progressive sections, audience guidance, and FAQ — not a
-   product datasheet.
+   `references/root-readme-standard.md`. The root README is the project home page: story-first, progressive sections, audience guidance, and FAQ — not a product datasheet.
 6. For **stage README** structure and presentation style, read
    `references/readme-standard.md`.
 7. For implementation detail boundaries in READMEs, read
@@ -62,8 +55,7 @@ official Red Hat messaging and the implemented demo story.
 - The root README is the project home page. It should read like a demo
   briefing, not a product datasheet.
 - Lead with the business problem, not with technology names. The pattern is
-  adapted from the Red Hat showroom index/overview structure (see
-  `references/root-readme-standard.md`).
+  adapted from the Red Hat showroom index/overview structure (see `references/root-readme-standard.md`).
 - Group stages into progressive sections with positioning statements. The
   audience should see a clear maturity or capability arc.
 - Keep stage descriptions to one line in the stage table. The stage README
@@ -79,18 +71,14 @@ official Red Hat messaging and the implemented demo story.
 - Stage READMEs should introduce the concept first, explain why a
   regulated enterprise should care, and cite Red Hat documentation.
 - Stage READMEs should support a three-part presentation extraction contract:
-  concept/value (Why), technology enablers (What), and architecture delta +
-  demo visual evidence (How).
+  concept/value (Why), technology enablers (What), and architecture delta + demo visual evidence (How).
 - Each stage README should include a `## Demo` section with annotated
-  screenshots (at least one per key component, at least one customer-facing
-  result) when visual evidence is available. Visual evidence lives in
-  `images/` within the stage directory.
+  screenshots (at least one per key component, at least one customer-facing result) when visual evidence is available. Visual evidence lives in `images/` within the stage directory.
 
 ### Shared Principles
 
 - Implementation details that affect understanding, troubleshooting, or
-  cross-stage dependencies belong in the README. Operational procedures and
-  step-by-step commands do not. See `references/implementation-detail-boundary.md`.
+  cross-stage dependencies belong in the README. Operational procedures and step-by-step commands do not. See `references/implementation-detail-boundary.md`.
 - Operational runbook detail belongs in `docs/OPERATIONS.md`.
 - Failure recovery detail belongs in `docs/TROUBLESHOOTING.md`.
 - Future or deferred capabilities must be labeled explicitly and tracked in

@@ -18,8 +18,7 @@ description: >
 
 # Inspect Cluster
 
-Gather diagnostic information from the cluster without modifying anything.
-Summarize findings so the caller can decide on actions.
+Gather diagnostic information from the cluster without modifying anything. Summarize findings so the caller can decide on actions.
 
 ## When to invoke
 
@@ -83,8 +82,7 @@ oc get csv -n <namespace> | grep -i <operator>
 | openshift-gitops | ArgoCD |
 | openshift-operators | Subscriptions (NFD, GPU, Service Mesh) |
 
-Additional namespaces are created as stages are deployed. Check Argo CD
-Applications for the target namespace of each stage.
+Additional namespaces are created as stages are deployed. Check Argo CD Applications for the target namespace of each stage.
 
 ## Output format
 

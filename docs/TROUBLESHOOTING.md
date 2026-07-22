@@ -80,13 +80,7 @@ oc get application "$APP" -n openshift-gitops -o json \
 
 **Affected stage:** Stage 030 (until Stage 040 is deployed)
 
-**Likely cause:** The RHOAI console shows "Starting" for any
-`LLMInferenceService` whose CR-level `Ready` condition is not True. After
-Stage 030 the model workload itself is healthy (`MainWorkloadReady=True`,
-pod `2/2 Running`, in-cluster OpenAI API answering), but `RouterReady` and
-`HTTPRoutesReady` stay False with `GatewayPreconditionNotMet` because the
-maas-default-gateway and the Kuadrant AuthPolicy CRD only arrive with
-Stage 040 (Red Hat Connectivity Link).
+**Likely cause:** The RHOAI console shows "Starting" for any `LLMInferenceService` whose CR-level `Ready` condition is not True. After Stage 030 the model workload itself is healthy (`MainWorkloadReady=True`, pod `2/2 Running`, in-cluster OpenAI API answering), but `RouterReady` and `HTTPRoutesReady` stay False with `GatewayPreconditionNotMet` because the maas-default-gateway and the Kuadrant AuthPolicy CRD only arrive with Stage 040 (Red Hat Connectivity Link).
 
 **Diagnose:**
 
@@ -95,54 +89,31 @@ oc get llminferenceservice -n maas <model> \
   -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
 ```
 
-**Recover:** Deploy Stage 040. The router conditions reconcile once the
-gateway and policy CRDs exist, and the console flips to green. No action
-is needed on the model itself.
+**Recover:** Deploy Stage 040. The router conditions reconcile once the gateway and policy CRDs exist, and the console flips to green. No action is needed on the model itself.
 
 ## Large Hybrid-MoE Model Crash-Loops With CUDA OOM At Engine Init
 
 **Affected stage:** Stage 040 (qwen3-6-35b-a3b on a 48GB L40S)
 
-**Likely cause:** a ~35GB-weight hybrid SSM/MoE model leaves almost no
-headroom on a 44.4GiB-usable card, and several vLLM consumers claim the rest
-by default: the multimodal vision-encoder cache (profiled with a max-size
-image), the per-slot mamba/GDN state cache sized by max_num_seqs (~8GiB at
-the default), and the MoE prefill activation workspace sized by
-max_num_batched_tokens. vLLM sizes the KV budget from the profiling peak, so
-these overheads produce num_gpu_blocks=0 and an OOM when the KServe template
-block override forces an allocation anyway.
+**Likely cause:** a ~35GB-weight hybrid SSM/MoE model leaves almost no headroom on a 44.4GiB-usable card, and several vLLM consumers claim the rest by default: the multimodal vision-encoder cache (profiled with a max-size image), the per-slot mamba/GDN state cache sized by max_num_seqs (~8GiB at the default), and the MoE prefill activation workspace sized by max_num_batched_tokens. vLLM sizes the KV budget from the profiling peak, so these overheads produce num_gpu_blocks=0 and an OOM when the KServe template block override forces an allocation anyway.
 
-**Diagnose:** read the engine log memory ledger in order — "Model loading
-took X GiB", "Initial profiling/warmup run", "Available KV cache memory",
-"num_gpu_blocks". Zero available KV with weights far below the utilization
-budget means resident overhead, not weights.
+**Diagnose:** read the engine log memory ledger in order — "Model loading took X GiB", "Initial profiling/warmup run", "Available KV cache memory", "num_gpu_blocks". Zero available KV with weights far below the utilization budget means resident overhead, not weights.
 
 **Recover (the fit recipe that ships in GitOps):**
 
-- `--limit-mm-per-prompt={"image":0,"video":0}` — text-only serving drops
-  the vision encoder cache;
-- `--max-num-seqs=64` — caps the per-slot hybrid state cache (the ~8GiB
-  term; the KV pool, not the slot count, is the practical concurrency limit);
+- `--limit-mm-per-prompt={"image":0,"video":0}` — text-only serving drops the vision encoder cache;
+- `--max-num-seqs=64` — caps the per-slot hybrid state cache (the ~8GiB term; the KV pool, not the slot count, is the practical concurrency limit);
 - `--kv-cache-dtype=fp8` — halves cache bytes, keeps the 32K context;
-- `--max-num-batched-tokens=4096` — small MoE prefill workspace, but MUST
-  exceed the mamba-aligned attention block size (2096 tokens with fp8 KV;
-  the engine asserts otherwise);
+- `--max-num-batched-tokens=4096` — small MoE prefill workspace, but MUST exceed the mamba-aligned attention block size (2096 tokens with fp8 KV; the engine asserts otherwise);
 - result: ~5GiB KV = ~130K cached tokens = 11x concurrency at 32K.
 
-Rolling updates of single-replica GPU models deadlock when the new pod is
-SchedulingGated behind the old pod's Kueue quota: delete the old pod to hand
-over the card; the replacement the old ReplicaSet creates stays gated and is
-removed when the new pod reports Ready.
+Rolling updates of single-replica GPU models deadlock when the new pod is SchedulingGated behind the old pod's Kueue quota: delete the old pod to hand over the card; the replacement the old ReplicaSet creates stays gated and is removed when the new pod reports Ready.
 
 ## Model Image Pull Stalls On A GPU Node
 
 **Affected stage:** Stage 040 (first pull of a large modelcar)
 
-**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large
-(~30-36GB); on a 100GB root volume the pull plus cached base images crosses
-the image-GC threshold and garbage collection thrashes the very layers being
-pulled. Fixed by the 200GB gp3 default in generate-gpu-machineset.sh; note
-that MachineSet template changes only apply to newly created machines.
+**Likely cause:** kubelet DiskPressure mid-pull. Modelcar images are large (~30-36GB); on a 100GB root volume the pull plus cached base images crosses the image-GC threshold and garbage collection thrashes the very layers being pulled. Fixed by the 200GB gp3 default in generate-gpu-machineset.sh; note that MachineSet template changes only apply to newly created machines.
 
 **Diagnose:**
 
@@ -154,25 +125,14 @@ oc debug node/<gpu-node> -- chroot /host df -h /var  # watch used% growth
 
 **Recover:**
 
-- If the volume is undersized, recreate the GPU machines: scale the GPU
-  MachineSet to 0, regenerate with `generate-gpu-machineset.sh --write`
-  (200GB gp3 default), sync Stage 020, scale back up.
-- If pressure already cleared, the pull resumes on its own; disk usage
-  growth in /var confirms progress.
+- If the volume is undersized, recreate the GPU machines: scale the GPU MachineSet to 0, regenerate with `generate-gpu-machineset.sh --write` (200GB gp3 default), sync Stage 020, scale back up.
+- If pressure already cleared, the pull resumes on its own; disk usage growth in /var confirms progress.
 
 ## InstallPlan Approval Carries Hidden Passenger CSVs
 
 **Affected stage:** any operator in `openshift-operators` (shared namespace)
 
-**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one
-InstallPlan. Approving a plan to unblock one operator can silently upgrade
-others past their pins (observed live: approving the Stage 050
-pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and
-dependency-generated subscriptions (authorino, created by OLM for RHCL)
-then sit in `UpgradePending` toward versions we never approve — which
-wedged every Stage 040 sync until the Argo Subscription health check
-learned that an installed CSV with a pending channel upgrade is Healthy
-by policy.
+**Likely cause:** OLM bundles all co-pending CSVs of a namespace into one InstallPlan. Approving a plan to unblock one operator can silently upgrade others past their pins (observed live: approving the Stage 050 pipelines/rhtas plan carried rhcl-operator v1.3.4→v1.3.5), and dependency-generated subscriptions (authorino, created by OLM for RHCL) then sit in `UpgradePending` toward versions we never approve — which wedged every Stage 040 sync until the Argo Subscription health check learned that an installed CSV with a pending channel upgrade is Healthy by policy.
 
 **Diagnose:**
 
@@ -182,25 +142,15 @@ oc get installplan -n openshift-operators -o json |   jq -r '.items[] | select(.
 
 **Recover:**
 
-- Read every CSV in a plan BEFORE approving; pick the minimal plan that
-  contains only versions compatible with your pins (there is usually one
-  per generation).
-- If a pin was jumped: verify the affected stage live, then move the pin
-  to the installed version and document the event inline.
-- The bootstrap Subscription health check (gitops/bootstrap overlays)
-  treats installed-with-pending-upgrade as Healthy; keep that rule when
-  regenerating Argo configuration.
+- Read every CSV in a plan BEFORE approving; pick the minimal plan that contains only versions compatible with your pins (there is usually one per generation).
+- If a pin was jumped: verify the affected stage live, then move the pin to the installed version and document the event inline.
+- The bootstrap Subscription health check (gitops/bootstrap overlays) treats installed-with-pending-upgrade as Healthy; keep that rule when regenerating Argo configuration.
 
 ## Argo CD Operation Stuck On A Hook Job
 
 **Affected stage:** any stage with Sync-hook Jobs (waits, seeds, patches)
 
-**Likely cause:** a hook Job that waits on external state (an API that never
-answers, a webhook that is not up yet) keeps the sync operation Running
-indefinitely — and a running operation silently blocks every newer Git
-revision from syncing. Variants seen live: "waiting for completion of hook",
-"waiting for deletion of hook", and a retry loop after a hook was deleted
-mid-operation.
+**Likely cause:** a hook Job that waits on external state (an API that never answers, a webhook that is not up yet) keeps the sync operation Running indefinitely — and a running operation silently blocks every newer Git revision from syncing. Variants seen live: "waiting for completion of hook", "waiting for deletion of hook", and a retry loop after a hook was deleted mid-operation.
 
 **Diagnose:**
 
@@ -220,57 +170,27 @@ oc delete job <hook-job> -n <ns> --ignore-not-found
 oc patch application <app> -n openshift-gitops --type=merge   -p '{"operation":{"initiatedBy":{"username":"operator"},"sync":{"prune":true}}}'
 ```
 
-Prevention: hook jobs must have bounded retries and fail fast; never let a
-wait-loop hook depend on state created by a later wave of the same sync.
+Prevention: hook jobs must have bounded retries and fail fast; never let a wait-loop hook depend on state created by a later wave of the same sync.
 
 ## Manually Triggered Sync Finishes In Seconds And Skips Hooks
 
 **Affected stage:** Any, observed on Stage 050 catalog changes
 
-**Symptom:** A sync operation triggered by patching `.operation` on the
-Application completes in ~15 seconds, applies only a handful of resources,
-and never runs Sync/PostSync hook Jobs (e.g. `job-generate-rhdh-catalog`).
-The controller logs `Partial sync operation to <rev> succeeded`.
+**Symptom:** A sync operation triggered by patching `.operation` on the Application completes in ~15 seconds, applies only a handful of resources, and never runs Sync/PostSync hook Jobs (e.g. `job-generate-rhdh-catalog`). The controller logs `Partial sync operation to <rev> succeeded`.
 
-**Likely cause:** The self-heal auto-sync writes partial operations that
-carry an `operation.sync.resources` filter. A later `oc patch --type=merge`
-of `.operation` inherits that filter (merge patches keep fields you omit),
-and partial syncs skip hooks by design. Even a `--type=json` replace can be
-clobbered when self-heal immediately overwrites the operation with a new
-partial one. Observed live 2026-07-13. Also observed the same evening: the
-automated sync that picks up a NEWLY PUSHED revision can itself arrive as a
-partial operation (2-resource filter) rendered from a stale manifest cache —
-new resources in the pushed commit were neither applied nor listed until
-`argocd.argoproj.io/refresh=hard` was annotated, after which the missing
-resources applied within seconds (hooks still skipped; converge hook output
-by hand per below).
+**Likely cause:** The self-heal auto-sync writes partial operations that carry an `operation.sync.resources` filter. A later `oc patch --type=merge` of `.operation` inherits that filter (merge patches keep fields you omit), and partial syncs skip hooks by design. Even a `--type=json` replace can be clobbered when self-heal immediately overwrites the operation with a new partial one. Observed live 2026-07-13. Also observed the same evening: the automated sync that picks up a NEWLY PUSHED revision can itself arrive as a partial operation (2-resource filter) rendered from a stale manifest cache — new resources in the pushed commit were neither applied nor listed until `argocd.argoproj.io/refresh=hard` was annotated, after which the missing resources applied within seconds (hooks still skipped; converge hook output by hand per below).
 
 **Recover:**
 
-- Prefer the OpenShift GitOps UI **Sync** button (full sync, proper
-  operation object) for hook re-runs.
-- For the RHDH catalog specifically, the hook's output can be converged by
-  hand: fetch `catalog/all.yaml` at the synced revision, apply the same
-  placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces
-  route, empty RHDH URL, revision), and `oc patch` the
-  `catalog-runtime-rhdh` ConfigMap in `rhdh`.
-- Related fix (committed 2026-07-13, refined 2026-07-14): the generate hook
-  resolves the revision as `status.operationState.syncResult.revision`
-  first (what the operation actually synced), then
-  `status.operationState.operation.sync.revision` (the in-flight request,
-  which merge-patched partial operations can inherit stale from a previous
-  explicit-revision sync), then `status.sync.revision` (which still holds
-  the previous revision while an operation runs).
+- Prefer the OpenShift GitOps UI **Sync** button (full sync, proper operation object) for hook re-runs.
+- For the RHDH catalog specifically, the hook's output can be converged by hand: fetch `catalog/all.yaml` at the synced revision, apply the same placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces route, empty RHDH URL, revision), and `oc patch` the `catalog-runtime-rhdh` ConfigMap in `rhdh`.
+- Related fix (committed 2026-07-13, refined 2026-07-14): the generate hook resolves the revision as `status.operationState.syncResult.revision` first (what the operation actually synced), then `status.operationState.operation.sync.revision` (the in-flight request, which merge-patched partial operations can inherit stale from a previous explicit-revision sync), then `status.sync.revision` (which still holds the previous revision while an operation runs).
 
 ## Argo CD Reports Synced But New Manifests Are Missing
 
 **Affected stage:** any
 
-**Likely cause:** The Argo CD repo-server can serve a stale manifest cache
-for a revision, especially right after quick successive pushes. The app
-reports Synced at the new revision while resources added in that revision
-were never rendered or applied. A normal refresh does not bust the
-manifest cache.
+**Likely cause:** The Argo CD repo-server can serve a stale manifest cache for a revision, especially right after quick successive pushes. The app reports Synced at the new revision while resources added in that revision were never rendered or applied. A normal refresh does not bust the manifest cache.
 
 **Diagnose:**
 
@@ -381,47 +301,21 @@ The recovery script syncs Stage 020, scales GPU capacity back up, waits for allo
 
 ## Worker Nodes Evict Pods After A Cluster Resume (KubeNodeEviction)
 
-**Affected stage:** platform-wide (observed via Stage 030 model routing and
-Stage 050 components)
+**Affected stage:** platform-wide (observed via Stage 030 model routing and Stage 050 components)
 
-**Symptom:** `KubeNodeEviction` fires shortly after a sandbox cluster
-resume. Node events show `NodeHasDiskPressure` and
-`EvictionThresholdMet ... Attempting to reclaim ephemeral-storage` on CPU
-worker nodes, and a wave of pods across unrelated namespaces lands in
-`Failed` with reason `Evicted` (observed live 2026-07-14: GitOps
-repo-server, RHOAI dashboard, Perses, Thanos, NooBaa, Authorino, Dev
-Spaces server, SonarQube, kuadrant operator, among others). Secondary
-failures look like their own incidents — Argo CD syncs abort with
-repo-server restarts, Dev Spaces workspace postStart hooks time out.
+**Symptom:** `KubeNodeEviction` fires shortly after a sandbox cluster resume. Node events show `NodeHasDiskPressure` and `EvictionThresholdMet ... Attempting to reclaim ephemeral-storage` on CPU worker nodes, and a wave of pods across unrelated namespaces lands in `Failed` with reason `Evicted` (observed live 2026-07-14: GitOps repo-server, RHOAI dashboard, Perses, Thanos, NooBaa, Authorino, Dev Spaces server, SonarQube, kuadrant operator, among others). Secondary failures look like their own incidents — Argo CD syncs abort with repo-server restarts, Dev Spaces workspace postStart hooks time out.
 
 **Likely cause (two components):**
 
-(a) **Fixed cost — modelcar images on CPU workers:** the llm-d
-`*-kserve-router-scheduler` pods are CPU-side components, but by operator
-design they carry the full modelcar image as an init container and a sidecar
-(the KV-cache-aware tokenizer reads the model files). Each served model
-therefore pins its entire model image (~30–37 GiB for the demo's
-Nemotron/Qwen modelcars) on whichever CPU worker the router-scheduler landed
-on — and image GC can never reclaim it because the image is in use. These are
-NOT relocatable: `LLMInferenceService.spec.router.scheduler` has no
-scheduling fields (toleration, nodeSelector, affinity), so they cannot be
-co-located with the GPU nodes that already hold the model images.
+(a) **Fixed cost — modelcar images on CPU workers:** the llm-d `*-kserve-router-scheduler` pods are CPU-side components, but by operator design they carry the full modelcar image as an init container and a sidecar (the KV-cache-aware tokenizer reads the model files). Each served model therefore pins its entire model image (~30–37 GiB for the demo's Nemotron/Qwen modelcars) on whichever CPU worker the router-scheduler landed on — and image GC can never reclaim it because the image is in use. These are NOT relocatable: `LLMInferenceService.spec.router.scheduler` has no scheduling fields (toleration, nodeSelector, affinity), so they cannot be co-located with the GPU nodes that already hold the model images.
 
-(b) **The grower — Prometheus emptyDir TSDBs:** four Prometheus replicas
-(2 platform + 2 UWM) with emptyDir TSDBs on the three workers grow in
-lockstep. After a cluster resume, eviction → churn → new-series creates a
-feedback loop that amplifies disk pressure.
+(b) **The grower — Prometheus emptyDir TSDBs:** four Prometheus replicas (2 platform + 2 UWM) with emptyDir TSDBs on the three workers grow in lockstep. After a cluster resume, eviction → churn → new-series creates a feedback loop that amplifies disk pressure.
 
-**FIXED** by `gitops/stages/030-.../monitoring/base/` volumeClaimTemplates
-(gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the
-TSDB growth off ephemeral storage. The modelcar cost remains fixed.
+**FIXED** by `gitops/stages/030-.../monitoring/base/` volumeClaimTemplates (gp3-csi; platform 2×40Gi 7d/8GB, UWM 2×20Gi 7d/5GB), which moves the TSDB growth off ephemeral storage. The modelcar cost remains fixed.
 
-**Diagnostic gold:** `oc get --raw /api/v1/nodes/<node>/proxy/stats/summary`
-returns per-pod ephemeral storage usage — use this to identify which pods
-dominate `/var` on a suspect worker.
+**Diagnostic gold:** `oc get --raw /api/v1/nodes/<node>/proxy/stats/summary` returns per-pod ephemeral storage usage — use this to identify which pods dominate `/var` on a suspect worker.
 
-**Note:** limitador counters are in-memory: a restart resets all
-usage-metrics counters (subscriptions, rate limits, token limits).
+**Note:** limitador counters are in-memory: a restart resets all usage-metrics counters (subscriptions, rate limits, token limits).
 
 **Diagnose:**
 
@@ -441,25 +335,12 @@ oc get pods -n models-as-a-service -o wide | grep router-scheduler
 
 **Recover:**
 
-- The pressure usually clears on its own: kubelet image GC plus the
-  evictions reclaim space, and workloads reschedule. Verify no node still
-  reports `DiskPressure` in `oc describe node`.
-- Delete the evicted pod husks (`oc get pods -A --field-selector
-  status.phase=Failed`) — controllers have already replaced them, and the
-  husks keep the alert noisy.
-- Do not chase the evicted components individually: a repo-server crash or
-  a workspace postStart timeout during the wave is a symptom, not a
-  separate incident.
-- If a worker stays above ~85% on `/var`, prune unused images
-  (`oc debug node/<node> -- chroot /host crictl rmi --prune`) — the in-use
-  modelcar itself cannot be reclaimed. Longer-term options are tracked in
-  `BACKLOG.md` (bigger worker disks or co-locating router-schedulers with
-  the GPU nodes that already hold the model images).
+- The pressure usually clears on its own: kubelet image GC plus the evictions reclaim space, and workloads reschedule. Verify no node still reports `DiskPressure` in `oc describe node`.
+- Delete the evicted pod husks (`oc get pods -A --field-selector status.phase=Failed`) — controllers have already replaced them, and the husks keep the alert noisy.
+- Do not chase the evicted components individually: a repo-server crash or a workspace postStart timeout during the wave is a symptom, not a separate incident.
+- If a worker stays above ~85% on `/var`, prune unused images (`oc debug node/<node> -- chroot /host crictl rmi --prune`) — the in-use modelcar itself cannot be reclaimed. Longer-term options are tracked in `BACKLOG.md` (bigger worker disks or co-locating router-schedulers with the GPU nodes that already hold the model images).
 
-`TaintManagerEviction` events around the resume timestamp are a different,
-benign artifact: nodes briefly go NotReady while the sandbox restores and
-the taint manager clears leftover pods (for example finished pipeline pods
-in `coolstore-dev`).
+`TaintManagerEviction` events around the resume timestamp are a different, benign artifact: nodes briefly go NotReady while the sandbox restores and the taint manager clears leftover pods (for example finished pipeline pods in `coolstore-dev`).
 
 ## Private Models Do Not Produce Kueue Workloads
 
@@ -606,12 +487,7 @@ After recovery, hard-refresh the OpenShift AI dashboard. The dashboard page shou
 
 **Affected stage:** Stage 010 (visible any time afterwards)
 
-**Likely cause:** The Tempo operator, the Red Hat build of OpenTelemetry
-operator, and the RHOAI `odh-model-controller` ship ServiceMonitor resources
-that authenticate with `bearerTokenFile`. User-workload Prometheus prohibits
-file-system access from scrape configs and rejects those ServiceMonitors,
-which fires the warning alert. This is a known Operator SDK-era pattern in
-operator bundles, not a resource this repository owns or applies.
+**Likely cause:** The Tempo operator, the Red Hat build of OpenTelemetry operator, and the RHOAI `odh-model-controller` ship ServiceMonitor resources that authenticate with `bearerTokenFile`. User-workload Prometheus prohibits file-system access from scrape configs and rejects those ServiceMonitors, which fires the warning alert. This is a known Operator SDK-era pattern in operator bundles, not a resource this repository owns or applies.
 
 **Diagnose:**
 
@@ -620,29 +496,18 @@ oc logs -n openshift-user-workload-monitoring deploy/prometheus-operator \
   | grep -i rejected | tail -5
 ```
 
-Expected offenders: `openshift-operators/tempo-operator-controller-manager-metrics-monitor`,
-`openshift-operators/opentelemetry-operator-metrics-monitor`,
-`redhat-ods-applications/odh-model-controller-metrics-monitor`.
+Expected offenders: `openshift-operators/tempo-operator-controller-manager-metrics-monitor`, `openshift-operators/opentelemetry-operator-metrics-monitor`, `redhat-ods-applications/odh-model-controller-metrics-monitor`.
 
 **Impact and recovery:**
 
-- Only the operators' own controller self-metrics are skipped. Demo
-  telemetry (RHOAI MonitoringStack Prometheus, OpenTelemetry collector,
-  Tempo traces, MaaS usage metrics) flows through
-  `redhat-ods-monitoring` and is unaffected — Stage 010 validation covers it.
-- Do not patch the ServiceMonitors; OLM and the operators reconcile them
-  back. Treat the warning as benign for this demo and silence it in
-  Alertmanager if it distracts from screenshots or demos. Track operator
-  releases that migrate to `authorization`-based scrape configs.
+- Only the operators' own controller self-metrics are skipped. Demo telemetry (RHOAI MonitoringStack Prometheus, OpenTelemetry collector, Tempo traces, MaaS usage metrics) flows through `redhat-ods-monitoring` and is unaffected — Stage 010 validation covers it.
+- Do not patch the ServiceMonitors; OLM and the operators reconcile them back. Treat the warning as benign for this demo and silence it in Alertmanager if it distracts from screenshots or demos. Track operator releases that migrate to `authorization`-based scrape configs.
 
 ## RHOAI Monitoring Prometheus Stuck In Init
 
 **Affected stage:** Stage 010
 
-**Likely cause:** The RHOAI 3.4 generated `MonitoringStack` can reference
-`Secret/prometheus-web-tls-ca` while the OpenShift service-ca injection path has
-created `ConfigMap/prometheus-web-tls-ca`. Without the Secret, the Prometheus
-pod waits on a missing volume and MaaS observability is not fully available.
+**Likely cause:** The RHOAI 3.4 generated `MonitoringStack` can reference `Secret/prometheus-web-tls-ca` while the OpenShift service-ca injection path has created `ConfigMap/prometheus-web-tls-ca`. Without the Secret, the Prometheus pod waits on a missing volume and MaaS observability is not fully available.
 
 **Diagnose:**
 
@@ -656,8 +521,7 @@ oc get secret prometheus-web-tls-ca -n redhat-ods-monitoring
 
 **Recover:**
 
-Re-sync Stage 010 so the GitOps hook creates the Secret from the injected
-ConfigMap:
+Re-sync Stage 010 so the GitOps hook creates the Secret from the injected ConfigMap:
 
 ```bash
 argocd app sync 010-openshift-ai-platform-foundation
@@ -704,10 +568,7 @@ GENAI_PLAYGROUND_BFF_SMOKE_TEST=true \
 
 **Affected stage:** Stage 040
 
-**Likely cause:** The Gen AI AI asset endpoints modal expects the generated
-credential in the response shape used by its current browser bundle. If the
-browser is still running an older cached bundle after the dashboard rolled, MaaS
-can still create a real API key while the modal displays an empty input.
+**Likely cause:** The Gen AI AI asset endpoints modal expects the generated credential in the response shape used by its current browser bundle. If the browser is still running an older cached bundle after the dashboard rolled, MaaS can still create a real API key while the modal displays an empty input.
 
 **Diagnose:**
 
@@ -719,15 +580,12 @@ oc get tenant default-tenant -n models-as-a-service \
   -o jsonpath='{.spec.apiKeys.maxExpirationDays}{"\n"}'
 ```
 
-The logs must show successful key creation, but must not print full API keys.
-Only prefixes, field names, and key lengths are acceptable in troubleshooting
-output.
+The logs must show successful key creation, but must not print full API keys. Only prefixes, field names, and key lengths are acceptable in troubleshooting output.
 
 **Recover:**
 
 - Re-sync Stage 040 so the product MaaS API route and `Tenant` configuration are current.
-- Hard-refresh the OpenShift AI browser tab so the browser uses the dashboard
-  bundle that matches the live Gen AI backend.
+- Hard-refresh the OpenShift AI browser tab so the browser uses the dashboard bundle that matches the live Gen AI backend.
 - Generate a new one-time key.
 
 ```bash
@@ -957,18 +815,9 @@ oc logs job/job-patch-mta-maas-url -n openshift-mta --tail=200
 
 **Affected stage:** Stage 050
 
-**Symptom:** The RHDH sign-in popup fails with
-`OPError: expected 200 OK, got: 504 Gateway Timeout` and
-`/api/auth/oidc/start` returns 500, while Keycloak itself is healthy — the
-OIDC discovery URL answers 200 from outside the cluster and even from a
-fresh process inside the RHDH pod.
+**Symptom:** The RHDH sign-in popup fails with `OPError: expected 200 OK, got: 504 Gateway Timeout` and `/api/auth/oidc/start` returns 500, while Keycloak itself is healthy — the OIDC discovery URL answers 200 from outside the cluster and even from a fresh process inside the RHDH pod.
 
-**Likely cause:** The cluster was suspended and resumed (sandbox stop/start)
-and Keycloak restarted while the long-running RHDH backend process kept
-stale connection state toward the router. Every OIDC issuer discovery from
-the live process then gets 504 from the router, while fresh connections
-succeed. Observed live 2026-07-13 after a 06:16 UTC cluster resume; RHDH
-configuration, secrets, and the Keycloak client were all correct.
+**Likely cause:** The cluster was suspended and resumed (sandbox stop/start) and Keycloak restarted while the long-running RHDH backend process kept stale connection state toward the router. Every OIDC issuer discovery from the live process then gets 504 from the router, while fresh connections succeed. Observed live 2026-07-13 after a 06:16 UTC cluster resume; RHDH configuration, secrets, and the Keycloak client were all correct.
 
 **Diagnose:**
 
@@ -986,9 +835,7 @@ oc get pod mta-rhbk-0 -n openshift-mta \
 oc get pods -n rhdh
 ```
 
-If check 1 returns 200 while check 2 shows fresh `Issuer.discover` 504
-errors, the fault is stale state inside the running RHDH process, not the
-configuration — do not rotate secrets or re-run the configure hook.
+If check 1 returns 200 while check 2 shows fresh `Issuer.discover` 504 errors, the fault is stale state inside the running RHDH process, not the configuration — do not rotate secrets or re-run the configure hook.
 
 **Recover:**
 
@@ -997,35 +844,17 @@ oc rollout restart deployment/backstage-developer-hub -n rhdh
 oc rollout status deployment/backstage-developer-hub -n rhdh --timeout=600s
 ```
 
-Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to
-Keycloak). Expect this after any overnight cluster suspend — bounce RHDH as
-part of demo-day preparation after a cluster resume.
+Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to Keycloak). Expect this after any overnight cluster suspend — bounce RHDH as part of demo-day preparation after a cluster resume.
 
 ## Developer Hub Topology/CI/Kubernetes Tabs Show "Problem Retrieving Kubernetes Objects"
 
 **Affected stage:** Stage 050
 
-**Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding
-it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate
-chain` for every object query, while cluster discovery (the cluster dropdown)
-works and the Argo CD card is fine.
+**Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate chain` for every object query, while cluster discovery (the cluster dropdown) works and the Argo CD card is fine.
 
-**Likely cause:** RHDH bootstraps `global-agent` (proxy support), which by
-default (`GLOBAL_AGENT_FORCE_GLOBAL_AGENT=true`) routes every https request
-through its own agent and **discards the kubernetes plugin's per-request
-agent** — so neither `skipTLSVerify: true` nor `caFile`/`caData` in the
-cluster config ever reach the TLS handshake. Reproduced both ways in-pod
-2026-07-13: the identical fetch succeeds without global-agent, fails with
-it, and succeeds again once the cluster CA is in Node's trust store. This
-is why the upstream reference config in
-`tmp/ocp-app-platform-demo-developer-hub-config` resorted to pod-wide
-`NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid that; it disables TLS validation
-for ALL RHDH egress.
+**Likely cause:** RHDH bootstraps `global-agent` (proxy support), which by default (`GLOBAL_AGENT_FORCE_GLOBAL_AGENT=true`) routes every https request through its own agent and **discards the kubernetes plugin's per-request agent** — so neither `skipTLSVerify: true` nor `caFile`/`caData` in the cluster config ever reach the TLS handshake. Reproduced both ways in-pod 2026-07-13: the identical fetch succeeds without global-agent, fails with it, and succeeds again once the cluster CA is in Node's trust store. This is why the upstream reference config in `tmp/ocp-app-platform-demo-developer-hub-config` resorted to pod-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid that; it disables TLS validation for ALL RHDH egress.
 
-**Recover:** add the cluster CA to Node's trust store. Two pieces are
-needed because the RHDH operator sets `automountServiceAccountToken:
-false` (the usual `/var/run/secrets/.../ca.crt` path does not exist in the
-pod):
+**Recover:** add the cluster CA to Node's trust store. Two pieces are needed because the RHDH operator sets `automountServiceAccountToken: false` (the usual `/var/run/secrets/.../ca.crt` path does not exist in the pod):
 
 ```yaml
 # backstage.yaml (CR): mount the namespace kube-root-ca.crt ConfigMap
@@ -1157,11 +986,7 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Affected stage:** Stage 060
 
-**Likely cause:** The `devspace-ai-tools-init` ConfigMap init script did not
-run or failed to render the Kilo Code configuration with the correct MaaS
-base URL and API key. The workspace may have started before the MaaS key
-provisioner completed, or the `devspace-maas-key-provisioner` ServiceAccount
-lacks authorization on the `rhoai-developers-coding-models` subscription.
+**Likely cause:** The `devspace-ai-tools-init` ConfigMap init script did not run or failed to render the Kilo Code configuration with the correct MaaS base URL and API key. The workspace may have started before the MaaS key provisioner completed, or the `devspace-maas-key-provisioner` ServiceAccount lacks authorization on the `rhoai-developers-coding-models` subscription.
 
 **Diagnose:**
 
@@ -1215,17 +1040,9 @@ oc annotate application 060-mcp-context-integrations -n openshift-gitops \
 
 **Affected stage:** Stage 040 (breaks every AI consumer: Kilo Code, key provisioning, app LLM calls)
 
-**Symptoms (observed live 2026-07-10):** `curl https://maas.<apps-domain>/maas-api/v1/models`
-returns 000 from outside AND from in-cluster pods (even via the gateway
-Service ClusterIP); the `maas-default-gateway-*` envoy pod shows repeated
-OOMKills and logs
-`Unknown field ... 'allow_on_headers_stop_iteration'` wasm config rejections.
+**Symptoms (observed live 2026-07-10):** `curl https://maas.<apps-domain>/maas-api/v1/models` returns 000 from outside AND from in-cluster pods (even via the gateway Service ClusterIP); the `maas-default-gateway-*` envoy pod shows repeated OOMKills and logs `Unknown field ... 'allow_on_headers_stop_iteration'` wasm config rejections.
 
-**Likely cause:** the cluster drifted past the RHCL 1.3.z pin — a shared
-`openshift-operators` Manual InstallPlan bundled the kuadrant family
-(rhcl/authorino/limitador/dns) to 1.4.x when some other operator's plan was
-approved. RHCL 1.4.0-line is deprecated with documented gateway
-instability/memory pressure (see the `rhcl-update` skill).
+**Likely cause:** the cluster drifted past the RHCL 1.3.z pin — a shared `openshift-operators` Manual InstallPlan bundled the kuadrant family (rhcl/authorino/limitador/dns) to 1.4.x when some other operator's plan was approved. RHCL 1.4.0-line is deprecated with documented gateway instability/memory pressure (see the `rhcl-update` skill).
 
 **Diagnose:**
 
@@ -1237,18 +1054,11 @@ oc logs deploy/maas-default-gateway-data-science-gateway-class -n openshift-ingr
 **Recover (documented 1.3.z rollback; OLM cannot downgrade in place):**
 
 1. `oc delete csv rhcl-operator.v1.4.x authorino-operator.v1.4.x limitador-operator.v1.4.x dns-operator.v1.4.x -n openshift-operators`
-2. Delete the four kuadrant Subscriptions (gitops names are OLM-style:
-   `<pkg>-stable-redhat-operators-openshift-marketplace`, plus `rhcl-operator`).
+2. Delete the four kuadrant Subscriptions (gitops names are OLM-style: `<pkg>-stable-redhat-operators-openshift-marketplace`, plus `rhcl-operator`).
 3. Re-sync Stage 040 so Argo recreates the pinned Manual Subscriptions.
-4. Delete any leftover unapproved 1.4.x InstallPlan, then approve the plan
-   whose `clusterServiceVersionNames` lists ONLY the pinned 1.3.x set.
-5. Verify: all four CSVs Succeeded; `curl .../maas-api/v1/models` returns 401
-   (serving, auth required) instead of 000.
-6. **The operator rollback is not sufficient by itself** (observed live):
-   1.4-rendered Istio artifacts persist and requests carrying a valid-format
-   API key hang forever in the filter chain (dummy keys 403 instantly —
-   they never reach the rate-limit callout). Delete the rendered artifacts
-   and let the 1.3 operator re-render, then restart the gateway:
+4. Delete any leftover unapproved 1.4.x InstallPlan, then approve the plan whose `clusterServiceVersionNames` lists ONLY the pinned 1.3.x set.
+5. Verify: all four CSVs Succeeded; `curl .../maas-api/v1/models` returns 401 (serving, auth required) instead of 000.
+6. **The operator rollback is not sufficient by itself** (observed live): 1.4-rendered Istio artifacts persist and requests carrying a valid-format API key hang forever in the filter chain (dummy keys 403 instantly — they never reach the rate-limit callout). Delete the rendered artifacts and let the 1.3 operator re-render, then restart the gateway:
 
    ```bash
    oc delete wasmplugin kuadrant-maas-default-gateway -n openshift-ingress
@@ -1265,15 +1075,9 @@ oc logs deploy/maas-default-gateway-data-science-gateway-class -n openshift-ingr
 
 ## Operator Subscription Claims A CSV That No Longer Exists
 
-**Affected stage:** any OLM operator (observed live 2026-07-10 on
-devworkspace-operator: webhook server CrashLoopBackOff for 26h with
-`serviceaccounts "devworkspace-controller-serviceaccount" not found`)
+**Affected stage:** any OLM operator (observed live 2026-07-10 on devworkspace-operator: webhook server CrashLoopBackOff for 26h with `serviceaccounts "devworkspace-controller-serviceaccount" not found`)
 
-**Likely cause:** the Subscription's `status.installedCSV` references a CSV
-object that was deleted (e.g., during catalog churn or manual cleanup). OLM
-will not reinstall because the Subscription believes the operator is
-installed; dependent workloads (controller Deployment, ServiceAccounts) are
-gone.
+**Likely cause:** the Subscription's `status.installedCSV` references a CSV object that was deleted (e.g., during catalog churn or manual cleanup). OLM will not reinstall because the Subscription believes the operator is installed; dependent workloads (controller Deployment, ServiceAccounts) are gone.
 
 **Diagnose:**
 
@@ -1282,24 +1086,13 @@ oc get subscription <sub> -n <ns> -o jsonpath='{.status.installedCSV}{" / state:
 oc get csv <that-csv> -n <ns>   # NotFound = orphaned subscription
 ```
 
-**Recover:** back up the Subscription spec, delete it, and recreate it clean
-(same channel/source; drop or update `startingCSV`). OLM resolves fresh and
-reinstalls. Argo-managed subscriptions are recreated by a stage re-sync.
+**Recover:** back up the Subscription spec, delete it, and recreate it clean (same channel/source; drop or update `startingCSV`). OLM resolves fresh and reinstalls. Argo-managed subscriptions are recreated by a stage re-sync.
 
 ## A Namespace Label Added In Git Never Reaches The Cluster
 
-**Affected stage:** any Argo-managed namespace (observed live 2026-07-13:
-`coolstore-dev` missing `rhoai3.redhat.com/pipeline-project=true`, so the
-project-provisioner CronJob completed with "No project namespaces labeled"
-and never distributed pipeline credentials, while the 050 Application
-reported Synced).
+**Affected stage:** any Argo-managed namespace (observed live 2026-07-13: `coolstore-dev` missing `rhoai3.redhat.com/pipeline-project=true`, so the project-provisioner CronJob completed with "No project namespaces labeled" and never distributed pipeline credentials, while the 050 Application reported Synced).
 
-**Likely cause:** the stage Application ignores Namespace metadata diffs
-(`ignoreDifferences: /metadata/labels` + the `RespectIgnoreDifferences=true`
-sync option). Ignored fields are excluded from sync patches, so a label added
-to an *existing* namespace manifest is never applied — labels from git only
-land when Argo first creates the namespace. Because the diff is ignored, the
-app stays Synced and self-heal never notices.
+**Likely cause:** the stage Application ignores Namespace metadata diffs (`ignoreDifferences: /metadata/labels` + the `RespectIgnoreDifferences=true` sync option). Ignored fields are excluded from sync patches, so a label added to an *existing* namespace manifest is never applied — labels from git only land when Argo first creates the namespace. Because the diff is ignored, the app stays Synced and self-heal never notices.
 
 **Diagnose:**
 
@@ -1310,29 +1103,15 @@ oc get application <app> -n openshift-gitops -o json \
   | jq '.spec.ignoreDifferences[] | select(.kind=="Namespace")'
 ```
 
-**Recover:** apply the label imperatively (`oc label ns <ns> key=value
---overwrite`). For labels a controller depends on (like the
-pipeline-project provisioning label), the stage deploy.sh must assert the
-label on every run — see `seed_coolstore` step 0 in stage 050.
+**Recover:** apply the label imperatively (`oc label ns <ns> key=value --overwrite`). For labels a controller depends on (like the pipeline-project provisioning label), the stage deploy.sh must assert the label on every run — see `seed_coolstore` step 0 in stage 050.
 
 ## OpenCode: "unknown certificate verification error" for Every Model
 
 **Affected stage:** Stage 070 (OpenCode workspaces)
 
-**Symptom:** OpenCode fails on *every* model (MiniMax, Qwen, Nemotron) with
-`Error: unknown certificate verification error`. The request never reaches the
-MaaS gateway (no access-log entry). Kilo Code and the VS Code Kubernetes tabs
-keep working against the same endpoint.
+**Symptom:** OpenCode fails on *every* model (MiniMax, Qwen, Nemotron) with `Error: unknown certificate verification error`. The request never reaches the MaaS gateway (no access-log entry). Kilo Code and the VS Code Kubernetes tabs keep working against the same endpoint.
 
-**Likely cause:** OpenCode embeds Bun, and **Bun 1.3.0 stopped trusting the
-system CA store by default** ([oven-sh/bun#23735](https://github.com/oven-sh/bun/issues/23735)).
-The MaaS gateway serves the cluster's ingress (Let's Encrypt) certificate,
-whose chain root lives in the OS trust store but not in Bun's embedded Mozilla
-roots — so Bun rejects it. Kilo Code / VS Code are unaffected because Electron
-uses the OS trust store. The platform never set a CA env for OpenCode because
-it relied on Bun's pre-1.3 default of reading the system store; the
-"always-latest OpenCode" policy (`ensure_opencode_latest` + `autoupdate`)
-silently moved onto a Bun 1.3.x build.
+**Likely cause:** OpenCode embeds Bun, and **Bun 1.3.0 stopped trusting the system CA store by default** ([oven-sh/bun#23735](https://github.com/oven-sh/bun/issues/23735)). The MaaS gateway serves the cluster's ingress (Let's Encrypt) certificate, whose chain root lives in the OS trust store but not in Bun's embedded Mozilla roots — so Bun rejects it. Kilo Code / VS Code are unaffected because Electron uses the OS trust store. The platform never set a CA env for OpenCode because it relied on Bun's pre-1.3 default of reading the system store; the "always-latest OpenCode" policy (`ensure_opencode_latest` + `autoupdate`) silently moved onto a Bun 1.3.x build.
 
 **Diagnose:**
 
@@ -1346,38 +1125,23 @@ curl -sSI https://<maas-host>/ >/dev/null && echo "OS store: OK"
 
 **Recover:**
 
-- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1`
-  into `~/.bashrc` alongside the opencode PATH block, so every workspace start
-  trusts the gateway. See
-  `gitops/stages/050-.../devspaces/maas-api-key-provisioning.yaml`
-  (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
-- **Immediate (running workspace):** quit OpenCode, then
-  `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
-- **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x —
-  [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or
-  `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables
-  verification entirely).
+- **Durable (platform):** `init-ai-tools.sh` exports `NODE_USE_SYSTEM_CA=1` into `~/.bashrc` alongside the opencode PATH block, so every workspace start trusts the gateway. See `gitops/stages/050-.../devspaces/maas-api-key-provisioning.yaml` (`ensure_opencode_latest`). Applies on a fresh workspace/PV.
+- **Immediate (running workspace):** quit OpenCode, then `export NODE_USE_SYSTEM_CA=1 && opencode` — the new server inherits it.
+- **Do NOT** use `NODE_EXTRA_CA_CERTS` (broken on Bun 1.3.x — [oven-sh/bun#24581](https://github.com/oven-sh/bun/issues/24581)) or `NODE_TLS_REJECT_UNAUTHORIZED=0` (Bun's `fetch` ignores it, and it disables verification entirely).
 
 ## Kilo Code Shows "Move Your OpenCode Configuration"
 
 **Affected stage:** Stage 060
 
-**Likely cause:** Kilo Code detects an OpenCode-schema config and offers to
-adopt it. Dismissal is stored in VS Code `globalState`. Kilo-only workspaces
-(coolstore, getting-started) have no triggers after the self-scoping.
-Scaffolded 070 workspaces show it once on first open — just close the
-notification.
+**Likely cause:** Kilo Code detects an OpenCode-schema config and offers to adopt it. Dismissal is stored in VS Code `globalState`. Kilo-only workspaces (coolstore, getting-started) have no triggers after the self-scoping. Scaffolded 070 workspaces show it once on first open — just close the notification.
 
-**Recover:** dismiss the notification. It does not reappear in the same
-workspace volume.
+**Recover:** dismiss the notification. It does not reappear in the same workspace volume.
 
 ## MaaS Gateway Returns 429
 
 **Affected stage:** Stage 040 (affects all downstream consumers)
 
-**Likely cause:** token-rate-limit budget for the subscription/user/model/hour
-combination has been exhausted. Each `MaaSSubscription` carries per-model
-token-rate-limit entries (e.g. 1M tokens/hour for coding-tier models).
+**Likely cause:** token-rate-limit budget for the subscription/user/model/hour combination has been exhausted. Each `MaaSSubscription` carries per-model token-rate-limit entries (e.g. 1M tokens/hour for coding-tier models).
 
 **Diagnose:**
 
@@ -1389,28 +1153,21 @@ oc get maassubscription -n models-as-a-service -o yaml | grep -A5 tokenRateLimit
 **Recover:**
 
 - Wait for the hourly window to roll over, or
-- adjust the limit in `gitops/stages/040-.../base/policies/` files and
-  re-sync Stage 040. The coding tier uses 1M tokens/hour per model.
+- adjust the limit in `gitops/stages/040-.../base/policies/` files and re-sync Stage 040. The coding tier uses 1M tokens/hour per model.
 
 ## ose-cli curl Version Does Not Support --retry-all-errors
 
 **Affected stage:** any stage using Job-based hook scripts with `curl`
 
-**Likely cause:** the `ose-cli` image ships curl 7.61, which does not
-support `--retry-all-errors` (added in curl 7.71). Hook Job scripts that
-retry on transient failures must use `--retry` alone or a shell loop
-instead of `--retry-all-errors`.
+**Likely cause:** the `ose-cli` image ships curl 7.61, which does not support `--retry-all-errors` (added in curl 7.71). Hook Job scripts that retry on transient failures must use `--retry` alone or a shell loop instead of `--retry-all-errors`.
 
-**Recover:** replace `--retry-all-errors` with `--retry <n>` (retries on
-connection errors and some HTTP errors) or wrap in a shell retry loop
-with explicit HTTP status checks.
+**Recover:** replace `--retry-all-errors` with `--retry <n>` (retries on connection errors and some HTTP errors) or wrap in a shell retry loop with explicit HTTP status checks.
 
 ## API-Key Admin Cleanup Path
 
 **Affected stage:** Stage 040
 
-**Symptom:** orphaned or revoked MaaS API keys need to be cleaned up, but
-the search endpoint is non-trivial.
+**Symptom:** orphaned or revoked MaaS API keys need to be cleaned up, but the search endpoint is non-trivial.
 
 **Admin cleanup commands:**
 
@@ -1430,22 +1187,15 @@ curl -sk -X DELETE -H "Authorization: Bearer ${ADMIN_KEY}" \
   "https://${MAAS_HOST}/maas-api/v1/api-keys/{id}"
 ```
 
-**Recover:** use the commands above to identify and delete orphaned keys.
-The search API ignores the `name` query parameter and returns all keys
-visible to the admin identity — always filter the JSON response
-client-side.
+**Recover:** use the commands above to identify and delete orphaned keys. The search API ignores the `name` query parameter and returns all keys visible to the admin identity — always filter the JSON response client-side.
 
 ## Argo CD Reports Synced But The Cluster Has Stale Manifests
 
-**Affected stage:** any (observed twice on 2026-07-15: 050 ConfigMap, 040
-LLMInferenceService)
+**Affected stage:** any (observed twice on 2026-07-15: 050 ConfigMap, 040 LLMInferenceService)
 
-**Symptom:** the Application shows `Synced`/`Succeeded` at the correct git
-revision, but a resource in the cluster lacks the change; the sync result
-message says `<resource> unchanged`.
+**Symptom:** the Application shows `Synced`/`Succeeded` at the correct git revision, but a resource in the cluster lacks the change; the sync result message says `<resource> unchanged`.
 
-**Likely cause:** the Argo CD repo-server served a stale cached render for
-the new revision.
+**Likely cause:** the Argo CD repo-server served a stale cached render for the new revision.
 
 **Diagnose:** compare the local render against the live object:
 
@@ -1454,8 +1204,7 @@ oc kustomize gitops/stages/<app path> | grep <your change>
 oc get <kind> <name> -n <ns> -o yaml | grep <your change>
 ```
 
-If git and the local render have the change while the live object does not —
-and the app claims Synced at the right SHA — it is the stale cache.
+If git and the local render have the change while the live object does not — and the app claims Synced at the right SHA — it is the stale cache.
 
 **Recover:** hard refresh, then sync:
 
@@ -1464,22 +1213,15 @@ oc annotate application <app> -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-Auto-sync apps re-sync on their own after the refresh; manual apps need a
-Sync click. Root cause in the repo-server cache is not yet identified.
+Auto-sync apps re-sync on their own after the refresh; manual apps need a Sync click. Root cause in the repo-server cache is not yet identified.
 
 ## Model Rollout Deadlocks With The New Pod SchedulingGated
 
-**Affected stage:** Stage 040 (any LLMInferenceService config change while
-GPU quota is fully allocated)
+**Affected stage:** Stage 040 (any LLMInferenceService config change while GPU quota is fully allocated)
 
-**Symptom:** after a spec change, the new kserve pod sits in
-`SchedulingGated` with gates `kueue.x-k8s.io/admission`; the old pod keeps
-running. The Kueue Workload says `insufficient unused quota for
-nvidia.com/gpu ... 1 more needed`.
+**Symptom:** after a spec change, the new kserve pod sits in `SchedulingGated` with gates `kueue.x-k8s.io/admission`; the old pod keeps running. The Kueue Workload says `insufficient unused quota for nvidia.com/gpu ... 1 more needed`.
 
-**Likely cause:** rolling update with replicas=1 while the ClusterQueue's
-GPUs are all admitted — the new pod cannot get quota until the old one
-releases it, and the old one waits for the new one to become ready.
+**Likely cause:** rolling update with replicas=1 while the ClusterQueue's GPUs are all admitted — the new pod cannot get quota until the old one releases it, and the old one waits for the new one to become ready.
 
 **Recover:** delete the old pod to free its GPU:
 
@@ -1488,23 +1230,15 @@ oc get workload -n models-as-a-service | grep <model>
 oc delete pod -n models-as-a-service <old-kserve-pod>
 ```
 
-Kueue admits the gated pod immediately; expect the usual model load time.
-If a crash-looping pod holds the quota (bad config baked into its spec),
-delete that one — its ReplicaSet will not recreate it once the new
-ReplicaSet's pod is admitted and ready.
+Kueue admits the gated pod immediately; expect the usual model load time. If a crash-looping pod holds the quota (bad config baked into its spec), delete that one — its ReplicaSet will not recreate it once the new ReplicaSet's pod is admitted and ready.
 
 ## Pipeline Or Workspace Pods Evicted For Ephemeral Storage
 
-**Affected stage:** any pipeline or workspace scheduling onto a
-modelcar-hosting CPU node
+**Affected stage:** any pipeline or workspace scheduling onto a modelcar-hosting CPU node
 
-**Symptom:** a TaskRun fails with `The node was low on resource:
-ephemeral-storage`; the node sits at ~85% disk with kubelet image GC
-oscillating at the threshold.
+**Symptom:** a TaskRun fails with `The node was low on resource: ephemeral-storage`; the node sits at ~85% disk with kubelet image GC oscillating at the threshold.
 
-**Likely cause:** cached container images — multi-GB modelcars plus
-accumulating build/task images. Per-pod ephemeral usage is usually
-innocent (verify via the node's `stats/summary`).
+**Likely cause:** cached container images — multi-GB modelcars plus accumulating build/task images. Per-pod ephemeral usage is usually innocent (verify via the node's `stats/summary`).
 
 **Recover:** prune unused images on the pressured node:
 
@@ -1512,70 +1246,42 @@ innocent (verify via the node's `stats/summary`).
 oc debug node/<node> -- chroot /host sh -c 'crictl rmi --prune'
 ```
 
-Caveats: `--prune` never removes in-use images (a modelcar backing a
-running scheduler stays); if the debug pod itself fails with "container not
-available", the node is too full to pull the tools image — wait for kubelet
-GC to free a little headroom and retry. `DeadlineExceeded` errors on large
-image deletions are harmless. Structural fix: the 200GiB worker-disk
-resize (backlog).
+Caveats: `--prune` never removes in-use images (a modelcar backing a running scheduler stays); if the debug pod itself fails with "container not available", the node is too full to pull the tools image — wait for kubelet GC to free a little headroom and retry. `DeadlineExceeded` errors on large image deletions are harmless. Structural fix: the 200GiB worker-disk resize (backlog).
 
 ## SonarQube Gate Fails On new_coverage 0% Despite Passing Tests
 
 **Affected stage:** Stage 060 (any Quarkus app in the pipeline)
 
-**Symptom:** `new_violations` is 0, tests run green in `maven-build`, yet
-the gate fails `new_coverage: 0.0 < 80`.
+**Symptom:** `new_violations` is 0, tests run green in `maven-build`, yet the gate fails `new_coverage: 0.0 < 80`.
 
-**Likely cause:** the application produces no coverage report — SonarQube
-reads "no data" as 0%. Prompting an AI (or a human) for more tests changes
-nothing.
+**Likely cause:** the application produces no coverage report — SonarQube reads "no data" as 0%. Prompting an AI (or a human) for more tests changes nothing.
 
-**Recover:** wire coverage into the build. For Quarkus:
-`io.quarkus:quarkus-jacoco` dependency (test scope) plus
-`<sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>`
-in the pom (coolstore fix: `7236899`). A plain jacoco-maven-plugin agent
-fights Quarkus class transformation — use the extension.
+**Recover:** wire coverage into the build. For Quarkus: `io.quarkus:quarkus-jacoco` dependency (test scope) plus `<sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>` in the pom (coolstore fix: `7236899`). A plain jacoco-maven-plugin agent fights Quarkus class transformation — use the extension.
 
 ## Usage Dashboard Shows Zeros Or Gaps (Limitador PodMonitor Churn)
 
 **Affected stage:** Stage 040 observability
 
-**Symptom:** the RHOAI Observability Usage tab intermittently shows zero
-tokens; `authorized_hits` instant queries return no data while limitador's
-own `/metrics` endpoint has the counters.
+**Symptom:** the RHOAI Observability Usage tab intermittently shows zero tokens; `authorized_hits` instant queries return no data while limitador's own `/metrics` endpoint has the counters.
 
 **Likely cause (two distinct):**
 
-1. Before the first Kuadrant reconcile enables observability, no
-   `kuadrant-limitador-monitor` PodMonitor exists at all — nothing scrapes
-   the per-user metrics.
-2. The kuadrant-operator deletes and recreates that PodMonitor every
-   ~10 minutes on its resync (log signature: `event logger ...
-   eventTypes:{"delete":1}` followed by `ObservabilityReconciler "create
-   object" v1.PodMonitor`), causing brief scrape gaps. RFE candidate.
+1. Before the first Kuadrant reconcile enables observability, no `kuadrant-limitador-monitor` PodMonitor exists at all — nothing scrapes the per-user metrics.
+2. The kuadrant-operator deletes and recreates that PodMonitor every ~10 minutes on its resync (log signature: `event logger ... eventTypes:{"delete":1}` followed by `ObservabilityReconciler "create object" v1.PodMonitor`), causing brief scrape gaps. RFE candidate.
 
-Also verify the boring explanation first: a short "Last 30 minutes" window
-with genuinely no model traffic correctly shows zeros — check
-`sum(increase(authorized_hits[30m]))` in Thanos before suspecting the
-pipeline.
+Also verify the boring explanation first: a short "Last 30 minutes" window with genuinely no model traffic correctly shows zeros — check `sum(increase(authorized_hits[30m]))` in Thanos before suspecting the pipeline.
 
-**Recover:** for (1), ensure `spec.observability.enable: true` on the
-Kuadrant CR (it is, in git) and wait for the operator reconcile. For (2),
-no configuration fix exists on our side; widen the dashboard time window.
+**Recover:** for (1), ensure `spec.observability.enable: true` on the Kuadrant CR (it is, in git) and wait for the operator reconcile. For (2), no configuration fix exists on our side; widen the dashboard time window.
 
 ## External Models Missing From Per-Model Token Consumption
 
 **Affected stage:** Stage 040 observability
 
-**Symptom:** `minimax-m2` and `qwen3-235b` never appear in the Usage tab's
-Token Consumption table even during active use.
+**Symptom:** `minimax-m2` and `qwen3-235b` never appear in the Usage tab's Token Consumption table even during active use.
 
-**Likely cause:** the ExternalModel route policy exports request counters
-with subscription/user labels but no `model` label and no token-usage
-counters — the wasm usage-extraction pass (`--enable-force-include-usage`
+**Likely cause:** the ExternalModel route policy exports request counters with subscription/user labels but no `model` label and no token-usage counters — the wasm usage-extraction pass (`--enable-force-include-usage`
 + model descriptor) is wired only for LLMInferenceService kserve routes in
-this RHOAI 3.4 MaaS build. Enforcement is intact (request limits + defined
-token budgets); per-model token visibility is not. RFE candidate.
+this RHOAI 3.4 MaaS build. Enforcement is intact (request limits + defined token budgets); per-model token visibility is not. RFE candidate.
 
 **Diagnose:**
 
@@ -1584,28 +1290,15 @@ oc port-forward -n kuadrant-system svc/limitador-limitador 18080:8080 &
 curl -s http://localhost:18080/metrics | grep minimax
 ```
 
-**Recover:** no platform-side fix; track via the subscription-level
-counters and the maas-rhdp provider's own accounting.
+**Recover:** no platform-side fix; track via the subscription-level counters and the maas-rhdp provider's own accounting.
 
 ## External Model Streaming Resets Through The MaaS Gateway ("Connection reset by server")
 
 **Affected stage:** Stage 040 external models (minimax-m2, qwen3-235b, gpt-4o-mini)
 
-**Symptom:** streaming chat completions through the gateway stall (client
-sees nothing for ~60s, then "Connection reset") or die mid-stream around
-310KB; the identical request sent directly to the upstream provider
-completes cleanly. Short non-streaming requests work.
+**Symptom:** streaming chat completions through the gateway stall (client sees nothing for ~60s, then "Connection reset") or die mid-stream around 310KB; the identical request sent directly to the upstream provider completes cleanly. Short non-streaming requests work.
 
-**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) —
-the operator-owned `payload-processing` ext_proc (gateway-api-inference-
-extension BBR) — buffers response bodies (`response_body_mode:
-FULL_DUPLEX_STREAMED`) for ALL gateway traffic, to translate non-OpenAI-native
-external APIs into OpenAI-compatible SSE. In 3.4 that response processing is
-applied even to already-OpenAI-compatible traffic, so streamed SSE is held and
-arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times
-out at ~60s. Internal vLLM models and the external endpoints hit directly both
-stream fine — the buffer is purely this stage. Red Hat KB: "MaaS streaming
-responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
+**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) — the operator-owned `payload-processing` ext_proc (gateway-api-inference- extension BBR) — buffers response bodies (`response_body_mode: FULL_DUPLEX_STREAMED`) for ALL gateway traffic, to translate non-OpenAI-native external APIs into OpenAI-compatible SSE. In 3.4 that response processing is applied even to already-OpenAI-compatible traffic, so streamed SSE is held and arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times out at ~60s. Internal vLLM models and the external endpoints hit directly both stream fine — the buffer is purely this stage. Red Hat KB: "MaaS streaming responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
 
 **Diagnose:**
 
@@ -1617,9 +1310,7 @@ oc logs -n openshift-ingress "$GW" -c istio-proxy --since=30m | grep chat/comple
 oc exec -n openshift-ingress "$GW" -c istio-proxy -- pilot-agent request GET config_dump | grep -c ext_proc.bbr
 ```
 
-**There is NO viable RHOAI 3.4 gateway fix for clusters that use external
-models.** All three approaches were tested live on 2026-07-20 and each is worse
-than the buffering — do NOT re-attempt them:
+**There is NO viable RHOAI 3.4 gateway fix for clusters that use external models.** All three approaches were tested live on 2026-07-20 and each is worse than the buffering — do NOT re-attempt them:
 
 | Attempt | Result |
 |---|---|
@@ -1627,28 +1318,15 @@ than the buffering — do NOT re-attempt them:
 | Separate filter, `MERGE` `response_body_mode: NONE` + `SKIP` | No-op — `NONE` is the protobuf zero-value a MERGE silently drops — AND the resulting `FULL_DUPLEX_STREAMED`+`SKIP` listener is invalid → istiod NACK → **gateway crashloop** (all MaaS down). |
 | Separate filter, `REPLACE` bbr with `response_body_mode: NONE` | **All traffic 504** — breaks the ext_proc full-duplex contract; `failure_mode_allow: false` then fails every request. |
 
-**Resolution (RHOAI 3.4):** do NOT patch the gateway; never edit the
-operator-owned `payload-processing` filter (the MaaS controller reverts it).
-Use **internal** models (`qwen3-6-35b-a3b`) for streaming-dependent flows
-(OpenCode's spec-kit cycle) — they stream cleanly. External models
-(`minimax-m2`, `qwen3-235b`) stay usable for **non-streaming / short** requests.
-Apply the product fix on the RHOAI 3.5 upgrade (BACKLOG).
+**Resolution (RHOAI 3.4):** do NOT patch the gateway; never edit the operator-owned `payload-processing` filter (the MaaS controller reverts it). Use **internal** models (`qwen3-6-35b-a3b`) for streaming-dependent flows (OpenCode's spec-kit cycle) — they stream cleanly. External models (`minimax-m2`, `qwen3-235b`) stay usable for **non-streaming / short** requests. Apply the product fix on the RHOAI 3.5 upgrade (BACKLOG).
 
 ## Red Hat Registry Outage Starves Scaffolded-Project Provisioning
 
-**Affected stage:** Stage 050/070 (project-provisioner, seed runs, any
-pipeline building from UBI base images)
+**Affected stage:** Stage 050/070 (project-provisioner, seed runs, any pipeline building from UBI base images)
 
-**Symptom:** freshly scaffolded projects get no credentials and no seed
-PipelineRun; the provisioner CronJob's `lastSuccessfulTime` stops
-advancing; pods show `ErrImagePull` with `503 Service Unavailable` from
-registry.redhat.io, or a seed run fails at `build-and-push` with
-`502 Bad Gateway` from registry.access.redhat.com.
+**Symptom:** freshly scaffolded projects get no credentials and no seed PipelineRun; the provisioner CronJob's `lastSuccessfulTime` stops advancing; pods show `ErrImagePull` with `503 Service Unavailable` from registry.redhat.io, or a seed run fails at `build-and-push` with `502 Bad Gateway` from registry.access.redhat.com.
 
-**Likely cause:** transient Red Hat registry outage. The provisioner ran
-`ose-cli:latest` with the implicit Always pull policy, so every 2-minute
-tick required a live registry even though nodes cache the image (fixed:
-`imagePullPolicy: IfNotPresent`, `631c8be`).
+**Likely cause:** transient Red Hat registry outage. The provisioner ran `ose-cli:latest` with the implicit Always pull policy, so every 2-minute tick required a live registry even though nodes cache the image (fixed: `imagePullPolicy: IfNotPresent`, `631c8be`).
 
 **Diagnose:**
 
@@ -1658,46 +1336,24 @@ oc get pods -n app-platform-build | grep provisioner
 curl -s -o /dev/null -w '%{http_code}' https://registry.access.redhat.com/v2/
 ```
 
-**Recover:** nothing to fix once the registry returns — provisioning
-self-heals on the next tick. If a seed run failed mid-outage, delete it;
-the zero-runs guard re-seeds automatically:
+**Recover:** nothing to fix once the registry returns — provisioning self-heals on the next tick. If a seed run failed mid-outage, delete it; the zero-runs guard re-seeds automatically:
 
 ```bash
 oc delete pipelinerun <name>-seed-<hash> -n <name>-dev
 ```
 
-Stuck pre-fix Jobs (pull policy Always baked into their pods) must be
-deleted for the CronJob to mint fresh ones.
+Stuck pre-fix Jobs (pull policy Always baked into their pods) must be deleted for the CronJob to mint fresh ones.
 
 ## Scaffolded Project Does Not Self-Provision (No Argo CD App / Pipeline)
 
 **Affected stage:** Stage 050 (RHDH scaffolder → dispatcher bootstrap)
 
-**Symptom:** a developer creates a project from the "New Quarkus App" template;
-the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`)
-and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev`
-namespace or `app-push` pipeline is created, and no build runs. Nothing is
-happening in the background.
+**Symptom:** a developer creates a project from the "New Quarkus App" template; the GitHub repo is created (with topics `rhoai3-golden-path` + `rhoai3-scaffolded`) and pushed, but no `project-<repo>` Argo CD Application appears, no `<repo>-dev` namespace or `app-push` pipeline is created, and no build runs. Nothing is happening in the background.
 
-**Root cause:** the self-provisioning flow has NO per-repo webhook — it relies on
-the **GitHub App** delivering push events to the shared `app-platform-listener`
-dispatcher. The tell for every variant below is an **EventListener with zero
-recent activity** (`oc logs` the `el-app-platform-listener-*` pod shows nothing
-for the repo) even though the repo and its push exist on GitHub.
+**Root cause:** the self-provisioning flow has NO per-repo webhook — it relies on the **GitHub App** delivering push events to the shared `app-platform-listener` dispatcher. The tell for every variant below is an **EventListener with zero recent activity** (`oc logs` the `el-app-platform-listener-*` pod shows nothing for the repo) even though the repo and its push exist on GitHub.
 
-1. **Stale webhook URL (the #1 fresh-env cause).** A GitHub App has a SINGLE,
-   App-level webhook URL. It is cluster-specific — it embeds the cluster's
-   ingress domain (`…apps.<cluster>.<base-domain>`). When you redeploy the demo
-   to a NEW cluster, GitHub keeps delivering to the OLD cluster's route until you
-   update the App's webhook URL. Symptom: NOTHING provisions (not even the
-   platform coolstore repo builds on push), because every delivery lands on a
-   dead/previous cluster. Confirm in GitHub → the App → **App settings → Advanced
-   → Recent Deliveries**: the target URL won't match this cluster, and/or
-   deliveries fail. Fresh-env redeploys almost always hit this.
-2. **Selected-repositories scope.** If the App is installed on *Only select
-   repositories*, a newly scaffolded repo is outside its scope, so ITS pushes
-   don't deliver (but the pre-seeded golden repos still do). Check GitHub → the
-   App → **Configure → Repository access = All repositories**.
+1. **Stale webhook URL (the #1 fresh-env cause).** A GitHub App has a SINGLE, App-level webhook URL. It is cluster-specific — it embeds the cluster's ingress domain (`…apps.<cluster>.<base-domain>`). When you redeploy the demo to a NEW cluster, GitHub keeps delivering to the OLD cluster's route until you update the App's webhook URL. Symptom: NOTHING provisions (not even the platform coolstore repo builds on push), because every delivery lands on a dead/previous cluster. Confirm in GitHub → the App → **App settings → Advanced → Recent Deliveries**: the target URL won't match this cluster, and/or deliveries fail. Fresh-env redeploys almost always hit this.
+2. **Selected-repositories scope.** If the App is installed on *Only select repositories*, a newly scaffolded repo is outside its scope, so ITS pushes don't deliver (but the pre-seeded golden repos still do). Check GitHub → the App → **Configure → Repository access = All repositories**.
 
 **Diagnose:**
 
@@ -1711,29 +1367,17 @@ oc logs -n app-platform-build $EL --since=30m | grep -i "<repo>"
 gh api repos/<owner>/<repo>/hooks --jq 'length'   # 0
 ```
 
-**Fix — re-point the App webhook URL to THIS cluster (do this on every fresh
-deploy):** GitHub → the App → **App settings → General → Webhook → URL**, set it
-to the current route:
+**Fix — re-point the App webhook URL to THIS cluster (do this on every fresh deploy):** GitHub → the App → **App settings → General → Webhook → URL**, set it to the current route:
 
 ```bash
 echo "https://$(oc get route app-platform-listener -n app-platform-build -o jsonpath='{.spec.host}')"
 ```
 
-Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify:
-`oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.data.token}' | base64 -d`).
-Then **Advanced → Recent Deliveries → Redeliver** a recent push, or push a commit.
-Also confirm **Repository access = All repositories** so scaffolder-created repos
-are in scope. This webhook-URL step is the piece most easily missed on a fresh
-env — the `.env` swap re-points the *cluster*, but the App's single endpoint
-still points at the previous cluster until you change it in GitHub.
+Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify: `oc get secret github-webhook-secret -n app-platform-build -o jsonpath='{.data.token}' | base64 -d`). Then **Advanced → Recent Deliveries → Redeliver** a recent push, or push a commit. Also confirm **Repository access = All repositories** so scaffolder-created repos are in scope. This webhook-URL step is the piece most easily missed on a fresh env — the `.env` swap re-points the *cluster*, but the App's single endpoint still points at the previous cluster until you change it in GitHub.
 
-Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter
-matches on `body.repository.topics`; if topics turn out to be absent from the
-push payload on your GitHub, switch the trigger to a per-repo webhook created by
-the scaffolder template instead.
+Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter matches on `body.repository.topics`; if topics turn out to be absent from the push payload on your GitHub, switch the trigger to a per-repo webhook created by the scaffolder template instead.
 
-**Recover an already-created project without waiting for the App fix** (what to
-run for a repo that was scaffolded while the App was still on Selected repos):
+**Recover an already-created project without waiting for the App fix** (what to run for a repo that was scaffolded while the App was still on Selected repos):
 
 ```bash
 # Create the bootstrap Argo CD Application the dispatcher would have created:
@@ -1767,8 +1411,7 @@ oc create job -n app-platform-build provisioner-now --from=cronjob/project-provi
 # quay-push-secret secrets present in <repo>-dev.
 ```
 
-The pipeline still needs a push to build — fix the App scope (or seed a run) for
-that.
+The pipeline still needs a push to build — fix the App scope (or seed a run) for that.
 
 ## References
 

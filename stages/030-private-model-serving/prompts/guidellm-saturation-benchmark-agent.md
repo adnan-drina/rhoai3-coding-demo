@@ -8,8 +8,7 @@ Recommended Codex sub-agent settings:
 - Workspace: `/Users/adrina/Sandbox/rhoai3-coding-demo`
 - Branch/worktree: current `rhoai34-refactoring` working tree
 
-Use this prompt when starting a background agent to find the practical
-concurrency limit of the Stage 030 Nemotron vLLM endpoint.
+Use this prompt when starting a background agent to find the practical concurrency limit of the Stage 030 Nemotron vLLM endpoint.
 
 ```text
 You are a background benchmark agent for the rhoai3-coding-demo repository.
@@ -80,9 +79,7 @@ Preflight:
 3. Confirm the InferenceService is Ready:
 
 ```bash
-oc get inferenceservice nvidia-nemotron-3-nano-30b-a3b -n demo-sandbox \
-  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}' \
-  --insecure-skip-tls-verify=true
+oc get inferenceservice nvidia-nemotron-3-nano-30b-a3b -n demo-sandbox \ -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}' \ --insecure-skip-tls-verify=true
 ```
 
 Benchmark method:
@@ -99,11 +96,7 @@ Suggested initial sequence:
 Use this command shape:
 
 ```bash
-RHOAI_GUIDELLM_RATE_TYPE=concurrent \
-RHOAI_GUIDELLM_RATE=<CONCURRENCY> \
-RHOAI_GUIDELLM_MAX_SECONDS=60 \
-RHOAI_GUIDELLM_OUTPUTS=benchmark-results.json,benchmark-results.csv \
-./030-private-model-serving/benchmark-guidellm.sh
+RHOAI_GUIDELLM_RATE_TYPE=concurrent \ RHOAI_GUIDELLM_RATE=<CONCURRENCY> \ RHOAI_GUIDELLM_MAX_SECONDS=60 \ RHOAI_GUIDELLM_OUTPUTS=benchmark-results.json,benchmark-results.csv \ ./030-private-model-serving/benchmark-guidellm.sh
 ```
 
 Rules for increasing load:
@@ -143,25 +136,8 @@ GuideLLM metrics to extract from each `benchmark-results.json`:
 Useful extraction command template:
 
 ```bash
-jq -r '
-  .benchmarks[]
-  | {
-      concurrency: .config.strategy.max_concurrency,
-      successful: .metrics.request_totals.successful,
-      errored: .metrics.request_totals.errored,
-      incomplete: .metrics.request_totals.incomplete,
-      ttft_mean_ms: .metrics.time_to_first_token_ms.successful.mean,
-      ttft_p95_ms: .metrics.time_to_first_token_ms.successful.percentiles.p95,
-      ttft_p99_ms: .metrics.time_to_first_token_ms.successful.percentiles.p99,
-      itl_mean_ms: .metrics.inter_token_latency_ms.successful.mean,
-      itl_p95_ms: .metrics.inter_token_latency_ms.successful.percentiles.p95,
-      tpot_mean_ms: .metrics.time_per_output_token_ms.successful.mean,
-      latency_p95_s: .metrics.request_latency.successful.percentiles.p95,
-      rps_mean: .metrics.requests_per_second.successful.mean,
-      output_tps_mean: .metrics.output_tokens_per_second.successful.mean,
-      total_tps_mean: .metrics.tokens_per_second.successful.mean
-    }
-' runs/stage-030-guidellm/<timestamp>/benchmark-results.json
+jq -r ' .benchmarks[]
+  | { concurrency: .config.strategy.max_concurrency, successful: .metrics.request_totals.successful, errored: .metrics.request_totals.errored, incomplete: .metrics.request_totals.incomplete, ttft_mean_ms: .metrics.time_to_first_token_ms.successful.mean, ttft_p95_ms: .metrics.time_to_first_token_ms.successful.percentiles.p95, ttft_p99_ms: .metrics.time_to_first_token_ms.successful.percentiles.p99, itl_mean_ms: .metrics.inter_token_latency_ms.successful.mean, itl_p95_ms: .metrics.inter_token_latency_ms.successful.percentiles.p95, tpot_mean_ms: .metrics.time_per_output_token_ms.successful.mean, latency_p95_s: .metrics.request_latency.successful.percentiles.p95, rps_mean: .metrics.requests_per_second.successful.mean, output_tps_mean: .metrics.output_tokens_per_second.successful.mean, total_tps_mean: .metrics.tokens_per_second.successful.mean } ' runs/stage-030-guidellm/<timestamp>/benchmark-results.json
 ```
 
 Prometheus/Grafana signals to collect around each run:
