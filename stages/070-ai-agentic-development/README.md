@@ -290,8 +290,6 @@ mvn -q test
 > targets it, is what daily engineering looks like. The spec captured
 > the intent; the artifacts stayed in the repo; the service grew.
 
-![Catalog products enriched with inventory availability](images/catalog-availability.png)
-
 ### Optional: Spec 003, AI product search through the governed gateway
 
 For presenters with time: [`demo-assets/003-catalog-ai-search.md`](demo-assets/003-catalog-ai-search.md) adds natural-language product search via the platform LLM (with a deterministic fallback). It lands the **double governance beat**: the application consumes the same MaaS gateway (same keys, token limits, and usage telemetry) as the coding assistant that built it. Developer AI and application AI, one governed platform.
@@ -333,15 +331,14 @@ It removes the workspace, catalog entries, Argo app and namespace, SonarQube his
 
 ## Red Hat Products Used
 
+- **[Red Hat Developer Hub](https://developers.redhat.com/rhdh)** provides the developer portal, golden-path templates, and catalog.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** provides the managed workspace with agent-scale resources.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides governed model endpoints through MaaS.
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides identity, namespace isolation, and runtime controls.
-- **[Red Hat Developer Hub](https://developers.redhat.com/rhdh)** provides the developer portal, golden-path templates, and catalog.
 
 ## Open Source Projects To Know
 
 - [OpenCode](https://opencode.ai/) is the terminal-based AI coding agent that reads AGENTS.md and skill files.
-- [Eclipse Che](https://www.eclipse.org/che/) is the upstream cloud development environment behind Dev Spaces.
 - [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit.
 - [Quarkus Agent MCP](https://github.com/quarkusio/quarkus-agent-mcp) provides extension-aware skills and project lifecycle tools.
 
