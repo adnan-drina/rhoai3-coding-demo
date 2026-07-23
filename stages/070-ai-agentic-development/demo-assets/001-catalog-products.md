@@ -1,6 +1,6 @@
 # Brief 001: Coolstore catalog — product listing
 
-Paste this brief as the description for `/speckit.specify`. It is the Quarkus rebuild of the original coolstore `catalog-spring-boot` service — the spec captures observed behavior; the implementation is fresh.
+Paste this brief as the description for `/speckit.specify`.
 
 ## Goal
 
