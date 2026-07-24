@@ -56,6 +56,30 @@ else
 fi
 ```
 
+### Working with the findings file — never read it whole
+
+`mta-findings.json` is large (hundreds of KB). Reading it into context
+wastes the budget and stalls the run. Always extract what you need with a
+script, e.g.:
+
+```bash
+python3 - <<'PYEOF'
+import json
+d = json.load(open("/projects/modernized/migration/mta-findings.json"))
+rows = []
+for rs in d:
+    for rid, v in (rs.get("violations") or {}).items():
+        rows.append((rid, v.get("description", ""), len(v.get("incidents") or [])))
+rows.sort(key=lambda r: -r[2])
+print(f"{sum(1 for _ in rows)} violations, {sum(r[2] for r in rows)} incidents")
+for rid, desc, n in rows:
+    print(f"{n:4d}  {rid}  {desc[:70]}")
+PYEOF
+```
+
+Read individual incidents (file/line/message) the same way — filtered by
+rule id, never the full file.
+
 ## Phase B — plan (spec handoff)
 
 Read the legacy code and `migration/mta-findings.json`, then write the
