@@ -133,18 +133,37 @@ the recipes run, create a follow-up **infer** task for OpenCode to harvest:
 "copy/adapt the transformed classes listed below from /tmp/rewrite-staging
 into the scaffold structure" with explicit source and destination paths.
 
-**Class: infer** — bounded worker run:
+**Class: infer** — bounded worker run. The worker's JSON event stream is
+huge (often hundreds of KB) — NEVER let it print to your terminal; it
+would flood your context and wedge the run. Redirect to a file and read
+only a scripted summary:
 
 ```bash
 cd /projects/modernized
 opencode run "<task packet>" \
   -m qwen/qwen3-6-35b-a3b --auto --format json \
-  -f specs/<id>/spec.md -f specs/<id>/tasks.md -f AGENTS.md
+  -f specs/<id>/spec.md -f specs/<id>/tasks.md -f AGENTS.md \
+  > /tmp/oc-task.json 2>/tmp/oc-task.err; echo "worker exit: $?"
+python3 - <<'PYEOF'
+import json
+texts, tools = [], []
+for line in open("/tmp/oc-task.json"):
+    line = line.strip()
+    if not line: continue
+    try: ev = json.loads(line)
+    except ValueError: continue
+    t = ev.get("type")
+    if t == "text": texts.append(ev.get("text") or ev.get("part", {}).get("text", ""))
+    elif t in ("tool", "tool_use"):
+        info = ev.get("part", ev)
+        tools.append(str(info.get("tool") or info.get("name") or "?"))
+print("tool calls:", len(tools))
+print("final text:", " ".join(texts)[-600:])
+PYEOF
 ```
 
-Parse the JSON events for the outcome; then verify independently — check
-`git status --porcelain` for the acceptance files. Never trust the
-worker's summary alone.
+Then verify independently — check `git status --porcelain` for the
+acceptance files. Never trust the worker's summary alone.
 
 **Sensors after EVERY task (cheap → expensive):**
 

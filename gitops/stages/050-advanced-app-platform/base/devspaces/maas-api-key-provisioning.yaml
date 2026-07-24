@@ -599,6 +599,12 @@ data:
     model["default"] = "nemotron-3-nano-30b-a3b"
     model["provider"] = "custom:maas-nemotron"
     cfg["model"] = model
+    # Output cap. Unset, Hermes requests half the context window as output
+    # (65536 on nemotron's 131072), so once the conversation passes ~65K
+    # input tokens vLLM rejects every request (input+output > context) and
+    # the loop wedges in silent stream retries. 16K output is plenty for
+    # orchestration turns and leaves ~114K for input before compaction.
+    cfg["max_tokens"] = 16384
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
     print("Hermes config: MaaS providers written (planner nemotron, worker qwen).")
