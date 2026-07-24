@@ -95,6 +95,28 @@ Everything this platform already operates maps onto that picture:
 
 Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQube report and prompted the fix; here the harness feeds sensor output back to the agent, which iterates until the checks pass — quality shifts from inspection to regulation. Second, humans move up a level: instead of reviewing every intermediate step, you review the outcome and **improve the harness** when something slips through — Böckeler calls this the steering loop, and it is the stage 070 "skills retro" practice graduated into a system.
 
+### The harness implementation: Hermes Agent
+
+Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (Nous Research) as the harness implementation that owns the autonomous loop: a CLI-first agent that consumes the project's guides, runs the sensors as tools (build, tests, OpenRewrite, analysis), and iterates until the checks pass or the budget expires. The properties that matter here:
+
+- **CLI-native, headless-capable**: `hermes chat -q "..."` runs a one-shot turn (including in non-TTY workers), and `hermes -w -z "..."` runs one in an isolated git worktree — the loop is drivable from a terminal and from automation alike.
+- **Governed models, first-class**: `~/.hermes/config.yaml` points at any OpenAI-compatible endpoint — our MaaS gateway with a platform-issued key, so every loop iteration is metered like everything else on this platform.
+- **Continuity with what you already built**: Hermes speaks the AGENTS.md and [agentskills.io](https://agentskills.io/home) mental model this project has used since stage 070 — the guides in this repository are its guides — and its built-in learning loop (skills created and improved from experience) is the "skills retro" practice running inside the agent itself.
+- **A real task system for real migrations**: the Kanban board (`~/.hermes/kanban.db`) is a durable, multi-agent task graph — a dispatcher decomposes work into child tasks, routes them to specialist worker profiles, and each worker is a full OS process reporting back to the board. That is the ~100-task shape a whole-application migration actually has.
+
+**Why not OpenClaw?** [OpenClaw](https://docs.openclaw.ai/) is the other agent harness you will hear named, and it is a strong product — but its center of gravity is different: a personal agent-ops **platform** built around a gateway daemon, chat channels, and session management, which *can* wrap coding CLIs (Codex, Copilot, even OpenCode via ACP) as embedded runtimes. Two mismatches for this stage:
+
+| Need for stage 080 | Hermes | OpenClaw |
+|---|---|---|
+| Drive the loop from a CLI, not a UI | First-class: `hermes chat -q` headless/one-shot | Possible, but the CLI is a side door into a gateway/session model |
+| Point at governed MaaS (`/v1` + platform key) | First-class OpenAI-compatible endpoint in `config.yaml` | Supported, with more allowlist/runtime/plugin ceremony |
+| Continuity with 070 (AGENTS.md, skills) | Native AGENTS.md + agentskills.io mental model | Has skills/bootstrap, but less aligned with the `.opencode/skills` + spec-kit path |
+| Self-correcting task loop (sensors → retry) | Kanban/DAG workers and one-shot runs are the product center | The agent loop exists, but product gravity is channels, gateway, sessions |
+| Fit the *teaching* word "harness" | Matches Böckeler: everything around the model (tools, skills, memory, approvals, execution) | Uses "harness" for a *different* thing — its low-level runtime executors (`codex`, `copilot` plugins) — which collides with the stage narrative |
+| Dev Spaces migration exercise | Heavier than OpenCode alone, but CLI-shaped | Heavier still: gateway daemon and channel/session semantics are the main design |
+
+**Verdict: Hermes fits stage 080's CLI-driven autonomous migration loop more natively than OpenClaw.** The demo should look like *watching the migration converge in the terminal* — Hermes' center of gravity is exactly that loop, with messaging surfaces optional; OpenClaw would have you operating a gateway platform to tell the same story. Division of labor with what you already know: **OpenCode remains the interactive spec-authoring agent** (the 070 muscle memory, used in Step 5); **Hermes owns the autonomous execution loop** (Step 6).
+
 ---
 
 ## Step 5: Generate the migration spec
@@ -111,7 +133,7 @@ The MTA findings say what must change; the spec says what the migrated service m
 
 ## Step 6: Migrate under the harness
 
-1. Start the implementation run. The agent works through the tasks: applying OpenRewrite recipes for the mechanical transforms, generating Quarkus-native code and tests for the rest.
+1. Start the implementation run: Hermes takes the task list — one-shot turns for a scoped demo (`hermes chat -q`), or the Kanban board for the full decomposed migration — and works through it: applying OpenRewrite recipes for the mechanical transforms, generating Quarkus-native code and tests for the rest.
 2. This is where the harness earns its name — after each meaningful change the sensors run, and the loop is part of the workflow, not a favor you ask:
    - build and tests must pass;
    - the evaluation pass reviews the change against the spec and the migration standards;
@@ -180,7 +202,8 @@ Nothing merges on agent authority.
 - [Kantra](https://github.com/konveyor/kantra) provides CLI-based application analysis.
 - [OpenRewrite](https://github.com/openrewrite/rewrite) provides deterministic, recipe-driven code transformation.
 - [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit carried over from stage 070.
-- [OpenCode](https://opencode.ai/) is the AI coding agent the harness governs.
+- [Hermes Agent](https://hermes-agent.nousresearch.com/docs) is the CLI-first agent harness that owns the autonomous migration loop.
+- [OpenCode](https://opencode.ai/) is the interactive AI coding agent used for spec authoring, carried over from stage 070.
 - [Coolstore](https://github.com/konveyor-ecosystem/coolstore) is the legacy sample application used as the migration target.
 
 ## References
@@ -188,6 +211,8 @@ Nothing merges on agent authority.
 | Resource | Link |
 |----------|------|
 | Harness Engineering for Coding Agents | https://martinfowler.com/articles/harness-engineering.html |
+| Hermes Agent documentation | https://hermes-agent.nousresearch.com/docs |
+| OpenClaw documentation (compared alternative) | https://docs.openclaw.ai/ |
 | MTA 8.2 documentation | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/ |
 | OpenRewrite documentation | https://docs.openrewrite.org/ |
 | spec-kit — spec-driven.md | https://github.com/github/spec-kit/blob/main/spec-driven.md |
