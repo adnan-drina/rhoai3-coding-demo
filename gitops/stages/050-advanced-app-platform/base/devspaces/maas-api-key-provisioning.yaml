@@ -462,7 +462,7 @@ data:
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
       OPENCODE_ENABLED='["nemotron", "qwen", "redhat"]'
       OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
-,
+    ,
         "redhat": {
           "npm": "@ai-sdk/openai-compatible",
           "name": "Red Hat Models (direct)",
@@ -483,8 +483,8 @@ data:
             "chunkTimeout": 120000
           }
         }
-REDHATEOF
-)"
+    REDHATEOF
+    )"
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
