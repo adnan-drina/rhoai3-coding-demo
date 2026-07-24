@@ -58,6 +58,13 @@ components:
         # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
         - name: HUB_INSECURE
           value: "true"
+        # Lightspeed/Kai is disabled platform-side (BACKLOG "Developer
+        # Lightspeed re-enable") — turn the extension's hub AI features off
+        # so the analysis panel starts clean.
+        - name: SOLUTION_SERVER_ENABLED
+          value: "false"
+        - name: PROFILE_SYNC_ENABLED
+          value: "false"
       memoryLimit: 6Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -140,7 +147,7 @@ commands:
         # JDT.LS Standard mode so mta-java registers its analysis provider
         # without requiring a .java file to be opened first (PVC-backed).
         if [ -f /projects/.code-workspace ]; then
-          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+          python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
         KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"

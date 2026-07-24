@@ -93,7 +93,7 @@ spec:
             # .java file first. Write into .code-workspace (PVC-backed at
             # /projects) so the setting survives workspace pod restarts.
             if [ -f /projects/.code-workspace ]; then
-              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
             fi
           component: tooling-container
     events:
@@ -125,6 +125,11 @@ spec:
             # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
             - name: HUB_INSECURE
               value: "true"
+            # Lightspeed/Kai is disabled platform-side — hub AI features off.
+            - name: SOLUTION_SERVER_ENABLED
+              value: "false"
+            - name: PROFILE_SYNC_ENABLED
+              value: "false"
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -213,7 +218,7 @@ spec:
             # .java file first. Write into .code-workspace (PVC-backed at
             # /projects) so the setting survives workspace pod restarts.
             if [ -f /projects/.code-workspace ]; then
-              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
             fi
           component: tooling-container
     events:
@@ -245,6 +250,11 @@ spec:
             # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
             - name: HUB_INSECURE
               value: "true"
+            # Lightspeed/Kai is disabled platform-side — hub AI features off.
+            - name: SOLUTION_SERVER_ENABLED
+              value: "false"
+            - name: PROFILE_SYNC_ENABLED
+              value: "false"
 ---
 kind: DevWorkspace
 apiVersion: workspace.devfile.io/v1alpha2
@@ -333,7 +343,7 @@ spec:
             # .java file first. Write into .code-workspace (PVC-backed at
             # /projects) so the setting survives workspace pod restarts.
             if [ -f /projects/.code-workspace ]; then
-              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); changed=s.get('java.server.launchMode')!='Standard'; s['java.server.launchMode']='Standard'; open(f,'w').write(json.dumps(ws,indent=2)); print('Set java.server.launchMode=Standard' if changed else 'Already Standard')" 2>&1 || true
+              python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
             fi
           component: tooling-container
     events:
@@ -365,3 +375,8 @@ spec:
             # Skip TLS verification — OpenShift uses a custom CA not trusted by the extension.
             - name: HUB_INSECURE
               value: "true"
+            # Lightspeed/Kai is disabled platform-side — hub AI features off.
+            - name: SOLUTION_SERVER_ENABLED
+              value: "false"
+            - name: PROFILE_SYNC_ENABLED
+              value: "false"
