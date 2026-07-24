@@ -69,7 +69,7 @@ stages:
       - "040"
     # RHDH OIDC brokers through the platform RHBK in this stage's identity
     # component; the PostSync jobs wait, so ordering resolves in one sync.
-    # MTA hub auth is disabled (feature_auth_required: false).
+    # MTA 8.2 hub auth federates to the platform realm (platform-sso IdP).
   - id: "060"
     name: AI-Assisted Development
     productFocus:

@@ -16,12 +16,10 @@ spec:
   kai_llm_provider: openai
   kai_llm_model: nemotron-3-nano-30b-a3b
   kai_llm_baseurl: "https://maas.placeholder.example.com/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
-  # NOTE: feature_auth_required DEFAULTS TO TRUE in MTA 8.2 (built-in Hub
-  # OIDC provider) — keep this explicit "false" until Phase B of the 8.2
-  # migration enables auth via the platform realm (see BACKLOG).
-  # Disable hub authentication so the MTA VS Code extension and workshop
-  # participants can access the hub without Keycloak credentials.
-  # The kubeconfig injected into the workspace uses the workspace SA JWT
-  # (audience: kubernetes.default.svc), which Keycloak cannot validate.
-  # For a workshop/demo cluster, open access is the right trade-off.
-  feature_auth_required: false
+  # MTA 8.2 built-in Hub OIDC provider with authentication enforced.
+  # Sign-in federates to the platform realm (identity component) through
+  # the platform-sso IdentityProvider CR, applied by the
+  # configure-mta-platform-sso PostSync job; idp_primary auto-redirects
+  # the console to platform SSO (same OpenShift login as RHDH).
+  feature_auth_required: true
+  idp_primary: true

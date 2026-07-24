@@ -15,16 +15,17 @@ resources:
   - mta-operator/subscription.yaml
   # Wave 5: kai-api-keys Secret (MaaS API key for LLM proxy)
   - mta-instance/kai-api-keys-secret.yaml
-  # Wave 10: Tackle CR (MTA instance with AI config; hub auth disabled for
-  # workshop access — nothing authenticates against the MTA Keycloak, so
-  # there is no OAuthClient or IdP job here; platform sign-in lives in
-  # identity/. MTA 8.2 replaces the bundled Keycloak with the built-in Hub
-  # OIDC provider — migration plan in BACKLOG.)
+  # Wave 10: Tackle CR (MTA 8.2: AI config + built-in Hub OIDC provider,
+  # auth enforced, idp_primary auto-redirect to platform SSO)
   - mta-instance/tackle.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - mta-instance/consolelink.yaml
   # PostSync: Patch cluster-specific MaaS URL + restart llm-proxy
   - jobs/patch-mta-maas-url.yaml
+  # PostSync: federate the Hub OIDC provider to the platform realm
+  # (realm roles + mta-hub client in identity/'s RHBK, IdP client Secret,
+  # IdentityProvider CR, hub restart)
+  - jobs/configure-mta-platform-sso.yaml
   # PostSync: mta-hub-config ConfigMaps (external hub URL) per workspace namespace
   - jobs/mta-hub-workspace-config.yaml
   # Wave 20: stage 080 modernization workspaces (MTA extension + hub wiring)

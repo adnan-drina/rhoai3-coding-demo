@@ -1,21 +1,10 @@
 # Stage 080: AI-Autonomous Migration with an Agent Harness
 
-The previous stages built the ladder one rung at a time: stage 060 showed one-shot prompting and let the pipeline gate catch its flaws; stage 070 moved the standards into the project (constitution, AGENTS.md, skills, specs) so the agent built it right the first time. Both stages end with a human driving every cycle. This stage asks the next question: what has to be true for an agent to carry a whole-application migration largely on its own, and still deserve a human's approval at the end?
+The previous stages built the AI maturity ladder one rung at a time, and both stages end with a human driving every cycle. This stage asks the next question: what has to be true for an agent to carry a whole-application migration largely on its own?
 
-The answer this stage gives is not a bigger model or a longer prompt. It is an **AI Agent Harness**: the engineered layer of guides and sensors around the agent that steers it before it acts and corrects it after, so that by the time a human reviews the result, the obvious failures have already been caught and fixed by the harness itself. The concept and terminology come from [Harness Engineering for Coding Agents](https://martinfowler.com/articles/harness-engineering.html) on martinfowler.com; the parts of the harness come from the platform you have already built: MTA analysis as ground truth, spec-kit artifacts as steering context, OpenRewrite recipes and tests as deterministic checks, and the SonarQube-gated pipeline as the final sensor before deployment.
+Legacy applications are not just expensive to maintain. They are an expanding attack surface. AI-powered exploit tools lower the cost of finding and weaponizing vulnerabilities in outdated frameworks, and regulations are catching up: the EU Cyber Resilience Act makes vendors accountable for the security posture of every product they ship, including the libraries and runtimes underneath it. The migration backlog is no longer a cost problem alone; it is a compliance and security deadline that most teams cannot meet with manual effort.
 
-The message for platform teams: autonomy is not a property of the agent, it is a property of the system around the agent. Everything this stage assembles into a harness is a governed platform capability you already operate.
-
-## Why This Matters
-
-Most enterprises carry a backlog of legacy applications they cannot afford to migrate by hand — and cannot afford to send to an external AI service either. The question this stage answers is: how far can AI take application migration when it runs on governed, private infrastructure, and where must humans stay in the loop?
-
-Stage 080 answers with two complementary paths on the same platform:
-
-- **Assisted modernization (supported product path):** Migration Toolkit for Applications analyzes the portfolio with rules and static analysis; Red Hat Developer Lightspeed for MTA turns findings into focused, reviewable remediation suggestions through governed model access.
-- **Autonomous migration (harness-governed agentic path):** an agent workflow takes a legacy service end-to-end to Quarkus — analysis-grounded planning, spec generation, code generation with self-evaluation loops that iterate until the quality bar is met — with a mandatory human review gate before anything merges, and every agent request metered through MaaS.
-
-The contrast is the message: analysis-grounded assistance is production-supported today; harness-governed agents multiply throughput on well-understood migrations — and both run under the same identity, token limits, and telemetry.
+This demo stage answers with two complementary paths on the same governed platform: assisted modernization through Migration Toolkit for Applications with Red Hat Developer Lightspeed turning findings into reviewable remediation suggestions, and autonomous migration where an agent harness takes a legacy service end-to-end to Quarkus with analysis-grounded planning, spec generation, self-evaluation loops, and a trusted software supply chain pipeline that enforces quality and security before anything merges.
 
 ## What You'll Do
 
@@ -155,7 +144,7 @@ Nothing merges on agent authority.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** hosts the migration workspace.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the governed MaaS endpoints the analysis tooling and the agent consume.
 - **[Red Hat OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/)** runs the exit pipeline with the SonarQube quality gate.
-- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the platform identity broker (stage 050 `identity` component) that signs developers into the portal driving this stage; MTA hub auth itself is disabled for workshop access.
+- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the platform identity broker (stage 050 `identity` component); MTA 8.2's built-in Hub OIDC provider federates to it, so MTA, RHDH, and the cluster share one OpenShift-backed sign-in.
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, identity integration, routes, storage, and operations.
 
 ## Open Source Projects To Know

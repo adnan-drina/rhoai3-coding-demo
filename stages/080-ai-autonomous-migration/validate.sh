@@ -27,9 +27,12 @@ check "Tackle LLM proxy enabled" \
 check "Tackle Solution Server enabled" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
   "true"
-check "Tackle hub auth disabled (workshop access; no MTA Keycloak)" \
+check "Tackle hub auth enabled (built-in OIDC provider)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
-  "false"
+  "true"
+check "Tackle idp_primary auto-redirect enabled" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.idp_primary}'" \
+  "true"
 check "Tackle LLM provider is OpenAI-compatible" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_provider}'" \
   "openai"
@@ -81,6 +84,30 @@ check_tackle_condition "KaiSolutionServerReady"
 log_step "MaaS Credentials (non-placeholder)"
 check_secret_value "OPENAI_API_BASE" "openshift-mta" "kai-api-keys" "OPENAI_API_BASE"
 check_secret_value "OPENAI_API_KEY" "openshift-mta" "kai-api-keys" "OPENAI_API_KEY"
+
+log_step "Platform SSO Federation (built-in Hub OIDC)"
+check "IdentityProvider platform-sso exists" \
+  "oc get identityprovider platform-sso -n openshift-mta -o jsonpath='{.metadata.name}'" \
+  "platform-sso"
+check "IdentityProvider issuer targets the platform realm" \
+  "oc get identityprovider platform-sso -n openshift-mta -o jsonpath='{.spec.issuer}' | grep -c '/realms/platform' || echo 0" \
+  "1"
+check "IdP client Secret exists" \
+  "oc get secret mta-idp-client-secret -n openshift-mta -o jsonpath='{.metadata.name}'" \
+  "mta-idp-client-secret"
+MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+if [[ -n "$MTA_ROUTE_HOST" ]]; then
+    check_http_code "Hub OIDC discovery" \
+      "https://${MTA_ROUTE_HOST}/oidc/.well-known/openid-configuration" "200"
+    HUB_ANON=$(curl -sk -o /dev/null -w '%{http_code}' "https://${MTA_ROUTE_HOST}/hub/applications" 2>/dev/null || echo "000")
+    if [[ "$HUB_ANON" == "401" ]]; then
+        echo -e "${GREEN}[PASS]${NC} Hub API enforces authentication (HTTP 401 unauthenticated)"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} Hub API does not enforce authentication (HTTP ${HUB_ANON}, expected 401)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+fi
 
 log_step "MTA UI Route"
 MTA_ROUTE=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")

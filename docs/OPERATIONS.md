@@ -932,7 +932,7 @@ oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
 
 ### Stage 050 — MTA (mta component)
 
-The stage 050 `mta` component installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080). It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
+The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
 
 Useful checks:
 
@@ -956,7 +956,7 @@ curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o j
 
 ### Stage 050 — Developer Hub (rhdh component)
 
-The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA hub auth is disabled, so the MTA-bundled Keycloak is unused (its removal is part of the MTA 8.2 migration, see BACKLOG).
+The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA 8.2's built-in Hub OIDC provider federates to the same realm (`platform-sso` IdentityProvider).
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 
