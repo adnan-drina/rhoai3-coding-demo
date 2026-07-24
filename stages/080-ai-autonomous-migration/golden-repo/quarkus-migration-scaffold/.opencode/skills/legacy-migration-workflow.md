@@ -20,8 +20,13 @@ description: How to migrate the legacy project into this Quarkus scaffold — an
 
 ## Working order
 
-1. Read the MTA analysis results for `/projects/legacy` (the user runs the
-   analysis via the MTA extension; ask for the report location if unclear).
+1. Read the MTA analysis results for `/projects/legacy`. The extension
+   saves each run as machine-readable JSON at
+   `/projects/legacy/.vscode/mta-core/analysis_<timestamp>.json` — use the
+   newest file. Structure: a list of rulesets; each ruleset's `violations`
+   map is keyed by rule id, with `description`, `category` and an
+   `incidents` list (`uri`, `lineNumber`, `message`, `codeSnip`). If no
+   analysis file exists, ask the user to run the analysis first.
 2. Extract the legacy service's observable behavior: REST endpoints and
    verbs, request/response shapes, persistence entities, seed data,
    external calls. Cite file paths from `/projects/legacy` as evidence.

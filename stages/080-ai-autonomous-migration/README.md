@@ -47,7 +47,7 @@ Before any agent writes a line, the supported product establishes the facts.
 3. Click **Start** (top right of the Analysis View). **Server Status** flips from `Stopped` to `Running` — this boots the analyzer engine inside the workspace. Leave **Agent Mode** off; the platform runs MTA analysis-only.
 4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/` — select **`quarkus-profile`** (Quarkus migration targets; the `audit-logging` profile adds custom organization rules).
 5. Back in the Analysis View, click **Run Analysis**. The first run downloads rulesets and scans the whole legacy tree — several minutes for a monolith; later runs are much faster (everything caches in the workspace).
-6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files — every finding anchored to a rule, file, and line, with mandatory issues and effort estimates.
+6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files — every finding anchored to a rule, file, and line, with mandatory issues and effort estimates. Each run is also saved as machine-readable JSON at `legacy/.vscode/mta-core/analysis_<timestamp>.json` — this file is what the agent consumes in the spec step.
 7. Keep the findings open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
 
 > **Expected panel state:** two informational cards are normal — *"GenAI
