@@ -585,15 +585,24 @@ data:
         with open(path) as fh:
             cfg = yaml.safe_load(fh) or {}
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
+    # context_length/max_tokens are PER-PROVIDER settings (the top-level
+    # max_tokens key is not honored for custom providers): without them
+    # Hermes mis-detects the window, computes the output cap from its own
+    # token ESTIMATE (which undercounts vs the server tokenizer), and long
+    # sessions die in HTTP 400 input+output>context loops.
     cfg["custom_providers"] = [
         {"name": "maas-nemotron",
          "base_url": base + "/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
          "api_key": os.environ["MAAS_API_KEY_NEMOTRON"],
-         "api_mode": "chat_completions"},
+         "api_mode": "chat_completions",
+         "context_length": 131072,
+         "max_tokens": 16384},
         {"name": "maas-qwen",
          "base_url": base + "/models-as-a-service/qwen3-6-35b-a3b/v1",
          "api_key": os.environ["MAAS_API_KEY_QWEN"],
-         "api_mode": "chat_completions"},
+         "api_mode": "chat_completions",
+         "context_length": 65536,
+         "max_tokens": 16384},
     ]
     model = cfg.get("model") or {}
     model["default"] = "nemotron-3-nano-30b-a3b"
