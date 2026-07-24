@@ -99,7 +99,7 @@ MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>
 if [[ -n "$MTA_ROUTE_HOST" ]]; then
     check_http_code "Hub OIDC discovery" \
       "https://${MTA_ROUTE_HOST}/oidc/.well-known/openid-configuration" "200"
-    HUB_ANON=$(curl -sk -o /dev/null -w '%{http_code}' "https://${MTA_ROUTE_HOST}/hub/applications" 2>/dev/null || echo "000")
+    HUB_ANON=$(curl -sk -H "Accept: application/json" -o /dev/null -w '%{http_code}' "https://${MTA_ROUTE_HOST}/hub/applications" 2>/dev/null || echo "000")
     if [[ "$HUB_ANON" == "401" ]]; then
         echo -e "${GREEN}[PASS]${NC} Hub API enforces authentication (HTTP 401 unauthenticated)"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))

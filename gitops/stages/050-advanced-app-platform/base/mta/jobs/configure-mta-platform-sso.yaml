@@ -252,35 +252,46 @@ spec:
             echo "mta-hub client created"
           fi
 
-          # --- 6. Realm-role -> scope-claim mapper (+role.<name> entries) ---
+          # --- 6. +role.<name> client scopes with role scope-mappings ---
           # The Hub expands +role.<name> entries found in the access token's
-          # `scope` claim (roleScopeRegex in tackle2-hub internal/auth).
-          MAPPER_NAME="hub-role-scopes"
-          HAS_MAPPER=$(curl -s -H "${AUTH}" \
-            "${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
-            | python3 -c "import sys,json; ms=json.load(sys.stdin); print('yes' if any(m['name']=='${MAPPER_NAME}' for m in ms) else 'no')" 2>/dev/null)
-          if [ "$HAS_MAPPER" != "yes" ]; then
+          # `scope` claim STRING (roleScopeRegex in tackle2-hub internal/auth;
+          # Keycloak's userinfo endpoint rejects array-typed scope claims, so
+          # protocol mappers are NOT usable here — verified live 2026-07-24).
+          # Client scopes named "+role.<name>", each carrying a realm-role
+          # scope-mapping and attached as OPTIONAL, are granted per user:
+          # Keycloak includes a requested optional client scope in the scope
+          # string only when the user holds a role in its scope-mappings.
+          for R in admin architect migrator project-manager; do
+            CSNAME="+role.${R}"
+            CS_ID=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
+              | python3 -c "
+          import sys,json
+          for s in json.load(sys.stdin):
+            if s['name'] == '${CSNAME}':
+              print(s['id']); break
+          " 2>/dev/null)
+            if [ -z "$CS_ID" ]; then
+              curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
+                "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
+                -d "{\"name\":\"${CSNAME}\",\"protocol\":\"openid-connect\",\"attributes\":{\"include.in.token.scope\":\"true\",\"display.on.consent.screen\":\"false\"}}" -o /dev/null
+              CS_ID=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/client-scopes" \
+                | python3 -c "
+          import sys,json
+          for s in json.load(sys.stdin):
+            if s['name'] == '${CSNAME}':
+              print(s['id']); break
+          ")
+              CHANGED=true
+              echo "Created client scope ${CSNAME}"
+            fi
+            ROLE_JSON=$(curl -s -H "${AUTH}" "${RHBK_URL}/admin/realms/${REALM}/roles/role.${R}")
             curl -s -X POST -H "${AUTH}" -H "Content-Type: application/json" \
-              "${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
-              -d "{
-                \"name\": \"${MAPPER_NAME}\",
-                \"protocol\": \"openid-connect\",
-                \"protocolMapper\": \"oidc-usermodel-realm-role-mapper\",
-                \"config\": {
-                  \"claim.name\": \"scope\",
-                  \"jsonType.label\": \"String\",
-                  \"multivalued\": \"true\",
-                  \"usermodel.realmRoleMapping.rolePrefix\": \"+\",
-                  \"access.token.claim\": \"true\",
-                  \"id.token.claim\": \"false\",
-                  \"userinfo.token.claim\": \"false\"
-                }
-              }" -o /dev/null
-            CHANGED=true
-            echo "Realm-role scope mapper created"
-          else
-            echo "Realm-role scope mapper exists"
-          fi
+              -d "[${ROLE_JSON}]" \
+              "${RHBK_URL}/admin/realms/${REALM}/client-scopes/${CS_ID}/scope-mappings/realm" -o /dev/null
+            curl -s -X PUT -H "${AUTH}" \
+              "${RHBK_URL}/admin/realms/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${CS_ID}" -o /dev/null
+            echo "Client scope ${CSNAME} mapped and attached (optional)"
+          done
 
           # --- 7. IdP client Secret in openshift-mta (key clientSecret, Ch 9.1) ---
           if [ "$CURRENT_SECRET" != "$CLIENT_SECRET" ]; then
@@ -313,6 +324,10 @@ spec:
               - openid
               - profile
               - email
+              - "+role.admin"
+              - "+role.architect"
+              - "+role.migrator"
+              - "+role.project-manager"
           IDPEOF
           )
           echo "${IDP_APPLY}"
