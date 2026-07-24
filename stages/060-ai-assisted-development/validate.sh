@@ -143,13 +143,21 @@ check "Init script configures git identity on fresh volumes" \
 check "DevWorkspace MaaS API key Secret exists" \
     "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "maas-devspace-api-keys"
+# Local-model keys are required. The per-model external keys
+# (MAAS_API_KEY_QWEN3_235B / MAAS_API_KEY_MINIMAX_M2) were removed with the
+# 2026-07-20 external-model decision; the interim direct-endpoint path uses
+# REDHAT_MODELS_* instead, provisioned out of band — optional on fresh
+# installs (see BACKLOG "External-model streaming buffered by IPP").
 for key_name in \
     MAAS_BASE_URL \
     MAAS_API_KEY_NEMOTRON \
-    MAAS_API_KEY_QWEN \
-    MAAS_API_KEY_QWEN3_235B \
-    MAAS_API_KEY_MINIMAX_M2; do
+    MAAS_API_KEY_QWEN; do
     check "DevWorkspace MaaS Secret contains $key_name" \
+        "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \
+        "present"
+done
+for key_name in REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY; do
+    check_warn "DevWorkspace MaaS Secret contains $key_name (optional direct-endpoint path)" \
         "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \
         "present"
 done

@@ -42,7 +42,7 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 Before any agent writes a line, the supported product establishes the facts.
 
-1. Open the workspace from the component page. The legacy source is cloned; the MTA extension is connected to the platform's MTA hub out of the box.
+1. Open the workspace from the component page. The legacy source is cloned; the MTA extension is connected to the platform's MTA hub out of the box. Opening the MTA console auto-redirects you through **platform SSO** — the same OpenShift login as Developer Hub, brokered by the hub's built-in OIDC provider, with your MTA role (`role.architect`) resolved from the platform realm.
 2. Run an MTA analysis against the Quarkus migration target and open the report.
 3. Review the findings: mandatory issues, effort estimates, and the specific files and patterns that must change. Where Developer Lightspeed is available, inspect its suggested resolutions for a sample of findings.
 4. Keep the report open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
@@ -121,6 +121,14 @@ Nothing merges on agent authority.
 1. Push. The project's pipeline runs clone → build → SonarQube gate → image build/push, the same exit every stage uses.
 2. Deploy the migrated service on OpenShift and verify the running endpoints against the spec's behavioral contract.
 3. Open the Stage 040 MaaS usage dashboard: the token consumption of the full autonomous run, attributed to the developer's key, per model, next to the interactive stages' usage.
+
+> **Token governance beat (MTA 8.2):** interactive sessions run on
+> five-minute access tokens; automation runs on **API keys** you create in
+> the MTA console (your username menu → Tokens → Create API Key) — scoped
+> to your role, usable by CI jobs and the Developer Lightspeed agent, and
+> revocable instantly from the same page. Create one, show a scripted hub
+> API call with it, then revoke it: governed automation credentials with a
+> visible lifecycle, the same story the platform tells for model keys.
 
 **What you should see:** the migrated service running on OpenShift, a green pipeline, and the complete, attributed cost of autonomy on the platform dashboard.
 
