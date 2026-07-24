@@ -577,6 +577,7 @@ data:
         return
       fi
       export MAAS_BASE_URL MAAS_API_KEY_NEMOTRON MAAS_API_KEY_QWEN
+      export REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
     path = os.path.expanduser("~/.hermes/config.yaml")
@@ -604,6 +605,22 @@ data:
          "context_length": 65536,
          "max_tokens": 16384},
     ]
+    # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
+    # MiniMax M2 (196K) as the documented ORCHESTRATOR-reliability routing
+    # option. Direct endpoint because the cluster gateway breaks streaming
+    # for external models on RHOAI 3.4 (expected fixed in 3.5, at which
+    # point this should route through the gateway like everything else).
+    # Skipped when the operator has not provisioned the out-of-band keys.
+    rh_base = (os.environ.get("REDHAT_MODELS_BASE_URL") or "").rstrip("/")
+    rh_key = os.environ.get("REDHAT_MODELS_API_KEY") or ""
+    if rh_base and rh_key:
+        cfg["custom_providers"].append(
+            {"name": "maas-m2",
+             "base_url": rh_base,
+             "api_key": rh_key,
+             "api_mode": "chat_completions",
+             "context_length": 196608,
+             "max_tokens": 16384})
     model = cfg.get("model") or {}
     model["default"] = "nemotron-3-nano-30b-a3b"
     model["provider"] = "custom:maas-nemotron"

@@ -242,6 +242,26 @@ not "the agent says done."
 | Budget exhausted on a task | `migration/debt.md`, continue |
 | Two consecutive full-suite failures after corrections | HALT: write run-log + debt, report, do not push, never bypass sensors |
 
+## Model routing (operator option)
+
+The governed default routes both agents through the cluster MaaS gateway:
+orchestrator on `custom:maas-nemotron` (131K), worker on
+`qwen/qwen3-6-35b-a3b` (64K). For long or failure-prone runs the operator
+may start the orchestrator on the Red Hat MaaS portal's MiniMax M2
+instead — stronger long-horizon tool calling and a 196K window:
+
+```bash
+hermes chat --provider custom:maas-m2 --model minimax-m2 -q "..."
+```
+
+Trade-off (temporary): `maas-m2` is a direct external endpoint, so its
+tokens do not appear on the platform's MaaS dashboard and are not
+governed by cluster quotas — the RHOAI 3.4 gateway cannot stream external
+models (fixed in 3.5, after which this routes through the gateway too).
+The worker stays on governed qwen either way. Portal models with only 32K
+context (e.g. gpt-oss-120b) are not orchestrator candidates: harness
+sessions routinely exceed 65K input tokens.
+
 ## Cost discipline
 
 Both you and OpenCode run on metered MaaS developer keys. Prefer `rewrite`

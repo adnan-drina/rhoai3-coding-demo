@@ -156,6 +156,18 @@ You start the run and observe; Hermes drives.
 
 > **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
 
+> **Reliability vs governance (temporary):** orchestration is the hardest
+> model role — long horizons, heavy tool calling, growing context. The
+> harness documents an operator option to route the **orchestrator** to
+> MiniMax M2 (196K context) from the Red Hat MaaS portal
+> (`hermes chat --provider custom:maas-m2 --model minimax-m2`), which is
+> markedly more robust for long runs. The trade-off: it is a direct
+> external endpoint, so those tokens bypass the platform dashboard and
+> quotas — because the RHOAI 3.4 gateway cannot stream external models.
+> RHOAI 3.5 fixes that, at which point the strong-orchestrator option
+> becomes governed like everything else and this disclaimer disappears.
+> The coding worker stays on governed Qwen in both configurations.
+
 ---
 
 ## Step 7: The factory ships it
