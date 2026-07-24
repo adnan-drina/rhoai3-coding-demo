@@ -15,6 +15,26 @@ prompts.
   commits happen here, and only here. Its provenance record is
   `migration.yaml` (source repository of the migration).
 
+## Harness roles (autonomous runs)
+
+When the migration runs under the Hermes harness
+(`.hermes/skills/migration-harness/`), the division of labor is fixed:
+
+- **Hermes** orchestrates: plan, task queue, sensors, budgets. It writes
+  only `specs/`, `migration/`, and the scratch dir `/tmp/rewrite-staging`
+  — never application source in this repository.
+- **OpenCode** (you, in worker runs) implements exactly the task packet it
+  was handed — nothing more. You never declare the migration complete;
+  the findings baseline in `migration/mta-findings.json` and the sensors
+  decide.
+- **OpenRewrite** performs mechanical transforms on the scratch copy;
+  harvesting transformed files into this repository arrives as an
+  explicit OpenCode task with source and destination paths.
+- `/tmp/rewrite-staging` is ephemeral working space and is never
+  committed to any repository.
+- Merge authority is the factory pipeline (build + SonarQube gate), not
+  any agent's summary.
+
 ## Project identity (modernized)
 
 - Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM),

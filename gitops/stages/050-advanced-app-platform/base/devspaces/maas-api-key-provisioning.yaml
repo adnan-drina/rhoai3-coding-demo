@@ -604,6 +604,18 @@ data:
     print("Hermes config: MaaS providers written (planner nemotron, worker qwen).")
     HERMESEOF
       chmod 600 "${HOME}/.hermes/config.yaml"
+
+      # Repo-versioned Hermes skills (e.g. the migration-harness runbook):
+      # platform-seeded and versioned with the repo, not agent-invented.
+      # Symlinked so a repo pull updates the skill without re-running init.
+      if [ -d "${PROJECT_DIR}/.hermes/skills" ]; then
+        mkdir -p "${HOME}/.hermes/skills"
+        for d in "${PROJECT_DIR}"/.hermes/skills/*/; do
+          [ -d "${d}" ] || continue
+          ln -sfn "${d%/}" "${HOME}/.hermes/skills/$(basename "${d}")"
+        done
+        echo "Linked repo Hermes skills into ~/.hermes/skills."
+      fi
     }
 
     write_kantra_helper() {
