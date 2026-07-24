@@ -50,6 +50,15 @@ Before any agent writes a line, the supported product establishes the facts.
 6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files — every finding anchored to a rule, file, and line, with mandatory issues and effort estimates.
 7. Keep the findings open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
 
+> **Expected panel state:** two informational cards are normal — *"GenAI
+> functionality is disabled"* and *"Hub Configuration — No features
+> enabled"*. They gate the Developer Lightspeed surface (the hub's
+> Solution Server for AI remediation suggestions, and centralized Profile
+> Sync), which this platform intentionally leaves off: the agent harness
+> in `modernized/` is this exercise's remediation engine, and analysis
+> profiles are versioned in the legacy repository (`.konveyor/profiles/`)
+> instead of synced from the hub. Analysis itself needs neither.
+
 **What you should see:** the analysis panel enumerating concrete migration issues in the legacy code, and squiggles in the legacy sources where each issue lives.
 
 > **Console alternative:** the same analysis runs server-side in the MTA
