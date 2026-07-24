@@ -548,6 +548,97 @@ data:
       fi
     }
 
+    ensure_hermes() {
+      # Stage 080 harness orchestrator (Hermes Agent CLI). The installer is
+      # self-contained (bundles Node 22 + Python 3.11 under ~/.hermes) and
+      # offers no version pinning yet — same floating pattern as the
+      # opencode installer above. --skip-browser keeps the install headless.
+      if [ ! -x "${HOME}/.local/bin/hermes" ]; then
+        curl -fsSL --retry 3 --max-time 300 -o /tmp/hermes-install.sh \
+          https://hermes-agent.nousresearch.com/install.sh \
+          && bash /tmp/hermes-install.sh --skip-browser >/tmp/hermes-install.log 2>&1 \
+          && echo "Installed Hermes Agent CLI." \
+          || { echo "Hermes installer failed (see /tmp/hermes-install.log); harness orchestrator unavailable."; return; }
+      fi
+      if ! grep -q "rhoai3-coding-demo: hermes path" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes path\n'
+          printf 'export PATH="${HOME}/.local/bin:${PATH}"\n'
+        } >> "${HOME}/.bashrc"
+      fi
+
+      # Point Hermes at the same governed MaaS endpoints as OpenCode:
+      # orchestrator/planner on Nemotron (131K context), coding worker on
+      # Qwen (stage 070 continuity). Rewritten on every init so key
+      # rotation propagates. PyYAML comes from Hermes' own venv.
+      local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
+      if [ ! -x "${venv_py}" ]; then
+        echo "Hermes venv python not found; skipping Hermes MaaS config."
+        return
+      fi
+      export MAAS_BASE_URL MAAS_API_KEY_NEMOTRON MAAS_API_KEY_QWEN
+      "${venv_py}" - <<'HERMESEOF'
+    import os, yaml
+    path = os.path.expanduser("~/.hermes/config.yaml")
+    cfg = {}
+    if os.path.exists(path):
+        with open(path) as fh:
+            cfg = yaml.safe_load(fh) or {}
+    base = os.environ["MAAS_BASE_URL"].rstrip("/")
+    cfg["custom_providers"] = [
+        {"name": "maas-nemotron",
+         "base_url": base + "/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
+         "api_key": os.environ["MAAS_API_KEY_NEMOTRON"],
+         "api_mode": "chat_completions"},
+        {"name": "maas-qwen",
+         "base_url": base + "/models-as-a-service/qwen3-6-35b-a3b/v1",
+         "api_key": os.environ["MAAS_API_KEY_QWEN"],
+         "api_mode": "chat_completions"},
+    ]
+    model = cfg.get("model") or {}
+    model["default"] = "nemotron-3-nano-30b-a3b"
+    model["provider"] = "custom:maas-nemotron"
+    cfg["model"] = model
+    with open(path, "w") as fh:
+        yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
+    print("Hermes config: MaaS providers written (planner nemotron, worker qwen).")
+    HERMESEOF
+      chmod 600 "${HOME}/.hermes/config.yaml"
+    }
+
+    write_kantra_helper() {
+      # kantra (containerless Konveyor CLI) is the harness re-analysis
+      # sensor. Its release zip is ~690MB (1.6G extracted, mostly a Maven
+      # index) — too heavy for postStart and for the home PVC, so install
+      # is LAZY: the harness runbook calls kantra-ensure before the sensor
+      # step; /tmp caches it for the pod lifetime. Pinned; bump deliberately.
+      mkdir -p "${HOME}/.local/bin"
+      cat > "${HOME}/.local/bin/kantra-ensure" <<'KANTRAEOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KANTRA_VERSION="v0.10.0-beta.1"
+    KANTRA_HOME="${KANTRA_HOME:-/tmp/kantra}"
+    if [ -x "${KANTRA_HOME}/kantra" ]; then
+      echo "kantra ready: ${KANTRA_HOME}/kantra"
+      exit 0
+    fi
+    echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace pod)..."
+    curl -fsSL --retry 3 --max-time 1200 -o /tmp/kantra.zip \
+      "https://github.com/konveyor/kantra/releases/download/${KANTRA_VERSION}/kantra.linux.amd64.zip"
+    mkdir -p "${KANTRA_HOME}"
+    if command -v unzip >/dev/null 2>&1; then
+      unzip -oq /tmp/kantra.zip -d "${KANTRA_HOME}"
+    else
+      python3 -m zipfile -e /tmp/kantra.zip "${KANTRA_HOME}"
+    fi
+    rm -f /tmp/kantra.zip
+    chmod +x "${KANTRA_HOME}/kantra"
+    echo "kantra ready: ${KANTRA_HOME}/kantra"
+    KANTRAEOF
+      chmod 755 "${HOME}/.local/bin/kantra-ensure"
+      echo "Installed kantra-ensure helper (lazy harness sensor install)."
+    }
+
     if [ "${AI_TOOL}" = "opencode" ]; then
       ensure_opencode_latest
       ensure_quarkus_agent_mcp
@@ -625,6 +716,15 @@ data:
     else
       rm -rf "${HOME}/.config/opencode" "${HOME}/.opencode"
       echo "OpenCode config removed — this is a Kilo workspace."
+    fi
+
+    # Stage 080 migration workspaces (app-migration template + golden
+    # scaffold pass PROFILE=modernized): the harness orchestrator (Hermes)
+    # and the lazy re-analysis sensor helper (kantra-ensure) ride on top of
+    # the OpenCode worker tooling above.
+    if [ "${PROFILE}" = "modernized" ]; then
+      ensure_hermes
+      write_kantra_helper
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---

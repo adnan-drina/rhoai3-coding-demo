@@ -106,6 +106,24 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
+log_step "Harness Tooling (Session 0 — init script contract)"
+# The migration golden path's workspaces (PROFILE=modernized) get the
+# harness orchestrator + sensor tooling from the shared init ConfigMap:
+# Hermes CLI (idempotent PVC install, MaaS-wired) and the lazy kantra
+# sensor helper (~690MB zip — deliberately NOT downloaded at postStart).
+check "init script installs the Hermes Agent CLI" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
+  "1"
+check "init script wires Hermes to MaaS providers (planner nemotron)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-nemotron' || echo 0" \
+  "1"
+check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'KANTRA_VERSION=\"v0.10.0-beta.1\"' || echo 0" \
+  "1"
+check "harness tooling is gated on the modernized profile" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \
+  "1"
+
 log_step "Modernization Workspaces (mta component)"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "mca-coolstore workspace exists: $ns" \
