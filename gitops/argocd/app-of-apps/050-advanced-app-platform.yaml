@@ -107,14 +107,9 @@ spec:
       jsonPointers:
         - /spec/href
         - /spec/applicationMenu/imageURL
-    - group: oauth.openshift.io
-      kind: OAuthClient
-      name: mta-keycloak
-      jsonPointers:
-        - /secret
-        - /redirectURIs
     # The configure-platform-identity PostSync hook generates the secret and
-    # patches the live RHBK redirect URI (same pattern as mta-keycloak).
+    # patches the live RHBK redirect URI; Argo must not revert them to the
+    # committed placeholders.
     - group: oauth.openshift.io
       kind: OAuthClient
       name: platform-keycloak

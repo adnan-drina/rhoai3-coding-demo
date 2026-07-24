@@ -69,7 +69,7 @@ stages:
       - "040"
     # RHDH OIDC brokers through the platform RHBK in this stage's identity
     # component; the PostSync jobs wait, so ordering resolves in one sync.
-    # The MTA-operator-managed Keycloak serves only MTA.
+    # MTA hub auth is disabled (feature_auth_required: false, no Keycloak).
   - id: "060"
     name: AI-Assisted Development
     productFocus:

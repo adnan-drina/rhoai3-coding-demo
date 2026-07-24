@@ -15,7 +15,7 @@ kind: Kustomization
 #                (image seeded by deploy.sh via the shared pipeline)
 # Identity note: RHDH OIDC brokers through the identity component's
 # platform RHBK; the PostSync jobs wait/retry, so ordering resolves within
-# one Application sync. The MTA-operator-managed Keycloak serves only MTA.
+# one Application sync. MTA hub auth is disabled (no MTA Keycloak).
 
 resources:
   - identity

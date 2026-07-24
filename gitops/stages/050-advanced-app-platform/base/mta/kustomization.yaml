@@ -15,16 +15,14 @@ resources:
   - mta-operator/subscription.yaml
   # Wave 5: kai-api-keys Secret (MaaS API key for LLM proxy)
   - mta-instance/kai-api-keys-secret.yaml
-  # Wave 5: OAuthClient for OpenShift federated login
-  - mta-instance/oauthclient.yaml
-  # Wave 10: Tackle CR (MTA instance with AI config)
+  # Wave 10: Tackle CR (MTA instance with AI config; hub auth disabled for
+  # workshop access — the operator deploys no Keycloak, so there is no
+  # OAuthClient or IdP job here; platform sign-in lives in identity/)
   - mta-instance/tackle.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - mta-instance/consolelink.yaml
   # PostSync: Patch cluster-specific MaaS URL + restart llm-proxy
   - jobs/patch-mta-maas-url.yaml
-  # PostSync: Configure RHBK OpenShift IdP and role mappings
-  - jobs/configure-mta-openshift-auth.yaml
   # PostSync: mta-hub-config ConfigMaps (external hub URL) per workspace namespace
   - jobs/mta-hub-workspace-config.yaml
   # Wave 20: stage 080 modernization workspaces (MTA extension + hub wiring)

@@ -27,6 +27,9 @@ check "Tackle LLM proxy enabled" \
 check "Tackle Solution Server enabled" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
   "true"
+check "Tackle hub auth disabled (workshop access; no MTA Keycloak)" \
+  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
+  "false"
 check "Tackle LLM provider is OpenAI-compatible" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_provider}'" \
   "openai"
@@ -78,36 +81,6 @@ check_tackle_condition "KaiSolutionServerReady"
 log_step "MaaS Credentials (non-placeholder)"
 check_secret_value "OPENAI_API_BASE" "openshift-mta" "kai-api-keys" "OPENAI_API_BASE"
 check_secret_value "OPENAI_API_KEY" "openshift-mta" "kai-api-keys" "OPENAI_API_KEY"
-
-log_step "OpenShift OAuth Federation"
-check "OAuthClient mta-keycloak exists" \
-  "oc get oauthclient mta-keycloak -o jsonpath='{.metadata.name}'" \
-  "mta-keycloak"
-check "OAuthClient mta-keycloak grant method is auto" \
-  "oc get oauthclient mta-keycloak -o jsonpath='{.grantMethod}'" \
-  "auto"
-
-OAUTH_REDIRECT=$(oc get oauthclient mta-keycloak -o jsonpath='{.redirectURIs[0]}' 2>/dev/null || echo "")
-if [[ -n "$OAUTH_REDIRECT" ]] && [[ "$OAUTH_REDIRECT" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} OAuthClient redirect URI: ${OAUTH_REDIRECT}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${RED}[FAIL]${NC} OAuthClient redirect URI is placeholder or missing"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-MTA_ROUTE_HOST=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-if [[ -n "$MTA_ROUTE_HOST" ]]; then
-    IDP_CHECK=$(curl -sk "https://${MTA_ROUTE_HOST}/auth/realms/mta/protocol/openid-connect/auth?client_id=mta-ui&response_type=code&redirect_uri=https://${MTA_ROUTE_HOST}" 2>/dev/null \
-      | grep -c 'social-openshift' || echo "0")
-    if [[ "$IDP_CHECK" -ge 1 ]]; then
-        echo -e "${GREEN}[PASS]${NC} MTA login page shows 'Log in with OpenShift'"
-        VALIDATE_PASS=$((VALIDATE_PASS + 1))
-    else
-        echo -e "${RED}[FAIL]${NC} OpenShift IdP not visible on MTA login page"
-        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-    fi
-fi
 
 log_step "MTA UI Route"
 MTA_ROUTE=$(oc get route mta -n openshift-mta -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
