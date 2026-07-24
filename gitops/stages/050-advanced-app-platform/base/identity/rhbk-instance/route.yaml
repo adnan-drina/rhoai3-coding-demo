@@ -1,0 +1,24 @@
+# Edge-terminated Route to the platform RHBK.
+# The Operator-managed ingress is disabled on the Keycloak CR (it only
+# supports passthrough termination); this Route terminates TLS at the
+# OpenShift router with the cluster wildcard certificate and forwards to
+# the Operator-created HTTP service port. Keycloak trusts the router's
+# X-Forwarded headers (spec.proxy.headers: xforwarded on the CR).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: platform-rhbk
+  namespace: rhbk
+  labels:
+    app: platform-rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  to:
+    kind: Service
+    name: platform-rhbk-service
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

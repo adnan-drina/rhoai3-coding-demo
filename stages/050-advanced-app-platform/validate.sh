@@ -68,6 +68,31 @@ check "CheCluster phase Active" \
   "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" \
   "Active"
 
+log_step "Identity (identity component)"
+check_csv_succeeded "rhbk" "rhbk-operator"
+check "Keycloak platform-rhbk Ready" \
+  "oc get keycloak platform-rhbk -n rhbk -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}'" \
+  "True"
+check "platform realm import Done" \
+  "oc get keycloakrealmimport platform-realm -n rhbk -o jsonpath='{.status.conditions[?(@.type==\"Done\")].status}'" \
+  "True"
+check "platform-rhbk route exists" \
+  "oc get route platform-rhbk -n rhbk -o jsonpath='{.metadata.name}'" \
+  "platform-rhbk"
+RHBK_HOST=$(oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+if [[ -n "$RHBK_HOST" ]]; then
+    check_http_code "platform realm OIDC discovery" \
+      "https://${RHBK_HOST}/realms/platform/.well-known/openid-configuration" "200"
+fi
+PLATFORM_OAUTH_REDIRECT=$(oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}' 2>/dev/null || echo "")
+if [[ -n "$PLATFORM_OAUTH_REDIRECT" ]] && [[ "$PLATFORM_OAUTH_REDIRECT" != *"placeholder"* ]]; then
+    echo -e "${GREEN}[PASS]${NC} OAuthClient platform-keycloak redirect URI: ${PLATFORM_OAUTH_REDIRECT}"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
+else
+    echo -e "${RED}[FAIL]${NC} OAuthClient platform-keycloak redirect URI is placeholder or missing"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+fi
+
 log_step "MTA (mta component)"
 check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \

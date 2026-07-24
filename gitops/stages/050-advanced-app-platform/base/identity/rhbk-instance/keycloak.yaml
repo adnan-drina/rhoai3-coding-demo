@@ -1,0 +1,42 @@
+# Platform RHBK instance (Keycloak CR, RHBK 26.x / k8s.keycloak.org/v2beta1).
+#
+# TLS model (per the RHBK Operator Guide): the Operator-managed Route only
+# supports passthrough termination, so for router-terminated (edge) TLS the
+# documented approach is to enable HTTP on the server, disable the
+# Operator-managed ingress, set forwarded-header proxy mode, and ship a
+# custom edge Route (route.yaml). The OpenShift router presents the cluster
+# wildcard certificate to browsers; in-cluster jobs use the HTTP service.
+#
+# Hostname: `strict: false` lets Keycloak resolve its issuer from the
+# router's X-Forwarded headers, keeping this manifest cluster-domain
+# agnostic (GitOps cannot know the apps domain). Production hardening note:
+# pin spec.hostname.hostname to the route host instead.
+# Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/basic-deployment-
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: platform-rhbk
+  namespace: rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  instances: 1
+  db:
+    vendor: postgres
+    host: rhbk-db
+    database: keycloak
+    usernameSecret:
+      name: rhbk-db
+      key: username
+    passwordSecret:
+      name: rhbk-db
+      key: password
+  http:
+    httpEnabled: true
+  ingress:
+    enabled: false
+  proxy:
+    headers: xforwarded
+  hostname:
+    strict: false

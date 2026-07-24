@@ -4,10 +4,11 @@ kind: Kustomization
 # Slim variant of the Advanced Application Platform: everything except the
 # MTA migration stack. Use when the autonomous-migration rung (stage 080)
 # is not part of the demo — MTA is the heaviest single-rung component.
-# NOTE: RHDH OIDC currently brokers through the MTA Keycloak, so this
-# overlay is only usable once the standalone platform RHBK lands.
+# RHDH OIDC brokers through the identity component's platform RHBK, so
+# this overlay carries full RHDH sign-in without MTA.
 
 resources:
+  - ../../base/identity
   - ../../base/devspaces
   - ../../base/pipelines
   - ../../base/sonarqube

@@ -113,3 +113,11 @@ spec:
       jsonPointers:
         - /secret
         - /redirectURIs
+    # The configure-platform-identity PostSync hook generates the secret and
+    # patches the live RHBK redirect URI (same pattern as mta-keycloak).
+    - group: oauth.openshift.io
+      kind: OAuthClient
+      name: platform-keycloak
+      jsonPointers:
+        - /secret
+        - /redirectURIs

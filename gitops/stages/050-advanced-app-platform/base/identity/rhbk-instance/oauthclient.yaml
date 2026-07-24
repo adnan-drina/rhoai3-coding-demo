@@ -1,0 +1,13 @@
+# OAuthClient for platform RHBK federation with OpenShift OAuth.
+# The secret and redirectURIs are placeholders — the PostSync Job
+# generates a real secret and patches both fields with the live RHBK route.
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: platform-keycloak
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+grantMethod: auto
+secret: "PLACEHOLDER_WILL_BE_PATCHED"
+redirectURIs:
+  - https://rhbk.placeholder.example.com/realms/platform/broker/openshift/endpoint

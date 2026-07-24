@@ -2,7 +2,8 @@
 
 > **Status:** consolidated platform stage.
 > This stage owns every component the AI development stages consume, as
-> kustomize components: `devspaces` (Dev Spaces + workspaces + MaaS keys),
+> kustomize components: `identity` (platform RHBK for OpenShift-brokered
+> sign-in), `devspaces` (Dev Spaces + workspaces + MaaS keys),
 > `pipelines` (Pipelines/TAS operators, the webhook dispatcher, and the
 > reusable `project-pipeline` base — every project runs its OWN pipeline in
 > its own namespace), `sonarqube` (fail-on-new-issue quality gate), `rhdh`
@@ -28,20 +29,21 @@ Red Hat Developer Hub provides the portal surface: software catalog, TechDocs, a
 
 Operator co-tenancy note: both delivery operators install into `openshift-operators` with `Automatic` approval. Stage 040 deploys Red Hat Connectivity Link subscriptions with `Manual` approval in the same namespace, and OLM applies the most restrictive approval to shared InstallPlans. A Sync hook Job (`approve-installplans.yaml`) approves pending InstallPlans that carry the Pipelines or TAS CSVs.
 
-**Identity:** RHDH OIDC brokers through the MTA Keycloak that this stage's own `mta` component deploys. The PostSync jobs wait and retry, so ordering resolves within a single Application sync — there is no cross-stage dependency anymore. A standalone platform RHBK (realm `platform`) remains an open refinement in the restructure plan; until it lands, the `slim` overlay (platform without MTA) cannot serve RHDH sign-in.
+**Identity:** RHDH OIDC brokers through the standalone platform RHBK (realm `platform`) that this stage's `identity` component deploys: RHBK Operator (channel `stable-v26`), a PostgreSQL backing store, an edge-terminated Route, a `KeycloakRealmImport` for the realm shell, and a PostSync job that wires the `openshift-v4` identity provider, the `platform-keycloak` OAuthClient, and the demo users. The PostSync jobs wait and retry, so ordering resolves within a single Application sync. The MTA-operator-managed Keycloak now serves only MTA (realm `mta`); RHDH no longer depends on it, which is what makes the `slim` overlay usable.
 
 ## What This Stage Adds
 
-This stage adds the application-platform layer every dev-arc rung consumes, organized as six components under [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
+This stage adds the application-platform layer every dev-arc rung consumes, organized as seven components under [`gitops/stages/050-advanced-app-platform/base/`](../../gitops/stages/050-advanced-app-platform/base/):
 
+- **identity** — the standalone platform Red Hat build of Keycloak (namespace `rhbk`, realm `platform`): RHBK Operator, PostgreSQL, edge Route, realm import, and the PostSync job that federates OpenShift OAuth (`openshift-v4` IdP + `platform-keycloak` OAuthClient) and pre-creates the demo users.
 - **devspaces** — Red Hat OpenShift Dev Spaces (CheCluster), persona workspaces, Che Code editor policy with Kilo Code, MaaS API key provisioning, and the interim `agentic-coolstore` workspace.
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted Artifact Signer (channel `stable-v1.4`) operators, `pipelines-console-plugin` enablement (sync-wave 10) for pipeline execution statistics and approval tasks in the web console, the InstallPlan approval hook for Stage 040 co-tenancy, and the **per-project pipeline model**: every project namespace runs its own `app-push` pipeline (clone → Maven build → SonarQube gate → image build → `:latest` retag) instantiated from the `pipelines/project-pipeline` kustomize template. `app-platform-build` hosts only the webhook dispatcher (the GitHub App has a single endpoint) and the `project-provisioner` CronJob that reconciles build credentials into every namespace labeled `rhoai3.redhat.com/pipeline-project=true`.
 - **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the admin password, provisions the scanner token, and sets a custom default quality gate that fails on any new issue.
-- **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via the MTA Keycloak, runtime-generated catalog, TechDocs, ConsoleLink, and the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab, Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
+- **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via the platform RHBK (`identity` component), runtime-generated catalog, TechDocs, ConsoleLink, and the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab, Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
 - **mta** — Migration Toolkit for Applications with Developer Lightspeed wired to MaaS, plus the `mca-coolstore` modernization workspaces (MTA VS Code extension pack wired to the hub, one per persona namespace) — the stage 080 analysis entry point.
 - **coolstore** — the deployed Coolstore dev environment (`coolstore-inventory-service` in `coolstore-dev`): the demo starts from a running brownfield system, not an empty cluster. The Deployment pins the `:latest` image that every successful pipeline run republishes (`tag-latest` task); `deploy.sh` seeds the first green run. The brownfield `mca-coolstore` monolith itself stays source-only — it is the MTA analysis target, not a workload this pipeline can build.
 
-The `overlays/slim` variant deploys the platform without MTA (usable once the standalone platform RHBK lands).
+The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works there because the `identity` component owns the platform realm.
 
 **Developer entry points per stage:**
 
@@ -96,7 +98,7 @@ Developer Hub is a discovery and self-service surface: it links to approved plat
 - **[Red Hat Developer Hub](https://www.redhat.com/en/technologies/cloud-computing/developer-hub)** provides the enterprise developer portal and software catalog.
 - **[Red Hat OpenShift Pipelines](https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/)** provides Tekton-based CI/CD, Pipelines-as-Code, and Tekton Chains for provenance.
 - **[Red Hat Trusted Artifact Signer](https://access.redhat.com/products/red-hat-trusted-artifact-signer)** provides the sigstore stack (Fulcio, Rekor, Cosign) for signing and attestation.
-- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the OIDC identity broker, deployed by this stage's `mta` component; Stage 080 consumes this Keycloak for MTA identity federation.
+- **[Red Hat build of Keycloak](https://access.redhat.com/products/red-hat-build-of-keycloak)** provides the platform OIDC identity broker (realm `platform`), deployed standalone by this stage's `identity` component; the MTA operator manages its own Keycloak instance for MTA identity federation (stage 080).
 - **[Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)** provides runtime, routes, console launcher integration, and OAuth identity foundation.
 
 ## Open Source Projects To Know

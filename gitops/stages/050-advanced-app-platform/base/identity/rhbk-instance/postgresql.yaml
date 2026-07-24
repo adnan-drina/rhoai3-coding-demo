@@ -1,0 +1,106 @@
+# PostgreSQL backing store for the platform RHBK.
+# The RHBK Operator does not manage a database; the Operator Guide's basic
+# deployment expects an existing PostgreSQL reachable from the Keycloak CR.
+# Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/basic-deployment-
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rhbk-db-data
+  namespace: rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rhbk-db
+  namespace: rhbk
+  labels:
+    app: platform-rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      name: rhbk-db
+  template:
+    metadata:
+      labels:
+        app: platform-rhbk
+        name: rhbk-db
+    spec:
+      containers:
+        - name: postgresql
+          image: registry.redhat.io/rhel9/postgresql-15:latest
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rhbk-db
+                  key: username
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rhbk-db
+                  key: password
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: rhbk-db
+                  key: database
+          readinessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /usr/libexec/check-container
+                - --live
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: rhbk-db-data
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        - name: rhbk-db-data
+          persistentVolumeClaim:
+            claimName: rhbk-db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rhbk-db
+  namespace: rhbk
+  labels:
+    app: platform-rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  selector:
+    name: rhbk-db
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: 5432

@@ -60,15 +60,16 @@ stages:
       - Red Hat Developer Hub
       - Red Hat OpenShift Pipelines
       - Red Hat Trusted Artifact Signer
+      - Red Hat build of Keycloak
     deployScript: stages/050-advanced-app-platform/deploy.sh
     validateScript: stages/050-advanced-app-platform/validate.sh
     gitopsApplication: 050-advanced-app-platform
     gitopsPath: gitops/stages/050-advanced-app-platform/base
     dependsOn:
       - "040"
-    # RHDH OIDC brokers through the MTA Keycloak in this stage's mta
+    # RHDH OIDC brokers through the platform RHBK in this stage's identity
     # component; the PostSync jobs wait, so ordering resolves in one sync.
-    # A standalone platform RHBK remains an open item in the restructure plan.
+    # The MTA-operator-managed Keycloak serves only MTA.
   - id: "060"
     name: AI-Assisted Development
     productFocus:

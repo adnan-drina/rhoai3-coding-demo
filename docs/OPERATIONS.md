@@ -104,7 +104,7 @@ Deploy stages in order:
 ./stages/050-advanced-app-platform/deploy.sh
 ```
 
-Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
+Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
@@ -114,7 +114,7 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA + Lightspeed, coolstore dev environment |
+| 050 | `050-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA + Lightspeed, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MTA stack |
@@ -917,6 +917,19 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
+### Stage 050 — Identity (identity component)
+
+The stage 050 `identity` component deploys the standalone platform RHBK (Red Hat build of Keycloak, namespace `rhbk`): RHBK Operator (`stable-v26`), a PostgreSQL backing store, the `platform-rhbk` Keycloak CR (HTTP-enabled behind an edge-terminated Route, `proxy.headers: xforwarded`), a `KeycloakRealmImport` for the `platform` realm shell, and the `configure-platform-identity` PostSync job that patches the `platform-keycloak` OAuthClient, creates the `openshift-v4` identity provider, and pre-creates the demo users with IdP links. RHDH signs in against this realm; the MTA-operator-managed Keycloak is MTA-only.
+
+Useful checks:
+
+```bash
+oc get keycloak platform-rhbk -n rhbk -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+oc get keycloakrealmimport platform-realm -n rhbk -o jsonpath='{.status.conditions[?(@.type=="Done")].status}'
+oc get route platform-rhbk -n rhbk -o jsonpath='{.spec.host}'
+oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
+```
+
 ### Stage 050 — MTA (mta component)
 
 The stage 050 `mta` component installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080). It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
@@ -943,7 +956,7 @@ curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o j
 
 ### Stage 050 — Developer Hub (rhdh component)
 
-The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the MTA Keycloak from the `mta` component of the same stage (a standalone platform RHBK remains an open item in the restructure plan).
+The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; the MTA-operator-managed Keycloak serves only MTA.
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 

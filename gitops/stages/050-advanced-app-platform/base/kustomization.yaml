@@ -4,6 +4,7 @@ kind: Kustomization
 # Stage 050: Advanced Application Platform
 # The app-platform layer every dev-arc rung consumes, organized as
 # capability components:
+#   identity   — platform RHBK (realm `platform`) brokering OpenShift OAuth
 #   devspaces  — Dev Spaces + Kilo Code + persona workspaces + MaaS keys
 #   pipelines  — Pipelines/TAS operators + shared push pipeline + triggers
 #   sonarqube  — static analysis with fail-on-new-issue quality gate
@@ -12,11 +13,12 @@ kind: Kustomization
 #                use overlays/slim to deploy the platform without it)
 #   coolstore  — deployed Coolstore Inventory Service dev environment
 #                (image seeded by deploy.sh via the shared pipeline)
-# Identity note: RHDH OIDC brokers through the mta component's MTA
-# Keycloak; the PostSync jobs wait/retry, so ordering resolves within one
-# Application sync. A standalone platform RHBK remains an open refinement.
+# Identity note: RHDH OIDC brokers through the identity component's
+# platform RHBK; the PostSync jobs wait/retry, so ordering resolves within
+# one Application sync. The MTA-operator-managed Keycloak serves only MTA.
 
 resources:
+  - identity
   - devspaces
   - pipelines
   - sonarqube

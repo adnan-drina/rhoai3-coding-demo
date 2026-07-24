@@ -30,7 +30,7 @@ require_env QUAY_ROBOT_TOKEN \
 assert_required_env
 
 log_step "Stage 050: Advanced Application Platform"
-log_info "Components: devspaces, pipelines, sonarqube, rhdh, mta"
+log_info "Components: identity, devspaces, pipelines, sonarqube, rhdh, mta"
 
 # --- Provision build-pipeline secrets from .env (never committed) ---
 oc get namespace app-platform-build >/dev/null 2>&1 || oc create namespace app-platform-build
@@ -251,12 +251,13 @@ EOF
 seed_coolstore || log_warn "Coolstore seed incomplete — see messages above; re-run deploy.sh to retry"
 
 log_info "ArgoCD handles orchestration via sync waves (per component):"
+log_info "  identity:    RHBK operator -> PostgreSQL -> Keycloak -> realm -> PostSync IdP job"
 log_info "  devspaces:   operator -> CheCluster -> workspaces -> MaaS keys"
 log_info "  pipelines:   Pipelines/TAS operators -> build namespace -> pipeline + triggers"
 log_info "  sonarqube:   db secret hook -> PostgreSQL -> SonarQube -> PostSync gate/token job"
 log_info "  rhdh:        operator -> config -> Backstage CR -> PostSync OIDC"
 log_info "  mta:         MTA operator -> Tackle -> Lightspeed/MaaS hooks"
-log_info "RHDH OIDC brokers through the mta component Keycloak; PostSync jobs wait, so"
+log_info "RHDH OIDC brokers through the identity component platform RHBK; PostSync jobs wait, so"
 log_info "ordering resolves within this one Application."
 echo ""
 log_info "Monitor progress:"

@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Identity component: standalone platform RHBK (Red Hat build of Keycloak).
+# Owns the `platform` realm that brokers OpenShift OAuth for platform
+# services (today: RHDH sign-in). Replaces the transitional brokering
+# through the MTA-operator-managed Keycloak, so the platform works without
+# the mta component (overlays/slim).
+# Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html-single/operator_guide/index
+
+resources:
+  # Wave 0-2: RHBK Operator
+  - rhbk-operator/namespace.yaml
+  - rhbk-operator/operatorgroup.yaml
+  - rhbk-operator/subscription.yaml
+  # Sync hook wave 3-4: generate DB credentials (never committed to Git)
+  - rhbk-instance/ensure-db-secret.yaml
+  # Wave 5-6: PostgreSQL backing store
+  - rhbk-instance/postgresql.yaml
+  # Wave 5: OAuthClient for OpenShift federated login (patched by PostSync job)
+  - rhbk-instance/oauthclient.yaml
+  # Wave 10: Keycloak CR (platform-rhbk)
+  - rhbk-instance/keycloak.yaml
+  # Wave 11: edge-terminated Route (operator-managed ingress is disabled)
+  - rhbk-instance/route.yaml
+  # Wave 12: platform realm import (creation only — see file comment)
+  - rhbk-instance/realm-platform.yaml
+  # PostSync: OAuthClient secret + openshift-v4 IdP + demo users
+  - jobs/configure-platform-identity.yaml

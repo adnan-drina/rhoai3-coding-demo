@@ -1,0 +1,17 @@
+# Red Hat build of Keycloak Operator from the redhat-operators catalog.
+# Channel stable-v26 tracks RHBK 26.x (26.6 at time of authoring; CR API
+# k8s.keycloak.org/v2beta1).
+# Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/installation-
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhbk-operator
+  namespace: rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  name: rhbk-operator
+  channel: stable-v26
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

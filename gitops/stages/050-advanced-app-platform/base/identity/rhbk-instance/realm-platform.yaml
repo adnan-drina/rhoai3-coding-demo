@@ -1,0 +1,25 @@
+# Platform realm import.
+# Per the RHBK Operator Guide, KeycloakRealmImport only creates realms — it
+# never updates or deletes an existing one. The realm shell is therefore
+# declared here, while all cluster-specific wiring (OAuth client secret,
+# openshift-v4 identity provider, demo users) is applied idempotently by the
+# configure-platform-identity PostSync job against the Admin API.
+# Ref: https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.6/html/operator_guide/realm-import-
+apiVersion: k8s.keycloak.org/v2beta1
+kind: KeycloakRealmImport
+metadata:
+  name: platform-realm
+  namespace: rhbk
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  keycloakCRName: platform-rhbk
+  realm:
+    realm: platform
+    displayName: Platform
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: false
+    duplicateEmailsAllowed: false
