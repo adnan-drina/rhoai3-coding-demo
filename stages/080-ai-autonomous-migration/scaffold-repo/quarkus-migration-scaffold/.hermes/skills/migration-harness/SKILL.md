@@ -104,7 +104,7 @@ Goal:           <one sentence>
 Findings:       <rule ids this task resolves>
 Constraints:    follow AGENTS.md and the repo skills; no scope creep
 Inputs:         attached via -f (spec.md, tasks.md, touched files)
-Acceptance:     <files expected to change>; mvn -q test passes
+Acceptance:     <files expected to change>; mvn -q clean test passes
 Out of scope:   <explicitly excluded work>
 ```
 
@@ -170,7 +170,9 @@ acceptance files. Never trust the worker's summary alone.
 ```bash
 cd /projects/modernized
 export JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME}/bin:${PATH}"
-mvn -q test
+# clean is non-negotiable: an incremental build can pass on stale
+# target/ classes and hide missing dependencies the factory WILL catch
+mvn -q clean test
 ```
 
 On milestone boundaries (every 3–4 tasks), run a short inferential
@@ -199,7 +201,7 @@ cp /tmp/kantra-after/output.json /projects/modernized/migration/mta-findings-aft
 Done means the baseline findings are resolved (or waived in the spec) —
 not "the agent says done."
 
-2. `mvn -q verify` clean.
+2. `mvn -q clean verify` green.
 3. Commit with a conventional message referencing the spec id; push to
    `main`.
 4. Final report: tasks completed/deferred, debt entries, findings delta
