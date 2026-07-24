@@ -56,6 +56,14 @@ else
 fi
 ```
 
+### Scripting rule — terminal only, never execute_code
+
+For ALL scripting (parsing findings, summarizing worker output, checking
+reports) use the **terminal** tool with `python3 - <<'PYEOF' ... PYEOF`
+heredocs, exactly as the examples in this skill do. Do NOT use the
+execute_code tool: on this platform's models it is frequently emitted
+with empty arguments, fails instantly, and burns the iteration budget.
+
 ### Working with the findings file — never read it whole
 
 `mta-findings.json` is large (hundreds of KB). Reading it into context

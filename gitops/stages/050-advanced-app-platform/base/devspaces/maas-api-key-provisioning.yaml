@@ -605,6 +605,19 @@ data:
     # the loop wedges in silent stream retries. 16K output is plenty for
     # orchestration turns and leaves ~114K for input before compaction.
     cfg["max_tokens"] = 16384
+    # Autonomous-run circuit breaker: without hard stops a broken tool
+    # (e.g. the model emitting empty execute_code calls) burns the whole
+    # 60-iteration budget on instant failures. Hermes documents hard stops
+    # as the right mode for autonomous sessions; warnings stay on too.
+    glr = cfg.get("tool_loop_guardrails") or {}
+    glr["warnings_enabled"] = True
+    glr["hard_stop_enabled"] = True
+    cfg["tool_loop_guardrails"] = glr
+    # Migration-trimmed toolset (design decision: no messaging, cron,
+    # browser, image or tts surfaces in the workspace harness).
+    pts = cfg.get("platform_toolsets") or {}
+    pts["cli"] = ["web", "terminal", "file", "skills", "todo"]
+    cfg["platform_toolsets"] = pts
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
     print("Hermes config: MaaS providers written (planner nemotron, worker qwen).")
