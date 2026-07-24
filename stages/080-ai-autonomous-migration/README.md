@@ -42,12 +42,23 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 Before any agent writes a line, the supported product establishes the facts.
 
-1. Open the workspace from the component page. The legacy source is cloned; the MTA extension is connected to the platform's MTA hub out of the box. Opening the MTA console auto-redirects you through **platform SSO** — the same OpenShift login as Developer Hub, brokered by the hub's built-in OIDC provider, with your MTA role (`role.architect`) resolved from the platform realm.
-2. Run an MTA analysis against the Quarkus migration target and open the report.
-3. Review the findings: mandatory issues, effort estimates, and the specific files and patterns that must change.
-4. Keep the report open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
+1. Open the workspace from the component page's **Dev Spaces** link. Both projects clone automatically — `legacy/` (the application you're migrating, read-only) next to `modernized/` (your destination repository) — and the MTA extension pack installs on first start (1–2 minutes).
+2. Click the **MTA icon** in the left Activity Bar (the Konveyor logo), then **Open Analysis Panel**. Give the panel a moment on first open: the Java language server initializes in the background (the workspace pre-configures Standard mode so the analysis provider registers without opening a `.java` file first).
+3. Click **Start** (top right of the Analysis View). **Server Status** flips from `Stopped` to `Running` — this boots the analyzer engine inside the workspace. Leave **Agent Mode** off; the platform runs MTA analysis-only.
+4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/` — select **`quarkus-profile`** (Quarkus migration targets; the `audit-logging` profile adds custom organization rules).
+5. Back in the Analysis View, click **Run Analysis**. The first run downloads rulesets and scans the whole legacy tree — several minutes for a monolith; later runs are much faster (everything caches in the workspace).
+6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files — every finding anchored to a rule, file, and line, with mandatory issues and effort estimates.
+7. Keep the findings open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
 
-**What you should see:** an analysis report enumerating concrete migration issues in the legacy code, each anchored to files and rules.
+**What you should see:** the analysis panel enumerating concrete migration issues in the legacy code, and squiggles in the legacy sources where each issue lives.
+
+> **Console alternative:** the same analysis runs server-side in the MTA
+> console (application launcher → MTA — it auto-redirects through
+> **platform SSO**, the same OpenShift login as Developer Hub, with your
+> MTA role resolved from the platform realm). Add the legacy repository
+> to the Application Inventory, run the analysis, and open the report
+> under the application's Reports tab. The in-workspace path above is the
+> demo default: the findings land exactly where the agent will work.
 
 ---
 
