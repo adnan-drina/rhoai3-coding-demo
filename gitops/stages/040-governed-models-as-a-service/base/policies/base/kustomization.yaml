@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
   - devspaces-coding-models-access.yaml
-  - mta-migration-models-access.yaml
   - personal-users-access.yaml
   - developer-hub-models-access.yaml
   - ai-safety-guardrails-access.yaml

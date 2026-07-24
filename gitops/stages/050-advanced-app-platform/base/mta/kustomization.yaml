@@ -13,15 +13,12 @@ resources:
   - mta-operator/namespace.yaml
   - mta-operator/operatorgroup.yaml
   - mta-operator/subscription.yaml
-  # Wave 5: kai-api-keys Secret (MaaS API key for LLM proxy)
-  - mta-instance/kai-api-keys-secret.yaml
-  # Wave 10: Tackle CR (MTA 8.2: AI config + built-in Hub OIDC provider,
-  # auth enforced, idp_primary auto-redirect to platform SSO)
+  # Wave 10: Tackle CR (MTA 8.2: built-in Hub OIDC provider, auth
+  # enforced, idp_primary auto-redirect to platform SSO; Lightspeed/Kai
+  # disabled until the demo needs it)
   - mta-instance/tackle.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - mta-instance/consolelink.yaml
-  # PostSync: Patch cluster-specific MaaS URL + restart llm-proxy
-  - jobs/patch-mta-maas-url.yaml
   # PostSync: federate the Hub OIDC provider to the platform realm
   # (realm roles + mta-hub client in identity/'s RHBK, IdP client Secret,
   # IdentityProvider CR, hub restart)

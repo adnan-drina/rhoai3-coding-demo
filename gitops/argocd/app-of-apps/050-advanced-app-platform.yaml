@@ -89,18 +89,6 @@ spec:
       kind: PersistentVolumeClaim
       jsonPointers:
         - /spec
-    - group: ""
-      kind: Secret
-      name: kai-api-keys
-      namespace: openshift-mta
-      jsonPointers:
-        - /data
-    - group: tackle.konveyor.io
-      kind: Tackle
-      name: mta
-      namespace: openshift-mta
-      jsonPointers:
-        - /spec/kai_llm_baseurl
     - group: console.openshift.io
       kind: ConsoleLink
       name: mta

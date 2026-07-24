@@ -977,17 +977,6 @@ else
 fi
 check "personal-kube-admin subscription has gpt-4o-mini @100K and priority 150" "$R"
 
-MTA_SUB="mta-migration-models"
-MTA_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${MTA_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
-if contains_word "$MTA_MODELS" "nemotron-3-nano-30b-a3b" &&
-  contains_word "$MTA_MODELS" "qwen3-6-35b-a3b" &&
-  ! contains_word "$MTA_MODELS" "gpt-4o-mini"; then
-  R="pass"
-else
-  R="models=${MTA_MODELS:-missing}"
-fi
-check "mta-migration-models subscription has locals-only (no gpt-4o-mini)" "$R"
-
 AUTH_SUBJECT_USERS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.subjects.users[*]}")
 AUTH_MODELS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 AUTH_ORG=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.meteringMetadata.organizationId}")

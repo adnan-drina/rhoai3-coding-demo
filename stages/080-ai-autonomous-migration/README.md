@@ -4,7 +4,7 @@ The previous stages built the AI maturity ladder one rung at a time, and both st
 
 Legacy applications are not just expensive to maintain. They are an expanding attack surface. AI-powered exploit tools lower the cost of finding and weaponizing vulnerabilities in outdated frameworks, and regulations are catching up: the EU Cyber Resilience Act makes vendors accountable for the security posture of every product they ship, including the libraries and runtimes underneath it. The migration backlog is no longer a cost problem alone; it is a compliance and security deadline that most teams cannot meet with manual effort.
 
-This demo stage answers with two complementary paths on the same governed platform: assisted modernization through Migration Toolkit for Applications with Red Hat Developer Lightspeed turning findings into reviewable remediation suggestions, and autonomous migration where an agent harness takes a legacy service end-to-end to Quarkus with analysis-grounded planning, spec generation, self-evaluation loops, and a trusted software supply chain pipeline that enforces quality and security before anything merges.
+This demo stage answers with two complementary paths on the same governed platform: assisted modernization through Migration Toolkit for Applications turning a legacy codebase into an inventory of concrete, prioritized migration issues, and autonomous migration where an agent harness takes a legacy service end-to-end to Quarkus with analysis-grounded planning, spec generation, self-evaluation loops, and a trusted software supply chain pipeline that enforces quality and security before anything merges.
 
 ## What You'll Do
 
@@ -44,7 +44,7 @@ Before any agent writes a line, the supported product establishes the facts.
 
 1. Open the workspace from the component page. The legacy source is cloned; the MTA extension is connected to the platform's MTA hub out of the box. Opening the MTA console auto-redirects you through **platform SSO** — the same OpenShift login as Developer Hub, brokered by the hub's built-in OIDC provider, with your MTA role (`role.architect`) resolved from the platform realm.
 2. Run an MTA analysis against the Quarkus migration target and open the report.
-3. Review the findings: mandatory issues, effort estimates, and the specific files and patterns that must change. Where Developer Lightspeed is available, inspect its suggested resolutions for a sample of findings.
+3. Review the findings: mandatory issues, effort estimates, and the specific files and patterns that must change.
 4. Keep the report open. From this point on, the analysis is the **checklist the agentic result must satisfy** — the migration is done when the findings are resolved, not when the agent says so.
 
 **What you should see:** an analysis report enumerating concrete migration issues in the legacy code, each anchored to files and rules.
@@ -125,7 +125,7 @@ Nothing merges on agent authority.
 > **Token governance beat (MTA 8.2):** interactive sessions run on
 > five-minute access tokens; automation runs on **API keys** you create in
 > the MTA console (your username menu → Tokens → Create API Key) — scoped
-> to your role, usable by CI jobs and the Developer Lightspeed agent, and
+> to your role, usable by CI jobs and automation, and
 > revocable instantly from the same page. Create one, show a scripted hub
 > API call with it, then revoke it: governed automation credentials with a
 > visible lifecycle, the same story the platform tells for model keys.
@@ -147,7 +147,6 @@ Nothing merges on agent authority.
 ## Red Hat Products Used
 
 - **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** provides modernization analysis, inventory, rules, and developer workflow integration.
-- **[Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/)** adds AI-assisted code resolution (Technology Preview).
 - **[Red Hat Developer Hub](https://developers.redhat.com/rhdh)** provides the developer portal and the migration golden-path template.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** hosts the migration workspace.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the governed MaaS endpoints the analysis tooling and the agent consume.
@@ -159,7 +158,6 @@ Nothing merges on agent authority.
 
 - [Konveyor](https://www.konveyor.io/) is the upstream modernization community behind MTA.
 - [Kantra](https://github.com/konveyor/kantra) provides CLI-based application analysis.
-- [Kai](https://github.com/konveyor/kai) is the upstream AI-assisted modernization effort behind Developer Lightspeed for MTA.
 - [OpenRewrite](https://github.com/openrewrite/rewrite) provides deterministic, recipe-driven code transformation.
 - [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit carried over from stage 070.
 - [OpenCode](https://opencode.ai/) is the AI coding agent the harness governs.

@@ -7,7 +7,7 @@
 > `pipelines` (Pipelines/TAS operators, the webhook dispatcher, and the
 > reusable `project-pipeline` base — every project runs its OWN pipeline in
 > its own namespace), `sonarqube` (fail-on-new-issue quality gate), `rhdh`
-> (Developer Hub), `mta` (MTA + Developer Lightspeed), and `coolstore`
+> (Developer Hub), `mta` (Migration Toolkit for Applications), and `coolstore`
 > (the deployed stage 060 dev environment). The `agentic-quarkus-scaffold`
 > golden-path template (stage 070) is registered in the catalog; golden
 > repositories bootstrap via `scripts/bootstrap-golden-repos.sh`. Pipeline,
@@ -40,7 +40,7 @@ This stage adds the application-platform layer every dev-arc rung consumes, orga
 - **pipelines** — OpenShift Pipelines (channel `pipelines-1.22`) and Trusted Artifact Signer (channel `stable-v1.4`) operators, `pipelines-console-plugin` enablement (sync-wave 10) for pipeline execution statistics and approval tasks in the web console, the InstallPlan approval hook for Stage 040 co-tenancy, and the **per-project pipeline model**: every project namespace runs its own `app-push` pipeline (clone → Maven build → SonarQube gate → image build → `:latest` retag) instantiated from the `pipelines/project-pipeline` kustomize template. `app-platform-build` hosts only the webhook dispatcher (the GitHub App has a single endpoint) and the `project-provisioner` CronJob that reconciles build credentials into every namespace labeled `rhoai3.redhat.com/pipeline-project=true`.
 - **sonarqube** — SonarQube + PostgreSQL and a PostSync job that rotates the admin password, provisions the scanner token, and sets a custom default quality gate that fails on any new issue.
 - **rhdh** — Red Hat Developer Hub 1.9, OIDC brokered to OpenShift OAuth via the platform RHBK (`identity` component), runtime-generated catalog, TechDocs, ConsoleLink, and the OpenShift integration plugins (Kubernetes, Topology, Tekton CI tab, Argo CD) backed by the read-only `rhdh-kubernetes-reader` ServiceAccount.
-- **mta** — Migration Toolkit for Applications with Developer Lightspeed wired to MaaS, plus the `mca-coolstore` modernization workspaces (MTA VS Code extension pack wired to the hub, one per persona namespace) — the stage 080 analysis entry point.
+- **mta** — Migration Toolkit for Applications 8.2 (analysis + inventory; Developer Lightspeed/Kai disabled until the demo needs it), plus the `mca-coolstore` modernization workspaces (MTA VS Code extension pack wired to the hub, one per persona namespace) — the stage 080 analysis entry point.
 - **coolstore** — the deployed Coolstore dev environment (`coolstore-inventory-service` in `coolstore-dev`): the demo starts from a running brownfield system, not an empty cluster. The Deployment pins the `:latest` image that every successful pipeline run republishes (`tag-latest` task); `deploy.sh` seeds the first green run. The brownfield `mca-coolstore` monolith itself stays source-only — it is the MTA analysis target, not a workload this pipeline can build.
 
 The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works there because the `identity` component owns the platform realm.

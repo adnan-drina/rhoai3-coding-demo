@@ -21,27 +21,18 @@ log_step "MTA Instance"
 check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"
-check "Tackle LLM proxy enabled" \
+check "Tackle LLM proxy disabled (Lightspeed off until needed)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_proxy_enabled}'" \
-  "true"
-check "Tackle Solution Server enabled" \
+  "false"
+check "Tackle Solution Server disabled (Lightspeed off until needed)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_solution_server_enabled}'" \
-  "true"
+  "false"
 check "Tackle hub auth enabled (built-in OIDC provider)" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.feature_auth_required}'" \
   "true"
 check "Tackle idp_primary auto-redirect enabled" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.idp_primary}'" \
   "true"
-check "Tackle LLM provider is OpenAI-compatible" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_provider}'" \
-  "openai"
-check "Tackle LLM model is private MaaS model" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_model}'" \
-  "nemotron-3-nano-30b-a3b"
-check "Tackle LLM base URL uses MaaS route" \
-  "oc get tackle mta -n openshift-mta -o jsonpath='{.spec.kai_llm_baseurl}'" \
-  "/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
 
 log_step "MTA Core Deployments"
 check "mta-ui deployment ready" \
@@ -50,40 +41,6 @@ check "mta-ui deployment ready" \
 check "mta-hub deployment ready" \
   "oc get deployment mta-hub -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
-
-log_step "Red Hat Developer Lightspeed (AI)"
-check "kai-api deployment ready" \
-  "oc get deployment kai-api -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
-  "1"
-check "llm-proxy deployment ready" \
-  "oc get deployment llm-proxy -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
-  "1"
-
-log_step "Tackle AI Conditions"
-check_tackle_condition() {
-    local condition="$1"
-    local status=""
-    for _ in $(seq 1 30); do
-        status=$(oc get tackle mta -n openshift-mta \
-          -o jsonpath="{.status.conditions[?(@.type==\"${condition}\")].status}" 2>/dev/null || echo "")
-        if [[ "$status" == "True" ]]; then
-            echo -e "${GREEN}[PASS]${NC} Tackle ${condition}"
-            VALIDATE_PASS=$((VALIDATE_PASS + 1))
-            return
-        fi
-        sleep 5
-    done
-    echo -e "${RED}[FAIL]${NC} Tackle ${condition} (expected: True, got: ${status:-empty})"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-}
-
-check_tackle_condition "KaiAPIKeysConfigured"
-check_tackle_condition "LLMProxyReady"
-check_tackle_condition "KaiSolutionServerReady"
-
-log_step "MaaS Credentials (non-placeholder)"
-check_secret_value "OPENAI_API_BASE" "openshift-mta" "kai-api-keys" "OPENAI_API_BASE"
-check_secret_value "OPENAI_API_KEY" "openshift-mta" "kai-api-keys" "OPENAI_API_KEY"
 
 log_step "Platform SSO Federation (built-in Hub OIDC)"
 check "IdentityProvider platform-sso exists" \
@@ -158,35 +115,6 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap mta-hub-config -n $ns -o jsonpath='{.data.MTA_HUB_URL}' 2>/dev/null | grep -c 'https://' || echo 0" \
         "1"
 done
-
-log_step "Pre-Demo Readiness"
-MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
-  -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
-MAAS_KEY_VAL=$(oc get secret kai-api-keys -n openshift-mta \
-  -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-if [[ -n "$MAAS_HOST" ]] && [[ "$MAAS_KEY_VAL" == sk-oai-* ]]; then
-    MAAS_HTTP=$(curl -sk -H "Authorization: Bearer ${MAAS_KEY_VAL}" \
-      "https://${MAAS_HOST}/models-as-a-service/nemotron-3-nano-30b-a3b/v1/models" \
-      -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
-    if [[ "$MAAS_HTTP" == "200" ]]; then
-        echo -e "${GREEN}[PASS]${NC} MaaS auth works with kai-api-keys key (HTTP ${MAAS_HTTP})"
-        VALIDATE_PASS=$((VALIDATE_PASS + 1))
-    else
-        echo -e "${RED}[FAIL]${NC} MaaS auth failed with kai-api-keys key (HTTP ${MAAS_HTTP})"
-        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-    fi
-else
-    echo -e "${RED}[FAIL]${NC} Cannot test MaaS auth (host=${MAAS_HOST:-missing}, key starts with ${MAAS_KEY_VAL:0:7}...)"
-    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-fi
-
-check_warn "llm-proxy has real OPENAI_API_KEY" \
-  "oc exec deployment/llm-proxy -n openshift-mta -- printenv OPENAI_API_KEY 2>/dev/null | grep -c '^sk-oai-'" \
-  "1"
-
-check "MTA Hub deployment ready" \
-  "oc get deployment mta-hub -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
-  "1"
 
 echo ""
 validation_summary

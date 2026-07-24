@@ -28,7 +28,7 @@ With the three platform pillars in place, this workshop demonstrates a progressi
 |------|----------------------|---------|
 | **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Kilo Code via MaaS |
 | **Agentic** (070) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
-| **Autonomous** (080) | Harness-governed legacy migration with human review gates | MTA + Developer Lightspeed + OpenCode |
+| **Autonomous** (080) | Harness-governed legacy migration with human review gates | MTA + OpenCode |
 
 Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills and specs; skill-guided agents motivate autonomous multi-agent workflows — and every step lands on the same platform rails.
 

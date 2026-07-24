@@ -96,7 +96,6 @@ stages:
     name: AI-Autonomous Migration
     productFocus:
       - Migration Toolkit for Applications
-      - Red Hat Developer Lightspeed for MTA
     validateScript: stages/080-ai-autonomous-migration/validate.sh
     # Workflow-only stage: the migration stack (MTA + Lightspeed) is owned
     # by stage 050 advanced-app-platform (mta component).

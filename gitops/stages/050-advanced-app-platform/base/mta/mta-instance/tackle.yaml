@@ -1,6 +1,6 @@
-# MTA instance with Red Hat Developer Lightspeed AI configuration
-# Connects to MaaS Gateway for AI-assisted code modernization
-# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index
+# MTA 8.2 instance (analysis-focused: Developer Lightspeed / Kai disabled
+# until the demo needs it — see BACKLOG "Developer Lightspeed re-enable").
+# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/installing_the_migration_toolkit_for_applications/index
 apiVersion: tackle.konveyor.io/v1alpha1
 kind: Tackle
 metadata:
@@ -11,11 +11,8 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   rwx_supported: "false"
-  kai_llm_proxy_enabled: true
-  kai_solution_server_enabled: true
-  kai_llm_provider: openai
-  kai_llm_model: nemotron-3-nano-30b-a3b
-  kai_llm_baseurl: "https://maas.placeholder.example.com/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+  kai_llm_proxy_enabled: false
+  kai_solution_server_enabled: false
   # MTA 8.2 built-in Hub OIDC provider with authentication enforced.
   # Sign-in federates to the platform realm (identity component) through
   # the platform-sso IdentityProvider CR, applied by the

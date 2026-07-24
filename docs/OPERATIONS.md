@@ -114,7 +114,7 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA + Lightspeed, coolstore dev environment |
+| 050 | `050-advanced-app-platform` | Platform RHBK identity, Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
 | 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MTA stack |
@@ -932,14 +932,13 @@ oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
 
 ### Stage 050 — MTA (mta component)
 
-The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
+The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 (consumed by the workflow-only stage 080). Developer Lightspeed/Kai is disabled until the demo needs it (`kai_llm_proxy_enabled`/`kai_solution_server_enabled: false`; no MaaS wiring — see BACKLOG "Developer Lightspeed re-enable"). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
 
 Useful checks:
 
 ```bash
 oc get tackle mta -n openshift-mta -o yaml
 oc get deployment -n openshift-mta
-oc get secret kai-api-keys -n openshift-mta -o jsonpath='{.data.OPENAI_API_BASE}' | base64 -d
 ```
 
 ### Stage 050 — Coolstore dev environment (coolstore component)
