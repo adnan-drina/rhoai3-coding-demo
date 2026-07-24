@@ -956,7 +956,7 @@ curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o j
 
 ### Stage 050 — Developer Hub (rhdh component)
 
-The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA hub auth is disabled, so there is no MTA Keycloak.
+The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA hub auth is disabled, so the MTA-bundled Keycloak is unused (its removal is part of the MTA 8.2 migration, see BACKLOG).
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 

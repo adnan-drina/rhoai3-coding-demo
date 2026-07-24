@@ -16,8 +16,10 @@ resources:
   # Wave 5: kai-api-keys Secret (MaaS API key for LLM proxy)
   - mta-instance/kai-api-keys-secret.yaml
   # Wave 10: Tackle CR (MTA instance with AI config; hub auth disabled for
-  # workshop access — the operator deploys no Keycloak, so there is no
-  # OAuthClient or IdP job here; platform sign-in lives in identity/)
+  # workshop access — nothing authenticates against the MTA Keycloak, so
+  # there is no OAuthClient or IdP job here; platform sign-in lives in
+  # identity/. MTA 8.2 replaces the bundled Keycloak with the built-in Hub
+  # OIDC provider — migration plan in BACKLOG.)
   - mta-instance/tackle.yaml
   # Wave 15: ConsoleLink (OpenShift launcher menu entry)
   - mta-instance/consolelink.yaml
