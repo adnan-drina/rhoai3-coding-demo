@@ -61,9 +61,9 @@ components:
         # Lightspeed/Kai is disabled platform-side (BACKLOG "Developer
         # Lightspeed re-enable") — turn the extension's hub AI features off
         # so the analysis panel starts clean.
-        - name: SOLUTION_SERVER_ENABLED
+        - name: HUB_SOLUTION_SERVER_ENABLED
           value: "false"
-        - name: PROFILE_SYNC_ENABLED
+        - name: HUB_PROFILE_SYNC_ENABLED
           value: "false"
       memoryLimit: 6Gi
       cpuLimit: 2500m
