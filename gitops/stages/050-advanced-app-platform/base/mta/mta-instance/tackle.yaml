@@ -1,6 +1,6 @@
 # MTA instance with Red Hat Developer Lightspeed AI configuration
 # Connects to MaaS Gateway for AI-assisted code modernization
-# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index
+# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index
 apiVersion: tackle.konveyor.io/v1alpha1
 kind: Tackle
 metadata:
@@ -16,6 +16,9 @@ spec:
   kai_llm_provider: openai
   kai_llm_model: nemotron-3-nano-30b-a3b
   kai_llm_baseurl: "https://maas.placeholder.example.com/models-as-a-service/nemotron-3-nano-30b-a3b/v1"
+  # NOTE: feature_auth_required DEFAULTS TO TRUE in MTA 8.2 (built-in Hub
+  # OIDC provider) — keep this explicit "false" until Phase B of the 8.2
+  # migration enables auth via the platform realm (see BACKLOG).
   # Disable hub authentication so the MTA VS Code extension and workshop
   # participants can access the hub without Keycloak credentials.
   # The kubeconfig injected into the workspace uses the workspace SA JWT

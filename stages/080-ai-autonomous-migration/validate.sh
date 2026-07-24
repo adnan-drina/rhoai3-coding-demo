@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/validate-lib.sh"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Stage 080: Autonomous Application Migration (MTA 8.1)     ║"
+echo "║  Stage 080: Autonomous Application Migration (MTA 8.2)     ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -109,14 +109,14 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
         "present"
-    check "mca-coolstore workspace downloads MTA VS Code extension 8.1.3: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.3.vsix' && echo present || echo missing" \
+    check "mca-coolstore workspace downloads MTA VS Code extension 8.2.0: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.2.0.vsix' && echo present || echo missing" \
         "present"
-    check "mca-coolstore workspace downloads MTA core extension 8.1.3: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.1.3.vsix' && echo present || echo missing" \
+    check "mca-coolstore workspace downloads MTA core extension 8.2.0: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.2.0.vsix' && echo present || echo missing" \
         "present"
-    check "mca-coolstore workspace downloads MTA Java extension 8.1.3: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.1.3.vsix' && echo present || echo missing" \
+    check "mca-coolstore workspace downloads MTA Java extension 8.2.0: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.2.0.vsix' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace sets HUB_URL to the internal hub service: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' && echo present || echo missing" \

@@ -2,11 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # MTA component:
-# Migration Toolkit for Applications 8.1 with Red Hat Developer Lightspeed
+# Migration Toolkit for Applications 8.2 with Red Hat Developer Lightspeed
 # configured to use MaaS models.
 # The stage 080 demo consumes this stack; omit this component via
 # overlays/slim when the migration rung is not being demoed.
-# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
+# Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2
 
 resources:
   # Wave 0-2: MTA Operator

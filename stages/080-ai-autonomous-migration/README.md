@@ -150,7 +150,7 @@ Nothing merges on agent authority.
 ## Red Hat Products Used
 
 - **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** provides modernization analysis, inventory, rules, and developer workflow integration.
-- **[Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/)** adds AI-assisted code resolution (Technology Preview).
+- **[Red Hat Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/)** adds AI-assisted code resolution (Technology Preview).
 - **[Red Hat Developer Hub](https://developers.redhat.com/rhdh)** provides the developer portal and the migration golden-path template.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** hosts the migration workspace.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** provides the governed MaaS endpoints the analysis tooling and the agent consume.
@@ -173,7 +173,7 @@ Nothing merges on agent authority.
 | Resource | Link |
 |----------|------|
 | Harness Engineering for Coding Agents | https://martinfowler.com/articles/harness-engineering.html |
-| MTA 8.1 documentation | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/ |
+| MTA 8.2 documentation | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/ |
 | OpenRewrite documentation | https://docs.openrewrite.org/ |
 | spec-kit — spec-driven.md | https://github.com/github/spec-kit/blob/main/spec-driven.md |
 | MaaS code assistant quickstart | https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant |
