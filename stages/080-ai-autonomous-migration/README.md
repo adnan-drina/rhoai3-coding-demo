@@ -8,9 +8,7 @@ This demo stage answers with two complementary paths on the same governed platfo
 
 ## What You'll Do
 
-You will **provision** a migration workspace through a golden-path template that, unlike stage 070's greenfield scaffold, takes the **Git repository of the legacy application you want to migrate** as input and delivers a Dev Spaces workspace with the MTA tools and migration standards preconfigured, **analyze** the legacy code with MTA so the findings become the migration's ground truth, **understand the harness** that will govern the agent (guides that steer, sensors that catch, humans that judge), **generate the migration spec** with spec-kit from the MTA findings and the code itself, **let the agent migrate** the service under the harness — generating code, running the sensors, and self-correcting until the checks pass — **review** the result against the analysis findings at the mandatory human gate, and **ship it**: CI pipeline, SonarQube quality gate, deployment on OpenShift, with the full token cost of autonomy visible on the platform's usage dashboard.
-
-> **Exercise status:** this README defines the target workflow for the stage. The implementation plan (template, workspace wiring, harness assets) is being drafted step by step; see `BACKLOG.md`.
+You will **provision** a migration workspace through a golden-path template that, unlike stage 070's greenfield scaffold, takes the **Git repository of the legacy application you want to migrate** as input and delivers a Dev Spaces workspace with the MTA tools, the harness runbook, and migration standards preconfigured, **analyze** the legacy code with MTA so the findings become the migration's ground truth, **understand the harness** that will govern the agents (guides that steer, sensors that catch, humans that steer the harness itself), **let the orchestrator plan** — Hermes reads the findings and the legacy code and writes the migration spec, plan, and task list in the spec-kit layout — **watch the harness migrate** the service: Hermes dispatches OpenRewrite for the mechanical transforms and OpenCode for the judgment work, one bounded task at a time, with sensors after every task and correction packets on failure, and finally **ship through the factory**: the project's delivery pipeline with its SonarQube quality gate is the merge authority — not any agent's summary, and not a human approval step — with the full token cost of autonomy visible on the platform's usage dashboard.
 
 ---
 
@@ -88,12 +86,12 @@ Everything this platform already operates maps onto that picture:
 | Migration spec, plan, tasks | Guide | spec-kit artifacts generated in Step 5 |
 | MTA analysis findings | Sensor (computational) | The Step 3 report, re-run to verify findings are resolved |
 | OpenRewrite recipes | Guide + Sensor | Deterministic transforms for the mechanical share of the migration |
-| Build + tests | Sensor (computational) | Maven build and the test suite in the workspace |
-| Self-review / evaluation pass | Sensor (inferential) | The agent's harness-defined reflection step in Step 6 |
-| SonarQube quality gate | Sensor (computational) | The same fail-on-new-issue gate as stages 060/070 |
-| Human review | Judgment | Step 7 — the part no harness externalizes |
+| Build + tests | Sensor (computational) | Maven build and the test suite, run by Hermes after every task |
+| Self-review / evaluation pass | Sensor (inferential) | The orchestrator's milestone eval against the spec in Step 6 |
+| SonarQube + factory pipeline | Sensor (computational, **exit**) | The regulated merge authority — same gate as stages 060/070 |
+| Human steering | Judgment | Improving guides and sensors when the loop exposes gaps — not per-change approval |
 
-Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQube report and prompted the fix; here the harness feeds sensor output back to the agent, which iterates until the checks pass — quality shifts from inspection to regulation. Second, humans move up a level: instead of reviewing every intermediate step, you review the outcome and **improve the harness** when something slips through — Böckeler calls this the steering loop, and it is the stage 070 "skills retro" practice graduated into a system.
+Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQube report and prompted the fix; here the harness feeds sensor output back to the agent, which iterates until the checks pass — quality shifts from inspection to regulation. Second, humans move up a level: nothing merges on agent authority because the **factory** won't let it, so instead of reviewing every intermediate diff, you observe where the loop struggled and **improve the harness** — Böckeler calls this the steering loop, and it is the stage 070 "skills retro" practice graduated into a system.
 
 ### The harness implementation: Hermes Agent
 
@@ -115,54 +113,68 @@ Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.no
 | Fit the *teaching* word "harness" | Matches Böckeler: everything around the model (tools, skills, memory, approvals, execution) | Uses "harness" for a *different* thing — its low-level runtime executors (`codex`, `copilot` plugins) — which collides with the stage narrative |
 | Dev Spaces migration exercise | Heavier than OpenCode alone, but CLI-shaped | Heavier still: gateway daemon and channel/session semantics are the main design |
 
-**Verdict: Hermes fits stage 080's CLI-driven autonomous migration loop more natively than OpenClaw.** The demo should look like *watching the migration converge in the terminal* — Hermes' center of gravity is exactly that loop, with messaging surfaces optional; OpenClaw would have you operating a gateway platform to tell the same story. Division of labor with what you already know: **OpenCode remains the interactive spec-authoring agent** (the 070 muscle memory, used in Step 5); **Hermes owns the autonomous execution loop** (Step 6).
+**Verdict: Hermes fits stage 080's CLI-driven autonomous migration loop more natively than OpenClaw.** The demo should look like *watching the migration converge in the terminal* — Hermes' center of gravity is exactly that loop, with messaging surfaces optional; OpenClaw would have you operating a gateway platform to tell the same story. Division of labor: **Hermes is the orchestrator** — it plans (Step 5) and drives the loop (Step 6) but never edits application source — and **OpenCode is the coding worker inside the harness**, dispatched one bounded task at a time via `opencode run`. The whole contract is versioned in the repository as the **migration-harness runbook** (`.hermes/skills/migration-harness/`), which the workspace links into Hermes' skill path automatically; the interactive `/speckit.*` commands from stage 070 remain available when you want to author specs yourself.
 
 ---
 
-## Step 5: Generate the migration spec
+## Step 5: The orchestrator plans
 
-The MTA findings say what must change; the spec says what the migrated service must be.
+The MTA findings say what must change; the spec says what the migrated service must be. In this stage the **orchestrator writes the contract** — you review it, you don't author it.
 
-1. Run the spec-kit cycle (`/speckit.specify` → `/speckit.plan` → `/speckit.tasks`) with the MTA analysis and the legacy code as input: the spec captures the service's observed behavior and API contract, the plan maps findings to Quarkus-native equivalents, and the tasks order the work.
-2. Where findings are mechanical (dependency swaps, annotation replacement, import rewrites), the plan delegates to **OpenRewrite** recipes rather than model inference — deterministic transforms are cheaper, faster, and always correct, so the agent's inference budget is spent only where judgment is needed.
-3. **Review each artifact before the next step amplifies it**, exactly as in stage 070. The spec is the contract the harness will hold the agent to.
+1. In a workspace terminal, start the planning run:
 
-**What you should see:** spec, plan, and tasks in the repository, traceable line-by-line to MTA findings and observed behavior.
+   ```bash
+   cd /projects/modernized
+   hermes chat -q "Use the migration-harness skill. Execute Phase A (normalize ground truth) and Phase B (plan)."
+   ```
+
+2. Watch what the runbook makes Hermes do: normalize the newest MTA analysis into `migration/mta-findings.json` (the versioned ground-truth copy), script-extract the violation counts rather than reading the file into context, then write `specs/001-.../spec.md` (observed legacy behavior and API contract, with legacy file paths as evidence), `plan.md` (Quarkus mapping, every finding traced to a task), and `tasks.md` (ordered checklist — every task tagged `Class: rewrite` or `Class: infer`, rewrite first, each citing the finding rule ids it resolves).
+3. Skim the artifacts — a **soft, non-blocking checkpoint**, not an approval gate. Mechanical findings (import rewrites, dependency swaps, namespace changes) should be tagged `rewrite` and delegated to **OpenRewrite** recipes; on this codebase a single rule (`javax-to-jakarta-import-00001`) accounts for well over half of all incidents, and every one of them is deterministic — that is inference budget the harness refuses to spend on a model. The interactive `/speckit.*` path from stage 070 remains available if you prefer to author the spec yourself.
+
+**What you should see:** spec, plan, and tasks in the repository, written by the orchestrator, traceable line-by-line to MTA findings and observed behavior.
 
 ---
 
-## Step 6: Migrate under the harness
+## Step 6: Watch the harness migrate
 
-1. Start the implementation run: Hermes takes the task list — one-shot turns for a scoped demo (`hermes chat -q`), or the Kanban board for the full decomposed migration — and works through it: applying OpenRewrite recipes for the mechanical transforms, generating Quarkus-native code and tests for the rest.
-2. This is where the harness earns its name — after each meaningful change the sensors run, and the loop is part of the workflow, not a favor you ask:
-   - build and tests must pass;
-   - the evaluation pass reviews the change against the spec and the migration standards;
-   - sensor failures go back to the agent, which corrects and re-runs — iterating until the quality bar is met or the iteration budget is exhausted.
-3. Watch the loop rather than driving it. Your job in this step is observation: where the agent needed multiple iterations is exactly where the harness (or the spec) needs improving.
+You start the run and observe; Hermes drives.
 
-**What you should see:** the agent converging on a migrated service with passing checks — and a visible record of what the sensors caught that never reached you.
+1. Start the execution run:
+
+   ```bash
+   hermes chat -q "Use the migration-harness skill. Execute Phase C for the tasks in specs/001-.../tasks.md."
+   ```
+
+2. What the runbook enforces, per task:
+   - **rewrite tasks**: Hermes copies the legacy source to an ephemeral scratch directory (`/tmp/rewrite-staging` — the read-only rule on `legacy/` holds), runs the OpenRewrite recipes there, and dispatches an explicit **harvest task** to OpenCode with source and destination paths;
+   - **infer tasks**: Hermes hands OpenCode one bounded task packet at a time via `opencode run` (worker model, auto-approved permissions, JSON output), then verifies the claimed changes against `git status` — never trusting the worker's summary alone;
+   - **sensors after every task**: `mvn -q test` must pass; on milestones the orchestrator runs a short evaluation of the diff against the spec;
+   - **failures become correction packets**: the original packet plus the exact sensor output, re-delegated once (two attempts per task); a task that exhausts its budget lands in `migration/debt.md` with the evidence, and the loop moves on.
+3. Your job is observation. `migration/run-log.md` accumulates one line per task; where retries cluster is exactly where the harness — the spec, a skill, a sensor — needs improving. That observation feeds Step 8's retro.
+
+**What you should see:** the loop converging task by task in the terminal — recipes for the mechanical share, bounded worker runs for the judgment share, sensors between every step — with a visible record of what the sensors caught that never reached you.
 
 > **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
 
 ---
 
-## Step 7: The human review gate
+## Step 7: The factory ships it
 
-Nothing merges on agent authority.
+Nothing merges on agent authority — and no human approval substitutes for the factory either.
 
-1. Re-run the MTA analysis on the migrated code: the Step 3 findings should be resolved.
-2. Review the final diff against the spec and the analysis report; reject or re-run phases where the result falls short.
-3. Approve and merge when the evidence — not the agent's summary — says the migration is complete.
+1. The runbook's exit runs the re-analysis sensor first: kantra (the containerless Konveyor CLI, fetched on demand by `kantra-ensure`) re-analyzes the **migrated** code and writes `migration/mta-findings-after.json`. Done is defined as the Step 3 baseline resolved or explicitly waived in the spec — never "the agent says done."
+2. Hermes commits and pushes. Its report ends there by contract: "pushed; the factory pipeline decides." (Pushing from the workspace requires your Git credentials — configure your GitHub token in the Dev Spaces user preferences if you haven't.)
+3. Watch the project's pipeline run clone → build → SonarQube quality gate → image build/push — the same regulated exit every stage uses. **Red CI means autonomy failed the regulated exit**, not "wait for a human thumbs-up"; green CI is the platform's proof, not the agent's claim.
+4. Spot-check the diff if you like — it is optional and non-blocking. If something slipped through, the response is not to blame the model but to tighten a guide or add a sensor and re-run: that is the steering loop.
 
-**What you should see:** a reviewable, evidence-backed migration: analysis clean, tests green, spec satisfied.
+**What you should see:** an evidence-backed migration shipping through the factory: findings delta recorded, tests green, quality gate passed — with the pipeline, not a person, as the merge authority.
 
 ---
 
-## Step 8: Ship it and show the cost
+## Step 8: The bill and the retro
 
-1. Push. The project's pipeline runs clone → build → SonarQube gate → image build/push, the same exit every stage uses.
-2. Deploy the migrated service on OpenShift and verify the running endpoints against the spec's behavioral contract.
-3. Open the Stage 040 MaaS usage dashboard: the token consumption of the full autonomous run, attributed to the developer's key, per model, next to the interactive stages' usage.
+1. Open the Stage 040 MaaS usage dashboard: the token consumption of the full autonomous run — orchestrator and worker on the same developer key — next to the interactive stages' usage. Autonomy is visible on the same meter as everything else.
+2. Run the harness retro: read `migration/run-log.md` and `migration/debt.md`. Every retry cluster is a candidate improvement — a sharper skill, a stricter spec template, a new sensor. Improvements land as versioned changes to the repository's guides, exactly like the stage 070 skills retro.
 
 > **Token governance beat (MTA 8.2):** interactive sessions run on
 > five-minute access tokens; automation runs on **API keys** you create in
@@ -172,7 +184,7 @@ Nothing merges on agent authority.
 > API call with it, then revoke it: governed automation credentials with a
 > visible lifecycle, the same story the platform tells for model keys.
 
-**What you should see:** the migrated service running on OpenShift, a green pipeline, and the complete, attributed cost of autonomy on the platform dashboard.
+**What you should see:** the complete, attributed cost of the autonomous run on the platform dashboard, and a written record — run log and debt — of exactly where the harness needs to get better.
 
 ---
 
@@ -183,7 +195,7 @@ Nothing merges on agent authority.
 - **Analysis grounds autonomy:** MTA's findings, not the agent's self-assessment, defined done.
 - **The harness regulates quality:** guides steered generation, sensors caught and fed back failures, and the agent iterated to green before a human ever looked.
 - **Determinism where possible, inference where needed:** OpenRewrite carried the mechanical transforms; the model spent its budget on judgment calls.
-- **Humans judge outcomes and improve the system:** the review gate stayed mandatory, and every harness gap found becomes the next harness improvement.
+- **The factory, not a person, was the merge authority:** the agent could push, but only the pipeline and its quality gate could turn that push into a trusted artifact — and humans moved up a level, from reviewing diffs to improving the harness.
 - **Governance held at full autonomy:** same identity, token limits, and telemetry as every previous stage — just more visible, because agents consume more.
 
 ## Red Hat Products Used
@@ -203,7 +215,7 @@ Nothing merges on agent authority.
 - [OpenRewrite](https://github.com/openrewrite/rewrite) provides deterministic, recipe-driven code transformation.
 - [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit carried over from stage 070.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs) is the CLI-first agent harness that owns the autonomous migration loop.
-- [OpenCode](https://opencode.ai/) is the interactive AI coding agent used for spec authoring, carried over from stage 070.
+- [OpenCode](https://opencode.ai/) is the coding worker inside the harness — dispatched by Hermes one bounded task at a time — and remains available interactively, carried over from stage 070.
 - [Coolstore](https://github.com/konveyor-ecosystem/coolstore) is the legacy sample application used as the migration target.
 
 ## References
