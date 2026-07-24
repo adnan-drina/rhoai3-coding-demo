@@ -18,7 +18,11 @@
     <quarkus.platform.group-id>com.redhat.quarkus.platform</quarkus.platform.group-id>
     <quarkus.platform.version>3.27.3.SP1-redhat-00002</quarkus.platform.version>
     <surefire-plugin.version>3.5.3</surefire-plugin.version>
-    <sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    <!-- Both report locations: quarkus-jacoco writes the first for
+         @QuarkusTest runs; jacoco-maven-plugin writes the second for plain
+         JUnit tests (migration model/unit tests). Sonar imports whichever
+         exists. -->
+    <sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml,target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
   </properties>
 
   <repositories>
@@ -109,6 +113,28 @@
             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
           </systemPropertyVariables>
         </configuration>
+      </plugin>
+      <!-- Coverage for plain JUnit tests (quarkus-jacoco only instruments
+           @QuarkusTest runs). report binds to prepare-package so it fires
+           under the factory's `mvn package` as well as `mvn verify`. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.11</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
