@@ -98,7 +98,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold golden repo exists (${GOLDEN_SHA:0:12})"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold golden repo missing (run scripts/bootstrap-golden-repos.sh)"
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold golden repo missing (run scripts/bootstrap-scaffold-repos.sh)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 else

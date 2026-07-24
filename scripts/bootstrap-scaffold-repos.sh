@@ -4,8 +4,8 @@
 # golden state, which is also the demo reset mechanism for the sources.
 #
 # Repositories managed (under github.com/${GITHUB_OWNER}):
-#   agentic-quarkus-scaffold   — pushed verbatim from stages/060-ai-assisted-development/golden-repo/
-#   quarkus-migration-scaffold — pushed verbatim from stages/080-ai-autonomous-migration/golden-repo/
+#   agentic-quarkus-scaffold   — pushed verbatim from stages/070-ai-agentic-development/scaffold-repo/
+#   quarkus-migration-scaffold — pushed verbatim from stages/080-ai-autonomous-migration/scaffold-repo/
 #
 # Requires: gh (authenticated with repo scope), git. No cluster access.
 set -euo pipefail
@@ -15,8 +15,8 @@ GITHUB_OWNER="${GITHUB_OWNER:-adnan-drina}"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
-log() { echo -e "\033[0;34m[golden-repo]\033[0m $*"; }
-warn() { echo -e "\033[1;33m[golden-repo][WARN]\033[0m $*"; }
+log() { echo -e "\033[0;34m[scaffold-repo]\033[0m $*"; }
+warn() { echo -e "\033[1;33m[scaffold-repo][WARN]\033[0m $*"; }
 
 command -v gh >/dev/null || { echo "gh CLI is required"; exit 1; }
 gh auth status >/dev/null || { echo "gh is not authenticated"; exit 1; }
@@ -46,17 +46,17 @@ push_golden() {
 
 # --- 1. agentic-quarkus-scaffold (authored in this repo) ---
 log "Staging agentic-quarkus-scaffold"
-cp -R "$REPO_ROOT/stages/060-ai-assisted-development/golden-repo/agentic-quarkus-scaffold" "$WORKDIR/agentic-quarkus-scaffold"
+cp -R "$REPO_ROOT/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold" "$WORKDIR/agentic-quarkus-scaffold"
 ensure_repo "agentic-quarkus-scaffold" "Corporate Quarkus scaffold golden repo (agentic golden path: AGENTS.md + skills + specs)"
 push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
-  "Golden state from rhoai3-coding-demo/stages/060-ai-assisted-development/golden-repo/agentic-quarkus-scaffold"
+  "Golden state from rhoai3-coding-demo/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold"
 
 # --- 2. quarkus-migration-scaffold (authored in this repo) ---
 log "Staging quarkus-migration-scaffold"
-cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/golden-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
+cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
 ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
 push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
-  "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/golden-repo/quarkus-migration-scaffold"
+  "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 
 log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"

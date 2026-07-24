@@ -10,7 +10,7 @@
 > (Developer Hub), `mta` (Migration Toolkit for Applications), and `coolstore`
 > (the deployed stage 060 dev environment). The `agentic-quarkus-scaffold`
 > golden-path template (stage 070) is registered in the catalog; golden
-> repositories bootstrap via `scripts/bootstrap-golden-repos.sh`. Pipeline,
+> repositories bootstrap via `scripts/bootstrap-scaffold-repos.sh`. Pipeline,
 > SonarQube, dispatcher, and scaffolded-project flows are live-validated
 > (see docs/OPERATIONS.md, 2026-07-13 entries).
 > Anchor article: [Trusted software factory: Building trust in the agentic AI era](https://developers.redhat.com/articles/2026/05/13/trusted-software-factory-building-trust-agentic-ai-era).
@@ -55,7 +55,7 @@ Webhooks are not created per repo: a GitHub App installed on all repositories de
 
 ## External Setup (one-time, outside the cluster)
 
-1. **Golden repositories** under `github.com/adnan-drina`: run `./scripts/bootstrap-golden-repos.sh` (requires `gh` auth with `repo` scope). Re-running force-pushes golden state — that is the reset.
+1. **Golden repositories** under `github.com/adnan-drina`: run `./scripts/bootstrap-scaffold-repos.sh` (requires `gh` auth with `repo` scope). Re-running force-pushes golden state — that is the reset.
 2. **GitHub PAT** (classic, `repo` scope) in `.env` as `GITHUB_TOKEN`: used by RHDH (scaffolder repo creation + catalog reads) and the pipeline's git-clone for private repos. A GitHub App cannot replace it here — installation tokens cannot create repositories under a personal account.
 3. **GitHub App** (Settings → Developer settings → GitHub Apps) for webhook delivery: webhook URL = the `app-platform-listener` Route URL, webhook secret = `GITHUB_WEBHOOK_SECRET` from `.env`. Repository permissions: **Contents: Read-only** (required to subscribe to push events) plus the mandatory Metadata: Read-only. Subscribe to **Push** events and install on **All repositories** (covers future template-created repos). No client secret or private key is needed — the App only delivers webhooks.
 

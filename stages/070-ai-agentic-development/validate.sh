@@ -59,5 +59,32 @@ check "qwen executor key provisioned" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY_QWEN}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
   "yes"
 
+log_step "Scaffold repo drift (checked-in staging vs live repos)"
+# The checked-in scaffold-repo staging folders are the bootstrap force-push
+# sources; drift against the live repos means bootstrap would clobber live
+# changes (BACKLOG "Scaffold dual source of truth"). Warn-level: drift is a
+# known condition to reconcile, not a broken deployment.
+check_golden_drift() {
+    local local_dir="$1" repo="$2"
+    if ! command -v git >/dev/null 2>&1 || ! git ls-remote "https://github.com/adnan-drina/${repo}.git" >/dev/null 2>&1; then
+        echo -e "${YELLOW}[WARN]${NC} cannot reach github.com/adnan-drina/${repo} — skipping drift check"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+        return
+    fi
+    local tmp
+    tmp=$(mktemp -d)
+    if git clone -q --depth 1 "https://github.com/adnan-drina/${repo}.git" "$tmp/live" 2>/dev/null \
+       && diff -r -q -x .git "$REPO_ROOT/$local_dir" "$tmp/live" >/dev/null 2>&1; then
+        echo -e "${GREEN}[PASS]${NC} ${repo}: checked-in staging matches the live scaffold repo"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} ${repo}: checked-in staging DIFFERS from the live scaffold repo (reconcile before running bootstrap-scaffold-repos.sh)"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+    rm -rf "$tmp"
+}
+check_golden_drift "stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold" "agentic-quarkus-scaffold"
+check_golden_drift "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "quarkus-migration-scaffold"
+
 echo ""
 validation_summary
