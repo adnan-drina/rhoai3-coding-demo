@@ -1,0 +1,137 @@
+# Golden-path template for Stage 080 (AI-Autonomous Migration).
+# Takes the Git URL of a legacy application and provisions the migration
+# working set: a per-run Quarkus destination repository (catalog-registered,
+# CI/CD-wired) whose Dev Spaces workspace clones the legacy code SIDE BY
+# SIDE as a workspace-only project. The legacy application is intentionally
+# never registered in the catalog and never published to the platform org —
+# it exists only inside the workspace as read-only migration input;
+# migration.yaml in the destination repo records the provenance.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: app-migration
+  title: "Application migration"
+  description: |
+    Provisions a migration working set for a legacy application: a Quarkus
+    destination repository carrying corporate migration standards
+    (AGENTS.md + OpenCode skills + spec-kit) and a Dev Spaces workspace
+    that clones the legacy code next to it (/projects/legacy, read-only,
+    workspace-only) with the MTA analysis extension preconfigured. The
+    destination repository is registered in the catalog and provisioned
+    with its own namespace and delivery pipeline (SonarQube quality gate
+    included); the legacy application is not cataloged.
+  tags:
+    - golden-path
+    - migration
+    - quarkus
+    - mta
+spec:
+  owner: ai-modernization-team
+  type: service
+
+  parameters:
+    - title: Migration input
+      required:
+        - name
+        - legacyRepoUrl
+      properties:
+        name:
+          title: Project name
+          type: string
+          description: |
+            Name for the migration project (e.g. coolstore-modernized). It
+            becomes the destination repository, namespace, and workspace
+            name. Lowercase letters, numbers, and hyphens.
+          pattern: "^[a-z][a-z0-9-]{2,40}$"
+          ui:autofocus: true
+        legacyRepoUrl:
+          title: Legacy repository URL
+          type: string
+          description: |
+            HTTPS Git URL of the application to migrate (must be clonable
+            without credentials, e.g. https://github.com/rhpds/mca-coolstore.git).
+            It is cloned into the workspace only — never published to the
+            platform org and never registered in the catalog.
+          pattern: "^https://.+"
+
+  steps:
+    - id: fetch-golden
+      name: Fetch Quarkus migration scaffold golden repository
+      action: fetch:plain
+      input:
+        url: https://github.com/adnan-drina/quarkus-migration-scaffold/tree/main
+
+    # The platform coolstore entity carries cluster-real link URLs (the
+    # generate-rhdh-catalog hook substitutes route hostnames at sync time).
+    # Fetching it here lets the per-run component derive the same links
+    # without baking any cluster hostname into this template. Link order in
+    # catalog/all.yaml is load-bearing: [0] Source Repo, [1] Deployed App,
+    # [2] Dev Spaces, [3] SonarQube.
+    - id: platform-entity
+      name: Read platform link endpoints from the catalog
+      action: catalog:fetch
+      input:
+        entityRef: component:default/coolstore-inventory-service
+
+    - id: add-catalog-info
+      name: Add catalog metadata and stamp the migration working set
+      action: fetch:template
+      input:
+        url: ./skeleton
+        # The skeleton's devfile.yaml and migration.yaml must overwrite the
+        # golden repo's copies (per-run name + legacy URL); without
+        # replace, existing files win.
+        replace: true
+        values:
+          name: ${{ parameters.name }}
+          legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
+          sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
+          devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
+
+    - id: publish
+      name: Publish destination repository to GitHub
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=adnan-drina&repo=${{ parameters.name }}
+        description: "Quarkus migration destination (golden path: AI-autonomous migration)"
+        repoVisibility: public
+        defaultBranch: main
+        protectDefaultBranch: false
+        topics:
+          - rhoai3-golden-path
+          # Marks the repo for the platform dispatcher: its pushes bootstrap
+          # the per-project stack (namespace + pipeline) and run app-push in
+          # <name>-dev. See pipelines/build/triggers.yaml.
+          - rhoai3-scaffolded
+
+    - id: register
+      name: Register destination in catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+  output:
+    links:
+      - title: Destination repository
+        url: ${{ steps.publish.output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+    text:
+      - title: Next steps
+        content: |
+          The publish above already bootstrapped your project: Argo CD is
+          creating the `<name>-dev` namespace with the project's own
+          delivery pipeline, and build credentials arrive within two
+          minutes.
+
+          Open the destination repository in Dev Spaces: the workspace
+          clones the legacy application to `/projects/legacy` (read-only,
+          workspace-only) next to `/projects/modernized` (this repository),
+          with the MTA analysis extension preconfigured against the
+          platform hub. Run the MTA analysis of the legacy project first —
+          its findings are the migration's ground truth — then start
+          OpenCode in `/projects/modernized` and follow the spec-driven
+          migration workflow. Every push to `main` runs the project's own
+          pipeline in `<name>-dev` with the SonarQube quality gate.

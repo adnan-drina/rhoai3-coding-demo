@@ -85,6 +85,27 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
+log_step "Migration Golden Path (app-migration template)"
+check "app-migration template Location in the runtime catalog" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -c 'templates/app-migration/template.yaml' || echo 0" \
+  "1"
+check "runtime catalog Location revision is not the placeholder" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -c '__RHOAI3_DEMO_REVISION__' || echo 0" \
+  "0"
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
+    if [[ -n "$GOLDEN_SHA" ]]; then
+        echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold golden repo exists (${GOLDEN_SHA:0:12})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold golden repo missing (run scripts/bootstrap-golden-repos.sh)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
+else
+    echo -e "${YELLOW}[WARN]${NC} gh not available — skipping golden repo check"
+    VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+
 log_step "Modernization Workspaces (mta component)"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "mca-coolstore workspace exists: $ns" \

@@ -30,9 +30,9 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 2. Provide the input the template asks for:
    - **Legacy repository URL**: the Git repository of the application to migrate. The demo uses the platform's legacy Coolstore monolith — the same brownfield code MTA has been pointed at since stage 050.
    - **Project name**: becomes the per-run repository, namespace, and workspace name, exactly like stage 070.
-3. Create, and watch the template run: copy the legacy source into a per-run repository → register the component in the catalog → provision the namespace and pipeline → prepare the Dev Spaces workspace with the MTA extension, the migration skills, and governed model access preconfigured.
+3. Create, and watch the template run: fetch the migration scaffold → stamp the legacy URL into the workspace definition and `migration.yaml` (provenance) → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination — `/projects/legacy` next to `/projects/modernized`.
 
-**What you should see:** a new catalog component for the migration project, with links to the source repository, Dev Spaces, and SonarQube — the same self-service pattern as stage 070, now wrapped around code that already exists.
+**What you should see:** a new catalog component for the migration **destination** (the legacy app never appears in the catalog), with links to the destination repository, Dev Spaces, and SonarQube — the same self-service pattern as stage 070, now wrapped around code that already exists.
 
 > **Why this matters:** migration is where self-service pays off most. Nobody hand-wires analysis tooling, workspaces, and pipelines for every one of hundreds of legacy services. The template makes "start migrating this repo" a ten-second operation with every tool pre-approved by the platform team.
 

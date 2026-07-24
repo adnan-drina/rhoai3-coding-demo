@@ -1,0 +1,39 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  title: ${{ values.name }}
+  description: |
+    Quarkus migration destination built with AI-autonomous, analysis-grounded
+    migration, provisioned by the app-migration golden-path template. The
+    legacy source application is workspace-only (see the
+    demo.rhoai.io/migrated-from annotation) and intentionally not cataloged.
+  annotations:
+    github.com/project-slug: adnan-drina/${{ values.name }}
+    backstage.io/source-location: url:https://github.com/adnan-drina/${{ values.name }}
+    # Migration provenance: the legacy repository this component replaces.
+    demo.rhoai.io/migrated-from: ${{ values.legacyRepoUrl }}
+    # RHDH OpenShift tabs: PipelineRuns in <name>-dev carry this label
+    # (set by the dispatcher TriggerTemplate); the project stack is the
+    # Argo CD app created by the scaffolded-project bootstrap trigger.
+    backstage.io/kubernetes-id: ${{ values.name }}
+    janus-idp.io/tekton: ${{ values.name }}
+    argocd/app-name: project-${{ values.name }}
+  tags:
+    - golden-path
+    - migration
+    - quarkus
+  links:
+    - url: https://github.com/adnan-drina/${{ values.name }}
+      title: Source Repo
+      icon: github
+    - url: ${{ values.devspacesUrl }}
+      title: Dev Spaces
+      icon: catalog
+    - url: ${{ values.sonarqubeUrl }}
+      title: SonarQube (code quality)
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ai-modernization-team

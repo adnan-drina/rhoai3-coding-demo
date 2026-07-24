@@ -4,7 +4,8 @@
 # golden state, which is also the demo reset mechanism for the sources.
 #
 # Repositories managed (under github.com/${GITHUB_OWNER}):
-#   agentic-quarkus-scaffold — pushed verbatim from stages/060-ai-assisted-development/golden-repo/
+#   agentic-quarkus-scaffold   — pushed verbatim from stages/060-ai-assisted-development/golden-repo/
+#   quarkus-migration-scaffold — pushed verbatim from stages/080-ai-autonomous-migration/golden-repo/
 #
 # Requires: gh (authenticated with repo scope), git. No cluster access.
 set -euo pipefail
@@ -49,6 +50,13 @@ cp -R "$REPO_ROOT/stages/060-ai-assisted-development/golden-repo/agentic-quarkus
 ensure_repo "agentic-quarkus-scaffold" "Corporate Quarkus scaffold golden repo (agentic golden path: AGENTS.md + skills + specs)"
 push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/060-ai-assisted-development/golden-repo/agentic-quarkus-scaffold"
+
+# --- 2. quarkus-migration-scaffold (authored in this repo) ---
+log "Staging quarkus-migration-scaffold"
+cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/golden-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
+ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
+push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
+  "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/golden-repo/quarkus-migration-scaffold"
 
 log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"

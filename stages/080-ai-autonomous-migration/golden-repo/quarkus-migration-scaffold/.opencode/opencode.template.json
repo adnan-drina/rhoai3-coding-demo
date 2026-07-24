@@ -1,0 +1,59 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": true,
+  "enabled_providers": ["nemotron", "qwen"],
+  "provider": {
+    "nemotron": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MaaS Nemotron (keys pending — restart workspace once the platform Secret is ready)",
+      "models": {
+        "nemotron-3-nano-30b-a3b": {
+          "name": "NVIDIA Nemotron (Local GPU)",
+          "limit": { "context": 131072, "output": 16384 }
+        }
+      },
+      "options": {
+        "apiKey": "MAAS-SECRET-NOT-READY",
+        "baseURL": "https://maas-gateway-not-configured.invalid/v1",
+        "timeout": 1200000,
+        "chunkTimeout": 120000
+      }
+    },
+    "qwen": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MaaS Qwen3.6 (keys pending — restart workspace once the platform Secret is ready)",
+      "models": {
+        "qwen3-6-35b-a3b": {
+          "name": "Qwen3.6 35B A3B (Local GPU)",
+          "temperature": true,
+          "limit": { "context": 65536, "output": 16384 }
+        }
+      },
+      "options": {
+        "apiKey": "MAAS-SECRET-NOT-READY",
+        "baseURL": "https://maas-gateway-not-configured.invalid/v1",
+        "timeout": 1200000,
+        "chunkTimeout": 120000
+      }
+    }
+  },
+  "model": "qwen/qwen3-6-35b-a3b",
+  "small_model": "qwen/qwen3-6-35b-a3b",
+  "mcp": {
+    "quarkus-agent": {
+      "type": "local",
+      "command": ["{env:HOME}/.local/bin/quarkus-agent-mcp"],
+      "enabled": true
+    }
+  },
+  "permission": {
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "edit": "ask",
+    "write": "ask",
+    "bash": "allow",
+    "webfetch": "ask",
+    "*_mcp_*": "ask"
+  }
+}

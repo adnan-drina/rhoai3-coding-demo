@@ -188,7 +188,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 - [ ] **Stage 060 workspace addition** — Dependency Analytics extension in the editor policy (showroom module 5 part 1).
 - [ ] **AI-enhanced application development (future stage candidate)** — Quarkus + LangChain4j service consuming MaaS endpoints on the same golden path (showroom module 7 pattern; introduces the service-identity MaaSSubscription persona).
 
-- [ ] **Stage 080 RHDH entry point** — a migration golden-path template that takes the Git URL of the legacy repository to migrate and provisions a Dev Spaces workspace wired to MTA (and possibly the Kai agent); part of the stage 080 redefinition (supersedes the 2026-07-13 MTA-direct-entry decision).
+- [x] **Stage 080 RHDH entry point** — DONE 2026-07-24: `app-migration` golden-path template (gitops `rhdh/templates/app-migration/`) takes `legacyRepoUrl` + `name`; publishes the per-run Quarkus **destination** repo from the `quarkus-migration-scaffold` golden repo (authored in `stages/080-ai-autonomous-migration/golden-repo/`, pushed by `bootstrap-golden-repos.sh`), catalog-registers only the destination (with `demo.rhoai.io/migrated-from` provenance annotation + `migration.yaml`), and its dual-project devfile clones the legacy app read-only into `/projects/legacy` (workspace-only, never cataloged, per user decision) next to `/projects/modernized` — MTA extension pack 8.2.0 + hub wiring + OpenCode/spec-kit preconfigured; legacy listed FIRST so the MTA extension analyzes it in multi-root mode. Constraint: the legacy URL must be publicly clonable (private-repo credentials = follow-up if needed).
 
 ## Portability (fresh-environment reproducibility)
 

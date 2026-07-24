@@ -1,0 +1,7 @@
+# Migration provenance record — stamped by the app-migration template.
+# The legacy application is intentionally NOT registered in the catalog;
+# this file is the durable record of where the migration started.
+migration:
+  legacyRepoUrl: ${{ values.legacyRepoUrl }}
+  target: quarkus
+  provisionedBy: app-migration golden-path template

@@ -54,8 +54,8 @@ spec:
 ---
 # Catalog scope (2026-07-13 decision): coolstore-inventory-service is the
 # one and only Component — the getting-started-ai-coding onboarding entry
-# and the MCA Coolstore brownfield entry were removed; a migration entry
-# point returns with the stage 080 golden-path template when it lands.
+# and the MCA Coolstore brownfield entry were removed; stage 080's entry
+# point is the app-migration golden-path template (registered below).
 # The MaaS model Resources stay as unattached AI assets.
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -196,10 +196,11 @@ spec:
   type: ai-model
   owner: ai-modernization-team
 ---
-# Golden-path template (stage 070 only): registered from this repository at
-# the deployed revision (placeholder resolved by the generate-rhdh-catalog
-# job). Stage 060 enters through the coolstore-inventory-service component
-# (no template); stage 080 enters through MTA directly for now.
+# Golden-path templates: registered from this repository at the deployed
+# revision (placeholder resolved by the generate-rhdh-catalog job).
+# Stage 060 enters through the coolstore-inventory-service component (no
+# template); stage 070 = agentic-quarkus-scaffold; stage 080 =
+# app-migration (destination repo cataloged, legacy app workspace-only).
 apiVersion: backstage.io/v1alpha1
 kind: Location
 metadata:
@@ -208,3 +209,12 @@ metadata:
 spec:
   type: url
   target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
+---
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: template-app-migration
+  description: Golden-path template for stage 080 AI-autonomous migration
+spec:
+  type: url
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml

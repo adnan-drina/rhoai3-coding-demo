@@ -49,7 +49,7 @@ The `overlays/slim` variant deploys the platform without MTA; RHDH sign-in works
 
 - **Stage 060** enters through the **catalog**, not a template: the `coolstore-inventory-service` component links straight into the governed Dev Spaces workspace; pushes to its repo run coolstore's own pipeline in `coolstore-dev`.
 - **Stage 070** enters through the one **golden-path template** (`agentic-quarkus-scaffold`, in `base/rhdh/templates/`): it scaffolds a fresh corporate-standard Quarkus app into a per-run GitHub repo (topic `rhoai3-golden-path`) with its own namespace and pipeline instance — verified against the Backstage GitHub scaffolder module (`publish:github` with `protectDefaultBranch: false` so the demo can push to `main`).
-- **Stage 080** enters through **MTA directly** for now (the migration golden-path template is part of the stage 080 implementation plan).
+- **Stage 080** enters through the **`app-migration` golden-path template** (in `base/rhdh/templates/`): it takes the Git URL of a legacy application plus a project name, publishes a per-run Quarkus **destination** repo (catalog-registered, with its own namespace and pipeline, exactly like stage 070), and its workspace clones the legacy code side by side as a read-only, workspace-only project — the legacy app is never cataloged; `migration.yaml` in the destination records the provenance.
 
 Webhooks are not created per repo: a GitHub App installed on all repositories delivers push events to the shared dispatcher EventListener, which routes each repository to its project's own pipeline.
 
