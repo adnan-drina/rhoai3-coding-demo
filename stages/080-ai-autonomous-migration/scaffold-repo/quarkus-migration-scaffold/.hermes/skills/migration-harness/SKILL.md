@@ -182,6 +182,17 @@ processors enforce prod-mode requirements (e.g. Hibernate ORM demands a
 configured default datasource) that `clean test` never exercises —
 test-scoped fixes can still fail prod packaging.
 
+**The factory quality gate is part of every task's acceptance.** SonarQube
+fails the exit on: new-code coverage < 80%, any new violation, or > 3%
+duplicated new lines. Consequences for task packets:
+
+- Code-producing tasks (harvest included) must ship **unit tests with the
+  code** — coverage debt is a gate failure, not a follow-up.
+- Harvested legacy duplication (e.g. near-identical entity/DTO pairs) must
+  be consolidated as part of the migration design, not copied through.
+- Check locally before commit: `mvn -q clean verify` +
+  the JaCoCo report (`target/jacoco-report/`) for new-class coverage.
+
 On milestone boundaries (every 3–4 tasks), run a short inferential
 self-eval: does the diff so far satisfy the spec sections it claims to?
 
