@@ -175,6 +175,13 @@ export JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME}/bin:${PATH}"
 mvn -q clean test
 ```
 
+If the task touched `pom.xml`, `application.properties`, or any other
+build/runtime configuration, escalate the sensor to `mvn -q clean verify`:
+the factory runs the full Quarkus package build, whose extension
+processors enforce prod-mode requirements (e.g. Hibernate ORM demands a
+configured default datasource) that `clean test` never exercises —
+test-scoped fixes can still fail prod packaging.
+
 On milestone boundaries (every 3–4 tasks), run a short inferential
 self-eval: does the diff so far satisfy the spec sections it claims to?
 
