@@ -60,7 +60,7 @@ Stage 040 is the governance control point for all model consumption that follows
 | Name | Owners | Models (limit/1h) | Priority | Purpose |
 |------|--------|-------------------|----------|---------|
 | `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | nemotron, qwen3-6-35b-a3b @1M | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
-| `mta-migration-models` | 2 SAs (MTA hook + agentic migration) | nemotron, qwen3-6-35b-a3b @1M | 100 | MTA Developer Lightspeed + agentic migration |
+| `mta-migration-models` | 1 SA (MTA hook) | nemotron, qwen3-6-35b-a3b @1M | 100 | MTA Developer Lightspeed |
 | `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | nemotron @1M, qwen3-6-35b-a3b @1M, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
 | `developer-hub-models` | rhods-admins, kube:admin | nemotron, qwen3-6-35b-a3b @1M | 100 | Reserved for RHDH integration |
 | `model-evaluation` | unchanged | nemotron @2M/1h, gpt-4o-mini @1M/1h | 100 | Eval workloads |
@@ -68,7 +68,7 @@ Stage 040 is the governance control point for all model consumption that follows
 
 Retired: `rhoai-developers-coding-models`, `enterprise-rag-autorag`.
 
-- **Cross-stage wiring.** Stage 050 (`devspace-maas-key-provisioner`) service account uses the `devspaces-coding-models` subscription. Stage 050 MTA wiring (`job-patch-mta-maas-url`, `agentic-migration-key-provisioner`) uses the `mta-migration-models` subscription — keys minted under those service accounts inherit the matching token budget.
+- **Cross-stage wiring.** Stage 050 (`devspace-maas-key-provisioner`) service account uses the `devspaces-coding-models` subscription. Stage 050 MTA wiring (`job-patch-mta-maas-url`) uses the `mta-migration-models` subscription — keys minted under that service account inherit the matching token budget.
 - **Operator version pinning.** The RHCL Subscription declares `startingCSV: rhcl-operator.v1.3.5` directly in the manifest with manual InstallPlan approval; a hook Job (`approve-rhcl-installplan`) guards against accidental upgrades past `v1.3.5`. This is deliberate because RHCL 1.4.0 is deprecated and Red Hat directs customers to pin to the latest 1.3.z release.
 - **Generated resources stay operator-managed.** AuthPolicy, TokenRateLimitPolicy, EnvoyFilter, and HTTPRoutes are created by the MaaS/RHCL/Kuadrant operators from the declared subscriptions and model refs — they are NOT authored in GitOps.
 - **Serving-health monitoring.** The `vllm-serving-health` PrometheusRule fires: high TTFT (>2s for 10m), request queue backlog (>8 for 10m), KV-cache pressure (>90% for 10m), and a parked-model info alert when no metrics flow for 15m. These match the Stage 030 GuideLLM benchmark breakpoints.

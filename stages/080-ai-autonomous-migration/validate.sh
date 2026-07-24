@@ -128,6 +128,37 @@ else
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
 
+log_step "Modernization Workspaces (mta component)"
+for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
+    check "mca-coolstore workspace exists: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o jsonpath='{.metadata.name}'" \
+        "mca-coolstore"
+    check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA VS Code extension 8.1.3: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.3.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA core extension 8.1.3: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.1.3.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads MTA Java extension 8.1.3: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.1.3.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace sets HUB_URL to the internal hub service: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace sets FORCE_HUB_ENABLED: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'FORCE_HUB_ENABLED' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace sets HUB_INSECURE: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'HUB_INSECURE' && echo present || echo missing" \
+        "present"
+    check "mta-hub-config ConfigMap exists with MTA hub URL: $ns" \
+        "oc get configmap mta-hub-config -n $ns -o jsonpath='{.data.MTA_HUB_URL}' 2>/dev/null | grep -c 'https://' || echo 0" \
+        "1"
+done
+
 log_step "Pre-Demo Readiness"
 MAAS_HOST=$(oc get gateway maas-default-gateway -n openshift-ingress \
   -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
@@ -156,22 +187,6 @@ check_warn "llm-proxy has real OPENAI_API_KEY" \
 check "MTA Hub deployment ready" \
   "oc get deployment mta-hub -n openshift-mta -o jsonpath='{.status.readyReplicas}'" \
   "1"
-
-log_step "Agentic migration workspace (Wave 2)"
-check "agentic-migration DevWorkspace exists" \
-  "oc get devworkspace agentic-migration -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
-  "agentic-migration"
-check "workspace clones the migiq sample" \
-  "oc get devworkspace agentic-migration -n wksp-ai-developer -o jsonpath='{.spec.template.projects[0].git.remotes.origin}'" \
-  "migiq-spring-boot-sample"
-# The provisioning hook deletes itself on success (HookSucceeded policy);
-# the durable evidence is the Secret and a live authorization check.
-check "elevated key authenticates against the governed gateway" \
-  "KEY=\$(oc get secret maas-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY}' | base64 -d); HOST=\$(oc get gateway maas-default-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}'); curl -sk -o /dev/null -w '%{http_code}' -H \"Authorization: Bearer \$KEY\" \"https://\$HOST/models-as-a-service/qwen3-6-35b-a3b/v1/models\"" \
-  "200"
-check "elevated MaaS key Secret exists" \
-  "oc get secret maas-agentic-migration-key -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
-  "maas-agentic-migration-key"
 
 echo ""
 validation_summary

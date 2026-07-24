@@ -12,16 +12,12 @@ metadata:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   # MTA hook provisions kai-api-keys MaaS key so Developer Lightspeed for
-  # MTA calls models through the governed gateway. The agentic-migration
-  # provisioner creates an elevated key for parallel-agent token bursts.
+  # MTA calls models through the governed gateway.
   owner:
     users:
       # Stage 050 MTA hook: provisions the kai-api-keys MaaS key so Developer
       # Lightspeed for MTA calls models through the governed gateway.
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
-      # Stage 080 agentic migration workspace key: elevated key for
-      # parallel-agent token bursts during autonomous migration runs.
-      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service
@@ -58,7 +54,6 @@ spec:
   subjects:
     users:
       - system:serviceaccount:openshift-mta:job-patch-mta-maas-url
-      - system:serviceaccount:wksp-ai-developer:agentic-migration-key-provisioner
   modelRefs:
     - name: nemotron-3-nano-30b-a3b
       namespace: models-as-a-service

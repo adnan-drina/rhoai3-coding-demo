@@ -66,7 +66,7 @@ stages:
     gitopsPath: gitops/stages/050-advanced-app-platform/base
     dependsOn:
       - "040"
-    # RHDH OIDC brokers through the MTA Keycloak in this stage's migiq
+    # RHDH OIDC brokers through the MTA Keycloak in this stage's mta
     # component; the PostSync jobs wait, so ordering resolves in one sync.
     # A standalone platform RHBK remains an open item in the restructure plan.
   - id: "060"
@@ -97,8 +97,8 @@ stages:
       - Migration Toolkit for Applications
       - Red Hat Developer Lightspeed for MTA
     validateScript: stages/080-ai-autonomous-migration/validate.sh
-    # Workflow-only stage: the MigIQ stack (MTA + Lightspeed) is owned by
-    # stage 050 advanced-app-platform (migiq component).
+    # Workflow-only stage: the migration stack (MTA + Lightspeed) is owned
+    # by stage 050 advanced-app-platform (mta component).
     dependsOn:
       - "040"
       - "050"

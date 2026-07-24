@@ -68,7 +68,7 @@ check "CheCluster phase Active" \
   "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" \
   "Active"
 
-log_step "MigIQ (migiq component)"
+log_step "MTA (mta component)"
 check "Tackle CR exists" \
   "oc get tackle mta -n openshift-mta -o jsonpath='{.metadata.name}'" \
   "mta"

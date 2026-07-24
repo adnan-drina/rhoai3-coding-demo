@@ -28,7 +28,7 @@ With the three platform pillars in place, this workshop demonstrates a progressi
 |------|----------------------|---------|
 | **Assisted** (060) | First one-shot prompts in the IDE — and their limits | Dev Spaces + Kilo Code via MaaS |
 | **Agentic** (070) | Enterprise standards as reusable skills and specs that agents follow and improve | OpenCode + AGENTS.md + skills |
-| **Autonomous** (080) | Multi-agent legacy migration with human review gates | MigIQ (MTA + Developer Lightspeed) |
+| **Autonomous** (080) | Harness-governed legacy migration with human review gates | MTA + Developer Lightspeed + OpenCode |
 
 Each rung deliberately exposes its own limits to motivate the next: one-shot prompting fails on project standards, which motivates skills and specs; skill-guided agents motivate autonomous multi-agent workflows — and every step lands on the same platform rails.
 
@@ -125,7 +125,7 @@ oc login --token=<token> --server=<api>
 ./stages/050-advanced-app-platform/deploy.sh
 ```
 
-**Validate the developer workflow stages.** Stages 060–080 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MigIQ stack) is deployed by Stage 050. Each keeps a read-only `validate.sh` for its demo prerequisites:
+**Validate the developer workflow stages.** Stages 060–080 are workflow-only: all of their infrastructure (workspaces, pipelines, quality gates, the MTA stack) is deployed by Stage 050. Each keeps a read-only `validate.sh` for its demo prerequisites:
 
 ```bash
 ./stages/060-ai-assisted-development/validate.sh

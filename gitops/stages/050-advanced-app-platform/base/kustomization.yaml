@@ -8,11 +8,11 @@ kind: Kustomization
 #   pipelines  — Pipelines/TAS operators + shared push pipeline + triggers
 #   sonarqube  — static analysis with fail-on-new-issue quality gate
 #   rhdh       — Developer Hub portal + runtime catalog + OIDC jobs
-#   migiq      — MTA + Developer Lightspeed migration stack (single-rung;
+#   mta        — MTA + Developer Lightspeed migration stack (single-rung;
 #                use overlays/slim to deploy the platform without it)
 #   coolstore  — deployed Coolstore Inventory Service dev environment
 #                (image seeded by deploy.sh via the shared pipeline)
-# Identity note: RHDH OIDC brokers through the migiq component's MTA
+# Identity note: RHDH OIDC brokers through the mta component's MTA
 # Keycloak; the PostSync jobs wait/retry, so ordering resolves within one
 # Application sync. A standalone platform RHBK remains an open refinement.
 
@@ -21,5 +21,5 @@ resources:
   - pipelines
   - sonarqube
   - rhdh
-  - migiq
+  - mta
   - coolstore

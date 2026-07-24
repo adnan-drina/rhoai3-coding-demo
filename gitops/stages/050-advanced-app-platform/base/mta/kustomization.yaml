@@ -1,9 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# MigIQ component (moved from the former migration stage base):
+# MTA component:
 # Migration Toolkit for Applications 8.1 with Red Hat Developer Lightspeed
-# configured to use MaaS models, plus the agentic migration workspace.
+# configured to use MaaS models.
 # The stage 080 demo consumes this stack; omit this component via
 # overlays/slim when the migration rung is not being demoed.
 # Ref: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
@@ -25,5 +25,7 @@ resources:
   - jobs/patch-mta-maas-url.yaml
   # PostSync: Configure RHBK OpenShift IdP and role mappings
   - jobs/configure-mta-openshift-auth.yaml
-  # Agentic migration workspace + elevated MaaS key
-  - agentic
+  # PostSync: mta-hub-config ConfigMaps (external hub URL) per workspace namespace
+  - jobs/mta-hub-workspace-config.yaml
+  # Wave 20: stage 080 modernization workspaces (MTA extension + hub wiring)
+  - workspaces/mca-coolstore-workspaces.yaml

@@ -36,7 +36,6 @@ log_step "Pre-Provisioned Workspace Namespaces"
 WORKSPACES=(
     getting-started-ai-coding
     coolstore-inventory-service
-    mca-coolstore
 )
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Workspace namespace exists: $ns" \
@@ -56,33 +55,6 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "present"
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads Kilo Code extension 7.4.8: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA VS Code extension 8.1.2: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.1.3.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA core extension 8.1.2: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.1.3.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA Java extension 8.1.2: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.1.3.vsix' && echo present || echo missing" \
-        "present"
-    check "mta-hub-config ConfigMap exists with MTA hub URL: $ns" \
-        "oc get configmap mta-hub-config -n $ns -o jsonpath='{.data.MTA_HUB_URL}' 2>/dev/null | grep -c 'https://' || echo 0" \
-        "1"
-    check "mca-coolstore workspace sets HUB_URL from mta-hub-config: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'mta-hub-config' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace sets FORCE_HUB_ENABLED: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'FORCE_HUB_ENABLED' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace sets HUB_INSECURE: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'HUB_INSECURE' && echo present || echo missing" \
         "present"
     for workspace in "${WORKSPACES[@]}"; do
         check "Workspace DevWorkspace exists: $ns/$workspace" \

@@ -104,7 +104,7 @@ Deploy stages in order:
 ./stages/050-advanced-app-platform/deploy.sh
 ```
 
-Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (devspaces, pipelines, sonarqube, rhdh, migiq). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
+Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
 Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
 
@@ -114,10 +114,10 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 | 020 | `020-gpu-infrastructure-private-ai` | NFD, GPU Operator, GPU MachineSets, Red Hat build of Kueue, queue quota, KEDA readiness |
 | 030 | `030-private-model-serving` | Local private model serving |
 | 040 | `040-governed-models-as-a-service` | MaaS control plane, gateway, governance, external models, MCP context |
-| 050 | `050-advanced-app-platform` | Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MigIQ (MTA + Lightspeed), coolstore dev environment |
+| 050 | `050-advanced-app-platform` | Dev Spaces, webhook dispatcher + per-project pipelines + SonarQube gate, Developer Hub, Trusted Artifact Signer, MTA + Lightspeed, coolstore dev environment |
 | 060 | *(workflow-only)* | AI-assisted development on stage 050 workspaces |
 | 070 | *(workflow-only)* | AI-agentic development (OpenCode + skills) |
-| 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MigIQ stack |
+| 080 | *(workflow-only)* | AI-autonomous migration on the stage 050 MTA stack |
 
 ## Validation Strategy
 
@@ -380,7 +380,7 @@ Actions:
 
 Validation evidence:
 
-- `050-advanced-app-platform` reached Synced/Healthy/Succeeded including all PostSync hooks (SonarQube admin rotation + scanner token + fail-on-new-issue default gate, RHDH OIDC, MigIQ MaaS hooks).
+- `050-advanced-app-platform` reached Synced/Healthy/Succeeded including all PostSync hooks (SonarQube admin rotation + scanner token + fail-on-new-issue default gate, RHDH OIDC, MTA MaaS hooks).
 - MaaS gateway restored: `/maas-api/v1/models` answers 401 (serving) after the 1.3.x rollback; kuadrant CSVs at rhcl 1.3.4 / authorino 1.3.1 / limitador 1.3.1 / dns 1.3.1.
 - End-to-end golden-path delivery chain FULLY GREEN: push to golden-path repo main → GitHub App webhook → EventListener (HMAC verified) → PipelineRun in seconds → clone → Maven build (warm cache: full run 1m38s) → SonarQube analysis + custom quality gate → buildah push to `quay.io/rhoai3-coding-demo/<app>:<sha>`, with quay auto-creating the repository via the org `pipeline` team's Creator role (robot `rhoai3-coding-demo+pipeline`). Fixes applied live along the way: coschedule=pipelineruns for dual PVC workspaces, image-provided mvn (build image lacks gzip for the wrapper), CEL topic scoping of the webhook. Note: org default repository visibility should be Public or auto-created image repos are private (pull secrets needed for deploys).
 - Post-rollback follow-up: RHCL upgraded 1.3.4→1.3.5 to match the stage 040 guard; stale 1.4-rendered WasmPlugin/EnvoyFilters caused valid-key requests to hang in the gateway filter chain until deleted and re-rendered by the 1.3 operator (recipe extended in TROUBLESHOOTING); after cleanup, model-route requests answer in milliseconds.
@@ -907,7 +907,7 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 
 The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces (consumed by the workflow-only stages 060/070).
 
-Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users.
+Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `getting-started-ai-coding` and `coolstore-inventory-service` DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users. The `mca-coolstore` modernization workspaces in the same namespaces belong to the `mta` component and are validated by stage 080's `validate.sh`.
 
 Useful checks:
 
@@ -917,9 +917,9 @@ oc get devworkspace -A
 oc get pods -n openshift-devspaces
 ```
 
-### Stage 050 — MigIQ (migiq component)
+### Stage 050 — MTA (mta component)
 
-The stage 050 `migiq` component installs Migration Toolkit for Applications (the MigIQ stack) and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080).
+The stage 050 `mta` component installs Migration Toolkit for Applications and configures Red Hat Developer Lightspeed for MTA to use MaaS (consumed by the workflow-only stage 080). It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
 
 Useful checks:
 
@@ -943,7 +943,7 @@ curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o j
 
 ### Stage 050 — Developer Hub (rhdh component)
 
-The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the MTA Keycloak from the `migiq` component of the same stage (a standalone platform RHBK remains an open item in the restructure plan).
+The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the MTA Keycloak from the `mta` component of the same stage (a standalone platform RHBK remains an open item in the restructure plan).
 
 The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
 

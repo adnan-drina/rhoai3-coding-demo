@@ -54,8 +54,8 @@ spec:
 ---
 # Catalog scope (2026-07-13 decision): coolstore-inventory-service is the
 # one and only Component — the getting-started-ai-coding onboarding entry
-# and the MCA Coolstore brownfield entry were removed; the MCA legacy app
-# returns with the stage 080 template once the MigIQ flow is settled.
+# and the MCA Coolstore brownfield entry were removed; a migration entry
+# point returns with the stage 080 golden-path template when it lands.
 # The MaaS model Resources stay as unattached AI assets.
 apiVersion: backstage.io/v1alpha1
 kind: Component

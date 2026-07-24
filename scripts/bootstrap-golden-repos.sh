@@ -5,7 +5,6 @@
 #
 # Repositories managed (under github.com/${GITHUB_OWNER}):
 #   agentic-quarkus-scaffold — pushed verbatim from stages/060-ai-assisted-development/golden-repo/
-#   migiq-spring-boot-sample — verified only (already golden, not touched)
 #
 # Requires: gh (authenticated with repo scope), git. No cluster access.
 set -euo pipefail
@@ -50,14 +49,6 @@ cp -R "$REPO_ROOT/stages/060-ai-assisted-development/golden-repo/agentic-quarkus
 ensure_repo "agentic-quarkus-scaffold" "Corporate Quarkus scaffold golden repo (agentic golden path: AGENTS.md + skills + specs)"
 push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/060-ai-assisted-development/golden-repo/agentic-quarkus-scaffold"
-
-# --- 2. migiq-spring-boot-sample (verify only) ---
-if gh repo view "${GITHUB_OWNER}/migiq-spring-boot-sample" >/dev/null 2>&1; then
-  gh repo edit "${GITHUB_OWNER}/migiq-spring-boot-sample" --add-topic rhoai3-golden-path >/dev/null
-  log "migiq-spring-boot-sample exists (topic ensured; content untouched)"
-else
-  warn "migiq-spring-boot-sample not found under ${GITHUB_OWNER} — the autonomous-migration template needs it"
-fi
 
 log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"
