@@ -1070,13 +1070,26 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI and choose casca
 
 ## Model selection record (current estate and history)
 
-The demo serves two local models on 2× g6e.2xlarge (1× NVIDIA L40S, 48GB each),
-one model per GPU, both governed through the MaaS gateway:
+The demo's default posture serves ONE local model on 1× g6e.2xlarge (1×
+NVIDIA L40S, 48GB), governed through the MaaS gateway — a measured cost
+decision (2026-07-25): single-stream decode parity between the dense 27B
+and the 35B MoE (18.8 vs 17.7 tok/s) plus better quality at both harness
+roles made a dedicated coding GPU unnecessary for presenter-driven use.
+The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
+7.5s vs 25.8s per request) matters only for multi-user hands-on sessions
+— for those, enable the workshop overlay below.
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
 | Agent orchestrator | `qwen3-6-27b` (RedHatAI/Qwen3.6-27B-FP8) | Benchmark-selected (Artificial Analysis: Intelligence 37, τ²-Bench 0.94, SWE-bench 77.2) — the long-horizon tool-calling reliability the stage 080 harness loop demands | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (no official modelcar published yet — graduation tracked in BACKLOG); multimodal checkpoint deployed text-only (`--language-model-only`); 131K window; thinking-mode sampling defaults per the model card |
-| Coding worker | `qwen3-6-35b-a3b` (RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic) | Strong coding + tool-calling in a fast MoE (3B active) — interactive-speed code generation | Official modelcar; `--language-model-only` (the card's Text-Only mode) funds a 131K window on 48GB — the earlier `--limit-mm-per-prompt` only blocked inputs while the vision encoder still occupied VRAM |
+| Coding worker | `qwen3-6-27b` (same model, second seat) | The 27B outscores the 35B on coding (AA Coding 53.7 vs 41.9) at measured single-stream parity — one strong model, two disciplined harness roles | Worker calls route to the same endpoint with coding-profile client sampling |
+
+**Workshop capacity overlay:** `qwen3-6-35b-a3b`
+(gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE
+coding worker for multi-user sessions. Enable: scale the GPU machineset
+to 2, add the overlay + policy refs, re-mint the key (steps in the
+overlay README). Its registry card stays active, marked
+`deployment_status: workshop-overlay`.
 
 **Retired seats** (registry keeps the archived cards — never delete):
 
