@@ -18,7 +18,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: nemotron-3-nano-30b-a3b
+    - name: gemma-4-26b-a4b
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 1000000
@@ -56,7 +56,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: nemotron-3-nano-30b-a3b
+    - name: gemma-4-26b-a4b
       namespace: models-as-a-service
     - name: qwen3-6-35b-a3b
       namespace: models-as-a-service

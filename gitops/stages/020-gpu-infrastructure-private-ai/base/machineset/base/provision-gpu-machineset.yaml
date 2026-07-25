@@ -85,7 +85,7 @@ data:
     import json, subprocess, sys
 
     MAPI = "openshift-machine-api"
-    GPU_INSTANCE_TYPE = "g6e.2xlarge"   # NVIDIA L40S — matches the demo's Qwen/Nemotron sizing
+    GPU_INSTANCE_TYPE = "g6e.2xlarge"   # NVIDIA L40S — matches the demo local-model sizing
     GPU_REPLICAS = 2
     WORKER_REPLICAS = 4
     GPU_DISK_GB = 200

@@ -29,8 +29,8 @@ OPENAI_MODEL_ID="${RHOAI_OPENAI_MODEL_ID:-gpt-4o-mini}"
 OPENAI_MODEL_RESOURCE="${RHOAI_OPENAI_MODEL_RESOURCE:-gpt-4o-mini}"
 OPENAI_PROVIDER_SECRET="${RHOAI_OPENAI_PROVIDER_SECRET:-openai-provider-api-key}"
 OPENAI_ACCESS_RESOURCE="${RHOAI_OPENAI_ACCESS_RESOURCE:-personal-kube-admin}"
-NEMOTRON_MODEL_RESOURCE="${RHOAI_MAAS_NEMOTRON_MODEL_NAME:-nemotron-3-nano-30b-a3b}"
-DIRECT_NEMOTRON_NAME="${RHOAI_NEMOTRON_DEPLOYMENT_NAME:-nvidia-nemotron-3-nano-30b-a3b}"
+GEMMA_MODEL_RESOURCE="${RHOAI_MAAS_GEMMA_MODEL_NAME:-gemma-4-26b-a4b}"
+DIRECT_GEMMA_NAME="${RHOAI_GEMMA_DEPLOYMENT_NAME:-gemma-4-26b-a4b-it-fp8-dynamic}"
 PROJECT_NS="${RHOAI_DEMO_PROJECT_NAMESPACE:-demo-sandbox}"
 PLAYGROUND_LSD_NAME="${RHOAI_PLAYGROUND_LSD_NAME:-lsd-genai-playground}"
 PLAYGROUND_CONFIGMAP="${RHOAI_PLAYGROUND_CONFIGMAP:-llama-stack-config}"
@@ -47,7 +47,7 @@ PLAYGROUND_VLLM_MAX_TOKENS="${RHOAI_PLAYGROUND_VLLM_MAX_TOKENS:-512}"
 # when the dashboard recreates a playground, so validation discovers model ids
 # from Llama Stack /v1/models instead of assuming provider order.
 PLAYGROUND_GPT_PROVIDER="${RHOAI_PLAYGROUND_GPT_PROVIDER_ID:-maas-vllm-inference-1}"
-PLAYGROUND_NEMOTRON_PROVIDER="${RHOAI_PLAYGROUND_NEMOTRON_PROVIDER_ID:-maas-vllm-inference-2}"
+PLAYGROUND_GEMMA_PROVIDER="${RHOAI_PLAYGROUND_GEMMA_PROVIDER_ID:-maas-vllm-inference-2}"
 
 TMP_FILES=()
 cleanup() {
@@ -156,7 +156,7 @@ get_gateway_host() {
   fi
 
   if [[ -z "$host" ]]; then
-    endpoint=$(jsonpath_nonempty "maasmodelrefs.maas.opendatahub.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS" "{.status.endpoint}")
+    endpoint=$(jsonpath_nonempty "maasmodelrefs.maas.opendatahub.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS" "{.status.endpoint}")
     if [[ -n "$endpoint" ]]; then
       host=$(ENDPOINT="$endpoint" python3 - <<'PY'
 import os
@@ -181,7 +181,7 @@ body_contains_model() {
   local body_file="$1"
   local model
 
-  for model in "$OPENAI_MODEL_RESOURCE" "$OPENAI_MODEL_ID" "$NEMOTRON_MODEL_RESOURCE"; do
+  for model in "$OPENAI_MODEL_RESOURCE" "$OPENAI_MODEL_ID" "$GEMMA_MODEL_RESOURCE"; do
     if grep -Fq "$model" "$body_file"; then
       return 0
     fi
@@ -336,8 +336,8 @@ validate_playground_if_present() {
       --insecure-skip-tls-verify=true > "$config_file"
     if grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${OPENAI_MODEL_RESOURCE}/v1" "$config_file" &&
       grep -q "model_id: ${OPENAI_MODEL_ID}" "$config_file" &&
-      grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${NEMOTRON_MODEL_RESOURCE}/v1" "$config_file" &&
-      grep -q "provider_model_id: ${NEMOTRON_MODEL_RESOURCE}" "$config_file"; then
+      grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${GEMMA_MODEL_RESOURCE}/v1" "$config_file" &&
+      grep -q "provider_model_id: ${GEMMA_MODEL_RESOURCE}" "$config_file"; then
       result="pass"
     else
       result="missing MaaS base URL or model mapping"
@@ -355,7 +355,7 @@ import urllib.request
 with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as resp:
     data = json.loads(resp.read())
 items = data.get('data', [])
-targets = {'${NEMOTRON_MODEL_RESOURCE}', '${OPENAI_MODEL_ID}'}
+targets = {'${GEMMA_MODEL_RESOURCE}', '${OPENAI_MODEL_ID}'}
 seen = set()
 for item in items:
     model_id = item.get('identifier') or item.get('id') or ''
@@ -383,7 +383,7 @@ import urllib.error
 import urllib.request
 
 models = [
-    ('nemotron', '${NEMOTRON_MODEL_RESOURCE}'),
+    ('gemma', '${GEMMA_MODEL_RESOURCE}'),
     ('openai', '${OPENAI_MODEL_ID}'),
 ]
 
@@ -422,18 +422,18 @@ for label, target in models:
     except Exception as exc:
         print(f'FAIL {label}: {exc!r}')
 " 2>&1 || true)
-    if grep -q "OK nemotron" <<<"$output" && grep -q "OK openai" <<<"$output"; then
-      check "Gen AI Playground Responses API works for MaaS Nemotron and GPT" "pass"
+    if grep -q "OK gemma" <<<"$output" && grep -q "OK openai" <<<"$output"; then
+      check "Gen AI Playground Responses API works for MaaS Gemma and GPT" "pass"
     elif grep -q "FAIL" <<<"$output" &&
       grep -qi "Too Many Requests" <<<"$output"; then
-      warn "Gen AI Playground Responses API works for MaaS Nemotron and GPT" \
+      warn "Gen AI Playground Responses API works for MaaS Gemma and GPT" \
         "MaaS policy or external provider throttled inference: ${output//$'\n'/ }"
     else
-      check "Gen AI Playground Responses API works for MaaS Nemotron and GPT" \
+      check "Gen AI Playground Responses API works for MaaS Gemma and GPT" \
         "responses=${output//$'\n'/ }"
     fi
   else
-    check "Gen AI Playground Responses API works for MaaS Nemotron and GPT" "deployment missing"
+    check "Gen AI Playground Responses API works for MaaS Gemma and GPT" "deployment missing"
   fi
 
   if resource_exists "deployment/rhods-dashboard" "redhat-ods-applications"; then
@@ -487,7 +487,7 @@ with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as re
     listed_models = json.loads(resp.read()).get('data', [])
 
 targets = {
-    'nemotron': '${NEMOTRON_MODEL_RESOURCE}',
+    'gemma': '${GEMMA_MODEL_RESOURCE}',
     'openai': '${OPENAI_MODEL_ID}',
 }
 resolved = {}
@@ -578,9 +578,9 @@ PY
     result="dashboard deployment missing"
   fi
   if [[ "$result" == warn:* ]]; then
-    warn "Gen AI Playground dashboard BFF works for MaaS Nemotron and GPT" "${result#warn: }"
+    warn "Gen AI Playground dashboard BFF works for MaaS Gemma and GPT" "${result#warn: }"
   else
-    check "Gen AI Playground dashboard BFF works for MaaS Nemotron and GPT" "$result"
+    check "Gen AI Playground dashboard BFF works for MaaS Gemma and GPT" "$result"
   fi
 }
 
@@ -876,15 +876,15 @@ else
 fi
 check "MaaS Tenant Ready" "$R"
 
-if resource_exists "inferenceservice/${DIRECT_NEMOTRON_NAME}" "$PROJECT_NS"; then
+if resource_exists "inferenceservice/${DIRECT_GEMMA_NAME}" "$PROJECT_NS"; then
   R="direct InferenceService still exists in ${PROJECT_NS}"
 else
   R="pass"
 fi
-check "direct demo-sandbox Nemotron deployment has been removed" "$R"
+check "direct demo-sandbox Gemma deployment has been removed" "$R"
 
 STALE_LLMIS=""
-for stale_llmis_name in "$NEMOTRON_MODEL_RESOURCE" "$DIRECT_NEMOTRON_NAME"; do
+for stale_llmis_name in "$GEMMA_MODEL_RESOURCE" "$DIRECT_GEMMA_NAME"; do
   if resource_exists "llminferenceservice/${stale_llmis_name}" "$PROJECT_NS"; then
     STALE_LLMIS="${STALE_LLMIS} ${stale_llmis_name}"
   fi
@@ -894,7 +894,7 @@ if [[ -z "$STALE_LLMIS" ]]; then
 else
   R="stale LLMInferenceService still exists in ${PROJECT_NS}:${STALE_LLMIS}"
 fi
-check "no stale demo-sandbox Nemotron LLMInferenceService remains" "$R"
+check "no stale demo-sandbox Gemma LLMInferenceService remains" "$R"
 
 if resource_exists "localqueue/lq-gpu-reserved-demo" "$MAAS_NS"; then
   LQ_CLUSTER_QUEUE=$(jsonpath "localqueue/lq-gpu-reserved-demo" "$MAAS_NS" "{.spec.clusterQueue}")
@@ -904,28 +904,28 @@ else
 fi
 check "MaaS namespace has the GPU reserved LocalQueue" "$R"
 
-if resource_exists "llminferenceservices.serving.kserve.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS"; then
-  NEMOTRON_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.model.uri}")
-  NEMOTRON_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
-  if [[ "$NEMOTRON_URI" == "oci://registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0" &&
-    "$NEMOTRON_READY" == "True" ]]; then
+if resource_exists "llminferenceservices.serving.kserve.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS"; then
+  GEMMA_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.model.uri}")
+  GEMMA_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
+  if [[ "$GEMMA_URI" == "oci://registry.redhat.io/rhai/modelcar-gemma-4-26b-a4b-it-fp8-dynamic@sha256:065bbfb0a144a6ec6d5b3936a8153b663695a5fac12e3258f451559382c672f8" &&
+    "$GEMMA_READY" == "True" ]]; then
     R="pass"
   else
-    R="uri=${NEMOTRON_URI:-missing},ready=${NEMOTRON_READY:-missing}"
+    R="uri=${GEMMA_URI:-missing},ready=${GEMMA_READY:-missing}"
   fi
 else
   R="missing"
 fi
-check "local Nemotron LLMInferenceService is ready in MaaS namespace" "$R"
+check "local Gemma LLMInferenceService is ready in MaaS namespace" "$R"
 
-NEMOTRON_MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
-NEMOTRON_MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${NEMOTRON_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
-if [[ "$NEMOTRON_MODELREF_KIND" == "LLMInferenceService" && "$NEMOTRON_MODELREF_NAME" == "$NEMOTRON_MODEL_RESOURCE" ]]; then
+GEMMA_MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
+GEMMA_MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${GEMMA_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
+if [[ "$GEMMA_MODELREF_KIND" == "LLMInferenceService" && "$GEMMA_MODELREF_NAME" == "$GEMMA_MODEL_RESOURCE" ]]; then
   R="pass"
 else
-  R="kind=${NEMOTRON_MODELREF_KIND:-missing},name=${NEMOTRON_MODELREF_NAME:-missing}"
+  R="kind=${GEMMA_MODELREF_KIND:-missing},name=${GEMMA_MODELREF_NAME:-missing}"
 fi
-check "MaaSModelRef points to the local Nemotron LLMInferenceService" "$R"
+check "MaaSModelRef points to the local Gemma LLMInferenceService" "$R"
 
 for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key; do
   IFS=: read -r EXT_NAME EXT_ENDPOINT EXT_SECRET <<< "$ext_model"
@@ -952,24 +952,24 @@ done
 
 DS_SUB="devspaces-coding-models"
 DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
-DS_NEMOTRON_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"nemotron-3-nano-30b-a3b\")].tokenRateLimits[0].limit}")
+DS_GEMMA_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"gemma-4-26b-a4b\")].tokenRateLimits[0].limit}")
 DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-35b-a3b\")].tokenRateLimits[0].limit}")
-if contains_word "$DS_MODELS" "nemotron-3-nano-30b-a3b" &&
+if contains_word "$DS_MODELS" "gemma-4-26b-a4b" &&
   contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_NEMOTRON_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" ]]; then
+  [[ "$DS_GEMMA_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" ]]; then
   R="pass"
 else
-  R="models=${DS_MODELS:-missing},nemotron=${DS_NEMOTRON_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
+  R="models=${DS_MODELS:-missing},gemma=${DS_GEMMA_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has 2 local coding models @1M (nemotron + qwen, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has 2 local coding models @1M (gemma + qwen, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
 PK_GPT_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"gpt-4o-mini\")].tokenRateLimits[0].limit}")
 PK_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 if contains_word "$PK_MODELS" "gpt-4o-mini" &&
-  contains_word "$PK_MODELS" "nemotron-3-nano-30b-a3b" &&
+  contains_word "$PK_MODELS" "gemma-4-26b-a4b" &&
   [[ "$PK_GPT_LIMIT" == "100000" && "$PK_PRIORITY" == "150" ]]; then
   R="pass"
 else
@@ -982,7 +982,7 @@ AUTH_MODELS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RES
 AUTH_ORG=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.meteringMetadata.organizationId}")
 if contains_word "$AUTH_SUBJECT_USERS" "kube:admin" &&
   contains_word "$AUTH_MODELS" "$OPENAI_MODEL_RESOURCE" &&
-  contains_word "$AUTH_MODELS" "$NEMOTRON_MODEL_RESOURCE" &&
+  contains_word "$AUTH_MODELS" "$GEMMA_MODEL_RESOURCE" &&
   [[ "$AUTH_ORG" == "rhoai3-coding-demo" ]]; then
   R="pass"
 else
@@ -1002,9 +1002,9 @@ GATEWAY_LOG_ERRORS=$(oc logs -n openshift-ingress \
   | grep -E 'allow_on_headers_stop_iteration|Proto constraint validation failed|unknown field|Error adding/updating listener' \
   || true)
 OPENAI_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-NEMOTRON_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+GEMMA_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-gemma-4-26b-a4b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 OPENAI_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-NEMOTRON_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-nemotron-3-nano-30b-a3b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+GEMMA_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-gemma-4-26b-a4b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 if [[ -n "$GATEWAY_LOG_ERRORS" ]]; then
   R="gateway Envoy log reports recent generated filter rejection"
 elif ! contains_word "$GATEWAY_READY" "True"; then
@@ -1013,10 +1013,10 @@ elif ! grep -q 'kuadrant-auth-maas-default-gateway' <<<"$GATEWAY_FILTERS" ||
   ! grep -q 'kuadrant-ratelimiting-maas-default-gateway' <<<"$GATEWAY_FILTERS"; then
   R="generated Kuadrant auth/rate-limit EnvoyFilters missing"
 elif [[ "$OPENAI_AUTH_ENFORCED" != "True" ||
-  "$NEMOTRON_AUTH_ENFORCED" != "True" ||
+  "$GEMMA_AUTH_ENFORCED" != "True" ||
   "$OPENAI_TRLP_ENFORCED" != "True" ||
-  "$NEMOTRON_TRLP_ENFORCED" != "True" ]]; then
-  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},nemotronAuth=${NEMOTRON_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},nemotronLimit=${NEMOTRON_TRLP_ENFORCED:-missing}"
+  "$GEMMA_TRLP_ENFORCED" != "True" ]]; then
+  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},gemmaAuth=${GEMMA_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},gemmaLimit=${GEMMA_TRLP_ENFORCED:-missing}"
 else
   R="pass"
 fi
@@ -1112,14 +1112,14 @@ with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as re
     listed_models = json.loads(resp.read()).get('data', [])
 
 model = None
-target = '${NEMOTRON_MODEL_RESOURCE}'
+target = '${GEMMA_MODEL_RESOURCE}'
 for item in listed_models:
     model_id = item.get('identifier') or item.get('id') or ''
     if model_id == target or model_id.endswith('/' + target):
         model = model_id
         break
 if not model:
-    raise SystemExit('nemotron model target not listed')
+    raise SystemExit('gemma model target not listed')
 
 payload = {
     'model': model,
@@ -1240,10 +1240,10 @@ if command -v python3 >/dev/null 2>&1; then
         INFERENCE_STATUS=$(curl -sk --max-time 120 -o "$INFERENCE_BODY" -w '%{http_code}' \
           -H "Authorization: Bearer ${API_KEY_VALUE}" \
           -H "Content-Type: application/json" \
-          "https://${GATEWAY_HOST}/models-as-a-service/${NEMOTRON_MODEL_RESOURCE}/v1/chat/completions" \
+          "https://${GATEWAY_HOST}/models-as-a-service/${GEMMA_MODEL_RESOURCE}/v1/chat/completions" \
           --data-binary @- <<JSON 2>/dev/null || true
 {
-  "model": "${NEMOTRON_MODEL_RESOURCE}",
+  "model": "${GEMMA_MODEL_RESOURCE}",
   "messages": [
     {
       "role": "user",
@@ -1290,7 +1290,7 @@ JSON
           R="pass"
         elif [[ "$INFERENCE_STATUS" == "429" ]] &&
           grep -qi "Too Many Requests" "$INFERENCE_BODY"; then
-          R="warn: MaaS policy throttled local Nemotron validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
+          R="warn: MaaS policy throttled local Gemma validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         else
           R="status=${INFERENCE_STATUS:-missing},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         fi
@@ -1298,9 +1298,9 @@ JSON
         R="MaaS API key was not created"
       fi
       if [[ "$R" == warn:* ]]; then
-        warn "ai-developer can call Nemotron through MaaS with tool calling and token usage" "${R#warn: }"
+        warn "ai-developer can call Gemma through MaaS with tool calling and token usage" "${R#warn: }"
       else
-        check "ai-developer can call Nemotron through MaaS with tool calling and token usage" "$R"
+        check "ai-developer can call Gemma through MaaS with tool calling and token usage" "$R"
       fi
 
       if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
@@ -1384,8 +1384,8 @@ JSON
       TMP_FILES+=("$UNAUTH_BODY")
       UNAUTH_STATUS=$(curl -sk --max-time 30 -o "$UNAUTH_BODY" -w '%{http_code}' \
         -H "Content-Type: application/json" \
-        "https://${GATEWAY_HOST}/models-as-a-service/${NEMOTRON_MODEL_RESOURCE}/v1/chat/completions" \
-        --data-binary "{\"model\":\"${NEMOTRON_MODEL_RESOURCE}\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":4}" \
+        "https://${GATEWAY_HOST}/models-as-a-service/${GEMMA_MODEL_RESOURCE}/v1/chat/completions" \
+        --data-binary "{\"model\":\"${GEMMA_MODEL_RESOURCE}\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":4}" \
         2>/dev/null || true)
       [[ "$UNAUTH_STATUS" == "401" ]] && R="pass" || R="status=${UNAUTH_STATUS:-missing}"
       check "unauthenticated MaaS inference is rejected" "$R"

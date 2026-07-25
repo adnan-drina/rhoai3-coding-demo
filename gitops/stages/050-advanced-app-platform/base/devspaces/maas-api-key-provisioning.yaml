@@ -284,7 +284,7 @@ data:
     }
 
     for _ in $(seq 1 30); do
-      [ -n "$(secret_value MAAS_API_KEY_NEMOTRON)" ] && break
+      [ -n "$(secret_value MAAS_API_KEY_GEMMA)" ] && break
       sleep 2
     done
 
@@ -400,18 +400,18 @@ data:
       "model": "qwen/qwen3-6-35b-a3b",
       "disabled_providers": ["kilo", "zai"],
       "provider": {
-        "nemotron": {
+        "gemma": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "NVIDIA Nemotron 3 Nano (private MaaS)",
+          "name": "Google Gemma 4 26B (private MaaS)",
           "options": {
-            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
+            "apiKey": "${MAAS_API_KEY_GEMMA}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/gemma-4-26b-a4b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           },
           "models": {
-            "nemotron-3-nano-30b-a3b": {
-              "name": "Nemotron 3 Nano 30B-A3B",
+            "gemma-4-26b-a4b": {
+              "name": "Gemma 4 26B A4B",
               "limit": { "context": 131072, "output": 16384 }
             }
           }
@@ -449,7 +449,7 @@ data:
     if [ "${AI_TOOL}" = "kilo" ]; then write_kilo_rules; fi
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
-    MAAS_API_KEY_NEMOTRON="$(secret_value MAAS_API_KEY_NEMOTRON)"
+    MAAS_API_KEY_GEMMA="$(secret_value MAAS_API_KEY_GEMMA)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
     # Optional: external Red Hat models via their direct endpoints. The
     # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
@@ -457,10 +457,10 @@ data:
     # Secret out of band (not in git); the provider is skipped when absent.
     REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
-    OPENCODE_ENABLED='["nemotron", "qwen"]'
+    OPENCODE_ENABLED='["gemma", "qwen"]'
     OPENCODE_REDHAT_PROVIDER=""
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      OPENCODE_ENABLED='["nemotron", "qwen", "redhat"]'
+      OPENCODE_ENABLED='["gemma", "qwen", "redhat"]'
       OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
@@ -488,7 +488,7 @@ data:
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
-      || [ -z "${MAAS_API_KEY_NEMOTRON}" ] \
+      || [ -z "${MAAS_API_KEY_GEMMA}" ] \
       || [ -z "${MAAS_API_KEY_QWEN}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
@@ -568,7 +568,7 @@ data:
       fi
 
       # Point Hermes at the same governed MaaS endpoints as OpenCode:
-      # orchestrator/planner on Nemotron (131K context), coding worker on
+      # orchestrator/planner on Gemma 4 (131K context), coding worker on
       # Qwen (stage 070 continuity). Rewritten on every init so key
       # rotation propagates. PyYAML comes from Hermes' own venv.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
@@ -576,7 +576,7 @@ data:
         echo "Hermes venv python not found; skipping Hermes MaaS config."
         return
       fi
-      export MAAS_BASE_URL MAAS_API_KEY_NEMOTRON MAAS_API_KEY_QWEN
+      export MAAS_BASE_URL MAAS_API_KEY_GEMMA MAAS_API_KEY_QWEN
       export REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
@@ -592,9 +592,9 @@ data:
     # token ESTIMATE (which undercounts vs the server tokenizer), and long
     # sessions die in HTTP 400 input+output>context loops.
     cfg["custom_providers"] = [
-        {"name": "maas-nemotron",
-         "base_url": base + "/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
-         "api_key": os.environ["MAAS_API_KEY_NEMOTRON"],
+        {"name": "maas-gemma",
+         "base_url": base + "/models-as-a-service/gemma-4-26b-a4b/v1",
+         "api_key": os.environ["MAAS_API_KEY_GEMMA"],
          "api_mode": "chat_completions",
          "context_length": 131072,
          "max_tokens": 16384},
@@ -622,11 +622,11 @@ data:
              "context_length": 196608,
              "max_tokens": 16384})
     model = cfg.get("model") or {}
-    model["default"] = "nemotron-3-nano-30b-a3b"
-    model["provider"] = "custom:maas-nemotron"
+    model["default"] = "gemma-4-26b-a4b"
+    model["provider"] = "custom:maas-gemma"
     cfg["model"] = model
     # Output cap. Unset, Hermes requests half the context window as output
-    # (65536 on nemotron's 131072), so once the conversation passes ~65K
+    # (65536 on a 131072 window), so once the conversation passes ~65K
     # input tokens vLLM rejects every request (input+output > context) and
     # the loop wedges in silent stream retries. 16K output is plenty for
     # orchestration turns and leaves ~114K for input before compaction.
@@ -646,7 +646,7 @@ data:
     cfg["platform_toolsets"] = pts
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: MaaS providers written (planner nemotron, worker qwen).")
+    print("Hermes config: MaaS providers written (planner gemma, worker qwen).")
     HERMESEOF
       chmod 600 "${HOME}/.hermes/config.yaml"
 
@@ -705,18 +705,18 @@ data:
       "autoupdate": true,
       "enabled_providers": ${OPENCODE_ENABLED},
       "provider": {
-        "nemotron": {
+        "gemma": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS Nemotron",
+          "name": "MaaS Gemma",
           "models": {
-            "nemotron-3-nano-30b-a3b": {
-              "name": "NVIDIA Nemotron (Local GPU)",
+            "gemma-4-26b-a4b": {
+              "name": "Google Gemma 4 (Local GPU)",
               "limit": { "context": 131072, "output": 16384 }
             }
           },
           "options": {
-            "apiKey": "${MAAS_API_KEY_NEMOTRON}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/nemotron-3-nano-30b-a3b/v1",
+            "apiKey": "${MAAS_API_KEY_GEMMA}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/gemma-4-26b-a4b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
@@ -940,7 +940,7 @@ spec:
                 printf 'MAAS_SUBSCRIPTION=%s\n' "${SUBSCRIPTION}"
               } > "${SECRET_FILE}"
 
-              write_model_key "NEMOTRON" "nemotron-3-nano-30b-a3b"
+              write_model_key "GEMMA" "gemma-4-26b-a4b"
               write_model_key "QWEN" "qwen3-6-35b-a3b"
 
               oc create secret generic "${SECRET_NAME}" \

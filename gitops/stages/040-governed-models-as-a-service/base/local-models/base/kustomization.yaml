@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - local-queue.yaml
-  - nemotron-llminferenceservice.yaml
-  - nemotron-maas-modelref.yaml
+  - gemma-llminferenceservice.yaml
+  - gemma-maas-modelref.yaml
   - qwen-llminferenceservice.yaml
   - qwen-maas-modelref.yaml

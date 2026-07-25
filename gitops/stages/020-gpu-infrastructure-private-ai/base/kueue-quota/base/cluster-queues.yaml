@@ -104,7 +104,7 @@ spec:
             - name: cpu
               nominalQuota: "12"
             - name: memory
-              # Two single-GPU models: nemotron (16Gi request) + qwen (20Gi
+              # Two single-GPU models: gemma (16Gi request) + qwen (20Gi
               # request for the ~36GB FP8 modelcar page cache headroom).
               nominalQuota: "48Gi"
     - coveredResources: ["nvidia.com/gpu"]
