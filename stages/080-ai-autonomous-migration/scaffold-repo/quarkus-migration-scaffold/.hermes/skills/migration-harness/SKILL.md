@@ -56,6 +56,15 @@ else
 fi
 ```
 
+### Autonomous sessions never ask for consent
+
+Harness runs are headless oneshots: nobody can answer a question you ask.
+The operator's packet IS your standing authorization for everything inside
+its scope — file edits, worker dispatches, builds, commits. If an action
+is outside the packet's scope, do not ask — record it in
+`migration/debt.md` and continue. Pausing to request confirmation ends
+the session with the work undone.
+
 ### Scripting rule — terminal only, never execute_code
 
 For ALL scripting (parsing findings, summarizing worker output, checking
