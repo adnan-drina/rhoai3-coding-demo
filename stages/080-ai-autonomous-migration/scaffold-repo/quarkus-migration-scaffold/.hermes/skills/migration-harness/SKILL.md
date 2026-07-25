@@ -262,7 +262,7 @@ not "the agent says done."
 ## Model routing (operator option)
 
 The governed default routes both agents through the cluster MaaS gateway:
-orchestrator on `custom:maas-granite` (Granite 4.0 H Small, 131K), worker on
+orchestrator on `custom:maas-qwen27b` (Qwen3.6 27B, 131K), worker on
 `qwen/qwen3-6-35b-a3b` (64K). For long or failure-prone runs the operator
 may start the orchestrator on the Red Hat MaaS portal's MiniMax M2
 instead — stronger long-horizon tool calling and a 196K window:

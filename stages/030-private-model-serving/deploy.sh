@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy.sh - Stage 030: Model Serving Foundation
 # Reconciles the shared Stage 010 RHOAI owner, then ensures the demo registry,
-# Granite registry metadata, and vLLM endpoint exist for fresh environments.
+# Qwen27B registry metadata, and vLLM endpoint exist for fresh environments.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,21 +10,21 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-rhoai-model-registries}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-demo-registry}"
 MODEL_NS="${RHOAI_MODEL_NAMESPACE:-demo-sandbox}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_GRANITE_DEPLOYMENT_NAME:-nvidia-granite-4-0-h-small}"
-MODEL_DISPLAY_NAME="${RHOAI_GRANITE_DISPLAY_NAME:-Granite-4.0-h-small-FP8-dynamic}"
-MODEL_VERSION_NAME="${RHOAI_GRANITE_VERSION_NAME:-v3.0}"  # modelcar tag; keeps version naming consistent with Stage 040 cards
-MODEL_URI="${RHOAI_GRANITE_MODEL_URI:-oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d}"
-MODEL_SOURCE_NAME="${RHOAI_GRANITE_SOURCE_NAME:-RedHatAI/granite-4.0-h-small-FP8-dynamic}"
-MODEL_PULL_SECRET="${RHOAI_GRANITE_PULL_SECRET:-granite-3-nano-30b}"
-MODEL_RUNTIME_NAME="${RHOAI_GRANITE_RUNTIME_NAME:-vllm-cuda-runtime}"
-MODEL_QUEUE_NAME="${RHOAI_GRANITE_QUEUE_NAME:-lq-gpu-reserved-demo}"
-MODEL_HARDWARE_PROFILE="${RHOAI_GRANITE_HARDWARE_PROFILE:-gpu-reserved-demo}"
-MODEL_CPU_REQUEST="${RHOAI_GRANITE_CPU_REQUEST:-2}"
-MODEL_CPU_LIMIT="${RHOAI_GRANITE_CPU_LIMIT:-4}"
-MODEL_MEMORY_REQUEST="${RHOAI_GRANITE_MEMORY_REQUEST:-16Gi}"
-MODEL_MEMORY_LIMIT="${RHOAI_GRANITE_MEMORY_LIMIT:-24Gi}"
-MODEL_MAX_MODEL_LEN="${RHOAI_GRANITE_MAX_MODEL_LEN:-8192}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_GRANITE_MAX_BATCHED_TOKENS:-8192}"
+MODEL_DEPLOYMENT_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-nvidia-qwen3-6-27b}"
+MODEL_DISPLAY_NAME="${RHOAI_QWEN27B_DISPLAY_NAME:-Qwen3.6-27B-FP8}"
+MODEL_VERSION_NAME="${RHOAI_QWEN27B_VERSION_NAME:-v3.0}"  # modelcar tag; keeps version naming consistent with Stage 040 cards
+MODEL_URI="${RHOAI_QWEN27B_MODEL_URI:-hf://RedHatAI/Qwen3.6-27B-FP8}"
+MODEL_SOURCE_NAME="${RHOAI_QWEN27B_SOURCE_NAME:-RedHatAI/Qwen3.6-27B-FP8}"
+MODEL_PULL_SECRET="${RHOAI_QWEN27B_PULL_SECRET:-qwen27b-3-nano-30b}"
+MODEL_RUNTIME_NAME="${RHOAI_QWEN27B_RUNTIME_NAME:-vllm-cuda-runtime}"
+MODEL_QUEUE_NAME="${RHOAI_QWEN27B_QUEUE_NAME:-lq-gpu-reserved-demo}"
+MODEL_HARDWARE_PROFILE="${RHOAI_QWEN27B_HARDWARE_PROFILE:-gpu-reserved-demo}"
+MODEL_CPU_REQUEST="${RHOAI_QWEN27B_CPU_REQUEST:-2}"
+MODEL_CPU_LIMIT="${RHOAI_QWEN27B_CPU_LIMIT:-4}"
+MODEL_MEMORY_REQUEST="${RHOAI_QWEN27B_MEMORY_REQUEST:-16Gi}"
+MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-24Gi}"
+MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-8192}"
+MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-8192}"
 
 if [[ -f "$ROOT_DIR/.env" ]]; then
   set -a
@@ -36,21 +36,21 @@ fi
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-$REGISTRY_NS}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-$REGISTRY_NAME}"
 MODEL_NS="${RHOAI_MODEL_NAMESPACE:-$MODEL_NS}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_GRANITE_DEPLOYMENT_NAME:-$MODEL_DEPLOYMENT_NAME}"
-MODEL_DISPLAY_NAME="${RHOAI_GRANITE_DISPLAY_NAME:-$MODEL_DISPLAY_NAME}"
-MODEL_VERSION_NAME="${RHOAI_GRANITE_VERSION_NAME:-$MODEL_VERSION_NAME}"
-MODEL_URI="${RHOAI_GRANITE_MODEL_URI:-$MODEL_URI}"
-MODEL_SOURCE_NAME="${RHOAI_GRANITE_SOURCE_NAME:-$MODEL_SOURCE_NAME}"
-MODEL_PULL_SECRET="${RHOAI_GRANITE_PULL_SECRET:-$MODEL_PULL_SECRET}"
-MODEL_RUNTIME_NAME="${RHOAI_GRANITE_RUNTIME_NAME:-$MODEL_RUNTIME_NAME}"
-MODEL_QUEUE_NAME="${RHOAI_GRANITE_QUEUE_NAME:-$MODEL_QUEUE_NAME}"
-MODEL_HARDWARE_PROFILE="${RHOAI_GRANITE_HARDWARE_PROFILE:-$MODEL_HARDWARE_PROFILE}"
-MODEL_CPU_REQUEST="${RHOAI_GRANITE_CPU_REQUEST:-$MODEL_CPU_REQUEST}"
-MODEL_CPU_LIMIT="${RHOAI_GRANITE_CPU_LIMIT:-$MODEL_CPU_LIMIT}"
-MODEL_MEMORY_REQUEST="${RHOAI_GRANITE_MEMORY_REQUEST:-$MODEL_MEMORY_REQUEST}"
-MODEL_MEMORY_LIMIT="${RHOAI_GRANITE_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
-MODEL_MAX_MODEL_LEN="${RHOAI_GRANITE_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_GRANITE_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
+MODEL_DEPLOYMENT_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-$MODEL_DEPLOYMENT_NAME}"
+MODEL_DISPLAY_NAME="${RHOAI_QWEN27B_DISPLAY_NAME:-$MODEL_DISPLAY_NAME}"
+MODEL_VERSION_NAME="${RHOAI_QWEN27B_VERSION_NAME:-$MODEL_VERSION_NAME}"
+MODEL_URI="${RHOAI_QWEN27B_MODEL_URI:-$MODEL_URI}"
+MODEL_SOURCE_NAME="${RHOAI_QWEN27B_SOURCE_NAME:-$MODEL_SOURCE_NAME}"
+MODEL_PULL_SECRET="${RHOAI_QWEN27B_PULL_SECRET:-$MODEL_PULL_SECRET}"
+MODEL_RUNTIME_NAME="${RHOAI_QWEN27B_RUNTIME_NAME:-$MODEL_RUNTIME_NAME}"
+MODEL_QUEUE_NAME="${RHOAI_QWEN27B_QUEUE_NAME:-$MODEL_QUEUE_NAME}"
+MODEL_HARDWARE_PROFILE="${RHOAI_QWEN27B_HARDWARE_PROFILE:-$MODEL_HARDWARE_PROFILE}"
+MODEL_CPU_REQUEST="${RHOAI_QWEN27B_CPU_REQUEST:-$MODEL_CPU_REQUEST}"
+MODEL_CPU_LIMIT="${RHOAI_QWEN27B_CPU_LIMIT:-$MODEL_CPU_LIMIT}"
+MODEL_MEMORY_REQUEST="${RHOAI_QWEN27B_MEMORY_REQUEST:-$MODEL_MEMORY_REQUEST}"
+MODEL_MEMORY_LIMIT="${RHOAI_QWEN27B_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
+MODEL_MAX_MODEL_LEN="${RHOAI_QWEN27B_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
+MODEL_MAX_BATCHED_TOKENS="${RHOAI_QWEN27B_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
 
 if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
   echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set." >&2
@@ -238,7 +238,7 @@ ensure_registered_model() {
   local payload
   payload=$(jq -n \
     --arg name "$MODEL_DISPLAY_NAME" \
-    --arg description "IBM Granite 4.0 H Small (FP8-dynamic) model used by the RHOAI demo vLLM serving baseline." \
+    --arg description "Qwen3.6 27B (FP8) model used by the RHOAI demo vLLM serving baseline." \
     --arg owner "rhoai3-coding-demo" \
     --arg provider "NVIDIA" \
     --arg license "NVIDIA Open Model License" \
@@ -361,7 +361,7 @@ ensure_serving_environment_metadata() {
 }
 
 ensure_registry_metadata() {
-  echo "── Ensuring Granite registry metadata ──"
+  echo "── Ensuring Qwen27B registry metadata ──"
   local registered_model_id model_version_id artifact_id serving_environment_id
   registered_model_id=$(ensure_registered_model | tail -1)
   model_version_id=$(ensure_model_version "$registered_model_id" | tail -1)
@@ -483,11 +483,11 @@ ensure_inference_service_config() {
     -o json --insecure-skip-tls-verify=true)
 
   if inference_service_matches_desired_config "$resource_json"; then
-    echo "✓ InferenceService already uses the curated Granite vLLM configuration"
+    echo "✓ InferenceService already uses the curated Qwen27B vLLM configuration"
     return 0
   fi
 
-  echo "── Reconciling Granite InferenceService to curated vLLM configuration ──"
+  echo "── Reconciling Qwen27B InferenceService to curated vLLM configuration ──"
   oc patch inferenceservice "$MODEL_DEPLOYMENT_NAME" -n "$MODEL_NS" \
     --type=merge \
     -p "$(desired_model_patch_json)" \
@@ -506,7 +506,7 @@ ensure_inference_service() {
 
   ensure_pull_secret
 
-  echo "── Creating Granite InferenceService ──"
+  echo "── Creating Qwen27B InferenceService ──"
   oc apply -f - --insecure-skip-tls-verify=true <<EOF
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
@@ -519,7 +519,7 @@ metadata:
     kueue.x-k8s.io/queue-name: ${MODEL_QUEUE_NAME}
   annotations:
     openshift.io/display-name: "${MODEL_DISPLAY_NAME} - ${MODEL_VERSION_NAME}"
-    openshift.io/description: "Granite vLLM endpoint for the Stage 030 model serving baseline."
+    openshift.io/description: "Qwen27B vLLM endpoint for the Stage 030 model serving baseline."
     opendatahub.io/model-type: generative
     opendatahub.io/hardware-profile-name: ${MODEL_HARDWARE_PROFILE}
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
@@ -566,14 +566,14 @@ EOF
 }
 
 # Stage 030 provides the model-serving FOUNDATION only: KServe enablement, the
-# vLLM ServingRuntime, and the model registry (including the Granite card that
-# the Stage 040 MaaSModelRef consumes). The model deployments (Granite + Qwen)
+# vLLM ServingRuntime, and the model registry (including the Qwen27B card that
+# the Stage 040 MaaSModelRef consumes). The model deployments (Qwen27B + Qwen)
 # are owned by Stage 040 as governed MaaS LLMInferenceServices; Stage 030 no
 # longer deploys a direct InferenceService in demo-sandbox (that was copied from
-# another project and duplicated the governed Granite).
+# another project and duplicated the governed Qwen27B).
 ensure_registry_metadata
 ensure_serving_runtime
 
 echo "✓ Stage 030 serving foundation is ready (KServe + vLLM runtime + model registry)."
-echo "  Granite + Qwen are deployed by Stage 040 (governed MaaS)."
+echo "  Qwen27B + Qwen are deployed by Stage 040 (governed MaaS)."
 echo "  Run ./030-private-model-serving/validate.sh to confirm readiness."

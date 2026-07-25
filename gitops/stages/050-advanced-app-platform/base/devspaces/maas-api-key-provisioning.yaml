@@ -284,7 +284,7 @@ data:
     }
 
     for _ in $(seq 1 30); do
-      [ -n "$(secret_value MAAS_API_KEY_GRANITE)" ] && break
+      [ -n "$(secret_value MAAS_API_KEY_QWEN27B)" ] && break
       sleep 2
     done
 
@@ -400,18 +400,18 @@ data:
       "model": "qwen/qwen3-6-35b-a3b",
       "disabled_providers": ["kilo", "zai"],
       "provider": {
-        "granite": {
+        "qwen27b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "IBM Granite 4.0 H Small (private MaaS)",
+          "name": "Qwen3.6 27B (private MaaS)",
           "options": {
-            "apiKey": "${MAAS_API_KEY_GRANITE}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/granite-4-0-h-small/v1",
+            "apiKey": "${MAAS_API_KEY_QWEN27B}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-27b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           },
           "models": {
-            "granite-4-0-h-small": {
-              "name": "Granite 4.0 H Small",
+            "qwen3-6-27b": {
+              "name": "Qwen3.6 27B",
               "limit": { "context": 131072, "output": 16384 }
             }
           }
@@ -449,7 +449,7 @@ data:
     if [ "${AI_TOOL}" = "kilo" ]; then write_kilo_rules; fi
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
-    MAAS_API_KEY_GRANITE="$(secret_value MAAS_API_KEY_GRANITE)"
+    MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
     MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
     # Optional: external Red Hat models via their direct endpoints. The
     # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
@@ -457,10 +457,10 @@ data:
     # Secret out of band (not in git); the provider is skipped when absent.
     REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
-    OPENCODE_ENABLED='["granite", "qwen"]'
+    OPENCODE_ENABLED='["qwen27b", "qwen"]'
     OPENCODE_REDHAT_PROVIDER=""
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      OPENCODE_ENABLED='["granite", "qwen", "redhat"]'
+      OPENCODE_ENABLED='["qwen27b", "qwen", "redhat"]'
       OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
@@ -488,7 +488,7 @@ data:
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
-      || [ -z "${MAAS_API_KEY_GRANITE}" ] \
+      || [ -z "${MAAS_API_KEY_QWEN27B}" ] \
       || [ -z "${MAAS_API_KEY_QWEN}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
@@ -568,7 +568,7 @@ data:
       fi
 
       # Point Hermes at the same governed MaaS endpoints as OpenCode:
-      # orchestrator/planner on Granite 4.0 (131K context), coding worker on
+      # orchestrator/planner on Qwen3.6 27B (131K context), coding worker on
       # Qwen (stage 070 continuity). Rewritten on every init so key
       # rotation propagates. PyYAML comes from Hermes' own venv.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
@@ -576,7 +576,7 @@ data:
         echo "Hermes venv python not found; skipping Hermes MaaS config."
         return
       fi
-      export MAAS_BASE_URL MAAS_API_KEY_GRANITE MAAS_API_KEY_QWEN
+      export MAAS_BASE_URL MAAS_API_KEY_QWEN27B MAAS_API_KEY_QWEN
       export REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
@@ -592,12 +592,12 @@ data:
     # token ESTIMATE (which undercounts vs the server tokenizer), and long
     # sessions die in HTTP 400 input+output>context loops.
     cfg["custom_providers"] = [
-        {"name": "maas-granite",
-         "base_url": base + "/models-as-a-service/granite-4-0-h-small/v1",
-         "api_key": os.environ["MAAS_API_KEY_GRANITE"],
+        {"name": "maas-qwen27b",
+         "base_url": base + "/models-as-a-service/qwen3-6-27b/v1",
+         "api_key": os.environ["MAAS_API_KEY_QWEN27B"],
          "api_mode": "chat_completions",
          "context_length": 131072,
-         "max_tokens": 16384},
+         "max_tokens": 32768},
         {"name": "maas-qwen",
          "base_url": base + "/models-as-a-service/qwen3-6-35b-a3b/v1",
          "api_key": os.environ["MAAS_API_KEY_QWEN"],
@@ -622,8 +622,8 @@ data:
              "context_length": 196608,
              "max_tokens": 16384})
     model = cfg.get("model") or {}
-    model["default"] = "granite-4-0-h-small"
-    model["provider"] = "custom:maas-granite"
+    model["default"] = "qwen3-6-27b"
+    model["provider"] = "custom:maas-qwen27b"
     cfg["model"] = model
     # Output cap. Unset, Hermes requests half the context window as output
     # (65536 on a 131072 window), so once the conversation passes ~65K
@@ -646,7 +646,7 @@ data:
     cfg["platform_toolsets"] = pts
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: MaaS providers written (planner granite, worker qwen).")
+    print("Hermes config: MaaS providers written (planner qwen3-6-27b, worker qwen3-6-35b-a3b).")
     HERMESEOF
       chmod 600 "${HOME}/.hermes/config.yaml"
 
@@ -705,18 +705,18 @@ data:
       "autoupdate": true,
       "enabled_providers": ${OPENCODE_ENABLED},
       "provider": {
-        "granite": {
+        "qwen27b": {
           "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS Granite",
+          "name": "MaaS Qwen3.6 27B",
           "models": {
-            "granite-4-0-h-small": {
-              "name": "IBM Granite 4.0 (Local GPU)",
+            "qwen3-6-27b": {
+              "name": "Qwen3.6 27B (Local GPU)",
               "limit": { "context": 131072, "output": 16384 }
             }
           },
           "options": {
-            "apiKey": "${MAAS_API_KEY_GRANITE}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/granite-4-0-h-small/v1",
+            "apiKey": "${MAAS_API_KEY_QWEN27B}",
+            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-27b/v1",
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
@@ -940,7 +940,7 @@ spec:
                 printf 'MAAS_SUBSCRIPTION=%s\n' "${SUBSCRIPTION}"
               } > "${SECRET_FILE}"
 
-              write_model_key "GRANITE" "granite-4-0-h-small"
+              write_model_key "QWEN27B" "qwen3-6-27b"
               write_model_key "QWEN" "qwen3-6-35b-a3b"
 
               oc create secret generic "${SECRET_NAME}" \

@@ -23,7 +23,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: granite-4-0-h-small
+    - name: qwen3-6-27b
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 2000000

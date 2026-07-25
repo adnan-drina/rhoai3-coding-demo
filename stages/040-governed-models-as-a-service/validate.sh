@@ -29,8 +29,8 @@ OPENAI_MODEL_ID="${RHOAI_OPENAI_MODEL_ID:-gpt-4o-mini}"
 OPENAI_MODEL_RESOURCE="${RHOAI_OPENAI_MODEL_RESOURCE:-gpt-4o-mini}"
 OPENAI_PROVIDER_SECRET="${RHOAI_OPENAI_PROVIDER_SECRET:-openai-provider-api-key}"
 OPENAI_ACCESS_RESOURCE="${RHOAI_OPENAI_ACCESS_RESOURCE:-personal-kube-admin}"
-GRANITE_MODEL_RESOURCE="${RHOAI_MAAS_GRANITE_MODEL_NAME:-granite-4-0-h-small}"
-DIRECT_GRANITE_NAME="${RHOAI_GRANITE_DEPLOYMENT_NAME:-granite-4-0-h-small-fp8-dynamic}"
+QWEN27B_MODEL_RESOURCE="${RHOAI_MAAS_QWEN27B_MODEL_NAME:-qwen3-6-27b}"
+DIRECT_QWEN27B_NAME="${RHOAI_QWEN27B_DEPLOYMENT_NAME:-qwen3-6-27b-fp8}"
 PROJECT_NS="${RHOAI_DEMO_PROJECT_NAMESPACE:-demo-sandbox}"
 PLAYGROUND_LSD_NAME="${RHOAI_PLAYGROUND_LSD_NAME:-lsd-genai-playground}"
 PLAYGROUND_CONFIGMAP="${RHOAI_PLAYGROUND_CONFIGMAP:-llama-stack-config}"
@@ -47,7 +47,7 @@ PLAYGROUND_VLLM_MAX_TOKENS="${RHOAI_PLAYGROUND_VLLM_MAX_TOKENS:-512}"
 # when the dashboard recreates a playground, so validation discovers model ids
 # from Llama Stack /v1/models instead of assuming provider order.
 PLAYGROUND_GPT_PROVIDER="${RHOAI_PLAYGROUND_GPT_PROVIDER_ID:-maas-vllm-inference-1}"
-PLAYGROUND_GRANITE_PROVIDER="${RHOAI_PLAYGROUND_GRANITE_PROVIDER_ID:-maas-vllm-inference-2}"
+PLAYGROUND_QWEN27B_PROVIDER="${RHOAI_PLAYGROUND_QWEN27B_PROVIDER_ID:-maas-vllm-inference-2}"
 
 TMP_FILES=()
 cleanup() {
@@ -156,7 +156,7 @@ get_gateway_host() {
   fi
 
   if [[ -z "$host" ]]; then
-    endpoint=$(jsonpath_nonempty "maasmodelrefs.maas.opendatahub.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS" "{.status.endpoint}")
+    endpoint=$(jsonpath_nonempty "maasmodelrefs.maas.opendatahub.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS" "{.status.endpoint}")
     if [[ -n "$endpoint" ]]; then
       host=$(ENDPOINT="$endpoint" python3 - <<'PY'
 import os
@@ -181,7 +181,7 @@ body_contains_model() {
   local body_file="$1"
   local model
 
-  for model in "$OPENAI_MODEL_RESOURCE" "$OPENAI_MODEL_ID" "$GRANITE_MODEL_RESOURCE"; do
+  for model in "$OPENAI_MODEL_RESOURCE" "$OPENAI_MODEL_ID" "$QWEN27B_MODEL_RESOURCE"; do
     if grep -Fq "$model" "$body_file"; then
       return 0
     fi
@@ -336,8 +336,8 @@ validate_playground_if_present() {
       --insecure-skip-tls-verify=true > "$config_file"
     if grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${OPENAI_MODEL_RESOURCE}/v1" "$config_file" &&
       grep -q "model_id: ${OPENAI_MODEL_ID}" "$config_file" &&
-      grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${GRANITE_MODEL_RESOURCE}/v1" "$config_file" &&
-      grep -q "provider_model_id: ${GRANITE_MODEL_RESOURCE}" "$config_file"; then
+      grep -q "base_url: https://${GATEWAY_HOST}/models-as-a-service/${QWEN27B_MODEL_RESOURCE}/v1" "$config_file" &&
+      grep -q "provider_model_id: ${QWEN27B_MODEL_RESOURCE}" "$config_file"; then
       result="pass"
     else
       result="missing MaaS base URL or model mapping"
@@ -355,7 +355,7 @@ import urllib.request
 with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as resp:
     data = json.loads(resp.read())
 items = data.get('data', [])
-targets = {'${GRANITE_MODEL_RESOURCE}', '${OPENAI_MODEL_ID}'}
+targets = {'${QWEN27B_MODEL_RESOURCE}', '${OPENAI_MODEL_ID}'}
 seen = set()
 for item in items:
     model_id = item.get('identifier') or item.get('id') or ''
@@ -383,7 +383,7 @@ import urllib.error
 import urllib.request
 
 models = [
-    ('granite', '${GRANITE_MODEL_RESOURCE}'),
+    ('qwen27b', '${QWEN27B_MODEL_RESOURCE}'),
     ('openai', '${OPENAI_MODEL_ID}'),
 ]
 
@@ -422,18 +422,18 @@ for label, target in models:
     except Exception as exc:
         print(f'FAIL {label}: {exc!r}')
 " 2>&1 || true)
-    if grep -q "OK granite" <<<"$output" && grep -q "OK openai" <<<"$output"; then
-      check "Gen AI Playground Responses API works for MaaS Granite and GPT" "pass"
+    if grep -q "OK qwen27b" <<<"$output" && grep -q "OK openai" <<<"$output"; then
+      check "Gen AI Playground Responses API works for MaaS Qwen27B and GPT" "pass"
     elif grep -q "FAIL" <<<"$output" &&
       grep -qi "Too Many Requests" <<<"$output"; then
-      warn "Gen AI Playground Responses API works for MaaS Granite and GPT" \
+      warn "Gen AI Playground Responses API works for MaaS Qwen27B and GPT" \
         "MaaS policy or external provider throttled inference: ${output//$'\n'/ }"
     else
-      check "Gen AI Playground Responses API works for MaaS Granite and GPT" \
+      check "Gen AI Playground Responses API works for MaaS Qwen27B and GPT" \
         "responses=${output//$'\n'/ }"
     fi
   else
-    check "Gen AI Playground Responses API works for MaaS Granite and GPT" "deployment missing"
+    check "Gen AI Playground Responses API works for MaaS Qwen27B and GPT" "deployment missing"
   fi
 
   if resource_exists "deployment/rhods-dashboard" "redhat-ods-applications"; then
@@ -487,7 +487,7 @@ with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as re
     listed_models = json.loads(resp.read()).get('data', [])
 
 targets = {
-    'granite': '${GRANITE_MODEL_RESOURCE}',
+    'qwen27b': '${QWEN27B_MODEL_RESOURCE}',
     'openai': '${OPENAI_MODEL_ID}',
 }
 resolved = {}
@@ -578,9 +578,9 @@ PY
     result="dashboard deployment missing"
   fi
   if [[ "$result" == warn:* ]]; then
-    warn "Gen AI Playground dashboard BFF works for MaaS Granite and GPT" "${result#warn: }"
+    warn "Gen AI Playground dashboard BFF works for MaaS Qwen27B and GPT" "${result#warn: }"
   else
-    check "Gen AI Playground dashboard BFF works for MaaS Granite and GPT" "$result"
+    check "Gen AI Playground dashboard BFF works for MaaS Qwen27B and GPT" "$result"
   fi
 }
 
@@ -876,15 +876,15 @@ else
 fi
 check "MaaS Tenant Ready" "$R"
 
-if resource_exists "inferenceservice/${DIRECT_GRANITE_NAME}" "$PROJECT_NS"; then
+if resource_exists "inferenceservice/${DIRECT_QWEN27B_NAME}" "$PROJECT_NS"; then
   R="direct InferenceService still exists in ${PROJECT_NS}"
 else
   R="pass"
 fi
-check "direct demo-sandbox Granite deployment has been removed" "$R"
+check "direct demo-sandbox Qwen27B deployment has been removed" "$R"
 
 STALE_LLMIS=""
-for stale_llmis_name in "$GRANITE_MODEL_RESOURCE" "$DIRECT_GRANITE_NAME"; do
+for stale_llmis_name in "$QWEN27B_MODEL_RESOURCE" "$DIRECT_QWEN27B_NAME"; do
   if resource_exists "llminferenceservice/${stale_llmis_name}" "$PROJECT_NS"; then
     STALE_LLMIS="${STALE_LLMIS} ${stale_llmis_name}"
   fi
@@ -894,7 +894,7 @@ if [[ -z "$STALE_LLMIS" ]]; then
 else
   R="stale LLMInferenceService still exists in ${PROJECT_NS}:${STALE_LLMIS}"
 fi
-check "no stale demo-sandbox Granite LLMInferenceService remains" "$R"
+check "no stale demo-sandbox Qwen27B LLMInferenceService remains" "$R"
 
 if resource_exists "localqueue/lq-gpu-reserved-demo" "$MAAS_NS"; then
   LQ_CLUSTER_QUEUE=$(jsonpath "localqueue/lq-gpu-reserved-demo" "$MAAS_NS" "{.spec.clusterQueue}")
@@ -904,28 +904,28 @@ else
 fi
 check "MaaS namespace has the GPU reserved LocalQueue" "$R"
 
-if resource_exists "llminferenceservices.serving.kserve.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS"; then
-  GRANITE_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.model.uri}")
-  GRANITE_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
-  if [[ "$GRANITE_URI" == "oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d" &&
-    "$GRANITE_READY" == "True" ]]; then
+if resource_exists "llminferenceservices.serving.kserve.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS"; then
+  QWEN27B_URI=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.model.uri}")
+  QWEN27B_READY=$(jsonpath_nonempty "llminferenceservices.serving.kserve.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS" "{.status.conditions[?(@.type==\"Ready\")].status}")
+  if [[ "$QWEN27B_URI" == "hf://RedHatAI/Qwen3.6-27B-FP8" &&
+    "$QWEN27B_READY" == "True" ]]; then
     R="pass"
   else
-    R="uri=${GRANITE_URI:-missing},ready=${GRANITE_READY:-missing}"
+    R="uri=${QWEN27B_URI:-missing},ready=${QWEN27B_READY:-missing}"
   fi
 else
   R="missing"
 fi
-check "local Granite LLMInferenceService is ready in MaaS namespace" "$R"
+check "local Qwen27B LLMInferenceService is ready in MaaS namespace" "$R"
 
-GRANITE_MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
-GRANITE_MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${GRANITE_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
-if [[ "$GRANITE_MODELREF_KIND" == "LLMInferenceService" && "$GRANITE_MODELREF_NAME" == "$GRANITE_MODEL_RESOURCE" ]]; then
+QWEN27B_MODELREF_KIND=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.kind}")
+QWEN27B_MODELREF_NAME=$(jsonpath "maasmodelrefs.maas.opendatahub.io/${QWEN27B_MODEL_RESOURCE}" "$MAAS_NS" "{.spec.modelRef.name}")
+if [[ "$QWEN27B_MODELREF_KIND" == "LLMInferenceService" && "$QWEN27B_MODELREF_NAME" == "$QWEN27B_MODEL_RESOURCE" ]]; then
   R="pass"
 else
-  R="kind=${GRANITE_MODELREF_KIND:-missing},name=${GRANITE_MODELREF_NAME:-missing}"
+  R="kind=${QWEN27B_MODELREF_KIND:-missing},name=${QWEN27B_MODELREF_NAME:-missing}"
 fi
-check "MaaSModelRef points to the local Granite LLMInferenceService" "$R"
+check "MaaSModelRef points to the local Qwen27B LLMInferenceService" "$R"
 
 for ext_model in gpt-4o-mini:api.openai.com:openai-provider-api-key; do
   IFS=: read -r EXT_NAME EXT_ENDPOINT EXT_SECRET <<< "$ext_model"
@@ -952,24 +952,24 @@ done
 
 DS_SUB="devspaces-coding-models"
 DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
-DS_GRANITE_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"granite-4-0-h-small\")].tokenRateLimits[0].limit}")
+DS_QWEN27B_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-27b\")].tokenRateLimits[0].limit}")
 DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-35b-a3b\")].tokenRateLimits[0].limit}")
-if contains_word "$DS_MODELS" "granite-4-0-h-small" &&
+if contains_word "$DS_MODELS" "qwen3-6-27b" &&
   contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_GRANITE_LIMIT" == "5000000" && "$DS_QWEN_LOCAL_LIMIT" == "5000000" ]]; then
+  [[ "$DS_QWEN27B_LIMIT" == "5000000" && "$DS_QWEN_LOCAL_LIMIT" == "5000000" ]]; then
   R="pass"
 else
-  R="models=${DS_MODELS:-missing},granite=${DS_GRANITE_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
+  R="models=${DS_MODELS:-missing},qwen27b=${DS_QWEN27B_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has 2 local coding models @5M/1h (granite + qwen, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has 2 local coding models @5M/1h (qwen27b + qwen, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
 PK_GPT_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"gpt-4o-mini\")].tokenRateLimits[0].limit}")
 PK_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 if contains_word "$PK_MODELS" "gpt-4o-mini" &&
-  contains_word "$PK_MODELS" "granite-4-0-h-small" &&
+  contains_word "$PK_MODELS" "qwen3-6-27b" &&
   [[ "$PK_GPT_LIMIT" == "100000" && "$PK_PRIORITY" == "150" ]]; then
   R="pass"
 else
@@ -982,7 +982,7 @@ AUTH_MODELS=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RES
 AUTH_ORG=$(jsonpath "maasauthpolicies.maas.opendatahub.io/${OPENAI_ACCESS_RESOURCE}" "$MAAS_NS" "{.spec.meteringMetadata.organizationId}")
 if contains_word "$AUTH_SUBJECT_USERS" "kube:admin" &&
   contains_word "$AUTH_MODELS" "$OPENAI_MODEL_RESOURCE" &&
-  contains_word "$AUTH_MODELS" "$GRANITE_MODEL_RESOURCE" &&
+  contains_word "$AUTH_MODELS" "$QWEN27B_MODEL_RESOURCE" &&
   [[ "$AUTH_ORG" == "rhoai3-coding-demo" ]]; then
   R="pass"
 else
@@ -1002,9 +1002,9 @@ GATEWAY_LOG_ERRORS=$(oc logs -n openshift-ingress \
   | grep -E 'allow_on_headers_stop_iteration|Proto constraint validation failed|unknown field|Error adding/updating listener' \
   || true)
 OPENAI_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-GRANITE_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-granite-4-0-h-small" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+QWEN27B_AUTH_ENFORCED=$(jsonpath "authpolicy/maas-auth-qwen3-6-27b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 OPENAI_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-gpt-4o-mini" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
-GRANITE_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-granite-4-0-h-small" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
+QWEN27B_TRLP_ENFORCED=$(jsonpath "tokenratelimitpolicy/maas-trlp-qwen3-6-27b" "$MAAS_NS" "{.status.conditions[?(@.type==\"Enforced\")].status}")
 if [[ -n "$GATEWAY_LOG_ERRORS" ]]; then
   R="gateway Envoy log reports recent generated filter rejection"
 elif ! contains_word "$GATEWAY_READY" "True"; then
@@ -1013,10 +1013,10 @@ elif ! grep -q 'kuadrant-auth-maas-default-gateway' <<<"$GATEWAY_FILTERS" ||
   ! grep -q 'kuadrant-ratelimiting-maas-default-gateway' <<<"$GATEWAY_FILTERS"; then
   R="generated Kuadrant auth/rate-limit EnvoyFilters missing"
 elif [[ "$OPENAI_AUTH_ENFORCED" != "True" ||
-  "$GRANITE_AUTH_ENFORCED" != "True" ||
+  "$QWEN27B_AUTH_ENFORCED" != "True" ||
   "$OPENAI_TRLP_ENFORCED" != "True" ||
-  "$GRANITE_TRLP_ENFORCED" != "True" ]]; then
-  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},graniteAuth=${GRANITE_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},graniteLimit=${GRANITE_TRLP_ENFORCED:-missing}"
+  "$QWEN27B_TRLP_ENFORCED" != "True" ]]; then
+  R="policy enforcement openaiAuth=${OPENAI_AUTH_ENFORCED:-missing},qwen27bAuth=${QWEN27B_AUTH_ENFORCED:-missing},openaiLimit=${OPENAI_TRLP_ENFORCED:-missing},qwen27bLimit=${QWEN27B_TRLP_ENFORCED:-missing}"
 else
   R="pass"
 fi
@@ -1112,14 +1112,14 @@ with urllib.request.urlopen('http://127.0.0.1:8321/v1/models', timeout=60) as re
     listed_models = json.loads(resp.read()).get('data', [])
 
 model = None
-target = '${GRANITE_MODEL_RESOURCE}'
+target = '${QWEN27B_MODEL_RESOURCE}'
 for item in listed_models:
     model_id = item.get('identifier') or item.get('id') or ''
     if model_id == target or model_id.endswith('/' + target):
         model = model_id
         break
 if not model:
-    raise SystemExit('granite model target not listed')
+    raise SystemExit('qwen27b model target not listed')
 
 payload = {
     'model': model,
@@ -1240,10 +1240,10 @@ if command -v python3 >/dev/null 2>&1; then
         INFERENCE_STATUS=$(curl -sk --max-time 120 -o "$INFERENCE_BODY" -w '%{http_code}' \
           -H "Authorization: Bearer ${API_KEY_VALUE}" \
           -H "Content-Type: application/json" \
-          "https://${GATEWAY_HOST}/models-as-a-service/${GRANITE_MODEL_RESOURCE}/v1/chat/completions" \
+          "https://${GATEWAY_HOST}/models-as-a-service/${QWEN27B_MODEL_RESOURCE}/v1/chat/completions" \
           --data-binary @- <<JSON 2>/dev/null || true
 {
-  "model": "${GRANITE_MODEL_RESOURCE}",
+  "model": "${QWEN27B_MODEL_RESOURCE}",
   "messages": [
     {
       "role": "user",
@@ -1290,7 +1290,7 @@ JSON
           R="pass"
         elif [[ "$INFERENCE_STATUS" == "429" ]] &&
           grep -qi "Too Many Requests" "$INFERENCE_BODY"; then
-          R="warn: MaaS policy throttled local Granite validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
+          R="warn: MaaS policy throttled local Qwen27B validation request: status=${INFERENCE_STATUS},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         else
           R="status=${INFERENCE_STATUS:-missing},body=$(head -c 180 "$INFERENCE_BODY" | tr '\n' ' ')"
         fi
@@ -1298,9 +1298,9 @@ JSON
         R="MaaS API key was not created"
       fi
       if [[ "$R" == warn:* ]]; then
-        warn "ai-developer can call Granite through MaaS with tool calling and token usage" "${R#warn: }"
+        warn "ai-developer can call Qwen27B through MaaS with tool calling and token usage" "${R#warn: }"
       else
-        check "ai-developer can call Granite through MaaS with tool calling and token usage" "$R"
+        check "ai-developer can call Qwen27B through MaaS with tool calling and token usage" "$R"
       fi
 
       if [[ "$API_KEY_VALUE" == sk-oai-* ]]; then
@@ -1384,8 +1384,8 @@ JSON
       TMP_FILES+=("$UNAUTH_BODY")
       UNAUTH_STATUS=$(curl -sk --max-time 30 -o "$UNAUTH_BODY" -w '%{http_code}' \
         -H "Content-Type: application/json" \
-        "https://${GATEWAY_HOST}/models-as-a-service/${GRANITE_MODEL_RESOURCE}/v1/chat/completions" \
-        --data-binary "{\"model\":\"${GRANITE_MODEL_RESOURCE}\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":4}" \
+        "https://${GATEWAY_HOST}/models-as-a-service/${QWEN27B_MODEL_RESOURCE}/v1/chat/completions" \
+        --data-binary "{\"model\":\"${QWEN27B_MODEL_RESOURCE}\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"max_tokens\":4}" \
         2>/dev/null || true)
       [[ "$UNAUTH_STATUS" == "401" ]] && R="pass" || R="status=${UNAUTH_STATUS:-missing}"
       check "unauthenticated MaaS inference is rejected" "$R"
