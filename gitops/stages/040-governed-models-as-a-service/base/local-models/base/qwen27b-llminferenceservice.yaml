@@ -111,6 +111,11 @@ spec:
           - --language-model-only
           - --max-num-batched-tokens=4096
           - --max-num-seqs=8
+          # Model-card Best Practices: thinking-mode sampling for general
+          # (agentic/orchestration) tasks as the server default; explicit
+          # client sampling still wins. The precise-coding profile (0.6)
+          # belongs to the 35B worker seat, not here.
+          - --override-generation-config={"temperature":1.0,"top_p":0.95,"top_k":20}
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
           - --tool-call-parser=qwen3_coder
