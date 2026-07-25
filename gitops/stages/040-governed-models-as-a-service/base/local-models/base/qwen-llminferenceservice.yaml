@@ -95,20 +95,18 @@ spec:
           - --enable-force-include-usage
           - --disable-uvicorn-access-log
           - --enable-prefix-caching
-          # ~35GB FP8 weights on a 44.4GiB-usable L40S: cap the context,
-          # store KV/mamba cache in fp8, and trim the CUDA-graph budget so
-          # engine init fits (bf16 KV at 32K OOMed by ~1GiB at graph capture).
-          # 65536: the model is natively 256K (text_config.max_position_embeddings
-          # = 262144); the fp8 KV pool holds ~130K tokens, so a 64K window keeps
-          # ~2x full-length concurrency. 32K starved spec-kit sessions (~27K
-          # baseline prompt + output budget exceeded the window).
-          - --max-model-len=65536
+          # ~35GB FP8 weights on a 44.4GiB-usable L40S: fp8 KV/mamba cache,
+          # trimmed CUDA-graph budget. 131072: enabled by --language-model-only
+          # below (the model card's Text-Only mode — skips LOADING the vision
+          # encoder, unlike the previous --limit-mm-per-prompt which only
+          # blocked inputs), freeing the encoder weights + profiled mm cache
+          # for KV. History: 32K starved spec-kit sessions; 64K was the
+          # limit-mm ceiling. Fallbacks if startup profiling rejects: 98304,
+          # then 65536.
+          - --max-model-len=131072
           - --kv-cache-dtype=fp8
           - --gpu-memory-utilization=0.92
-          # Text/code serving only: dropping image+video inputs removes the
-          # multimodal encoder cache (16K-token budget profiled with a
-          # max-size image) that consumed the remaining KV headroom.
-          - --limit-mm-per-prompt={"image":0,"video":0}
+          - --language-model-only
           # 4096: must exceed the mamba-aligned attention block size (2096
           # tokens with fp8 KV) while keeping the MoE prefill workspace small;
           # 8192 pushed the profiling peak past the KV budget on this card.
