@@ -428,7 +428,7 @@ data:
           "models": {
             "qwen3-6-35b-a3b": {
               "name": "Qwen3.6 35B A3B",
-              "limit": { "context": 65536, "output": 16384 }
+              "limit": { "context": 131072, "output": 16384 }
             }
           }
         }
@@ -602,7 +602,7 @@ data:
          "base_url": base + "/models-as-a-service/qwen3-6-35b-a3b/v1",
          "api_key": os.environ["MAAS_API_KEY_QWEN"],
          "api_mode": "chat_completions",
-         "context_length": 65536,
+         "context_length": 131072,
          "max_tokens": 16384},
     ]
     # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
@@ -728,7 +728,7 @@ data:
             "qwen3-6-35b-a3b": {
               "name": "Qwen3.6 35B A3B (Local GPU)",
               "temperature": true,
-              "limit": { "context": 65536, "output": 16384 }
+              "limit": { "context": 131072, "output": 16384 }
             }
           },
           "options": {
