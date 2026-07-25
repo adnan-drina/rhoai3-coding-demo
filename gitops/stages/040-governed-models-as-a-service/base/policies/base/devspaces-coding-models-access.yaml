@@ -23,10 +23,14 @@ spec:
     # 20-38K input tokens per turn across dozens of turns, and rehearsing
     # twice in an hour hit 429 again (observed 2026-07-21). Local models ride
     # our own GPUs, so the budget demonstrates governance, not cost control.
+    # 5M/h then throttled the stage 080 autonomous harness (both seats on one
+    # subscription sustain ~5M tokens/h of prefill-heavy agent traffic;
+    # observed 2026-07-25 as instant 429s mid-run). 20M/h gives a full
+    # autonomous migration ~4x headroom.
     - name: qwen3-6-27b
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 5000000
+        - limit: 20000000
           window: 1h
   priority: 100
   tokenMetadata:
