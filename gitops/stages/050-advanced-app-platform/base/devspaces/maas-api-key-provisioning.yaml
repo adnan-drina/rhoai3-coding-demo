@@ -568,18 +568,24 @@ data:
         with open(path) as fh:
             cfg = yaml.safe_load(fh) or {}
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
-    # context_length/max_tokens are PER-PROVIDER settings (the top-level
-    # max_tokens key is not honored for custom providers): without them
-    # Hermes mis-detects the window, computes the output cap from its own
-    # token ESTIMATE (which undercounts vs the server tokenizer), and long
-    # sessions die in HTTP 400 input+output>context loops.
+    # Output-cap reality (verified live 2026-07-25): this Hermes build
+    # IGNORES max_tokens both top-level and per-provider ("unknown config
+    # keys ignored"), and requests HALF the provider context_length as
+    # output. Its input estimator also undercounts vs the server
+    # tokenizer, so once a session's input passes ~context/2 every call
+    # dies in vLLM 400 input+output>context loops surfaced as stream
+    # stalls. Two working levers only: (1) context_length set BELOW the
+    # real window (98304 on a 131072 model keeps worst-case input+output
+    # inside the window and compacts sessions earlier), (2) extra_body is
+    # a supported pass-through — an explicit max_tokens there caps the
+    # request on the server side regardless of Hermes arithmetic.
     cfg["custom_providers"] = [
         {"name": "maas-qwen27b",
          "base_url": base + "/models-as-a-service/qwen3-6-27b/v1",
          "api_key": os.environ["MAAS_API_KEY_QWEN27B"],
          "api_mode": "chat_completions",
-         "context_length": 131072,
-         "max_tokens": 32768},
+         "context_length": 98304,
+         "extra_body": {"max_tokens": 16384}},
     ]
     # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
     # MiniMax M2 (196K) as the documented ORCHESTRATOR-reliability routing
@@ -595,17 +601,15 @@ data:
              "base_url": rh_base,
              "api_key": rh_key,
              "api_mode": "chat_completions",
-             "context_length": 196608,
-             "max_tokens": 16384})
+             "context_length": 163840,
+             "extra_body": {"max_tokens": 16384}})
     model = cfg.get("model") or {}
     model["default"] = "qwen3-6-27b"
     model["provider"] = "custom:maas-qwen27b"
     cfg["model"] = model
-    # Output cap. Unset, Hermes requests half the context window as output
-    # (65536 on a 131072 window), so once the conversation passes ~65K
-    # input tokens vLLM rejects every request (input+output > context) and
-    # the loop wedges in silent stream retries. 16K output is plenty for
-    # orchestration turns and leaves ~114K for input before compaction.
+    # Top-level max_tokens: ignored by this Hermes build (see provider
+    # comment above) — kept only as documentation of intent for builds
+    # that do honor it; the effective caps live in the provider entries.
     cfg["max_tokens"] = 16384
     # Autonomous-run circuit breaker: without hard stops a broken tool
     # (e.g. the model emitting empty execute_code calls) burns the whole
