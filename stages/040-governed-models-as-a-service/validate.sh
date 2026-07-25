@@ -957,12 +957,12 @@ DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}"
 if contains_word "$DS_MODELS" "granite-4-0-h-small" &&
   contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_GRANITE_LIMIT" == "1000000" && "$DS_QWEN_LOCAL_LIMIT" == "1000000" ]]; then
+  [[ "$DS_GRANITE_LIMIT" == "5000000" && "$DS_QWEN_LOCAL_LIMIT" == "5000000" ]]; then
   R="pass"
 else
   R="models=${DS_MODELS:-missing},granite=${DS_GRANITE_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has 2 local coding models @1M (granite + qwen, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has 2 local coding models @5M/1h (granite + qwen, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
