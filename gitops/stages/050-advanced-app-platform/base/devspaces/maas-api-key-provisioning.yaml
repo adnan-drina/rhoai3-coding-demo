@@ -585,6 +585,12 @@ data:
          "api_key": os.environ["MAAS_API_KEY_QWEN27B"],
          "api_mode": "chat_completions",
          "context_length": 98304,
+         # Thinking-mode generations stream long reasoning bursts with no
+         # visible content deltas; Hermes' stale-stream detector (240s
+         # default) aborts mid-thought. A 16K generation at ~18 tok/s is
+         # ~15 minutes — give the stream room to finish.
+         "request_timeout_seconds": 2400,
+         "stale_timeout_seconds": 1800,
          "extra_body": {"max_tokens": 16384}},
     ]
     # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
