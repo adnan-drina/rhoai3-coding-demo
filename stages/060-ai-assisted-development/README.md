@@ -98,7 +98,7 @@ This is the brownfield service you will extend. It is already deployed, already 
 | Model | Context | When to use |
 |-------|---------|-------------|
 | `qwen3-6-35b-a3b` | 32K | Default: local workhorse with the most reliable tool calling; mind the smaller context on very long sessions |
-| `nemotron-3-nano-30b-a3b` | 131K | Local alternative: fast, large context; can drift on multi-step agentic tasks |
+| `granite-4-0-h-small` | 131K | Local alternative: IBM Granite 4.0 hybrid Mamba, large context, strong tool calling (the platform's agent-orchestrator model) |
 | `qwen3-235b` | 16K | External (Red Hat internal): larger model, shorter context |
 | `minimax-m2` | 196K | External (Red Hat internal): large context for complex fixes; emits visible `<think>` reasoning blocks (normal, not an error) |
 
