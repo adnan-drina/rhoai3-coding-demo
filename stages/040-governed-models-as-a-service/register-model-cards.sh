@@ -88,8 +88,8 @@ register_qwen() {
   log_success "Qwen3.6 model card registered (version + OCI artifact)"
 }
 
-register_granite() {
-  local name="Granite-4.0-h-small-FP8-dynamic"
+register_qwen27b() {
+  local name="Qwen3.6-27B-FP8"
   local existing
   existing=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n) | .id' | head -1)
   if [[ -n "$existing" ]]; then
@@ -99,27 +99,27 @@ register_granite() {
 
   local props
   props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' \
-    "$(prop granite '')" \
+    "$(prop qwen '')" \
     "$(prop tool-calling '')" \
     "$(prop agent-orchestration '')" \
     "$(prop text-generation '')" \
     "$(prop validated '')" \
     "$(prop validated_by RedHatAI)" \
-    "$(prop source_repo https://huggingface.co/RedHatAI/granite-4.0-h-small-FP8-dynamic)" \
-    "$(prop architecture hybrid-Mamba-MoE-32B-A9B)" \
+    "$(prop source_repo https://huggingface.co/RedHatAI/Qwen3.6-27B-FP8)" \
+    "$(prop architecture dense-hybrid-GDN-27B)" \
     "$(prop quantization FP8-dynamic)" \
     "$(prop context_window_deployed 131072)" \
     "$(prop primary_use agent-orchestration)" \
-    "$(prop capabilities 'tool-calling,code,reasoning,granite4-tool-parser')")
+    "$(prop capabilities 'tool-calling,code,reasoning,AA-tau2-0.94')")
 
   local rm_id
   rm_id=$(mr_post "/registered_models" '{
     "name": "'"$name"'",
-    "description": "IBM Granite 4.0 H Small (FP8-dynamic) - Red Hat AI validated hybrid Mamba/MoE model (32B total, 9B active) serving the platform agent-orchestrator seat: dedicated granite4 vLLM tool parser and cheap long-context state for orchestration sessions. Served on a single NVIDIA L40S with a 131K context window and published via MaaS as granite-4-0-h-small.",
+    "description": "Qwen3.6 27B (FP8) - benchmark-selected platform agent-orchestrator: Artificial Analysis Intelligence 37, tau2-Bench 0.94, SWE-bench 77.2 (the tool-calling reliability the seat demands). Multimodal checkpoint served text-only (--language-model-only) on a single NVIDIA L40S with a 131K window and thinking-mode sampling defaults per the model card; published via MaaS as qwen3-6-27b.",
     "owner": "rhoai3-coding-demo",
-    "provider": "IBM (Red Hat AI validated)",
+    "provider": "Alibaba Cloud (Red Hat AI quantized)",
     "license": "apache-2.0",
-    "licenseLink": "https://huggingface.co/RedHatAI/granite-4.0-h-small-FP8-dynamic/blob/main/LICENSE",
+    "licenseLink": "https://huggingface.co/RedHatAI/Qwen3.6-27B-FP8/blob/main/LICENSE",
     "tasks": ["text-generation", "code-generation"],
     "customProperties": {'"$props"'}
   }' | jq -r '.id // empty')
@@ -129,7 +129,7 @@ register_granite() {
   local mv_id
   mv_id=$(mr_post "/model_versions" '{
     "name": "v1.0",
-    "description": "Deployed as LLMInferenceService granite-4-0-h-small in models-as-a-service (orchestrator seat; replaced nemotron-3-nano-30b-a3b after the stage 080 harness A/B; gemma-4 was first choice but needs RHOAI 3.5)",
+    "description": "Deployed as LLMInferenceService qwen3-6-27b in models-as-a-service (orchestrator seat; benchmark-driven replacement of granite-4.0-h-small). Source: hf://RedHatAI/Qwen3.6-27B-FP8 — no official modelcar published yet (graduation tracked in demo BACKLOG)",
     "author": "ai-admin",
     "registeredModelId": "'"$rm_id"'",
     "customProperties": {'"$(prop serving_runtime vLLM)"','"$(prop deployed_on 'RHOAI 3.4')"'}
@@ -138,13 +138,29 @@ register_granite() {
 
   mr_post "/model_versions/${mv_id}/artifacts" '{
     "name": "v1.0",
-    "description": "OCI modelcar image (digest-pinned)",
-    "uri": "oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d",
+    "description": "Hugging Face source (no official modelcar yet)",
+    "uri": "hf://RedHatAI/Qwen3.6-27B-FP8",
     "artifactType": "model-artifact",
     "modelFormatName": "vLLM",
     "modelFormatVersion": "1"
   }' >/dev/null
-  log_success "Granite 4.0 model card registered (version + OCI artifact)"
+  log_success "Qwen3.6 27B model card registered (version + OCI artifact)"
+}
+
+archive_granite() {
+  # Benchmark-driven retirement (2026-07-25): Artificial Analysis tau2-Bench
+  # 17% / Intelligence 11 disqualify it for the orchestrator seat despite
+  # clean serving. Replaced by Qwen3.6-27B (tau2 0.94).
+  local id
+  id=$(mr_get "/registered_models" | jq -r '.items[]? | select(.name == "Granite-4.0-h-small-FP8-dynamic") | .id' | head -1)
+  [[ -z "$id" ]] && { log_info "No granite card to archive"; return 0; }
+  local state
+  state=$(mr_get "/registered_models/${id}" | jq -r '.state // empty')
+  [[ "$state" == "ARCHIVED" ]] && { log_success "Granite card already archived (id=${id})"; return 0; }
+  curl -sk -X PATCH -H "Authorization: Bearer ${MR_TOKEN}" -H "Content-Type: application/json" \
+    -d '{"state":"ARCHIVED","description":"Retired 2026-07-25 after benchmark review: tau2-Bench 17% / AA Intelligence 11 disqualify the orchestrator role (long-horizon tool calling). Served correctly; capability, not compatibility. Replaced by Qwen3.6-27B-FP8."}' \
+    "${MR_BASE_URL}/registered_models/${id}" >/dev/null
+  log_success "Granite card archived (id=${id})"
 }
 
 archive_gemma() {
@@ -183,7 +199,8 @@ archive_nemotron() {
 
 log_step "Registering private-model cards in ${REGISTRY_NAME}"
 register_qwen
-register_granite
+register_qwen27b
+archive_granite
 archive_gemma
 archive_nemotron
 log_info "Registry contents:"
