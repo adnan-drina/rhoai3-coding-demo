@@ -1,10 +1,10 @@
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSModelRef
 metadata:
-  name: granite-4-0-h-small
+  name: qwen3-6-27b
   namespace: models-as-a-service
   labels:
-    app.kubernetes.io/name: granite-4-0-h-small
+    app.kubernetes.io/name: qwen3-6-27b
     app.kubernetes.io/component: maas-model-ref
     demo.rhoai.io/provider: local
   annotations:
@@ -13,4 +13,4 @@ metadata:
 spec:
   modelRef:
     kind: LLMInferenceService
-    name: granite-4-0-h-small
+    name: qwen3-6-27b

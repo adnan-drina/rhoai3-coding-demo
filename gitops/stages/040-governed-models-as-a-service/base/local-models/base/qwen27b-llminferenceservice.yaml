@@ -1,10 +1,10 @@
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
-  name: granite-4-0-h-small
+  name: qwen3-6-27b
   namespace: models-as-a-service
   labels:
-    app.kubernetes.io/name: granite-4-0-h-small
+    app.kubernetes.io/name: qwen3-6-27b
     app.kubernetes.io/component: local-llm
     inference.optimization/acceleratorName: L40S
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
@@ -14,7 +14,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    openshift.io/display-name: IBM Granite 4.0 H Small FP8
+    openshift.io/display-name: Qwen3.6 27B FP8
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
     # Governed GPU quota via the Stage 020 HardwareProfile (Queue-based), so the
@@ -24,8 +24,8 @@ metadata:
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   model:
-    name: granite-4-0-h-small
-    uri: oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d
+    name: qwen3-6-27b
+    uri: oci://registry.redhat.io/rhai/modelcar-qwen3-6-27b-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d
   replicas: 1
   router:
     gateway:
@@ -62,12 +62,12 @@ spec:
             failureMode: FailOpen
             group: ""
             kind: Service
-            name: granite-4-0-h-small-epp-service
+            name: qwen3-6-27b-epp-service
             port:
               number: 9002
           selector:
             matchLabels:
-              app.kubernetes.io/name: granite-4-0-h-small
+              app.kubernetes.io/name: qwen3-6-27b
               app.kubernetes.io/part-of: llminferenceservice
               kserve.io/component: workload
           targetPorts:
@@ -81,14 +81,21 @@ spec:
           - python
           - -m
           - vllm.entrypoints.openai.api_server
-        # Serve flags follow the RedHatAI/granite-4.0-h-small-FP8-dynamic
-        # model card: dedicated granite4 vLLM tool parser (the orchestrator-
-        # reliability reason for this seat), hybrid Mamba architecture
-        # (cheap KV for long orchestration sessions), 128K window
-        # (--max-model-len 131072, matched by every client context limit).
-        # NOTE: gemma-4-26B-A4B was the first choice but its architecture
-        # needs a newer Transformers than the RHOAI 3.4 vLLM ships —
-        # revisit at RHOAI 3.5 (BACKLOG).
+        # Orchestrator profile per the RedHatAI/Qwen3.6-27B-FP8 model card
+        # (vLLM section): reasoning + tool-call parsers as the 35B coder
+        # runs today, --language-model-only to skip the vision encoder
+        # entirely (the card's documented KV-headroom mode for this
+        # multimodal checkpoint), 131072 window (native 262K does not fit
+        # 48GB; 131K matches every client's context arithmetic). Hybrid
+        # GDN/mamba family like the 35B: mamba-aligned 4096 batched tokens,
+        # low seq cap (orchestrator = few long sessions; per-slot state is
+        # the cost driver). Weights ~28GB FP8 on the 44.4GiB card.
+        # NOTE: served from Hugging Face (hf://) — no official modelcar
+        # exists for this model yet (verified 2026-07-25); graduate to a
+        # modelcar (own build or official when published) per BACKLOG.
+        env:
+          - name: PYTORCH_ALLOC_CONF
+            value: expandable_segments:True
         args:
           - "--served-model-name={{.Name}}"
           - --model=/mnt/models
@@ -99,11 +106,14 @@ spec:
           - --disable-uvicorn-access-log
           - --enable-prefix-caching
           - --max-model-len=131072
-          - --max-num-batched-tokens=8192
-          - --max-num-seqs=8
           - --kv-cache-dtype=fp8
+          - --gpu-memory-utilization=0.92
+          - --language-model-only
+          - --max-num-batched-tokens=4096
+          - --max-num-seqs=8
+          - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
-          - --tool-call-parser=granite4
+          - --tool-call-parser=qwen3_coder
         ports:
           - containerPort: 8000
             name: http
