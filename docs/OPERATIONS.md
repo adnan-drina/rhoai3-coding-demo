@@ -1067,3 +1067,40 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI and choose casca
 - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
 - [OpenShift CLI documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.20/html/cli_tools/openshift-cli-oc)
 - [Argo CD documentation](https://argo-cd.readthedocs.io/)
+
+## Model selection record (current estate and history)
+
+The demo serves two local models on 2× g6e.2xlarge (1× NVIDIA L40S, 48GB each),
+one model per GPU, both governed through the MaaS gateway:
+
+| Seat | Model | Why selected | Serving notes |
+|---|---|---|---|
+| Agent orchestrator | `qwen3-6-27b` (RedHatAI/Qwen3.6-27B-FP8) | Benchmark-selected (Artificial Analysis: Intelligence 37, τ²-Bench 0.94, SWE-bench 77.2) — the long-horizon tool-calling reliability the stage 080 harness loop demands | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (no official modelcar published yet — graduation tracked in BACKLOG); multimodal checkpoint deployed text-only (`--language-model-only`); 131K window; thinking-mode sampling defaults per the model card |
+| Coding worker | `qwen3-6-35b-a3b` (RedHatAI/Qwen3.6-35B-A3B-FP8-dynamic) | Strong coding + tool-calling in a fast MoE (3B active) — interactive-speed code generation | Official modelcar; `--language-model-only` (the card's Text-Only mode) funds a 131K window on 48GB — the earlier `--limit-mm-per-prompt` only blocked inputs while the vision encoder still occupied VRAM |
+
+**Retired seats** (registry keeps the archived cards — never delete):
+
+- `nemotron-3-nano-30b-a3b` — retired after the stage 080 harness A/B: empty
+  tool calls and instruction drift in long orchestration sessions (a
+  small-model failure mode; the same packet later succeeded first-pass on a
+  stronger model).
+- `gemma-4-26b-a4b` — never served: the RHOAI 3.4 vLLM runtime's Transformers
+  predates the gemma4 architecture (modelcars can publish ahead of runtime
+  support — always arch-check the serving image before a swap; the vLLM
+  native model registry is the authoritative gate, not transformers imports).
+  Revisit at RHOAI 3.5.
+- `granite-4-0-h-small` — served correctly but retired on benchmarks
+  (τ²-Bench 17%, AA Intelligence 11): capability, not compatibility.
+
+**External-model routing option:** the harness runbook documents
+`custom:maas-m2` (MiniMax M2, 196K) on the Red Hat MaaS portal's direct
+endpoint as an operator-level override for orchestration experiments. It is
+direct-endpoint only because the RHOAI 3.4 gateway buffers streaming for
+external models (see TROUBLESHOOTING "External Model Streaming Resets");
+expected fixed in RHOAI 3.5, after which it can route through the gateway
+with platform telemetry like the local models.
+
+**Parked serving experiments (BACKLOG):** 35B NVFP4 variant (official
+modelcar exists; blocked on vLLM #34694 — NVFP4 Marlin emulation garbles
+BF16 output on Ada/sm89), MTP speculative decoding (`qwen3_next_mtp`),
+27B modelcar graduation.

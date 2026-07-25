@@ -4,7 +4,7 @@
 
 GPU capacity is useful only after the platform can turn it into a working model endpoint. For a regulated enterprise, this is the point where raw accelerator infrastructure becomes a controlled GenAI capability: model artifacts, runtime selection, endpoint exposure, and resource strategy all need to be explicit before teams can trust the service.
 
-This stage stands up the smallest useful slice of the Red Hat AI inference platform: it enables the standard KServe-based model-serving platform, provisions the vLLM ServingRuntime and the model registry, and wires user-workload monitoring — the foundation that Stage 040 serves the governed Nemotron and Qwen models on. Stage 030 itself deploys no model; that keeps a single Nemotron and a single Qwen, deployed once and governed in Stage 040.
+This stage stands up the smallest useful slice of the Red Hat AI inference platform: it enables the standard KServe-based model-serving platform, provisions the vLLM ServingRuntime and the model registry, and wires user-workload monitoring — the foundation that Stage 040 serves the governed Qwen3.6 models on. Stage 030 itself deploys no model; models are deployed once and governed in Stage 040.
 
 The stage does not yet turn the model into a governed shared service. First we prove the platform can host a GPU-backed LLM endpoint; then Stage 040 publishes validated access through Models-as-a-Service.
 
@@ -24,7 +24,7 @@ KServe model serving platform
 vLLM NVIDIA GPU ServingRuntime (from live cluster template)
         │
         ▼
-Nemotron InferenceService in demo-sandbox (OCI modelcar artifact)
+Baseline InferenceService in demo-sandbox (OCI modelcar artifact)
         │
         ▼
 GPU Reserved hardware profile from Stage 020
@@ -47,24 +47,24 @@ Grafana demo dashboards (LLM Performance, vLLM Baseline)
 |------------|---------------|
 | ![Grafana folder](images/01-grafana-dashboards.png) | RHOAI Demo Grafana folder with LLM Performance and vLLM Baseline dashboards |
 | ![LLM Performance](images/02-llm-performance-dashboard.png) | Live LLM Inference Performance: TTFT (P50 ~67ms), ITL (P50 ~5ms), KV Cache metrics |
-| ![Nemotron pods](images/03-nemotron-pods-running.png) | Nemotron 3 Nano 30B pods running in `demo-sandbox` namespace |
+| ![Model pods](images/03-nemotron-pods-running.png) | Baseline model pods running in `demo-sandbox` namespace |
 | ![Deployments](images/04-model-deployments.png) | RHOAI AI Hub Deployments tab showing active KServe model serving |
 
 ## What This Stage Adds
 
-The KServe model-serving **foundation** — the platform, runtime, registry, and monitoring that the governed models in Stage 040 build on. Stage 030 does not deploy a model itself; the Nemotron and Qwen deployments are owned by Stage 040 as governed MaaS `LLMInferenceService`s.
+The KServe model-serving **foundation** — the platform, runtime, registry, and monitoring that the governed models in Stage 040 build on. Stage 030 does not deploy a model itself; the model deployments are owned by Stage 040 as governed MaaS `LLMInferenceService`s.
 
 - **KServe enablement** — patches the shared DataScienceCluster to `kserve.managementState: Managed` via an Argo CD Sync hook Job
 - **vLLM ServingRuntime** — the RHOAI-managed vLLM runtime the Stage 040 models are served on
-- **Model Registry** — the `demo-registry` instance plus the Nemotron model card (registered model, version, OCI artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
+- **Model Registry** — the `demo-registry` instance plus the baseline model card (registered model, version, artifact pointer) created via REST API; the Stage 040 `MaaSModelRef` consumes this card
 - **User workload monitoring** — enables `prometheus.retention: 7d` for the user workload Prometheus instance (reduced from 15d to avoid disk pressure on the demo cluster); configures Alertmanager with three receivers routing to a demo-local webhook
 
 ## What To Notice And Why It Matters
 
-- **Foundation, not the models** — Stage 030 proves the serving platform is ready (KServe + vLLM runtime + registry + monitoring); the models themselves are deployed and governed in Stage 040 as MaaS. This keeps a single Nemotron and a single Qwen, deployed once.
+- **Foundation, not the models** — Stage 030 proves the serving platform is ready (KServe + vLLM runtime + registry + monitoring); the models themselves are deployed and governed in Stage 040 as MaaS. Each model is deployed once.
 - **Deploy uses REST API, not dashboard workflow** — `deploy.sh` creates the registry metadata programmatically via `oc apply` and Model Registry REST calls, enabling repeatable GitOps-compatible deployment
 - **vLLM runtime from live cluster template** — the ServingRuntime image is not pinned in the repository; it comes from the RHOAI-managed template on the cluster
-- **Lifecycle handover** — the direct Nemotron InferenceService is a serving baseline; Stage 040's deploy retires it to free its GPU for MaaS-published models
+- **Lifecycle handover** — the direct baseline InferenceService is a serving baseline; Stage 040's deploy retires it to free its GPU for MaaS-published models
 - **GuideLLM targets MaaS by default** — `benchmark-guidellm.sh` defaults to the `models-as-a-service` namespace (Stage 040 LLMInferenceService workload Service); for Stage 030 direct endpoint testing, override `RHOAI_MAAS_NAMESPACE=demo-sandbox`
 - **Benchmark uses synthetic data** — GuideLLM synthetic mode provides controlled, reproducible token shapes for capacity planning without external dependencies
 - **Legacy naming** — some ConfigMaps and Jobs reference `stage210` naming from a prior stage numbering scheme; this is tracked technical debt
@@ -80,7 +80,7 @@ Red Hat OpenShift AI provides the KServe model serving platform as a managed com
 |----------|---------|
 | Model endpoint auth | Explicitly disabled (`enable-auth: false`) — unauthenticated within the cluster network; Stage 040 adds MaaS auth |
 | Model artifact source | Red Hat registry OCI modelcar; no external model downloads at runtime |
-| GPU isolation | Nemotron claims a full L40S card from the `cq-gpu-reserved-demo` queue; no sharing with other workloads |
+| GPU isolation | Each local model claims a full L40S card from the `cq-gpu-reserved-demo` queue; no sharing with other workloads |
 | Monitoring access | Grafana uses a dedicated ServiceAccount with `cluster-monitoring-view` — read-only metrics access |
 | Benchmark scope | GuideLLM runs in-cluster against the workload Service directly, bypassing any gateway or rate limit |
 
@@ -115,7 +115,7 @@ RHOAI_MAAS_NAMESPACE=demo-sandbox \
   ./stages/030-private-model-serving/benchmark-guidellm.sh
 ```
 
-The deploy script uses an idempotent discover-or-create flow: it checks for existing registry metadata and InferenceService before creating, and reconciles the endpoint to the curated Nemotron vLLM configuration.
+The deploy script uses an idempotent discover-or-create flow: it checks for existing registry metadata and InferenceService before creating, and reconciles the endpoint to the curated vLLM configuration.
 
 ## References
 
@@ -130,4 +130,4 @@ The deploy script uses an idempotent discover-or-create flow: it checks for exis
 
 ## Next Stage
 
-[Stage 040: Governed Models-as-a-Service](../040-governed-models-as-a-service/) publishes the validated Nemotron endpoint (and an external GPT-4o-mini registration) through Red Hat OpenShift AI Models-as-a-Service with identity, API keys, rate limits, and tiered access policies.
+[Stage 040: Governed Models-as-a-Service](../040-governed-models-as-a-service/) publishes the validated local model endpoints (and an external GPT-4o-mini registration) through Red Hat OpenShift AI Models-as-a-Service with identity, API keys, rate limits, and tiered access policies.

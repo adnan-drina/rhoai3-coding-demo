@@ -4,7 +4,7 @@
 
 Enterprise AI teams need to turn model endpoints into governed platform services. A raw inference URL is difficult to share safely: it lacks subscription boundaries, API key lifecycle management, user-facing model discovery, usage reporting, and consistent controls across local and external models.
 
-Models-as-a-Service (MaaS) adds that product layer. In this demo it publishes two private local models — `nemotron-3-nano-30b-a3b` (131K-context reasoning) and `qwen3-6-35b-a3b` (Qwen3.6 35B A3B FP8-dynamic, the coding specialist, 32K deployed context) — plus an external OpenAI `gpt-4o-mini` provider model as managed AI assets that can be discovered, subscribed to, monitored, and consumed through OpenAI-compatible APIs. Each private model requests one L40S; Stage 020 disables GPU time-slicing so a 1-GPU request means an exclusive card — two vLLM runtimes cannot share one card's memory, hardware profiles have no affinity concept, and the KServe webhook strips template-level anti-affinity on RHOAI 3.4, so full-card requests are the documented-behavior-aligned placement mechanism.
+Models-as-a-Service (MaaS) adds that product layer. In this demo it publishes two private local models — `qwen3-6-27b` (Qwen3.6 27B FP8, the agent-orchestration model: benchmark-selected for tool-calling reliability and long-horizon agentic work, 131K deployed context) and `qwen3-6-35b-a3b` (Qwen3.6 35B A3B FP8-dynamic, the coding specialist, 131K deployed context) — plus an external OpenAI `gpt-4o-mini` provider model as managed AI assets that can be discovered, subscribed to, monitored, and consumed through OpenAI-compatible APIs. Each private model requests one L40S; Stage 020 disables GPU time-slicing so a 1-GPU request means an exclusive card — two vLLM runtimes cannot share one card's memory, hardware profiles have no affinity concept, and the KServe webhook strips template-level anti-affinity on RHOAI 3.4, so full-card requests are the documented-behavior-aligned placement mechanism.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ flowchart LR
 |------------|---------------|
 | ![Playground](images/01-playground-demo-sandbox.png) | GenAI Playground entry — project-scoped model interaction surface |
 | ![Gateway](images/02-maas-gateway.png) | MaaS default Gateway (data-science-gateway-class) with AWS ELB address |
-| ![HTTPRoutes](images/03-maas-httproutes.png) | HTTPRoutes: local Nemotron + external GPT-4o-mini path-based routing |
+| ![HTTPRoutes](images/03-maas-httproutes.png) | HTTPRoutes: local model + external GPT-4o-mini path-based routing |
 | ![AuthPolicy](images/04-authpolicy-nemotron.png) | Kuadrant AuthPolicy enforcing API-key and token authentication |
 
 ## What This Stage Adds
@@ -41,7 +41,7 @@ flowchart LR
 This stage turns model endpoints into governed platform services with subscription-based access control, token quotas, API key lifecycle, and observability.
 
 - MaaS prerequisites: cert-manager (hard prerequisite), Leader Worker Set Operator, Red Hat Connectivity Link v1.3.5, PostgreSQL database, Kuadrant configure Job, `kuadrant-console-plugin` enablement (sync-wave 14) for Connectivity Link gateway and policy visibility in the OpenShift web console.
-- Local model migration: `LLMInferenceService` resources for Nemotron and Qwen3.6 in `models-as-a-service`, replacing the Stage 030 baseline `InferenceService`.
+- Local model migration: `LLMInferenceService` resources for the two Qwen3.6 models in `models-as-a-service`, replacing the Stage 030 baseline `InferenceService`.
 - External model publication: OpenAI `gpt-4o-mini` as a governed MaaS model with credential-gated provider key.
 - Subscription and authorization policies with per-model token rate limits for developer and burst workloads.
 - Gateway hostname patched to `maas.<ingress-domain>` via hook Job at deploy time with TLS from the cluster ingress certificate.
@@ -59,11 +59,11 @@ Stage 040 is the governance control point for all model consumption that follows
 
 | Name | Owners | Models (limit/1h) | Priority | Purpose |
 |------|--------|-------------------|----------|---------|
-| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | nemotron, qwen3-6-35b-a3b @1M | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
-| `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | nemotron @1M, qwen3-6-35b-a3b @1M, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
-| `developer-hub-models` | rhods-admins, kube:admin | nemotron, qwen3-6-35b-a3b @1M | 100 | Reserved for RHDH integration |
-| `model-evaluation` | unchanged | nemotron @2M/1h, gpt-4o-mini @1M/1h | 100 | Eval workloads |
-| `ai-safety-guardrails` | unchanged | nemotron @500K/1h | 100 | NeMo Guardrails |
+| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | qwen3-6-27b, qwen3-6-35b-a3b @5M/1h | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
+| `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | qwen3-6-27b @1M, qwen3-6-35b-a3b @1M, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
+| `developer-hub-models` | rhods-admins, kube:admin | qwen3-6-27b, qwen3-6-35b-a3b @5M/1h | 100 | Reserved for RHDH integration |
+| `model-evaluation` | unchanged | qwen3-6-27b @2M/1h, gpt-4o-mini @1M/1h | 100 | Eval workloads |
+| `ai-safety-guardrails` | unchanged | qwen3-6-27b @500K/1h | 100 | NeMo Guardrails |
 
 Retired: `rhoai-developers-coding-models`, `enterprise-rag-autorag`.
 
@@ -88,7 +88,7 @@ The Gen AI Playground (Llama Stack Operator) provides the user-facing model inte
 
 ## Trust Boundaries
 
-- Local models (Nemotron, Qwen) keep all prompts and completions inside the OpenShift platform boundary.
+- Local models (both Qwen3.6 variants) keep all prompts and completions inside the OpenShift platform boundary.
 - The external GPT-4o-mini path sends prompts to OpenAI — governed by MaaS token limits but processed by the provider.
 - The MaaS gateway authenticates every request via API key against subscription and auth policy; unauthenticated requests are rejected.
 - The OpenShift MCP server is read-only, denies sensitive resource types, and rate-limits HTTP access — models cannot write to or escalate within the cluster.
@@ -119,7 +119,7 @@ The Gen AI Playground (Llama Stack Operator) provides the user-facing model inte
 
 Manifests: [`gitops/stages/040-governed-models-as-a-service/base/`](../../gitops/stages/040-governed-models-as-a-service/base/)
 
-Prerequisites: cert-manager must be installed before deploy.sh runs (the script fails without it). The `register-model-cards.sh` script (invoked by deploy.sh) registers the Qwen3.6 rich model card through the authenticated registry route; the Nemotron card is registered by Stage 030.
+Prerequisites: cert-manager must be installed before deploy.sh runs (the script fails without it). The `register-model-cards.sh` script (invoked by deploy.sh) registers the rich model cards for both local models through the authenticated registry route.
 
 ## References
 
