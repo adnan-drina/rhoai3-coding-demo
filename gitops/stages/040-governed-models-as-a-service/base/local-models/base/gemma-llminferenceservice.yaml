@@ -82,7 +82,7 @@ spec:
           - -m
           - vllm.entrypoints.openai.api_server
         # Serve flags follow the RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic model
-        # card: dedicated gemma4 tool parser (the orchestrator-reliability
+        # card: dedicated gemma tool parser (functiongemma in this vLLM build) (the orchestrator-reliability
         # reason for this model), text-only serving (vision/audio encoders
         # skipped to spend the freed memory on KV cache), 128K window
         # (--max-model-len 131072, matched by every client context limit).
@@ -100,7 +100,7 @@ spec:
           - --max-num-seqs=8
           - --kv-cache-dtype=fp8
           - --enable-auto-tool-choice
-          - --tool-call-parser=gemma4
+          - --tool-call-parser=functiongemma
           - --limit-mm-per-prompt={"image":0,"audio":0}
         ports:
           - containerPort: 8000
