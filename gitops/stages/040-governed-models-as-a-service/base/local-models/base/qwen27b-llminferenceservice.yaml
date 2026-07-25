@@ -25,7 +25,7 @@ metadata:
 spec:
   model:
     name: qwen3-6-27b
-    uri: oci://registry.redhat.io/rhai/modelcar-qwen3-6-27b-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d
+    uri: hf://RedHatAI/Qwen3.6-27B-FP8
   replicas: 1
   router:
     gateway:
