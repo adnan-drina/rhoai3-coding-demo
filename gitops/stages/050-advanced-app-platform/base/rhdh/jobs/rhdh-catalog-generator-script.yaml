@@ -25,6 +25,26 @@ data:
     [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
       -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
 
+    # The convergence target is the BRANCH HEAD, not the app's synced
+    # revision: catalog/template files are not rendered manifests, so a
+    # catalog-only commit never triggers a sync and status.sync.revision
+    # never advances past it (the original staleness bug in another form).
+    # Resolve HEAD from the repo directly; fall back to the synced revision
+    # when the remote is unreachable.
+    APP_REPO_URL_EARLY=$(oc get application 050-advanced-app-platform -n openshift-gitops \
+      -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
+    APP_BRANCH_EARLY=$(oc get application 050-advanced-app-platform -n openshift-gitops \
+      -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
+    HEAD_REVISION=""
+    if [ -n "$APP_REPO_URL_EARLY" ] && command -v git >/dev/null 2>&1; then
+      HEAD_REVISION=$(git ls-remote "$APP_REPO_URL_EARLY" "refs/heads/${APP_BRANCH_EARLY:-main}" 2>/dev/null | cut -f1 || true)
+    fi
+    if [ -z "$HEAD_REVISION" ] && [[ "${APP_REPO_URL_EARLY%.git}" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
+      HEAD_REVISION=$(curl -fsSL "https://api.github.com/repos/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/commits/${APP_BRANCH_EARLY:-main}" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])' 2>/dev/null || true)
+    fi
+    [ -n "$HEAD_REVISION" ] && APP_SYNC_REVISION="$HEAD_REVISION"
+
     if [ "${SKIP_IF_CURRENT:-false}" = "true" ]; then
       STAMPED=$(oc get configmap catalog-runtime-rhdh -n rhdh \
         -o jsonpath='{.metadata.annotations.rhoai3\.redhat\.com/catalog-revision}' 2>/dev/null || true)
@@ -34,7 +54,7 @@ data:
         echo "Catalog current (revision ${STAMPED}, no pending links); nothing to do"
         exit 0
       fi
-      echo "Catalog stale (stamped=${STAMPED:-none}, synced=${APP_SYNC_REVISION}, pending-links=${PENDING:-0}); regenerating"
+      echo "Catalog stale (stamped=${STAMPED:-none}, head=${APP_SYNC_REVISION}, pending-links=${PENDING:-0}); regenerating"
     fi
 
     echo "Discovering Dev Spaces route..."
