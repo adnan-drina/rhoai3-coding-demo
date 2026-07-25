@@ -28,6 +28,13 @@ spec:
         - name: ${{ values.name }}
           image: quay.io/rhoai3-coding-demo/${{ values.name }}:latest
           imagePullPolicy: Always
+          env:
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: jdbc:postgresql://${{ values.name }}-postgres:5432/coolstore
+            - name: QUARKUS_DATASOURCE_USERNAME
+              valueFrom: {secretKeyRef: {name: ${{ values.name }}-postgres, key: POSTGRESQL_USER}}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom: {secretKeyRef: {name: ${{ values.name }}-postgres, key: POSTGRESQL_PASSWORD}}
           ports:
             - name: http
               containerPort: 8080
