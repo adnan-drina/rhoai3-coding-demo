@@ -1,0 +1,43 @@
+# Deploys the project's runtime after a successful build: applies the
+# repo's k8s/ manifests when present (per-run scaffolded projects carry
+# templated Deployment/Service/Route there), pins the deployment image to
+# the resolved registry (portability: the manifest default may be the demo
+# author's registry), and rolls the deployment so `:latest` is picked up.
+# Projects whose deployment is GitOps-owned (golden coolstore) have no
+# k8s/ directory — for them this task is restart-only. The `pipeline`
+# ServiceAccount's operator-granted `edit` role covers all of this within
+# the project namespace.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-app
+spec:
+  params:
+    - name: REPO_NAME
+      type: string
+    - name: IMAGE
+      type: string
+      description: Fully-qualified image (resolved registry, :latest)
+  workspaces:
+    - name: source
+  steps:
+    - name: deploy
+      image: registry.redhat.io/openshift4/ose-cli:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        if [ -d k8s ]; then
+          echo "Applying k8s/ manifests from the repository"
+          oc apply -f k8s/
+        else
+          echo "No k8s/ directory in the repository (GitOps-owned deployment expected)"
+        fi
+        if oc get deployment "$(params.REPO_NAME)" >/dev/null 2>&1; then
+          oc set image "deployment/$(params.REPO_NAME)" "$(params.REPO_NAME)=$(params.IMAGE)"
+          oc rollout restart "deployment/$(params.REPO_NAME)"
+          oc rollout status "deployment/$(params.REPO_NAME)" --timeout=300s
+          echo "Deployed $(params.IMAGE)"
+        else
+          echo "No Deployment named $(params.REPO_NAME) in this namespace — nothing to roll out."
+        fi

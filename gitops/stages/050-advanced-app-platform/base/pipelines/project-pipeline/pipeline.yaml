@@ -108,3 +108,16 @@ spec:
       workspaces:
         - name: dockerconfig
           workspace: dockerconfig
+    - name: deploy
+      runAfter:
+        - tag-latest
+      taskRef:
+        name: deploy-app
+      params:
+        - name: REPO_NAME
+          value: "$(params.repo-name)"
+        - name: IMAGE
+          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):latest"
+      workspaces:
+        - name: source
+          workspace: source

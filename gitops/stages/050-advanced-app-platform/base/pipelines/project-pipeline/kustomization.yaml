@@ -25,4 +25,5 @@ resources:
   - task-maven-build.yaml
   - task-sonar-scan.yaml
   - task-tag-latest.yaml
+  - task-deploy.yaml
   - pipeline.yaml
