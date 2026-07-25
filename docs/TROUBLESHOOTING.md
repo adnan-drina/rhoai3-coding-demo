@@ -1420,3 +1420,39 @@ The pipeline still needs a push to build — fix the App scope (or seed a run) f
 - [Red Hat OpenShift AI documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/)
 - [Red Hat Developer Hub documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.9)
 - [Migration Toolkit for Applications documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1)
+
+## Model Catalog crash-loops after a cluster reboot (source load error in the dashboard)
+
+**Symptom:** the RHOAI dashboard Models → Catalog tab shows "Model catalog
+source load error"; `model-catalog` pod in `rhoai-model-registries`
+crash-loops (`relation "Type" does not exist (SQLSTATE 42P01)` in the
+`catalog` container logs) while `model-catalog-postgres` runs fine.
+
+**Root cause (observed 2026-07-25, cluster-kjbwr):** a reboot interrupted
+the catalog's EmbedMD schema migration AND orphaned its Postgres-row
+leader lock. Two independent blockers result: golang-migrate refuses to
+run on a dirty database (`schema_migrations.dirty = t`), and schema
+migrations only run on the elected leader — but the `locks` table row
+`catalog-leader` is still owned by the dead pre-reboot session, so the
+restarted pod waits forever for types the leader would have created.
+
+**Recovery (both steps needed):**
+
+```bash
+# 1. clear the dirty migration flag (safe: Postgres DDL is transactional,
+#    the interrupted migration rolled back)
+oc exec -n rhoai-model-registries deploy/model-catalog-postgres -- \
+  psql -U catalog_user -d model_catalog \
+  -c "UPDATE schema_migrations SET version = version - 1, dirty = false WHERE dirty;"
+# 2. release the stale leader lock
+oc exec -n rhoai-model-registries deploy/model-catalog-postgres -- \
+  psql -U catalog_user -d model_catalog \
+  -c "DELETE FROM locks WHERE name = 'catalog-leader';"
+```
+
+The next crash-loop restart acquires leadership, completes the migrations
+(version 25, 17 tables when healthy), and re-ingests the catalog sources
+("redhat_ai_validated_models: loaded 74 models" in the logs). No PVC or
+schema reset needed — the catalog database is derived data, but archived
+registry records live in the separate demo-registry database, so prefer
+this surgical recovery over drops.
