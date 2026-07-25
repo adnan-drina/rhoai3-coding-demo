@@ -1,0 +1,38 @@
+---
+# Phase E observability: the stage 080 harness supervisor (running inside
+# a Dev Spaces workspace in wksp-ai-developer) polls the project pipeline
+# for its factory verdict and reads the route to prove the deploy. This
+# Role grants read-only access to exactly those surfaces; the binding
+# covers all workspace service accounts in the developer workspace
+# namespace. Applied to every project namespace via the per-project
+# Argo application (this directory is its source).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: harness-pipeline-observer
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "080"
+rules:
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns", "taskruns"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: harness-pipeline-observer
+  labels:
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "080"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: harness-pipeline-observer
+subjects:
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: system:serviceaccounts:wksp-ai-developer

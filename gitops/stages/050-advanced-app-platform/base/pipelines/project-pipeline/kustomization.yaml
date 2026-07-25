@@ -21,6 +21,7 @@ kind: Kustomization
 resources:
   - pvc-maven-cache.yaml
   - rbac-build-config.yaml
+  - rbac-harness-observer.yaml
   - task-resolve-image-registry.yaml
   - task-maven-build.yaml
   - task-sonar-scan.yaml

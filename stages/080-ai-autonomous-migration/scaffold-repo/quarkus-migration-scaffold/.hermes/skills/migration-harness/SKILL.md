@@ -179,6 +179,25 @@ print("final text:", " ".join(texts)[-600:])
 PYEOF
 ```
 
+### Worker dispatch is synchronous — never background it
+
+Run the `opencode run` command with a terminal timeout of at least 1800
+seconds and WAIT for it to exit. NEVER launch it in the background, and
+never end your turn while a worker is running: a headless session ends
+the moment you stop calling tools — "I will wait for it to complete"
+without a blocking tool call abandons the worker mid-task. If the
+terminal returns while the worker is still running, poll in a loop
+(`sleep 60` then check for the `opencode` process) until it exits before
+doing anything else. Before dispatching, verify no worker is already
+running.
+
+### Packet size — one concern, bounded scope
+
+A worker packet covers ONE concern and at most ~10 files or violation
+sites. Split anything larger into sequential packets. Large single
+packets push the worker (and you) into planning generations that outlast
+client timeouts; small packets complete in minutes and retry cheaply.
+
 Then verify independently — check `git status --porcelain` for the
 acceptance files. Never trust the worker's summary alone.
 
@@ -245,11 +264,33 @@ Done means the baseline findings are resolved (or waived in the spec) —
 not "the agent says done."
 
 2. `mvn -q clean verify` green.
-3. Commit with a conventional message referencing the spec id; push to
-   `main`.
+3. Commit with a conventional message referencing the spec id. Under the
+   supervisor, DO NOT push — the supervisor ships and drives Phase E.
 4. Final report: tasks completed/deferred, debt entries, findings delta
-   (before → after), and "pushed <sha>; the factory pipeline (build +
-   SonarQube gate) decides whether this ships."
+   (before → after).
+
+## Phase E — the factory gate loop (supervised)
+
+The supervisor (`.hermes/harness/supervisor.sh`) owns shipping: it pushes,
+watches the project PipelineRun (read-only RBAC is provisioned into every
+project namespace), and on a SonarQube gate rejection exports the complete
+new-code violation list to `/tmp/gate-violations.txt` (SonarQube allows
+anonymous reads inside the cluster) and starts a **gate-correction
+session** with you. In that session:
+
+1. Read `/tmp/gate-violations.txt` with your file tools — rule, count,
+   `file:line` sites, plus `DUPLICATION` lines per file.
+2. Dispatch fixes to the worker in SMALL packets per the packet-size rule
+   (group by rule, ≤ ~10 sites per packet, sequential). Duplication means
+   consolidation — records, static factories — never suppression.
+3. Semantics are inviolable: converting checks to `isEmpty()` and
+   injection styles must preserve behavior exactly.
+4. `mvn -q clean verify` green, JaCoCo coverage ≥ 80%, then ONE commit
+   starting `Gate fix:` — the supervisor re-pushes and re-observes.
+
+Budget: two gate rounds. A second rejection halts the run with the
+violation list preserved for the retro — never bypass or water down the
+gate.
 
 ## Stop conditions
 
@@ -259,13 +300,13 @@ not "the agent says done."
 | Budget exhausted on a task | `migration/debt.md`, continue |
 | Two consecutive full-suite failures after corrections | HALT: write run-log + debt, report, do not push, never bypass sensors |
 
-## Model routing (operator option)
+## Model routing
 
-The governed default routes both agents through the cluster MaaS gateway:
-both seats on Qwen3.6 27B (131K) — orchestrator via `custom:maas-qwen27b`, worker via
-`qwen27b/qwen3-6-27b`. For long or failure-prone runs the operator
-may start the orchestrator on the Red Hat MaaS portal's MiniMax M2
-instead — stronger long-horizon tool calling and a 196K window:
+Seats are split by evaluated strength: the **orchestrator** runs MiniMax
+M2 (`custom:maas-m2`, 196K window) — selected in a full-migration A/B for
+lean sessions, packet-size tolerance, and long-horizon loop reliability —
+and the **worker** runs the governed local Qwen3.6 27B
+(`qwen27b/qwen3-6-27b`), the strongest evaluated coding seat:
 
 ```bash
 hermes chat --provider custom:maas-m2 --model minimax-m2 -q "..."
@@ -275,9 +316,11 @@ Trade-off (temporary): `maas-m2` is a direct external endpoint, so its
 tokens do not appear on the platform's MaaS dashboard and are not
 governed by cluster quotas — the RHOAI 3.4 gateway cannot stream external
 models (fixed in 3.5, after which this routes through the gateway too).
-The worker stays on the governed local model either way. Portal models with only 32K
-context (e.g. gpt-oss-120b) are not orchestrator candidates: harness
-sessions routinely exceed 65K input tokens.
+The worker stays on the governed local model either way. All-local runs
+(27B in both seats) work behind the supervisor's failure classification;
+portal models with only 32K context (e.g. gpt-oss-120b) are not
+orchestrator candidates: harness sessions routinely exceed 65K input
+tokens.
 
 ## Cost discipline
 

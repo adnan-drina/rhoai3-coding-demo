@@ -114,7 +114,10 @@ log_step "Harness Tooling (Session 0 — init script contract)"
 check "init script installs the Hermes Agent CLI" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
   "1"
-check "init script wires Hermes to MaaS providers (planner qwen27b)" \
+check "init script seats the M2 orchestrator default" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-m2' || echo 0" \
+  "1"
+check "init script keeps the local 27B fallback orchestrator" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-qwen27b' || echo 0" \
   "1"
 check "init script ships the kantra-ensure lazy sensor helper (pinned)" \

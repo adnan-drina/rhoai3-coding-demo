@@ -219,16 +219,16 @@ completed task ends in one commit prefixed with its task id: the git history
 > **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
 
 > **Why these models:** the two harness roles have different failure
-> modes, so the platform seats them separately — the **orchestrator**
-> (`qwen3-6-27b`) is benchmark-selected for exactly what the loop
-> demands: long-horizon tool-calling reliability, top-tier agentic
-> coding (SWE-bench 77.2), and a 131K context — one strong open model
-> serving both harness seats on a single cluster GPU, behind the
-> governed MaaS gateway and metered on the developer key. The roles stay
-> separate in the harness (orchestrator plans and verifies; the worker
-> codes) even when one model plays both. The harness runbook also
-> documents an operator-level model-routing override for
-> experimentation. Selection history and serving details live in
+> modes, so the platform seats them separately and selected each seat in
+> a full-migration A/B. The **orchestrator** (MiniMax M2, 196K context)
+> is selected for what the loop demands of a supervisor: lean sessions,
+> reliable long-horizon tool calling, and composure on large work
+> orders. The **worker** (`qwen3-6-27b`, served on the cluster GPU
+> behind the governed MaaS gateway) is the strongest evaluated coding
+> seat (SWE-bench 77.2, AA Coding 53.7) — every code edit runs on the
+> governed local model, metered on the developer key. The runbook also
+> documents an all-local routing option (the 27B in both seats behind
+> the supervisor). Selection history and serving details live in
 > `docs/OPERATIONS.md`.
 
 ---

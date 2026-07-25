@@ -1081,8 +1081,8 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
-| Agent orchestrator | `qwen3-6-27b` (RedHatAI/Qwen3.6-27B-FP8) | Benchmark-selected (Artificial Analysis: Intelligence 37, τ²-Bench 0.94, SWE-bench 77.2) — the long-horizon tool-calling reliability the stage 080 harness loop demands | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (no official modelcar published yet — graduation tracked in BACKLOG); multimodal checkpoint deployed text-only (`--language-model-only`); 131K window; thinking-mode sampling defaults per the model card |
-| Coding worker | `qwen3-6-27b` (same model, second seat) | The 27B outscores the 35B on coding (AA Coding 53.7 vs 41.9) at measured single-stream parity — one strong model, two disciplined harness roles | Worker calls route to the same endpoint with coding-profile client sampling |
+| Agent orchestrator | MiniMax M2 (`custom:maas-m2`, Red Hat MaaS portal) | Selected in the full-migration A/B (2026-07-25/26): lean sessions, packet-size tolerance, near-100% first-pass task rate driving the harness loop; 196K window | Direct portal endpoint until RHOAI 3.5 gateway streaming; falls back to the local 27B when portal keys are absent |
+| Coding worker | `qwen3-6-27b` (RedHatAI/Qwen3.6-27B-FP8) | Strongest evaluated coding seat (SWE-bench 77.2, AA Coding 53.7; outscores the 35B at single-stream parity) — every code edit stays on the governed local model | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (modelcar graduation in BACKLOG); text-only (`--language-model-only`); 131K window; precise-coding sampling per the model card |
 
 **Workshop capacity overlay:** `qwen3-6-35b-a3b`
 (gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE

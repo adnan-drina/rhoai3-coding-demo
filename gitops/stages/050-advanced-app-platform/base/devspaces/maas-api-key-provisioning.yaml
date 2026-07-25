@@ -609,9 +609,17 @@ data:
              "api_mode": "chat_completions",
              "context_length": 163840,
              "extra_body": {"max_tokens": 16384}})
+    # Seat assignment (full-migration A/B, 2026-07-25/26): M2 is the
+    # orchestrator default — lean sessions, packet-size tolerance,
+    # long-horizon loop reliability; the local 27B stays the worker seat
+    # and is the fallback orchestrator when the portal keys are absent.
     model = cfg.get("model") or {}
-    model["default"] = "qwen3-6-27b"
-    model["provider"] = "custom:maas-qwen27b"
+    if rh_base and rh_key:
+        model["default"] = "minimax-m2"
+        model["provider"] = "custom:maas-m2"
+    else:
+        model["default"] = "qwen3-6-27b"
+        model["provider"] = "custom:maas-qwen27b"
     cfg["model"] = model
     # Top-level max_tokens: ignored by this Hermes build (see provider
     # comment above) — kept only as documentation of intent for builds
