@@ -55,8 +55,8 @@ log_step "MaaS prerequisites from earlier stages"
 check "workspace MaaS key Secret exists (Stage 060)" \
   "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "maas-devspace-api-keys"
-check "qwen executor key provisioned" \
-  "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY_QWEN}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
+check "qwen27b model key provisioned" \
+  "oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_KEY_QWEN27B}' | wc -c | tr -d ' ' | awk '{print (\$1>10)?\"yes\":\"no\"}'" \
   "yes"
 
 log_step "Scaffold repo drift (checked-in staging vs live repos)"

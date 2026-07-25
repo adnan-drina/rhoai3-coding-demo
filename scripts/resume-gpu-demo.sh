@@ -297,7 +297,7 @@ cleanup_stale_model_replicasets() {
     local deployments
     deployments="$(oc get deployment -n "$MODEL_NAMESPACE" -o json 2>/dev/null \
         | jq -r '.items[]
-            | select(.metadata.name | test("^(qwen3-6-35b-a3b|qwen3-6-27b)-kserve$"))
+            | select(.metadata.name | test("^qwen3-6-27b-kserve$"))
             | .metadata.name')"
 
     if [[ -z "$deployments" ]]; then
@@ -338,20 +338,19 @@ cleanup_stale_model_replicasets() {
 
 wait_for_private_models() {
     local timeout="${1:-$GPU_RESUME_TIMEOUT_SECONDS}"
-    local elapsed=0 gpt qwen27b
+    local elapsed=0 qwen27b
 
     log_info "Waiting for private LLMInferenceService resources to become Ready"
     while (( elapsed < timeout )); do
         cleanup_stale_model_replicasets
-        gpt="$(oc get llminferenceservice qwen3-6-35b-a3b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
-        qwen27b="$(oc get llminferenceservice qwen3-6-27b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+                qwen27b="$(oc get llminferenceservice qwen3-6-27b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
 
-        if [[ "$gpt" == "True" && "$qwen27b" == "True" ]]; then
+        if [[ "$qwen27b" == "True" ]]; then
             log_success "Private models are Ready"
             return 0
         fi
 
-        log_info "Model readiness: qwen3-6-35b-a3b=${gpt:-Unknown} qwen3-6-27b=${qwen27b:-Unknown}"
+        log_info "Model readiness: qwen3-6-27b=${qwen27b:-Unknown}"
         sleep "$GPU_RESUME_POLL_SECONDS"
         elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
     done

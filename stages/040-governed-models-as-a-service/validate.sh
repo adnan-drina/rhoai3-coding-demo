@@ -953,16 +953,14 @@ done
 DS_SUB="devspaces-coding-models"
 DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[*].name}")
 DS_QWEN27B_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-27b\")].tokenRateLimits[0].limit}")
-DS_QWEN_LOCAL_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-35b-a3b\")].tokenRateLimits[0].limit}")
 if contains_word "$DS_MODELS" "qwen3-6-27b" &&
-  contains_word "$DS_MODELS" "qwen3-6-35b-a3b" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_QWEN27B_LIMIT" == "5000000" && "$DS_QWEN_LOCAL_LIMIT" == "5000000" ]]; then
+  [[ "$DS_QWEN27B_LIMIT" == "5000000" ]]; then
   R="pass"
 else
-  R="models=${DS_MODELS:-missing},qwen27b=${DS_QWEN27B_LIMIT:-missing},qwenLocal=${DS_QWEN_LOCAL_LIMIT:-missing}"
+  R="models=${DS_MODELS:-missing},qwen27b=${DS_QWEN27B_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has 2 local coding models @5M/1h (qwen27b + qwen, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has the local coding model @5M/1h (qwen3-6-27b, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")

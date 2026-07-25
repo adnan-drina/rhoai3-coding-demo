@@ -158,7 +158,7 @@ only a scripted summary:
 ```bash
 cd /projects/modernized
 opencode run "<task packet>" \
-  -m qwen/qwen3-6-35b-a3b --auto --format json \
+  -m qwen27b/qwen3-6-27b --auto --format json \
   -f specs/<id>/spec.md -f specs/<id>/tasks.md -f AGENTS.md \
   > /tmp/oc-task.json 2>/tmp/oc-task.err; echo "worker exit: $?"
 python3 - <<'PYEOF'
@@ -262,8 +262,8 @@ not "the agent says done."
 ## Model routing (operator option)
 
 The governed default routes both agents through the cluster MaaS gateway:
-orchestrator on `custom:maas-qwen27b` (Qwen3.6 27B, 131K), worker on
-`qwen/qwen3-6-35b-a3b` (64K). For long or failure-prone runs the operator
+both seats on Qwen3.6 27B (131K) — orchestrator via `custom:maas-qwen27b`, worker via
+`qwen27b/qwen3-6-27b`. For long or failure-prone runs the operator
 may start the orchestrator on the Red Hat MaaS portal's MiniMax M2
 instead — stronger long-horizon tool calling and a 196K window:
 
@@ -275,7 +275,7 @@ Trade-off (temporary): `maas-m2` is a direct external endpoint, so its
 tokens do not appear on the platform's MaaS dashboard and are not
 governed by cluster quotas — the RHOAI 3.4 gateway cannot stream external
 models (fixed in 3.5, after which this routes through the gateway too).
-The worker stays on governed qwen either way. Portal models with only 32K
+The worker stays on the governed local model either way. Portal models with only 32K
 context (e.g. gpt-oss-120b) are not orchestrator candidates: harness
 sessions routinely exceed 65K input tokens.
 

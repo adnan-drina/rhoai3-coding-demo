@@ -24,11 +24,6 @@ spec:
       tokenRateLimits:
         - limit: 1000000
           window: 1h
-    - name: qwen3-6-35b-a3b
-      namespace: models-as-a-service
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
     - name: gpt-4o-mini
       namespace: models-as-a-service
       tokenRateLimits:
@@ -62,8 +57,6 @@ spec:
   modelRefs:
     - name: qwen3-6-27b
       namespace: models-as-a-service
-    - name: qwen3-6-35b-a3b
-      namespace: models-as-a-service
     - name: gpt-4o-mini
       namespace: models-as-a-service
   meteringMetadata:
@@ -92,11 +85,6 @@ spec:
       - ai-developer
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 1000000
@@ -134,8 +122,6 @@ spec:
   modelRefs:
     - name: qwen3-6-27b
       namespace: models-as-a-service
-    - name: qwen3-6-35b-a3b
-      namespace: models-as-a-service
     - name: gpt-4o-mini
       namespace: models-as-a-service
   meteringMetadata:
@@ -164,11 +150,6 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
-      tokenRateLimits:
-        - limit: 1000000
-          window: 1h
-    - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 1000000
@@ -205,8 +186,6 @@ spec:
       - ai-admin
   modelRefs:
     - name: qwen3-6-27b
-      namespace: models-as-a-service
-    - name: qwen3-6-35b-a3b
       namespace: models-as-a-service
     - name: gpt-4o-mini
       namespace: models-as-a-service

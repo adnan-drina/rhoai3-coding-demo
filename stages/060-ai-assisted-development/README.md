@@ -97,8 +97,7 @@ This is the brownfield service you will extend. It is already deployed, already 
 
 | Model | Context | When to use |
 |-------|---------|-------------|
-| `qwen3-6-35b-a3b` | 32K | Default: local workhorse with the most reliable tool calling; mind the smaller context on very long sessions |
-| `qwen3-6-27b` | 131K | Local alternative: Qwen3.6 27B dense, large context, best-in-class tool calling (the platform's agent-orchestrator model) |
+| `qwen3-6-27b` | 131K | Default: the platform's local model — best-in-class tool calling and agentic coding, large context |
 | `qwen3-235b` | 16K | External (Red Hat internal): larger model, shorter context |
 | `minimax-m2` | 196K | External (Red Hat internal): large context for complex fixes; emits visible `<think>` reasoning blocks (normal, not an error) |
 

@@ -131,8 +131,8 @@ check "DevWorkspace MaaS key provisioner Job completed" \
 check "DevWorkspace AI tools init ConfigMap exists" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
     "devspace-ai-tools-init"
-check "Init script defaults Kilo to qwen3-6-35b-a3b" \
-    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen/qwen3-6-35b-a3b' && echo present || echo missing" \
+check "Init script defaults Kilo to qwen3-6-27b" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen27b/qwen3-6-27b' && echo present || echo missing" \
     "present"
 check "Init script disables ungoverned Kilo providers (kilo gateway, z.ai)" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'disabled_providers' && echo present || echo missing" \
@@ -150,8 +150,7 @@ check "DevWorkspace MaaS API key Secret exists" \
 # installs (see BACKLOG "External-model streaming buffered by IPP").
 for key_name in \
     MAAS_BASE_URL \
-    MAAS_API_KEY_QWEN27B \
-    MAAS_API_KEY_QWEN; do
+    MAAS_API_KEY_QWEN27B; do
     check "DevWorkspace MaaS Secret contains $key_name" \
         "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \
         "present"

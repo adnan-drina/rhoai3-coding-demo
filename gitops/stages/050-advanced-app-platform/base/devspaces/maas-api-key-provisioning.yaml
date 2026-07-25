@@ -397,7 +397,7 @@ data:
     write_kilo_config() {
       cat > "${HOME}/.config/kilo/kilo.json" <<KILOEOF
     {
-      "model": "qwen/qwen3-6-35b-a3b",
+      "model": "qwen27b/qwen3-6-27b",
       "disabled_providers": ["kilo", "zai"],
       "provider": {
         "qwen27b": {
@@ -415,22 +415,6 @@ data:
               "limit": { "context": 131072, "output": 16384 }
             }
           }
-        },
-        "qwen": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "Qwen3.6 35B (private MaaS)",
-          "options": {
-            "apiKey": "${MAAS_API_KEY_QWEN}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 1200000,
-            "chunkTimeout": 120000
-          },
-          "models": {
-            "qwen3-6-35b-a3b": {
-              "name": "Qwen3.6 35B A3B",
-              "limit": { "context": 131072, "output": 16384 }
-            }
-          }
         }
       },
       "mcp": {
@@ -442,7 +426,7 @@ data:
       }
     }
     KILOEOF
-      echo "Wrote Kilo Code config (default: qwen3-6-35b-a3b)."
+      echo "Wrote Kilo Code config (default: qwen3-6-27b)."
     }
 
     cleanup_stale_assistants
@@ -450,17 +434,16 @@ data:
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
-    MAAS_API_KEY_QWEN="$(secret_value MAAS_API_KEY_QWEN)"
     # Optional: external Red Hat models via their direct endpoints. The
     # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
     # so they bypass the gateway. Keys are operator-provisioned into the
     # Secret out of band (not in git); the provider is skipped when absent.
     REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
-    OPENCODE_ENABLED='["qwen27b", "qwen"]'
+    OPENCODE_ENABLED='["qwen27b"]'
     OPENCODE_REDHAT_PROVIDER=""
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      OPENCODE_ENABLED='["qwen27b", "qwen", "redhat"]'
+      OPENCODE_ENABLED='["qwen27b", "redhat"]'
       OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
@@ -488,8 +471,7 @@ data:
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
-      || [ -z "${MAAS_API_KEY_QWEN27B}" ] \
-      || [ -z "${MAAS_API_KEY_QWEN}" ]; then
+      || [ -z "${MAAS_API_KEY_QWEN27B}" ]; then
       echo "MaaS API key Secret is not ready; using repository templates."
       fallback_from_repo
       if [ "${AI_TOOL}" = "opencode" ]; then ensure_opencode_compat_path; fi
@@ -568,15 +550,15 @@ data:
       fi
 
       # Point Hermes at the same governed MaaS endpoints as OpenCode:
-      # orchestrator/planner on Qwen3.6 27B (131K context), coding worker on
-      # Qwen (stage 070 continuity). Rewritten on every init so key
+      # single local model qwen3-6-27b serves both harness seats (measured
+      # single-stream parity with the 35B MoE). Rewritten on every init so key
       # rotation propagates. PyYAML comes from Hermes' own venv.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
       if [ ! -x "${venv_py}" ]; then
         echo "Hermes venv python not found; skipping Hermes MaaS config."
         return
       fi
-      export MAAS_BASE_URL MAAS_API_KEY_QWEN27B MAAS_API_KEY_QWEN
+      export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
       export REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
@@ -598,12 +580,6 @@ data:
          "api_mode": "chat_completions",
          "context_length": 131072,
          "max_tokens": 32768},
-        {"name": "maas-qwen",
-         "base_url": base + "/models-as-a-service/qwen3-6-35b-a3b/v1",
-         "api_key": os.environ["MAAS_API_KEY_QWEN"],
-         "api_mode": "chat_completions",
-         "context_length": 131072,
-         "max_tokens": 16384},
     ]
     # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
     # MiniMax M2 (196K) as the documented ORCHESTRATOR-reliability routing
@@ -646,7 +622,7 @@ data:
     cfg["platform_toolsets"] = pts
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: MaaS providers written (planner qwen3-6-27b, worker qwen3-6-35b-a3b).")
+    print("Hermes config: MaaS providers written (single-model posture: qwen3-6-27b serves planner AND worker; 35B = workshop overlay).")
     HERMESEOF
       chmod 600 "${HOME}/.hermes/config.yaml"
 
@@ -720,27 +696,10 @@ data:
             "timeout": 1200000,
             "chunkTimeout": 120000
           }
-        },
-        "qwen": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "MaaS Qwen3.6",
-          "models": {
-            "qwen3-6-35b-a3b": {
-              "name": "Qwen3.6 35B A3B (Local GPU)",
-              "temperature": true,
-              "limit": { "context": 131072, "output": 16384 }
-            }
-          },
-          "options": {
-            "apiKey": "${MAAS_API_KEY_QWEN}",
-            "baseURL": "${MAAS_BASE_URL}/models-as-a-service/qwen3-6-35b-a3b/v1",
-            "timeout": 1200000,
-            "chunkTimeout": 120000
-          }
         }${OPENCODE_REDHAT_PROVIDER}
       },
-      "model": "qwen/qwen3-6-35b-a3b",
-      "small_model": "qwen/qwen3-6-35b-a3b",
+      "model": "qwen27b/qwen3-6-27b",
+      "small_model": "qwen27b/qwen3-6-27b",
       "mcp": {
         "openshift": {
           "type": "remote",
@@ -941,7 +900,6 @@ spec:
               } > "${SECRET_FILE}"
 
               write_model_key "QWEN27B" "qwen3-6-27b"
-              write_model_key "QWEN" "qwen3-6-35b-a3b"
 
               oc create secret generic "${SECRET_NAME}" \
                 -n "${SECRET_NAMESPACE}" \

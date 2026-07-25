@@ -159,11 +159,12 @@ You start the run and observe; Hermes drives.
 > **Why these models:** the two harness roles have different failure
 > modes, so the platform seats them separately — the **orchestrator**
 > (`qwen3-6-27b`) is benchmark-selected for exactly what the loop
-> demands: long-horizon tool-calling reliability and agentic planning at
-> a 131K context; the **coding worker** (`qwen3-6-35b-a3b`) is a fast
-> mixture-of-experts coding specialist, also at 131K. Both are open
-> models served on cluster GPUs behind the same governed MaaS gateway
-> and metered on the same developer key. The harness runbook also
+> demands: long-horizon tool-calling reliability, top-tier agentic
+> coding (SWE-bench 77.2), and a 131K context — one strong open model
+> serving both harness seats on a single cluster GPU, behind the
+> governed MaaS gateway and metered on the developer key. The roles stay
+> separate in the harness (orchestrator plans and verifies; the worker
+> codes) even when one model plays both. The harness runbook also
 > documents an operator-level model-routing override for
 > experimentation. Selection history and serving details live in
 > `docs/OPERATIONS.md`.

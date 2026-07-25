@@ -153,7 +153,7 @@ opencode
 ![OpenCode start page](images/opencode-start-page.png)
 
 2. Check the governed setup:
-   - `/models` lists exactly two models, the platform's private MaaS models (Qwen3.6 35B default, Qwen3.6 27B), both served on cluster GPUs. No public catalog, no personal keys.
+   - `/models` lists the platform's private MaaS model (Qwen3.6 27B, served on a cluster GPU). No public catalog, no personal keys.
    - The config came from the platform at workspace start (`~/.config/opencode/opencode.json`): providers, keys, and two MCP servers (`openshift` for cluster context and `quarkus-agent` for the official Quarkus MCP: project lifecycle, extension-aware skills, doc search).
 3. Send a first probe that exercises the Quarkus MCP:
 
@@ -199,7 +199,7 @@ Using the quarkus-agent tools, list this project's extensions and summarize what
 **What you should see:** a plan that reads like your team's conventions, because it is steered by them.
 
 > Model tip: the default Qwen3.6 handles this well. For a heavier planning
-> pass on a larger spec, switch to `qwen3-6-27b` (131K context)
+> pass on a larger spec, the default `qwen3-6-27b` carries a 131K context
 > (the model picker is a governed menu, not a credential decision).
 
 ![Plan artifacts](images/speckit-plan.png)
