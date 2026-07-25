@@ -222,6 +222,14 @@ task** (original + one correction). Budget exhausted → record the task in
 **After every task:** append one line to `migration/run-log.md`
 (task id, class, attempts, result, files touched).
 
+**NEVER commit with failing sensors.** A commit is the claim "this work
+passed its sensors" — committing red is a runbook violation, worse than
+reporting honest failure. If sensors are red and the budget is exhausted,
+leave the tree uncommitted, record the failure evidence in
+`migration/debt.md`, and report it. Coverage claims must be REAL numbers
+read from the JaCoCo report, never inferences like "compilation success
+indicates coverage".
+
 ## Phase D — final sensors + ship
 
 1. Re-analysis of the MIGRATED code:
