@@ -16,6 +16,7 @@ resources:
   - checluster.yaml
   - repair-devworkspace-sync-options.yaml
   - maas-api-key-provisioning.yaml
+  - workspace-git-credentials.yaml
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
