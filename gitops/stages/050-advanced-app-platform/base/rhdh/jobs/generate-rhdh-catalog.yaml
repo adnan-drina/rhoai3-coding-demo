@@ -1,18 +1,19 @@
-# Sync hook: generates the RHDH catalog from Git plus cluster-local links.
-#
-# The Git-tracked catalog template intentionally contains a placeholder Dev
-# Spaces URLs. This job replaces those placeholders with current cluster factory
-# links and uses relative TechDocs URLs so catalog generation does not depend on
-# the RHDH Route that is created later by the Backstage CR.
+# RHDH runtime-catalog generation: two consumers of the shared script in
+# ConfigMap rhdh-catalog-generator-script:
+#   - the Sync-hook Job below (immediate regeneration on FULL syncs), and
+#   - the refresh CronJob (convergence within 5 minutes after the
+#     selective syncs that skip hooks — the "catalog revision stamp goes
+#     stale" fix; it exits fast when the stamped revision is current and
+#     no placeholder links remain).
+# SA/RBAC are persistent regular resources (they used to be hook-scoped
+# and were deleted after every sync, which the CronJob cannot survive).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "7"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -20,9 +21,7 @@ metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "7"
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
@@ -33,9 +32,7 @@ kind: ClusterRole
 metadata:
   name: job-generate-rhdh-catalog
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "7"
 rules:
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
@@ -55,9 +52,7 @@ metadata:
   name: job-generate-rhdh-catalog
   namespace: rhdh
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "7"
 subjects:
 - kind: ServiceAccount
   name: job-generate-rhdh-catalog
@@ -72,9 +67,7 @@ kind: ClusterRoleBinding
 metadata:
   name: job-generate-rhdh-catalog
   annotations:
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "8"
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "7"
 subjects:
 - kind: ServiceAccount
   name: job-generate-rhdh-catalog
@@ -100,138 +93,51 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: job-generate-rhdh-catalog
+      volumes:
+        - name: script
+          configMap:
+            name: rhdh-catalog-generator-script
+            defaultMode: 0755
       containers:
       - name: generate
         image: registry.redhat.io/openshift4/ose-cli:latest
-        command:
-        - /bin/bash
-        - -c
-        - |
-          set -euo pipefail
-
-          echo "Discovering Dev Spaces route..."
-          DEVSPACES_HOST=$(oc get route devspaces -n openshift-devspaces -o jsonpath='{.spec.host}' 2>/dev/null || true)
-          if [ -z "$DEVSPACES_HOST" ]; then
-            DEVSPACES_HOST=$(oc get route -n openshift-devspaces --no-headers 2>/dev/null \
-              | awk '/devspaces/ {print $2; exit}' || true)
-          fi
-          if [ -z "$DEVSPACES_HOST" ]; then
-            # This job is a wave-8 hook, but the CheCluster that creates the Dev
-            # Spaces route is wave 10, and the Backstage CR (wave 10) consumes the
-            # ConfigMap this job produces — so the job cannot move past wave 10 to
-            # wait for the route without deadlocking. On a first-ever sync the route
-            # therefore does not exist yet. Break the dependency: the route host is
-            # deterministic (CheCluster name "devspaces" + default networking =>
-            # devspaces.<apps-domain>), so derive it from the cluster ingress domain.
-            APPS_DOMAIN=$(oc get ingresses.config.openshift.io cluster \
-              -o jsonpath='{.spec.domain}' 2>/dev/null || true)
-            if [ -n "$APPS_DOMAIN" ]; then
-              DEVSPACES_HOST="devspaces.${APPS_DOMAIN}"
-              echo "Dev Spaces route not created yet; derived host ${DEVSPACES_HOST} from cluster ingress domain"
-            fi
-          fi
-          if [ -z "$DEVSPACES_HOST" ]; then
-            echo "ERROR: Dev Spaces route not found and cluster ingress domain unavailable"
-            exit 1
-          fi
-          DEVSPACES_URL="https://${DEVSPACES_HOST}"
-
-          # The Backstage CR consumes this ConfigMap and creates the RHDH Route
-          # later. Keep TechDocs links relative during catalog bootstrap.
-          RHDH_URL=""
-
-          echo "Discovering catalog source from Argo CD..."
-          APP_REPO_URL=$(oc get application 050-advanced-app-platform -n openshift-gitops \
-            -o jsonpath='{.spec.source.repoURL}' 2>/dev/null || true)
-          APP_TARGET_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
-            -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)
-          # Prefer the completed sync result revision, then the in-flight
-          # operation revision, then the live sync revision.
-          # operationState.operation.sync.revision can retain a stale value
-          # from a previous explicit-revision sync, so check syncResult first.
-          APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
-            -o jsonpath='{.status.operationState.syncResult.revision}' 2>/dev/null || true)
-          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
-            -o jsonpath='{.status.operationState.operation.sync.revision}' 2>/dev/null || true)
-          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION=$(oc get application 050-advanced-app-platform -n openshift-gitops \
-            -o jsonpath='{.status.sync.revision}' 2>/dev/null || true)
-          [ -z "$APP_REPO_URL" ] && APP_REPO_URL="https://github.com/adnan-drina/rhoai3-coding-demo.git"
-          [ -z "$APP_TARGET_REVISION" ] && APP_TARGET_REVISION="main"
-          [ -z "$APP_SYNC_REVISION" ] && APP_SYNC_REVISION="$APP_TARGET_REVISION"
-
-          REPO_NO_GIT="${APP_REPO_URL%.git}"
-          if [[ "$REPO_NO_GIT" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
-            REPO_OWNER="${BASH_REMATCH[1]}"
-            REPO_NAME="${BASH_REMATCH[2]}"
-          SOURCE_REF="${APP_SYNC_REVISION:-$APP_TARGET_REVISION}"
-          SOURCE_CATALOG_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${SOURCE_REF}/gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml"
-          else
-            echo "ERROR: Unsupported repo URL '${APP_REPO_URL}'"
-            exit 1
-          fi
-
-          echo "Fetching catalog template..."
-          curl -fsSL "${SOURCE_CATALOG_URL}" -o /tmp/catalog-template.yaml
-
-          # Coolstore dev route (deployed-app link on the inventory component);
-          # tolerate absence — the wave-21 Route may not exist on first sync.
-          COOLSTORE_HOST=$(oc get route coolstore-inventory-service -n coolstore-dev \
-            -o jsonpath='{.spec.host}' 2>/dev/null || true)
-          COOLSTORE_URL="https://${COOLSTORE_HOST:-coolstore-pending.local}"
-
-          SONARQUBE_HOST=$(oc get route sonarqube -n sonarqube \
-            -o jsonpath='{.spec.host}' 2>/dev/null || true)
-          SONARQUBE_URL="https://${SONARQUBE_HOST:-sonarqube-pending.local}"
-
-          echo "Generating runtime catalog..."
-          python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" <<'PY'
-          import pathlib
-          import sys
-
-          source = pathlib.Path(sys.argv[1])
-          target = pathlib.Path(sys.argv[2])
-          devspaces_url = sys.argv[3].rstrip("/")
-          rhdh_url = sys.argv[4].rstrip("/")
-          revision = sys.argv[5]
-          coolstore_url = sys.argv[6].rstrip("/")
-          sonarqube_url = sys.argv[7].rstrip("/")
-
-          content = source.read_text()
-          content = content.replace(
-              "https://coolstore-inventory-route.placeholder.example.com", coolstore_url)
-          devspaces_links = {
-              "https://devspaces.placeholder.example.com": devspaces_url,
-              "https://devspaces-inventory.placeholder.example.com": devspaces_url,
-          }
-          for placeholder, replacement in devspaces_links.items():
-              content = content.replace(placeholder, replacement)
-          content = content.replace("https://rhdh.placeholder.example.com", rhdh_url)
-          content = content.replace("https://sonarqube.placeholder.example.com", sonarqube_url)
-          content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
-          if "devspaces" in content and "placeholder.example.com" in content:
-              raise SystemExit("Dev Spaces placeholder was not replaced")
-          if "rhdh.placeholder.example.com" in content:
-              raise SystemExit("RHDH placeholder was not replaced")
-          if "sonarqube.placeholder.example.com" in content:
-              raise SystemExit("SonarQube placeholder was not replaced")
-          if "__RHOAI3_DEMO_REVISION__" in content:
-              raise SystemExit("Repository revision placeholder was not replaced")
-          target.write_text(content)
-          PY
-
-          python3 - /tmp/catalog-runtime.yaml /tmp/catalog-patch.json <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          content = pathlib.Path(sys.argv[1]).read_text()
-          pathlib.Path(sys.argv[2]).write_text(json.dumps({"data": {"all.yaml": content}}))
-          PY
-
-          if oc get configmap catalog-runtime-rhdh -n rhdh >/dev/null 2>&1; then
-            oc patch configmap catalog-runtime-rhdh -n rhdh --type=merge -p "$(cat /tmp/catalog-patch.json)"
-          else
-            oc create configmap catalog-runtime-rhdh -n rhdh --from-file=all.yaml=/tmp/catalog-runtime.yaml
-          fi
-
-          echo "Runtime catalog generated with cluster-local Dev Spaces links and relative TechDocs links"
+        command: ["/bin/bash", "/scripts/generate.sh"]
+        volumeMounts:
+          - name: script
+            mountPath: /scripts
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: refresh-rhdh-catalog
+  namespace: rhdh
+  annotations:
+    argocd.argoproj.io/sync-wave: "8"
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: job-generate-rhdh-catalog
+          volumes:
+            - name: script
+              configMap:
+                name: rhdh-catalog-generator-script
+                defaultMode: 0755
+          containers:
+          - name: refresh
+            image: registry.redhat.io/openshift4/ose-cli:latest
+            command: ["/bin/bash", "/scripts/generate.sh"]
+            env:
+              - name: SKIP_IF_CURRENT
+                value: "true"
+            volumeMounts:
+              - name: script
+                mountPath: /scripts
