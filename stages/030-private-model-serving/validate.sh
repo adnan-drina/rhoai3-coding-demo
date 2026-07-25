@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # validate.sh - Stage 030: Model Serving Foundation
-# Proves KServe, vLLM, the demo registry metadata, and the Gemma endpoint are
+# Proves KServe, vLLM, the demo registry metadata, and the Granite endpoint are
 # ready for model-serving baseline work.
 set -euo pipefail
 
@@ -13,21 +13,21 @@ FAIL=0
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-rhoai-model-registries}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-demo-registry}"
 MODEL_NS="${RHOAI_MODEL_NAMESPACE:-demo-sandbox}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_GEMMA_DEPLOYMENT_NAME:-gemma-4-26b-a4b-it-fp8-dynamic}"
+MODEL_DEPLOYMENT_NAME="${RHOAI_GRANITE_DEPLOYMENT_NAME:-granite-4-0-h-small-fp8-dynamic}"
 MAAS_NS="${RHOAI_MAAS_NAMESPACE:-models-as-a-service}"
-MAAS_GEMMA_MODEL_NAME="${RHOAI_MAAS_GEMMA_MODEL_NAME:-gemma-4-26b-a4b}"
-MODEL_DISPLAY_NAME="${RHOAI_GEMMA_DISPLAY_NAME:-Gemma-3-Nano-30B-A3B-FP8}"
+MAAS_GRANITE_MODEL_NAME="${RHOAI_MAAS_GRANITE_MODEL_NAME:-granite-4-0-h-small}"
+MODEL_DISPLAY_NAME="${RHOAI_GRANITE_DISPLAY_NAME:-Granite-3-Nano-30B-A3B-FP8}"
 # Must match deploy.sh's default (v3.0 = the modelcar :3.0 tag); a stale
 # "Version 1" default here made the version + artifact metadata checks fail
 # against a correctly-registered model version.
-MODEL_VERSION_NAME="${RHOAI_GEMMA_VERSION_NAME:-v3.0}"
-MODEL_URI="${RHOAI_GEMMA_MODEL_URI:-oci://registry.redhat.io/rhai/modelcar-gemma-4-26b-a4b-it-fp8-dynamic@sha256:065bbfb0a144a6ec6d5b3936a8153b663695a5fac12e3258f451559382c672f8}"
-MODEL_CPU_REQUEST="${RHOAI_GEMMA_CPU_REQUEST:-2}"
-MODEL_CPU_LIMIT="${RHOAI_GEMMA_CPU_LIMIT:-4}"
-MODEL_MEMORY_REQUEST="${RHOAI_GEMMA_MEMORY_REQUEST:-16Gi}"
-MODEL_MEMORY_LIMIT="${RHOAI_GEMMA_MEMORY_LIMIT:-24Gi}"
-MODEL_MAX_MODEL_LEN="${RHOAI_GEMMA_MAX_MODEL_LEN:-8192}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_GEMMA_MAX_BATCHED_TOKENS:-8192}"
+MODEL_VERSION_NAME="${RHOAI_GRANITE_VERSION_NAME:-v3.0}"
+MODEL_URI="${RHOAI_GRANITE_MODEL_URI:-oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d}"
+MODEL_CPU_REQUEST="${RHOAI_GRANITE_CPU_REQUEST:-2}"
+MODEL_CPU_LIMIT="${RHOAI_GRANITE_CPU_LIMIT:-4}"
+MODEL_MEMORY_REQUEST="${RHOAI_GRANITE_MEMORY_REQUEST:-16Gi}"
+MODEL_MEMORY_LIMIT="${RHOAI_GRANITE_MEMORY_LIMIT:-24Gi}"
+MODEL_MAX_MODEL_LEN="${RHOAI_GRANITE_MAX_MODEL_LEN:-8192}"
+MODEL_MAX_BATCHED_TOKENS="${RHOAI_GRANITE_MAX_BATCHED_TOKENS:-8192}"
 
 if [[ -f "$ROOT_DIR/.env" ]]; then
   set -a
@@ -39,18 +39,18 @@ fi
 REGISTRY_NS="${MODEL_REGISTRY_NAMESPACE:-$REGISTRY_NS}"
 REGISTRY_NAME="${MODEL_REGISTRY_NAME:-$REGISTRY_NAME}"
 MODEL_NS="${RHOAI_MODEL_NAMESPACE:-$MODEL_NS}"
-MODEL_DEPLOYMENT_NAME="${RHOAI_GEMMA_DEPLOYMENT_NAME:-$MODEL_DEPLOYMENT_NAME}"
+MODEL_DEPLOYMENT_NAME="${RHOAI_GRANITE_DEPLOYMENT_NAME:-$MODEL_DEPLOYMENT_NAME}"
 MAAS_NS="${RHOAI_MAAS_NAMESPACE:-$MAAS_NS}"
-MAAS_GEMMA_MODEL_NAME="${RHOAI_MAAS_GEMMA_MODEL_NAME:-$MAAS_GEMMA_MODEL_NAME}"
-MODEL_DISPLAY_NAME="${RHOAI_GEMMA_DISPLAY_NAME:-$MODEL_DISPLAY_NAME}"
-MODEL_VERSION_NAME="${RHOAI_GEMMA_VERSION_NAME:-$MODEL_VERSION_NAME}"
-MODEL_URI="${RHOAI_GEMMA_MODEL_URI:-$MODEL_URI}"
-MODEL_CPU_REQUEST="${RHOAI_GEMMA_CPU_REQUEST:-$MODEL_CPU_REQUEST}"
-MODEL_CPU_LIMIT="${RHOAI_GEMMA_CPU_LIMIT:-$MODEL_CPU_LIMIT}"
-MODEL_MEMORY_REQUEST="${RHOAI_GEMMA_MEMORY_REQUEST:-$MODEL_MEMORY_REQUEST}"
-MODEL_MEMORY_LIMIT="${RHOAI_GEMMA_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
-MODEL_MAX_MODEL_LEN="${RHOAI_GEMMA_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
-MODEL_MAX_BATCHED_TOKENS="${RHOAI_GEMMA_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
+MAAS_GRANITE_MODEL_NAME="${RHOAI_MAAS_GRANITE_MODEL_NAME:-$MAAS_GRANITE_MODEL_NAME}"
+MODEL_DISPLAY_NAME="${RHOAI_GRANITE_DISPLAY_NAME:-$MODEL_DISPLAY_NAME}"
+MODEL_VERSION_NAME="${RHOAI_GRANITE_VERSION_NAME:-$MODEL_VERSION_NAME}"
+MODEL_URI="${RHOAI_GRANITE_MODEL_URI:-$MODEL_URI}"
+MODEL_CPU_REQUEST="${RHOAI_GRANITE_CPU_REQUEST:-$MODEL_CPU_REQUEST}"
+MODEL_CPU_LIMIT="${RHOAI_GRANITE_CPU_LIMIT:-$MODEL_CPU_LIMIT}"
+MODEL_MEMORY_REQUEST="${RHOAI_GRANITE_MEMORY_REQUEST:-$MODEL_MEMORY_REQUEST}"
+MODEL_MEMORY_LIMIT="${RHOAI_GRANITE_MEMORY_LIMIT:-$MODEL_MEMORY_LIMIT}"
+MODEL_MAX_MODEL_LEN="${RHOAI_GRANITE_MAX_MODEL_LEN:-$MODEL_MAX_MODEL_LEN}"
+MODEL_MAX_BATCHED_TOKENS="${RHOAI_GRANITE_MAX_BATCHED_TOKENS:-$MODEL_MAX_BATCHED_TOKENS}"
 
 if [[ -z "${RHOAI_EXPECTED_API_SERVER:-}" ]]; then
   echo "ERROR: RHOAI_EXPECTED_API_SERVER is not set. Set it in .env." >&2
@@ -247,7 +247,7 @@ if [[ -n "$REGISTRY_HOST" ]]; then
   MODEL_ID=$(jq -r --arg name "$MODEL_DISPLAY_NAME" \
     '.items[]? | select(.name == $name and (.state // "LIVE") != "ARCHIVED") | .id' <<<"$MR_MODELS" | head -1)
   [[ -n "$MODEL_ID" ]] && R="pass" || R="missing"
-  check "Gemma registered model metadata present" "$R"
+  check "Granite registered model metadata present" "$R"
 
   if [[ -n "$MODEL_ID" ]]; then
     MR_VERSIONS=$(curl -sk -H "Authorization: Bearer ${MR_TOKEN}" \
@@ -255,10 +255,10 @@ if [[ -n "$REGISTRY_HOST" ]]; then
     MODEL_VERSION_ID=$(jq -r --arg name "$MODEL_VERSION_NAME" \
       '.items[]? | select(.name == $name and (.state // "LIVE") != "ARCHIVED") | .id' <<<"$MR_VERSIONS" | head -1)
     [[ -n "$MODEL_VERSION_ID" ]] && R="pass" || R="missing"
-    check "Gemma model version metadata present" "$R"
+    check "Granite model version metadata present" "$R"
   else
     MODEL_VERSION_ID=""
-    check "Gemma model version metadata present" "registered model missing"
+    check "Granite model version metadata present" "registered model missing"
   fi
 
   if [[ -n "$MODEL_VERSION_ID" ]]; then
@@ -267,9 +267,9 @@ if [[ -n "$REGISTRY_HOST" ]]; then
     MODEL_ARTIFACT_ID=$(jq -r --arg uri "$MODEL_URI" \
       '.items[]? | select(.uri == $uri and (.state // "LIVE") != "DELETED") | .id' <<<"$MR_ARTIFACTS" | head -1)
     [[ -n "$MODEL_ARTIFACT_ID" ]] && R="pass" || R="missing"
-    check "Gemma OCI model artifact metadata present" "$R"
+    check "Granite OCI model artifact metadata present" "$R"
   else
-    check "Gemma OCI model artifact metadata present" "model version missing"
+    check "Granite OCI model artifact metadata present" "model version missing"
   fi
 fi
 

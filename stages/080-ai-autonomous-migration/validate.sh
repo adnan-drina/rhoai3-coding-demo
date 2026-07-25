@@ -114,8 +114,8 @@ log_step "Harness Tooling (Session 0 — init script contract)"
 check "init script installs the Hermes Agent CLI" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
   "1"
-check "init script wires Hermes to MaaS providers (planner gemma)" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-gemma' || echo 0" \
+check "init script wires Hermes to MaaS providers (planner granite)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-granite' || echo 0" \
   "1"
 check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'KANTRA_VERSION=\"v0.10.0-beta.1\"' || echo 0" \

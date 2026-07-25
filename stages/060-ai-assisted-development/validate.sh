@@ -150,7 +150,7 @@ check "DevWorkspace MaaS API key Secret exists" \
 # installs (see BACKLOG "External-model streaming buffered by IPP").
 for key_name in \
     MAAS_BASE_URL \
-    MAAS_API_KEY_GEMMA \
+    MAAS_API_KEY_GRANITE \
     MAAS_API_KEY_QWEN; do
     check "DevWorkspace MaaS Secret contains $key_name" \
         "[ -n \"\$(oc get secret maas-devspace-api-keys -n wksp-ai-developer -o jsonpath='{.data.$key_name}' 2>/dev/null)\" ] && echo present || echo missing" \

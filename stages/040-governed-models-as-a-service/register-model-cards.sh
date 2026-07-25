@@ -88,8 +88,8 @@ register_qwen() {
   log_success "Qwen3.6 model card registered (version + OCI artifact)"
 }
 
-register_gemma() {
-  local name="Gemma-4-26B-A4B-it-FP8-dynamic"
+register_granite() {
+  local name="Granite-4.0-h-small-FP8-dynamic"
   local existing
   existing=$(mr_get "/registered_models" | jq -r --arg n "$name" '.items[]? | select(.name == $n) | .id' | head -1)
   if [[ -n "$existing" ]]; then
@@ -99,27 +99,27 @@ register_gemma() {
 
   local props
   props=$(printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s' \
-    "$(prop gemma '')" \
+    "$(prop granite '')" \
     "$(prop tool-calling '')" \
     "$(prop agent-orchestration '')" \
     "$(prop text-generation '')" \
     "$(prop validated '')" \
     "$(prop validated_by RedHatAI)" \
-    "$(prop source_repo https://huggingface.co/RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic)" \
-    "$(prop architecture MoE-26B-A4B)" \
+    "$(prop source_repo https://huggingface.co/RedHatAI/granite-4.0-h-small-FP8-dynamic)" \
+    "$(prop architecture hybrid-Mamba-MoE-32B-A9B)" \
     "$(prop quantization FP8-dynamic)" \
     "$(prop context_window_deployed 131072)" \
     "$(prop primary_use agent-orchestration)" \
-    "$(prop capabilities 'tool-calling,code,reasoning,BFCLv4-68.31')")
+    "$(prop capabilities 'tool-calling,code,reasoning,granite4-tool-parser')")
 
   local rm_id
   rm_id=$(mr_post "/registered_models" '{
     "name": "'"$name"'",
-    "description": "Google Gemma 4 26B A4B Instruct (FP8-dynamic) - Red Hat AI validated mixture-of-experts model (26B total, 4B active) selected as the platform agent-orchestrator seat for its measured function-calling reliability (BFCLv4 68.31%, dedicated gemma4 vLLM tool parser). Served text-only on a single NVIDIA L40S with a 131K context window and published via MaaS as gemma-4-26b-a4b.",
+    "description": "IBM Granite 4.0 H Small (FP8-dynamic) - Red Hat AI validated hybrid Mamba/MoE model (32B total, 9B active) serving the platform agent-orchestrator seat: dedicated granite4 vLLM tool parser and cheap long-context state for orchestration sessions. Served on a single NVIDIA L40S with a 131K context window and published via MaaS as granite-4-0-h-small.",
     "owner": "rhoai3-coding-demo",
-    "provider": "Google (Red Hat AI validated)",
-    "license": "gemma",
-    "licenseLink": "https://ai.google.dev/gemma/terms",
+    "provider": "IBM (Red Hat AI validated)",
+    "license": "apache-2.0",
+    "licenseLink": "https://huggingface.co/RedHatAI/granite-4.0-h-small-FP8-dynamic/blob/main/LICENSE",
     "tasks": ["text-generation", "code-generation"],
     "customProperties": {'"$props"'}
   }' | jq -r '.id // empty')
@@ -129,7 +129,7 @@ register_gemma() {
   local mv_id
   mv_id=$(mr_post "/model_versions" '{
     "name": "v1.0",
-    "description": "Deployed as LLMInferenceService gemma-4-26b-a4b in models-as-a-service (orchestrator seat; replaced nemotron-3-nano-30b-a3b after the stage 080 harness A/B)",
+    "description": "Deployed as LLMInferenceService granite-4-0-h-small in models-as-a-service (orchestrator seat; replaced nemotron-3-nano-30b-a3b after the stage 080 harness A/B; gemma-4 was first choice but needs RHOAI 3.5)",
     "author": "ai-admin",
     "registeredModelId": "'"$rm_id"'",
     "customProperties": {'"$(prop serving_runtime vLLM)"','"$(prop deployed_on 'RHOAI 3.4')"'}
@@ -139,12 +139,28 @@ register_gemma() {
   mr_post "/model_versions/${mv_id}/artifacts" '{
     "name": "v1.0",
     "description": "OCI modelcar image (digest-pinned)",
-    "uri": "oci://registry.redhat.io/rhai/modelcar-gemma-4-26b-a4b-it-fp8-dynamic@sha256:065bbfb0a144a6ec6d5b3936a8153b663695a5fac12e3258f451559382c672f8",
+    "uri": "oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d",
     "artifactType": "model-artifact",
     "modelFormatName": "vLLM",
     "modelFormatVersion": "1"
   }' >/dev/null
-  log_success "Gemma 4 model card registered (version + OCI artifact)"
+  log_success "Granite 4.0 model card registered (version + OCI artifact)"
+}
+
+archive_gemma() {
+  # Registered during the swap attempt but never served: the RHOAI 3.4
+  # vLLM runtime's Transformers predates the gemma4 architecture. Archive
+  # with the reason; revisit at RHOAI 3.5.
+  local id
+  id=$(mr_get "/registered_models" | jq -r '.items[]? | select(.name == "Gemma-4-26B-A4B-it-FP8-dynamic") | .id' | head -1)
+  [[ -z "$id" ]] && { log_info "No gemma card to archive"; return 0; }
+  local state
+  state=$(mr_get "/registered_models/${id}" | jq -r '.state // empty')
+  [[ "$state" == "ARCHIVED" ]] && { log_success "Gemma card already archived (id=${id})"; return 0; }
+  curl -sk -X PATCH -H "Authorization: Bearer ${MR_TOKEN}" -H "Content-Type: application/json" \
+    -d '{"state":"ARCHIVED","description":"Never served: RHOAI 3.4 vLLM runtime Transformers predates the gemma4 architecture (KeyError at engine start). Revisit when RHOAI 3.5 ships a newer runtime. Granite-4.0-h-small took the orchestrator seat instead."}' \
+    "${MR_BASE_URL}/registered_models/${id}" >/dev/null
+  log_success "Gemma card archived (id=${id})"
 }
 
 archive_nemotron() {
@@ -167,7 +183,8 @@ archive_nemotron() {
 
 log_step "Registering private-model cards in ${REGISTRY_NAME}"
 register_qwen
-register_gemma
+register_granite
+archive_gemma
 archive_nemotron
 log_info "Registry contents:"
 mr_get "/registered_models" | jq -r '.items[].name'

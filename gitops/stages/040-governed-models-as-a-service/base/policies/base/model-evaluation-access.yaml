@@ -23,7 +23,7 @@ spec:
     users:
       - kube:admin
   modelRefs:
-    - name: gemma-4-26b-a4b
+    - name: granite-4-0-h-small
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 2000000

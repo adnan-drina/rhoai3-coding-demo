@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - local-queue.yaml
-  - gemma-llminferenceservice.yaml
-  - gemma-maas-modelref.yaml
+  - granite-llminferenceservice.yaml
+  - granite-maas-modelref.yaml
   - qwen-llminferenceservice.yaml
   - qwen-maas-modelref.yaml

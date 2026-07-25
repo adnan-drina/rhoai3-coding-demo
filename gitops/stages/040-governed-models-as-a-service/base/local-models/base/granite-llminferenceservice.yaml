@@ -1,10 +1,10 @@
 apiVersion: serving.kserve.io/v1alpha2
 kind: LLMInferenceService
 metadata:
-  name: gemma-4-26b-a4b
+  name: granite-4-0-h-small
   namespace: models-as-a-service
   labels:
-    app.kubernetes.io/name: gemma-4-26b-a4b
+    app.kubernetes.io/name: granite-4-0-h-small
     app.kubernetes.io/component: local-llm
     inference.optimization/acceleratorName: L40S
     kueue.x-k8s.io/queue-name: lq-gpu-reserved-demo
@@ -14,7 +14,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "16"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    openshift.io/display-name: Google Gemma 4 26B A4B Instruct FP8
+    openshift.io/display-name: IBM Granite 4.0 H Small FP8
     opendatahub.io/model-type: generative
     security.opendatahub.io/enable-auth: "true"
     # Governed GPU quota via the Stage 020 HardwareProfile (Queue-based), so the
@@ -24,8 +24,8 @@ metadata:
     opendatahub.io/hardware-profile-namespace: redhat-ods-applications
 spec:
   model:
-    name: gemma-4-26b-a4b
-    uri: oci://registry.redhat.io/rhai/modelcar-gemma-4-26b-a4b-it-fp8-dynamic@sha256:065bbfb0a144a6ec6d5b3936a8153b663695a5fac12e3258f451559382c672f8
+    name: granite-4-0-h-small
+    uri: oci://registry.redhat.io/rhai/modelcar-granite-4-0-h-small-fp8-dynamic@sha256:e539fc9568045972b3e848196c5a7486a0ad2ac8946e47aca1db1633d5a9911d
   replicas: 1
   router:
     gateway:
@@ -62,12 +62,12 @@ spec:
             failureMode: FailOpen
             group: ""
             kind: Service
-            name: gemma-4-26b-a4b-epp-service
+            name: granite-4-0-h-small-epp-service
             port:
               number: 9002
           selector:
             matchLabels:
-              app.kubernetes.io/name: gemma-4-26b-a4b
+              app.kubernetes.io/name: granite-4-0-h-small
               app.kubernetes.io/part-of: llminferenceservice
               kserve.io/component: workload
           targetPorts:
@@ -81,11 +81,14 @@ spec:
           - python
           - -m
           - vllm.entrypoints.openai.api_server
-        # Serve flags follow the RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic model
-        # card: dedicated gemma tool parser (functiongemma in this vLLM build) (the orchestrator-reliability
-        # reason for this model), text-only serving (vision/audio encoders
-        # skipped to spend the freed memory on KV cache), 128K window
+        # Serve flags follow the RedHatAI/granite-4.0-h-small-FP8-dynamic
+        # model card: dedicated granite4 vLLM tool parser (the orchestrator-
+        # reliability reason for this seat), hybrid Mamba architecture
+        # (cheap KV for long orchestration sessions), 128K window
         # (--max-model-len 131072, matched by every client context limit).
+        # NOTE: gemma-4-26B-A4B was the first choice but its architecture
+        # needs a newer Transformers than the RHOAI 3.4 vLLM ships —
+        # revisit at RHOAI 3.5 (BACKLOG).
         args:
           - "--served-model-name={{.Name}}"
           - --model=/mnt/models
@@ -100,8 +103,7 @@ spec:
           - --max-num-seqs=8
           - --kv-cache-dtype=fp8
           - --enable-auto-tool-choice
-          - --tool-call-parser=functiongemma
-          - --limit-mm-per-prompt={"image":0,"audio":0}
+          - --tool-call-parser=granite4
         ports:
           - containerPort: 8000
             name: http

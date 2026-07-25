@@ -297,7 +297,7 @@ cleanup_stale_model_replicasets() {
     local deployments
     deployments="$(oc get deployment -n "$MODEL_NAMESPACE" -o json 2>/dev/null \
         | jq -r '.items[]
-            | select(.metadata.name | test("^(qwen3-6-35b-a3b|gemma-4-26b-a4b)-kserve$"))
+            | select(.metadata.name | test("^(qwen3-6-35b-a3b|granite-4-0-h-small)-kserve$"))
             | .metadata.name')"
 
     if [[ -z "$deployments" ]]; then
@@ -338,20 +338,20 @@ cleanup_stale_model_replicasets() {
 
 wait_for_private_models() {
     local timeout="${1:-$GPU_RESUME_TIMEOUT_SECONDS}"
-    local elapsed=0 gpt gemma
+    local elapsed=0 gpt granite
 
     log_info "Waiting for private LLMInferenceService resources to become Ready"
     while (( elapsed < timeout )); do
         cleanup_stale_model_replicasets
         gpt="$(oc get llminferenceservice qwen3-6-35b-a3b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
-        gemma="$(oc get llminferenceservice gemma-4-26b-a4b -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+        granite="$(oc get llminferenceservice granite-4-0-h-small -n "$MODEL_NAMESPACE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
 
-        if [[ "$gpt" == "True" && "$gemma" == "True" ]]; then
+        if [[ "$gpt" == "True" && "$granite" == "True" ]]; then
             log_success "Private models are Ready"
             return 0
         fi
 
-        log_info "Model readiness: qwen3-6-35b-a3b=${gpt:-Unknown} gemma-4-26b-a4b=${gemma:-Unknown}"
+        log_info "Model readiness: qwen3-6-35b-a3b=${gpt:-Unknown} granite-4-0-h-small=${granite:-Unknown}"
         sleep "$GPU_RESUME_POLL_SECONDS"
         elapsed=$((elapsed + GPU_RESUME_POLL_SECONDS))
     done
@@ -386,7 +386,7 @@ print_status() {
 
     log_step "Private Models"
     oc get llminferenceservice -n "$MODEL_NAMESPACE" 2>/dev/null || true
-    oc get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|gemma|router-scheduler' || true
+    oc get pods -n "$MODEL_NAMESPACE" 2>/dev/null | grep -E 'NAME|qwen|granite|router-scheduler' || true
 }
 
 resume_from_zero() {
