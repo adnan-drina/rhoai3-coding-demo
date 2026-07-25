@@ -25,7 +25,7 @@ metadata:
 spec:
   model:
     name: gemma-4-26b-a4b
-    uri: oci://registry.redhat.io/rhai/modelcar-nvidia-gemma-4-26b-a4b-fp8:3.0
+    uri: oci://registry.redhat.io/rhai/modelcar-gemma-4-26b-a4b-it-fp8-dynamic@sha256:065bbfb0a144a6ec6d5b3936a8153b663695a5fac12e3258f451559382c672f8
   replicas: 1
   router:
     gateway:
