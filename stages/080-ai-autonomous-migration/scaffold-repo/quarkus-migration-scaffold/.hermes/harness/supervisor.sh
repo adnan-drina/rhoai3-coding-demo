@@ -185,8 +185,13 @@ NS=$(grep -rhoE '^\s*namespace:\s*\S+' k8s/*.y*ml 2>/dev/null | head -1 | awk '{
 SONAR_URL="${SONAR_URL:-http://sonarqube.sonarqube.svc:9000}"
 SONAR_KEY="$(basename $(git remote get-url origin) .git)"
 
-newest_pipelinerun() { oc get pipelinerun -n "$NS" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null; }
-pipeline_status()   { oc get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.conditions[0].status} {.status.conditions[0].reason}' 2>/dev/null; }
+# Workspace oc is not logged in by default — authenticate with the pod's
+# service account (harness-pipeline-observer RBAC grants the reads).
+SA=/var/run/secrets/kubernetes.io/serviceaccount
+OC() { oc --server=https://kubernetes.default.svc --token="$(cat $SA/token)" --certificate-authority=$SA/ca.crt "$@"; }
+
+newest_pipelinerun() { OC get pipelinerun -n "$NS" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null; }
+pipeline_status()   { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.conditions[0].status} {.status.conditions[0].reason}' 2>/dev/null; }
 
 wait_pipeline() { # $1=previous newest run; waits for a NEW run to reach a terminal state; echoes "name status"
   local prev="$1" name="" i
@@ -241,7 +246,7 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
   event "phaseE" "$ROUND" "pipeline_$PR_ST" "$PR_NAME"
   log "Phase E: pipeline $PR_NAME -> $PR_ST"
   if [ "$PR_ST" = "succeeded" ]; then
-    ROUTE=$(oc get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+    ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
     CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}/" 2>/dev/null || echo 000)
     log "Phase E: route https://${ROUTE}/ -> HTTP ${CODE}"
     event "phaseE" "$ROUND" "route_${CODE}" done
