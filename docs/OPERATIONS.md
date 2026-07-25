@@ -1117,3 +1117,24 @@ with platform telemetry like the local models.
 modelcar exists; blocked on vLLM #34694 — NVFP4 Marlin emulation garbles
 BF16 output on Ada/sm89), MTP speculative decoding (`qwen3_next_mtp`),
 27B modelcar graduation.
+
+**Orchestrator-seat evaluation (2026-07-25/26, full-migration A/B):** a
+complete stage 080 run with `qwen3-6-27b` in BOTH seats, against the
+MiniMax M2 orchestrator baseline. Result: the migration itself completed
+— Phases A–D and all 10 tasks committed, 95.3% findings reduction,
+93.5% coverage, `clean verify` green — with a ~75% first-pass task rate
+(M2 baseline: near-100%). The 27B's worker seat is unequivocally strong.
+Its orchestrator seat has three harness-relevant behaviors: it twice
+dispatched the worker and ended its session instead of blocking (now
+runbook rule R11: worker dispatch is synchronous); its sessions run long
+and chatty (90+ tool calls, ~65K context), which stresses client stream
+handling; and on large single-packet work orders it produces thinking
+generations that outlast client timeouts — work must be pre-chunked into
+small packets. Conclusion: for unattended runs, either seat M2 as
+orchestrator (reliability posture) or run 27B-both-seats behind a
+supervising driver that enforces packet size, classifies session
+failures, and retries — the deficits are harness-absorbable; none are
+capability cliffs. Platform fixes hardened by this run: token budget
+20M/1h for the coding subscription, hermes output caps via provider
+`context_length` + `extra_body`, raised stream timeouts for
+thinking-mode generations.
