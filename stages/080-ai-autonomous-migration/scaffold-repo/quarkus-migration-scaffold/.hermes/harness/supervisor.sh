@@ -27,7 +27,7 @@ MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults exclude
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
 MAX_GATE_ROUNDS=4         # factory correction rounds in Phase E (gate + deploy classes share the budget)
 
-RUN_BASE=$(git rev-parse HEAD)   # commits after this belong to THIS run
+RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
 LOG=/tmp/supervisor.log
 EVENTS=/tmp/supervisor-events.csv
 METRICS=/tmp/supervisor-metrics.csv
@@ -151,7 +151,9 @@ fi
 
 # ---------------------------------------------------------------- Phase C
 TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
-TASK_IDS=$(grep -E '^### ' "$TASKS_FILE" | sed -E 's/^### (T[-A-Za-z0-9]*[0-9]+):.*/\1/' | grep -E '^T')
+# Accept 3-6 hash heading levels and any T-style id — models format
+# tasks.md differently no matter what the prompt mandates (run #3 lesson).
+TASK_IDS=$(grep -E '^#{3,6} +T[-A-Za-z0-9]*[0-9]+:' "$TASKS_FILE" | sed -E 's/^#+ +(T[-A-Za-z0-9]*[0-9]+):.*/\1/')
 [ -n "$TASK_IDS" ] || { log "FATAL: no task ids parsed from $TASKS_FILE"; echo no-tasks > /tmp/supervisor-done; exit 1; }
 log "task list: $(echo $TASK_IDS | tr '\n' ' ')"
 
