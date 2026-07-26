@@ -68,3 +68,14 @@ Accountability note: this is the second instrument defect (after the
 star-file confusion) that burned model budget. Instrument verification
 before deployment (X1 test suite) is no longer optional-parked in
 priority terms.
+
+### 22:33 — T-001 commit RED-CAUGHT by post-commit verification — mechanism validated
+Commit `9aa76da` (T-001 jakarta rewrite/harvest) brought
+`CartEndpoint.java` into the tree with live `org.springframework.*`
+imports against a pom with no Spring deps — non-compiling, committed
+anyway (identical failure class to run #4's T-001, which shipped
+undetected and cost ~1.5h of recovery). This time: supervisor's
+post-commit task sensor RED within seconds → `sensor-fix` session
+dispatched automatically with the exact compile errors as evidence.
+First fully-autonomous catch-and-correct of a red commit. Awaiting the
+fix session's outcome for the closing verdict on this entry.
