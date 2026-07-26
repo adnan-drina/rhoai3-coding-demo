@@ -25,3 +25,11 @@ Supervisor start verified (version stamp, run base, seats logged).
 Isolated Maven repo seeding. Analysis JSON present in
 `legacy/.vscode/mta-core/` (20 rules / 35 incidents baseline, reviewed
 before run #1).
+
+### 21:48 — Phase A (script step) — VERIFIED
+Commit `4d49ac9`. Artifact read directly: `migration/mta-findings.json`
+parses as konveyor JSON with exactly 20 rules / 35 incidents — identical
+to the pre-run review of the user's analysis (no drift, no truncation).
+Commit message embeds the scripted summary. Elapsed within the launch
+minute (vs ~20-min model sessions in runs 1–3). No model involvement by
+design — nothing to analyze on the Hermes/model side for this phase.
