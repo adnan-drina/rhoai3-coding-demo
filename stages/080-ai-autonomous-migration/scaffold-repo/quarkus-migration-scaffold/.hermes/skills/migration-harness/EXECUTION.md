@@ -168,11 +168,15 @@ task** (original + one correction).
 
 **Escalation valve (budget exhausted):** before recording debt, you MAY
 implement the task directly with your own file tools — division of labor
-is the default, not an invariant. If you escalate: keep the change
-bounded to the task's findings, run the sensors yourself, start the
-run-log row with `ESCALATED` (the supervisor counts escalations as a
-packet-quality KPI), and note in the row why the packet failed the
-worker. If you neither escalate nor finish, record the task in
+is the default, not an invariant. **Escalated work carries the FULL
+packet acceptance — nothing is waived by escalating**: unit tests ship
+WITH the code (≥ 80% new-code coverage), the decided MAPPINGS.md shapes
+are honored (never stub or fake an integration — a hardcoded stand-in
+for an external service is a functional regression, not a migration),
+every `preserve:` item in migration.yaml stays intact, and the sensors
+run before commit. Start the run-log row with `ESCALATED` (the
+supervisor counts escalations as a packet-quality KPI) and note why the
+packet failed the worker. If you neither escalate nor finish, record the task in
 `migration/debt.md` with the failure evidence and move on.
 
 **After every task:** append one line to `migration/run-log.md`

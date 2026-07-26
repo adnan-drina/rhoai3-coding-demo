@@ -69,6 +69,17 @@ def main():
     if not re.search(r"\b(ui|frontend|index\s*page|web\s*surface)\b", text, re.I):
         lint("ui-surface", "plan neither covers nor waives the legacy UI surface")
 
+    # N2: every preserve: item in migration.yaml must appear in the plan
+    try:
+        my = open("migration.yaml").read()
+        import re as _re
+        pres = _re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", my[my.index("preserve:"):], _re.M) if "preserve:" in my else []
+        for item in pres:
+            if item not in text:
+                lint("preserve", f"preserved integration '{item}' mapped to no task")
+    except FileNotFoundError:
+        pass
+
     # findings coverage
     if len(sys.argv) > 2:
         d = json.load(open(sys.argv[2]))

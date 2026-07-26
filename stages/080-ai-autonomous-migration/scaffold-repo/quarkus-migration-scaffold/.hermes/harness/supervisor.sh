@@ -109,6 +109,12 @@ run_stage() {
       # an ESCALATED run-log row — count them for the retro.
       if tail -5 migration/run-log.md 2>/dev/null | grep -q "ESCALATED"; then
         event "$tag" "$attempt" escalated kpi; log "$tag: ESCALATED — orchestrator implemented directly (packet-quality KPI)"
+        # N1: escalated code carries the full acceptance — flag main-source
+        # commits that ship without test changes (coverage erosion source).
+        if git show --stat HEAD | grep -q "src/main/" && ! git show --stat HEAD | grep -q "src/test/"; then
+          event "$tag" "$attempt" escalated_untested kpi
+          log "$tag: WARNING — escalated commit touches src/main with NO test changes (acceptance requires tests with code)"
+        fi
       fi
       # The stage is sealed — any worker still running is a zombie whose
       # output can no longer land. Kill it now instead of waiting 60m.
@@ -176,6 +182,8 @@ write_run_report() { # $1 = outcome line
     echo "| session | seconds | rc |"
     echo "|---|---|---|"
     awk -F, 'NR>1 {printf "| %s | %s | %s |\n", $1, $4, $5}' "$METRICS"
+    echo ""
+    echo "- Escalations (KPI, from supervisor events): $(awk -F, '\$4=="escalated"' "$EVENTS" | wc -l | tr -d ' ') (untested: $(awk -F, '\$4=="escalated_untested"' "$EVENTS" | wc -l | tr -d ' '))"
     echo ""
     echo "## Classified events"
     echo ""

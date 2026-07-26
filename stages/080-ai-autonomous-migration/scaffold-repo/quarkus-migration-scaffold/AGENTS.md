@@ -20,6 +20,17 @@ prompts.
 The orchestrator's runbook is `.hermes/skills/migration-harness/` (its own
 phase files); worker task packets arrive already aligned with it.
 
+## Tool discipline (worker runs)
+
+- **NEVER use the `task` (subagent) tool.** Explore and implement
+  directly. Forensics across runs: every session that spawned a subagent
+  died immediately after (parent emits empty text and exits with no
+  changes); every session that worked directly succeeded.
+- Dot-directories are invisible to `glob` — find skills and configs with
+  `ls`/`read` at their exact paths (see the skills index above).
+- Quote every file path in shell commands; a broken glob writes literal
+  `*.java` files that poison the quality gate.
+
 ## Workspace layout — two projects, two rules
 
 - `/projects/legacy` — the application being migrated. **READ-ONLY**: read

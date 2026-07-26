@@ -50,6 +50,7 @@ tree_hygiene() {
 
 task_sensor() {
   tree_hygiene
+  wiring_invariants
   $MVN clean test > /tmp/sensor-task.log 2>&1 \
     || fail task "$(grep -E 'ERROR|FAIL' /tmp/sensor-task.log | head -5)"
   echo "task sensor GREEN (clean test, isolated repo)"
@@ -119,7 +120,31 @@ boot_check() {
   echo "boot check GREEN (Flyway + schema validation against the dev DB)"
 }
 
+wiring_invariants() {
+  # N3: pom rewrites twice stripped the coverage instrumentation — the
+  # factory's coverage gate reads jacoco; losing the wiring reads as 0%.
+  grep -q "jacoco-maven-plugin" pom.xml \
+    || fail wiring "pom.xml lost the jacoco-maven-plugin (coverage gate will read 0%)"
+  grep -q "sonar.coverage.jacoco.xmlReportPaths" pom.xml \
+    || fail wiring "pom.xml lost sonar.coverage.jacoco.xmlReportPaths"
+}
+
+preserved_integrations() {
+  # N2: every preserve: item in migration.yaml must survive into the
+  # built configuration or source — an erased integration is a
+  # functional regression no unit test catches.
+  [ -f migration.yaml ] && grep -q "^preserve:" migration.yaml || return 0
+  local item
+  grep -A20 "^preserve:" migration.yaml | grep -E "^\s*-" | sed -E "s/^\s*-\s*//" | while read -r item; do
+    [ -n "$item" ] || continue
+    grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null \
+      || { echo "SENSOR RED (preserve): preserved integration '$item' absent from src/main, pom.xml and k8s/"; exit 1; }
+  done || exit 1
+}
+
 preflight() {
+  wiring_invariants
+  preserved_integrations
   milestone_sensor
   boot_check
   echo "PREFLIGHT GREEN — the factory should confirm, not discover"
