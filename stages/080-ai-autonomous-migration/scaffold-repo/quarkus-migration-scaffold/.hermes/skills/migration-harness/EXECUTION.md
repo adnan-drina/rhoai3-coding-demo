@@ -22,6 +22,15 @@ Out of scope:   <explicitly excluded work>
 
 ## Phase C — execution loop
 
+### Never fabricate platform stubs
+
+NEVER create stub classes for platform, framework, or vendor packages
+(`javax.*`, `jakarta.*`, `com.enterprise.*`, `weblogic.*`, ...) to make
+imports compile. A missing package is a DECISION — add the extension the
+task's findings call for, or remove the premature import — never a file
+you write yourself. Fabricated stubs poison the tree: they compile
+locally and detonate in the factory.
+
 ### Task completion is evidence in the destination
 
 A task is complete when its FINDINGS are resolved IN
