@@ -5,6 +5,15 @@ build the application described by a spec in `specs/`, following the
 standards in `.opencode/skills/`. The standards steer the work — do not ask
 the user to restate them in prompts.
 
+## Skills index — what to consult when
+
+| Skill (`.opencode/skills/`) | Consult when |
+|---|---|
+| `spec-driven-workflow` | Before any `/speckit.*` command |
+| `quarkus-rest-conventions` | Creating or changing any REST endpoint |
+| `project-test-standards` | Every change — tests ship with code; coverage rules live here |
+| `llm-integration` | Any LLM-powered feature — MaaS gateway wiring and error handling |
+
 ## Project identity
 
 - Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM),

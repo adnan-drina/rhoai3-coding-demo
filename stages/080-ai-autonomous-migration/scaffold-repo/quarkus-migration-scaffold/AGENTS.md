@@ -6,6 +6,20 @@ migrate the legacy application in `/projects/legacy` into this repository
 The standards steer the work — do not ask the user to restate them in
 prompts.
 
+## Skills index — what to consult when
+
+| Skill (`.opencode/skills/`) | Consult when |
+|---|---|
+| `legacy-migration-workflow` | Any migration work — the overall analysis-grounded workflow |
+| `spec-driven-workflow` | Before any `/speckit.*` command or reading spec artifacts |
+| `quarkus-rest-conventions` | Creating or changing any REST endpoint |
+| `quarkus-persistence-conventions` | Any entity, Flyway migration, or datasource change |
+| `project-test-standards` | Every change — tests ship with code; coverage rules live here |
+| `llm-integration` | Only if a task adds LLM features to the app |
+
+The orchestrator's runbook is `.hermes/skills/migration-harness/` (its own
+phase files); worker task packets arrive already aligned with it.
+
 ## Workspace layout — two projects, two rules
 
 - `/projects/legacy` — the application being migrated. **READ-ONLY**: read
