@@ -249,6 +249,19 @@ TASK_IDS=$(grep -E '^#{3,6} +T[-A-Za-z0-9]*[0-9]+:' "$TASKS_FILE" | sed -E 's/^#
 [ -n "$TASK_IDS" ] || { log "FATAL: no task ids parsed from $TASKS_FILE"; echo no-tasks > /tmp/supervisor-done; exit 1; }
 log "task list: $(echo $TASK_IDS | tr '\n' ' ')"
 
+# Resume hygiene: a relaunch may inherit a red tree from work committed
+# before post-commit verification existed (or from a failed sensor-fix).
+# Verify once at loop entry; RED gets one evidence-driven fix session.
+if ! .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+  event "loop-entry" 0 sensor_red_at_entry verify
+  log "loop entry: tree sensor RED — dispatching tree-fix session before tasks"
+  orch "treefix" \
+"Use the migration-harness skill and read EXECUTION.md in its directory. The working tree is RED before task execution: .hermes/harness/sensors.sh task fails — read /tmp/sensor-task.log for the exact errors. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if already-committed task scope requires it). Run .hermes/harness/sensors.sh task until GREEN, then commit ONE commit whose message STARTS with 'Tree fix:'.
+${RUN_CONTRACT}"
+  committed "Tree fix" && log "loop entry: tree fix committed $(git log --oneline -1)" \
+    || log "loop entry: tree-fix did not commit — proceeding on a red tree (recorded)"
+fi
+
 for T in $TASK_IDS; do
   committed "$T" && { log "$T: already committed"; continue; }
   run_stage "$T" "$T" \
