@@ -236,7 +236,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
 
 ## Findings from the 2026-07-26 autonomous run #3 (M2 orchestrator + 27B worker)
 
-- [ ] **Design-in-packet contract (runbook rule)** — both worker budget
+- [x] **Design-in-packet contract (runbook rule)** — IMPLEMENTED 2026-07-26 (runbook packet-content rule + AGENTS.md ambiguity stop; golden repo 3c88ae6) — both worker budget
   exhaustions in run #3 (T-005 REST, T-011 security) were *micro-design*
   packets: the goal said "modernize X" and left the target shape to the
   worker, which the 27B cannot in-fill (three stalled attempts each);
@@ -248,7 +248,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
   decision, stop and report the ambiguity instead of attempting it —
   a fast honest failure the orchestrator can re-packet, instead of a
   25-minute stall.
-- [ ] **Orchestrator escalation valve (runbook rule + supervisor)** — when
+- [x] **Orchestrator escalation valve (runbook rule + supervisor)** — IMPLEMENTED 2026-07-26 (runbook ESCALATED flow + supervisor KPI event; golden repo 3c88ae6) — when
   a worker exhausts its budget on an infer task, the orchestrator may
   implement that ONE task directly with its own file tools (relaxing
   "orchestrator never edits source" from invariant to default), instead
