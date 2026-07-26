@@ -275,3 +275,57 @@ run) buys factory-parity dependency resolution at every sensor.
 Fresh baseline reset, all tranches live, unattended end-to-end. Measured
 against §3's target profile; its run-report (X2) becomes the next retro's
 input. Success criterion: the factory confirms, it does not teach.
+
+
+## 6. Cart-run findings (2026-07-26 evening — measured, not assumed)
+
+Cart run final state: 13/13 tasks + Phase D committed; factory gate:
+violations 0, duplication 0, **new-code coverage 24.4% vs 80** (283
+lines to cover, 16 tests — 13 of them model-serialization). Two gate
+rounds + one operator round consumed. Not shipped.
+
+### Code-quality review verdict (files read, not sampled)
+
+| Finding | Evidence | Class |
+|---|---|---|
+| **Functional regression: catalog integration erased** | `CatalogServiceImpl` returns a hardcoded fake product list ("Feign client removed during Spring annotation cleanup", invented items/prices); zero references to `CATALOG_ENDPOINT` anywhere; introduced by T-010, an ESCALATED M2 implementation. MAPPINGS decided Feign → MicroProfile REST client; ignored. | Severity 1 |
+| Tests don't cover behavior | 24.4% coverage; services/endpoint essentially untested; boundary test is a single smoke | Severity 1 |
+| JaCoCo wiring dropped by the pom rewrite | T-002 pom migration removed the scaffold's jacoco property/dep/plugin (repeat of run #2's identical escape); coverage read 0.0 until operator restore | Severity 2 |
+| Dead/duplicated scaffolding | `CartServiceApplication` (empty main, should be deleted per MAPPINGS), `ICatalogService` + `CatalogService` duplicate interfaces, misnamed `JerseyConfig` (load-bearing only for `@ApplicationPath`) | Severity 3 |
+| Shell-quoting artifact class | empty literal `*.java` files (S1220 trio) — now guarded by the tree-hygiene sensor | fixed |
+
+### Run-behavior facts (from supervisor metrics/events + opencode.db)
+
+- Worker (27B) escalation cause: **subagent-death, not stalls** (see
+  `WORKER-ESCALATION-FORENSICS.md`); ~7 of 13 tasks + Phase D were
+  implemented by the orchestrator through the valve.
+- **Escalated implementations bypassed the quality bars**: no tests
+  shipped with escalated code; the catalog regression and the pom
+  wiring loss are both escalated-task products. The bars live in
+  EXECUTION.md packets; the escalation path never restates them.
+- run-log ESCALATED marking is inconsistent (2 rows vs 8 supervisor
+  events) — the KPI undercounts at the source of record.
+- Gate-fix sessions honored sensor-green-before-commit and burned
+  budgets against real red (36 → 8 → 6 across rounds) — the loop
+  converges but per-session iteration budgets cap ~10-15 fixes.
+
+### New improvement items (evidence-driven)
+
+- [ ] **N1. Escalation carries the full acceptance.** The escalation
+  valve prompt must restate the packet bars (tests WITH code, decided
+  mappings honored, integrations preserved) and the supervisor's
+  post-commit check on escalated commits should include a coverage
+  delta, not just compilation.
+- [ ] **N2. Integration-preservation contract.** `migration.yaml` gains
+  a `preserve:` list (external endpoints, env contracts — e.g.
+  `CATALOG_ENDPOINT`); plan-lint requires every preserved item mapped to
+  a task; the Phase D pre-flight greps the built artifact/config for
+  each; acceptance must exercise at least one preserved integration
+  (the cart acceptance passed while the catalog was fake — too weak).
+- [ ] **N3. Build-wiring invariants sensor.** sensors.sh fails if
+  `pom.xml` loses the jacoco plugin/property or the sonar path config —
+  the T-002 wiring-strip class, now twice observed, becomes a
+  deterministic check instead of a factory surprise.
+- [ ] **N4. run-log/KPI reconciliation.** Supervisor counts ESCALATED
+  from its own events (source of truth), and the runbook requires the
+  ESCALATED marker in the row it already mandates.
