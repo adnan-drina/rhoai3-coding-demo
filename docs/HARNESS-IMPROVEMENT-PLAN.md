@@ -164,3 +164,23 @@ Ordered within each phase by expected wall-clock/quality impact.
 
 The quality goal is stricter than the time goal: **zero defect classes
 discovered by the factory** — the factory confirms, the harness catches.
+
+## 4. Grounding in established practice
+
+The plan is empirical in origin (three instrumented runs) but each pillar
+implements a documented industry practice:
+
+| Plan items | Practice | Source |
+|---|---|---|
+| Root cause ("workspace ≠ factory"); C1, D1, E3 | **Dev/prod parity** (12-Factor, Factor X): minimize the *tools gap*; same build process everywhere, environment differences via config only | [12factor.net/dev-prod-parity](https://12factor.net/dev-prod-parity) |
+| C1, D1 (pre-flight = pipeline's own checks) | **CI fundamentals** (Fowler): single-command automated build, self-testing build, *test in a clone of the production environment*, fast feedback, broken builds fixed immediately | [martinfowler.com — Continuous Integration](https://martinfowler.com/articles/originalContinuousIntegration.html) |
+| C1 clean-repo builds | **Maven CI practice**: per-build `-Dmaven.repo.local` isolation is the documented way to prove buildability against the real repository; locally-installed artifacts (`mvn install`) leaking into builds is a known CI hazard — precisely the audit-jar escape | [Sonatype — Maven CI best practices](https://www.sonatype.com/blog/2009/01/maven-continuous-integration-best-practices), [Maven reproducible builds guide](https://maven.apache.org/guides/mini/guide-reproducible-builds.html) |
+| C1/D1 local gate checks; E2 acceptance gates | **Clean as You Code**: quality gate on *new code*; issues surfaced at edit/commit time (SonarLint connected mode is the documented shift-left channel — headless equivalent: sonar-scanner CLI against the server profile, which is what the harness scripts) | [SonarQube — Clean as You Code](https://docs.sonarsource.com/sonarqube-server/10.6/user-guide/clean-as-you-code), [SonarLint connected mode](https://docs.sonarsource.com/sonarqube/9.8/user-guide/sonarlint-connected-mode/) |
+| B1 design-in-packet, C2 ambiguity stop, C4 escalation | **Orchestrator-workers pattern**: the central model decomposes and *specifies* subtasks, workers execute; **evaluator-optimizer** loops require *clear evaluation criteria* — which is exactly why evaluation must be cheap and local (C1/D1), not a 30-min factory round | [Anthropic — Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) |
+| Phase A–E structure; D1 re-analysis as validation | **Konveyor/MTA methodology**: assess → analyze (rulesets pinpoint the lines) → plan/waves → migrate → validate; the harness's findings-driven tasks and Phase D re-analysis implement its analyze/validate loop | [Konveyor methodology](https://github.com/konveyor/methodology), [Red Hat MTA docs](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/7.1/html/introduction_to_the_migration_toolkit_for_applications/mta-about-the-intro-to-mta-guide_getting-started-guide) |
+| X1 supervisor tests, X2 run reports, E1 budgets | **CI discipline applied to the harness itself**: the supervisor is build infrastructure and gets the same bar — automated tests, versioned releases, measurable runs | Fowler CI (above) |
+
+One refinement the sources forced: continuous *full* local sonar scans
+per task would be over-heavy; the documented pattern is gate-scoped
+new-code checking (Clean as You Code) at milestones and pre-push — which
+is how C1/D1 are specified above.
