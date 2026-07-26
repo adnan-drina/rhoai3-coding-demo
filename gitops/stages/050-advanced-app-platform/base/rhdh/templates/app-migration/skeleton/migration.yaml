@@ -5,3 +5,7 @@ migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
+acceptance:
+  # The harness supervisor asserts this after deploy (Phase E success).
+  path: ${{ values.acceptancePath }}
+  needsDatabase: ${{ values.needsDatabase }}

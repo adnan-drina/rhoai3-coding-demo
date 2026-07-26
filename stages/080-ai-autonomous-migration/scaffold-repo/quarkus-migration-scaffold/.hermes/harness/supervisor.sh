@@ -332,10 +332,15 @@ while :; do
     # AND the products API returns a non-empty catalog.
     ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
     sleep 10
+    # Acceptance is app-defined: migration.yaml acceptance.path (stamped by
+    # the template); fall back to the monolith's products contract.
+    ACC_PATH=$(grep -A3 "^acceptance:" migration.yaml 2>/dev/null | grep "path:" | awk '{print $2}')
+    ACC_PATH="${ACC_PATH:-/api/products}"
     CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}/" 2>/dev/null || echo 000)
-    PRODUCTS=$(curl -sk "https://${ROUTE}/api/products" 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
-    log "Phase E: route / -> ${CODE}; /api/products -> ${PRODUCTS} products"
-    if [ "$CODE" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
+    ACC=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}${ACC_PATH}" 2>/dev/null || echo 000)
+    PRODUCTS=$(curl -sk "https://${ROUTE}${ACC_PATH}" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 1)" 2>/dev/null || echo 0)
+    log "Phase E: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} items)"
+    if [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
       event "phaseE" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
       write_run_report "success: shipped, route 200, ${PRODUCTS} products"
       git push origin main >> "$LOG" 2>&1 || true
@@ -346,8 +351,8 @@ while :; do
     log "Phase E: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
     {
       echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
-      echo "Route / returned HTTP ${CODE} (need 200 — the storefront index page must exist)."
-      echo "/api/products returned ${PRODUCTS} products (need > 0 — the legacy catalog must be served)."
+      echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
+      echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} items (need 200 and non-empty — the acceptance endpoint from migration.yaml)."
       echo "If the plan waived the UI surface, the waive is OVERRIDDEN by the demo acceptance: add a minimal index page over /api/products."
     } > /tmp/deploy-failure.txt
     FAILED_TASK="acceptance-deploy"

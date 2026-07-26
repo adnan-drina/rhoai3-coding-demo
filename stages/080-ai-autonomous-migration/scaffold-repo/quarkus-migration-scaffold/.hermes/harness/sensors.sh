@@ -87,10 +87,15 @@ boot_check() {
   # Hibernate schema validation — the drift class no unit test catches.
   $MVN clean package -DskipTests > /tmp/sensor-package.log 2>&1 \
     || fail boot "package failed — /tmp/sensor-package.log"
-  QUARKUS_DATASOURCE_JDBC_URL="$DEV_DB_URL" \
-  QUARKUS_DATASOURCE_USERNAME="${DEV_DB_USER:-coolstore}" \
-  QUARKUS_DATASOURCE_PASSWORD="${DEV_DB_PASSWORD:-coolstore}" \
-  QUARKUS_HTTP_PORT=8099 \
+  # DB env only when the app actually has a JDBC extension — a DB-less
+  # migration (e.g. the cart service) boots plain.
+  DB_ENV=()
+  if grep -q "quarkus-jdbc" pom.xml 2>/dev/null; then
+    DB_ENV=(QUARKUS_DATASOURCE_JDBC_URL="$DEV_DB_URL"
+            QUARKUS_DATASOURCE_USERNAME="${DEV_DB_USER:-coolstore}"
+            QUARKUS_DATASOURCE_PASSWORD="${DEV_DB_PASSWORD:-coolstore}")
+  fi
+  env "${DB_ENV[@]}" QUARKUS_HTTP_PORT=8099 \
     java -jar target/quarkus-app/quarkus-run.jar > /tmp/sensor-boot.log 2>&1 &
   local pid=$!
   local up=""

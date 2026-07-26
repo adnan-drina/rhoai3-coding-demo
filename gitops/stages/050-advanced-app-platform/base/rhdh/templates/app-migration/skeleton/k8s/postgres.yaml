@@ -1,3 +1,4 @@
+{% if values.needsDatabase %}
 # Dev-grade PostgreSQL for the migrated service. Migrations off Java EE
 # monoliths land on a real datasource (Flyway schema + seed data), so the
 # runtime environment ships one: ephemeral storage, rebuilt on every start.
@@ -64,3 +65,5 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
+
+{% endif %}

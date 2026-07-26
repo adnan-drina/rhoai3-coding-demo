@@ -47,12 +47,31 @@ spec:
         legacyRepoUrl:
           title: Legacy repository URL
           type: string
+          default: https://github.com/adnan-drina/coolstore-cart-legacy.git
           description: |
             HTTPS Git URL of the application to migrate (must be clonable
-            without credentials, e.g. https://github.com/rhpds/mca-coolstore.git).
+            without credentials. Defaults to the Coolstore cart service
+            (Spring Boot); the monolith round used
+            https://github.com/rhpds/mca-coolstore.git.
             It is cloned into the workspace only — never published to the
             platform org and never registered in the catalog.
           pattern: "^https://.+"
+        needsDatabase:
+          title: Provision a dev PostgreSQL with the runtime
+          type: boolean
+          default: false
+          description: |
+            Enable when the legacy app persists to a relational database
+            (the runtime then ships a dev PostgreSQL and datasource env).
+            The cart service is stateless — leave off.
+        acceptancePath:
+          title: Acceptance endpoint
+          type: string
+          default: /api/cart/health
+          description: |
+            REST path the harness asserts (HTTP 200) after deploy — the
+            migration's definition of shipped. Monolith round used
+            /api/products.
 
   steps:
     - id: fetch-golden
@@ -85,6 +104,8 @@ spec:
         values:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
+          needsDatabase: ${{ parameters.needsDatabase }}
+          acceptancePath: ${{ parameters.acceptancePath }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 

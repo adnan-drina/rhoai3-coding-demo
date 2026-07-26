@@ -31,6 +31,22 @@ Run on `/tmp/rewrite-staging` per EXECUTION.md:
 | JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |
 | Vendored/enterprise jars unavailable in Central | Vendor in-repo (`lib/` + file-based `<repository>` in `pom.xml`) — the repository must build self-contained |
 
+## Spring Boot → Quarkus (decided manual mappings)
+
+For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
+
+| Legacy pattern | Target (decided) |
+|---|---|
+| `@SpringBootApplication` / `SpringApplication.run` | Delete — Quarkus has no main class by default |
+| `@Service` / `@Component` + `@Autowired` | `@ApplicationScoped` + constructor injection |
+| `@FeignClient(url = "${VAR}")` interface | MicroProfile REST client: `@RegisterRestClient(configKey=...)` + `@Path`; URL via `quarkus.rest-client.<key>.url=${VAR}` |
+| `spring-boot-starter-jersey` + `ResourceConfig` | Drop — `quarkus-rest` serves JAX-RS resources directly; keep the `javax→jakarta` rewrite on the resources |
+| Spring `@GetMapping` etc. on client interfaces | JAX-RS `@GET`/`@Path` equivalents |
+| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (`/q/health`) |
+| `application.properties` (Spring keys) | Quarkus keys; plain `KEY=value` pass-throughs keep working |
+| `spring-boot-maven-plugin` | `quarkus-maven-plugin` |
+| `@PostConstruct` (javax.annotation) | `jakarta.annotation.PostConstruct` (rewrite covers it) |
+
 ## Discovering further recipes
 
 Enumerate what the classpath offers before hand-coding a mechanical
