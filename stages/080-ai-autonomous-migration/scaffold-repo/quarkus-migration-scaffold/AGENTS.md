@@ -88,3 +88,13 @@ mvn -q package           # full build (what the platform pipeline runs)
   that passes the gate; never weaken tests to get past it.
 - The legacy project never enters the pipeline or the catalog — the only
   path out of this workspace is a gated push of `/projects/modernized`.
+
+## Task packets — ambiguity stop
+
+Task packets you receive must carry the decided target design (file
+mappings, signatures, annotations). If a packet asks you to make an
+architecture decision — "modernize X", "integrate Y" without the target
+shape — do NOT attempt it. Stop immediately and reply with exactly what
+decision is missing (one short list), so the orchestrator can re-packet.
+A fast, specific refusal is a success; a long exploratory attempt at
+someone else's design decision is a failure.

@@ -198,6 +198,17 @@ sites. Split anything larger into sequential packets. Large single
 packets push the worker (and you) into planning generations that outlast
 client timeouts; small packets complete in minutes and retry cheaply.
 
+### Packet content — the design is decided before dispatch
+
+An infer packet carries the DECIDED target design: exact file mappings,
+class and method signatures, annotations, and the architectural choices
+already made in `plan.md` (e.g. "replace the JNDI lookup with `@Inject
+ShippingService`", "REST resource at `/api/products` returning the DTO
+shape below"). The worker implements decisions; it never makes them.
+A packet that says "modernize X" without the target shape is a defective
+packet — both worker budget exhaustions in the run-3 A/B were packets
+that delegated the design along with the labor.
+
 Then verify independently — check `git status --porcelain` for the
 acceptance files. Never trust the worker's summary alone.
 
@@ -235,7 +246,15 @@ self-eval: does the diff so far satisfy the spec sections it claims to?
 **On sensor failure:** write a correction packet — the original packet
 plus the exact failure output and the instruction "fix only this failure;
 change nothing else" — and re-delegate. **Iteration budget: 2 attempts per
-task** (original + one correction). Budget exhausted → record the task in
+task** (original + one correction).
+
+**Escalation valve (budget exhausted):** before recording debt, you MAY
+implement the task directly with your own file tools — division of labor
+is the default, not an invariant. If you escalate: keep the change
+bounded to the task's findings, run the sensors yourself, start the
+run-log row with `ESCALATED` (the supervisor counts escalations as a
+packet-quality KPI), and note in the row why the packet failed the
+worker. If you neither escalate nor finish, record the task in
 `migration/debt.md` with the failure evidence and move on.
 
 **After every task:** append one line to `migration/run-log.md`
