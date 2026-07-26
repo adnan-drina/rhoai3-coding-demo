@@ -90,3 +90,21 @@ revision 2" session against the TRUE lint findings → `35e3a07`:
 present, all mandatory findings + preserve:CATALOG_ENDPOINT mapped,
 lint exit 0.** First fully lint-clean plan of any run, achieved with a
 correct instrument. Supervisor resumed into the task loop.
+
+### 23:18–23:30 — T-002/T-003: enforced in-loop verification VALIDATED
+Facts from commits + supervisor log:
+- T-002 (`36eb318`) committed only its run-log row — its pom edits
+  leaked as dirty state into T-003's commit (**session commit-discipline
+  finding**: work crossed a task boundary; tree health still gated per
+  commit by the sensors).
+- T-003 (`929d353`, 226 pom lines): post-commit verification ran the
+  **milestone sensor** — the pom-touch trigger fired exactly as
+  specified ("post-commit verification (milestone sensor)" in the log).
+  **The enforced in-loop checking is now validated in production, not
+  asserted.**
+- The milestone sensor caught a real defect at the introducing commit:
+  versionless `spring-boot-starter-test`/`assertj-core` deps dangling
+  after the Spring parent (and its dependencyManagement) was removed —
+  the pom cannot even be read. In runs 1–4 this class reached the
+  factory; here it lived ~9 seconds. Sensor-fix session dispatched
+  automatically with the exact errors; outcome pending.
