@@ -30,7 +30,7 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 1. Open **Self-service** and choose the **Application migration** template.
 2. Provide the input the template asks for:
-  - **Legacy repository URL**: the Git repository of the application to migrate. The demo uses the platform's legacy Coolstore monolith — the same brownfield code MTA has been pointed at since stage 050.
+  - **Legacy repository URL**: the Git repository of the application to migrate — any HTTPS URL clonable without credentials. The demo uses the legacy Coolstore monolith, [https://github.com/rhpds/mca-coolstore.git](https://github.com/rhpds/mca-coolstore.git) — the same brownfield code MTA has been pointed at since stage 050.
   - **Project name**: becomes the per-run repository, namespace, and workspace name, exactly like stage 070.
 3. Create, and watch the template run: fetch the migration scaffold → stamp the legacy URL into the workspace definition and `migration.yaml` (provenance) → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination — `/projects/legacy` next to `/projects/modernized`.
 
