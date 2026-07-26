@@ -67,11 +67,12 @@ spec:
         acceptancePath:
           title: Acceptance endpoint
           type: string
-          default: /api/cart/health
+          default: /api/cart/acceptance-check
           description: |
             REST path the harness asserts (HTTP 200) after deploy — the
-            migration's definition of shipped. Monolith round used
-            /api/products.
+            migration's definition of shipped. Must be a REAL endpoint of
+            the migrated app (cart: GET /api/cart/{id} returns 200 for any
+            id; monolith round used /api/products).
 
   steps:
     - id: fetch-golden
