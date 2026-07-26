@@ -34,6 +34,13 @@ def main():
         print("\n".join(problems))
         return 1
 
+    # id uniqueness — duplicate ids corrupt the supervisor's commit checks
+    seen = set()
+    for _, tid, _ in heads:
+        if tid in seen:
+            lint("dup-ids", f"{tid}: task id used more than once")
+        seen.add(tid)
+
     # split body per task
     bodies = {}
     parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:.*$", text, flags=re.M)
