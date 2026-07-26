@@ -1,7 +1,9 @@
 # Phases A and B — ground truth and plan
 
 Plans map findings to the DECIDED targets in [MAPPINGS.md](MAPPINGS.md) —
-cite the catalog, do not re-derive architecture per run.
+cite the catalog, do not re-derive architecture per run. `tasks.md` MUST
+follow [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) — the supervisor's plan
+lint bounces non-conforming plans.
 
 ## Contents
 - Phase A — normalize ground truth

@@ -171,16 +171,29 @@ write_run_report() { # $1 = outcome line
   git add migration/run-report.md && git commit -q -m "Run report: $1" 2>/dev/null || true
 }
 
-# ---------------------------------------------------------------- Phase A/B
+# ---------------------------------------------------------------- Phase A
+# A1: ground-truth normalization is pure file mechanics — a script step,
+# not a model session.
 if committed "Phase A" || [ -f migration/mta-findings.json ]; then
   log "Phase A: already present"
 else
-  run_stage "Phase A" "phaseA" \
-"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY: normalize ground truth into migration/mta-findings.json (prefer the legacy IDE analysis under /projects/legacy/.vscode/mta-core/). Print a violation summary with a terminal python3 heredoc (never read the file whole).
-${RUN_CONTRACT}
-Finish with ONE commit whose message STARTS with 'Phase A:'. Stop after Phase A." \
-"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY per the skill; a previous attempt did not commit. Verify migration/mta-findings.json exists and is valid konveyor JSON, then commit with message starting 'Phase A:'. ${RUN_CONTRACT}" \
-    || { log "FATAL: Phase A failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
+  latest=$(ls -t /projects/legacy/.vscode/mta-core/analysis_*.json 2>/dev/null | head -1)
+  if [ -n "$latest" ]; then
+    mkdir -p migration
+    cp "$latest" migration/mta-findings.json
+  else
+    log "Phase A: no IDE analysis — running kantra sensor"
+    kantra-ensure >> "$LOG" 2>&1 || true
+    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline --target quarkus --json-output --overwrite >> "$LOG" 2>&1 || true
+    cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
+      || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
+  fi
+  SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
+  git add migration/mta-findings.json
+  git commit -q -m "Phase A: normalize MTA ground truth (supervisor script step)
+
+${SUMMARY}"
+  log "Phase A: committed by script — ${SUMMARY}"
 fi
 
 if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
