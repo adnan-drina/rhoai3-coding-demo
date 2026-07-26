@@ -51,3 +51,20 @@ Duplicate-id detection is a lint gap: `plan-lint.py` checks parseability
 and Class, not uniqueness — T-006×2 would corrupt the task loop's
 committed() checks. Adding a `dup-ids` lint check is required before the
 task loop starts.
+
+### 22:07–22:20 — Post-revision lint: MY CHECK WAS THE DEFECT — fixed
+The second revision "failed" with 28/28 missing Class markers. Artifact
+read shows M2 writes `- **Type:** `Class: rewrite`` — compliant in
+substance; my regex demanded my exact syntax. Two revision sessions were
+wasted on a false lint. Fixed (substance-over-syntax detection) and
+re-run against the same plan: 27/28 tasks pass; TRUE findings are
+T-005 (no class), T-020..T-028 minus T-022 (design-less tail tasks), and
+`spring-components-00002` unmapped. Also fixed this cycle: id-uniqueness
+check (T-006 duplication in the first plan — heading dedup happened in
+revision 2 on its own). Supervisor being relaunched with the enforced
+in-loop sonar build; its lint gate re-runs revision against the true
+findings with a fresh budget.
+Accountability note: this is the second instrument defect (after the
+star-file confusion) that burned model budget. Instrument verification
+before deployment (X1 test suite) is no longer optional-parked in
+priority terms.
