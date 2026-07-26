@@ -96,3 +96,12 @@ How this team tests. Apply on every change.
   recall does not exist in Quarkus.
 - `mvn -q test` must pass locally before any push; the platform pipeline's
   SonarQube gate fails on any new issue.
+
+## Coverage attribution (the gate's instrument)
+
+The factory coverage gate reads JaCoCo, and JaCoCo does NOT attribute
+lines executed inside `@QuarkusTest` runs. Service/model coverage must
+come from plain JUnit 5 + Mockito tests; `@QuarkusTest` exists for the
+HTTP boundary, not for the coverage number. Converting plain unit tests
+to `@QuarkusTest` reduces measured coverage even when behavior coverage
+is identical.

@@ -160,3 +160,11 @@ done
 
 echo ""
 validation_summary
+
+# Shared worker skills must not drift between the 070 and 080 scaffolds —
+# they are one contract expressed in two repos.
+for f in spec-driven-workflow project-test-standards quarkus-rest-conventions llm-integration; do
+  check "shared skill in sync across scaffolds: ${f}" \
+    "diff -q '${SCRIPT_DIR}/../070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold/.opencode/skills/${f}.md' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.opencode/skills/${f}.md' >/dev/null 2>&1 && echo 1 || echo 0" \
+    "1" "warn"
+done
