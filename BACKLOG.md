@@ -256,3 +256,15 @@ The demo must deploy from any GitHub org and container registry, not just the au
   removing the dead-end for design-class tasks. Wire as a third attempt
   class in the supervisor (`escalated`) so the run-log records how often
   the valve opens — a KPI for packet quality.
+
+## Run #3 retro (2026-07-26) — full improvement plan
+
+- [ ] **Harness improvement plan, per migration phase** — thorough
+  assessment of run #3 (timing ledger, defect ledger, harness debt) and
+  a prioritized per-phase plan (A: scripted ground truth; B:
+  design-in-packet + plan lint; C: factory-parity sensors + ambiguity
+  stop + session amortization; D: full factory pre-flight; E: per-class
+  round budgets + acceptance-based success; X: supervisor test suite,
+  run reports). Target profile: ~6–7 h, factory-green first push, zero
+  factory-discovered defect classes. Details:
+  `docs/HARNESS-IMPROVEMENT-PLAN.md`.
