@@ -104,6 +104,11 @@ run_stage() {
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
     if committed "$prefix"; then
       event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"
+      # Escalation KPI: the orchestrator marks direct implementations with
+      # an ESCALATED run-log row — count them for the retro.
+      if tail -5 migration/run-log.md 2>/dev/null | grep -q "ESCALATED"; then
+        event "$tag" "$attempt" escalated kpi; log "$tag: ESCALATED — orchestrator implemented directly (packet-quality KPI)"
+      fi
       # The stage is sealed — any worker still running is a zombie whose
       # output can no longer land. Kill it now instead of waiting 60m.
       if pgrep -x opencode >/dev/null 2>&1; then
