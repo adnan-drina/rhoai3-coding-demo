@@ -59,7 +59,14 @@ wait_for_worker() {
   while pgrep -x opencode >/dev/null 2>&1; do
     [ $waited -eq 0 ] && log "worker process still running — waiting for it before next session"
     sleep 60; waited=$((waited+60))
-    [ $waited -ge 3600 ] && { log "worker still running after 60m — proceeding anyway"; break; }
+    if [ $waited -ge 3600 ]; then
+      # A worker this old has outlived its dispatching session — it is a
+      # zombie. Never run a new session alongside it (two-writer risk):
+      # kill it and let the next session verify whatever it left behind.
+      log "worker still running after 60m — killing zombie worker before proceeding"
+      pkill -9 -x opencode; sleep 2
+      break
+    fi
   done
 }
 
