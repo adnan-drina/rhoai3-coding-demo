@@ -60,7 +60,10 @@ Migration work is analysis-grounded and spec-driven. Before running any
    (`.specify/memory/constitution.md`) binds all `/speckit` phases.
 4. Implement in small, verifiable increments; prefer deterministic
    OpenRewrite recipes for mechanical transforms and inference for
-   judgment calls. Run `mvn -q test` after each increment.
+   judgment calls. Run `mvn -q clean test` after each increment (`clean`
+   is non-negotiable — incremental builds pass on stale classes the
+   factory will catch); escalate to `mvn -q clean verify` whenever
+   `pom.xml` or runtime configuration changed.
 5. Migration is done when the MTA findings are resolved and the tests
    pass — not when the code "looks migrated".
 
@@ -74,18 +77,33 @@ it once per shell before any Maven command:
 export JAVA_HOME="${JAVA_HOME_21}" && export PATH="${JAVA_HOME}/bin:${PATH}"
 
 mvn quarkus:dev          # dev mode with hot reload (run in /projects/modernized)
-mvn -q test              # unit + component tests
-mvn -q package           # full build (what the platform pipeline runs)
+mvn -q clean test        # unit + component tests (always clean)
+mvn -q clean verify      # full build incl. packaging — mirrors the pipeline
 ```
 
 ## Platform integration
 
-- LLM access is only through the MaaS gateway. The workspace injects
-  `MAAS_API_BASE_URL`, `MAAS_API_KEY`, and `MAAS_MODEL_NAME`; the
-  `llm-integration` skill defines the required wiring and error handling.
+- If (and only if) a task adds LLM features to the migrated app: LLM
+  access is only through the MaaS gateway — the workspace injects
+  `MAAS_API_BASE_URL`, `MAAS_API_KEY`, and `MAAS_MODEL_NAME`, and the
+  `llm-integration` skill defines the wiring. The migration itself does
+  not require this.
 - Every push to `main` runs this project's own pipeline: Maven build →
-  SonarQube quality gate (fails on any new issue) → image build. Write code
-  that passes the gate; never weaken tests to get past it.
+  SonarQube quality gate → image build → deploy with a rollout gate. The
+  gate bars are exact — write code that meets them the first time:
+  **zero new violations** (constructor injection over field injection,
+  comments INSIDE intentionally-empty method bodies, no unused imports,
+  dedicated exceptions), **≥ 80% new-code line coverage** (tests ship in
+  the same change as the code), **≤ 3% duplicated new lines** (consolidate
+  near-identical classes — records, static factories — never copy
+  through). Never weaken tests or suppress rules to get past the gate.
+- **The repository must build self-contained.** The pipeline resolves
+  dependencies from Maven Central and in-repo sources only — it cannot
+  see your workspace. Never depend on locally-installed artifacts
+  (`mvn install` output); vendor required legacy jars in-repo with a
+  file-based repository declaration, or replace them. Your local green
+  is not the factory's green until the build passes without workspace
+  state.
 - The legacy project never enters the pipeline or the catalog — the only
   path out of this workspace is a gated push of `/projects/modernized`.
 
