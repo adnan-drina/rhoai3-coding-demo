@@ -210,10 +210,15 @@ run against run #3's real tasks.md flags 12 infer tasks lacking decided
 designs, including T-005 and T-011, the exact two that later exhausted
 their worker budgets (~2.5 h + 2 debt entries); B2 is implemented and
 wired into the supervisor (one forced revision round on lint failure).
-**S2 half-verified** — no standalone sonar-scanner in the tooling image;
-C1/D1 will use the Maven sonar plugin (the factory's own instrument —
-parity by construction); the scan-auth question remains for the live
-spike. S1 pending (needs the idle workspace).
+**S2 VERIFIED (adjusted)** — no standalone scanner in the image; the
+Maven sonar plugin (the factory's own instrument) works when invoked
+fully-qualified, BUT anonymous analysis submission is DENIED ("not
+authorized to analyze") — Tranche 1 must provision a SonarQube analysis
+token into the workspace. **S1 VERIFIED** — cold isolated-repo seed
+≈5–6 min (162 MB, 470 jars, one-time); warm isolated `clean verify` 36 s
+vs ~12 s shared. Design: per-RUN seeded repo (`/tmp/m2-run`), seeded
+once by the supervisor; per-task premium ≈ +24 s (~+7 min per 17-task
+run) buys factory-parity dependency resolution at every sensor.
 
 ### Tranche 1 — factory parity (C1 + D1; the quality fix; ~half day)
 
