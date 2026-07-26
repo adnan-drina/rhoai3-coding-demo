@@ -184,3 +184,79 @@ One refinement the sources forced: continuous *full* local sonar scans
 per task would be over-heavy; the documented pattern is gate-scoped
 new-code checking (Clean as You Code) at milestones and pre-push — which
 is how C1/D1 are specified above.
+
+## 5. Implementation plan
+
+Validation vehicle: **run #4** — a fresh autonomous migration on the fully
+hardened harness. Its target: ≤ 7 h wall-clock, factory-green first push,
+zero factory-discovered defect classes. Already implemented (2026-07-26):
+B1 design-in-packet, C2 ambiguity stop, C4 escalation valve, skill
+restructure + MAPPINGS catalog + persistence conventions + AGENTS.md
+indexes, supervisor layering cleanup.
+
+### Tranche 0 — verification spikes (gate the design; ~1 h, after run #3)
+
+| Spike | Question | Feeds |
+|---|---|---|
+| S1: timed `mvn clean verify -Dmaven.repo.local=/tmp/m2-run` (cold, then warm) | per-task cost of isolation; per-run seeded repo vs per-task | C1 design |
+| S2: headless `sonar-scanner` from the workspace | is it in the image; does scan need a token (reads are anonymous) | C1/D1 design |
+| S3: plan-lint prototype vs run #3's real `tasks.md` | would it have caught the heading drift + missing design sections | B2 |
+
+Exit: each of C1/D1/B2 marked *verified / adjusted / rejected* with
+measured numbers in this document.
+
+### Tranche 1 — factory parity (C1 + D1; the quality fix; ~half day)
+
+1. `.hermes/harness/sensors.sh`: `sensor_task` (clean test, isolated
+   repo per S1's verdict) and `sensor_milestone` (clean verify + new-code
+   sonar check per S2's verdict), called from EXECUTION.md instead of raw
+   mvn lines; provision a sonar token into the workspace Secret only if
+   S2 proves it necessary.
+2. Phase D pre-flight in SHIPPING.md + supervisor: isolated-repo verify,
+   sonar gate check, container-profile boot against the dev PostgreSQL
+   (catches schema drift pre-push).
+3. Acceptance: a seeded defect of each escaped class (local-only jar,
+   `@QuarkusTest`-shifted coverage, generator without DDL, style
+   violation) is caught at task/Phase-D time in a rehearsal, not by the
+   pipeline.
+
+### Tranche 2 — plan hardening (A1 + B2 + B3; ~half day)
+
+1. A1: Phase A becomes a supervisor script step (normalize + summarize +
+   commit); orchestrator sessions start at Phase B.
+2. B2: `.hermes/harness/plan-lint.py` — parseable ids, findings coverage,
+   per-infer-task design section present, UI surface covered/waived;
+   supervisor runs it after Phase B, one forced revision round on failure.
+3. B3: `tasks.md` skeleton + packet template shipped in the skill
+   (templates make B2's checks structural).
+4. Acceptance: lint passes run #3's tasks.md only after its known gaps
+   are corrected; a deliberately defective plan is bounced with a
+   specific revision prompt.
+
+### Tranche 3 — supervisor engineering (E1 + E2 + X1 + X2 + X3; ~half day)
+
+1. E1: per-class round budgets (build/gate/deploy 2 each).
+2. E2: success asserts `migration.yaml` acceptance (index page 200 +
+   product count) — the waive rule bounded by template acceptance.
+3. X1: shellcheck + bats tests for classify/parse/committed/wait-kill
+   logic + a mock dry-run mode; wired into stage 080 validate.sh.
+4. X2: supervisor logs its git version at start; renders
+   `migration/run-report.md` from the CSVs at exit.
+5. X3: warn event when a session exceeds 2× the phase median.
+6. Acceptance: bats suite green; dry-run exercises every classification
+   branch; a rehearsal run report renders.
+
+### Tranche 4 — ecosystem and infra (parallel/backgroundable)
+
+- Evaluate `quarkusio/quarkus-skills` (`migrate-spring-to-quarkus`) for
+  adoptable content vs our MAPPINGS catalog; adopt or record why not.
+- 27B modelcar graduation (kills the ~28 GB per-start pull) and the MTP
+  speculative-decoding experiment (worker decode speedup) in a quiet
+  window; T3.2 worker disk resize alongside.
+- Keep the konveyor-skills watch item.
+
+### Run #4 — validation
+
+Fresh baseline reset, all tranches live, unattended end-to-end. Measured
+against §3's target profile; its run-report (X2) becomes the next retro's
+input. Success criterion: the factory confirms, it does not teach.
