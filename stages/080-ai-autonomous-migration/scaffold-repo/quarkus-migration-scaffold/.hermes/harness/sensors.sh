@@ -39,7 +39,17 @@ seed() {
   echo "seeded: $(du -sh "$M2_RUN" | cut -f1)"
 }
 
+tree_hygiene() {
+  # Shell-quoting accidents leave literal glob/space filenames that
+  # compile silently and detonate at the factory (observed: empty
+  # '*.java' files -> S1220 trio). Fail fast on illegal names.
+  local bad
+  bad=$(find src -name '*\**' -o -name '*"*"*' -o -name '* *' 2>/dev/null | head -5)
+  [ -z "$bad" ] || fail hygiene "illegal filenames in tree: $bad"
+}
+
 task_sensor() {
+  tree_hygiene
   $MVN clean test > /tmp/sensor-task.log 2>&1 \
     || fail task "$(grep -E 'ERROR|FAIL' /tmp/sensor-task.log | head -5)"
   echo "task sensor GREEN (clean test, isolated repo)"
