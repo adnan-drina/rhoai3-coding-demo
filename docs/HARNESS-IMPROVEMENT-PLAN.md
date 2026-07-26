@@ -205,6 +205,16 @@ indexes, supervisor layering cleanup.
 Exit: each of C1/D1/B2 marked *verified / adjusted / rejected* with
 measured numbers in this document.
 
+Spike results so far (2026-07-26): **S3 VERIFIED** — the lint prototype
+run against run #3's real tasks.md flags 12 infer tasks lacking decided
+designs, including T-005 and T-011, the exact two that later exhausted
+their worker budgets (~2.5 h + 2 debt entries); B2 is implemented and
+wired into the supervisor (one forced revision round on lint failure).
+**S2 half-verified** — no standalone sonar-scanner in the tooling image;
+C1/D1 will use the Maven sonar plugin (the factory's own instrument —
+parity by construction); the scan-auth question remains for the live
+spike. S1 pending (needs the idle workspace).
+
 ### Tranche 1 — factory parity (C1 + D1; the quality fix; ~half day)
 
 1. `.hermes/harness/sensors.sh`: `sensor_task` (clean test, isolated

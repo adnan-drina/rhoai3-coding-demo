@@ -165,6 +165,25 @@ Finish with ONE commit whose message STARTS with 'Phase B:'. Stop after Phase B.
     || { log "FATAL: Phase B failed"; echo phaseB-failed > /tmp/supervisor-done; exit 1; }
 fi
 
+# ------------------------------------------------------------- Plan lint
+# Deterministic B2 gate: a defective plan is bounced ONCE for revision
+# with the specific lint findings before Phase C spends hours on it.
+TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
+LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json 2>&1)
+if [ $? -ne 0 ] && ! committed "Phase B revision"; then
+  log "plan lint: revision required"; echo "$LINT_OUT" | head -20 >> "$LOG"
+  printf '%s\n' "$LINT_OUT" > /tmp/plan-lint.txt
+  run_stage "Phase B revision" "phaseB-lint" \
+"Use the migration-harness skill and read PLANNING.md and MAPPINGS.md in its directory. The plan lint REJECTED specs/*/tasks.md — the findings are in /tmp/plan-lint.txt (read it with your file tools). Revise the plan to fix every lint finding: infer tasks must carry the decided target design (file mappings, signatures, annotations — cite MAPPINGS.md shapes). Do not renumber or remove completed work.
+${RUN_CONTRACT}
+Commit prefix: 'Phase B revision:'." \
+"Use the migration-harness skill and read PLANNING.md in its directory. Finish revising the plan per /tmp/plan-lint.txt and commit with prefix 'Phase B revision:'.
+${RUN_CONTRACT}" \
+    || log "plan lint: revision round exhausted — proceeding with the plan as-is (recorded)"
+  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json 2>&1) \
+    && log "plan lint: PASS after revision" || log "plan lint: still failing after revision — proceeding, findings logged"
+fi
+
 # ---------------------------------------------------------------- Phase C
 TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
 # Accept 3-6 hash heading levels and any T-style id — models format
