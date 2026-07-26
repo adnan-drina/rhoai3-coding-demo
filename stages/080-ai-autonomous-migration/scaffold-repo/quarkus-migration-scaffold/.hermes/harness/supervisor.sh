@@ -25,7 +25,7 @@ WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
-MAX_GATE_ROUNDS=2         # factory-gate correction rounds in Phase E
+MAX_GATE_ROUNDS=4         # factory correction rounds in Phase E (gate + deploy classes share the budget)
 
 RUN_BASE=$(git rev-parse HEAD)   # commits after this belong to THIS run
 LOG=/tmp/supervisor.log
@@ -255,18 +255,45 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
     exit 0
   fi
   [ $ROUND -gt $MAX_GATE_ROUNDS ] && break
-  N=$(gate_violations)
-  log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
-  run_stage "Gate fix" "gatefix-r${ROUND}" \
+  # Classify WHICH pipeline stage failed — quality gate and deploy need
+  # different correction packets (run #2 lesson: sonar-green pushes can
+  # still crash-loop at the rollout gate).
+  FAILED_TASK=$(OC get taskrun -n "$NS" -l tekton.dev/pipelineRun="$PR_NAME" \
+    -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)
+  log "Phase E: failed pipeline task: ${FAILED_TASK:-unknown}"
+  if [[ "$FAILED_TASK" == *deploy* ]]; then
+    APP=$(OC get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
+      | grep -E "CrashLoopBackOff|Error" | head -1 | awk '{print $1}')
+    {
+      echo "Deploy-stage failure for pipeline $PR_NAME."
+      echo "Failed task: $FAILED_TASK"
+      echo "Crash-looping pod: ${APP:-none found}"
+      echo "--- last 60 log lines of the failing pod ---"
+      [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
+    } > /tmp/deploy-failure.txt
+    run_stage "Deploy fix" "deployfix-r${ROUND}" \
+"Use the migration-harness skill. Execute Phase E deploy-correction round ${ROUND}: the factory build and quality gate PASSED but the DEPLOY stage failed — the migrated service does not start in its runtime. The failure evidence (failed task, crash-looping pod, its last 60 log lines) is in /tmp/deploy-failure.txt — read it with your file tools and diagnose the root cause (typical classes: schema validation vs Flyway DDL drift, missing config/env, missing runtime dependency).
+Fix the ROOT CAUSE in the repository (source, Flyway migrations under src/main/resources/db/migration/, application.properties, or k8s/ manifests). Never weaken validation to make the error disappear.
+After the fix: mvn -q clean verify must pass.
+Finish with ONE commit whose message STARTS with 'Deploy fix:'. DO NOT PUSH - the supervisor ships.
+${OPERATOR_NOTES}" \
+"Use the migration-harness skill. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix:'. DO NOT PUSH.
+${OPERATOR_NOTES}" \
+      || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
+  else
+    N=$(gate_violations)
+    log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
+    run_stage "Gate fix" "gatefix-r${ROUND}" \
 "Use the migration-harness skill. Execute Phase E gate-correction round ${ROUND}: the factory SonarQube quality gate REJECTED the push. The complete violation list (rule (count): file:line, plus DUPLICATION lines) is in /tmp/gate-violations.txt — read it with your file tools.
 Dispatch the fixes to the worker in SMALL packets per the packet size rule: group by rule, at most ~10 sites per packet, one concern per packet, sequentially. Duplication lines mean consolidation (records / static factories), not suppression.
-Business logic must be unchanged — never invert boolean conditions when converting to isEmpty().
+Business logic must be unchanged — never invert boolean conditions when converting to isEmpty(). Fixes must not INTRODUCE new sites of the same rules (e.g. new exception classes bringing undeclarable throws clauses).
 After all packets: mvn -q clean verify must pass and JaCoCo coverage stays >= 80%.
 Finish with ONE commit whose message STARTS with 'Gate fix:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
 "Use the migration-harness skill. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
-    || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
+      || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
+  fi
   ROUND=$((ROUND+1))
 done
 echo "gate-failed after $((ROUND-1)) rounds" > /tmp/supervisor-done
