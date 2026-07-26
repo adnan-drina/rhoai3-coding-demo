@@ -50,8 +50,11 @@ def main():
     classes = {}
     for _, tid, _ in heads:
         body = bodies.get(tid, "")
-        m = re.search(r"\*\*Class\*\*:?\s*`?(\w+)`?|^Class:\s*(\w+)", body, re.M)
-        classes[tid] = (m.group(1) or m.group(2)).lower() if m else "unknown"
+        # Accept any line that ties Class/Type to rewrite|infer — models
+        # express the marker in several shapes (**Class**:, Type: `Class:
+        # rewrite`, Class - infer). Substance over syntax.
+        m = re.search(r"^[^\n]*(?:Class|Type)[^\n]*?\b(rewrite|infer)\b", body, re.M | re.I)
+        classes[tid] = m.group(1).lower() if m else "unknown"
         if classes[tid] == "unknown":
             lint("ids", f"{tid}: no Class marker (rewrite|infer)")
 
