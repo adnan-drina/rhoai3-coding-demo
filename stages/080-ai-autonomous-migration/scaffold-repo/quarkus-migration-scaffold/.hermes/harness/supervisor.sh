@@ -28,6 +28,7 @@ MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
 MAX_FACTORY_ROUNDS=4      # Phase E correction rounds (build/gate/deploy classes share the budget)
 
 RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
+TASKS_SINCE_MILESTONE=0   # supervisor-enforced in-loop sonar cadence
 SUPERVISOR_VERSION=$(md5sum "$0" 2>/dev/null | cut -c1-8)
 LOG=/tmp/supervisor.log
 EVENTS=/tmp/supervisor-events.csv
@@ -123,13 +124,21 @@ run_stage() {
         pkill -9 -x opencode
       fi
       # Trust-but-verify (run-4 lesson: a session committed a red tree):
-      # the supervisor runs the task sensor itself after EVERY commit. RED
-      # gets one evidence-driven fix session with its own commit prefix.
-      if ! .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+      # the supervisor runs the sensors itself after EVERY commit. The
+      # milestone sensor (verify + the factory's sonar gate) is ENFORCED —
+      # not advisory — on every pom/config-touching commit and every 3rd
+      # task, so style violations die in-loop, not at the factory.
+      TASKS_SINCE_MILESTONE=$((TASKS_SINCE_MILESTONE+1))
+      SENSOR_KIND=task
+      if git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then
+        SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
+      fi
+      log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
+      if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         event "$tag" "$attempt" sensor_red_post_commit verify
         log "$tag: committed but the task sensor is RED — dispatching sensor-fix session"
         orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh task fails — read /tmp/sensor-task.log for the exact errors. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). Run .hermes/harness/sensors.sh task until GREEN, then commit ONE commit whose message STARTS with '${prefix} sensor fix:'.
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). Run .hermes/harness/sensors.sh task until GREEN, then commit ONE commit whose message STARTS with '${prefix} sensor fix:'.
 ${RUN_CONTRACT}"
         if committed "${prefix} sensor fix"; then
           log "$tag: sensor-fix committed $(git log --oneline -1)"
