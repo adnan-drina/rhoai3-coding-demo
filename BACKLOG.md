@@ -268,3 +268,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
   run reports). Target profile: ~6–7 h, factory-green first push, zero
   factory-discovered defect classes. Details:
   `docs/HARNESS-IMPROVEMENT-PLAN.md`.
+- [ ] **Watch konveyor-ecosystem/konveyor-skills** — nascent (one
+  product-ideation skill today, not execution-grade); adopt if kantra /
+  ruleset-authoring / Kai-integration skills land there, as candidates to
+  replace hand-rolled parts of the stage 080 skill set.
