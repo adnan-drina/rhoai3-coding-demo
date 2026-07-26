@@ -214,7 +214,12 @@ pipeline_status()   { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.con
 wait_pipeline() { # $1=previous newest run; waits for a NEW run to reach a terminal state; echoes "name status"
   local prev="$1" name="" i
   for i in $(seq 1 20); do name=$(newest_pipelinerun); [ -n "$name" ] && [ "$name" != "$prev" ] && break; sleep 15; done
-  [ -n "$name" ] && [ "$name" != "$prev" ] || { echo "none no-trigger"; return; }
+  if [ -z "$name" ] || [ "$name" = "$prev" ]; then
+    # No new run (e.g. resume after a failure with nothing new pushed):
+    # judge the newest existing run instead of erroring out.
+    name="$prev"
+    [ -n "$name" ] || { echo "none no-trigger"; return; }
+  fi
   for i in $(seq 1 120); do
     local st; st=$(pipeline_status "$name")
     case "$st" in
@@ -279,7 +284,20 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
   FAILED_TASK=$(OC get taskrun -n "$NS" -l tekton.dev/pipelineRun="$PR_NAME" \
     -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)
   log "Phase E: failed pipeline task: ${FAILED_TASK:-unknown}"
-  if [[ "$FAILED_TASK" == *deploy* ]]; then
+  if [[ "$FAILED_TASK" == *maven-build* || "$FAILED_TASK" == *build-and-push* ]]; then
+    {
+      echo "Build-stage failure for pipeline $PR_NAME (task: $FAILED_TASK)."
+      echo "--- maven/build errors ---"
+      OC logs -n "$NS" -l tekton.dev/taskRun="$FAILED_TASK" --tail=80 2>/dev/null | grep -iE "ERROR|BUILD|Caused|Could not" | head -30
+    } > /tmp/build-failure.txt
+    run_stage "Build fix" "buildfix-r${ROUND}" \
+"Use the migration-harness skill. Execute Phase E build-correction round ${ROUND}: the factory BUILD stage failed — the repository does not build in the pipeline environment (workspace-only state does not ship). The failure evidence is in /tmp/build-failure.txt — read it with your file tools and diagnose the root cause. Typical class: a dependency resolvable only in the workspace (e.g. a locally-installed legacy jar) — the repository must be self-contained: vendor the jar in-repo (lib/ + a file-based repository declaration in pom.xml, or install-file at build time via a documented mechanism) or replace the dependency. mvn -q clean verify must pass AFTER purging the artifact from the local repo (mvn dependency:purge-local-repository -DmanualInclude=<groupId>:<artifactId> or rm -rf ~/.m2/repository/<path>) so you prove pipeline-equivalent resolution.
+Finish with ONE commit whose message STARTS with 'Build fix:'. DO NOT PUSH - the supervisor ships.
+${OPERATOR_NOTES}" \
+"Use the migration-harness skill. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix:'. DO NOT PUSH.
+${OPERATOR_NOTES}" \
+      || { log "Phase E: build-fix round $ROUND exhausted"; break; }
+  elif [[ "$FAILED_TASK" == *deploy* ]]; then
     APP=$(OC get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
       | grep -E "CrashLoopBackOff|Error" | head -1 | awk '{print $1}')
     {
