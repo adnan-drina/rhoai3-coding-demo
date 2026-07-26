@@ -102,7 +102,16 @@ run_stage() {
     committed "$prefix" && return 0
     local p="$prompt"; [ $attempt -gt 1 ] && p="$rprompt"
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
-    if committed "$prefix"; then event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"; return 0; fi
+    if committed "$prefix"; then
+      event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"
+      # The stage is sealed — any worker still running is a zombie whose
+      # output can no longer land. Kill it now instead of waiting 60m.
+      if pgrep -x opencode >/dev/null 2>&1; then
+        log "$tag: killing residual worker (stage already committed)"
+        pkill -9 -x opencode
+      fi
+      return 0
+    fi
     local cls; cls=$(classify "$rc" "/tmp/sup-${tag}-a${attempt}p${pf}.log")
     event "$tag" "$attempt" "$cls" retrying
     case "$cls" in
