@@ -25,7 +25,7 @@ WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
-MAX_GATE_ROUNDS=4         # factory correction rounds in Phase E (gate + deploy classes share the budget)
+MAX_FACTORY_ROUNDS=4      # Phase E correction rounds (build/gate/deploy classes share the budget)
 
 RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
 LOG=/tmp/supervisor.log
@@ -37,22 +37,17 @@ METRICS=/tmp/supervisor-metrics.csv
 log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
 event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
 
-OPERATOR_NOTES='Operator context for this run:
-- The destination /projects/modernized is a Quarkus scaffold. A task is complete when its FINDINGS are resolved IN THE DESTINATION. If a finding is inherently resolved by the scaffold already, verify that with concrete evidence and record it as resolved-by-scaffold in the run-log row - do not invent work.
-- Rewrite tasks: run the recipes on /tmp/rewrite-staging (recreate per the skill if missing), then harvest outcomes via OpenCode tasks with explicit source and destination paths.
-- Quality-gate bars are part of every acceptance: unit tests ship WITH harvested code (>= 80% new-code line coverage), zero new violations (S1186 comments go INSIDE empty method bodies), no copied duplication (consolidate, or use records for DTOs), constructor injection over field injection (S6813).
-- Sensors per the skill: mvn -q clean test after every sub-fix; escalate to mvn -q clean verify when pom.xml or runtime config changed.
-- Scripting: terminal python3 heredocs ONLY, never execute_code. Worker event streams: redirect to a file, read only a scripted summary.
-- Worker: opencode run -m WORKER_MODEL_PLACEHOLDER --auto --format json per the skill. Dispatch SYNCHRONOUSLY and wait for exit - never background a worker, never end your turn while one runs. A worker run with no file changes is a FAILED attempt - re-dispatch once with a sharper packet.
-- Packet size rule: one concern and at most ~10 files or violation sites per worker packet. Split larger work into sequential packets - large single packets stall the worker.
-- Budget: 2 worker attempts per sub-fix; exhausted -> record in migration/debt.md with evidence and continue.
-- Append-only run-log rows. DO NOT PUSH anywhere - the supervisor ships.'
-OPERATOR_NOTES="${OPERATOR_NOTES//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
+# Process contract only — ALL judgment guidance (packet rules, sensors,
+# gate bars, dispatch discipline) lives in the migration-harness skill
+# and AGENTS.md. The supervisor injects nothing but run configuration
+# and the commit/ship contract.
+RUN_CONTRACT="Run contract: the worker model for this run is WORKER_MODEL_PLACEHOLDER. DO NOT PUSH anywhere - the supervisor ships. Finish with ONE commit using the exact message prefix stated below."
+RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
 committed() { git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"; }
 
 # NOTE: match the worker by exact process name (-x). Command-line matching
-# false-positives on hermes sessions whose operator notes quote the
+# false-positives on hermes sessions whose loaded skill text quotes the
 # `opencode run` invocation.
 wait_for_worker() {
   local waited=0
@@ -129,7 +124,7 @@ run_stage() {
       orphan_worker)
         log "$tag: session abandoned a running worker — waiting for worker, then verify-and-commit session"
         wait_for_worker
-        prompt="$rprompt"; rprompt="$rprompt"; pf=$((pf+1));;
+        prompt="$rprompt"; pf=$((pf+1));;
       timeout)
         log "$tag: session hit the ${SESSION_TIMEOUT}s cap — attempt $attempt burned, partial work stays for the next attempt"
         attempt=$((attempt+1));;
@@ -153,9 +148,9 @@ if committed "Phase A" || [ -f migration/mta-findings.json ]; then
 else
   run_stage "Phase A" "phaseA" \
 "Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY: normalize ground truth into migration/mta-findings.json (prefer the legacy IDE analysis under /projects/legacy/.vscode/mta-core/). Print a violation summary with a terminal python3 heredoc (never read the file whole).
-${OPERATOR_NOTES}
+${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with 'Phase A:'. Stop after Phase A." \
-"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY per the skill; a previous attempt did not commit. Verify migration/mta-findings.json exists and is valid konveyor JSON, then commit with message starting 'Phase A:'. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY per the skill; a previous attempt did not commit. Verify migration/mta-findings.json exists and is valid konveyor JSON, then commit with message starting 'Phase A:'. ${RUN_CONTRACT}" \
     || { log "FATAL: Phase A failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
 fi
 
@@ -164,9 +159,9 @@ if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
 else
   run_stage "Phase B" "phaseB" \
 "Use the migration-harness skill and read PLANNING.md in its directory. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...). The spec MUST cover the legacy application's user-facing surface (web UI / index page) — either map it to a migration task or explicitly waive it with a reason.
-${OPERATOR_NOTES}
+${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with 'Phase B:'. Stop after Phase B." \
-"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${RUN_CONTRACT}" \
     || { log "FATAL: Phase B failed"; echo phaseB-failed > /tmp/supervisor-done; exit 1; }
 fi
 
@@ -182,23 +177,20 @@ for T in $TASK_IDS; do
   committed "$T" && { log "$T: already committed"; continue; }
   run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY.
-${OPERATOR_NOTES}
+${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY. A previous attempt may have left partial uncommitted work or a finished worker run - inspect git status first, verify or finish the work, run the sensors, and commit ONE commit whose message STARTS with '${T}:'.
-${OPERATOR_NOTES}" \
+${RUN_CONTRACT}" \
     || log "$T: exhausted — recorded, moving on"
 done
 
 # ---------------------------------------------------------------- Phase D
 if ! committed "Phase D"; then
   run_stage "Phase D" "phaseD" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D:
-1. kantra-ensure, then /tmp/kantra/kantra analyze -i /projects/modernized -o /tmp/kantra-after --target quarkus --json-output --overwrite (tolerate exit 1 per the skill), copy /tmp/kantra-after/output.json to migration/mta-findings-after.json.
-2. Compute the findings delta (baseline vs after) with a terminal python3 heredoc; append a delta summary to migration/run-log.md. Remaining findings must be individually explained (advisory / false positive with reasoning).
-3. mvn -q clean verify must pass.
-4. ONE commit whose message starts 'Phase D:'. DO NOT PUSH.
-${OPERATOR_NOTES}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase D per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'Phase D:'. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D per SHIPPING.md: re-analysis sensor, findings delta appended to the run-log with remaining findings individually explained, and mvn -q clean verify green.
+${RUN_CONTRACT}
+Commit prefix: 'Phase D:'. DO NOT PUSH." \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase D per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'Phase D:'. ${RUN_CONTRACT}" \
     || log "Phase D: exhausted — shipping without final re-analysis commit"
 fi
 
@@ -266,7 +258,7 @@ PYEOF
 
 log "Phase E: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
 ROUND=1
-while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
+while [ $ROUND -le $((MAX_FACTORY_ROUNDS+1)) ]; do
   PREV=$(newest_pipelinerun)
   git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
   log "Phase E: pushed $(git rev-parse --short HEAD), waiting for pipeline"
@@ -282,7 +274,7 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
     log "SUPERVISOR COMPLETE: migration shipped"
     exit 0
   fi
-  [ $ROUND -gt $MAX_GATE_ROUNDS ] && break
+  [ $ROUND -gt $MAX_FACTORY_ROUNDS ] && break
   # Classify WHICH pipeline stage failed — quality gate and deploy need
   # different correction packets (run #2 lesson: sonar-green pushes can
   # still crash-loop at the rollout gate).
@@ -296,11 +288,11 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
       OC logs -n "$NS" -l tekton.dev/taskRun="$FAILED_TASK" --tail=80 2>/dev/null | grep -iE "ERROR|BUILD|Caused|Could not" | head -30
     } > /tmp/build-failure.txt
     run_stage "Build fix r${ROUND}" "buildfix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase E build-correction round ${ROUND}: the factory BUILD stage failed — the repository does not build in the pipeline environment (workspace-only state does not ship). The failure evidence is in /tmp/build-failure.txt — read it with your file tools and diagnose the root cause. Typical class: a dependency resolvable only in the workspace (e.g. a locally-installed legacy jar) — the repository must be self-contained: vendor the jar in-repo (lib/ + a file-based repository declaration in pom.xml, or install-file at build time via a documented mechanism) or replace the dependency. mvn -q clean verify must pass AFTER purging the artifact from the local repo (mvn dependency:purge-local-repository -DmanualInclude=<groupId>:<artifactId> or rm -rf ~/.m2/repository/<path>) so you prove pipeline-equivalent resolution.
-Finish with ONE commit whose message STARTS with 'Build fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
-${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E BUILD-correction procedure for round ${ROUND}: the failure evidence is in /tmp/build-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+${RUN_CONTRACT}
+Commit prefix: 'Build fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
-${OPERATOR_NOTES}" \
+${RUN_CONTRACT}" \
       || { log "Phase E: build-fix round $ROUND exhausted"; break; }
   elif [[ "$FAILED_TASK" == *deploy* ]]; then
     APP=$(OC get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
@@ -313,26 +305,21 @@ ${OPERATOR_NOTES}" \
       [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
     } > /tmp/deploy-failure.txt
     run_stage "Deploy fix r${ROUND}" "deployfix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase E deploy-correction round ${ROUND}: the factory build and quality gate PASSED but the DEPLOY stage failed — the migrated service does not start in its runtime. The failure evidence (failed task, crash-looping pod, its last 60 log lines) is in /tmp/deploy-failure.txt — read it with your file tools and diagnose the root cause (typical classes: schema validation vs Flyway DDL drift, missing config/env, missing runtime dependency).
-Fix the ROOT CAUSE in the repository (source, Flyway migrations under src/main/resources/db/migration/, application.properties, or k8s/ manifests). Never weaken validation to make the error disappear.
-After the fix: mvn -q clean verify must pass.
-Finish with ONE commit whose message STARTS with 'Deploy fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
-${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E DEPLOY-correction procedure for round ${ROUND}: the failure evidence is in /tmp/deploy-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+${RUN_CONTRACT}
+Commit prefix: 'Deploy fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
-${OPERATOR_NOTES}" \
+${RUN_CONTRACT}" \
       || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
   else
     N=$(gate_violations)
     log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
     run_stage "Gate fix r${ROUND}" "gatefix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md and EXECUTION.md in its directory. Execute Phase E gate-correction round ${ROUND}: the factory SonarQube quality gate REJECTED the push. The complete violation list (rule (count): file:line, plus DUPLICATION lines) is in /tmp/gate-violations.txt — read it with your file tools.
-Dispatch the fixes to the worker in SMALL packets per the packet size rule: group by rule, at most ~10 sites per packet, one concern per packet, sequentially. Duplication lines mean consolidation (records / static factories), not suppression.
-Business logic must be unchanged — never invert boolean conditions when converting to isEmpty(). Fixes must not INTRODUCE new sites of the same rules (e.g. new exception classes bringing undeclarable throws clauses).
-After all packets: mvn -q clean verify must pass and JaCoCo coverage stays >= 80%.
-Finish with ONE commit whose message STARTS with 'Gate fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
-${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E GATE-correction procedure for round ${ROUND}: the failure evidence is in /tmp/gate-violations.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+${RUN_CONTRACT}
+Commit prefix: 'Gate fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
-${OPERATOR_NOTES}" \
+${RUN_CONTRACT}" \
       || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
   fi
   ROUND=$((ROUND+1))

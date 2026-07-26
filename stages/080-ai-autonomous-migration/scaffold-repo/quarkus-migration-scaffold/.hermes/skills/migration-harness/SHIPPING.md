@@ -43,7 +43,30 @@ session** with you. In that session:
 4. `mvn -q clean verify` green, JaCoCo coverage ≥ 80%, then ONE commit
    starting `Gate fix:` — the supervisor re-pushes and re-observes.
 
-Budget: two gate rounds. A second rejection halts the run with the
-violation list preserved for the retro — never bypass or water down the
-gate.
+The supervisor classifies WHICH pipeline stage failed and starts the
+matching correction session:
+
+**Build correction** (`/tmp/build-failure.txt`): the repository does not
+build in the pipeline environment — workspace-only state does not ship.
+Diagnose the root cause (typical: a dependency resolvable only locally,
+e.g. an installed legacy jar). Make the repository self-contained —
+vendor the jar in-repo with a file-based repository declaration, or
+replace the dependency — and prove pipeline-equivalent resolution: purge
+the artifact from the local repo, then `mvn -q clean verify`.
+
+**Deploy correction** (`/tmp/deploy-failure.txt`): build and gate passed
+but the service does not start — the evidence file carries the failed
+task and the crash-looping pod's logs. Typical classes: Hibernate schema
+validation vs Flyway DDL drift, missing config/env, missing runtime
+dependency. Fix the ROOT CAUSE in the repository (source, migrations,
+`application.properties`, or `k8s/`); never weaken validation to make
+the error disappear.
+
+**Gate correction** (`/tmp/gate-violations.txt`): as described above —
+small per-rule packets, consolidation for duplication, semantics
+preserved, coverage held.
+
+Round budget is supervisor-enforced across all three classes. A final
+rejection halts the run with the evidence preserved for the retro —
+never bypass or water down the gate.
 

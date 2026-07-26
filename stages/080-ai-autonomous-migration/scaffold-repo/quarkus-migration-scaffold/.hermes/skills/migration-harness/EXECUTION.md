@@ -22,6 +22,16 @@ Out of scope:   <explicitly excluded work>
 
 ## Phase C — execution loop
 
+### Task completion is evidence in the destination
+
+A task is complete when its FINDINGS are resolved IN
+`/projects/modernized`. If a finding is inherently resolved by the
+scaffold already (e.g. the pom is jakarta-native), verify that with
+concrete evidence and record it as `resolved-by-scaffold` in the run-log
+row — do not invent work. A worker run that changed no files is a FAILED
+attempt — re-dispatch once with a sharper packet before burning the
+budget.
+
 For each task in `tasks.md`, in order:
 
 **Class: rewrite** — scratch-transform procedure:
