@@ -290,11 +290,11 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
       echo "--- maven/build errors ---"
       OC logs -n "$NS" -l tekton.dev/taskRun="$FAILED_TASK" --tail=80 2>/dev/null | grep -iE "ERROR|BUILD|Caused|Could not" | head -30
     } > /tmp/build-failure.txt
-    run_stage "Build fix" "buildfix-r${ROUND}" \
+    run_stage "Build fix r${ROUND}" "buildfix-r${ROUND}" \
 "Use the migration-harness skill. Execute Phase E build-correction round ${ROUND}: the factory BUILD stage failed — the repository does not build in the pipeline environment (workspace-only state does not ship). The failure evidence is in /tmp/build-failure.txt — read it with your file tools and diagnose the root cause. Typical class: a dependency resolvable only in the workspace (e.g. a locally-installed legacy jar) — the repository must be self-contained: vendor the jar in-repo (lib/ + a file-based repository declaration in pom.xml, or install-file at build time via a documented mechanism) or replace the dependency. mvn -q clean verify must pass AFTER purging the artifact from the local repo (mvn dependency:purge-local-repository -DmanualInclude=<groupId>:<artifactId> or rm -rf ~/.m2/repository/<path>) so you prove pipeline-equivalent resolution.
-Finish with ONE commit whose message STARTS with 'Build fix:'. DO NOT PUSH - the supervisor ships.
+Finish with ONE commit whose message STARTS with 'Build fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix:'. DO NOT PUSH.
+"Use the migration-harness skill. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: build-fix round $ROUND exhausted"; break; }
   elif [[ "$FAILED_TASK" == *deploy* ]]; then
@@ -307,26 +307,26 @@ ${OPERATOR_NOTES}" \
       echo "--- last 60 log lines of the failing pod ---"
       [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
     } > /tmp/deploy-failure.txt
-    run_stage "Deploy fix" "deployfix-r${ROUND}" \
+    run_stage "Deploy fix r${ROUND}" "deployfix-r${ROUND}" \
 "Use the migration-harness skill. Execute Phase E deploy-correction round ${ROUND}: the factory build and quality gate PASSED but the DEPLOY stage failed — the migrated service does not start in its runtime. The failure evidence (failed task, crash-looping pod, its last 60 log lines) is in /tmp/deploy-failure.txt — read it with your file tools and diagnose the root cause (typical classes: schema validation vs Flyway DDL drift, missing config/env, missing runtime dependency).
 Fix the ROOT CAUSE in the repository (source, Flyway migrations under src/main/resources/db/migration/, application.properties, or k8s/ manifests). Never weaken validation to make the error disappear.
 After the fix: mvn -q clean verify must pass.
-Finish with ONE commit whose message STARTS with 'Deploy fix:'. DO NOT PUSH - the supervisor ships.
+Finish with ONE commit whose message STARTS with 'Deploy fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix:'. DO NOT PUSH.
+"Use the migration-harness skill. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
   else
     N=$(gate_violations)
     log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
-    run_stage "Gate fix" "gatefix-r${ROUND}" \
+    run_stage "Gate fix r${ROUND}" "gatefix-r${ROUND}" \
 "Use the migration-harness skill. Execute Phase E gate-correction round ${ROUND}: the factory SonarQube quality gate REJECTED the push. The complete violation list (rule (count): file:line, plus DUPLICATION lines) is in /tmp/gate-violations.txt — read it with your file tools.
 Dispatch the fixes to the worker in SMALL packets per the packet size rule: group by rule, at most ~10 sites per packet, one concern per packet, sequentially. Duplication lines mean consolidation (records / static factories), not suppression.
 Business logic must be unchanged — never invert boolean conditions when converting to isEmpty(). Fixes must not INTRODUCE new sites of the same rules (e.g. new exception classes bringing undeclarable throws clauses).
 After all packets: mvn -q clean verify must pass and JaCoCo coverage stays >= 80%.
-Finish with ONE commit whose message STARTS with 'Gate fix:'. DO NOT PUSH - the supervisor ships.
+Finish with ONE commit whose message STARTS with 'Gate fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix:'. DO NOT PUSH.
+"Use the migration-harness skill. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
   fi
