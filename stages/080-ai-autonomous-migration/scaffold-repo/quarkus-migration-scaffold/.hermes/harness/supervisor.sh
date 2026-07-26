@@ -142,7 +142,7 @@ if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
   log "Phase B: already present"
 else
   run_stage "Phase B" "phaseB" \
-"Use the migration-harness skill. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...).
+"Use the migration-harness skill. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...). The spec MUST cover the legacy application's user-facing surface (web UI / index page) — either map it to a migration task or explicitly waive it with a reason.
 ${OPERATOR_NOTES}
 Finish with ONE commit whose message STARTS with 'Phase B:'. Stop after Phase B." \
 "Use the migration-harness skill. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${OPERATOR_NOTES}" \
