@@ -33,3 +33,21 @@ to the pre-run review of the user's analysis (no drift, no truncation).
 Commit message embeds the scripted summary. Elapsed within the launch
 minute (vs ~20-min model sessions in runs 1–3). No model involvement by
 design — nothing to analyze on the Hermes/model side for this phase.
+
+### 21:56 — Phase B (M2 session) + lint rejection — REVIEWED
+Commit `2c8b537`; post-commit task sensor GREEN (supervisor-verified).
+Artifacts read directly:
+- 20 task headings; **id discipline failed**: `T-006` used for two
+  different tasks (heading-level duplicate), and the lint flagged every
+  task for a missing `**Class**` marker — 19 distinct LINT:ids findings.
+- **The preserve contract worked at authoring time**: `CATALOG_ENDPOINT`
+  appears 4× in tasks.md (mapped to a task) — the lint's N2 check passed
+  on the first plan. First live success of that mechanism.
+- Transcript facts: the session read `MAPPINGS.md` and referenced the
+  tasks template — read exposure did NOT produce format compliance
+  (Class markers omitted everywhere). Deterministic lint remains the
+  only reliable format guarantee; the revision round is dispatching.
+Duplicate-id detection is a lint gap: `plan-lint.py` checks parseability
+and Class, not uniqueness — T-006×2 would corrupt the task loop's
+committed() checks. Adding a `dup-ids` lint check is required before the
+task loop starts.
