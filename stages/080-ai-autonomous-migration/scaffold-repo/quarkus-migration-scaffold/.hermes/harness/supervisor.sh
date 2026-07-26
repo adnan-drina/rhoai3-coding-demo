@@ -159,7 +159,7 @@ ${RUN_CONTRACT}"
     fi
   done
   log "$tag: attempts exhausted — checkpointing partial work per debt policy"
-  git add -A && git commit -m "${prefix}: partial work checkpoint (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
+  git add -A && git commit -m "checkpoint of ${prefix} (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
   return 1
 }
 
