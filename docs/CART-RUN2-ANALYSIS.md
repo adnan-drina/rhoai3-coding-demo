@@ -108,3 +108,16 @@ Facts from commits + supervisor log:
   the pom cannot even be read. In runs 1–4 this class reached the
   factory; here it lived ~9 seconds. Sensor-fix session dispatched
   automatically with the exact errors; outcome pending.
+
+### 23:40–23:43 — T-003 sensor-fix: the work was green, the commit never came
+Forensics: the sensor-fix session repaired the pom (tree sensor GREEN
+with its uncommitted changes) but consumed all 60 iterations before the
+commit step — recorded as "did NOT commit". Operator completed only the
+commit step (`6874107`, message documents this). Mechanism change: the
+sensor-fix and tree-fix prompts now mandate COMMIT-ON-GREEN ("a green
+fix that never commits is a failed session"). Also observed: legacy
+sources re-appeared under `com.redhat.coolstore` in T-002/T-003's
+session work — package-placement discipline remains the weakest worker/
+orchestrator behavior; watching whether later tasks move them to
+`com.demo` per plan or this becomes the next boundary intervention.
+Supervisor resumed 23:42; T-004 in session.
