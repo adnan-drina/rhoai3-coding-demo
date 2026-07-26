@@ -311,21 +311,21 @@ rounds + one operator round consumed. Not shipped.
 
 ### New improvement items (evidence-driven)
 
-- [ ] **N1. Escalation carries the full acceptance.** The escalation
+- [x] **N1. Escalation carries the full acceptance.** — IMPLEMENTED 2026-07-26. The escalation
   valve prompt must restate the packet bars (tests WITH code, decided
   mappings honored, integrations preserved) and the supervisor's
   post-commit check on escalated commits should include a coverage
   delta, not just compilation.
-- [ ] **N2. Integration-preservation contract.** `migration.yaml` gains
+- [x] **N2. Integration-preservation contract.** — IMPLEMENTED 2026-07-26. `migration.yaml` gains
   a `preserve:` list (external endpoints, env contracts — e.g.
   `CATALOG_ENDPOINT`); plan-lint requires every preserved item mapped to
   a task; the Phase D pre-flight greps the built artifact/config for
   each; acceptance must exercise at least one preserved integration
   (the cart acceptance passed while the catalog was fake — too weak).
-- [ ] **N3. Build-wiring invariants sensor.** sensors.sh fails if
+- [x] **N3. Build-wiring invariants sensor.** — IMPLEMENTED 2026-07-26. sensors.sh fails if
   `pom.xml` loses the jacoco plugin/property or the sonar path config —
   the T-002 wiring-strip class, now twice observed, becomes a
   deterministic check instead of a factory surprise.
-- [ ] **N4. run-log/KPI reconciliation.** Supervisor counts ESCALATED
+- [x] **N4. run-log/KPI reconciliation.** — IMPLEMENTED 2026-07-26. Supervisor counts ESCALATED
   from its own events (source of truth), and the runbook requires the
   ESCALATED marker in the row it already mandates.

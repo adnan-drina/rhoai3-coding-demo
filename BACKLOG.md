@@ -275,14 +275,14 @@ The demo must deploy from any GitHub org and container registry, not just the au
 
 ## Worker escalation forensics (2026-07-26, cart run)
 
-- [ ] **Ban the OpenCode `task` subagent tool in worker runs** — every
+- [x] **Ban the OpenCode `task` subagent tool in worker runs** — IMPLEMENTED 2026-07-26 (AGENTS.md tool-discipline rules; config-level ban still open upstream) — every
   escalated cart-run packet died in ~1s via the same shape: spawn
   @explore subagent → parent emits "\n\n" → session ends, no changes.
   Sessions that never delegated did sustained multi-file work. Disable
   the tool by config for harness workers + AGENTS.md rule ("explore
   directly, never spawn subagents"); precedent: the hermes execute_code
   ban. Evidence: `docs/WORKER-ESCALATION-FORENSICS.md`.
-- [ ] **Worker skills discovery fix** — `glob(".opencode/skills/*")`
+- [x] **Worker skills discovery fix** — IMPLEMENTED 2026-07-26 (AGENTS.md: ls/read exact paths, glob dot-dir warning) — `glob(".opencode/skills/*")`
   returns "No files found" (dot-dir globbing); AGENTS.md should direct
   `ls`+read by exact path; consider an upstream OpenCode issue.
 - [ ] **Re-baseline the 27B worker envelope after both fixes** — the
