@@ -1134,7 +1134,19 @@ small packets. Conclusion: for unattended runs, either seat M2 as
 orchestrator (reliability posture) or run 27B-both-seats behind a
 supervising driver that enforces packet size, classifies session
 failures, and retries — the deficits are harness-absorbable; none are
-capability cliffs. Platform fixes hardened by this run: token budget
+capability cliffs.
+
+**Run #3 (2026-07-26, M2 + 27B under the failure-classifying
+supervisor):** migration complete without a human migration decision —
+17/17 tasks (2 honest debt entries), Phase D delta 32/37, three
+build-correction rounds self-fixed dependency vendoring, test defects
+and schema drift. Final state: factory gate NOT passed within the
+4-round budget (41 new violations, coverage 78.7% vs 80, hotspots
+unreviewed) — each blind gate round fixed one violation class and
+introduced another. Verdict recorded honestly: autonomy converges on
+build/deploy failures but CHURNS on style-gate rounds without local
+sonar feedback; the improvement plan's factory-parity sensors (C1/D1)
+target exactly this. Full retro: `docs/HARNESS-IMPROVEMENT-PLAN.md`. Platform fixes hardened by this run: token budget
 20M/1h for the coding subscription, hermes output caps via provider
 `context_length` + `extra_body`, raised stream timeouts for
 thinking-mode generations.
