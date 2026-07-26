@@ -152,10 +152,10 @@ if committed "Phase A" || [ -f migration/mta-findings.json ]; then
   log "Phase A: already present"
 else
   run_stage "Phase A" "phaseA" \
-"Use the migration-harness skill. Execute Phase A ONLY: normalize ground truth into migration/mta-findings.json (prefer the legacy IDE analysis under /projects/legacy/.vscode/mta-core/). Print a violation summary with a terminal python3 heredoc (never read the file whole).
+"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY: normalize ground truth into migration/mta-findings.json (prefer the legacy IDE analysis under /projects/legacy/.vscode/mta-core/). Print a violation summary with a terminal python3 heredoc (never read the file whole).
 ${OPERATOR_NOTES}
 Finish with ONE commit whose message STARTS with 'Phase A:'. Stop after Phase A." \
-"Use the migration-harness skill. Execute Phase A ONLY per the skill; a previous attempt did not commit. Verify migration/mta-findings.json exists and is valid konveyor JSON, then commit with message starting 'Phase A:'. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase A ONLY per the skill; a previous attempt did not commit. Verify migration/mta-findings.json exists and is valid konveyor JSON, then commit with message starting 'Phase A:'. ${OPERATOR_NOTES}" \
     || { log "FATAL: Phase A failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
 fi
 
@@ -163,10 +163,10 @@ if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
   log "Phase B: already present"
 else
   run_stage "Phase B" "phaseB" \
-"Use the migration-harness skill. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...). The spec MUST cover the legacy application's user-facing surface (web UI / index page) — either map it to a migration task or explicitly waive it with a reason.
+"Use the migration-harness skill and read PLANNING.md in its directory. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...). The spec MUST cover the legacy application's user-facing surface (web UI / index page) — either map it to a migration task or explicitly waive it with a reason.
 ${OPERATOR_NOTES}
 Finish with ONE commit whose message STARTS with 'Phase B:'. Stop after Phase B." \
-"Use the migration-harness skill. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${OPERATOR_NOTES}" \
     || { log "FATAL: Phase B failed"; echo phaseB-failed > /tmp/supervisor-done; exit 1; }
 fi
 
@@ -181,10 +181,10 @@ log "task list: $(echo $TASK_IDS | tr '\n' ' ')"
 for T in $TASK_IDS; do
   committed "$T" && { log "$T: already committed"; continue; }
   run_stage "$T" "$T" \
-"Use the migration-harness skill. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY.
+"Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY.
 ${OPERATOR_NOTES}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
-"Use the migration-harness skill. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY. A previous attempt may have left partial uncommitted work or a finished worker run - inspect git status first, verify or finish the work, run the sensors, and commit ONE commit whose message STARTS with '${T}:'.
+"Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY. A previous attempt may have left partial uncommitted work or a finished worker run - inspect git status first, verify or finish the work, run the sensors, and commit ONE commit whose message STARTS with '${T}:'.
 ${OPERATOR_NOTES}" \
     || log "$T: exhausted — recorded, moving on"
 done
@@ -192,13 +192,13 @@ done
 # ---------------------------------------------------------------- Phase D
 if ! committed "Phase D"; then
   run_stage "Phase D" "phaseD" \
-"Use the migration-harness skill. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D:
+"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D:
 1. kantra-ensure, then /tmp/kantra/kantra analyze -i /projects/modernized -o /tmp/kantra-after --target quarkus --json-output --overwrite (tolerate exit 1 per the skill), copy /tmp/kantra-after/output.json to migration/mta-findings-after.json.
 2. Compute the findings delta (baseline vs after) with a terminal python3 heredoc; append a delta summary to migration/run-log.md. Remaining findings must be individually explained (advisory / false positive with reasoning).
 3. mvn -q clean verify must pass.
 4. ONE commit whose message starts 'Phase D:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Execute Phase D per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'Phase D:'. ${OPERATOR_NOTES}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase D per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'Phase D:'. ${OPERATOR_NOTES}" \
     || log "Phase D: exhausted — shipping without final re-analysis commit"
 fi
 
@@ -296,10 +296,10 @@ while [ $ROUND -le $((MAX_GATE_ROUNDS+1)) ]; do
       OC logs -n "$NS" -l tekton.dev/taskRun="$FAILED_TASK" --tail=80 2>/dev/null | grep -iE "ERROR|BUILD|Caused|Could not" | head -30
     } > /tmp/build-failure.txt
     run_stage "Build fix r${ROUND}" "buildfix-r${ROUND}" \
-"Use the migration-harness skill. Execute Phase E build-correction round ${ROUND}: the factory BUILD stage failed — the repository does not build in the pipeline environment (workspace-only state does not ship). The failure evidence is in /tmp/build-failure.txt — read it with your file tools and diagnose the root cause. Typical class: a dependency resolvable only in the workspace (e.g. a locally-installed legacy jar) — the repository must be self-contained: vendor the jar in-repo (lib/ + a file-based repository declaration in pom.xml, or install-file at build time via a documented mechanism) or replace the dependency. mvn -q clean verify must pass AFTER purging the artifact from the local repo (mvn dependency:purge-local-repository -DmanualInclude=<groupId>:<artifactId> or rm -rf ~/.m2/repository/<path>) so you prove pipeline-equivalent resolution.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase E build-correction round ${ROUND}: the factory BUILD stage failed — the repository does not build in the pipeline environment (workspace-only state does not ship). The failure evidence is in /tmp/build-failure.txt — read it with your file tools and diagnose the root cause. Typical class: a dependency resolvable only in the workspace (e.g. a locally-installed legacy jar) — the repository must be self-contained: vendor the jar in-repo (lib/ + a file-based repository declaration in pom.xml, or install-file at build time via a documented mechanism) or replace the dependency. mvn -q clean verify must pass AFTER purging the artifact from the local repo (mvn dependency:purge-local-repository -DmanualInclude=<groupId>:<artifactId> or rm -rf ~/.m2/repository/<path>) so you prove pipeline-equivalent resolution.
 Finish with ONE commit whose message STARTS with 'Build fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: build-fix round $ROUND exhausted"; break; }
   elif [[ "$FAILED_TASK" == *deploy* ]]; then
@@ -313,25 +313,25 @@ ${OPERATOR_NOTES}" \
       [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
     } > /tmp/deploy-failure.txt
     run_stage "Deploy fix r${ROUND}" "deployfix-r${ROUND}" \
-"Use the migration-harness skill. Execute Phase E deploy-correction round ${ROUND}: the factory build and quality gate PASSED but the DEPLOY stage failed — the migrated service does not start in its runtime. The failure evidence (failed task, crash-looping pod, its last 60 log lines) is in /tmp/deploy-failure.txt — read it with your file tools and diagnose the root cause (typical classes: schema validation vs Flyway DDL drift, missing config/env, missing runtime dependency).
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase E deploy-correction round ${ROUND}: the factory build and quality gate PASSED but the DEPLOY stage failed — the migrated service does not start in its runtime. The failure evidence (failed task, crash-looping pod, its last 60 log lines) is in /tmp/deploy-failure.txt — read it with your file tools and diagnose the root cause (typical classes: schema validation vs Flyway DDL drift, missing config/env, missing runtime dependency).
 Fix the ROOT CAUSE in the repository (source, Flyway migrations under src/main/resources/db/migration/, application.properties, or k8s/ manifests). Never weaken validation to make the error disappear.
 After the fix: mvn -q clean verify must pass.
 Finish with ONE commit whose message STARTS with 'Deploy fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
   else
     N=$(gate_violations)
     log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
     run_stage "Gate fix r${ROUND}" "gatefix-r${ROUND}" \
-"Use the migration-harness skill. Execute Phase E gate-correction round ${ROUND}: the factory SonarQube quality gate REJECTED the push. The complete violation list (rule (count): file:line, plus DUPLICATION lines) is in /tmp/gate-violations.txt — read it with your file tools.
+"Use the migration-harness skill and read SHIPPING.md and EXECUTION.md in its directory. Execute Phase E gate-correction round ${ROUND}: the factory SonarQube quality gate REJECTED the push. The complete violation list (rule (count): file:line, plus DUPLICATION lines) is in /tmp/gate-violations.txt — read it with your file tools.
 Dispatch the fixes to the worker in SMALL packets per the packet size rule: group by rule, at most ~10 sites per packet, one concern per packet, sequentially. Duplication lines mean consolidation (records / static factories), not suppression.
 Business logic must be unchanged — never invert boolean conditions when converting to isEmpty(). Fixes must not INTRODUCE new sites of the same rules (e.g. new exception classes bringing undeclarable throws clauses).
 After all packets: mvn -q clean verify must pass and JaCoCo coverage stays >= 80%.
 Finish with ONE commit whose message STARTS with 'Gate fix r${ROUND}:'. DO NOT PUSH - the supervisor ships.
 ${OPERATOR_NOTES}" \
-"Use the migration-harness skill. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
 ${OPERATOR_NOTES}" \
       || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
   fi
