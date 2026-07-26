@@ -79,3 +79,14 @@ post-commit task sensor RED within seconds → `sensor-fix` session
 dispatched automatically with the exact compile errors as evidence.
 First fully-autonomous catch-and-correct of a red commit. Awaiting the
 fix session's outcome for the closing verdict on this entry.
+
+### 22:40–22:55 — T-001 red closed out; plan reaches lint-clean
+Sensor-fix session did not commit (bounded, by design) → operator
+boundary intervention: reverted the premature wrong-package harvest
+(`5464f4e`, sensor-verified green after revert — same repair class as
+run #4, ~3 min instead of ~1.5 h). Dispatched a distinct "Phase B
+revision 2" session against the TRUE lint findings → `35e3a07`:
+**PLAN OK — 29 tasks (15 infer / 14 rewrite), all classed, designs
+present, all mandatory findings + preserve:CATALOG_ENDPOINT mapped,
+lint exit 0.** First fully lint-clean plan of any run, achieved with a
+correct instrument. Supervisor resumed into the task loop.
