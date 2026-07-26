@@ -233,3 +233,26 @@ The demo must deploy from any GitHub org and container registry, not just the au
 - [ ] **Per-user MaaS keys** — `ai-developer` and `ai-admin` share one key set (shared 5M tokens/h budget, merged telemetry). Per-user subscriptions would demo stage 040's metering story properly.
 - [x] **Stage 080 elevated key is ai-developer-scoped** — resolved by removal (2026-07-24): the elevated-key provisioning was deleted with the MigIQ-based stage 080 implementation; key strategy will be redefined with the new harness-based design.
 - [ ] **Ingress ELB idle timeout is cluster-local config** — the fix for 60s websocket/stream cuts (`oc patch ingresscontroller default -n openshift-ingress-operator` → `classicLoadBalancer.connectionIdleTimeout: 1h`) lives outside GitOps and must be reapplied on every fresh cluster; candidate for the bootstrap checklist in `docs/OPERATIONS.md`.
+
+## Findings from the 2026-07-26 autonomous run #3 (M2 orchestrator + 27B worker)
+
+- [ ] **Design-in-packet contract (runbook rule)** — both worker budget
+  exhaustions in run #3 (T-005 REST, T-011 security) were *micro-design*
+  packets: the goal said "modernize X" and left the target shape to the
+  worker, which the 27B cannot in-fill (three stalled attempts each);
+  every packet that carried the decided design (signatures, annotations,
+  file lists — e.g. run #2's T03) executed cleanly. Codify in the
+  migration-harness skill: **infer packets MUST carry the decided target
+  design; the worker never decides architecture.** Companion worker-side
+  rule (AGENTS.md / opencode skill): if a packet requires an architecture
+  decision, stop and report the ambiguity instead of attempting it —
+  a fast honest failure the orchestrator can re-packet, instead of a
+  25-minute stall.
+- [ ] **Orchestrator escalation valve (runbook rule + supervisor)** — when
+  a worker exhausts its budget on an infer task, the orchestrator may
+  implement that ONE task directly with its own file tools (relaxing
+  "orchestrator never edits source" from invariant to default), instead
+  of going straight to debt. Keeps division of labor as the norm while
+  removing the dead-end for design-class tasks. Wire as a third attempt
+  class in the supervisor (`escalated`) so the run-log records how often
+  the valve opens — a KPI for packet quality.
