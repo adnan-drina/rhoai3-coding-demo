@@ -116,6 +116,21 @@ run_stage() {
         log "$tag: killing residual worker (stage already committed)"
         pkill -9 -x opencode
       fi
+      # Trust-but-verify (run-4 lesson: a session committed a red tree):
+      # the supervisor runs the task sensor itself after EVERY commit. RED
+      # gets one evidence-driven fix session with its own commit prefix.
+      if ! .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+        event "$tag" "$attempt" sensor_red_post_commit verify
+        log "$tag: committed but the task sensor is RED — dispatching sensor-fix session"
+        orch "${tag}-sfix" \
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh task fails — read /tmp/sensor-task.log for the exact errors. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). Run .hermes/harness/sensors.sh task until GREEN, then commit ONE commit whose message STARTS with '${prefix} sensor fix:'.
+${RUN_CONTRACT}"
+        if committed "${prefix} sensor fix"; then
+          log "$tag: sensor-fix committed $(git log --oneline -1)"
+        else
+          log "$tag: sensor-fix did NOT commit — red tree recorded, continuing"
+        fi
+      fi
       return 0
     fi
     local cls; cls=$(classify "$rc" "/tmp/sup-${tag}-a${attempt}p${pf}.log")
