@@ -120,15 +120,19 @@ acceptance files. Never trust the worker's summary alone.
 **Sensors after EVERY task (cheap → expensive):**
 
 ```bash
-cd /projects/modernized
-export JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME}/bin:${PATH}"
-# clean is non-negotiable: an incremental build can pass on stale
-# target/ classes and hide missing dependencies the factory WILL catch
-mvn -q clean test
+.hermes/harness/sensors.sh task        # clean test on the ISOLATED repo
 ```
 
+The sensors run on a per-run isolated Maven repository (factory-parity:
+locally-installed artifacts do not exist there, exactly like the
+pipeline). `clean` stays non-negotiable — stale `target/` classes hide
+missing dependencies the factory WILL catch.
+
 If the task touched `pom.xml`, `application.properties`, or any other
-build/runtime configuration, escalate the sensor to `mvn -q clean verify`:
+build/runtime configuration — and on every milestone boundary (3–4
+tasks) — escalate to `.hermes/harness/sensors.sh milestone` (isolated
+clean verify PLUS the factory's own new-code sonar gate, so style
+violations die here, not in Phase E rounds):
 the factory runs the full Quarkus package build, whose extension
 processors enforce prod-mode requirements (e.g. Hibernate ORM demands a
 configured default datasource) that `clean test` never exercises —

@@ -28,6 +28,7 @@ MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
 MAX_FACTORY_ROUNDS=4      # Phase E correction rounds (build/gate/deploy classes share the budget)
 
 RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
+SUPERVISOR_VERSION=$(md5sum "$0" 2>/dev/null | cut -c1-8)
 LOG=/tmp/supervisor.log
 EVENTS=/tmp/supervisor-events.csv
 METRICS=/tmp/supervisor-metrics.csv
@@ -35,6 +36,10 @@ METRICS=/tmp/supervisor-metrics.csv
 [ -f "$METRICS" ] || echo "session,start,end,seconds,rc" > "$METRICS"
 
 log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
+
+log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL}"
+# C1: per-run isolated Maven repo — factory-parity resolution for every sensor
+.hermes/harness/sensors.sh seed >> "$LOG" 2>&1 || log "WARN: isolated repo seed failed — sensors fall back to red-on-use"
 event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
 
 # Process contract only — ALL judgment guidance (packet rules, sensors,
@@ -86,6 +91,7 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   rc=$?
   t1=$(date +%s)
   echo "${tag},${t0},${t1},$((t1-t0)),rc=${rc}" >> "$METRICS"
+  [ $((t1-t0)) -gt 1800 ] && { event "$tag" 0 slow_session "$((t1-t0))s"; log "$tag: SLOW session ($((t1-t0))s) — wedge candidate"; }
   return $rc
 }
 
@@ -140,6 +146,29 @@ run_stage() {
   log "$tag: attempts exhausted — checkpointing partial work per debt policy"
   git add -A && git commit -m "${prefix}: partial work checkpoint (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
   return 1
+}
+
+write_run_report() { # $1 = outcome line
+  {
+    echo "# Autonomous run report"
+    echo ""
+    echo "- Outcome: $1"
+    echo "- Supervisor version: ${SUPERVISOR_VERSION}; run base: ${RUN_BASE}"
+    echo "- Orchestrator: ${ORCH_PROVIDER}/${ORCH_MODEL}; worker: ${WORKER_MODEL}"
+    echo ""
+    echo "## Sessions"
+    echo ""
+    echo "| session | seconds | rc |"
+    echo "|---|---|---|"
+    awk -F, 'NR>1 {printf "| %s | %s | %s |\n", $1, $4, $5}' "$METRICS"
+    echo ""
+    echo "## Classified events"
+    echo ""
+    echo '```'
+    awk -F, 'NR>1 {print $4}' "$EVENTS" | sort | uniq -c | sort -rn
+    echo '```'
+  } > migration/run-report.md
+  git add migration/run-report.md && git commit -q -m "Run report: $1" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------- Phase A/B
@@ -276,73 +305,95 @@ PYEOF
 }
 
 log "Phase E: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
-ROUND=1
-while [ $ROUND -le $((MAX_FACTORY_ROUNDS+1)) ]; do
+BUILD_R=0; GATE_R=0; DEPLOY_R=0
+MAX_PER_CLASS=2
+while :; do
   PREV=$(newest_pipelinerun)
-  git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
+  git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
   log "Phase E: pushed $(git rev-parse --short HEAD), waiting for pipeline"
   RESULT=$(wait_pipeline "$PREV"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
-  event "phaseE" "$ROUND" "pipeline_$PR_ST" "$PR_NAME"
+  event "phaseE" 0 "pipeline_$PR_ST" "$PR_NAME"
   log "Phase E: pipeline $PR_NAME -> $PR_ST"
   if [ "$PR_ST" = "succeeded" ]; then
+    # E2: success = demo acceptance, not HTTP liveness — index page serves
+    # AND the products API returns a non-empty catalog.
     ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
+    sleep 10
     CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}/" 2>/dev/null || echo 000)
-    log "Phase E: route https://${ROUTE}/ -> HTTP ${CODE}"
-    event "phaseE" "$ROUND" "route_${CODE}" done
-    echo "success route=${ROUTE} http=${CODE}" > /tmp/supervisor-done
-    log "SUPERVISOR COMPLETE: migration shipped"
-    exit 0
+    PRODUCTS=$(curl -sk "https://${ROUTE}/api/products" 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo 0)
+    log "Phase E: route / -> ${CODE}; /api/products -> ${PRODUCTS} products"
+    if [ "$CODE" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
+      event "phaseE" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
+      write_run_report "success: shipped, route 200, ${PRODUCTS} products"
+      git push origin main >> "$LOG" 2>&1 || true
+      echo "success route=${ROUTE} http=${CODE} products=${PRODUCTS}" > /tmp/supervisor-done
+      log "SUPERVISOR COMPLETE: migration shipped and accepted"
+      exit 0
+    fi
+    log "Phase E: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
+    {
+      echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
+      echo "Route / returned HTTP ${CODE} (need 200 — the storefront index page must exist)."
+      echo "/api/products returned ${PRODUCTS} products (need > 0 — the legacy catalog must be served)."
+      echo "If the plan waived the UI surface, the waive is OVERRIDDEN by the demo acceptance: add a minimal index page over /api/products."
+    } > /tmp/deploy-failure.txt
+    FAILED_TASK="acceptance-deploy"
+  else
+    FAILED_TASK=$(OC get taskrun -n "$NS" -l tekton.dev/pipelineRun="$PR_NAME"       -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)
+    log "Phase E: failed pipeline task: ${FAILED_TASK:-unknown}"
   fi
-  [ $ROUND -gt $MAX_FACTORY_ROUNDS ] && break
-  # Classify WHICH pipeline stage failed — quality gate and deploy need
-  # different correction packets (run #2 lesson: sonar-green pushes can
-  # still crash-loop at the rollout gate).
-  FAILED_TASK=$(OC get taskrun -n "$NS" -l tekton.dev/pipelineRun="$PR_NAME" \
-    -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)
-  log "Phase E: failed pipeline task: ${FAILED_TASK:-unknown}"
   if [[ "$FAILED_TASK" == *maven-build* || "$FAILED_TASK" == *build-and-push* ]]; then
+    CLASS=build; BUILD_R=$((BUILD_R+1)); ROUND=$BUILD_R
+    [ $BUILD_R -gt $MAX_PER_CLASS ] && { log "Phase E: build round budget exhausted"; break; }
     {
       echo "Build-stage failure for pipeline $PR_NAME (task: $FAILED_TASK)."
       echo "--- maven/build errors ---"
       OC logs -n "$NS" -l tekton.dev/taskRun="$FAILED_TASK" --tail=80 2>/dev/null | grep -iE "ERROR|BUILD|Caused|Could not" | head -30
     } > /tmp/build-failure.txt
     run_stage "Build fix r${ROUND}" "buildfix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E BUILD-correction procedure for round ${ROUND}: the failure evidence is in /tmp/build-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E BUILD-correction procedure for round ${ROUND}: the failure evidence is in /tmp/build-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class. Finish with .hermes/harness/sensors.sh preflight GREEN before committing.
 ${RUN_CONTRACT}
 Commit prefix: 'Build fix r${ROUND}:'." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, prove pipeline-equivalent resolution (purged local artifact + mvn -q clean verify), and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight, and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
       || { log "Phase E: build-fix round $ROUND exhausted"; break; }
   elif [[ "$FAILED_TASK" == *deploy* ]]; then
-    APP=$(OC get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
-      | grep -E "CrashLoopBackOff|Error" | head -1 | awk '{print $1}')
-    {
-      echo "Deploy-stage failure for pipeline $PR_NAME."
-      echo "Failed task: $FAILED_TASK"
-      echo "Crash-looping pod: ${APP:-none found}"
-      echo "--- last 60 log lines of the failing pod ---"
-      [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
-    } > /tmp/deploy-failure.txt
+    CLASS=deploy; DEPLOY_R=$((DEPLOY_R+1)); ROUND=$DEPLOY_R
+    [ $DEPLOY_R -gt $MAX_PER_CLASS ] && { log "Phase E: deploy round budget exhausted"; break; }
+    if [ "$FAILED_TASK" != "acceptance-deploy" ]; then
+      APP=$(OC get pods -n "$NS" -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} {.status.containerStatuses[0].state.waiting.reason}{"\n"}{end}' 2>/dev/null \
+        | grep -E "CrashLoopBackOff|Error" | head -1 | awk '{print $1}')
+      {
+        echo "Deploy-stage failure for pipeline $PR_NAME."
+        echo "Failed task: $FAILED_TASK"
+        echo "Crash-looping pod: ${APP:-none found}"
+        echo "--- last 60 log lines of the failing pod ---"
+        [ -n "$APP" ] && OC logs -n "$NS" "$APP" --tail=60 2>/dev/null
+      } > /tmp/deploy-failure.txt
+    fi
     run_stage "Deploy fix r${ROUND}" "deployfix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E DEPLOY-correction procedure for round ${ROUND}: the failure evidence is in /tmp/deploy-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E DEPLOY-correction procedure for round ${ROUND}: the failure evidence is in /tmp/deploy-failure.txt - read it with your file tools and follow SHIPPING.md for this correction class. Finish with .hermes/harness/sensors.sh preflight GREEN before committing.
 ${RUN_CONTRACT}
 Commit prefix: 'Deploy fix r${ROUND}:'." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E deploy-correction round ${ROUND}; a previous attempt may have left uncommitted work - inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run mvn -q clean verify, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E deploy-correction round ${ROUND}; inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
       || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
   else
+    CLASS=gate; GATE_R=$((GATE_R+1)); ROUND=$GATE_R
+    [ $GATE_R -gt $MAX_PER_CLASS ] && { log "Phase E: gate round budget exhausted"; break; }
     N=$(gate_violations)
     log "Phase E: gate round $ROUND — $N new violations exported to /tmp/gate-violations.txt"
     run_stage "Gate fix r${ROUND}" "gatefix-r${ROUND}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E GATE-correction procedure for round ${ROUND}: the failure evidence is in /tmp/gate-violations.txt - read it with your file tools and follow SHIPPING.md for this correction class.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Execute the Phase E GATE-correction procedure for round ${ROUND}: the failure evidence is in /tmp/gate-violations.txt - read it with your file tools and follow SHIPPING.md for this correction class. Finish with .hermes/harness/sensors.sh milestone GREEN before committing (it runs the factory's own sonar gate locally - iterate until it passes).
 ${RUN_CONTRACT}
 Commit prefix: 'Gate fix r${ROUND}:'." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E gate-correction round ${ROUND}; a previous attempt may have left uncommitted fixes - inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run mvn -q clean verify, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E gate-correction round ${ROUND}; inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run .hermes/harness/sensors.sh milestone until GREEN, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
       || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
   fi
-  ROUND=$((ROUND+1))
 done
-echo "gate-failed after $((ROUND-1)) rounds" > /tmp/supervisor-done
-log "SUPERVISOR COMPLETE: factory gate not passed — see /tmp/gate-violations.txt and migration/debt.md"
+write_run_report "factory not passed (build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R} rounds)"
+git push origin main >> "$LOG" 2>&1 || true
+echo "factory-failed build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R}" > /tmp/supervisor-done
+log "SUPERVISOR COMPLETE: factory not passed — evidence preserved for the retro"
 exit 1
