@@ -1,5 +1,8 @@
 # Phases A and B — ground truth and plan
 
+Plans map findings to the DECIDED targets in [MAPPINGS.md](MAPPINGS.md) —
+cite the catalog, do not re-derive architecture per run.
+
 ## Contents
 - Phase A — normalize ground truth
 - Working with the findings file

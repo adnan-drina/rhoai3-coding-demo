@@ -70,6 +70,7 @@ python3 .hermes/skills/migration-harness/scripts/summarize_worker.py /tmp/oc-tas
 | A (ground truth) and B (spec, plan, tasks) | [PLANNING.md](PLANNING.md) |
 | C (task execution: packets, dispatch, sensors, budget) | [EXECUTION.md](EXECUTION.md) |
 | D (re-analysis + final verify) and E (factory gate loop) | [SHIPPING.md](SHIPPING.md) |
+| Jakarta→Quarkus mapping catalog (plans and packets cite it) | [MAPPINGS.md](MAPPINGS.md) |
 | Model routing and cost discipline | [REFERENCE.md](REFERENCE.md) |
 
 Read ONLY the file for your current phase — each is self-contained.
