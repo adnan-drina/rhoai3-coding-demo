@@ -345,6 +345,21 @@ run_case() {
 }
 check "roadmap-lint rejects owning a recipe-executed finding" 1 "LINT:coverage"
 
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/## S02:/## S03:/; s/depends: S01/depends: S01/" roadmap.md
+  mv briefs/S02-services.md briefs/S03-services.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects non-contiguous story numbering" 1 "not contiguous"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/findings: springboot-web-to-quarkus-00000/findings: springboot-web-to-quarkus-00000 (CartEndpoint instances)/" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects prose in the findings field" 1 "non-rule-id token"
+
 # --- plan-lint story scoping (M3) ------------------------------------------
 run_case() {
   mkfix

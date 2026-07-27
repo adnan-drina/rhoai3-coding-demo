@@ -45,6 +45,12 @@ def main():
         if ids.count(sid) > 1:
             lint("stories", f"{sid}: story id used more than once")
 
+    # numbering must be contiguous from S01 (dry-run catch: a session
+    # left S01,S03 after renumbering mid-flight and the lint passed)
+    expect = [f"S{i:02d}" for i in range(1, len(ids) + 1)]
+    if ids != expect:
+        lint("stories", f"story numbering not contiguous: {ids} (want {expect})")
+
     parts = re.split(r"^##\s+(S\d{2,})\s*:.*$", text, flags=re.M)
     bodies = {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
 
@@ -63,6 +69,9 @@ def main():
             lint("substance", f"{sid}: scope names no code/test path — ceremonial story")
         for fid in re.split(r"[,\s]+", field(sid, "findings") or ""):
             if not fid or fid == "-":
+                continue
+            if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+", fid):
+                lint("stories", f"{sid}: findings field contains non-rule-id token '{fid[:40]}' — ids only, no prose")
                 continue
             if fid in owned:
                 lint("coverage", f"finding {fid} owned by both {owned[fid]} and {sid}")
