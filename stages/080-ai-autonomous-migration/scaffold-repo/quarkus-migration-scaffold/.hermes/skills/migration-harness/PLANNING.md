@@ -70,6 +70,17 @@ contract into the same layout stage 070 uses:
   before infer tasks. Every mandatory finding maps to at least one task;
   every task cites its finding rule ids.
 
+The plan lint (`.hermes/harness/plan-lint.py`) enforces, deterministically:
+task headings `#### T-NNN: title` (any heading depth 2–6; zero-padded
+numeric ids, each used once); a `Class: rewrite|infer` marker per task;
+all rewrite tasks before the first infer task; decided design content in
+every infer body (file mappings/signatures/annotations); the legacy
+user-facing surface (web UI / index page) covered by a task or
+explicitly waived with a reason; every mandatory finding, every
+migration.yaml `preserve:` item, and the migration.yaml
+`acceptance.path` mapped to a task; and no `com.redhat.coolstore`
+package targets (project root is `com.demo`).
+
 Two task-authoring constraints (from cart run #2):
 
 - **Every task changes code or tests.** No ceremonial tasks ("final

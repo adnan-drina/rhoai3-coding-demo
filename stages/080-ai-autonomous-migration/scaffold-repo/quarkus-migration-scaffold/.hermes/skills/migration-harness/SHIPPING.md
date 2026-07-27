@@ -70,6 +70,30 @@ the error disappear.
 small per-rule packets, consolidation for duplication, semantics
 preserved, coverage held.
 
+When the evidence shows `COVERAGE` lines (the gate can fail on new-code
+coverage alone, with zero violations — cart run #2), the fix is REAL
+unit tests for the least-covered classes listed:
+
+- Mock EXTERNAL BOUNDARIES only (REST clients, remote services);
+  internal collaborators and models stay real — a test that mocks the
+  migrated classes asserts the mocks, not the migration.
+- NEVER change an expected assertion value to make a test pass; legacy
+  assertion values are the contract.
+- Plain JUnit/Mockito suffices for models and services; `@QuarkusTest`
+  only where CDI wiring is the subject.
+- Near-identical case families become one `@ParameterizedTest`
+  (java:S5976 fails the in-loop gate otherwise).
+
+**Acceptance correction** (`/tmp/deploy-failure.txt`, task
+`acceptance-deploy`): the pipeline is green but the demo acceptance is
+unmet. The contract is: route `/` serves 200 (a minimal index page over
+the app's API is enough — a UI waive in the plan is overridden here),
+and the `acceptance.path` from migration.yaml returns 200 with
+non-empty JSON reporting REAL service state — never canned domain data
+(that is the forbidden-fabrication class). Keep `quarkus.http.root-path`
+at its default: relocating it moves `/q/health` and `/` and breaks both
+the boot check and this acceptance.
+
 Round budget is supervisor-enforced across all three classes. A final
 rejection halts the run with the evidence preserved for the retro —
 never bypass or water down the gate.

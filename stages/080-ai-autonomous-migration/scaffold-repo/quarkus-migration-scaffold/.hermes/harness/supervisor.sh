@@ -194,6 +194,24 @@ ${RUN_CONTRACT}"
   return 1
 }
 
+# ------------------------------------------------------------- Phase F
+# The improvement loop belongs to the agent too (division-of-labor
+# audit): after the run closes, one bounded session reads the run's own
+# telemetry and PROPOSES skill/harness diffs. Proposals are committed
+# for operator review — Phase F has NO authority to modify the harness
+# or skills, and a failed retro never blocks the run outcome.
+phase_f_retro() {
+  committed "Phase F" && return 0
+  cp "$EVENTS" migration/retro-events.csv 2>/dev/null || true
+  cp "$METRICS" migration/retro-metrics.csv 2>/dev/null || true
+  git add migration/retro-*.csv >/dev/null 2>&1 || true
+  orch "phaseF" \
+"Use the migration-harness skill. The migration run is CLOSED — this is Phase F, the retrospective. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md in the migration-harness directory. Write migration/retro-proposals.md containing: (1) the three costliest failure patterns of THIS run, each citing evidence rows (event classes, session durations, run-log entries); (2) for each pattern one CONCRETE proposed change to a specific skill file or sensor — quote the exact text to add or replace and name the file and section; (3) anything the harness itself did that wasted model sessions. PROPOSE ONLY: do not modify any skill or harness file. Finish with ONE commit whose message STARTS with 'Phase F:'.
+${RUN_CONTRACT}"
+  committed "Phase F" && log "Phase F: retro proposals committed $(git log --oneline -1)" \
+    || log "Phase F: retro session did not commit — skipped (non-blocking)"
+}
+
 write_run_report() { # $1 = outcome line
   {
     echo "# Autonomous run report"
@@ -248,7 +266,7 @@ if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
   log "Phase B: already present"
 else
   run_stage "Phase B" "phaseB" \
-"Use the migration-harness skill and read PLANNING.md in its directory. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. Every mandatory finding maps to at least one task; rewrite tasks before infer tasks; every task heading uses the form '### T-NNN: title' with zero-padded numeric ids (T-001, T-002, ...). The spec MUST cover the legacy application's user-facing surface (web UI / index page) — either map it to a migration task or explicitly waive it with a reason.
+"Use the migration-harness skill and read PLANNING.md in its directory. Phase A is committed. Execute Phase B ONLY: read the legacy code under /projects/legacy and the findings (scripted extraction only), then write specs/001-coolstore-migration/spec.md, plan.md and tasks.md per the skill. A deterministic plan lint gates the result (format, ids, ordering, design content, finding/preserve/acceptance coverage) — PLANNING.md states the rules it enforces.
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with 'Phase B:'. Stop after Phase B." \
 "Use the migration-harness skill and read PLANNING.md in its directory. Execute Phase B ONLY; a previous attempt did not commit. If specs/001-coolstore-migration/{spec,plan,tasks}.md exist and are complete, commit them with message starting 'Phase B:'; otherwise finish writing them first. ${RUN_CONTRACT}" \
@@ -354,52 +372,10 @@ wait_pipeline() { # $1=previous newest run; waits for a NEW run to reach a termi
 }
 
 gate_violations() { # writes /tmp/gate-violations.txt; echoes count
-  python3 - "$SONAR_URL" "$SONAR_KEY" <<'PYEOF'
-import json, sys, urllib.request, collections
-base, key = sys.argv[1], sys.argv[2]
-def get(path):
-    with urllib.request.urlopen(base + path, timeout=30) as r: return json.load(r)
-try:
-    issues = get(f"/api/issues/search?componentKeys={key}&resolved=false&inNewCodePeriod=true&ps=200")
-except Exception as e:
-    print(0); raise SystemExit
-by = collections.defaultdict(list)
-for i in issues.get("issues", []):
-    by[i["rule"]].append(f"{i['component'].split(':')[-1]}:{i.get('line','?')}")
-with open("/tmp/gate-violations.txt", "w") as f:
-    for r in sorted(by):
-        f.write(f"{r} ({len(by[r])}): " + ", ".join(by[r]) + "\n")
-try:
-    dup = get(f"/api/measures/component_tree?component={key}&metricKeys=new_duplicated_lines&qualifiers=FIL&ps=50")
-    with open("/tmp/gate-violations.txt", "a") as f:
-        for c in dup.get("components", []):
-            m = {x["metric"]: (x.get("period") or {}).get("value") or x.get("value") for x in c.get("measures", [])}
-            dl = float(m.get("new_duplicated_lines") or 0)
-            if dl > 0: f.write(f"DUPLICATION {c['path']}: {int(dl)} duplicated new lines\n")
-except Exception: pass
-# Coverage is a gate condition too (cart run #2: the gate failed on
-# new_coverage alone with 0 violations — an empty evidence file sends the
-# fix session in blind). Export the metric and the least-covered files.
-try:
-    cov = get(f"/api/measures/component?component={key}&metricKeys=new_coverage")
-    val = None
-    for x in cov.get("component", {}).get("measures", []):
-        val = (x.get("period") or {}).get("value") or x.get("value")
-    if val is not None and float(val) < 80:
-        tree = get(f"/api/measures/component_tree?component={key}&metricKeys=new_coverage,new_uncovered_lines&qualifiers=FIL&ps=100")
-        with open("/tmp/gate-violations.txt", "a") as f:
-            f.write(f"COVERAGE new_coverage={val}% (gate requires >= 80%) — add REAL unit tests.\n")
-            f.write("Test rules: mock external boundaries only; internal collaborators stay real; never change expected assertion values.\n")
-            rows = []
-            for c in tree.get("components", []):
-                m = {x["metric"]: (x.get("period") or {}).get("value") or x.get("value") for x in c.get("measures", [])}
-                if m.get("new_coverage") is not None:
-                    rows.append((float(m["new_coverage"]), c["path"], m.get("new_uncovered_lines") or "?"))
-            for pct, path, unc in sorted(rows)[:10]:
-                f.write(f"COVERAGE {path}: {pct}% new-code coverage, {unc} uncovered new lines\n")
-except Exception: pass
-print(issues.get("total", 0))
-PYEOF
+  # Single evidence source (audit consolidation): violations + duplication
+  # + coverage (the gate can fail on coverage alone — cart run #2).
+  python3 .hermes/harness/sonar-report.py "$SONAR_URL" "$SONAR_KEY" \
+    --out /tmp/gate-violations.txt --coverage 2>/dev/null || echo 0
 }
 
 log "Phase E: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
@@ -464,6 +440,7 @@ ${RUN_CONTRACT}" \
     if [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
       event "phaseE" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
       write_run_report "success: shipped, route 200, ${PRODUCTS} products"
+      phase_f_retro
       git push origin main >> "$LOG" 2>&1 || true
       echo "success route=${ROUTE} http=${CODE} products=${PRODUCTS}" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: migration shipped and accepted"
@@ -474,7 +451,7 @@ ${RUN_CONTRACT}" \
       echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
       echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
       echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} items (need 200 and non-empty — the acceptance endpoint from migration.yaml)."
-      echo "If the plan waived the UI surface, the waive is OVERRIDDEN by the demo acceptance: add a minimal index page (served at /) over the app's API, and make sure ${ACC_PATH} is served by the app with non-empty JSON."
+      echo "See SHIPPING.md acceptance-correction for the contract and decided fixes."
     } > /tmp/deploy-failure.txt
     FAILED_TASK="acceptance-deploy"
   else
@@ -532,6 +509,7 @@ ${RUN_CONTRACT}" \
   fi
 done
 write_run_report "factory not passed (build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R} rounds)"
+phase_f_retro
 git push origin main >> "$LOG" 2>&1 || true
 echo "factory-failed build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R}" > /tmp/supervisor-done
 log "SUPERVISOR COMPLETE: factory not passed — evidence preserved for the retro"

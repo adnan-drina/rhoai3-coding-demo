@@ -95,47 +95,22 @@ sonar_check() { # $1 = inloop|full  (default full)
       -Dsonar.projectKey="$PROJECT_KEY" -Dsonar.qualitygate.wait=$gate_wait \
       > /tmp/sensor-sonar.log 2>&1
   local rc=$?
+  # Violation evidence comes from the single helper (audit consolidation).
   if [ "$mode" = "inloop" ]; then
     [ $rc -ne 0 ] && fail sonar "analysis submit failed — /tmp/sensor-sonar.log"
     sleep 8
     local n
-    n=$(python3 -c "
-import json, urllib.request
-u='$SONAR_HOST/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&inNewCodePeriod=true&ps=1'
-print(json.load(urllib.request.urlopen(u, timeout=30)).get('total', 0))" 2>/dev/null || echo 0)
+    n=$(python3 .hermes/harness/sonar-report.py "$SONAR_HOST" "$PROJECT_KEY" 2>/tmp/sonar-violations.txt || echo 0)
     if [ "${n:-0}" -gt 0 ]; then
-      python3 - "$SONAR_HOST" "$PROJECT_KEY" <<'PYEOF'
-import json, sys, urllib.request, collections
-base, key = sys.argv[1], sys.argv[2]
-with urllib.request.urlopen(f"{base}/api/issues/search?componentKeys={key}&resolved=false&inNewCodePeriod=true&ps=100", timeout=30) as r:
-    d = json.load(r)
-by = collections.defaultdict(list)
-for i in d.get("issues", []):
-    by[i["rule"]].append(f"{i['component'].split(':')[-1]}:{i.get('line','?')}")
-for rule in sorted(by):
-    print(f"{rule} ({len(by[rule])}): " + ", ".join(by[rule][:10]))
-PYEOF
+      cat /tmp/sonar-violations.txt
       fail sonar "in-loop gate: ${n} new violations (list above)"
     fi
     echo "sonar check GREEN (in-loop: 0 new violations)"
     return 0
   fi
   if [ $rc -ne 0 ]; then
-    python3 - "$SONAR_HOST" "$PROJECT_KEY" <<'PYEOF'
-import json, sys, urllib.request, collections
-base, key = sys.argv[1], sys.argv[2]
-try:
-    with urllib.request.urlopen(f"{base}/api/issues/search?componentKeys={key}&resolved=false&inNewCodePeriod=true&ps=100", timeout=30) as r:
-        d = json.load(r)
-    by = collections.defaultdict(list)
-    for i in d.get("issues", []):
-        by[i["rule"]].append(f"{i['component'].split(':')[-1]}:{i.get('line','?')}")
-    print(f"new violations: {d.get('total', '?')}")
-    for rule in sorted(by):
-        print(f"{rule} ({len(by[rule])}): " + ", ".join(by[rule][:10]))
-except Exception as e:
-    print(f"(violation detail fetch failed: {e})")
-PYEOF
+    python3 .hermes/harness/sonar-report.py "$SONAR_HOST" "$PROJECT_KEY" --coverage >/dev/null 2>/tmp/sonar-violations.txt
+    cat /tmp/sonar-violations.txt
     fail sonar "quality gate red — violations above; full log /tmp/sensor-sonar.log"
   fi
   echo "sonar check GREEN (new-code gate)"
