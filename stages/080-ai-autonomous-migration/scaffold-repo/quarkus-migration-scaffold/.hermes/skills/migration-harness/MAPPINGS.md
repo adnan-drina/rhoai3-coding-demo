@@ -47,6 +47,25 @@ For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
 | `spring-boot-maven-plugin` | `quarkus-maven-plugin` |
 | `@PostConstruct` (javax.annotation) | `jakarta.annotation.PostConstruct` (rewrite covers it) |
 
+Extended Spring catalog (harvested from the upstream
+[quarkusio/quarkus-skills](https://github.com/quarkusio/quarkus-skills)
+`migrate-spring-to-quarkus` annotation map, 2026-07 — decided for this
+harness: NATIVE Quarkus targets, never `quarkus-spring-*` compat
+extensions; compat mode hides the migration instead of doing it):
+
+| Legacy pattern | Target (decided) |
+|---|---|
+| `@Value("${prop}")` | `@ConfigProperty(name = "prop")` |
+| `@Configuration` + `@Bean` | `@ApplicationScoped` bean with `@Produces` methods |
+| `@Qualifier("name")` | `@Named` or a custom CDI qualifier |
+| `@PathVariable` / `@RequestParam` / `@RequestHeader` | `@PathParam` / `@QueryParam` / `@HeaderParam` |
+| `@RequestBody` | no annotation — JAX-RS body param |
+| `@ConfigurationProperties(prefix="app")` | `@ConfigMapping(prefix = "app")` |
+| `@Scheduled(cron=...)` / `(fixedRate=1000)` | `@io.quarkus.scheduler.Scheduled(cron=...)` / `(every = "1s")` |
+| `@Secured` / `@PreAuthorize("hasRole('X')")` | `@RolesAllowed("X")` |
+| `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>`; `@Query` JPQL → Panache `find()` |
+| `@SpringBootTest` / `@MockBean` | `@QuarkusTest` / `@InjectMock` (+ `@RestClient` qualifier when mocking a REST client) |
+
 ## Discovering further recipes
 
 Enumerate what the classpath offers before hand-coding a mechanical

@@ -1,5 +1,28 @@
 # Stage 080 harness — run #3 assessment and improvement plan
 
+> **2026-07-27 status.** Cart run #2 SHIPPED (gate OK: 93% new-code
+> coverage, 0 violations) — see `docs/CART-RUN2-ANALYSIS.md` for the
+> run-grounded retro. Post-ship improvements implemented: mechanical
+> commit closure in `run_stage` (T-003 pattern), ship-loop round
+> continuation, pre-push preflight gate, coverage-aware gate evidence,
+> and the X1 instrument suite (`.hermes/harness/tests/instruments.sh`,
+> 19 cases — its first run caught 3 live instrument defects: path-form
+> package identity, BSD `\s` portability, YAML section overread).
+>
+> **External skills verdicts (evaluated 2026-07-27):**
+> - `quarkusio/quarkus-skills` — substantive, actively maintained. Its
+>   interactive, approval-gated workflow does NOT fit the autonomous
+>   supervisor, but its annotation map corroborates our derived mappings
+>   and extended them: harvested into MAPPINGS.md (native-Quarkus
+>   targets decided; `quarkus-spring-*` compat mode rejected — it hides
+>   the migration instead of doing it). Its verification checklist
+>   independently mirrors our sensors (compile gate, no-Spring-artifacts
+>   grep, boot health check).
+> - `konveyor-ecosystem/konveyor-skills` — still skeletal (3 commits;
+>   one skill, `migration-stories`, a personas/user-story brainstorming
+>   tool upstream of technical migration; consumes no MTA analysis).
+>   Not adoptable for stage 080. Remains a WATCH item.
+
 Status: written 2026-07-26 during run #3's final gate round; numbers as of
 12:05 UTC. Run #3 = full autonomous migration, MiniMax M2 orchestrator +
 Qwen3.6-27B worker, supervisor-driven (Phases A–E). Baselines: run #1
