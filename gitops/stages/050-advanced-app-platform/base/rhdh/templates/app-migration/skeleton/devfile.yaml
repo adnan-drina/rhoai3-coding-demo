@@ -1,6 +1,11 @@
 schemaVersion: 2.2.0
 metadata:
   name: ${{ values.name }}
+attributes:
+  # Per-workspace PVC: the shared per-user claim is RWO and multi-attaches
+  # when a second workspace starts while another is running (observed
+  # live on round3's first start; run #2's workspace was patched by hand).
+  controller.devfile.io/storage-type: per-workspace
 # Migration workspace layout — two projects, fixed order:
 #   /projects/legacy      the application being migrated (workspace-only
 #                         clone of the legacy repository; never registered
