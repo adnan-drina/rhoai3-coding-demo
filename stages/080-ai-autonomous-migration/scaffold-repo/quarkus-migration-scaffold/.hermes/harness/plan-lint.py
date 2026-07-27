@@ -82,7 +82,7 @@ def main():
     # Package identity: the destination's package root is a project
     # constant (AGENTS.md); plans that target legacy packages replicate
     # the monolith's identity into the migrated service.
-    if re.search(r"com\.redhat\.coolstore", text):
+    if re.search(r"com[./]redhat[./]coolstore", text):
         lint("package", "plan targets legacy package com.redhat.coolstore — project root is com.demo (AGENTS.md)")
 
     # N2: every preserve: item in migration.yaml must appear in the plan

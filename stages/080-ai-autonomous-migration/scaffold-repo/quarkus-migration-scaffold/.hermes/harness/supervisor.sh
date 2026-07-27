@@ -173,8 +173,25 @@ ${RUN_CONTRACT}"
       pf=0; attempt=$((attempt+1))
     fi
   done
-  log "$tag: attempts exhausted — checkpointing partial work per debt policy"
-  git add -A && git commit -m "checkpoint of ${prefix} (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
+  # Mechanical commit closure (cart run #2: fix sessions three times did
+  # correct, sensor-green work and exhausted before the commit step — the
+  # "T-003 pattern" — and each time a human closed a purely mechanical
+  # step; the gate round even ended a run with the solution sitting
+  # uncommitted). If the leftover tree passes the task sensor, the
+  # supervisor completes the commit itself; the deeper gates (pre-push
+  # preflight, factory) still guard everything downstream.
+  if [ -n "$(git status --porcelain)" ]; then
+    if .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+      git add -A && git commit -m "${prefix}: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
+      event "$tag" "$MAX_ATTEMPTS" mechanical_commit closure
+      log "$tag: session work was sensor-GREEN but uncommitted — supervisor completed the commit ($(git log --oneline -1))"
+      return 0
+    fi
+    log "$tag: attempts exhausted — checkpointing partial work per debt policy"
+    git add -A && git commit -m "checkpoint of ${prefix} (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
+    return 1
+  fi
+  log "$tag: attempts exhausted with no session work in the tree"
   return 1
 }
 
@@ -386,6 +403,20 @@ PYEOF
 log "Phase E: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
 BUILD_R=0; GATE_R=0; DEPLOY_R=0; PREF_R=0
 MAX_PER_CLASS=2
+LAST_PUSHED=""
+# Cart run #2: a gate round "exhausted" while the fix (96.7% coverage)
+# sat committed as a checkpoint — and the old loop broke straight to
+# factory-failed. An exhausted round only ends the run when it produced
+# NOTHING new to ship; any new commit re-enters the loop, where the
+# pre-push preflight gates it and the factory arbitrates.
+round_exhausted() { # $1=class; 0 = continue the ship loop, 1 = stop
+  if [ "$(git rev-parse HEAD)" != "$LAST_PUSHED" ]; then
+    log "Phase E: ${1}-fix round exhausted but new commits exist — re-entering the ship loop"
+    return 0
+  fi
+  log "Phase E: ${1}-fix round exhausted with nothing new to ship"
+  return 1
+}
 while :; do
   # Pre-push preflight (cart run #2): the factory failed maven-build on a
   # defect (unpinned compiler plugin) the local full check catches — never
@@ -410,6 +441,7 @@ ${RUN_CONTRACT}" \
   fi
   PREV=$(newest_pipelinerun)
   git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
+  LAST_PUSHED=$(git rev-parse HEAD)
   log "Phase E: pushed $(git rev-parse --short HEAD), waiting for pipeline"
   RESULT=$(wait_pipeline "$PREV"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
   event "phaseE" 0 "pipeline_$PR_ST" "$PR_NAME"
@@ -461,7 +493,7 @@ ${RUN_CONTRACT}
 Commit prefix: 'Build fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E build-correction round ${ROUND}; inspect git status and /tmp/build-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight, and commit ONE commit starting 'Build fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
-      || { log "Phase E: build-fix round $ROUND exhausted"; break; }
+      || { round_exhausted build || break; continue; }
   elif [[ "$FAILED_TASK" == *deploy* ]]; then
     CLASS=deploy; DEPLOY_R=$((DEPLOY_R+1)); ROUND=$DEPLOY_R
     [ $DEPLOY_R -gt $MAX_PER_CLASS ] && { log "Phase E: deploy round budget exhausted"; break; }
@@ -482,7 +514,7 @@ ${RUN_CONTRACT}
 Commit prefix: 'Deploy fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E deploy-correction round ${ROUND}; inspect git status and /tmp/deploy-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight, and commit ONE commit starting 'Deploy fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
-      || { log "Phase E: deploy-fix round $ROUND exhausted"; break; }
+      || { round_exhausted deploy || break; continue; }
   else
     CLASS=gate; GATE_R=$((GATE_R+1)); ROUND=$GATE_R
     [ $GATE_R -gt $MAX_PER_CLASS ] && { log "Phase E: gate round budget exhausted"; break; }
@@ -494,7 +526,7 @@ ${RUN_CONTRACT}
 Commit prefix: 'Gate fix r${ROUND}:'." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Continue Phase E gate-correction round ${ROUND}; inspect git status, finish the remaining violations from /tmp/gate-violations.txt, run .hermes/harness/sensors.sh milestone until GREEN, and commit ONE commit starting 'Gate fix r${ROUND}:'. DO NOT PUSH.
 ${RUN_CONTRACT}" \
-      || { log "Phase E: gate-fix round $ROUND exhausted"; break; }
+      || { round_exhausted gate || break; continue; }
   fi
 done
 write_run_report "factory not passed (build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R} rounds)"

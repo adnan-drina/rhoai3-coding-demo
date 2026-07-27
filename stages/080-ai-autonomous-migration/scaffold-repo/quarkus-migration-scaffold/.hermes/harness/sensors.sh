@@ -20,16 +20,26 @@
 set -uo pipefail
 export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 export PATH="${JAVA_HOME}/bin:${PATH}"
-cd /projects/modernized
+# SENSOR_ROOT override exists for the instrument test suite (X1), which
+# runs the static checks against fixture trees.
+cd "${SENSOR_ROOT:-/projects/modernized}"
 
 M2_RUN="${M2_RUN:-/tmp/m2-run}"
 MVN="mvn -q -Dmaven.repo.local=${M2_RUN}"
 SONAR_GOAL="org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar"
 SONAR_HOST="${SONAR_HOST:-http://sonarqube.sonarqube.svc:9000}"
-PROJECT_KEY="$(basename "$(git remote get-url origin)" .git)"
+PROJECT_KEY="$(basename "$(git remote get-url origin 2>/dev/null || echo fixture)" .git)"
 DEV_DB_URL="${DEV_DB_URL:-jdbc:postgresql://coolstore-postgres.${PROJECT_KEY}-dev.svc:5432/coolstore}"
 
 fail() { echo "SENSOR RED ($1): $2"; exit 1; }
+
+yaml_items() { # $1 = top-level key; prints its list items, section-bounded.
+  # grep -A<N> overreads into the NEXT yaml section (X1 suite catch: a
+  # forbidden: item was read as a preserve: item). Stop at the next
+  # top-level key instead.
+  awk -v k="^$1:" '$0 ~ k {f=1; next} /^[^ \t]/ {f=0} f' migration.yaml \
+    | grep -E "^[[:space:]]*-" | sed -E 's/^[[:space:]]*-[[:space:]]*//; s/^"//; s/"$//'
+}
 
 seed() {
   [ -d "$M2_RUN" ] && { echo "isolated repo already seeded ($(du -sh "$M2_RUN" | cut -f1))"; return 0; }
@@ -43,7 +53,7 @@ forbidden_patterns() {
   # migration.yaml forbidden: patterns that must never appear in src/main
   # (fabricated domain data disguised as fallbacks — observed twice).
   [ -f migration.yaml ] && grep -q "^forbidden:" migration.yaml || return 0
-  grep -A20 "^forbidden:" migration.yaml | grep -E "^\s*-" | sed -E 's/^\s*-\s*//; s/^"//; s/"$//' | while read -r pat; do
+  yaml_items forbidden | while read -r pat; do
     [ -n "$pat" ] || continue
     if grep -rq "$pat" src/main 2>/dev/null; then
       echo "SENSOR RED (forbidden): pattern '$pat' found in src/main: $(grep -rl "$pat" src/main | head -2 | tr '\n' ' ')"
@@ -186,7 +196,7 @@ preserved_integrations() {
   # functional regression no unit test catches.
   [ -f migration.yaml ] && grep -q "^preserve:" migration.yaml || return 0
   local item
-  grep -A20 "^preserve:" migration.yaml | grep -E "^\s*-" | sed -E "s/^\s*-\s*//" | while read -r item; do
+  yaml_items preserve | while read -r item; do
     [ -n "$item" ] || continue
     grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null \
       || { echo "SENSOR RED (preserve): preserved integration '$item' absent from src/main, pom.xml and k8s/"; exit 1; }
@@ -206,5 +216,8 @@ case "${1:-}" in
   task)      task_sensor;;
   milestone) milestone_sensor;;
   preflight) preflight;;
-  *) echo "usage: sensors.sh seed|task|milestone|preflight"; exit 2;;
+  # static: every check that needs no Maven/JVM — used by the X1
+  # instrument test suite (tests/instruments.bats) against fixture trees.
+  static)    tree_hygiene; forbidden_patterns; wiring_invariants; preserved_integrations; echo "STATIC CHECKS GREEN";;
+  *) echo "usage: sensors.sh seed|task|milestone|preflight|static"; exit 2;;
 esac
