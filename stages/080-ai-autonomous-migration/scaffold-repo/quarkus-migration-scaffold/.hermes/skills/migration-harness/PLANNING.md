@@ -81,6 +81,23 @@ migration.yaml `preserve:` item, and the migration.yaml
 `acceptance.path` mapped to a task; and no `com.redhat.coolstore`
 package targets (project root is `com.demo`).
 
+Ordering and test placement (MigIQ-derived, validated against cart
+run #2's failures):
+
+- **Conversion tasks follow `migration/dependency-order.md`** (Phase A
+  emits it): dependencies before dependents — models and utilities
+  first, endpoints last — so the tree compiles at every commit. Cart
+  run #2's three red commits all came from harvesting dependents before
+  their dependencies. Classes in a listed circular group convert in ONE
+  task.
+- **Characterization tests come EARLY, not as a tail.** Immediately
+  after the mechanical rewrite tasks, one task ports the legacy test
+  suite / pins legacy behavior (assertion values are the contract), and
+  every god node flagged in dependency-order.md gets its
+  characterization tests BEFORE its conversion task. This both feeds
+  the 80% gate all run long and makes fabricated integrations fail
+  tests at the introducing commit.
+
 Two task-authoring constraints (from cart run #2):
 
 - **Every task changes code or tests.** No ceremonial tasks ("final

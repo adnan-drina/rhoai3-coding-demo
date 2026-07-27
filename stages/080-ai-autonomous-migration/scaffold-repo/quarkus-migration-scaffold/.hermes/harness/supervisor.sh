@@ -216,6 +216,15 @@ write_run_report() { # $1 = outcome line
   {
     echo "# Autonomous run report"
     echo ""
+    # Stakeholder-readable summary first, telemetry after (MigIQ
+    # adoption: the report is also the executive artifact).
+    echo "## Executive summary"
+    echo ""
+    echo "Autonomous migration of $(basename "$(git remote get-url origin)" .git):"
+    echo "$1. Findings delta and per-task detail: migration/run-log.md;"
+    echo "debt: migration/debt.md. Orchestrator ${ORCH_PROVIDER}/${ORCH_MODEL},"
+    echo "worker ${WORKER_MODEL}, $(awk -F, 'NR>1{n++}END{print n+0}' "$METRICS") model sessions."
+    echo ""
     echo "- Outcome: $1"
     echo "- Supervisor version: ${SUPERVISOR_VERSION}; run base: ${RUN_BASE}"
     echo "- Orchestrator: ${ORCH_PROVIDER}/${ORCH_MODEL}; worker: ${WORKER_MODEL}"
@@ -254,8 +263,13 @@ else
     cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
       || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
   fi
+  # MigIQ adoption: deterministic dependency analysis alongside the
+  # findings — the planner gets the conversion ORDER (dependencies
+  # first) and the god-node list instead of inferring them.
+  python3 .hermes/harness/dependency-order.py /projects/legacy > migration/dependency-order.md 2>/dev/null \
+    || log "WARN: dependency analysis failed — plan orders without it"
   SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
-  git add migration/mta-findings.json
+  git add migration/mta-findings.json migration/dependency-order.md
   git commit -q -m "Phase A: normalize MTA ground truth (supervisor script step)
 
 ${SUMMARY}"

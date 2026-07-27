@@ -188,6 +188,16 @@ run_case() {
 }
 check "supervisor task grep accepts every lint-accepted heading depth" 0 "PARITY OK"
 
+# 11c. dependency-order: dependencies must precede dependents
+run_case() {
+  mkfix
+  mkdir -p src/main/java/app
+  printf 'package app;\npublic class Model {}\n' > src/main/java/app/Model.java
+  printf 'package other;\nimport app.Model;\npublic class Endpoint {}\n' > src/main/java/app/Endpoint.java
+  python3 "$HARNESS_DIR/dependency-order.py" . | awk "/^1\./ {print \$2}"
+}
+check "dependency-order puts the imported class first" 0 "app.Model"
+
 # --- static sensor fixtures ------------------------------------------------
 
 green_pom() {
