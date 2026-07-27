@@ -215,6 +215,64 @@ guard** in the supervisor (second launch now refuses with FATAL) and
 can no longer resurrect Phase B). Launch scripts must abort on pull
 failure — mine now do.
 
+## Improvements to implement before the next run (compiled 2026-07-27, mid-S02)
+
+**A. Already implemented and validated mid-V3** (listed for the record):
+pre-push preflight-era stack carried over; Phase D after-analysis as a
+supervisor script step; in-loop sonar CE-task polling (stale-scan fix,
+proved itself on its first post-fix cycle); sfix-path mechanical
+closure (golden; pod gets it at relaunch); single-instance guard
+(live-proven); STORY_TASKS authority; JDTLS-droppings gitignore
+(round3).
+
+**B. Must-build before the monolith run (V4 core):**
+1. **Story-scope sensor with autonomous revert-and-redispatch**
+   (redesign §11) — the fabrication-class answer without human gates.
+   Three fabrication arcs across runs; two S02 scope inventions. The
+   single highest-value item.
+2. **Supervisor outer loop** — story iteration from the roadmap:
+   compute PLAN_SCOPE/STORY_TASKS/PRESERVE_CHECK/deploy per story,
+   M3→M5 cycle per story, per-story retro. Removes the operator's
+   launch scripting (source of the double-launch incident).
+3. **Pause-point mechanism** — a `/tmp/supervisor-pause` flag checked
+   between tasks for clean operator interventions (today's kills and
+   two-writer races on `target/` were all the absence of this).
+4. **Harvest-fidelity sensor** — diff harvested classes against
+   `migration/staging` with an approved-transform allowlist (package
+   rename, diamond, sonar-driven single-line fixes); catches
+   serialVersionUID-class drift mechanically.
+5. **@RestClient qualifier invariant** — wiring check: any injection
+   of a `@RegisterRestClient` interface carries the qualifier
+   (two-run recurrence).
+6. **Phase F retro prompt: artifact-diff review** — the telemetry-only
+   retro missed every artifact-level finding; add "read the story's
+   commits, judge fidelity/scope/fabrication" to its inputs.
+
+**C. Cheap lint/guidance additions (hours, not days):**
+7. **Hedge-word lint** in plan-lint: flag `if needed|as appropriate|
+   consider|optionally` in infer designs (two-session-validated
+   failure signature from T-001's contradiction).
+8. **Characterization-scope planning rule + lint heuristic**: test
+   tasks may only EXECUTE in-scope classes; value-pinning for
+   out-of-scope logic uses test-local expectation helpers (S01 T-008,
+   prevented again in S02 only by the brief).
+9. **Recurring test-style guidance** in EXECUTION.md: JUnit5 methods
+   package-private (S5786 ×3 stories), no commented-out code blocks
+   (S125), collapse assertion chains (S5838) — one style block ends
+   ~4 fix sessions per story.
+10. **Untracked-stray sweep**: after a task commit, untracked
+    `src/**` files are removed with a logged warning (sessions left
+    broken strays twice; committed work is the only work).
+11. **Scaffold-baseline pre-classification** in findings-inventory:
+    analyze the pristine scaffold once; rules firing there =
+    `verify-by-substance` disposition (ends both the
+    resolved-by-scaffold no-op sessions and the XPath-pedantry chase).
+12. **Skeleton/golden gitignore** for JDTLS droppings (round3 has it;
+    propagate).
+
+**D. Planned separately**: graphify adoption with its decisive spike
+(redesign §10) as the V5 pre-step.
+
 **Not exercised, deliberately** — this is the joint test run (V3):
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
