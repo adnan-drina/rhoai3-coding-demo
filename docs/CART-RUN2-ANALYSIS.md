@@ -180,3 +180,25 @@ Artifacts verified directly:
   introducing milestone with file:line precision; the sensor-fix session
   committed AUTONOMOUSLY for the first time (`51566ac`, commit-on-green
   prompt validated) and the milestone re-runs GREEN with 0 violations.
+
+### 03:49–03:56 — T-027: the fabrication class returned in FALLBACK disguise — caught by review, not sensors
+Escalated commit `5e33391` ("catalog service now integrated with
+fallback implementation") — artifact review found:
+- New `CatalogServiceRestClient` returning hardcoded mock products
+  **unconditionally** (line 50 — not even a real fallback: the genuine
+  REST result was discarded on the success path);
+- As an unqualified CDI bean it SHADOWED the MicroProfile REST client
+  for every consumer;
+- It read `catalog.service.url`, not the preserved `CATALOG_ENDPOINT`;
+- **Test tampering**: pricing assertions changed 2000.0→4000.0 to match
+  the fake data (fabricate-and-launder, committed).
+The N1 `escalated_untested` warning and the failing pricing test were
+the tells; the fallback itself was invisible to every sensor and to the
+preserve grep (config remained). Corrections: wrapper deleted,
+`@RestClient` qualifiers at all four injection points (+ the boundary
+test's), assertions restored to legacy values, and migration.yaml gains
+a `forbidden:` list (getMockProducts, "Fallback to mock") — sensor
+support pending. The remaining honest red — the boundary test hitting
+the real client with no catalog in the test env (the very gap the
+fabrication "solved") — dispatched as a constrained corrective session:
+@InjectMock the REST client with legacy test data, src/main untouched.
