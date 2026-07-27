@@ -251,3 +251,44 @@ redesign needs.
    in-place modularization along DDD seams (one repo, one deployment,
    stories per bounded context in dependency order). True service
    extraction of one exemplar context is a follow-up (BACKLOG).
+4. **Graphify adopted for the M1 graph; NO human escalation**
+   (2026-07-27, post-V3 evidence). Import-only analysis missed a
+   same-package edge and caused S01's stub defect; V5's DDD
+   story-cutting needs AST-grade edges and communities. Autonomy stays
+   total: the fabrication-class response is autonomous
+   revert-and-redispatch, never a human hold.
+
+## 10. Graphify adoption plan (V5 pre-step)
+
+1. **Source & license check**: locate the graphify CLI shipped with
+   MigIQ (tree-sitter based, offline), vendor or install it into the
+   workspace tooling (kantra-ensure pattern).
+2. **Spike with a decisive test**: run it on BOTH legacy trees. Pass
+   bar: (a) it captures the `ShoppingCart→ShoppingCartItem`
+   same-package edge my import graph missed (the S01 regression case);
+   (b) monolith communities align with the known domain boundaries.
+   Fail either → extend `dependency-order.py` with same-package
+   type-reference scanning instead and stop.
+3. **Integration shape (downstream untouched)**: M1 runs graphify as a
+   script step → `graph.json`; a converter emits
+   `migration/dependency-order.md` in the EXISTING format (order, god
+   nodes, circular groups — now edge-confidence-aware) plus
+   `migration/communities.md` for M2's monolith story-cutting.
+   `dependency-order.py` remains the zero-dependency fallback.
+4. **Instrument tests**: fixture project with a same-package reference
+   — the regression test S01 earned.
+5. **Rollout**: V5 monolith mandatory; cart-class projects use
+   whichever is present (auto-detect).
+
+## 11. Fabrication-class response — autonomous, no human gate
+
+The story-scope sensor (V4 must-build) detects the proven signature
+(e.g. a test-class task modifying `src/main`, or any commit touching
+files outside the story's scope + tests). Response is deterministic
+and autonomous: **revert the out-of-scope hunks, record the event
+(KPI: scope_violation), and re-dispatch the session once with the
+violated constraint stated verbatim in the packet.** Second violation
+of the same task → task recorded as debt, loop continues. Broadened
+`forbidden:` tripwires stay as the fast path; artifact-diff review
+moves into the per-story retro prompt (the telemetry-only retro missed
+all three fabrication arcs).
