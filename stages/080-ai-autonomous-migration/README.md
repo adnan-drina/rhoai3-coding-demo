@@ -103,6 +103,47 @@ Everything this platform already operates maps onto that picture:
 
 Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQube report and prompted the fix; here the harness feeds sensor output back to the agent, which iterates until the checks pass — quality shifts from inspection to regulation. Second, humans move up a level: nothing merges on agent authority because the **factory** won't let it, so instead of reviewing every intermediate diff, you observe where the loop struggled and **improve the harness** — Böckeler calls this the steering loop, and it is the stage 070 "skills retro" practice graduated into a system.
 
+### The migration process — five stages, two feedback loops
+
+The harness runs a staged process (the "M-process"). Every stage has
+explicit input and output artifacts committed to the repository — `git
+log --oneline` reads as the process narrative — and a deterministic
+gate guards each hand-off. Modernization is incremental by design: M2
+cuts the work into dependency-ordered **stories**, and M3→M5 cycle per
+story. No big bang.
+
+```text
+      ┌─────────────── outer loop: retro improves skills, rules, briefs ─────────────┐
+      │                          ┌──── findings delta → roadmap revision ────────────┤
+      ▼                          ▼                                                   │
+┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    │
+│ (1)  M1   │    │ (2)  M2   │    │ (3)  M3   │    │ (4)  M4   │    │ (5)  M5   │    │
+│  ANALYZE  │───▶│ SEQUENCE  │───▶│  SPECIFY  │───▶│ IMPLEMENT │───▶│ EVALUATE  │────┘
+│           │    │           │    │ per story │    │ per story │    │ per story │
+└───────────┘    └───────────┘    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
+ [analysis         [roadmap        ▲    │ lint      ▲    │ sensors        │
+  pipeline]         lint]          └────┘ red →     └────┘ red → fix      │
+                                   revision loop    session (inner loop)  │
+                                                                          │
+              next story from the roadmap  ◀──────────────────────────────┘
+```
+
+| # | Stage | Enabling technology | Tasks it performs | Output artifacts (committed) |
+|---|---|---|---|---|
+| 1 | **M1 ANALYZE** | MTA/kantra (Windup rules incl. platform contract rules), OpenRewrite recipes, dependency-graph script, one Hermes analyst session | Rule-based analysis of the legacy app (migration path + jakarta + cloud-readiness + JDK targets); classify every finding against the MAPPINGS rule-joins; compute the conversion order and god nodes; pre-execute mechanical recipes (jakarta) into a staging tree; write the architecture profile — components, integration surfaces, behavioral contract sources, domain seams | `mta-findings.json`, `findings-inventory.md`, `dependency-order.md`, `recipe-log.md` + staged sources, `architecture-profile.md` |
+| 2 | **M2 SEQUENCE** | Hermes planner session guided by the SEQUENCING skill; `roadmap-lint` gate | Cut the modernization into dependency-ordered stories (models before services before surfaces; domain seams for monoliths); mark deploy milestones; write one self-contained brief per story with real legacy code excerpts and the contracts that story owns | `roadmap.md`, `briefs/S*.md` |
+| 3 | **M3 SPECIFY** | spec-kit workflow (Hermes session per story); story-scoped `plan-lint` gate | Turn one brief into spec / plan / tasks: behavioral contract from legacy tests, decided target shapes from MAPPINGS, rewrite-before-infer ordering, characterization tests early, recipe-executed rules excluded | `specs/S<NN>/{spec,plan,tasks}.md` |
+| 4 | **M4 IMPLEMENT** | Supervisor task loop; Hermes orchestrator + OpenCode worker (packets); skills + AGENTS.md rules; task/milestone sensors (isolated Maven repo, in-loop SonarQube) | Execute the story's tasks one commit each; harvest from the recipe-staged sources; port/pin contract tests; every commit sensor-verified; red commits get autonomous fix sessions; mechanical commit closure for green-but-uncommitted work | code + tests, one `T-NNN:` commit per task, `run-log.md` rows |
+| 5 | **M5 EVALUATE** | Pre-push preflight (full quality gate + boot check); Tekton factory pipeline + SonarQube gate; kantra after-analysis (script step); Hermes retro session | Gate the story locally, ship through the factory; deploy stories must serve their acceptance endpoints live; measure the findings delta (before vs destination); write retro proposals that improve skills, rules and the remaining briefs before the next story starts | pipeline + gate results, deployed increment, `findings-delta`, `retro-proposals.md` |
+
+The two feedback loops do different jobs: the **inner loop** (sensors →
+fix sessions, lint → revision sessions) corrects the *work* within
+minutes; the **outer loop** (per-story retro → skills/rules/briefs,
+findings delta → roadmap) corrects the *process*, so each story starts
+smarter than the last. Steps 5–7 below walk the inner mechanics of one
+story; the platform runs this whole picture per story, in roadmap
+order.
+
 ### The harness implementation: Hermes Agent
 
 Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (Nous Research) as the harness implementation that owns the autonomous loop: a CLI-first agent that consumes the project's guides, runs the sensors as tools (build, tests, OpenRewrite, analysis), and iterates until the checks pass or the budget expires. The properties that matter here:
