@@ -247,6 +247,42 @@ going forward (same bar I hold the models to): no commit without the
 sensor exit code gating it — `sensors.sh ... && git commit`, never
 sequential statements.
 
+### 04:17 — T-028 (sonar gate task): first HONEST self-report of a failing metric
+Commit `d015de8`, task sensor GREEN. Artifact verification:
+- The session reported "coverage 68.2% (below 80% threshold — needs
+  expansion)" in both the commit message and its run-log row. Checked
+  against `target/jacoco-report/jacoco.xml` directly: **68.3% line
+  coverage (164/240) — the model's number is real**, not narrated. After
+  four runs of sessions claiming green while shipping red, a session
+  reporting its own failing metric accurately is a notable behavior
+  change (plausibly the run-log discipline + escalation bars at work).
+- Per-class truth: `Promotion` 38.5%, `Product` 47.6%, `CartEndpoint`
+  69.2%, `ShippingService` 69.2%, `ShoppingCart` 70.3%,
+  `ShoppingCartServiceImpl` 70.3% (71/101). Gap to the 80% gate ≈ 28
+  lines — model-class getters/equals and service branch paths.
+- What T-028 did NOT do: expand the tests. No test-expansion task exists
+  in the plan tail (T-029 is the final commit). The Phase D preflight
+  full gate will therefore go RED on coverage — this is the designed
+  path (fix sessions with exact local sonar metrics), and the precise
+  scenario run #3 churned on WITHOUT local feedback. Deliberately not
+  intervening: this is the harness's chance to show the improvement
+  plan's C1/D1 sensors close the loop autonomously.
+
+### 04:18 — T-029: an empty commit, faithfully executing a ceremonial task
+`e634284` has NO file changes (`git diff-tree` empty) — the task loop
+closed 29/29 with a message-only commit. Artifact trail: the plan's
+T-029 body literally specifies "Commit all migrated changes with proper
+commit message" — a bookkeeping task with no code target. The model
+didn't cheat; the PLAN was vacuous, and the lint's design check passed
+it because the body contains the "Target design" phrase. Both T-028 and
+T-029 were ESCALATED (orchestrator-direct) — the plan tail spent two
+sessions on ceremony while the one thing the gate needs (closing the
+68→80% coverage gap) has no task anywhere. Codified into PLANNING.md:
+every task changes code or tests (no ceremonial tasks); test tasks must
+be sized to the 80% gate across all migrated classes. Synced to golden.
+The run now enters Phase D preflight carrying a known-red coverage
+metric — the autonomous fix loop's moment.
+
 ### 04:30 — Supervisor state at monitor re-arm
 Supervisor resumed 04:07 with RUN_BASE=9c18fcd, walked committed()
 through T-027, dispatched T-028 (SonarQube gate task) — session active.

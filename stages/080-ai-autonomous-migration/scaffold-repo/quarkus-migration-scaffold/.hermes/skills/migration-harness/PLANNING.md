@@ -70,3 +70,16 @@ contract into the same layout stage 070 uses:
   before infer tasks. Every mandatory finding maps to at least one task;
   every task cites its finding rule ids.
 
+Two task-authoring constraints (from cart run #2):
+
+- **Every task changes code or tests.** No ceremonial tasks ("final
+  commit", "run validation", "prepare for gate") — commits happen per
+  task and the gate runs in the factory; a task whose only product is a
+  commit message or a report executes as an empty commit and wastes a
+  session.
+- **The plan's test tasks must be sized to the quality gate.** The
+  factory fails new-code coverage < 80%; a tail that validates but never
+  expands tests plans its own gate failure. Include explicit test tasks
+  covering every migrated class (models and services included, not just
+  endpoints).
+
