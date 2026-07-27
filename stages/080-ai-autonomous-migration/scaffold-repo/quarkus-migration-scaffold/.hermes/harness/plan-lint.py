@@ -93,6 +93,12 @@ def main():
         for item in pres:
             if item not in text:
                 lint("preserve", f"preserved integration '{item}' mapped to no task")
+        # Ship acceptance is part of the contract (cart run #2: the stamped
+        # acceptance.path had no endpoint anywhere in the plan, discovered
+        # only at ship time). The path must be mapped to a task.
+        m = _re.search(r"^acceptance:\s*\n\s*path:\s*(\S+)", my, _re.M)
+        if m and m.group(1) not in text:
+            lint("acceptance", f"acceptance path '{m.group(1)}' (migration.yaml) mapped to no task — the app must serve it")
     except FileNotFoundError:
         pass
 

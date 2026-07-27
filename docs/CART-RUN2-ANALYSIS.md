@@ -359,3 +359,35 @@ AFTER the real evidence was in place: its transcript references
 new_coverage/65.8/the per-class table 10× and it is reading jacoco.xml
 directly. The exporter fix (coverage evidence in gate_violations) is
 already in scaffold+golden, so future rounds start informed.
+
+### 05:34–05:46 — Gate round exhausted with the work DONE; operator closed commit + ship surface; relaunch
+Attempt 2 (8m41s, 101 tool calls) wrote 1,153 lines of REAL tests — 80
+new plain-JUnit tests across exactly the six least-covered classes from
+the evidence table, purely additive (no existing test touched → no
+tampering possible), mocking only the catalog boundary — then burned
+out before the commit step (T-003 pattern again); the supervisor
+checkpointed it (`c3dc95b`) and, one round being terminal in the old
+loop, exited factory-failed.
+
+Artifact verification of the checkpoint:
+- All 84 tests run and pass. **Merged line coverage 232/240 = 96.7%**
+  (the pom's two jacoco paths: `jacoco-report` for @QuarkusTest,
+  `site/jacoco` for plain JUnit — sonar merges both; my first
+  measurement read only the @QuarkusTest report and under-reported).
+- One honest sonar red remained: java:S5976 (12 near-identical shipping
+  tests) — consolidated into one @ParameterizedTest, and the round was
+  closed with a sensor-GATED commit `20353bb` (`sensors.sh milestone &&
+  git commit` — the operator discipline adopted after the 04:10 entry).
+
+Ship-surface audit before relaunch found the next failure class early
+(it would have burned boot/deploy rounds): migration.yaml demands
+`/api/cart/acceptance-check`, but NO task ever created it (plan-lint
+gap — now checks acceptance.path is mapped); `quarkus.http.root-path=
+/api` relocated `/q/health` (boot check) and made `/` a 404 (route
+acceptance); no index page. Fixed in `c6e8a03` (sensor-gated): root-path
+default, endpoint explicitly at `/api/cart` (API contract unchanged),
+honest acceptance endpoint reporting real config, minimal index page,
+boundary-test paths updated. Supervisor RELAUNCHED 05:46 with the
+improved script: pre-push preflight gate, coverage-aware gate evidence,
+generalized acceptance evidence text — the first live execution of the
+pre-push preflight is this run's next event.

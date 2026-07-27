@@ -440,7 +440,7 @@ ${RUN_CONTRACT}" \
       echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
       echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
       echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} items (need 200 and non-empty — the acceptance endpoint from migration.yaml)."
-      echo "If the plan waived the UI surface, the waive is OVERRIDDEN by the demo acceptance: add a minimal index page over /api/products."
+      echo "If the plan waived the UI surface, the waive is OVERRIDDEN by the demo acceptance: add a minimal index page (served at /) over the app's API, and make sure ${ACC_PATH} is served by the app with non-empty JSON."
     } > /tmp/deploy-failure.txt
     FAILED_TASK="acceptance-deploy"
   else
