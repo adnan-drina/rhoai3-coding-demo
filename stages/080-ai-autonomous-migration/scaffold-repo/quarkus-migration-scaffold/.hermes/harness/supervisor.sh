@@ -329,7 +329,7 @@ fi
 # ------------------------------------------------------------- Plan lint
 # Deterministic B2 gate: a defective plan is bounced ONCE for revision
 # with the specific lint findings before Phase C spends hours on it.
-TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
+TASKS_FILE="${STORY_TASKS:-$(ls specs/*/tasks.md 2>/dev/null | head -1)}"
 SCOPE_ARGS=""
 [ -n "$PLAN_SCOPE" ] && SCOPE_ARGS="--findings-scope $PLAN_SCOPE"
 LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS 2>&1)
@@ -348,7 +348,7 @@ ${RUN_CONTRACT}" \
 fi
 
 # ---------------------------------------------------------------- Phase C
-TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
+TASKS_FILE="${STORY_TASKS:-$(ls specs/*/tasks.md 2>/dev/null | head -1)}"
 # Accept 3-6 hash heading levels and any T-style id — models format
 # tasks.md differently no matter what the prompt mandates (run #3 lesson).
 # Depth 2-6, matching plan-lint exactly — a '## T-001:' plan used to pass
