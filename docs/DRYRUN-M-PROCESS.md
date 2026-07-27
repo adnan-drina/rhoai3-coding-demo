@@ -110,6 +110,26 @@ is exactly right, and the dry run exercised it manually.
   Cross-stage consistency issue; revision session dispatched with the
   exact findings.
 
+**Revision cycle findings (two more, one of them mine):**
+- **Operator-injected misinformation**: my first revision prompt told
+  the session to REMOVE `springboot-web-to-quarkus-00000` "because S02
+  owns it" — trusting the plan's stale waiver prose. The roadmap (the
+  ownership authority) assigns it to S01; the lint immediately went
+  red on the correct ground. Rule for the automated dispatcher: the
+  revision prompt derives ownership claims from the ROADMAP, never
+  from the plan under revision.
+- **Missing pom task — the string-presence coverage limit with teeth**:
+  the plan "covered" all pom-family findings by listing their ids in
+  the final validation task's body; no task actually converts the pom,
+  and jakarta-import models cannot compile without jakarta deps. The
+  findings check (string presence) is structurally blind to this —
+  documented limitation now demonstrated. Mitigation in the second
+  revision (dedicated pom task FIRST); durable mitigation is M4
+  itself (the first task sensor run fails compilation immediately) —
+  but plan-order correctness should not wait for implementation to
+  discover it. Candidate lint idea recorded: findings ids appearing
+  ONLY in validation/final tasks is a smell worth flagging.
+
 ## M4/M5 — mechanical checks (fresh workspace)
 
 - SONAR_TOKEN + SONAR_HOST auto-mounted in the new workspace (the
@@ -117,7 +137,9 @@ is exactly right, and the dry run exercised it manually.
   provisioning is no longer needed). ✓
 - Supervisor task-id parser reads all S01 task headings (parity with
   plan-lint held after the earlier fix). ✓
-- Sensor machinery (cold isolated-repo seed + task sensor): running.
+- Sensor machinery in the fresh workspace: cold seed 105M, then task
+  sensor GREEN in 4s. The full M4 gate stack is operational without any
+  manual provisioning. ✓
 - **Design note for the outer loop** (found by inspection, not yet
   code): the preflight `preserved_integrations` check greps src/main
   for every preserve item — on a per-story M5 this fails before the
