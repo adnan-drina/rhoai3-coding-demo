@@ -94,6 +94,8 @@ rules are flagged OPEN DESIGN by the inventory.
 | springboot-web-to-quarkus- | infer | native JAX-RS resources (NOT the spring-web extension) |
 | springboot-properties-to-quarkus- | rewrite | Quarkus keys in application.properties (plain pass-throughs keep working; NOT the spring-boot-properties extension) |
 | spring-components- | infer | umbrella version-incompatibility rules — resolved by the conversion tasks as a whole; map to the service/endpoint conversion tasks |
+| localhost-http- | infer | cloud-readiness: hardcoded/localhost service URLs → env-driven config (`${VAR:default}`), tied to the `preserve:` contract |
+| removed-javaee- | rewrite | JEE modules removed from the JDK → provided by Quarkus platform dependencies (BOM) — resolved with the pom conversion |
 
 ## Discovering further recipes
 

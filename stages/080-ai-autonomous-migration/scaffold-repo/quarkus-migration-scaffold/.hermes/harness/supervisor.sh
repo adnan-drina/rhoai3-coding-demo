@@ -257,21 +257,23 @@ else
   log "Phase A: running the harness-owned kantra analysis"
   kantra-ensure >> "$LOG" 2>&1 || true
   # Rule selection is label filtering (MTA 8.2 rules guide): the
-  # analysis contract lives in migration.yaml analysis: — source tech,
-  # target set (migration path + cloud-readiness + JDK jump), plus the
-  # project-contract custom ruleset. Defaults keep older projects valid.
-  A_SOURCE=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "source:" | awk '{print $2}')
+  # analysis contract lives in migration.yaml analysis: targets. NEVER a
+  # --source filter — validated 2026-07-27: it excludes source-labelless
+  # rules (including the custom contract rules) and narrows the set.
   A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
-  [ -n "$A_TARGETS" ] || A_TARGETS="quarkus cloud-readiness"
+  [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
   K_ARGS=""
-  [ -n "$A_SOURCE" ] && K_ARGS="--source $A_SOURCE"
   for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
   [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
   log "Phase A: kantra args: $K_ARGS (source-only mode)"
   # Neutral cwd: the JDTLS-based java provider dumps Equinox state into
-  # CWD. source-only: full dependency resolution wedges on legacy poms
-  # (observed 44 min) and adds nothing our rule set needs.
-  (cd /tmp && /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
+  # CWD. Java 21 REQUIRED: kantra's analyzer bundles declare
+  # osgi.ee=JavaSE-21 — under the pod default (17) JDTLS never starts
+  # and the provider waits forever (the root cause of every observed
+  # kantra wedge). source-only: our rule set needs no dependency
+  # analysis and it keeps the run minutes-scale.
+  (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
+    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
     $K_ARGS --mode source-only --json-output --overwrite) >> "$LOG" 2>&1 || true
   mkdir -p migration
   cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \

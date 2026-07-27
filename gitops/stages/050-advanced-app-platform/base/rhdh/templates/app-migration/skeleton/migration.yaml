@@ -10,13 +10,13 @@ acceptance:
   path: ${{ values.acceptancePath }}
   needsDatabase: ${{ values.needsDatabase }}
 analysis:
-  # MTA rule selection is LABEL FILTERING (--source/--target pick only
-  # matching rules; everything else is silently excluded). The decided
-  # set for this platform: the migration path itself, cloud-readiness
-  # (we deploy to OpenShift), and the JDK jump. Applies to the IDE
-  # analysis AND the supervisor's kantra fallback.
-  source: ${{ values.analysisSource }}
-  targets: [quarkus, cloud-readiness, openjdk17]
+  # MTA rule selection is LABEL FILTERING (targets pick only matching
+  # rules; everything else is silently excluded). Decided set (validated
+  # 2026-07-27 A/B on the cart legacy): the migration path, the jakarta
+  # namespace jump, cloud-readiness (OpenShift deploy), the JDK jump.
+  # NO source filter — it only narrows (excludes source-labelless rules
+  # incl. custom ones). Applies to IDE analysis AND the harness run.
+  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
 preserve:
   # Enforced: plan-lint maps each item to a task; the preflight sensor
   # greps them in src/main|pom|k8s. Populate from the analysis's

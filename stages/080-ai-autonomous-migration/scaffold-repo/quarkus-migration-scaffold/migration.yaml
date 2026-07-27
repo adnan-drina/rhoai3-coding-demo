@@ -8,5 +8,4 @@ migration:
 analysis:
   # MTA selects rules by source/target labels — the decided set:
   # the migration path, cloud-readiness (OpenShift deploy), JDK jump.
-  source: java-ee
-  targets: [quarkus, cloud-readiness, openjdk17]
+  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]

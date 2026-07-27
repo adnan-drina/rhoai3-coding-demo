@@ -45,6 +45,10 @@
   labels:
     - konveyor.io/target=quarkus
   when:
-    java.referenced:
-      location: FIELD
-      pattern: java.util.concurrent.ConcurrentHashMap
+    or:
+      - java.referenced:
+          location: FIELD
+          pattern: java.util.HashMap
+      - java.referenced:
+          location: FIELD
+          pattern: java.util.concurrent.ConcurrentHashMap

@@ -73,17 +73,6 @@ spec:
             migration's definition of shipped. Must be a REAL endpoint of
             the migrated app (cart: GET /api/cart/{id} returns 200 for any
             id; monolith round used /api/products).
-        analysisSource:
-          title: Legacy source technology (MTA rule selection)
-          type: string
-          default: springboot
-          enum:
-            - springboot
-            - java-ee
-          description: |
-            MTA selects rules by source/target labels — a wrong source
-            silently skips that technology's rules. springboot for the
-            cart-class services, java-ee for the monolith class.
 
   steps:
     - id: fetch-golden
@@ -118,7 +107,6 @@ spec:
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           needsDatabase: ${{ parameters.needsDatabase }}
           acceptancePath: ${{ parameters.acceptancePath }}
-          analysisSource: ${{ parameters.analysisSource }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 
