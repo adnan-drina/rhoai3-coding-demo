@@ -153,3 +153,14 @@ the plan's test tasks and would spam fix sessions); the full gate
 applies at preflight. Milestone now GREEN in-loop with 0 new violations
 — the run-2 codebase is style-clean at T-008, unlike every prior run at
 the same point. Supervisor resumed 00:54; T-009 in session.
+
+### 01:22–01:35 — Package-identity violation: plan-level root cause, fixed at all levels
+T-015's artifact review found the migrated service in
+`com.redhat.coolstore` — and the plan itself references the legacy
+package 19× (com.demo: 0). Sensors cannot see package placement; the
+plan-lint now can (new package-identity check — validated: plan red
+before the sed, PLAN OK after). Mechanical consolidation moved every
+legacy-package source to `com.demo` with imports rewritten (task sensor
+GREEN), plan text corrected so T-017+ target the right root. Third
+plan-authoring defect class this run (format, sequencing, identity) —
+each now a deterministic lint/rule, none can recur silently.
