@@ -247,34 +247,35 @@ write_run_report() { # $1 = outcome line
 }
 
 # ---------------------------------------------------------------- Phase A
-# A1: ground-truth normalization is pure file mechanics — a script step,
-# not a model session.
+# The harness owns the analysis end-to-end (2026-07-27 decision): Phase A
+# ALWAYS runs its own kantra with the migration.yaml analysis contract —
+# deterministic rule selection, reproducible ground truth. An IDE-run
+# analysis is a demo/browsing aid, never the harness input.
 if committed "Phase A" || [ -f migration/mta-findings.json ]; then
   log "Phase A: already present"
 else
-  latest=$(ls -t /projects/legacy/.vscode/mta-core/analysis_*.json 2>/dev/null | head -1)
-  if [ -n "$latest" ]; then
-    mkdir -p migration
-    cp "$latest" migration/mta-findings.json
-  else
-    log "Phase A: no IDE analysis — running kantra sensor"
-    kantra-ensure >> "$LOG" 2>&1 || true
-    # Rule selection is label filtering (MTA 8.2 rules guide): the
-    # analysis contract lives in migration.yaml analysis: — source tech,
-    # target set (migration path + cloud-readiness + JDK jump), plus the
-    # project-contract custom ruleset. Defaults keep older projects valid.
-    A_SOURCE=$(grep -A6 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "source:" | awk '{print $2}')
-    A_TARGETS=$(grep -A6 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
-    [ -n "$A_TARGETS" ] || A_TARGETS="quarkus cloud-readiness"
-    K_ARGS=""
-    [ -n "$A_SOURCE" ] && K_ARGS="--source $A_SOURCE"
-    for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
-    [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules .hermes/rules"
-    log "Phase A: kantra args: $K_ARGS"
-    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline $K_ARGS --json-output --overwrite >> "$LOG" 2>&1 || true
-    cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
-      || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
-  fi
+  log "Phase A: running the harness-owned kantra analysis"
+  kantra-ensure >> "$LOG" 2>&1 || true
+  # Rule selection is label filtering (MTA 8.2 rules guide): the
+  # analysis contract lives in migration.yaml analysis: — source tech,
+  # target set (migration path + cloud-readiness + JDK jump), plus the
+  # project-contract custom ruleset. Defaults keep older projects valid.
+  A_SOURCE=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "source:" | awk '{print $2}')
+  A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
+  [ -n "$A_TARGETS" ] || A_TARGETS="quarkus cloud-readiness"
+  K_ARGS=""
+  [ -n "$A_SOURCE" ] && K_ARGS="--source $A_SOURCE"
+  for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
+  [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
+  log "Phase A: kantra args: $K_ARGS (source-only mode)"
+  # Neutral cwd: the JDTLS-based java provider dumps Equinox state into
+  # CWD. source-only: full dependency resolution wedges on legacy poms
+  # (observed 44 min) and adds nothing our rule set needs.
+  (cd /tmp && /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
+    $K_ARGS --mode source-only --json-output --overwrite) >> "$LOG" 2>&1 || true
+  mkdir -p migration
+  cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
+    || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
   # Spec input bundle (docs/MTA-TO-SPEC-MAPPING.md): the mechanical
   # projections of the findings are computed here, not re-derived by
   # the Phase B model — dependency order, the findings inventory with
