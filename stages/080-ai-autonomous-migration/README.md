@@ -105,12 +105,7 @@ Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQub
 
 ### The migration process — five stages, two feedback loops
 
-The harness runs a staged process (the "M-process"). Every stage has
-explicit input and output artifacts committed to the repository — `git
-log --oneline` reads as the process narrative — and a deterministic
-gate guards each hand-off. Modernization is incremental by design: M2
-cuts the work into dependency-ordered **stories**, and M3→M5 cycle per
-story. No big bang.
+The harness runs a staged process (the "M-process"). Every stage has explicit input and output artifacts committed to the repository — `git log --oneline` reads as the process narrative — and a deterministic gate guards each hand-off. Modernization is incremental by design: M2 cuts the work into dependency-ordered **stories**, and M3→M5 cycle per story. No big bang.
 
 ```text
       ┌─────────────── outer loop: retro improves skills, rules, briefs ─────────────┐
@@ -136,13 +131,7 @@ story. No big bang.
 | 4 | **M4 IMPLEMENT** | Supervisor task loop; Hermes orchestrator + OpenCode worker (packets); skills + AGENTS.md rules; task/milestone sensors (isolated Maven repo, in-loop SonarQube) | Execute the story's tasks one commit each; harvest from the recipe-staged sources; port/pin contract tests; every commit sensor-verified; red commits get autonomous fix sessions; mechanical commit closure for green-but-uncommitted work | code + tests, one `T-NNN:` commit per task, `run-log.md` rows |
 | 5 | **M5 EVALUATE** | Pre-push preflight (full quality gate + boot check); Tekton factory pipeline + SonarQube gate; kantra after-analysis (script step); Hermes retro session | Gate the story locally, ship through the factory; deploy stories must serve their acceptance endpoints live; measure the findings delta (before vs destination); write retro proposals that improve skills, rules and the remaining briefs before the next story starts | pipeline + gate results, deployed increment, `findings-delta`, `retro-proposals.md` |
 
-The two feedback loops do different jobs: the **inner loop** (sensors →
-fix sessions, lint → revision sessions) corrects the *work* within
-minutes; the **outer loop** (per-story retro → skills/rules/briefs,
-findings delta → roadmap) corrects the *process*, so each story starts
-smarter than the last. Steps 5–7 below walk the inner mechanics of one
-story; the platform runs this whole picture per story, in roadmap
-order.
+The two feedback loops do different jobs: the **inner loop** (sensors → fix sessions, lint → revision sessions) corrects the *work* within minutes; the **outer loop** (per-story retro → skills/rules/briefs, findings delta → roadmap) corrects the *process*, so each story starts smarter than the last. Steps 5–7 below walk the inner mechanics of one story; the platform runs this whole picture per story, in roadmap order.
 
 ### The harness implementation: Hermes Agent
 
