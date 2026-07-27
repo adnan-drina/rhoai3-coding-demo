@@ -81,6 +81,24 @@ migration.yaml `preserve:` item, and the migration.yaml
 `acceptance.path` mapped to a task; and no `com.redhat.coolstore`
 package targets (project root is `com.demo`).
 
+**Phase A hands you a spec input bundle — consume it, do not re-derive
+it** (docs/MTA-TO-SPEC-MAPPING.md):
+
+- `migration/findings-inventory.md` — every mandatory finding already
+  classified via the MAPPINGS rule-join: `recipe` rules are ALREADY
+  EXECUTED (listed in `migration/recipe-log.md` — create NO tasks for
+  them); `rewrite`/`infer` rules carry their decided target; OPEN
+  DESIGN rows are where your judgment goes. Confirm the listed
+  preserve-candidates against migration.yaml.
+- `migration/staging/src` — legacy sources already recipe-transformed
+  (e.g. jakarta imports). Harvest tasks pull from the staging tree,
+  NOT from /projects/legacy.
+- `migration/dependency-order.md` — the conversion order (below).
+
+Your Phase B judgment budget belongs to: the behavioral contract (from
+legacy tests + code reading — findings only say where to look) and the
+OPEN DESIGN / infer shapes.
+
 Ordering and test placement (MigIQ-derived, validated against cart
 run #2's failures):
 

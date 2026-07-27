@@ -66,6 +66,35 @@ extensions; compat mode hides the migration instead of doing it):
 | `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>`; `@Query` JPQL → Panache `find()` |
 | `@SpringBootTest` / `@MockBean` | `@QuarkusTest` / `@InjectMock` (+ `@RestClient` qualifier when mocking a REST client) |
 
+## Windup rule joins (machine-readable)
+
+`findings-inventory.py` parses THIS table to classify every mandatory
+finding at Phase A. `class` semantics: `recipe:<plugin-version>:<recipe-artifact>:<recipe-name>`
+= executed by the supervisor as a scripted OpenRewrite step (validated
+2026-07-27 against the real cart legacy tree); `rewrite` = mechanical,
+executed in a task packet; `infer` = judgment — the decided shape is in
+the tables above. NOTE: several Windup rules SUGGEST `quarkus-spring-*`
+compat extensions; the join records OUR decision (native Quarkus,
+compat rejected — it hides the migration instead of doing it). Only
+rule ids observed in real analyses are listed; unmatched mandatory
+rules are flagged OPEN DESIGN by the inventory.
+
+| rule id prefix | class | decided target |
+|---|---|---|
+| javax-to-jakarta- | recipe:5.46.1:org.openrewrite.recipe:rewrite-migrate-java:2.30.1:org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta | jakarta.* imports |
+| javaee-pom-to-quarkus- | rewrite | scaffold pom conventions: platform BOM, pinned quarkus/compiler/surefire/failsafe plugins, native profile, quarkus junit |
+| springboot-parent-pom-to-quarkus- | rewrite | Quarkus platform BOM replaces the Spring parent |
+| springboot-plugins-to-quarkus- | rewrite | `quarkus-maven-plugin` (pinned, `${quarkus.platform.group-id}`) |
+| jakarta-jaxrs-to-quarkus- | rewrite | `quarkus-rest` dependency |
+| springboot-actuator-to-quarkus- | rewrite | `quarkus-smallrye-health` (`/q/health`) |
+| springboot-metrics-to-quarkus-01 | rewrite | Micrometer dependency → `quarkus-smallrye-metrics` |
+| springboot-metrics-to-quarkus-02 | infer | metrics call sites → MP Metrics annotations (design per site) |
+| springboot-annotations-to-quarkus- | rewrite | delete `@SpringBootApplication` + main class |
+| springboot-di-to-quarkus- | infer | native CDI constructor injection (NOT the spring-di extension) |
+| springboot-web-to-quarkus- | infer | native JAX-RS resources (NOT the spring-web extension) |
+| springboot-properties-to-quarkus- | rewrite | Quarkus keys in application.properties (plain pass-throughs keep working; NOT the spring-boot-properties extension) |
+| spring-components- | infer | umbrella version-incompatibility rules — resolved by the conversion tasks as a whole; map to the service/endpoint conversion tasks |
+
 ## Discovering further recipes
 
 Enumerate what the classpath offers before hand-coding a mechanical

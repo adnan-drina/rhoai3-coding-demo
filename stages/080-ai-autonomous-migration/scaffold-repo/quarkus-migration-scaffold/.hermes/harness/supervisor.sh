@@ -263,14 +263,21 @@ else
     cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
       || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
   fi
-  # MigIQ adoption: deterministic dependency analysis alongside the
-  # findings — the planner gets the conversion ORDER (dependencies
-  # first) and the god-node list instead of inferring them.
+  # Spec input bundle (docs/MTA-TO-SPEC-MAPPING.md): the mechanical
+  # projections of the findings are computed here, not re-derived by
+  # the Phase B model — dependency order, the findings inventory with
+  # the MAPPINGS join, and recipe-executed rewrites.
   python3 .hermes/harness/dependency-order.py /projects/legacy > migration/dependency-order.md 2>/dev/null \
     || log "WARN: dependency analysis failed — plan orders without it"
+  python3 .hermes/harness/findings-inventory.py migration/mta-findings.json \
+      .hermes/skills/migration-harness/MAPPINGS.md > migration/findings-inventory.md 2>/dev/null \
+    || log "WARN: findings inventory failed — Phase B derives the join itself"
+  .hermes/harness/recipe-transform.sh /projects/legacy migration/findings-inventory.md >> "$LOG" 2>&1 \
+    || log "WARN: recipe transform failed — recipe-class rules fall back to plan tasks"
   SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
-  git add migration/mta-findings.json migration/dependency-order.md
-  git commit -q -m "Phase A: normalize MTA ground truth (supervisor script step)
+  git add migration/mta-findings.json migration/dependency-order.md \
+          migration/findings-inventory.md migration/recipe-log.md migration/staging 2>/dev/null
+  git commit -q -m "Phase A: ground truth + spec input bundle (supervisor script step)
 
 ${SUMMARY}"
   log "Phase A: committed by script — ${SUMMARY}"

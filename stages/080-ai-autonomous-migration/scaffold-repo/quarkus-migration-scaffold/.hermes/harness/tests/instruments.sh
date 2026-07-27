@@ -198,6 +198,25 @@ run_case() {
 }
 check "dependency-order puts the imported class first" 0 "app.Model"
 
+# 11d. findings-inventory: joins rules via the MAPPINGS table
+run_case() {
+  mkfix
+  printf '[{"violations": {"javax-to-jakarta-import-00001": {"category": "mandatory", "description": "javax to jakarta", "incidents": [{"uri": "file:///a/B.java", "lineNumber": 3}]}, "custom-rule-001": {"category": "mandatory", "description": "no join", "incidents": []}}}]' > f.json
+  printf '## Windup rule joins\n\n| rule id prefix | class | decided target |\n|---|---|---|\n| javax-to-jakarta- | recipe:5.46.1:g:a:1.0:R.Name | jakarta |\n' > M.md
+  python3 "$HARNESS_DIR/findings-inventory.py" f.json M.md
+}
+check "findings-inventory classifies joined + flags OPEN DESIGN" 0 "OPEN DESIGN: 1"
+
+# 11e. plan-lint: recipe-log covers a mandatory rule without a task
+run_case() {
+  mkfix
+  plan_header > tasks.md
+  printf '[{"violations": {"javax-to-jakarta-import-00001": {"category": "mandatory", "incidents": []}}}]' > f.json
+  mkdir -p migration && printf 'Resolved rule ids:\n- javax-to-jakarta-import-00001\n' > migration/recipe-log.md
+  python3 "$LINT" tasks.md f.json
+}
+check "lint accepts recipe-executed mandatory rule with no task" 0 "PLAN OK"
+
 # --- static sensor fixtures ------------------------------------------------
 
 green_pom() {

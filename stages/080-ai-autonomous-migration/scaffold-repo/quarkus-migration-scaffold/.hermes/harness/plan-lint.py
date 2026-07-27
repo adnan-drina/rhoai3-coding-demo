@@ -102,7 +102,9 @@ def main():
     except FileNotFoundError:
         pass
 
-    # findings coverage
+    # findings coverage — a mandatory rule is covered by a task OR by a
+    # recipe execution recorded in migration/recipe-log.md (R3: recipe-
+    # executed rewrites need no plan task).
     if len(sys.argv) > 2:
         d = json.load(open(sys.argv[2]))
         mandatory = set()
@@ -110,9 +112,13 @@ def main():
             for rid, v in (rs.get("violations") or {}).items():
                 if (v.get("category") or "mandatory") == "mandatory":
                     mandatory.add(rid)
-        missing = {r for r in mandatory if r not in text}
+        try:
+            recipe_log = open("migration/recipe-log.md").read()
+        except OSError:
+            recipe_log = ""
+        missing = {r for r in mandatory if r not in text and r not in recipe_log}
         for r in sorted(missing):
-            lint("findings", f"mandatory finding {r} mapped to no task")
+            lint("findings", f"mandatory finding {r} mapped to no task (and not recipe-executed)")
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
