@@ -146,3 +146,42 @@ is exactly right, and the dry run exercised it manually.
   story that introduces the item (CATALOG_ENDPOINT arrives with S02).
   The outer loop must scope preserve checks to stories at/after the
   owning story (or defer to deploy-story preflights).
+
+## M3 closure
+
+Second revision `807a6bd`: **PLAN OK — 10 tasks (5 rewrite / 5
+infer)**, pom conversion inserted as T-001 (compile-order correct),
+pom-family findings moved from the validation task to their owner,
+zero stale story references anywhere in specs/. The lint→revise loop
+converged in two rounds, each round on true findings.
+
+## Verdict
+
+**Confidence: M1→M3 are ready for the joint test run; M4/M5 machinery
+is validated; the outer-loop automation is the remaining build.**
+
+The full audit trail is on `coolstore-cart-round3` branch
+`dryrun-m-process` (pushed): `M1 analyze:` ×2 → `M2 sequence:` →
+`S01 spec:` + two revisions — exactly the commit narrative the
+redesign promised.
+
+**Defect ledger: 14 findings this dry run.**
+Fixed and instrument-tested (suite 38/38): kantra Java-21 wedge (the
+historic root cause), harmful `--source` filter, missing `jakarta-ee9`
+target, HashMap rule gap, roadmap-lint contiguity, roadmap-lint
+prose-in-findings, plan-lint package false positive, plan-lint
+ceremonial-task gap. Fixed by revision in-flow: stale cross-stage
+refs, missing pom task. Absorbed by designed mechanisms: M2 no-commit
+loop (mechanical closure), M3 commit-on-red (gate + revision).
+Recorded as outer-loop design rules: revision prompts take ownership
+facts from the ROADMAP only; per-story preserve-check scoping.
+Known accepted limits: rubric checks citation presence not accuracy;
+findings coverage is string-presence (M4's first sensor run is the
+backstop; validation-task-only smell noted as a lint candidate).
+
+**Not exercised, deliberately** — this is the joint test run (V3):
+M4 implementation sessions on S01's 10 tasks (the most battle-tested
+part of the harness, 5 runs of history), M5 factory/deploy/acceptance
+live, and the per-story retro. The outer-loop supervisor (story
+iteration, M-stage dispatch, the three recorded design rules) is the
+one build item between the dry run and full autonomy (V4).
