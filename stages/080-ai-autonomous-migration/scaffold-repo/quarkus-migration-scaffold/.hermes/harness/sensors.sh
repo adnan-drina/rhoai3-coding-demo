@@ -98,7 +98,20 @@ sonar_check() { # $1 = inloop|full  (default full)
   # Violation evidence comes from the single helper (audit consolidation).
   if [ "$mode" = "inloop" ]; then
     [ $rc -ne 0 ] && fail sonar "analysis submit failed — /tmp/sensor-sonar.log"
-    sleep 8
+    # Wait for the server to PROCESS this scan before querying issues —
+    # a fixed sleep races the compute engine and reports the PREVIOUS
+    # analysis's issues (V3 S02: a clean tree went red on stale evidence).
+    CE_TASK=$(grep -m1 "^ceTaskId=" target/sonar/report-task.txt 2>/dev/null | cut -d= -f2)
+    if [ -n "$CE_TASK" ]; then
+      for _ in $(seq 1 40); do
+        ST=$(curl -sf "$SONAR_HOST/api/ce/task?id=$CE_TASK" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['task']['status'])" 2>/dev/null)
+        [ "$ST" = "SUCCESS" ] && break
+        [ "$ST" = "FAILED" ] || [ "$ST" = "CANCELED" ] && fail sonar "server-side analysis $ST"
+        sleep 3
+      done
+    else
+      sleep 8
+    fi
     local n
     n=$(python3 .hermes/harness/sonar-report.py "$SONAR_HOST" "$PROJECT_KEY" 2>/tmp/sonar-violations.txt || echo 0)
     if [ "${n:-0}" -gt 0 ]; then
