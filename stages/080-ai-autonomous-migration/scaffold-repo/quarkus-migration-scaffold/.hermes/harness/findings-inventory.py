@@ -13,6 +13,7 @@ rows — everything else here is a lookup, not a derivation.
 """
 import collections
 import json
+import os
 import re
 import sys
 
@@ -41,6 +42,18 @@ def main():
     findings_path, mappings_path = sys.argv[1], sys.argv[2]
     data = json.load(open(findings_path))
     joins = parse_joins(mappings_path)
+    # Scaffold-baseline annotation (V3 S01 lesson: pom-convention rules
+    # kept firing on the destination and read as a falsified claim):
+    # rules that also fire on the PRISTINE scaffold are residual-expected
+    # — annotated, never exempted.
+    baseline = set()
+    try:
+        for line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "scaffold-baseline.txt")):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                baseline.add(line)
+    except OSError:
+        pass
 
     rules = []  # (rid, violation)
     for rs in data:
@@ -69,6 +82,8 @@ def main():
         bucket = cls.split(":", 1)[0]
         classified[bucket].append(rid)
         desc = (v.get("description") or "").strip()
+        if rid in baseline:
+            desc += " [ALSO FIRES ON PRISTINE SCAFFOLD — residual expected after migration; verify by substance at delta time]"
         if PRESERVE_HINT.search(rid + " " + desc):
             preserve.append((rid, desc))
         print(f"## {rid} [{bucket}]")
