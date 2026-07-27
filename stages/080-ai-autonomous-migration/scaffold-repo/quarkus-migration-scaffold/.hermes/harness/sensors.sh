@@ -39,6 +39,19 @@ seed() {
   echo "seeded: $(du -sh "$M2_RUN" | cut -f1)"
 }
 
+forbidden_patterns() {
+  # migration.yaml forbidden: patterns that must never appear in src/main
+  # (fabricated domain data disguised as fallbacks — observed twice).
+  [ -f migration.yaml ] && grep -q "^forbidden:" migration.yaml || return 0
+  grep -A20 "^forbidden:" migration.yaml | grep -E "^\s*-" | sed -E 's/^\s*-\s*//; s/^"//; s/"$//' | while read -r pat; do
+    [ -n "$pat" ] || continue
+    if grep -rq "$pat" src/main 2>/dev/null; then
+      echo "SENSOR RED (forbidden): pattern '$pat' found in src/main: $(grep -rl "$pat" src/main | head -2 | tr '\n' ' ')"
+      exit 1
+    fi
+  done || exit 1
+}
+
 tree_hygiene() {
   # Shell-quoting accidents leave literal glob/space filenames that
   # compile silently and detonate at the factory (observed: empty
@@ -51,6 +64,7 @@ tree_hygiene() {
 task_sensor() {
   tree_hygiene
   wiring_invariants
+  forbidden_patterns
   $MVN clean test > /tmp/sensor-task.log 2>&1 \
     || fail task "$(grep -E 'ERROR|FAIL' /tmp/sensor-task.log | head -5)"
   echo "task sensor GREEN (clean test, isolated repo)"
