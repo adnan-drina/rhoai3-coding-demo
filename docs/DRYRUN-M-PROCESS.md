@@ -85,6 +85,42 @@ suite cases, 36/36):**
 Closure commit `19e41d8`: ROADMAP OK — 2 stories, exactly 23 findings
 owned, deploy milestone S02.
 
-## M3 SPECIFY (S01) — running
+## M3 SPECIFY (S01) — session + revision cycle exercised; 1 false positive and 2 real defects → lint hardened
 
-(appended as the dry run progresses)
+**Session** (committed `e0def30` autonomously): specs/S01 with
+spec/plan/tasks, 10 tasks — structure good: 4 package-migration tasks
+harvesting from `migration/staging/` (recipe outputs correctly
+consumed), 3 characterization-test tasks with the legacy assertions
+quoted (2000.0 / −10.99, shipping tiers), S02's files untouched.
+
+**But the session committed with the lint RED** — session discipline
+failure; the automated M3 gate (supervisor lint → revision dispatch)
+is exactly right, and the dry run exercised it manually.
+
+**Lint findings triaged:**
+- FALSE POSITIVE (fixed): the package-identity check fired on the
+  legacy package in SOURCE position ("from com.redhat.coolstore.model
+  to com.demo.model" + staging paths). Check now fires only on
+  TARGET-position references; from→to plans pass. Suite case added.
+- REAL: T-005 "Legacy UI Surface Waiver" — a ceremonial task (T-029
+  class). plan-lint now has a task-substance check (every task body
+  must name a code/config path). Suite case added. (38/38.)
+- REAL: stale story references — the plan cites "S03", which stopped
+  existing after M2's renumbering, and waives a finding S02 owns.
+  Cross-stage consistency issue; revision session dispatched with the
+  exact findings.
+
+## M4/M5 — mechanical checks (fresh workspace)
+
+- SONAR_TOKEN + SONAR_HOST auto-mounted in the new workspace (the
+  namespace secret mount works without manual steps — run #2's manual
+  provisioning is no longer needed). ✓
+- Supervisor task-id parser reads all S01 task headings (parity with
+  plan-lint held after the earlier fix). ✓
+- Sensor machinery (cold isolated-repo seed + task sensor): running.
+- **Design note for the outer loop** (found by inspection, not yet
+  code): the preflight `preserved_integrations` check greps src/main
+  for every preserve item — on a per-story M5 this fails before the
+  story that introduces the item (CATALOG_ENDPOINT arrives with S02).
+  The outer loop must scope preserve checks to stories at/after the
+  owning story (or defer to deploy-story preflights).
