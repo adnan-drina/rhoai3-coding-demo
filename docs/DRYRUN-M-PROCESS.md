@@ -199,6 +199,22 @@ dependency-order; Phase D re-analysis needs to be a supervisor script
 step (sessions lack the Java 21 export); session workspace hygiene
 (broken stray test file); promo-composition semantics watch for S02.
 
+## V3 — S02 launch incident (operator error, mechanism fixed)
+
+My first S02 launch script started a supervisor even though its `git
+pull` had failed; my corrected relaunch then rebased the branch (moving
+the spec SHA out from under instance #1's RUN_BASE) and started
+instance #2 — **two concurrent supervisors**, which produced a phantom
+lint failure, a session run against the wrong story's task list, and a
+"T-001" commit containing JDTLS droppings, a forbidden Quarkus main
+class, and the run-#1-era wrong config key. Recovery: both killed;
+contaminated commits reverted (content verified commit-by-commit);
+droppings gitignored. Mechanism fixes, live-proven: **single-instance
+guard** in the supervisor (second launch now refuses with FATAL) and
+**STORY_TASKS as plan-stage authority** (a revert in the commit range
+can no longer resurrect Phase B). Launch scripts must abort on pull
+failure — mine now do.
+
 **Not exercised, deliberately** — this is the joint test run (V3):
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
