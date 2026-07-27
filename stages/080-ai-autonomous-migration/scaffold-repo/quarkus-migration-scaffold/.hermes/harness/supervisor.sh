@@ -69,7 +69,12 @@ committed() { git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"; }
 #                    to plan-lint --findings-scope.
 # STORY_DEPLOY       "false" → M5 stops at factory quality-gate success
 #                    (no acceptance curls; non-deploy story).
-# All unset → legacy whole-app behavior.
+# STORY_SCOPE        space-separated src/main files this story may MODIFY
+#                    (new files and tests are always free) — enforced by
+#                    the story-scope sensor (scope_enforce).
+# All unset → legacy whole-app behavior. The outer loop
+# (.hermes/harness/outer-loop.sh) computes all of these per story from
+# migration/roadmap.md.
 STORY_SPEC_PREFIX="${STORY_SPEC_PREFIX:-}"
 PLAN_SCOPE="${PLAN_SCOPE:-}"
 STORY_DEPLOY="${STORY_DEPLOY:-true}"
@@ -124,15 +129,91 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   t0=$(date +%s)
   # Fix-class sessions are mechanical: a wedged style fix dies in 15
   # minutes, not 45 (measured: 45-min sfix for 8 style violations).
-  local budget="$SESSION_TIMEOUT"
-  case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*) budget="${FIX_TIMEOUT:-900}";; esac
-  timeout "$budget" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
+  # They may also route to a cheaper seat via FIX_PROVIDER/FIX_MODEL
+  # (improvement #16) — unset means the orchestrator seat, no change.
+  local budget="$SESSION_TIMEOUT" prov="$ORCH_PROVIDER" model="$ORCH_MODEL"
+  case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*)
+    budget="${FIX_TIMEOUT:-900}"
+    [ -n "${FIX_PROVIDER:-}" ] && prov="$FIX_PROVIDER"
+    [ -n "${FIX_MODEL:-}" ] && model="$FIX_MODEL";;
+  esac
+  timeout "$budget" hermes chat --provider "$prov" --model "$model" -q "$prompt" \
     > "/tmp/sup-${tag}.log" 2>&1
   rc=$?
   t1=$(date +%s)
   echo "${tag},${t0},${t1},$((t1-t0)),rc=${rc}" >> "$METRICS"
   [ $((t1-t0)) -gt 1800 ] && { event "$tag" 0 slow_session "$((t1-t0))s"; log "$tag: SLOW session ($((t1-t0))s) — wedge candidate"; }
   return $rc
+}
+
+# --- Story-scope sensor (V4, redesign §11) --------------------------------
+# STORY_SCOPE (space-separated project-relative files, set by the outer
+# loop from roadmap scope) bounds which EXISTING src/main files a story
+# may modify. Creating new files and editing tests stays free; modifying
+# an out-of-scope src/main file is autonomously reverted. The post-commit
+# sensors then judge the reverted tree — if the revert broke the task,
+# the ordinary sensor-fix session repairs it WITHIN scope (the sfix
+# prompt points at /tmp/scope-violation.txt). No human escalation.
+scope_enforce() { # $1=commit-prefix
+  [ -n "${STORY_SCOPE:-}" ] || return 0
+  local prefix="$1" f viol=""
+  for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/ 2>/dev/null); do
+    case " ${STORY_SCOPE} " in *" $f "*) ;; *) viol="$viol $f";; esac
+  done
+  [ -n "$viol" ] || { rm -f /tmp/scope-violation.txt; return 0; }
+  event "scope" 0 scope_violation "${viol# }"
+  log "scope sensor: out-of-scope src/main edits reverted:${viol}"
+  {
+    echo "The story-scope sensor reverted out-of-scope src/main modifications:${viol}"
+    echo "This story's src/main scope: ${STORY_SCOPE}"
+    echo "Rule: finish the task WITHIN scope; if it genuinely requires an out-of-scope edit, record that need in migration/debt.md instead of making the edit."
+  } > /tmp/scope-violation.txt
+  git checkout HEAD~1 -- $viol 2>/dev/null
+  git add -A && git commit -q -m "${prefix} scope revert: story-scope sensor reverted out-of-scope src/main edits (${viol# })" 2>/dev/null
+}
+
+# --- Post-commit verification (extracted so the batch path shares it) -----
+# Trust-but-verify (run-4 lesson: a session committed a red tree): the
+# supervisor runs the sensors itself after EVERY commit. The milestone
+# sensor (verify + the factory's sonar gate) is ENFORCED — not advisory —
+# on every pom/config-touching commit and every 3rd task, so style
+# violations die in-loop, not at the factory.
+post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
+  local prefix="$1" tag="$2"
+  TASKS_SINCE_MILESTONE=$((TASKS_SINCE_MILESTONE+1))
+  local SENSOR_KIND=task
+  if git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then
+    SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
+  fi
+  log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
+  if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+    event "$tag" 0 sensor_red_post_commit verify
+    # Deterministic style-autofix first (V3 measured: 152 min of model
+    # time went to mechanically-fixable style violations).
+    if .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+      git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
+      event "$tag" 0 style_autofix resolved
+      log "$tag: style-autofix resolved the red deterministically — no model session needed"
+      return 0
+    fi
+    git checkout -q -- . 2>/dev/null
+    log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
+    orch "${tag}-sfix" \
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits after the commit — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). COMMIT THE MOMENT THE SENSOR IS GREEN — run .hermes/harness/sensors.sh task after each fix and immediately commit ONE commit starting '${prefix} sensor fix:' when it passes; do not polish further (a green fix that never commits is a failed session).
+${RUN_CONTRACT}"
+    if committed "${prefix} sensor fix"; then
+      log "$tag: sensor-fix committed $(git log --oneline -1)"
+    elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+      # Mechanical closure for the sensor-fix path too (V3 S02: the
+      # session fixed everything, went green, never committed).
+      git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
+      event "$tag" 0 mechanical_commit sfix_closure
+      log "$tag: sensor-fix work was GREEN but uncommitted — supervisor completed the commit"
+    else
+      log "$tag: sensor-fix did NOT commit — red tree recorded, continuing"
+    fi
+  fi
+  return 0
 }
 
 # run_stage <commit-prefix> <tag> <prompt> <retry-prompt> -> 0 committed / 1 exhausted
@@ -170,44 +251,8 @@ run_stage() {
         log "$tag: removing untracked strays left by the session: $(echo $STRAYS | tr '\n' ' ')"
         git ls-files --others --exclude-standard -- src/ | xargs -r rm -f
       fi
-      # Trust-but-verify (run-4 lesson: a session committed a red tree):
-      # the supervisor runs the sensors itself after EVERY commit. The
-      # milestone sensor (verify + the factory's sonar gate) is ENFORCED —
-      # not advisory — on every pom/config-touching commit and every 3rd
-      # task, so style violations die in-loop, not at the factory.
-      TASKS_SINCE_MILESTONE=$((TASKS_SINCE_MILESTONE+1))
-      SENSOR_KIND=task
-      if git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then
-        SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
-      fi
-      log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
-      if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        event "$tag" "$attempt" sensor_red_post_commit verify
-        # Deterministic style-autofix first (V3 measured: 152 min of
-        # model time went to mechanically-fixable style violations).
-        if .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-          git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
-          event "$tag" "$attempt" style_autofix resolved
-          log "$tag: style-autofix resolved the red deterministically — no model session needed"
-          return 0
-        fi
-        git checkout -q -- . 2>/dev/null
-        log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
-        orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). COMMIT THE MOMENT THE SENSOR IS GREEN — run .hermes/harness/sensors.sh task after each fix and immediately commit ONE commit starting '${prefix} sensor fix:' when it passes; do not polish further (a green fix that never commits is a failed session).
-${RUN_CONTRACT}"
-        if committed "${prefix} sensor fix"; then
-          log "$tag: sensor-fix committed $(git log --oneline -1)"
-        elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
-          # Mechanical closure for the sensor-fix path too (V3 S02: the
-          # session fixed everything, went green, never committed).
-          git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
-          event "$tag" 0 mechanical_commit sfix_closure
-          log "$tag: sensor-fix work was GREEN but uncommitted — supervisor completed the commit"
-        else
-          log "$tag: sensor-fix did NOT commit — red tree recorded, continuing"
-        fi
-      fi
+      scope_enforce "$prefix"
+      post_commit_verify "$prefix" "$tag"
       return 0
     fi
     local cls; cls=$(classify "$rc" "/tmp/sup-${tag}-a${attempt}p${pf}.log")
@@ -317,48 +362,13 @@ write_run_report() { # $1 = outcome line
 if committed "Phase A" || [ -f migration/mta-findings.json ]; then
   log "Phase A: already present"
 else
-  log "Phase A: running the harness-owned kantra analysis"
-  kantra-ensure >> "$LOG" 2>&1 || true
-  # Rule selection is label filtering (MTA 8.2 rules guide): the
-  # analysis contract lives in migration.yaml analysis: targets. NEVER a
-  # --source filter — validated 2026-07-27: it excludes source-labelless
-  # rules (including the custom contract rules) and narrows the set.
-  A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
-  [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
-  K_ARGS=""
-  for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
-  [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
-  log "Phase A: kantra args: $K_ARGS (source-only mode)"
-  # Neutral cwd: the JDTLS-based java provider dumps Equinox state into
-  # CWD. Java 21 REQUIRED: kantra's analyzer bundles declare
-  # osgi.ee=JavaSE-21 — under the pod default (17) JDTLS never starts
-  # and the provider waits forever (the root cause of every observed
-  # kantra wedge). source-only: our rule set needs no dependency
-  # analysis and it keeps the run minutes-scale.
-  (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
-    $K_ARGS --mode source-only --json-output --overwrite) >> "$LOG" 2>&1 || true
-  mkdir -p migration
-  cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
-    || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
-  # Spec input bundle (docs/MTA-TO-SPEC-MAPPING.md): the mechanical
-  # projections of the findings are computed here, not re-derived by
-  # the Phase B model — dependency order, the findings inventory with
-  # the MAPPINGS join, and recipe-executed rewrites.
-  python3 .hermes/harness/dependency-order.py /projects/legacy > migration/dependency-order.md 2>/dev/null \
-    || log "WARN: dependency analysis failed — plan orders without it"
-  python3 .hermes/harness/findings-inventory.py migration/mta-findings.json \
-      .hermes/skills/migration-harness/MAPPINGS.md > migration/findings-inventory.md 2>/dev/null \
-    || log "WARN: findings inventory failed — Phase B derives the join itself"
-  .hermes/harness/recipe-transform.sh /projects/legacy migration/findings-inventory.md >> "$LOG" 2>&1 \
-    || log "WARN: recipe transform failed — recipe-class rules fall back to plan tasks"
-  SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
-  git add migration/mta-findings.json migration/dependency-order.md \
-          migration/findings-inventory.md migration/recipe-log.md migration/staging 2>/dev/null
-  git commit -q -m "Phase A: ground truth + spec input bundle (supervisor script step)
-
-${SUMMARY}"
-  log "Phase A: committed by script — ${SUMMARY}"
+  # Extracted to analyze.sh (V4) so the outer loop can run the same step
+  # before M2 sequencing; behavior unchanged.
+  if .hermes/harness/analyze.sh >> "$LOG" 2>&1; then
+    log "Phase A: committed by script — $(git log --oneline -1)"
+  else
+    log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1
+  fi
 fi
 
 if plan_stage_done; then
@@ -417,8 +427,22 @@ ${RUN_CONTRACT}"
     || log "loop entry: tree-fix did not commit — proceeding on a red tree (recorded)"
 fi
 
-for T in $TASK_IDS; do
-  committed "$T" && { log "$T: already committed"; continue; }
+# Per-task class map (for batching): rewrite-class tasks are mechanical
+# and consecutive ones share one session (improvement #17 — measured 12
+# min/task mean is dominated by per-session ramp for mechanical work).
+TASK_CLASSES=$(python3 - "$TASKS_FILE" <<'PYEOF'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+):", text, flags=re.M)
+for i in range(1, len(blocks) - 1, 2):
+    m = re.search(r"class[:*\s]+([a-z]+)", blocks[i + 1][:400], re.I)
+    print(f"{blocks[i]}:{m.group(1).lower() if m else 'infer'}")
+PYEOF
+)
+task_class() { echo "$TASK_CLASSES" | grep -m1 "^$1:" | cut -d: -f2; }
+
+run_task() { # $1=task id — the ordinary single-task stage
+  local T="$1"
   run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY.
 ${RUN_CONTRACT}
@@ -426,7 +450,44 @@ Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for task ${T} from ${TASKS_FILE} ONLY. A previous attempt may have left partial uncommitted work or a finished worker run - inspect git status first, verify or finish the work, run the sensors, and commit ONE commit whose message STARTS with '${T}:'.
 ${RUN_CONTRACT}" \
     || log "$T: exhausted — recorded, moving on"
+}
+
+BATCH_MAX="${BATCH_MAX:-3}"
+flush_batch() { # $1=space-separated rewrite task ids
+  local ids="${1# }"; [ -n "$ids" ] || return 0
+  local n; n=$(echo $ids | wc -w | tr -d ' ')
+  if [ "$n" -ge 2 ]; then
+    local list; list=$(echo $ids | tr ' ' ',')
+    log "batch: dispatching $n rewrite tasks in one session: $ids"
+    orch "batch-$(echo $ids | tr ' ' '-')" \
+"Use the migration-harness skill and read EXECUTION.md in its directory. Execute Phase C for tasks ${list} from ${TASKS_FILE}, IN ORDER. These are rewrite-class mechanical tasks — the plan states the exact transformation for each; apply it directly per the EXECUTION.md rewrite discipline. For EACH task finish with ONE commit whose message STARTS with that task's id and a colon (e.g. 'T-004:') BEFORE starting the next task. Stop after the last listed task.
+${RUN_CONTRACT}"
+  fi
+  # Anything the batch session missed falls back to the single-task stage;
+  # ids it committed are picked up by run_stage's entry check.
+  local T
+  for T in $ids; do
+    committed "$T" && { log "$T: committed (batch session)"; continue; }
+    run_task "$T"
+  done
+  # One verification pass covers the batch's commits (same cadence spirit
+  # as the every-3rd-task milestone rule).
+  [ "$n" -ge 2 ] && post_commit_verify "$(echo $ids | awk '{print $NF}') batch" "batch-verify"
+  return 0
+}
+
+BATCH=""
+for T in $TASK_IDS; do
+  committed "$T" && { log "$T: already committed"; continue; }
+  if [ "$(task_class "$T")" = "rewrite" ]; then
+    BATCH="$BATCH $T"
+    [ "$(echo $BATCH | wc -w | tr -d ' ')" -ge "$BATCH_MAX" ] && { flush_batch "$BATCH"; BATCH=""; }
+    continue
+  fi
+  flush_batch "$BATCH"; BATCH=""
+  run_task "$T"
 done
+flush_batch "$BATCH"; BATCH=""
 
 # ---------------------------------------------------------------- Phase D
 if ! committed "Phase D"; then

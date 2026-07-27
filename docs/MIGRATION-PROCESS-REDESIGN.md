@@ -280,6 +280,20 @@ redesign needs.
 5. **Rollout**: V5 monolith mandatory; cart-class projects use
    whichever is present (auto-detect).
 
+**Spike executed 2026-07-28 — PASS on both bars.** The public CLI
+(`uv tool install graphifyy`, Graphify-Labs/graphify) ran fully
+offline on the cart legacy (`graphify extract . --code-only`): 145
+nodes, 319 edges, 9 communities from 16 files. (a) `graphify path
+"ShoppingCart" "ShoppingCartItem"` → 1 hop, `references [EXTRACTED]` —
+the exact same-package edge the import graph missed; (b) communities
+align with the domain seams V3's roadmap chose manually (pricing core,
+catalog client, REST surface, items, promo, tests, bootstrap).
+Independently, `dependency-order.py` gained same-package simple-name
+resolution (regression-tested), so the zero-dependency fallback no
+longer has the S01 blind spot. Decision stands: graphify integration
+lands with V5 (monolith communities are where it pays); V4 runs on
+the fixed `dependency-order.py`.
+
 ## 11. Fabrication-class response — autonomous, no human gate
 
 The story-scope sensor (V4 must-build) detects the proven signature

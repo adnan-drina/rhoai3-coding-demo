@@ -1168,6 +1168,16 @@ its value was as the control arm for the improvement plan. Cost noted:
 a full model-budget day. No further monolith reruns until the cart
 service ships end-to-end on the improved harness.
 
+**V4 launch runbook (2026-07-28, outer loop).** One command replaces
+the per-story launch scripting: `cd /projects/modernized && nohup
+.hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &`. It
+runs M1 (analyze.sh + rubric-gated profile session) → M2 (lint-gated
+roadmap) → per story M3 spec + one supervisor child with computed env;
+progress in `/tmp/outer-loop.log` plus the usual `/tmp/supervisor.log`;
+completion marker `/tmp/outer-loop-done`; story resume state in
+`migration/story-state.csv` (committed). Pause between sessions with
+`touch /tmp/supervisor-pause`. Run log: docs/V4-RUN-LOG.md.
+
 **V3 / round3 (2026-07-27, redesigned M-process, story mode) — SHIPPED
 AND ACCEPTED.** The M1–M5 staged process (docs/MIGRATION-PROCESS-
 REDESIGN.md) ran the cart migration as two dependency-ordered stories:

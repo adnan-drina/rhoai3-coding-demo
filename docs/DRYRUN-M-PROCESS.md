@@ -301,6 +301,31 @@ so the cost is call count × thinking time, not the platform):**
 session-time levers; together with 13–14 the S02-shaped story
 projects from ~5 h to ~2.5–3 h.)
 
+**Implementation status (2026-07-28, V4 build session): all 17 items
+are implemented.** The final four landed together: #1 story-scope
+sensor (`scope_enforce` in the supervisor — STORY_SCOPE-bounded
+modification set, autonomous revert, repair via the existing sfix path
+with `/tmp/scope-violation.txt` evidence; no human escalation, per
+redesign §11); #2 outer loop (`.hermes/harness/outer-loop.sh` — M1
+analyze + rubric-gated profile, lint-gated M2 sequencing with one
+bounced revision, then per-story M3 spec sessions and one
+`supervisor.sh` child per story with computed
+RUN_BASE/PLAN_SCOPE/STORY_TASKS/STORY_SCOPE/PRESERVE_CHECK/deploy;
+story state resumes from `migration/story-state.csv`; a failed story
+stops the run before its dependents); #16 worker routing (fix-class
+sessions honor `FIX_PROVIDER`/`FIX_MODEL`, default = orchestrator
+seat, activation deferred until a Hermes provider profile for the 27B
+seat is verified); #17 rewrite batching (consecutive rewrite-class
+tasks share one session, up to `BATCH_MAX`=3, one commit per task,
+misses fall back to single-task stages, one shared post-batch
+verification). Alongside: Phase A extracted to `analyze.sh` (shared by
+supervisor and outer loop), `dependency-order.py` now resolves
+same-package simple-name references (the S01 ShoppingCart→
+ShoppingCartItem blind spot — regression-tested), and the S03 review
+findings became MAPPINGS "Production-grade defaults" + a SEQUENCING
+"Production-grade bar" so deploy stories ship hardened by
+construction. Instrument suite: 47/47.
+
 ## V3 FINAL VERDICT — S02 shipped and accepted (2026-07-27 22:14 UTC)
 
 **The redesigned process took a legacy Spring Boot service to a

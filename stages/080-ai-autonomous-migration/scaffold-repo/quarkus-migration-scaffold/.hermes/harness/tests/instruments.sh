@@ -476,6 +476,52 @@ check "static sensors reject a forbidden: pattern in src/main" 1 "forbidden"
 run_case() { sensor_fixture; printf 'public class Svc { }\n' > src/main/java/com/demo/Svc.java; SENSOR_ROOT="$FIX" bash "$SENSORS" static; }
 check "static sensors reject an erased preserve: item" 1 "preserve"
 
+# --- V4 outer-loop instruments --------------------------------------------
+
+roadmap_fixture() {
+  cat <<'EOF'
+# Modernization roadmap
+
+## S01: Models
+- scope: src/main/java/com/demo/model/Product.java, src/main/java/com/demo/model/ShoppingCart.java
+- findings: removed-javaee-00010, localhost-http-00001
+- depends: -
+- deploy: false
+- done: models converted
+
+## S02: Hardening
+- scope: src/main/java/com/demo/service/Impl.java
+- findings: -
+- depends: S01
+- deploy: true
+- done: hardened
+EOF
+}
+
+# 43. roadmap parser: fields, multi-file scope, findings normalization
+run_case() { mkfix; roadmap_fixture > r.md; python3 "$HARNESS_DIR/parse-roadmap.py" r.md; }
+check "parse-roadmap emits pipe rows with normalized findings" 0 "S01|false|removed-javaee-00010,localhost-http-00001|src/main/java/com/demo/model/Product.java src/main/java/com/demo/model/ShoppingCart.java"
+
+# 44. roadmap parser: 'findings: -' becomes the literal scope 'none'
+run_case() { mkfix; roadmap_fixture > r.md; python3 "$HARNESS_DIR/parse-roadmap.py" r.md; }
+check "parse-roadmap maps 'findings: -' to none" 0 "S02|true|none|src/main/java/com/demo/service/Impl.java"
+
+# 45. dependency-order: same-package reference without import is an edge
+#     (the S01 blind spot: ShoppingCart -> ShoppingCartItem)
+run_case() {
+  mkfix; mkdir -p src/main/java/com/demo/model
+  printf 'package com.demo.model;\npublic class ShoppingCartItem { }\n' > src/main/java/com/demo/model/ShoppingCartItem.java
+  printf 'package com.demo.model;\nimport java.util.List;\npublic class ShoppingCart { List<ShoppingCartItem> items; }\n' > src/main/java/com/demo/model/ShoppingCart.java
+  python3 "$HARNESS_DIR/dependency-order.py" . | grep -E "^[0-9]+\." | head -1
+}
+check "dependency-order resolves same-package references (item before cart)" 0 "1. com.demo.model.ShoppingCartItem"
+
+# 46-47. outer-loop and analyze scripts stay parseable (they gate runs)
+run_case() { bash -n "$HARNESS_DIR/outer-loop.sh" && echo syntax-ok; }
+check "outer-loop.sh parses" 0 "syntax-ok"
+run_case() { bash -n "$HARNESS_DIR/analyze.sh" && bash -n "$HARNESS_DIR/supervisor.sh" && echo syntax-ok; }
+check "analyze.sh and supervisor.sh parse" 0 "syntax-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

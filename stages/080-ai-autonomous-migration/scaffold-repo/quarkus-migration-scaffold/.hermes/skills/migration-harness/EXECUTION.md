@@ -22,6 +22,23 @@ Out of scope:   <explicitly excluded work>
 
 ## Phase C — execution loop
 
+### Batched rewrite sessions
+
+The supervisor may dispatch several consecutive rewrite-class tasks in
+ONE session. The contract does not relax: execute them in the listed
+order, and finish each task with its own commit (its exact `T-0XX:`
+prefix) before starting the next — never one combined commit. Every
+per-task rule below applies to each task in the batch.
+
+### Story scope is a hard boundary
+
+When the run is story-scoped, modify only the existing `src/main` files
+the story owns (the plan/brief lists them); creating new files the plan
+designs and editing tests is always allowed. The supervisor's scope
+sensor autonomously REVERTS out-of-scope `src/main` edits after the
+commit. If a task genuinely cannot complete without touching another
+story's file, record that in `migration/debt.md` instead of editing it.
+
 ### Never fabricate platform stubs
 
 NEVER create stub classes for platform, framework, or vendor packages

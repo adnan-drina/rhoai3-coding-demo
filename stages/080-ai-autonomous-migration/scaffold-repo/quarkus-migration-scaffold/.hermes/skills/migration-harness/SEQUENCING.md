@@ -44,6 +44,17 @@ leaves the repository buildable, sensor-green, and closer to done.
    (validation-only, commit-only, report-only) — the harness gates do
    the validating.
 
+## Production-grade bar
+
+Deploy stories ship production-grade, not merely migrated: the briefs for
+stories that convert stateful services or REST surfaces name the
+applicable "Production-grade defaults" shapes from MAPPINGS.md
+(thread-safe singleton state, cache refresh-guard, read-only GET,
+validation + error mapping, normalize-before-derive) as part of the
+story's decided design. A post-ship semantic review should find nothing
+structural. Hardening stories remain available for defects DISCOVERED
+post-ship, but known defect classes are never deferred to one.
+
 ## Story classes
 
 Most stories are **migration stories** (findings-driven, fidelity

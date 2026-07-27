@@ -4,12 +4,14 @@ adoption: graph-driven task ordering, without the graphify runtime).
 
 Usage: dependency-order.py <source-root> [> migration/dependency-order.md]
 
-Builds the intra-project import graph (explicit imports only — same-
-package implicit references are not resolved; noted in the output) and
-emits markdown: per-class fan-in/fan-out, god nodes, and a
-dependencies-first conversion order. In a single-shot rewrite the tree
-must compile at every commit, so dependencies convert BEFORE their
-dependents (the inverse of strangler-style leaf-first migration).
+Builds the intra-project reference graph from explicit imports PLUS
+same-package simple-name references (V4: token-scan for sibling class
+names — the S01 blind spot where ShoppingCart -> ShoppingCartItem was
+invisible because same-package use needs no import). Emits markdown:
+per-class fan-in/fan-out, god nodes, and a dependencies-first conversion
+order. In a single-shot rewrite the tree must compile at every commit,
+so dependencies convert BEFORE their dependents (the inverse of
+strangler-style leaf-first migration).
 """
 import collections
 import os
@@ -23,8 +25,9 @@ def main():
     imp_re = re.compile(r"^\s*import\s+(?:static\s+)?([\w.]+?)(?:\.\*)?\s*;", re.M)
 
     classes = {}  # FQN -> relpath
-    imports = {}  # FQN -> set of imported FQNs (project-internal, filled later)
+    imports = {}  # FQN -> set of referenced FQNs (project-internal, filled later)
     raw_imports = {}
+    bodies = {}
     for dirpath, _, files in os.walk(root):
         if any(part in dirpath for part in ("/target", "/.git", "/node_modules", "/src/test")):
             continue
@@ -40,6 +43,13 @@ def main():
             fqn = (pkg.group(1) + "." if pkg else "") + fn[:-5]
             classes[fqn] = os.path.relpath(path, root)
             raw_imports[fqn] = set(imp_re.findall(text))
+            bodies[fqn] = text
+
+    # simple name -> FQNs per package, for same-package resolution
+    by_pkg = collections.defaultdict(dict)
+    for fqn in classes:
+        pkg, _, simple = fqn.rpartition(".")
+        by_pkg[pkg][simple] = fqn
 
     for fqn, imps in raw_imports.items():
         imports[fqn] = {i for i in imps if i in classes and i != fqn}
@@ -48,6 +58,14 @@ def main():
             for other in classes:
                 if other != fqn and other.rpartition(".")[0] == i:
                     imports[fqn].add(other)
+        # same-package references need no import (the S01 blind spot):
+        # a whole-word token match on a sibling simple name is an edge.
+        pkg = fqn.rpartition(".")[0]
+        for simple, sibling in by_pkg[pkg].items():
+            if sibling == fqn or sibling in imports[fqn]:
+                continue
+            if re.search(rf"\b{re.escape(simple)}\b", bodies[fqn]):
+                imports[fqn].add(sibling)
 
     fan_in = collections.Counter()
     for fqn, deps in imports.items():
@@ -69,10 +87,11 @@ def main():
 
     print("# Legacy dependency analysis (scripted, Phase A)")
     print()
-    print(f"- Classes: {len(classes)}; intra-project import edges: "
+    print(f"- Classes: {len(classes)}; intra-project reference edges: "
           f"{sum(len(v) for v in imports.values())}")
-    print("- Explicit imports only — same-package implicit references are not"
-          " resolved; treat same-package groups as coupled.")
+    print("- Edges from explicit imports AND same-package simple-name"
+          " references (token scan; over-approximates on name collisions,"
+          " which only tightens coupling groups).")
     print()
     print("## God nodes (highest fan-in — pin behavior with characterization"
           " tests BEFORE converting)")

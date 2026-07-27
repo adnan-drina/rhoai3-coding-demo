@@ -31,6 +31,27 @@ Run on `/tmp/rewrite-staging` per EXECUTION.md:
 | JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |
 | Vendored/enterprise jars unavailable in Central | Vendor in-repo (`lib/` + file-based `<repository>` in `pom.xml`) — the repository must build self-contained |
 
+## Production-grade defaults (decided — apply DURING migration, not after)
+
+The V3 post-ship review found six semantic defect classes that a faithful
+migration carries from the legacy and the rule-based gate cannot see; V3
+closed them in a follow-up hardening story. From V4 on these are DEFAULT
+target shapes — the story that converts the component applies them
+directly (fidelity binds behavior contracts, not defect preservation):
+
+| Legacy defect class | Default target shape |
+|---|---|
+| Mutable collections on an `@ApplicationScoped` bean | `ConcurrentHashMap`; multi-step per-key mutations via `map.compute(key, ...)` (no `synchronized` blocks) |
+| Cache cleared/refetched on every unknown-key probe | Refresh-guard: refresh only when the key is absent AND no refresh ran in the last 60s (timestamp guard); an id still absent after refresh is simply unknown — never `clear()` on miss |
+| GET that creates state (create-on-GET) | GET is read-only: absent resource → 404; creation only on mutating verbs. Legacy tests asserting create-on-GET are updated citing the brief (deliberate, documented API change) |
+| No input validation on REST params | Invalid input (e.g. `quantity <= 0`) → 400 with a problem-detail body |
+| Downstream failures surface as raw 500 stack traces | Dedicated JAX-RS `ExceptionMapper`: `ProcessingException` → 503; failure semantics stay honest (never a fabricated fallback) |
+| Order-dependent aggregate math (e.g. dedupe after pricing) | Normalize BEFORE computing derived values, plus a characterization test pinning the semantics |
+
+The behavioral pins still bind: existing contract assertions stay green;
+only assertions that pin a defect class above may change, and each such
+change cites the brief.
+
 ## Spring Boot → Quarkus (decided manual mappings)
 
 For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
