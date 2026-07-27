@@ -17,3 +17,15 @@ analysis:
   # analysis AND the supervisor's kantra fallback.
   source: ${{ values.analysisSource }}
   targets: [quarkus, cloud-readiness, openjdk17]
+preserve:
+  # Enforced: plan-lint maps each item to a task; the preflight sensor
+  # greps them in src/main|pom|k8s. Populate from the analysis's
+  # preserve-candidate findings (demo-env-integration rule) before the
+  # run — an erased integration is a functional regression no unit test
+  # catches.
+  - CATALOG_ENDPOINT
+forbidden:
+  # Fabrication tripwires: sensors fail any commit introducing these
+  # into src/main (hardcoded stand-ins for external services).
+  - getMockProducts
+  - "Fallback to mock"
