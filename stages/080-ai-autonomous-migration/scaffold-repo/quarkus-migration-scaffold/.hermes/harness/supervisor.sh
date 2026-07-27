@@ -358,6 +358,27 @@ try:
             dl = float(m.get("new_duplicated_lines") or 0)
             if dl > 0: f.write(f"DUPLICATION {c['path']}: {int(dl)} duplicated new lines\n")
 except Exception: pass
+# Coverage is a gate condition too (cart run #2: the gate failed on
+# new_coverage alone with 0 violations — an empty evidence file sends the
+# fix session in blind). Export the metric and the least-covered files.
+try:
+    cov = get(f"/api/measures/component?component={key}&metricKeys=new_coverage")
+    val = None
+    for x in cov.get("component", {}).get("measures", []):
+        val = (x.get("period") or {}).get("value") or x.get("value")
+    if val is not None and float(val) < 80:
+        tree = get(f"/api/measures/component_tree?component={key}&metricKeys=new_coverage,new_uncovered_lines&qualifiers=FIL&ps=100")
+        with open("/tmp/gate-violations.txt", "a") as f:
+            f.write(f"COVERAGE new_coverage={val}% (gate requires >= 80%) — add REAL unit tests.\n")
+            f.write("Test rules: mock external boundaries only; internal collaborators stay real; never change expected assertion values.\n")
+            rows = []
+            for c in tree.get("components", []):
+                m = {x["metric"]: (x.get("period") or {}).get("value") or x.get("value") for x in c.get("measures", [])}
+                if m.get("new_coverage") is not None:
+                    rows.append((float(m["new_coverage"]), c["path"], m.get("new_uncovered_lines") or "?"))
+            for pct, path, unc in sorted(rows)[:10]:
+                f.write(f"COVERAGE {path}: {pct}% new-code coverage, {unc} uncovered new lines\n")
+except Exception: pass
 print(issues.get("total", 0))
 PYEOF
 }
