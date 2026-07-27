@@ -236,16 +236,18 @@ run standalone, its artifacts reviewed, and its gate tested.
 Round3 is the V1–V4 vehicle — its fresh state is exactly what the
 redesign needs.
 
-## 9. Open questions for review
+## 9. Design decisions (user, 2026-07-27)
 
-1. **Per-story shipping**: deploy after every story (recommended — the
-   increment is provably alive; matches no-big-bang) vs. factory-gate
-   per story but deploy once at the end. Cost: one pipeline run per
-   story.
-2. **Story granularity floor**: minimum 2 stories even for tiny apps
-   (contracts+tests story, then the rest)? Or allow 1-story roadmaps
-   for trivial cases?
-3. **Monolith decomposition scope**: does stage 080's demo ambition
-   include true service extraction (separate repos/deployments per
-   bounded context), or in-place modularization along domain seams?
-   The roadmap design supports both, but briefs differ substantially.
+1. **Shipping: hybrid — deploy at milestones.** The roadmap marks which
+   stories are deployable increments (`deploy: true` in the story
+   entry); those run the full M5 ship (factory + deploy + acceptance);
+   the rest stop at the factory quality gate. roadmap-lint requires at
+   least one deployable story and that the LAST story deploys.
+2. **Granularity: natural sizing, no floor.** The planner sizes
+   stories purely from the dependency graph and session capacity;
+   roadmap-lint enforces ordering, coverage, and brief completeness —
+   never story count. A trivial app may legitimately be one story.
+3. **Monolith: in-place now, extraction later.** Stage 080 demos
+   in-place modularization along DDD seams (one repo, one deployment,
+   stories per bounded context in dependency order). True service
+   extraction of one exemplar context is a follow-up (BACKLOG).

@@ -297,3 +297,9 @@ The demo must deploy from any GitHub org and container registry, not just the au
   Git stays the source of truth; the Hub is a curated consumer view
   (per the MTA 8.2 UI guide's own design). See
   docs/MTA-TO-SPEC-MAPPING.md §8 for the decided analysis contract.
+- [ ] **Monolith service extraction exemplar** (redesign decision
+  2026-07-27: stage 080 = in-place modularization along DDD seams;
+  extraction deferred). After the monolith ships in-place, extract ONE
+  bounded context into its own repo/deployment via the app-migration
+  template as the strangler-pattern exemplar — needs a coexistence
+  brief class (routing, shared data) in the roadmap design.
