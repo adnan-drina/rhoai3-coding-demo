@@ -346,3 +346,16 @@ lands.
   < 80. Gate-fix r1 session now working with full evidence; its commit
   gets the standard artifact review (watch for: assertion tampering,
   all-mock tests, ceremonial coverage).
+
+### 05:26 — Gate-fix attempt 1: the empty-evidence defect, demonstrated end-to-end
+Attempt 1 (2m48s, 38 tool calls) read the evidence file while it was
+still EMPTY (my corrected file landed ~2 min into the session — after
+its read), found "0 violations", concluded the prior build fix was the
+whole job and closed with "the repository is ready for supervisor
+shipping" — no commit. A model given empty evidence rationally declares
+victory; run #3's gate churn was this exact loop at scale. The
+supervisor burned the attempt and dispatched attempt 2, which started
+AFTER the real evidence was in place: its transcript references
+new_coverage/65.8/the per-class table 10× and it is reading jacoco.xml
+directly. The exporter fix (coverage evidence in gate_violations) is
+already in scaffold+golden, so future rounds start informed.
