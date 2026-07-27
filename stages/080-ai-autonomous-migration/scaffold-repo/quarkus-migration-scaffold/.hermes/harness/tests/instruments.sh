@@ -43,7 +43,7 @@ UI surface: waived (API-only service; no legacy web frontend).
 
 #### T-001: Swap javax imports
 **Class**: rewrite
-- Mechanical jakarta rename.
+- Mechanical jakarta rename across src/main/java sources.
 
 #### T-002: Design the cart endpoint
 **Class**: infer
@@ -115,13 +115,36 @@ run_case() {
 }
 check "lint rejects an infer task without decided design" 1 "LINT:design"
 
-# 7. legacy package identity rejected
+# 7. legacy package identity rejected — but only in TARGET position
 run_case() {
   mkfix
   { plan_header; printf '\n#### T-003: Port service\n**Class**: infer\n- Target: → src/main/java/com/redhat/coolstore/Svc.java\n'; } > tasks.md
   python3 "$LINT" tasks.md
 }
 check "lint rejects com.redhat.coolstore package targets" 1 "LINT:package"
+
+run_case() {
+  mkfix
+  { plan_header; cat <<'EOF'
+
+#### T-003: Harvest model
+**Class**: infer
+**Source**: migration/staging/src/main/java/com/redhat/coolstore/model/Cart.java
+**Target**: src/main/java/com/demo/model/Cart.java
+Package transform com.redhat.coolstore.model to com.demo.model.
+EOF
+  } > tasks.md
+  python3 "$LINT" tasks.md
+}
+check "lint accepts legacy package in SOURCE position (from-to plan)" 0 "PLAN OK"
+
+# 7b. ceremonial tasks rejected (task-substance, T-029 class)
+run_case() {
+  mkfix
+  { plan_header; printf '\n#### T-003: UI surface waiver\n**Class**: infer\nExplicitly waive the UI surface with a documented rationale and target design statement.\n'; } > tasks.md
+  python3 "$LINT" tasks.md
+}
+check "lint rejects tasks naming no code path (ceremonial)" 1 "LINT:substance"
 
 # 8. ui surface must be covered or waived
 run_case() {
@@ -181,7 +204,7 @@ check "lint rejects unmapped mandatory findings" 1 "LINT:findings"
 # heading depth the lint accepts (audit finding: #{3,6} vs #{2,6} drift)
 run_case() {
   mkfix
-  printf '## T-001: Depth-two heading\n**Class**: rewrite\n- x\n\nUI surface: waived.\n' > tasks.md
+  printf '## T-001: Depth-two heading\n**Class**: rewrite\n- rename across src/main/java.\n\nUI surface: waived.\n' > tasks.md
   python3 "$LINT" tasks.md > lint.out
   ids=$(grep -E '^#{2,6} +T[-A-Za-z0-9]*[0-9]+:' tasks.md | wc -l | tr -d ' ')
   grep -q "PLAN OK" lint.out && [ "$ids" = "1" ] && echo "PARITY OK"

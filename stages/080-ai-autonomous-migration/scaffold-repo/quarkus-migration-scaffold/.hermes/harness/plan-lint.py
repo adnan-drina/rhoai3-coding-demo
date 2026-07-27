@@ -92,8 +92,23 @@ def main():
     # Package identity: the destination's package root is a project
     # constant (AGENTS.md); plans that target legacy packages replicate
     # the monolith's identity into the migrated service.
-    if re.search(r"com[./]redhat[./]coolstore", text):
-        lint("package", "plan targets legacy package com.redhat.coolstore — project root is com.demo (AGENTS.md)")
+    # Fire only on TARGET-position references: a migration plan must name
+    # the legacy package as the SOURCE (from→to lines, staging paths are
+    # fine); the defect is placing migrated code there (run #2) — i.e. a
+    # destination path or Target line carrying the legacy root.
+    for line in text.splitlines():
+        if "migration/staging/" in line:
+            continue
+        if re.search(r"(?:Target|→|->)\s*[^\n]*src/(?:main|test)/java/com/redhat/coolstore", line) \
+                or re.search(r"^\*\*Target\*\*.*com[./]redhat[./]coolstore", line):
+            lint("package", f"legacy package in TARGET position: {line.strip()[:80]} — project root is com.demo (AGENTS.md)")
+    # Task substance (T-029 class, M3 dry-run catch: 'waiver' and
+    # 'coverage' tasks with no code path): every task body must name a
+    # concrete artifact it changes.
+    substance = re.compile(r"src/(?:main|test)/|pom\.xml|k8s/|application\.properties|migration\.yaml|migration/staging/")
+    for _, tid, _ in heads:
+        if not substance.search(bodies.get(tid, "")):
+            lint("substance", f"{tid}: task body names no code/config path it changes — ceremonial task (waivers belong in spec prose, not tasks)")
 
     # N2: every preserve: item in migration.yaml must appear in the plan
     try:
