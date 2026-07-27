@@ -164,3 +164,19 @@ legacy-package source to `com.demo` with imports rewritten (task sensor
 GREEN), plan text corrected so T-017+ target the right root. Third
 plan-authoring defect class this run (format, sequencing, identity) —
 each now a deterministic lint/rule, none can recur silently.
+
+### 01:41–01:57 — T-019: the run-1 regression class defeated; first autonomous fix commit
+Artifacts verified directly:
+- `CatalogService.java`: genuine MicroProfile REST Client —
+  `@RegisterRestClient(configKey="catalogService")`, JAX-RS `@GET
+  /api/products`, typed `List<Product>` — per the MAPPINGS decided shape.
+- `application.properties`:
+  `quarkus.rest-client.catalogService.url=${CATALOG_ENDPOINT:http://localhost:8081}`
+  — **the preserved integration survives, env-driven exactly like the
+  legacy contract** (run 1 erased this and shipped fake products; the
+  preserve: contract + a worker/orchestrator that read the plan produced
+  the real thing this time).
+- In-loop sonar caught 4 style violations (run-1's residue rules) at the
+  introducing milestone with file:line precision; the sensor-fix session
+  committed AUTONOMOUSLY for the first time (`51566ac`, commit-on-green
+  prompt validated) and the milestone re-runs GREEN with 0 violations.
