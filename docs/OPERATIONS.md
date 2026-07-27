@@ -1146,7 +1146,7 @@ unreviewed) — each blind gate round fixed one violation class and
 introduced another. Verdict recorded honestly: autonomy converges on
 build/deploy failures but CHURNS on style-gate rounds without local
 sonar feedback; the improvement plan's factory-parity sensors (C1/D1)
-target exactly this. Full retro: `docs/HARNESS-IMPROVEMENT-PLAN.md`. Platform fixes hardened by this run: token budget
+target exactly this. Full retro was docs/HARNESS-IMPROVEMENT-PLAN.md (executed and removed 2026-07-27; the process it produced is docs/MIGRATION-PROCESS-REDESIGN.md). Platform fixes hardened by this run: token budget
 20M/1h for the coding subscription, hermes output caps via provider
 `context_length` + `extra_body`, raised stream timeouts for
 thinking-mode generations.

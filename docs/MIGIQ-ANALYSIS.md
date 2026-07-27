@@ -1,5 +1,12 @@
 # MigIQ analysis — what it does, what we adopt, what we reject
 
+> **Verdict update (2026-07-27, post-V3):** the "graphify CLI rejected"
+> call below is REVERSED — V3 proved import-only analysis misses
+> same-package edges, and V5's DDD story-cutting needs AST edges and
+> communities. Adoption plan: MIGRATION-PROCESS-REDESIGN.md §10. The
+> parallel-subagent and checkbox-state rejections were instead
+> vindicated by V3's two-writer incidents.
+
 Analyzed 2026-07-27 from the clone in `tmp/migIQ` (v0.2.2, sshaaf/migIQ).
 Read in full: README, AGENT.md, all 8 SKILL.md files (~5,800 lines), the
 evals framework, test-validator.sh.

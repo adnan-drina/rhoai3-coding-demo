@@ -267,7 +267,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
   round budgets + acceptance-based success; X: supervisor test suite,
   run reports). Target profile: ~6–7 h, factory-green first push, zero
   factory-discovered defect classes. Details:
-  `docs/HARNESS-IMPROVEMENT-PLAN.md`.
+  `docs/MIGRATION-PROCESS-REDESIGN.md`.
 - [ ] **Watch konveyor-ecosystem/konveyor-skills** — nascent (one
   product-ideation skill today, not execution-grade); adopt if kantra /
   ruleset-authoring / Kai-integration skills land there, as candidates to
@@ -281,7 +281,7 @@ The demo must deploy from any GitHub org and container registry, not just the au
   Sessions that never delegated did sustained multi-file work. Disable
   the tool by config for harness workers + AGENTS.md rule ("explore
   directly, never spawn subagents"); precedent: the hermes execute_code
-  ban. Evidence: `docs/WORKER-ESCALATION-FORENSICS.md`.
+  ban. Evidence: `AGENTS.md worker tool-discipline rules (forensics absorbed 2026-07)`.
 - [x] **Worker skills discovery fix** — IMPLEMENTED 2026-07-26 (AGENTS.md: ls/read exact paths, glob dot-dir warning) — `glob(".opencode/skills/*")`
   returns "No files found" (dot-dir globbing); AGENTS.md should direct
   `ls`+read by exact path; consider an upstream OpenCode issue.
