@@ -31,6 +31,16 @@ task's findings call for, or remove the premature import — never a file
 you write yourself. Fabricated stubs poison the tree: they compile
 locally and detonate in the factory.
 
+### Harvest is per-file and follows transformation
+
+Never harvest a file that still contains legacy-framework imports the
+recipes did not transform (Spring annotations survive the jakarta
+recipe) — the post-commit sensor will reject the tree, and a "harvest
+everything, convert later" plan creates an inherent red window between
+tasks. Plans order per-file conversion BEFORE (or WITH) that file's
+harvest; a harvest packet lists only files whose transformations are
+complete, and the harvesting session compiles before committing.
+
 ### Task completion is evidence in the destination
 
 A task is complete when its FINDINGS are resolved IN
