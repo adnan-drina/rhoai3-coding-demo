@@ -291,3 +291,34 @@ gate incl. coverage ≥80 — the known risk given the thin test base),
 Phase E ship (route `/` 200 + `/api/cart/acceptance-check` 200
 non-empty; preflight verifies preserved CATALOG_ENDPOINT). Persistent
 auth-resilient monitor re-armed on the pod.
+
+### 05:02–05:04 — Phase D green; factory round 1 FAILED at maven-build; record correction
+Phase D committed `7e6bdca` (milestone GREEN, 0 new violations), then
+the supervisor pushed and the pipeline failed maven-build in 11 s:
+`Source option 5 is no longer supported`. Root cause, artifact-verified:
+- The migrated pom sets `maven.compiler.release=21` but never PINS
+  `maven-compiler-plugin`; the factory's older Maven defaults to plugin
+  3.1, which predates `<release>` (3.6+) and silently compiles at
+  source 5. The workspace's newer Maven masks this — local verify was
+  legitimately green. The scaffold pom (which the factory builds fine)
+  pins the plugin; the migrated pom was written from scratch and lost
+  the convention.
+- **Record correction (my earlier claims)**: the supervisor has NO
+  pre-push preflight — `preflight` appears only inside fix-session
+  prompts. I had described Phase D as gated by a full preflight; that
+  was wrong. The push went out on the strength of the in-loop milestone
+  only, and a factory round was burned on a locally-preventable defect
+  (given the right invariant).
+Interventions, all codified and synced to golden:
+1. `sensors.sh` wiring invariant: pom must pin `maven-compiler-plugin`
+   with a `<version>` — makes this factory-only failure locally
+   detectable. Deployed to the pod mid-run (sensors are exec'd fresh),
+   so the in-flight build-fix session's mandated "preflight GREEN
+   before commit" now REQUIRES the pin.
+2. `supervisor.sh` (scaffold+golden; pod at next relaunch): pre-push
+   preflight gate — full preflight before every push, bounded
+   preflight-fix rounds (2, like every class), then push-anyway with
+   the factory as arbiter. The coverage gap (68.3% vs 80) will hit this
+   gate in future runs instead of burning pipeline rounds.
+Build-fix round 1 session in flight; reviewing its commit when it
+lands.
