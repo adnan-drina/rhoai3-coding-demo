@@ -1150,3 +1150,20 @@ target exactly this. Full retro: `docs/HARNESS-IMPROVEMENT-PLAN.md`. Platform fi
 20M/1h for the coding subscription, hermes output caps via provider
 `context_length` + `extra_body`, raised stream timeouts for
 thinking-mode generations.
+
+**Run #4 (2026-07-26, monolith rerun in parallel with the first cart
+run) — closed FACTORY-FAILED.** Ran on the pre-improvement harness
+(advisory sensors only). What it bought: (1) it isolated the
+harness-version variable — the same monolith that churned in run #3
+churned again (gate violations 34→19 across the round budget, never 0),
+confirming the churn is a feedback-architecture property, not a
+model-seat property; (2) its T-001 committed a non-compiling
+jakarta-harvest that went UNDETECTED for ~1.5 h — the direct
+motivation, with run #3's gate churn, for the two mechanisms now
+validated live in cart run #2 (post-commit sensors caught the identical
+T-001 failure class in seconds; in-loop sonar keeps the tree at 0 new
+violations instead of discovering dozens at the gate). Verdict: the run
+produced no shippable artifact and, by itself, no new failure classes —
+its value was as the control arm for the improvement plan. Cost noted:
+a full model-budget day. No further monolith reruns until the cart
+service ships end-to-end on the improved harness.
