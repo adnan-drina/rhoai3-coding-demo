@@ -133,8 +133,17 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # Harvest fidelity first (cheap, pure python): staged legacy classes
   # must survive into the destination modulo approved transforms
   # (V3 catch: a fix session silently rewrote a serialVersionUID).
-  python3 .hermes/harness/harvest-fidelity.py \
-    || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
+  # FIDELITY_CHECK=off waives it for hardening stories (S03 lesson:
+  # they deliberately depart from the staged legacy — the brief, not
+  # staging, is their design authority). /tmp/fidelity-off is the
+  # live-run bridge for an already-running supervisor (pause-flag
+  # pattern; env cannot be injected into a running loop).
+  if [ "${FIDELITY_CHECK:-on}" = "off" ] || [ -f /tmp/fidelity-off ]; then
+    echo "fidelity check WAIVED (hardening story)"
+  else
+    python3 .hermes/harness/harvest-fidelity.py \
+      || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
+  fi
   $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
     || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
   sonar_check "${1:-inloop}"

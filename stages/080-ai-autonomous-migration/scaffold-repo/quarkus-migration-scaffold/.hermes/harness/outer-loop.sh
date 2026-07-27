@@ -142,10 +142,14 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   # One supervisor child per story with computed env. RUN_BASE=HEAD at
   # story start keeps every phase prefix story-scoped (no cross-story
   # commit-range collisions). PRESERVE_CHECK follows deploy: preserve
-  # surfaces are enforced where they ship.
+  # surfaces are enforced where they ship. FIDELITY_CHECK follows story
+  # class: hardening stories (findings: -) deliberately depart from the
+  # staged legacy, so the harvest-fidelity sensor is waived for them
+  # (S03 lesson — the brief is their design authority, not staging).
   PC=on; [ "$DEPLOY" = "true" ] || PC=off
+  FC=on; [ "$FINDINGS" = "none" ] && FC=off
   rm -f /tmp/supervisor-done
-  log "$SID: launching supervisor (deploy=${DEPLOY}, findings=${FINDINGS}, preserve=${PC})"
+  log "$SID: launching supervisor (deploy=${DEPLOY}, findings=${FINDINGS}, preserve=${PC}, fidelity=${FC})"
   env RUN_BASE="$(git rev-parse HEAD)" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
@@ -153,6 +157,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       STORY_TASKS="$SPEC_TASKS" \
       STORY_SCOPE="$SCOPE" \
       PRESERVE_CHECK="$PC" \
+      FIDELITY_CHECK="$FC" \
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
   log "$SID: supervisor finished — ${OUTCOME}"
