@@ -322,3 +322,27 @@ Interventions, all codified and synced to golden:
    gate in future runs instead of burning pipeline rounds.
 Build-fix round 1 session in flight; reviewing its commit when it
 lands.
+
+### 05:20–05:30 — Build fix WORKED first try; gate round 1 is coverage-only; blind-evidence defect fixed
+- `7ece846` "Build fix r1: Add explicit maven-compiler-plugin
+  configuration for Java 21" — milestone GREEN, re-push, and the
+  pipeline PASSED maven-build and build-and-push, reaching sonar-scan.
+  One evidence-driven round closed the compiler defect (contrast run
+  #3, where build-correction took three rounds).
+- sonar-scan failed with a gate profile we have never seen in five
+  runs: **new_violations=0, duplication=0.0, hotspots=0, new_coverage
+  65.8% vs 80 required** — the in-loop sensors delivered a style-clean
+  factory arrival, and the ONLY failing condition is the coverage gap
+  the plan never staffed (T-028/029 review above).
+- **Harness defect caught live**: `gate_violations` exports issues +
+  duplication only — with 0 violations it wrote an EMPTY evidence file,
+  and the gate-fix session would have flailed blind (run #3's churn
+  pattern). Interventions: (1) wrote the real evidence to
+  `/tmp/gate-violations.txt` on the pod at session age ~2 min —
+  new_coverage metric, per-class JaCoCo uncovered-line table, and the
+  EXECUTION.md test rules (mock boundaries only, never touch expected
+  values); (2) fixed the exporter in supervisor.sh (scaffold+golden) to
+  export `new_coverage` + the 10 least-covered files whenever coverage
+  < 80. Gate-fix r1 session now working with full evidence; its commit
+  gets the standard artifact review (watch for: assertion tampering,
+  all-mock tests, ceremonial coverage).
