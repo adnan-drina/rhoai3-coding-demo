@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Deterministic Phase B plan lint (improvement plan B2).
 
-Usage: plan-lint.py <tasks.md> [mta-findings.json]
+Usage: plan-lint.py <tasks.md> [mta-findings.json] [--findings-scope id1,id2]
+
+--findings-scope (M3 story scoping, redesign §3): restrict the
+mandatory-findings coverage check to the listed rule ids — the story's
+assigned findings from the roadmap. All other checks stay global.
 
 Checks (exit 0 = plan accepted, 1 = revision required; findings printed
 one per line as 'LINT:<class>: <detail>'):
@@ -25,7 +29,13 @@ def lint(cls, detail):
 
 
 def main():
-    tasks_path = sys.argv[1]
+    args = sys.argv[1:]
+    scope = None
+    if "--findings-scope" in args:
+        i = args.index("--findings-scope")
+        scope = {s.strip() for s in args[i + 1].split(",") if s.strip()}
+        del args[i:i + 2]
+    tasks_path = args[0]
     text = open(tasks_path).read()
 
     heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
@@ -105,13 +115,15 @@ def main():
     # findings coverage — a mandatory rule is covered by a task OR by a
     # recipe execution recorded in migration/recipe-log.md (R3: recipe-
     # executed rewrites need no plan task).
-    if len(sys.argv) > 2:
-        d = json.load(open(sys.argv[2]))
+    if len(args) > 1:
+        d = json.load(open(args[1]))
         mandatory = set()
         for rs in d:
             for rid, v in (rs.get("violations") or {}).items():
                 if (v.get("category") or "mandatory") == "mandatory":
                     mandatory.add(rid)
+        if scope is not None:
+            mandatory &= scope
         try:
             recipe_log = open("migration/recipe-log.md").read()
         except OSError:

@@ -252,6 +252,109 @@ run_case() {
 }
 check "profile-rubric rejects plan leakage" 1 "RUBRIC:plan-leakage"
 
+# --- roadmap-lint (M2) -----------------------------------------------------
+
+roadmap_fixture() { # $1 = briefs? (yes|no)
+  mkdir -p briefs
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+
+## S01: Models and contracts
+- scope: src/main/java/com/demo/model/ShoppingCart.java, src/test/java/com/demo/ShoppingCartServiceTest.java
+- findings: javaee-pom-to-quarkus-00010
+- depends: -
+- deploy: false
+- done: models compile on jakarta, legacy pricing assertions pinned
+- rationale: highest fan-in per dependency-order.md — dependencies first
+
+## S02: Services and surface
+- scope: src/main/java/com/demo/service/CartService.java
+- findings: springboot-web-to-quarkus-00000
+- depends: S01
+- deploy: true
+- done: API serves, acceptance path returns 200
+- rationale: dependents after dependencies
+EOF
+  if [ "$1" = "yes" ]; then
+    for s in S01-models S02-services; do
+      cat > "briefs/${s}.md" <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+```java
+import javax.ws.rs.Path;
+```
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts owned by this story
+x
+## Done-criteria
+x
+EOF
+    done
+  fi
+  cat > inv.md <<'EOF'
+## Summary by class
+- recipe: 1 — javax-to-jakarta-import-00001
+- rewrite: 1 — javaee-pom-to-quarkus-00010
+- infer: 1 — springboot-web-to-quarkus-00000
+EOF
+}
+
+run_case() { mkfix; roadmap_fixture yes; python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md; }
+check "roadmap-lint accepts a complete roadmap" 0 "ROADMAP OK"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/findings: springboot-web-to-quarkus-00000/findings: -/" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects an unowned mandatory finding" 1 "LINT:coverage"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/depends: S01/depends: S09/" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects forward/unknown dependencies" 1 "LINT:order"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/deploy: true/deploy: false/" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint requires a deploying last story" 1 "LINT:deploy"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s|scope: src/main/java/com/demo/service/CartService.java|scope: run validation and report|" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects ceremonial stories" 1 "LINT:substance"
+
+run_case() { mkfix; roadmap_fixture no; python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md; }
+check "roadmap-lint requires briefs with code excerpts" 1 "LINT:briefs"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  sed -i.bak "s/findings: javaee-pom-to-quarkus-00010/findings: javaee-pom-to-quarkus-00010, javax-to-jakarta-import-00001/" roadmap.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects owning a recipe-executed finding" 1 "LINT:coverage"
+
+# --- plan-lint story scoping (M3) ------------------------------------------
+run_case() {
+  mkfix
+  plan_header > tasks.md
+  printf '[{"violations": {"in-scope-rule-001": {"category": "mandatory", "incidents": []}, "other-story-rule-001": {"category": "mandatory", "incidents": []}}}]' > f.json
+  printf '\nT-001 resolves in-scope-rule-001.\n' >> tasks.md
+  python3 "$LINT" tasks.md f.json --findings-scope in-scope-rule-001
+}
+check "plan-lint story scope ignores other stories' findings" 0 "PLAN OK"
+
 # --- static sensor fixtures ------------------------------------------------
 
 green_pom() {
