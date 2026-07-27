@@ -273,6 +273,34 @@ closure (golden; pod gets it at relaunch); single-instance guard
 **D. Planned separately**: graphify adoption with its decisive spike
 (redesign §10) as the V5 pre-step.
 
+**E. Session-time reductions (investigated 2026-07-27 mid-S02;
+measured: sfix sessions averaged 17 min / 152 min total for
+single-digit style-violation counts — a third of all session time; the
+45-min worst case made 149 tool calls; raw model round-trip is ~3 s,
+so the cost is call count × thinking time, not the platform):**
+13. **Deterministic style-autofix before any sfix dispatch** — on a
+    sonar red, the supervisor first runs the OpenRewrite cleanup
+    recipes (RemoveUnusedImports + the static-analysis set covering
+    the recurring rules), re-checks, and dispatches a model session
+    only for what recipes could not fix. Attacks most of the 152 min
+    directly. [priority 1]
+14. **Class-based session budgets** — SESSION_TIMEOUT stays 2700s for
+    judgment tasks; sfix/tree-fix/revision classes get ~900s. A wedged
+    style fix dies in 15 minutes, not 45. [priority 1]
+15. **One-sensor-run discipline + richer packets** (EXECUTION.md):
+    exactly one pre-commit sensor run per session (observed 2–4 Maven
+    cycles each), and packets inline the relevant file content so
+    sessions stop burning ~20 calls re-reading known context.
+16. **Mechanical session classes route to the worker seat** (27B)
+    instead of M2 — cheaper and faster per call, proven on bounded
+    mechanical work; judgment sessions keep M2. [outer-loop build]
+17. **Batch compatible small tasks** — one session, N commits (S01's
+    four package migrations were four separate 12-min sessions).
+    [outer-loop build]
+(Prevention item 9 and no-op-elimination item 11 above are also
+session-time levers; together with 13–14 the S02-shaped story
+projects from ~5 h to ~2.5–3 h.)
+
 **Not exercised, deliberately** — this is the joint test run (V3):
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
