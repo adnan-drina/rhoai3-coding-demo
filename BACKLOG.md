@@ -288,3 +288,12 @@ The demo must deploy from any GitHub org and container registry, not just the au
 - [ ] **Re-baseline the 27B worker envelope after both fixes** — the
   "stalls on design/Spring packets" verdicts are partially subagent-death
   artifacts; re-measure escalation rate before any model decisions.
+- [ ] **MTA Hub custom migration target** (user decision 2026-07-27:
+  out of scope for now — workspace+git integrations are the focus).
+  When the Hub joins the demo flow: register the platform rules
+  (`.hermes/rules/` in the golden scaffold, or a promoted
+  `demo-migration-rules` repo) as a custom migration target via
+  "Retrieve from a repository" so analysts select it in the wizard.
+  Git stays the source of truth; the Hub is a curated consumer view
+  (per the MTA 8.2 UI guide's own design). See
+  docs/MTA-TO-SPEC-MAPPING.md §8 for the decided analysis contract.
