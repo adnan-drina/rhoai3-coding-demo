@@ -44,6 +44,18 @@ leaves the repository buildable, sensor-green, and closer to done.
    (validation-only, commit-only, report-only) — the harness gates do
    the validating.
 
+## Story classes
+
+Most stories are **migration stories** (findings-driven, fidelity
+first). The roadmap may also carry **hardening stories**: post-ship
+quality work fed by the semantic code review of a deployed story —
+concurrency correctness, validation and error mapping, cache/resource
+policy, API idempotency — things the fidelity contract deliberately
+preserved from the legacy and the rule-based gate cannot see. A
+hardening story owns no MTA findings (`findings: -`); its brief cites
+the review findings instead, and behavioral contracts still bind: the
+pinned tests must stay green while the defect classes close.
+
 ## roadmap.md format (machine-parsed — roadmap-lint enforces this)
 
 ```markdown
