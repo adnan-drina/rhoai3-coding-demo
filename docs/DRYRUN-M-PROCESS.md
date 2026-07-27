@@ -179,6 +179,26 @@ Known accepted limits: rubric checks citation presence not accuracy;
 findings coverage is string-presence (M4's first sensor run is the
 backstop; validation-task-only smell noted as a lint candidate).
 
+## V3 — S01 story run (joint test, 2026-07-27): STORY SHIPPED ITS GATE
+
+Wall clock 12:26→15:31 (~3h). 10 tasks + 4 autonomous sensor-fix
+commits + 2 operator correctives; preflight GREEN (full gate + boot);
+pipeline + sonar quality gate green; **story-gate-passed (first live
+non-deploy-story path)**; Phase F retro authored and committed
+autonomously. Findings delta (harness-run): legacy 24/47 → destination
+8/12, remaining = S02 surfaces + 3 pom rules falsifying part of
+T-001's resolved-by-scaffold claim (carried as S01 debt → S02).
+
+Interventions (2, both scope-corrections, zero truth-corrections):
+serialVersionUID restore (fix-session drift), T-008 shipping-tier
+calculator moved from src/main to test scope (story-scope invention).
+V3 ledger: fix-session scope discipline; harvest-fidelity sensor
+candidate; story-scope sensor candidate; M3 gap (service-logic
+characterization in models story); same-package edges in
+dependency-order; Phase D re-analysis needs to be a supervisor script
+step (sessions lack the Java 21 export); session workspace hygiene
+(broken stray test file); promo-composition semantics watch for S02.
+
 **Not exercised, deliberately** — this is the joint test run (V3):
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
