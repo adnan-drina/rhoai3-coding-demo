@@ -25,7 +25,6 @@ WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
-MAX_FACTORY_ROUNDS=4      # Phase E correction rounds (build/gate/deploy classes share the budget)
 
 RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
 TASKS_SINCE_MILESTONE=0   # supervisor-enforced in-loop sonar cadence
@@ -136,7 +135,7 @@ run_stage() {
       log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
       if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         event "$tag" "$attempt" sensor_red_post_commit verify
-        log "$tag: committed but the task sensor is RED — dispatching sensor-fix session"
+        log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
         orch "${tag}-sfix" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). COMMIT THE MOMENT THE SENSOR IS GREEN — run .hermes/harness/sensors.sh task after each fix and immediately commit ONE commit starting '${prefix} sensor fix:' when it passes; do not polish further (a green fix that never commits is a failed session).
 ${RUN_CONTRACT}"
@@ -279,7 +278,10 @@ fi
 TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
 # Accept 3-6 hash heading levels and any T-style id — models format
 # tasks.md differently no matter what the prompt mandates (run #3 lesson).
-TASK_IDS=$(grep -E '^#{3,6} +T[-A-Za-z0-9]*[0-9]+:' "$TASKS_FILE" | sed -E 's/^#+ +(T[-A-Za-z0-9]*[0-9]+):.*/\1/')
+# Depth 2-6, matching plan-lint exactly — a '## T-001:' plan used to pass
+# the lint and then FATAL here (audit finding: regex drift between the
+# two parsers).
+TASK_IDS=$(grep -E '^#{2,6} +T[-A-Za-z0-9]*[0-9]+:' "$TASKS_FILE" | sed -E 's/^#+ +(T[-A-Za-z0-9]*[0-9]+):.*/\1/')
 [ -n "$TASK_IDS" ] || { log "FATAL: no task ids parsed from $TASKS_FILE"; echo no-tasks > /tmp/supervisor-done; exit 1; }
 log "task list: $(echo $TASK_IDS | tr '\n' ' ')"
 

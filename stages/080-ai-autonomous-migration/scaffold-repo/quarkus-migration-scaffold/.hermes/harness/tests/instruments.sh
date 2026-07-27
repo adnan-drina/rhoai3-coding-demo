@@ -177,6 +177,17 @@ EOF
 }
 check "lint rejects unmapped mandatory findings" 1 "LINT:findings"
 
+# 11b. parser parity: the supervisor's task-id grep must accept every
+# heading depth the lint accepts (audit finding: #{3,6} vs #{2,6} drift)
+run_case() {
+  mkfix
+  printf '## T-001: Depth-two heading\n**Class**: rewrite\n- x\n\nUI surface: waived.\n' > tasks.md
+  python3 "$LINT" tasks.md > lint.out
+  ids=$(grep -E '^#{2,6} +T[-A-Za-z0-9]*[0-9]+:' tasks.md | wc -l | tr -d ' ')
+  grep -q "PLAN OK" lint.out && [ "$ids" = "1" ] && echo "PARITY OK"
+}
+check "supervisor task grep accepts every lint-accepted heading depth" 0 "PARITY OK"
+
 # --- static sensor fixtures ------------------------------------------------
 
 green_pom() {
