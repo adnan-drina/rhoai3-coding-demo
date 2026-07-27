@@ -217,6 +217,41 @@ run_case() {
 }
 check "lint accepts recipe-executed mandatory rule with no task" 0 "PLAN OK"
 
+# 11f. profile-rubric: accepts a complete cited profile
+profile_fixture() {
+  cat <<'EOF'
+# Architecture profile
+## 1. Purpose & domain
+A shopping cart service managing carts, items and promotions for the coolstore shop; carts price their items against a remote product catalog and apply threshold-based shipping costs and promotions, with the expected totals pinned by the legacy suite (ShoppingCartServiceTest). The core domain concepts are the cart, its items, the product, and the promotion.
+## 2. Components & relationships
+The REST layer (CartEndpoint, src/main/java/com/redhat/coolstore/rest/CartEndpoint.java:20) depends on ShoppingCartServiceImpl which composes ShippingService and PromoService; models ShoppingCart and Product are the god nodes per the dependency analysis and carry the highest fan-in and therefore the change risk.
+## 3. Integration surfaces
+The catalog is consumed via an env-configured endpoint CATALOG_ENDPOINT (src/main/resources/application.properties:6), covered by preserve: CATALOG_ENDPOINT; the REST API exposes cart operations under /api/cart per the controller mappings in the endpoint class source.
+## 4. Behavioral contract sources
+The legacy suite ShoppingCartServiceTest pins the pricing behavior that constitutes the contract: cartItemTotal 2000.0 and shippingPromoSavings -10.99 for the two-item vehicle cart fixture (src/test/java/com/redhat/coolstore/service/ShoppingCartServiceTest.java:40). The checkout and set-cart flows carry no test coverage at all — a contract gap the specs must close with characterization tests before those flows are touched.
+## 5. Modernization surface
+The pom family must move to the Quarkus platform (javaee-pom-to-quarkus-00010 and siblings, all mandatory); imports move per javax-to-jakarta-import-00001; in-memory cart state flagged by the platform rule needs an explicit decision (src/main/java/com/redhat/coolstore/service/ShoppingCartServiceImpl.java:30).
+## 6. Domain boundaries
+Effectively a single bounded context: the cart, pricing and promotion classes all share mutable state through the ShoppingCart model, and the dependency graph shows edges from the model package into every service class (src/main/java/com/redhat/coolstore). No seam exists that would let pricing or promotion be modernized in isolation from the cart itself.
+EOF
+}
+run_case() { mkfix; profile_fixture > p.md; python3 "$HARNESS_DIR/profile-rubric.py" p.md; }
+check "profile-rubric accepts a complete cited profile" 0 "PROFILE OK"
+
+# 11g. profile-rubric rejects missing/uncited/plan-leaking profiles
+run_case() {
+  mkfix; profile_fixture | grep -v "Domain boundaries" | grep -v "bounded context" > p.md
+  python3 "$HARNESS_DIR/profile-rubric.py" p.md
+}
+check "profile-rubric rejects a missing section" 1 "RUBRIC:missing"
+
+run_case() {
+  mkfix
+  { profile_fixture; printf '\n## Task breakdown\n#### T-001: convert pom\n'; } > p.md
+  python3 "$HARNESS_DIR/profile-rubric.py" p.md
+}
+check "profile-rubric rejects plan leakage" 1 "RUBRIC:plan-leakage"
+
 # --- static sensor fixtures ------------------------------------------------
 
 green_pom() {
