@@ -5,3 +5,8 @@ migration:
   legacyRepoUrl: https://github.com/rhpds/mca-coolstore.git
   target: quarkus
   provisionedBy: app-migration golden-path template
+analysis:
+  # MTA selects rules by source/target labels — the decided set:
+  # the migration path, cloud-readiness (OpenShift deploy), JDK jump.
+  source: java-ee
+  targets: [quarkus, cloud-readiness, openjdk17]

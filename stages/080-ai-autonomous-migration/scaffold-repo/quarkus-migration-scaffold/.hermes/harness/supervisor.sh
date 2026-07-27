@@ -259,7 +259,19 @@ else
   else
     log "Phase A: no IDE analysis — running kantra sensor"
     kantra-ensure >> "$LOG" 2>&1 || true
-    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline --target quarkus --json-output --overwrite >> "$LOG" 2>&1 || true
+    # Rule selection is label filtering (MTA 8.2 rules guide): the
+    # analysis contract lives in migration.yaml analysis: — source tech,
+    # target set (migration path + cloud-readiness + JDK jump), plus the
+    # project-contract custom ruleset. Defaults keep older projects valid.
+    A_SOURCE=$(grep -A6 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "source:" | awk '{print $2}')
+    A_TARGETS=$(grep -A6 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
+    [ -n "$A_TARGETS" ] || A_TARGETS="quarkus cloud-readiness"
+    K_ARGS=""
+    [ -n "$A_SOURCE" ] && K_ARGS="--source $A_SOURCE"
+    for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
+    [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules .hermes/rules"
+    log "Phase A: kantra args: $K_ARGS"
+    /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline $K_ARGS --json-output --overwrite >> "$LOG" 2>&1 || true
     cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
       || { log "FATAL: Phase A ground truth unavailable"; write_run_report "phaseA-failed"; echo phaseA-failed > /tmp/supervisor-done; exit 1; }
   fi

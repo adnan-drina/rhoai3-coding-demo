@@ -1,0 +1,50 @@
+- ruleID: demo-env-integration-00001
+  category: mandatory
+  effort: 3
+  description: Environment-driven external configuration must be preserved
+  message: >
+    This configuration key follows the environment-variable convention
+    (ALL_CAPS key or ${ALL_CAPS} placeholder) — an operational contract:
+    deployments inject it to point the app at external services. Record
+    it under `preserve:` in migration.yaml and keep it env-driven in the
+    migrated configuration (e.g.
+    `quarkus.rest-client.<key>.url=${VAR:default}`). Erasing or
+    hardcoding it is a functional regression no unit test catches.
+  labels:
+    - konveyor.io/target=quarkus
+  when:
+    builtin.filecontent:
+      filePattern: ".*application[^/]*\\.(properties|ya?ml)$"
+      pattern: "(^[A-Z][A-Z0-9_]{2,}=|\\$\\{[A-Z][A-Z0-9_]{2,}(:[^}]*)?\\})"
+
+- ruleID: demo-ui-surface-00001
+  category: potential
+  effort: 1
+  description: User-facing web surface present — plan must map or waive it
+  message: >
+    Static web assets exist. The migration plan must either map the
+    user-facing surface to a task or explicitly waive it with a reason
+    (plan-lint enforces this); the ship acceptance requires the route
+    root to serve 200 regardless.
+  labels:
+    - konveyor.io/target=quarkus
+  when:
+    builtin.file:
+      pattern: ".*src/main/(resources/(static|public)|webapp)/.*"
+
+- ruleID: demo-inmemory-state-00001
+  category: potential
+  effort: 5
+  description: In-memory collection state in a service — verify cloud readiness
+  message: >
+    A service holds state in an in-memory map. On OpenShift this state
+    is lost on every pod restart and diverges across replicas. Confirm
+    this is acceptable for the service's contract (and record the
+    decision in the spec) or plan externalization; do not silently carry
+    it through the migration.
+  labels:
+    - konveyor.io/target=quarkus
+  when:
+    java.referenced:
+      location: FIELD
+      pattern: java.util.concurrent.ConcurrentHashMap

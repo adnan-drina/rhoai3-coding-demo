@@ -192,3 +192,61 @@ workspace-image dependency for signal we already have at cart scale.
 Order rationale: 1 and 2 strengthen the translation itself (the step
 you named as crucial) with zero new dependencies; 3 changes who
 executes work the translation has already classified; 4 is contingent.
+
+---
+
+## 8. Rule configuration (added 2026-07-27, from the MTA 8.2 rules guide)
+
+Studied in full: *Configuring and using rules for an MTA analysis*
+(tmp/, 45 pp). The operative mechanics and what they mean for us:
+
+1. **Rule selection is label filtering.** `--source`/`--target` (and
+   `--label-selector`) select ONLY rules labeled with matching
+   `konveyor.io/source|target`; everything else is silently excluded.
+   A wrong or narrow selection produces a clean-looking but
+   under-scoped analysis — there is no warning.
+2. **Custom rules must carry reserved labels** when `--source/--target`
+   are used, or they never fire (ch. 8.1 note).
+3. **Categories have precise semantics**: mandatory = will not build or
+   run on the target without the change; optional = works, suboptimal;
+   potential = must be examined, statically undecidable. Tag-only rules
+   produce technology inventory, not issues.
+4. The Java provider matches at precise locations (IMPORT, PACKAGE,
+   ANNOTATION+elements, METHOD_CALL, INHERITANCE, FIELD…); the builtin
+   provider covers config surfaces (filecontent regex, XML XPath, file
+   patterns) — i.e., our project contracts ARE expressible as rules.
+
+**What we had been running**: target=quarkus only (both the IDE analyses
+and the supervisor's kantra fallback). Every one of the cart's 20 rules
+is quarkus-target. Consequences, visible in run evidence: zero
+cloud-readiness rules ran (the cart's in-memory ConcurrentHashMap state
+sailed through unexamined — exactly what those rules exist to flag on
+an OpenShift target), zero openjdk rules (Java 8-era legacy → 21), and
+none of our per-project contracts (env-driven integrations, UI surface)
+existed as rules — they were enforced only downstream in migration.yaml
+and the plan lint, i.e. discovered later than the analysis could have
+told us.
+
+**The decided rule set** (implemented; carried per-project in
+migration.yaml `analysis:` and stamped by the RHDH template):
+
+| Project class | source | targets | custom rules |
+|---|---|---|---|
+| cart-class (Spring Boot services) | `springboot` | `quarkus, cloud-readiness, openjdk17` | `.hermes/rules/` demo-contract ruleset |
+| monolith class (Java EE) | `java-ee` | `quarkus, cloud-readiness, openjdk17` | same |
+
+The demo-contract ruleset (labeled `konveyor.io/target=quarkus` per the
+reserved-label requirement) encodes the contracts the runs kept
+discovering at ship time: `demo-env-integration-00001` (mandatory —
+ALL_CAPS env keys / `${VAR}` placeholders in application config are a
+preserve: contract), `demo-ui-surface-00001` (potential — static web
+assets must be mapped or waived), `demo-inmemory-state-00001`
+(potential — in-memory service state vs OpenShift restarts/replicas).
+These make the findings themselves carry what previously only
+migration.yaml and hindsight carried — the translation gets its inputs
+at analysis time.
+
+The IDE analyses (the normal flow) must select the same set: source +
+the three targets + the custom rules directory in the MTA extension
+settings; the supervisor's kantra fallback now builds its arguments
+from migration.yaml so both paths stay consistent.

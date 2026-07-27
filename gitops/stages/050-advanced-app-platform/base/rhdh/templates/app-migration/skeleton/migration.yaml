@@ -9,3 +9,11 @@ acceptance:
   # The harness supervisor asserts this after deploy (Phase E success).
   path: ${{ values.acceptancePath }}
   needsDatabase: ${{ values.needsDatabase }}
+analysis:
+  # MTA rule selection is LABEL FILTERING (--source/--target pick only
+  # matching rules; everything else is silently excluded). The decided
+  # set for this platform: the migration path itself, cloud-readiness
+  # (we deploy to OpenShift), and the JDK jump. Applies to the IDE
+  # analysis AND the supervisor's kantra fallback.
+  source: ${{ values.analysisSource }}
+  targets: [quarkus, cloud-readiness, openjdk17]
