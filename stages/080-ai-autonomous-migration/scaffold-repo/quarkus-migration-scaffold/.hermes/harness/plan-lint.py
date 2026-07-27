@@ -79,6 +79,12 @@ def main():
     if not re.search(r"\b(ui|frontend|index\s*page|web\s*surface)\b", text, re.I):
         lint("ui-surface", "plan neither covers nor waives the legacy UI surface")
 
+    # Package identity: the destination's package root is a project
+    # constant (AGENTS.md); plans that target legacy packages replicate
+    # the monolith's identity into the migrated service.
+    if re.search(r"com\.redhat\.coolstore", text):
+        lint("package", "plan targets legacy package com.redhat.coolstore — project root is com.demo (AGENTS.md)")
+
     # N2: every preserve: item in migration.yaml must appear in the plan
     try:
         my = open("migration.yaml").read()
