@@ -336,7 +336,40 @@ Note for the record: the acceptance path is currently served by the
 correct (200 + honest JSON), route-precedence check queued for the
 next story's polish.
 
-**Not exercised, deliberately** — this is the joint test run (V3):
+## Code-quality review of the shipped service (2026-07-28, beyond the gates)
+
+Method: every src/main class read line-by-line against the SonarQube
+metrics. The gate's verdict is flawless — A ratings, 0 smells, 0 bugs,
+0 duplication, 88.3% coverage, cognitive complexity 48 over 743 NCLOC.
+The semantic review finds what rule-based analysis structurally cannot.
+Key context for every finding: **most are faithfully-migrated LEGACY
+defects** — the process optimized for fidelity ("stay close to the
+original intent"), and it delivered exactly that, defects included.
+
+| # | Finding | Severity | Legacy-faithful? |
+|---|---|---|---|
+| 1 | **Thread-unsafety of shared state**: `@ApplicationScoped` singleton mutates plain `HashMap carts`/`productMap` from concurrent requests; `computeIfAbsent` on HashMap risks corruption; `clear()+putAll()` in `getProduct` gives concurrent readers a transiently empty catalog; two requests pricing one cart race on its totals | HIGH | YES — the legacy singleton had identical races |
+| 2 | **Cache-thrash DoS shape**: any UNKNOWN itemId misses the cache → `clear()` + full catalog refetch, every call. Probing invalid ids = catalog round-trip + total cache wipe each time | HIGH (operational) | YES |
+| 3 | **Non-idempotent GET + unbounded growth**: `GET /{cartId}` CREATES a cart for any id (`computeIfAbsent`); no eviction — memory grows per probed id. Also why the acceptance curl "worked": the dedicated `/acceptance-check` is POST-only, so the supervisor's GET fell through to the template route and *created a cart named "acceptance-check"* | MED-HIGH | YES (creation-on-GET); the POST-only acceptance endpoint is new code — a real S02 defect |
+| 4 | **No input validation**: negative/zero `quantity` accepted → negative totals; no error mapping — catalog failures surface as raw 500s (an `ExceptionMapper` → 503 with problem-detail is the idiom) | MED | Mostly |
+| 5 | **Dedupe semantics**: `dedupeCartItems` rebuilds items AFTER pricing with `promoSavings=0` and no re-price — item-level savings are inconsistent in the response until the next pricing; exactly the contract gap the architecture profile flagged as untested, still untested | MED | YES |
+| 6 | Idiom minors: `java.util.logging` (JBoss logging is the Quarkus idiom), hand-built JSON string in `acceptanceCheck` (return a DTO), redundant `carts.put` after `computeIfAbsent`, interface+single-impl kept | LOW | Mixed |
+
+What is genuinely GOOD: clean CDI constructor injection throughout,
+the MP REST client in the exact decided shape, rollback-on-exception
+in `addItem`, sensible stream usage, small cohesive classes, honest
+failure propagation (finding-free per the anti-fabrication contract),
+and a strong pinned-contract test base.
+
+**Process conclusion — the important one**: fidelity and quality are
+different axes, and this process measures only the first plus the
+gate's rule set. The findings above are the argument for an explicit
+**hardening story class** (e.g. S03: concurrency-correct state,
+validation + error mapping, cache policy, route/idempotency cleanup,
+dedupe re-price + its missing characterization) — planned like any
+story, fed by exactly this kind of review, run through the same
+M3→M5 cycle. Candidate addition to the roadmap design: deploy-story
+retros produce a hardening-story proposal from the semantic review.
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
 live, and the per-story retro. The outer-loop supervisor (story
