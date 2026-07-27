@@ -132,3 +132,24 @@ cause codified as the harvest-ordering rule (EXECUTION.md); supervisor
 relaunched now carrying commit-on-green fix prompts + the rule. Running
 score for this run: 3 red commits, all caught in-loop within seconds,
 all traced to ONE plan-sequencing flaw now ruled out for future plans.
+
+### 00:46–00:55 — T-008 red: three-layer build defect, resolved with ground truth
+Milestone (cadence) caught a NoSuchMethodError in the Quarkus build.
+Layered root cause, each verified against artifacts:
+1. `quarkus-maven-plugin` had NO version → Maven pulled community 3.38.0
+   against the 3.27.3 Red Hat BOM (mixed bootstrap = NoSuchMethodError).
+2. Pinning `${quarkus.platform.version}` then failed resolution — the
+   Red Hat build is not under `io.quarkus`; the WORKING scaffold pom is
+   ground truth: plugin groupId must be `${quarkus.platform.group-id}`
+   (`com.redhat.quarkus.platform`) — confirmed by a 404 probe of
+   redhat-ga for the io.quarkus coordinates.
+3. Plugin resolution also needs `<pluginRepositories>` (redhat-ga was
+   only a `<repositories>` entry).
+The sensor-fix session (2.6 min, 76 tool calls) missed all three layers;
+operator applied them with the scaffold as reference (`T-008 sensor
+fix:` commit). Design fix shipped in-run: **sonar sensor modes** —
+in-loop judges new violations only (coverage is unsatisfiable before
+the plan's test tasks and would spam fix sessions); the full gate
+applies at preflight. Milestone now GREEN in-loop with 0 new violations
+— the run-2 codebase is style-clean at T-008, unlike every prior run at
+the same point. Supervisor resumed 00:54; T-009 in session.
