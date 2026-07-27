@@ -172,6 +172,12 @@ wiring_invariants() {
     || fail wiring "pom.xml lost the jacoco-maven-plugin (coverage gate will read 0%)"
   grep -q "sonar.coverage.jacoco.xmlReportPaths" pom.xml \
     || fail wiring "pom.xml lost sonar.coverage.jacoco.xmlReportPaths"
+  # Cart run #2 factory failure: the factory's older Maven defaults to
+  # maven-compiler-plugin 3.1, which predates <release> and compiles at
+  # source 5. Local builds mask this (newer Maven). The plugin pin is a
+  # scaffold-pom convention every migrated pom must keep.
+  grep -A2 "maven-compiler-plugin" pom.xml | grep -q "<version>" \
+    || fail wiring "pom.xml does not pin maven-compiler-plugin with a <version> (factory Maven defaults to 3.1 → 'Source option 5' failure)"
 }
 
 preserved_integrations() {

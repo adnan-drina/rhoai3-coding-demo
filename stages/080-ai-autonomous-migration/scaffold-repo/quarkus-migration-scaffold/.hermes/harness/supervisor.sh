@@ -363,9 +363,30 @@ PYEOF
 }
 
 log "Phase E: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
-BUILD_R=0; GATE_R=0; DEPLOY_R=0
+BUILD_R=0; GATE_R=0; DEPLOY_R=0; PREF_R=0
 MAX_PER_CLASS=2
 while :; do
+  # Pre-push preflight (cart run #2): the factory failed maven-build on a
+  # defect (unpinned compiler plugin) the local full check catches — never
+  # burn a pipeline round on a locally-detectable failure. Bounded like
+  # every fix class; when the budget is spent, push and let the factory
+  # arbitrate.
+  if ! .hermes/harness/sensors.sh preflight > /tmp/preflight-failure.txt 2>&1; then
+    PREF_R=$((PREF_R+1))
+    if [ "$PREF_R" -le "$MAX_PER_CLASS" ]; then
+      log "Phase E: pre-push preflight RED (round $PREF_R) — fixing before push"
+      event "phaseE" 0 "preflight_red" "round=$PREF_R"
+      run_stage "Preflight fix r${PREF_R}" "preflightfix-r${PREF_R}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. The pre-push preflight is RED - the failure evidence is in /tmp/preflight-failure.txt, read it with your file tools. Fix the root cause (build wiring against the WORKING scaffold pom conventions; coverage gaps need real tests for the uncovered classes - never weaken assertions). Finish with .hermes/harness/sensors.sh preflight GREEN, then commit ONE commit. DO NOT PUSH.
+${RUN_CONTRACT}
+Commit prefix: 'Preflight fix r${PREF_R}:'." \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue preflight-correction round ${PREF_R}; inspect git status and /tmp/preflight-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight until GREEN, and commit ONE commit starting 'Preflight fix r${PREF_R}:'. DO NOT PUSH.
+${RUN_CONTRACT}" \
+        || log "Phase E: preflight-fix round $PREF_R did not converge"
+      continue
+    fi
+    log "Phase E: preflight budget exhausted — pushing anyway (factory as arbiter)"
+  fi
   PREV=$(newest_pipelinerun)
   git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
   log "Phase E: pushed $(git rev-parse --short HEAD), waiting for pipeline"
