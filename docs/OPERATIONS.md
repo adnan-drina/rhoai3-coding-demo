@@ -1167,3 +1167,16 @@ produced no shippable artifact and, by itself, no new failure classes —
 its value was as the control arm for the improvement plan. Cost noted:
 a full model-budget day. No further monolith reruns until the cart
 service ships end-to-end on the improved harness.
+
+**Cart run #2 (2026-07-26/27, M2 + 27B on the improved harness) —
+SHIPPED AND ACCEPTED.** First shipped migration of the program: quality
+gate OK (93% new-code coverage, 0 new violations), deployed, route and
+acceptance endpoint serving, catalog integration preserved as a real
+MicroProfile REST client (two fabrication attempts caught and reversed
+in-run). First style-clean factory arrival in five runs — the in-loop
+sensor architecture (post-commit task/milestone sensors + in-loop sonar)
+held the tree at 0 new violations throughout the task loop. Operator
+interventions were process-layer (completing green-but-uncommitted fix
+sessions, ship-surface gaps) and every one was codified into the
+harness/golden scaffold before run end. Full timeline and evidence:
+`docs/CART-RUN2-ANALYSIS.md`.

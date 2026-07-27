@@ -391,3 +391,55 @@ boundary-test paths updated. Supervisor RELAUNCHED 05:46 with the
 improved script: pre-push preflight gate, coverage-aware gate evidence,
 generalized acceptance evidence text — the first live execution of the
 pre-push preflight is this run's next event.
+
+### 05:47–05:50 — SHIPPED AND ACCEPTED
+Sequence, each step artifact-verified:
+- **Pre-push preflight (first live execution) ran and passed** —
+  verified from its captured output, not inferred: wiring GREEN,
+  milestone GREEN (clean verify + sonar FULL gate), boot check GREEN,
+  closing line "PREFLIGHT GREEN — the factory should confirm, not
+  discover". Fast (~60 s) because every cache was warm from the
+  ship-surface commit minutes earlier. Version stamp `31ca98a8` proves
+  the relaunched process ran the new script.
+- Pipeline `coolstore-cart-service-push-pgwpg` **succeeded** end-to-end
+  (maven-build, build-and-push, sonar-scan, deploy).
+- **Quality gate (SonarQube API): OK — new_coverage 93.0%,
+  new_violations 0, new_duplicated_lines_density 0.0.** (93.0 is
+  sonar's new-code figure vs the 96.7% local jacoco merge — same
+  reports, sonar's new-code scoping.)
+- Acceptance: route `/` → 200 (index page), `/api/cart/acceptance-check`
+  → 200 with `{"catalogEndpoint":"http://localhost:8081","service":
+  "cart","status":"ok"}`. Honest detail: the response exposes that the
+  dev namespace sets no CATALOG_ENDPOINT (no catalog service deployed
+  there) — the env-driven mechanism is intact and reports its real
+  configuration instead of masking it. That transparency is the point
+  of the fabrication battles this run.
+- Supervisor: `SUPERVISOR COMPLETE: migration shipped and accepted`;
+  run report committed with KPI ledger (2 escalated_untested,
+  1 orphan_worker, 1 slow_session, 1 pipeline_succeeded,
+  1 acceptance_pass).
+
+## Final verdict — cart run #2
+
+**Shipped.** Spring Boot 2.7 cart service → Quarkus 3.27 (Red Hat
+platform), quality gate OK (93% new-code coverage, 0 violations),
+deployed and serving, catalog integration genuinely preserved
+(MicroProfile REST client + env-driven URL; no fabricated fallbacks —
+two fabrication attempts caught and reversed in-run).
+
+What the harness did autonomously: the full 29-task loop with in-loop
+sensors keeping the tree style-clean (first style-clean factory arrival
+in five runs), autonomous sensor-fix commits (T-019, T-021), the
+build-fix round (compiler-plugin pin — one round, evidence-driven), and
+1,153 lines of honest coverage tests in the gate round.
+
+What needed the operator, each occurrence codified into the harness:
+completing commits for green-but-uncommitted fix sessions (T-003
+pattern, 3×), the T-008 three-layer pom repair, the T-027 fabrication
+reversal + test-collaborator repair, the S5976 consolidation, and the
+ship surface (acceptance endpoint / root-path / index page — now a
+plan-lint check). Harness deltas produced by this run: pre-push
+preflight gate, coverage-aware gate evidence, compiler-plugin wiring
+invariant, forbidden-patterns sensor, acceptance-path lint,
+no-ceremonial-tasks + gate-sized-test-tasks planning rules,
+mock-boundaries-only test rule. All synced to the golden scaffold.
