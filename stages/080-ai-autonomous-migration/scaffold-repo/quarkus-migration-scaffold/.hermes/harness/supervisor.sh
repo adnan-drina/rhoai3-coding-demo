@@ -172,6 +172,12 @@ run_stage() {
 ${RUN_CONTRACT}"
         if committed "${prefix} sensor fix"; then
           log "$tag: sensor-fix committed $(git log --oneline -1)"
+        elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+          # Mechanical closure for the sensor-fix path too (V3 S02: the
+          # session fixed everything, went green, never committed).
+          git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
+          event "$tag" 0 mechanical_commit sfix_closure
+          log "$tag: sensor-fix work was GREEN but uncommitted — supervisor completed the commit"
         else
           log "$tag: sensor-fix did NOT commit — red tree recorded, continuing"
         fi
