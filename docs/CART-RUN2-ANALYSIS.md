@@ -121,3 +121,14 @@ session work — package-placement discipline remains the weakest worker/
 orchestrator behavior; watching whether later tasks move them to
 `com.demo` per plan or this becomes the next boundary intervention.
 Supervisor resumed 23:42; T-004 in session.
+
+### 00:32–00:48 — T-005 red (same root cause), repair, rules landed in-run
+T-005 (harvest task) re-introduced Spring-import files; milestone sensor
+caught it (cadence trigger fired — second live validation). Its
+sensor-fix attempt left the tree WORSE (unparseable pom, uncommitted) —
+discarded. Deterministic repair `c9493a3` removes the two
+Spring-bearing files (they return via their conversion tasks). Root
+cause codified as the harvest-ordering rule (EXECUTION.md); supervisor
+relaunched now carrying commit-on-green fix prompts + the rule. Running
+score for this run: 3 red commits, all caught in-loop within seconds,
+all traced to ONE plan-sequencing flaw now ruled out for future plans.
