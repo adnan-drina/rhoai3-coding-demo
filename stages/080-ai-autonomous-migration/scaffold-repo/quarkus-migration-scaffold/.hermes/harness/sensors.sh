@@ -56,15 +56,46 @@ task_sensor() {
   echo "task sensor GREEN (clean test, isolated repo)"
 }
 
-sonar_check() {
+sonar_check() { # $1 = inloop|full  (default full)
+  local mode="${1:-full}"
   if [ -z "${SONAR_TOKEN:-}" ]; then
     echo "WARN: SONAR_TOKEN not set — sonar check skipped (factory will judge)"
     return 0
   fi
+  # In-loop: judge NEW VIOLATIONS only — coverage is inherently
+  # unsatisfiable before the plan's test tasks run and would spam fix
+  # sessions. The full gate (coverage included) applies at preflight.
+  local gate_wait=true
+  [ "$mode" = "inloop" ] && gate_wait=false
   $MVN $SONAR_GOAL -Dsonar.host.url="$SONAR_HOST" -Dsonar.token="$SONAR_TOKEN" \
-      -Dsonar.projectKey="$PROJECT_KEY" -Dsonar.qualitygate.wait=true \
+      -Dsonar.projectKey="$PROJECT_KEY" -Dsonar.qualitygate.wait=$gate_wait \
       > /tmp/sensor-sonar.log 2>&1
   local rc=$?
+  if [ "$mode" = "inloop" ]; then
+    [ $rc -ne 0 ] && fail sonar "analysis submit failed — /tmp/sensor-sonar.log"
+    sleep 8
+    local n
+    n=$(python3 -c "
+import json, urllib.request
+u='$SONAR_HOST/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&inNewCodePeriod=true&ps=1'
+print(json.load(urllib.request.urlopen(u, timeout=30)).get('total', 0))" 2>/dev/null || echo 0)
+    if [ "${n:-0}" -gt 0 ]; then
+      python3 - "$SONAR_HOST" "$PROJECT_KEY" <<'PYEOF'
+import json, sys, urllib.request, collections
+base, key = sys.argv[1], sys.argv[2]
+with urllib.request.urlopen(f"{base}/api/issues/search?componentKeys={key}&resolved=false&inNewCodePeriod=true&ps=100", timeout=30) as r:
+    d = json.load(r)
+by = collections.defaultdict(list)
+for i in d.get("issues", []):
+    by[i["rule"]].append(f"{i['component'].split(':')[-1]}:{i.get('line','?')}")
+for rule in sorted(by):
+    print(f"{rule} ({len(by[rule])}): " + ", ".join(by[rule][:10]))
+PYEOF
+      fail sonar "in-loop gate: ${n} new violations (list above)"
+    fi
+    echo "sonar check GREEN (in-loop: 0 new violations)"
+    return 0
+  fi
   if [ $rc -ne 0 ]; then
     python3 - "$SONAR_HOST" "$PROJECT_KEY" <<'PYEOF'
 import json, sys, urllib.request, collections
@@ -86,11 +117,11 @@ PYEOF
   echo "sonar check GREEN (new-code gate)"
 }
 
-milestone_sensor() {
+milestone_sensor() { # $1 = inloop|full (default inloop)
   $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
     || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
-  sonar_check
-  echo "milestone sensor GREEN (clean verify + sonar, isolated repo)"
+  sonar_check "${1:-inloop}"
+  echo "milestone sensor GREEN (clean verify + sonar[${1:-inloop}], isolated repo)"
 }
 
 boot_check() {
@@ -145,7 +176,7 @@ preserved_integrations() {
 preflight() {
   wiring_invariants
   preserved_integrations
-  milestone_sensor
+  milestone_sensor full
   boot_check
   echo "PREFLIGHT GREEN — the factory should confirm, not discover"
 }
