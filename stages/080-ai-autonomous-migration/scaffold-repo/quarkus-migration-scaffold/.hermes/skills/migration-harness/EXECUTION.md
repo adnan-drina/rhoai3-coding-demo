@@ -163,6 +163,12 @@ duplicated new lines. Consequences for task packets:
 
 - Code-producing tasks (harvest included) must ship **unit tests with the
   code** — coverage debt is a gate failure, not a follow-up.
+- **Mock external boundaries only** (REST clients, remote services,
+  datasources). Internal collaborators stay real: a test that mocks the
+  classes under migration asserts the mocks, not the migration — no-op
+  service mocks make legacy pricing/behavior assertions pass vacuously
+  or fail falsely. When a legacy test suite exists, its assertion values
+  are the contract; never edit an expected value to make a test pass.
 - Harvested legacy duplication (e.g. near-identical entity/DTO pairs) must
   be consolidated as part of the migration design, not copied through.
 - Check locally before commit: `mvn -q clean verify` +
