@@ -1168,6 +1168,16 @@ its value was as the control arm for the improvement plan. Cost noted:
 a full model-budget day. No further monolith reruns until the cart
 service ships end-to-end on the improved harness.
 
+**V3 / round3 (2026-07-27, redesigned M-process, story mode) — SHIPPED
+AND ACCEPTED.** The M1–M5 staged process (docs/MIGRATION-PROCESS-
+REDESIGN.md) ran the cart migration as two dependency-ordered stories:
+S01 (models + contracts) passed its factory gate as a non-deploy story;
+S02 (services + endpoint + ship surface) deployed with full acceptance
+— route 200, acceptance endpoint 200, preserve contract enforced at
+preflight, and the live service correctly REFUSES to fabricate catalog
+data (the run-#1 regression class, dead in production). Per-story
+retros ran autonomously. Full record: docs/DRYRUN-M-PROCESS.md.
+
 **Cart run #2 (2026-07-26/27, M2 + 27B on the improved harness) —
 SHIPPED AND ACCEPTED.** First shipped migration of the program: quality
 gate OK (93% new-code coverage, 0 new violations), deployed, route and

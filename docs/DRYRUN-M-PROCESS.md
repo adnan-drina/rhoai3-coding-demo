@@ -301,6 +301,41 @@ so the cost is call count × thinking time, not the platform):**
 session-time levers; together with 13–14 the S02-shaped story
 projects from ~5 h to ~2.5–3 h.)
 
+## V3 FINAL VERDICT — S02 shipped and accepted (2026-07-27 22:14 UTC)
+
+**The redesigned process took a legacy Spring Boot service to a
+deployed, accepted Quarkus service in two dependency-ordered stories,
+end to end.** S02 (deploy story): 14 tasks + fix cycles, Phase D green
+(fidelity + sonar + verify), preflight green with the preserve check
+enforced, pipeline green in <3 min, route `/` 200,
+`/api/cart/acceptance-check` 200 with data, per-story retro committed
+(with the artifact-diff mandate — it independently converged on the
+same session-time findings the operator measured, targeting the same
+30–40% reduction).
+
+Live contract proof: with no catalog service deployed, the cart-add
+call FAILS — no fabricated products. Run #1's version would have
+served fake data here. The anti-fabrication contract holds in
+production.
+
+The scoreboard vs run #2 (same app, old process): zero factory-failed
+rounds (run #2 burned two), zero plan-sequencing red commits (run #2
+had three), every fabrication attempt caught in-loop or by review and
+reversed with tests pinning the truth, and the two new sensor classes
+(fidelity, @RestClient invariant) plus the CE-polling fix went from
+defect discovery to validated production use inside the same run.
+Operator interventions in S02: the T-001 plan-ambiguity corrective,
+the T-006 config-key normalization, the T-007 qualifier fix, and the
+T-012 fabrication arc — every one now has a deterministic guard or
+lint built and tested. Incidents owned: the double-launch (guard now
+live-proven) and one mid-edit file break (recovered, absolute-path +
+pause-point rules adopted).
+
+Note for the record: the acceptance path is currently served by the
+`{cartId}` template route, not the dedicated endpoint — functionally
+correct (200 + honest JSON), route-precedence check queued for the
+next story's polish.
+
 **Not exercised, deliberately** — this is the joint test run (V3):
 M4 implementation sessions on S01's 10 tasks (the most battle-tested
 part of the harness, 5 runs of history), M5 factory/deploy/acceptance
