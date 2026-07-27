@@ -76,6 +76,15 @@ def main():
         elif classes.get(tid) == "rewrite" and seen_infer:
             lint("order", f"{tid}: rewrite task after infer tasks began")
 
+    # Hedge-word lint (V3 S02: "convert to a Quarkus main class if
+    # needed" contradicted the decided mapping and two sessions took the
+    # escape hatch): designs state decisions, never options.
+    HEDGE = re.compile(r"\b(if needed|if necessary|as appropriate|as needed|consider (?:using|adding)|optionally)\b", re.I)
+    for _, tid, _ in heads:
+        m = HEDGE.search(bodies.get(tid, ""))
+        if m:
+            lint("hedge", f"{tid}: design contains hedge phrase '{m.group(0)}' — state the decided shape, not options")
+
     # design-in-packet: infer bodies need concrete target content
     design_signal = re.compile(
         r"(→|->)\s*src/|src/(main|test)/java|@\w+|\bsignature|\bPath\(|"

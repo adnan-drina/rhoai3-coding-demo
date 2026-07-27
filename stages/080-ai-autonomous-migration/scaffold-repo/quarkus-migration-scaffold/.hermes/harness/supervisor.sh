@@ -115,9 +115,18 @@ classify() { # $1=rc $2=session-log -> failure class on stdout
 
 orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   local tag="$1" prompt="$2" t0 t1 rc
+  # Pause point (V3): operators touch /tmp/supervisor-pause for a clean
+  # intervention window between sessions — no kills, no target/ races.
+  while [ -f /tmp/supervisor-pause ]; do
+    log "PAUSED (rm /tmp/supervisor-pause to continue)"; sleep 30
+  done
   wait_for_worker
   t0=$(date +%s)
-  timeout "$SESSION_TIMEOUT" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
+  # Fix-class sessions are mechanical: a wedged style fix dies in 15
+  # minutes, not 45 (measured: 45-min sfix for 8 style violations).
+  local budget="$SESSION_TIMEOUT"
+  case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*) budget="${FIX_TIMEOUT:-900}";; esac
+  timeout "$budget" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
     > "/tmp/sup-${tag}.log" 2>&1
   rc=$?
   t1=$(date +%s)
@@ -153,6 +162,14 @@ run_stage() {
         log "$tag: killing residual worker (stage already committed)"
         pkill -9 -x opencode
       fi
+      # Untracked-stray sweep (V3: sessions twice left broken uncommitted
+      # test files that failed later builds) — committed work is the only
+      # work; strays are removed with a logged warning.
+      STRAYS=$(git ls-files --others --exclude-standard -- src/ | head -5)
+      if [ -n "$STRAYS" ]; then
+        log "$tag: removing untracked strays left by the session: $(echo $STRAYS | tr '\n' ' ')"
+        git ls-files --others --exclude-standard -- src/ | xargs -r rm -f
+      fi
       # Trust-but-verify (run-4 lesson: a session committed a red tree):
       # the supervisor runs the sensors itself after EVERY commit. The
       # milestone sensor (verify + the factory's sonar gate) is ENFORCED —
@@ -166,6 +183,15 @@ run_stage() {
       log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
       if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         event "$tag" "$attempt" sensor_red_post_commit verify
+        # Deterministic style-autofix first (V3 measured: 152 min of
+        # model time went to mechanically-fixable style violations).
+        if .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+          git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
+          event "$tag" "$attempt" style_autofix resolved
+          log "$tag: style-autofix resolved the red deterministically — no model session needed"
+          return 0
+        fi
+        git checkout -q -- . 2>/dev/null
         log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
         orch "${tag}-sfix" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). COMMIT THE MOMENT THE SENSOR IS GREEN — run .hermes/harness/sensors.sh task after each fix and immediately commit ONE commit starting '${prefix} sensor fix:' when it passes; do not polish further (a green fix that never commits is a failed session).
@@ -243,7 +269,7 @@ phase_f_retro() {
   cp "$METRICS" migration/retro-metrics.csv 2>/dev/null || true
   git add migration/retro-*.csv >/dev/null 2>&1 || true
   orch "phaseF" \
-"Use the migration-harness skill. The migration run is CLOSED — this is Phase F, the retrospective. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md in the migration-harness directory. Write migration/retro-proposals.md containing: (1) the three costliest failure patterns of THIS run, each citing evidence rows (event classes, session durations, run-log entries); (2) for each pattern one CONCRETE proposed change to a specific skill file or sensor — quote the exact text to add or replace and name the file and section; (3) anything the harness itself did that wasted model sessions. PROPOSE ONLY: do not modify any skill or harness file. Finish with ONE commit whose message STARTS with 'Phase F:'.
+"Use the migration-harness skill. The migration run is CLOSED — this is Phase F, the retrospective. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md in the migration-harness directory. Write migration/retro-proposals.md containing: (1) the three costliest failure patterns of THIS run, each citing evidence rows (event classes, session durations, run-log entries); (2) for each pattern one CONCRETE proposed change to a specific skill file or sensor — quote the exact text to add or replace and name the file and section; (3) an ARTIFACT review: read the actual commits of this run (git log with diffs for the task commits), judging harvest fidelity, story-scope discipline, and any fabrication-pattern code — the telemetry alone missed every artifact-level defect in V3; (4) anything the harness itself did that wasted model sessions. PROPOSE ONLY: do not modify any skill or harness file. Finish with ONE commit whose message STARTS with 'Phase F:'.
 ${RUN_CONTRACT}"
   committed "Phase F" && log "Phase F: retro proposals committed $(git log --oneline -1)" \
     || log "Phase F: retro session did not commit — skipped (non-blocking)"

@@ -275,6 +275,34 @@ run_case() {
 }
 check "profile-rubric rejects plan leakage" 1 "RUBRIC:plan-leakage"
 
+
+# 7c. hedge-word lint (V3 S02 T-001 contradiction signature)
+run_case() {
+  mkfix
+  { plan_header; printf '\n#### T-003: Bootstrap\n**Class**: infer\n- Target: src/main/java/com/demo/App.java — convert to a main class if needed.\n'; } > tasks.md
+  python3 "$LINT" tasks.md
+}
+check "lint rejects hedge phrases in infer designs" 1 "LINT:hedge"
+
+# --- harvest-fidelity (B4) -------------------------------------------------
+fidelity_fixture() { # $1 = uid for the destination copy
+  mkdir -p migration/staging/src/main/java/m src/main/java/m
+  printf 'package m;\npublic class C implements java.io.Serializable {\n    private static final long serialVersionUID = -111L;\n    private int x;\n}\n' > migration/staging/src/main/java/m/C.java
+  printf 'package m;\npublic class C implements java.io.Serializable {\n    private static final long serialVersionUID = %sL;\n    private int x;\n}\n' "$1" > src/main/java/m/C.java
+}
+run_case() { mkfix; fidelity_fixture -111; python3 "$HARNESS_DIR/harvest-fidelity.py"; }
+check "harvest-fidelity passes a faithful harvest" 0 "GREEN"
+
+run_case() { mkfix; fidelity_fixture 1; python3 "$HARNESS_DIR/harvest-fidelity.py"; }
+check "harvest-fidelity catches a serialVersionUID rewrite" 1 "FIDELITY:"
+
+run_case() {
+  mkfix; fidelity_fixture 1
+  sed -i.bak "s/public class C /@jakarta.enterprise.context.ApplicationScoped public class C /;s/@jakarta.enterprise.context.ApplicationScoped/@ApplicationScoped/" src/main/java/m/C.java
+  python3 "$HARNESS_DIR/harvest-fidelity.py"
+}
+check "harvest-fidelity skips converted (annotated) classes" 0 "GREEN"
+
 # --- roadmap-lint (M2) -----------------------------------------------------
 
 roadmap_fixture() { # $1 = briefs? (yes|no)

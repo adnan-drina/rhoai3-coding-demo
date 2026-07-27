@@ -124,6 +124,13 @@ client timeouts; small packets complete in minutes and retry cheaply.
 
 ### Packet content — the design is decided before dispatch
 
+Test style that the sonar gate WILL flag (three stories of evidence —
+write it right the first time, do not spend a fix session): JUnit 5
+test methods and classes are package-private, never `public` (S5786);
+no commented-out code blocks in tests (S125); one assertion chain per
+subject, no redundant re-assertions (S5838, S5853); mock/fixture data
+lives in test scope only.
+
 Characterization-test packets (S01 retro: all four escalations were
 this task class) additionally carry: (1) the specific legacy test cases
 to port WITH their exact expected assertion values quoted; (2) the
@@ -143,6 +150,11 @@ that delegated the design along with the labor.
 
 Then verify independently — check `git status --porcelain` for the
 acceptance files. Never trust the worker's summary alone.
+
+**Run the task sensor EXACTLY ONCE, immediately before the commit** —
+not after every edit (each run is a full Maven cycle; sessions were
+measured spending 2–4 of them). Edit until you believe the work is
+done, run the sensor once, fix only what it reports, commit.
 
 **Sensors: run the task sensor BEFORE you commit — never commit red**
 (S01 retro). `sensors.sh task` green is a precondition of the commit,

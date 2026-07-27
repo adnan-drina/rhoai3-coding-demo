@@ -130,6 +130,11 @@ sonar_check() { # $1 = inloop|full  (default full)
 }
 
 milestone_sensor() { # $1 = inloop|full (default inloop)
+  # Harvest fidelity first (cheap, pure python): staged legacy classes
+  # must survive into the destination modulo approved transforms
+  # (V3 catch: a fix session silently rewrote a serialVersionUID).
+  python3 .hermes/harness/harvest-fidelity.py \
+    || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
   $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
     || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
   sonar_check "${1:-inloop}"
@@ -176,6 +181,22 @@ wiring_invariants() {
   # scaffold-pom convention every migrated pom must keep.
   grep -A2 "maven-compiler-plugin" pom.xml | grep -q "<version>" \
     || fail wiring "pom.xml does not pin maven-compiler-plugin with a <version> (factory Maven defaults to 3.1 → 'Source option 5' failure)"
+  # V3 two-run recurrence: injecting a @RegisterRestClient interface
+  # without the @RestClient qualifier fails CDI resolution at build/boot
+  # — invisible to plain unit tests.
+  for iface in $(grep -rl "@RegisterRestClient" src/main 2>/dev/null | xargs -r grep -l "interface" | sed -E "s|.*/([A-Za-z0-9]+)\.java|\1|"); do
+    # Only INJECTION POINTS need the qualifier (fields assigned from a
+    # qualified constructor param are fine): a type usage within 4 lines
+    # after an @Inject, with no @RestClient in that window, is the trap.
+    grep -rn "$iface [a-zA-Z]" src/main --include="*.java" 2>/dev/null | grep -vE "interface $iface|import |class " | while read -r line; do
+      f2=$(echo "$line" | cut -d: -f1); ln=$(echo "$line" | cut -d: -f2)
+      start=$((ln>4 ? ln-4 : 1))
+      window=$(sed -n "${start},${ln}p" "$f2")
+      echo "$window" | grep -q "@Inject" || continue
+      echo "$window" | grep -q "@RestClient" \
+        || { echo "SENSOR RED (wiring): ${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"; exit 1; }
+    done || exit 1
+  done
 }
 
 preserved_integrations() {

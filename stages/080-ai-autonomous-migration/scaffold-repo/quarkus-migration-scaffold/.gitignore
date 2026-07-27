@@ -10,3 +10,8 @@ target/
 .opencode/package-lock.json
 .opencode/bun.lock
 .opencode/.gitignore
+
+# JDTLS/kantra workspace droppings
+.project
+.settings/
+.classpath
