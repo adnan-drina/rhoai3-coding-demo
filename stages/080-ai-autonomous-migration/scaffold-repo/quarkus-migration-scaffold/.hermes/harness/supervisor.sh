@@ -51,6 +51,23 @@ RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
 committed() { git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"; }
 
+# --- Story mode (redesign M-process, first outer-loop slice) --------------
+# STORY_SPEC_PREFIX  commit prefix that satisfies the plan stage (e.g.
+#                    "S01 spec") — M2/M3 authored the plan; Phase B is
+#                    skipped when that commit exists.
+# PLAN_SCOPE         comma-separated finding ids this story owns — passed
+#                    to plan-lint --findings-scope.
+# STORY_DEPLOY       "false" → M5 stops at factory quality-gate success
+#                    (no acceptance curls; non-deploy story).
+# All unset → legacy whole-app behavior.
+STORY_SPEC_PREFIX="${STORY_SPEC_PREFIX:-}"
+PLAN_SCOPE="${PLAN_SCOPE:-}"
+STORY_DEPLOY="${STORY_DEPLOY:-true}"
+plan_stage_done() {
+  { committed "Phase B" || { [ -n "$STORY_SPEC_PREFIX" ] && committed "$STORY_SPEC_PREFIX"; }; } \
+    && ls specs/*/tasks.md >/dev/null 2>&1
+}
+
 # NOTE: match the worker by exact process name (-x). Command-line matching
 # false-positives on hermes sessions whose loaded skill text quotes the
 # `opencode run` invocation.
@@ -298,7 +315,7 @@ ${SUMMARY}"
   log "Phase A: committed by script — ${SUMMARY}"
 fi
 
-if committed "Phase B" && ls specs/*/tasks.md >/dev/null 2>&1; then
+if plan_stage_done; then
   log "Phase B: already present"
 else
   run_stage "Phase B" "phaseB" \
@@ -313,7 +330,9 @@ fi
 # Deterministic B2 gate: a defective plan is bounced ONCE for revision
 # with the specific lint findings before Phase C spends hours on it.
 TASKS_FILE=$(ls specs/*/tasks.md 2>/dev/null | head -1)
-LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json 2>&1)
+SCOPE_ARGS=""
+[ -n "$PLAN_SCOPE" ] && SCOPE_ARGS="--findings-scope $PLAN_SCOPE"
+LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS 2>&1)
 if [ $? -ne 0 ] && ! committed "Phase B revision"; then
   log "plan lint: revision required"; echo "$LINT_OUT" | head -20 >> "$LOG"
   printf '%s\n' "$LINT_OUT" > /tmp/plan-lint.txt
@@ -324,7 +343,7 @@ Commit prefix: 'Phase B revision:'." \
 "Use the migration-harness skill and read PLANNING.md in its directory. Finish revising the plan per /tmp/plan-lint.txt and commit with prefix 'Phase B revision:'.
 ${RUN_CONTRACT}" \
     || log "plan lint: revision round exhausted — proceeding with the plan as-is (recorded)"
-  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json 2>&1) \
+  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS 2>&1) \
     && log "plan lint: PASS after revision" || log "plan lint: still failing after revision — proceeding, findings logged"
 fi
 
@@ -461,6 +480,17 @@ ${RUN_CONTRACT}" \
   event "phaseE" 0 "pipeline_$PR_ST" "$PR_NAME"
   log "Phase E: pipeline $PR_NAME -> $PR_ST"
   if [ "$PR_ST" = "succeeded" ]; then
+    # Non-deploy story (M5 hybrid shipping): the factory quality gate IS
+    # the story's finish line — no acceptance surface expected yet.
+    if [ "$STORY_DEPLOY" != "true" ]; then
+      event "phaseE" 0 "story_gate_pass" "non-deploy story"
+      write_run_report "story gate passed (non-deploy story): pipeline + quality gate green"
+      phase_f_retro
+      git push origin main >> "$LOG" 2>&1 || true
+      echo "story-gate-passed" > /tmp/supervisor-done
+      log "SUPERVISOR COMPLETE: story gate passed (non-deploy story)"
+      exit 0
+    fi
     # E2: success = demo acceptance, not HTTP liveness — index page serves
     # AND the products API returns a non-empty catalog.
     ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)

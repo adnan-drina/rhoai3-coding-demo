@@ -166,6 +166,11 @@ wiring_invariants() {
 }
 
 preserved_integrations() {
+  # Story mode: a story that owns no preserve items runs with
+  # PRESERVE_CHECK=off (the item arrives with its owning story; the
+  # deploy-story/final preflight enforces it). Outer loop sets this from
+  # roadmap ownership.
+  [ "${PRESERVE_CHECK:-on}" = "off" ] && return 0
   # N2: every preserve: item in migration.yaml must survive into the
   # built configuration or source — an erased integration is a
   # functional regression no unit test catches.
