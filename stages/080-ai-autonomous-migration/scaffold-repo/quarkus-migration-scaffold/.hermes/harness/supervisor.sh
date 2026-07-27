@@ -19,6 +19,16 @@ set -u
 export PATH=$HOME/.opencode/bin:$HOME/.local/bin:$PATH
 cd /projects/modernized
 
+# Single-instance guard (V3 incident: a failed-pull launch script started
+# one supervisor, its retry started another — two writers on one tree).
+if pgrep -f "harness/superviso[r]" | grep -v "^$$\$" | grep -qv "^$PPID\$"; then
+  OTHER=$(pgrep -f "harness/superviso[r]" | grep -v "^$$\$" | grep -v "^$PPID\$" | head -1)
+  if [ -n "$OTHER" ] && [ "$OTHER" != "$$" ]; then
+    echo "FATAL: another supervisor is already running (pid $OTHER) — refusing to start" >&2
+    exit 1
+  fi
+fi
+
 ORCH_PROVIDER="${ORCH_PROVIDER:-custom:maas-m2}"
 ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
 WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
@@ -64,6 +74,10 @@ STORY_SPEC_PREFIX="${STORY_SPEC_PREFIX:-}"
 PLAN_SCOPE="${PLAN_SCOPE:-}"
 STORY_DEPLOY="${STORY_DEPLOY:-true}"
 plan_stage_done() {
+  # Story mode: an explicit STORY_TASKS file is authoritative — the outer
+  # loop only sets it after M3 committed the spec (a revert in the range
+  # must not resurrect Phase B).
+  if [ -n "${STORY_TASKS:-}" ] && [ -f "${STORY_TASKS}" ]; then return 0; fi
   { committed "Phase B" || { [ -n "$STORY_SPEC_PREFIX" ] && committed "$STORY_SPEC_PREFIX"; }; } \
     && ls specs/*/tasks.md >/dev/null 2>&1
 }
