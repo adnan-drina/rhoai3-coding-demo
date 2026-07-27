@@ -57,6 +57,34 @@ rubric PROFILE OK): 130-line architecture profile. Quality review:
 - Known limitation (accepted): the rubric checks citation PRESENCE,
   not accuracy. Claim verification stays a review/retro concern.
 
-## M2 SEQUENCE — running
+## M2 SEQUENCE — verdict: PASS with operator closure (2 lint gaps hardened)
+
+**Session** (3m46s, 88 tool calls): authored `migration/roadmap.md` + 2
+briefs, then died in a repeat-call loop WITHOUT committing (hermes'
+own repetition guard ended it). In the automated flow this is exactly
+what run_stage retry + mechanical commit closure absorb; for the dry
+run the operator played that role.
+
+**Artifact quality — genuinely good:**
+- 2 stories, natural sizing: S01 models+pom foundation (no deploy),
+  S02 services+endpoint+config (deploy milestone). Order follows the
+  dependency graph; done-criteria include characterization tests; the
+  fed-forward `SCOPE_SESSION` fact is explicitly handled in S02's
+  done-criteria ("replaced with appropriate session management
+  strategy") — the M1→M2 information flow works.
+- Briefs carry all template sections and 14 code-excerpt fences.
+
+**Defects the dry run caught (both now deterministic lint checks +
+suite cases, 36/36):**
+1. **Non-contiguous numbering passed the lint** — the session
+   renumbered mid-flight leaving S01,S03. Lint now requires S01..S0N.
+2. **Prose inside the findings field counted as owned ids** ("28
+   findings owned" from parenthetical class lists). Lint now accepts
+   rule-id-shaped tokens only.
+
+Closure commit `19e41d8`: ROADMAP OK — 2 stories, exactly 23 findings
+owned, deploy milestone S02.
+
+## M3 SPECIFY (S01) — running
 
 (appended as the dry run progresses)
