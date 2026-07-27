@@ -384,8 +384,21 @@ done
 
 # ---------------------------------------------------------------- Phase D
 if ! committed "Phase D"; then
+  # Harness owns BOTH ends of the analysis (S01 lesson: sessions lack the
+  # Java 21 export and wedge on kantra) — the after-analysis is a script
+  # step; the session interprets the delta, it never runs analysis tools.
+  A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
+  [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
+  K_ARGS=""; for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
+  [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
+  (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
+    /tmp/kantra/kantra analyze -i /projects/modernized -o /tmp/kantra-after \
+    $K_ARGS --mode source-only --json-output --overwrite) >> "$LOG" 2>&1 \
+    && cp /tmp/kantra-after/output.json migration/mta-findings-after.json 2>/dev/null \
+    && log "Phase D: after-analysis complete (script step)" \
+    || log "WARN: after-analysis failed — Phase D proceeds without the delta"
   run_stage "Phase D" "phaseD" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D per SHIPPING.md: re-analysis sensor, findings delta appended to the run-log with remaining findings individually explained, and mvn -q clean verify green.
+"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute Phase D per SHIPPING.md. The harness ALREADY RAN the after-analysis: migration/mta-findings-after.json (use .hermes/skills/migration-harness/scripts/extract_findings.py to summarize it — do NOT run analysis tools yourself). Append the findings delta to the run-log with every remaining finding individually explained (resolved here / owned by a later story / genuine debt), and verify mvn -q clean verify green.
 ${RUN_CONTRACT}
 Commit prefix: 'Phase D:'. DO NOT PUSH." \
 "Use the migration-harness skill and read SHIPPING.md in its directory. Execute Phase D per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'Phase D:'. ${RUN_CONTRACT}" \

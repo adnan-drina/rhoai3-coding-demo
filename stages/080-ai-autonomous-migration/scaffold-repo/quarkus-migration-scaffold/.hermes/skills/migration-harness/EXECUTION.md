@@ -117,12 +117,20 @@ running.
 
 ### Packet size — one concern, bounded scope
 
-A worker packet covers ONE concern and at most ~10 files or violation
+A worker packet covers ONE concern and at most ~8 files or violation
 sites. Split anything larger into sequential packets. Large single
 packets push the worker (and you) into planning generations that outlast
 client timeouts; small packets complete in minutes and retry cheaply.
 
 ### Packet content — the design is decided before dispatch
+
+Characterization-test packets (S01 retro: all four escalations were
+this task class) additionally carry: (1) the specific legacy test cases
+to port WITH their exact expected assertion values quoted; (2) the
+instruction that expectations are the contract — never adjusted to
+match code; (3) scope bounded to one class; (4) when the exercised
+logic is out of story scope, pin values via a TEST-LOCAL expectation
+helper — never invent src/main classes.
 
 An infer packet carries the DECIDED target design: exact file mappings,
 class and method signatures, annotations, and the architectural choices
@@ -135,6 +143,14 @@ that delegated the design along with the labor.
 
 Then verify independently — check `git status --porcelain` for the
 acceptance files. Never trust the worker's summary alone.
+
+**Sensors: run the task sensor BEFORE you commit — never commit red**
+(S01 retro). `sensors.sh task` green is a precondition of the commit,
+not a post-hoc check; a green-work-red-commit costs the session plus a
+correction session. Sonar-tier findings surfaced by the supervisor's
+post-commit milestone cadence are the DESIGNED in-loop catch, not a
+session failure — fix them in the dispatched session without
+relitigating the commit.
 
 **Sensors after EVERY task (cheap → expensive):**
 
