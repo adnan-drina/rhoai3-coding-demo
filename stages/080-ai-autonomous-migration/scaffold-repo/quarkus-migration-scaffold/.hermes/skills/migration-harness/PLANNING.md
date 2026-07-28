@@ -115,6 +115,15 @@ run #2's failures):
   characterization tests BEFORE its conversion task. This both feeds
   the 80% gate all run long and makes fabricated integrations fail
   tests at the introducing commit.
+- **A test task never precedes the classes it exercises.** A task that
+  ports or framework-converts tests referencing types X, Y, Z must be
+  ordered AFTER the conversion tasks for X, Y, Z — the test compiles
+  against the destination, so those classes must already exist there.
+  V4 T-010 put "convert tests to @QuarkusTest" before the model/service
+  conversions (T-011–T-015); the session fabricated the missing classes
+  to make it compile, the stray sweep archived them, and the milestone
+  broke on a compile error — one wasted session plus a sensor-fix. Order
+  test tasks by their widest dependency, not their file type.
 
 Two task-authoring constraints (from cart run #2):
 
