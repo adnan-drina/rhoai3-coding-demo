@@ -67,6 +67,31 @@ Rewrite tasks were batched 3-per-session (improvement #17); infer tasks ran sing
 
 **Recovery machinery (all autonomous, no human):** stray-archive fired (T-010, work preserved not destroyed), scope sensor correctly skipped FQN-form scope, mechanical closure committed 1 green-but-uncommitted session, and the T-010 ordering defect self-repaired. The one genuine cost was T-010's mis-ordered plan — now a PLANNING rule.
 
+### Session-internals analysis (model logs, not just supervisor logs)
+
+Full per-session times (metrics.csv), task-loop only:
+
+| task | sessions (s) | wall | verdict |
+|---|---|---|---|
+| T-001..003 | batch 1156 | 385/task | clean |
+| T-004..006 | batch 1478 | 493/task | clean |
+| T-007..009 | batch 731 | 244/task | clean |
+| T-010 | 672+867+202 | 1741 | plan-ordering defect + recovery |
+| T-011 | 513 | 513 | clean |
+| T-012 | 89 | 89 | resolved-by-scaffold |
+| T-013 | 152+58+903 | 1113 | **sfix wedged at budget** |
+| T-014 | 932+902 | 1834 | **sfix wedged, did NOT commit** |
+| T-015 | 727 | 727 | clean |
+| T-016 | 63+447 | 510 | resolved-by-scaffold on retry |
+
+**#1 remaining time sink — wedged sfix sessions (root cause found in model logs):** T-014-sfix ran 902s → `rc=124` (budget kill) having made only ~10 tool calls — but **6 were maven** (`sensors.sh milestone` ×2 + `sensors.sh task` ×2 = four full `mvn clean verify` at ~60-90s each, plus 2 more mvn). The session was fix-one-violation → run-full-maven → repeat; maven cycles consumed the budget before the fixes converged. This is exactly improvement #15 (one-sensor-run discipline). The residual violations reaching sfix are design-level sonar rules autofix can't touch (S6813 field-injection, S2864, S3824) — and for a class still slated for proper conversion later (ShoppingCartServiceImpl → T-020), some of this sfix work duplicates upcoming task work.
+
+**Levers this run surfaces (for the verdict, not applied mid-run):**
+1. *One-sensor-run discipline, enforced not just advised* — sfix prompt must say "fix ALL listed violations (each has file:line) in one pass, then run the sensor ONCE"; iterating with full maven between single fixes is the wedge.
+2. *Fast sonar-only re-check* — the residuals are sonar style rules; a `sensors.sh sonar` that skips the `mvn verify` (compile already known-green) would cut each verify loop from ~90s to the sonar scan alone.
+3. *Field-injection caught early* — a wiring-sensor check for `@Inject` on a field in src/main flags S6813 at the cheap task sensor instead of the expensive milestone-sonar gate.
+4. *Don't sfix a class a later task rewrites* — if the sonar-red class is in a not-yet-executed task's scope, defer its style residue to that task rather than spending an sfix now.
+
 ## 6. Verdict
 
 (final: wall-clock vs V3, quality gate + semantic review of the shipped service, remaining levers)
