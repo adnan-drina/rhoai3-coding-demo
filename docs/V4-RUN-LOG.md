@@ -135,6 +135,28 @@ Minor: `CartEndpoint` carries a `serialVersionUID` (L18) but implements nothing 
 
 Net: no separate hardening story, no write-then-rewrite. The migration reaches the decided modern contract on the first pass. V4's service is a CORRECT faithful migration but is NOT production-grade — because the process asked it to be faithful, not because anything prevented production-grade.
 
-## 7. Verdict
+## 7. Verdict — SHIPPED AND ACCEPTED (2026-07-28 10:41 UTC)
 
-(final: wall-clock vs V3, ship outcome, prioritized next levers — pending run completion)
+**Outcome:** fully autonomous M1→M5, ONE command, no operator launch scripting. Route `/` 200, `/api/cart/acceptance-check` 200 with data, factory gate green, all stories shipped. Wall clock 03:12→10:41 = **~7h29m**; 41 model sessions, ~372 min total model time, 46 commits, 27 tasks. Event tally: 22 success, 8 escalated (2 untested), 7 no-commit-retries, 6 sensor-red-post-commit, 4 budget-kills, 2 quota backoffs.
+
+**Timing wins (vs V3):**
+- **Outer loop front-end**: M1→first task in 7 min, all 4 authoring gates first-try, zero operator scripting — the biggest structural saving vs V3's manual per-stage launches.
+- **Rewrite batching (#17)**: 6.2 min/task across 9 tasks vs V3's ~12-min single-task mean — **~48% cut** on mechanical work.
+- **Style-autofix (widened)**: cleared bulk sonar residue in-loop (e.g. T-013 33→8, T-023 with the new AssertJ recipe).
+
+**Time NOT saved (the honest costs):**
+- **Fix-class overhead dominates** — the Phase F retro independently found "post-commit sensors caused 6 correction sessions, ~5,100s overhead," matching finding #1: each sfix runs full `mvn clean verify` per iteration; a 1-line fix (T-023 S3824) took 15 min. 4 budget-kills were all sfix/preflight-fix wedged on maven cycles.
+- **Ship-surface reconciliation cost ~1h15m** (09:25→10:41): the faithful migration produced `@Path("/cart")`, no index page, no acceptance-check endpoint — all S02-authored additions absent from the legacy. Deploy-fix r1/r2 + preflight-fix rebuilt them. Same root theme as the hardening gap: a faithful migration omits everything prior runs added on top of the legacy.
+- **2 quota backoffs** (~30 min) as the 7.5h run exhausted the hourly token budget — platform economics, not a harness fault.
+
+**The headline caveat — quality (§6):** the run SHIPPED but the service is a FAITHFUL migration, not production-grade. 5 of 6 S03 defect classes recurred; the gates passed because the plan and tests defined "correct" as "same as legacy." Fidelity was NOT the cause (it exempts the services — proven). Fix is at the source (decide target at M1, class-role split, tests-to-target, wiring check) — draft in [PROCESS-FIX-PRODUCTION-GRADE.md](PROCESS-FIX-PRODUCTION-GRADE.md), pending review. Until that lands, "shipped and accepted" means functionally correct and deployed, NOT production-hardened.
+
+**Prioritized next levers (evidence-ranked):**
+1. **Source-fix for production-grade (§6 / the draft)** — the highest-value change: eliminates the entire faithful-then-harden gap AND the write-then-rewrite cost. Blocks the "production-grade" claim until done.
+2. **Fix-path maven overhead (#1)** — one-sensor-run discipline + a fast sonar-only re-check (skip `mvn verify` when compile is known-green). The retro and my session-log analysis agree this is the #1 time sink (~5,100s this run).
+3. **sfix verifies the triggering sensor (#6)** — `task`→`${SENSOR_KIND}` at supervisor.sh L214/L218 + re-verify after commit. Latent correctness gap; cheap fix.
+4. **Fidelity normalizer inner-punctuation (#5)** — one-line `normalize()` change; kills a recurring false positive that burned sfix sessions.
+5. **Ship-surface as a first-class M1 decision** — if the acceptance contract needs an index/health/acceptance endpoint, decide it at M1 (like the target contract) so it is built in a task, not reconstructed across 3 deploy-correction rounds.
+6. **Field-injection caught at the task sensor** — folds into the §6 wiring check.
+
+**Scoreboard vs V3:** V4 proved full M1→M5 autonomy (V3 needed operator scripting between stages), first-try authoring gates, and measurable batching gains — but also proved that "faithful migration" and "production-grade service" are different deliverables, and that the process currently produces the former while claiming the latter. That gap, not wall-clock, is the primary finding of the run.
