@@ -734,6 +734,17 @@ run_case() {
 }
 check "harvest-from-staging writes '/'-joined dest + renames package (V5 opt1)" 0 "HARVEST OK"
 
+# 70. parse-roadmap translates legacy scope paths to target (V5 scope-path bug:
+#     the roadmap names classes by legacy path, but src/main is target-package,
+#     so the scope sensor reverted legitimate harvests as out-of-scope).
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  printf '## S02: models\n- scope: src/main/java/com/redhat/coolstore/model/Product.java, src/main/java/com/redhat/coolstore/model/ShoppingCart.java\n- findings: -\n- deploy: false\n' > r.md
+  python3 "$HARNESS_DIR/parse-roadmap.py" r.md
+}
+check "parse-roadmap translates legacy scope paths to target (V5 scope-path)" 0 "src/main/java/com/demo/model/Product.java src/main/java/com/demo/model/ShoppingCart.java"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]
