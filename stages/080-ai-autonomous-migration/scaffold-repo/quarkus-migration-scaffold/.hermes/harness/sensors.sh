@@ -4,13 +4,13 @@
 #
 # "Green in the workspace" must mean "green in the factory": every sensor
 # here reproduces a pipeline stage locally so defects die at the task that
-# introduces them, not in Phase E rounds.
+# introduces them, not in M5 ship rounds.
 #
 #   sensors.sh seed        one-time per run: seed the isolated Maven repo
 #   sensors.sh task        after every sub-fix: clean test, isolated repo
 #   sensors.sh milestone   pom/config changes + every 3-4 tasks:
 #                          clean verify (isolated) + new-code sonar check
-#   sensors.sh preflight   Phase D exit: verify + sonar + container-profile
+#   sensors.sh preflight   M5 evaluate exit: verify + sonar + container-profile
 #                          boot against the dev PostgreSQL (schema drift)
 #
 # Exit 0 = green. Non-zero = red, with the failure summarized on stdout.
@@ -31,7 +31,93 @@ SONAR_HOST="${SONAR_HOST:-http://sonarqube.sonarqube.svc:9000}"
 PROJECT_KEY="$(basename "$(git remote get-url origin 2>/dev/null || echo fixture)" .git)"
 DEV_DB_URL="${DEV_DB_URL:-jdbc:postgresql://coolstore-postgres.${PROJECT_KEY}-dev.svc:5432/coolstore}"
 
-fail() { echo "SENSOR RED ($1): $2"; exit 1; }
+# Self-correction guidance after the evidence line (Böckeler: sensors should
+# inject how-to-fix context, not only the raw failure). First line always
+# stays "SENSOR RED (<kind>): …" — instrument tests and correction packets
+# match on that prefix / kind token.
+guide_for() {
+  case "$1" in
+    forbidden)
+      cat <<'EOF'
+FIX: Delete the fabricated fallback from src/main (call the real integration
+or fail closed). Do not edit migration.yaml forbidden: to waive. See
+.hermes/skills/migration-harness/SHIPPING.md (fabrication class).
+EOF
+      ;;
+    preserve)
+      cat <<'EOF'
+FIX: Restore the preserve: token into src/main, pom.xml, or k8s/ (env key,
+config property, or client URL). An erased integration is a silent functional
+regression. Check migration.yaml preserve: and PLANNING.md preserve coverage.
+EOF
+      ;;
+    hygiene)
+      cat <<'EOF'
+FIX: Remove or rename illegal paths under src/ (literal glob chars, spaces,
+or quoted junk filenames). Re-harvest/rewrite the intended .java files with
+real names — empty '*.java' files compile locally and fail the factory.
+EOF
+      ;;
+    wiring)
+      cat <<'EOF'
+FIX: Restore scaffold pom conventions (jacoco-maven-plugin,
+sonar.coverage.jacoco.xmlReportPaths, pinned maven-compiler-plugin version)
+and/or add @RestClient next to @Inject for @RegisterRestClient interfaces.
+Losing wiring makes the factory coverage/compile gate fail while local builds
+look green. Diff against the scaffold pom / SHIPPING.md gate notes.
+EOF
+      ;;
+    fidelity)
+      cat <<'EOF'
+FIX: Re-harvest from migration/staging (approved transforms only: package,
+whitespace, comments, annotations, diamond). Do not rewrite constants or
+serialVersionUID in a "fix" session. Hardening stories that deliberately
+diverge: set FIDELITY_CHECK=off (or touch /tmp/fidelity-off) — the brief is
+authority, not staging.
+EOF
+      ;;
+    task|milestone)
+      cat <<'EOF'
+FIX: Read the sensor log cited above. Prefer root-cause (missing harvest
+dependency, wrong package, broken test) over silencing assertions. Re-run
+.hermes/harness/sensors.sh task until GREEN, then commit. See EXECUTION.md.
+EOF
+      ;;
+    sonar)
+      cat <<'EOF'
+FIX: Resolve each listed new-code violation (or coverage gap at preflight) with
+real code/tests — never weaken assertions or drop jacoco wiring. In-loop gate
+is violations-only; full coverage is preflight/factory. See SHIPPING.md.
+EOF
+      ;;
+    boot)
+      cat <<'EOF'
+FIX: Read /tmp/sensor-boot.log (and /tmp/sensor-package.log if package failed).
+Typical causes: schema drift, missing Flyway migration, CDI UnsatisfiedResolution
+(@RestClient), bad datasource URL. Fix root cause, then sensors.sh preflight.
+EOF
+      ;;
+    seed)
+      cat <<'EOF'
+FIX: Inspect /tmp/sensor-seed.log. The isolated Maven repo must build the
+current tree once before task sensors are meaningful. Fix compile/test
+failures, remove /tmp/m2-run if corrupt, re-run sensors.sh seed.
+EOF
+      ;;
+    *)
+      cat <<'EOF'
+FIX: Diagnose from the evidence above; run the same sensors.sh mode until
+GREEN; commit one sensor-fix commit. Do not push — the supervisor ships.
+EOF
+      ;;
+  esac
+}
+
+fail() {
+  echo "SENSOR RED ($1): $2"
+  guide_for "$1"
+  exit 1
+}
 
 yaml_items() { # $1 = top-level key; prints its list items, section-bounded.
   # grep -A<N> overreads into the NEXT yaml section (X1 suite catch: a
@@ -56,8 +142,7 @@ forbidden_patterns() {
   yaml_items forbidden | while read -r pat; do
     [ -n "$pat" ] || continue
     if grep -rq "$pat" src/main 2>/dev/null; then
-      echo "SENSOR RED (forbidden): pattern '$pat' found in src/main: $(grep -rl "$pat" src/main | head -2 | tr '\n' ' ')"
-      exit 1
+      fail forbidden "pattern '$pat' found in src/main: $(grep -rl "$pat" src/main | head -2 | tr '\n' ' ')"
     fi
   done || exit 1
 }
@@ -203,7 +288,7 @@ wiring_invariants() {
       window=$(sed -n "${start},${ln}p" "$f2")
       echo "$window" | grep -q "@Inject" || continue
       echo "$window" | grep -q "@RestClient" \
-        || { echo "SENSOR RED (wiring): ${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"; exit 1; }
+        || fail wiring "${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"
     done || exit 1
   done
 }
@@ -222,7 +307,7 @@ preserved_integrations() {
   yaml_items preserve | while read -r item; do
     [ -n "$item" ] || continue
     grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null \
-      || { echo "SENSOR RED (preserve): preserved integration '$item' absent from src/main, pom.xml and k8s/"; exit 1; }
+      || fail preserve "preserved integration '$item' absent from src/main, pom.xml and k8s/"
   done || exit 1
 }
 

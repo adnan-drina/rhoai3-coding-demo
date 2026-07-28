@@ -1,8 +1,8 @@
-# Phase C — the execution loop
+# M4 — the execution loop
 
 ## Contents
 - Task packet schema
-- Phase C procedure (rewrite and infer tasks)
+- M4 procedure (rewrite and infer tasks)
 - Dispatch rules (synchronous, packet size, packet content)
 - Sensors and quality-gate bars
 - Budget, escalation valve, and debt policy
@@ -20,7 +20,7 @@ Acceptance:     <files expected to change>; mvn -q clean test passes
 Out of scope:   <explicitly excluded work>
 ```
 
-## Phase C — execution loop
+## M4 — execution loop
 
 ### Batched rewrite sessions
 
@@ -196,7 +196,7 @@ If the task touched `pom.xml`, `application.properties`, or any other
 build/runtime configuration — and on every milestone boundary (3–4
 tasks) — escalate to `.hermes/harness/sensors.sh milestone` (isolated
 clean verify PLUS the factory's own new-code sonar gate, so style
-violations die here, not in Phase E rounds):
+violations die here, not in M5 ship rounds):
 the factory runs the full Quarkus package build, whose extension
 processors enforce prod-mode requirements (e.g. Hibernate ORM demands a
 configured default datasource) that `clean test` never exercises —

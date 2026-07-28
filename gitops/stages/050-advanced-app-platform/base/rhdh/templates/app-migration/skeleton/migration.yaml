@@ -6,7 +6,7 @@ migration:
   target: quarkus
   provisionedBy: app-migration golden-path template
 acceptance:
-  # The harness supervisor asserts this after deploy (Phase E success).
+  # The harness supervisor asserts this after deploy (M5 ship success).
   path: ${{ values.acceptancePath }}
   needsDatabase: ${{ values.needsDatabase }}
 analysis:
@@ -18,14 +18,6 @@ analysis:
   # incl. custom ones). Applies to IDE analysis AND the harness run.
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
 preserve:
-  # Enforced: plan-lint maps each item to a task; the preflight sensor
-  # greps them in src/main|pom|k8s. Populate from the analysis's
-  # preserve-candidate findings (demo-env-integration rule) before the
-  # run — an erased integration is a functional regression no unit test
-  # catches.
-  - CATALOG_ENDPOINT
+${{ values.preserveItems }}
 forbidden:
-  # Fabrication tripwires: sensors fail any commit introducing these
-  # into src/main (hardcoded stand-ins for external services).
-  - getMockProducts
-  - "Fallback to mock"
+${{ values.forbiddenPatterns }}

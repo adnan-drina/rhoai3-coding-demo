@@ -165,11 +165,31 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
     success*|story-gate-passed*)
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story complete: ${OUTCOME}" 2>/dev/null || true
+      # Outer loop (automated): apply Retro's "Brief updates" section to
+      # remaining incomplete briefs only. Skills/harness stay human-only.
+      REMAINING_BRIEFS=""
+      while IFS='|' read -r RSID _ _ _; do
+        [ -n "$RSID" ] || continue
+        story_done "$RSID" && continue
+        B=$(ls migration/briefs/${RSID}-*.md 2>/dev/null | head -1)
+        [ -n "$B" ] && REMAINING_BRIEFS="${REMAINING_BRIEFS} ${B}"
+      done <<< "$STORIES"
+      if [ -f migration/retro-proposals.md ] && [ -n "$(echo "$REMAINING_BRIEFS" | tr -d ' ')" ]; then
+        log "$SID: brief refresh for remaining stories"
+        mchat "brief-refresh-${SID}" \
+"Use the migration-harness skill. Read migration/retro-proposals.md and apply ONLY the section titled '## Brief updates (auto-applicable)' to these remaining briefs:${REMAINING_BRIEFS}. Do not edit completed-story briefs, specs, skills, or harness scripts. If that section is empty or has no actionable edits, make no file changes. If you change briefs, finish with ONE commit whose message STARTS with 'Brief refresh:'. DO NOT PUSH." \
+          || log "$SID: brief refresh session failed — continuing (non-blocking)"
+        [ -n "$(git status --porcelain migration/briefs/)" ] \
+          && git add migration/briefs/ && git commit -q -m "Brief refresh: outer-loop mechanical commit after ${SID}" 2>/dev/null || true
+      else
+        log "$SID: no remaining briefs or no retro-proposals — skipping brief refresh"
+      fi
       ;;
     *)
       # A failed story blocks its dependents by construction (dependency
       # order) — stop the run with the evidence preserved rather than
-      # building on a red foundation.
+      # building on a red foundation. Resume later: story-state.csv keeps
+      # completed stories; relaunch outer-loop.sh to continue.
       echo "${SID},failed,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story FAILED: ${OUTCOME}" 2>/dev/null || true
       git push origin main >> "$LOG" 2>&1 || true

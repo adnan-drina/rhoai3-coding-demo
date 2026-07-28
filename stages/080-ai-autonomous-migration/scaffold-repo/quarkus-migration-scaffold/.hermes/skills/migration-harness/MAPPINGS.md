@@ -90,7 +90,7 @@ extensions; compat mode hides the migration instead of doing it):
 ## Windup rule joins (machine-readable)
 
 `findings-inventory.py` parses THIS table to classify every mandatory
-finding at Phase A. `class` semantics: `recipe:<plugin-version>:<recipe-artifact>:<recipe-name>`
+finding at M1. `class` semantics: `recipe:<plugin-version>:<recipe-artifact>:<recipe-name>`
 = executed by the supervisor as a scripted OpenRewrite step (validated
 2026-07-27 against the real cart legacy tree); `rewrite` = mechanical,
 executed in a task packet; `infer` = judgment — the decided shape is in

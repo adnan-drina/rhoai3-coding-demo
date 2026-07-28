@@ -2,10 +2,30 @@
 # The legacy application is intentionally NOT registered in the catalog;
 # this file is the durable record of where the migration started.
 migration:
-  legacyRepoUrl: https://github.com/rhpds/mca-coolstore.git
+  legacyRepoUrl: https://github.com/adnan-drina/coolstore-cart-legacy.git
   target: quarkus
   provisionedBy: app-migration golden-path template
+acceptance:
+  # The harness supervisor asserts this after deploy (M5 ship success).
+  path: /api/cart/acceptance-check
+  needsDatabase: false
 analysis:
-  # MTA selects rules by source/target labels — the decided set:
-  # the migration path, cloud-readiness (OpenShift deploy), JDK jump.
+  # MTA rule selection is LABEL FILTERING (targets pick only matching
+  # rules; everything else is silently excluded). Decided set (validated
+  # 2026-07-27 A/B on the cart legacy): the migration path, the jakarta
+  # namespace jump, cloud-readiness (OpenShift deploy), the JDK jump.
+  # NO source filter — it only narrows (excludes source-labelless rules
+  # incl. custom ones). Applies to IDE analysis AND the harness run.
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
+preserve:
+  # Enforced: plan-lint maps each item to a task; the preflight sensor
+  # greps them in src/main|pom|k8s. Populate from the analysis's
+  # preserve-candidate findings (demo-env-integration rule) before the
+  # run — an erased integration is a functional regression no unit test
+  # catches.
+  - CATALOG_ENDPOINT
+forbidden:
+  # Fabrication tripwires: sensors fail any commit introducing these
+  # into src/main (hardcoded stand-ins for external services).
+  - getMockProducts
+  - "Fallback to mock"

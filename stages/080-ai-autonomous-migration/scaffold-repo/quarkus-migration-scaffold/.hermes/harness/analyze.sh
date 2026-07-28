@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Phase A / M1 ANALYZE (script-owned ground truth) — extracted from the
+# M1 / M1 ANALYZE (script-owned ground truth) — extracted from the
 # supervisor so the outer loop can run it before M2 sequencing. Runs the
 # harness-owned kantra analysis with the migration.yaml analysis contract,
 # computes the spec input bundle (dependency order, findings inventory,
-# recipe-executed rewrites), and commits it all in ONE 'Phase A:' commit.
+# recipe-executed rewrites), and commits it all in ONE 'M1 analyze:' commit.
 # Exit 0 = bundle committed (or already present); exit 1 = ground truth
 # unavailable. All output to stdout/stderr — callers redirect.
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ echo "analyze: kantra args: $K_ARGS (source-only mode)"
   $K_ARGS --mode source-only --json-output --overwrite) || true
 mkdir -p migration
 cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
-  || { echo "FATAL: Phase A ground truth unavailable"; exit 1; }
+  || { echo "FATAL: M1 ground truth unavailable"; exit 1; }
 # Spec input bundle (docs/MTA-TO-SPEC-MAPPING.md): the mechanical
 # projections of the findings are computed here, not re-derived by the
 # sequencing model — dependency order, the findings inventory with the
@@ -54,7 +54,7 @@ python3 .hermes/harness/findings-inventory.py migration/mta-findings.json \
 SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
 git add migration/mta-findings.json migration/dependency-order.md \
         migration/findings-inventory.md migration/recipe-log.md migration/staging 2>/dev/null
-git commit -q -m "Phase A: ground truth + spec input bundle (supervisor script step)
+git commit -q -m "M1 analyze: ground truth + spec input bundle (supervisor script step)
 
 ${SUMMARY}"
 echo "analyze: committed — ${SUMMARY}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic Phase B plan lint (improvement plan B2).
+"""Deterministic M3 plan lint (improvement plan B2).
 
 Usage: plan-lint.py <tasks.md> [mta-findings.json] [--findings-scope id1,id2]
 

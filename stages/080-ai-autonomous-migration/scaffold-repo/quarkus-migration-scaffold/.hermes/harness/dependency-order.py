@@ -85,7 +85,7 @@ def main():
             order.append(f)
             del remaining[f]
 
-    print("# Legacy dependency analysis (scripted, Phase A)")
+    print("# Legacy dependency analysis (scripted, M1)")
     print()
     print(f"- Classes: {len(classes)}; intra-project reference edges: "
           f"{sum(len(v) for v in imports.values())}")

@@ -73,6 +73,29 @@ spec:
             migration's definition of shipped. Must be a REAL endpoint of
             the migrated app (cart: GET /api/cart/{id} returns 200 for any
             id; monolith round used /api/products).
+        preserveItems:
+          title: Preserve tokens (YAML list)
+          type: string
+          ui:widget: textarea
+          default: |
+            - CATALOG_ENDPOINT
+          description: |
+            Tokens the migrated app must still carry (env vars, config
+            keys, integration surfaces). Stamped into migration.yaml
+            `preserve:` and enforced by plan-lint + preflight sensors.
+            One YAML list item per line. Leave empty (`[]` as a single
+            line) when the legacy app has no integration surfaces to keep.
+        forbiddenPatterns:
+          title: Forbidden fabrication patterns (YAML list)
+          type: string
+          ui:widget: textarea
+          default: |
+            - getMockProducts
+            - "Fallback to mock"
+          description: |
+            Substrings sensors reject in src/main (hardcoded stand-ins
+            for external services). Stamped into migration.yaml
+            `forbidden:`. One YAML list item per line.
 
   steps:
     - id: fetch-golden
@@ -107,6 +130,8 @@ spec:
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           needsDatabase: ${{ parameters.needsDatabase }}
           acceptancePath: ${{ parameters.acceptancePath }}
+          preserveItems: ${{ parameters.preserveItems }}
+          forbiddenPatterns: ${{ parameters.forbiddenPatterns }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 

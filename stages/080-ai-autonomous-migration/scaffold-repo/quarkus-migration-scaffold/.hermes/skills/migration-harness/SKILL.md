@@ -1,6 +1,6 @@
 ---
 name: migration-harness
-description: Orchestrates the autonomous legacy-to-Quarkus migration loop — plans from MTA findings, dispatches rewrite tasks to OpenRewrite and infer tasks to the OpenCode worker, runs sensors after every task, and ships through the factory gate. Use in harness sessions inside the migration workspace when executing any phase (A-E) of the migration runbook.
+description: Orchestrates the autonomous legacy-to-Quarkus M-process (M1–M5) — analyzes findings, sequences stories, specifies per story, dispatches rewrite/infer work with sensors, and ships through the factory gate. Use in harness sessions when executing any M-stage of the migration runbook.
 ---
 
 # Migration harness runbook (Hermes orchestrator)
@@ -9,6 +9,20 @@ You are the harness orchestrator for this migration workspace. You own the
 plan, the task queue, the sensor schedule, correction packets, and the
 iteration budget. Application code is written by the worker; you may edit
 source directly only through the escalation valve (see EXECUTION.md).
+
+## The M-process (canonical vocabulary)
+
+| Stage | Name | Owns |
+|---|---|---|
+| **M1** | ANALYZE | Ground truth + architecture profile — [ANALYSIS.md](ANALYSIS.md); script bundle via `analyze.sh` |
+| **M2** | SEQUENCE | Roadmap + briefs — [SEQUENCING.md](SEQUENCING.md); outer loop only |
+| **M3** | SPECIFY | Spec / plan / tasks for one story — [PLANNING.md](PLANNING.md) |
+| **M4** | IMPLEMENT | Task loop (rewrite / infer / sensors) — [EXECUTION.md](EXECUTION.md) |
+| **M5** | EVALUATE | Preflight, factory ship, findings delta — [SHIPPING.md](SHIPPING.md) |
+| **Retro** | Steering | Proposals after a story/run — briefs may be auto-applied; skills stay human |
+
+Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`,
+`M3 spec:` / `<Sxx> spec:`, `M3 revision:`, `T-NNN:`, `M5 evaluate:`, `Retro:`.
 
 ## Division of labor — hard rules
 
@@ -63,23 +77,36 @@ python3 .hermes/skills/migration-harness/scripts/extract_findings.py   # finding
 python3 .hermes/skills/migration-harness/scripts/summarize_worker.py /tmp/oc-task.json
 ```
 
-## Phase procedures — read the file for the phase you are executing
+## Stage procedures — read the file for the stage you are executing
 
-| Phase | File |
+| Stage | File |
 |---|---|
-| A (ground truth) and B (spec, plan, tasks) | [PLANNING.md](PLANNING.md) |
-| C (task execution: packets, dispatch, sensors, budget) | [EXECUTION.md](EXECUTION.md) |
-| D (re-analysis + final verify) and E (factory gate loop) | [SHIPPING.md](SHIPPING.md) |
-| Jakarta→Quarkus mapping catalog (plans and packets cite it) | [MAPPINGS.md](MAPPINGS.md) |
+| M1 architecture profile | [ANALYSIS.md](ANALYSIS.md) |
+| M2 roadmap + briefs | [SEQUENCING.md](SEQUENCING.md), [BRIEF-TEMPLATE.md](BRIEF-TEMPLATE.md) |
+| M3 spec / plan / tasks | [PLANNING.md](PLANNING.md), [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) |
+| M4 task execution | [EXECUTION.md](EXECUTION.md) |
+| M5 evaluate + factory | [SHIPPING.md](SHIPPING.md) |
+| Jakarta→Quarkus mapping catalog | [MAPPINGS.md](MAPPINGS.md) |
 | Model routing and cost discipline | [REFERENCE.md](REFERENCE.md) |
 
-Read ONLY the file for your current phase — each is self-contained.
+Read ONLY the file for your current stage — each is self-contained.
+
+## Feedback loops
+
+- **Inner loop (automated):** lint → revision; sensors → fix sessions.
+- **Outer loop (automated):** after each story, Retro may update **remaining
+  briefs** so the next story starts smarter. Roadmap structure is not
+  rewritten mid-run; a failed story stops the run (resume via
+  `migration/story-state.csv`).
+- **Steering loop (human):** Retro proposes skill/sensor/runbook changes;
+  humans apply them in a follow-up PR. Never auto-edit `.hermes/skills/**`
+  or harness scripts from Retro.
 
 ## Stop conditions
 
 | Condition | Action |
 |---|---|
-| All tasks done, sensors green, re-analysis clean | Phase D ship |
+| All story tasks done, sensors green, re-analysis clean | M5 ship |
 | Budget exhausted on a task | `migration/debt.md`, continue |
 | Two consecutive full-suite failures after corrections | HALT: write run-log + debt, report, do not push, never bypass sensors |
-
+| Story ship failed under outer loop | Stop before dependent stories; resume later from `story-state.csv` |

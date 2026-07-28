@@ -1,16 +1,21 @@
-# Phases A and B — ground truth and plan
+# M3 SPECIFY — plan (and findings access notes)
 
 Plans map findings to the DECIDED targets in [MAPPINGS.md](MAPPINGS.md) —
 cite the catalog, do not re-derive architecture per run. `tasks.md` MUST
 follow [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) — the supervisor's plan
 lint bounces non-conforming plans.
 
-## Contents
-- Phase A — normalize ground truth
-- Working with the findings file
-- Phase B — plan (spec handoff)
+M1 ground truth and the architecture profile live in [ANALYSIS.md](ANALYSIS.md)
+(and `analyze.sh`). This file owns M3. The normalize snippet below is
+kept so whole-app supervisor runs that land here without an outer-loop
+M1 still have a fallback path.
 
-## Phase A — normalize ground truth
+## Contents
+- M1 fallback — normalize ground truth (prefer ANALYSIS.md / analyze.sh)
+- Working with the findings file
+- M3 — plan (spec handoff)
+
+## M1 fallback — normalize ground truth
 
 The contract input is `migration/mta-findings.json` (konveyor analyzer
 format: list of rulesets → `violations` keyed by rule id → `incidents`
@@ -55,7 +60,7 @@ PYEOF
 Read individual incidents (file/line/message) the same way — filtered by
 rule id, never the full file.
 
-## Phase B — plan (spec handoff)
+## M3 — plan (spec handoff)
 
 Read the legacy code and `migration/mta-findings.json`, then write the
 contract into the same layout stage 070 uses:
@@ -81,7 +86,7 @@ migration.yaml `preserve:` item, and the migration.yaml
 `acceptance.path` mapped to a task; and no `com.redhat.coolstore`
 package targets (project root is `com.demo`).
 
-**Phase A hands you a spec input bundle — consume it, do not re-derive
+**M1 hands you a spec input bundle — consume it, do not re-derive
 it** (docs/MTA-TO-SPEC-MAPPING.md):
 
 - `migration/findings-inventory.md` — every mandatory finding already
@@ -95,14 +100,14 @@ it** (docs/MTA-TO-SPEC-MAPPING.md):
   NOT from /projects/legacy.
 - `migration/dependency-order.md` — the conversion order (below).
 
-Your Phase B judgment budget belongs to: the behavioral contract (from
+Your M3 judgment budget belongs to: the behavioral contract (from
 legacy tests + code reading — findings only say where to look) and the
 OPEN DESIGN / infer shapes.
 
 Ordering and test placement (MigIQ-derived, validated against cart
 run #2's failures):
 
-- **Conversion tasks follow `migration/dependency-order.md`** (Phase A
+- **Conversion tasks follow `migration/dependency-order.md`** (M1
   emits it): dependencies before dependents — models and utilities
   first, endpoints last — so the tree compiles at every commit. Cart
   run #2's three red commits all came from harvesting dependents before

@@ -19,4 +19,4 @@ Rules the lint enforces: 3–6 hash headings with `T-NNN:` ids; a Class
 marker per task; rewrite tasks before infer tasks; every infer task
 carries file mappings/signatures; every mandatory finding mapped; the
 legacy UI surface covered or explicitly waived (note: the demo
-acceptance overrides a waive at Phase E).
+acceptance overrides a waive at M5 ship).

@@ -8,7 +8,7 @@
 #
 # Usage: recipe-transform.sh <legacy-root> <inventory.md>
 # Exit 0 with recipe-log written, or 0 with "no recipe-class rules" noted
-# (never blocks Phase A); real transform failures exit 1.
+# (never blocks M1); real transform failures exit 1.
 set -uo pipefail
 LEGACY="${1:-/projects/legacy}"
 INVENTORY="${2:-migration/findings-inventory.md}"

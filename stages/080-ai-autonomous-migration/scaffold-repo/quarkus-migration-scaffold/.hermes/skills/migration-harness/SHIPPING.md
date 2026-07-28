@@ -1,10 +1,10 @@
-# Phases D and E — final sensors and the factory gate
+# M5 EVALUATE — final sensors and the factory gate
 
 ## Contents
-- Phase D — re-analysis, delta, final verify
-- Phase E — the supervised factory gate loop
+- M5 evaluate — re-analysis, delta, final verify
+- M5 ship — the supervised factory gate loop
 
-## Phase D — final sensors + ship
+## M5 evaluate — final sensors + ship
 
 1. Re-analysis of the MIGRATED code:
 
@@ -24,11 +24,11 @@ not "the agent says done."
    validation). Fix everything it reports BEFORE committing: the first
    push should be a formality the factory confirms.
 3. Commit with a conventional message referencing the spec id. Under the
-   supervisor, DO NOT push — the supervisor ships and drives Phase E.
+   supervisor, DO NOT push — the supervisor ships and drives M5 ship.
 4. Final report: tasks completed/deferred, debt entries, findings delta
    (before → after).
 
-## Phase E — the factory gate loop (supervised)
+## M5 ship — the factory gate loop (supervised)
 
 The supervisor (`.hermes/harness/supervisor.sh`) owns shipping: it pushes,
 watches the project PipelineRun (read-only RBAC is provisioned into every

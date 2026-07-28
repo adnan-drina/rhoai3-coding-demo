@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase A spec input bundle: findings inventory with the MAPPINGS join
+"""M1 spec input bundle: findings inventory with the MAPPINGS join
 pre-computed (MTA→spec translation, docs/MTA-TO-SPEC-MAPPING.md R2).
 
 Usage: findings-inventory.py <findings.json> <MAPPINGS.md> [> inventory.md]
@@ -7,7 +7,7 @@ Usage: findings-inventory.py <findings.json> <MAPPINGS.md> [> inventory.md]
 Per mandatory rule: description, class from the MAPPINGS rule-join table
 (recipe / rewrite / infer / OPEN DESIGN), decided target, incident sites
 grouped by file. Config-surface rules are additionally listed as
-preserve-candidates for confirmation against migration.yaml. Phase B
+preserve-candidates for confirmation against migration.yaml. M3
 spends its judgment on the behavioral contract and the OPEN DESIGN
 rows — everything else here is a lookup, not a derivation.
 """
@@ -63,7 +63,7 @@ def main():
 
     classified = collections.defaultdict(list)
     preserve = []
-    print("# Findings inventory (Phase A spec input bundle)")
+    print("# Findings inventory (M1 spec input bundle)")
     print()
     print(f"Rules: {len(rules)}; incidents: "
           f"{sum(len(v.get('incidents') or []) for _, v in rules)}. "
