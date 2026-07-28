@@ -158,9 +158,19 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
 # prompt points at /tmp/scope-violation.txt). No human escalation.
 scope_enforce() { # $1=commit-prefix
   [ -n "${STORY_SCOPE:-}" ] || return 0
+  # Only path-form scope entries are enforceable (V4 first-run catch: M2
+  # wrote class FQNs — enforcing those would mass-revert every edit).
+  # Enforcement covers src/main/java only: resources (application
+  # .properties) are shared story surface, not class ownership.
+  local pathscope="" e
+  for e in ${STORY_SCOPE}; do case "$e" in src/*) pathscope="$pathscope $e";; esac; done
+  if [ -z "$pathscope" ]; then
+    log "scope sensor: no path-form scope entries — enforcement skipped (informational scope)"
+    return 0
+  fi
   local prefix="$1" f viol=""
-  for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/ 2>/dev/null); do
-    case " ${STORY_SCOPE} " in *" $f "*) ;; *) viol="$viol $f";; esac
+  for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
+    case " ${pathscope} " in *" $f "*) ;; *) viol="$viol $f";; esac
   done
   [ -n "$viol" ] || { rm -f /tmp/scope-violation.txt; return 0; }
   event "scope" 0 scope_violation "${viol# }"

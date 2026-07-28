@@ -73,7 +73,7 @@ pinned tests must stay green while the defect classes close.
 # Modernization roadmap
 
 ## S01: <short title>
-- scope: <comma-separated class/file list (project-relative)>
+- scope: <comma-separated TARGET file paths (src/main/java/...) where known; class names only for not-yet-mapped legacy classes — the story-scope sensor enforces path entries only>
 - findings: <comma-separated mandatory rule ids this story resolves>
 - depends: - | S<NN>[, S<NN>...]
 - deploy: true|false
