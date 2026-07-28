@@ -104,6 +104,29 @@ Full per-session times (metrics.csv), task-loop only:
 
 `ShoppingCartServiceImpl` shipped production-grade wiring: `private final` collaborator fields, `@Inject` constructor injection, and `@RestClient CatalogService` on the constructor parameter — the historically fragile injection point, correct. The earlier S6813 field-injection violations (seen at T-014 on an intermediate state) are fully resolved by the proper conversion, vindicating the T-014 stand-down decision (no two-writer intervention). Constructor injection is the decided MAPPINGS shape and the plan absorbed it (T-017/T-018/T-020 titles say "with constructor injection"). Escalations: T-019, T-020, T-021 were orchestrator-implemented (packet-quality KPI — the endpoint/config tasks the worker packets didn't carry cleanly); T-019 shipped src/main with no test change (coverage-erosion flag, to be closed by T-023 or the factory gate).
 
-## 6. Verdict
+## 6. Semantic code review of the generated service (2026-07-28, at T-026, pre-ship)
 
-(final: wall-clock vs V3, quality gate + semantic review of the shipped service, remaining levers)
+Read every `src/main` class (700 LOC) against the same lens as the V3 post-ship review. **Headline: V4 is shipping a FAITHFUL LEGACY MIGRATION, not a production-grade service. Five of the six S03 hardening defect classes are back** — the automated gates (sonar, fidelity, tests) are all GREEN because the legacy patterns are neither sonar violations nor fidelity drift, and the characterization tests PIN the legacy behavior (defects included).
+
+Concrete findings in `ShoppingCartServiceImpl.java` / `CartEndpoint.java`:
+
+| # | S03 default (MAPPINGS) | V4 shipped | Evidence |
+|---|---|---|---|
+| 1 | `ConcurrentHashMap` + `carts.compute()` | plain `HashMap`, `carts.put()` on an `@ApplicationScoped` singleton | Impl L29–30, L45, and `put` at L54/57/142/152/180/197 — thread-unsafe shared state (the S03 T-001 class) |
+| 2 | cache refresh only if absent AND >60s since last | refetches the WHOLE catalog on every unknown itemId, no time guard | Impl L110–113 (`if (!productMap.containsKey) { productMap = products.stream()... }`) — cache thrash on unknown-id probes (S03 T-002 class) |
+| 3 | GET is read-only; absent → 404 | GET **creates** the cart | Endpoint L30–32 → Impl L52–54 (`cart = new ShoppingCart(cartId); carts.put(...)`); interface returns `ShoppingCart`, not `Optional` — create-on-GET (S03 T-003 class) |
+| 4 | `quantity<=0` → 400; `ExceptionMapper` → 503 | no validation, no ExceptionMapper | Endpoint L37–41 (`int quantity`, no `@Min`/`@Positive`); no mapper class exists — catalog `ProcessingException` surfaces as raw 500 (S03 T-005 class) |
+| 5 | dedupe BEFORE pricing (consistent promoSavings) | prices, THEN dedupes | Impl L173–174 (`priceShoppingCart(cart); ...dedupeCartItems(cart)`) — totals computed on the un-deduped list, line items on the deduped list → inconsistent (S03 T-006 class) |
+| 6 | no fabricated fallback data | ✅ correct — honest `null` on catalog failure | Impl L114–118 returns null, logs a warning; `addItem` L161–164 adds nothing on null product — the ONE hardening property that survived |
+
+Minor: `CartEndpoint` carries a `serialVersionUID` (L18) but implements nothing Serializable (dead field); `@Path("/cart")` (legacy) not `/api/cart`, and there is NO `acceptance-check` endpoint (that was an S02-authored addition, absent from the legacy) — a Phase E acceptance-path risk depending on what `migration.yaml acceptance.path` expects. `PromoService` keeps a mutable `promotionSet` with a setter on a singleton (getPromotions returns a defensive copy, so lower risk). `CatalogService` / `ShippingService` are clean.
+
+**Root cause — a design contradiction I introduced after S03:** harvest-fidelity (faithful migration) and the "production-grade defaults" (hardened migration) are in DIRECT CONFLICT. The fidelity sensor requires the converted class to match the staged legacy modulo approved transforms (package, whitespace, comments, annotations, diamond). Constructor injection got through because it is annotation-level. But `ConcurrentHashMap`, `compute()`, the 60s guard, `Optional`/404, and dedupe-reorder are STRUCTURAL changes that WOULD trip fidelity. So the model — correctly prioritizing the hard fidelity gate over soft skill guidance — produced the faithful, unhardened version. My post-S03 MAPPINGS "Production-grade defaults" + SEQUENCING "Production-grade bar" are therefore INEFFECTIVE inside a fidelity-gated migration story: they ask for exactly what fidelity forbids.
+
+**Why the gates are all green anyway:** legacy `HashMap`/create-on-GET/dedupe-order are not sonar rules; they MATCH the staged legacy so fidelity passes (that is fidelity's whole point); and the characterization tests were written to preserve legacy assertion values, so they actively PIN these behaviors as correct. Every automated signal says "clean" precisely because the migration is faithful.
+
+**This reproduces the V3 arc exactly:** V3 shipped S02 (faithful) and needed a SEPARATE S03 hardening story (with `FIDELITY_CHECK=off`) to reach production-grade. V4 collapsed to a single migration story (M2 emitted one story S01, no hardening story), and my "bake it into the migration" shortcut cannot overcome fidelity. **The correct model is the one V3 already proved: migration story (faithful, fidelity-on) THEN hardening story (structural, fidelity-off).** Fix for next run: (a) REVERT the "production-grade bar on the deploy story" in SEQUENCING — it is unachievable under fidelity and misleads the planner; (b) make M2 ALWAYS append a hardening story after a deploy migration story (the S03 template — `findings: -`, `FIDELITY_CHECK=off`, cites this defect list); (c) keep only the fabrication default in-migration (it survives because forbidden: tripwires enforce it independently of fidelity). Net: V4's service is a CORRECT migration but is NOT production-grade; it needs an S03-equivalent hardening pass before it earns that label.
+
+## 7. Verdict
+
+(final: wall-clock vs V3, ship outcome, prioritized next levers — pending run completion)
