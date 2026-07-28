@@ -52,7 +52,13 @@ def main():
         fsec = re.search(r"^forbidden:(.*?)(^\S|\Z)", myaml, re.M | re.S)
         forbidden = re.findall(r"^\s*-\s*\"?([^\"\n]+?)\"?\s*$", fsec.group(1), re.M) if fsec else []
     except OSError:
-        forbidden = []
+        myaml, forbidden = "", []
+    # package identity from migration.yaml (single source; no hardcoded root)
+    m = re.search(r"legacyPackage:\s*([\w.]+)", myaml or "")
+    legacy_pkg = m.group(1) if m else "com.redhat.coolstore"
+    m = re.search(r"targetPackage:\s*([\w.]+)", myaml or "")
+    target_pkg = m.group(1) if m else "com.demo"
+    legacy_path = legacy_pkg.replace(".", "/")
     for pat in forbidden:
         for m in re.finditer(re.escape(pat), text):
             ls = text.rfind("\n", 0, m.start() - 120)
@@ -140,12 +146,14 @@ def main():
     # the legacy package as the SOURCE (from→to lines, staging paths are
     # fine); the defect is placing migrated code there (run #2) — i.e. a
     # destination path or Target line carrying the legacy root.
+    leg_slash = re.escape(legacy_path)
+    leg_dotslash = re.escape(legacy_pkg).replace(r"\.", "[./]")
     for line in text.splitlines():
         if "migration/staging/" in line:
             continue
-        if re.search(r"(?:Target|→|->)\s*[^\n]*src/(?:main|test)/java/com/redhat/coolstore", line) \
-                or re.search(r"^\*\*Target\*\*.*com[./]redhat[./]coolstore", line):
-            lint("package", f"legacy package in TARGET position: {line.strip()[:80]} — project root is com.demo (AGENTS.md)")
+        if re.search(rf"(?:Target|→|->)\s*[^\n]*src/(?:main|test)/java/{leg_slash}", line) \
+                or re.search(rf"^\*\*Target\*\*.*{leg_dotslash}", line):
+            lint("package", f"legacy package in TARGET position: {line.strip()[:80]} — project root is {target_pkg} (migration.yaml targetPackage)")
     # Task substance (T-029 class, M3 dry-run catch: 'waiver' and
     # 'coverage' tasks with no code path): every task body must name a
     # concrete artifact it changes.

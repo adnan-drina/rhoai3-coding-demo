@@ -34,15 +34,21 @@ per-task rule below applies to each task in the batch.
 
 For a REDESIGN class (service, endpoint, REST client, config — see
 architecture-profile §7 and the brief), implement the §7 TARGET contract
-from the first commit: thread-safe singleton state (`ConcurrentHashMap` +
-`compute()`), cache refresh-guard, read-only GET (404 on missing),
-input validation (→400), error mapping (→503) — the MAPPINGS
-"Production-grade defaults" shapes. This is not "harden later"; it IS the
-conversion. Behavior-preserving shapes (thread-safety, cache, error path)
-are non-negotiable defaults; behavior-changing shapes (GET→404, invalid→400)
-are exactly what §7 / the brief decided, and the tests pin those targets.
-HARVEST classes (models, DTOs, utilities) stay faithful — fidelity applies,
-tests pin legacy values.
+from the first commit — not the legacy behavior. This is not "harden
+later"; it IS the conversion.
+
+The target contract is what §7 DECIDED for THIS app, gated by
+`migration.yaml` `targetContract:` — apply only the shapes whose flags are
+true. MAPPINGS "Production-grade defaults" is the CATALOG of options
+(`ConcurrentHashMap`/`compute()`, cache refresh-guard, GET→404, →400
+validation, →503 mapping, normalize-before-derive), not an unconditional
+law: a read-only service, a batch job, or an API that must keep create-on-
+GET will have some of those flags FALSE, and the class is built to match §7,
+not to a checklist. Behavior-preserving shapes that §7 adopts (thread-
+safety, cache policy) don't change observable behavior; behavior-changing
+ones (GET→404, invalid→400) are the deliberate departures §7 recorded, and
+the tests pin those §7 targets. HARVEST classes (models, DTOs, utilities)
+stay faithful — fidelity applies, tests pin legacy values.
 
 ### Story scope is a hard boundary
 
@@ -95,21 +101,27 @@ do NOT `tar` the legacy tree, do NOT re-run `rewrite-maven-plugin` — that
 work is done, the scratch commands are redundant AND are denied by the
 headless command policy (they will hang ~5 min each, then fail).
 
+The package roots come from `migration.yaml` (`legacyPackage` /
+`targetPackage`) — never hardcode them:
+
 ```bash
-# recipes already applied by M1; harvest transformed file + rename package:
-mkdir -p "$(dirname src/main/java/com/demo/<path>/<Class>.java)"
-sed 's/com\.redhat\.coolstore/com.demo/g' \
-  migration/staging/src/main/java/com/redhat/coolstore/<path>/<Class>.java \
-  > src/main/java/com/demo/<path>/<Class>.java
+# recipes already applied by M1; harvest transformed file + rename package.
+LEG=$(grep -m1 legacyPackage migration.yaml | awk '{print $2}')   # e.g. com.redhat.coolstore
+TGT=$(grep -m1 targetPackage migration.yaml | awk '{print $2}')   # e.g. com.demo
+LEGP=${LEG//./\/}; TGTP=${TGT//./\/}
+mkdir -p "$(dirname src/main/java/$TGTP/<path>/<Class>.java)"
+sed "s/${LEG//./\\.}/$TGT/g" \
+  "migration/staging/src/main/java/$LEGP/<path>/<Class>.java" \
+  > "src/main/java/$TGTP/<path>/<Class>.java"
 ```
 
 Harvest ONLY files whose transformation is complete (no surviving
 legacy-framework imports — Spring annotations survive the jakarta recipe;
 those files convert in an infer task first). The plan names the source
-(`migration/staging/...`) and destination (`src/main/java/com/demo/...`) per
-task. Never write under the legacy `com/redhat/coolstore` path in
-`src/main` — the target package is `com.demo`. If `migration/staging` is
-absent, record debt — do NOT stand up a scratch OpenRewrite run.
+(`migration/staging/...`) and destination (`src/main/java/$TGTP/...`) per
+task. Never write under the legacy package path in `src/main` — the target
+is `targetPackage`. If `migration/staging` is absent, record debt — do NOT
+stand up a scratch OpenRewrite run.
 
 **Class: infer** — bounded worker run. The worker's JSON event stream is
 huge (often hundreds of KB) — NEVER let it print to your terminal; it

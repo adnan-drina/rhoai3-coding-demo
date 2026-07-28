@@ -75,8 +75,8 @@ every infer body (file mappings/signatures/annotations); the legacy
 user-facing surface (web UI / index page) covered by a task or
 explicitly waived with a reason; every mandatory finding, every
 migration.yaml `preserve:` item, and the migration.yaml
-`acceptance.path` mapped to a task; and no `com.redhat.coolstore`
-package targets (project root is `com.demo`).
+`acceptance.path` mapped to a task; and no legacy-package targets — the
+project root is `migration.yaml` `targetPackage` (never the `legacyPackage`).
 
 **M1 hands you a spec input bundle — consume it, do not re-derive
 it** (docs/MTA-TO-SPEC-MAPPING.md):

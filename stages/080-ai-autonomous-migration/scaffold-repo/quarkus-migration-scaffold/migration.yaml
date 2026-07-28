@@ -5,6 +5,11 @@ migration:
   legacyRepoUrl: https://github.com/adnan-drina/coolstore-cart-legacy.git
   target: quarkus
   provisionedBy: app-migration golden-path template
+  # Package identity — the ONLY place the rename is defined. The harness
+  # (harvest-fidelity, plan-lint) and the harvest sed read these; nothing
+  # hardcodes a package. A different legacy app sets its own roots here.
+  legacyPackage: com.redhat.coolstore
+  targetPackage: com.demo
 acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
   path: /api/cart/acceptance-check

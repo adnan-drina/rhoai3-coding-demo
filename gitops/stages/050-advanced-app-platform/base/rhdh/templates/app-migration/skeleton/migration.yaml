@@ -5,6 +5,9 @@ migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
+  # Package identity (single source of the rename). A non-cart app sets its own.
+  legacyPackage: com.redhat.coolstore
+  targetPackage: com.demo
 acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
   path: ${{ values.acceptancePath }}

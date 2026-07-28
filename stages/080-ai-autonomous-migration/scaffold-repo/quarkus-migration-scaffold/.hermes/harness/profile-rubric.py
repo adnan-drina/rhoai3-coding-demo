@@ -130,7 +130,7 @@ def main():
         "mapErrors": (r"\b503\b|ExceptionMapper", "503/ExceptionMapper"),
         "threadSafeState": (r"ConcurrentHashMap|compute\(", "ConcurrentHashMap/compute"),
         "cacheRefreshGuard": (r"no clear|clear.?on.?miss|refresh.?guard|\bTTL\b|\b60\s*s|time.?stamp guard", "refresh-guard"),
-        "normalizeBeforeDerive": (r"before pric|dedupe before|normalize.{0,20}before", "normalize-before-derive"),
+        "normalizeBeforeDerive": (r"normalize.{0,20}before|dedup.{0,20}before|before (?:deriv|aggregat|comput|total|pric|sum)", "normalize-before-derive"),
     }
     try:
         myaml = open("migration.yaml", encoding="utf-8").read()

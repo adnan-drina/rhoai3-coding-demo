@@ -31,14 +31,18 @@ Run on `/tmp/rewrite-staging` per EXECUTION.md:
 | JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |
 | Vendored/enterprise jars unavailable in Central | Vendor in-repo (`lib/` + file-based `<repository>` in `pom.xml`) — the repository must build self-contained |
 
-## Production-grade defaults (the §7 target shapes for REDESIGN classes)
+## Production-grade defaults — a CATALOG, gated by `targetContract`
 
 The V3 post-ship review found six semantic defect classes that a legacy-
-faithful conversion carries and the rule-based gate cannot see. These are
-the DEFAULT target shapes for REDESIGN classes (architecture-profile §7) —
-the story that converts the component builds it to the target directly.
-Harvest-fidelity exempts redesign classes (`@ApplicationScoped/@Inject/
-@Path/@RegisterRestClient`), so there is no gate to fight:
+faithful conversion carries and the rule-based gate cannot see. This table
+is the CATALOG of target shapes a REDESIGN class MAY adopt — NOT
+unconditional law. Which apply to a given app is decided in
+architecture-profile §7 and gated by `migration.yaml` `targetContract:`
+(the rubric enforces only the flags set true). A read-only service, a batch
+job, or an API that must preserve create-on-GET will leave some of these
+FALSE. Where §7 does adopt a shape, the story converts the component to it
+directly — harvest-fidelity exempts redesign classes (`@ApplicationScoped/
+@Inject/@Path/@RegisterRestClient`), so there is no gate to fight:
 
 | Legacy defect class | Default target shape |
 |---|---|

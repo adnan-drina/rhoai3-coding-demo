@@ -26,17 +26,17 @@ Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`
 
 ## Division of labor — hard rules
 
-- **You (Hermes)** may write only under `specs/`, `migration/`, and the
-  ephemeral scratch dir `/tmp/rewrite-staging`. Never edit files under
-  `/projects/modernized/src` or `/projects/modernized/pom.xml` — code
-  changes, including harvesting transformed files from the scratch dir,
-  are delegated to OpenCode as tasks.
-- **OpenCode** implements one bounded task at a time via `opencode run`.
-  It never decides that the migration is complete — sensors and the
-  findings baseline decide.
-- **OpenRewrite** handles `Class: rewrite` tasks (deterministic
-  transforms). You shell the Maven plugin on the scratch copy; OpenCode is
-  not involved in rewrite execution.
+- **You (Hermes)** own planning and orchestration; code changes land
+  through tasks. `Class: rewrite` tasks HARVEST the already-transformed
+  file from `migration/staging` (M1 ran the recipes there); `Class: infer`
+  tasks are delegated to OpenCode. Never stand up a `/tmp/rewrite-staging`
+  scratch dir or re-run OpenRewrite — that work is done in M1.
+- **OpenCode** implements one bounded `infer` task at a time via
+  `opencode run`. It never decides that the migration is complete —
+  sensors and the findings baseline decide.
+- **OpenRewrite** ran in M1 (`recipe-transform.sh`) and wrote its output to
+  `migration/staging`; `migration/recipe-log.md` lists which recipes hit
+  which files. Rewrite tasks harvest from there — they do not re-run it.
 - **The factory pipeline** (push → Maven build → SonarQube quality gate →
   image) is the ONLY merge authority. Never claim merge or deploy
   success — your final report ends at "pushed <sha>; the factory pipeline
@@ -47,8 +47,8 @@ Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`
 | Path | Rule |
 |---|---|
 | `/projects/legacy` | READ-ONLY migration input. Never modify. |
-| `/projects/modernized` | Destination repo (this repo). Code changes only via OpenCode. |
-| `/tmp/rewrite-staging` | Ephemeral scratch copy of legacy for OpenRewrite. Never committed anywhere. |
+| `/projects/modernized` | Destination repo (this repo). Code changes land through tasks. |
+| `migration/staging` | M1's OpenRewrite output (recipe-transformed legacy). Rewrite tasks HARVEST from here — never re-run OpenRewrite or make a scratch copy. |
 
 ### Autonomous sessions never ask for consent
 

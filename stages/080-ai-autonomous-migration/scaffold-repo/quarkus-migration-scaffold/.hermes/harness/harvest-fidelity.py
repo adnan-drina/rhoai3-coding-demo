@@ -9,7 +9,7 @@ Defaults: migration/staging/src/main/java  src/main/java
 
 For every staged class that exists in the destination (matched by
 filename), diff after normalizing approved transforms:
-  - package/import rename com.redhat.coolstore* -> com.demo*
+  - package/import rename legacyPackage -> targetPackage (migration.yaml)
   - whitespace/blank-line/trailing-newline differences
   - comment-only lines (sonar-driven comment additions)
   - diamond operator (new X<...>() -> new X<>())
@@ -23,10 +23,33 @@ import re
 import sys
 
 
+def package_map(root="."):
+    """(legacyPackage, targetPackage) from migration.yaml — the single
+    source of the rename. Falls back to the cart-demo values so a repo
+    without the keys (or the instrument fixtures) still works."""
+    leg, tgt = "com.redhat.coolstore", "com.demo"
+    for base in (root, "."):
+        try:
+            y = open(os.path.join(base, "migration.yaml"), encoding="utf-8").read()
+        except OSError:
+            continue
+        ml = re.search(r"legacyPackage:\s*([\w.]+)", y)
+        mt = re.search(r"targetPackage:\s*([\w.]+)", y)
+        if ml:
+            leg = ml.group(1)
+        if mt:
+            tgt = mt.group(1)
+        break
+    return leg, tgt
+
+
+LEGACY_PKG, TARGET_PKG = package_map()
+
+
 def normalize(text):
     out = []
     for line in text.splitlines():
-        line = line.replace("com.redhat.coolstore", "com.demo")
+        line = line.replace(LEGACY_PKG, TARGET_PKG)
         line = re.sub(r"new (\w+)<[^>]+>\(\)", r"new \1<>()", line)
         s = line.strip()
         if not s or s.startswith("//") or s.startswith("*") or s.startswith("/*") or s.endswith("*/"):
