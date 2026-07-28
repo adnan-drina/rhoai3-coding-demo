@@ -245,11 +245,17 @@ run_stage() {
       fi
       # Untracked-stray sweep (V3: sessions twice left broken uncommitted
       # test files that failed later builds) — committed work is the only
-      # work; strays are removed with a logged warning.
+      # work. Strays are ARCHIVED to /tmp/strays/<tag>/ (S03 lesson: the
+      # sweep deleted a brief-required test a later task could have
+      # salvaged), keeping the tree clean without destroying work.
       STRAYS=$(git ls-files --others --exclude-standard -- src/ | head -5)
       if [ -n "$STRAYS" ]; then
-        log "$tag: removing untracked strays left by the session: $(echo $STRAYS | tr '\n' ' ')"
-        git ls-files --others --exclude-standard -- src/ | xargs -r rm -f
+        log "$tag: archiving untracked strays left by the session to /tmp/strays/${tag}/: $(echo $STRAYS | tr '\n' ' ')"
+        mkdir -p "/tmp/strays/${tag}"
+        git ls-files --others --exclude-standard -- src/ | while read -r f; do
+          mkdir -p "/tmp/strays/${tag}/$(dirname "$f")"
+          mv "$f" "/tmp/strays/${tag}/$f" 2>/dev/null || rm -f "$f"
+        done
       fi
       scope_enforce "$prefix"
       post_commit_verify "$prefix" "$tag"
