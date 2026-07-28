@@ -230,41 +230,51 @@ def main():
                 return False
             pre = sec7[:off]
             return pre.rfind("REDESIGN") > pre.rfind("HARVEST")
-        # class names appear as `Cls`, **Cls**, or Cls.java — models vary
-        # the emphasis (V5: a2 used bold, not backticks, which a backtick-
-        # only match silently skipped, defeating traceability).
+        # A name is a real REDESIGN CLASS only if it is governed by REDESIGN
+        # AND §7 gives it a `.java` file reference — this filters SHAPE
+        # LABELS (Concurrency, ExceptionMapper, Validation) that appear in a
+        # class's target description but are not classes (V5 false positive).
+        # Names appear as `Cls`, **Cls**, or Cls.java (models vary emphasis).
         NAME = re.compile(r"`([A-Z]\w+)`|\*\*([A-Z]\w+)\*\*|\b([A-Z]\w+)\.java\b")
-        redesign = set()
+        java_named = set(re.findall(r"\b([A-Z]\w+)\.java\b", sec7))
+
+        def targeted(cls):  # a task creates/targets this class's src/main file
+            return any(re.search(rf"src/(?:main|test)/java/\S*\b{re.escape(cls)}\.java", b)
+                       for b in bodies.values())
+        # A name is a real CLASS if §7 gives it a .java ref OR a task targets
+        # it — shape LABELS (Concurrency, ExceptionMapper) are neither, so
+        # they drop out (V5 false positive).
+        redesign, firsts = set(), {}
         for mm in NAME.finditer(sec7):
-            if _governs_redesign(mm.start()):
-                redesign.add(mm.group(1) or mm.group(2) or mm.group(3))
+            nm = mm.group(1) or mm.group(2) or mm.group(3)
+            if _governs_redesign(mm.start()) and (nm in java_named or targeted(nm)):
+                redesign.add(nm)
+                firsts.setdefault(nm, mm.start())
         TARGET = re.compile(
             r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
             r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"
             r"normalize", re.I)
         # per-class §7 entry: from the class's FIRST mention to the first
-        # mention of a DIFFERENT redesign class (or end of §7) — so we
-        # require only the shapes §7 actually DECIDED for THIS class (a
-        # 'removed'/stateless class needs no concurrency/API target, only to
-        # be addressed by a task).
-        firsts = {}
-        for mm in NAME.finditer(sec7):
-            nm = mm.group(1) or mm.group(2) or mm.group(3)
-            if nm in redesign and nm not in firsts:
-                firsts[nm] = mm.start()
+        # mention of a DIFFERENT redesign class (or end of §7) — require only
+        # the shapes §7 DECIDED for THIS class.
         def entry_of(cls):
             start = firsts.get(cls)
             if start is None:
                 return ""
             later = [o for c, o in firsts.items() if c != cls and o > start]
             return sec7[start: min(later) if later else len(sec7)]
+        # A class is THIS plan's responsibility only if a task TARGETS its
+        # src/main file — a LATER story owns the rest (V5: the platform story
+        # S01 was wrongly required to cite every §7 class, forcing a
+        # ceremonial "future shapes" doc). Not-targeted classes are skipped;
+        # cross-story coverage (every class converted somewhere) is
+        # roadmap-lint's domain, not per-story plan-lint's.
         for cls in sorted(redesign):
+            if not targeted(cls):
+                continue
             want = {s.lower() for s in TARGET.findall(entry_of(cls))}
-            body = "\n".join(bodies.get(t, "") for _, t, ti in heads if cls in ti) + \
-                   "\n".join(b for t, b in bodies.items() if cls in b)
-            if not body.strip():
-                lint("target-trace", f"REDESIGN class {cls} (profile §7) is named in no task")
-            elif want and not (want & {s.lower() for s in TARGET.findall(body)}):
+            body = "\n".join(b for t, b in bodies.items() if cls in b)
+            if want and not (want & {s.lower() for s in TARGET.findall(body)}):
                 lint("target-trace", f"REDESIGN class {cls}: §7 decides a target shape "
                                      f"({', '.join(sorted(want))}) that no task cites")
 
