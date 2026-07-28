@@ -719,6 +719,21 @@ check "package guard rejects a legacy package declaration in src/main (V5 #3)" 1
 run_case() { package_fixture; mkdir -p "src/main/java/com.demo/model"; printf 'package com.demo.model;\npublic class Product { }\n' > "src/main/java/com.demo/model/Product.java"; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
 check "package guard rejects a dotted package dir under src/main (V5 #3 gap)" 1 "package"
 
+# 69. harvest-from-staging builds a '/'-joined dest (never a dotted dir) and
+#     renames the package — the option-1 durable fix for the path confusion.
+HARVEST_SH="$HARNESS_DIR/../skills/migration-harness/scripts/harvest-from-staging.sh"
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/redhat/coolstore/model
+  printf 'package com.redhat.coolstore.model;\nimport com.redhat.coolstore.model.Foo;\npublic class Product { }\n' > migration/staging/src/main/java/com/redhat/coolstore/model/Product.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  bash "$HARVEST_SH" model/Product.java >/dev/null 2>&1
+  { [ -f src/main/java/com/demo/model/Product.java ] && [ ! -d src/main/java/com.demo ] \
+    && grep -q "package com.demo.model" src/main/java/com/demo/model/Product.java \
+    && ! grep -rq "com.redhat.coolstore" src/main/java; } && echo "HARVEST OK slash-path renamed" || echo "FAIL"
+}
+check "harvest-from-staging writes '/'-joined dest + renames package (V5 opt1)" 0 "HARVEST OK"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

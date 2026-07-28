@@ -101,19 +101,23 @@ do NOT `tar` the legacy tree, do NOT re-run `rewrite-maven-plugin` — that
 work is done, the scratch commands are redundant AND are denied by the
 headless command policy (they will hang ~5 min each, then fail).
 
-The package roots come from `migration.yaml` (`legacyPackage` /
-`targetPackage`) — never hardcode them:
+Use the bundled harvest script — do **NOT** hand-build the destination
+path. It reads `legacyPackage`/`targetPackage` from `migration.yaml`, joins
+the package into a real directory path (`com/demo`, never `com.demo`), and
+applies the rename:
 
 ```bash
-# recipes already applied by M1; harvest transformed file + rename package.
-LEG=$(grep -m1 legacyPackage migration.yaml | awk '{print $2}')   # e.g. com.redhat.coolstore
-TGT=$(grep -m1 targetPackage migration.yaml | awk '{print $2}')   # e.g. com.demo
-LEGP=${LEG//./\/}; TGTP=${TGT//./\/}
-mkdir -p "$(dirname src/main/java/$TGTP/<path>/<Class>.java)"
-sed "s/${LEG//./\\.}/$TGT/g" \
-  "migration/staging/src/main/java/$LEGP/<path>/<Class>.java" \
-  > "src/main/java/$TGTP/<path>/<Class>.java"
+# harvest one class; arg is the path RELATIVE TO THE PACKAGE ROOT.
+.hermes/skills/migration-harness/scripts/harvest-from-staging.sh model/Product.java
 ```
+
+Pass only the package-relative path (`model/Product.java`,
+`service/CatalogService.java`) — never the package directories, never an
+absolute or dotted path. Hand-building `src/main/java/$TGT/...` is how a
+session once wrote the target package as a dotted directory `com.demo/`
+(compiles, ships silently, and the command policy denies the `rm` to undo
+it — a long stall). The script makes that impossible; the `package` sensor
+also fails any dotted package directory under `src/main`.
 
 Harvest ONLY files whose transformation is complete (no surviving
 legacy-framework imports — Spring annotations survive the jakarta recipe;
