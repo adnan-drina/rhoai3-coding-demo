@@ -31,13 +31,14 @@ Run on `/tmp/rewrite-staging` per EXECUTION.md:
 | JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |
 | Vendored/enterprise jars unavailable in Central | Vendor in-repo (`lib/` + file-based `<repository>` in `pom.xml`) — the repository must build self-contained |
 
-## Production-grade defaults (decided — apply DURING migration, not after)
+## Production-grade defaults (the §7 target shapes for REDESIGN classes)
 
-The V3 post-ship review found six semantic defect classes that a faithful
-migration carries from the legacy and the rule-based gate cannot see; V3
-closed them in a follow-up hardening story. From V4 on these are DEFAULT
-target shapes — the story that converts the component applies them
-directly (fidelity binds behavior contracts, not defect preservation):
+The V3 post-ship review found six semantic defect classes that a legacy-
+faithful conversion carries and the rule-based gate cannot see. These are
+the DEFAULT target shapes for REDESIGN classes (architecture-profile §7) —
+the story that converts the component builds it to the target directly.
+Harvest-fidelity exempts redesign classes (`@ApplicationScoped/@Inject/
+@Path/@RegisterRestClient`), so there is no gate to fight:
 
 | Legacy defect class | Default target shape |
 |---|---|
@@ -48,9 +49,13 @@ directly (fidelity binds behavior contracts, not defect preservation):
 | Downstream failures surface as raw 500 stack traces | Dedicated JAX-RS `ExceptionMapper`: `ProcessingException` → 503; failure semantics stay honest (never a fabricated fallback) |
 | Order-dependent aggregate math (e.g. dedupe after pricing) | Normalize BEFORE computing derived values, plus a characterization test pinning the semantics |
 
-The behavioral pins still bind: existing contract assertions stay green;
-only assertions that pin a defect class above may change, and each such
-change cites the brief.
+Test authority follows class role: **REDESIGN-class tests pin the §7
+target; HARVEST-class tests pin legacy values.** A redesign test never pins
+a behavior the target contract removes (e.g. never pins create-on-GET when
+§7 targets GET→404). Behavior-preserving shapes (thread-safety, cache
+policy, error mapping) keep the same observable results, so existing
+value-pinning assertions stay green; behavior-changing shapes (404/400) are
+pinned to the target from the first test, citing the brief.
 
 ## Spring Boot → Quarkus (decided manual mappings)
 

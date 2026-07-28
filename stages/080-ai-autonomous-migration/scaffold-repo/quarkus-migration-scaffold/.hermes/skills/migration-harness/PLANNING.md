@@ -115,11 +115,24 @@ run #2's failures):
   task.
 - **Characterization tests come EARLY, not as a tail.** Immediately
   after the mechanical rewrite tasks, one task ports the legacy test
-  suite / pins legacy behavior (assertion values are the contract), and
+  suite / pins behavior (assertion values are the contract), and
   every god node flagged in dependency-order.md gets its
   characterization tests BEFORE its conversion task. This both feeds
   the 80% gate all run long and makes fabricated integrations fail
   tests at the introducing commit.
+- **Tests pin the TARGET for redesign classes, LEGACY for harvest
+  classes** (architecture-profile §7). A HARVEST class's tests assert
+  legacy values. A REDESIGN class's tests assert its §7 target contract;
+  where the target deliberately differs from legacy (GET→404,
+  invalid→400), the test task cites the profile decision in one line
+  ("GET returns 404 on missing — target contract, profile §7; not legacy
+  create-on-GET"). NEVER write a test that pins a behavior the target
+  removes — that test would have to be rewritten, which is the
+  write-then-rewrite waste this process eliminates (V4 shipped faithful
+  because its tests pinned legacy create-on-GET/dedupe-order). The infer
+  task for a redesign class must state its §7 target shape (plan-lint
+  §7-traceability enforces this); MAPPINGS "Production-grade defaults" is
+  the source of the shapes.
 - **A test task never precedes the classes it exercises.** A task that
   ports or framework-converts tests referencing types X, Y, Z must be
   ordered AFTER the conversion tasks for X, Y, Z — the test compiles

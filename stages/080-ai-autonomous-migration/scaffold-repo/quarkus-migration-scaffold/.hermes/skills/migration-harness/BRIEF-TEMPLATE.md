@@ -29,6 +29,17 @@ it. (The tree must stay buildable: name any temporary seams — e.g. a
 dependent class that keeps compiling against the old shape until its
 own story.)
 
+## Class roles & target contract (from architecture-profile §7)
+
+For each in-scope class, its role and — for REDESIGN classes — the target
+contract carried forward from profile §7, so M3 writes tasks and tests to
+the target (not the legacy):
+
+- `<class>` — HARVEST | REDESIGN
+  - (REDESIGN only) target: concurrency shape, cache/resource policy, and
+    API contract (GET-idempotency, validation, error-mapping), marking each
+    behavior-CHANGING item as a deliberate departure from legacy.
+
 ## Decided target shapes
 
 The MAPPINGS.md rows that apply (quote the decided target, don't
@@ -41,9 +52,11 @@ re-decide). Recipe-executed rules already handled: reference
   roadmap entry).
 - **Preserve**: the `preserve:` items whose surfaces live in scope —
   spell out the env var names/values mechanism to keep.
-- **Behavioral pins**: the legacy assertion values that must hold
-  after this story (quote numbers/strings and their test source), and
-  the contract GAPS this story closes with characterization tests.
+- **Behavioral pins**: the assertion values that must hold after this
+  story (quote numbers/strings and their test source). Harvest classes
+  and behavior-preserving redesign pin LEGACY values; behavior-changing
+  redesign pins the §7 TARGET (e.g. 404, not create-on-GET). Name the
+  contract GAPS this story closes with characterization tests.
 - **Forbidden**: the fabrication tripwires relevant here.
 
 ## Done-criteria

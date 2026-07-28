@@ -44,28 +44,33 @@ leaves the repository buildable, sensor-green, and closer to done.
    (validation-only, commit-only, report-only) — the harness gates do
    the validating.
 
-## Production-grade bar
+## One quality model — build redesign classes to their target
 
-Deploy stories ship production-grade, not merely migrated: the briefs for
-stories that convert stateful services or REST surfaces name the
-applicable "Production-grade defaults" shapes from MAPPINGS.md
-(thread-safe singleton state, cache refresh-guard, read-only GET,
-validation + error mapping, normalize-before-derive) as part of the
-story's decided design. A post-ship semantic review should find nothing
-structural. Hardening stories remain available for defects DISCOVERED
-post-ship, but known defect classes are never deferred to one.
+There is ONE quality model, not "migrate faithfully then harden later."
+Each story carries, from `architecture-profile.md §7`, the class roles and
+the target contract:
 
-## Story classes
+- **HARVEST classes** (models, DTOs, value objects, pure utilities) are
+  carried over faithfully — harvest-fidelity applies, characterization
+  tests pin legacy values. A `Product` stays a `Product`.
+- **REDESIGN classes** (services, endpoints, REST clients, config) are
+  MODERNIZED to their §7 target: thread-safe singleton state, cache
+  refresh-guard, read-only GET, validation + error mapping,
+  normalize-before-derive (the MAPPINGS "Production-grade defaults"
+  shapes). Harvest-fidelity already exempts these (its discriminator skips
+  `@ApplicationScoped/@Inject/@Path/@RegisterRestClient`), so building them
+  to target never fights a fidelity gate. The story that converts a
+  redesign class converts it to its target — there is no separate hardening
+  story and no "harden later."
 
-Most stories are **migration stories** (findings-driven, fidelity
-first). The roadmap may also carry **hardening stories**: post-ship
-quality work fed by the semantic code review of a deployed story —
-concurrency correctness, validation and error mapping, cache/resource
-policy, API idempotency — things the fidelity contract deliberately
-preserved from the legacy and the rule-based gate cannot see. A
-hardening story owns no MTA findings (`findings: -`); its brief cites
-the review findings instead, and behavioral contracts still bind: the
-pinned tests must stay green while the defect classes close.
+The brief for a story containing redesign classes names their §7 target
+shapes as DECIDED design, marking any behavior-CHANGING contract (e.g.
+GET→404, invalid input→400) as a deliberate departure from legacy.
+plan-lint enforces that each redesign class's task cites its §7 decisions.
+
+A defect DISCOVERED after shipping (by a later semantic review or in
+production) that M1 did not anticipate re-enters as a normal finding
+through the standard loop — it is not a special story class to remember.
 
 ## roadmap.md format (machine-parsed — roadmap-lint enforces this)
 

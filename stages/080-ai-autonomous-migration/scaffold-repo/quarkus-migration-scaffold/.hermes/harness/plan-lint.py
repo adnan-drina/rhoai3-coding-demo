@@ -35,6 +35,11 @@ def main():
         i = args.index("--findings-scope")
         scope = {s.strip() for s in args[i + 1].split(",") if s.strip()}
         del args[i:i + 2]
+    profile_path = None
+    if "--profile" in args:
+        i = args.index("--profile")
+        profile_path = args[i + 1]
+        del args[i:i + 2]
     tasks_path = args[0]
     text = open(tasks_path).read()
 
@@ -165,6 +170,35 @@ def main():
         missing = {r for r in mandatory if r not in text and r not in recipe_log}
         for r in sorted(missing):
             lint("findings", f"mandatory finding {r} mapped to no task (and not recipe-executed)")
+
+    # §7-traceability (PROCESS-FIX): each REDESIGN class named in the
+    # profile's §7 must have a task that names it AND a target-shape token,
+    # so the production-grade defaults for #2/#5 do not stay soft guidance.
+    if profile_path:
+        try:
+            prof = open(profile_path, encoding="utf-8").read()
+        except OSError:
+            prof = ""
+        sec7 = ""
+        m = re.search(r"^#{2,4}\s+(?:\d+\.\s*)?Class roles.*$", prof, re.M)
+        if m:
+            nxt = re.search(r"^#{2,4}\s", prof[m.end():], re.M)
+            sec7 = prof[m.end(): m.end() + (nxt.start() if nxt else len(prof))]
+        redesign = set(re.findall(r"`?([A-Z]\w+)`?[^\n]*REDESIGN", sec7))
+        TARGET = re.compile(
+            r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
+            r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"
+            r"normalize|target contract|§7|profile 7|section 7",
+            re.I)
+        for cls in sorted(redesign):
+            body = "\n".join(b for t in [tid for _, tid, ti in heads if cls in ti]
+                             for b in [bodies.get(t, "")]) + \
+                   "\n".join(b for t, b in bodies.items() if cls in b)
+            if not body.strip():
+                lint("target-trace", f"REDESIGN class {cls} (profile §7) is named in no task")
+            elif not TARGET.search(body):
+                lint("target-trace", f"REDESIGN class {cls} has no task citing its §7 target shape "
+                                     f"(thread-safety / cache / idempotency / validation / error-mapping)")
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
