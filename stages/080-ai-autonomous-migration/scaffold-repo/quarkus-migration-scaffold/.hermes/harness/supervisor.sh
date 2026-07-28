@@ -132,11 +132,13 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   # They may also route to a cheaper seat via FIX_PROVIDER/FIX_MODEL
   # (improvement #16) — unset means the orchestrator seat, no change.
   local budget="$SESSION_TIMEOUT" prov="$ORCH_PROVIDER" model="$ORCH_MODEL"
+  ORCH_LAST_BUDGET="$SESSION_TIMEOUT"
   case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*)
     budget="${FIX_TIMEOUT:-900}"
     [ -n "${FIX_PROVIDER:-}" ] && prov="$FIX_PROVIDER"
     [ -n "${FIX_MODEL:-}" ] && model="$FIX_MODEL";;
   esac
+  ORCH_LAST_BUDGET="$budget"
   timeout "$budget" hermes chat --provider "$prov" --model "$model" -q "$prompt" \
     > "/tmp/sup-${tag}.log" 2>&1
   rc=$?
@@ -275,7 +277,7 @@ run_stage() {
         wait_for_worker
         prompt="$rprompt"; pf=$((pf+1));;
       timeout)
-        log "$tag: session hit the ${SESSION_TIMEOUT}s cap — attempt $attempt burned, partial work stays for the next attempt"
+        log "$tag: session hit the ${ORCH_LAST_BUDGET:-$SESSION_TIMEOUT}s budget — attempt $attempt burned, partial work stays for the next attempt"
         attempt=$((attempt+1));;
       no_commit)
         log "$tag: session ended without commit — attempt $attempt burned"
