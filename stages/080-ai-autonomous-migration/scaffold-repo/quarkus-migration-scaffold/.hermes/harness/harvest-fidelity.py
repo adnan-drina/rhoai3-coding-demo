@@ -46,6 +46,28 @@ def package_map(root="."):
 LEGACY_PKG, TARGET_PKG = package_map()
 
 
+# Statement-continuation reflow (V5 finding #1): a multi-line expression
+# whose line breaks differ between staged and destination is NOT drift —
+# e.g. a toString() that staged splits one `+ "..." + field` fragment per
+# line but the harvest merged two fragments per line. A line-by-line
+# membership test reports each staged fragment as "absent" though the
+# statement is identical. Join continuation lines into one logical line on
+# BOTH trees before comparing, so reflow compares equal while real content
+# drift (a dropped/changed field) still differs.
+_CONT_LEAD = re.compile(r"^(\+(?!\+)|\.|&&|\|\||\?|:|,)")  # +, ., &&, ||, ?, :, ,  (not ++)
+_CONT_TRAIL = re.compile(r"(\+(?<!\+\+)|,|\(|&&|\|\||=)$")  # ends with + , ( && || =
+
+
+def _join_continuations(lines):
+    out = []
+    for s in lines:
+        if out and (_CONT_LEAD.match(s) or _CONT_TRAIL.search(out[-1])):
+            out[-1] = out[-1] + s
+        else:
+            out.append(s)
+    return out
+
+
 def normalize(text):
     out = []
     for line in text.splitlines():
@@ -65,8 +87,14 @@ def normalize(text):
         # flagged as drift though behavior is identical). Collapse spaces
         # adjacent to ()[]{};, so token-equivalent lines compare equal.
         s = re.sub(r"\s*([(){}\[\];,])\s*", r"\1", s)
+        # Normalize spacing around the `+` concatenation operator so a
+        # reflowed multi-line expression compares equal once its
+        # continuation lines are joined (V5 #1: `x + a` vs the join boundary
+        # `x + a+ ...`). Whitespace is already an approved, lossy transform
+        # (the \s+ collapse above), so this stays within that contract.
+        s = re.sub(r"\s*\+\s*", "+", s)
         out.append(s)
-    return out
+    return _join_continuations(out)
 
 
 def main():

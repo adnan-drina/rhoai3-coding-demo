@@ -685,6 +685,37 @@ S02|true|f|com.demo.rest.CartEndpoint'
 }
 check "last story derives no later classes" 0 "empty-ok"
 
+# 64. fidelity treats statement-continuation reflow as GREEN (V5 #1):
+#     a multi-line `+` concat rewrapped (2 fragments/line vs 1) is not drift.
+#     Sized so the reflowed fragments are <25% of the class — WITHOUT the
+#     continuation-join this fixture is RED (missing lines under the skip
+#     threshold); WITH it, the joined logical statements compare equal.
+fidelity_reflow_fixture() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo src/main/java/com/demo
+  printf 'package com.demo;\npublic class C {\n  private int a;\n  private int b;\n  private int c;\n  public int getA() { return a; }\n  public int getB() { return b; }\n  public int getC() { return c; }\n  public String toString() {\n    return "C[a=" + a\n      + ",b=" + b\n      + ",c=" + c + "]";\n  }\n}\n' > migration/staging/src/main/java/com/demo/C.java
+  printf 'package com.demo;\npublic class C {\n  private int a;\n  private int b;\n  private int c;\n  public int getA() { return a; }\n  public int getB() { return b; }\n  public int getC() { return c; }\n  public String toString() {\n    return "C[a=" + a + ",b=" + b\n      + ",c=" + c + "]";\n  }\n}\n' > src/main/java/com/demo/C.java
+}
+run_case() { fidelity_reflow_fixture; python3 "$HARNESS_DIR/harvest-fidelity.py" migration/staging/src/main/java src/main/java; }
+check "fidelity treats +-continuation reflow as GREEN (V5 #1)" 0 "GREEN"
+
+# 65-67. legacy-package-under-src/main guard (V5 #3): the package-map
+#     inversion the factory build/sonar gate cannot catch.
+package_fixture() { # a clean target-package tree with legacyPackage set
+  mkfix
+  mkdir -p src/main/java/com/demo
+  printf 'package com.demo;\npublic class Svc { }\n' > src/main/java/com/demo/Svc.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+}
+run_case() { package_fixture; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
+check "package guard passes a clean target-package tree (V5 #3)" 0 "PACKAGE SCOPE GREEN"
+
+run_case() { package_fixture; mkdir -p src/main/java/com/redhat/coolstore/model; printf 'package com.redhat.coolstore.model;\npublic class P { }\n' > src/main/java/com/redhat/coolstore/model/P.java; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
+check "package guard rejects a legacy-package dir under src/main (V5 #3)" 1 "package"
+
+run_case() { package_fixture; printf 'package com.redhat.coolstore;\npublic class Leak { }\n' > src/main/java/com/demo/Leak.java; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
+check "package guard rejects a legacy package declaration in src/main (V5 #3)" 1 "package"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

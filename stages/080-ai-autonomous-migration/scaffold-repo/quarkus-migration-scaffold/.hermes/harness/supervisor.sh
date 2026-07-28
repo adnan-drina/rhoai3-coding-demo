@@ -203,6 +203,27 @@ scope_enforce() { # $1=commit-prefix
   git add -A && git commit -q -m "${prefix} scope revert: story-scope sensor reverted out-of-scope src/main edits (${viol# })" 2>/dev/null
 }
 
+# --- Debt ledger (V5 finding #4) --------------------------------------------
+# A sensor that stays RED after its fix session is no longer swallowed as a
+# bare log line (run-4: a milestone RED "recorded as debt" wrote NO artifact,
+# so it reached M5/ship invisibly). Write a durable, reviewable entry to
+# migration/debt.md and commit it. This is the record; the M5 ship gate
+# INDEPENDENTLY blocks on the factory-uncatchable dimensions (fidelity,
+# package) so unresolved debt of those kinds can never ship.
+record_debt() { # $1=tag $2=sensor-kind $3=short-reason
+  local tag="$1" kind="$2" reason="$3"
+  [ -f migration/debt.md ] || printf '# Migration debt ledger\n\nUnresolved sensor REDs recorded by the supervisor: each is a defect that\nsurvived its fix session. The M5 ship gate blocks on fidelity/package debt.\n' > migration/debt.md
+  {
+    printf '\n## %s — %s RED\n' "$tag" "$kind"
+    printf -- '- head: %s\n' "$(git rev-parse --short HEAD 2>/dev/null)"
+    printf -- '- reason: %s\n' "$reason"
+  } >> migration/debt.md
+  git add migration/debt.md 2>/dev/null
+  git commit -q -m "debt: ${tag} ${kind} RED (unresolved)" 2>/dev/null || true
+  event "$tag" 0 debt_recorded "$kind"
+  log "$tag: ${kind} RED recorded in migration/debt.md — continuing (ship gate blocks fidelity/package debt)"
+}
+
 # --- Post-commit verification (extracted so the batch path shares it) -----
 # Trust-but-verify (run-4 lesson: a session committed a red tree): the
 # supervisor runs the sensors itself after EVERY commit. The milestone
@@ -233,7 +254,7 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     # inside fix sessions). Point the model at the dimension-specific cheap
     # recheck so it stops re-running the whole build per fix.
     orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). CHEAP FIX LOOP: fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone in a loop (it rebuilds the whole project each time). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP: fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone in a loop (it rebuilds the whole project each time). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
 ${RUN_CONTRACT}"
     # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
     # milestone-red (fidelity/sonar) is not cleared by a task-sensor green,
@@ -243,7 +264,7 @@ ${RUN_CONTRACT}"
         log "$tag: sensor-fix committed and ${SENSOR_KIND} GREEN $(git log --oneline -1)"
       else
         event "$tag" 0 sfix_committed_still_red verify
-        log "$tag: sensor-fix committed but ${SENSOR_KIND} STILL RED — recorded as debt, continuing"
+        record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED"
       fi
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
@@ -251,7 +272,7 @@ ${RUN_CONTRACT}"
       event "$tag" 0 mechanical_commit sfix_closure
       log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
     else
-      log "$tag: sensor-fix did NOT clear ${SENSOR_KIND} — red recorded, continuing"
+      record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
   fi
   return 0
@@ -644,6 +665,24 @@ Commit prefix: 'Preflight fix r${PREF_R}:'." \
 ${RUN_CONTRACT}" \
         || log "M5 ship: preflight-fix round $PREF_R did not converge"
       continue
+    fi
+    # V5 finding #4: build/coverage/boot preflight failures may push — the
+    # factory re-checks them. But fidelity drift and a legacy-package
+    # inversion are NOT arbitrated by the factory (legacy-package code
+    # compiles and passes sonar), so "push anyway" would ship the defect.
+    # Block the ship on those two dimensions and stop the run with a durable
+    # record (the outer loop treats a non-success marker as a failed story).
+    if ! .hermes/harness/sensors.sh fidelity > /tmp/ship-fidelity.txt 2>&1; then
+      event "m5-ship" 0 ship_blocked fidelity_red
+      record_debt "M5 ship" fidelity "harvest fidelity RED at ship — factory cannot arbitrate (see /tmp/ship-fidelity.txt)"
+      log "M5 ship: BLOCKED — harvest fidelity RED cannot be arbitrated by the factory. Story NOT shipped."
+      write_run_report "ship-blocked-fidelity"; echo "ship-blocked-fidelity" > /tmp/supervisor-done; exit 3
+    fi
+    if ! .hermes/harness/sensors.sh package > /tmp/ship-package.txt 2>&1; then
+      event "m5-ship" 0 ship_blocked package_red
+      record_debt "M5 ship" package "legacy package under src/main at ship — factory cannot arbitrate (see /tmp/ship-package.txt)"
+      log "M5 ship: BLOCKED — legacy-package inversion cannot be arbitrated by the factory. Story NOT shipped."
+      write_run_report "ship-blocked-package"; echo "ship-blocked-package" > /tmp/supervisor-done; exit 3
     fi
     log "M5 ship: preflight budget exhausted — pushing anyway (factory as arbiter)"
   fi

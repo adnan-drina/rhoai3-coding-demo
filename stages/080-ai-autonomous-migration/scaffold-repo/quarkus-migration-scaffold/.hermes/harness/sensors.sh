@@ -62,6 +62,17 @@ or quoted junk filenames). Re-harvest/rewrite the intended .java files with
 real names — empty '*.java' files compile locally and fail the factory.
 EOF
       ;;
+    package)
+      cat <<'EOF'
+FIX: A legacy-package file is under src/main. The migration RENAMES the legacy
+package to the target package (migration.yaml legacyPackage -> targetPackage) —
+it NEVER keeps or reverts a class into the legacy package. Move the file to the
+target-package path and rewrite its `package`/imports to the target. Do NOT
+"revert to the legacy package" to satisfy fidelity — that is the inversion.
+The factory build/sonar gate compiles legacy-package code cleanly, so this
+defect ships silently unless caught here.
+EOF
+      ;;
     wiring)
       cat <<'EOF'
 FIX: Restore scaffold pom conventions (jacoco-maven-plugin,
@@ -160,8 +171,30 @@ tree_hygiene() {
   [ -z "$bad" ] || fail hygiene "illegal filenames in tree: $bad"
 }
 
+package_scope() {
+  # V5 finding #3: a legacy-package file under src/main is the package-map
+  # INVERSION — a fix session that read "harvested into the wrong package"
+  # and "reverted" a class into the legacy package instead of renaming it to
+  # the target (V5 run-4: com.demo models rewritten into com.redhat.coolstore
+  # under fidelity pressure). The factory build+sonar gate does NOT catch it
+  # (legacy-package code compiles and passes sonar), so it would ship
+  # silently. Catch it as a hard tree defect. migration/staging legitimately
+  # holds legacy-package source — only src/main is checked.
+  [ -f migration.yaml ] || return 0
+  local leg
+  leg=$(grep -E "^[[:space:]]*legacyPackage:" migration.yaml 2>/dev/null | head -1 \
+        | sed -E 's/.*legacyPackage:[[:space:]]*//; s/[[:space:]]*$//')
+  [ -n "$leg" ] || return 0
+  local legpath="src/main/java/$(echo "$leg" | tr '.' '/')"
+  [ -d "$legpath" ] && fail package "legacy package '$leg' present under src/main ($legpath) — a harvest was placed/reverted into the legacy package instead of renamed to the target."
+  if grep -rqE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null; then
+    fail package "a src/main file declares the legacy package '$leg' — rename it to the target package (never revert a harvest to the legacy package): $(grep -rlE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null | head -2 | tr '\n' ' ')"
+  fi
+}
+
 task_sensor() {
   tree_hygiene
+  package_scope
   wiring_invariants
   forbidden_patterns
   $MVN clean test > /tmp/sensor-task.log 2>&1 \
@@ -228,6 +261,7 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # CANNOT set the supervisor subprocess's env, so it cannot self-waive.
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
   # it to escape a real fidelity RED — V5 T-004 fabricated-CatalogService.)
+  package_scope
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
   else
@@ -362,6 +396,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; forbidden_patterns; wiring_invariants; preserved_integrations; echo "STATIC CHECKS GREEN";;
-  *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|static"; exit 2;;
+  static)    tree_hygiene; package_scope; forbidden_patterns; wiring_invariants; preserved_integrations; echo "STATIC CHECKS GREEN";;
+  package)   package_scope; echo "PACKAGE SCOPE GREEN";;
+  *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static"; exit 2;;
 esac
