@@ -608,6 +608,33 @@ run_case() {
 }
 check "profile-rubric flags a @Service class not classified REDESIGN in §7" 1 "classroles"
 
+# 56-57. §7 with ### HARVEST/REDESIGN subheadings must parse (V5 catch:
+# section split truncated §7 at the first ### and false-flagged classroles)
+sub7_profile() {
+  cat <<'EOF'
+## 7. Class roles & target contract
+### HARVEST
+- `Product` (src/main/java/com/demo/Product.java) — value object, faithful legacy pins.
+### REDESIGN
+- `CartService` (src/main/java/com/demo/CartService.java) — target: ConcurrentHashMap with compute(), GET returns 404 on missing, dedupe before pricing, validation and error mapping.
+EOF
+}
+run_case() {
+  mkfix; sub7_profile > profile.md
+  mkdir -p legacy/com/demo
+  printf 'package com.demo;\nimport jakarta.enterprise.context.ApplicationScoped;\n@ApplicationScoped\npublic class CartService {}\n' > legacy/com/demo/CartService.java
+  if python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1 | grep -q "classroles.*CartService"; then
+    echo "CLASSROLES-FIRED"; else echo "classroles-clean"; fi
+}
+check "profile-rubric parses §7 with ### subheadings (REDESIGN under a heading)" 0 "classroles-clean"
+run_case() {
+  mkfix; sub7_profile > profile.md
+  { echo "UI surface: waived (API-only)."
+    printf '#### T-001: Convert CartService\n**Class**: infer\n- Move src/main/java/com/demo/CartService.java, keep methods.\n'; } > tasks.md
+  python3 "$LINT" tasks.md --profile profile.md
+}
+check "plan-lint checks §7-subheading REDESIGN classes for target-trace" 1 "target-trace"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

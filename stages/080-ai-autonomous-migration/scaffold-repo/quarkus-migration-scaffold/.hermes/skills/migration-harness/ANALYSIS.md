@@ -79,7 +79,15 @@ Classify EVERY source class as one of:
 Every class the source marks `@ApplicationScoped`/`@Singleton`/`@Path`/
 `@RegisterRestClient` (or the Spring `@Service`/`@Component`/`@RestController`
 equivalents) is REDESIGN — the rubric cross-checks this mechanically, so do
-not mislabel a service as harvest.
+not mislabel a service as harvest. A class the target platform SUBSUMES or
+DROPS (e.g. a Jersey/JAX-RS `@Component` config class Quarkus replaces with
+auto-discovery, or a Spring boot bootstrap class) is still REDESIGN — give it
+the target `removed — <what subsumes it>`. Every annotated class must be
+accounted for; "it goes away" is a decision, stated, not an omission.
+
+Do NOT write "preserve existing behavior" for a REDESIGN class whose contract
+CHANGES — state the target and the deliberate departure. "Preserve" language
+belongs to HARVEST classes only.
 
 For each REDESIGN class, state the target runtime contract, decided from
 its role and the platform's idioms (cite MAPPINGS "Production-grade
@@ -89,6 +97,9 @@ motivate each decision:
   target (`ConcurrentHashMap`, `compute()`).
 - **Resource/cache policy** — caches or holds external results? → refresh/
   eviction policy (no clear-on-miss; bounded refresh).
+- **Aggregate/derived math** — computes totals/derived values from a
+  collection that is also normalized (deduped, sorted)? → normalize BEFORE
+  deriving (e.g. dedupe-before-pricing), so line items and totals agree.
 - **API contract (behavior-CHANGING — decide explicitly)** — does a read
   verb mutate state? are inputs validated? how do downstream failures
   surface? → decide GET-idempotency, input-validation, error-mapping as

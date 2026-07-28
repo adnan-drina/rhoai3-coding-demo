@@ -29,6 +29,7 @@ targetContract:
   mapErrors: true           # downstream failures -> 503 via ExceptionMapper (no raw 500)
   threadSafeState: true     # ConcurrentHashMap + compute() on singleton state
   cacheRefreshGuard: true   # no clear-on-miss; bounded refresh
+  normalizeBeforeDerive: true  # dedupe/normalize before computing totals (consistent line items vs totals)
 preserve:
   # Enforced: plan-lint maps each item to a task; the preflight sensor
   # greps them in src/main|pom|k8s. Populate from the analysis's

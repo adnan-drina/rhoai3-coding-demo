@@ -179,12 +179,31 @@ def main():
             prof = open(profile_path, encoding="utf-8").read()
         except OSError:
             prof = ""
+        # §7 body down to the next SAME-OR-HIGHER heading, so ###/####
+        # HARVEST/REDESIGN subheadings inside §7 are not treated as its end.
         sec7 = ""
-        m = re.search(r"^#{2,4}\s+(?:\d+\.\s*)?Class roles.*$", prof, re.M)
+        m = re.search(r"^(#{2,6})[ \t]+.*Class roles.*$", prof, re.M | re.I)
         if m:
-            nxt = re.search(r"^#{2,4}\s", prof[m.end():], re.M)
-            sec7 = prof[m.end(): m.end() + (nxt.start() if nxt else len(prof))]
-        redesign = set(re.findall(r"`?([A-Z]\w+)`?[^\n]*REDESIGN", sec7))
+            level = len(m.group(1))
+            rest = prof[m.end():]
+            nxt = re.search(r"^#{1," + str(level) + r"}[ \t]", rest, re.M)
+            sec7 = rest[:nxt.start()] if nxt else rest
+        # collect REDESIGN class names — inline (`Cls` — REDESIGN) AND
+        # subheading (### REDESIGN / - `Cls`) forms. A backtick-quoted
+        # CapWord counts as REDESIGN if the nearest preceding role marker
+        # (same line or a subheading above) is REDESIGN.
+        def _governs_redesign(off):
+            ls = sec7.rfind("\n", 0, off) + 1
+            le = sec7.find("\n", off)
+            line = sec7[ls: le if le >= 0 else len(sec7)]
+            if "REDESIGN" in line:
+                return True
+            if "HARVEST" in line:
+                return False
+            pre = sec7[:off]
+            return pre.rfind("REDESIGN") > pre.rfind("HARVEST")
+        redesign = {mm.group(1) for mm in re.finditer(r"`([A-Z]\w+)`", sec7)
+                    if _governs_redesign(mm.start())}
         TARGET = re.compile(
             r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
             r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"

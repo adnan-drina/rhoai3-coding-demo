@@ -28,6 +28,7 @@ targetContract:
   mapErrors: true
   threadSafeState: true
   cacheRefreshGuard: true
+  normalizeBeforeDerive: true
 preserve:
 ${{ values.preserveItems }}
 forbidden:

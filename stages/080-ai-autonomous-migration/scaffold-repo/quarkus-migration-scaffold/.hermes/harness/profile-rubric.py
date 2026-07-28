@@ -37,6 +37,37 @@ CITE = re.compile(
 problems = []
 
 
+def section_body(text, needle):
+    """Body of the heading containing `needle`, down to the next heading of
+    the SAME or HIGHER level — so deeper (###/####) subheadings within the
+    section are included, not treated as its terminator."""
+    m = re.search(r"^(#{2,6})[ \t]+.*" + needle + r".*$", text, re.M | re.I)
+    if not m:
+        return ""
+    level = len(m.group(1))
+    rest = text[m.end():]
+    nxt = re.search(r"^#{1," + str(level) + r"}[ \t]", rest, re.M)
+    return rest[:nxt.start()] if nxt else rest
+
+
+def governing_role(sec7, cls):
+    """REDESIGN/HARVEST governing a class mention in §7 — handles BOTH the
+    inline form (`Cls` — REDESIGN) and the subheading form (### REDESIGN /
+    - `Cls`). Returns 'REDESIGN', 'HARVEST', or None (not found)."""
+    m = re.search(r"\b" + re.escape(cls) + r"\b", sec7)
+    if not m:
+        return None
+    ls = sec7.rfind("\n", 0, m.start()) + 1
+    le = sec7.find("\n", m.end())
+    line = sec7[ls: le if le >= 0 else len(sec7)]
+    if "REDESIGN" in line:
+        return "REDESIGN"
+    if "HARVEST" in line:
+        return "HARVEST"
+    pre = sec7[:m.start()]  # nearest preceding subheading wins
+    return "REDESIGN" if pre.rfind("REDESIGN") > pre.rfind("HARVEST") else "HARVEST"
+
+
 def main():
     text = open(sys.argv[1], encoding="utf-8").read()
     # split into sections by heading
@@ -44,6 +75,14 @@ def main():
     sections = {}
     for i in range(1, len(parts) - 1, 2):
         sections[parts[i].strip()] = parts[i + 1]
+    # §7 may carry ### HARVEST / ### REDESIGN subheadings, which the
+    # #{2,3} split above would truncate at — capture the whole section
+    # (down to the next same-or-higher heading) so its classifications
+    # survive for the thin/cite/classroles checks.
+    sec7 = section_body(text, "class role")
+    for t in list(sections):
+        if "class role" in t.lower():
+            sections[t] = sec7
 
     for name in REQUIRED:
         body = next((b for t, b in sections.items() if name.lower() in t.lower()), None)
@@ -65,7 +104,6 @@ def main():
     # be marked REDESIGN in §7 — a service mislabeled HARVEST would be
     # re-pinned faithful, reintroducing the shipped-faithful bug.
     if len(sys.argv) > 2 and os.path.isdir(sys.argv[2]):
-        sec7 = next((b for t, b in sections.items() if "class role" in t.lower()), "")
         for dp, _, fs in os.walk(sys.argv[2]):
             if "/test" in dp:
                 continue
@@ -76,7 +114,7 @@ def main():
                 if not REDESIGN_ANNO.search(body):
                     continue
                 cls = fn[:-5]
-                if not re.search(rf"\b{re.escape(cls)}\b[^\n]*REDESIGN", sec7):
+                if governing_role(sec7, cls) != "REDESIGN":
                     problems.append(f"RUBRIC:classroles: '{cls}' carries a CDI/JAX-RS/stereotype annotation "
                                     f"but §7 does not classify it REDESIGN")
 
