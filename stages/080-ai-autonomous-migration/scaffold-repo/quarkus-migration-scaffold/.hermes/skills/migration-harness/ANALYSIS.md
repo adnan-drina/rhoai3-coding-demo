@@ -102,12 +102,18 @@ motivate each decision:
   deriving (e.g. dedupe-before-pricing), so line items and totals agree.
 - **API contract (behavior-CHANGING — decide explicitly)** — does a read
   verb mutate state? are inputs validated? how do downstream failures
-  surface? → decide GET-idempotency, input-validation, error-mapping as
-  TARGET behavior, each flagged as a deliberate departure from legacy.
-  Behavior-changing contract is conservative and consumer-weighed: adopt it
-  only when the role clearly calls for it; when a `migration.yaml`
-  `target-contract:` block is present, it is authoritative (the operator
-  decided it) — read it, do not re-litigate.
+  surface? State the target in DECISIVE terms (the rubric requires the
+  decided token, not abstract "idempotency/validation/error-mapping"):
+  - read verb that mutates → "GET returns **404** on missing (never creates)"
+  - unvalidated input → "reject with **400** (problem-detail)" / `@Min`/`@Valid`
+  - downstream failure → "**503** via a JAX-RS **ExceptionMapper** (never raw 500)"
+  Each is a deliberate departure from legacy. Behavior-changing contract is
+  conservative and consumer-weighed: adopt it only when the role calls for
+  it; when a `migration.yaml` `targetContract:` block is present, it is
+  authoritative — for each flag set true, state its decided token in §7
+  (`getIdempotent`→404, `validateInput`→400, `mapErrors`→503/ExceptionMapper,
+  `threadSafeState`→ConcurrentHashMap, `cacheRefreshGuard`→no-clear-on-miss,
+  `normalizeBeforeDerive`→normalize-before-pricing). Do not re-litigate it.
 
 ## Output contract
 
