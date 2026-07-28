@@ -224,6 +224,21 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
   log "$tag: ${kind} RED recorded in migration/debt.md — continuing (ship gate blocks fidelity/package debt)"
 }
 
+# Clear the ledger on a GREEN ship: the pipeline + quality gate passing means
+# every recorded sensor RED is resolved (fidelity/package RED would have
+# blocked the ship; a sonar RED would have failed the factory). Leaving stale
+# entries misreads as live debt (V5 run-4: a "T-007 milestone RED" line
+# persisted after a green story-gate ship).
+clear_debt() {
+  [ -f migration/debt.md ] || return 0
+  grep -q "^## " migration/debt.md 2>/dev/null || return 0  # nothing unresolved
+  printf '# Migration debt ledger\n\nAll prior sensor-RED entries resolved at the green ship (%s). New unresolved REDs are appended below by the supervisor.\n' \
+    "$(git rev-parse --short HEAD 2>/dev/null)" > migration/debt.md
+  git add migration/debt.md 2>/dev/null
+  git commit -q -m "debt: cleared — all entries resolved at green ship" 2>/dev/null || true
+  log "debt ledger cleared (green ship — recorded REDs resolved)"
+}
+
 # --- Post-commit verification (extracted so the batch path shares it) -----
 # Trust-but-verify (run-4 lesson: a session committed a red tree): the
 # supervisor runs the sensors itself after EVERY commit. The milestone
@@ -242,13 +257,25 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     event "$tag" 0 sensor_red_post_commit verify
     # Deterministic style-autofix first (V3 measured: 152 min of model
     # time went to mechanically-fixable style violations).
-    if .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-      git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
-      event "$tag" 0 style_autofix resolved
-      log "$tag: style-autofix resolved the red deterministically — no model session needed"
-      return 0
+    .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 || true
+    if [ -n "$(git status --porcelain)" ]; then
+      # The autofix's changes are deterministic OpenRewrite fixes — KEEP them
+      # even when the full sensor is still RED. V5 run-4: the old path did
+      # `git checkout -- .` here, discarding the autofix (e.g. the ArrayList
+      # diamond) whenever OTHER violations it can't fix kept the sensor red —
+      # so those fixes oscillated back every cycle (sonar 5->3->4, never
+      # converging). Commit them; if they cleared the RED we are done, else
+      # the sfix starts from the cleaner tree.
+      if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+        git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
+        event "$tag" 0 style_autofix resolved
+        log "$tag: style-autofix resolved the red deterministically — no model session needed"
+        return 0
+      fi
+      git add -A && git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
+      event "$tag" 0 style_autofix partial
+      log "$tag: style-autofix fixed some violations (committed, not reverted); remaining go to a sfix session"
     fi
-    git checkout -q -- . 2>/dev/null
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
     # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
     # inside fix sessions). Point the model at the dimension-specific cheap
@@ -698,6 +725,7 @@ ${RUN_CONTRACT}" \
     # the story's finish line — no acceptance surface expected yet.
     if [ "$STORY_DEPLOY" != "true" ]; then
       event "m5-ship" 0 "story_gate_pass" "non-deploy story"
+      clear_debt
       write_run_report "story gate passed (non-deploy story): pipeline + quality gate green"
       phase_f_retro
       git push origin main >> "$LOG" 2>&1 || true
@@ -719,6 +747,7 @@ ${RUN_CONTRACT}" \
     log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} items)"
     if [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
       event "m5-ship" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
+      clear_debt
       write_run_report "success: shipped, route 200, ${PRODUCTS} products"
       phase_f_retro
       git push origin main >> "$LOG" 2>&1 || true
