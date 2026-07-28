@@ -129,17 +129,11 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   t0=$(date +%s)
   # Fix-class sessions are mechanical: a wedged style fix dies in 15
   # minutes, not 45 (measured: 45-min sfix for 8 style violations).
-  # They may also route to a cheaper seat via FIX_PROVIDER/FIX_MODEL
-  # (improvement #16) — unset means the orchestrator seat, no change.
-  local budget="$SESSION_TIMEOUT" prov="$ORCH_PROVIDER" model="$ORCH_MODEL"
+  local budget="$SESSION_TIMEOUT"
   ORCH_LAST_BUDGET="$SESSION_TIMEOUT"
-  case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*)
-    budget="${FIX_TIMEOUT:-900}"
-    [ -n "${FIX_PROVIDER:-}" ] && prov="$FIX_PROVIDER"
-    [ -n "${FIX_MODEL:-}" ] && model="$FIX_MODEL";;
-  esac
+  case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*) budget="${FIX_TIMEOUT:-900}";; esac
   ORCH_LAST_BUDGET="$budget"
-  timeout "$budget" hermes chat --provider "$prov" --model "$model" -q "$prompt" \
+  timeout "$budget" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
     > "/tmp/sup-${tag}.log" 2>&1
   rc=$?
   t1=$(date +%s)
@@ -210,19 +204,29 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     fi
     git checkout -q -- . 2>/dev/null
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
+    # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
+    # inside fix sessions). Point the model at the dimension-specific cheap
+    # recheck so it stops re-running the whole build per fix.
     orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit sensor is RED: .hermes/harness/sensors.sh ${SENSOR_KIND} fails — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits after the commit — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). COMMIT THE MOMENT THE SENSOR IS GREEN — run .hermes/harness/sensors.sh task after each fix and immediately commit ONE commit starting '${prefix} sensor fix:' when it passes; do not polish further (a green fix that never commits is a failed session).
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if this stage's findings require it). CHEAP FIX LOOP: fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone in a loop (it rebuilds the whole project each time). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
 ${RUN_CONTRACT}"
+    # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
+    # milestone-red (fidelity/sonar) is not cleared by a task-sensor green,
+    # and a commit with the right prefix is not proof the red went away.
     if committed "${prefix} sensor fix"; then
-      log "$tag: sensor-fix committed $(git log --oneline -1)"
-    elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
-      # Mechanical closure for the sensor-fix path too (V3 S02: the
-      # session fixed everything, went green, never committed).
-      git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
+      if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+        log "$tag: sensor-fix committed and ${SENSOR_KIND} GREEN $(git log --oneline -1)"
+      else
+        event "$tag" 0 sfix_committed_still_red verify
+        log "$tag: sensor-fix committed but ${SENSOR_KIND} STILL RED — recorded as debt, continuing"
+      fi
+    elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+      # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
+      git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of ${SENSOR_KIND}-green session work" >/dev/null 2>&1
       event "$tag" 0 mechanical_commit sfix_closure
-      log "$tag: sensor-fix work was GREEN but uncommitted — supervisor completed the commit"
+      log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
     else
-      log "$tag: sensor-fix did NOT commit — red tree recorded, continuing"
+      log "$tag: sensor-fix did NOT clear ${SENSOR_KIND} — red recorded, continuing"
     fi
   fi
   return 0

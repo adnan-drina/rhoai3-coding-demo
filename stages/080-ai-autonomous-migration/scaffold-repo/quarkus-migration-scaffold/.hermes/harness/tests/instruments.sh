@@ -519,8 +519,27 @@ check "dependency-order resolves same-package references (item before cart)" 0 "
 # 46-47. outer-loop and analyze scripts stay parseable (they gate runs)
 run_case() { bash -n "$HARNESS_DIR/outer-loop.sh" && echo syntax-ok; }
 check "outer-loop.sh parses" 0 "syntax-ok"
-run_case() { bash -n "$HARNESS_DIR/analyze.sh" && bash -n "$HARNESS_DIR/supervisor.sh" && echo syntax-ok; }
-check "analyze.sh and supervisor.sh parse" 0 "syntax-ok"
+run_case() { bash -n "$HARNESS_DIR/analyze.sh" && bash -n "$HARNESS_DIR/supervisor.sh" && bash -n "$HARNESS_DIR/sensors.sh" && echo syntax-ok; }
+check "analyze.sh, supervisor.sh, sensors.sh parse" 0 "syntax-ok"
+
+# 48. fidelity normalizer collapses inner-punctuation spacing (V4 #5):
+#     legacy `if ( x )` reformatted to `if (x)` is NOT drift.
+fidelity_fixture() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo src/main/java/com/demo
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n    if ( sci != null ) {\n      foo( sci, 1 );\n    }\n  }\n}\n' > migration/staging/src/main/java/com/demo/Svc.java
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n    if (sci != null) {\n      foo(sci, 1);\n    }\n  }\n}\n' > src/main/java/com/demo/Svc.java
+}
+run_case() { fidelity_fixture; python3 "$HARNESS_DIR/harvest-fidelity.py" migration/staging/src/main/java src/main/java; }
+check "fidelity treats inner-paren spacing reformat as GREEN (not drift)" 0 "GREEN"
+
+# 49. but a genuinely dropped line is still caught
+run_case() {
+  fidelity_fixture
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n  }\n}\n' > src/main/java/com/demo/Svc.java
+  python3 "$HARNESS_DIR/harvest-fidelity.py" migration/staging/src/main/java src/main/java
+}
+check "fidelity still catches a genuinely dropped line" 1 "RED"
 
 echo "----"
 echo "$PASS/$N passed"
