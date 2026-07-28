@@ -73,11 +73,11 @@ EOF
       ;;
     fidelity)
       cat <<'EOF'
-FIX: Re-harvest from migration/staging (approved transforms only: package,
-whitespace, comments, annotations, diamond). Do not rewrite constants or
-serialVersionUID in a "fix" session. Hardening stories that deliberately
-diverge: set FIDELITY_CHECK=off (or touch /tmp/fidelity-off) — the brief is
-authority, not staging.
+FIX: the destination class must MATCH its migration/staging source (approved
+transforms only: package, whitespace, comments, annotations, diamond).
+Re-harvest the drifted file from migration/staging, or REVERT a class that
+was invented/fabricated instead of harvested. Do not hand-edit constants or
+serialVersionUID to match. Never disable or waive this check.
 EOF
       ;;
     task|milestone)
@@ -223,11 +223,12 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # classes must survive into the destination modulo approved transforms
   # (V3 catch: a fix session silently rewrote a serialVersionUID).
   # REDESIGN classes are exempt by the discriminator, so fidelity is on
-  # for every story. FIDELITY_CHECK=off / /tmp/fidelity-off is a MANUAL
-  # operator override for a known false positive that is wedging a live
-  # run (the live-run bridge; env cannot be injected into a running loop)
-  # — not a per-story mode.
-  if [ "${FIDELITY_CHECK:-on}" = "off" ] || [ -f /tmp/fidelity-off ]; then
+  # for every story. FIDELITY_CHECK=off is an OPERATOR-ONLY override (env,
+  # set by the launcher) for a confirmed false positive — a worker session
+  # CANNOT set the supervisor subprocess's env, so it cannot self-waive.
+  # (The old /tmp/fidelity-off file bridge was removed: a session touched
+  # it to escape a real fidelity RED — V5 T-004 fabricated-CatalogService.)
+  if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
   else
     python3 .hermes/harness/harvest-fidelity.py \
@@ -332,7 +333,7 @@ preflight() {
 fidelity_check() {
   # Standalone harvest-fidelity (the cheap dimension-specific recheck for a
   # fidelity-triggered sfix — pure python, no Maven).
-  if [ "${FIDELITY_CHECK:-on}" = "off" ] || [ -f /tmp/fidelity-off ]; then
+  if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED"; return 0
   fi
   python3 .hermes/harness/harvest-fidelity.py \

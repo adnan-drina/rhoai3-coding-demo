@@ -82,8 +82,9 @@ def main():
                     problems += 1
     if problems:
         print(f"HARVEST FIDELITY RED: {problems} drifted lines (approved transforms: package, whitespace, comments, annotations, diamond)")
-        print("FIX: Re-harvest from migration/staging; do not rewrite constants/serialVersionUID in a fix session.")
-        print("     Hardening stories that deliberately diverge: FIDELITY_CHECK=off or /tmp/fidelity-off.")
+        print("FIX: the destination class must match its migration/staging source (approved")
+        print("     transforms only). Re-harvest the drifted file from migration/staging, or")
+        print("     revert an invented/fabricated class. Do NOT hand-edit constants to match.")
         return 1
     print("harvest fidelity GREEN")
     return 0
