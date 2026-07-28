@@ -34,14 +34,38 @@ First run with the full improvement stack live. Wall clock 22:34→03:08 UTC (4h
 
 One commit on top of history (no force-push; V3 evidence stays in git). Removed: `migration/` (bundle, roadmap, briefs, retros, run reports), `specs/` (S01–S03), all V3 `src`. Restored: pristine scaffold `src` + `pom.xml` from golden HEAD, full V4 `.hermes` stack. Kept: round3-stamped `migration.yaml` contracts, devfile, catalog-info, k8s manifests. V3 telemetry archived to `/tmp/v3-archive/`; `/tmp/fidelity-off` and stray archives cleared (migration stories enforce fidelity again). Pod verification: suite 47/47, task sensor green on the pristine scaffold. Outer loop launched 03:12 UTC — the first run where M1→M5 needs no operator launch scripting.
 
-## 4. Run timeline
+## 4. Run timeline (S01 — the only story; monolith is one bounded context)
 
-| stage | session | start (UTC) | seconds | outcome | notes |
-|---|---|---|---|---|---|
+Launch 03:12 UTC. **M1→first task = 7 min, zero operator scripting** (V3 required manual launch scripting between every M-stage):
+
+| M-stage | session | seconds | result |
+|---|---|---|---|
+| M1 analyze (kantra + bundle) | script | ~35 | 24 violations / 47 incidents, source-only |
+| M1 profile | m1-profile-a1 | 92 | PROFILE OK (6 sections, rubric-green, 1st try) |
+| M2 sequence | m2-sequence-a1 | 78 | ROADMAP OK (1 story, 23 findings, 1st try) |
+| M3 specify | m3-S01-a1 | 215 | PLAN OK (27 tasks: 10 rewrite, 17 infer, 1st try) |
+
+All four authoring gates passed on the first attempt — no lint bounces. The 23-finding contract came from the corrected analysis (full target set + custom rules, 1208 kantra rules loaded), versus V3's hand-curated smaller set.
 
 ## 5. Per-task execution analysis (timing focus)
 
-For every task: duration, sensor time vs model time, retries/fix cycles, and the concrete time lever it validates or refutes (style-autofix hits, batch savings vs the 12-min single-task mean, budget kills, scope reverts).
+Rewrite tasks were batched 3-per-session (improvement #17); infer tasks ran singly.
+
+| task(s) | class | session(s) | wall | min/task | notes |
+|---|---|---|---|---|---|
+| T-001..003 | rewrite | 1 batch | 1156s | 6.4 | milestone GREEN (fidelity + 0 sonar) |
+| T-004..006 | rewrite | 1 batch | 1478s | 8.2 | sensor GREEN |
+| T-007..009 | rewrite | 1 batch | 731s | 4.1 | sensor GREEN |
+| T-010 | infer (tests) | a1+a2+sfix | 1741s | — | **plan-ordering defect**: test conversion before its classes; session fabricated missing classes, stray sweep archived them, compile-error milestone → sfix pulled class creation forward (202s). Codified in PLANNING.md. |
+| T-011 | infer | a1 | 513s | 8.6 | GREEN (classes now present from T-010 sfix) |
+| T-012 | infer | a1 | 89s | 1.5 | resolved-by-scaffold |
+| T-013 | infer | a1+a2+sfix | 1113s | — | milestone 33 sonar → **style-autofix cleared 25** (33→8) → sfix on residue 8, mechanical-closure committed at budget |
+
+**Batching verdict (rewrite):** 3365s for 9 tasks = **6.2 min/task mean vs V3's 12-min single-task mean — ~48% cut** on mechanical work, exactly the #17 projection.
+
+**Style-autofix verdict:** T-013's 33→8 (25 violations cleared mechanically, incl. the new AssertJ recipe) is the widened recipe set paying off in-loop — the residue that reaches the model is small.
+
+**Recovery machinery (all autonomous, no human):** stray-archive fired (T-010, work preserved not destroyed), scope sensor correctly skipped FQN-form scope, mechanical closure committed 1 green-but-uncommitted session, and the T-010 ordering defect self-repaired. The one genuine cost was T-010's mis-ordered plan — now a PLANNING rule.
 
 ## 6. Verdict
 
