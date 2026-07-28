@@ -204,3 +204,108 @@ Still missing explicit **dedupe-before-pricing** in §7 redesign targets; severa
 - **Pod `profile-rubric.py` still has `#{2,3}` split** — lead’s fix not visible in-tree yet
 
 **Question for lead (via operator):** will the rubric/`plan-lint` §7 fix land **before a2’s rubric check**, or will a2 likely fail the same way and outer-loop `fail_run` after two attempts?
+
+---
+
+## T5 — Durable fix review (demo `d3b31db`, golden `6e482b6`, 57/57)
+
+Observer reviewed commit locally; suite re-run **57/57 passed**.
+
+**Approve the core fix.** `section_body()` + `governing_role()` correctly address the dual-diligence catch; instruments 56–57 lock the regression; ANALYSIS + `normalizeBeforeDerive` close the dedupe / “preserve behavior” gaps called out in T1.
+
+**Residual watch (not blockers for the rubric bug itself):**
+1. `plan-lint` still discovers REDESIGN classes only via backtick `` `Cls` `` — the live a1 profile used `**Cls** REDESIGN` (no backticks). If M3 uses that profile as-is, `LINT:target-trace` may silently check an empty set. Rubric `governing_role` accepts both forms; plan-lint should too.
+2. `REDESIGN_ANNO` still omits `@FeignClient` / `@SpringBootApplication` — CatalogService / boot class not mechanically required (content may still list them).
+3. Live pod must actually pull `6e482b6` / sync harness before a2/a3 can benefit — verify in-tree fingerprint when polling.
+
+---
+
+## T6 — Lead mid-flight status reviewed (2026-07-28 11:49 UTC)
+
+Lead’s relayed status checked against the live pod (read-only).
+
+### Agree / confirmed
+| Claim | Observer check |
+|---|---|
+| a1 = old rubric failure at 11:40:50 | Matches outer-loop.log |
+| a2 running against patched rubric | hermes a2 live; tree shows `M` on rubric/plan-lint/ANALYSIS/`migration.yaml` |
+| Durable fix not workaround | Agree; 57/57 already reviewed (T5) |
+| Mid-flight hot-patch correct call | Agree vs flatten-§7 or wait-timeout |
+| `normalizeBeforeDerive` + ANALYSIS guidance | Present in dirty tree (`normalizeBeforeDerive: true`) |
+| JerseyConfig awkward but must be accounted | Agree in principle |
+
+### Important correction to lead’s JerseyConfig worry
+On the **current a2 untracked profile**, patched rubric already returns **`PROFILE OK` rc=0**. JerseyConfig **is** classified REDESIGN with target=removal. So a2 is **unlikely** to fail_run on JerseyConfig specifically — unless the session rewrites §7 badly before commit or never commits. Keep the clean relaunch plan as backup, not the expected path.
+
+### Residual content risk on a2 profile (accept-gate relevant)
+`ShoppingCartServiceImpl` §7 text names ConcurrentHashMap / GET-idempotent / cache, but still **does not say dedupe-before-pricing / normalize-before-derive**. Also mentions “retry/fallback” on catalog failure — watch for fabrication drift vs honest fail-closed (`forbidden:` / no mock). Guidance patches may not fully shape a2’s already-written draft.
+
+### Ops notes for lead
+1. Hot-patch is **dirty working tree** — commit/sync to golden before any wipe/relaunch so it isn’t lost.
+2. PROFILE OK on disk ≠ M1 done until `M1 profile:` commit + outer-loop acceptance.
+3. T5 residual remains: plan-lint backtick-only REDESIGN discovery for target-trace.
+
+---
+
+## T7 — Progress poll (2026-07-28 11:51 UTC) — monitoring active
+
+**Position:** M1 ✅ → M2 ✅ → **M3 S01 a1 in flight**
+
+| Stage | Result | Evidence |
+|---|---|---|
+| M1 profile a2 | **green** | `11:49:25` PROFILE OK; commit `021e0b9` |
+| M2 sequence a1 | **green first try** | `11:50:13` ROADMAP OK 1 story / 23 findings; commit `e6b1d39`; 48s |
+| M3 specify | **running** | hermes writing `specs/S01-cart-domain-modernization/`; plan-lint with `--profile` |
+| Supervisor | not started | expected |
+
+Hot-patch files still dirty (`M` on rubric/plan-lint/ANALYSIS/migration.yaml) alongside new commits — lead should commit harness patch when safe.
+
+Observer continues read-only polls; will deep-dive M3 lint outcome + brief/plan target-trace next.
+
+---
+
+## T8 — Story quality review: S01 (2026-07-28 11:52 UTC)
+
+**Artifacts:** `migration/roadmap.md` + `migration/briefs/S01-cart-domain-modernization.md` (M3 specs not written yet).  
+**Machine gates:** `roadmap-lint` → ROADMAP OK (1 story, 23 findings, deploy S01).
+
+### Roadmap — completeness
+
+| Check | Verdict |
+|---|---|
+| Template fields (scope/findings/depends/deploy/done/rationale) | Complete |
+| Single-story cut for cart BC | Appropriate (god-node / no natural seam) |
+| No hardening story | Good (process-fix intent) |
+| Findings ownership | 23 ids listed; lint green |
+| Scope coverage | Models + services + endpoint + JerseyConfig + boot + pom + props |
+| Done / rationale language | Weak: emphasizes “contract **preservation**” over targetContract modernization |
+
+### Brief — structure vs BRIEF-TEMPLATE
+
+All required sections present (Goal, In scope with code quotes, Out of scope, Class roles & target contract, Decided target shapes, Contracts owned, Done-criteria). Self-contained bar mostly met for mechanical Spring→Quarkus work.
+
+### Brief — production-grade / accept-gate completeness (the real bar)
+
+| S03 / targetContract item | In brief? | Notes |
+|---|---|---|
+| threadSafeState (ConcurrentHashMap/compute) | Partial | ConcurrentHashMap named; `compute()` not |
+| cacheRefreshGuard (60s / no clear-on-miss) | **Weak / wrong shape** | Speaks of “bounded LRU” — not the S03 refresh-guard |
+| getIdempotent (GET→404, no create-on-GET) | Partial | “GET-idempotent” only; **no explicit 404 / deliberate departure** |
+| validateInput + mapErrors (400 / ExceptionMapper 503) | Vague | “input validation” / “comprehensive error mapping” — no 400/503/mapper |
+| normalizeBeforeDerive (dedupe-before-pricing) | **Missing** | Absent from brief and profile §7 despite `targetContract.normalizeBeforeDerive: true` |
+| preserve CATALOG_ENDPOINT | Yes | Present |
+| forbidden / no fabrication | Mixed | Forbidden listed; but “retry/**fallback**” on ShoppingCartServiceImpl is a smell |
+| acceptance `/api/cart/acceptance-check` | In done-criteria | Good |
+| API path `/cart` vs `/api/cart` | Tension | Done-criteria lists `/cart/...`; acceptance under `/api/cart/...` (root-path / ship-surface risk from V4) |
+| Behavioral pins | Legacy-faithful | Totals / free-shipping pins OK for harvest; **no target pins** for 404/400 |
+
+### Overall grades
+
+| Artifact | Structure | Content for V5 accept gate |
+|---|---|---|
+| Roadmap S01 | A | B− (preservation bias in done/rationale) |
+| Brief S01 | A− | **C** — mechanical redesign clear; **3 of 5 behavioral S03 shapes underspecified or missing** (dedupe absent; cache shape drifted; GET/errors soft) |
+
+**Implication for M3:** if plan-lint target-trace only sees soft tokens (`thread-safe`, `cache`, `idempoten`) it may go green while still omitting dedupe/404/ExceptionMapper tasks — same failure mode as V4 at a higher layer. Watch M3 tasks for explicit target pins.
+
+**Relay to lead (optional):** strengthen brief (or ensure M3 does) with: dedupe-before-pricing; GET missing→404 as deliberate departure; ExceptionMapper→503 / `@Min`→400; cache refresh-guard (not LRU-as-substitute); drop “fallback” wording.

@@ -202,22 +202,43 @@ def main():
                 return False
             pre = sec7[:off]
             return pre.rfind("REDESIGN") > pre.rfind("HARVEST")
-        redesign = {mm.group(1) for mm in re.finditer(r"`([A-Z]\w+)`", sec7)
-                    if _governs_redesign(mm.start())}
+        # class names appear as `Cls`, **Cls**, or Cls.java — models vary
+        # the emphasis (V5: a2 used bold, not backticks, which a backtick-
+        # only match silently skipped, defeating traceability).
+        NAME = re.compile(r"`([A-Z]\w+)`|\*\*([A-Z]\w+)\*\*|\b([A-Z]\w+)\.java\b")
+        redesign = set()
+        for mm in NAME.finditer(sec7):
+            if _governs_redesign(mm.start()):
+                redesign.add(mm.group(1) or mm.group(2) or mm.group(3))
         TARGET = re.compile(
             r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
             r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"
-            r"normalize|target contract|§7|profile 7|section 7",
-            re.I)
+            r"normalize", re.I)
+        # per-class §7 entry: from the class's FIRST mention to the first
+        # mention of a DIFFERENT redesign class (or end of §7) — so we
+        # require only the shapes §7 actually DECIDED for THIS class (a
+        # 'removed'/stateless class needs no concurrency/API target, only to
+        # be addressed by a task).
+        firsts = {}
+        for mm in NAME.finditer(sec7):
+            nm = mm.group(1) or mm.group(2) or mm.group(3)
+            if nm in redesign and nm not in firsts:
+                firsts[nm] = mm.start()
+        def entry_of(cls):
+            start = firsts.get(cls)
+            if start is None:
+                return ""
+            later = [o for c, o in firsts.items() if c != cls and o > start]
+            return sec7[start: min(later) if later else len(sec7)]
         for cls in sorted(redesign):
-            body = "\n".join(b for t in [tid for _, tid, ti in heads if cls in ti]
-                             for b in [bodies.get(t, "")]) + \
+            want = {s.lower() for s in TARGET.findall(entry_of(cls))}
+            body = "\n".join(bodies.get(t, "") for _, t, ti in heads if cls in ti) + \
                    "\n".join(b for t, b in bodies.items() if cls in b)
             if not body.strip():
                 lint("target-trace", f"REDESIGN class {cls} (profile §7) is named in no task")
-            elif not TARGET.search(body):
-                lint("target-trace", f"REDESIGN class {cls} has no task citing its §7 target shape "
-                                     f"(thread-safety / cache / idempotency / validation / error-mapping)")
+            elif want and not (want & {s.lower() for s in TARGET.findall(body)}):
+                lint("target-trace", f"REDESIGN class {cls}: §7 decides a target shape "
+                                     f"({', '.join(sorted(want))}) that no task cites")
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
