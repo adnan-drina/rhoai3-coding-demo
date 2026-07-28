@@ -623,8 +623,7 @@ run_case() {
   mkfix; sub7_profile > profile.md
   mkdir -p legacy/com/demo
   printf 'package com.demo;\nimport jakarta.enterprise.context.ApplicationScoped;\n@ApplicationScoped\npublic class CartService {}\n' > legacy/com/demo/CartService.java
-  if python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1 | grep -q "classroles.*CartService"; then
-    echo "CLASSROLES-FIRED"; else echo "classroles-clean"; fi
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1); echo "$out" | grep -q "classroles.*CartService" && echo "CLASSROLES-FIRED" || echo "classroles-clean"
 }
 check "profile-rubric parses §7 with ### subheadings (REDESIGN under a heading)" 0 "classroles-clean"
 run_case() {
@@ -634,6 +633,37 @@ run_case() {
   python3 "$LINT" tasks.md --profile profile.md
 }
 check "plan-lint checks §7-subheading REDESIGN classes for target-trace" 1 "target-trace"
+
+# 58-59. forbidden->preserve inversion (V5 T-011: getMockProducts read as
+# a preserve contract — a fabrication seed)
+run_case() {
+  mkfix; printf 'forbidden:\n  - getMockProducts\n' > migration.yaml
+  { echo "UI surface: waived."; printf '#### T-011: Catalog contract\n**Class**: infer\n- Maintain getMockProducts preservation requirement from migration.yaml.\n'; } > tasks.md
+  python3 "$LINT" tasks.md
+}
+check "plan-lint flags a forbidden tripwire treated as preserve" 1 "forbidden-inverted"
+run_case() {
+  mkfix; printf 'forbidden:\n  - getMockProducts\n' > migration.yaml
+  { echo "UI surface: waived."; printf '#### T-011: Remove fabrication\n**Class**: infer\n- Remove getMockProducts from src/main/java/com/demo/Svc.java entirely.\n'; } > tasks.md
+  out=$(python3 "$LINT" tasks.md 2>&1); echo "$out" | grep -q forbidden-inverted && echo "FP-FIRED" || echo "remove-clean"
+}
+check "plan-lint does NOT flag a legitimate 'remove forbidden' task" 0 "remove-clean"
+
+# 60-61. targetContract -> §7 hard-pin (V5: enabled flags written as soft
+# prose, e.g. 'GET idempotent' without 404). Decisive token required.
+ts_yaml() { printf 'targetContract:\n  getIdempotent: true\n  threadSafeState: true\npreserve:\n  - X\n' > migration.yaml; }
+run_case() {
+  mkfix; ts_yaml
+  printf '## 7. Class roles & target contract\n**CartService** — REDESIGN (src/main/CartService.java) — target: ConcurrentHashMap with compute(); GET idempotent read-only.\n' > profile.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md 2>&1); echo "$out" | grep -q "target-soft.*getIdempotent" && echo "soft-flagged" || echo "MISS"
+}
+check "profile-rubric flags a soft §7 target (getIdempotent without 404)" 0 "soft-flagged"
+run_case() {
+  mkfix; ts_yaml
+  printf '## 7. Class roles & target contract\n**CartService** — REDESIGN (src/main/CartService.java) — target: ConcurrentHashMap with compute(); GET returns 404 on missing.\n' > profile.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md 2>&1); echo "$out" | grep -q "target-soft" && echo "STILL-SOFT" || echo "hard-pinned"
+}
+check "profile-rubric passes a hard §7 target (404 decided)" 0 "hard-pinned"
 
 echo "----"
 echo "$PASS/$N passed"

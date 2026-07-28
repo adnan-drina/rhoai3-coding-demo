@@ -118,6 +118,31 @@ def main():
                     problems.append(f"RUBRIC:classroles: '{cls}' carries a CDI/JAX-RS/stereotype annotation "
                                     f"but §7 does not classify it REDESIGN")
 
+    # targetContract -> §7 hard-pin cross-check (V5: getIdempotent/
+    # validateInput/mapErrors/cacheRefreshGuard were all true but §7 wrote
+    # SOFT prose — "GET idempotent" without 404, "needs bounded refresh"
+    # without the guard). Each enabled flag must appear in §7 as its
+    # DECISIVE token (404, 400, 503, ...) — decisive tokens do not occur in
+    # descriptive/aspirational prose, so this forces a real decision.
+    DECISIVE = {
+        "getIdempotent": (r"\b404\b", "404-on-missing"),
+        "validateInput": (r"\b400\b|@Min|@Valid|problem.?detail", "400/validation"),
+        "mapErrors": (r"\b503\b|ExceptionMapper", "503/ExceptionMapper"),
+        "threadSafeState": (r"ConcurrentHashMap|compute\(", "ConcurrentHashMap/compute"),
+        "cacheRefreshGuard": (r"no clear|clear.?on.?miss|refresh.?guard|\bTTL\b|\b60\s*s|time.?stamp guard", "refresh-guard"),
+        "normalizeBeforeDerive": (r"before pric|dedupe before|normalize.{0,20}before", "normalize-before-derive"),
+    }
+    try:
+        myaml = open("migration.yaml", encoding="utf-8").read()
+    except OSError:
+        myaml = ""
+    tc = re.search(r"^targetContract:(.*?)(^\S|\Z)", myaml, re.M | re.S)
+    if tc:
+        for flag, (tok, label) in DECISIVE.items():
+            if re.search(rf"^\s*{flag}:\s*true", tc.group(1), re.M) and not re.search(tok, sec7, re.I):
+                problems.append(f"RUBRIC:target-soft: targetContract.{flag} is true but §7 does not concretely "
+                                f"decide it ({label}) — state the decided target, not descriptive prose")
+
     print("\n".join(problems) if problems else
           f"PROFILE OK: {len(REQUIRED)} sections present, cited, plan-free")
     return 1 if problems else 0

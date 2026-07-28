@@ -43,6 +43,26 @@ def main():
     tasks_path = args[0]
     text = open(tasks_path).read()
 
+    # forbidden->preserve inversion (V5 T-011: the plan read the forbidden
+    # tripwire `getMockProducts` as a preserve contract — a fabrication
+    # seed). A forbidden: pattern named in a keep/preserve/maintain context
+    # is inverted; forbidden items are REMOVED, never preserved.
+    try:
+        myaml = open("migration.yaml", encoding="utf-8").read()
+        fsec = re.search(r"^forbidden:(.*?)(^\S|\Z)", myaml, re.M | re.S)
+        forbidden = re.findall(r"^\s*-\s*\"?([^\"\n]+?)\"?\s*$", fsec.group(1), re.M) if fsec else []
+    except OSError:
+        forbidden = []
+    for pat in forbidden:
+        for m in re.finditer(re.escape(pat), text):
+            ls = text.rfind("\n", 0, m.start() - 120)
+            window = text[max(ls, 0): m.end() + 40]
+            if re.search(r"preserv|maintain|\bkeep\b|retain|contract", window, re.I) and \
+               not re.search(r"remove|delete|elimin|must not|never|forbidden", window, re.I):
+                lint("forbidden-inverted", f"forbidden tripwire '{pat}' is treated as a preserve/maintain "
+                                           f"contract — it is a fabrication guard, REMOVE it, never keep it")
+                break
+
     heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
     if not heads:
         lint("ids", "no parseable task headings (want '#### T-001: title')")
