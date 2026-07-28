@@ -45,36 +45,47 @@ A single S01 task exposed the deepest issue:
 `#6`'s "debt" here was the supervisor log/event path only — `migration/
 debt.md` was NOT written. The escape-hatch leak is now closed at the source.
 
-## Hardening backlog (do deliberately, then ONE clean run)
+## Hardening backlog — status
 
-1. **Characterization tasks must use test-doubles for not-yet-converted
-   REDESIGN types, and an early story must not create later-story classes.**
-   - Guidance (PLANNING/EXECUTION): a verification/characterization task
-     that needs a not-yet-converted service/endpoint uses a Mockito double
-     or a test-local fake — it does NOT create the real class in `src/main`.
-   - Gate (plan-lint or scope sensor): a task in story S must not create/
-     modify a `src/main` REDESIGN class that architecture-profile §7 /
-     roadmap assigns to a LATER story. This is the durable fix for the
-     T-004 fabrication class.
+1. **Characterization test-doubles + later-story-class gate — DONE**
+   (demo `da337cc`, golden `0988b31`, suite 63/63). PLANNING now requires a
+   characterization task to use a Mockito double / test-local fake for a
+   not-yet-converted REDESIGN type, never the real `src/main` class. The
+   story-scope sensor (`scope_enforce` part A) reverts any `src/main` class
+   a LATER story owns that a task creates now (`git rm` the added file; the
+   scope-violation packet tells the sfix to use a double). The outer loop
+   computes `LATER_CLASSES` per story from the roadmap scope of subsequent
+   stories. Instruments 62–63 cover the derivation. This is the durable fix
+   for the T-004 fabrication class.
 
-2. **Command-approval hardening (environment-owner + harness mitigation).**
-   The headless command policy denies `python3 - <<HEREDOC`, `sudo`,
-   `rm -rf`, `mkdir /tmp/...` with a ~304s hang-then-deny. Harness-side
-   mitigation (stop teaching denied patterns) is DONE; the environment-side
-   fix — fail-fast instead of 304s, and/or allowlist safe read-only
-   commands — is owned by whoever configures the worker's approval policy.
-   Action: locate the approval config (hermes/opencode invocation or a
-   settings file) and either fail-fast or allowlist.
+2. **Command-approval — harness half DONE; environment half is a
+   recommendation (do NOT `--yolo`).** The headless approval denies
+   `python3 - <<HEREDOC`, `sudo`, `rm -rf`, `mkdir /tmp/...` with a ~304s
+   hang. Safe commands (git, `python3 script.py`, mvn, sed/cp) are already
+   auto-approved — M1/M2/M3 ran fine. The two triggers that blocked legit
+   work are removed at the source (harvest-first killed `mkdir /tmp`;
+   bundled-scripts killed heredocs), so sessions should no longer hit
+   denials. Residual: on the rare genuinely-dangerous command the prompt
+   hangs `~config.yaml timeout: 300`s before denying. **Recommendation for
+   the environment/config owner** (pod `~/.hermes/config.yaml`, not a
+   harness-repo change): lower that approval timeout to fail-fast (~10s), or
+   allowlist the harness's known-safe commands via `HERMES_ACCEPT_HOOKS` /
+   `hooks_auto_accept:`. Do NOT use `hermes chat --yolo` — it bypasses ALL
+   approvals and would let `sudo`/`rm -rf` through (a safety regression, and
+   the exact class the gate exists to stop).
 
-3. **Pause reliability.** `/tmp/supervisor-pause` raced and missed at the
-   batch-dispatch boundary (the "dispatching" log prints before `orch()`'s
-   pause check, and a flag set in that window is not seen). It held at the
-   M5 boundary. Harden the pause check so it cannot be skipped mid-flush.
+3. **Pause behavior — clarified (not a bug).** `/tmp/supervisor-pause` is
+   checked in `orch()` at each session boundary; it correctly holds
+   *between* sessions but cannot stop a session already dispatched. The
+   earlier "batch race" was setting the flag while the T-004–006 session was
+   already running — expected. It held cleanly at the M5 boundary. If
+   mid-session interruption is ever needed, that's a larger design change
+   (cooperative cancel), not a quick fix; deferred as low value.
 
-4. **After #1 is baselined: one clean end-to-end run** for the ship +
-   accept-gate semantic review (0/5 recurring S03 defect classes, no
-   hardening story). Only THIS proves production-grade output end-to-end;
-   everything above proves the pieces.
+4. **After #1 (done): one clean end-to-end run** for the ship + accept-gate
+   semantic review (0/5 recurring S03 defect classes, no hardening story).
+   Only THIS proves production-grade output end-to-end; everything above
+   proves the pieces. Ready to launch on the current baseline when desired.
 
 ## Meta note
 
