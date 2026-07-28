@@ -10,7 +10,8 @@ re-deriving them; packets copy the target shape from here.
 
 ## Deterministic (OpenRewrite) transforms
 
-Run on `/tmp/rewrite-staging` per EXECUTION.md:
+Applied by M1 (`recipe-transform.sh`) into `migration/staging`; rewrite
+tasks harvest the transformed file from there (never re-run these):
 
 | Legacy | Recipe |
 |---|---|

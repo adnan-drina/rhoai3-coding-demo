@@ -113,7 +113,7 @@ motivate each decision:
   authoritative — for each flag set true, state its decided token in §7
   (`getIdempotent`→404, `validateInput`→400, `mapErrors`→503/ExceptionMapper,
   `threadSafeState`→ConcurrentHashMap, `cacheRefreshGuard`→no-clear-on-miss,
-  `normalizeBeforeDerive`→normalize-before-pricing). Do not re-litigate it.
+  `normalizeBeforeDerive`→normalize-before-derive). Do not re-litigate it.
 
 ## Output contract
 

@@ -22,10 +22,12 @@ analysis:
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
 targetContract:
   # Decided modern contract for REDESIGN classes (M1 §7 reads this as
-  # authoritative). Behavior-preserving items are always-on defaults;
-  # behavior-changing items (getIdempotent/validateInput/mapErrors) are
-  # this demo's decision to modernize the API — an app with external
-  # consumers depending on legacy quirks would set them false.
+  # authoritative). EVERY shape is gated by its flag — the rubric enforces
+  # only the true ones; MAPPINGS is the catalog. Behavior-changing items
+  # (getIdempotent/validateInput/mapErrors) are this demo's decision to
+  # modernize the cart API; an app with external consumers would set them
+  # false. Behavior-preserving items (thread-safety, cache) are safe to
+  # enable but still gated — a stateless service leaves them false.
   getIdempotent: true
   validateInput: true
   mapErrors: true

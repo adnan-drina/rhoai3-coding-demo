@@ -25,10 +25,13 @@ analysis:
 targetContract:
   # The DECIDED modern contract for REDESIGN classes (services/endpoints).
   # M1 §7 reads this as authoritative instead of a model re-deriving a
-  # faithful (defect-preserving) contract. Behavior-CHANGING items are an
-  # explicit operator decision — for this demo the cart service modernizes
-  # its API; a real migration with external consumers may drop these.
-  # Behavior-PRESERVING items (concurrency, cache) are always-on defaults.
+  # faithful (defect-preserving) contract. EVERY shape is gated by its flag
+  # here — the rubric enforces only the ones set true; MAPPINGS is the
+  # catalog of options. Behavior-CHANGING items (getIdempotent/validate/
+  # mapErrors) are an explicit operator decision — this demo modernizes the
+  # cart API; an app with external consumers may set them false. Behavior-
+  # PRESERVING items (thread-safety, cache) are safe to enable but still
+  # gated: a stateless service leaves them false.
   getIdempotent: true       # GET returns 404 on missing, never creates state
   validateInput: true       # invalid params (quantity<=0) -> 400 problem-detail
   mapErrors: true           # downstream failures -> 503 via ExceptionMapper (no raw 500)
