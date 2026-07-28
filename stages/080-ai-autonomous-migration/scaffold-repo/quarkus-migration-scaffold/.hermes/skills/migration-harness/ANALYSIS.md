@@ -70,6 +70,34 @@ shared state). For a small service this may be one paragraph
 candidate bounded context with its classes. State it descriptively —
 M2 decides the actual story cuts.
 
+### 7. Class roles & target contract
+Classify EVERY source class as one of:
+- **HARVEST** — data/DTO/value-object/pure-utility carried over faithfully.
+- **REDESIGN** — service, endpoint, REST client, or config that owns
+  runtime behavior and is MODERNIZED, not copied.
+
+Every class the source marks `@ApplicationScoped`/`@Singleton`/`@Path`/
+`@RegisterRestClient` (or the Spring `@Service`/`@Component`/`@RestController`
+equivalents) is REDESIGN — the rubric cross-checks this mechanically, so do
+not mislabel a service as harvest.
+
+For each REDESIGN class, state the target runtime contract, decided from
+its role and the platform's idioms (cite MAPPINGS "Production-grade
+defaults"); evidence-or-silence binds — quote the legacy lines that
+motivate each decision:
+- **Concurrency** — shared singleton with mutable state? → thread-safe
+  target (`ConcurrentHashMap`, `compute()`).
+- **Resource/cache policy** — caches or holds external results? → refresh/
+  eviction policy (no clear-on-miss; bounded refresh).
+- **API contract (behavior-CHANGING — decide explicitly)** — does a read
+  verb mutate state? are inputs validated? how do downstream failures
+  surface? → decide GET-idempotency, input-validation, error-mapping as
+  TARGET behavior, each flagged as a deliberate departure from legacy.
+  Behavior-changing contract is conservative and consumer-weighed: adopt it
+  only when the role clearly calls for it; when a `migration.yaml`
+  `target-contract:` block is present, it is authoritative (the operator
+  decided it) — read it, do not re-litigate.
+
 ## Output contract
 
 Write the file, then verify it yourself:

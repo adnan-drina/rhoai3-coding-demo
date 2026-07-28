@@ -256,6 +256,8 @@ The legacy suite ShoppingCartServiceTest pins the pricing behavior that constitu
 The pom family must move to the Quarkus platform (javaee-pom-to-quarkus-00010 and siblings, all mandatory); imports move per javax-to-jakarta-import-00001; in-memory cart state flagged by the platform rule needs an explicit decision (src/main/java/com/redhat/coolstore/service/ShoppingCartServiceImpl.java:30).
 ## 6. Domain boundaries
 Effectively a single bounded context: the cart, pricing and promotion classes all share mutable state through the ShoppingCart model, and the dependency graph shows edges from the model package into every service class (src/main/java/com/redhat/coolstore). No seam exists that would let pricing or promotion be modernized in isolation from the cart itself.
+## 7. Class roles & target contract
+The model classes (Product, ShoppingCart) are HARVEST — carried faithfully with legacy value pins (src/main/java/com/redhat/coolstore/model). ShoppingCartServiceImpl is REDESIGN: target concurrency is a ConcurrentHashMap with compute() for cart state, the cache refresh-guard replaces clear-on-miss, and the API contract makes GET idempotent (404 on missing) with input validation and error mapping. CartEndpoint is REDESIGN with the same read-only GET target (src/main/java/com/redhat/coolstore/rest/CartEndpoint.java).
 EOF
 }
 run_case() { mkfix; profile_fixture > p.md; python3 "$HARNESS_DIR/profile-rubric.py" p.md; }
@@ -519,8 +521,92 @@ check "dependency-order resolves same-package references (item before cart)" 0 "
 # 46-47. outer-loop and analyze scripts stay parseable (they gate runs)
 run_case() { bash -n "$HARNESS_DIR/outer-loop.sh" && echo syntax-ok; }
 check "outer-loop.sh parses" 0 "syntax-ok"
-run_case() { bash -n "$HARNESS_DIR/analyze.sh" && bash -n "$HARNESS_DIR/supervisor.sh" && echo syntax-ok; }
-check "analyze.sh and supervisor.sh parse" 0 "syntax-ok"
+run_case() { bash -n "$HARNESS_DIR/analyze.sh" && bash -n "$HARNESS_DIR/supervisor.sh" && bash -n "$HARNESS_DIR/sensors.sh" && echo syntax-ok; }
+check "analyze.sh, supervisor.sh, sensors.sh parse" 0 "syntax-ok"
+
+# 48. fidelity normalizer collapses inner-punctuation spacing (V4 #5):
+#     legacy `if ( x )` reformatted to `if (x)` is NOT drift.
+fidelity_fixture() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo src/main/java/com/demo
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n    if ( sci != null ) {\n      foo( sci, 1 );\n    }\n  }\n}\n' > migration/staging/src/main/java/com/demo/Svc.java
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n    if (sci != null) {\n      foo(sci, 1);\n    }\n  }\n}\n' > src/main/java/com/demo/Svc.java
+}
+run_case() { fidelity_fixture; python3 "$HARNESS_DIR/harvest-fidelity.py" migration/staging/src/main/java src/main/java; }
+check "fidelity treats inner-paren spacing reformat as GREEN (not drift)" 0 "GREEN"
+
+# 49. but a genuinely dropped line is still caught
+run_case() {
+  fidelity_fixture
+  printf 'package com.demo;\npublic class Svc {\n  void m(Object sci) {\n  }\n}\n' > src/main/java/com/demo/Svc.java
+  python3 "$HARNESS_DIR/harvest-fidelity.py" migration/staging/src/main/java src/main/java
+}
+check "fidelity still catches a genuinely dropped line" 1 "RED"
+
+# 50-52. wiring-check: shared mutable state on a CDI singleton (#1)
+singleton_hashmap() { # $1 = collection type
+  mkfix; mkdir -p src/main/java/com/demo
+  cat > src/main/java/com/demo/Svc.java <<JAVA
+package com.demo;
+import java.util.Map;
+import java.util.$1;
+import jakarta.enterprise.context.ApplicationScoped;
+@ApplicationScoped
+public class Svc {
+  private Map<String,String> carts = new $1<>();
+  public void add(String k){ carts.put(k, "v"); }
+}
+JAVA
+}
+run_case() { singleton_hashmap HashMap; python3 "$HARNESS_DIR/wiring-check.py" src/main/java; }
+check "wiring-check flags singleton HashMap mutated outside init" 1 "non-concurrent field"
+run_case() { singleton_hashmap ConcurrentHashMap; python3 "$HARNESS_DIR/wiring-check.py" src/main/java; }
+check "wiring-check passes a ConcurrentHashMap singleton" 0 ""
+run_case() {
+  mkfix; mkdir -p src/main/java/com/demo
+  cat > src/main/java/com/demo/Cfg.java <<'JAVA'
+package com.demo;
+import java.util.HashMap;
+import java.util.Map;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.annotation.PostConstruct;
+@ApplicationScoped
+public class Cfg {
+  private Map<String,String> t = new HashMap<>();
+  @PostConstruct
+  void load(){ t.put("a","1"); }
+  public String get(String k){ return t.get(k); }
+}
+JAVA
+  python3 "$HARNESS_DIR/wiring-check.py" src/main/java
+}
+check "wiring-check exempts populate-once in @PostConstruct" 0 ""
+
+# 53-54. plan-lint §7-traceability: redesign class must cite its target shape
+pl_profile() { printf '## 7. Class roles & target contract\n- `CartService` — REDESIGN\n  - target: ConcurrentHashMap, 404-on-missing GET.\n' > profile.md; }
+run_case() {
+  mkfix; pl_profile
+  { echo "UI surface: waived (API-only service; no legacy web frontend)."
+    printf '#### T-001: Convert CartService\n**Class**: infer\n- Target: src/main/java/com/demo/CartService.java with ConcurrentHashMap and 404-on-missing GET.\n'; } > tasks.md
+  python3 "$LINT" tasks.md --profile profile.md
+}
+check "plan-lint passes a redesign task that cites its target shape" 0 "PLAN OK"
+run_case() {
+  mkfix; pl_profile
+  { echo "UI surface: waived (API-only service; no legacy web frontend)."
+    printf '#### T-001: Convert CartService\n**Class**: infer\n- Target: move src/main/java/com/demo/CartService.java to com.demo, keep methods.\n'; } > tasks.md
+  python3 "$LINT" tasks.md --profile profile.md
+}
+check "plan-lint flags a redesign task missing its target shape" 1 "target-trace"
+
+# 55. profile-rubric classification cross-check: CDI/JAX-RS class must be REDESIGN
+run_case() {
+  mkfix; printf '## 7. Class roles & target contract\n- `Product` — HARVEST\n' > profile.md
+  mkdir -p legacy/com/demo
+  printf 'package com.demo;\nimport org.springframework.stereotype.Service;\n@Service\npublic class OrderService {}\n' > legacy/com/demo/OrderService.java
+  python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy
+}
+check "profile-rubric flags a @Service class not classified REDESIGN in §7" 1 "classroles"
 
 echo "----"
 echo "$PASS/$N passed"

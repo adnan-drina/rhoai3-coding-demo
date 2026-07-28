@@ -1,8 +1,13 @@
 # Process fix — production-grade on the first pass (review draft)
 
-**Status:** proposal for review (revised once, incorporating a second AI
-agent's review — additions marked "added after review"). Nothing applied to
-the harness yet.
+**Status:** IMPLEMENTED on branch `feat/production-grade-and-sensor-fixes`
+(2026-07-28), replacing the dual harden-later model per the over-engineering
+review (§0). Landed: ANALYSIS §7, SEQUENCING one-model (hardening-story class
+removed), PLANNING/EXECUTION/MAPPINGS/BRIEF-TEMPLATE target-vs-legacy,
+`wiring-check.py` (#1), plan-lint `--profile` §7-traceability (#2/#5),
+profile-rubric §7 + deterministic classification cross-check, demo
+`targetContract:` stamp (migration.yaml + RHDH skeleton), instruments 55/55.
+NOT YET validated by a full run — the accept gate (§5) still requires one.
 **Origin:** V4 shipped a faithful legacy migration, not a production-grade
 service — 5 of 6 S03 defect classes recurred ([V4-RUN-LOG.md §6](V4-RUN-LOG.md)).
 The earlier "append an S03 hardening story" idea is withdrawn: the run's
@@ -10,6 +15,37 @@ own logs prove fidelity never constrained the services/endpoints (it only
 ever flagged the `ShoppingCart` model), so there is nothing to work around
 — the defects came from the plan and tests being authored to reproduce
 legacy behavior. This draft fixes that at the source.
+
+## 0. Governing constraint — REPLACE, do not STACK (added after over-engineering review)
+
+A third review flagged the harness as over-built on soft quality prose +
+noisy fidelity and under-built on target-contract enforcement. Its binding
+implication for this change: **implement only as a REPLACEMENT of the dual
+"faithful-then-harden-later" model. Adding §7 beside the old prose and the
+hardening-story class would make the over-engineering worse.** So this change
+is net complexity-NEGATIVE:
+- **REMOVE:** the soft "Production-grade bar" prose (SEQUENCING); the
+  "hardening story class" as a standing concept (SEQUENCING); the MAPPINGS
+  wording that assumes harden-later; the `FIDELITY_CHECK=off` hardening
+  WORKFLOW references (the env flag may stay if free, but it is no longer a
+  documented path).
+- **ADD:** §7 (decide target once), the wiring check (#1), plan-lint
+  §7-traceability (#2/#5), the rubric checks. These are the *enforcement* the
+  review calls under-built — each is a hard, cheap, deterministic check, not
+  more prose.
+- **ONE quality model afterward:** redesign classes are built to their §7
+  target. A defect found AFTER shipping (by review or in production) re-enters
+  as a normal finding through the standard loop — there is no separate story
+  class to remember. Two models in operators' heads was itself the smell.
+
+Related notes from the same review, tracked but SEPARATE from this doc:
+- *sfix is over-invoked* (~5100s of full-maven loops) — addressed on the
+  harness track by a cheap dimension-specific recheck (sonar-only mode), not
+  here.
+- *harvest-fidelity is suspect* (8 fires this run, all whitespace FP) — the #5
+  normalizer fix reduces the FP; a keep/cut decision is deferred, not made
+  here (it has caught real defects in prior runs).
+- *dormant knobs* (FIX_PROVIDER) — trimmed on the harness track.
 
 ## 1. The two distinctions the process is missing
 

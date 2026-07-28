@@ -20,6 +20,10 @@
 set -uo pipefail
 export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 export PATH="${JAVA_HOME}/bin:${PATH}"
+# Resolve the harness dir from this script's own location so helper
+# scripts are found regardless of cwd (the instrument suite runs with
+# SENSOR_ROOT pointing at a fixture tree that has no .hermes/harness).
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # SENSOR_ROOT override exists for the instrument test suite (X1), which
 # runs the static checks against fixture trees.
 cd "${SENSOR_ROOT:-/projects/modernized}"
@@ -215,16 +219,16 @@ sonar_check() { # $1 = inloop|full  (default full)
 }
 
 milestone_sensor() { # $1 = inloop|full (default inloop)
-  # Harvest fidelity first (cheap, pure python): staged legacy classes
-  # must survive into the destination modulo approved transforms
+  # Harvest fidelity first (cheap, pure python): staged legacy HARVEST
+  # classes must survive into the destination modulo approved transforms
   # (V3 catch: a fix session silently rewrote a serialVersionUID).
-  # FIDELITY_CHECK=off waives it for hardening stories (S03 lesson:
-  # they deliberately depart from the staged legacy — the brief, not
-  # staging, is their design authority). /tmp/fidelity-off is the
-  # live-run bridge for an already-running supervisor (pause-flag
-  # pattern; env cannot be injected into a running loop).
+  # REDESIGN classes are exempt by the discriminator, so fidelity is on
+  # for every story. FIDELITY_CHECK=off / /tmp/fidelity-off is a MANUAL
+  # operator override for a known false positive that is wedging a live
+  # run (the live-run bridge; env cannot be injected into a running loop)
+  # — not a per-story mode.
   if [ "${FIDELITY_CHECK:-on}" = "off" ] || [ -f /tmp/fidelity-off ]; then
-    echo "fidelity check WAIVED (hardening story)"
+    echo "fidelity check WAIVED (operator override)"
   else
     python3 .hermes/harness/harvest-fidelity.py \
       || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
@@ -291,6 +295,12 @@ wiring_invariants() {
         || fail wiring "${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"
     done || exit 1
   done
+  # Behavior-preserving target default (PROCESS-FIX #1): a CDI singleton
+  # with shared mutable state must use a concurrent collection or confine
+  # mutation to init — the S03 T-001 / V4 finding #1 thread-safety class,
+  # caught deterministically in-loop instead of by post-ship review.
+  OUT=$(python3 "$SELF_DIR/wiring-check.py" src/main/java 2>/dev/null) \
+    || fail wiring "$(echo "$OUT" | head -3)"
 }
 
 preserved_integrations() {
@@ -319,13 +329,38 @@ preflight() {
   echo "PREFLIGHT GREEN — the factory should confirm, not discover"
 }
 
+fidelity_check() {
+  # Standalone harvest-fidelity (the cheap dimension-specific recheck for a
+  # fidelity-triggered sfix — pure python, no Maven).
+  if [ "${FIDELITY_CHECK:-on}" = "off" ] || [ -f /tmp/fidelity-off ]; then
+    echo "fidelity check WAIVED"; return 0
+  fi
+  python3 .hermes/harness/harvest-fidelity.py \
+    || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
+  echo "fidelity check GREEN"
+}
+
+sonar_only() {
+  # Cheap dimension-specific recheck for a sonar-triggered sfix (V4 finding
+  # #1: fix loops ran full `mvn clean verify` per iteration, ~5100s of the
+  # run). Assumes compile/test already green — verify that with `task`
+  # separately if unsure. Compiles test-classes only (sonar needs them) and
+  # runs the new-code gate, skipping the full verify.
+  $MVN test-compile > /tmp/sensor-sonar.log 2>&1 \
+    || fail sonar "test-compile failed before sonar — /tmp/sensor-sonar.log"
+  sonar_check inloop
+  echo "sonar-only check GREEN (no full verify)"
+}
+
 case "${1:-}" in
   seed)      seed;;
   task)      task_sensor;;
   milestone) milestone_sensor;;
+  sonar)     sonar_only;;
+  fidelity)  fidelity_check;;
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
   static)    tree_hygiene; forbidden_patterns; wiring_invariants; preserved_integrations; echo "STATIC CHECKS GREEN";;
-  *) echo "usage: sensors.sh seed|task|milestone|preflight|static"; exit 2;;
+  *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|static"; exit 2;;
 esac

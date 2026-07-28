@@ -17,6 +17,18 @@ analysis:
   # NO source filter — it only narrows (excludes source-labelless rules
   # incl. custom ones). Applies to IDE analysis AND the harness run.
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
+targetContract:
+  # The DECIDED modern contract for REDESIGN classes (services/endpoints).
+  # M1 §7 reads this as authoritative instead of a model re-deriving a
+  # faithful (defect-preserving) contract. Behavior-CHANGING items are an
+  # explicit operator decision — for this demo the cart service modernizes
+  # its API; a real migration with external consumers may drop these.
+  # Behavior-PRESERVING items (concurrency, cache) are always-on defaults.
+  getIdempotent: true       # GET returns 404 on missing, never creates state
+  validateInput: true       # invalid params (quantity<=0) -> 400 problem-detail
+  mapErrors: true           # downstream failures -> 503 via ExceptionMapper (no raw 500)
+  threadSafeState: true     # ConcurrentHashMap + compute() on singleton state
+  cacheRefreshGuard: true   # no clear-on-miss; bounded refresh
 preserve:
   # Enforced: plan-lint maps each item to a task; the preflight sensor
   # greps them in src/main|pom|k8s. Populate from the analysis's

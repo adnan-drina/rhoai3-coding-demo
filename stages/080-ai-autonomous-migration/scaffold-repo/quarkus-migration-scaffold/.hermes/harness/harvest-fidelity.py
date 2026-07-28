@@ -36,7 +36,13 @@ def normalize(text):
         if s.startswith("import "):
             # imports move with transforms; compare the set separately? keep simple: skip
             continue
-        out.append(re.sub(r"\s+", " ", s))
+        s = re.sub(r"\s+", " ", s)
+        # Token-normalize spacing around structural punctuation (V4 finding
+        # #5: legacy `if ( x )` reformatted to `if (x)` during conversion
+        # flagged as drift though behavior is identical). Collapse spaces
+        # adjacent to ()[]{};, so token-equivalent lines compare equal.
+        s = re.sub(r"\s*([(){}\[\];,])\s*", r"\1", s)
+        out.append(s)
     return out
 
 

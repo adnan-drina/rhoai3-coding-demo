@@ -30,6 +30,20 @@ order, and finish each task with its own commit (its exact `T-0XX:`
 prefix) before starting the next — never one combined commit. Every
 per-task rule below applies to each task in the batch.
 
+### Redesign classes are built to their target, not to legacy
+
+For a REDESIGN class (service, endpoint, REST client, config — see
+architecture-profile §7 and the brief), implement the §7 TARGET contract
+from the first commit: thread-safe singleton state (`ConcurrentHashMap` +
+`compute()`), cache refresh-guard, read-only GET (404 on missing),
+input validation (→400), error mapping (→503) — the MAPPINGS
+"Production-grade defaults" shapes. This is not "harden later"; it IS the
+conversion. Behavior-preserving shapes (thread-safety, cache, error path)
+are non-negotiable defaults; behavior-changing shapes (GET→404, invalid→400)
+are exactly what §7 / the brief decided, and the tests pin those targets.
+HARVEST classes (models, DTOs, utilities) stay faithful — fidelity applies,
+tests pin legacy values.
+
 ### Story scope is a hard boundary
 
 When the run is story-scoped, modify only the existing `src/main` files

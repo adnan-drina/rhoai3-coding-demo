@@ -17,6 +17,17 @@ analysis:
   # NO source filter — it only narrows (excludes source-labelless rules
   # incl. custom ones). Applies to IDE analysis AND the harness run.
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
+targetContract:
+  # Decided modern contract for REDESIGN classes (M1 §7 reads this as
+  # authoritative). Behavior-preserving items are always-on defaults;
+  # behavior-changing items (getIdempotent/validateInput/mapErrors) are
+  # this demo's decision to modernize the API — an app with external
+  # consumers depending on legacy quirks would set them false.
+  getIdempotent: true
+  validateInput: true
+  mapErrors: true
+  threadSafeState: true
+  cacheRefreshGuard: true
 preserve:
 ${{ values.preserveItems }}
 forbidden:
