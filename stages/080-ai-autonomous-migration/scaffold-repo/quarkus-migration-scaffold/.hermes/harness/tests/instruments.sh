@@ -745,6 +745,48 @@ run_case() {
 }
 check "parse-roadmap translates legacy scope paths to target (V5 scope-path)" 0 "src/main/java/com/demo/model/Product.java src/main/java/com/demo/model/ShoppingCart.java"
 
+# 71-72. brief-fidelity: methods/annotations a brief QUOTES as legacy must
+#     exist in the legacy source (V5 run-4: M2 fabricated a JPA layer in S02
+#     and an invented service API in S03).
+brief_fab_fixture() { # $1 = fabricate? (yes|no)
+  mkfix
+  mkdir -p briefs legacy/src/main/java/com/x
+  printf 'package com.x;\npublic class Svc {\n  @Deprecated\n  public void realMethod() { }\n}\n' > legacy/src/main/java/com/x/Svc.java
+  printf '## S01: The service\n- scope: src/main/java/com/x/Svc.java\n- findings: -\n- depends: -\n- deploy: true\n- done: it works\n- rationale: only story\n' > roadmap.md
+  cat > briefs/S01-svc.md <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+- `src/main/java/com/x/Svc.java` — the service
+  ```java
+  __BODY__
+  ```
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts owned by this story
+x
+## Done-criteria
+x
+EOF
+  if [ "$1" = "yes" ]; then
+    sed -i.bak 's/__BODY__/@Entity public void fakeMethod() { }/' briefs/S01-svc.md
+  else
+    sed -i.bak 's/__BODY__/@Deprecated public void realMethod() { }/' briefs/S01-svc.md
+  fi
+  printf '## Summary by class\n- infer: 0 — \n' > inv.md
+}
+run_case() { brief_fab_fixture yes; python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy; }
+check "roadmap-lint flags a brief quoting a method/annotation absent from legacy (V5 M2)" 1 "LINT:fabrication"
+run_case() {
+  brief_fab_fixture no
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy 2>&1)
+  echo "$out" | grep -q "LINT:fabrication" && echo "FABRICATION-FOUND" || echo "no-fabrication-clean"
+}
+check "roadmap-lint does NOT flag a faithful brief quoting real legacy (V5 M2)" 0 "no-fabrication-clean"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """M2 gate: deterministic roadmap/brief check (redesign §2).
 
-Usage: roadmap-lint.py <roadmap.md> [findings-inventory.md]
+Usage: roadmap-lint.py <roadmap.md> [findings-inventory.md] [legacy-dir]
 
 Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
   stories    — parseable S<NN> headings, unique, with required fields
@@ -15,6 +15,12 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                the template's required sections
   substance  — every story's scope names at least one code/test path
                (no ceremonial stories)
+  fabrication — (needs legacy-dir) every annotation/method the brief QUOTES
+               as legacy code in its 'In scope' section must actually exist
+               in the legacy source. Catches SEQUENCING inventing a contract
+               that is not in the tree (V5 run-4: S02 fabricated a JPA layer,
+               S03 fabricated the ShoppingCartService API). plan-lint cannot
+               catch it — the plan is well-formed, just false.
 """
 import glob
 import os
@@ -26,6 +32,50 @@ problems = []
 
 def lint(cls, detail):
     problems.append(f"LINT:{cls}: {detail}")
+
+
+_JKW = {"if", "for", "while", "switch", "catch", "return", "new", "throws",
+        "throw", "public", "private", "protected", "class", "interface",
+        "void", "import", "package", "extends", "implements", "super", "this",
+        "instanceof", "else", "do", "try", "finally", "synchronized", "assert"}
+
+
+def brief_fidelity(sid, btext, legacy_dir):
+    """Every annotation/method the brief QUOTES as legacy code (in 'In scope')
+    must exist in the legacy source. Comments and target-arrows (// →) are
+    stripped before extracting claims, so target hints are exempt — only the
+    'this is the legacy code' quotes are checked."""
+    m = re.search(r"^##\s+In scope\s*$(.*?)(?:^##\s|\Z)", btext, re.M | re.S)
+    if not m:
+        return
+    section = m.group(1)
+    # pair each cited `<path>.java` with the fenced block that follows it
+    items = re.split(r"^\s*-\s+`([^`]+\.java)`", section, flags=re.M)
+    for i in range(1, len(items) - 1, 2):
+        block_file = items[i].strip()
+        fence = re.search(r"```[a-zA-Z]*\n(.*?)```", items[i + 1], re.S)
+        if not fence:
+            continue
+        legpath = os.path.join(legacy_dir, block_file)
+        if not os.path.isfile(legpath):
+            continue  # cannot verify (target path / later-story class) — skip
+        legsrc = open(legpath, encoding="utf-8", errors="replace").read()
+        # strip comments and target arrows before reading the legacy CLAIMS
+        claims = "\n".join(re.split(r"//|→|-->|->", ln)[0]
+                           for ln in fence.group(1).splitlines())
+        cls_name = os.path.basename(block_file)
+        for ann in sorted(set(re.findall(r"@(\w+)", claims))):
+            if not re.search(rf"@{ann}\b", legsrc):
+                lint("fabrication",
+                     f"{sid}: brief cites @{ann} on {cls_name} but it is "
+                     f"absent from the legacy source (invented annotation)")
+        for meth in sorted(set(re.findall(r"\b([a-z]\w*)\s*\(", claims))):
+            if meth in _JKW:
+                continue
+            if not re.search(rf"\b{re.escape(meth)}\s*\(", legsrc):
+                lint("fabrication",
+                     f"{sid}: brief cites method '{meth}(' on {cls_name} but "
+                     f"it is absent from the legacy source (invented method)")
 
 
 BRIEF_SECTIONS = ["Goal & position", "In scope", "Out of scope",
@@ -104,6 +154,7 @@ def main():
 
     # briefs exist and are complete
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
+    legacy_dir = sys.argv[3] if len(sys.argv) > 3 and os.path.isdir(sys.argv[3]) else None
     for sid in ids:
         matches = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
         if not matches:
@@ -115,6 +166,8 @@ def main():
                 lint("briefs", f"{sid}: brief missing section '{sec}'")
         if "```" not in btext:
             lint("briefs", f"{sid}: brief has no code excerpt (In scope must quote legacy lines)")
+        if legacy_dir:
+            brief_fidelity(sid, btext, legacy_dir)
 
     print("\n".join(problems) if problems else
           f"ROADMAP OK: {len(ids)} stories, {len(owned)} findings owned, "

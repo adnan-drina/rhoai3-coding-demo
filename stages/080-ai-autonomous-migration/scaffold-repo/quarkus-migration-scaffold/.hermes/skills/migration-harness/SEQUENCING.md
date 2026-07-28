@@ -103,8 +103,21 @@ lines being modernized, quoted), the decided MAPPINGS shapes named,
 the contract values spelled out (assertion numbers, env var names),
 and the done-criteria concrete.
 
+**Quote, never invent.** Every method and annotation you put in an `In
+scope` code excerpt is a claim that the LEGACY class has it — open the
+real file under `/projects/legacy` and copy what is actually there. Do
+NOT write the signature you imagine, the annotation you assume (a POJO
+is not `@Entity`; a JAX-RS `@Path` endpoint is not `@GetMapping`), or a
+method name that reads well (`createShoppingCart`) when the legacy has a
+different one (`getShoppingCart`). The target shape belongs in `Decided
+target shapes`, not disguised as a legacy quote. The lint cross-checks
+every quoted method/annotation against `/projects/legacy` and rejects any
+that is absent (`LINT:fabrication`) — a fabricated brief becomes a
+fabricated plan the tests then pin, which no later gate can unwind.
+
 ## Output contract
 
 Verify yourself before committing:
-`python3 .hermes/harness/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md`
-must exit 0. Commit everything in ONE commit, prefix `M2 sequence:`.
+`python3 .hermes/harness/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy`
+must exit 0 (the trailing legacy dir enables the fabrication cross-check).
+Commit everything in ONE commit, prefix `M2 sequence:`.
