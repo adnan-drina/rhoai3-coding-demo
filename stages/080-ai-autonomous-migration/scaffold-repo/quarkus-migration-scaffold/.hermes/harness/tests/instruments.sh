@@ -716,6 +716,9 @@ check "package guard rejects a legacy-package dir under src/main (V5 #3)" 1 "pac
 run_case() { package_fixture; printf 'package com.redhat.coolstore;\npublic class Leak { }\n' > src/main/java/com/demo/Leak.java; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
 check "package guard rejects a legacy package declaration in src/main (V5 #3)" 1 "package"
 
+run_case() { package_fixture; mkdir -p "src/main/java/com.demo/model"; printf 'package com.demo.model;\npublic class Product { }\n' > "src/main/java/com.demo/model/Product.java"; SENSOR_ROOT="$FIX" bash "$SENSORS" package; }
+check "package guard rejects a dotted package dir under src/main (V5 #3 gap)" 1 "package"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

@@ -187,6 +187,15 @@ package_scope() {
   [ -n "$leg" ] || return 0
   local legpath="src/main/java/$(echo "$leg" | tr '.' '/')"
   [ -d "$legpath" ] && fail package "legacy package '$leg' present under src/main ($legpath) — a harvest was placed/reverted into the legacy package instead of renamed to the target."
+  # A directory literally named with dots (com.demo/, com.redhat.coolstore/)
+  # is a mangled package PATH — the harvest joined the package with '.'
+  # instead of '/'. It COMPILES (javac reads the package declaration, not the
+  # file path) so no build/sonar gate catches it; a duplicate class next to
+  # the correct path is caught by compile, but a lone mangled path ships
+  # silently. Package-path segments are never dotted directory names.
+  local dotdir
+  dotdir=$(find src/main/java -type d -name '*.*' 2>/dev/null | head -3)
+  [ -z "$dotdir" ] || fail package "dotted package directory under src/main (mangled package path — join segments with '/', not '.'): $(echo $dotdir | tr '\n' ' ')"
   if grep -rqE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null; then
     fail package "a src/main file declares the legacy package '$leg' — rename it to the target package (never revert a harvest to the legacy package): $(grep -rlE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null | head -2 | tr '\n' ' ')"
   fi
