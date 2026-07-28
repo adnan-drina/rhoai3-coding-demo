@@ -151,6 +151,31 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
 # the ordinary sensor-fix session repairs it WITHIN scope (the sfix
 # prompt points at /tmp/scope-violation.txt). No human escalation.
 scope_enforce() { # $1=commit-prefix
+  local prefix="$1" f
+  # (A) later-story-class guard (V5 T-004): a task must NOT create an
+  # src/main class a LATER story owns — that fabricates it (no harvest
+  # source) and poisons the later story. Reverts the added file; the
+  # sensor-fix packet (via /tmp/scope-violation.txt) says use a test
+  # double instead. LATER_CLASSES = simple class names, set by the outer
+  # loop from the roadmap's later-story scope.
+  if [ -n "${LATER_CLASSES:-}" ]; then
+    local lviol=""
+    for f in $(git diff --name-only --diff-filter=A HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
+      case " ${LATER_CLASSES} " in *" $(basename "$f" .java) "*) lviol="$lviol $f";; esac
+    done
+    if [ -n "$lviol" ]; then
+      event "scope" 0 later_story_class "${lviol# }"
+      log "scope sensor: reverted src/main class(es) a LATER story owns:${lviol}"
+      {
+        echo "The story-scope sensor reverted src/main class(es) owned by a LATER story:${lviol}"
+        echo "These REDESIGN classes are converted in a later story — do NOT create them now."
+        echo "A characterization test needing them uses a Mockito double or a test-local fake in src/test — never the real src/main class."
+      } > /tmp/scope-violation.txt
+      git rm -q $lviol 2>/dev/null
+      git add -A && git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })" 2>/dev/null
+    fi
+  fi
+  # (B) this-story path-scope check --------------------------------------
   [ -n "${STORY_SCOPE:-}" ] || return 0
   # Only path-form scope entries are enforceable (V4 first-run catch: M2
   # wrote class FQNs — enforcing those would mass-revert every edit).
@@ -162,7 +187,7 @@ scope_enforce() { # $1=commit-prefix
     log "scope sensor: no path-form scope entries — enforcement skipped (informational scope)"
     return 0
   fi
-  local prefix="$1" f viol=""
+  local viol=""
   for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
     case " ${pathscope} " in *" $f "*) ;; *) viol="$viol $f";; esac
   done

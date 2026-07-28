@@ -665,6 +665,26 @@ run_case() {
 }
 check "profile-rubric passes a hard §7 target (404 decided)" 0 "hard-pinned"
 
+# 62-63. later-story-class derivation (V5 T-004 guard): simple class names
+# of stories AFTER the current one, stripping FQN/path and .java.
+later_classes() { # $1=current SID ; reads $STORIES_FIX
+  echo "$STORIES_FIX" | awk -F'|' -v cur="$1" 'seen{print $4} $1==cur{seen=1}' \
+    | tr ', ' '\n' | sed -E 's/\.java$//; s#.*[./]##' | grep -E '^[A-Z][A-Za-z0-9]*$' | sort -u | tr '\n' ' '
+}
+run_case() {
+  STORIES_FIX='S01|false|f|com.demo.model.Product
+S02|false|f|com.demo.service.CatalogService
+S03|true|f|com.demo.service.ShoppingCartServiceImpl, src/main/java/com/demo/rest/CartEndpoint.java'
+  later_classes S01
+}
+check "later-classes for S01 lists later stories (FQN + path, .java stripped)" 0 "CartEndpoint CatalogService ShoppingCartServiceImpl"
+run_case() {
+  STORIES_FIX='S01|false|f|com.demo.model.Product
+S02|true|f|com.demo.rest.CartEndpoint'
+  out=$(later_classes S02); [ -z "$out" ] && echo "empty-ok" || echo "GOT:$out"
+}
+check "last story derives no later classes" 0 "empty-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

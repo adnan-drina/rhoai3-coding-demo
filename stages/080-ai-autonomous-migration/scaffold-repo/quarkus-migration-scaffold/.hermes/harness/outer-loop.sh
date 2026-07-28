@@ -146,14 +146,21 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   # single quality model — harvest classes need it; redesign classes are
   # exempt by the harvest-fidelity discriminator (no story-class waiver).
   PC=on; [ "$DEPLOY" = "true" ] || PC=off
+  # Later-story class guard (V5 T-004): simple class names owned by stories
+  # AFTER this one — the supervisor's scope sensor reverts any of these that
+  # a task in THIS story creates in src/main (fabrication of a later-story
+  # REDESIGN class). Derived from the roadmap scope of subsequent stories.
+  LATER_CLASSES=$(echo "$STORIES" | awk -F'|' -v cur="$SID" 'seen{print $4} $1==cur{seen=1}' \
+    | tr ', ' '\n' | sed -E 's/\.java$//; s#.*[./]##' | grep -E '^[A-Z][A-Za-z0-9]*$' | sort -u | tr '\n' ' ')
   rm -f /tmp/supervisor-done
-  log "$SID: launching supervisor (deploy=${DEPLOY}, findings=${FINDINGS}, preserve=${PC})"
+  log "$SID: launching supervisor (deploy=${DEPLOY}, findings=${FINDINGS}, preserve=${PC}, later-classes=$(echo $LATER_CLASSES | wc -w))"
   env RUN_BASE="$(git rev-parse HEAD)" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
       STORY_DEPLOY="$DEPLOY" \
       STORY_TASKS="$SPEC_TASKS" \
       STORY_SCOPE="$SCOPE" \
+      LATER_CLASSES="$LATER_CLASSES" \
       PRESERVE_CHECK="$PC" \
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
