@@ -122,22 +122,10 @@ opencode run "<task packet>" \
   -m qwen27b/qwen3-6-27b --auto --format json \
   -f specs/<id>/spec.md -f specs/<id>/tasks.md -f AGENTS.md \
   > /tmp/oc-task.json 2>/tmp/oc-task.err; echo "worker exit: $?"
-python3 - <<'PYEOF'
-import json
-texts, tools = [], []
-for line in open("/tmp/oc-task.json"):
-    line = line.strip()
-    if not line: continue
-    try: ev = json.loads(line)
-    except ValueError: continue
-    t = ev.get("type")
-    if t == "text": texts.append(ev.get("text") or ev.get("part", {}).get("text", ""))
-    elif t in ("tool", "tool_use"):
-        info = ev.get("part", ev)
-        tools.append(str(info.get("tool") or info.get("name") or "?"))
-print("tool calls:", len(tools))
-print("final text:", " ".join(texts)[-600:])
-PYEOF
+# summarize with the BUNDLED script — NOT an inline `python3 - <<EOF`
+# heredoc (the headless command policy denies those: ~5 min hang, then
+# block):
+python3 .hermes/skills/migration-harness/scripts/summarize_worker.py /tmp/oc-task.json
 ```
 
 ### Worker dispatch is synchronous — never background it

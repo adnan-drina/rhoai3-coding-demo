@@ -59,13 +59,17 @@ is outside the packet's scope, do not ask — record it in
 `migration/debt.md` and continue. Pausing to request confirmation ends
 the session with the work undone.
 
-### Scripting rule — terminal only, never execute_code
+### Scripting rule — bundled scripts, never inline heredocs or execute_code
 
-For ALL scripting (parsing findings, summarizing worker output, checking
-reports) use the **terminal** tool with `python3 - <<'PYEOF' ... PYEOF`
-heredocs, exactly as the examples in this skill do. Do NOT use the
-execute_code tool: on this platform's models it is frequently emitted
-with empty arguments, fails instantly, and burns the iteration budget.
+For scripting (parsing findings, summarizing worker output, checking
+reports) run a BUNDLED script file with `python3 <path/to/script.py>` (see
+Utility scripts below), or write a small `.py` file and run it. Do NOT use
+`python3 - <<'PYEOF' ... PYEOF` inline heredocs: the headless command
+policy DENIES inline-heredoc commands — they hang ~5 minutes, then block,
+wasting the session. `python3 .hermes/.../script.py` runs fine; `python3 -
+<<EOF` does not. Do NOT use the execute_code tool either: on this
+platform's models it is frequently emitted with empty arguments, fails
+instantly, and burns the iteration budget.
 
 ### Utility scripts
 

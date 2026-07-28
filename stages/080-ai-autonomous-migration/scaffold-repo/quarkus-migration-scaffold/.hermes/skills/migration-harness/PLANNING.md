@@ -39,22 +39,14 @@ fi
 ### Working with the findings file — never read it whole
 
 `mta-findings.json` is large (hundreds of KB). Reading it into context
-wastes the budget and stalls the run. Always extract what you need with a
-script, e.g.:
+wastes the budget and stalls the run. Extract what you need with the
+BUNDLED script (NOT an inline `python3 - <<EOF` heredoc — the headless
+command policy denies those, hanging ~5 min then blocking):
 
 ```bash
-python3 - <<'PYEOF'
-import json
-d = json.load(open("/projects/modernized/migration/mta-findings.json"))
-rows = []
-for rs in d:
-    for rid, v in (rs.get("violations") or {}).items():
-        rows.append((rid, v.get("description", ""), len(v.get("incidents") or [])))
-rows.sort(key=lambda r: -r[2])
-print(f"{sum(1 for _ in rows)} violations, {sum(r[2] for r in rows)} incidents")
-for rid, desc, n in rows:
-    print(f"{n:4d}  {rid}  {desc[:70]}")
-PYEOF
+python3 .hermes/skills/migration-harness/scripts/extract_findings.py
+# a single rule's incidents:
+python3 .hermes/skills/migration-harness/scripts/extract_findings.py --rule <RULE_ID>
 ```
 
 Read individual incidents (file/line/message) the same way — filtered by
