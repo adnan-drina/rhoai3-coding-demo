@@ -1,6 +1,8 @@
 # Process fix — production-grade on the first pass (review draft)
 
-**Status:** proposal for review. Nothing here is applied to the harness yet.
+**Status:** proposal for review (revised once, incorporating a second AI
+agent's review — additions marked "added after review"). Nothing applied to
+the harness yet.
 **Origin:** V4 shipped a faithful legacy migration, not a production-grade
 service — 5 of 6 S03 defect classes recurred ([V4-RUN-LOG.md §6](V4-RUN-LOG.md)).
 The earlier "append an S03 hardening story" idea is withdrawn: the run's
@@ -58,8 +60,15 @@ should require it for any app with `@ApplicationScoped`/`@Path` classes):
 > Evidence-or-silence still binds: cite the legacy lines that motivate each
 > decision; do not invent contracts the code does not imply.
 
-Rubric gains one check: if any class is `@ApplicationScoped`/`@Path`, §7
-must be present and must name a concurrency and an API-contract decision.
+Rubric gains two checks in `profile-rubric.py`: (1) if any class is
+`@ApplicationScoped`/`@Path`, §7 must be present and must name a concurrency
+and an API-contract decision; (2) **deterministic classification cross-check
+(added after review)** — every class the source tree marks
+`@ApplicationScoped`/`@Singleton`/`@Path`/`@RegisterRestClient` MUST be
+classified REDESIGN in §7. This is mechanically verifiable (same signal the
+fidelity discriminator uses), so the class-role split is not left to model
+judgment — a service mislabeled "harvest" (which would re-pin it faithful,
+reintroducing the whole bug) is caught by the rubric.
 
 ### 2.2 SEQUENCING.md (M2) — replace the "Production-grade bar" prose
 
@@ -95,9 +104,28 @@ The infer-task design for a redesign class must state the target shape
 (already required by plan-lint's Class-substance check); MAPPINGS
 "Production-grade defaults" is the source of the shapes.
 
+### 2.3b SEQUENCING.md — narrow the "hardening stories" section (added after review)
+
+The existing "Story classes" / hardening-story prose says fidelity
+*preserved* the defect classes and a later story hardens them. Under the new
+model that is wrong for KNOWN defect classes (they are targeted in-migration).
+**Narrow it** to: hardening stories exist ONLY for defects DISCOVERED
+post-ship by a semantic review that M1 could not anticipate — not for the
+known concurrency/idempotency/validation classes, which are now redesign-
+class targets. `FIDELITY_CHECK=off` + the S03 template stay available for
+that narrowed purpose.
+
+### 2.3c MAPPINGS.md — align the assertions wording (added after review)
+
+The "Production-grade defaults" section currently says "existing contract
+assertions stay green; only assertions that pin a defect class may change" —
+which assumes the harden-later model. Replace with: "**Redesign-class tests
+pin the architecture-profile §7 target; harvest-class tests pin legacy
+values.** A redesign test never pins a behavior the target contract removes."
+
 ### 2.4 EXECUTION.md (M4) — build to target, not to legacy
 
-Add under Phase C:
+Add under the M4 (task-execution) phase:
 
 > **Redesign classes are built to their target contract from the first
 > commit.** The plan states the target (thread-safe state, idempotent reads,
@@ -105,6 +133,26 @@ Add under Phase C:
 > "harden later," it is the conversion. The behavior-preserving shapes
 > (thread-safety, cache policy, error mapping) are non-negotiable defaults;
 > the behavior-changing ones are exactly what the plan/brief decided.
+
+### 2.4b Enforcement matrix — what catches each defect class (added after review)
+
+Not everything can be a code sensor; forcing one over-fits. Each behavior-
+preserving default is enforced at the CHEAPEST layer that can catch it
+without false positives:
+
+| Defect class | Enforcement | Why not a code sensor |
+|---|---|---|
+| #1 shared mutable state on singleton | **task-sensor wiring check** (§2.5) | clean structural pattern, low FP with init carve-out |
+| #2 cache clear/refetch-on-miss | **plan-lint §7-traceability + target test** | "is the cache refresh-guarded" is semantic ordering; a pattern check would over-fit this app |
+| #5 dedupe-before-pricing | **plan-lint §7-traceability + target test** | same — call-order semantics, not a matchable pattern |
+| #3 GET idempotency, #4 validation/error-map | **profile §7 decision + target test** | behavior-changing; decided, not defaulted |
+
+**plan-lint §7-traceability check (generic, not app-specific):** for each
+REDESIGN class in scope, the plan's infer task for it must reference that
+class's architecture-profile §7 decisions. This is a coverage/traceability
+check (does the plan carry what the profile decided), NOT a code-pattern
+match — so it stays generic across apps. It closes the "soft guidance loses"
+failure for #2/#5 without a fragile sensor.
 
 ### 2.5 sensors.sh — a wiring check for behavior-preserving quality
 
@@ -127,6 +175,25 @@ guard):
 (Behavior-changing contract — GET idempotency, validation, error mapping —
 is NOT sensor-enforceable without over-fitting; it is enforced by the plan
 tasks + target-written tests from §2.3.)
+
+### 2.6 Touchpoints checklist (added after review — the full blast radius)
+
+The change spans more files than §2.1–2.5 named. Complete list:
+- `ANALYSIS.md` — §7 (2.1)
+- `SEQUENCING.md` — replace Production-grade bar (2.2) AND narrow hardening
+  stories (2.3b)
+- `PLANNING.md` — tests-to-target (2.3)
+- `BRIEF-TEMPLATE.md` — a "target contract (redesign classes)" field so the
+  brief carries §7 forward to M3
+- `EXECUTION.md` — build-to-target (2.4)
+- `MAPPINGS.md` — assertions wording (2.3c)
+- `sensors.sh` — shared-mutable-state wiring check (2.5)
+- `plan-lint.py` — §7-traceability check (2.4b)
+- `profile-rubric.py` — §7 presence + deterministic classification check (2.1)
+- `outer-loop.sh` — the M2 prompt string still says "Production-grade bar";
+  update it to the SEQUENCING rewrite (2.2)
+- `tests/instruments.sh` — cover the wiring check + the §7-traceability check
+- `migration.yaml` / RHDH template — the demo "target contract" stamp (see §6)
 
 ## 3. What this deliberately does NOT change
 
@@ -162,17 +229,41 @@ to a few sentences in the profile and brief.
 3. Dry-run M1 on the cart legacy: confirm §7 classifies the 4 models as
    harvest and the 5 services/endpoint as redesign, and names the
    concurrency + API-contract decisions.
-4. Only then a full run; the acceptance is a shipped service that passes the
-   §6 semantic review with zero recurring defect classes — no hardening
-   pass.
+4. Only then a full run.
 
-## 6. Open questions for you
+**Accept criteria (sharpened after review) — ship the process change when ALL hold:**
+- M1 §7 dry-run on the cart legacy classifies the 4 models as harvest and the
+  5 services/endpoint as redesign, AND names the concurrency + API-contract
+  decisions; the rubric's deterministic cross-check passes.
+- `tests/instruments.sh` covers the wiring check (HashMap-mutated → red;
+  ConcurrentHashMap → green; mutation only in `@PostConstruct` → green) and
+  the §7-traceability check.
+- A full run's **semantic code review** (not gates-green — the gates are
+  green WITH the defects; a human/AI must read the service) finds **0 of the
+  5 behavioral S03 classes recurring** (the 6th, fabrication, is already
+  independently clean), with NO hardening story in the roadmap.
 
-- **Behavior-changing contract scope:** do we want GET→404 and input
-  validation as standing defaults for cart-class REST services, or decided
-  per-app at M1? (Draft assumes per-app M1 decision, which is safer for
-  migrations with external API consumers that depend on legacy quirks.)
-- **Wiring-check strictness:** RED (blocks the commit) vs WARN (logged,
-  surfaces in retro)? Draft says RED for the concurrency check because it is
-  a clear correctness issue with a low false-positive rate given the
-  init-carve-out; open to WARN if you want a gentler rollout.
+Note the accept gate's cost: validating "0/5" requires a full ~7h run plus a
+manual semantic review. Budget for one validation cycle before trusting the
+change on real migrations.
+
+## 6. Decisions (open questions — resolved after review, pending your final word)
+
+- **Behavior-changing contract scope → PER-APP at M1.** Standing defaults for
+  all REST migrations are unsafe (external consumers may depend on legacy
+  quirks). **For the cart DEMO specifically:** stamp the decided target
+  (GET→404, quantity→400, `ExceptionMapper`→503) into `migration.yaml` (a
+  `target-contract:` block) or the RHDH template, so M1 reads the decided
+  target instead of a model re-deciding to keep create-on-GET. This is just a
+  pre-filled §7 for the demo — same mechanism, pinned value.
+- **Wiring-check strictness → RED**, with the init carve-out. Start WARN only
+  if the first dry-run shows false-positive noise.
+
+## 6b. Safety gradient (added after review — the guardrail)
+
+- **Behavior-preserving defaults are always-on** (thread-safety, cache,
+  error-path) — zero observable-behavior change, zero consumer risk.
+- **Behavior-changing contract is conservative and consumer-weighed** —
+  adopted only when profile §7 explicitly decides it, never as a silent
+  default. A migration must not surprise external callers; when in doubt, the
+  faithful contract stays and the change is flagged for a product decision.
