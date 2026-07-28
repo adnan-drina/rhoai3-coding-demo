@@ -84,26 +84,32 @@ budget.
 
 For each task in `tasks.md`, in order:
 
-**Class: rewrite** — scratch-transform procedure:
+**Class: rewrite** — HARVEST the already-transformed file (do NOT re-run
+OpenRewrite):
+
+M1 ALREADY applied the OpenRewrite recipes into `migration/staging` (via
+`recipe-transform.sh`; `migration/recipe-log.md` lists which recipes ran on
+which files). A rewrite task HARVESTS the pre-transformed file into the
+scaffold, applying the package rename. Do NOT `mkdir /tmp/rewrite-staging`,
+do NOT `tar` the legacy tree, do NOT re-run `rewrite-maven-plugin` — that
+work is done, the scratch commands are redundant AND are denied by the
+headless command policy (they will hang ~5 min each, then fail).
 
 ```bash
-if [ ! -d /tmp/rewrite-staging ]; then
-  mkdir -p /tmp/rewrite-staging
-  tar -C /projects/legacy --exclude=.git --exclude=.vscode -cf - . \
-    | tar -C /tmp/rewrite-staging -xf -
-fi
-cd /tmp/rewrite-staging
-mvn -q -B org.openrewrite.maven:rewrite-maven-plugin:6.12.0:run \
-  -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-migrate-java:3.12.0 \
-  -Drewrite.activeRecipes=<recipe for this task>
+# recipes already applied by M1; harvest transformed file + rename package:
+mkdir -p "$(dirname src/main/java/com/demo/<path>/<Class>.java)"
+sed 's/com\.redhat\.coolstore/com.demo/g' \
+  migration/staging/src/main/java/com/redhat/coolstore/<path>/<Class>.java \
+  > src/main/java/com/demo/<path>/<Class>.java
 ```
 
-The default mechanical set for this Java EE input is
-`org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta`; the plan
-may add further `rewrite-migrate-java` / Quarkus recipes per task. After
-the recipes run, create a follow-up **infer** task for OpenCode to harvest:
-"copy/adapt the transformed classes listed below from /tmp/rewrite-staging
-into the scaffold structure" with explicit source and destination paths.
+Harvest ONLY files whose transformation is complete (no surviving
+legacy-framework imports — Spring annotations survive the jakarta recipe;
+those files convert in an infer task first). The plan names the source
+(`migration/staging/...`) and destination (`src/main/java/com/demo/...`) per
+task. Never write under the legacy `com/redhat/coolstore` path in
+`src/main` — the target package is `com.demo`. If `migration/staging` is
+absent, record debt — do NOT stand up a scratch OpenRewrite run.
 
 **Class: infer** — bounded worker run. The worker's JSON event stream is
 huge (often hundreds of KB) — NEVER let it print to your terminal; it
