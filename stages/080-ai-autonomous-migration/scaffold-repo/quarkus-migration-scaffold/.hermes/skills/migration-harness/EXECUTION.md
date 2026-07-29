@@ -22,13 +22,17 @@ Out of scope:   <explicitly excluded work>
 
 ## M4 — execution loop
 
-### Batched rewrite sessions
+### Model routing (V7) — Qwen codes; MiniMax orchestrates
 
-The supervisor may dispatch several consecutive rewrite-class tasks in
-ONE session. The contract does not relax: execute them in the listed
-order, and finish each task with its own commit (its exact `T-0XX:`
-prefix) before starting the next — never one combined commit. Every
-per-task rule below applies to each task in the batch.
+| Seat | Model | Owns |
+|------|-------|------|
+| Worker (default for M4 coding) | Qwen3.6 27B via OpenCode | `rewrite` + `infer` file changes |
+| Orchestrator | MiniMax M2 via Hermes | M1–M3, sensor-fix, M5, escalation after worker fail |
+
+Mechanical harvest/POM/port work is **not** a MiniMax job. The supervisor
+runs OpenCode first (`WORKER_FIRST=true`). If you are in an escalation
+session: dispatch `opencode` for file-changing work; do not apply rewrite
+edits with your own tools unless the worker already failed.
 
 ### Redesign classes are built to their target, not to legacy
 

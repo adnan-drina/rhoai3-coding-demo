@@ -19,7 +19,7 @@ landed), [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md),
 | ID | Observation | Suggested improvement |
 |----|-------------|------------------------|
 | L-T1 | ✅ Task codes+titles mirrored to `outer-loop.log` (landed mid-V7; active from S02 supervisor) | Done — verify on S02+ |
-| L-A1 | TASK lines do not yet state **actual** actor (MiniMax rewrite vs OpenCode/Qwen) | On `▶ TASK` / batch: `Actor: MiniMax (rewrite)` or `Actor: Qwen via OpenCode` from supervisor dispatch path |
+| L-A1 | ✅ TASK lines state actor (`Actor: … Qwen …` / MiniMax escalation) — landed with V7 WORKER_FIRST | Done — verify on S02+ |
 | L-R1 | MiniMax **429 / token-limit waits** invisible in outer-loop narrative | Parse Hermes session log or rate-limit stderr; one line: `… waiting on MiniMax rate limit (Ns)` |
 | L-H1 | Heartbeat subshell appears in `ps` as a second `outer-loop.sh` (PPID=parent) | Rename heartbeat process (`bash -c '…'`) or exclude from single-instance guard; avoid false “another outer-loop” refusals |
 | L-N1 | `/tmp/outer-loop-nohup.log` stays empty; README still mentions both | Document single sink (`outer-loop.log`) or tee nohup |
@@ -34,7 +34,7 @@ landed), [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md),
 |----|-------------|------------------------|
 | O-T6 | V7 S01 **T-006** (full package rename) burned attempt 1 without commit while `com.demo.*` tree already existed untracked; Continu(e) slow | Prefer harvest-script rewrite tasks + already-complete when target tree matches; or auto verify-and-commit when dirty tree + task sensor GREEN |
 | O-AC | Hermes sessions still write prose `ALREADY COMPLETE` commits (T-004) **outside** the strict probe — dual paths | Route “already satisfied” only through `already-complete.py`; session should not invent skip commits |
-| O-B1 | Rewrite batches always MiniMax; demo “Qwen is the coder” oversells GPU on foundation stories | README + TASK Actor lines (L-A1); optional: force OpenCode for selected rewrite classes |
+| O-B1 | ✅ Rewrite+infer coding → OpenCode/Qwen first (`WORKER_FIRST`); MiniMax escalation only — landed mid-V7 | Done — verify S02+; optional next: script-only harvest without any LLM |
 | O-CTX | Large context re-sends amplify MiniMax rate limits / wall time | Tighter session packets; avoid full-file re-reads in orch prompts |
 | O-DRV | Local Cursor driver/monitor loops die if shell session ends | Document restart; or systemd/launchd — ops only |
 

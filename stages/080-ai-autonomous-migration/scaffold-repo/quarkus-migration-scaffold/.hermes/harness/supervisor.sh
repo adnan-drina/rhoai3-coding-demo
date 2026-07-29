@@ -32,9 +32,26 @@ fi
 ORCH_PROVIDER="${ORCH_PROVIDER:-custom:maas-m2}"
 ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
 WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
+# V7: MiniMax is rate-limited; Qwen has unlimited tokens. Mechanical M4
+# coding (rewrite + infer) goes to OpenCode/Qwen first. MiniMax/Hermes is
+# for orchestration + escalation only (M1–M3, sensor-fix, M5 evaluate).
+WORKER_FIRST="${WORKER_FIRST:-true}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
+
+orch_label() {
+  case "${ORCH_MODEL}" in
+    *minimax*) echo "orchestrator MiniMax M2 (Hermes)" ;;
+    *) echo "orchestrator ${ORCH_MODEL} (Hermes)" ;;
+  esac
+}
+worker_label() {
+  case "${WORKER_MODEL}" in
+    *qwen*) echo "coding worker Qwen3.6 27B (OpenCode)" ;;
+    *) echo "coding worker ${WORKER_MODEL} (OpenCode)" ;;
+  esac
+}
 
 RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to THIS run (env-overridable for resume)
 TASKS_SINCE_MILESTONE=0   # supervisor-enforced in-loop sonar cadence
@@ -50,7 +67,8 @@ log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
 # Mirror demo-facing lines into the outer-loop narrative (tail -f /tmp/outer-loop.log).
 outer_log() { echo "[$(date -u +%F' '%T)] $*" >> "$OUTER_LOG"; }
 
-log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL}"
+log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST}"
+outer_log "         Models: $(orch_label) · $(worker_label) | M4 coding → worker first (MiniMax escalation only)"
 # C1: per-run isolated Maven repo — factory-parity resolution for every sensor
 .hermes/harness/sensors.sh seed >> "$LOG" 2>&1 || log "WARN: isolated repo seed failed — sensors fall back to red-on-use"
 event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
@@ -654,7 +672,41 @@ ${RUN_CONTRACT}
 EOF
 }
 
-run_task() { # $1=task id — the ordinary single-task stage
+# V7 model routing — OpenCode/Qwen does M4 coding; MiniMax not in this path.
+run_worker_task() { # $1=task-id → 0 if committed
+  local T="$1" packet rc
+  committed "$T" && return 0
+  [ -f .hermes/harness/task-packet.py ] || return 1
+  wait_for_worker
+  packet=$(python3 .hermes/harness/task-packet.py "$TASKS_FILE" "$T" "$WORKER_MODEL" 2>/tmp/task-packet.err) || {
+    log "$T: task-packet.py failed — $(head -1 /tmp/task-packet.err 2>/dev/null)"
+    return 1
+  }
+  [ -n "$packet" ] || return 1
+  log_task START "$T" "Actor: $(worker_label) — MiniMax not used for coding"
+  timeout 1800 opencode run "$packet" \
+    -m "$WORKER_MODEL" --auto --format json \
+    -f "$TASKS_FILE" -f AGENTS.md \
+    > "/tmp/oc-${T}.json" 2>"/tmp/oc-${T}.err"
+  rc=$?
+  wait_for_worker
+  log "$T: worker exit rc=${rc} (details /tmp/oc-${T}.err)"
+  if committed "$T"; then
+    return 0
+  fi
+  # Worker often leaves a green dirty tree without the required commit prefix.
+  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+      git add -A
+      git commit -q -m "${T}: $(task_title "$T") (worker $(worker_label))" 2>/dev/null \
+        || git commit -m "${T}: $(task_title "$T") (worker $(worker_label))" >/dev/null 2>&1
+      committed "$T" && return 0
+    fi
+  fi
+  return 1
+}
+
+run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local T="$1"
   if try_already_complete "$T"; then
     log_task SKIP "$T" "already complete (fast path); skipped worker"
@@ -662,15 +714,22 @@ run_task() { # $1=task id — the ordinary single-task stage
     post_commit_verify "$T" "$T"
     return 0
   fi
-  log_task START "$T" "dispatching (see /tmp/supervisor.log for actor detail)"
+  if [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
+    scope_enforce "$T"
+    post_commit_verify "$T" "$T"
+    log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+    return 0
+  fi
+  log_task START "$T" "Actor: $(orch_label) escalation — worker incomplete/failed"
   if run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
+MODEL ROUTING (V7): You are MiniMax orchestrator on ESCALATION. Prefer dispatching opencode (-m ${WORKER_MODEL}) for all file-changing work. Do NOT apply mechanical rewrite/harvest edits with your own tools unless the worker already failed — Qwen has unlimited tokens; MiniMax is rate-limited.
 Worker discipline (V6 P2.1/P2.2): run opencode in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode. Launch opencode only when the tree is incomplete or sensors are RED. Foreground worker only; bundled scripts only — no heredocs / python3 -c.
 ${RUN_CONTRACT}"; then
-    log_task END "$T" "committed $(git log --oneline -1 | cut -c1-80)"
+    log_task END "$T" "committed via MiniMax escalation — $(git log --oneline -1 | cut -c1-80)"
   else
     log_task SKIP "$T" "exhausted — recorded in debt; moving on"
     log "$T: exhausted — recorded, moving on"
@@ -679,34 +738,22 @@ ${RUN_CONTRACT}"; then
 
 BATCH_MAX="${BATCH_MAX:-3}"
 flush_batch() { # $1=space-separated rewrite task ids
+  # V7: do NOT send rewrite batches to MiniMax "apply directly" — that burned
+  # the rate-limited orchestrator on mechanical harvest/POM work. Each rewrite
+  # goes worker-first (OpenCode/Qwen), same as infer.
   local ids="${1# }"; [ -n "$ids" ] || return 0
-  local n; n=$(echo $ids | wc -w | tr -d ' ')
-  if [ "$n" -ge 2 ]; then
-    local list desc T
-    list=$(echo $ids | tr ' ' ',')
-    desc=""
-    for T in $ids; do
-      desc="${desc}${desc:+; }${T}: $(task_title "$T")"
-    done
-    log "batch: dispatching $n rewrite tasks in one session: $ids"
-    log_task BATCH "$ids" "$desc"
-    orch "batch-$(echo $ids | tr ' ' '-')" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for tasks ${list} from ${TASKS_FILE}, IN ORDER. These are rewrite-class mechanical tasks — the plan states the exact transformation for each; apply it directly per the EXECUTION.md rewrite discipline. For EACH task finish with ONE commit whose message STARTS with that task's id and a colon (e.g. 'T-004:') BEFORE starting the next task. Stop after the last listed task.
-${RUN_CONTRACT}"
-  fi
-  # Anything the batch session missed falls back to the single-task stage;
-  # ids it committed are picked up by run_stage's entry check.
-  local T
+  local n T desc
+  n=$(echo $ids | wc -w | tr -d ' ')
+  desc=""
   for T in $ids; do
-    if committed "$T"; then
-      log "$T: committed (batch session)"
-      log_task END "$T" "committed in rewrite batch ($(git log --oneline -1 | cut -c1-80))"
-      continue
-    fi
+    desc="${desc}${desc:+; }${T}: $(task_title "$T")"
+  done
+  log "batch: worker-first rewrite path ($n tasks, no MiniMax apply-directly): $ids"
+  log_task BATCH "$ids" "Actor: $(worker_label) each — $desc"
+  for T in $ids; do
+    committed "$T" && { log_task SKIP "$T" "already committed"; continue; }
     run_task "$T"
   done
-  # One verification pass covers the batch's commits (same cadence spirit
-  # as the every-3rd-task milestone rule).
   [ "$n" -ge 2 ] && post_commit_verify "$(echo $ids | awk '{print $NF}') batch" "batch-verify"
   return 0
 }

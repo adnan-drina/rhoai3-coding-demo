@@ -1028,6 +1028,46 @@ run_case() {
 }
 check "static sensors reject ceremonial status-map acceptance (V6 abort)" 1 "acceptance"
 
+# 84-86. V7 model routing — mechanical M4 via OpenCode/Qwen, not MiniMax
+TP_PY="$HARNESS_DIR/task-packet.py"
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-010: Harvest PromoService from staging
+**Class**: rewrite
+**Goal**: Copy transformed PromoService into target package
+**Findings**: spring-javaformat
+**Acceptance**: src/main/java/com/demo/service/PromoService.java exists; mvn -q test
+**Target design**: harvest migration/staging/.../PromoService.java → src/main/java/com/demo/service/
+EOF
+  python3 "$TP_PY" tasks.md T-010 qwen27b/qwen3-6-27b
+}
+check "task-packet.py builds rewrite packet for OpenCode worker (V7)" 0 "Class: rewrite"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-011: Convert CartService to CDI
+**Class**: infer
+**Goal**: CDI constructor injection for CartService
+**Findings**: spring-di
+**Acceptance**: CartService uses @Inject; tests pass
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-011 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'Class: infer' && echo "$out" | grep -q 'qwen27b/qwen3-6-27b' && echo packet-ok
+}
+check "task-packet.py builds infer packet naming worker model (V7)" 0 "packet-ok"
+
+run_case() {
+  grep -q 'WORKER_FIRST' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'run_worker_task' "$HARNESS_DIR/supervisor.sh" \
+    && ! grep -qE 'apply it directly per the EXECUTION' "$HARNESS_DIR/supervisor.sh" \
+    && echo routing-ok
+}
+check "supervisor worker-first; no MiniMax apply-directly rewrite batch (V7)" 0 "routing-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

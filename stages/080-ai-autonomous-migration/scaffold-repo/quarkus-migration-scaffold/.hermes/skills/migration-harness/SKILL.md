@@ -26,14 +26,21 @@ Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`
 
 ## Division of labor — hard rules
 
-- **You (Hermes)** own planning and orchestration; code changes land
-  through tasks. `Class: rewrite` tasks HARVEST the already-transformed
-  file from `migration/staging` (M1 ran the recipes there); `Class: infer`
-  tasks are delegated to OpenCode. Never stand up a `/tmp/rewrite-staging`
-  scratch dir or re-run OpenRewrite — that work is done in M1.
-- **OpenCode** implements one bounded `infer` task at a time via
-  `opencode run`. It never decides that the migration is complete —
-  sensors and the findings baseline decide.
+- **You (Hermes / MiniMax)** own planning and orchestration (M1–M3,
+  sensor-fix judgment, M5 evaluate, escalation). MiniMax is
+  **rate-limited** — do not burn it on mechanical file edits.
+- **OpenCode / Qwen** owns M4 coding for both `Class: rewrite` and
+  `Class: infer`. The supervisor dispatches the worker first
+  (`WORKER_FIRST`); you only escalate after the worker fails. Qwen has
+  **unlimited** tokens on this platform — prefer it for harvest, POM
+  edits, porting, and characterization tests.
+- `Class: rewrite` HARVESTs already-transformed files from
+  `migration/staging` (M1 ran the recipes there). Never stand up a
+  `/tmp/rewrite-staging` scratch dir or re-run OpenRewrite — that work
+  is done in M1.
+- **OpenCode** implements one bounded task at a time via `opencode run`.
+  It never decides that the migration is complete — sensors and the
+  findings baseline decide.
 - **OpenRewrite** ran in M1 (`recipe-transform.sh`) and wrote its output to
   `migration/staging`; `migration/recipe-log.md` lists which recipes hit
   which files. Rewrite tasks harvest from there — they do not re-run it.

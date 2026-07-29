@@ -221,7 +221,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   rm -f /tmp/supervisor-done
   phase_start "M4/M5 EXECUTE — implement & ship ${SLUG_HINT} (${STORY_IDX}/${STORY_COUNT})" \
     "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log"
-  log "         Note: rewrite batches may run on MiniMax without OpenCode; infer tasks use $(worker_label) — supervisor.log records actual actor"
+  log "         Note: M4 rewrite+infer coding → $(worker_label) first; MiniMax only for orch/escalation (WORKER_FIRST) — supervisor.log records actor"
   env RUN_BASE="$(git rev-parse HEAD)" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
