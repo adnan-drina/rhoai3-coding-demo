@@ -6,6 +6,11 @@
 # never registered in the catalog and never published to the platform org —
 # it exists only inside the workspace as read-only migration input;
 # migration.yaml in the destination repo records the provenance.
+#
+# Form fields are minimal (name, legacy URL, optional DB). Cart-demo
+# acceptance / preserve / forbidden / targetContract defaults live in the
+# skeleton migration.yaml — edit that file in the destination repo for
+# non-cart apps.
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
@@ -39,7 +44,7 @@ spec:
           title: Project name
           type: string
           description: |
-            Name for the migration project (e.g. coolstore-modernized). It
+            Name for the migration project (e.g. coolstore-cart-v6). It
             becomes the destination repository, namespace, and workspace
             name. Lowercase letters, numbers, and hyphens.
           pattern: "^[a-z][a-z0-9-]{2,40}$"
@@ -50,7 +55,7 @@ spec:
           default: https://github.com/adnan-drina/coolstore-cart-legacy.git
           description: |
             HTTPS Git URL of the application to migrate (must be clonable
-            without credentials. Defaults to the Coolstore cart service
+            without credentials). Defaults to the Coolstore cart service
             (Spring Boot); the monolith round used
             https://github.com/rhpds/mca-coolstore.git.
             It is cloned into the workspace only — never published to the
@@ -64,38 +69,6 @@ spec:
             Enable when the legacy app persists to a relational database
             (the runtime then ships a dev PostgreSQL and datasource env).
             The cart service is stateless — leave off.
-        acceptancePath:
-          title: Acceptance endpoint
-          type: string
-          default: /api/cart/acceptance-check
-          description: |
-            REST path the harness asserts (HTTP 200) after deploy — the
-            migration's definition of shipped. Must be a REAL endpoint of
-            the migrated app (cart: GET /api/cart/{id} returns 200 for any
-            id; monolith round used /api/products).
-        preserveItems:
-          title: Preserve tokens (YAML list)
-          type: string
-          ui:widget: textarea
-          default: |
-            - CATALOG_ENDPOINT
-          description: |
-            Tokens the migrated app must still carry (env vars, config
-            keys, integration surfaces). Stamped into migration.yaml
-            `preserve:` and enforced by plan-lint + preflight sensors.
-            One YAML list item per line. Leave empty (`[]` as a single
-            line) when the legacy app has no integration surfaces to keep.
-        forbiddenPatterns:
-          title: Forbidden fabrication patterns (YAML list)
-          type: string
-          ui:widget: textarea
-          default: |
-            - getMockProducts
-            - "Fallback to mock"
-          description: |
-            Substrings sensors reject in src/main (hardcoded stand-ins
-            for external services). Stamped into migration.yaml
-            `forbidden:`. One YAML list item per line.
 
   steps:
     - id: fetch-golden
@@ -129,9 +102,6 @@ spec:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           needsDatabase: ${{ parameters.needsDatabase }}
-          acceptancePath: ${{ parameters.acceptancePath }}
-          preserveItems: ${{ parameters.preserveItems }}
-          forbiddenPatterns: ${{ parameters.forbiddenPatterns }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 
@@ -178,7 +148,7 @@ spec:
           workspace-only) next to `/projects/modernized` (this repository),
           with the MTA analysis extension preconfigured against the
           platform hub. Run the MTA analysis of the legacy project first —
-          its findings are the migration's ground truth — then start
-          OpenCode in `/projects/modernized` and follow the spec-driven
-          migration workflow. Every push to `main` runs the project's own
-          pipeline in `<name>-dev` with the SonarQube quality gate.
+          its findings are the migration's ground truth — then start the
+          autonomous harness in `/projects/modernized`. Every push to
+          `main` runs the project's own pipeline in `<name>-dev` with the
+          SonarQube quality gate.

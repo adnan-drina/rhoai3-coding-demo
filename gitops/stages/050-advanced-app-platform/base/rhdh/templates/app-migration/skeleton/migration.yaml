@@ -1,6 +1,10 @@
 # Migration provenance record — stamped by the app-migration template.
 # The legacy application is intentionally NOT registered in the catalog;
 # this file is the durable record of where the migration started.
+#
+# Harness contract defaults below are the Coolstore cart demo values.
+# For a non-cart legacy app, edit this file in the destination repo after
+# create (acceptance.path, preserve, forbidden, targetContract).
 migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
@@ -10,7 +14,7 @@ migration:
   targetPackage: com.demo
 acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
-  path: ${{ values.acceptancePath }}
+  path: /api/cart/acceptance-check
   needsDatabase: ${{ values.needsDatabase }}
 analysis:
   # MTA rule selection is LABEL FILTERING (targets pick only matching
@@ -35,6 +39,7 @@ targetContract:
   cacheRefreshGuard: true
   normalizeBeforeDerive: true
 preserve:
-${{ values.preserveItems }}
+  - CATALOG_ENDPOINT
 forbidden:
-${{ values.forbiddenPatterns }}
+  - getMockProducts
+  - "Fallback to mock"
