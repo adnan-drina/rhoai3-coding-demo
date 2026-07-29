@@ -261,12 +261,14 @@ Run log: `docs/V6-RUN-LOG.md` from launch.
 | P3.4 path-filter (docs-only skip) | ✅ CEL on scaffolded + inventory push triggers |
 | P4.1 digest/revision pin deploy | ✅ pipeline IMAGE=`:$(revision)`; no force-restart |
 | Instruments | ✅ **89/89** passed |
-| **New project / workspace** | Next: RHDH **Application migration** template → `coolstore-cart-v6` (legacy = coolstore-cart-legacy). Do not reuse run-4. |
+| **New project / workspace** | **Human-only via RHDH** — Self-service → **Application migration** (legacy = coolstore-cart-legacy). Do not CLI-create destinations; do not reuse run-4. |
 
 ---
 
 ## 11. When to create a new project and workspace
 
-Harness + platform deny + scaffold golden sync are lead-executed. Create V6 via
-RHDH self-service (or equivalent scaffolder API) as **`coolstore-cart-v6`**
-from `coolstore-cart-legacy` — never from contaminated `coolstore-cart-round3`.
+Harness + platform deny + scaffold golden sync are lead-executed. **Initiation
+of the V6 app is the remaining manual step:** Developer Hub → Self-service →
+**Application migration**, legacy URL
+`https://github.com/adnan-drina/coolstore-cart-legacy.git`. Never CLI-provision
+the destination; never reuse contaminated `coolstore-cart-round3`.
