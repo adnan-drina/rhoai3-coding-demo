@@ -4,9 +4,14 @@
 `coolstore-cart-service-v7` (and carry-forwards from V6) so we harden the
 harness methodically **without** aborting a healthy run for polish.
 
-**Policy unchanged:** P0/correctness that would ship a broken service →
+**V7 aborted** (2026-07-29): compromised S01 (scope contamination + M5
+exhaustion). See [`V7-ABORT.md`](V7-ABORT.md). Restart is **V8** on the
+same DevWorkspace. Overnight policy: prefer abort/restart over shipping a
+patched-bad run.
+
+**Policy:** P0/correctness or structurally compromised ledger →
 **abort, fix, rerun**. Everything below is **bank → implement between runs**
-(or after V7 ship) unless it escalates.
+unless it escalates.
 
 **Related:** [`V6-RUN-FINDINGS.md`](V6-RUN-FINDINGS.md) (V6 abort P0s — mostly
 landed), [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md),
