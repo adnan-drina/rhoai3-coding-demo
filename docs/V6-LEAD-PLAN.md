@@ -268,6 +268,7 @@ Run log: `docs/V6-RUN-LOG.md` from launch.
 | P2.4 already-complete strict probe | ✅ `already-complete.py` — no Convert/Port verb false greens |
 | Package full-prefix rewrite guard | ✅ sensors + plan-lint reject `com.demo.coolstore` when target=`com.demo` |
 | Ceremonial status-map acceptance | ✅ static sensor rejects `service_interfaces_ready` / status Map |
+| Non-blocking polish bank | 📝 [`V7-FUTURE-IMPROVEMENTS.md`](V7-FUTURE-IMPROVEMENTS.md) — log UX, efficiency, story-design; not abort triggers |
 
 ---
 

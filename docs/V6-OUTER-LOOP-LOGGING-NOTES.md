@@ -10,8 +10,9 @@ are inseparable from good logging.
 pass) — START/END markers, Actor labels, sparse heartbeats, analyze side-log,
 session≠gate wording. **Task progress** (T-001 + title) mirrored from
 `supervisor.sh` into `/tmp/outer-loop.log` (2026-07-29 follow-up). Remaining
-polish (PLAIN ascii mode, richer deliverable enumeration, actual MiniMax vs
-Qwen actor on each TASK line) can land on the next pass if demos need it.
+polish tracked in [`V7-FUTURE-IMPROVEMENTS.md`](V7-FUTURE-IMPROVEMENTS.md)
+(L-A1 actor-per-task, L-R1 rate-limit lines, L-H1 heartbeat ps confusion,
+L-P1 PLAIN mode, L-D1 richer END deliverables).
 
 ### Task progress (required)
 

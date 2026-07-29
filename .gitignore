@@ -44,3 +44,7 @@ __pycache__/
 .venv/
 .venv-*/
 venv/
+
+# local run poll artifacts
+docs/*-RUN-POLL.log
+docs/V5-RUN-POLL.log
