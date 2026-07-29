@@ -40,12 +40,15 @@ RUN_BASE="${RUN_BASE:-$(git rev-parse HEAD)}"   # commits after this belong to T
 TASKS_SINCE_MILESTONE=0   # supervisor-enforced in-loop sonar cadence
 SUPERVISOR_VERSION=$(md5sum "$0" 2>/dev/null | cut -c1-8)
 LOG=/tmp/supervisor.log
+OUTER_LOG="${OUTER_LOG:-/tmp/outer-loop.log}"
 EVENTS=/tmp/supervisor-events.csv
 METRICS=/tmp/supervisor-metrics.csv
 [ -f "$EVENTS" ]  || echo "epoch,stage,attempt,class,action" > "$EVENTS"
 [ -f "$METRICS" ] || echo "session,start,end,seconds,rc" > "$METRICS"
 
 log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
+# Mirror demo-facing lines into the outer-loop narrative (tail -f /tmp/outer-loop.log).
+outer_log() { echo "[$(date -u +%F' '%T)] $*" >> "$OUTER_LOG"; }
 
 log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL}"
 # C1: per-run isolated Maven repo — factory-parity resolution for every sensor
@@ -561,6 +564,47 @@ PYEOF
 )
 task_class() { echo "$TASK_CLASSES" | grep -m1 "^$1:" | cut -d: -f2; }
 
+# Task title from tasks.md heading (demo log: T-001 + human description).
+task_title() { # $1=task-id
+  local tid="$1"
+  [ -f "${TASKS_FILE:-}" ] || { echo "$tid"; return; }
+  python3 -c "
+import re, sys
+tid, path = sys.argv[1], sys.argv[2]
+text = open(path, encoding='utf-8', errors='replace').read()
+m = re.search(r'^#{2,6}\s+' + re.escape(tid) + r'\s*:\s*(.+)$', text, re.M)
+print(m.group(1).strip() if m else tid)
+" "$tid" "$TASKS_FILE" 2>/dev/null || echo "$tid"
+}
+
+# Demo + supervisor: task progress with code AND description.
+log_task() { # $1=START|END|SKIP|BATCH  $2=tid-or-ids  [$3=detail]
+  local kind="$1" tid="$2" detail="${3:-}" title cls line
+  case "$kind" in
+    BATCH)
+      line="▶ TASKS  batch rewrite — ${tid}${detail:+ — $detail}"
+      ;;
+    START)
+      title=$(task_title "$tid"); cls=$(task_class "$tid")
+      [ -n "$cls" ] || cls="?"
+      line="▶ TASK   ${tid} — ${title} [class=${cls}]${detail:+ — ${detail}}"
+      ;;
+    END)
+      title=$(task_title "$tid")
+      line="✓ TASK   ${tid} — ${title}${detail:+ — ${detail}}"
+      ;;
+    SKIP)
+      title=$(task_title "$tid")
+      line="· TASK   ${tid} — ${title}${detail:+ — ${detail}}"
+      ;;
+    *)
+      line="  TASK   ${tid}${detail:+ — ${detail}}"
+      ;;
+  esac
+  log "$line"
+  outer_log "$line"
+}
+
 # V6 P2.4 — already-complete fast path (strict probe).
 # Probe lives in already-complete.py so instruments can lock the contract.
 # V6 abort evidence: bash grepping the first Capitalized word as a class
@@ -613,18 +657,24 @@ EOF
 run_task() { # $1=task id — the ordinary single-task stage
   local T="$1"
   if try_already_complete "$T"; then
+    log_task SKIP "$T" "already complete (fast path); skipped worker"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     return 0
   fi
-  run_stage "$T" "$T" \
+  log_task START "$T" "dispatching (see /tmp/supervisor.log for actor detail)"
+  if run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
 Worker discipline (V6 P2.1/P2.2): run opencode in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode. Launch opencode only when the tree is incomplete or sensors are RED. Foreground worker only; bundled scripts only — no heredocs / python3 -c.
-${RUN_CONTRACT}" \
-    || log "$T: exhausted — recorded, moving on"
+${RUN_CONTRACT}"; then
+    log_task END "$T" "committed $(git log --oneline -1 | cut -c1-80)"
+  else
+    log_task SKIP "$T" "exhausted — recorded in debt; moving on"
+    log "$T: exhausted — recorded, moving on"
+  fi
 }
 
 BATCH_MAX="${BATCH_MAX:-3}"
@@ -632,8 +682,14 @@ flush_batch() { # $1=space-separated rewrite task ids
   local ids="${1# }"; [ -n "$ids" ] || return 0
   local n; n=$(echo $ids | wc -w | tr -d ' ')
   if [ "$n" -ge 2 ]; then
-    local list; list=$(echo $ids | tr ' ' ',')
+    local list desc T
+    list=$(echo $ids | tr ' ' ',')
+    desc=""
+    for T in $ids; do
+      desc="${desc}${desc:+; }${T}: $(task_title "$T")"
+    done
     log "batch: dispatching $n rewrite tasks in one session: $ids"
+    log_task BATCH "$ids" "$desc"
     orch "batch-$(echo $ids | tr ' ' '-')" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for tasks ${list} from ${TASKS_FILE}, IN ORDER. These are rewrite-class mechanical tasks — the plan states the exact transformation for each; apply it directly per the EXECUTION.md rewrite discipline. For EACH task finish with ONE commit whose message STARTS with that task's id and a colon (e.g. 'T-004:') BEFORE starting the next task. Stop after the last listed task.
 ${RUN_CONTRACT}"
@@ -642,7 +698,11 @@ ${RUN_CONTRACT}"
   # ids it committed are picked up by run_stage's entry check.
   local T
   for T in $ids; do
-    committed "$T" && { log "$T: committed (batch session)"; continue; }
+    if committed "$T"; then
+      log "$T: committed (batch session)"
+      log_task END "$T" "committed in rewrite batch ($(git log --oneline -1 | cut -c1-80))"
+      continue
+    fi
     run_task "$T"
   done
   # One verification pass covers the batch's commits (same cadence spirit
@@ -651,9 +711,21 @@ ${RUN_CONTRACT}"
   return 0
 }
 
+# Publish the full task list into the demo narrative before M4 work.
+{
+  outer_log "         M4 task list ($(echo $TASK_IDS | wc -w | tr -d ' ') tasks) from ${TASKS_FILE}:"
+  for T in $TASK_IDS; do
+    outer_log "         • ${T} — $(task_title "$T") [class=$(task_class "$T")]"
+  done
+} 2>/dev/null || true
+
 BATCH=""
 for T in $TASK_IDS; do
-  committed "$T" && { log "$T: already committed"; continue; }
+  if committed "$T"; then
+    log "$T: already committed"
+    log_task SKIP "$T" "already committed — skipping"
+    continue
+  fi
   if [ "$(task_class "$T")" = "rewrite" ]; then
     BATCH="$BATCH $T"
     [ "$(echo $BATCH | wc -w | tr -d ' ')" -ge "$BATCH_MAX" ] && { flush_batch "$BATCH"; BATCH=""; }

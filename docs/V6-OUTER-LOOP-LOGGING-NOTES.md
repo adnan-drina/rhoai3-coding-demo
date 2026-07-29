@@ -8,8 +8,25 @@ demo-safe**. Logic fixes that make gates clearer are included where they
 are inseparable from good logging.  
 **Status:** implemented in scaffold `outer-loop.sh` (2026-07-29 V6 abort
 pass) — START/END markers, Actor labels, sparse heartbeats, analyze side-log,
-session≠gate wording. Remaining polish (PLAIN ascii mode, richer deliverable
-enumeration) can land on the next pass if demos need it.
+session≠gate wording. **Task progress** (T-001 + title) mirrored from
+`supervisor.sh` into `/tmp/outer-loop.log` (2026-07-29 follow-up). Remaining
+polish (PLAIN ascii mode, richer deliverable enumeration, actual MiniMax vs
+Qwen actor on each TASK line) can land on the next pass if demos need it.
+
+### Task progress (required)
+
+Demo users watching `tail -f /tmp/outer-loop.log` must see **which tasks**
+are in flight, not only story-level M4/M5. Every task line includes:
+
+- **code** — `T-001`, `T-002`, …
+- **description** — the heading title from `tasks.md` (what the task entails)
+- **class** — `rewrite` / `infer` when known
+- **lifecycle** — `▶ TASK` start, `✓ TASK` end, `· TASK` skip/already-complete,
+  `▶ TASKS` for rewrite batches (list each id + title in the detail)
+
+Supervisor remains the source of truth for execution; it **mirrors** these
+lines into `OUTER_LOG` (`/tmp/outer-loop.log`) so one `tail -f` covers the
+demo narrative.
 
 ---
 
