@@ -26,8 +26,9 @@ spec:
         - name: quay-pull-secret
       containers:
         - name: ${{ values.name }}
+          # Bootstrap tag only — deploy-app pins the PipelineRun revision tag (V6 P4.1).
           image: quay.io/rhoai3-coding-demo/${{ values.name }}:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080

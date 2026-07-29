@@ -77,6 +77,17 @@ For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
 | `application.properties` (Spring keys) | Quarkus keys; plain `KEY=value` pass-throughs keep working |
 | `spring-boot-maven-plugin` | `quarkus-maven-plugin` |
 | `@PostConstruct` (javax.annotation) | `jakarta.annotation.PostConstruct` (rewrite covers it) |
+| `@RestControllerAdvice` / `@ExceptionHandler` | Dedicated class with `@ServerExceptionMapper` methods (global mapper — see `quarkus-rest-conventions`) |
+| `ResponseEntity<T>` / `HttpEntity<T>` | JAX-RS `Response` (status + entity) |
+| `org.springframework.transaction.annotation.Transactional` | `jakarta.transaction.Transactional` (same name, Jakarta package) |
+| `CommandLineRunner` / `ApplicationRunner` | `void onStart(@Observes StartupEvent ev)` |
+| `@EventListener` | `@Observes` on the event type |
+| `@Primary` | `@DefaultBean` or `@Alternative` + `@Priority` |
+| `@ConditionalOnProperty` / `@ConditionalOnClass` | `@LookupIfProperty` / `@IfBuildProfile` (no Spring `@Conditional*` in destination) |
+| `@Value("${prop}")` with SpEL (`#{...}`) | Not supported — replace with `@ConfigProperty` or explicit CDI wiring |
+| `@CrossOrigin` | `quarkus.http.cors.*` in `application.properties` |
+| `@Cacheable` / `@CacheEvict` / `@CachePut` | `@CacheResult` / `@CacheInvalidate` / `@CacheInvalidateAll` (`quarkus-cache`) |
+| `@FormParam` / `@CookieParam` / `@MatrixParam` / `@Context` | Same JAX-RS names (Spring `@RequestParam` form, `@CookieValue`, `@MatrixVariable`, injected types) |
 
 Extended Spring catalog (harvested from the upstream
 [quarkusio/quarkus-skills](https://github.com/quarkusio/quarkus-skills)
@@ -96,6 +107,54 @@ extensions; compat mode hides the migration instead of doing it):
 | `@Secured` / `@PreAuthorize("hasRole('X')")` | `@RolesAllowed("X")` |
 | `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>`; `@Query` JPQL → Panache `find()` |
 | `@SpringBootTest` / `@MockBean` | `@QuarkusTest` / `@InjectMock` (+ `@RestClient` qualifier when mocking a REST client) |
+| `@InjectMock` (Quarkus 3.2+) | `io.quarkus.test.InjectMock` (not the older package) |
+| `@TestPropertySource` / `@ActiveProfiles` | `@QuarkusTestProfile` with `getConfigOverrides()` |
+
+**DI scope default:** prefer `@ApplicationScoped` over `@Singleton` — proxied,
+mockable, live-reload friendly (`@Singleton` is eager, not mockable; use only
+with a reason).
+
+**Panache vs Spring Data:** prefer `PanacheRepository<T>` (service-layer
+separation) over Panache active record (`extends PanacheEntity`); both are
+valid when a DB story chooses Panache. SpEL in Spring `@Query` is not supported
+— rewrite to Panache `find()` / explicit JPQL.
+
+**Spring Boot starters → Quarkus extensions (Full path, RH BOM 3.27.3.SP1):**
+
+| Spring starter | Quarkus extension (decided) |
+|---|---|
+| `spring-boot-starter-web` / `webflux` | `quarkus-rest-jackson` |
+| `spring-boot-starter-data-jpa` | `quarkus-hibernate-orm-panache` (or `quarkus-hibernate-orm` + `EntityManager`) |
+| `spring-boot-starter-validation` | `quarkus-hibernate-validator` |
+| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (+ `quarkus-smallrye-metrics` when metrics needed) |
+| `spring-cloud-starter-openfeign` | `quarkus-rest-client-jackson` + `@RegisterRestClient` |
+
+**REJECT for destination:** any `quarkus-spring-*` extension (MTA and
+upstream skills may suggest them — native Quarkus only).
+
+**Config property map (Spring → Quarkus):**
+
+| Spring | Quarkus |
+|---|---|
+| `spring.datasource.url` | `quarkus.datasource.jdbc.url` (+ `quarkus.datasource.db-kind`) |
+| `spring.datasource.username` / `password` | `quarkus.datasource.username` / `password` |
+| `spring.flyway.*` | `quarkus.flyway.*` (e.g. `migrate-at-start=true`) |
+| `spring.jpa.hibernate.naming.physical-strategy` (snake_case) | **Warning:** Quarkus preserves Java field names by default — align entity `@Column` or set `quarkus.hibernate-orm.physical-naming-strategy` explicitly |
+| `spring.jpa.hibernate.ddl-auto=update` | **Do not adopt** — harness law is Flyway + `hibernate-orm.database.generation=validate` |
+| `spring.profiles.active` | `quarkus.profile` / `QUARKUS_PROFILE`; profile keys use `%dev.`, `%test.`, `%prod.` prefix |
+| Prod datasource URLs | Prefer `%prod.quarkus.datasource.jdbc.url=...` so dev/test can use Dev Services |
+
+**Rule-card shape (Snowdrop):** when writing brief "Decided target shapes",
+include Goal, BEFORE/AFTER snippet, and effort hint — not annotation pairs
+alone.
+
+**Future OpenRewrite `recipe:` candidates (NOT wired — catalog only):**
+`StereotypeAnnotationsToCDI`, `WebToJaxRs`, `ValueToCdiConfigProperty`,
+`MigrateConfigurationProperties`, `MigrateSpringTransactional`,
+`MigrateSpringEvents`, `ResponseEntityToJaxRsResponse`, `MigrateSpringValidation`,
+`MigrateSpringTesting`, `MigrateSpringActuator`, `Replace Spring Boot Web with
+Quarkus REST`. Exclude: `AddSpringCompatibilityExtensions`, full
+`SpringBootToQuarkus` composite, BOM/main-run recipes.
 
 ## Windup rule joins (machine-readable)
 

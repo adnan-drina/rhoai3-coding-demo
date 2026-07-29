@@ -46,6 +46,10 @@ The MAPPINGS.md rows that apply (quote the decided target, don't
 re-decide). Recipe-executed rules already handled: reference
 `migration/recipe-log.md` and `migration/staging/` where applicable.
 
+**Story ordering:** extensions and BOM first, then models, then resources,
+then config keys, then tests (`extensions → models → resources → config →
+tests`).
+
 ## Contracts owned by this story
 
 - **Findings**: the mandatory rule ids this story resolves (from the
@@ -57,6 +61,12 @@ re-decide). Recipe-executed rules already handled: reference
   and behavior-preserving redesign pin LEGACY values; behavior-changing
   redesign pins the §7 TARGET (e.g. 404, not create-on-GET). Name the
   contract GAPS this story closes with characterization tests.
+  - **Cart `add()` oracle (additive):** two `add(cartId, itemId, 2)` calls
+    → quantity **4** after dedupe (not 2).
+  - **Oracle placement:** service stories own service-level oracles; endpoint
+    stories own JAX-RS/RestAssured oracles. `STORY_SCOPE` may allowlist
+    `*ExceptionMapper` / `@IfExists` types when the contract requires them
+    in an earlier story.
 - **Forbidden**: the fabrication tripwires relevant here.
 
 ## Done-criteria

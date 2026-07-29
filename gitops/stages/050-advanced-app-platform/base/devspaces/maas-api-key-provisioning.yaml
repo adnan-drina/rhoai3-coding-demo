@@ -638,9 +638,29 @@ data:
     pts = cfg.get("platform_toolsets") or {}
     pts["cli"] = ["web", "terminal", "file", "skills", "todo"]
     cfg["platform_toolsets"] = pts
+    # V6 P2.2 / E.4: autonomous sessions have no human at the approval
+    # prompt. Default timeout is ~300s (V5 deny-tax). Fail closed in
+    # seconds, and unconditionally deny known waste shapes even under
+    # yolo (see scaffold .hermes/harness/denied-shapes.md).
+    approvals = cfg.get("approvals") or {}
+    approvals["mode"] = approvals.get("mode") or "smart"
+    approvals["timeout"] = 5
+    approvals["cron_mode"] = "deny"
+    approvals["deny"] = [
+        "*python3*<<*",
+        "*python *<<*",
+        "*python3 - <<*",
+        "*bash*<<*",
+        "*sh *<<*",
+        "*python3 -c*",
+        "*python -c*",
+        "*rewrite-staging*",
+        "*rewrite-maven-plugin*",
+    ]
+    cfg["approvals"] = approvals
     with open(path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: MaaS providers written (single-model posture: qwen3-6-27b serves planner AND worker; 35B = workshop overlay).")
+    print("Hermes config: MaaS providers written (single-model posture: qwen3-6-27b serves planner AND worker; 35B = workshop overlay); approvals.timeout=5s + deny shapes (V6 E.4).")
     HERMESEOF
       chmod 600 "${HOME}/.hermes/config.yaml"
 

@@ -187,7 +187,18 @@ spec:
           params:
             - name: filter
               # This project's repo only: main-branch pushes, no deletions.
-              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && body.repository.name == 'coolstore-inventory-service'"
+              # V6 P3.4: skip docs/migration-prose-only pushes (no src/pom/k8s).
+              value: >-
+                body.ref == 'refs/heads/main'
+                && body.after != '0000000000000000000000000000000000000000'
+                && body.repository.name == 'coolstore-inventory-service'
+                && (size(body.commits) == 0 || body.commits.exists(c,
+                     c.added.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
+                     || c.modified.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
+                     || c.removed.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')))
       template:
         ref: app-platform-push-template
     - name: scaffolded-project-bootstrap
@@ -236,7 +247,21 @@ spec:
             kind: ClusterInterceptor
           params:
             - name: filter
-              value: "body.ref == 'refs/heads/main' && body.after != '0000000000000000000000000000000000000000' && ('rhoai3-scaffolded' in body.repository.topics)"
+              # V6 P3.4: full build/deploy only when the push touches app
+              # surface (src/, pom, k8s, Containerfile, props, migration.yaml).
+              # Docs-only / debt-ledger / skill prose pushes must not burn a
+              # pipeline round. Empty commits[] still runs (safe default).
+              value: >-
+                body.ref == 'refs/heads/main'
+                && body.after != '0000000000000000000000000000000000000000'
+                && ('rhoai3-scaffolded' in body.repository.topics)
+                && (size(body.commits) == 0 || body.commits.exists(c,
+                     c.added.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
+                     || c.modified.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
+                     || c.removed.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
+                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')))
             - name: overlays
               value:
                 - key: target-namespace

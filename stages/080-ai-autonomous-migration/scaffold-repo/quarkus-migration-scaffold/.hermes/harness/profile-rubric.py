@@ -132,6 +132,15 @@ def main():
         "cacheRefreshGuard": (r"no clear|clear.?on.?miss|refresh.?guard|\bTTL\b|\b60\s*s|time.?stamp guard", "refresh-guard"),
         "normalizeBeforeDerive": (r"normalize.{0,20}before|dedup.{0,20}before|before (?:deriv|aggregat|comput|total|pric|sum)", "normalize-before-derive"),
     }
+    # Cart / service numeric oracles (not targetContract flags): when §7
+    # mentions add()/cart quantity semantics, require the additive→4 decision
+    # token so soft "idempotent add" prose cannot pass (V6 P3.1 / P1.3).
+    if re.search(r"\badd\s*\(|\badd\b.{0,40}quantit", sec7, re.I):
+        if not re.search(r"additive|qty\s*4|quantity\s*4|two\s+add.{0,40}\b4\b", sec7, re.I):
+            problems.append(
+                "RUBRIC:target-soft: §7 discusses cart add()/quantity but does not "
+                "decide additive→quantity 4 — lock the oracle, not soft idempotency prose"
+            )
     try:
         myaml = open("migration.yaml", encoding="utf-8").read()
     except OSError:

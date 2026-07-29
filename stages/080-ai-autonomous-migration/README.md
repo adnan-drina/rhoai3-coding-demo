@@ -31,8 +31,9 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
   - **Legacy repository URL**: HTTPS Git URL clonable without credentials. The demo default is the Coolstore **cart** service ([coolstore-cart-legacy](https://github.com/adnan-drina/coolstore-cart-legacy.git)) — small enough for a workshop run. The monolith round used [mca-coolstore](https://github.com/rhpds/mca-coolstore.git).
   - **Project name**: becomes the per-run repository, namespace, and workspace name, exactly like stage 070.
   - **Acceptance endpoint**, **Preserve tokens**, and **Forbidden patterns**: stamped into `migration.yaml` so sensors know what “shipped” and “must not fabricate” mean for *this* legacy app (cart defaults are pre-filled; change them when you bring your own repo).
+  - **Target contract** (`targetContract`): the operator-decided behavioral contract for REDESIGN tasks. Flags like `getIdempotent`, `validateInput`, `mapErrors`, `threadSafeState`, `cacheRefreshGuard`, and `normalizeBeforeDerive` tell the harness what the modernized service *should* do, not just what the legacy *did*. Behavior-changing items (GET returns 404 on missing, invalid params return 400) are explicit operator decisions; behavior-preserving items (thread-safe state, cache guards) are always-on defaults. M1 reads `targetContract` as authoritative when writing the architecture profile, so REDESIGN tasks carry decided target shapes instead of asking the model to guess. The cart demo pre-fills all six; change them when you bring your own service.
   - **Needs database**: leave off for cart (stateless); enable when the legacy app persists to PostgreSQL.
-3. Create, and watch the template run: fetch the migration scaffold → stamp provenance and acceptance/preserve/forbidden into `migration.yaml` → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination, `/projects/legacy` next to `/projects/modernized`.
+3. Create, and watch the template run: fetch the migration scaffold → stamp provenance, acceptance/preserve/forbidden, and targetContract into `migration.yaml` → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination, `/projects/legacy` next to `/projects/modernized`.
 
 **What you should see:** a new catalog component for the migration **destination** (the legacy app never appears in the catalog), with links to the destination repository, Dev Spaces, and SonarQube, the same self-service pattern as stage 070, now wrapped around code that already exists.
 
@@ -49,7 +50,7 @@ Before any agent writes a line, the supported product establishes the facts.
 3. Click **Start** (top right of the Analysis View). **Server Status** flips from `Stopped` to `Running`, which boots the analyzer engine inside the workspace. Leave **Agent Mode** off; the platform runs MTA analysis-only.
 4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/`; select `quarkus-profile` (Quarkus migration targets; the `audit-logging` profile adds custom organization rules).
 5. Back in the Analysis View, click **Run Analysis**. The first run downloads rulesets and scans the whole legacy tree (several minutes for a monolith; later runs are much faster as everything caches in the workspace).
-6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files. Every finding is anchored to a rule, file, and line, with mandatory issues and effort estimates. Each run is also saved as machine-readable JSON at `legacy/.vscode/mta-core/analysis_<timestamp>.json`, which is what the agent consumes in the spec step.
+6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files. Every finding is anchored to a rule, file, and line, with mandatory issues and effort estimates. Each run is also saved as machine-readable JSON at `legacy/.vscode/mta-core/analysis_<timestamp>.json` (the IDE path; the harness uses `migration/mta-findings.json` instead).
 7. Keep the findings open. From this point on, the analysis is the **checklist the agentic result must satisfy**: the migration is done when the findings are resolved, not when the agent says so.
 
 > **Expected panel state:** two informational cards are normal: *"GenAI
@@ -71,6 +72,15 @@ Before any agent writes a line, the supported product establishes the facts.
 > under the application's Reports tab. The in-workspace path above is the
 > demo default: the findings land exactly where the agent will work.
 
+> **Harness analysis path (Track B):** when the autonomous outer loop
+> runs, `analyze.sh` performs the same MTA analysis programmatically via
+> kantra and writes the results to `migration/mta-findings.json` (plus
+> the profile session artifacts under `migration/`). The IDE panel above
+> is for *human* exploration and validation; the harness never reads
+> `legacy/.vscode/mta-core/` — it reads `migration/mta-findings.json` as
+> its ground truth. Both paths use the same rulesets and targets from
+> `migration.yaml`.
+
 ---
 
 ## Step 4: The concept, an AI Agent Harness
@@ -81,6 +91,8 @@ Stage 070 introduced two kinds of agent context: the memory bank and specs. This
 - **Sensors (feedback):** catch problems *after* it acts and feed them back so the agent can self-correct: builds, tests, linters, analyzers, review agents.
 
 Each kind exists in two execution forms: **computational** (deterministic and fast: compilers, tests, recipes, static analysis) and **inferential** (semantic, model-driven: an agent reviewing another agent's diff). Fast, cheap sensors run early and often inside the loop; expensive ones guard the exit.
+
+Red Hat AI describes this as the **Agent-as-a-Workload** pattern: the agentic loop runs inside a governed workspace (our Dev Spaces pod), reaches models only through the MaaS gateway (identity, quotas, telemetry), and calls tools through governed endpoints. The workspace isolation, the MaaS gateway, and the pipeline quality gate form three layers of enforcement that the model cannot influence, even if its behavior is manipulated. This is the same defense-in-depth architecture described in [Architect an open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents), applied here to a migration workload.
 
 Böckeler's follow-up, [Maintainability sensors for coding agents](https://martinfowler.com/articles/sensors-for-coding-agents.html), confirms a practice this harness already leans on: a red sensor should carry **self-correction guidance**, not only the raw failure. Our factory-parity sensors (`sensors.sh`) print a short `FIX:` block with the evidence — what to change, what not to waive, and which runbook section applies — so the correction session spends tokens on the root cause instead of re-deriving the policy.
 
@@ -130,12 +142,35 @@ The harness runs a staged process (the "M-process"). Every stage has explicit in
 
 The **inner loop** (sensors → fix sessions, lint → revision) corrects the *work* within minutes. The **outer loop** (automated) applies Retro's brief updates to **remaining** stories so the next brief starts smarter — it does not rewrite the roadmap mid-run, and a failed story stops the run (resume from `migration/story-state.csv`). The **steering loop** (human) takes Retro's skill/sensor/runbook proposals into a follow-up PR; the agent never auto-edits `.hermes/skills/**`.
 
+### Quality model: HARVEST vs REDESIGN and the deterministic gates
+
+Every MTA finding is classified before any agent acts on it. The M1 MAPPINGS rule-joins produce one of two classes:
+
+- **HARVEST**: the finding has a mechanical transform (OpenRewrite recipe, namespace rename, annotation swap). The recipe executes into a staging tree during M1; later, a worker task *harvests* the result into the destination. No inference needed.
+- **REDESIGN**: the finding requires judgment (new endpoint contract, new concurrency model, new error handling strategy). The decided target shape comes from `targetContract` in `migration.yaml`, not from the model re-deriving a faithful contract. The architecture profile's §7 section is authoritative for these.
+
+Six flags in `targetContract` express the operator contract for REDESIGN tasks: `getIdempotent`, `validateInput`, `mapErrors`, `threadSafeState`, `cacheRefreshGuard`, `normalizeBeforeDerive`. A HARVEST-only migration (e.g., pure Jakarta namespace) may leave all six off; a service modernization turns them on selectively. The classification drives the plan: HARVEST tasks are ordered early (mechanical, low risk), REDESIGN tasks follow (inference-heavy, sensor-guarded).
+
+Named deterministic gates enforce each hand-off:
+
+| Gate | Where it fires | What it enforces |
+|---|---|---|
+| `profile-rubric` | End of M1 | Architecture profile completeness: components, integration surfaces, contract sources, domain seams all present |
+| `roadmap-lint` | End of M2 | Story dependency order is valid, every story has a brief, deploy milestones are marked |
+| `plan-lint --profile` | End of M3 (per story) | Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings |
+| `wiring-check` | Mid-M4 (per milestone) | Integration surfaces actually wire (imports resolve, endpoints register, dependency injection connects) |
+| Preflight (build + boot + quality gate) | End of M5 (per story) | Full Maven build, SonarQube gate, application boots, deploy stories serve acceptance endpoints |
+
+If a gate fires red, the loop revises (M3) or enters a fix session (M4) automatically. A gate never passes on model confidence alone.
+
+### Two demo tracks
+
 Two equal demo tracks share the same M-process and gates:
 
-| Track | Who drives | How you start |
-|---|---|---|
-| **A — Interactive / story walkthrough** | You run Hermes sessions stage by stage (or one story at a time via `supervisor.sh`) | Steps 5–7 below |
-| **B — Autonomous outer loop** | `outer-loop.sh` owns M1→M2 and every story's M3→M5 | `nohup .hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &` then `tail -f /tmp/outer-loop.log` |
+| Track | Who drives | How you start | M2 behavior |
+|---|---|---|---|
+| **A — Interactive / story walkthrough** | You run Hermes sessions stage by stage (or one story at a time via `supervisor.sh`) | Steps 5–7 below | You can skip M2 for a whole-app single-story pass, or run it normally for the incremental path |
+| **B — Autonomous outer loop** | `outer-loop.sh` owns M1→M2 and every story's M3→M5 | `nohup .hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &` then `tail -f /tmp/outer-loop.log` | Always runs M2 (incremental by design) |
 
 ### The harness implementation: Hermes Agent
 
@@ -144,18 +179,18 @@ Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.no
 - **CLI-native, headless-capable**: `hermes chat -q "..."` runs a one-shot turn (including in non-TTY workers), and `hermes -w -z "..."` runs one in an isolated git worktree. The loop is drivable from a terminal and from automation alike.
 - **Governed models, first-class**: `~/.hermes/config.yaml` points at any OpenAI-compatible endpoint, our MaaS gateway with a platform-issued key, so every loop iteration is metered like everything else on this platform.
 - **Continuity with what you already built**: Hermes speaks the AGENTS.md and [agentskills.io](https://agentskills.io/home) mental model this project has used since stage 070. The guides in this repository are its guides, and its built-in learning loop (skills created and improved from experience) is the "skills retro" practice running inside the agent itself.
-- **A real task system for real migrations**: the Kanban board (`~/.hermes/kanban.db`) is a durable, multi-agent task graph. A dispatcher decomposes work into child tasks, routes them to specialist worker profiles, and each worker is a full OS process reporting back to the board. That is the ~100-task shape a whole-application migration actually has.
+- **A real task system for real migrations**: Hermes includes a Kanban board (`~/.hermes/kanban.db`) for multi-agent task decomposition. In practice, the live autonomous run is driven by `outer-loop.sh` and `supervisor.sh`, which dispatch story-scoped task packets to OpenCode workers and track progress through `migration/story-state.csv`. The Kanban layer is available for interactive exploration and future multi-worker scaling, but the demo's execution path is the outer loop.
 
 > **Why Hermes over other agent frameworks?** The choice comes down to
 > fit: Hermes is CLI-native and headless-first (`hermes chat -q`), speaks
 > the AGENTS.md + agentskills.io conventions this project already uses,
 > points at any OpenAI-compatible endpoint (our MaaS gateway), and its
-> Kanban task graph matches the ~100-task shape of a real migration.
-> Alternatives like [OpenClaw](https://docs.openclaw.ai/) are strong
-> products but center on gateway/session management rather than the
-> terminal-driven autonomous loop this stage teaches.
+> outer-loop/supervisor architecture matches the story-driven shape of a
+> real migration. Alternatives like [OpenClaw](https://docs.openclaw.ai/)
+> are strong products but center on gateway/session management rather
+> than the terminal-driven autonomous loop this stage teaches.
 
-Division of labor: **Hermes is the orchestrator** (it plans and drives the loop but never edits application source) and **OpenCode is the coding worker inside the harness**, dispatched one bounded task at a time via `opencode run`. The whole contract is versioned in the repository as the **migration-harness runbook** (`.hermes/skills/migration-harness/`), which the workspace links into Hermes' skill path automatically; the interactive `/speckit.*` commands from stage 070 remain available when you want to author specs yourself.
+Division of labor: **Hermes is the orchestrator** (it plans, drives the loop, and runs sensors; its escalation valve can edit application source directly during EXECUTION when a task is too small to justify a full worker dispatch) and **OpenCode is the coding worker inside the harness**, dispatched one bounded task at a time via `opencode run`. The whole contract is versioned in the repository as the **migration-harness runbook** (`.hermes/skills/migration-harness/`), which the workspace links into Hermes' skill path automatically; the interactive `/speckit.*` commands from stage 070 remain available when you want to author specs yourself.
 
 ---
 
@@ -177,7 +212,7 @@ If a story fails, the loop stops before dependents. Fix or waive, then relaunch 
 
 ### Track A — interactive walkthrough
 
-1. In a workspace terminal, start planning (whole-app path skips M2; story mode uses briefs from an earlier M2):
+1. In a workspace terminal, start planning (Track A can skip M2 for a whole-app single-story pass, or run it normally for the incremental path; Track B always runs M2):
   ```bash
    cd /projects/modernized
    hermes chat -q "Use the migration-harness skill. Execute M1 (normalize ground truth) and M3 (plan)."
@@ -212,14 +247,15 @@ You start the run and observe; Hermes (or the supervisor) drives.
    tail -f /tmp/supervisor.log
   ```
 2. What the runbook enforces, per task:
-  - **rewrite tasks**: Hermes copies the legacy source to `/tmp/rewrite-staging`, runs OpenRewrite there, and dispatches a **harvest task** to OpenCode;
-  - **infer tasks**: Hermes hands OpenCode one bounded task packet via `opencode run`, then verifies claimed changes against `git status`;
-  - **sensors after every task**: the supervisor runs factory-parity checks (`sensors.sh`); a red result includes evidence plus a `FIX:` guidance block and becomes a correction packet (two attempts); exhausted budget lands in `migration/debt.md`.
+  - **HARVEST tasks** (mechanical, pre-staged by M1): Hermes dispatches a harvest task to OpenCode with explicit source and destination paths from the recipe-staged tree. OpenRewrite already ran during M1; the worker copies and adapts. This is the fast path, dominant when the migration is mostly namespace/annotation work (e.g., pure Jakarta).
+  - **REDESIGN tasks** (inference-heavy): Hermes hands OpenCode one bounded task packet via `opencode run` with the decided target shape from the brief. The worker implements against the `targetContract` flags, not from a blank-slate guess. This is the dominant path on the cart migration where service behavior changes.
+  - **Escalation**: for trivially small edits (a one-line import fix, a config entry), Hermes' escalation valve can edit application source directly during EXECUTION instead of dispatching a full worker session.
+  - **Sensors after every task**: the supervisor runs factory-parity checks (`sensors.sh`); a red result includes evidence plus a `FIX:` guidance block and becomes a correction packet (two attempts); exhausted budget lands in `migration/debt.md`.
 3. Your job is observation. `migration/run-log.md` accumulates one line per task; where retries cluster is where the harness needs improving (Step 8 steering).
 
 Each task runs in a fresh orchestrator session. Hermes writes a **task packet** with a fixed schema, verifies independently, and ends each completed task in one commit prefixed with its task id: the git history *is* the execution trace.
 
-**What you should see:** the loop converging task by task: recipes for the mechanical share, bounded worker runs for the judgment share, sensors between every step.
+**What you should see:** the loop converging task by task: harvest tasks for the mechanical (HARVEST) share, bounded worker runs for the judgment (REDESIGN) share, sensors between every step.
 
 > **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
 
@@ -276,7 +312,7 @@ Under Track B, deploy stories must also hit the acceptance path from `migration.
 
 - **Analysis grounds autonomy:** MTA's findings, not the agent's self-assessment, defined done.
 - **The harness regulates quality:** guides steered generation, sensors caught and fed back failures, and the agent iterated to green before a human ever looked.
-- **Determinism where possible, inference where needed:** OpenRewrite carried the mechanical transforms; the model spent its budget on judgment calls.
+- **Determinism where possible, inference where needed:** HARVEST tasks (OpenRewrite recipes, pre-staged in M1) carried the mechanical transforms; the model spent its budget on REDESIGN tasks where operator-decided `targetContract` flags guided the judgment calls.
 - **The factory, not a person, was the merge authority:** the agent could push, but only the pipeline and its quality gate could turn that push into a trusted artifact. Humans moved up a level, from reviewing diffs to improving the harness.
 - **Governance held at full autonomy:** same identity, token limits, and telemetry as every previous stage, just more visible, because agents consume more.
 
@@ -306,6 +342,7 @@ Under Track B, deploy stories must also hit the acceptance path from `migration.
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Harness Engineering for Coding Agents         | [https://martinfowler.com/articles/harness-engineering.html](https://martinfowler.com/articles/harness-engineering.html)                                             |
 | Maintainability sensors for coding agents     | [https://martinfowler.com/articles/sensors-for-coding-agents.html](https://martinfowler.com/articles/sensors-for-coding-agents.html)                                 |
+| Open blueprint for cloud-native AI agents     | [https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) |
 | Hermes Agent documentation                    | [https://hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs)                                                                             |
 | OpenClaw documentation (compared alternative) | [https://docs.openclaw.ai/](https://docs.openclaw.ai/)                                                                                                               |
 | MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |

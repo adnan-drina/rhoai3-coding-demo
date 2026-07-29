@@ -180,9 +180,32 @@ def main():
         # Ship acceptance is part of the contract (cart run #2: the stamped
         # acceptance.path had no endpoint anywhere in the plan, discovered
         # only at ship time). The path must be mapped to a task.
-        m = _re.search(r"^acceptance:\s*\n\s*path:\s*(\S+)", my, _re.M)
+        # V5/run-4: a comment (or blank lines) between `acceptance:` and
+        # `path:` made the old immediate-next-line regex miss entirely, so
+        # S05 plan-lint stayed green with the path untasked (V6 R7).
+        m = _re.search(
+            r"^acceptance:\s*\n(?:[ \t]*#.*\n|[ \t]*\n)*[ \t]*path:\s*(\S+)",
+            my,
+            _re.M,
+        )
         if m and m.group(1) not in text:
             lint("acceptance", f"acceptance path '{m.group(1)}' (migration.yaml) mapped to no task — the app must serve it")
+        elif m:
+            # V6 R7 substance: covering tasks must name a Java resource surface
+            # (@Path / Endpoint / src/main/...java) — not a ceremonial string cite.
+            path = m.group(1)
+            covering = [b for b in bodies.values() if path in b]
+            if covering:
+                joined = "\n".join(covering)
+                if not re.search(
+                    r"@Path|src/main/java/\S+\.java|\bEndpoint\b|\bResource\b|acceptanceCheck",
+                    joined,
+                ):
+                    lint(
+                        "acceptance",
+                        f"acceptance path '{path}' tasked without Java @Path/resource substance "
+                        f"— ceremonial mapping (V6 R7)",
+                    )
     except FileNotFoundError:
         pass
 
@@ -257,10 +280,13 @@ def main():
             if _governs_redesign(mm.start()) and (nm in java_named or targeted(nm)):
                 redesign.add(nm)
                 firsts.setdefault(nm, mm.start())
+        # Decisive tokens only — soft prose like "idempotent" alone is not
+        # enough when §7 also decided 404 (profile-rubric). Cart add() oracle:
+        # additive / qty 4 must be cited when §7 decides that shape (V6 P3.1).
         TARGET = re.compile(
             r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
             r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"
-            r"normalize", re.I)
+            r"normalize|additive|qty\s*4|quantity\s*4|\badd\(", re.I)
         # per-class §7 entry: from the class's FIRST mention to the first
         # mention of a DIFFERENT redesign class (or end of §7) — require only
         # the shapes §7 DECIDED for THIS class.

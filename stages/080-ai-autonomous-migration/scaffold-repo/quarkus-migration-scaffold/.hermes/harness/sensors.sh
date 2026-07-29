@@ -331,11 +331,9 @@ wiring_invariants() {
     || fail wiring "pom.xml does not pin maven-compiler-plugin with a <version> (factory Maven defaults to 3.1 → 'Source option 5' failure)"
   # V3 two-run recurrence: injecting a @RegisterRestClient interface
   # without the @RestClient qualifier fails CDI resolution at build/boot
-  # — invisible to plain unit tests.
+  # — invisible to plain unit tests. V6 P1.4: constructor parameters need
+  # @RestClient even when @Inject is absent (Quarkus single-ctor injection).
   for iface in $(grep -rl "@RegisterRestClient" src/main 2>/dev/null | xargs -r grep -l "interface" | sed -E "s|.*/([A-Za-z0-9]+)\.java|\1|"); do
-    # Only INJECTION POINTS need the qualifier (fields assigned from a
-    # qualified constructor param are fine): a type usage within 4 lines
-    # after an @Inject, with no @RestClient in that window, is the trap.
     # Capture injection points first, then loop via a here-string. The old
     # `grep … | while … done || exit 1` FALSE-FAILED with `set -o pipefail`
     # when the grep found NO injection points (an interface-only story where
@@ -350,9 +348,16 @@ wiring_invariants() {
       f2=$(echo "$line" | cut -d: -f1); ln=$(echo "$line" | cut -d: -f2)
       start=$((ln>4 ? ln-4 : 1))
       window=$(sed -n "${start},${ln}p" "$f2")
-      echo "$window" | grep -q "@Inject" || continue
-      echo "$window" | grep -q "@RestClient" \
-        || fail wiring "${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"
+      echo "$window" | grep -q "@RestClient" && continue
+      # Field injection: @Inject window without @RestClient
+      if echo "$window" | grep -q "@Inject"; then
+        fail wiring "${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"
+      fi
+      # Constructor parameter: `Iface name,` / `Iface name)` — Quarkus injects
+      # the sole ctor without requiring @Inject on the ctor (V6 P1.4).
+      if echo "$line" | grep -qE "${iface}[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*[,)]"; then
+        fail wiring "${f2}:${ln} constructs with $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot — V6 P1.4)"
+      fi
     done <<< "$_points"
   done
   # Behavior-preserving target default (PROCESS-FIX #1): a CDI singleton
@@ -380,12 +385,71 @@ preserved_integrations() {
     [ -n "$item" ] || continue
     grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null \
       || fail preserve "preserved integration '$item' absent from src/main, pom.xml and k8s/"
+    # V6 R5: env-style preserve keys must appear under k8s/ when this is the
+    # deploying story — application.properties alone shipped run-4 false green.
+    if [ "${STORY_DEPLOY:-false}" = "true" ] && [[ "$item" =~ ^[A-Z][A-Z0-9_]+$ ]]; then
+      grep -rq "$item" k8s/ 2>/dev/null \
+        || fail preserve "preserved env '$item' absent from k8s/ (Deployment env required when deploy=true — V6 R5)"
+    fi
   done <<< "$_items"
+}
+
+# V6 R3/R6 — ship-contract static checks (acceptance fail-open + mapper breadth).
+acceptance_ship_contract() {
+  [ -d src/main/java ] || return 0
+  if grep -RIqE 'ExceptionMapper\s*<\s*Exception\s*>' src/main/java 2>/dev/null; then
+    fail mapper "ExceptionMapper<Exception> is forbidden (remaps NotFound→503) — narrow to catalog/service failures (V6 R6)"
+  fi
+  # Fail-open heuristic: files that define an acceptance surface and catch→Response.ok
+  # (run-4 cartCount:0 pattern). Package-agnostic.
+  local f
+  while IFS= read -r -d '' f; do
+    grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
+    grep -qE 'catch[[:space:]]*\(' "$f" || continue
+    if awk '
+      /acceptanceCheck|acceptance-check|\/acceptance/ { inacc=1 }
+      inacc && /catch[[:space:]]*\(/ { incatch=1 }
+      incatch && /Response\.ok/ { found=1; exit }
+      END { exit found?0:1 }
+    ' "$f"; then
+      fail acceptance "fail-open acceptance handler in $f (catch→Response.ok) — V6 R3"
+    fi
+  done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
+}
+
+# V6 R7 / P0c — before deploy, the stamped acceptance.path must have a Java
+# handler (full path, leaf @Path, or acceptanceCheck method). Plan-lint alone
+# only requires the path string in tasks.md; this catches ceremonial tasks.
+acceptance_path_handler() {
+  [ "${STORY_DEPLOY:-false}" = "true" ] || return 0
+  [ -f migration.yaml ] || return 0
+  [ -d src/main/java ] || fail acceptance "STORY_DEPLOY=true but src/main/java is absent — cannot serve acceptance.path"
+  local acc_path leaf
+  acc_path=$(python3 -c "
+import re,sys
+try: my=open('migration.yaml').read()
+except FileNotFoundError: sys.exit(0)
+m=re.search(r'^acceptance:\s*\n(?:[ \t]*#.*\n|[ \t]*\n)*[ \t]*path:\s*(\S+)', my, re.M)
+print(m.group(1) if m else '')
+" 2>/dev/null)
+  [ -n "$acc_path" ] || return 0
+  leaf="${acc_path##*/}"
+  if grep -RIqF --include='*.java' "$acc_path" src/main/java 2>/dev/null; then
+    return 0
+  fi
+  if [ -n "$leaf" ] && grep -RIqE --include='*.java' \
+      "@Path\\(\"${leaf}\"|@Path\\('/${leaf}'|acceptanceCheck|acceptance-check" \
+      src/main/java 2>/dev/null; then
+    return 0
+  fi
+  fail acceptance "acceptance.path '${acc_path}' has no Java @Path/handler in src/main (V6 R7 handler-before-deploy) — add the resource method before ship"
 }
 
 preflight() {
   wiring_invariants
   preserved_integrations
+  acceptance_ship_contract
+  acceptance_path_handler
   milestone_sensor full
   boot_check
   echo "PREFLIGHT GREEN — the factory should confirm, not discover"
@@ -423,7 +487,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; package_scope; forbidden_patterns; wiring_invariants; preserved_integrations; echo "STATIC CHECKS GREEN";;
+  static)    tree_hygiene; package_scope; forbidden_patterns; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static"; exit 2;;
 esac

@@ -65,11 +65,13 @@ For scripting (parsing findings, summarizing worker output, checking
 reports) run a BUNDLED script file with `python3 <path/to/script.py>` (see
 Utility scripts below), or write a small `.py` file and run it. Do NOT use
 `python3 - <<'PYEOF' ... PYEOF` inline heredocs: the headless command
-policy DENIES inline-heredoc commands — they hang ~5 minutes, then block,
-wasting the session. `python3 .hermes/.../script.py` runs fine; `python3 -
-<<EOF` does not. Do NOT use the execute_code tool either: on this
-platform's models it is frequently emitted with empty arguments, fails
-instantly, and burns the iteration budget.
+policy DENIES them. `python3 .hermes/.../script.py` runs fine; `python3 -
+<<EOF` does not. Multi-line `python3 -c` is the same class. Workspace init
+writes `approvals.timeout: 5` and `approvals.deny` for these shapes into
+`~/.hermes/config.yaml` (V6 E.4 — see `.hermes/harness/denied-shapes.md`).
+Do NOT use the execute_code tool either: on this platform's models it is
+frequently emitted with empty arguments, fails instantly, and burns the
+iteration budget.
 
 ### Utility scripts
 

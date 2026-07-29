@@ -45,6 +45,13 @@ How this team builds REST endpoints. Apply on every endpoint change.
   (below) when the spec requires an RFC-7807 body on top of the 404.
 - Projections of a resource are sub-paths of it:
   `/api/inventory/{itemId}/availability`, not a new top-level path.
+- Spring `@RestControllerAdvice` / `@ExceptionHandler` → a dedicated mapper
+  class (e.g. `CatalogExceptionMappers`) with one `@ServerExceptionMapper`
+  method per exception type — Quarkus binds mappers at build time; there is
+  no global advice annotation. Local mappers on a resource are allowed but
+  prefer one domain mapper class for consistency.
+- Method return type `void` with no body → **204 No Content** (Spring
+  `@ResponseStatus(NO_CONTENT)` equivalent).
 - Errors return RFC-7807-style JSON (`status`, `title`, `detail`) with
   `Content-Type: application/problem+json` — no empty catch blocks, no
   stack traces in responses. Map exceptions with the Quarkus-native

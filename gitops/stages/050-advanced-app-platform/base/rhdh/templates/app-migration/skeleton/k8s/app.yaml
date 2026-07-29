@@ -26,8 +26,10 @@ spec:
         - name: quay-pull-secret
       containers:
         - name: ${{ values.name }}
+          # Bootstrap tag only — the deploy-app task pins each PipelineRun's
+          # immutable revision tag and sets IfNotPresent (V6 P4.1).
           image: quay.io/rhoai3-coding-demo/${{ values.name }}:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           {% if values.needsDatabase %}env:
             - name: QUARKUS_DATASOURCE_JDBC_URL
               value: jdbc:postgresql://${{ values.name }}-postgres:5432/coolstore

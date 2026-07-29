@@ -2,6 +2,16 @@
 
 How this team tests. Apply on every change.
 
+- `@QuarkusTest` replaces `@SpringBootTest`, but Quarkus reuses **one**
+  application instance across test classes — do not assume Spring-style
+  per-class context reset or `@DirtiesContext`. Use `@QuarkusTestProfile` /
+  `getConfigOverrides()` for per-class config (replaces `@TestPropertySource` /
+  `@ActiveProfiles`).
+- Deploy / M5 acceptance stories that must prove the **packaged artifact**
+  (jar or native image) may use `@QuarkusIntegrationTest`; ordinary HTTP
+  coverage stays `@QuarkusTest` + RestAssured. Service coverage still uses
+  plain JUnit + Mockito — never convert service tests to `@QuarkusTest` for
+  coverage (JaCoCo does not attribute lines inside `@QuarkusTest`).
 - Every REST endpoint gets a `@QuarkusTest` with RestAssured covering the
   happy path and at least one failure path.
 - Every service ships a `HealthResourceTest` asserting `/q/health` returns

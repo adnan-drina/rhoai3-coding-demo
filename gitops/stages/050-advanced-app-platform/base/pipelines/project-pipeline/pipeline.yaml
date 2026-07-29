@@ -1,6 +1,7 @@
 # Per-project delivery pipeline (instantiated from the project-pipeline
 # template into each project namespace). Stages: clone -> maven build ->
-# SonarQube quality gate -> image build and push -> :latest retag.
+# SonarQube quality gate -> image build and push -> :latest retag ->
+# deploy pinned to the revision tag (V6 P4.1 — not floating :latest).
 # PipelineRuns are created by the shared webhook dispatcher (single GitHub
 # App endpoint) in this pipeline's own namespace.
 apiVersion: tekton.dev/v1
@@ -116,8 +117,11 @@ spec:
       params:
         - name: REPO_NAME
           value: "$(params.repo-name)"
+        # V6 P4.1: pin Deployment to the immutable revision tag built by this
+        # run. :latest retag remains for humans/tools; deploy must not race
+        # on a floating tag + force-restart.
         - name: IMAGE
-          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):latest"
+          value: "$(tasks.resolve-image-registry.results.registry)/$(params.repo-name):$(params.revision)"
       workspaces:
         - name: source
           workspace: source

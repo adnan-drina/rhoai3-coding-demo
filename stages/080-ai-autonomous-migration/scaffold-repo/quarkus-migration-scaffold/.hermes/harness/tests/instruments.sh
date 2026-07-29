@@ -188,6 +188,43 @@ run_case() {
 }
 check "lint accepts a mapped acceptance path" 0 "PLAN OK"
 
+# 10b. V5/run-4: comment between acceptance: and path: must still enforce mapping (V6 R7)
+run_case() {
+  mkfix
+  plan_header > tasks.md
+  printf 'acceptance:\n  # harness asserts this after deploy\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "lint rejects unmapped acceptance path when comment precedes path:" 1 "LINT:acceptance"
+
+run_case() {
+  mkfix
+  { plan_header; printf '\nT-002 also serves /api/cart/acceptance-check for the ship gate.\n'; } > tasks.md
+  printf 'acceptance:\n  # harness asserts this after deploy\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "lint accepts mapped acceptance path when comment precedes path:" 0 "PLAN OK"
+
+# 10c. V6 R4 — acceptance product counter (bare objects must count as 0)
+run_case() {
+  mkfix
+  printf '%s\n' '[{"id":"1"},{"id":"2"}]' | python3 "$HARNESS_DIR/acceptance-products.py"
+}
+check "acceptance-products counts JSON arrays" 0 "2"
+
+run_case() {
+  mkfix
+  printf '%s\n' '{"products":[{"id":"1"}]}' | python3 "$HARNESS_DIR/acceptance-products.py"
+}
+check "acceptance-products counts nested products arrays" 0 "1"
+
+run_case() {
+  mkfix
+  out=$(printf '%s\n' '{"status":"ok","cartCount":0}' | python3 "$HARNESS_DIR/acceptance-products.py")
+  [ "$out" = "0" ]
+}
+check "acceptance-products rejects bare status objects (run-4 false green)" 0 ""
+
 # 11. mandatory findings must be mapped
 run_case() {
   mkfix
@@ -477,6 +514,39 @@ check "static sensors reject a forbidden: pattern in src/main" 1 "forbidden"
 # 17. erased preserved integration
 run_case() { sensor_fixture; printf 'public class Svc { }\n' > src/main/java/com/demo/Svc.java; SENSOR_ROOT="$FIX" bash "$SENSORS" static; }
 check "static sensors reject an erased preserve: item" 1 "preserve"
+
+# 17b. V6 R6 — ExceptionMapper<Exception> forbidden
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  printf 'import jakarta.ws.rs.ext.ExceptionMapper;\npublic class M implements ExceptionMapper<Exception> {}\n' \
+    > src/main/java/com/demo/rest/ServiceExceptionMapper.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject ExceptionMapper<Exception> (V6 R6)" 1 "mapper"
+
+# 17c. V6 R3 — fail-open acceptance catch→Response.ok
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  cat > src/main/java/com/demo/rest/CartEndpoint.java <<'EOF'
+public class CartEndpoint {
+  public Object acceptanceCheck() {
+    try { return null; }
+    catch (Exception e) { return Response.ok("{}").build(); }
+  }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject fail-open acceptance catch→ok (V6 R3)" 1 "acceptance"
+
+# 17d. V6 R5 — deploy story requires env preserve in k8s/
+run_case() {
+  sensor_fixture
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject CATALOG_ENDPOINT missing from k8s when deploy=true (V6 R5)" 1 "preserve"
 
 # --- V4 outer-loop instruments --------------------------------------------
 
@@ -809,6 +879,85 @@ run_case() {
   SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
 check "wiring passes a @RegisterRestClient interface with no injector (V5 pipefail false-RED)" 0 "STATIC CHECKS GREEN"
+
+# 75. V6 P1.4 — constructor @RestClient qualifier required (no @Inject window)
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/client src/main/java/com/demo/service
+  printf 'package com.demo.client;\nimport org.eclipse.microprofile.rest.client.inject.RegisterRestClient;\n@RegisterRestClient\npublic interface CatalogClient {\n}\n' \
+    > src/main/java/com/demo/client/CatalogClient.java
+  printf 'package com.demo.service;\nimport com.demo.client.CatalogClient;\npublic class CartService {\n  public CartService(CatalogClient catalog) {}\n}\n' \
+    > src/main/java/com/demo/service/CartService.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects ctor CatalogClient without @RestClient (V6 P1.4)" 1 "wiring"
+
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/client src/main/java/com/demo/service
+  printf 'package com.demo.client;\nimport org.eclipse.microprofile.rest.client.inject.RegisterRestClient;\n@RegisterRestClient\npublic interface CatalogClient {\n}\n' \
+    > src/main/java/com/demo/client/CatalogClient.java
+  printf 'package com.demo.service;\nimport com.demo.client.CatalogClient;\nimport org.eclipse.microprofile.rest.client.inject.RestClient;\npublic class CartService {\n  public CartService(@RestClient CatalogClient catalog) {}\n}\n' \
+    > src/main/java/com/demo/service/CartService.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring passes ctor CatalogClient with @RestClient (V6 P1.4)" 0 "STATIC CHECKS GREEN"
+
+# 76. V6 R7 / P0c — handler-before-deploy when STORY_DEPLOY=true
+run_case() {
+  sensor_fixture
+  mkdir -p k8s
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject missing acceptance.path handler when deploy=true (V6 P0c)" 1 "acceptance"
+
+run_case() {
+  sensor_fixture
+  mkdir -p k8s src/main/java/com/demo/rest
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+    > src/main/java/com/demo/rest/CartEndpoint.java
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors accept acceptance.path handler when deploy=true (V6 P0c)" 0 "STATIC CHECKS GREEN"
+
+# 77. V6 R7 — ceremonial acceptance path cite without Java substance
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived.
+
+#### T-001: Swap javax imports
+**Class**: rewrite
+- Mechanical jakarta rename across src/main/java sources.
+
+#### T-002: Note acceptance
+**Class**: infer
+- Remember /api/cart/acceptance-check for later; no resource work this story.
+EOF
+  printf 'acceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects ceremonial acceptance path without @Path substance (V6 R7)" 1 "LINT:acceptance"
+
+# 78. V6 P3.1 — §7 add() oracle must decide additive→qty 4
+run_case() {
+  mkfix
+  printf '## 1. Purpose & domain\nCart service with pricing pinned by ShoppingCartServiceTest at src/test/java/X.java:1 and enough words to clear the thin bar for purpose domain section here.\n## 2. Components & relationships\nREST CartEndpoint at src/main/java/com/demo/rest/CartEndpoint.java depends on the service layer with enough words here for the thin bar.\n## 3. Integration surfaces\nCATALOG_ENDPOINT preserve at src/main/resources/application.properties:1 with enough words here for the thin bar check to pass cleanly.\n## 4. Behavioral contract sources\nLegacy suite pins totals at src/test/java/com/demo/ShoppingCartServiceTest.java:40 with enough words here for thin bar.\n## 5. Modernization surface\nPom moves to Quarkus per javaee-pom-to-quarkus-00010 with enough words here for the thin bar check.\n## 6. Domain boundaries\nSingle bounded context around the cart model at src/main/java/com/demo with enough words here for thin bar.\n## 7. Class roles & target contract\nShoppingCartServiceImpl is REDESIGN (src/main/java/com/demo/service/ShoppingCartServiceImpl.java) — add() is idempotent for duplicate lines.\n' > p.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1); echo "$out" | grep -q "target-soft.*additive" && echo "add-oracle-soft" || echo "MISS:$out"
+}
+check "profile-rubric flags soft add() oracle without additive→4 (V6 P3.1)" 0 "add-oracle-soft"
+
+run_case() {
+  mkfix
+  printf '## 1. Purpose & domain\nCart service with pricing pinned by ShoppingCartServiceTest at src/test/java/X.java:1 and enough words to clear the thin bar for purpose domain section here.\n## 2. Components & relationships\nREST CartEndpoint at src/main/java/com/demo/rest/CartEndpoint.java depends on the service layer with enough words here for the thin bar.\n## 3. Integration surfaces\nCATALOG_ENDPOINT preserve at src/main/resources/application.properties:1 with enough words here for the thin bar check to pass cleanly.\n## 4. Behavioral contract sources\nLegacy suite pins totals at src/test/java/com/demo/ShoppingCartServiceTest.java:40 with enough words here for thin bar.\n## 5. Modernization surface\nPom moves to Quarkus per javaee-pom-to-quarkus-00010 with enough words here for the thin bar check.\n## 6. Domain boundaries\nSingle bounded context around the cart model at src/main/java/com/demo with enough words here for thin bar.\n## 7. Class roles & target contract\nShoppingCartServiceImpl is REDESIGN (src/main/java/com/demo/service/ShoppingCartServiceImpl.java) — add() is additive: two add(cart,item,2) calls yield quantity 4 after dedupe.\n' > p.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1); echo "$out" | grep -q "target-soft" && echo "STILL-SOFT" || echo "add-oracle-hard"
+}
+check "profile-rubric passes additive→quantity 4 add() oracle (V6 P3.1)" 0 "add-oracle-hard"
 
 echo "----"
 echo "$PASS/$N passed"

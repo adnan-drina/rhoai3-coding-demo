@@ -6,7 +6,38 @@ description: How this team does persistence in Quarkus — Hibernate 6 id genera
 
 The runtime contract: `quarkus.hibernate-orm.database.generation=validate`
 against a PostgreSQL schema owned entirely by Flyway. Hibernate validates —
-it never creates. Every mismatch is a startup crash in the factory.
+it never creates. Every mismatch is a startup crash in the factory. Do not
+use `drop-and-create` or Spring's `ddl-auto=update` — the book and blog
+examples that do are not the factory path.
+
+## Spring Data → Panache (when a story chooses Panache)
+
+Prefer repository style over active record:
+
+```java
+@ApplicationScoped
+public class ProductRepository implements PanacheRepository<Product> {
+    public Optional<Product> findBySku(String sku) {
+        return find("sku", sku).firstResultOptional();
+    }
+}
+```
+
+Constructor-inject the repository into services; keep `@Transactional` on
+mutating service methods (`jakarta.transaction.Transactional` — same name as
+Spring, Jakarta package).
+
+## Config and naming
+
+Spring datasource keys map to Quarkus (`spring.datasource.url` →
+`quarkus.datasource.jdbc.url` + `quarkus.datasource.db-kind`). Flyway:
+`spring.flyway.*` → `quarkus.flyway.*`. Use `%prod.` prefix on prod JDBC
+URLs when dev/test rely on Dev Services.
+
+**Naming-strategy trap:** Spring's default snake_case physical naming differs
+from Quarkus (preserves Java field names). Align `@Column(name=...)` in
+entities or set `quarkus.hibernate-orm.physical-naming-strategy` explicitly —
+silent schema mismatch fails at startup under `validate`.
 
 ## Entity id generation
 

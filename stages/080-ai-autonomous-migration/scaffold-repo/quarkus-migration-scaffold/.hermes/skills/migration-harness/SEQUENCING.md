@@ -23,6 +23,8 @@ leaves the repository buildable, sensor-green, and closer to done.
    order: models/utilities before services before surfaces. A story
    never modernizes a class whose project-internal dependencies are
    owned by a LATER story. Circular groups belong to one story.
+   Within a story, prefer **extensions → models → resources → config →
+   tests** (BOM/deps first, HTTP surface after its dependencies, tests last).
 2. **Contracts and characterization tests come first.** The first
    story that touches a component with a behavioral contract
    (architecture-profile §4) pins that contract — port the legacy
@@ -67,6 +69,12 @@ The brief for a story containing redesign classes names their §7 target
 shapes as DECIDED design, marking any behavior-CHANGING contract (e.g.
 GET→404, invalid input→400) as a deliberate departure from legacy.
 plan-lint enforces that each redesign class's task cites its §7 decisions.
+
+**Behavioral oracles:** service stories pin service-level assertions; endpoint
+stories pin JAX-RS/RestAssured coverage. Cart `add()` is **additive** — two
+`add(cartId, itemId, 2)` → quantity **4** after dedupe. Allowlist
+`*ExceptionMapper` / `@IfExists` in `STORY_SCOPE` when the contract needs
+them before the owning story.
 
 A defect DISCOVERED after shipping (by a later semantic review or in
 production) that M1 did not anticipate re-enters as a normal finding

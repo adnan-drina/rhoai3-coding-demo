@@ -1,12 +1,12 @@
 # Deploys the project's runtime after a successful build: applies the
 # repo's k8s/ manifests when present (per-run scaffolded projects carry
 # templated Deployment/Service/Route there), pins the deployment image to
-# the resolved registry (portability: the manifest default may be the demo
-# author's registry), and rolls the deployment so `:latest` is picked up.
+# the revision-tagged image from this PipelineRun (V6 P4.1 — immutable pin,
+# not floating `:latest` + force-restart), and waits for rollout.
 # Projects whose deployment is GitOps-owned (golden coolstore) have no
-# k8s/ directory — for them this task is restart-only. The `pipeline`
-# ServiceAccount's operator-granted `edit` role covers all of this within
-# the project namespace.
+# k8s/ directory — for them this task is image-pin + rollout-status only.
+# The `pipeline` ServiceAccount's operator-granted `edit` role covers all
+# of this within the project namespace.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -17,7 +17,7 @@ spec:
       type: string
     - name: IMAGE
       type: string
-      description: Fully-qualified image (resolved registry, :latest)
+      description: Fully-qualified immutable image (registry/name:git-sha)
   workspaces:
     - name: source
   steps:
@@ -34,10 +34,15 @@ spec:
           echo "No k8s/ directory in the repository (GitOps-owned deployment expected)"
         fi
         if oc get deployment "$(params.REPO_NAME)" >/dev/null 2>&1; then
+          # Pin to the revision tag from this run. oc set image updates the
+          # pod template and triggers a rollout — do NOT also rollout restart
+          # (that raced with :latest pulls under imagePullPolicy Always).
           oc set image "deployment/$(params.REPO_NAME)" "$(params.REPO_NAME)=$(params.IMAGE)"
-          oc rollout restart "deployment/$(params.REPO_NAME)"
+          oc patch "deployment/$(params.REPO_NAME)" --type=json -p='[
+            {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"IfNotPresent"}
+          ]' 2>/dev/null || true
           oc rollout status "deployment/$(params.REPO_NAME)" --timeout=300s
-          echo "Deployed $(params.IMAGE)"
+          echo "Deployed pinned image $(params.IMAGE)"
         else
           echo "No Deployment named $(params.REPO_NAME) in this namespace — nothing to roll out."
         fi

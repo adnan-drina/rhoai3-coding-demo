@@ -88,11 +88,29 @@ unit tests for the least-covered classes listed:
 `acceptance-deploy`): the pipeline is green but the demo acceptance is
 unmet. The contract is: route `/` serves 200 (a minimal index page over
 the app's API is enough — a UI waive in the plan is overridden here),
-and the `acceptance.path` from migration.yaml returns 200 with
-non-empty JSON reporting REAL service state — never canned domain data
-(that is the forbidden-fabrication class). Keep `quarkus.http.root-path`
-at its default: relocating it moves `/q/health` and `/` and breaks both
-the boot check and this acceptance.
+and the `acceptance.path` from migration.yaml returns 200 with a
+**non-empty JSON array of catalog products** (or `{"products":[...]}`
+with a non-empty array) fetched via the live catalog client — never a
+bare status object, never canned domain data (forbidden-fabrication
+class; run-4 false green). Keep `quarkus.http.root-path` at its default:
+relocating it moves `/q/health` and `/` and breaks both the boot check
+and this acceptance.
+
+**Mandatory checklist (V6 — all required, not optional):**
+
+1. **Do not edit** `migration.yaml` `acceptance.path` (R1). Implement the
+   stamped path; goalpost moves are rejected by the supervisor.
+2. Acceptance handler must call the catalog (`@RegisterRestClient` /
+   `CatalogService` or equivalent) and return real products (R2).
+3. **No fail-open**: never `catch` → `Response.ok(...)` that forces HTTP
+   200 with empty/canned success (R3).
+4. Wire `CATALOG_ENDPOINT` into `k8s/` Deployment `env` for the in-cluster
+   catalog URL (R5) — `application.properties` alone is not enough.
+5. Narrow error mapping: do **not** leave `ExceptionMapper<Exception>`
+   (it remaps framework 404 → 503). Map catalog/service failures only (R6).
+6. Preflight enforces handler-before-deploy (R7): a Java `@Path` /
+   `acceptanceCheck` for the stamped path must exist in `src/main` before
+   push — ceremonial task cites are not enough.
 
 Round budget is supervisor-enforced across all three classes. A final
 rejection halts the run with the evidence preserved for the retro —

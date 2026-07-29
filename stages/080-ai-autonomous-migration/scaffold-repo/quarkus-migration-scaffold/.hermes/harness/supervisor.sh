@@ -90,16 +90,17 @@ plan_stage_done() {
 # NOTE: match the worker by exact process name (-x). Command-line matching
 # false-positives on hermes sessions whose loaded skill text quotes the
 # `opencode run` invocation.
+# V6 P2.1: residual kill/cap is 15m (was 60m). A healthy worker finishes
+# inside the session's foreground timeout; anything still running after
+# WORKER_WAIT_CAP is a zombie — kill and verify-and-commit.
+WORKER_WAIT_CAP="${WORKER_WAIT_CAP:-900}"
 wait_for_worker() {
   local waited=0
   while pgrep -x opencode >/dev/null 2>&1; do
     [ $waited -eq 0 ] && log "worker process still running — waiting for it before next session"
-    sleep 60; waited=$((waited+60))
-    if [ $waited -ge 3600 ]; then
-      # A worker this old has outlived its dispatching session — it is a
-      # zombie. Never run a new session alongside it (two-writer risk):
-      # kill it and let the next session verify whatever it left behind.
-      log "worker still running after 60m — killing zombie worker before proceeding"
+    sleep 30; waited=$((waited+30))
+    if [ $waited -ge "$WORKER_WAIT_CAP" ]; then
+      log "worker still running after ${WORKER_WAIT_CAP}s — killing zombie worker before proceeding (V6 P2.1)"
       pkill -9 -x opencode; sleep 2
       break
     fi
@@ -224,19 +225,18 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
   log "$tag: ${kind} RED recorded in migration/debt.md — continuing (ship gate blocks fidelity/package debt)"
 }
 
-# Clear the ledger on a GREEN ship: the pipeline + quality gate passing means
-# every recorded sensor RED is resolved (fidelity/package RED would have
-# blocked the ship; a sonar RED would have failed the factory). Leaving stale
-# entries misreads as live debt (V5 run-4: a "T-007 milestone RED" line
-# persisted after a green story-gate ship).
+# Clear the ledger on a GREEN ship ONLY when no unresolved ## entries remain.
+# V6 P2.5 / V5 S4: wiping debt on a "green" ship that still listed milestone
+# REDs erased the audit trail (false cleanliness). Unresolved ## debt must
+# survive ship for human review; only an empty/header-only ledger is a no-op.
 clear_debt() {
   [ -f migration/debt.md ] || return 0
-  grep -q "^## " migration/debt.md 2>/dev/null || return 0  # nothing unresolved
-  printf '# Migration debt ledger\n\nAll prior sensor-RED entries resolved at the green ship (%s). New unresolved REDs are appended below by the supervisor.\n' \
-    "$(git rev-parse --short HEAD 2>/dev/null)" > migration/debt.md
-  git add migration/debt.md 2>/dev/null
-  git commit -q -m "debt: cleared — all entries resolved at green ship" 2>/dev/null || true
-  log "debt ledger cleared (green ship — recorded REDs resolved)"
+  if grep -q "^## " migration/debt.md 2>/dev/null; then
+    event "m5-ship" 0 debt_retained unresolved
+    log "debt ledger NOT cleared — unresolved ## entries remain (V6 P2.5); review migration/debt.md"
+    return 0
+  fi
+  log "debt ledger has no unresolved ## entries — nothing to clear"
 }
 
 # --- Post-commit verification (extracted so the batch path shares it) -----
@@ -371,9 +371,15 @@ run_stage() {
         log "$tag: $cls — platform fault, retrying in 2m (attempt NOT burned)"
         sleep 120; pf=$((pf+1));;
       orphan_worker)
-        log "$tag: session abandoned a running worker — waiting for worker, then verify-and-commit session"
+        # V6 P2.3: after residual kill/wait, ONLY verify-and-commit — do not
+        # re-dispatch a full M4/opencode session (normal rprompt still may).
+        log "$tag: session abandoned a running worker — waiting/killing residual, then verify-and-commit (no auto second opencode)"
         wait_for_worker
-        prompt="$rprompt"; pf=$((pf+1));;
+        case "$prefix" in
+          T*|S*) prompt="$(verify_commit_prompt "$prefix")";;
+          *)     prompt="$rprompt";;
+        esac
+        pf=$((pf+1));;
       timeout)
         log "$tag: session hit the ${ORCH_LAST_BUDGET:-$SESSION_TIMEOUT}s budget — attempt $attempt burned, partial work stays for the next attempt"
         attempt=$((attempt+1));;
@@ -555,13 +561,88 @@ PYEOF
 )
 task_class() { echo "$TASK_CLASSES" | grep -m1 "^$1:" | cut -d: -f2; }
 
+# V6 P2.4 — already-complete fast path: skip opencode when the task's
+# preserve token / removal target is already satisfied in the tree.
+try_already_complete() { # $1=task-id → 0 if auto-committed
+  local T="$1" body item leaf
+  committed "$T" && return 0
+  [ -f "${TASKS_FILE:-}" ] || return 1
+  body=$(python3 -c "
+import re,sys
+tid=sys.argv[1]; text=open(sys.argv[2],encoding='utf-8',errors='replace').read()
+blocks=re.split(r'^#{2,6} +(T[-A-Za-z0-9]*\d+):', text, flags=re.M)
+for i in range(1,len(blocks)-1,2):
+    if blocks[i]==tid:
+        print(blocks[i+1][:4000]); break
+" "$T" "$TASKS_FILE" 2>/dev/null) || return 1
+  [ -n "$body" ] || return 1
+  # Preserve tokens already present (env keys need k8s/ when deploy=true).
+  if [ -f migration.yaml ]; then
+    while read -r item; do
+      [ -n "$item" ] || continue
+      echo "$body" | grep -qF "$item" || continue
+      if [[ "$item" =~ ^[A-Z][A-Z0-9_]+$ ]] && [ "${STORY_DEPLOY:-false}" = "true" ]; then
+        grep -rq "$item" k8s/ 2>/dev/null || continue
+      else
+        grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null || continue
+      fi
+      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${item} already present (V6 P2.4)" 2>/dev/null \
+        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${item} already present (V6 P2.4)" >/dev/null 2>&1
+      event "$T" 0 already_complete "$item"
+      log "$T: ALREADY COMPLETE — ${item} present; skipped opencode"
+      return 0
+    done <<< "$(python3 -c "
+import re
+try: my=open('migration.yaml').read()
+except FileNotFoundError: raise SystemExit
+m=re.search(r'^preserve:(.*?)(^\S|\Z)', my, re.M|re.S)
+print('\n'.join(re.findall(r'^\s*-\s*([A-Za-z0-9_./:-]+)', m.group(1), re.M)) if m else '')
+" 2>/dev/null)"
+  fi
+  # Removal / absence goals: target class or path already gone.
+  if echo "$body" | grep -qiE 'already absent|remove |delete |must not exist|no longer'; then
+    leaf=$(echo "$body" | grep -oE '[A-Z][A-Za-z0-9]+(\.java)?' | head -1 | sed 's/\.java$//')
+    if [ -n "$leaf" ] && ! find src/main/java -name "${leaf}.java" 2>/dev/null | grep -q .; then
+      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${leaf} already absent (V6 P2.4)" 2>/dev/null \
+        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${leaf} already absent (V6 P2.4)" >/dev/null 2>&1
+      event "$T" 0 already_complete "absent:$leaf"
+      log "$T: ALREADY COMPLETE — ${leaf} absent; skipped opencode"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# V6 P2.3 — verify-and-commit: never auto-launch a second opencode unless the
+# tree is dirty AND the task sensor is RED.
+verify_commit_prompt() { # $1=task-id
+  local T="$1"
+  cat <<EOF
+Use the migration-harness skill and read EXECUTION.md in its directory. VERIFY-AND-COMMIT ONLY for task ${T} from ${TASKS_FILE}.
+A previous attempt may have left partial work or an orphaned worker.
+Rules (V6 P2.3):
+1. Inspect git status --porcelain first.
+2. Run .hermes/harness/sensors.sh task once.
+3. Do NOT launch opencode unless the working tree is dirty AND that sensor is RED.
+4. If sensors are GREEN: commit ONE commit whose message STARTS with '${T}:' (allow-empty ALREADY COMPLETE only when the task findings are already satisfied).
+5. Never background a worker; never use python3 heredocs or python3 -c multi-line scripts — use bundled harness scripts only.
+${RUN_CONTRACT}
+EOF
+}
+
 run_task() { # $1=task id — the ordinary single-task stage
   local T="$1"
+  if try_already_complete "$T"; then
+    scope_enforce "$T"
+    post_commit_verify "$T" "$T"
+    return 0
+  fi
   run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
+Worker discipline (V6 P2.1/P2.2): run opencode in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
-"Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY. A previous attempt may have left partial uncommitted work or a finished worker run - inspect git status first, verify or finish the work, run the sensors, and commit ONE commit whose message STARTS with '${T}:'.
+"Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode. Launch opencode only when the tree is incomplete or sensors are RED. Foreground worker only; bundled scripts only — no heredocs / python3 -c.
 ${RUN_CONTRACT}" \
     || log "$T: exhausted — recorded, moving on"
 }
@@ -763,18 +844,45 @@ ${RUN_CONTRACT}" \
       exit 0
     fi
     # E2: success = demo acceptance, not HTTP liveness — index page serves
-    # AND the products API returns a non-empty catalog.
+    # AND acceptance.path returns a non-empty **products array** (V6 R2/R4).
+    # Bare JSON objects must not count as 1 item (run-4 false green).
     ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
-    sleep 10
-    # Acceptance is app-defined: migration.yaml acceptance.path (stamped by
-    # the template); fall back to the monolith's products contract.
-    ACC_PATH=$(grep -A3 "^acceptance:" migration.yaml 2>/dev/null | grep "path:" | awk '{print $2}')
+    # Prefer rollout readiness over a fixed sleep (V6 P4.2).
+    DEP=$(OC get deploy -n "$NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -n "$DEP" ]; then
+      OC rollout status "deploy/$DEP" -n "$NS" --timeout=180s >> "$LOG" 2>&1 || true
+    else
+      sleep 10
+    fi
+    # Acceptance path: comment-tolerant parse (same class as plan-lint V6 R7).
+    ACC_PATH=$(python3 -c "
+import re,sys
+try: my=open('migration.yaml').read()
+except FileNotFoundError: sys.exit(0)
+m=re.search(r'^acceptance:\s*\n(?:[ \t]*#.*\n|[ \t]*\n)*[ \t]*path:\s*(\S+)', my, re.M)
+print(m.group(1) if m else '')
+" 2>/dev/null)
     ACC_PATH="${ACC_PATH:-/api/products}"
+    # R1: stamp on first ship attempt; later rewrites of acceptance.path are forbidden.
+    if [ -z "${ACC_PATH_STAMP:-}" ]; then
+      ACC_PATH_STAMP="$ACC_PATH"
+      export ACC_PATH_STAMP
+    fi
     CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}/" 2>/dev/null || echo 000)
-    ACC=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}${ACC_PATH}" 2>/dev/null || echo 000)
-    PRODUCTS=$(curl -sk "https://${ROUTE}${ACC_PATH}" 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 1)" 2>/dev/null || echo 0)
-    log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} items)"
-    if [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
+    ACC=$(curl -sk -o /tmp/acceptance-body.json -w "%{http_code}" "https://${ROUTE}${ACC_PATH}" 2>/dev/null || echo 000)
+    PRODUCTS=$(python3 .hermes/harness/acceptance-products.py < /tmp/acceptance-body.json 2>/dev/null || echo 0)
+    log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} catalog products)"
+    if [ "$ACC_PATH" != "$ACC_PATH_STAMP" ]; then
+      log "M5 ship: ACCEPTANCE PATH CHANGED ('$ACC_PATH_STAMP' -> '$ACC_PATH') — V6 R1 forbidden goalpost move"
+      {
+        echo "Acceptance failure: migration.yaml acceptance.path was rewritten during ship/correction."
+        echo "Stamped path: $ACC_PATH_STAMP"
+        echo "Current path: $ACC_PATH"
+        echo "Restore acceptance.path to the stamped value. Do not edit migration.yaml to match a weaker endpoint."
+        echo "See SHIPPING.md acceptance-correction (V6 R1)."
+      } > /tmp/deploy-failure.txt
+      FAILED_TASK="acceptance-deploy"
+    elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
       event "m5-ship" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
       clear_debt
       write_run_report "success: shipped, route 200, ${PRODUCTS} products"
@@ -783,15 +891,17 @@ ${RUN_CONTRACT}" \
       echo "success route=${ROUTE} http=${CODE} products=${PRODUCTS}" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: migration shipped and accepted"
       exit 0
+    else
+      log "M5 ship: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
+      {
+        echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
+        echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
+        echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} catalog products (need 200 and a non-empty JSON array of products, or {\"products\":[...]} — not a bare status object)."
+        echo "Mandatory correction checklist (V6): keep acceptance.path unchanged; catalog-backed body; k8s CATALOG_ENDPOINT env; narrow ExceptionMapper away from Exception; no fail-open catch→200."
+        echo "See SHIPPING.md acceptance-correction for the contract and decided fixes."
+      } > /tmp/deploy-failure.txt
+      FAILED_TASK="acceptance-deploy"
     fi
-    log "M5 ship: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
-    {
-      echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
-      echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
-      echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} items (need 200 and non-empty — the acceptance endpoint from migration.yaml)."
-      echo "See SHIPPING.md acceptance-correction for the contract and decided fixes."
-    } > /tmp/deploy-failure.txt
-    FAILED_TASK="acceptance-deploy"
   else
     FAILED_TASK=$(OC get taskrun -n "$NS" -l tekton.dev/pipelineRun="$PR_NAME"       -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1)
     log "M5 ship: failed pipeline task: ${FAILED_TASK:-unknown}"

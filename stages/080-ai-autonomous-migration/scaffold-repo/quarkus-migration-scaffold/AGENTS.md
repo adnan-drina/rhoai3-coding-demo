@@ -60,10 +60,14 @@ When the migration runs under the Hermes harness
 
 ## Project identity (modernized)
 
-- Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM),
-  Java 21, Maven (no wrapper — use `mvn`).
+- Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM
+  **3.27.3.SP1**), Java 21, Maven (no wrapper — use `mvn`).
 - Package root: `com.demo`.
-- REST resources under `/api/`; JSON via Jackson.
+- **Native Quarkus only** — never add `quarkus-spring-*` compatibility
+  extensions to the destination (MTA may suggest them; reject).
+- Default CDI scope for services and repositories: `@ApplicationScoped`
+  (not `@Singleton` — not mockable).
+- REST resources under `/api/`; JSON via Jackson (`quarkus-rest-jackson`).
 - Health endpoints come from `quarkus-smallrye-health` (`/q/health`).
 
 ## Migration workflow

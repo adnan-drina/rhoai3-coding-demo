@@ -152,9 +152,34 @@ never end your turn while a worker is running: a headless session ends
 the moment you stop calling tools — "I will wait for it to complete"
 without a blocking tool call abandons the worker mid-task. If the
 terminal returns while the worker is still running, poll in a loop
-(`sleep 60` then check for the `opencode` process) until it exits before
+(`sleep 30` then check for the `opencode` process) until it exits before
 doing anything else. Before dispatching, verify no worker is already
-running.
+running. The supervisor kills residual `opencode` processes after
+`WORKER_WAIT_CAP` (default 900s) and then runs verify-and-commit — do not
+rely on a 60-minute orphan wait.
+
+### Denied command shapes (fast-fail — never burn ~5 min)
+
+The headless command policy denies these shapes. Prefer bundled scripts;
+if you must run a one-liner, keep it a single short argv (no heredoc):
+
+| DENIED (will hang then block) | USE INSTEAD |
+|------------------------------|-------------|
+| `python3 <<'EOF'` / `python3 - <<EOF` heredocs | `python3 .hermes/harness/<script>.py …` or `scripts/summarize_worker.py` |
+| Multi-line `python3 -c '…'` | Bundled harness script with file args |
+| Scratch `mkdir /tmp/rewrite-staging` + OpenRewrite | `harvest-from-staging.sh` (M1 already ran recipes) |
+| Background `opencode run … &` | Foreground `opencode run …` with ≥1800s timeout |
+
+See `.hermes/harness/denied-shapes.md` for the platform allowlist contract.
+
+### Verify-and-commit (orphan / retry) — no automatic second worker
+
+When the supervisor dispatches VERIFY-AND-COMMIT (orphan worker recovery):
+
+1. Inspect `git status --porcelain`.
+2. Run `.hermes/harness/sensors.sh task` once.
+3. **Do NOT launch `opencode`** unless the tree is dirty **and** that sensor is RED.
+4. If GREEN: commit with the required `T-0XX:` prefix (allow-empty `ALREADY COMPLETE` only when findings are already satisfied).
 
 ### Packet size — one concern, bounded scope
 

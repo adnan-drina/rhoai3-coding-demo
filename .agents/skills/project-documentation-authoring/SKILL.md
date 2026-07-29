@@ -35,17 +35,21 @@ Use this skill to keep repo documentation clear, demonstrable, and aligned with 
    change is required.
 4. For README concept introductions, consult official Red Hat documentation and
    product pages for the relevant product versions to define the concept and enterprise value.
-5. For the **root README** structure, narrative, and section ordering, read
+5. For **narrative, messaging, and article discovery** when writing Why/What
+   prose, read the handoff contract at
+   `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/wiki/narratives/Agent Handoff for Demo README Authoring.md`.
+   It defines the authority split (official docs for product truth, the wiki for messaging and claims, the demo repo for implementation scope) and points to the vault layout for sourcing citations, topic definitions, and dossiers.
+6. For the **root README** structure, narrative, and section ordering, read
    `references/root-readme-standard.md`. The root README is the project home page: story-first, progressive sections, audience guidance, and FAQ — not a product datasheet.
-6. For **stage README** structure and presentation style, read
+7. For **stage README** structure and presentation style, read
    `references/readme-standard.md`.
-7. For implementation detail boundaries in READMEs, read
+8. For implementation detail boundaries in READMEs, read
    `references/implementation-detail-boundary.md`.
-8. For demo visual evidence (screenshots, GIFs, `## Demo` section), read
+9. For demo visual evidence (screenshots, GIFs, `## Demo` section), read
    the "Demo Visual Evidence" section in `references/readme-standard.md`.
-9. For continuous documentation and troubleshooting knowledge capture, read
-   `references/knowledge-governance.md`.
-10. After substantive README edits, verify alignment using the
+10. For continuous documentation and troubleshooting knowledge capture, read
+    `references/knowledge-governance.md`.
+11. After substantive README edits, verify alignment using the
     `update-demo-docs` skill's consistency checks.
 
 ## Documentation Principles
@@ -96,3 +100,6 @@ Use this skill to keep repo documentation clear, demonstrable, and aligned with 
   belongs in a README versus ops docs
 - `references/knowledge-governance.md` — routing project knowledge to the
   correct documentation home
+- `/Users/adrina/Sandbox/rh-brain/Red Hat Brain/wiki/narratives/Agent Handoff for Demo README Authoring.md`
+  — entry contract for using the Red Hat Brain wiki vault when writing README
+  prose (authority split, vault layout, cite format, scope boundaries)

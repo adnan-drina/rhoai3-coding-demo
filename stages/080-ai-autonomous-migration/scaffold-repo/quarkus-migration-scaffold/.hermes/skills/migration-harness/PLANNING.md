@@ -99,6 +99,9 @@ OPEN DESIGN / infer shapes.
 Ordering and test placement (MigIQ-derived, validated against cart
 run #2's failures):
 
+- **Conversion order within a story:** extensions and BOM first, then
+  models, then resources, then config keys, then tests
+  (`extensions → models → resources → config → tests`).
 - **Conversion tasks follow `migration/dependency-order.md`** (M1
   emits it): dependencies before dependents — models and utilities
   first, endpoints last — so the tree compiles at every commit. Cart
