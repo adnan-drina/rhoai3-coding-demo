@@ -798,6 +798,18 @@ run_case() {
 }
 check "plan-lint preserve slice does not sweep forbidden: into preserve (V5)" 0 "PLAN OK"
 
+# 74. wiring check must NOT false-RED on a @RegisterRestClient interface that
+#     has NO injector yet (interface-only story) — the pipefail empty-grep bug
+#     that started the V5 run-4 S03 cascade (grep finds no injection point →
+#     `| while … done || exit 1` exits 1 silently → empty-log RED).
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/client
+  printf 'package com.demo.client;\nimport org.eclipse.microprofile.rest.client.inject.RegisterRestClient;\n@RegisterRestClient\npublic interface CatalogClient {\n}\n' > src/main/java/com/demo/client/CatalogClient.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring passes a @RegisterRestClient interface with no injector (V5 pipefail false-RED)" 0 "STATIC CHECKS GREEN"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]
