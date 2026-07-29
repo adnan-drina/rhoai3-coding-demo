@@ -258,17 +258,15 @@ Each task runs in a fresh orchestrator session. Hermes writes a **task packet** 
 > **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
 
 > **Why these models:** the two harness roles have different failure
-> modes, so the platform seats them separately and selected each seat in
-> a full-migration A/B. The **orchestrator** (MiniMax M2, 196K context)
-> is selected for what the loop demands of a supervisor: lean sessions,
-> reliable long-horizon tool calling, and composure on large work
-> orders. The **worker** (`qwen3-6-27b`, served on the cluster GPU
-> behind the governed MaaS gateway) is the strongest evaluated coding
-> seat (SWE-bench 77.2, AA Coding 53.7). Every code edit runs on the
-> governed local model, metered on the developer key. The runbook also
-> documents an all-local routing option (the 27B in both seats behind
-> the supervisor). Selection history and serving details live in
-> `docs/OPERATIONS.md`.
+> modes **and different quotas**, so the platform seats them separately.
+> The **orchestrator** (MiniMax M2, 196K context) is selected for lean
+> long-horizon supervision — and is **rate-limited**, so it owns M1–M3,
+> sensor-fix judgment, M5 evaluate, and escalation only. The **worker**
+> (`qwen3-6-27b` on the cluster GPU behind MaaS) has **unlimited** tokens
+> here and owns all M4 coding (`rewrite` + `infer`) via OpenCode first
+> (`WORKER_FIRST`). Mechanical harvest is not a MiniMax job. Selection
+> history lives in `docs/OPERATIONS.md`; seat rules in
+> `.hermes/skills/migration-harness/REFERENCE.md`.
 
 ---
 
