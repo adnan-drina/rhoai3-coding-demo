@@ -77,4 +77,6 @@ landed), [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md),
 2. Before the next partial rerun, promote any row that became ship-blocking into P0 work.
 3. Do **not** weaken sensors to clear these — fix feedforward or probes.
 
-**V7 live note (2026-07-29 ~20:24 UTC):** S01 T-006 Continu(e) in flight after attempt-1 no-commit; packages under `com.demo.*` (good); no `com.demo.coolstore`. Driving continues; this bank is for post-story polish.
+**V7 live notes:**
+- ~20:24 UTC: S01 T-006 Continu(e) after attempt-1 no-commit.
+- ~20:38 UTC: T-006 **attempts exhausted** (checkpoint `ac756e7`); T-007 committed then **milestone RED** → sensor-fix (test compile: `ShoppingCart.getShoppingCartId()` missing). `AcceptanceEndpoint` returns plain `"OK"` (not products[] / not status-map) — extend ceremonial reject beyond status-Map markers. `debt.md` empty while supervisor logged T-006 exhausted; `run-log.md` marks T-006 COMPLETE — **ledger honesty** gap (O-AC / debt sync).
