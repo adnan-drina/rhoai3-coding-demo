@@ -166,7 +166,14 @@ def main():
     try:
         my = open("migration.yaml").read()
         import re as _re
-        pres = _re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", my[my.index("preserve:"):], _re.M) if "preserve:" in my else []
+        # Bound the slice to the preserve: section — stop at the next
+        # top-level key (V5 run-4: the old `my[index('preserve:'):]` read to
+        # EOF, sweeping in the forbidden: list below, so the tripwire
+        # `getMockProducts` was mis-read as a preserve item and failed every
+        # plan that didn't happen to name it — same over-read class as the
+        # forbidden: fix above).
+        _psec = _re.search(r"^preserve:(.*?)(^\S|\Z)", my, _re.M | _re.S)
+        pres = _re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", _psec.group(1), _re.M) if _psec else []
         for item in pres:
             if item not in text:
                 lint("preserve", f"preserved integration '{item}' mapped to no task")

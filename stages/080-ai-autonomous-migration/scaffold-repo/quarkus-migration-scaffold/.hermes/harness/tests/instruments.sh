@@ -787,6 +787,17 @@ run_case() {
 }
 check "roadmap-lint does NOT flag a faithful brief quoting real legacy (V5 M2)" 0 "no-fabrication-clean"
 
+# 73. plan-lint preserve slice stops at the next top-level key — a forbidden:
+#     item below preserve: must NOT be read as a preserve item (V5 run-4:
+#     getMockProducts over-read, failing every plan not naming it; bounced S03 M3).
+run_case() {
+  mkfix
+  { plan_header; printf '\nT-002 also preserves CATALOG_ENDPOINT via the REST client url.\n'; } > tasks.md
+  printf 'preserve:\n  - CATALOG_ENDPOINT\nforbidden:\n  - getMockProducts\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint preserve slice does not sweep forbidden: into preserve (V5)" 0 "PLAN OK"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]
