@@ -272,9 +272,20 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         log "$tag: style-autofix resolved the red deterministically — no model session needed"
         return 0
       fi
-      git add -A && git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
-      event "$tag" 0 style_autofix partial
-      log "$tag: style-autofix fixed some violations (committed, not reverted); remaining go to a sfix session"
+      # KEEP the partial autofix only if the tree still COMPILES. An
+      # OpenRewrite recipe can misfire (V5 run-4: RemoveUnusedImports stripped
+      # a still-used HashSet import from an out-of-scope service) — committing
+      # that broke the build. Never commit a non-compiling autofix: if it
+      # broke compilation, revert it and let the sfix work from the original.
+      if grep -qE "COMPILATION ERROR|cannot find symbol" /tmp/sensor-milestone.log /tmp/sensor-task.log 2>/dev/null; then
+        git checkout -q -- . 2>/dev/null
+        event "$tag" 0 style_autofix reverted_broke_build
+        log "$tag: style-autofix broke compilation — reverted (never commit a non-compiling tree); sfix works from the original"
+      else
+        git add -A && git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
+        event "$tag" 0 style_autofix partial
+        log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
+      fi
     fi
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
     # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
