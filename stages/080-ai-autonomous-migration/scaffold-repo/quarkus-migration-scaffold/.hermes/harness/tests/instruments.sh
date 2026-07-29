@@ -1068,6 +1068,79 @@ run_case() {
 }
 check "supervisor worker-first; no MiniMax apply-directly rewrite batch (V7)" 0 "routing-ok"
 
+# 87-91. V8 polish bank (G-OK, G-FAKE, S-FND, S-SOFT, L-H1)
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.GET;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart/acceptance-check")\npublic class AcceptanceEndpoint {\n  @GET\n  public String check() { return "OK"; }\n}\n' \
+    > src/main/java/com/demo/rest/AcceptanceEndpoint.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject ceremonial String/OK acceptance (G-OK)" 1 "acceptance"
+
+run_case() {
+  out=$(printf '%s\n' '[{"name":"Car"},{"name":"Bike"}]' | python3 "$HARNESS_DIR/acceptance-products.py")
+  echo "count=$out"
+}
+check "acceptance-products rejects products without id/itemId (G-FAKE)" 0 "count=0"
+
+run_case() {
+  mkfix
+  mkdir -p briefs
+  # Minimal briefs with a legacy code fence so LINT:briefs doesn't dominate
+  for s in S01-platform S02-rest; do
+    cat > "briefs/${s}.md" <<'BEOF'
+# brief
+## In scope
+```java
+public void realMethod() { }
+```
+BEOF
+  done
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Platform
+- scope: pom.xml
+- findings:
+- depends: -
+- deploy: false
+- done: build passes
+- rationale: foundation
+## S02: REST
+- scope: src/main/java/com/demo/rest/CartEndpoint.java
+- findings: jakarta-jaxrs-to-quarkus-00010
+- depends: S01
+- deploy: true
+- done: API live
+- rationale: surface
+EOF
+  printf '# inv\n- rewrite: 1 — jakarta-jaxrs-to-quarkus-00010\n' > inv.md
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects empty findings field (S-FND)" 1 "findings field is empty"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Prepare for quality gate
+**Class**: rewrite
+- Prepare for the sonar gate; touch pom.xml if needed.
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects soft prepare-for tasks (S-SOFT)" 1 "S-SOFT"
+
+run_case() {
+  grep -q 'outer-loop-heartbeat' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'OUTER_LOOP_PLAIN' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'waiting on MiniMax rate limit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'try_mechan_commit' "$HARNESS_DIR/supervisor.sh" \
+    && echo polish-ok
+}
+check "outer-loop/supervisor carry V8 polish hooks (L-H1/L-P1/L-R1/O-T6)" 0 "polish-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

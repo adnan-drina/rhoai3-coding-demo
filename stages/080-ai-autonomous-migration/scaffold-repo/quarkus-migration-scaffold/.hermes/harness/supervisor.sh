@@ -188,10 +188,12 @@ scope_enforce() { # $1=commit-prefix
     if [ -n "$lviol" ]; then
       event "scope" 0 later_story_class "${lviol# }"
       log "scope sensor: reverted src/main class(es) a LATER story owns:${lviol}"
+      # S-LC: demo-visible — later-story fabrication must not hide in supervisor.log only
+      outer_log "         SCOPE REVERT (S-LC): removed later-story class(es) created early:${lviol} — keep them in migration/staging until their story"
       {
         echo "The story-scope sensor reverted src/main class(es) owned by a LATER story:${lviol}"
         echo "These REDESIGN classes are converted in a later story — do NOT create them now."
-        echo "A characterization test needing them uses a Mockito double or a test-local fake in src/test — never the real src/main class."
+        echo "Prefer migration/staging until the owning story; characterization tests use Mockito / test-local fakes — never the real src/main class."
       } > /tmp/scope-violation.txt
       git rm -q $lviol 2>/dev/null
       git add -A && git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })" 2>/dev/null
@@ -387,6 +389,8 @@ run_stage() {
     case "$cls" in
       quota)
         log "$tag: quota throttle — backing off 15m (attempt NOT burned)"
+        # L-R1: surface MiniMax waits in the demo outer-loop narrative
+        outer_log "         … waiting on MiniMax rate limit (900s backoff; attempt NOT burned) — tag=${tag}"
         sleep 900; pf=$((pf+1));;
       stream_stall|ctx_overflow)
         log "$tag: $cls — platform fault, retrying in 2m (attempt NOT burned)"
@@ -666,7 +670,7 @@ Rules (V6 P2.3):
 1. Inspect git status --porcelain first.
 2. Run .hermes/harness/sensors.sh task once.
 3. Do NOT launch opencode unless the working tree is dirty AND that sensor is RED.
-4. If sensors are GREEN: commit ONE commit whose message STARTS with '${T}:' (allow-empty ALREADY COMPLETE only when the task findings are already satisfied).
+4. If sensors are GREEN: commit ONE commit whose message STARTS with '${T}:' describing the work. Do NOT invent allow-empty 'ALREADY COMPLETE' commits — that path is supervisor-only via already-complete.py (O-AC).
 5. Never background a worker; never use python3 heredocs or python3 -c multi-line scripts — use bundled harness scripts only.
 ${RUN_CONTRACT}
 EOF
@@ -706,10 +710,31 @@ run_worker_task() { # $1=task-id → 0 if committed
   return 1
 }
 
+# O-T6: dirty tree already satisfies the task sensor — commit without a model.
+try_mechan_commit() { # $1=task-id → 0 if committed
+  local T="$1"
+  committed "$T" && return 0
+  [ -n "$(git status --porcelain 2>/dev/null)" ] || return 1
+  if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+    git add -A
+    git commit -q -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" 2>/dev/null \
+      || git commit -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" >/dev/null 2>&1
+    committed "$T" && { log "$T: mechanical verify-and-commit (dirty+GREEN; O-T6)"; return 0; }
+  fi
+  return 1
+}
+
 run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local T="$1"
   if try_already_complete "$T"; then
     log_task SKIP "$T" "already complete (fast path); skipped worker"
+    scope_enforce "$T"
+    post_commit_verify "$T" "$T"
+    return 0
+  fi
+  # O-T6: untracked/dirty target tree already green — don't burn a model seat
+  if try_mechan_commit "$T"; then
+    log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     return 0

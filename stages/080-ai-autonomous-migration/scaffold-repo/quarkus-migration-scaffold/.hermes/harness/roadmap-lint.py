@@ -105,8 +105,12 @@ def main():
     bodies = {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
 
     def field(sid, name):
-        m = re.search(rf"^-\s*{name}:\s*(.+)$", bodies.get(sid, ""), re.M)
-        return m.group(1).strip() if m else None
+        # Same-line value only — do NOT let \s after ':' eat the newline
+        # (that glued "- findings:\\n- depends:" into findings="depends: -").
+        m = re.search(rf"^-\s*{name}:[ \t]*(.*)$", bodies.get(sid, ""), re.M)
+        if not m:
+            return None
+        return m.group(1).strip()
 
     owned = {}
     deploy_flags = []
@@ -117,7 +121,26 @@ def main():
         scope = field(sid, "scope") or ""
         if not re.search(r"(src/|\.java|\.properties|pom\.xml|k8s/)", scope):
             lint("substance", f"{sid}: scope names no code/test path — ceremonial story")
-        for fid in re.split(r"[,\s]+", field(sid, "findings") or ""):
+        # S-FND: blank findings are a footgun (M2 bounce). "-" is allowed only
+        # for pure HARVEST/characterization stories (models/tests, no redesign).
+        findings_raw = (field(sid, "findings") or "").strip()
+        if not findings_raw:
+            lint("stories", f"{sid}: findings field is empty — list rule ids or '-' for a pure HARVEST story (S-FND)")
+        elif findings_raw == "-":
+            rationale = (field(sid, "rationale") or "") + " " + (field(sid, "done") or "")
+            scope = field(sid, "scope") or ""
+            harvestish = bool(
+                re.search(r"HARVEST|characterization|model layer|models?", rationale + " " + scope, re.I)
+            )
+            redesignish = bool(
+                re.search(r"service/|rest/|Endpoint|Service\.java|pom\.xml", scope, re.I)
+            )
+            if redesignish and not harvestish:
+                lint(
+                    "stories",
+                    f"{sid}: findings: '-' is only for HARVEST/characterization stories — own the redesign findings or split the story (S-FND)",
+                )
+        for fid in re.split(r"[,\s]+", findings_raw):
             if not fid or fid == "-":
                 continue
             if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+", fid):

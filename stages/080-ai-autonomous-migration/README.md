@@ -168,7 +168,7 @@ Two equal demo tracks share the same M-process and gates:
 | Track | Who drives | How you start | M2 behavior |
 |---|---|---|---|
 | **A — Interactive / story walkthrough** | You run Hermes sessions stage by stage (or one story at a time via `supervisor.sh`) | Steps 5–7 below | You can skip M2 for a whole-app single-story pass, or run it normally for the incremental path |
-| **B — Autonomous outer loop** | `outer-loop.sh` owns M1→M2 and every story's M3→M5 | `nohup .hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &` then `tail -f /tmp/outer-loop.log` | Always runs M2 (incremental by design) |
+| **B — Autonomous outer loop** | `outer-loop.sh` owns M1→M2 and every story's M3→M5 | `nohup .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &` then `tail -f /tmp/outer-loop.log` | Always runs M2 (incremental by design) |
 
 ### The harness implementation: Hermes Agent
 
@@ -202,8 +202,9 @@ One command owns M1→M2 and every story's M3→M5, including brief refresh afte
 
 ```bash
 cd /projects/modernized
-nohup .hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &
+nohup .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
 tail -f /tmp/outer-loop.log
+# Single progress sink: /tmp/outer-loop.log (L-N1). Per-story detail: /tmp/supervisor.log.
 ```
 
 If a story fails, the loop stops before dependents. Fix or waive, then relaunch — `migration/story-state.csv` skips stories already marked `complete`.

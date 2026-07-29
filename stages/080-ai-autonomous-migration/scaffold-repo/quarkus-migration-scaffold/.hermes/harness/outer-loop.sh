@@ -11,8 +11,9 @@
 # migration/story-state.csv (committed), so a relaunch resumes cleanly.
 #
 # Run inside the migration workspace:
-#   nohup .hermes/harness/outer-loop.sh > /tmp/outer-loop-nohup.log 2>&1 &
-# Progress:  tail -f /tmp/outer-loop.log  (and /tmp/supervisor.log per story)
+#   nohup .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
+# Progress (single sink):  tail -f /tmp/outer-loop.log
+#   (/tmp/outer-loop-nohup.log is unused — L-N1; supervisor: /tmp/supervisor.log)
 # ---------------------------------------------------------------------------
 set -u
 export PATH=$HOME/.opencode/bin:$HOME/.local/bin:$PATH
@@ -20,10 +21,13 @@ cd /projects/modernized
 
 # Same two-writer protection as the supervisor: refuse to start if either
 # an outer loop or a bare supervisor is already running.
-if pgrep -f "harness/outer-loo[p]" | grep -v "^$$\$" | grep -qv "^$PPID\$"; then
+# L-H1: ignore heartbeat helper processes (cmd contains outer-loop-heartbeat).
+if pgrep -af "harness/outer-loo[p]\.sh" 2>/dev/null \
+    | grep -v "outer-loop-heartbeat" \
+    | awk -v self="$$" -v pp="$PPID" '$1 != self && $1 != pp { found=1 } END { exit found?0:1 }'; then
   echo "FATAL: another outer loop is already running — refusing to start" >&2; exit 1
 fi
-if pgrep -f "harness/superviso[r]" >/dev/null 2>&1; then
+if pgrep -f "harness/superviso[r]\.sh" >/dev/null 2>&1; then
   echo "FATAL: a supervisor is already running — refusing to start" >&2; exit 1
 fi
 
@@ -36,6 +40,8 @@ LOG=/tmp/outer-loop.log
 STATE=migration/story-state.csv
 HARNESS=.hermes/harness
 SKILLDIR=.hermes/skills/migration-harness
+# L-P1: OUTER_LOOP_PLAIN=1 for terminals that mangle unicode markers
+PLAIN="${OUTER_LOOP_PLAIN:-0}"
 
 # Demo-facing model labels (codes alone are not enough — V6 logging notes).
 orch_label() {
@@ -51,18 +57,22 @@ worker_label() {
   esac
 }
 
+_sym() { # $1=pretty $2=plain
+  if [ "$PLAIN" = "1" ]; then echo "$2"; else echo "$1"; fi
+}
+
 log() { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
 phase_start() { # $1=code+title  [$2=extra]
-  log "▶ START  $1"
+  log "$(_sym '▶' '>') START  $1"
   [ -n "${2:-}" ] && log "         $2"
 }
-phase_ok() { log "✓ END    $1"; }
-phase_fail() { log "✗ FAIL   $1"; }
+phase_ok() { log "$(_sym '✓' 'OK') END    $1"; }
+phase_fail() { log "$(_sym '✗' 'X') FAIL   $1"; }
 phase_gate() { # $1=name $2=RED|GREEN $3=detail
-  if [ "$2" = "GREEN" ]; then log "✓ GATE   $1 — GREEN${3:+ — $3}"
-  else log "✗ GATE   $1 — RED${3:+ — $3}"; fi
+  if [ "$2" = "GREEN" ]; then log "$(_sym '✓' 'OK') GATE   $1 — GREEN${3:+ — $3}"
+  else log "$(_sym '✗' 'X') GATE   $1 — RED${3:+ — $3}"; fi
 }
-phase_retry() { log "↻ RETRY  $1"; }
+phase_retry() { log "$(_sym '↻' 'R') RETRY  $1"; }
 
 # Bounded session runner for the M1/M2/M3 authoring gates. Simpler than
 # the supervisor's classifier on purpose: these are single-artifact
@@ -71,23 +81,39 @@ phase_retry() { log "↻ RETRY  $1"; }
 # reach execution ungated).
 # Logs Actor + sparse heartbeats; session rc ≠ gate success (V6 notes).
 mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
-  local tag="$1" prompt="$2" title="${3:-$1}" t0 now elapsed rc hb_pid
+  local tag="$1" prompt="$2" title="${3:-$1}" t0 now elapsed rc hb_pid slog
   t0=$(date +%s)
-  log "         Actor: $(orch_label) — session ${tag} → /tmp/outer-${tag}.log"
-  (
-    while true; do
-      sleep "$HEARTBEAT_SECS"
-      now=$(date +%s); elapsed=$((now - t0))
-      log "…        ${title} still working on $(orch_label) (${elapsed}s) — details /tmp/outer-${tag}.log"
-    done
-  ) &
+  slog="/tmp/outer-${tag}.log"
+  log "         Actor: $(orch_label) — session ${tag} → ${slog}"
+  # L-H1: distinct process name so single-instance guard ignores heartbeats
+  cat > /tmp/outer-loop-heartbeat.sh <<'HBEOF'
+#!/usr/bin/env bash
+# outer-loop-heartbeat — not the outer loop itself
+SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"; LOG="${5:-/tmp/outer-loop.log}"
+while true; do
+  sleep "$SECS"
+  now=$(date +%s); elapsed=$((now - T0))
+  # L-R1: surface MiniMax rate limits while the session is still open
+  if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
+    echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s) — details ${SLOG}" >> "$LOG"
+  else
+    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on orchestrator (${elapsed}s) — details ${SLOG}" >> "$LOG"
+  fi
+done
+HBEOF
+  chmod +x /tmp/outer-loop-heartbeat.sh
+  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" &
   hb_pid=$!
   timeout "$SESSION_TIMEOUT" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
-    < /dev/null > "/tmp/outer-${tag}.log" 2>&1
+    < /dev/null > "$slog" 2>&1
   rc=$?
   kill "$hb_pid" 2>/dev/null || true
   wait "$hb_pid" 2>/dev/null || true
   now=$(date +%s)
+  # L-R1: one summary line if the finished session hit quota
+  if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$slog" 2>/dev/null; then
+    log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — supervisor backs off 15m on orch 429s"
+  fi
   log "·        ${title} session finished ($((now - t0))s, hermes_rc=${rc}) — checking gate next (session≠gate)"
   return $rc
 }
@@ -106,6 +132,9 @@ if [ -f migration/mta-findings.json ]; then
 else
   "$HARNESS/analyze.sh" > /tmp/outer-m1-analyze.log 2>&1 \
     || fail_run "M1 ANALYZE — ground truth unavailable (see /tmp/outer-m1-analyze.log)"
+  # L-D1: enumerate key M1 deliverables
+  log "         • migration/mta-findings.json (+ findings-inventory.md, dependency-order.md, recipe-log.md)"
+  [ -d migration/staging ] && log "         • migration/staging/ ($(find migration/staging -type f 2>/dev/null | wc -l | tr -d ' ') files)"
   phase_ok "M1 ANALYZE — ground truth ready (details /tmp/outer-m1-analyze.log; HEAD $(git rev-parse --short HEAD 2>/dev/null || echo ?))"
 fi
 
@@ -115,12 +144,13 @@ else
   for ATTEMPT in 1 2; do
     phase_start "M1 PROFILE — architecture profile (class roles & target contract) [attempt ${ATTEMPT}/2]"
     mchat "m1-profile-a${ATTEMPT}" \
-"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md). Execute the M1 profile step ONLY: read the legacy code under /projects/legacy and write migration/architecture-profile.md per ANALYSIS.md. A deterministic rubric gates it — verify yourself with: python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy (must exit 0 — it cross-checks that every CDI/JAX-RS class is classified REDESIGN in section 7) BEFORE committing. Finish with ONE commit whose message STARTS with 'M1 profile:'. DO NOT PUSH." \
+"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md). Execute the M1 profile step ONLY: read the legacy code under /projects/legacy and write migration/architecture-profile.md per ANALYSIS.md. A deterministic rubric gates it — verify yourself with: python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy (must exit 0 — it cross-checks that every CDI/JAX-RS class is classified REDESIGN in section 7) BEFORE committing. Finish with ONE commit whose message STARTS with 'M1 profile:'. DO NOT PUSH. Keep the session packet tight — cite legacy paths; do not paste whole files into the profile (O-CTX)." \
       "M1 PROFILE"
     if [ -f migration/architecture-profile.md ] && python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md /projects/legacy > /tmp/profile-rubric.txt 2>&1; then
       # Mechanical closure: commit if the session forgot.
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M1 profile: outer-loop mechanical commit of rubric-green profile" 2>/dev/null
       phase_gate "M1 PROFILE rubric" GREEN "architecture-profile.md; commit $(git rev-parse --short HEAD)"
+      log "         • migration/architecture-profile.md (§7 class roles + target contract)"
       phase_ok "M1 PROFILE — architecture-profile.md rubric-green; commit $(git rev-parse --short HEAD)"
       break
     fi
@@ -147,6 +177,7 @@ else
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "commit $(git rev-parse --short HEAD)"
       # Name concrete briefs for the demo log.
+      log "         • migration/roadmap.md ($(grep -cE '^## S[0-9]' migration/roadmap.md 2>/dev/null || echo 0) stories)"
       for b in migration/briefs/S*.md; do
         [ -f "$b" ] && log "         • $(basename "$b" .md) brief generated"
       done

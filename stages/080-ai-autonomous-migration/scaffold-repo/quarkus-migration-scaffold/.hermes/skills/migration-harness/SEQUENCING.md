@@ -45,6 +45,17 @@ leaves the repository buildable, sensor-green, and closer to done.
 6. **Every story changes code or tests.** No ceremonial stories
    (validation-only, commit-only, report-only) — the harness gates do
    the validating.
+7. **Package rename is per-path harvest, not one mega-task (S-RN).**
+   Do **not** put “rename the entire package tree” in S01 as a single
+   rewrite/infer. M1 already wrote `migration/staging/`; each HARVEST
+   file becomes its own rewrite task that runs
+   `harvest-from-staging.sh <rel-path>` (or an already-complete skip
+   when the target file exists). Platform/POM stories stay POM-only —
+   leave model/service/REST classes in staging until their owning story
+   (S-LC).
+8. **`findings: -` is HARVEST-only (S-FND).** Blank findings are
+   rejected. Use `-` only for pure model/characterization stories;
+   redesign/POM/REST stories must list rule ids.
 
 ## One quality model — build redesign classes to their target
 

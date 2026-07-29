@@ -142,6 +142,14 @@ For non-trivial tasks, follow this workflow:
 7. If cluster validation is required but unavailable, state exactly what could not be validated.
 8. Produce a PR summary with risks, rollback notes, and validation evidence.
 
+### Before each new migration run (Stage 080)
+
+Implement **all** open polish / banked items in
+`docs/V7-FUTURE-IMPROVEMENTS.md` (and successor bank docs) **before**
+starting or restarting Track B — so the new run exercises them. Prefer
+abort/restart over shipping a compromised run; do not leave polish for
+"after the demo."
+
 ## Coding and manifest style
 
 General rules:

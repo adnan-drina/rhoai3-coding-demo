@@ -169,9 +169,21 @@ def main():
     # 'coverage' tasks with no code path): every task body must name a
     # concrete artifact it changes.
     substance = re.compile(r"src/(?:main|test)/|pom\.xml|k8s/|application\.properties|migration\.yaml|migration/staging/")
-    for _, tid, _ in heads:
-        if not substance.search(bodies.get(tid, "")):
+    soft = re.compile(
+        r"\b(prepare for|preparation for|verification[- ]only|verify only|final commit|"
+        r"run validation|validate (?:the )?gate|note for later|remember (?:the )?path)\b",
+        re.I,
+    )
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        if not substance.search(body):
             lint("substance", f"{tid}: task body names no code/config path it changes — ceremonial task (waivers belong in spec prose, not tasks)")
+        # S-SOFT: soft prepare / verification-only tasks even when they cite a path
+        if soft.search(title) or soft.search(body.split("\n", 3)[0] if body else ""):
+            lint(
+                "substance",
+                f"{tid}: soft prepare/verification-only task (S-SOFT) — fold into a concrete file-changing task",
+            )
 
     # N2: every preserve: item in migration.yaml must appear in the plan
     try:

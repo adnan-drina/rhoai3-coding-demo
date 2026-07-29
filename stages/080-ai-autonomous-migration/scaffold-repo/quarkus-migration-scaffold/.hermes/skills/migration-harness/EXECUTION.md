@@ -191,7 +191,9 @@ When the supervisor dispatches VERIFY-AND-COMMIT (orphan worker recovery):
 1. Inspect `git status --porcelain`.
 2. Run `.hermes/harness/sensors.sh task` once.
 3. **Do NOT launch `opencode`** unless the tree is dirty **and** that sensor is RED.
-4. If GREEN: commit with the required `T-0XX:` prefix (allow-empty `ALREADY COMPLETE` only when findings are already satisfied).
+4. If GREEN: commit with the required `T-0XX:` prefix describing the work.
+   Do **not** invent allow-empty `ALREADY COMPLETE` commits — that path is
+   supervisor-only via `already-complete.py` (O-AC).
 
 ### Packet size — one concern, bounded scope
 

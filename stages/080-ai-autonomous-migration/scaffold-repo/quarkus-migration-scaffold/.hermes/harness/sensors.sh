@@ -310,6 +310,18 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
     || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
   sonar_check "${1:-inloop}"
+  # G-FID: fidelity GREEN ≠ scope clean — summarize later-story classes already in src/main
+  if [ -n "${LATER_CLASSES:-}" ]; then
+    local drift="" c
+    for c in ${LATER_CLASSES}; do
+      find src/main/java -type f -name "${c}.java" 2>/dev/null | grep -q . && drift="${drift} ${c}"
+    done
+    if [ -n "$drift" ]; then
+      echo "WARN scope-drift (G-FID): later-story class(es) present under src/main while fidelity GREEN:${drift}"
+      echo "WARN scope-drift (G-FID): later-story class(es) present under src/main while fidelity GREEN:${drift}" \
+        >> /tmp/outer-loop.log 2>/dev/null || true
+    fi
+  fi
   echo "milestone sensor GREEN (clean verify + sonar[${1:-inloop}], isolated repo)"
 }
 
@@ -446,6 +458,28 @@ acceptance_ship_contract() {
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'service_interfaces_ready|interfaces_ready|"status"\s*,' "$f" 2>/dev/null; then
       fail acceptance "ceremonial status-map acceptance in $f (V6) — must return catalog products[] / live fetch, not a status Map"
+    fi
+  done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
+  # G-OK (V7/V8): plain String / "OK" TEXT acceptance is not catalog proof.
+  # Non-deploy stories otherwise story-gate-pass with return "OK".
+  while IFS= read -r -d '' f; do
+    grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
+    if grep -qE 'return[[:space:]]+"OK"|return[[:space:]]+"ok"|public[[:space:]]+String[[:space:]]+[a-zA-Z0-9_]*\(' "$f" 2>/dev/null; then
+      # Allow String only if the file also fetches a catalog / products list.
+      if ! grep -qE 'products\(|CatalogService|CATALOG_ENDPOINT|List<.*Product' "$f" 2>/dev/null; then
+        fail acceptance "ceremonial String/OK acceptance in $f (G-OK) — must return catalog products[] / live fetch, not TEXT \"OK\""
+      fi
+    fi
+  done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
+  # G-FAKE: MockCatalogService (or hardcoded List.of Product pairs) in src/main
+  # is not a live catalog — ship must use @RestClient CatalogService.
+  if find src/main/java -type f -name 'MockCatalogService.java' 2>/dev/null | grep -q .; then
+    fail acceptance "MockCatalogService in src/main (G-FAKE) — use @RegisterRestClient CatalogService + CATALOG_ENDPOINT"
+  fi
+  while IFS= read -r -d '' f; do
+    grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
+    if grep -qE 'List\.of\s*\(\s*new[[:space:]]+Product|getMockProducts' "$f" 2>/dev/null; then
+      fail acceptance "hardcoded mock products in acceptance surface $f (G-FAKE) — fetch live catalog"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
 }
