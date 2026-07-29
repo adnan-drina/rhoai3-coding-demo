@@ -685,6 +685,24 @@ round_exhausted() { # $1=class; 0 = continue the ship loop, 1 = stop
   return 1
 }
 while :; do
+  # V5 run-4: `sensors.sh preflight` scans the WORKING tree. A prior
+  # preflight-fix session can leave UNTRACKED fabrications (S04/S05 classes it
+  # created chasing the coverage gate but never committed) — and those
+  # uncommitted, untested files POLLUTE the coverage scan, dropping it below
+  # the gate and triggering yet more fabrication (a self-defeating loop that
+  # the post-commit stray-sweep/scope_enforce never catch because nothing was
+  # committed). All legitimate work is committed by ship time, so archive any
+  # untracked src/ strays before the scan: preflight must judge the committed
+  # tree, not the pollution.
+  STRAYS=$(git ls-files --others --exclude-standard -- src/ | head)
+  if [ -n "$STRAYS" ]; then
+    log "M5 ship: archiving untracked src/ strays before preflight (fabrication-pollution guard): $(echo $STRAYS | tr '\n' ' ')"
+    mkdir -p /tmp/strays/preflight
+    git ls-files --others --exclude-standard -- src/ | while read -r f; do
+      mkdir -p "/tmp/strays/preflight/$(dirname "$f")"
+      mv "$f" "/tmp/strays/preflight/$f" 2>/dev/null || rm -f "$f"
+    done
+  fi
   # Pre-push preflight (cart run #2): the factory failed maven-build on a
   # defect (unpinned compiler plugin) the local full check catches — never
   # burn a pipeline round on a locally-detectable failure. Bounded like

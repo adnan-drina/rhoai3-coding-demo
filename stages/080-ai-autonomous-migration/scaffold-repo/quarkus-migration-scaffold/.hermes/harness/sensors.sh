@@ -154,12 +154,18 @@ forbidden_patterns() {
   # migration.yaml forbidden: patterns that must never appear in src/main
   # (fabricated domain data disguised as fallbacks — observed twice).
   [ -f migration.yaml ] && grep -q "^forbidden:" migration.yaml || return 0
-  yaml_items forbidden | while read -r pat; do
+  # Feed via a here-string, NOT `yaml_items | while … done || exit 1`: with
+  # `set -o pipefail`, an empty `yaml_items` (or the loop reaching no `fail`)
+  # made that pipe exit 1, so `|| exit 1` fired a SILENT false RED — the
+  # empty-log rc=1 that stalled S03 (V5 run-4). A here-string runs the loop in
+  # the current shell so `fail` propagates directly and empty input is inert.
+  local _items; _items=$(yaml_items forbidden)
+  while read -r pat; do
     [ -n "$pat" ] || continue
     if grep -rq "$pat" src/main 2>/dev/null; then
       fail forbidden "pattern '$pat' found in src/main: $(grep -rl "$pat" src/main | head -2 | tr '\n' ' ')"
     fi
-  done || exit 1
+  done <<< "$_items"
 }
 
 tree_hygiene() {
@@ -330,14 +336,24 @@ wiring_invariants() {
     # Only INJECTION POINTS need the qualifier (fields assigned from a
     # qualified constructor param are fine): a type usage within 4 lines
     # after an @Inject, with no @RestClient in that window, is the trap.
-    grep -rn "$iface [a-zA-Z]" src/main --include="*.java" 2>/dev/null | grep -vE "interface $iface|import |class " | while read -r line; do
+    # Capture injection points first, then loop via a here-string. The old
+    # `grep … | while … done || exit 1` FALSE-FAILED with `set -o pipefail`
+    # when the grep found NO injection points (an interface-only story where
+    # the @RegisterRestClient client has no injector yet): empty grep → pipe
+    # exit 1 → silent `exit 1` → empty-log false RED. That is the root of the
+    # V5 run-4 S03 cascade (CatalogService present, no impl to inject it).
+    local _points
+    _points=$(grep -rn "$iface [a-zA-Z]" src/main --include="*.java" 2>/dev/null | grep -vE "interface $iface|import |class ")
+    [ -n "$_points" ] || continue
+    while read -r line; do
+      [ -n "$line" ] || continue
       f2=$(echo "$line" | cut -d: -f1); ln=$(echo "$line" | cut -d: -f2)
       start=$((ln>4 ? ln-4 : 1))
       window=$(sed -n "${start},${ln}p" "$f2")
       echo "$window" | grep -q "@Inject" || continue
       echo "$window" | grep -q "@RestClient" \
         || fail wiring "${f2}:${ln} injects $iface without @RestClient qualifier (CDI UnsatisfiedResolution at boot)"
-    done || exit 1
+    done <<< "$_points"
   done
   # Behavior-preserving target default (PROCESS-FIX #1): a CDI singleton
   # with shared mutable state must use a concurrent collection or confine
@@ -357,12 +373,14 @@ preserved_integrations() {
   # built configuration or source — an erased integration is a
   # functional regression no unit test catches.
   [ -f migration.yaml ] && grep -q "^preserve:" migration.yaml || return 0
-  local item
-  yaml_items preserve | while read -r item; do
+  # Here-string, not `yaml_items | while … done || exit 1` (pipefail empty →
+  # silent false RED — V5 run-4 empty-log class).
+  local item _items; _items=$(yaml_items preserve)
+  while read -r item; do
     [ -n "$item" ] || continue
     grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null \
       || fail preserve "preserved integration '$item' absent from src/main, pom.xml and k8s/"
-  done || exit 1
+  done <<< "$_items"
 }
 
 preflight() {
