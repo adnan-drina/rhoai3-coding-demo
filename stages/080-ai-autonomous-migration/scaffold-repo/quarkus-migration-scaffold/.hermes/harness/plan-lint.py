@@ -148,12 +148,23 @@ def main():
     # destination path or Target line carrying the legacy root.
     leg_slash = re.escape(legacy_path)
     leg_dotslash = re.escape(legacy_pkg).replace(r"\.", "[./]")
+    # V6 abort: plans that TARGET com.demo.coolstore when targetPackage is
+    # com.demo (partial rename) feed OpenCode the wrong package.
+    leg_last = legacy_pkg.rsplit(".", 1)[-1]
+    wrong_pkg = f"{target_pkg}.{leg_last}"
+    wrong_slash = wrong_pkg.replace(".", "/")
     for line in text.splitlines():
         if "migration/staging/" in line:
             continue
         if re.search(rf"(?:Target|→|->)\s*[^\n]*src/(?:main|test)/java/{leg_slash}", line) \
                 or re.search(rf"^\*\*Target\*\*.*{leg_dotslash}", line):
             lint("package", f"legacy package in TARGET position: {line.strip()[:80]} — project root is {target_pkg} (migration.yaml targetPackage)")
+        if re.search(rf"(?:Target|→|->)\s*[^\n]*src/(?:main|test)/java/{re.escape(wrong_slash)}", line) \
+                or re.search(rf"\b{re.escape(wrong_pkg)}\b", line):
+            # Allow prose that forbids the wrong prefix.
+            if re.search(r"\b(never|not|forbid|wrong|incorrect|must not)\b", line, re.I):
+                continue
+            lint("package", f"wrong rewrite prefix in TARGET position: {line.strip()[:80]} — full rename is {legacy_pkg} → {target_pkg} (never {wrong_pkg})")
     # Task substance (T-029 class, M3 dry-run catch: 'waiver' and
     # 'coverage' tasks with no code path): every task body must name a
     # concrete artifact it changes.

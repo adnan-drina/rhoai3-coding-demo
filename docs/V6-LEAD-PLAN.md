@@ -232,7 +232,8 @@ Run log: `docs/V6-RUN-LOG.md` from launch.
 - [x] Authorize Phase B P0 before any re-run — operator “let’s start” 2026-07-29  
 - [x] Authorize Phase C S1–S2 before/with V6 — implemented in scaffold  
 - [x] Golden sync: harness scaffold only via bootstrap — **never** run-4 app HEAD (E.3)  
-- [ ] V6 = new/wiped app — create after golden push (name: `coolstore-cart-v6` unless overridden)  
+- [x] V6 = `coolstore-cart-service-v6` created via RHDH — **aborted mid-S03**; do not resume  
+- [ ] **V7** = new RHDH Application migration after 2026-07-29 golden push (suggested name: `coolstore-cart-service-v7`)  
 - [x] Tier A / P3.4 / P4.1: included in this harness pass  
 - [x] Platform deny-in-seconds (E.4) — Dev Spaces Hermes config rewrite |
 
@@ -262,6 +263,11 @@ Run log: `docs/V6-RUN-LOG.md` from launch.
 | P4.1 digest/revision pin deploy | ✅ pipeline IMAGE=`:$(revision)`; no force-restart |
 | Instruments | ✅ **89/89** passed |
 | **New project / workspace** | **Human-only via RHDH** — Self-service → **Application migration** (legacy = coolstore-cart-legacy). Do not CLI-create destinations; do not reuse run-4. |
+| Outer-loop demo logging / gate UX | ✅ START/END + Actor + heartbeats + side-log analyze (from V6 notes) |
+| V6 partial abort (coolstore-cart-service-v6) | ✅ stopped mid-S03 — P2.4 false greens + `com.demo.coolstore` package drift |
+| P2.4 already-complete strict probe | ✅ `already-complete.py` — no Convert/Port verb false greens |
+| Package full-prefix rewrite guard | ✅ sensors + plan-lint reject `com.demo.coolstore` when target=`com.demo` |
+| Ceremonial status-map acceptance | ✅ static sensor rejects `service_interfaces_ready` / status Map |
 
 ---
 

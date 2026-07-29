@@ -187,9 +187,11 @@ package_scope() {
   # silently. Catch it as a hard tree defect. migration/staging legitimately
   # holds legacy-package source — only src/main is checked.
   [ -f migration.yaml ] || return 0
-  local leg
+  local leg tgt
   leg=$(grep -E "^[[:space:]]*legacyPackage:" migration.yaml 2>/dev/null | head -1 \
         | sed -E 's/.*legacyPackage:[[:space:]]*//; s/[[:space:]]*$//')
+  tgt=$(grep -E "^[[:space:]]*targetPackage:" migration.yaml 2>/dev/null | head -1 \
+        | sed -E 's/.*targetPackage:[[:space:]]*//; s/[[:space:]]*$//')
   [ -n "$leg" ] || return 0
   local legpath="src/main/java/$(echo "$leg" | tr '.' '/')"
   [ -d "$legpath" ] && fail package "legacy package '$leg' present under src/main ($legpath) — a harvest was placed/reverted into the legacy package instead of renamed to the target."
@@ -204,6 +206,28 @@ package_scope() {
   [ -z "$dotdir" ] || fail package "dotted package directory under src/main (mangled package path — join segments with '/', not '.'): $(echo $dotdir | tr '\n' ' ')"
   if grep -rqE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null; then
     fail package "a src/main file declares the legacy package '$leg' — rename it to the target package (never revert a harvest to the legacy package): $(grep -rlE "^[[:space:]]*package[[:space:]]+$(echo "$leg" | sed 's/\./\\./g')\b" src/main/java 2>/dev/null | head -2 | tr '\n' ' ')"
+  fi
+  # V6 abort: partial rename left com.demo.coolstore.* when migration.yaml
+  # targetPackage is com.demo (replaced only the vendor prefix, or invented
+  # targetPackage + last legacy segment). Correct map is full prefix replace:
+  # com.redhat.coolstore.service → com.demo.service (never com.demo.coolstore).
+  if [ -n "$tgt" ]; then
+    local leg_last wrong wrongpath
+    leg_last=${leg##*.}
+    wrong="${tgt}.${leg_last}"
+    wrongpath="src/main/java/$(echo "$wrong" | tr '.' '/')"
+    if [ -d "$wrongpath" ] || [ -d "src/test/java/$(echo "$wrong" | tr '.' '/')" ]; then
+      fail package "wrong rewrite prefix '$wrong' under src/ (V6) — full rename is '$leg' → '$tgt' (e.g. $leg.service → $tgt.service), never '$wrong'"
+    fi
+    if grep -rqE "^[[:space:]]*package[[:space:]]+$(echo "$wrong" | sed 's/\./\\./g')(\\.|;)" src/main/java src/test/java 2>/dev/null; then
+      fail package "a src file declares wrong rewrite package '$wrong' — must be under '$tgt' via full legacy→target prefix replace: $(grep -rlE "^[[:space:]]*package[[:space:]]+$(echo "$wrong" | sed 's/\./\\./g')(\\.|;)" src/main/java src/test/java 2>/dev/null | head -2 | tr '\n' ' ')"
+    fi
+    # Every src/main declaration must live under targetPackage.
+    local badpkg
+    badpkg=$(grep -rhE "^[[:space:]]*package[[:space:]]+" src/main/java 2>/dev/null \
+      | sed -E 's/^[[:space:]]*package[[:space:]]+//; s/[[:space:]]*;.*$//' \
+      | grep -vE "^$(echo "$tgt" | sed 's/\./\\./g')(\.|$)" | head -3 || true)
+    [ -z "$badpkg" ] || fail package "src/main package(s) outside targetPackage '$tgt': $badpkg"
   fi
 }
 
@@ -413,6 +437,15 @@ acceptance_ship_contract() {
       END { exit found?0:1 }
     ' "$f"; then
       fail acceptance "fail-open acceptance handler in $f (catch→Response.ok) — V6 R3"
+    fi
+  done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
+  # V6 abort: ceremonial status-map acceptance (service_interfaces_ready /
+  # story-id Map) ships a 200 JSON object that is not a products[] catalog
+  # proof — reject whenever such a marker appears on an acceptance surface.
+  while IFS= read -r -d '' f; do
+    grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
+    if grep -qE 'service_interfaces_ready|interfaces_ready|"status"\s*,' "$f" 2>/dev/null; then
+      fail acceptance "ceremonial status-map acceptance in $f (V6) — must return catalog products[] / live fetch, not a status Map"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
 }

@@ -561,55 +561,35 @@ PYEOF
 )
 task_class() { echo "$TASK_CLASSES" | grep -m1 "^$1:" | cut -d: -f2; }
 
-# V6 P2.4 — already-complete fast path: skip opencode when the task's
-# preserve token / removal target is already satisfied in the tree.
+# V6 P2.4 — already-complete fast path (strict probe).
+# Probe lives in already-complete.py so instruments can lock the contract.
+# V6 abort evidence: bash grepping the first Capitalized word as a class
+# (`Convert`/`Port`) false-greened real CDI conversion tasks.
 try_already_complete() { # $1=task-id → 0 if auto-committed
-  local T="$1" body item leaf
+  local T="$1" reason kind detail
   committed "$T" && return 0
   [ -f "${TASKS_FILE:-}" ] || return 1
-  body=$(python3 -c "
-import re,sys
-tid=sys.argv[1]; text=open(sys.argv[2],encoding='utf-8',errors='replace').read()
-blocks=re.split(r'^#{2,6} +(T[-A-Za-z0-9]*\d+):', text, flags=re.M)
-for i in range(1,len(blocks)-1,2):
-    if blocks[i]==tid:
-        print(blocks[i+1][:4000]); break
-" "$T" "$TASKS_FILE" 2>/dev/null) || return 1
-  [ -n "$body" ] || return 1
-  # Preserve tokens already present (env keys need k8s/ when deploy=true).
-  if [ -f migration.yaml ]; then
-    while read -r item; do
-      [ -n "$item" ] || continue
-      echo "$body" | grep -qF "$item" || continue
-      if [[ "$item" =~ ^[A-Z][A-Z0-9_]+$ ]] && [ "${STORY_DEPLOY:-false}" = "true" ]; then
-        grep -rq "$item" k8s/ 2>/dev/null || continue
-      else
-        grep -rq "$item" src/main pom.xml k8s/ 2>/dev/null || continue
-      fi
-      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${item} already present (V6 P2.4)" 2>/dev/null \
-        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${item} already present (V6 P2.4)" >/dev/null 2>&1
-      event "$T" 0 already_complete "$item"
-      log "$T: ALREADY COMPLETE — ${item} present; skipped opencode"
+  [ -f .hermes/harness/already-complete.py ] || return 1
+  reason=$(STORY_DEPLOY="${STORY_DEPLOY:-false}" ALREADY_COMPLETE_ROOT="$PWD" \
+    python3 .hermes/harness/already-complete.py "$TASKS_FILE" "$T" 2>/dev/null) || return 1
+  [ -n "$reason" ] || return 1
+  kind=${reason%%:*}; detail=${reason#*:}
+  case "$kind" in
+    present)
+      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${detail} already present (V6 P2.4)" 2>/dev/null \
+        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${detail} already present (V6 P2.4)" >/dev/null 2>&1
+      event "$T" 0 already_complete "$detail"
+      log "$T: ALREADY COMPLETE — ${detail} present; skipped opencode"
       return 0
-    done <<< "$(python3 -c "
-import re
-try: my=open('migration.yaml').read()
-except FileNotFoundError: raise SystemExit
-m=re.search(r'^preserve:(.*?)(^\S|\Z)', my, re.M|re.S)
-print('\n'.join(re.findall(r'^\s*-\s*([A-Za-z0-9_./:-]+)', m.group(1), re.M)) if m else '')
-" 2>/dev/null)"
-  fi
-  # Removal / absence goals: target class or path already gone.
-  if echo "$body" | grep -qiE 'already absent|remove |delete |must not exist|no longer'; then
-    leaf=$(echo "$body" | grep -oE '[A-Z][A-Za-z0-9]+(\.java)?' | head -1 | sed 's/\.java$//')
-    if [ -n "$leaf" ] && ! find src/main/java -name "${leaf}.java" 2>/dev/null | grep -q .; then
-      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${leaf} already absent (V6 P2.4)" 2>/dev/null \
-        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${leaf} already absent (V6 P2.4)" >/dev/null 2>&1
-      event "$T" 0 already_complete "absent:$leaf"
-      log "$T: ALREADY COMPLETE — ${leaf} absent; skipped opencode"
+      ;;
+    absent)
+      git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${detail} already absent (V6 P2.4)" 2>/dev/null \
+        || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${detail} already absent (V6 P2.4)" >/dev/null 2>&1
+      event "$T" 0 already_complete "absent:$detail"
+      log "$T: ALREADY COMPLETE — ${detail} absent; skipped opencode"
       return 0
-    fi
-  fi
+      ;;
+  esac
   return 1
 }
 

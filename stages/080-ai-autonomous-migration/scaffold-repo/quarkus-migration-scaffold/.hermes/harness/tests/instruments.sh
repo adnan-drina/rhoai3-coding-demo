@@ -959,6 +959,75 @@ run_case() {
 }
 check "profile-rubric passes additive→quantity 4 add() oracle (V6 P3.1)" 0 "add-oracle-hard"
 
+# 79. V6 abort — package sensor rejects partial rewrite com.demo.coolstore
+run_case() {
+  package_fixture
+  mkdir -p src/main/java/com/demo/coolstore/service
+  printf 'package com.demo.coolstore.service;\npublic class PromoService { }\n' \
+    > src/main/java/com/demo/coolstore/service/PromoService.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" package
+}
+check "package guard rejects wrong rewrite prefix com.demo.coolstore (V6 abort)" 1 "package"
+
+# 80. V6 abort — plan-lint rejects Target paths under com.demo.coolstore
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived.
+
+#### T-001: Port PromoService
+**Class**: infer
+- Target: src/main/java/com/demo/coolstore/service/PromoService.java CDI conversion.
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects com.demo.coolstore TARGET paths (V6 abort)" 1 "LINT:package"
+
+# 81-82. V6 P2.4 — already-complete must not treat Convert/Port as class names
+AC_PY="$HARNESS_DIR/already-complete.py"
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/service
+  printf 'package com.demo.service;\npublic class X { }\n' > src/main/java/com/demo/service/X.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Convert PromoService to CDI constructor injection
+**Class**: infer
+- Convert PromoService from Spring @Autowired to CDI.
+- Target: src/main/java/com/demo/service/PromoService.java
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-001; echo "rc=$?"
+}
+check "already-complete does not skip Convert CDI tasks (V6 P2.4 abort)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/rest
+  # JerseyConfig already absent — removal task may skip.
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Remove JerseyConfig
+**Class**: rewrite
+- Delete src/main/java/com/demo/rest/JerseyConfig.java — must not exist after migration.
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-002); echo "$out"
+}
+check "already-complete skips explicit Remove when .java absent (V6 P2.4)" 0 "absent:JerseyConfig"
+
+# 83. V6 abort — ceremonial status-map acceptance is rejected statically
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  printf 'package com.demo.rest;\nimport java.util.Map;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class AcceptanceEndpoint {\n  @Path("acceptance-check")\n  public Map<String,String> acceptanceCheck() {\n    return Map.of("status", "service_interfaces_ready", "story", "S02");\n  }\n}\n' \
+    > src/main/java/com/demo/rest/AcceptanceEndpoint.java
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject ceremonial status-map acceptance (V6 abort)" 1 "acceptance"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

@@ -77,6 +77,11 @@ explicitly waived with a reason; every mandatory finding, every
 migration.yaml `preserve:` item, and the migration.yaml
 `acceptance.path` mapped to a task; and no legacy-package targets — the
 project root is `migration.yaml` `targetPackage` (never the `legacyPackage`).
+Package rename is a **full prefix replace**:
+`legacyPackage.service` → `targetPackage.service`
+(e.g. `com.redhat.coolstore.service` → `com.demo.service`).
+Never invent `targetPackage` + last legacy segment
+(`com.demo.coolstore` is wrong when `targetPackage` is `com.demo`).
 
 **M1 hands you a spec input bundle — consume it, do not re-derive
 it** (docs/MTA-TO-SPEC-MAPPING.md):

@@ -127,6 +127,14 @@ task. Never write under the legacy package path in `src/main` — the target
 is `targetPackage`. If `migration/staging` is absent, record debt — do NOT
 stand up a scratch OpenRewrite run.
 
+**Package rename is the full `legacyPackage` → `targetPackage` prefix
+replace** (what `harvest-from-staging.sh` does). Example:
+`com.redhat.coolstore.service.PromoService` →
+`com.demo.service.PromoService`. Never write
+`com.demo.coolstore.*` when `targetPackage` is `com.demo` — that partial
+rename compiles, fails the package sensor, and breaks imports across
+stories (V6 abort). Worker packets must map to `$TGTP/...` paths only.
+
 **Class: infer** — bounded worker run. The worker's JSON event stream is
 huge (often hundreds of KB) — NEVER let it print to your terminal; it
 would flood your context and wedge the run. Redirect to a file and read
