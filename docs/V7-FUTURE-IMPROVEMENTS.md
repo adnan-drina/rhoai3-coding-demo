@@ -57,6 +57,8 @@ landed), [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md),
 |----|-------------|------------------------|
 | G-FID | Fidelity GREEN while large later-story surface already present — fidelity doesn’t mean “scope clean” | Optional scope-drift summary line on milestone GREEN |
 | G-AC2 | Ceremonial acceptance static reject landed; ship-time products[] still the real bar | Keep; add instrument for happy-path products[] handler shape if missing |
+| G-OK | V7 `AcceptanceEndpoint` returns plain `"OK"` (TEXT) — **static sensor does not catch it** (only status-Map markers). S04 deploy ship **does** fail it (`acceptance-products` → 0). Gap: non-deploy stories can story-gate-pass with `"OK"`. | Static reject: acceptance handler whose return type/body is String/`"OK"` / no catalog fetch when path matches `acceptance.path` |
+| G-FAKE | Ship gate only requires `products.length > 0`, not live catalog provenance | Stronger check (marker from real CATALOG_ENDPOINT / non-canned) if correction invents a hardcoded array |
 | G-PKG | Wrong-prefix `com.demo.coolstore` reject landed | Watch V7 for any other partial-rename patterns (e.g. `com.demo.redhat`) |
 
 ---
