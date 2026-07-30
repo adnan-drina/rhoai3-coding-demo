@@ -448,6 +448,67 @@ preserved_integrations() {
         || fail preserve "preserved env '$item' absent from k8s/ (Deployment env required when deploy=true — V6 R5)"
     fi
   done <<< "$_items"
+  # O-CATALOGDNS: key presence is not enough — http(s)://HOST values in k8s
+  # env must have a same-namespace Service declared under k8s/ (or the host
+  # is an FQDN with at least two dots, e.g. other-ns.svc.cluster.local).
+  if [ "${STORY_DEPLOY:-false}" = "true" ]; then
+    preserve_env_services_declared
+  fi
+}
+
+# O-CATALOGDNS — Deployment env URLs must resolve to a declared Service (or FQDN).
+# Same-document check only (O-CATALOGSVC): independent kind:/name: greps are
+# forbidden — a Deployment named catalog-service must not GREEN without a Service.
+preserve_env_services_declared() {
+  [ -d k8s ] || return 0
+  python3 - <<'PY' || fail preserve "k8s env points at an undeclared short-name Service (O-CATALOGDNS / O-CATALOGSVC)"
+import re, pathlib, sys
+hosts = set()
+for p in pathlib.Path("k8s").rglob("*"):
+    if not (p.is_file() and p.suffix in {".yaml", ".yml"}):
+        continue
+    text = p.read_text(encoding="utf-8", errors="replace")
+    for m in re.finditer(r'value:\s*"?https?://([^/\s":]+)', text):
+        hosts.add(m.group(1))
+if not hosts:
+    sys.exit(0)
+docs = []
+for p in pathlib.Path("k8s").rglob("*"):
+    if p.is_file() and p.suffix in {".yaml", ".yml"}:
+        docs.append(p.read_text(encoding="utf-8", errors="replace"))
+blob = "\n---\n".join(docs)
+service_names = set()
+for doc in re.split(r"\n---\n", blob):
+    if not re.search(r"(?m)^kind:\s*Service\s*$", doc):
+        continue
+    m = re.search(r"(?m)^metadata:\s*$[\s\S]*?^\s+name:\s*(\S+)\s*$", doc)
+    if m:
+        service_names.add(m.group(1))
+bad = []
+for host in sorted(hosts):
+    # FQDN / dotted host: cross-ns or external — skip short-name Service check
+    # (wrong-namespace FQDN is a known soft spot; do not pretend we validate DNS)
+    if "." in host:
+        continue
+    if host not in service_names:
+        bad.append(host)
+if bad:
+    print(
+        "undeclared Service host(s): "
+        + ", ".join(bad)
+        + " — co-deploy Service or use resolvable FQDN",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
+# STORY_DEPLOY: static index at / (quarkus.rest.path=/api does not cover root).
+root_index_present() {
+  [ "${STORY_DEPLOY:-false}" = "true" ] || return 0
+  [ -f src/main/resources/META-INF/resources/index.html ] \
+    || fail acceptance "META-INF/resources/index.html missing — route / must return 200 (JAX-RS under quarkus.rest.path does not serve /)"
 }
 
 # V6 R3/R6 — ship-contract static checks (acceptance fail-open + mapper breadth).
@@ -537,6 +598,7 @@ preflight() {
   preserved_integrations
   acceptance_ship_contract
   acceptance_path_handler
+  root_index_present
   milestone_sensor full
   boot_check
   echo "PREFLIGHT GREEN — the factory should confirm, not discover"
@@ -582,7 +644,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; echo "STATIC CHECKS GREEN";;
+  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static"; exit 2;;
 esac

@@ -31,7 +31,7 @@
 set -uo pipefail
 INTERVAL="${V8_DRIVER_INTERVAL:-120}"
 STALE_SECS="${V8_CHAT_PULSE_STALE_SECS:-$((INTERVAL * 2 + 30))}"
-ROOT="$(cd "$(dirname "$0")/../.." ROOT="/Users/adrina/Sandbox/rhoai3-coding-demo"ROOT="/Users/adrina/Sandbox/rhoai3-coding-demo" pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STATUS="${ROOT}/tmp/V8-DRIVER-STATUS.md"
 ANALYZED_SHA_FILE="${ROOT}/tmp/V9-TASK-ANALYSIS.sha"
 PENDING_FILE="${ROOT}/tmp/V9-TASK-ANALYSIS-PENDING.md"
@@ -43,13 +43,41 @@ CHAT_BODY="${ROOT}/tmp/V9-CHAT-PULSE.body"
 CHAT_PENDING="${ROOT}/tmp/V9-CHAT-PULSE-PENDING.md"
 CHAT_LOG="${ROOT}/tmp/V9-CHAT-PULSE-LOG.md"
 DEBT_PENDING="${ROOT}/tmp/V9-DEBT-HOLD-PENDING.md"
-POD="${V8_WS_POD:-workspace2daa86efaa344a9d-6d99c65d69-66dtd}"
-CTR=development-tooling
-NS=wksp-ai-developer
+ESC_PENDING="${ROOT}/tmp/V9-ESCALATION-PENDING.md"
+HAND_PENDING="${ROOT}/tmp/V9-HANDFIX-PENDING.md"
+ADV_PENDING="${ROOT}/tmp/V9-ADVANCE-PENDING.md"
 AUTO_RESTART="${V8_AUTO_RESTART:-1}"
 # shellcheck disable=SC1091
+source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+# shellcheck disable=SC1091
 source "${ROOT}/scripts/lib.sh"
+POD="$(qg_ws_pod)"
+CTR="$(qg_ws_ctr)"
+NS="$(qg_ws_ns)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
 load_env >/dev/null
+
+ensure_oc_session() {
+  if oc whoami >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "O-DRV-OC: unauthorized — attempting .env re-login"
+  set -a
+  # shellcheck disable=SC1091
+  [ -f "${ROOT}/.env" ] && source "${ROOT}/.env"
+  set +a
+  if [ -n "${OPENSHIFT_API_URL:-}" ] && [ -n "${OPENSHIFT_USER:-}" ] && [ -n "${OPENSHIFT_PASSWORD:-}" ]; then
+    oc login "$OPENSHIFT_API_URL" -u "$OPENSHIFT_USER" -p "$OPENSHIFT_PASSWORD" \
+      --insecure-skip-tls-verify=true >/dev/null 2>&1 || true
+  fi
+  oc whoami >/dev/null 2>&1
+}
+
+sha_file_validated() {
+  local f="$1"
+  [ -f "$f" ] && grep -qE '^# validated:' "$f"
+}
 
 restart_outer_if_needed() {
   local snap="$1"
@@ -58,7 +86,19 @@ restart_outer_if_needed() {
   if echo "$snap" | grep -q 'S05,complete'; then
     return 0
   fi
+  # Refuse auto-restart while honesty gates are open
+  if [ -f "$DEBT_PENDING" ] || [ -f "$ESC_PENDING" ] || [ -f "$ADV_PENDING" ] || [ -f "$HAND_PENDING" ]; then
+    echo "O-DRV2: outer=DOWN but debt/escalation/advance/handfix pending — NOT auto-restarting"
+    return 0
+  fi
+  if [ "${V9_ALLOW_OPEN_BANK:-0}" != "1" ]; then
+    if ! bash "${ROOT}/scripts/track-b/v9-bank-gate.sh" honesty >/dev/null 2>&1; then
+      echo "O-DRV2: outer=DOWN but honesty bank ⬜ open — NOT auto-restarting (run v9-bank-gate.sh)"
+      return 0
+    fi
+  fi
   echo "O-DRV2: outer=DOWN — auto-restarting outer-loop on $POD"
+  ensure_oc_session || { echo "O-DRV2: oc login failed — cannot restart"; return 0; }
   oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized || exit 1
     test -x .hermes/harness/outer-loop.sh || exit 1
@@ -206,7 +246,10 @@ refresh_task_analysis_pending() {
 
   if [ -n "$last_sha" ] && [ -n "$head_sha" ] && [ "$last_sha" = "$head_sha" ] \
     && [ -z "$new_commits" ]; then
-    rm -f "$PENDING_FILE"
+    # Only trust clears that went through v9-clear-task-analysis.sh
+    if sha_file_validated "$ANALYZED_SHA_FILE"; then
+      rm -f "$PENDING_FILE"
+    fi
     return 0
   fi
 
@@ -219,7 +262,7 @@ refresh_task_analysis_pending() {
     && anomaly_on_new=1
 
   {
-    echo "# V9 task analysis PENDING (O-DRV3) — do not clear without a gate entry"
+    echo "# V9 task analysis PENDING (O-DRV3) — SCRIPT-CLEARED ONLY"
     echo
     echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
     echo "- workspace_HEAD: \`${head_sha:-unknown}\`"
@@ -232,30 +275,26 @@ refresh_task_analysis_pending() {
     echo "$new_commits"
     echo '```'
     echo
-    echo "## Mandatory checklist (stage-080-quality-advance task gate)"
+    echo "## Clear path (memory is not enough)"
     echo
-    echo "CRUCIAL: judge AI-generated **code quality** and AI **action quality** —"
-    echo "sensor GREEN alone is not a pass."
+    echo '```bash'
+    echo "bash scripts/track-b/v9-capture-diff.sh --oc ${head_sha:-HEAD}"
+    echo "# write detailed tmp/docs-archive/V9-QUALITY-GATE.md section (code + action quality)"
+    echo "bash scripts/track-b/v9-clear-task-analysis.sh ${head_sha:-SHA}"
+    echo '```'
     echo
-    echo "1. \`git show --stat\` + full diff — **read the generated code** (bodies, not titles)."
-    echo "2. AI code quality vs task goal/acceptance/legacy (fidelity, real tests, no stubs)."
-    echo "3. AI action quality: worker / mechan / O-ESCW / MiniMax / style-autofix / sfix — right action?"
-    echo "4. If RED / partial / sfix / escalation: supervisor + dimension logs."
-    echo "5. Root cause, harness smells, process-performance waste (quota/thrash/silence)."
-    echo "6. Bank every durable gap NOW in \`docs/V7-FUTURE-IMPROVEMENTS.md\` (⬜) — never ask."
-    echo "7. Detailed entry in \`docs/V9-QUALITY-GATE.md\` (code + actions + why + bank + next)."
-    echo "8. Clear: write \`tmp/V9-TASK-ANALYSIS.sha\` + delete this file."
+    echo "Bare \`echo SHA > tmp/V9-TASK-ANALYSIS.sha\` does **not** clear —"
+    echo "sha file must contain \`# validated:\` from the clear script."
     echo
-    echo "## If MiniMax took over from Qwen (escalation) — MANDATORY"
+    echo "## Mandatory checklist"
     echo
-    echo "1. Capture escalation in the gate (task id + path)."
-    echo "2. Read Qwen logs: \`/tmp/oc-T-NNN.err\` + \`/tmp/oc-T-NNN.json\` + pre-escalation supervisor."
-    echo "3. State why the worker failed; review what MiniMax changed."
-    echo "4. Durableize (bank ⬜ → implement harness/skill) so MiniMax is not needed next time."
-    echo "5. Retest / re-run proof that Qwen completes without takeover for that failure class."
-    echo "   MiniMax GREEN alone is NOT closure."
+    echo "1. Capture diff evidence + **read the generated code**."
+    echo "2. AI code quality vs task goal/acceptance/legacy."
+    echo "3. AI action quality: worker / mechan / MiniMax / sfix."
+    echo "4. Bank every durable gap (⬜). Clear via script above."
     echo
-    echo "Also complete O-DRV4 chat pulse (tmp/V9-CHAT-PULSE-PENDING.md) every tick."
+    echo "If MiniMax escalation: clear \`tmp/V9-ESCALATION-PENDING.md\` first"
+    echo "via \`v9-clear-escalation.sh\`."
   } >"$PENDING_FILE"
 }
 
@@ -296,7 +335,9 @@ refresh_milestone_analysis_pending() {
 
   if [ -n "$last_sha" ] && [ -n "$head_sha" ] && [ "$last_sha" = "$head_sha" ] \
     && [ -z "$new_m" ]; then
-    rm -f "$M_PENDING_FILE"
+    if sha_file_validated "$M_ANALYZED_SHA_FILE"; then
+      rm -f "$M_PENDING_FILE"
+    fi
     return 0
   fi
 
@@ -305,7 +346,7 @@ refresh_milestone_analysis_pending() {
   fi
 
   {
-    echo "# V9 MILESTONE analysis PENDING (O-DRV5) — comprehensive gate"
+    echo "# V9 MILESTONE analysis PENDING (O-DRV5) — SCRIPT-CLEARED ONLY"
     echo
     echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
     echo "- workspace_HEAD: \`${head_sha:-unknown}\`"
@@ -317,61 +358,156 @@ refresh_milestone_analysis_pending() {
     echo "$new_m"
     echo '```'
     echo
-    echo "## Mandatory checklist (stage-080-quality-advance Milestone M gate)"
+    echo "## Clear path"
     echo
-    echo "CRUCIAL: comprehensively judge AI-generated **code quality** and AI **action**"
-    echo "quality across this milestone — sensor/pipeline GREEN alone is not a pass."
+    echo '```bash'
+    echo "# write comprehensive tmp/docs-archive/V9-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
+    echo "bash scripts/track-b/v9-clear-m-analysis.sh ${head_sha:-SHA}"
+    echo '```'
     echo
-    echo "1. **Freeze** outer-loop / supervisor (and keep V8_AUTO_RESTART=0) while reviewing."
-    echo "2. Evidence: commits, specs/roadmap/tasks, src/main+test, sensors, escalations —"
-    echo "   read code bodies; sample AI outputs; note process performance (waste/thrash)."
-    echo "3. Verdict ADVANCE | HOLD | ABORT in \`docs/V9-QUALITY-GATE.md\` (full template),"
-    echo "   including explicit AI code-quality and AI-action-quality notes."
-    echo "4. Bank every durable gap NOW (⬜) — never ask."
-    echo "5. Implement honesty-blocking bank rows before resume / next story."
-    echo "6. Clear: write reviewed HEAD to \`tmp/V9-M-ANALYSIS.sha\` and delete this file."
-    echo
-    echo "Do NOT advance to the next story/M on sensor GREEN alone."
+    echo "Bare sha write does **not** clear — needs \`# validated:\` from clear script."
   } >"$M_PENDING_FILE"
 }
 
-# O-DRV6: unresolved `debt: T-NNN … RED` must HOLD the agent — not silent advance.
+# O-DRV6: unresolved debt RED — HEAD or ledger or recent debt commits.
 refresh_debt_hold_pending() {
-  local head_subj debt_hits
+  local head_subj debt_hits ledger_n
   head_subj=$(oc_git log -1 --format='%s' | head -1)
-  debt_hits=$(oc_git log --oneline -15 | grep -E 'debt: T-[0-9].*RED' || true)
-  if echo "$head_subj" | grep -qE 'debt: T-[0-9].*RED' || [ -n "$debt_hits" ]; then
-    # Only pending if HEAD is debt RED or recent debt not yet cleared by a later GREEN sensor fix
-    if echo "$head_subj" | grep -qE 'debt: T-[0-9].*RED'; then
-      {
-        echo "# V9 DEBT HOLD PENDING (O-DRV6) — do not advance on unresolved sensor debt"
-        echo
-        echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
-        echo "- HEAD subject: \`${head_subj}\`"
-        echo
-        echo "## Required"
-        echo
-        echo "1. Chat pulse (O-DRV4 body proof) first."
-        echo "2. Freeze or HOLD narrative: advancing past task-sensor RED as debt is a"
-        echo "   process smell — root-cause the failures, durableize, re-run proof."
-        echo "3. Detailed O-DRV3 gate entry for the debted T-NNN (code + Qwen/MiniMax RCA)."
-        echo "4. Clear this file only after HEAD is no longer \`debt: T-… RED\` **or**"
-        echo "   a HOLD/ABORT decision is written in \`docs/V9-QUALITY-GATE.md\`."
-        echo
-        echo "Recent debt commits:"
-        echo '```'
-        echo "$debt_hits"
-        echo '```'
-      } >"$DEBT_PENDING"
-      return 0
-    fi
+  debt_hits=$(oc_git log --oneline -20 | grep -E 'debt: T-[0-9].*RED' || true)
+  ledger_n=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc \
+    'grep -c "^## " migration/debt.md 2>/dev/null || echo 0' 2>/dev/null | strip_oc_noise | tr -d '[:space:]')
+  ledger_n=${ledger_n:-0}
+  if echo "$head_subj" | grep -qE 'debt: T-[0-9].*RED' \
+    || [ -n "$debt_hits" ] \
+    || { [ "$ledger_n" -gt 0 ] 2>/dev/null; }; then
+    {
+      echo "# V9 DEBT HOLD PENDING (O-DRV6) — do not advance on unresolved sensor debt"
+      echo
+      echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
+      echo "- HEAD subject: \`${head_subj}\`"
+      echo "- debt_ledger_entries: \`${ledger_n}\`"
+      echo
+      echo "## Required"
+      echo
+      echo "1. Chat pulse (O-DRV4) first."
+      echo "2. Harness should have frozen (O-DEBTFRZ) — do not nurse past RED."
+      echo "3. O-DRV3 gate + durableize + re-run."
+      echo "4. Clear only when ledger has no \`##\` entries **and** HOLD/ABORT written,"
+      echo "   via deleting this file after gate proof (driver re-checks ledger)."
+      echo
+      echo "Recent debt commits:"
+      echo '```'
+      echo "$debt_hits"
+      echo '```'
+    } >"$DEBT_PENDING"
+    return 0
   fi
   rm -f "$DEBT_PENDING"
+}
+
+# O-DRV7: MiniMax-over-Qwen escalation → blocking pending until RCA clear script.
+# O-DRV7DET: supervisor stamps escalation only in log_task lines
+# ("committed via MiniMax escalation"), not in git subjects — detect from
+# /tmp/supervisor.log (+ outer-loop), with commit-subject grep as secondary.
+refresh_escalation_pending() {
+  local last_sha head_sha esc_commits esc_logs task seen_file log_wm log_line log_key
+  [ -f "$ESC_PENDING" ] && return 0
+  seen_file="${ROOT}/tmp/V9-ESCALATION-SEEN.sha"
+  log_wm="${ROOT}/tmp/V9-ESCALATION-LOG.wm"
+  last_sha=""
+  if [ -f "$ANALYZED_SHA_FILE" ]; then
+    last_sha=$(grep -oE '[0-9a-f]{40}' "$ANALYZED_SHA_FILE" | head -1)
+  fi
+  head_sha=$(workspace_head_sha)
+  [ -n "$head_sha" ] || return 0
+
+  esc_commits=""
+  if [ -n "$last_sha" ] && [ "$last_sha" != "$head_sha" ]; then
+    esc_commits=$(oc_git log --format='%h %s' --no-merges "${last_sha}..${head_sha}" \
+      | grep -iE 'via MiniMax escalation|MiniMax escalation' || true)
+  fi
+
+  # Primary: supervisor/outer log lines (O-DRV7DET)
+  esc_logs=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc \
+    'grep -E "committed via MiniMax escalation|Actor:.*escalation" /tmp/supervisor.log /tmp/outer-loop.log 2>/dev/null | tail -30' \
+    2>/dev/null | strip_oc_noise || true)
+  log_line=""
+  if [ -n "$esc_logs" ]; then
+    log_line=$(echo "$esc_logs" | tail -1)
+    log_key=$(printf '%s' "$log_line" | shasum -a 256 2>/dev/null | awk '{print $1}')
+    if [ -f "$log_wm" ] && [ -n "$log_key" ] && grep -qxF "$log_key" "$log_wm" 2>/dev/null; then
+      log_line=""  # already issued pending for this log event
+    fi
+  fi
+
+  # Already issued pending for this HEAD tip (commit-subject path)
+  if [ -z "$log_line" ] && [ -z "$esc_commits" ]; then
+    return 0
+  fi
+  if [ -z "$log_line" ] && [ -f "$seen_file" ] && grep -q "$head_sha" "$seen_file" 2>/dev/null; then
+    return 0
+  fi
+
+  task=$( { echo "$log_line"; echo "$esc_commits"; } | grep -oE 'T-[0-9]+' | head -1 || echo T-NNN)
+  {
+    echo "# V9 ESCALATION PENDING (O-DRV7) — MiniMax-over-Qwen"
+    echo
+    echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
+    echo "- task_hint: \`${task}\`"
+    echo "- workspace_HEAD: \`${head_sha}\`"
+    echo
+    echo "## Evidence"
+    echo '```'
+    [ -n "$log_line" ] && echo "LOG: $log_line"
+    [ -n "$esc_commits" ] && echo "$esc_commits"
+    echo '```'
+    echo
+    echo "## Clear (required — blocks O-DRV3 clear)"
+    echo
+    echo '```bash'
+    echo "bash scripts/track-b/v9-clear-escalation.sh ${task} \\"
+    echo "  --qwen-cause '...' --bank-id O-XXX --retest '...'"
+    echo '```'
+    echo
+    echo "Must include Qwen log RCA + bank id + retest note. MiniMax GREEN ≠ clear."
+  } >"$ESC_PENDING"
+  printf '%s\n' "$head_sha" >"$seen_file"
+  if [ -n "${log_key:-}" ]; then
+    printf '%s\n' "$log_key" >"$log_wm"
+  fi
+}
+
+# O-ADV: story-complete without ADVANCE verdict → pending
+refresh_advance_pending() {
+  local last_sha head_sha story_line story
+  [ -f "$ADV_PENDING" ] && return 0
+  last_sha=""
+  if [ -f "$M_ANALYZED_SHA_FILE" ]; then
+    last_sha=$(grep -oE '[0-9a-f]{40}' "$M_ANALYZED_SHA_FILE" | head -1)
+  fi
+  head_sha=$(workspace_head_sha)
+  story_line=""
+  if [ -n "$last_sha" ] && [ -n "$head_sha" ] && [ "$last_sha" != "$head_sha" ]; then
+    story_line=$(oc_git log --oneline --no-merges "${last_sha}..${head_sha}" \
+      | grep -E 'S0[0-9] story complete:' | head -1 || true)
+  fi
+  [ -n "$story_line" ] || return 0
+  story=$(echo "$story_line" | grep -oE 'S0[0-9]' | head -1)
+  [ -n "$story" ] || return 0
+  if bash "${ROOT}/scripts/track-b/v9-advance-gate.sh" check "$story" >/dev/null 2>&1; then
+    return 0
+  fi
+  bash "${ROOT}/scripts/track-b/v9-advance-gate.sh" pending "$story" || true
 }
 
 tick() {
   local ts snap prompt_kind prompt overdue=0 age_note="ack fresh or first tick"
   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  ensure_oc_session || {
+    echo "O-DRV-OC: still unauthorized — tick degraded"
+    printf 'AGENT_LOOP_TICK_v8driver_CRITICAL {"ts":"%s","prompt":"OC LOGIN FAILED — fix .env OPENSHIFT_* / re-login; driver cannot observe workspace."}\n' "$ts"
+    return 0
+  }
   snap=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized
     OL=$(pgrep -f "harness/outer-loop\.sh" >/dev/null && echo UP || echo DOWN)
@@ -397,6 +533,9 @@ tick() {
   refresh_task_analysis_pending
   refresh_milestone_analysis_pending
   refresh_debt_hold_pending
+  refresh_escalation_pending
+  refresh_advance_pending
+  bash "${ROOT}/scripts/track-b/v9-handfix-detect.sh" >/dev/null 2>&1 || true
 
   if chat_pulse_overdue; then
     overdue=1
@@ -412,17 +551,17 @@ tick() {
     echo "- interval: ${INTERVAL}s"
     echo "- auto_restart: ${AUTO_RESTART}"
     echo "- driver_pid: \`$$\`"
-    echo "- chat_pulse_overdue: **$( [ "$overdue" = 1 ] && echo YES || echo no )** (O-DRV4 body-proof)"
+    echo "- chat_pulse_overdue: **$( [ "$overdue" = 1 ] && echo YES || echo no )** (O-DRV4 body+transcript)"
     echo "- chat_pulse_pending: **YES** → \`tmp/V9-CHAT-PULSE-PENDING.md\` (use \`tmp/v9-chat-pulse.sh\`)"
     echo "- last_chat_ack: \`$(tr -d '[:space:]' <"$CHAT_ACK" 2>/dev/null || echo NONE)\`"
     echo "- chat_body_proof: \`$( [ -f "$CHAT_BODY" ] && echo present || echo MISSING )\`"
     if [ -f "$PENDING_FILE" ]; then
-      echo "- task_analysis_pending: **YES** → \`tmp/V9-TASK-ANALYSIS-PENDING.md\` (O-DRV3)"
+      echo "- task_analysis_pending: **YES** → \`tmp/V9-TASK-ANALYSIS-PENDING.md\` (O-DRV3 clear script)"
     else
       echo "- task_analysis_pending: no"
     fi
     if [ -f "$M_PENDING_FILE" ]; then
-      echo "- milestone_analysis_pending: **YES** → \`tmp/V9-M-ANALYSIS-PENDING.md\` (O-DRV5)"
+      echo "- milestone_analysis_pending: **YES** → \`tmp/V9-M-ANALYSIS-PENDING.md\` (O-DRV5 clear script)"
     else
       echo "- milestone_analysis_pending: no"
     fi
@@ -431,44 +570,60 @@ tick() {
     else
       echo "- debt_hold_pending: no"
     fi
-    echo "- last_analyzed_sha: \`$(grep -oE '[0-9a-f]{40}' "$ANALYZED_SHA_FILE" 2>/dev/null | head -1 || echo none)\`"
-    echo "- last_m_analyzed_sha: \`$(grep -oE '[0-9a-f]{40}' "$M_ANALYZED_SHA_FILE" 2>/dev/null | head -1 || echo none)\`"
+    if [ -f "$ESC_PENDING" ]; then
+      echo "- escalation_pending: **YES** → \`tmp/V9-ESCALATION-PENDING.md\` (O-DRV7)"
+    else
+      echo "- escalation_pending: no"
+    fi
+    if [ -f "$HAND_PENDING" ]; then
+      echo "- handfix_pending: **YES** → \`tmp/V9-HANDFIX-PENDING.md\` (O-HAND)"
+    else
+      echo "- handfix_pending: no"
+    fi
+    if [ -f "$ADV_PENDING" ]; then
+      echo "- advance_pending: **YES** → \`tmp/V9-ADVANCE-PENDING.md\` (O-ADV)"
+    else
+      echo "- advance_pending: no"
+    fi
+    echo "- last_analyzed_sha: \`$(grep -oE '[0-9a-f]{40}' "$ANALYZED_SHA_FILE" 2>/dev/null | head -1 || echo none)\` validated=$(sha_file_validated "$ANALYZED_SHA_FILE" && echo yes || echo NO)"
+    echo "- last_m_analyzed_sha: \`$(grep -oE '[0-9a-f]{40}' "$M_ANALYZED_SHA_FILE" 2>/dev/null | head -1 || echo none)\` validated=$(sha_file_validated "$M_ANALYZED_SHA_FILE" && echo yes || echo NO)"
     echo
     echo '```'
     echo "$snap"
     echo '```'
   } >"$STATUS"
 
-  # Every tick CRITICAL (O-DRV4). Urgency escalates for overdue / debt / task / milestone.
+  # Every tick CRITICAL (O-DRV4). Urgency escalates for overdue / debt / escalations.
   prompt_kind="AGENT_LOOP_TICK_v8driver_CRITICAL"
   if [ "$overdue" = "1" ]; then
-    prompt="O-DRV4 CHAT PULSE OVERDUE (P0). Post 2-5 lines in chat THEN bash tmp/v9-chat-pulse.sh ${ts} with the SAME text (body proof). Ack-only is invalid. Then O-DRV6/O-DRV5/O-DRV3 pendings. Never go idle."
+    prompt="O-DRV4 CHAT PULSE OVERDUE (P0). Post in chat THEN bash tmp/v9-chat-pulse.sh ${ts} (transcript fidelity). Then pendings."
   elif [ -f "$DEBT_PENDING" ]; then
-    prompt="O-DRV4 pulse via tmp/v9-chat-pulse.sh ${ts} FIRST; then O-DRV6 DEBT HOLD (tmp/V9-DEBT-HOLD-PENDING.md) — do not advance past debt RED; analyze + durableize + re-run. Then O-DRV3/O-DRV5."
+    prompt="O-DRV4 pulse ${ts} FIRST; O-DRV6 DEBT HOLD — freeze/durableize/re-run. Clear scripts only."
+  elif [ -f "$ESC_PENDING" ]; then
+    prompt="O-DRV4 pulse ${ts} FIRST; O-DRV7 ESCALATION — v9-clear-escalation.sh after Qwen RCA+bank+retest."
+  elif [ -f "$ADV_PENDING" ]; then
+    prompt="O-DRV4 pulse ${ts} FIRST; O-ADV — write ADVANCE in V9-QUALITY-GATE then v9-advance-gate.sh clear."
   elif [ -f "$M_PENDING_FILE" ]; then
-    prompt="O-DRV4 pulse via tmp/v9-chat-pulse.sh ${ts} FIRST; then O-DRV5 COMPREHENSIVE MILESTONE GATE (tmp/V9-M-ANALYSIS-PENDING.md). Never skip M gates."
+    prompt="O-DRV4 pulse ${ts} FIRST; O-DRV5 — v9-clear-m-analysis.sh after comprehensive gate+Verdict."
   elif [ -f "$PENDING_FILE" ]; then
-    prompt="O-DRV4 pulse via tmp/v9-chat-pulse.sh ${ts} FIRST; then O-DRV3 DETAILED TASK ANALYSIS (tmp/V9-TASK-ANALYSIS-PENDING.md). Bank gaps. Never stay silent."
+    prompt="O-DRV4 pulse ${ts} FIRST; O-DRV3 — v9-capture-diff.sh + gate entry + v9-clear-task-analysis.sh."
   else
-    prompt="O-DRV4 MANDATORY: chat 2-5 lines + bash tmp/v9-chat-pulse.sh ${ts} (body proof). Script enforces O-DRV3/5/6 — memory is not enough. Never go idle."
+    prompt="O-DRV4: chat + tmp/v9-chat-pulse.sh ${ts}. Quality clears are script-only (see scripts/track-b/)."
   fi
 
   printf '%s {"ts":"%s","interval_s":%s,"prompt":"%s"}\n' \
     "$prompt_kind" "$ts" "$INTERVAL" "$prompt"
   echo "$snap" | head -8
-  echo "O-DRV4: chat pulse REQUIRED this tick (ack ts=${ts}; body proof required)"
+  echo "O-DRV4: chat pulse REQUIRED this tick (ack ts=${ts}; body+transcript proof)"
   if [ "$overdue" = "1" ]; then
     echo "O-DRV4: OVERDUE — previous pulse missing body proof or too old"
   fi
-  if [ -f "$DEBT_PENDING" ]; then
-    echo "O-DRV6: debt HOLD PENDING"
-  fi
-  if [ -f "$PENDING_FILE" ]; then
-    echo "O-DRV3: task analysis PENDING"
-  fi
-  if [ -f "$M_PENDING_FILE" ]; then
-    echo "O-DRV5: milestone analysis PENDING"
-  fi
+  [ -f "$DEBT_PENDING" ] && echo "O-DRV6: debt HOLD PENDING"
+  [ -f "$ESC_PENDING" ] && echo "O-DRV7: escalation PENDING"
+  [ -f "$ADV_PENDING" ] && echo "O-ADV: advance PENDING"
+  [ -f "$HAND_PENDING" ] && echo "O-HAND: handfix PENDING"
+  [ -f "$PENDING_FILE" ] && echo "O-DRV3: task analysis PENDING"
+  [ -f "$M_PENDING_FILE" ] && echo "O-DRV5: milestone analysis PENDING"
 }
 
 # Seed ack on start so the first INTERVAL window is the budget (not immediately overdue).
@@ -478,8 +633,16 @@ fi
 : >>"$CHAT_LOG"
 echo "# chat pulse log (O-DRV4) — append-only" >>"$CHAT_LOG"
 
-tick
+# set -e must not kill the wake loop if a single tick helper returns non-zero
+# (grep -q misses, oc flakes, etc.). Tick failures are logged; the driver stays up.
+run_tick() {
+  if ! tick; then
+    echo "O-DRV: tick returned non-zero (ignored — loop continues)" >&2
+  fi
+}
+
+run_tick
 while true; do
   sleep "$INTERVAL"
-  tick
+  run_tick
 done

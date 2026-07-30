@@ -32,7 +32,11 @@ Thumbs.db
 
 # Build outputs
 /output/
-/tmp/
+
+# Repo-root tmp/: local runtime only. Version the Stage 080 docs archive.
+/tmp/*
+!/tmp/docs-archive/
+!/tmp/docs-archive/**
 
 # Kubeconfig
 kubeconfig

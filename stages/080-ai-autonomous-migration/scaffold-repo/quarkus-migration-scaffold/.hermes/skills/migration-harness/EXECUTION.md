@@ -316,6 +316,30 @@ runtime only. Do not `git add .hermes` / `git add -A` without resetting
 `.hermes`. Nested `.hermes/harness/harness/` from a bad copy is also
 forbidden in git.
 
+**RestAssured / JAX-RS endpoint tests (O-RESTJSON / O-RESTEMPTY / O-TESTISO):**
+when writing `@QuarkusTest` RestAssured suites for migrated endpoints:
+
+1. **JSON paths** — list fields live under the collection property, not the
+   response root. Prefer
+   `body("shoppingCartItemList.find { it.product.itemId == '…' }.quantity", …)`
+   (or the real DTO field names from the harvest). Root-level
+   `find { it.product… }` returns null and fails GREEN-looking tests.
+2. **Empty path segments** — `pathParam("id", "")` often yields **200/404/405**
+   from JAX-RS routing, not a resource-level 400. Do not assert 400 on empty
+   path params unless the API uses query/form params (or a dedicated
+   validation route the plan requires). Prefer non-empty invalid ids, or
+   `@QueryParam` validation tests.
+3. **Isolation** — use a **unique cart/resource id per test** (or
+   `@BeforeEach` clear). Shared ids make later tests see leftover items
+   (`getCart` expected empty, actual size 1).
+4. **Never commit with task sensor RED** claiming “pre-existing failures are
+   out of scope” (V9 S04 T-003). Fix or narrow the suite until
+   `sensors.sh task` is GREEN, or leave uncommitted and escalate honestly.
+
+**Sensor-fix / escalation:** if surefire shows JSON-path or status-code
+mismatches, fix the **tests or the contract** — do not only rewrite the
+endpoint and debt-record RED (V9 S04 T-002/T-003 MiniMax path).
+
 **The factory quality gate is part of every task's acceptance.** SonarQube
 fails the exit on: new-code coverage < 80%, any new violation, or > 3%
 duplicated new lines. Consequences for task packets:

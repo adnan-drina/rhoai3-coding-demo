@@ -108,11 +108,25 @@ and this acceptance.
    200 with empty/canned success (R3).
 4. Wire `CATALOG_ENDPOINT` into `k8s/` Deployment `env` for the in-cluster
    catalog URL (R5) — `application.properties` alone is not enough.
+   **O-CATALOGDNS:** the host in that URL must resolve. If you use a short
+   name (`http://catalog-service:8080`), co-deploy a `Service` (+ backing
+   workload) named `catalog-service` under `k8s/` that serves the client's
+   path (legacy Coolstore: `GET /api/products` → JSON product array). Do
+   **not** point the catalog client at inventory (`/api/inventory`) — wrong
+   path and shape. Preflight fails when the env host has no matching
+   **Service** document (O-CATALOGSVC: a Deployment with the same name is
+   not enough). A same-namespace stub that serves `/api/products` is a
+   valid migration-general choice for a self-contained demo — record that
+   trade-off in the quality gate; do not claim Coolstore inventory
+   integration. Presence of the env *key* alone is a false green.
 5. Narrow error mapping: do **not** leave `ExceptionMapper<Exception>`
    (it remaps framework 404 → 503). Map catalog/service failures only (R6).
 6. Preflight enforces handler-before-deploy (R7): a Java `@Path` /
    `acceptanceCheck` for the stamped path must exist in `src/main` before
    push — ceremonial task cites are not enough.
+7. **Root index:** ship acceptance curls `/` for HTTP 200. With
+   `quarkus.rest.path=/api`, JAX-RS does **not** cover `/` — add
+   `src/main/resources/META-INF/resources/index.html` (static).
 
 Round budget is supervisor-enforced across all three classes. A final
 rejection halts the run with the evidence preserved for the retro —

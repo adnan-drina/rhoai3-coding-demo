@@ -549,6 +549,54 @@ run_case() {
 }
 check "static sensors reject CATALOG_ENDPOINT missing from k8s when deploy=true (V6 R5)" 1 "preserve"
 
+# 17e. O-CATALOGDNS — short host in env without Service declaration
+run_case() {
+  sensor_fixture
+  mkdir -p k8s src/main/resources/META-INF/resources src/main/java/com/demo/rest
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf '<html>ok</html>\n' > src/main/resources/META-INF/resources/index.html
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+    > src/main/java/com/demo/rest/CartEndpoint.java
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject catalog host without Service (O-CATALOGDNS)" 1 "O-CATALOGDNS"
+
+# 17e2. O-CATALOGSVC — Deployment named like the host must not satisfy Service check
+run_case() {
+  sensor_fixture
+  mkdir -p k8s src/main/resources/META-INF/resources src/main/java/com/demo/rest
+  cat > k8s/app.yaml <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+spec:
+  template:
+    spec:
+      containers:
+      - env:
+        - name: CATALOG_ENDPOINT
+          value: http://catalog:8080
+EOF
+  printf '<html>ok</html>\n' > src/main/resources/META-INF/resources/index.html
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+    > src/main/java/com/demo/rest/CartEndpoint.java
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject Deployment-named host without Service (O-CATALOGSVC)" 1 "O-CATALOG"
+
+# 17f. root index required when deploy=true
+run_case() {
+  sensor_fixture
+  mkdir -p k8s src/main/java/com/demo/rest
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'apiVersion: v1\nkind: Service\nmetadata:\n  name: catalog\nspec:\n  ports: [{port: 8080}]\n' > k8s/catalog-svc.yaml
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+    > src/main/java/com/demo/rest/CartEndpoint.java
+  STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject missing META-INF index when deploy=true" 1 "index.html"
+
 # --- V4 outer-loop instruments --------------------------------------------
 
 roadmap_fixture() {
@@ -907,8 +955,10 @@ check "wiring passes ctor CatalogClient with @RestClient (V6 P1.4)" 0 "STATIC CH
 # 76. V6 R7 / P0c — handler-before-deploy when STORY_DEPLOY=true
 run_case() {
   sensor_fixture
-  mkdir -p k8s
+  mkdir -p k8s src/main/resources/META-INF/resources
   printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'apiVersion: v1\nkind: Service\nmetadata:\n  name: catalog\nspec:\n  ports: [{port: 8080}]\n' > k8s/catalog-svc.yaml
+  printf '<html>ok</html>\n' > src/main/resources/META-INF/resources/index.html
   printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
   STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
@@ -916,8 +966,10 @@ check "static sensors reject missing acceptance.path handler when deploy=true (V
 
 run_case() {
   sensor_fixture
-  mkdir -p k8s src/main/java/com/demo/rest
+  mkdir -p k8s src/main/java/com/demo/rest src/main/resources/META-INF/resources
   printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'apiVersion: v1\nkind: Service\nmetadata:\n  name: catalog\nspec:\n  ports: [{port: 8080}]\n' > k8s/catalog-svc.yaml
+  printf '<html>ok</html>\n' > src/main/resources/META-INF/resources/index.html
   printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
   printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
     > src/main/java/com/demo/rest/CartEndpoint.java
@@ -1230,13 +1282,15 @@ check "plan-lint rejects soft prepare-for tasks (S-SOFT)" 1 "S-SOFT"
 run_case() {
   grep -q 'outer-loop-heartbeat' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'OUTER_LOOP_PLAIN' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'RUN COMPLETE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'mode=SHIP_ONLY' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'waiting on MiniMax rate limit' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'try_mechan_commit' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'O-T6b' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'git reset -q -- .hermes' "$HARNESS_DIR/supervisor.sh" \
     && echo polish-ok
 }
-check "outer-loop/supervisor carry V8 polish hooks (L-H1/L-P1/L-R1/O-T6/O-T6b)" 0 "polish-ok"
+check "outer-loop/supervisor carry V8 polish hooks (L-H1/L-P1/L-R1/L-SHIPLOG/O-T6/O-T6b)" 0 "polish-ok"
 
 # G-PLACE: placeholder/ceremonial unit tests must RED (V8 S02 T-005 abort)
 run_case() {
@@ -1346,6 +1400,24 @@ run_case() {
     && echo v9-bank-ok
 }
 check "V9 bank wiring O-SFIXLOOP/S1066/ESCW2/M3KILL/KILLREL present" 0 "v9-bank-ok"
+
+run_case() {
+  grep -q 'O-DEBTFRZ' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'debt-freeze' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'debt-freeze' "$HARNESS_DIR/outer-loop.sh" \
+    && echo debtfrz-ok
+}
+check "O-DEBTFRZ supervisor freeze + outer-loop hold" 0 "debtfrz-ok"
+
+run_case() {
+  local exec_md="$HARNESS_DIR/../skills/migration-harness/EXECUTION.md"
+  grep -q 'O-OCERR' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'refuse_red_task_commit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXSCOPE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-RESTJSON' "$exec_md" \
+    && echo ocerr-rest-ok
+}
+check "O-OCERR + RestAssured EXECUTION + O-SFIXSCOPE reset" 0 "ocerr-rest-ok"
 
 run_case() {
   mkfix

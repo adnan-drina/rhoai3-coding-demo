@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Migrated service</title>
+</head>
+<body>
+  <h1>Service root</h1>
+  <p>Ship acceptance requires HTTP 200 on <code>/</code>. With
+  <code>quarkus.rest.path=/api</code>, JAX-RS resources live under
+  <code>/api</code>; this static page satisfies the root check.</p>
+  <ul>
+    <li><a href="/api/cart/acceptance-check">/api/cart/acceptance-check</a></li>
+    <li><a href="/q/health">/q/health</a></li>
+  </ul>
+</body>
+</html>

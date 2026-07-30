@@ -284,6 +284,14 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
   case "$OUTCOME" in
+    debt-freeze*)
+      # O-DEBTFRZ: supervisor froze on unresolved task/milestone debt — do NOT
+      # mark the story complete or continue to dependents.
+      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} debt-freeze (O-DEBTFRZ); HEAD $(git rev-parse --short HEAD)"
+      echo "${SID},debt-freeze,$(date -u +%s)" >> "$STATE"
+      git add "$STATE" && git commit -q -m "${SID} story HOLD: debt-freeze (O-DEBTFRZ)" 2>/dev/null || true
+      fail_run "$SID debt-freeze (O-DEBTFRZ) — fix debt, durableize, re-run; do not advance"
+      ;;
     success*|story-gate-passed*)
       phase_ok "M4/M5 EXECUTE — ${SLUG_HINT} complete (${OUTCOME}); HEAD $(git rev-parse --short HEAD)"
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
@@ -325,6 +333,13 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
 done <<< "$STORIES"
 
 phase_ok "Outer loop — all stories shipped; HEAD $(git rev-parse --short HEAD)"
-git push origin main >> "$LOG" 2>&1 || true
+# Keep git remote chatter out of the demo narrative (L-SHIPLOG) — one summary line.
+if git push origin main >> /tmp/outer-git-push.log 2>&1; then
+  log "         git push: origin/main @ $(git rev-parse --short HEAD) (details /tmp/outer-git-push.log)"
+else
+  log "         git push: failed — see /tmp/outer-git-push.log (non-fatal at run end)"
+fi
 echo "outer-complete" > /tmp/outer-loop-done
+log "========== RUN COMPLETE — outer-loop exited; marker /tmp/outer-loop-done =========="
+log "         Further supervisor activity (e.g. SHIP_ONLY) is NOT a new outer-loop run."
 exit 0

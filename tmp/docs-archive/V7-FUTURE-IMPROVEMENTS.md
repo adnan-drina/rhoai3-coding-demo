@@ -5,9 +5,13 @@ harness methodically. **Policy (operator mandate):** before **each** new
 migration run, implement **all** open polish rows here, then restart so the
 run exercises them. Prefer abort/restart over shipping a compromised run.
 
+**Status:** V9 migration run **complete** — this bank is archived under
+`tmp/docs-archive/` with the V9 quality gate. New runs open a fresh bank under
+`docs/`.
+
 **Run history:** V7 aborted ([`V7-ABORT.md`](V7-ABORT.md)). V8 wiped for a
-clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
-([`V9-QUALITY-GATE.md`](V9-QUALITY-GATE.md)).
+clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). V9 gate:
+[`V9-QUALITY-GATE.md`](V9-QUALITY-GATE.md).
 
 **Related:** [`V6-RUN-FINDINGS.md`](V6-RUN-FINDINGS.md),
 [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md).
@@ -25,6 +29,7 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | L-N1 | ✅ | Single sink `/tmp/outer-loop.log`; README updated |
 | L-P1 | ✅ | `OUTER_LOOP_PLAIN=1` ascii markers |
 | L-D1 | ✅ | M1/M2 END enumerates key deliverable paths |
+| L-SHIPLOG | ✅ | SHIP_ONLY mirrored bare `Models: … M4 coding` into outer-loop.log after RUN COMPLETE — looked live. Fixed 2026-07-30: SHIP_ONLY uses `> START SHIP_ONLY` / `OK END SHIP_ONLY`; outer-loop writes RUN COMPLETE footer; git push chatter → `/tmp/outer-git-push.log`. |
 | L-M5e | ✅ | Evaluate prompt + post-evaluate `sensors.sh preflight` honesty log; SHIPPING.md forbids false “preflight green” (V8 S02) |
 
 ## Orchestration / efficiency
@@ -50,7 +55,14 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | O-AC3 | ✅ | already-complete: missing Target destination .java blocks preserve skip (V9 S03 T-006 CatalogService + CATALOG_ENDPOINT false complete). |
 | O-ESCW2 | ✅ | `app_dirt` ignores `.hermes/` + `migration/staging/` for O-ESCW allow-empty (V9 S03 T-001/T-002). Re-run proof on next package/dep noop. |
 | O-ESCW3 | ✅ | `escw-eligible.py`: never allow-empty when characterization lacks service tests / missing Target .java (V9 S03 T-008 false green on model-only tests). |
-| O-SONARTIME | ⬜ | sfix MiniMax wraps `sensors.sh sonar` in `timeout 60` → exit 124 before sonar finishes (~2–3m). Prompt/EXECUTION: never wrap harness sensors in timeout <600s (V9 S03 T-008 sfix). |
+| O-SONARTIME | ✅ | [HONESTY] sfix MiniMax wraps `sensors.sh sonar` in `timeout 60` → exit 124 before sonar finishes (~2–3m). Fixed 2026-07-30: EXECUTION.md + sfix prompt ban timeout <600s on sensors.sh (O-SONARTIME). |
+| O-GATE | ✅ ops | Script-cleared quality gates: `v9-clear-task/m-analysis.sh`, escalation/handfix/advance/bank/coolstore lint, debt freeze O-DEBTFRZ, driver watchdog — memory mandates closed (V9). |
+| O-DEBTFRZ | ✅ | Supervisor freezes on `record_debt` for task/milestone/sonar (exit 78 / debt-freeze) — no T-002→T-003 silent advance (V9 S04). |
+| O-RESTJSON | ✅ | EXECUTION: RestAssured JSON paths under collection (`shoppingCartItemList.find…`) not root `find` (V9 S04 T-002/T-003 — quantity Actual: null). |
+| O-RESTEMPTY | ✅ | EXECUTION: empty `pathParam` ≠ 400 (JAX-RS routing 200/405); prefer query/invalid-id tests (V9 S04). |
+| O-TESTISO | ✅ | EXECUTION: unique resource ids / `@BeforeEach` clear for RestAssured suites (V9 S04 getCart expected empty, actual size 1). |
+| O-OCERR | ✅ | Supervisor extracts surefire/error slice from `/tmp/oc-T-NNN.json` into `.err` when stderr empty (V9 S04 RCA blocked by 0-byte `.err`). |
+| O-SFIXSCOPE | ✅ | [HONESTY] Reset RED `T-NNN` / `sensor fix` commits (`refuse_red_task_commit` + sfix HEAD~1); sfix prompt bans out-of-scope-while-RED (V9 S04 T-003). |
 | O-TGTNAME | ✅ | task-packet + EXECUTION: Target `.java` basename mandatory; no Endpoint→Resource renames (V9 S04 T-001 O-T6d false escalate). |
 | O-HERMNEST | ✅ | supervisor `scrub_hermes_from_git` + app `.gitignore` `.hermes/`; remove nested `harness/harness` (V9 S04 T-001 MiniMax `git add -A` pollution). |
 | O-DRV4BODY | ✅ | Chat pulse ack alone invalid — require `tmp/V9-CHAT-PULSE.body` + `tmp/v9-chat-pulse.sh` (V9 agent faked ack without chatting; driver was also DOWN). |
@@ -62,6 +74,16 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | O-PKGDIR | ✅ | plan-lint S-PKGDIR requires `.gitkeep`/`package-info.java`; supervisor drops `.gitkeep` into empty `src/**/java` dirs before mechan. |
 | O-KILLREL | ✅ | `.hermes/harness/freeze-harness.sh` + polish-restart use `harness/outer-loo[p]\.sh` relative match. |
 | O-M3KILL | ✅ | outer-loop: hermes_rc 137/143 does not spend an M3 plan-lint attempt. |
+| O-DRV7DET | ✅ | [HONESTY] Fixed 2026-07-30: `refresh_escalation_pending` now greps `/tmp/supervisor.log` + `/tmp/outer-loop.log` for `committed via MiniMax escalation` / `Actor:.*escalation` (watermark `tmp/V9-ESCALATION-LOG.wm`); secondary commit-subject grep kept. Supervisor also amends escalation tips with `[via MiniMax escalation]` for symmetry with worker labels. |
+| O-HANDNOISE | ✅ | [HONESTY] Fixed 2026-07-30: `qg_strip_oc_noise` in `lib-quality-gates.sh`; `v9-handfix-detect.sh` + `v9-capture-diff.sh --oc` pipe through it; agents match is `agents=(UP\|DOWN)/` (not anchored `^agents=`). Busy path clears false pendings. |
+| O-ADVTASK | ✅ | [HONESTY] Fixed 2026-07-30: `story_has_advance` requires story id in **header**, rejects `T-\d+` headers, and requires story-level markers (`story complete` / `story gate` / `full-gate` / `ship` / `S0N ADVANCE\|HOLD\|ABORT`). |
+| O-DRV3EV | ✅ | [HONESTY] Fixed 2026-07-30: dropped `or len(evid)>20` shortcut; require ≥2 evidence path citations in gate body (or 1 if only one path in the stat file). |
+| O-TBTEST | ✅ | Added `scripts/track-b/tests/gate-instruments.sh` covering noise strip, task-vs-story ADVANCE, and uncited evidence rejection. |
+| O-REDARCH | ✅ | Fixed 2026-07-30: `refuse_red_task_commit` archives `git show` + `format-patch` to `/tmp/strays/<tag>-red-<ts>/` before `git reset --hard HEAD~1`. |
+| O-CATALOGDNS | ✅ | [HONESTY] S04 M5: pipeline green, acceptance 500/503 — `UnknownHostException: catalog-service`; inventory is **not** the catalog (`/api/inventory` ≠ `/api/products`). Fixed 2026-07-30: `k8s/catalog-service.yaml` co-deploy stub; `preserve_env_services_declared` + `root_index_present` in sensors; SHIPPING O-CATALOGDNS + META-INF index rule; specimen `META-INF/resources/index.html`. Trade-off: stub proves co-deployed `/api/products` reachability, not Coolstore inventory integration (gate-recorded). |
+| O-CATALOGSVC | ✅ | [HONESTY] `preserve_env_services_declared` used independent `kind: Service` + `name:` greps → Deployment named like the host GREEN without a Service. Fixed 2026-07-30: same-document Python Service.name set only; instrument 17e2. FQDN `*.*` still skipped (wrong-ns soft spot — accepted). |
+| O-SHIPNOPR | ✅ | [HONESTY] SHIP_ONLY / up-to-date push: wait_pipeline returned empty → false gate-fix MiniMax burn. Fixed 2026-07-30: fall back to newest PipelineRun; empty/no-trigger → acceptance-only recheck (no gate class). |
+| O-FALSECOMPLETE | ✅ | [HONESTY] Agent wrote `S04,complete` / `story-gate-passed (…)` while supervisor-done was still `factory-failed`. Fixed 2026-07-30: `SHIP_ONLY=1`; `v9-ship-only.sh`; `v9-record-ship-only.sh` (reviewed commit author); `v9-ship-only-waiter.sh` waits on `outer-complete`/`S05,complete` only (not outer crash); lint rejects parenthetical subjects; gate-instruments cover record+ready. |
 
 ## Story design / plan quality
 

@@ -3,13 +3,14 @@ name: stage-080-track-b
 skill-group: Demo Environment
 applies-to:
   - stages/080-ai-autonomous-migration/**
-  - docs/V7-FUTURE-IMPROVEMENTS.md
-  - docs/V8-QUALITY-GATE.md
-  - docs/V9-QUALITY-GATE.md
+  - tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md
+  - tmp/docs-archive/V9-QUALITY-GATE.md
+  - tmp/docs-archive/V*-*.md
   - docs/V*-*.md
   - "**/quarkus-migration-scaffold/**"
   - tmp/v8-driver-loop.sh
   - tmp/V9-TASK-ANALYSIS*
+  - scripts/track-b/**
   - AGENTS.md
 ---
 
@@ -43,9 +44,12 @@ sensors, scaffold skills, live migration workspace):
    and full gate before M5 ship / story complete / next story.
 2. **O-DRV4 chat pulse every 120s (script-proofed)** — post 2–5 lines in
    chat, then `bash tmp/v9-chat-pulse.sh <tick-ts>` with the same text
-   (writes body + ack). Ack-only is invalid. Driver must be running
-   (`tmp/v8-driver-loop.sh`); if DOWN, start it. Silence / fake ack is P0.
-   **O-DRV6** — `debt: T-… RED` on HEAD → `tmp/V9-DEBT-HOLD-PENDING.md`; HOLD.
+   (body + transcript fidelity). Ack-only is invalid. Driver must be
+   running (`tmp/v8-driver-loop.sh` / `v9-ensure-driver.sh`); if DOWN,
+   start it. Silence / fake ack is P0.
+   **O-DRV6 / O-DEBTFRZ** — debt RED freezes the supervisor (no next task).
+   **O-DRV3/5/7 clears** — only via `scripts/track-b/v9-clear-*.sh` (see
+   `scripts/track-b/README.md`). Bare SHA files do not clear.
 3. **Do not wait for the human to ask** for analysis. As soon as a task
    commit or RED/partial/sfix/escalation is identified, run the detailed
    task gate. Driver O-DRV3 keeps CRITICAL ticks while
@@ -58,8 +62,11 @@ sensors, scaffold skills, live migration workspace):
    gate — read the diff and the actor path; no assumptions.
 5. **Record** detailed task notes, escalation root causes, and M/story
    ADVANCE/HOLD/ABORT decisions in the active run gate file
-   (`docs/V9-QUALITY-GATE.md` for V9). No silent stage push.
-6. **Bank durable defects immediately** in `docs/V7-FUTURE-IMPROVEMENTS.md`
+   (`tmp/docs-archive/V9-QUALITY-GATE.md` for completed V9; new runs use
+   `docs/V*-QUALITY-GATE.md`). No silent stage push.
+6. **Bank durable defects immediately** in the active polish bank
+   (`tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md` for V7–V9; new runs open a
+   fresh `docs/V*-FUTURE-IMPROVEMENTS.md`)
    when analysis finds a gap. Do **not** ask whether to bank. Then
    **implement** open bank rows that block honesty (or HOLD) — do not
    accumulate backlog while a broken run continues.
@@ -95,7 +102,8 @@ sensors, scaffold skills, live migration workspace):
 - Pushing a story to completion with a broken or dishonest service.
 - Resuming straight into M5 ship / next story after polish without a gate entry.
 - Treating "already committed / skipped" as quality evidence.
-- Clearing O-DRV3 pending without a corresponding `docs/V9-QUALITY-GATE.md` entry.
+- Clearing O-DRV3 pending without a corresponding quality-gate entry
+  (`tmp/docs-archive/V9-QUALITY-GATE.md` for V9).
 - Hand-fixing the live app to green and moving on without durableize + re-run.
 - Logging an escalation without reading Qwen/OpenCode logs for why the worker failed.
 - Closing an escalation because MiniMax committed GREEN, without durableize + retest.

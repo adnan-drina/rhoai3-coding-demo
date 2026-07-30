@@ -199,7 +199,8 @@ escalations that MiniMax owns), treat it as a first-class defect until
 closed:
 
 1. **Capture** — note task id, actor path, and commit(s) in
-   `docs/V9-QUALITY-GATE.md` (do not bury under “escalation”).
+   the active quality gate (V9: `tmp/docs-archive/V9-QUALITY-GATE.md`)
+   (do not bury under “escalation”).
 2. **Analyze Qwen** — read `/tmp/oc-T-NNN.err`, `/tmp/oc-T-NNN.json` (or
    equivalent OpenCode logs), supervisor lines for that task, and the
    dirty-tree / commit state **before** MiniMax ran. Identify *why* the
@@ -232,17 +233,20 @@ path.
 
 Canonical skill/rule: `.agents/skills/stage-080-quality-advance/SKILL.md`,
 `.agents/rules/stage-080-track-b.md`. Live wake loop: `tmp/v8-driver-loop.sh`
-(O-DRV2 / O-DRV3 / O-DRV4 / **O-DRV5**). Polish bank: `docs/V7-FUTURE-IMPROVEMENTS.md`.
+(O-DRV2 / O-DRV3 / O-DRV4 / **O-DRV5**). Polish bank (V7–V9 archived):
+`tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md`.
 
-These gates are **script-enforced**, not memory: O-DRV3 →
-`tmp/V9-TASK-ANALYSIS-PENDING.md`; O-DRV5 → `tmp/V9-M-ANALYSIS-PENDING.md`;
-O-DRV4 → `tmp/V9-CHAT-PULSE-PENDING.md`.
+These gates are **script-enforced**, not memory. Clear helpers live in
+`scripts/track-b/` (see `scripts/track-b/README.md`). Bare SHA files without
+`# validated:` do **not** clear O-DRV3/O-DRV5.
 
 #### Before each new migration run
 
 Implement **all** open polish / banked items (⬜ → ✅) **before** starting
-or restarting Track B — so the new run exercises them. Do not start a run
-with known open harness defects. Prefer abort/restart over shipping a
+or restarting Track B — so the new run exercises them. Enforced by
+`bash scripts/track-b/v9-bank-gate.sh all` and
+`bash scripts/track-b/v9-preflight-outer-start.sh --restart`. Do not start a
+run with known open harness defects. Prefer abort/restart over shipping a
 compromised run.
 
 #### Driver goals (must follow on every tick)
@@ -261,40 +265,41 @@ compromised run.
    unexpected downtime as P0.
 3. **O-DRV3 — detailed post-task analysis (script)** — after every new
    `T-NNN` / `T-NNN sensor fix` commit, driver writes
-   `tmp/V9-TASK-ANALYSIS-PENDING.md` and stays CRITICAL until a detailed
-   gate entry exists and the pending file is cleared. Chat pulse first,
-   then analysis.
+   `tmp/V9-TASK-ANALYSIS-PENDING.md`. Clear **only** via
+   `v9-capture-diff.sh` + gate entry + `v9-clear-task-analysis.sh`
+   (requires code/action prose + diff evidence). Chat pulse first.
 4. **O-DRV5 — comprehensive post-M analysis (script)** — after every new
    M1/M2/M3/M4/M5 completion (git subjects and/or outer-loop `OK END M*`),
-   driver writes `tmp/V9-M-ANALYSIS-PENDING.md` and stays CRITICAL until a
-   comprehensive freeze-and-review gate entry exists; clear via
-   `tmp/V9-M-ANALYSIS.sha`. Do not advance to the next story/M on GREEN alone.
-5. **Bank every durable gap** into `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜) in
-   the same analysis pass — never ask whether to bank.
+   driver writes `tmp/V9-M-ANALYSIS-PENDING.md`. Clear **only** via
+   `v9-clear-m-analysis.sh` (requires `**Verdict:** ADVANCE|HOLD|ABORT`).
+   Do not advance to the next story/M on GREEN alone.
+5. **Bank every durable gap** into the active polish bank (⬜) in the same
+   analysis pass — never ask whether to bank. (V9:
+   `tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md`.)
 6. **Implement open bank rows that block honesty** as soon as they are
    found (or HOLD until they are) — do not accumulate a backlog while the
    broken run continues.
 7. **Abort / HOLD on false greens** — ceremonial commits, empty harvests,
    placeholder tests, wrong-title mechan commits, dishonest
    already-complete skips. Do not advance on sensor GREEN alone.
-   **O-DRV6** — when HEAD is `debt: T-… RED`, driver writes
-   `tmp/V9-DEBT-HOLD-PENDING.md`; treat as HOLD until analyzed/durableized
-   or an explicit ABORT/HOLD is gated — do not silent-advance.
+   **O-DRV6** — debt ledger / `debt: T-… RED` → `V9-DEBT-HOLD-PENDING`.
+   **O-DEBTFRZ** — supervisor freezes on `record_debt` (task/milestone/sonar)
+   and stops the story (`debt-freeze`); does not continue to the next task.
 8. **Prefer fix + re-run over long compromised runs** — if the harness or
    delivery is dishonest, stop, bank, implement, wipe/resume cleanly.
 9. **Keep driving** after ADVANCE; freeze on HOLD until fixes land; on
    ABORT, reset and implement open bank rows before restart.
-10. **Temporary manual → durable → re-run** — hand edits may probe a
-    hypothesis; after validation, implement in the harness/skills and
-    re-run so the process (not the agent) owns the fix.
-11. **MiniMax-over-Qwen escalations** — every takeover must get Qwen-log
-    root-cause analysis, a durable harness/skill fix, and a retest that
-    proves the worker path no longer needs MiniMax for that failure class.
-    Do not treat “MiniMax committed GREEN” as closed.
-12. **Migration-general durable fixes** — harness/skill/sensor changes must
-    apply to any Spring Boot → Quarkus migration using this method. Use
-    `migration.yaml` / brief / findings parameters; keep Coolstore specifics
-    in story artifacts or named fixtures — not in the harness core.
+   **O-ADV** — story-complete without `**Verdict:** ADVANCE` →
+   `V9-ADVANCE-PENDING` (`v9-advance-gate.sh`).
+10. **Temporary manual → durable → re-run** — **O-HAND** detects idle dirty
+    `src/`; clear only via `v9-clear-handfix.sh` after durableize + re-run.
+11. **MiniMax-over-Qwen escalations** — **O-DRV7** writes
+    `V9-ESCALATION-PENDING`; blocks O-DRV3 clear until
+    `v9-clear-escalation.sh` (Qwen RCA + bank id + retest). MiniMax GREEN
+    alone does not clear.
+12. **Migration-general durable fixes** — `v9-coolstore-lint.sh` forbids
+    specimen hardcoding in harness core. Parameterize via `migration.yaml`
+    / briefs / findings.
 
 #### What every gate must judge (crucial — not optional)
 
@@ -322,21 +327,27 @@ Do not clear an O-DRV3/O-DRV5 pending file after a superficial GREEN glance.
 4. On RED / partial / sfix / escalation: supervisor + dimension logs
    (`/tmp/sensor-*.log`, `/tmp/sonar-violations.txt`, `/tmp/oc-T-*.err`).
 5. Root cause, harness smells, process-performance waste.
-6. Bank every durable gap NOW in `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜).
-7. Detailed entry in `docs/V9-QUALITY-GATE.md` (code quality / actions /
+6. Bank every durable gap NOW in the active polish bank (⬜).
+7. Detailed entry in the active quality gate (code quality / actions /
    why / bank / next).
-8. Clear pending only after that write-up (`tmp/V9-TASK-ANALYSIS.sha` +
-   delete `tmp/V9-TASK-ANALYSIS-PENDING.md`).
+8. Clear **only** with:
+   `bash scripts/track-b/v9-capture-diff.sh --oc <sha>` then
+   `bash scripts/track-b/v9-clear-task-analysis.sh <sha>`.
 
 #### Gate cadence (script + docs)
 
 | Gate | Enforced by | Clear by |
 |------|-------------|----------|
-| Chat pulse every 120s | **O-DRV4** (`V9-CHAT-PULSE-PENDING` + body proof) | `tmp/v9-chat-pulse.sh` → body + ack |
-| After each T-NNN / debt: T- | **O-DRV3** script (`V9-TASK-ANALYSIS-PENDING`) | `V9-TASK-ANALYSIS.sha` + gate entry |
-| After each M1–M5 | **O-DRV5** script (`V9-M-ANALYSIS-PENDING`) | `V9-M-ANALYSIS.sha` + comprehensive gate entry |
-| HEAD `debt: T-… RED` | **O-DRV6** (`V9-DEBT-HOLD-PENDING`) | debt cleared or HOLD/ABORT gated |
-| Before story ship / next story | skill + O-DRV5 story-complete detection | ADVANCE in `V9-QUALITY-GATE.md` |
+| Chat pulse every 120s | **O-DRV4** (+ transcript fidelity) | `tmp/v9-chat-pulse.sh` |
+| After each T-NNN / debt: T- | **O-DRV3** | `v9-clear-task-analysis.sh` (gate+diff) |
+| After each M1–M5 | **O-DRV5** | `v9-clear-m-analysis.sh` (Verdict required) |
+| Debt RED / ledger | **O-DRV6** + **O-DEBTFRZ** | fix debt; harness freeze |
+| MiniMax over Qwen | **O-DRV7** `V9-ESCALATION-PENDING` | `v9-clear-escalation.sh` |
+| Hand fix in app | **O-HAND** | `v9-clear-handfix.sh` |
+| Story ADVANCE | **O-ADV** | `v9-advance-gate.sh clear S0N` |
+| Open bank ⬜ | `v9-bank-gate.sh` / preflight | ⬜→✅ before restart |
+| Coolstore hardcode | `v9-coolstore-lint.sh` | remove specimen strings |
+| Driver uptime | `v9-ensure-driver.sh` + launchd example | external watchdog |
 
 Agentic (no human GO); default bias is HOLD when unsure. Do not treat
 AGENTS prose alone as enforcement — if the script is not nagging, fix the

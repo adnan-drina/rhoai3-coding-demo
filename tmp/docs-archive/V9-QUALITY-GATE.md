@@ -317,3 +317,235 @@ allow-empty “Already satisfied” commit, no MiniMax.
   (parameterized by migration.yaml / briefs / findings). Specimen-specific
   literals belong in stories or named fixtures — not harness core.
 
+---
+
+## 2026-07-30 — S04 T-001/T-002/T-003 escalation RCA (HOLD — process slip)
+
+- **Verdict:** HOLD
+- **HEAD:** `4074e02` debt: T-003 task RED (unresolved); prior `3fa15e6` debt T-002
+- **Process failure:** T-002 and T-003 MiniMax escalations were **not**
+  root-caused until the human flagged them — violates MiniMax-over-Qwen
+  mandate / O-DRV7. Analysis is being written now; harness frozen.
+
+### T-001 (already committed when S04 M4 started)
+
+- Path: earlier MiniMax after O-T6d (CartResource vs CartEndpoint) — fixed
+  via O-TGTNAME/O-HERMNEST; skipped as already committed at 12:23:59.
+- Not re-escalated in this M4 window.
+
+### T-002 — Create RestAssured endpoint tests
+
+- **Actor path:** Qwen/OpenCode ~30m → `worker exit rc=1` → O-T6e skip
+  (task sensor RED) → **MiniMax escalation** → commits `8e6f469` (tests +
+  CartEndpoint) / `e4c1dc5` (more CartEndpoint) → style-autofix partial →
+  sfix → **debt RED** `3fa15e6` → supervisor **continued to T-003**
+  (pre O-DEBTFRZ on pod).
+- **Qwen RCA:** `/tmp/oc-T-002.err` was **0 bytes** (O-OCERR). JSON shows
+  surefire failures during the worker session — worker left RED tree,
+  no honest GREEN commit. Escalation was necessary for closure attempt,
+  not a false path.
+- **MiniMax action quality:** WEAK — wrote `CartEndpointTest` (21+ tests)
+  but with durable defects; rewrote `CartEndpoint` validation instead of
+  fixing test contract; still **8 failures / 23** after sfix; recorded debt.
+- **Failure classes (surefire):**
+  1. **O-RESTJSON:** `body("find { it.product.itemId == '…' }.quantity")`
+     at response root → Actual null (items are under `shoppingCartItemList`).
+  2. **O-RESTEMPTY:** empty `pathParam` expects 400, got **200/405** (JAX-RS
+     routing, not resource validation).
+  3. **O-TESTISO:** `getCartReturnsCartWithItems` expects list size 0 but
+     sees leftover item from prior tests (shared cart id).
+- **AI code quality:** tests are real RestAssured (not G-PLACE) but
+  **incorrect** vs response shape / JAX-RS / isolation — not shippable.
+
+### T-003 — Verify acceptance path / preserve configs
+
+- **Actor path:** Qwen `rc=0` → O-T6e skip (task sensor still RED) →
+  **MiniMax escalation** → `7abb53c` large CartEndpoint rewrite + acceptance
+  tests → autofix → sfix → **debt RED** `4074e02`.
+- **Qwen RCA:** stderr empty again; JSON text admits **10 pre-existing
+  failures “out of scope”** and still prepared a commit — dishonest
+  closeout (O-SFIXSCOPE). Worker did not leave a task-GREEN tree.
+- **MiniMax:** added acceptance-check endpoint work but did **not** clear
+  the RestAssured RED classes; debt again. Scope smell: T-003 “verify”
+  became another CartEndpoint rewrite while tests still wrong.
+
+### Durableize (this pass)
+
+| ID | Status | Fix |
+|----|--------|-----|
+| O-RESTJSON | ✅ | EXECUTION RestAssured JSON-path guidance |
+| O-RESTEMPTY | ✅ | EXECUTION empty-path ≠ 400 |
+| O-TESTISO | ✅ | EXECUTION unique ids / BeforeEach |
+| O-OCERR | ✅ | supervisor extracts JSON→`.err` when stderr empty |
+| O-SFIXSCOPE | ⬜ | sfix prompt hardened; still need hard refuse commit-on-RED claim |
+| O-DEBTFRZ | ✅ | now on pod — should have stopped after T-002 |
+
+### Retest owed
+
+- Reset/resume S04 T-002 after guidance sync: Qwen must produce
+  task-GREEN RestAssured suite **without** MiniMax for this failure class.
+- Do not advance S04 / M5 while debt ledger has `## T-002` / `## T-003`.
+
+### Handfix note
+
+- Dirty `CartEndpoint.java` + k8s/mta files while agents idle → O-HAND;
+  discard or durableize — do not nurse hand patches past debt.
+
+
+---
+
+## 2026-07-30 — O-SFIXSCOPE durableized
+
+- **Fix:** `refuse_red_task_commit` resets RED `T-NNN` commits; sfix RED
+  `sensor fix` commits reset via `HEAD~1` before debt.
+- **Status:** ✅ bank; synced to pod. Retest still owed on S04 T-002.
+
+---
+
+## 2026-07-30 — S04 T-002 retest (Qwen path — ADVANCE for this failure class)
+
+- **Verdict:** ADVANCE (T-002 RestAssured failure class only)
+- **HEAD:** `233ea60` T-002 sensor fix: deterministic style-autofix (after `297a65e` Qwen)
+- **Retest proof:** Reset to post–T-001; Qwen wrote CartEndpointTest + committed
+  **without MiniMax escalation**; milestone sonar RED (1) cleared by OpenRewrite
+  autofix — no sfix/MiniMax seat.
+- **AI code/action:** Worker-first path + O-REST* guidance exercised; durableize
+  O-RESTJSON/EMPTY/TESTISO/OCERR/SFIXSCOPE validated for this class.
+- **Next:** T-003 on Qwen; do not treat full S04 as ADVANCE until T-003 GREEN.
+
+---
+
+## 2026-07-30 — S03 story complete (retrospective gate)
+
+- **Verdict:** ADVANCE
+- **HEAD:** `ce235bb` S03 story complete: story-gate-passed
+- **Substance:** Prior M5 evaluate `de9fa37` + story-complete commit landed; S03
+  factory path had already passed before S04 retest. This section exists so
+  O-ADV (post O-ADVTASK) has an explicit story-level ADVANCE, not task-level.
+- **AI code quality / what shipped:** Service-layer harvest + characterization
+  from the earlier S03 run (see prior T-004…T-008 gate entries).
+- **AI action / process:** No new S03 work this tick — watermark-only clearance.
+- **Banked:** none new for S03.
+- **Next action:** Keep S04 on HOLD until catalog/acceptance fixed; do not open S05.
+
+---
+
+## 2026-07-30 — S04 T-003 detailed (Qwen worker — ADVANCE task)
+
+- **SHA:** `237f7979776c61db099926c85ff60d55d5de0615` (`237f797`)
+- **Diff evidence:** `src/main/java/com/demo/rest/CartEndpoint.java`,
+  `src/main/java/com/demo/rest/CartExceptionMappers.java`,
+  `src/test/java/com/demo/rest/CartEndpointTest.java` (+54/−1)
+- **AI-generated code quality / substance:** Qwen extended acceptance-path
+  coverage and mappers; task + milestone sensors GREEN; no placeholder tests.
+- **AI action quality / actor path:** coding worker Qwen3.6 27B (OpenCode) only —
+  **no MiniMax escalation**, no sfix. Matches O-REST* retest goal.
+- **Verdict / next:** ADVANCE for T-003 task class. Story ship still HOLD
+  (see S04 story gate — catalog DNS). Banked: none new for T-003 alone.
+
+---
+
+## 2026-07-30 — S04 story complete / ship gate — HOLD
+
+- **Verdict:** HOLD
+- **HEAD:** `0f8c1202c30fd8d4abefbbffaff2748a8f110ae2` (`0f8c120` Retro)
+- **Story gate:** S04 M4 coding retest succeeded (T-002/T-003 Qwen-only); M5
+  evaluate `e1e4687` preflight GREEN; **factory/acceptance NOT passed** after
+  3 deploy rounds (`6724473` run report). Supervisor COMPLETE: factory not passed.
+- **Acceptance evidence (live):** `/` → 404; `/api/cart/acceptance-check` →
+  500 then 503; pod log `UnknownHostException: catalog-service` while
+  `CATALOG_ENDPOINT=http://catalog-service:8080` and **no** `catalog-service`
+  Service in `coolstore-cart-service-v7-dev`. Deploy fix r1 `b16d287` /
+  r2 `8fa99c2` (`CartEndpoint.java`, `CartExceptionMappers.java`,
+  `RootEndpoint.java`, `application.properties`) did not clear DNS.
+- **AI-generated code quality:** M4 RestAssured suite + endpoint conversion are
+  substance-green in-repo. Deploy-fix rounds changed mappers/root endpoint but
+  could not satisfy catalog-backed acceptance without a reachable catalog.
+- **AI action / process:** ~1h MiniMax deploy-correction burn after T-003; r1/r2
+  treated a platform wiring defect as an app code defect. Process waste —
+  harness should detect missing catalog Service before spending deploy rounds.
+- **Banked:** `O-CATALOGDNS` (⬜) — ship preflight must verify catalog DNS/Service
+  (or document mock) before deploy-correction loops; `O-SONARTIME` still open.
+- **Next action:** Provision/point catalog in the deploy namespace (or durable
+  harness check), re-ship S04 acceptance, then re-judge ADVANCE. Do **not**
+  start S05 on this HEAD.
+
+---
+
+## 2026-07-30 — S04 post-M4 commits catch-up (O-DRV3 watermark → HEAD)
+
+- **SHA reviewed through:** `0f8c1202c30fd8d4abefbbffaff2748a8f110ae2`
+- **Diff evidence (Retro tip):** `migration/retro-events.csv`,
+  `migration/retro-metrics.csv`, `migration/retro-proposals.md`
+- **Also:** `8fa99c2` Deploy fix r2 — `src/main/java/com/demo/rest/CartEndpoint.java`,
+  `src/main/java/com/demo/rest/CartExceptionMappers.java`,
+  `src/main/java/com/demo/rest/RootEndpoint.java`,
+  `src/main/resources/application.properties`
+- **AI-generated code quality / substance:** Deploy-fix diffs are real mapper/root
+  edits but did not fix live acceptance (catalog DNS). Retro CSVs/proposals are
+  process artifacts — see S04 HOLD story gate for substance judgment.
+- **AI action quality / actor path:** MiniMax deploy-correction r1/r2 after Qwen
+  T-003; no further worker coding. Process waste banked as `O-CATALOGDNS`.
+- **Verdict / next:** HOLD story (not ADVANCE). Banked: `O-CATALOGDNS`. Next
+  action: fix catalog Service before another deploy round.
+
+---
+
+## 2026-07-30 — S04 story complete / ship gate — ADVANCE (SHIP_ONLY earned)
+
+- **Verdict:** ADVANCE
+- **Harness re-earn:** `9575051` `S04 story complete: success route=… http=200 products=4`
+  via `SHIP_ONLY=1` after O-SHIPNOPR (up-to-date push → judge existing PR + acceptance).
+  Prior agent-authored `8204db9` / `story-gate-passed (…)` superseded.
+- **Supersedes HOLD below** (kept for audit). Delivery unchanged: catalog stub +
+  root index; live `/` 200, acceptance 200/4 products.
+
+## 2026-07-30 — S04 prior HOLD (ledger honesty) — superseded
+
+- **Verdict:** HOLD (delivery green; bookkeeping RED — O-FALSECOMPLETE) — **superseded by SHIP_ONLY earn above**
+- **HEAD (delivery):** `a6131d1` Deploy fix: co-deploy catalog-service + root index
+- **Dishonest ledger:** `8204db9` `S04 story complete: story-gate-passed
+  (acceptance green after O-CATALOGDNS)` — **agent-authored**, not outer-loop.
+  `/tmp/supervisor-done` still `factory-failed … deploy=3`. S04 is
+  `deploy=true`; harness success marker must be `success route=… products=N`,
+  not `story-gate-passed`.
+- **Operator-verified (not harness-closed):** Live curls after O-CATALOGDNS:
+  `/` → 200; `/api/cart/acceptance-check` → 200 with 4 products; catalog pod
+  1/1. Pipeline `…-push-rt2d9` Succeeded. **This is not M5 `acceptance_pass`.**
+- **Stub catalog trade-off (conscious):** `k8s/catalog-service.yaml` is a
+  same-namespace Python stub serving `/api/products` with specimen seeds.
+  Acceptance proves co-deployed stub reachability + shape, **not** integration
+  with `coolstore-inventory-service` (wrong path `/api/inventory`). Chosen for
+  migration-generality / self-contained demo (no stage-060 dependency). G-FAKE
+  still bans in-process mocks under `src/main`; fake relocated to `k8s/` by
+  design — record, do not pretend it is the real catalog.
+- **Banked:** `O-FALSECOMPLETE` ✅ (SHIP_ONLY + story-complete lint);
+  `O-CATALOGSVC` ✅ (same-document Service check); stub trade-off noted here.
+- **Next action:** Re-earn via durable waiter
+  `scripts/track-b/v9-ship-only-waiter.sh` (triggers only on
+  `outer-complete` / `S05,complete` / log completion — **not** outer crash)
+  → `SHIP_ONLY=1` → `v9-record-ship-only.sh` (no auto-push). Then flip to
+  ADVANCE.
+- **Waiter durableize (Claude review):** commit authoring left
+  `/tmp/v9-s04-ship-only-waiter.sh` (rule 10 violation) — moved to
+  `v9-record-ship-only.sh` + `v9-ship-only-waiter.sh` with fixtures.
+
+## 2026-07-30 — S05 story complete / ship gate — ADVANCE
+
+- **Verdict:** ADVANCE
+- **HEAD:** `85ef405` S05 story complete: success route=… http=200 products=4
+- **Story gate:** Harness M5 ship earned (not agent-authored). Pipeline
+  `coolstore-cart-service-v7-push-nvlbk` Succeeded. Live: `/` → 200;
+  `/api/cart/acceptance-check` → 200 with **4** products.
+- **What shipped / substance:** S05-bootstrap-cleanup — properties/bootstrap/
+  Jersey cleanup mostly already-complete fast path; T-005 `.gitkeep`; T-006
+  acceptance endpoint (Qwen + sensor-fix removed out-of-scope HealthEndpoint
+  duplicate). M5 evaluate preflight GREEN (L-M5e). Retro committed.
+- **AI action / process:** Worker-first for T-005/T-006; no MiniMax coding.
+  Scope sensor correctly reverted CartEndpoint out-of-scope edit on T-006.
+  Fast-path already-complete for T-001–T-004 appropriate (prior stories).
+- **Banked:** none new for S05 delivery. Open process: `O-SHIPNOPR` ✅
+  (SHIP_ONLY up-to-date push false gate) during S04 re-earn; S04 still HOLD
+  until SHIP_ONLY records honest subject.
+- **Next action:** Complete S04 SHIP_ONLY re-earn → flip S04 HOLD→ADVANCE;
+  then tag baseline.

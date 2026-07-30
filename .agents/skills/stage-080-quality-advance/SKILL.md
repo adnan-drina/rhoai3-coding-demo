@@ -13,7 +13,8 @@ description: >
   milestone M (M1–M5), before M5 ship/push, before story-complete / next
   story, after abort, and on escalations. Critically reviews delivery
   substance (not only sensor GREEN), banks harness gaps, implements or HOLDs,
-  and records decisions in docs/V9-QUALITY-GATE.md (active run). Driver
+  and records decisions in the active quality gate (V9 archived:
+  tmp/docs-archive/V9-QUALITY-GATE.md). Driver
   O-DRV3 nags via tmp/V9-TASK-ANALYSIS-PENDING.md until the task gate is
   written and cleared. Do NOT use for ordinary stage deploy/validate (use
   validate-demo-step) or GitOps review (use review-gitops-change).
@@ -80,7 +81,7 @@ the run continues.
 5. Remaining violations, root cause, harness smells, and **process
    performance** (retry thrash, quota burn, silent ticks).
 6. **Bank every durable gap immediately** as a ⬜ row in
-   `docs/V7-FUTURE-IMPROVEMENTS.md`. Do **not** ask the human whether to
+   `tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md`. Do **not** ask the human whether to
    bank — append in the same analysis pass (main run goal).
 
 ### Escalation gate (MiniMax over Qwen — every takeover)
@@ -112,18 +113,21 @@ it explicitly as owed if deferred past HOLD.
 - Scope vs roadmap mismatch (e.g. S01 `pom.xml` growing REST endpoints)
 
 **Record** a detailed bullet block under the current story in
-`docs/V9-QUALITY-GATE.md` (not just a table one-liner). Escalations and
+`tmp/docs-archive/V9-QUALITY-GATE.md` (not just a table one-liner). Escalations and
 sensor-fix paths get an explicit “why” paragraph.
 
-**Clear O-DRV3 pending** only after the gate entry exists:
+**Clear O-DRV3 pending** only via the clear script (bare SHA write is invalid):
 
 ```bash
-# after writing docs/V9-QUALITY-GATE.md
-git -C /projects/modernized rev-parse HEAD > tmp/V9-TASK-ANALYSIS.sha   # via oc or local mirror of HEAD
-rm -f tmp/V9-TASK-ANALYSIS-PENDING.md
+# after writing a detailed tmp/docs-archive/V9-QUALITY-GATE.md section for this SHA
+bash scripts/track-b/v9-capture-diff.sh --oc <full-sha>
+bash scripts/track-b/v9-clear-task-analysis.sh <full-sha>
+# Escalations first:
+# bash scripts/track-b/v9-clear-escalation.sh T-NNN --qwen-cause '...' --bank-id O-XXX --retest '...'
 ```
 
-(Use the workspace HEAD SHA you actually reviewed.)
+O-DRV5: `bash scripts/track-b/v9-clear-m-analysis.sh <sha>` (requires
+`**Verdict:** ADVANCE|HOLD|ABORT`). See `scripts/track-b/README.md`.
 
 ### Milestone M gate (comprehensive)
 
@@ -193,7 +197,7 @@ Default bias: if unsure between ADVANCE and HOLD → **HOLD**.
 
 ### 5. Record
 
-Append to `docs/V9-QUALITY-GATE.md` (active run):
+Append to `tmp/docs-archive/V9-QUALITY-GATE.md` (active run):
 
 ```markdown
 ## <UTC date> — <M-id or story/task id>

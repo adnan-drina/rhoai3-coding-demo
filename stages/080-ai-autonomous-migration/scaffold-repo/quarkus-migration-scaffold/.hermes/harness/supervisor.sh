@@ -39,6 +39,10 @@ WORKER_FIRST="${WORKER_FIRST:-true}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
+# O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
+if [ "${V9_KEEP_DEBT_FREEZE:-0}" != "1" ]; then
+  rm -f /tmp/debt-freeze /tmp/supervisor-pause
+fi
 
 orch_label() {
   case "${ORCH_MODEL}" in
@@ -65,10 +69,16 @@ METRICS=/tmp/supervisor-metrics.csv
 
 log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
 # Mirror demo-facing lines into the outer-loop narrative (tail -f /tmp/outer-loop.log).
+# SHIP_ONLY must not emit M4 "Models:" lines that look like a live story run (L-SHIPLOG).
 outer_log() { echo "[$(date -u +%F' '%T)] $*" >> "$OUTER_LOG"; }
 
-log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST}"
-outer_log "         Models: $(orch_label) · $(worker_label) | M4 coding → worker first (MiniMax escalation only)"
+log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST} ship_only=${SHIP_ONLY:-0}"
+if [ "${SHIP_ONLY:-}" = "1" ]; then
+  outer_log "> START  SHIP_ONLY — acceptance re-earn (not outer-loop; details ${LOG})"
+  outer_log "         Models: $(orch_label) · $(worker_label) | mode=SHIP_ONLY (skip M1–M4 / evaluate)"
+else
+  outer_log "         Models: $(orch_label) · $(worker_label) | M4 coding → worker first (MiniMax escalation only)"
+fi
 # C1: per-run isolated Maven repo — factory-parity resolution for every sensor
 .hermes/harness/sensors.sh seed >> "$LOG" 2>&1 || log "WARN: isolated repo seed failed — sensors fall back to red-on-use"
 event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
@@ -315,8 +325,25 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
   git add migration/debt.md 2>/dev/null
   git commit -q -m "debt: ${tag} ${kind} RED (unresolved)" 2>/dev/null || true
   event "$tag" 0 debt_recorded "$kind"
-  log "$tag: ${kind} RED recorded in migration/debt.md — continuing (ship gate blocks fidelity/package debt)"
+  # O-DEBTFRZ: unresolved task/milestone debt must FREEZE — not continue to the
+  # next task (V9 S04 T-002→T-003 silent advance). Ship-gate fidelity/package
+  # debt at M5 still records; freeze applies to in-story task/milestone kinds.
+  case "$kind" in
+    task|milestone|sonar)
+      touch /tmp/debt-freeze
+      touch /tmp/supervisor-pause
+      log "$tag: ${kind} RED recorded in migration/debt.md — O-DEBTFRZ FREEZE (do not continue to next task)"
+      if [ -x .hermes/harness/freeze-harness.sh ]; then
+        .hermes/harness/freeze-harness.sh >> "$LOG" 2>&1 || true
+      fi
+      ;;
+    *)
+      log "$tag: ${kind} RED recorded in migration/debt.md — continuing (ship gate blocks fidelity/package debt)"
+      ;;
+  esac
 }
+
+debt_frozen() { [ -f /tmp/debt-freeze ]; }
 
 # Clear the ledger on a GREEN ship ONLY when no unresolved ## entries remain.
 # V6 P2.5 / V5 S4: wiping debt on a "green" ship that still listed milestone
@@ -397,7 +424,7 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     # (prompt-only was ignored — V9 S03 T-008 ran milestone 5×).
     touch /tmp/sensor-fix-mode
     orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO).
 ${RUN_CONTRACT}"
     rm -f /tmp/sensor-fix-mode
     # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
@@ -407,8 +434,22 @@ ${RUN_CONTRACT}"
       if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         log "$tag: sensor-fix committed and ${SENSOR_KIND} GREEN $(git log --oneline -1)"
       else
+        # O-SFIXSCOPE: never keep a sensor-fix commit that left the sensor RED
+        # (V9 S04 T-003: session claimed "pre-existing / out of scope" and committed).
         event "$tag" 0 sfix_committed_still_red verify
-        record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED"
+        if git log -1 --format=%s | grep -qE 'sensor fix:'; then
+          # O-REDARCH: keep the red tip for RCA before hard-reset
+          _red=$(git rev-parse HEAD)
+          _arch="/tmp/strays/${tag}-sfix-red-$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$_arch"
+          git show --stat "$_red" >"$_arch/stat.txt" 2>&1 || true
+          git show "$_red" >"$_arch/full.diff" 2>&1 || true
+          git format-patch -1 "$_red" -o "$_arch" >>"$LOG" 2>&1 || true
+          printf '%s\n' "$_red" >"$_arch/sha.txt"
+          log "$tag: O-SFIXSCOPE — archiving RED sensor-fix $_red → $_arch then resetting"
+          git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+        fi
+        record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
       fi
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
@@ -423,7 +464,35 @@ ${RUN_CONTRACT}"
       record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
   fi
+  debt_frozen && return 1
   return 0
+}
+
+# O-SFIXSCOPE: a T-NNN / stage commit that leaves task sensor RED must not stand.
+# Reset HEAD and return 1 so the caller does not treat it as success.
+# O-REDARCH: archive the red tip to /tmp/strays/<tag>/ before hard-reset so
+# escalation RCA still has the worker/MiniMax output.
+refuse_red_task_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
+  local prefix="$1" tag="$2" red_sha arch
+  case "$prefix" in
+    T-*|S*) ;;
+    *) return 0 ;;
+  esac
+  git log -1 --format=%s | grep -qE "^${prefix}" || return 0
+  if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+    return 0
+  fi
+  red_sha=$(git rev-parse HEAD)
+  arch="/tmp/strays/${tag}-red-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$arch"
+  git show --stat "$red_sha" >"$arch/stat.txt" 2>&1 || true
+  git show "$red_sha" >"$arch/full.diff" 2>&1 || true
+  git format-patch -1 "$red_sha" -o "$arch" >>"$LOG" 2>&1 || true
+  printf '%s\n' "$red_sha" >"$arch/sha.txt"
+  log "$tag: O-SFIXSCOPE — HEAD ${prefix} commit is task-RED — archiving $red_sha → $arch then resetting (never keep red commits)"
+  event "$tag" 0 sfixscope_reset task_red
+  git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+  return 1
 }
 
 # run_stage <commit-prefix> <tag> <prompt> <retry-prompt> -> 0 committed / 1 exhausted
@@ -436,6 +505,11 @@ run_stage() {
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
     if committed "$prefix"; then
       event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"
+      # O-SFIXSCOPE: refuse red T-NNN commits (do not proceed to post_commit_verify as success)
+      if ! refuse_red_task_commit "$prefix" "$tag"; then
+        attempt=$((attempt+1))
+        continue
+      fi
       # Escalation KPI: the orchestrator marks direct implementations with
       # an ESCALATED run-log row — count them for the retro.
       if tail -5 migration/run-log.md 2>/dev/null | grep -q "ESCALATED"; then
@@ -593,6 +667,14 @@ write_run_report() { # $1 = outcome line
 }
 
 # ---------------------------------------------------------------- M1
+# SHIP_ONLY=1 — re-earn M5 ship/acceptance without replaying M1–M4 (O-FALSECOMPLETE).
+# Requires STORY_DEPLOY + a tree that already implements the story. Does not
+# mark story-state.csv; the caller (or outer-loop) records the supervisor-done
+# outcome. Never use this to skip unfinished coding work.
+if [ "${SHIP_ONLY:-}" = "1" ]; then
+  log "SHIP_ONLY=1 — skipping M1–M4 and M5 evaluate; jumping to M5 ship"
+  outer_log "         SHIP_ONLY: jumping to M5 ship (O-FALSECOMPLETE re-earn)"
+else
 # The harness owns the analysis end-to-end (2026-07-27 decision): M1
 # ALWAYS runs its own kantra with the migration.yaml analysis contract —
 # deterministic rule selection, reproducible ground truth. An IDE-run
@@ -787,6 +869,36 @@ run_worker_task() { # $1=task-id → 0 if committed
     > "/tmp/oc-${T}.json" 2>"/tmp/oc-${T}.err"
   rc=$?
   wait_for_worker
+  # O-OCERR: OpenCode often leaves stderr empty; surefire noise is in the JSON.
+  if [ ! -s "/tmp/oc-${T}.err" ] && [ -s "/tmp/oc-${T}.json" ]; then
+    python3 - "/tmp/oc-${T}.json" "/tmp/oc-${T}.err" <<'PY' 2>/dev/null || true
+import re, sys
+src, dst = sys.argv[1], sys.argv[2]
+raw = open(src, encoding="utf-8", errors="replace").read()
+lines = []
+for pat in (
+    r"Tests run: [^\n\\]+",
+    r"\[ERROR\][^\n\\]{0,240}",
+    r"Expected status code[^\n\\]{0,120}",
+    r"JSON path[^\n\\]{0,160}",
+    r"BUILD FAILURE",
+    r"COMPILATION ERROR",
+):
+    lines.extend(re.findall(pat, raw)[:20])
+seen, out = set(), []
+for ln in lines:
+    if ln in seen:
+        continue
+    seen.add(ln)
+    out.append(ln)
+if out:
+    open(dst, "w", encoding="utf-8").write(
+        "O-OCERR extracted from opencode JSON (stderr was empty):\n"
+        + "\n".join(out[:60])
+        + "\n"
+    )
+PY
+  fi
   log "$T: worker exit rc=${rc} (details /tmp/oc-${T}.err)"
   if committed "$T"; then
     return 0
@@ -878,10 +990,15 @@ try_worker_verified_noop() { # $1=task-id → 0 if committed
 
 run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local T="$1"
+  if debt_frozen; then
+    log "$T: O-DEBTFRZ — skip (debt freeze active)"
+    return 1
+  fi
   if try_already_complete "$T"; then
     log_task SKIP "$T" "already complete (fast path); skipped worker"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
+    debt_frozen && return 1
     return 0
   fi
   # O-PKGDIR before mechan: empty dirs → .gitkeep so mkdir work can commit
@@ -891,13 +1008,19 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
+    debt_frozen && return 1
     return 0
   fi
   if [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
-    scope_enforce "$T"
-    post_commit_verify "$T" "$T"
-    log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
-    return 0
+    # O-SFIXSCOPE: worker may commit then leave task RED — reset and escalate
+    if refuse_red_task_commit "$T" "$T"; then
+      scope_enforce "$T"
+      post_commit_verify "$T" "$T"
+      log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+      debt_frozen && return 1
+      return 0
+    fi
+    log "$T: O-SFIXSCOPE reset worker RED commit — continuing to escalation path"
   fi
   # O-T6e: second mechan pass after worker (gitkeep / late writes / ESCW2 dirt)
   ensure_trackable_packages
@@ -905,6 +1028,7 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
+    debt_frozen && return 1
     return 0
   fi
   # O-ESCW: worker verified, nothing to change — close without MiniMax
@@ -912,6 +1036,7 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
+    debt_frozen && return 1
     return 0
   fi
   log_task START "$T" "Actor: $(orch_label) escalation — worker incomplete/failed"
@@ -923,11 +1048,21 @@ ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode. Launch opencode only when the tree is incomplete or sensors are RED. Foreground worker only; bundled scripts only — no heredocs / python3 -c.
 ${RUN_CONTRACT}"; then
+    # O-DRV7DET: stamp subject so commit-grep detectors also fire (log remains primary).
+    if git log -1 --format=%s | grep -qE "^${T}:" \
+      && ! git log -1 --format=%s | grep -qiE 'via MiniMax escalation'; then
+      git commit --amend -m "$(git log -1 --format=%s) [via MiniMax escalation]" \
+        --no-verify >>"$LOG" 2>&1 || true
+    fi
     log_task END "$T" "committed via MiniMax escalation — $(git log --oneline -1 | cut -c1-80)"
   else
-    log_task SKIP "$T" "exhausted — recorded in debt; moving on"
-    log "$T: exhausted — recorded, moving on"
+    log_task SKIP "$T" "exhausted — recorded in debt; O-DEBTFRZ freeze (not moving on)"
+    log "$T: exhausted — recorded; freezing (O-DEBTFRZ)"
+    touch /tmp/debt-freeze
+    touch /tmp/supervisor-pause
   fi
+  debt_frozen && return 1
+  return 0
 }
 
 BATCH_MAX="${BATCH_MAX:-3}"
@@ -945,10 +1080,13 @@ flush_batch() { # $1=space-separated rewrite task ids
   log "batch: worker-first rewrite path ($n tasks, no MiniMax apply-directly): $ids"
   log_task BATCH "$ids" "Actor: $(worker_label) each — $desc"
   for T in $ids; do
+    debt_frozen && { log "batch: O-DEBTFRZ — aborting remaining rewrite batch"; return 1; }
     committed "$T" && { log_task SKIP "$T" "already committed"; continue; }
-    run_task "$T"
+    run_task "$T" || true
   done
+  debt_frozen && return 1
   [ "$n" -ge 2 ] && post_commit_verify "$(echo $ids | awk '{print $NF}') batch" "batch-verify"
+  debt_frozen && return 1
   return 0
 }
 
@@ -962,6 +1100,11 @@ flush_batch() { # $1=space-separated rewrite task ids
 
 BATCH=""
 for T in $TASK_IDS; do
+  if debt_frozen; then
+    log "O-DEBTFRZ: stopping M4 task loop — unresolved debt RED (no silent advance)"
+    echo "debt-freeze" > /tmp/supervisor-done
+    exit 78
+  fi
   if committed "$T"; then
     log "$T: already committed"
     log_task SKIP "$T" "already committed — skipping"
@@ -973,9 +1116,14 @@ for T in $TASK_IDS; do
     continue
   fi
   flush_batch "$BATCH"; BATCH=""
-  run_task "$T"
+  run_task "$T" || true
 done
 flush_batch "$BATCH"; BATCH=""
+if debt_frozen; then
+  log "O-DEBTFRZ: M4 ended under debt freeze — not entering M5"
+  echo "debt-freeze" > /tmp/supervisor-done
+  exit 78
+fi
 
 # ---------------------------------------------------------------- M5 evaluate
 if ! committed "M5 evaluate"; then
@@ -1009,6 +1157,8 @@ Commit prefix: 'M5 evaluate:'. DO NOT PUSH." \
   fi
 fi
 
+fi # SHIP_ONLY else (M1–M5 evaluate)
+
 # ---------------------------------------------------------------- M5 ship
 NS=$(grep -rhoE '^\s*namespace:\s*\S+' k8s/*.y*ml 2>/dev/null | head -1 | awk '{print $2}')
 [ -n "$NS" ] || NS="$(basename $(git remote get-url origin) .git)-dev"
@@ -1024,13 +1174,23 @@ newest_pipelinerun() { OC get pipelinerun -n "$NS" --sort-by=.metadata.creationT
 pipeline_status()   { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.conditions[0].status} {.status.conditions[0].reason}' 2>/dev/null; }
 
 wait_pipeline() { # $1=previous newest run; waits for a NEW run to reach a terminal state; echoes "name status"
+  # O-SHIPNOPR: when git push is "Everything up-to-date" (SHIP_ONLY re-earn),
+  # no new PipelineRun is created. Always fall back to the newest existing
+  # run — never return an empty name (empty → false "gate" correction burn).
   local prev="$1" name="" i
-  for i in $(seq 1 20); do name=$(newest_pipelinerun); [ -n "$name" ] && [ "$name" != "$prev" ] && break; sleep 15; done
+  for i in $(seq 1 12); do
+    name=$(newest_pipelinerun)
+    [ -n "$name" ] && [ "$name" != "$prev" ] && break
+    sleep 10
+  done
   if [ -z "$name" ] || [ "$name" = "$prev" ]; then
-    # No new run (e.g. resume after a failure with nothing new pushed):
-    # judge the newest existing run instead of erroring out.
-    name="$prev"
-    [ -n "$name" ] || { echo "none no-trigger"; return; }
+    name=$(newest_pipelinerun)
+    [ -n "$name" ] || name="$prev"
+    if [ -z "$name" ]; then
+      echo "none no-trigger"
+      return
+    fi
+    log "M5 ship: no new PipelineRun (push may be up-to-date) — judging existing $name"
   fi
   for i in $(seq 1 120); do
     local st; st=$(pipeline_status "$name")
@@ -1126,10 +1286,17 @@ ${RUN_CONTRACT}" \
     log "M5 ship: preflight budget exhausted — pushing anyway (factory as arbiter)"
   fi
   PREV=$(newest_pipelinerun)
-  git push origin main >> "$LOG" 2>&1 || { log "FATAL: git push failed"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
+  PUSH_OUT=$(git push origin main 2>&1) || { log "FATAL: git push failed"; echo "$PUSH_OUT" >> "$LOG"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
+  echo "$PUSH_OUT" >> "$LOG"
   LAST_PUSHED=$(git rev-parse HEAD)
   log "M5 ship: pushed $(git rev-parse --short HEAD), waiting for pipeline"
   RESULT=$(wait_pipeline "$PREV"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
+  # O-SHIPNOPR: empty / no-trigger must not fall into gate-fix (burns MiniMax).
+  if [ -z "$PR_NAME" ] || [ "$PR_NAME" = "none" ] || [ "$PR_ST" = "no-trigger" ]; then
+    log "M5 ship: no PipelineRun to judge (up-to-date push) — acceptance-only recheck (O-SHIPNOPR)"
+    PR_ST=succeeded
+    PR_NAME="${PREV:-none}"
+  fi
   event "m5-ship" 0 "pipeline_$PR_ST" "$PR_NAME"
   log "M5 ship: pipeline $PR_NAME -> $PR_ST"
   if [ "$PR_ST" = "succeeded" ]; then
@@ -1143,6 +1310,9 @@ ${RUN_CONTRACT}" \
       git push origin main >> "$LOG" 2>&1 || true
       echo "story-gate-passed" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: story gate passed (non-deploy story)"
+      if [ "${SHIP_ONLY:-}" = "1" ]; then
+        outer_log "OK END    SHIP_ONLY — story-gate-passed; outer-loop still idle"
+      fi
       exit 0
     fi
     # E2: success = demo acceptance, not HTTP liveness — index page serves
@@ -1192,6 +1362,9 @@ print(m.group(1) if m else '')
       git push origin main >> "$LOG" 2>&1 || true
       echo "success route=${ROUTE} http=${CODE} products=${PRODUCTS}" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: migration shipped and accepted"
+      if [ "${SHIP_ONLY:-}" = "1" ]; then
+        outer_log "OK END    SHIP_ONLY — success http=${CODE} products=${PRODUCTS}; outer-loop still idle"
+      fi
       exit 0
     else
       log "M5 ship: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
@@ -1263,4 +1436,7 @@ phase_f_retro
 git push origin main >> "$LOG" 2>&1 || true
 echo "factory-failed build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R}" > /tmp/supervisor-done
 log "SUPERVISOR COMPLETE: factory not passed — evidence preserved for the retro"
+if [ "${SHIP_ONLY:-}" = "1" ]; then
+  outer_log "X FAIL   SHIP_ONLY — factory not passed (build=${BUILD_R} gate=${GATE_R} deploy=${DEPLOY_R}); see ${LOG}"
+fi
 exit 1

@@ -7,18 +7,9 @@ This directory holds operational and governance documentation for the Red Hat Op
 | [OPERATIONS.md](OPERATIONS.md) | Deployment order, bootstrap behavior, validation strategy, GitOps operations, day-2 notes, run verdicts, and cleanup guidance |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Symptom-based diagnostics and recovery commands |
 | [PLATFORM_BASELINE.md](PLATFORM_BASELINE.md) | Fresh-environment platform baseline |
-| [MIGRATION-PROCESS-REDESIGN.md](MIGRATION-PROCESS-REDESIGN.md) | The stage 080 migration process: M1–M5 stages, artifacts, gates, decisions, and the validation ladder |
-| [MTA-TO-SPEC-MAPPING.md](MTA-TO-SPEC-MAPPING.md) | MTA findings → spec-kit translation design, analysis rule configuration, OpenRewrite fit |
-| [SPRING-TO-QUARKUS-GUIDANCE-REVIEW.md](SPRING-TO-QUARKUS-GUIDANCE-REVIEW.md) | **Umbrella (analysis only):** consolidated Spring→Quarkus guidance review and proposed enrichment backlog — no scaffold changes |
-| [QUARKUS-FOR-SPRING-DEVELOPERS.md](QUARKUS-FOR-SPRING-DEVELOPERS.md) | Red Hat book bible: chapter-by-chapter analysis (native Quarkus) |
-| [QUARKUSIO-SKILLS-MIGRATE-SPRING.md](QUARKUSIO-SKILLS-MIGRATE-SPRING.md) | quarkusio/skills migrate-spring-to-quarkus: Full-path maps to borrow; compat orchestrator rejected |
-| [OPENREWRITE-SPRINGBOOT-TO-QUARKUS.md](OPENREWRITE-SPRINGBOOT-TO-QUARKUS.md) | OpenRewrite Spring→Quarkus catalog: adopt/adapt/reject, standing recommendations |
-| [MAIN-THREAD-SPRING-TO-QUARKUS.md](MAIN-THREAD-SPRING-TO-QUARKUS.md) | Markus Eisele walkthrough notes |
-| [SNOWDROP-SPRINGBOOT-TO-QUARKUS-GUIDE.md](SNOWDROP-SPRINGBOOT-TO-QUARKUS-GUIDE.md) | Snowdrop notes: rule-card schema; M1 multi-module and license preflights |
-| [MIGIQ-ANALYSIS.md](MIGIQ-ANALYSIS.md) | MigIQ evaluation: adopted ideas, rejections, and verdict updates |
-| [CART-RUN2-ANALYSIS.md](CART-RUN2-ANALYSIS.md) | Deep per-event record of cart migration run #2 (the first shipped run) |
-| [DRYRUN-M-PROCESS.md](DRYRUN-M-PROCESS.md) | M-process dry run + V3 story-run record: per-stage quality analysis and defect ledger |
 | [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |
+
+_Run-specific logs (V5–V9), the V7–V9 polish bank, V9 quality gate, Spring→Quarkus source analyses, and the KAI analysis live under [`../tmp/docs-archive/`](../tmp/docs-archive/) so `docs/` stays operational-only._
 
 ## Learning Path
 
