@@ -1019,6 +1019,77 @@ EOF
 }
 check "already-complete skips explicit Remove when .java absent (V6 P2.4)" 0 "absent:JerseyConfig"
 
+# O-AC2 — preserve token in Story Scope Waivers must not skip unrelated tasks
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model k8s
+  printf 'package com.demo.model;\npublic class Product {}\n' > src/main/java/com/demo/model/Product.java
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-007: Package rename verification
+**Class**: rewrite
+**Goal**: Verify no legacy package references remain in src/main/java
+**Acceptance**: Verification command returns 0; legacy package references eliminated
+
+## Story Scope Waivers
+
+**CATALOG_ENDPOINT Integration**: Explicitly waived - External catalog service.
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\nlegacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-007; echo "rc=$?"
+}
+check "already-complete does not skip on waiver-only CATALOG_ENDPOINT (O-AC2)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.rest-client.catalog.url=${CATALOG_ENDPOINT}\n' > src/main/resources/application.properties
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-008: Wire CATALOG_ENDPOINT into application.properties
+**Class**: rewrite
+**Goal**: Preserve CATALOG_ENDPOINT via REST client url in application.properties
+**Acceptance**: CATALOG_ENDPOINT present in src/main/resources/application.properties
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\n' > migration.yaml
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-008); echo "$out"
+}
+check "already-complete still skips real preserve-subject tasks (O-AC2)" 0 "present:CATALOG_ENDPOINT"
+
+# O-T6d — characterization task must not mechan-commit main-only dirty tree
+MM_PY="$HARNESS_DIR/mechan-match.py"
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-006: Add domain model characterization tests
+**Class**: rewrite
+**Goal**: Add characterization tests to verify domain model behavior
+**Target design**:
+- Test: src/test/java/com/demo/model/DomainModelTest.java
+**Acceptance**: All domain model characterization tests pass
+EOF
+  printf 'src/main/java/com/demo/model/Product.java\n' | python3 "$MM_PY" tasks.md T-006; echo "rc=$?"
+}
+check "mechan-match refuses characterization without src/test (O-T6d)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-006: Add domain model characterization tests
+**Class**: rewrite
+**Goal**: Add characterization tests
+**Target design**:
+- Test: src/test/java/com/demo/model/DomainModelTest.java
+**Acceptance**: tests pass
+EOF
+  printf 'src/test/java/com/demo/model/DomainModelTest.java\n' | python3 "$MM_PY" tasks.md T-006; echo "rc=$?"
+}
+check "mechan-match accepts characterization with src/test (O-T6d)" 0 "rc=0"
+
 # 83. V6 abort — ceremonial status-map acceptance is rejected statically
 run_case() {
   sensor_fixture

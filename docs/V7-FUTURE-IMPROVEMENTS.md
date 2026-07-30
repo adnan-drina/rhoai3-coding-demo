@@ -39,7 +39,12 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | O-CTX | ✅ | Tighter M1 profile prompt (cite paths, don’t paste whole files) |
 | O-DRV | ✅ ops | Restart: `nohup bash tmp/v8-driver-loop.sh >> /tmp/v8-driver-loop.out &` |
 | O-DRV2 | ✅ ops | Driver auto-restarts outer-loop on `outer=DOWN` (120s ticks); CRITICAL sentinel — V8 overnight dead-harness gap |
+| O-DRV3 | ✅ ops | Driver detects new `T-*` / anomalies → `tmp/V9-TASK-ANALYSIS-PENDING.md` + CRITICAL until detailed gate entry (V9: analysis deferred until human asked) |
+| O-STY | ✅ | style-autofix: discard `migration/staging/` mutations; `stage_for_task_commit` excludes staging + `.hermes` (V9 S02 T-005) |
 | O-RESUME | ✅ | Mid-story resume via `RESUME_STORY`+`RESUME_RUN_BASE` only (never sticky bare `RUN_BASE` — V8 S02 false-skip) |
+| O-T6c | ✅ | Escalation / sfix / exhausted-session mechan commits use `stage_for_task_commit` (no `.hermes/` or staging sweep — V9 S01 T-011) |
+| O-T6d | ✅ | `mechan-match.py`: refuse mechan/worker auto-commit when staged paths mismatch task (characterization requires `src/test/` — V9 S02 T-006) |
+| O-AC2 | ✅ | `already-complete.py`: preserve skip only if token is task subject (title/Goal/Acceptance); strip Story Scope Waivers; instruments lock (V9 S02 T-007) |
 
 ## Story design / plan quality
 

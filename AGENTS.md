@@ -146,25 +146,84 @@ For non-trivial tasks, follow this workflow:
 7. If cluster validation is required but unavailable, state exactly what could not be validated.
 8. Produce a PR summary with risks, rollback notes, and validation evidence.
 
-### Before each new migration run (Stage 080)
+### Stage 080 Track B — non-negotiable mandate
 
-Implement **all** open polish / banked items in
-`docs/V7-FUTURE-IMPROVEMENTS.md` (and successor bank docs) **before**
-starting or restarting Track B — so the new run exercises them. Prefer
-abort/restart over shipping a compromised run; do not leave polish for
-"after the demo."
+**End state:** an **autonomous, swift, hardened, durable, fully functional**
+migration process. No compromises. No assumptions. No cutting corners. No
+pushing through on hope.
 
-### Quality-advance cadence (Stage 080 Track B)
+**Method:** be methodical, thorough, and thoughtful at every step. Skip
+nothing. When an issue appears, **fix it and re-run** — do not wait hours
+to discover the process was broken. Prefer **multiple partial runs**, each
+building harness honesty and durability, over **one completed run with a
+broken service**.
 
-Run `.agents/skills/stage-080-quality-advance/SKILL.md`:
+**Forbidden drift:**
 
-- **After each T-NNN:** light substance check + escalation root cause;
-  one-liner in `docs/V9-QUALITY-GATE.md`; HOLD/stop if red flags.
+- Advancing on sensor GREEN without substance review
+- Asking the human whether to bank, analyze, or HOLD
+- Leaving open polish for “after the demo” or “next PR”
+- Nursing a compromised run to finish the story count
+- Assumptions about what a commit “probably” did — read the diff
+
+Canonical skill/rule: `.agents/skills/stage-080-quality-advance/SKILL.md`,
+`.agents/rules/stage-080-track-b.md`. Live wake loop: `tmp/v8-driver-loop.sh`
+(O-DRV2 / O-DRV3). Polish bank: `docs/V7-FUTURE-IMPROVEMENTS.md`.
+
+#### Before each new migration run
+
+Implement **all** open polish / banked items (⬜ → ✅) **before** starting
+or restarting Track B — so the new run exercises them. Do not start a run
+with known open harness defects. Prefer abort/restart over shipping a
+compromised run.
+
+#### Driver goals (must follow on every tick)
+
+1. **Stay awake** — inspect the run on each driver interval (default 120s);
+   post a brief chat pulse (2–5 lines); do not go silent while the run is live.
+2. **O-DRV2 — harness self-heal** — if outer-loop is DOWN and the story
+   ledger is incomplete, auto-restart it (no sticky bare `RUN_BASE`). Treat
+   unexpected downtime as P0.
+3. **O-DRV3 — detailed post-task analysis** — after every new `T-NNN` /
+   `T-NNN sensor fix` commit (and on RED / partial autofix / escalation),
+   complete a detailed quality-advance analysis **immediately**, without
+   waiting to be asked. Driver keeps CRITICAL ticks while
+   `tmp/V9-TASK-ANALYSIS-PENDING.md` is uncleared.
+4. **Bank every durable gap** into `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜) in
+   the same analysis pass — never ask whether to bank.
+5. **Implement open bank rows that block honesty** as soon as they are
+   found (or HOLD until they are) — do not accumulate a backlog while the
+   broken run continues.
+6. **Abort / HOLD on false greens** — ceremonial commits, empty harvests,
+   placeholder tests, wrong-title mechan commits, dishonest
+   already-complete skips. Do not advance on sensor GREEN alone.
+7. **Prefer fix + re-run over long compromised runs** — if the harness or
+   delivery is dishonest, stop, bank, implement, wipe/resume cleanly.
+8. **Keep driving** after ADVANCE; freeze on HOLD until fixes land; on
+   ABORT, reset and implement open bank rows before restart.
+
+#### Mandatory per-task checklist (O-DRV3)
+
+1. `git show --stat` + full diff (bodies, not titles).
+2. Actor path: worker / mechan / O-ESCW / MiniMax escalation / style-autofix / sfix.
+3. On RED / partial / sfix / escalation: supervisor slice + dimension logs
+   (`/tmp/sensor-*.log`, `/tmp/sonar-violations.txt`, `/tmp/oc-T-*.err`,
+   style-autofix log).
+4. Remaining violations, root cause, and harness smells (wrong `git add -A`
+   scope, staging mutated, cross-task Sonar bleed, false-green risk).
+5. Bank every durable gap NOW in `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜).
+6. Detailed entry in `docs/V9-QUALITY-GATE.md` (what / why / bank / next).
+7. Clear pending only after that write-up (`tmp/V9-TASK-ANALYSIS.sha` +
+   delete `tmp/V9-TASK-ANALYSIS-PENDING.md`).
+
+#### Gate cadence
+
+- **After each T-NNN** (and sensor-fix / partial autofix / escalation):
+  detailed checklist above.
 - **After each milestone M (M1–M5):** comprehensive freeze-and-review.
 - **Before story ship / next story:** full ADVANCE/HOLD/ABORT gate.
 
-Do not advance on sensor GREEN alone. Agentic (no human GO); default
-bias is HOLD when unsure.
+Agentic (no human GO); default bias is HOLD when unsure.
 
 ## Coding and manifest style
 

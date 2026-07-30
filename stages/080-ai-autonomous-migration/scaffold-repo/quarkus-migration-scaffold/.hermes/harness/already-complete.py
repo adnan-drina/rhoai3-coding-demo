@@ -10,8 +10,10 @@ word in the task body as a class name (`Convert`, `Port`) and, because those
 absent" for real CDI conversion work. That is forbidden.
 
 Allowed skip paths (only):
-1. preserve: token named in the task body is already present in the tree
-   (and in k8s/ when STORY_DEPLOY=true for ENV_STYLE tokens).
+1. preserve: token that is the *subject* of the task (title or Goal /
+   Acceptance / Target design — O-AC2) is already present in the tree
+   (and in k8s/ when STORY_DEPLOY=true for ENV_STYLE tokens). Waiver
+   prose must not trigger this path.
 2. Explicit removal task (title or body) naming a concrete src/.../*.java
    path whose basename is absent under src/main/java and src/test/java.
 """
@@ -37,8 +39,43 @@ def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
         title = m.group(2).strip()
         start = m.end()
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        return title, text[start:end]
+        body = text[start:end]
+        # O-AC2: last-task bodies used to swallow story-level waiver appendices
+        # (e.g. "CATALOG_ENDPOINT … waived"), falsely triggering preserve skip.
+        body = re.split(
+            r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
+            body,
+            maxsplit=1,
+            flags=re.M | re.I,
+        )[0]
+        return title, body
     return "", ""
+
+
+def preserve_is_task_subject(title: str, body: str, item: str) -> bool:
+    """O-AC2: preserve fast-path only when the task is ABOUT that item.
+
+    Mentions in waiver prose, or incidental body text outside Goal /
+    Acceptance / Target design, must not skip real work.
+    """
+    if item in title:
+        return True
+    focus_parts = [title]
+    for m in re.finditer(
+        r"(?is)\*\*(?:Goal|Acceptance|Target design)\*\*.*?(?=\n\*\*|\n#{2,6}\s|\Z)",
+        body,
+    ):
+        focus_parts.append(m.group(0))
+    focus = "\n".join(focus_parts)
+    if item not in focus:
+        return False
+    # Explicit waiver of this item is not a preserve task.
+    if re.search(
+        rf"(?is)\bwaiv\w*.{{0,120}}{re.escape(item)}|{re.escape(item)}.{{0,120}}\bwaiv\w*",
+        focus,
+    ):
+        return False
+    return True
 
 
 def preserve_items(myaml: str) -> list[str]:
@@ -139,7 +176,7 @@ def main() -> int:
         myaml = myp.read_text(encoding="utf-8", errors="replace")
 
     for item in preserve_items(myaml):
-        if item not in body:
+        if not preserve_is_task_subject(title, body, item):
             continue
         if re.fullmatch(r"[A-Z][A-Z0-9_]+", item) and deploy:
             if not k8s_has(item):

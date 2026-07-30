@@ -82,6 +82,18 @@ RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
 committed() { git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"; }
 
+# O-T6b / O-T6c / O-STY: never sweep harness or staging fidelity trees into T-NNN commits.
+stage_for_task_commit() {
+  git add -A
+  git reset -q -- .hermes migration/staging 2>/dev/null || true
+}
+
+# O-STY: discard OpenRewrite mutations under migration/staging (fidelity baseline).
+discard_staging_autofix() {
+  git checkout -q -- migration/staging 2>/dev/null || true
+  git reset -q -- migration/staging 2>/dev/null || true
+}
+
 # --- Story mode (redesign M-process, first outer-loop slice) --------------
 # STORY_SPEC_PREFIX  commit prefix that satisfies the plan stage (e.g.
 #                    "S01 spec") — M2/M3 authored the plan; M3 is
@@ -289,8 +301,12 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       # so those fixes oscillated back every cycle (sonar 5->3->4, never
       # converging). Commit them; if they cleared the RED we are done, else
       # the sfix starts from the cleaner tree.
+      # O-STY: never commit OpenRewrite edits under migration/staging/
+      discard_staging_autofix
       if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        git add -A && git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
+        stage_for_task_commit
+        git diff --cached --quiet || \
+          git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
         event "$tag" 0 style_autofix resolved
         log "$tag: style-autofix resolved the red deterministically — no model session needed"
         return 0
@@ -305,9 +321,12 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         event "$tag" 0 style_autofix reverted_broke_build
         log "$tag: style-autofix broke compilation — reverted (never commit a non-compiling tree); sfix works from the original"
       else
-        git add -A && git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
-        event "$tag" 0 style_autofix partial
-        log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
+        stage_for_task_commit
+        if ! git diff --cached --quiet; then
+          git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
+          event "$tag" 0 style_autofix partial
+          log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
+        fi
       fi
     fi
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
@@ -329,9 +348,13 @@ ${RUN_CONTRACT}"
       fi
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
-      git add -A && git commit -m "${prefix} sensor fix: supervisor mechanical commit of ${SENSOR_KIND}-green session work" >/dev/null 2>&1
-      event "$tag" 0 mechanical_commit sfix_closure
-      log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
+      # O-T6c: exclude .hermes/ (and staging) from escalation/sfix mechan commits.
+      stage_for_task_commit
+      if ! git diff --cached --quiet; then
+        git commit -m "${prefix} sensor fix: supervisor mechanical commit of ${SENSOR_KIND}-green session work" >/dev/null 2>&1
+        event "$tag" 0 mechanical_commit sfix_closure
+        log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
+      fi
     else
       record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
@@ -426,13 +449,19 @@ run_stage() {
   # preflight, factory) still guard everything downstream.
   if [ -n "$(git status --porcelain)" ]; then
     if .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
-      git add -A && git commit -m "${prefix}: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
-      event "$tag" "$MAX_ATTEMPTS" mechanical_commit closure
-      log "$tag: session work was sensor-GREEN but uncommitted — supervisor completed the commit ($(git log --oneline -1))"
-      return 0
+      # O-T6c: MiniMax escalation closure must not sweep .hermes/ into T-NNN:
+      stage_for_task_commit
+      if ! git diff --cached --quiet; then
+        git commit -m "${prefix}: supervisor mechanical commit of sensor-green session work" >/dev/null 2>&1
+        event "$tag" "$MAX_ATTEMPTS" mechanical_commit closure
+        log "$tag: session work was sensor-GREEN but uncommitted — supervisor completed the commit ($(git log --oneline -1))"
+        return 0
+      fi
     fi
     log "$tag: attempts exhausted — checkpointing partial work per debt policy"
-    git add -A && git commit -m "checkpoint of ${prefix} (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
+    stage_for_task_commit
+    git diff --cached --quiet || \
+      git commit -m "checkpoint of ${prefix} (supervisor: attempts exhausted)" >/dev/null 2>&1 || true
     return 1
   fi
   log "$tag: attempts exhausted with no session work in the tree"
@@ -701,10 +730,15 @@ run_worker_task() { # $1=task-id → 0 if committed
   # Worker often leaves a green dirty tree without the required commit prefix.
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
-      # O-T6b: never sweep .hermes/ harness dirt into T-NNN commits
-      git add -A
-      git reset -q -- .hermes 2>/dev/null || true
+      stage_for_task_commit
       git diff --cached --quiet && return 1
+      # O-T6d: do not attach this T-NNN title to an unrelated dirty tree
+      if ! git diff --cached --name-only | python3 .hermes/harness/mechan-match.py "$TASKS_FILE" "$T" \
+           > /tmp/mechan-match.out 2>&1; then
+        log "$T: O-T6d skip worker auto-commit — staged paths mismatch task ($(cat /tmp/mechan-match.out 2>/dev/null | tr '\n' ' '))"
+        git reset -q
+        return 1
+      fi
       git commit -q -m "${T}: $(task_title "$T") (worker $(worker_label))" 2>/dev/null \
         || git commit -m "${T}: $(task_title "$T") (worker $(worker_label))" >/dev/null 2>&1
       committed "$T" && return 0
@@ -714,16 +748,22 @@ run_worker_task() { # $1=task-id → 0 if committed
 }
 
 # O-T6: dirty tree already satisfies the task sensor — commit without a model.
-# O-T6b: stage everything except .hermes/ (harness dirt must not land in T-NNN:).
+# O-T6b/c: stage everything except .hermes/ and migration/staging/.
+# O-T6d: staged paths must match the task targets (no wrong-title commits).
 try_mechan_commit() { # $1=task-id → 0 if committed
   local T="$1"
   committed "$T" && return 0
   [ -n "$(git status --porcelain 2>/dev/null)" ] || return 1
   if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
-    git add -A
-    git reset -q -- .hermes 2>/dev/null || true
+    stage_for_task_commit
     if git diff --cached --quiet; then
-      log "$T: O-T6b skip mechan-commit — only .hermes/ dirt (or empty stage)"
+      log "$T: O-T6b skip mechan-commit — only .hermes/staging dirt (or empty stage)"
+      return 1
+    fi
+    if ! git diff --cached --name-only | python3 .hermes/harness/mechan-match.py "$TASKS_FILE" "$T" \
+         > /tmp/mechan-match.out 2>&1; then
+      log "$T: O-T6d skip mechan-commit — staged paths mismatch task ($(cat /tmp/mechan-match.out 2>/dev/null | tr '\n' ' '))"
+      git reset -q
       return 1
     fi
     git commit -q -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" 2>/dev/null \
