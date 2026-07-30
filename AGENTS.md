@@ -247,14 +247,15 @@ compromised run.
 
 #### Driver goals (must follow on every tick)
 
-1. **O-DRV4 — chat pulse every tick (P0, non-negotiable)** — on every
-   driver interval (default 120s), post a **2–5 line update in chat** to
-   the user, then acknowledge:
-   `printf '<tick-ts>\n' > tmp/V9-CHAT-PULSE.ack` and remove
-   `tmp/V9-CHAT-PULSE-PENDING.md`. The driver emits **CRITICAL** every tick
-   until you do. If the ack is older than ~2.5× interval, the tick is
-   **OVERDUE** — you went idle; recover immediately. Going silent while
-   the run is live is a process failure, not a judgment call.
+1. **O-DRV4 — chat pulse every tick (P0, script-proofed)** — on every
+   driver interval (default 120s), post a **2–5 line update in chat**, then
+   record proof with `bash tmp/v9-chat-pulse.sh <tick-ts>` (stdin = the
+   same lines). That writes `tmp/V9-CHAT-PULSE.body` + `.ack` and clears
+   pending. **Ack-only is invalid** — `chat_pulse_overdue` requires a
+   matching body with ≥2 content lines. The driver must be **running**
+   (`tmp/v8-driver-loop.sh` with agent wake on `AGENT_LOOP_TICK_v8driver`);
+   if it is DOWN, start it — do not rely on memory. Silence / fake ack is
+   a P0 process failure.
 2. **O-DRV2 — harness self-heal** — if outer-loop is DOWN and the story
    ledger is incomplete, auto-restart it (no sticky bare `RUN_BASE`). Treat
    unexpected downtime as P0.
@@ -276,6 +277,9 @@ compromised run.
 7. **Abort / HOLD on false greens** — ceremonial commits, empty harvests,
    placeholder tests, wrong-title mechan commits, dishonest
    already-complete skips. Do not advance on sensor GREEN alone.
+   **O-DRV6** — when HEAD is `debt: T-… RED`, driver writes
+   `tmp/V9-DEBT-HOLD-PENDING.md`; treat as HOLD until analyzed/durableized
+   or an explicit ABORT/HOLD is gated — do not silent-advance.
 8. **Prefer fix + re-run over long compromised runs** — if the harness or
    delivery is dishonest, stop, bank, implement, wipe/resume cleanly.
 9. **Keep driving** after ADVANCE; freeze on HOLD until fixes land; on
@@ -328,9 +332,10 @@ Do not clear an O-DRV3/O-DRV5 pending file after a superficial GREEN glance.
 
 | Gate | Enforced by | Clear by |
 |------|-------------|----------|
-| Chat pulse every 120s | **O-DRV4** script (`V9-CHAT-PULSE-PENDING`) | `V9-CHAT-PULSE.ack` |
-| After each T-NNN | **O-DRV3** script (`V9-TASK-ANALYSIS-PENDING`) | `V9-TASK-ANALYSIS.sha` + gate entry |
+| Chat pulse every 120s | **O-DRV4** (`V9-CHAT-PULSE-PENDING` + body proof) | `tmp/v9-chat-pulse.sh` → body + ack |
+| After each T-NNN / debt: T- | **O-DRV3** script (`V9-TASK-ANALYSIS-PENDING`) | `V9-TASK-ANALYSIS.sha` + gate entry |
 | After each M1–M5 | **O-DRV5** script (`V9-M-ANALYSIS-PENDING`) | `V9-M-ANALYSIS.sha` + comprehensive gate entry |
+| HEAD `debt: T-… RED` | **O-DRV6** (`V9-DEBT-HOLD-PENDING`) | debt cleared or HOLD/ABORT gated |
 | Before story ship / next story | skill + O-DRV5 story-complete detection | ADVANCE in `V9-QUALITY-GATE.md` |
 
 Agentic (no human GO); default bias is HOLD when unsure. Do not treat

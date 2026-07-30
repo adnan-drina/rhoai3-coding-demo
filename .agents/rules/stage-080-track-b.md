@@ -41,9 +41,11 @@ sensors, scaffold skills, live migration workspace):
    after every T-NNN** (and every sensor-fix / partial autofix /
    escalation), **comprehensive check after every milestone M (M1–M5)**,
    and full gate before M5 ship / story complete / next story.
-2. **O-DRV4 chat pulse every 120s** — post 2–5 lines in chat, then ack
-   `tmp/V9-CHAT-PULSE.ack` and clear `tmp/V9-CHAT-PULSE-PENDING.md`. The
-   driver makes every tick CRITICAL for this. Silence / overdue ack is P0.
+2. **O-DRV4 chat pulse every 120s (script-proofed)** — post 2–5 lines in
+   chat, then `bash tmp/v9-chat-pulse.sh <tick-ts>` with the same text
+   (writes body + ack). Ack-only is invalid. Driver must be running
+   (`tmp/v8-driver-loop.sh`); if DOWN, start it. Silence / fake ack is P0.
+   **O-DRV6** — `debt: T-… RED` on HEAD → `tmp/V9-DEBT-HOLD-PENDING.md`; HOLD.
 3. **Do not wait for the human to ask** for analysis. As soon as a task
    commit or RED/partial/sfix/escalation is identified, run the detailed
    task gate. Driver O-DRV3 keeps CRITICAL ticks while
