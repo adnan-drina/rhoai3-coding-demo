@@ -51,6 +51,8 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | O-ESCW2 | ✅ | `app_dirt` ignores `.hermes/` + `migration/staging/` for O-ESCW allow-empty (V9 S03 T-001/T-002). Re-run proof on next package/dep noop. |
 | O-ESCW3 | ✅ | `escw-eligible.py`: never allow-empty when characterization lacks service tests / missing Target .java (V9 S03 T-008 false green on model-only tests). |
 | O-SONARTIME | ⬜ | sfix MiniMax wraps `sensors.sh sonar` in `timeout 60` → exit 124 before sonar finishes (~2–3m). Prompt/EXECUTION: never wrap harness sensors in timeout <600s (V9 S03 T-008 sfix). |
+| O-TGTNAME | ✅ | task-packet + EXECUTION: Target `.java` basename mandatory; no Endpoint→Resource renames (V9 S04 T-001 O-T6d false escalate). |
+| O-HERMNEST | ✅ | supervisor `scrub_hermes_from_git` + app `.gitignore` `.hermes/`; remove nested `harness/harness` (V9 S04 T-001 MiniMax `git add -A` pollution). |
 | O-T6e | ✅ | Post-worker: log why auto-commit skipped; `ensure_trackable_packages` + second `try_mechan_commit` before MiniMax (V9 S03 T-007 RCA: worker rc=0 no commit; pre-worker O-T6b was correct). Re-run proof on next infer. |
 | O-SFIXLOOP | ✅ | `/tmp/sensor-fix-mode` makes `sensors.sh milestone` exit 2 during sfix; prompt hardened (V9 S03 T-008: 5× milestone). Re-run proof: reset T-008. |
 | O-SONARFIX | ✅ | EXECUTION.md teaches S5778/S5976/S2737/S2864/S2925/S1066 (migration-general). V9 T-008 re-run: Qwen wrote tests; autofix+pattern fixes → sonar/milestone GREEN. |

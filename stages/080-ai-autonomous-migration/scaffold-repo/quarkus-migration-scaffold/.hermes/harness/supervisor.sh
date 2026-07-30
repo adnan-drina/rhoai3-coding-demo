@@ -88,6 +88,40 @@ stage_for_task_commit() {
   git reset -q -- .hermes migration/staging 2>/dev/null || true
 }
 
+# O-HERMNEST: app git must never version the workspace harness. MiniMax
+# `git add -A` during escalation swept .hermes/ (and nested harness/harness
+# from a bad oc cp) into T-001 (V9 S04). Keep files on disk; drop from git.
+ensure_hermes_gitignored() {
+  if [ -f .gitignore ] && grep -qE '^\.hermes/?$' .gitignore 2>/dev/null; then
+    return 0
+  fi
+  {
+    echo ""
+    echo "# Harness runtime — workspace-only; never commit (O-HERMNEST)"
+    echo ".hermes/"
+  } >> .gitignore
+}
+
+scrub_hermes_from_git() {
+  rm -rf .hermes/harness/harness 2>/dev/null || true
+  ensure_hermes_gitignored
+  if [ -z "$(git ls-files .hermes 2>/dev/null)" ]; then
+    # Still commit .gitignore if we just appended it and it is new dirt
+    if git status --porcelain -- .gitignore 2>/dev/null | grep -q .; then
+      git add .gitignore
+      git commit -q -m "chore: gitignore .hermes (O-HERMNEST)" 2>/dev/null || true
+    fi
+    return 0
+  fi
+  git rm -r --cached -q .hermes 2>/dev/null || true
+  git add .gitignore 2>/dev/null || true
+  if ! git diff --cached --quiet 2>/dev/null; then
+    git commit -q -m "chore: untrack .hermes from app git (O-HERMNEST)" 2>/dev/null \
+      || git commit -m "chore: untrack .hermes from app git (O-HERMNEST)" >/dev/null 2>&1 || true
+    log "O-HERMNEST: removed tracked .hermes/ from git (harness remains on disk)"
+  fi
+}
+
 # O-ESCW2 / O-PKGDIR: paths outside harness noise (.hermes/, migration/staging/).
 app_dirt() {
   git status --porcelain --untracked-files=all 2>/dev/null | awk '{
@@ -306,6 +340,8 @@ clear_debt() {
 # violations die in-loop, not at the factory.
 post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
   local prefix="$1" tag="$2"
+  # O-HERMNEST: strip any .hermes/ that MiniMax/worker just committed
+  scrub_hermes_from_git
   TASKS_SINCE_MILESTONE=$((TASKS_SINCE_MILESTONE+1))
   local SENSOR_KIND=task
   if git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then

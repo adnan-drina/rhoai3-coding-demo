@@ -1407,6 +1407,31 @@ EOF
 }
 check "escw-eligible allows service characterization when service tests exist (O-ESCW3)" 0 "tests-present"
 
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Convert CartEndpoint from Spring REST to Quarkus JAX-RS
+**Class**: infer
+**Goal**: Modernize CartEndpoint
+**Target design**:
+- → `src/main/java/com/demo/rest/CartEndpoint.java`
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'CartEndpoint.java' \
+    && echo "$out" | grep -q 'O-TGTNAME' \
+    && echo "$out" | grep -q 'O-HERMNEST' \
+    && echo tgtname-ok
+}
+check "task-packet mandates Target basename and no .hermes commit (O-TGTNAME/O-HERMNEST)" 0 "tgtname-ok"
+
+run_case() {
+  grep -q 'scrub_hermes_from_git' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-HERMNEST' "$HARNESS_DIR/supervisor.sh" \
+    && echo hermnest-ok
+}
+check "supervisor carries O-HERMNEST scrub_hermes_from_git" 0 "hermnest-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

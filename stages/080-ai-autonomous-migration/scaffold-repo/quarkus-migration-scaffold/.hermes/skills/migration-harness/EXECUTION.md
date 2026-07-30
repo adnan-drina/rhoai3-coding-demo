@@ -305,6 +305,17 @@ also drops `.gitkeep` into empty `src/**/java` dirs before mechan-commit.
 commit whose message starts with the task id (`T-00N:`). Exiting 0
 without a commit forces MiniMax escalation (V9 S03 T-007).
 
+**Target destination basename is mandatory (O-TGTNAME):** when the plan
+names `→ src/main/java/.../CartEndpoint.java`, create that exact file and
+class name. Do not invent Quarkus-idiomatic renames (`CartResource`,
+`CartController`). O-T6d will refuse mechan-commit on path mismatch and
+burn a MiniMax escalation (V9 S04 T-001).
+
+**Never commit `.hermes/` (O-HERMNEST):** harness files are workspace
+runtime only. Do not `git add .hermes` / `git add -A` without resetting
+`.hermes`. Nested `.hermes/harness/harness/` from a bad copy is also
+forbidden in git.
+
 **The factory quality gate is part of every task's acceptance.** SonarQube
 fails the exit on: new-code coverage < 80%, any new violation, or > 3%
 duplicated new lines. Consequences for task packets:

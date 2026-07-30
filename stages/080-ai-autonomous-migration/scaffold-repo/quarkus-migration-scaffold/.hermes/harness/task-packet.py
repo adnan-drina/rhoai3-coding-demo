@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 
 
 def task_block(text: str, tid: str) -> tuple[str, str]:
@@ -74,6 +75,24 @@ def main() -> int:
         # First 1200 chars of body as design context
         design = re.sub(r"\s+", " ", body)[:1200]
 
+    # O-TGTNAME: extract destination .java basenames from the task body so the
+    # worker cannot invent CartResource when the plan says CartEndpoint.
+    dest_names = sorted(
+        {
+            Path(m).name
+            for m in re.findall(
+                r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", f"{title}\n{body}"
+            )
+        }
+    )
+    dest_line = (
+        f"- Target destination basename(s) are MANDATORY: {', '.join(dest_names)} "
+        f"— create/edit exactly those file names (O-TGTNAME; never rename "
+        f"Endpoint→Resource or invent alternate class names)"
+        if dest_names
+        else "- When Target design names a destination .java path, use that exact basename"
+    )
+
     packet = f"""Task ID: {tid}
 Class: {cls}
 Goal: {goal}
@@ -82,6 +101,8 @@ Target Design: {design}
 Constraints:
 - Follow AGENTS.md and the repo skills; no scope creep
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)
+{dest_line}
+- Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST)
 - For Class rewrite: use .hermes/skills/migration-harness/scripts/harvest-from-staging.sh for harvests; do not re-run OpenRewrite
 - Worker model for this run is {worker}
 Inputs: tasks.md (attached), AGENTS.md (attached), migration/staging when harvesting
