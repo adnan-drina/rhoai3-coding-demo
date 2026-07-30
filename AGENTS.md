@@ -154,14 +154,17 @@ starting or restarting Track B — so the new run exercises them. Prefer
 abort/restart over shipping a compromised run; do not leave polish for
 "after the demo."
 
-### Before each story ship or next story (Stage 080 Track B)
+### Quality-advance cadence (Stage 080 Track B)
 
-Run the **quality-advance loop**
-(`.agents/skills/stage-080-quality-advance/SKILL.md`): freeze, review
-delivery substance, bank gaps, record `ADVANCE` / `HOLD` / `ABORT` in
-the active run gate file (`docs/V9-QUALITY-GATE.md` for V9). Do not
-advance on sensor GREEN alone. This is an **agentic** gate (no human GO
-required); default bias is HOLD when unsure.
+Run `.agents/skills/stage-080-quality-advance/SKILL.md`:
+
+- **After each T-NNN:** light substance check + escalation root cause;
+  one-liner in `docs/V9-QUALITY-GATE.md`; HOLD/stop if red flags.
+- **After each milestone M (M1–M5):** comprehensive freeze-and-review.
+- **Before story ship / next story:** full ADVANCE/HOLD/ABORT gate.
+
+Do not advance on sensor GREEN alone. Agentic (no human GO); default
+bias is HOLD when unsure.
 
 ## Coding and manifest style
 

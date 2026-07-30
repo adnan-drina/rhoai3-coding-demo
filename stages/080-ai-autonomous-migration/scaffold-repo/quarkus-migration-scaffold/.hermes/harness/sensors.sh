@@ -317,6 +317,9 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
   # it to escape a real fidelity RED — V5 T-004 fabricated-CatalogService.)
   placeholder_tests
+  # G-AC3 (V9 S01): catch ceremonial acceptance surfaces in-loop, not only
+  # at deploy preflight — status-map / "OK" endpoints must not land in S01.
+  acceptance_ship_contract
   package_scope
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"

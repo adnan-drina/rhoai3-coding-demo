@@ -733,6 +733,27 @@ try_mechan_commit() { # $1=task-id → 0 if committed
   return 1
 }
 
+# O-ESCW (V9 S01): worker exits 0 on an already-satisfied POM/dep task, leaves a
+# clean tree, and never commits — supervisor used to escalate to MiniMax just to
+# write "Already satisfied". If the tree is clean and task sensor is GREEN,
+# commit allow-empty here (no MiniMax).
+try_worker_verified_noop() { # $1=task-id → 0 if committed
+  local T="$1"
+  committed "$T" && return 0
+  [ -z "$(git status --porcelain 2>/dev/null)" ] || return 1
+  if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+    git commit --allow-empty -q \
+      -m "${T}: Already satisfied (worker verified clean tree; O-ESCW)" 2>/dev/null \
+      || git commit --allow-empty \
+        -m "${T}: Already satisfied (worker verified clean tree; O-ESCW)" >/dev/null 2>&1
+    committed "$T" && {
+      log "$T: O-ESCW allow-empty already-satisfied commit (no MiniMax escalation)"
+      return 0
+    }
+  fi
+  return 1
+}
+
 run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local T="$1"
   if try_already_complete "$T"; then
@@ -752,6 +773,13 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+    return 0
+  fi
+  # O-ESCW: worker verified, nothing to change — close without MiniMax
+  if try_worker_verified_noop "$T"; then
+    scope_enforce "$T"
+    post_commit_verify "$T" "$T"
+    log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
     return 0
   fi
   log_task START "$T" "Actor: $(orch_label) escalation — worker incomplete/failed"

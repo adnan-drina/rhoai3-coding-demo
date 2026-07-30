@@ -21,14 +21,16 @@ When driving, monitoring, or changing Track B (Hermes outer-loop, supervisor,
 sensors, scaffold skills, live migration workspace):
 
 1. **Read and follow** `.agents/skills/stage-080-quality-advance/SKILL.md`
-   before any of: M5 ship / push, marking a story complete, starting the next
-   story, or restarting the outer-loop after a milestone that looks "done."
+   on this cadence: **light check after every T-NNN**, **comprehensive check
+   after every milestone M (M1–M5)**, and full gate before M5 ship / story
+   complete / next story.
 2. **Do not advance on green sensors alone.** Sensors catch many classes of
    failure; they miss ceremonial commits, empty harvests, placeholder tests,
-   and plan defects. Substance review is mandatory.
-3. **Record every advance-gate decision** in the active run gate file
-   (`docs/V9-QUALITY-GATE.md` for V9) with verdict `ADVANCE` / `HOLD` /
-   `ABORT`. No silent stage push.
+   escalations-without-root-cause, and plan defects. Substance review is
+   mandatory.
+3. **Record** task one-liners, escalation root causes, and M/story
+   ADVANCE/HOLD/ABORT decisions in the active run gate file
+   (`docs/V9-QUALITY-GATE.md` for V9). No silent stage push.
 4. **Bank durable defects** in `docs/V7-FUTURE-IMPROVEMENTS.md` (or successor)
    when the review finds a harness/plan/sensor gap — then implement open bank
    rows before the next restart (see AGENTS.md "Before each new migration run").

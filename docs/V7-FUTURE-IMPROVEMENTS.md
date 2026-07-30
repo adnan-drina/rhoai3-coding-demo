@@ -33,6 +33,7 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 |----|--------|-------|
 | O-T6 | ✅ | `try_mechan_commit` when dirty tree + task sensor GREEN |
 | O-T6b | ✅ | Mechan-commit / worker auto-commit: `git add -A` then `git reset -- .hermes` (V8 S02 T-002) |
+| O-ESCW | ✅ | Worker rc=0 + clean tree + task GREEN → allow-empty “Already satisfied” commit; no MiniMax (V9 S01) |
 | O-AC | ✅ | Prose `ALREADY COMPLETE` banned; supervisor/`already-complete.py` only |
 | O-B1 | ✅ | `WORKER_FIRST` OpenCode/Qwen for rewrite+infer |
 | O-CTX | ✅ | Tighter M1 profile prompt (cite paths, don’t paste whole files) |
@@ -49,6 +50,7 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | S-FND | ✅ | roadmap-lint: empty findings rejected; `-` HARVEST-only |
 | S-SOFT | ✅ | plan-lint: soft prepare/verification-only titles rejected |
 | S-CHAR | ✅ | plan-lint: `src/main/.../model/` without any `src/test/` → LINT:S-CHAR (V8 S02 HOLD) |
+| S-AC1 | ✅ | plan-lint rejects ceremonial acceptance placeholder / “simple status” tasks (V9 S01 HOLD) |
 
 ## Sensors / gates
 
@@ -59,6 +61,7 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | G-OK | ✅ | Static reject String/`"OK"` acceptance without catalog fetch |
 | G-FAKE | ✅ | products must carry id/itemId; MockCatalogService / hardcoded List.of banned in src/main |
 | G-PLACE | ✅ | Task/milestone/static RED on `assertThat(true)` / `assertTrue(true)` / Placeholder stubs (V8 S02 T-005 abort) |
+| G-AC3 | ✅ | `acceptance_ship_contract` also runs in milestone sensor (catch status-map OK before deploy; V9 S01) |
 | G-PKG | ✅ prior | `com.demo.coolstore` reject |
 
 ## Process / repo hygiene

@@ -1181,6 +1181,34 @@ run_case() {
 }
 check "supervisor carries L-M5e evaluate preflight honesty check" 0 "m5e-ok"
 
+run_case() {
+  grep -q 'O-ESCW' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'try_worker_verified_noop' "$HARNESS_DIR/supervisor.sh" \
+    && echo escw-ok
+}
+check "supervisor carries O-ESCW worker-verified noop (no MiniMax)" 0 "escw-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create acceptance endpoint placeholder
+**Class**: rewrite
+- Destination: `src/main/java/com/demo/AcceptanceEndpoint.java`
+- Acceptance: endpoint returns simple status response for web surface validation
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects ceremonial acceptance placeholder tasks (S-AC1)" 1 "S-AC1"
+
+run_case() {
+  # G-AC3: acceptance_ship_contract invoked inside milestone_sensor body
+  awk '/^milestone_sensor\(\)/,/^sonar_check\(\)|^fidelity_check\(\)|^preflight\(\)/' "$SENSORS" \
+    | grep -q 'acceptance_ship_contract' && echo gac3-ok
+}
+check "milestone sensor runs acceptance_ship_contract (G-AC3)" 0 "gac3-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]

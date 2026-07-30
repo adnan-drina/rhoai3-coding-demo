@@ -346,6 +346,20 @@ def main():
             "add model-level characterization tests (deferring service tests ≠ empty tests; V8 S02)",
         )
 
+    # S-AC1 (V9 S01 HOLD): platform stories must not schedule ceremonial
+    # acceptance placeholders (status-map / "simple status") — that belongs
+    # on the deploying story with a real catalog/products proof (G-OK/G-FAKE).
+    if re.search(
+        r"(?i)acceptance endpoint placeholder|simple status response|"
+        r"returns simple status|status response for web surface",
+        text,
+    ):
+        lint(
+            "S-AC1",
+            "plan schedules a ceremonial acceptance placeholder/status response — "
+            "defer real acceptance to the deploy story (V9 S01 HOLD / G-OK)",
+        )
+
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
     return 1 if problems else 0
