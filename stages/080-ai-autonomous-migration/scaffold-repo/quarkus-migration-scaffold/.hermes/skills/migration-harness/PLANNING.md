@@ -177,3 +177,25 @@ Two task-authoring constraints (from cart run #2):
   covering every migrated class (models and services included, not just
   endpoints).
 
+### K1 — incident ownership (plan-lint)
+
+Naming a Findings rule id is not enough when the rule has incidents.
+Every in-scope mandatory incident **file** must be claimed by exactly one
+task via **declared fields** (not Out-of-scope disclaimers):
+
+1. a **Target** / **Target design** line with the path (`→ src/…`), or
+2. **Absorbs:** when the legacy file is deleted/merged, or
+3. **Owns:** for an explicit path claim without a Target arrow.
+
+```text
+**Target design**: → `src/main/java/<targetPackage>/service/CartService.java`
+**Absorbs**: src/main/java/<legacyPackage>/rest/OldHelper.java
+**Owns**: src/main/java/<targetPackage>/model/Product.java
+**Out of scope:** do NOT touch src/main/java/<targetPackage>/Beta.java — later story
+```
+
+`Out of scope:` / “owned by T-00x” lines do **not** count as ownership
+(K1-OWN / K1-CONF). `plan-lint` emits `LINT:incident-unowned:` /
+`LINT:incident-conflict:` when a file has zero owners or two+. Package
+mapping is `legacyPackage` → `targetPackage` from `migration.yaml`.
+

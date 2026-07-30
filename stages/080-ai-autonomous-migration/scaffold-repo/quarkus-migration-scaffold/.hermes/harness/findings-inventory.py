@@ -63,6 +63,8 @@ def main():
 
     classified = collections.defaultdict(list)
     preserve = []
+    # K3: non-mandatory rows kept for the decision table (not silently dropped).
+    non_mandatory_rows = []  # (rid, category, effort, sites, desc)
     print("# Findings inventory (M1 spec input bundle)")
     print()
     print(f"Rules: {len(rules)}; incidents: "
@@ -73,6 +75,16 @@ def main():
         cat = v.get("category") or "mandatory"
         if cat != "mandatory":
             classified["non-mandatory"].append(rid)
+            incs = v.get("incidents") or []
+            non_mandatory_rows.append(
+                (
+                    rid,
+                    cat,
+                    v.get("effort", "?"),
+                    len(incs),
+                    (v.get("description") or "").strip(),
+                )
+            )
             continue
         cls, target = "OPEN DESIGN", "no MAPPINGS join — decide the shape in the plan"
         for prefix, jcls, jtarget in joins:
@@ -97,6 +109,25 @@ def main():
         for uri, lines in sorted(by_file.items()):
             print(f"- {uri}: line {', '.join(lines)}")
         print()
+
+    # K3 — explicit decision table (M2 marks adopt/defer in the roadmap).
+    print("## Non-mandatory findings (decide adopt / defer in roadmap)")
+    print()
+    if non_mandatory_rows:
+        print("| rule | category | effort | sites | description |")
+        print("|---|---|---|---|---|")
+        for rid, cat, effort, sites, desc in sorted(non_mandatory_rows):
+            dshort = (desc[:80] + "…") if len(desc) > 80 else desc
+            dshort = dshort.replace("|", "/")
+            print(f"| {rid} | {cat} | {effort} | {sites} | {dshort} |")
+        print()
+        print(
+            "M2 must mark each rule in the roadmap under "
+            "`## Non-mandatory decisions` as `adopt` or `defer (reason)` (K3)."
+        )
+    else:
+        print("- none")
+    print()
 
     print("## Summary by class")
     print()

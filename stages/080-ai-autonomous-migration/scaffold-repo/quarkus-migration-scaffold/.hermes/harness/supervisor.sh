@@ -1040,14 +1040,28 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     return 0
   fi
   log_task START "$T" "Actor: $(orch_label) escalation — worker incomplete/failed"
+  # K2: same Analysis evidence the worker packet carries (bounded) — MiniMax
+  # must see MTA remediation text, not bare Findings ids.
+  local esc_packet=""
+  if [ -f .hermes/harness/task-packet.py ]; then
+    esc_packet=$(python3 .hermes/harness/task-packet.py "$TASKS_FILE" "$T" "$WORKER_MODEL" 2>/dev/null || true)
+  fi
+  local esc_evidence=""
+  if [ -n "$esc_packet" ]; then
+    esc_evidence=$(printf '%s\n' "$esc_packet" | sed -n '/^Analysis evidence/,/^Target Design:/p' | sed '$d')
+  fi
   if run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
 MODEL ROUTING (V7): You are MiniMax orchestrator on ESCALATION. Prefer dispatching opencode (-m ${WORKER_MODEL}) for all file-changing work. Do NOT apply mechanical rewrite/harvest edits with your own tools unless the worker already failed — Qwen has unlimited tokens; MiniMax is rate-limited.
 Worker discipline (V6 P2.1/P2.2): run opencode in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
+${esc_evidence:+$esc_evidence
+}Worker packet (authoritative goal + constraints):
+${esc_packet:-'(task-packet unavailable — read ${TASKS_FILE} for ${T})'}
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode. Launch opencode only when the tree is incomplete or sensors are RED. Foreground worker only; bundled scripts only — no heredocs / python3 -c.
-${RUN_CONTRACT}"; then
+${esc_evidence:+$esc_evidence
+}${RUN_CONTRACT}"; then
     # O-DRV7DET: stamp subject so commit-grep detectors also fire (log remains primary).
     if git log -1 --format=%s | grep -qE "^${T}:" \
       && ! git log -1 --format=%s | grep -qiE 'via MiniMax escalation'; then

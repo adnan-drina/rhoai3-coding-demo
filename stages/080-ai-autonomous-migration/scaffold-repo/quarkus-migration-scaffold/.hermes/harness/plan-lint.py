@@ -15,7 +15,9 @@ one per line as 'LINT:<class>: <detail>'):
                mapping or signature line), per the design-in-packet rule
   ui-surface — the plan covers or explicitly waives the legacy UI
   findings   — every mandatory finding rule id appears in some task
-               (requires the findings JSON)
+               (requires the findings JSON); when the rule has incidents,
+               each incident file must be owned by exactly one task (K1)
+  incident-unowned / incident-conflict — K1 ownership failures
 """
 import json
 import re
@@ -26,6 +28,104 @@ problems = []
 
 def lint(cls, detail):
     problems.append(f"LINT:{cls}: {detail}")
+
+
+def _norm_incident_uri(uri: str) -> str:
+    u = (uri or "?").replace("file:///", "/").replace("file://", "")
+    for marker in ("src/main/", "src/test/"):
+        i = u.find(marker)
+        if i >= 0:
+            return u[i:]
+    return u.lstrip("/") if u != "?" else "?"
+
+
+def _map_pkg_path(rel: str, legacy_slash: str, target_slash: str) -> str:
+    """Rewrite src/{main,test}/java/<legacy>/… → …/<target>/…"""
+    for kind in ("main", "test"):
+        pref = f"src/{kind}/java/{legacy_slash}/"
+        if rel.startswith(pref):
+            return f"src/{kind}/java/{target_slash}/{rel[len(pref):]}"
+    return rel
+
+
+_JAVA_PATH = re.compile(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java")
+# Lines that declare ownership (not disclaimers).
+_CLAIM_LINE = re.compile(
+    r"(?i)(?:^\s*\*?\*?(?:Absorbs|Owns|Target\s*design|Target|Design)\*?\*?\s*:)"
+    r"|(?:→|->)\s*`?src/"
+)
+_OOS_LINE = re.compile(
+    r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
+    r"|(?:\bdo NOT touch\b)"
+    r"|(?:\bowned by T[-A-Za-z0-9]*\d+)"
+)
+
+
+def _parse_path_field(body: str, *labels: str) -> set[str]:
+    """Collect paths/basenames from Absorbs:/Owns: field lines."""
+    out: set[str] = set()
+    for label in labels:
+        for m in re.finditer(
+            rf"^\*?\*?{re.escape(label)}\*?\*?\s*:?\s*(.+)$",
+            body,
+            re.M | re.I,
+        ):
+            for tok in re.split(r"[,;\s]+", m.group(1).strip()):
+                tok = tok.strip().strip("`")
+                if tok and not tok.startswith("("):
+                    out.add(_norm_incident_uri(tok))
+    return out
+
+
+def _declared_claim_paths(body: str) -> set[str]:
+    """Paths claimed via Target/Absorbs/Owns (excludes Out-of-scope lines)."""
+    paths = _parse_path_field(body, "Absorbs", "Owns")
+    for line in body.splitlines():
+        if _OOS_LINE.search(line):
+            continue
+        if not _CLAIM_LINE.search(line):
+            continue
+        for p in _JAVA_PATH.findall(line):
+            paths.add(_norm_incident_uri(p))
+    return paths
+
+
+def _ownership_fallback_corpus(body: str) -> str:
+    """Last-resort body scan — drop Out-of-scope / disclaimer lines (K1-OWN)."""
+    keep = []
+    for line in body.splitlines():
+        if _OOS_LINE.search(line):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
+def _path_claimed(claim_paths: set[str], legacy_rel: str, target_rel: str) -> bool:
+    base = legacy_rel.rsplit("/", 1)[-1]
+    if legacy_rel in claim_paths or target_rel in claim_paths:
+        return True
+    if base.endswith(".java") and base in claim_paths:
+        return True
+    for p in claim_paths:
+        if p.endswith("/" + base) or p == base:
+            return True
+    return False
+
+
+def _task_owns_incident(body: str, legacy_rel: str, target_rel: str) -> bool:
+    """K1 ownership: declared fields first; body scan only if none declared."""
+    if not body:
+        return False
+    declared = _declared_claim_paths(body)
+    if declared:
+        return _path_claimed(declared, legacy_rel, target_rel)
+    # Last resort when the task declares no Target/Absorbs/Owns paths at all.
+    corpus = _ownership_fallback_corpus(body)
+    if legacy_rel != "?" and legacy_rel in corpus:
+        return True
+    if target_rel != legacy_rel and target_rel in corpus:
+        return True
+    return False
 
 
 def main():
@@ -235,22 +335,65 @@ def main():
     # findings coverage — a mandatory rule is covered by a task OR by a
     # recipe execution recorded in migration/recipe-log.md (R3: recipe-
     # executed rewrites need no plan task).
+    # K1: when a mandatory rule has incidents, every incident *file* must
+    # be claimed by exactly one task (target path, legacy path, or Absorbs:).
     if len(args) > 1:
         d = json.load(open(args[1]))
-        mandatory = set()
+        mandatory = {}
         for rs in d:
             for rid, v in (rs.get("violations") or {}).items():
                 if (v.get("category") or "mandatory") == "mandatory":
-                    mandatory.add(rid)
+                    mandatory[rid] = v
         if scope is not None:
-            mandatory &= scope
+            mandatory = {r: v for r, v in mandatory.items() if r in scope}
         try:
             recipe_log = open("migration/recipe-log.md").read()
         except OSError:
             recipe_log = ""
-        missing = {r for r in mandatory if r not in text and r not in recipe_log}
-        for r in sorted(missing):
-            lint("findings", f"mandatory finding {r} mapped to no task (and not recipe-executed)")
+        target_slash = target_pkg.replace(".", "/")
+        # Per-file owners across all in-scope mandatory rules (conflict is
+        # file-level — two tasks must not claim the same incident file).
+        file_owners: dict[str, set[str]] = {}
+        for rid, v in mandatory.items():
+            if rid in recipe_log:
+                continue
+            incidents = v.get("incidents") or []
+            # Zero-incident rules: keep rule-id string-mention (pre-K1).
+            if not incidents:
+                if rid not in text:
+                    lint(
+                        "findings",
+                        f"mandatory finding {rid} mapped to no task (and not recipe-executed)",
+                    )
+                continue
+            # Rules with incidents: id mention alone is not enough — own files.
+            for inc in incidents:
+                if not isinstance(inc, dict):
+                    continue
+                legacy_rel = _norm_incident_uri(str(inc.get("uri") or "?"))
+                if legacy_rel == "?":
+                    continue
+                target_rel = _map_pkg_path(legacy_rel, legacy_path, target_slash)
+                owners = [
+                    tid
+                    for tid, body in bodies.items()
+                    if _task_owns_incident(body, legacy_rel, target_rel)
+                ]
+                key = legacy_rel
+                file_owners.setdefault(key, set()).update(owners)
+                if not owners:
+                    lint(
+                        "incident-unowned",
+                        f"{rid} {legacy_rel} owned by no task "
+                        f"(claim via Target/→ {target_rel}, Absorbs:, or Owns:)",
+                    )
+        for fpath, owners in sorted(file_owners.items()):
+            if len(owners) > 1:
+                claimed = " and ".join(sorted(owners))
+                lint(
+                    "incident-conflict",
+                    f"{fpath} claimed by {claimed}",
+                )
 
     # §7-traceability (PROCESS-FIX): each REDESIGN class named in the
     # profile's §7 must have a task that names it AND a target-shape token,

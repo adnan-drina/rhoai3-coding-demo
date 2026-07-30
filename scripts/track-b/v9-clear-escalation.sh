@@ -51,7 +51,7 @@ PY
 
 # Bank row must exist (⬜ or ✅)
 grep -qE "\|[[:space:]]*${BANK_ID}[[:space:]]*\|" "$BANK_DOC" \
-  || qg_die "bank id $BANK_ID not found in tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md"
+  || qg_die "bank id $BANK_ID not found in ${BANK_DOC}"
 
 {
   echo "# escalation clear record"

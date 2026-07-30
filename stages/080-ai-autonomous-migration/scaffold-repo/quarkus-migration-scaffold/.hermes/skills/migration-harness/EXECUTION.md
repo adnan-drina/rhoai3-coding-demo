@@ -14,11 +14,19 @@ Task ID:        T-014
 Class:          infer
 Goal:           <one sentence>
 Findings:       <rule ids this task resolves>
+Analysis evidence (from MTA — when mta-findings.json is present; K2):
+                ≤6 incidents; ≤400 chars per message/code field;
+                ≤2400 chars combined message+code (K2-CAP); round-robin
+                across Findings rules (K2-RR)
 Constraints:    follow AGENTS.md and the repo skills; no scope creep
 Inputs:         attached via -f (spec.md, tasks.md, touched files)
 Acceptance:     <files expected to change>; mvn -q clean test passes
 Out of scope:   <explicitly excluded work>
 ```
+
+`task-packet.py` injects Analysis evidence from `migration/mta-findings.json`
+for the task's Findings ids (hard caps; same section is passed to MiniMax
+escalation). Treat the rule message as authoritative remediation guidance.
 
 ## M4 — execution loop
 

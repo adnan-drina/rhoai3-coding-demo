@@ -14,7 +14,9 @@ leaves the repository buildable, sensor-green, and closer to done.
   together)
 - `migration/findings-inventory.md` — every mandatory finding with its
   class; recipe-executed rules are ALREADY DONE (`migration/
-  recipe-log.md`) — no story owns them
+  recipe-log.md`) — no story owns them. Non-mandatory rules appear in a
+  decision table — mark each under `## Non-mandatory decisions` as
+  `adopt` or `defer (reason)` (K3); roadmap-lint enforces the marks.
 - `migration.yaml` — preserve/forbidden/acceptance contracts
 
 ## How to cut stories

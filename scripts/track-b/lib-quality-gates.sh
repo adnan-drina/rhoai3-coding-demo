@@ -11,10 +11,10 @@ qg_root() {
 }
 
 ROOT="$(qg_root)"
-# V9 run closed — gate/bank archived under tmp/docs-archive/. Override for a
-# new run: GATE_DOC=docs/V10-QUALITY-GATE.md BANK_DOC=docs/V10-FUTURE-IMPROVEMENTS.md
+# V10 bank is the operational checklist (⬜ = due before next run; 📋 = later wave).
+# V9 gate doc remains archived until a V10 quality-gate file is opened.
 GATE_DOC="${GATE_DOC:-${ROOT}/tmp/docs-archive/V9-QUALITY-GATE.md}"
-BANK_DOC="${BANK_DOC:-${ROOT}/tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md}"
+BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace defaults (override via env — do not hardcode elsewhere).

@@ -21,6 +21,8 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                that is not in the tree (V5 run-4: S02 fabricated a JPA layer,
                S03 fabricated the ShoppingCartService API). plan-lint cannot
                catch it — the plan is well-formed, just false.
+  non-mandatory — (K3) every non-mandatory inventory rule is marked
+               adopt or defer (reason) in the roadmap or a brief
 """
 import glob
 import os
@@ -162,7 +164,8 @@ def main():
         lint("deploy", f"last story {deploy_flags[-1][0]} must deploy")
 
     # coverage vs the inventory's mandatory (recipe/rewrite/infer/OPEN) sets;
-    # recipe-executed and non-mandatory ids are exempt
+    # recipe-executed and non-mandatory ids are exempt from story ownership
+    inv = ""
     if len(sys.argv) > 2 and os.path.exists(sys.argv[2]):
         inv = open(sys.argv[2], encoding="utf-8").read()
         must, exempt = set(), set()
@@ -178,12 +181,14 @@ def main():
     # briefs exist and are complete
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
     legacy_dir = sys.argv[3] if len(sys.argv) > 3 and os.path.isdir(sys.argv[3]) else None
+    brief_texts = []
     for sid in ids:
         matches = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
         if not matches:
             lint("briefs", f"{sid}: no brief file migration/briefs/{sid}-*.md")
             continue
         btext = open(matches[0], encoding="utf-8").read()
+        brief_texts.append(btext)
         for sec in BRIEF_SECTIONS:
             if sec.lower() not in btext.lower():
                 lint("briefs", f"{sid}: brief missing section '{sec}'")
@@ -191,6 +196,42 @@ def main():
             lint("briefs", f"{sid}: brief has no code excerpt (In scope must quote legacy lines)")
         if legacy_dir:
             brief_fidelity(sid, btext, legacy_dir)
+
+    # K3 — every non-mandatory inventory rule needs adopt / defer (reason)
+    # in the roadmap or a brief (not silently dropped).
+    if inv:
+        nm = set()
+        for m in re.finditer(r"^-\s*non-mandatory:\s*\d+\s*—\s*(.+)$", inv, re.M):
+            nm |= {i.strip() for i in m.group(1).split(",") if i.strip()}
+        for m in re.finditer(
+            r"^\|\s*`?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+)`?\s*\|\s*"
+            r"(optional|potential|information)\b",
+            inv,
+            re.M | re.I,
+        ):
+            nm.add(m.group(1))
+        if nm:
+            corpus = text + "\n" + "\n".join(brief_texts)
+            # - `rule-id`: adopt | defer (reason)
+            dec_re = re.compile(
+                r"^-\s*`?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+)`?\s*:\s*"
+                r"(adopt|defer)\b(?:\s*\(([^)]*)\))?",
+                re.M | re.I,
+            )
+            decisions = {m.group(1): (m.group(2).lower(), (m.group(3) or "").strip())
+                         for m in dec_re.finditer(corpus)}
+            for rid in sorted(nm):
+                if rid not in decisions:
+                    lint(
+                        "non-mandatory",
+                        f"{rid}: no adopt/defer decision in roadmap or briefs (K3) — "
+                        f"add under '## Non-mandatory decisions'",
+                    )
+                elif decisions[rid][0] == "defer" and not decisions[rid][1]:
+                    lint(
+                        "non-mandatory",
+                        f"{rid}: defer requires a reason in parentheses (K3)",
+                    )
 
     print("\n".join(problems) if problems else
           f"ROADMAP OK: {len(ids)} stories, {len(owned)} findings owned, "

@@ -451,6 +451,61 @@ run_case() {
 }
 check "roadmap-lint rejects prose in the findings field" 1 "non-rule-id token"
 
+# --- K3: non-mandatory decision table + adopt/defer marks ------------------
+run_case() {
+  mkfix
+  printf '[{"violations": {
+    "javax-to-jakarta-import-00001": {"category": "mandatory", "description": "javax", "incidents": [{"uri": "file:///a/B.java", "lineNumber": 1}]},
+    "optional-logging-00010": {"category": "optional", "effort": 1, "description": "prefer structured logging", "incidents": [{"uri": "file:///a/B.java", "lineNumber": 2}, {"uri": "file:///a/C.java", "lineNumber": 3}]},
+    "potential-cache-00020": {"category": "potential", "effort": 3, "description": "consider cache", "incidents": []}
+  }}]' > f.json
+  printf '## Windup rule joins\n\n| rule id prefix | class | decided target |\n|---|---|---|\n| javax-to-jakarta- | recipe:x | jakarta |\n' > M.md
+  out=$(python3 "$HARNESS_DIR/findings-inventory.py" f.json M.md)
+  echo "$out" | grep -q 'Non-mandatory findings (decide adopt' \
+    && echo "$out" | grep -q 'optional-logging-00010' \
+    && echo "$out" | grep -q 'potential-cache-00020' \
+    && echo "$out" | grep -q 'non-mandatory: 2' \
+    && echo k3-inv-ok
+}
+check "findings-inventory emits non-mandatory decision table (K3)" 0 "k3-inv-ok"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  cat >> inv.md <<'EOF'
+- non-mandatory: 1 — optional-logging-00010
+EOF
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects unmarked non-mandatory finding (K3)" 1 "LINT:non-mandatory"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  cat >> inv.md <<'EOF'
+- non-mandatory: 1 — optional-logging-00010
+EOF
+  cat >> roadmap.md <<'EOF'
+
+## Non-mandatory decisions
+- optional-logging-00010: defer (noise for this migration; not in scope)
+EOF
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint accepts defer (reason) for non-mandatory (K3)" 0 "ROADMAP OK"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  cat >> inv.md <<'EOF'
+- non-mandatory: 1 — optional-logging-00010
+EOF
+  cat >> roadmap.md <<'EOF'
+
+## Non-mandatory decisions
+- optional-logging-00010: defer
+EOF
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects defer without reason (K3)" 1 "defer requires a reason"
+
 # --- plan-lint story scoping (M3) ------------------------------------------
 run_case() {
   mkfix
@@ -1503,6 +1558,363 @@ run_case() {
     && echo hermnest-ok
 }
 check "supervisor carries O-HERMNEST scrub_hermes_from_git" 0 "hermnest-ok"
+
+# --- K1: incident-file ownership in plan-lint ------------------------------
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest CartService
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: harvest service
+- Target: → `src/main/java/com/demo/service/CartService.java` from staging
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"javax-to-jakarta-import-00001": {
+  "category": "mandatory",
+  "incidents": [
+    {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/service/CartService.java", "lineNumber": 3}
+  ]
+}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint accepts incident owned via target path (K1)" 0 "PLAN OK"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Mention rule only
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: rename imports somewhere
+- Touches src/main/java/com/demo/service/Other.java
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"javax-to-jakarta-import-00001": {
+  "category": "mandatory",
+  "incidents": [
+    {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/service/CartService.java", "lineNumber": 3}
+  ]
+}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint rejects unowned incident file (K1)" 1 "LINT:incident-unowned"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest CartService
+**Class**: rewrite
+- Target: → `src/main/java/com/demo/service/CartService.java`
+
+#### T-002: Also touch CartService
+**Class**: rewrite
+- Also edits src/main/java/com/demo/service/CartService.java for imports
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"javax-to-jakarta-import-00001": {
+  "category": "mandatory",
+  "incidents": [
+    {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/service/CartService.java", "lineNumber": 3}
+  ]
+}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint rejects incident file claimed by two tasks (K1)" 1 "LINT:incident-conflict"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Fold OldHelper into CartService
+**Class**: infer
+**Goal**: absorb helper
+**Absorbs**: src/main/java/com/redhat/coolstore/rest/OldHelper.java
+- Target: → `src/main/java/com/demo/service/CartService.java`
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"custom-delete-00001": {
+  "category": "mandatory",
+  "incidents": [
+    {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/rest/OldHelper.java", "lineNumber": 1}
+  ]
+}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint accepts Absorbs: for deleted/merged incident files (K1)" 0 "PLAN OK"
+
+# K1-OWN: Out of scope path must NOT count as ownership
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert Alpha
+**Class**: rewrite
+**Findings**: r-mand-00001
+**Goal**: convert Alpha
+**Target design**: → `src/main/java/com/demo/Alpha.java`
+**Out of scope:** do NOT touch src/main/java/com/demo/Beta.java — later story
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"r-mand-00001": {"category": "mandatory", "incidents": [
+  {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/Alpha.java", "lineNumber": 1},
+  {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/Beta.java", "lineNumber": 2}
+]}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint Out-of-scope path does not own incident (K1-OWN)" 1 "LINT:incident-unowned"
+
+# K1-CONF: disclaimer must not manufacture conflict with real owner
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert Beta
+**Class**: rewrite
+**Findings**: r-mand-00001
+**Goal**: convert Beta
+- Target: → `src/main/java/com/demo/Beta.java`
+
+#### T-002: Characterize Alpha
+**Class**: infer
+**Goal**: pin Alpha
+**Out of scope:** src/main/java/com/demo/Beta.java is owned by T-001
+- Target: → `src/test/java/com/demo/AlphaTest.java`
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"r-mand-00001": {"category": "mandatory", "incidents": [
+  {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/Beta.java", "lineNumber": 2}
+]}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint OOS disclaimer does not conflict with real owner (K1-CONF)" 0 "PLAN OK"
+
+# --- K2: Analysis evidence from mta-findings.json in task packets ----------
+run_case() {
+  mkfix
+  mkdir -p migration
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations": {
+  "javax-to-jakarta-import-00001": {
+    "category": "mandatory",
+    "description": "Replace javax.* with jakarta.*",
+    "incidents": [
+      {
+        "uri": "file:///projects/legacy/src/main/java/com/demo/CartService.java",
+        "lineNumber": 12,
+        "message": "Import javax.inject.Inject must become jakarta.inject.Inject",
+        "codeSnip": "import javax.inject.Inject;"
+      },
+      {
+        "uri": "file:///projects/legacy/src/main/java/com/demo/CartEndpoint.java",
+        "lineNumber": 8,
+        "message": "Import javax.ws.rs.Path must become jakarta.ws.rs.Path",
+        "codeSnip": "import javax.ws.rs.Path;"
+      }
+    ]
+  },
+  "other-rule-99999": {
+    "category": "mandatory",
+    "description": "unrelated",
+    "incidents": [{"uri": "file:///a/B.java", "lineNumber": 1, "message": "noise"}]
+  }
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-020: Swap javax imports
+**Class**: rewrite
+**Goal**: Mechanical jakarta rename
+**Findings**: javax-to-jakarta-import-00001
+**Acceptance**: no javax.inject left; mvn -q test
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-020 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  echo "$out" | grep -q 'Analysis evidence (from MTA' \
+    && echo "$out" | grep -q 'javax-to-jakarta-import-00001 at' \
+    && echo "$out" | grep -q 'Import javax.inject.Inject must become jakarta.inject.Inject' \
+    && echo "$out" | grep -q 'import javax.inject.Inject;' \
+    && ! echo "$out" | grep -q 'other-rule-99999' \
+    && echo k2-ok
+}
+check "task-packet injects MTA analysis evidence for Findings ids (K2)" 0 "k2-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  # 8 incidents — packet must hard-cap at 6
+  python3 - <<'PY'
+import json
+incs = []
+for i in range(8):
+    incs.append({
+        "uri": f"file:///projects/legacy/src/main/java/com/demo/F{i}.java",
+        "lineNumber": i + 1,
+        "message": f"incident message number {i} " + ("x" * 500),
+        "codeSnip": f"code snip {i} " + ("y" * 500),
+    })
+json.dump([{"violations": {"rule-cap-00001": {
+    "category": "mandatory",
+    "description": "cap test",
+    "incidents": incs,
+}}}], open("migration/mta-findings.json", "w"))
+PY
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-021: Cap evidence
+**Class**: infer
+**Findings**: rule-cap-00001
+**Goal**: prove hard caps
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-021 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  n=$(echo "$out" | grep -c 'rule-cap-00001 at' || true)
+  # ≤6 incidents; each message/code field trimmed to ≤400 (ellipsis allowed).
+  # Combined content budget (K2-CAP) may render fewer than 6 headers.
+  long=$(echo "$out" | grep -E 'message:|code:' | awk 'length($0)>420 {print; exit 1}')
+  [ "$n" -le 6 ] && [ "$n" -ge 1 ] && [ -z "${long:-}" ] && echo k2-cap-ok
+}
+check "task-packet hard-caps evidence at ≤6×400 chars (K2)" 0 "k2-cap-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-022: No findings file
+**Class**: infer
+**Findings**: some-rule-00001
+**Goal**: omit evidence section when json absent
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-022 qwen27b/qwen3-6-27b)
+  ! echo "$out" | grep -q 'Analysis evidence' && echo k2-absent-ok
+}
+check "task-packet omits evidence when mta-findings.json absent (K2)" 0 "k2-absent-ok"
+
+run_case() {
+  grep -q 'Analysis evidence' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'Worker packet (authoritative' "$HARNESS_DIR/supervisor.sh" \
+    && echo k2-esc-ok
+}
+check "supervisor escalation prompt carries K2 packet/evidence" 0 "k2-esc-ok"
+
+# K2-RR: round-robin — later Findings rule must appear when first rule is huge
+run_case() {
+  mkfix
+  mkdir -p migration
+  python3 - <<'PY'
+import json
+incs_a = [{"uri": f"file:///a/A{i}.java", "lineNumber": i, "message": f"A{i}", "codeSnip": "x"} for i in range(8)]
+incs_b = [{"uri": "file:///b/B.java", "lineNumber": 1, "message": "RULE-B-REMEDIATION", "codeSnip": "y"}]
+json.dump([{
+  "violations": {
+    "rule-aaa-00001": {"category": "mandatory", "description": "A", "incidents": incs_a},
+    "rule-bbb-00002": {"category": "mandatory", "description": "B", "incidents": incs_b},
+  }
+}], open("migration/mta-findings.json", "w"))
+PY
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-030: Two findings
+**Class**: infer
+**Findings**: rule-aaa-00001, rule-bbb-00002
+**Goal**: both rules get evidence
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-030 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  echo "$out" | grep -q 'rule-bbb-00002' \
+    && echo "$out" | grep -q 'RULE-B-REMEDIATION' \
+    && echo k2-rr-ok
+}
+check "task-packet round-robins evidence across Findings rules (K2-RR)" 0 "k2-rr-ok"
+
+# K2-MATCH: short prose token must not pull unrelated rules
+run_case() {
+  mkfix
+  mkdir -p migration
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations": {
+  "springboot-web-to-quarkus-00000": {
+    "category": "mandatory",
+    "description": "springboot",
+    "incidents": [{"uri": "file:///a/S.java", "lineNumber": 1, "message": "SPRINGBOOT-HIT", "codeSnip": "x"}]
+  }
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-031: Loose token
+**Class**: infer
+**Findings**: springboot
+**Goal**: must not match via bare substring
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-031 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  ! echo "$out" | grep -q 'Analysis evidence' && echo k2-match-ok
+}
+check "task-packet rejects short Findings token substring match (K2-MATCH)" 0 "k2-match-ok"
+
+# K2-CAP: combined message+code content ≤ 2400
+run_case() {
+  mkfix
+  mkdir -p migration
+  python3 - <<'PY'
+import json
+incs = []
+for i in range(6):
+    incs.append({
+        "uri": f"file:///a/F{i}.java",
+        "lineNumber": i + 1,
+        "message": "m" * 400,
+        "codeSnip": "c" * 400,
+    })
+json.dump([{"violations": {"rule-cap-00002": {
+    "category": "mandatory", "description": "cap", "incidents": incs,
+}}}], open("migration/mta-findings.json", "w"))
+PY
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-032: Content budget
+**Class**: infer
+**Findings**: rule-cap-00002
+**Goal**: combined content budget
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-032 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  evid=$(echo "$out" | sed -n '/^Analysis evidence/,/^Target Design:/p' | sed '$d')
+  # Sum lengths of message:/code: payloads only
+  content=$(echo "$evid" | python3 -c '
+import sys,re
+n=0
+for ln in sys.stdin:
+    m=re.match(r"\s+(message|code):\s*(.*)$", ln)
+    if m: n+=len(m.group(2))
+print(n)
+')
+  [ "$content" -le 2400 ] && echo "k2-cap2-ok content=$content"
+}
+check "task-packet enforces 2400-char combined evidence budget (K2-CAP)" 0 "k2-cap2-ok"
 
 echo "----"
 echo "$PASS/$N passed"

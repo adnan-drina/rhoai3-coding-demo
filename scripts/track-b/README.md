@@ -15,7 +15,7 @@ Shared helpers: `lib-quality-gates.sh` (`qg_ws_pod`, `qg_story_complete_ok`,
 | O-DRV7 escalation | `V9-ESCALATION-PENDING` | `v9-clear-escalation.sh` (Qwen RCA + bank + retest) |
 | O-HAND hand fix | `v9-handfix-detect.sh` | `v9-clear-handfix.sh` |
 | O-ADV story ADVANCE | `v9-advance-gate.sh` | `check` / `clear` after gate ADVANCE |
-| Bank ⬜ | `v9-bank-gate.sh honesty\|all` | implement ⬜→✅; preflight refuses start |
+| Bank ⬜ | `v9-bank-gate.sh honesty\|all` (`BANK_DOC`=`docs/V10-FUTURE-IMPROVEMENTS.md`) | implement ⬜→✅; 📋 = later wave (ignored); preflight refuses start |
 | Coolstore hardcode | `v9-coolstore-lint.sh` | remove specimen hardcoding from harness |
 | O-FALSECOMPLETE | `v9-story-complete-lint.sh` | re-earn via ship-only path below |
 | Outer start | `v9-preflight-outer-start.sh` | bank + coolstore + story-complete lint + no blocking pendings |
