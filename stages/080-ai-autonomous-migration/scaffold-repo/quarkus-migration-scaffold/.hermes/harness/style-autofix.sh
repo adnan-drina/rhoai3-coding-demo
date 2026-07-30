@@ -11,7 +11,7 @@ export PATH="${JAVA_HOME}/bin:${PATH}"
 cd "${SENSOR_ROOT:-/projects/modernized}"
 
 M2_RUN="${M2_RUN:-/tmp/m2-run}"
-# The recipe set mirrors the recurring sonar rules of runs 1–3:
+# The recipe set mirrors the recurring sonar rules of runs 1–3 + V9:
 #   RemoveUnusedImports            (unused imports)
 #   TestsShouldNotBePublic         (java:S5786)
 #   UseDiamondOperator             (java:S2293)
@@ -21,10 +21,15 @@ M2_RUN="${M2_RUN:-/tmp/m2-run}"
 #   preflight violations were this one rule, burning two 900s fix
 #   sessions; the recipe collapses assertThat(x.size()).isEqualTo(n)
 #   chains deterministically)
+# NOTE: CollapsibleIfStatements is NOT in rewrite-static-analysis:1.21.1
+# (V9: adding it aborted the whole recipe run). S1066 is handled by
+# s1066-collapse.py below (O-S1066).
 mvn -q -Dmaven.repo.local="$M2_RUN" \
   org.openrewrite.maven:rewrite-maven-plugin:5.46.1:run \
   -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-static-analysis:1.21.1,org.openrewrite.recipe:rewrite-testing-frameworks:2.23.1 \
   -Drewrite.activeRecipes=org.openrewrite.java.RemoveUnusedImports,org.openrewrite.java.testing.cleanup.TestsShouldNotBePublic,org.openrewrite.staticanalysis.UseDiamondOperator,org.openrewrite.staticanalysis.IsEmptyCallOnCollections,org.openrewrite.staticanalysis.RemoveUnusedLocalVariables,org.openrewrite.java.testing.assertj.SimplifyChainedAssertJAssertions \
   > /tmp/style-autofix.log 2>&1 || { echo "style-autofix: recipes failed — /tmp/style-autofix.log"; exit 1; }
+# O-S1066: deterministic nested-if collapse (recipe absent from 1.21.1)
+python3 "$(dirname "$0")/s1066-collapse.py" . >> /tmp/style-autofix.log 2>&1 || true
 CHANGED=$(git diff --name-only -- src/ | wc -l | tr -d ' ')
 echo "style-autofix: recipes complete, $CHANGED files changed"

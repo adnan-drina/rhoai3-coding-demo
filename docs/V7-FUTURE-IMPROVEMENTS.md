@@ -40,11 +40,24 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | O-DRV | ✅ ops | Restart: `nohup bash tmp/v8-driver-loop.sh >> /tmp/v8-driver-loop.out &` |
 | O-DRV2 | ✅ ops | Driver auto-restarts outer-loop on `outer=DOWN` (120s ticks); CRITICAL sentinel — V8 overnight dead-harness gap |
 | O-DRV3 | ✅ ops | Driver detects new `T-*` / anomalies → `tmp/V9-TASK-ANALYSIS-PENDING.md` + CRITICAL until detailed gate entry (V9: analysis deferred until human asked) |
+| O-DRV4 | ✅ ops | Every tick CRITICAL until chat pulse + `tmp/V9-CHAT-PULSE.ack`; overdue if ack >~2.5× interval (V9 S02 ~12 min silence) |
+| O-DRV5 | ✅ ops | Detect new M1–M5 / S0N spec / story-complete → `tmp/V9-M-ANALYSIS-PENDING.md` CRITICAL until comprehensive gate (was docs-only before) |
 | O-STY | ✅ | style-autofix: discard `migration/staging/` mutations; `stage_for_task_commit` excludes staging + `.hermes` (V9 S02 T-005) |
 | O-RESUME | ✅ | Mid-story resume via `RESUME_STORY`+`RESUME_RUN_BASE` only (never sticky bare `RUN_BASE` — V8 S02 false-skip) |
 | O-T6c | ✅ | Escalation / sfix / exhausted-session mechan commits use `stage_for_task_commit` (no `.hermes/` or staging sweep — V9 S01 T-011) |
 | O-T6d | ✅ | `mechan-match.py`: refuse mechan/worker auto-commit when staged paths mismatch task (characterization requires `src/test/` — V9 S02 T-006) |
 | O-AC2 | ✅ | `already-complete.py`: preserve skip only if token is task subject (title/Goal/Acceptance); strip Story Scope Waivers; instruments lock (V9 S02 T-007) |
+| O-AC3 | ✅ | already-complete: missing Target destination .java blocks preserve skip (V9 S03 T-006 CatalogService + CATALOG_ENDPOINT false complete). |
+| O-ESCW2 | ✅ | `app_dirt` ignores `.hermes/` + `migration/staging/` for O-ESCW allow-empty (V9 S03 T-001/T-002). Re-run proof on next package/dep noop. |
+| O-ESCW3 | ✅ | `escw-eligible.py`: never allow-empty when characterization lacks service tests / missing Target .java (V9 S03 T-008 false green on model-only tests). |
+| O-SONARTIME | ⬜ | sfix MiniMax wraps `sensors.sh sonar` in `timeout 60` → exit 124 before sonar finishes (~2–3m). Prompt/EXECUTION: never wrap harness sensors in timeout <600s (V9 S03 T-008 sfix). |
+| O-T6e | ✅ | Post-worker: log why auto-commit skipped; `ensure_trackable_packages` + second `try_mechan_commit` before MiniMax (V9 S03 T-007 RCA: worker rc=0 no commit; pre-worker O-T6b was correct). Re-run proof on next infer. |
+| O-SFIXLOOP | ✅ | `/tmp/sensor-fix-mode` makes `sensors.sh milestone` exit 2 during sfix; prompt hardened (V9 S03 T-008: 5× milestone). Re-run proof: reset T-008. |
+| O-SONARFIX | ✅ | EXECUTION.md teaches S5778/S5976/S2737/S2864/S2925/S1066 (migration-general). V9 T-008 re-run: Qwen wrote tests; autofix+pattern fixes → sonar/milestone GREEN. |
+| O-S1066 | ✅ | `s1066-collapse.py` in style-autofix (OpenRewrite `CollapsibleIfStatements` absent from pinned rewrite-static-analysis:1.21.1 — adding it aborted the whole recipe run on V9 T-008). |
+| O-PKGDIR | ✅ | plan-lint S-PKGDIR requires `.gitkeep`/`package-info.java`; supervisor drops `.gitkeep` into empty `src/**/java` dirs before mechan. |
+| O-KILLREL | ✅ | `.hermes/harness/freeze-harness.sh` + polish-restart use `harness/outer-loo[p]\.sh` relative match. |
+| O-M3KILL | ✅ | outer-loop: hermes_rc 137/143 does not spend an M3 plan-lint attempt. |
 
 ## Story design / plan quality
 
@@ -56,6 +69,7 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
 | S-SOFT | ✅ | plan-lint: soft prepare/verification-only titles rejected |
 | S-CHAR | ✅ | plan-lint: `src/main/.../model/` without any `src/test/` → LINT:S-CHAR (V8 S02 HOLD) |
 | S-AC1 | ✅ | plan-lint rejects ceremonial acceptance placeholder / “simple status” tasks (V9 S01 HOLD) |
+| S-INFTEST | ✅ | PLANNING.md: after first infer, characterization/verify must be Class infer (V9 S03). M3 prompt still could echo — residual OK. |
 
 ## Sensors / gates
 

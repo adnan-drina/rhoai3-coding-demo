@@ -213,11 +213,20 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
     BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
     [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
     SLUG=$(basename "$BRIEF" .md)
-    for ATTEMPT in 1 2; do
+    # O-M3KILL: hermes SIGKILL (rc=137/143) from operator freeze must NOT spend
+    # a plan-lint attempt — otherwise two freezes look like "failed lint twice".
+    ATTEMPT=1
+    while [ "$ATTEMPT" -le 2 ]; do
       phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [attempt ${ATTEMPT}/2]"
       P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. A deterministic lint gates the plan — verify yourself with: python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. PACKAGE RENAME: full prefix legacyPackage→targetPackage only (never targetPackage.coolstore when targetPackage is com.demo)."
       [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} failed its plan lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify the lint command from the findings file exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH."
       mchat "m3-${SID}-a${ATTEMPT}" "$P" "M3 SPECIFY ${SID}"
+      mchat_rc=$?
+      if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
+        log "         O-M3KILL: M3 session killed (hermes_rc=${mchat_rc}) — attempt ${ATTEMPT} NOT spent; retrying same attempt"
+        phase_retry "M3 SPECIFY ${SID} — session killed (rc=${mchat_rc}); not counting as lint fail"
+        continue
+      fi
       SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
       if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md > /tmp/plan-lint.txt 2>&1; then
         [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
@@ -230,6 +239,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       phase_gate "M3 SPECIFY ${SID} plan-lint" RED "full findings /tmp/plan-lint.txt"
       [ "$ATTEMPT" = "2" ] && fail_run "M3 SPECIFY ${SID} failed its plan lint twice"
       phase_retry "M3 SPECIFY ${SID} — bouncing once"
+      ATTEMPT=$((ATTEMPT + 1))
     done
   else
     phase_ok "M3 SPECIFY — ${SID} spec already present ($SPEC_TASKS)"

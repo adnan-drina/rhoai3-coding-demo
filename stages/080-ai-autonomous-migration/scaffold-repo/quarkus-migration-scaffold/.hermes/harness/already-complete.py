@@ -13,7 +13,8 @@ Allowed skip paths (only):
 1. preserve: token that is the *subject* of the task (title or Goal /
    Acceptance / Target design — O-AC2) is already present in the tree
    (and in k8s/ when STORY_DEPLOY=true for ENV_STYLE tokens). Waiver
-   prose must not trigger this path.
+   prose must not trigger this path. O-AC3: blocked when Target design
+   names a destination .java that is still missing (class conversion).
 2. Explicit removal task (title or body) naming a concrete src/.../*.java
    path whose basename is absent under src/main/java and src/test/java.
 """
@@ -121,15 +122,40 @@ def k8s_has(token: str) -> bool:
     return False
 
 
+def _target_java_paths(body: str) -> list[str]:
+    """Destination .java paths cited on Target/→ lines (not staging/legacy)."""
+    paths: list[str] = []
+    for line in body.splitlines():
+        if not re.search(r"(?:Target|→|->)", line, re.I):
+            continue
+        paths.extend(
+            re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", line)
+        )
+    return [p for p in paths if "migration/staging" not in p and "/legacy/" not in p]
+
+
+def missing_target_java(body: str) -> bool:
+    """O-AC3: True when a Target destination .java is still absent under src/.
+
+    Preserve tokens (e.g. CATALOG_ENDPOINT) often appear in Goal/Target of
+    class-conversion tasks; that must not skip creating the missing class
+    (V9 S03 T-006 CatalogService false already-complete).
+    """
+    src_root = ROOT / "src"
+    for path in _target_java_paths(body):
+        if (ROOT / path).is_file():
+            continue
+        leaf = Path(path).name
+        if src_root.is_dir() and list(src_root.rglob(leaf)):
+            continue
+        return True
+    return False
+
+
 def java_basenames_absent(body: str) -> Optional[str]:
     """Return basename if an explicit java path is named and absent in tree."""
     # Prefer TARGET-side paths (after → / -> / Target).
-    targetish = []
-    for line in body.splitlines():
-        if re.search(r"(?:Target|→|->)", line, re.I):
-            targetish.extend(
-                re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", line)
-            )
+    targetish = _target_java_paths(body)
     paths = targetish or re.findall(
         r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", body
     )
@@ -175,16 +201,18 @@ def main() -> int:
     if myp.is_file():
         myaml = myp.read_text(encoding="utf-8", errors="replace")
 
-    for item in preserve_items(myaml):
-        if not preserve_is_task_subject(title, body, item):
-            continue
-        if re.fullmatch(r"[A-Z][A-Z0-9_]+", item) and deploy:
-            if not k8s_has(item):
+    # O-AC3: missing destination .java blocks preserve fast-path.
+    if not missing_target_java(body):
+        for item in preserve_items(myaml):
+            if not preserve_is_task_subject(title, body, item):
                 continue
-        elif not tree_has(item):
-            continue
-        print(f"present:{item}")
-        return 0
+            if re.fullmatch(r"[A-Z][A-Z0-9_]+", item) and deploy:
+                if not k8s_has(item):
+                    continue
+            elif not tree_has(item):
+                continue
+            print(f"present:{item}")
+            return 0
 
     if is_removal_task(title, body):
         leaf = java_basenames_absent(body)

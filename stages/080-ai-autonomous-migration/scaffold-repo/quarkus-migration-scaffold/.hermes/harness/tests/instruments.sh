@@ -1058,6 +1058,29 @@ EOF
 }
 check "already-complete still skips real preserve-subject tasks (O-AC2)" 0 "present:CATALOG_ENDPOINT"
 
+# O-AC3 — class conversion mentioning CATALOG_ENDPOINT must not skip when .java missing
+run_case() {
+  mkfix
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.rest-client."catalog-service".url=${CATALOG_ENDPOINT:http://localhost:8081}\n' \
+    > src/main/resources/application.properties
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-006: CatalogService conversion with REST client
+**Class**: infer
+**Findings**: springboot-web-to-quarkus-00000 (1), demo-env-integration-00001 (1)
+**Goal**: Convert CatalogService from FeignClient to Quarkus REST client; keep CATALOG_ENDPOINT
+**Target design**:
+- Legacy CatalogService → src/main/java/com/demo/service/CatalogService.java
+- Configuration: Environment-driven CATALOG_ENDPOINT via configKey catalog-service
+**Acceptance**: CatalogService compiles with @RegisterRestClient; CATALOG_ENDPOINT preserved
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-006; echo "rc=$?"
+}
+check "already-complete does not skip missing CatalogService.java (O-AC3)" 0 "rc=1"
+
 # O-T6d — characterization task must not mechan-commit main-only dirty tree
 MM_PY="$HARNESS_DIR/mechan-match.py"
 run_case() {
@@ -1279,6 +1302,110 @@ run_case() {
     | grep -q 'acceptance_ship_contract' && echo gac3-ok
 }
 check "milestone sensor runs acceptance_ship_contract (G-AC3)" 0 "gac3-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Create service package structure
+**Class**: rewrite
+- Destination: `src/main/java/com/demo/service/`
+- Acceptance: directory exists for service classes
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects package-structure task without .gitkeep (S-PKGDIR)" 1 "S-PKGDIR"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Create service package structure
+**Class**: rewrite
+- Destination: `src/main/java/com/demo/service/.gitkeep`
+- Acceptance: package directory trackable via .gitkeep
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint accepts package-structure task with .gitkeep (S-PKGDIR)" 0 "PLAN OK"
+
+run_case() {
+  grep -q 'sensor-fix-mode' "$SENSORS" \
+    && grep -q 'O-SFIXLOOP' "$SENSORS" \
+    && grep -q 's1066-collapse' "$HARNESS_DIR/style-autofix.sh" \
+    && test -f "$HARNESS_DIR/s1066-collapse.py" \
+    && grep -q 'app_dirt' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M3KILL' "$HARNESS_DIR/outer-loop.sh" \
+    && test -f "$HARNESS_DIR/freeze-harness.sh" \
+    && echo v9-bank-ok
+}
+check "V9 bank wiring O-SFIXLOOP/S1066/ESCW2/M3KILL/KILLREL present" 0 "v9-bank-ok"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo
+  cat > src/main/java/com/demo/N.java <<'EOF'
+package com.demo;
+class N {
+  void t(boolean a, boolean b) {
+    if (a) {
+      if (b) {
+        System.out.println(1);
+      }
+    }
+  }
+}
+EOF
+  python3 "$HARNESS_DIR/s1066-collapse.py" "$PWD" >/tmp/s1066.out
+  grep -q 'a && b' src/main/java/com/demo/N.java && echo collapse-ok
+}
+check "s1066-collapse collapses nested if (O-S1066)" 0 "collapse-ok"
+
+run_case() {
+  mkfix
+  touch /tmp/sensor-fix-mode
+  out=$(SENSOR_ROOT="$PWD" bash "$SENSORS" milestone 2>&1) || rc=$?
+  rm -f /tmp/sensor-fix-mode
+  rc=${rc:-0}
+  echo "$out"
+  [ "$rc" -eq 2 ] && echo refused-ok
+}
+check "sensors.sh milestone refused in sensor-fix mode (O-SFIXLOOP)" 0 "refused-ok"
+
+ESCW_PY="$HARNESS_DIR/escw-eligible.py"
+run_case() {
+  mkfix
+  mkdir -p src/test/java/com/demo/model
+  echo 'class DomainModelTest {}' > src/test/java/com/demo/model/DomainModelTest.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-008: Add service layer characterization tests
+**Class**: infer
+- Characterization tests for PromoService / ShippingService under src/test/java/com/demo/service/
+EOF
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-008; echo rc=$?
+}
+check "escw-eligible refuses service characterization without service tests (O-ESCW3)" 0 "need-service-tests"
+
+run_case() {
+  mkfix
+  mkdir -p src/test/java/com/demo/service
+  echo 'class PromoServiceTest {}' > src/test/java/com/demo/service/PromoServiceTest.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-008: Add service layer characterization tests
+**Class**: infer
+- Characterization tests for service layer under src/test/java/com/demo/service/
+EOF
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-008
+}
+check "escw-eligible allows service characterization when service tests exist (O-ESCW3)" 0 "tests-present"
 
 echo "----"
 echo "$PASS/$N passed"

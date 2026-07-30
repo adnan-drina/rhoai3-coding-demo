@@ -88,6 +88,30 @@ stage_for_task_commit() {
   git reset -q -- .hermes migration/staging 2>/dev/null || true
 }
 
+# O-ESCW2 / O-PKGDIR: paths outside harness noise (.hermes/, migration/staging/).
+app_dirt() {
+  git status --porcelain --untracked-files=all 2>/dev/null | awk '{
+    p=$2
+    if ($1 ~ /^R/ || $1 ~ /^C/) {
+      for (i=1;i<=NF;i++) if ($i=="->") { p=$(i+1); break }
+    }
+    if (p !~ /^\.hermes\// && p !~ /^migration\/staging\//) print p
+  }'
+}
+
+# O-PKGDIR: empty package dirs are invisible to git — drop a .gitkeep so
+# mkdir-only package-structure work can commit (migration-general).
+ensure_trackable_packages() {
+  local d
+  for d in $(find src/main/java src/test/java -type d 2>/dev/null); do
+    [ -d "$d" ] || continue
+    if [ -z "$(ls -A "$d" 2>/dev/null)" ]; then
+      touch "$d/.gitkeep"
+      log "O-PKGDIR: added $d/.gitkeep (empty package dir was uncommittable)"
+    fi
+  done
+}
+
 # O-STY: discard OpenRewrite mutations under migration/staging (fidelity baseline).
 discard_staging_autofix() {
   git checkout -q -- migration/staging 2>/dev/null || true
@@ -333,9 +357,13 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
     # inside fix sessions). Point the model at the dimension-specific cheap
     # recheck so it stops re-running the whole build per fix.
+    # O-SFIXLOOP: hard-refuse milestone inside the session via /tmp/sensor-fix-mode
+    # (prompt-only was ignored — V9 S03 T-008 ran milestone 5×).
+    touch /tmp/sensor-fix-mode
     orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP: fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone in a loop (it rebuilds the whole project each time). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further.
 ${RUN_CONTRACT}"
+    rm -f /tmp/sensor-fix-mode
     # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
     # milestone-red (fidelity/sonar) is not cleared by a task-sensor green,
     # and a commit with the right prefix is not proof the red went away.
@@ -728,10 +756,15 @@ run_worker_task() { # $1=task-id → 0 if committed
     return 0
   fi
   # Worker often leaves a green dirty tree without the required commit prefix.
-  if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  # O-PKGDIR: materialize empty package dirs before staging.
+  ensure_trackable_packages
+  if [ -n "$(app_dirt)" ]; then
     if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
       stage_for_task_commit
-      git diff --cached --quiet && return 1
+      if git diff --cached --quiet; then
+        log "$T: O-T6e worker auto-commit skip — app dirt present but stage empty after excluding .hermes/staging (see git status)"
+        return 1
+      fi
       # O-T6d: do not attach this T-NNN title to an unrelated dirty tree
       if ! git diff --cached --name-only | python3 .hermes/harness/mechan-match.py "$TASKS_FILE" "$T" \
            > /tmp/mechan-match.out 2>&1; then
@@ -742,7 +775,12 @@ run_worker_task() { # $1=task-id → 0 if committed
       git commit -q -m "${T}: $(task_title "$T") (worker $(worker_label))" 2>/dev/null \
         || git commit -m "${T}: $(task_title "$T") (worker $(worker_label))" >/dev/null 2>&1
       committed "$T" && return 0
+      log "$T: O-T6e worker auto-commit failed — commit command did not produce '${T}:' prefix"
+    else
+      log "$T: O-T6e worker auto-commit skip — task sensor RED after worker (see /tmp/sensor-task.log)"
     fi
+  else
+    log "$T: O-T6e worker left no app dirt (only .hermes/staging or clean) — no auto-commit"
   fi
   return 1
 }
@@ -777,10 +815,18 @@ try_mechan_commit() { # $1=task-id → 0 if committed
 # clean tree, and never commits — supervisor used to escalate to MiniMax just to
 # write "Already satisfied". If the tree is clean and task sensor is GREEN,
 # commit allow-empty here (no MiniMax).
+# O-ESCW2 (V9 S03): .hermes/ + migration/staging-only dirt counts as clean.
+# O-ESCW3 (V9 S03): never allow-empty when deliverables are still missing
+# (characterization without src/test, missing Target .java) — T-008 false green.
 try_worker_verified_noop() { # $1=task-id → 0 if committed
-  local T="$1"
+  local T="$1" why
   committed "$T" && return 0
-  [ -z "$(git status --porcelain 2>/dev/null)" ] || return 1
+  [ -z "$(app_dirt)" ] || return 1
+  if ! why=$(ALREADY_COMPLETE_ROOT="$PWD" python3 .hermes/harness/escw-eligible.py \
+       "$TASKS_FILE" "$T" 2>/tmp/escw-eligible.err); then
+    log "$T: O-ESCW3 skip allow-empty — deliverables still required ($(cat /tmp/escw-eligible.err 2>/dev/null | tr '\n' ' '; echo "$why" | tr '\n' ' '))"
+    return 1
+  fi
   if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
     git commit --allow-empty -q \
       -m "${T}: Already satisfied (worker verified clean tree; O-ESCW)" 2>/dev/null \
@@ -802,6 +848,8 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     post_commit_verify "$T" "$T"
     return 0
   fi
+  # O-PKGDIR before mechan: empty dirs → .gitkeep so mkdir work can commit
+  ensure_trackable_packages
   # O-T6: untracked/dirty target tree already green — don't burn a model seat
   if try_mechan_commit "$T"; then
     log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
@@ -813,6 +861,14 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+    return 0
+  fi
+  # O-T6e: second mechan pass after worker (gitkeep / late writes / ESCW2 dirt)
+  ensure_trackable_packages
+  if try_mechan_commit "$T"; then
+    log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
+    scope_enforce "$T"
+    post_commit_verify "$T" "$T"
     return 0
   fi
   # O-ESCW: worker verified, nothing to change — close without MiniMax

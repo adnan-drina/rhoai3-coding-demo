@@ -568,7 +568,15 @@ sonar_only() {
 case "${1:-}" in
   seed)      seed;;
   task)      task_sensor;;
-  milestone) milestone_sensor;;
+  milestone)
+    # O-SFIXLOOP: sensor-fix sessions must use cheap dimension checks.
+    # MiniMax ignored prompt-only guidance (V9 S03 T-008: 5× milestone).
+    if [ -f /tmp/sensor-fix-mode ] || [ "${SENSOR_FIX_MODE:-}" = "1" ]; then
+      echo "REFUSED (O-SFIXLOOP): sensor-fix mode — use .hermes/harness/sensors.sh sonar|task|fidelity|package (not milestone)"
+      exit 2
+    fi
+    milestone_sensor
+    ;;
   sonar)     sonar_only;;
   fidelity)  fidelity_check;;
   preflight) preflight;;

@@ -158,6 +158,65 @@ to discover the process was broken. Prefer **multiple partial runs**, each
 building harness honesty and durability, over **one completed run with a
 broken service**.
 
+**Temporary manual → durable → re-run (mandatory):**
+
+Manual / operator edits in the live migration tree (or one-off hand fixes)
+are allowed **only** to confirm an assumption quickly. They are not the
+finish line.
+
+1. **Probe** — temporary fix; note the hypothesis in the quality gate.
+2. **Validate** — confirm the probe actually cleared the failure class.
+3. **Durableize** — implement the same fix in harness / skills / sensors /
+   plan-lint / driver (bank ⬜ → ✅); never leave it as “I fixed the app.”
+   Durable fixes must be **migration-general** (any Spring Boot → Quarkus
+   app using this harness), not Coolstore cart–specific hardcoding.
+4. **Re-run** — abort/resume or restart so the *process* applies the durable
+   fix without the hand edit. Only then is the item closed.
+
+Skipping step 3 or 4 is forbidden drift (pushing the run through).
+
+**Generalizable harness (mandatory):**
+
+This demo’s cart service is a **specimen**, not the product. Track B
+durableizes a reusable Spring Boot → Quarkus migration method. Every banked
+fix, sensor, plan-lint rule, skill tip, and supervisor behavior must be
+expressed in terms of **general patterns** (package rename, CDI harvest,
+REST client, preserve tokens, characterization, Sonar/style, worker vs
+orchestrator routing, etc.) parameterized by `migration.yaml` / briefs /
+findings — **not** Coolstore-only class names, item ids, endpoints, or
+package literals baked into the harness.
+
+Coolstore-specific content belongs in **story briefs/tasks/roadmap** for
+that run, or in fixtures/instruments that explicitly test the general rule
+with cart-shaped examples. If a fix only works for Coolstore cart, it is
+not durable — redesign until another Spring Boot app would inherit it.
+
+**MiniMax-over-Qwen escalations (mandatory — every time):**
+
+Whenever MiniMax / Hermes **takes over coding work from Qwen / OpenCode**
+(worker incomplete/failed → orchestrator escalation, including sfix
+escalations that MiniMax owns), treat it as a first-class defect until
+closed:
+
+1. **Capture** — note task id, actor path, and commit(s) in
+   `docs/V9-QUALITY-GATE.md` (do not bury under “escalation”).
+2. **Analyze Qwen** — read `/tmp/oc-T-NNN.err`, `/tmp/oc-T-NNN.json` (or
+   equivalent OpenCode logs), supervisor lines for that task, and the
+   dirty-tree / commit state **before** MiniMax ran. Identify *why* the
+   worker failed to finish (no commit, wrong scope, tool error, false
+   already-complete, mechan skip, quota, etc.).
+3. **Analyze MiniMax** — what it changed; whether the takeover was
+   necessary or a harness false path.
+4. **Durableize** — bank ⬜ and implement harness/skill/sensor/worker
+   improvements so the same cause does not force MiniMax again.
+5. **Retest** — re-run the affected task/story (or a focused probe) and
+   confirm Qwen/worker path succeeds without MiniMax takeover when the
+   durable fix applies.
+
+Closing an escalation because “MiniMax fixed it and GREEN” without steps
+2–5 is forbidden. MiniMax is the expensive escape hatch, not the happy
+path.
+
 **Forbidden drift:**
 
 - Advancing on sensor GREEN without substance review
@@ -165,10 +224,19 @@ broken service**.
 - Leaving open polish for “after the demo” or “next PR”
 - Nursing a compromised run to finish the story count
 - Assumptions about what a commit “probably” did — read the diff
+- Treating a validated hand fix as done without durableize + re-run proof
+- Accepting MiniMax escalation success without Qwen-log root cause +
+  durableize + retest
+- Baking Coolstore cart–specific names/paths/ids into harness “durable”
+  fixes that should apply to any Spring Boot → Quarkus migration
 
 Canonical skill/rule: `.agents/skills/stage-080-quality-advance/SKILL.md`,
 `.agents/rules/stage-080-track-b.md`. Live wake loop: `tmp/v8-driver-loop.sh`
-(O-DRV2 / O-DRV3). Polish bank: `docs/V7-FUTURE-IMPROVEMENTS.md`.
+(O-DRV2 / O-DRV3 / O-DRV4 / **O-DRV5**). Polish bank: `docs/V7-FUTURE-IMPROVEMENTS.md`.
+
+These gates are **script-enforced**, not memory: O-DRV3 →
+`tmp/V9-TASK-ANALYSIS-PENDING.md`; O-DRV5 → `tmp/V9-M-ANALYSIS-PENDING.md`;
+O-DRV4 → `tmp/V9-CHAT-PULSE-PENDING.md`.
 
 #### Before each new migration run
 
@@ -179,51 +247,95 @@ compromised run.
 
 #### Driver goals (must follow on every tick)
 
-1. **Stay awake** — inspect the run on each driver interval (default 120s);
-   post a brief chat pulse (2–5 lines); do not go silent while the run is live.
+1. **O-DRV4 — chat pulse every tick (P0, non-negotiable)** — on every
+   driver interval (default 120s), post a **2–5 line update in chat** to
+   the user, then acknowledge:
+   `printf '<tick-ts>\n' > tmp/V9-CHAT-PULSE.ack` and remove
+   `tmp/V9-CHAT-PULSE-PENDING.md`. The driver emits **CRITICAL** every tick
+   until you do. If the ack is older than ~2.5× interval, the tick is
+   **OVERDUE** — you went idle; recover immediately. Going silent while
+   the run is live is a process failure, not a judgment call.
 2. **O-DRV2 — harness self-heal** — if outer-loop is DOWN and the story
    ledger is incomplete, auto-restart it (no sticky bare `RUN_BASE`). Treat
    unexpected downtime as P0.
-3. **O-DRV3 — detailed post-task analysis** — after every new `T-NNN` /
-   `T-NNN sensor fix` commit (and on RED / partial autofix / escalation),
-   complete a detailed quality-advance analysis **immediately**, without
-   waiting to be asked. Driver keeps CRITICAL ticks while
-   `tmp/V9-TASK-ANALYSIS-PENDING.md` is uncleared.
-4. **Bank every durable gap** into `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜) in
+3. **O-DRV3 — detailed post-task analysis (script)** — after every new
+   `T-NNN` / `T-NNN sensor fix` commit, driver writes
+   `tmp/V9-TASK-ANALYSIS-PENDING.md` and stays CRITICAL until a detailed
+   gate entry exists and the pending file is cleared. Chat pulse first,
+   then analysis.
+4. **O-DRV5 — comprehensive post-M analysis (script)** — after every new
+   M1/M2/M3/M4/M5 completion (git subjects and/or outer-loop `OK END M*`),
+   driver writes `tmp/V9-M-ANALYSIS-PENDING.md` and stays CRITICAL until a
+   comprehensive freeze-and-review gate entry exists; clear via
+   `tmp/V9-M-ANALYSIS.sha`. Do not advance to the next story/M on GREEN alone.
+5. **Bank every durable gap** into `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜) in
    the same analysis pass — never ask whether to bank.
-5. **Implement open bank rows that block honesty** as soon as they are
+6. **Implement open bank rows that block honesty** as soon as they are
    found (or HOLD until they are) — do not accumulate a backlog while the
    broken run continues.
-6. **Abort / HOLD on false greens** — ceremonial commits, empty harvests,
+7. **Abort / HOLD on false greens** — ceremonial commits, empty harvests,
    placeholder tests, wrong-title mechan commits, dishonest
    already-complete skips. Do not advance on sensor GREEN alone.
-7. **Prefer fix + re-run over long compromised runs** — if the harness or
+8. **Prefer fix + re-run over long compromised runs** — if the harness or
    delivery is dishonest, stop, bank, implement, wipe/resume cleanly.
-8. **Keep driving** after ADVANCE; freeze on HOLD until fixes land; on
+9. **Keep driving** after ADVANCE; freeze on HOLD until fixes land; on
    ABORT, reset and implement open bank rows before restart.
+10. **Temporary manual → durable → re-run** — hand edits may probe a
+    hypothesis; after validation, implement in the harness/skills and
+    re-run so the process (not the agent) owns the fix.
+11. **MiniMax-over-Qwen escalations** — every takeover must get Qwen-log
+    root-cause analysis, a durable harness/skill fix, and a retest that
+    proves the worker path no longer needs MiniMax for that failure class.
+    Do not treat “MiniMax committed GREEN” as closed.
+12. **Migration-general durable fixes** — harness/skill/sensor changes must
+    apply to any Spring Boot → Quarkus migration using this method. Use
+    `migration.yaml` / brief / findings parameters; keep Coolstore specifics
+    in story artifacts or named fixtures — not in the harness core.
+
+#### What every gate must judge (crucial — not optional)
+
+Sensors (compile/test/sonar) are necessary but **not sufficient**. Every
+O-DRV3 / O-DRV5 review must critically judge:
+
+1. **Quality of AI-generated code** — correctness vs legacy/brief, fidelity
+   of harvest/rename, real tests (no placeholders), no ceremonial stubs,
+   API/package honesty, maintainability, security-sensitive mistakes.
+2. **Quality of AI actions** — did the worker/orchestrator/escalation/
+   mechan/autofix path do the *right* work? Wrong-title commits, false
+   “Already satisfied”, quota burns, scope violations, staging/harness
+   sweeps, skipped characterization, dishonest evaluate/ship claims.
+3. **Process performance** — wasted MiniMax seats, repeated sfix loops,
+   style-autofix thrash, silent ticks, premature story advance.
+
+Do not clear an O-DRV3/O-DRV5 pending file after a superficial GREEN glance.
 
 #### Mandatory per-task checklist (O-DRV3)
 
-1. `git show --stat` + full diff (bodies, not titles).
-2. Actor path: worker / mechan / O-ESCW / MiniMax escalation / style-autofix / sfix.
-3. On RED / partial / sfix / escalation: supervisor slice + dimension logs
-   (`/tmp/sensor-*.log`, `/tmp/sonar-violations.txt`, `/tmp/oc-T-*.err`,
-   style-autofix log).
-4. Remaining violations, root cause, and harness smells (wrong `git add -A`
-   scope, staging mutated, cross-task Sonar bleed, false-green risk).
-5. Bank every durable gap NOW in `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜).
-6. Detailed entry in `docs/V9-QUALITY-GATE.md` (what / why / bank / next).
-7. Clear pending only after that write-up (`tmp/V9-TASK-ANALYSIS.sha` +
+1. `git show --stat` + full diff (bodies, not titles) — **read the code**.
+2. Judge **AI-generated code quality** against task goal/acceptance/legacy.
+3. Actor path + **AI action quality**: worker / mechan / O-ESCW / MiniMax
+   escalation / style-autofix / sfix — was the action appropriate?
+4. On RED / partial / sfix / escalation: supervisor + dimension logs
+   (`/tmp/sensor-*.log`, `/tmp/sonar-violations.txt`, `/tmp/oc-T-*.err`).
+5. Root cause, harness smells, process-performance waste.
+6. Bank every durable gap NOW in `docs/V7-FUTURE-IMPROVEMENTS.md` (⬜).
+7. Detailed entry in `docs/V9-QUALITY-GATE.md` (code quality / actions /
+   why / bank / next).
+8. Clear pending only after that write-up (`tmp/V9-TASK-ANALYSIS.sha` +
    delete `tmp/V9-TASK-ANALYSIS-PENDING.md`).
 
-#### Gate cadence
+#### Gate cadence (script + docs)
 
-- **After each T-NNN** (and sensor-fix / partial autofix / escalation):
-  detailed checklist above.
-- **After each milestone M (M1–M5):** comprehensive freeze-and-review.
-- **Before story ship / next story:** full ADVANCE/HOLD/ABORT gate.
+| Gate | Enforced by | Clear by |
+|------|-------------|----------|
+| Chat pulse every 120s | **O-DRV4** script (`V9-CHAT-PULSE-PENDING`) | `V9-CHAT-PULSE.ack` |
+| After each T-NNN | **O-DRV3** script (`V9-TASK-ANALYSIS-PENDING`) | `V9-TASK-ANALYSIS.sha` + gate entry |
+| After each M1–M5 | **O-DRV5** script (`V9-M-ANALYSIS-PENDING`) | `V9-M-ANALYSIS.sha` + comprehensive gate entry |
+| Before story ship / next story | skill + O-DRV5 story-complete detection | ADVANCE in `V9-QUALITY-GATE.md` |
 
-Agentic (no human GO); default bias is HOLD when unsure.
+Agentic (no human GO); default bias is HOLD when unsure. Do not treat
+AGENTS prose alone as enforcement — if the script is not nagging, fix the
+script.
 
 ## Coding and manifest style
 

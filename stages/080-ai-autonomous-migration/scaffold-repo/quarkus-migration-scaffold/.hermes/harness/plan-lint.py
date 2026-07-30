@@ -360,6 +360,22 @@ def main():
             "defer real acceptance to the deploy story (V9 S01 HOLD / G-OK)",
         )
 
+    # S-PKGDIR (O-PKGDIR V9 S03): package-structure / mkdir tasks must require
+    # a trackable file (.gitkeep or package-info.java). Empty dirs leave no
+    # git commit → worker rc=0 + mechan skip → MiniMax escalation.
+    for _, tid, title in heads:
+        blob = f"{title}\n{bodies.get(tid, '')}"
+        if re.search(
+            r"(?i)package structure|create (the )?service package|"
+            r"mkdir.*package|empty package|package director",
+            blob,
+        ) and not re.search(r"(?i)\.gitkeep|package-info\.java", blob):
+            lint(
+                "S-PKGDIR",
+                f"{tid}: package-structure task must require .gitkeep or "
+                f"package-info.java so git can commit (O-PKGDIR)",
+            )
+
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
     return 1 if problems else 0

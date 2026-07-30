@@ -211,6 +211,34 @@ no commented-out code blocks in tests (S125); one assertion chain per
 subject, no redundant re-assertions (S5838, S5853); mock/fixture data
 lives in test scope only.
 
+**Recurring Sonar rules to write correctly the first time (O-SONARFIX,
+migration-general — V9 S03 T-008 probe):**
+
+- **S5778** — `assertThrows` / `assertDoesNotThrow` lambdas must contain
+  a *single* method invocation (no setup statements *and* no constructor
+  calls inside the lambda — `() -> list.add(new Foo())` is two calls).
+  Put arrange steps (including `new`) before the assert.
+- **S2864** — iterate `map.entrySet()` when both key and value are needed;
+  do not `keySet()` + `get(key)`.
+- **S5976** — near-identical tests that differ only by a constant (e.g.
+  shipping price tiers) → one `@ParameterizedTest` / `@CsvSource`.
+- **S2737** — do not catch an exception only to rethrow it unchanged;
+  wrap with context, handle it, or remove the catch.
+- **S2925** — no `Thread.sleep` for TTL/cache proofs; inject a `Clock` /
+  `Instant` (or equivalent) and advance time deterministically.
+- **S1066** — collapsible nested `if` → single `if (a && b)` (also covered
+  by style-autofix `CollapsibleIfStatements`).
+
+**Sensor-fix sessions (O-SFIXLOOP):** when the supervisor dispatches a
+sensor-fix, verify with the *cheap* dimension check only
+(`.hermes/harness/sensors.sh sonar|task|fidelity|package`).
+`sensors.sh milestone` is refused during sensor-fix (exits 2).
+
+**Never wrap harness sensors in a short `timeout` (O-SONARTIME):**
+`sensors.sh sonar` needs ~2–3 minutes. `timeout 60 .hermes/harness/sensors.sh sonar`
+exits 124 before the gate finishes (V9 S03 T-008). Use the sensors
+unwrapped, or `timeout` ≥ 600s.
+
 Characterization-test packets (S01 retro: all four escalations were
 this task class) additionally carry: (1) the specific legacy test cases
 to port WITH their exact expected assertion values quoted; (2) the
@@ -264,6 +292,18 @@ the factory runs the full Quarkus package build, whose extension
 processors enforce prod-mode requirements (e.g. Hibernate ORM demands a
 configured default datasource) that `clean test` never exercises —
 test-scoped fixes can still fail prod packaging.
+
+Do **not** run `sensors.sh milestone` inside a supervisor sensor-fix
+session — use `sensors.sh sonar` (or the matching cheap dimension). The
+supervisor re-runs the triggering sensor after your commit.
+
+**Package-structure tasks (O-PKGDIR):** never leave an empty directory.
+Add `.gitkeep` or `package-info.java` so git can commit. The supervisor
+also drops `.gitkeep` into empty `src/**/java` dirs before mechan-commit.
+
+**Worker closeout:** always finish with `sensors.sh task` GREEN and ONE
+commit whose message starts with the task id (`T-00N:`). Exiting 0
+without a commit forces MiniMax escalation (V9 S03 T-007).
 
 **The factory quality gate is part of every task's acceptance.** SonarQube
 fails the exit on: new-code coverage < 80%, any new violation, or > 3%

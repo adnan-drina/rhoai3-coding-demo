@@ -135,9 +135,185 @@ allow-empty “Already satisfied” commit, no MiniMax.
 
 ---
 
-## 2026-07-30 — Mandate + polish implemented (pre-rerun)
+## 2026-07-30 — Mandate + polish implemented; S02 resumed
 
-- **Verdict:** HOLD remains until clean re-run
+- **Verdict:** ADVANCE (resume after polish — not nursing false greens)
 - **AGENTS.md:** non-negotiable mandate baked (no compromises; fix+re-run; bank+implement; never ask)
-- **Harness:** O-STY, O-T6c, O-T6d, O-AC2 ✅
-- **Next action:** commit/push demo + bootstrap scaffold; wipe or reset cart S02+ and restart Track B with open bank empty
+- **Harness:** O-STY, O-T6c, O-T6d, O-AC2 ✅ (instruments 112/112)
+- **Reset:** force `main` to `b431cf8` (drop false T-006/T-007); harness sync `92e30a2`; `RESUME_STORY=S02` `RESUME_RUN_BASE=6857561`
+- **Live:** T-001–T-005 skipped (honest); **T-006 characterization** re-running via OpenCode (O-T6d will refuse main-only mechan); T-007 will not false-skip on waiver CATALOG (O-AC2)
+- **Next action:** O-DRV3 detailed gates on T-006/T-007; HOLD again on any false green
+
+---
+
+## 2026-07-30 — Process miss: silent ticks (~08:50–09:02 UTC)
+
+- **Verdict:** HOLD process (harness frozen before S03)
+- **What went wrong:** Agent did not post 120s chat pulses; driver status froze at `08:49:46` while S02 M4/M5 completed unobserved in chat.
+- **Banked:** **O-DRV4** ⬜ — driver CRITICAL if local status file mtime/tick age > 2.5× interval (stale wake = agent not responding); agent must treat overdue tick as P0 chat pulse.
+- **Action taken:** Froze outer/supervisor/hermes before S03; driver restarted with `V8_AUTO_RESTART=0` pending S02 story gate write-up.
+
+---
+
+## 2026-07-30 — S02 T-006 / T-007 detailed + story gate
+
+- **HEAD:** `5912fd7` S02 story complete: roadmap ledger; factory pipeline succeeded earlier (`coolstore-cart-service-v7-push-mdgjv`)
+- **T-006 `e5fd7e1`:** ADVANCE — real `DomainModelTest.java` (+376 lines), OpenCode/Qwen; constructors/getters/toString/serialization/cart ops with real asserts; **no** G-PLACE. O-T6d did its job (worker wrote tests, not mechan main-only).
+- **T-007 `0779ae9`:** ADVANCE — O-ESCW allow-empty (not O-AC2 CATALOG false-skip). Substance: `com.redhat.coolstore` under `src/main` count **0** — package-rename verification already true; empty commit honest.
+- **S02 story:** sensors/preflight/pipeline green reported; characterization present (S-CHAR).
+- **Verdict:** ADVANCE S02 substance — but **do not start S03** until O-DRV4 noted and chat-pulse discipline restored; then resume with `RESUME_STORY=S03` (no sticky RUN_BASE).
+- **Banked:** O-DRV4 ⬜
+
+---
+
+## 2026-07-30 — S03 M3 specify (comprehensive)
+
+- **HEAD:** `f1ce6e4` `S03 spec: service layer plan (plan-lint green)`
+- **How we got here:** Outer started M3 after S02; operator freeze SIGKILL’d hermes (`hermes_rc=137`) twice → false “failed plan lint twice”. Left **uncommitted** lint-RED draft (`rewrite` after `infer`; `springboot-metrics-to-quarkus-0200` unmapped).
+- **AI action quality (MiniMax draft):** Wrong task classing for post-conversion tests/verify (must be `infer` after first redesign infer). Metrics finding omitted despite roadmap scope. Draft otherwise had correct service harvest targets (CDI, ConcurrentHashMap, REST client, waivers).
+- **Repair (agent):** Rewrote `tasks.md` — rewrite block T-001..T-003 (package, metrics closeout vs existing `quarkus-smallrye-metrics`, catalog URL), infer T-004..T-009 (Promo/Shipping/Catalog/ShoppingCartServiceImpl + characterization + package verify). `plan-lint` **EXIT 0** (9 tasks). Committed `S03 spec:`.
+- **Banked:** **S-INFTEST** ⬜ (teach REDESIGN post-infer tests = Class infer); **O-M3KILL** ⬜ (rc=137 must not burn M3 attempts).
+- **Verdict:** ADVANCE — resume S03 execute (M3 already present + lint green; no sticky `RUN_BASE`).
+- **Next:** M4 T-001… with O-DRV3 detailed gates; HOLD on ceremonial/empty/false greens.
+
+
+
+---
+
+## 2026-07-30 — S03 T-001 detailed
+
+- **HEAD:** `66324ed` T-001: Service package structure verification - directory already exists
+- **Diff:** allow-empty / no tracked files (empty `src/main/java/com/demo/service/` not in git)
+- **AI code quality:** N/A substance — directory exists on disk; no `.gitkeep`/`package-info.java`
+- **AI action quality:** OpenCode rc=0, no commit → MiniMax escalation wrote allow-empty. **O-ESCW should have** fired (acceptance met). Likely blocked by dirty `.hermes/PLANNING.md` (S-INFTEST sync) and/or empty-dir not counting as satisfied path for mechan.
+- **Verdict:** ADVANCE (structure present) — process waste noted
+- **Banked:** **O-PKGDIR** ⬜; reinforce O-ESCW when acceptance is mkdir-only
+
+
+
+---
+
+## 2026-07-30 — S03 T-002 / T-003 detailed
+
+- **T-002 `1e55e0a`:** ADVANCE — substance already true from S01 (`quarkus-smallrye-metrics` in pom; no Actuator). Diff is `migration/run-log.md` only. **AI action:** worker rc=0 → MiniMax escalation again (same O-ESCW/O-ESCW2 waste as T-001). Finding closeout honest.
+- **T-003 `d4893fa`:** ADVANCE — `already-complete.py` fast path (CATALOG_ENDPOINT subject matches task — O-AC2 correct this time). Property present in `application.properties`. No MiniMax burn.
+- **Verdict:** ADVANCE rewrite batch; infer T-004+ is the real S03 substance.
+
+
+
+---
+
+## 2026-07-30 — S03 T-004 detailed
+
+- **HEAD:** `9cb3a73` T-004 PromoService via OpenCode/Qwen (no MiniMax)
+- **Diff:** +68 lines `src/main/java/com/demo/service/PromoService.java` only
+- **AI code quality:** ADVANCE — `@ApplicationScoped`, `ConcurrentHashMap.newKeySet()` for promotions, seed `329299`/0.25 preserved, applyCartItemPromotions/applyShippingPromotions logic matches staging; package `com.demo.service`; dropped Spring `@Component`/Serializable (appropriate CDI redesign). No G-PLACE.
+- **AI action quality:** Worker-first infer path worked; auto-commit; task sensor GREEN.
+- **Verdict:** ADVANCE
+
+
+
+---
+
+## 2026-07-30 — S03 T-005 detailed
+
+- **HEAD:** `34782c6` ShippingService via OpenCode/Qwen
+- **AI code quality:** ADVANCE — `@ApplicationScoped`; shipping tiers $2.99/$4.99/$6.99/$8.99/$10.99 preserved vs legacy; package `com.demo.service`.
+- **AI action quality:** Clean worker-first path.
+- **Verdict:** ADVANCE
+
+
+
+---
+
+## 2026-07-30 — S03 T-005 sensor fix (S1066)
+
+- **HEAD:** `a978f29` T-005 sensor fix: collapse nested if in PromoService.applyShippingPromotions
+- **Cause:** post-T-005 milestone sonar RED `java:S1066` on T-004 PromoService (nested if) — style-autofix 0 files; MiniMax sfix ~5m for one-line merge.
+- **AI code quality:** ADVANCE — trivial collapse; behavior preserved.
+- **AI action quality:** Correct path (sfix after autofix miss). Waste: MiniMax for S1066 that should be deterministic.
+- **Banked:** **O-S1066** ⬜ — add OpenRewrite/recipe or tiny deterministic fixer for collapsible if (S1066) to style-autofix.
+- **Verdict:** ADVANCE — continue T-006
+
+
+
+---
+
+## 2026-07-30 — HOLD S03 T-006 false already-complete (O-AC3)
+
+- **Defect:** `79383e8` T-006 ALREADY COMPLETE — CATALOG_ENDPOINT already present — but **`CatalogService.java` absent**. O-AC2 subject-check still matched preserve token in Goal/Target of a class-conversion task.
+- **AI action quality:** FAIL — false green skip; T-007 had started against missing dependency.
+- **Action:** Freeze harness; implement **O-AC3** (missing Target `.java` blocks preserve skip); instruments; reset to `a978f29` (drop false T-006); resume S03 from T-006.
+- **Verdict:** HOLD → polish → re-run T-006 honestly
+
+
+
+---
+
+## 2026-07-30 — S03 T-006 detailed (post O-AC3)
+
+- **HEAD:** `2e920aa` CatalogService via OpenCode/Qwen (honest re-run after HOLD)
+- **Diff:** +18 lines interface — `@RegisterRestClient(configKey = "catalog-service")`, `@GET @Path("/api/products")`, `List<Product> products()`
+- **AI code quality:** ADVANCE — matches task target; package `com.demo.service`
+- **AI action quality:** O-AC3 prevented false CATALOG_ENDPOINT skip; worker-first path
+- **Verdict:** ADVANCE — T-007 next
+
+
+
+---
+
+## 2026-07-30 — S03 T-007 detailed
+
+- **HEAD:** `cde82fd` ShoppingCartService + Impl + CatalogUnavailableException(+Mapper)
+- **AI code quality:** ADVANCE — `@ApplicationScoped`, `@Inject` ctor with `@RestClient CatalogService`, `ConcurrentHashMap` carts/productMap, `compute` for getShoppingCart, cache TTL 300s + `shouldRefreshCache` (no clear-on-miss in getProduct), 503 mapper via `@Provider` ExceptionMapper. Business pricing/promo/shipping/dedupe preserved. Note: `refreshProductCache` clears then reloads (full refresh) — acceptable vs clear-on-miss.
+- **AI action quality:** Worker wrote files rc=0 without commit → MiniMax escalation closed commit (waste). Prefer O-T6 mechan when dirty tree + GREEN — investigate why O-T6b skipped (maybe .hermes dirt from O-AC3 sync?).
+- **Verdict:** ADVANCE — characterization T-008 next
+
+
+
+---
+
+## 2026-07-30 — S03 T-008 detailed
+
+- **HEAD:** `c15f95d` — PromoServiceTest (+136), ShippingServiceTest (+103), ShoppingCartServiceTest (+290); pom test deps
+- **AI code quality:** ADVANCE — real asserts (329299/25%, shipping tiers, cart ops); no G-PLACE
+- **AI action quality:** Worker-first OpenCode; O-T6d correct
+- **Verdict:** ADVANCE
+
+
+
+---
+
+## 2026-07-30 — Mandate: temporary manual → durable → re-run
+
+- **Rule update:** AGENTS.md Track B mandate, `stage-080-track-b.md`,
+  `stage-080-quality-advance` — hand edits OK only as probes; must durableize
+  in harness/skills and re-run for proof.
+- **Open from T-008 probe:** O-SFIXLOOP, O-SONARFIX (and remaining S5778 on
+  PromoServiceTest) — not closed until durableize + re-run.
+
+
+
+---
+
+## 2026-07-30 — Mandate: MiniMax-over-Qwen escalation loop
+
+- **Rule update:** AGENTS.md Track B + driver goal #11; `stage-080-track-b`;
+  `stage-080-quality-advance` Escalation gate; `tmp/v8-driver-loop.sh` O-DRV3
+  checklist embeds capture → Qwen-log RCA → durableize → retest.
+- **Bar:** MiniMax GREEN after takeover is not closed until durable fix +
+  retest proves Qwen can finish that failure class without MiniMax.
+
+
+
+---
+
+## 2026-07-30 — Mandate: migration-general durable fixes
+
+- **Rule update:** AGENTS.md Track B (generalizable harness) + driver goal
+  #12; `stage-080-track-b`; `stage-080-quality-advance` bank/fix bar.
+- **Bar:** Coolstore cart is the specimen. Durable harness/skill/sensor
+  fixes must apply to any Spring Boot → Quarkus migration on this method
+  (parameterized by migration.yaml / briefs / findings). Specimen-specific
+  literals belong in stories or named fixtures — not harness core.
+
