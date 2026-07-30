@@ -131,6 +131,7 @@ run_case() {
 **Class**: infer
 **Source**: migration/staging/src/main/java/com/redhat/coolstore/model/Cart.java
 **Target**: src/main/java/com/demo/model/Cart.java
+**Test**: src/test/java/com/demo/model/CartTest.java
 Package transform com.redhat.coolstore.model to com.demo.model.
 EOF
   } > tasks.md
@@ -1158,6 +1159,27 @@ EOF
   SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
 check "static sensors reject assertThat(true) placeholder tests (G-PLACE)" 1 "G-PLACE"
+
+# S-CHAR: model harvest plan without src/test paths
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Product Model Harvest
+**Class**: rewrite
+- Destination: `src/main/java/com/demo/model/Product.java`
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects model harvest with no src/test tasks (S-CHAR)" 1 "S-CHAR"
+
+run_case() {
+  grep -q 'L-M5e' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm5-evaluate-preflight' "$HARNESS_DIR/supervisor.sh" \
+    && echo m5e-ok
+}
+check "supervisor carries L-M5e evaluate preflight honesty check" 0 "m5e-ok"
 
 echo "----"
 echo "$PASS/$N passed"

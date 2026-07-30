@@ -334,6 +334,18 @@ def main():
                 lint("target-trace", f"REDESIGN class {cls}: §7 decides a target shape "
                                      f"({', '.join(sorted(want))}) that no task cites")
 
+    # S-CHAR (V8 S02 HOLD): harvesting model classes without any src/test
+    # task drops characterization / coverage — deferring *service* tests is
+    # fine; emptying test obligations is not.
+    if re.search(r"src/main/java/\S*/model/\S+\.java", text) and not re.search(
+        r"src/test/", text
+    ):
+        lint(
+            "S-CHAR",
+            "plan targets src/main/.../model/*.java but names no src/test/ path — "
+            "add model-level characterization tests (deferring service tests ≠ empty tests; V8 S02)",
+        )
+
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")
     return 1 if problems else 0

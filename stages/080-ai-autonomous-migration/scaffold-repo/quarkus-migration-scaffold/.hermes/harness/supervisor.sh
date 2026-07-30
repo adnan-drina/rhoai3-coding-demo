@@ -833,11 +833,20 @@ if ! committed "M5 evaluate"; then
     && log "M5 evaluate: after-analysis complete (script step)" \
     || log "WARN: after-analysis failed — M5 evaluate proceeds without the delta"
   run_stage "M5 evaluate" "m5-evaluate" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute M5 evaluate per SHIPPING.md. The harness ALREADY RAN the after-analysis: migration/mta-findings-after.json (use .hermes/skills/migration-harness/scripts/extract_findings.py to summarize it — do NOT run analysis tools yourself). Append the findings delta to the run-log with every remaining finding individually explained (resolved here / owned by a later story / genuine debt), and verify mvn -q clean verify green.
+"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute M5 evaluate per SHIPPING.md. The harness ALREADY RAN the after-analysis: migration/mta-findings-after.json (use .hermes/skills/migration-harness/scripts/extract_findings.py to summarize it — do NOT run analysis tools yourself). Append the findings delta to the run-log with every remaining finding individually explained (resolved here / owned by a later story / genuine debt). Run .hermes/harness/sensors.sh preflight and record the result honestly — do NOT claim factory/preflight green unless that command exits 0 (L-M5e; mvn verify alone is not enough).
 ${RUN_CONTRACT}
 Commit prefix: 'M5 evaluate:'. DO NOT PUSH." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Execute M5 evaluate per the skill; a previous attempt did not commit. Verify migration/mta-findings-after.json and the delta section exist, mvn -q clean verify passes, then commit with message starting 'M5 evaluate:'. ${RUN_CONTRACT}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue M5 evaluate; verify migration/mta-findings-after.json and the delta section exist, run .hermes/harness/sensors.sh preflight, state GREEN or RED honestly in the commit message (L-M5e), then commit starting 'M5 evaluate:'. ${RUN_CONTRACT}" \
     || log "M5 evaluate: exhausted — shipping without final re-analysis commit"
+  # L-M5e: mechanical honesty check — evaluate commit must not be treated as
+  # ship-ready when preflight is RED (V8 S02 overstated evaluate).
+  if committed "M5 evaluate"; then
+    if .hermes/harness/sensors.sh preflight > /tmp/m5-evaluate-preflight.txt 2>&1; then
+      log "M5 evaluate: preflight GREEN (L-M5e bar)"
+    else
+      log "M5 evaluate: preflight RED after evaluate commit (L-M5e) — not ship-ready; ship loop will correct — $(grep -E 'SENSOR RED|COVERAGE' /tmp/m5-evaluate-preflight.txt | head -3 | tr '\n' ' ')"
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------- M5 ship

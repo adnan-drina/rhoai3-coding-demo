@@ -45,3 +45,25 @@ Verdicts: `ADVANCE` | `HOLD` | `ABORT`.
   accessors, cart/item math as applicable — no G-PLACE stubs) until coverage
   gate can pass; implement S-CHAR + L-M5e feedforward; re-run this gate; only
   then resume M5 ship. Do **not** start S03.
+
+---
+
+## 2026-07-30 — S02 model-harvest (post HOLD fixes)
+
+- **Verdict:** ADVANCE
+- **HEAD:** `929f274` T-005: Model characterization unit tests (S02 HOLD / S-CHAR)
+- **What shipped (substance):**
+  - Prior four models retained.
+  - Real JUnit model tests: `ProductTest`, `PromotionTest`, `ShoppingCartItemTest`,
+    `ShoppingCartTest` (constructors/accessors, Serializable, cart add/remove/reset,
+    additive quantity 2+2→4 on item) — no G-PLACE stubs.
+  - Plan T-005 documents model-level characterization; service tests still deferred.
+  - Harness: S-CHAR plan-lint + L-M5e evaluate/preflight honesty.
+- **Weak / dishonest:** None material for S02 ship. Coverage was the blocker; now
+  preflight GREEN. Evaluate commit `17b302c` still has an overstated message in
+  history — accepted as historical; L-M5e prevents repeat.
+- **Sensor/preflight:** `.hermes/harness/sensors.sh preflight` → **GREEN** on
+  `929f274` (2026-07-30T05:53Z).
+- **Banked:** S-CHAR ✅, L-M5e ✅ (implemented this HOLD cycle).
+- **Next action:** Resume M5 ship only (do not skip quality ticks). After S02
+  story-complete, run this gate again before S03.

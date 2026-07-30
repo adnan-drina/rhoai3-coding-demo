@@ -18,11 +18,13 @@ cp /tmp/kantra-after/output.json /projects/modernized/migration/mta-findings-aft
 Done means the baseline findings are resolved (or waived in the spec) —
 not "the agent says done."
 
-2. Factory pre-flight green: `.hermes/harness/sensors.sh preflight` —
-   isolated clean verify, the new-code sonar gate, and a prod-profile
-   boot against the dev PostgreSQL (Flyway + Hibernate schema
-   validation). Fix everything it reports BEFORE committing: the first
-   push should be a formality the factory confirms.
+2. Factory pre-flight: run `.hermes/harness/sensors.sh preflight`
+   (isolated clean verify, new-code sonar/coverage gate, prod-profile
+   boot where applicable). **L-M5e:** the evaluate commit message must
+   state preflight GREEN or RED honestly — never claim “factory/preflight
+   green” unless that command exited 0. `mvn verify` alone is not the bar.
+   Prefer fixing RED before commit; if budget is exhausted, commit with
+   RED stated so ship correction is explicit.
 3. Commit with a conventional message referencing the spec id. Under the
    supervisor, DO NOT push — the supervisor ships and drives M5 ship.
 4. Final report: tasks completed/deferred, debt entries, findings delta
