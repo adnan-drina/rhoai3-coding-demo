@@ -12,7 +12,8 @@ description: >
   M5 ship/push, before marking a story complete, before starting the next story,
   after abort, and whenever a milestone looks done. Critically reviews delivery
   substance (not only sensor GREEN), banks harness gaps, implements or HOLDs,
-  and records ADVANCE/HOLD/ABORT in docs/V8-QUALITY-GATE.md. Do NOT use for
+  and records ADVANCE/HOLD/ABORT in the active run gate file
+(`docs/V9-QUALITY-GATE.md` for V9; prior runs keep their gate files). Do NOT use for
   ordinary stage deploy/validate (use validate-demo-step), GitOps review (use
   review-gitops-change), or non-080 work.
 ---
@@ -82,7 +83,8 @@ Default bias: if unsure between ADVANCE and HOLD → **HOLD**.
 
 ### 5. Record
 
-Append a section to `docs/V8-QUALITY-GATE.md` (create file if missing):
+Append a section to the **active** run gate file (`docs/V9-QUALITY-GATE.md`
+for V9; create if missing):
 
 ```markdown
 ## <UTC date> — <story/task id>

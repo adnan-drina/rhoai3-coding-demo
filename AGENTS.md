@@ -159,8 +159,9 @@ abort/restart over shipping a compromised run; do not leave polish for
 Run the **quality-advance loop**
 (`.agents/skills/stage-080-quality-advance/SKILL.md`): freeze, review
 delivery substance, bank gaps, record `ADVANCE` / `HOLD` / `ABORT` in
-`docs/V8-QUALITY-GATE.md`. Do not advance on sensor GREEN alone. This is
-an **agentic** gate (no human GO required); default bias is HOLD when unsure.
+the active run gate file (`docs/V9-QUALITY-GATE.md` for V9). Do not
+advance on sensor GREEN alone. This is an **agentic** gate (no human GO
+required); default bias is HOLD when unsure.
 
 ## Coding and manifest style
 

@@ -5,6 +5,7 @@ applies-to:
   - stages/080-ai-autonomous-migration/**
   - docs/V7-FUTURE-IMPROVEMENTS.md
   - docs/V8-QUALITY-GATE.md
+  - docs/V9-QUALITY-GATE.md
   - docs/V*-*.md
   - "**/quarkus-migration-scaffold/**"
 ---
@@ -25,8 +26,8 @@ sensors, scaffold skills, live migration workspace):
 2. **Do not advance on green sensors alone.** Sensors catch many classes of
    failure; they miss ceremonial commits, empty harvests, placeholder tests,
    and plan defects. Substance review is mandatory.
-3. **Record every advance-gate decision** in `docs/V8-QUALITY-GATE.md` (or the
-   active run's successor gate file) with verdict `ADVANCE` / `HOLD` /
+3. **Record every advance-gate decision** in the active run gate file
+   (`docs/V9-QUALITY-GATE.md` for V9) with verdict `ADVANCE` / `HOLD` /
    `ABORT`. No silent stage push.
 4. **Bank durable defects** in `docs/V7-FUTURE-IMPROVEMENTS.md` (or successor)
    when the review finds a harness/plan/sensor gap — then implement open bank

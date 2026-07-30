@@ -1,12 +1,13 @@
-# V7 / V8 — future improvements bank
+# V7 / V8 / V9 — future improvements bank
 
 **Purpose:** capture **less-critical** defects and UX gaps so we harden the
 harness methodically. **Policy (operator mandate):** before **each** new
 migration run, implement **all** open polish rows here, then restart so the
 run exercises them. Prefer abort/restart over shipping a compromised run.
 
-**V7 aborted** (2026-07-29): see [`V7-ABORT.md`](V7-ABORT.md). **V8**
-restarted after the polish bank below landed.
+**Run history:** V7 aborted ([`V7-ABORT.md`](V7-ABORT.md)). V8 wiped for a
+clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). **Active run: V9**
+([`V9-QUALITY-GATE.md`](V9-QUALITY-GATE.md)).
 
 **Related:** [`V6-RUN-FINDINGS.md`](V6-RUN-FINDINGS.md),
 [`V6-OUTER-LOOP-LOGGING-NOTES.md`](V6-OUTER-LOOP-LOGGING-NOTES.md).

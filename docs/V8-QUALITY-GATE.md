@@ -67,3 +67,13 @@ Verdicts: `ADVANCE` | `HOLD` | `ABORT`.
 - **Banked:** S-CHAR ✅, L-M5e ✅ (implemented this HOLD cycle).
 - **Next action:** Resume M5 ship only (do not skip quality ticks). After S02
   story-complete, run this gate again before S03.
+
+---
+
+## 2026-07-30 — V8 stop / V9 full wipe
+
+- **Verdict:** ABORT (run boundary)
+- **HEAD at stop:** V8 had reached S03 M3 after S02 factory push; not used as durability proof
+- **Why:** S02 characterization was HOLD-loop human-written; polish landed mid-run — not a clean harness e2e
+- **Wipe:** `coolstore-cart-service-v7` `main`+`golden` → `8c2102c` then harness sync `9a0b183` (+ hygiene); Sonar project deleted (204); workspace `/tmp` logs cleared
+- **Next action:** Fresh **V9** Track B from clean tree; quality-advance after each story
