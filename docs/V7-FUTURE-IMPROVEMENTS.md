@@ -30,10 +30,13 @@ restarted after the polish bank below landed.
 | ID | Status | Notes |
 |----|--------|-------|
 | O-T6 | ✅ | `try_mechan_commit` when dirty tree + task sensor GREEN |
+| O-T6b | ✅ | Mechan-commit / worker auto-commit: `git add -A` then `git reset -- .hermes` (V8 S02 T-002) |
 | O-AC | ✅ | Prose `ALREADY COMPLETE` banned; supervisor/`already-complete.py` only |
 | O-B1 | ✅ | `WORKER_FIRST` OpenCode/Qwen for rewrite+infer |
 | O-CTX | ✅ | Tighter M1 profile prompt (cite paths, don’t paste whole files) |
 | O-DRV | ✅ ops | Restart: `nohup bash tmp/v8-driver-loop.sh >> /tmp/v8-driver-loop.out &` |
+| O-DRV2 | ✅ ops | Driver auto-restarts outer-loop on `outer=DOWN` (120s ticks); CRITICAL sentinel — V8 overnight dead-harness gap |
+| O-RESUME | ✅ | Mid-story resume via `RESUME_STORY`+`RESUME_RUN_BASE` only (never sticky bare `RUN_BASE` — V8 S02 false-skip) |
 
 ## Story design / plan quality
 
@@ -52,6 +55,7 @@ restarted after the polish bank below landed.
 | G-AC2 | ✅ prior | Ceremonial status-map reject; products[] still ship bar |
 | G-OK | ✅ | Static reject String/`"OK"` acceptance without catalog fetch |
 | G-FAKE | ✅ | products must carry id/itemId; MockCatalogService / hardcoded List.of banned in src/main |
+| G-PLACE | ✅ | Task/milestone/static RED on `assertThat(true)` / `assertTrue(true)` / Placeholder stubs (V8 S02 T-005 abort) |
 | G-PKG | ✅ prior | `com.demo.coolstore` reject |
 
 ## Process / repo hygiene

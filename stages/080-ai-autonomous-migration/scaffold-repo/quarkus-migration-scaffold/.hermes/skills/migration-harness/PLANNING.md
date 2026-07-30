@@ -113,13 +113,17 @@ run #2's failures):
   run #2's three red commits all came from harvesting dependents before
   their dependencies. Classes in a listed circular group convert in ONE
   task.
-- **Characterization tests come EARLY, not as a tail.** Immediately
-  after the mechanical rewrite tasks, one task ports the legacy test
-  suite / pins behavior (assertion values are the contract), and
-  every god node flagged in dependency-order.md gets its
-  characterization tests BEFORE its conversion task. This both feeds
-  the 80% gate all run long and makes fabricated integrations fail
-  tests at the introducing commit.
+- **Characterization tests come EARLY, not as a tail — but only for
+  types this story owns.** Immediately after the mechanical rewrite
+  tasks, port legacy tests / pin behavior for classes **in this story's
+  scope**. Model-harvest stories characterize **models** (constructors,
+  equals, cart item math on the model types). Do **not** schedule
+  service/endpoint characterization (`ShoppingCartServiceTest` against
+  a real `ShoppingCartService`) until the service story owns those
+  redesign types — otherwise workers invent `src/main` services or ship
+  placeholder `assertThat(true)` tests (V8 S02 T-005 abort / G-PLACE).
+  God nodes flagged in dependency-order.md get characterization **in
+  the story that converts them**, before or with that conversion.
 - **Tests pin the TARGET for redesign classes, LEGACY for harvest
   classes** (architecture-profile §7). A HARVEST class's tests assert
   legacy values. A REDESIGN class's tests assert its §7 target contract;

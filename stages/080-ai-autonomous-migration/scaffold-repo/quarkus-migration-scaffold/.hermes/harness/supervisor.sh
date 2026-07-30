@@ -701,7 +701,10 @@ run_worker_task() { # $1=task-id → 0 if committed
   # Worker often leaves a green dirty tree without the required commit prefix.
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+      # O-T6b: never sweep .hermes/ harness dirt into T-NNN commits
       git add -A
+      git reset -q -- .hermes 2>/dev/null || true
+      git diff --cached --quiet && return 1
       git commit -q -m "${T}: $(task_title "$T") (worker $(worker_label))" 2>/dev/null \
         || git commit -m "${T}: $(task_title "$T") (worker $(worker_label))" >/dev/null 2>&1
       committed "$T" && return 0
@@ -711,12 +714,18 @@ run_worker_task() { # $1=task-id → 0 if committed
 }
 
 # O-T6: dirty tree already satisfies the task sensor — commit without a model.
+# O-T6b: stage everything except .hermes/ (harness dirt must not land in T-NNN:).
 try_mechan_commit() { # $1=task-id → 0 if committed
   local T="$1"
   committed "$T" && return 0
   [ -n "$(git status --porcelain 2>/dev/null)" ] || return 1
   if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
     git add -A
+    git reset -q -- .hermes 2>/dev/null || true
+    if git diff --cached --quiet; then
+      log "$T: O-T6b skip mechan-commit — only .hermes/ dirt (or empty stage)"
+      return 1
+    fi
     git commit -q -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" 2>/dev/null \
       || git commit -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" >/dev/null 2>&1
     committed "$T" && { log "$T: mechanical verify-and-commit (dirty+GREEN; O-T6)"; return 0; }

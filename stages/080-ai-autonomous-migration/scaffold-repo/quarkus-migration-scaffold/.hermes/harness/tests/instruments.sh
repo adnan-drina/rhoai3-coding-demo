@@ -1137,9 +1137,27 @@ run_case() {
     && grep -q 'OUTER_LOOP_PLAIN' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'waiting on MiniMax rate limit' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'try_mechan_commit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-T6b' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'git reset -q -- .hermes' "$HARNESS_DIR/supervisor.sh" \
     && echo polish-ok
 }
-check "outer-loop/supervisor carry V8 polish hooks (L-H1/L-P1/L-R1/O-T6)" 0 "polish-ok"
+check "outer-loop/supervisor carry V8 polish hooks (L-H1/L-P1/L-R1/O-T6/O-T6b)" 0 "polish-ok"
+
+# G-PLACE: placeholder/ceremonial unit tests must RED (V8 S02 T-005 abort)
+run_case() {
+  sensor_fixture
+  mkdir -p src/test/java/com/demo
+  cat > src/test/java/com/demo/PlaceholderTest.java <<'EOF'
+package com.demo;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+class PlaceholderTest {
+  @Test void ceremonial() { assertThat(true).isTrue(); }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject assertThat(true) placeholder tests (G-PLACE)" 1 "G-PLACE"
 
 echo "----"
 echo "$PASS/$N passed"

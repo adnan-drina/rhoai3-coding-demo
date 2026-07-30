@@ -56,6 +56,13 @@ leaves the repository buildable, sensor-green, and closer to done.
 8. **`findings: -` is HARVEST-only (S-FND).** Blank findings are
    rejected. Use `-` only for pure model/characterization stories;
    redesign/POM/REST stories must list rule ids.
+9. **Model-harvest stories do not pull service tests forward.** A
+   story whose scope is `src/main/.../model/**` (or equivalent) must
+   not list tasks that require unowned redesign SUTs
+   (`*ServiceTest` needing `ShoppingCartService` in `src/main`). Port
+   those tests in the service story; use model-level tests or
+   test-local doubles only if characterization is required early
+   (PLANNING.md). V8 S02 false-green abort.
 
 ## One quality model — build redesign classes to their target
 

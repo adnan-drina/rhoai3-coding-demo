@@ -236,12 +236,16 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   fi
 
   # ----------------------------------------------------- M4/M5 EXECUTE
-  # One supervisor child per story with computed env. RUN_BASE=HEAD at
-  # story start keeps every phase prefix story-scoped (no cross-story
-  # commit-range collisions). PRESERVE_CHECK follows deploy: preserve
-  # surfaces are enforced where they ship. Fidelity is ALWAYS on under the
-  # single quality model — harvest classes need it; redesign classes are
-  # exempt by the harvest-fidelity discriminator (no story-class waiver).
+  # One supervisor child per story with computed env. Default RUN_BASE=HEAD
+  # at story start keeps every phase prefix story-scoped (no cross-story
+  # commit-range collisions). Mid-story resume after pod bounce MUST be
+  # story-scoped: set RESUME_STORY=<SID> and RESUME_RUN_BASE=<sha> together.
+  # A bare sticky RUN_BASE across stories reuses T-00N prefixes from earlier
+  # stories and false-skips the next story's work (V8 S02 empty ship).
+  # PRESERVE_CHECK follows deploy: preserve surfaces are enforced where they
+  # ship. Fidelity is ALWAYS on under the single quality model — harvest
+  # classes need it; redesign classes are exempt by the harvest-fidelity
+  # discriminator (no story-class waiver).
   PC=on; [ "$DEPLOY" = "true" ] || PC=off
   # Later-story class guard (V5 T-004): simple class names owned by stories
   # AFTER this one — the supervisor's scope sensor reverts any of these that
@@ -250,10 +254,16 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   LATER_CLASSES=$(echo "$STORIES" | awk -F'|' -v cur="$SID" 'seen{print $4} $1==cur{seen=1}' \
     | tr ', ' '\n' | sed -E 's/\.java$//; s#.*[./]##' | grep -E '^[A-Z][A-Za-z0-9]*$' | sort -u | tr '\n' ' ')
   rm -f /tmp/supervisor-done
+  if [ -n "${RESUME_RUN_BASE:-}" ] && [ "${RESUME_STORY:-}" = "$SID" ]; then
+    STORY_RUN_BASE="$RESUME_RUN_BASE"
+    log "         O-RESUME: using RESUME_RUN_BASE=$(git rev-parse --short "$STORY_RUN_BASE") for $SID only"
+  else
+    STORY_RUN_BASE="$(git rev-parse HEAD)"
+  fi
   phase_start "M4/M5 EXECUTE — implement & ship ${SLUG_HINT} (${STORY_IDX}/${STORY_COUNT})" \
-    "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log"
+    "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log | run_base=$(git rev-parse --short "$STORY_RUN_BASE")"
   log "         Note: M4 rewrite+infer coding → $(worker_label) first; MiniMax only for orch/escalation (WORKER_FIRST) — supervisor.log records actor"
-  env RUN_BASE="$(git rev-parse HEAD)" \
+  env RUN_BASE="$STORY_RUN_BASE" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
       STORY_DEPLOY="$DEPLOY" \

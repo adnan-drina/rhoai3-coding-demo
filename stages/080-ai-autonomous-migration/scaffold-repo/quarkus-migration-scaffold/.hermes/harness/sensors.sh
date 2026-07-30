@@ -94,8 +94,10 @@ EOF
     task|milestone)
       cat <<'EOF'
 FIX: Read the sensor log cited above. Prefer root-cause (missing harvest
-dependency, wrong package, broken test) over silencing assertions. Re-run
-.hermes/harness/sensors.sh task until GREEN, then commit. See EXECUTION.md.
+dependency, wrong package, broken test) over silencing assertions. G-PLACE:
+never "fix" with assertThat(true)/assertTrue(true) or Placeholder stubs —
+restore real behavior assertions or defer the test task to the owning story.
+Re-run .hermes/harness/sensors.sh task until GREEN, then commit. See EXECUTION.md.
 EOF
       ;;
     sonar)
@@ -231,11 +233,25 @@ package_scope() {
   fi
 }
 
+# G-PLACE: ceremonial / placeholder tests that compile+pass without asserting
+# product behavior (V8 S02 T-005: assertThat(true).isTrue() shipped as
+# "verified working"). Cheap static scan — no Maven.
+placeholder_tests() {
+  [ -d src/test/java ] || return 0
+  local hits
+  hits=$(grep -RInE \
+    --include='*.java' \
+    'assertThat[[:space:]]*\([[:space:]]*true[[:space:]]*\)[[:space:]]*\.isTrue[[:space:]]*\(|assertThat[[:space:]]*\([[:space:]]*false[[:space:]]*\)[[:space:]]*\.isFalse[[:space:]]*\(|assertTrue[[:space:]]*\([[:space:]]*true[[:space:]]*\)|assertFalse[[:space:]]*\([[:space:]]*false[[:space:]]*\)|Placeholder until (service|implementation)|//[[:space:]]*Placeholder' \
+    src/test/java 2>/dev/null | head -8 || true)
+  [ -z "$hits" ] || fail task "placeholder/ceremonial test assertions (G-PLACE) — replace with real behavior checks or defer the task; hits: $(echo "$hits" | tr '\n' ' ')"
+}
+
 task_sensor() {
   tree_hygiene
   package_scope
   wiring_invariants
   forbidden_patterns
+  placeholder_tests
   $MVN clean test > /tmp/sensor-task.log 2>&1 \
     || fail task "$(grep -E 'ERROR|FAIL' /tmp/sensor-task.log | head -5)"
   echo "task sensor GREEN (clean test, isolated repo)"
@@ -300,6 +316,7 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # CANNOT set the supervisor subprocess's env, so it cannot self-waive.
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
   # it to escape a real fidelity RED — V5 T-004 fabricated-CatalogService.)
+  placeholder_tests
   package_scope
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
@@ -554,7 +571,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; package_scope; forbidden_patterns; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; echo "STATIC CHECKS GREEN";;
+  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static"; exit 2;;
 esac
