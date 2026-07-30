@@ -13,3 +13,4 @@ Use these files for durable domain constraints that should apply across agent to
 | `rhoai.md` | RHOAI platform component guidance backed by official Red Hat documentation |
 | `ocp.md` | OpenShift Container Platform infrastructure, control plane, networking, auth, monitoring, GitOps, cluster, and storage integration guidance |
 | `odf.md` | OpenShift Data Foundation storage, object storage, NooBaa, OBC, and storage-class guidance |
+| `stage-080-track-b.md` | Stage 080 Track B: quality over throughput; mandatory quality-advance loop before ship/next story |

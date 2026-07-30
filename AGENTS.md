@@ -92,6 +92,10 @@ For OpenShift Container Platform infrastructure, control plane, networking, auth
 
 For OpenShift Data Foundation storage, object storage, NooBaa, and ODF storage classes, read `.agents/rules/odf.md`.
 
+For Stage 080 Track B (autonomous migration drive/monitor/harness), read
+`.agents/rules/stage-080-track-b.md` and run
+`.agents/skills/stage-080-quality-advance/SKILL.md` before ship or next story.
+
 ## OpenShift Safety Guard
 
 - Open this repository as its own project; do not open `/Users/adrina/Sandbox` as the active project for live cluster work.
@@ -149,6 +153,14 @@ Implement **all** open polish / banked items in
 starting or restarting Track B — so the new run exercises them. Prefer
 abort/restart over shipping a compromised run; do not leave polish for
 "after the demo."
+
+### Before each story ship or next story (Stage 080 Track B)
+
+Run the **quality-advance loop**
+(`.agents/skills/stage-080-quality-advance/SKILL.md`): freeze, review
+delivery substance, bank gaps, record `ADVANCE` / `HOLD` / `ABORT` in
+`docs/V8-QUALITY-GATE.md`. Do not advance on sensor GREEN alone. This is
+an **agentic** gate (no human GO required); default bias is HOLD when unsure.
 
 ## Coding and manifest style
 
@@ -219,7 +231,7 @@ When deploying, validating, or changing a stage, consult the matching doc-ground
 | 050 advanced platform | `rhoai-data-science-ide-workflows`, `rhoai-gen-ai-playground`, `manage-devspaces`, `rhdh-getting-started-setup`, `rhdh-getting-started-navigate`, `rhdh-dynamic-plugins-reference`, `rhdh-dynamic-plugins-configure`, `rhdh-dynamic-plugins-install`, `rhdh-dynamic-plugins-usage`, `rhdh-helm-reference`, `ocp-authentication-identity-providers`, `ocp-web-console` |
 | 060 assisted dev | `rhoai-maas-governance` (key consumption), `manage-devspaces` |
 | 070 agentic dev | `rhoai-maas-governance`, workspace-repo skills |
-| 080 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs |
+| 080 migration | `rhoai-maas-governance`, `ocp-authentication-identity-providers` (Keycloak), MTA product docs, `stage-080-quality-advance` (Track B advance gate) |
 
 Skill project-default sections were authored in rhoai3-demo; where this repo deliberately diverges (no GPU time-slicing, two GPU workers, two private models), the stage README is the source of truth and the skill defaults have been updated to match.
 

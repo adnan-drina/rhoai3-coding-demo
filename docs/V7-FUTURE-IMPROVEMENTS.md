@@ -24,6 +24,7 @@ restarted after the polish bank below landed.
 | L-N1 | ✅ | Single sink `/tmp/outer-loop.log`; README updated |
 | L-P1 | ✅ | `OUTER_LOOP_PLAIN=1` ascii markers |
 | L-D1 | ✅ | M1/M2 END enumerates key deliverable paths |
+| L-M5e | ⬜ | M5 evaluate must not claim factory/preflight green unless the same preflight bar has passed (V8 S02 overstated evaluate) |
 
 ## Orchestration / efficiency
 
@@ -46,6 +47,7 @@ restarted after the polish bank below landed.
 | S-RN | ✅ | SEQUENCING: per-path `harvest-from-staging.sh`, no mega package-rename |
 | S-FND | ✅ | roadmap-lint: empty findings rejected; `-` HARVEST-only |
 | S-SOFT | ✅ | plan-lint: soft prepare/verification-only titles rejected |
+| S-CHAR | ⬜ | Model-harvest briefs that require characterization must keep model-level test tasks (deferring service tests ≠ empty `src/test`) — V8 S02 HOLD |
 
 ## Sensors / gates
 
