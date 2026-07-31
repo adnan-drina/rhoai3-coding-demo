@@ -33,7 +33,13 @@ MVN="mvn -q -Dmaven.repo.local=${M2_RUN}"
 SONAR_GOAL="org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar"
 SONAR_HOST="${SONAR_HOST:-http://sonarqube.sonarqube.svc:9000}"
 PROJECT_KEY="$(basename "$(git remote get-url origin 2>/dev/null || echo fixture)" .git)"
-DEV_DB_URL="${DEV_DB_URL:-jdbc:postgresql://coolstore-postgres.${PROJECT_KEY}-dev.svc:5432/coolstore}"
+# R-83 P2 / O-DEVDBURL: default DEV_DB_URL from migration.yaml acceptance.dbService
+# / dbName (omit → ${PROJECT_KEY}-postgres / ${PROJECT_KEY}), not a Coolstore
+# service or database name. Env DEV_DB_URL still wins when already set.
+eval "$(python3 "$SELF_DIR/acceptance_config.py" --yaml migration.yaml --export-shell 2>/dev/null)" || true
+DB_SERVICE="${ACC_DB_SERVICE:-${PROJECT_KEY}-postgres}"
+DB_NAME="${ACC_DB_NAME:-${PROJECT_KEY}}"
+DEV_DB_URL="${DEV_DB_URL:-jdbc:postgresql://${DB_SERVICE}.${PROJECT_KEY}-dev.svc:5432/${DB_NAME}}"
 
 # Self-correction guidance after the evidence line (Böckeler: sensors should
 # inject how-to-fix context, not only the raw failure). First line always

@@ -26,6 +26,12 @@ acceptance:
   endpointEnv: CATALOG_ENDPOINT
   itemType: Product
   needsDatabase: false
+  # R-83 P2 / O-DEVDBURL: sensors/boot DEV_DB_URL uses dbService/dbName when
+  # set; omit → ${PROJECT_KEY}-postgres / ${PROJECT_KEY}. Cart has
+  # needsDatabase:false so unused; DB-backed specimens set needsDatabase:true
+  # and rely on PROJECT_KEY defaults (or override dbName if needed).
+  # dbService:   # omit → ${PROJECT_KEY}-postgres
+  # dbName:      # omit → ${PROJECT_KEY}
 analysis:
   # MTA rule selection is LABEL FILTERING (targets pick only matching
   # rules; everything else is silently excluded). Decided set (validated

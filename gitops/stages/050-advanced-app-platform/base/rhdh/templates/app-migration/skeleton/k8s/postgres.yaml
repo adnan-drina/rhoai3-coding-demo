@@ -10,9 +10,10 @@ metadata:
     app.kubernetes.io/part-of: ${{ values.name }}
 type: Opaque
 stringData:
+  # Demo creds stay coolstore; DATABASE matches app name (R-83 P2 / O-DEVDBURL).
   POSTGRESQL_USER: coolstore
   POSTGRESQL_PASSWORD: coolstore
-  POSTGRESQL_DATABASE: coolstore
+  POSTGRESQL_DATABASE: ${{ values.name }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,7 +41,7 @@ spec:
                 name: ${{ values.name }}-postgres
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "coolstore", "-d", "coolstore"]
+              command: ["pg_isready", "-U", "coolstore", "-d", "${{ values.name }}"]
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:

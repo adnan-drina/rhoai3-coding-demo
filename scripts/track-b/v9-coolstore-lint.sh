@@ -9,11 +9,14 @@ HARNESS="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migrat
 # High-signal specimen identifiers — must not appear in harness core logic.
 # O-ACCEPTGEN: catalog literals must come from migration.yaml acceptance.*,
 # not hardcode products()/CatalogService in durable harness (tests exempt).
+# R-83 P2 / O-DEVDBURL: postgres service host must not be Coolstore-hardcoded.
 STRICT_PATTERNS=(
   'ShoppingCartServiceImpl'
   'coolstore-cart'
   '/services/carts'
   'CartResource\.java'
+  'coolstore-postgres'
+  'postgresql://coolstore-postgres'
 )
 
 # Acceptance-proof tokens — forbidden in harness core unless parameterized

@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: IfNotPresent
           {% if values.needsDatabase %}env:
             - name: QUARKUS_DATASOURCE_JDBC_URL
-              value: jdbc:postgresql://${{ values.name }}-postgres:5432/coolstore
+              value: jdbc:postgresql://${{ values.name }}-postgres:5432/${{ values.name }}
             - name: QUARKUS_DATASOURCE_USERNAME
               valueFrom: {secretKeyRef: {name: ${{ values.name }}-postgres, key: POSTGRESQL_USER}}
             - name: QUARKUS_DATASOURCE_PASSWORD

@@ -264,6 +264,32 @@ run_case() {
 }
 check "acceptance-products rejects vetList wrapper when collection is _array (Poll 81 B1)" 0 ""
 
+# R-83 P2 / O-DEVDBURL — default JDBC host/db embed PROJECT_KEY when yaml omits db*
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /api/x\n  needsDatabase: true\n' > migration.yaml
+  PROJECT_KEY=petclinic
+  eval "$(python3 "$HARNESS_DIR/acceptance_config.py" --yaml migration.yaml --export-shell)"
+  DB_SERVICE="${ACC_DB_SERVICE:-${PROJECT_KEY}-postgres}"
+  DB_NAME="${ACC_DB_NAME:-${PROJECT_KEY}}"
+  url="jdbc:postgresql://${DB_SERVICE}.${PROJECT_KEY}-dev.svc:5432/${DB_NAME}"
+  echo "$url" | grep -q 'petclinic-postgres.petclinic-dev.svc:5432/petclinic' \
+    && ! grep -qE 'coolstore-postgres' "$HARNESS_DIR/sensors.sh" \
+    && echo devdburl-ok
+}
+check "DEV_DB_URL defaults embed PROJECT_KEY-postgres (O-DEVDBURL / R-83 P2)" 0 "devdburl-ok"
+
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /api/x\n  dbService: myapp-postgres\n  dbName: mydb\n' > migration.yaml
+  PROJECT_KEY=petclinic
+  eval "$(python3 "$HARNESS_DIR/acceptance_config.py" --yaml migration.yaml --export-shell)"
+  DB_SERVICE="${ACC_DB_SERVICE:-${PROJECT_KEY}-postgres}"
+  DB_NAME="${ACC_DB_NAME:-${PROJECT_KEY}}"
+  [ "$DB_SERVICE" = "myapp-postgres" ] && [ "$DB_NAME" = "mydb" ] && echo dboverride-ok
+}
+check "acceptance dbService/dbName override PROJECT_KEY defaults (O-DEVDBURL)" 0 "dboverride-ok"
+
 # 11. mandatory findings must be mapped
 run_case() {
   mkfix

@@ -16,6 +16,11 @@ acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
   path: /api/cart/acceptance-check
   needsDatabase: ${{ values.needsDatabase }}
+  # R-83 P2 / O-DEVDBURL: sensors/boot DEV_DB_URL uses dbService/dbName when
+  # set; omit → ${PROJECT_KEY}-postgres / ${PROJECT_KEY}. Skeleton k8s
+  # postgres Secret DATABASE + JDBC path use values.name (same identity).
+  # dbService:   # omit → ${PROJECT_KEY}-postgres
+  # dbName:      # omit → ${PROJECT_KEY}; set if DB name differs from app name
 analysis:
   # MTA rule selection is LABEL FILTERING (targets pick only matching
   # rules; everything else is silently excluded). Decided set (validated

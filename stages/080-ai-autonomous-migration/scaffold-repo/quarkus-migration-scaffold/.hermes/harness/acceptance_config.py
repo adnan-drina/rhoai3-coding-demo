@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""O-ACCEPTGEN — acceptance proof shape from migration.yaml.
+"""O-ACCEPTGEN / O-DEVDBURL — acceptance proof shape from migration.yaml.
 
 Path was already parameterized; collection/service/endpointEnv/itemType
 were Coolstore-hardcoded in sensors and the ship counter. Specimens set
 acceptance.collection (and friends) here; Coolstore defaults apply only
 when collection is omitted or remains ``products``.
+
+Optional DB identity (R-83 P2 / O-DEVDBURL) — empty means sensors derive
+from PROJECT_KEY (``${PROJECT_KEY}-postgres`` / ``${PROJECT_KEY}``):
+
+    acceptance:
+      dbService: myapp-postgres   # omit → ${PROJECT_KEY}-postgres
+      dbName: myapp               # omit → ${PROJECT_KEY}
 
 Bare-array specimens (Poll 81 / B1 — REST petclinic ``GET /petclinic/api/vets``
 returns a top-level JSON array, not ``{vetList:[…]}``) set:
@@ -119,6 +126,9 @@ def load(path: str | Path = "migration.yaml") -> dict:
     if not base.get("getter"):
         base["getter"] = _getter(base["collection"], base)
     base.setdefault("path", "")
+    # R-83 P2 / O-DEVDBURL — optional; empty → sensors use PROJECT_KEY defaults.
+    base["dbService"] = str(raw["dbService"]) if raw.get("dbService") not in (None, "") else ""
+    base["dbName"] = str(raw["dbName"]) if raw.get("dbName") not in (None, "") else ""
     return base
 
 
@@ -180,6 +190,8 @@ def export_shell(cfg: dict) -> str:
         f"ACC_PROOF_RE={shlex.quote(proof_ere(cfg))}",
         f"ACC_RETURN_RE={shlex.quote(return_ere(cfg))}",
         f"ACC_ID_FIELDS={shlex.quote(','.join(cfg.get('idFields') or []))}",
+        f"ACC_DB_SERVICE={shlex.quote(cfg.get('dbService') or '')}",
+        f"ACC_DB_NAME={shlex.quote(cfg.get('dbName') or '')}",
     ]
     return "\n".join(lines) + "\n"
 
