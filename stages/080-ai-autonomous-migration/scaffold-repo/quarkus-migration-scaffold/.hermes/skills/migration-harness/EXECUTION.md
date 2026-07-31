@@ -129,6 +129,13 @@ names. Never close with `assertThat(true)` / `assertTrue(true)` (G-PLACE) —
 run `.hermes/harness/sensors.sh task` GREEN before declaring success
 (escalation path included; supervisor refuses red commits).
 
+**FIRST mutate (O-WORKERWEDGE-RCA / O-WORKERREAD):** within the first ~5 tool
+calls, `edit`/`write`/`bash` the task Target (or run
+`harvest-from-staging.sh`). Do **not** burn the seat on read/glob tours —
+the supervisor kills read-thrash and frozen JSON sessions, then skips
+further worker seats for the rest of the story. Characterization: Target
+`*Test` first commit before WireMock/pom rabbit holes.
+
 Pass only the package-relative path (`model/Product.java`,
 `service/CatalogService.java`) — never the package directories, never an
 absolute or dotted path. Hand-building `src/main/java/$TGT/...` is how a

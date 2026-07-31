@@ -5,6 +5,11 @@
 **📋 = later wave** (roadmap only — does not block preflight; see
 `tmp/KAI-HARNESS-IMPROVEMENTS.md` §4). Mark ✅ when instruments prove the fix.
 
+**Calibration (Poll 76 F4):** post-run ✅ closes of 2026-07-31 are
+instrument-proven durableizations; many await **first live exercise** on the
+next run's early stories (temporary→durable→re-run). Do not over-read ✅ as
+field-proven on a full cart remount.
+
 **Plan of record:** `tmp/KAI-HARNESS-IMPROVEMENTS.md`.
 **Prior bank:** `tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md` (V7–V9 closed).
 
@@ -113,9 +118,18 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 
 | ID | Status | Notes |
 |----|--------|-------|
-| K10 | 📋 | Solved-example hints keyed by rule id (after K11; A/B before default-on). |
-| K12 | 📋 | Adversarial refute at MiniMax escalation + pre-push ship only. |
-| K4 | 📋 | Contract-as-rules expansion from `migration.yaml` (incremental). |
+| K10 | ✅ | Fixed 2026-07-31: `hint-inject.py` + `write-hint.py`; `task-packet.py` injects ≤3×400-char hints from `migration/hints/<rule-id>.md`; Retro prompt offers write-hint; specimen filter. Instruments. A/B default-on deferred to next live run. |
+| K12 | ✅ | Fixed 2026-07-31: `refute-diff.py` + `refute_high_stakes` on MiniMax escalation tip and pre-push ship; REFUTED → reset/debt-freeze or ship-blocked-k12. Optional `REFUTE_LLM=1` orch session. Instruments. |
+| K4 | ✅ | Fixed 2026-07-31: `gen-contract-rules.py` emits preserve/forbidden/acceptance/ExceptionMapper rules → `.hermes/rules/generated-contract-rules.yaml`; `analyze.sh` runs it before kantra. Instruments. |
+
+## Post-V10 planning (Poll 76 F3 — bank is sole status authority)
+
+| ID | Status | Notes |
+|----|--------|-------|
+| O-RETROAPPEND | ✅ | Fixed 2026-07-31: `archive-retro.py` + `phase_f_retro` archives prior `retro-proposals.md` → `migration/retro-history/` before overwrite; INDEX.md; instruments. |
+| O-INSTQUAL | ✅ | Fixed 2026-07-31: suite header standard; behavioural fixtures for O-ESCALGPLACE (`early-commit-gate.py`), O-NOPUSHPR (`nopushpr-decide.py`), O-QJACOCO (`sensors.sh qjacoco`), K7 NEW-delta audit. Name-greps demoted to wiring companions. |
+| O-WORKERWEDGE-RCA | ✅ | RCA 2026-07-31: V10 wedges were **three classes** — READ_THRASH (explore loop, no mutate), JSON_STALE (OpenCode hang after context burn), TRUNCATION (mid-thought cut on ~64K). Mitigations O-WORKERREAD/O-WORKERWEDGE remain; durable: `wedge-classify.py` + skip further worker seats this story + EXECUTION FIRST-mutate tip. Instruments. Full worker-tier revival (serving/context) remains strategic follow-on, not a cart remount. |
+| O-SPECIMEN-CRIT | 📋 | Next-specimen selection criteria (do not remount cart): (1) optional/potential kantra findings so K3 adopt/defer fires; (2) ≥2 stories sharing a surface for K1-SHARED; (3) Spring idioms the Quarkus scaffold does **not** pre-satisfy so K6 oracle discriminates; (4) non-trivial deps for K8. Candidates: `mca-coolstore` monolith round or an external Spring Boot service — pick before provision. |
 
 ## O-NOPUSHPR — empty-delta M5 ship reuses prior PipelineRun (✅)
 

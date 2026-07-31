@@ -10,6 +10,9 @@ worker (Qwen) without MiniMax applying file edits directly.
 K2: when migration/mta-findings.json is available, inject a bounded
 Analysis evidence section (rule message + file:line + code snip) so the
 worker sees MTA remediation guidance, not bare Findings ids.
+
+K10: when migration/hints/<rule-id>.md exists for a Findings id, inject a
+bounded Solved-example hints section (caps in hint-inject.py).
 """
 from __future__ import annotations
 
@@ -24,6 +27,25 @@ MAX_EVIDENCE_CHARS = 400  # per message OR code field
 # Combined message+code budget across the whole evidence section (K2-CAP):
 # equals "≤6 incidents × ≤400 chars" as documented — not 6×(400+400).
 MAX_EVIDENCE_CONTENT_CHARS = MAX_EVIDENCE_INCIDENTS * MAX_EVIDENCE_CHARS
+
+# K10 — import sibling helper (same harness dir).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from hint_inject import format_hints  # type: ignore
+except ImportError:
+    try:
+        import importlib.util
+
+        _hp = Path(__file__).resolve().parent / "hint-inject.py"
+        _spec = importlib.util.spec_from_file_location("hint_inject", _hp)
+        _mod = importlib.util.module_from_spec(_spec)  # type: ignore
+        assert _spec and _spec.loader
+        _spec.loader.exec_module(_mod)
+        format_hints = _mod.format_hints  # type: ignore
+    except Exception:  # pragma: no cover
+
+        def format_hints(rule_ids, root=None):  # type: ignore
+            return ""
 
 
 def task_block(text: str, tid: str) -> tuple[str, str]:
@@ -341,11 +363,22 @@ def main() -> int:
             )
 
     evidence_section = f"\n{evidence_block}\n" if evidence_block else "\n"
+    # K10: solved-example hints keyed by Findings rule id (bounded).
+    hint_ids = wanted or parse_finding_ids(findings)
+    hint_root = tasks_path.resolve().parent
+    if (hint_root / "migration" / "hints").is_dir():
+        root_for_hints = hint_root
+    elif (hint_root.parent / "migration" / "hints").is_dir():
+        root_for_hints = hint_root.parent
+    else:
+        root_for_hints = Path(".")
+    hints_block = format_hints(hint_ids, root_for_hints) if hint_ids else ""
+    hints_section = f"\n{hints_block}\n" if hints_block else ""
 
     packet = f"""Task ID: {tid}
 Class: {cls}
 Goal: {goal}
-Findings: {findings}{evidence_section}Target Design: {design}
+Findings: {findings}{evidence_section}{hints_section}Target Design: {design}
 Constraints:
 - Follow AGENTS.md and the repo skills; no scope creep
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)

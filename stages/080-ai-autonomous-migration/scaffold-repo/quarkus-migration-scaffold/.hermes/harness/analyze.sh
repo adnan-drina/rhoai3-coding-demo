@@ -19,6 +19,12 @@ fi
 
 echo "analyze: running the harness-owned kantra analysis"
 kantra-ensure || true
+# K4: materialize preserve/forbidden/acceptance as custom analyzer rules
+# from migration.yaml (sensors stay defense-in-depth).
+python3 .hermes/harness/gen-contract-rules.py \
+  --yaml migration.yaml \
+  --out .hermes/rules/generated-contract-rules.yaml \
+  || echo "WARN: K4 gen-contract-rules failed — static demo-contract-rules only"
 # Rule selection is label filtering (MTA 8.2 rules guide): the analysis
 # contract lives in migration.yaml analysis: targets. NEVER a --source
 # filter — validated 2026-07-27: it excludes source-labelless rules

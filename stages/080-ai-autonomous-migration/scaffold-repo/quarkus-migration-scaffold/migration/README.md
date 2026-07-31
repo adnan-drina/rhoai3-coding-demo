@@ -13,7 +13,9 @@ and humans read them.
 | `story-state.csv` | Outer loop | Per-story complete/failed ledger for resume after stop-on-failure. |
 | `run-log.md` | M4 IMPLEMENT | One line per task: id, class, attempts, result, files touched. Retry clusters here are harness-improvement signals. |
 | `debt.md` | On budget exhaustion | Tasks the loop could not complete within budget, with failure evidence. Empty is the goal, honest is the rule. |
-| `retro-proposals.md` | Retro | Brief updates (outer loop may apply) + skill/harness proposals (human-only). |
+| `retro-proposals.md` | Retro | Current story's brief updates + skill/harness proposals (human-only). |
+| `retro-history/` | Retro (O-RETROAPPEND) | Archived prior `retro-proposals.md` snapshots — never delete; learning record. |
+| `hints/<rule-id>.md` | Retro / ADVANCE (K10) | Distilled solved-example hints injected into later task packets. |
 
 The findings files are gitignored-in-legacy but committed HERE: they are
 the migration's contract and audit trail, versioned with the code they

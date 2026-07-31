@@ -9,6 +9,11 @@
 # sensors. Pure bash on purpose — it must run identically on workstations
 # and workspace pods, neither of which ships bats.
 #
+# O-INSTQUAL (instrument-quality standard): prefer behavioural fixtures
+# (fixture → run helper/sensor → assert outcome) over name-greps of
+# supervisor.sh. Name-greps may remain as wiring smoke checks alongside a
+# behavioural case for the same ID — never as the sole proof.
+#
 #   .hermes/harness/tests/instruments.sh        run everything
 #
 # Exit 0 = all green. Each case prints ok/FAIL in TAP-ish style.
@@ -640,13 +645,20 @@ EOF
 }
 check "static sensors reject RestAssured root find{} (O-RESTGUIDE/O-RESTJSON)" 1 "O-RESTJSON"
 
-# O-QJACOCO (Poll 55): preflight/full milestone must mention missing quarkus report
+# O-QJACOCO (Poll 55 / O-INSTQUAL): behavioural — qjacoco dimension RED when missing
 run_case() {
-  grep -q 'O-QJACOCO' "$SENSORS" \
-    && grep -q 'jacoco-report/jacoco.xml' "$SENSORS" \
-    && echo qjacoco-ok
+  mkfix
+  SENSOR_ROOT="$FIX" bash "$SENSORS" qjacoco
 }
-check "sensors.sh hard-fails missing quarkus-jacoco report (O-QJACOCO)" 0 "qjacoco-ok"
+check "qjacoco RED when quarkus-jacoco report missing (O-QJACOCO behavioural)" 1 "O-QJACOCO"
+
+run_case() {
+  mkfix
+  mkdir -p target/jacoco-report
+  printf '<report/>\n' > target/jacoco-report/jacoco.xml
+  SENSOR_ROOT="$FIX" bash "$SENSORS" qjacoco
+}
+check "qjacoco GREEN when jacoco.xml present (O-QJACOCO behavioural)" 0 "qjacoco check GREEN"
 
 # 17d. V6 R5 — deploy story requires env preserve in k8s/
 run_case() {
@@ -1776,9 +1788,13 @@ run_case() {
 check "supervisor passes --story-deploy to plan-lint (O-SUPACCEPT)" 0 "osupaccept-ok"
 
 run_case() {
-  # G-AC3: acceptance_ship_contract invoked inside milestone_sensor body
-  awk '/^milestone_sensor\(\)/,/^sonar_check\(\)|^fidelity_check\(\)|^preflight\(\)/' "$SENSORS" \
-    | grep -q 'acceptance_ship_contract' && echo gac3-ok
+  # G-AC3: acceptance_ship_contract invoked inside milestone_sensor body.
+  # Capture the function body first — `awk | grep -q` under `set -o pipefail`
+  # SIGPIPEs when the old range stretched to preflight (~400 lines) and
+  # grep -q exited early (empty out + rc=1 flake, ~40% of runs).
+  local body
+  body=$(awk '/^milestone_sensor\(\)/{on=1} on{print} on && /^}$/{exit}' "$SENSORS")
+  grep -q 'acceptance_ship_contract' <<<"$body" && echo gac3-ok
 }
 check "milestone sensor runs acceptance_ship_contract (G-AC3)" 0 "gac3-ok"
 
@@ -2721,6 +2737,200 @@ run_case() {
     && echo k5wire-ok
 }
 check "K5 wiring (milestone/preflight findings sensor)" 0 "k5wire-ok"
+
+# --- O-RETROAPPEND / O-INSTQUAL / O-WORKERWEDGE-RCA (Poll 76 F3) ------------
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf '# Retro misdiagnosis: blame coverage on test authoring\n' > migration/retro-proposals.md
+  out=$(python3 "$HARNESS_DIR/archive-retro.py" --label S04 --root "$FIX")
+  echo "$out" | grep -q 'retro-history/' || { echo "archive path missing: $out"; return 1; }
+  grep -q 'misdiagnosis' migration/retro-history/*.md \
+    && printf '# Retro story S05 — corrected\n' > migration/retro-proposals.md \
+    && grep -q 'misdiagnosis' migration/retro-history/*.md \
+    && grep -q 'S05' migration/retro-proposals.md \
+    && echo retroappend-ok
+}
+check "archive-retro preserves prior proposals (O-RETROAPPEND)" 0 "retroappend-ok"
+
+run_case() {
+  grep -q 'archive-retro.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-RETROAPPEND' "$HARNESS_DIR/supervisor.sh" \
+    && echo retroappend-wire
+}
+check "O-RETROAPPEND wired in phase_f_retro" 0 "retroappend-wire"
+
+run_case() {
+  python3 "$HARNESS_DIR/early-commit-gate.py" 0 && \
+    ! python3 "$HARNESS_DIR/early-commit-gate.py" 1 && \
+    echo escalgplace-ok
+}
+check "early-commit-gate refuses RED sensor_rc (O-ESCALGPLACE behavioural)" 0 "escalgplace-ok"
+
+run_case() {
+  # run_stage early path: committed → refuse_red before success (order check)
+  awk '/# O-ESCALGPLACE/,/attempt=\$\(\(attempt\+1\)\)/' "$HARNESS_DIR/supervisor.sh" \
+    | grep -q 'refuse_red_task_commit' && echo escalgplace-path
+}
+check "run_stage early-committed path calls refuse_red (O-ESCALGPLACE)" 0 "escalgplace-path"
+
+run_case() {
+  d1=$(python3 "$HARNESS_DIR/nopushpr-decide.py" 0 prev prev)
+  d2=$(python3 "$HARNESS_DIR/nopushpr-decide.py" 1 prev prev)
+  d3=$(python3 "$HARNESS_DIR/nopushpr-decide.py" 0 prev newrun)
+  [ "$d1" = "no-trigger" ] && [ "$d2" = "judge-existing" ] && [ "$d3" = "proceed" ] \
+    && echo nopushpr-ok
+}
+check "nopushpr-decide refuses stale PR after push (O-NOPUSHPR behavioural)" 0 "nopushpr-ok"
+
+run_case() {
+  grep -q 'nopushpr-decide.py' "$HARNESS_DIR/supervisor.sh" && echo nopushpr-wire
+}
+check "wait_pipeline uses nopushpr-decide.py (O-NOPUSHPR)" 0 "nopushpr-wire"
+
+run_case() {
+  mkfix
+  printf 'worker wedged — no session output for 300s (O-WORKERWEDGE)\nsession JSON size frozen at 195408 bytes\n' > err.txt
+  c=$(python3 "$HARNESS_DIR/wedge-classify.py" err.txt)
+  [ "$c" = "JSON_STALE" ] || { echo "got $c"; return 1; }
+  printf 'worker read-thrash — reads=30 globs=3 mutates=0 (O-WORKERREAD)\n' > err2.txt
+  c2=$(python3 "$HARNESS_DIR/wedge-classify.py" err2.txt)
+  [ "$c2" = "READ_THRASH" ] || { echo "got $c2"; return 1; }
+  printf 'O-OCERR: no error pattern; session appears truncated.\nfinal text: Now I have full context. Let me\n' > err3.txt
+  c3=$(python3 "$HARNESS_DIR/wedge-classify.py" err3.txt)
+  [ "$c3" = "TRUNCATION" ] && echo wedge-rca-ok
+}
+check "wedge-classify READ_THRASH/JSON_STALE/TRUNCATION (O-WORKERWEDGE-RCA)" 0 "wedge-rca-ok"
+
+run_case() {
+  grep -q 'wedge-classify.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'worker-wedge-skip' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'FIRST mutate' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo wedge-rca-wire
+}
+check "O-WORKERWEDGE-RCA skip + EXECUTION FIRST-mutate tip" 0 "wedge-rca-wire"
+
+# K7 wiring audit (O-INSTQUAL): keep name-grep only as companion to behavioural
+run_case() {
+  # Behavioural failure-sig already above; confirm refute path is not grep-only.
+  grep -q 'k7_refute_preexisting\|K7 FAILURE DELTA\|failure-delta' "$HARNESS_DIR/supervisor.sh" \
+    && python3 "$HARNESS_DIR/failure-sig.py" capture /tmp/k7a.sig /dev/null 2>/dev/null || true
+  printf '[ERROR] com.demo.NewTest.x Time elapsed: 0.1 s <<< FAILURE!\n' > /tmp/k7b.log
+  python3 "$HARNESS_DIR/failure-sig.py" capture /tmp/k7b.sig /tmp/k7b.log
+  out=$(python3 "$HARNESS_DIR/failure-sig.py" diff /tmp/k7a.sig /tmp/k7b.sig; echo rc=$?)
+  echo "$out" | grep -q 'rc=1\|NEW' && echo k7beh-ok || echo "$out"
+}
+check "K7 failure-sig behavioural NEW delta (O-INSTQUAL audit)" 0 "k7beh-ok"
+
+# K4 — contract-as-rules from migration.yaml
+run_case() {
+  mkfix
+  cat > migration.yaml <<'EOF'
+preserve:
+  - CATALOG_ENDPOINT
+  - PAYMENT_URL
+forbidden:
+  - getMockProducts
+  - "Fallback to mock"
+acceptance:
+  path: /api/cart/acceptance-check
+EOF
+  python3 "$HARNESS_DIR/gen-contract-rules.py" --yaml migration.yaml --out out.yaml
+  grep -q 'demo-preserve-catalog-endpoint-00001' out.yaml \
+    && grep -q 'demo-preserve-payment-url-00001' out.yaml \
+    && grep -q 'demo-forbidden-getmockproducts-00001' out.yaml \
+    && grep -q 'demo-forbidden-exception-mapper-00001' out.yaml \
+    && grep -q 'demo-acceptance-surface-00001' out.yaml \
+    && echo k4gen-ok
+}
+check "gen-contract-rules emits preserve/forbidden/acceptance (K4)" 0 "k4gen-ok"
+
+run_case() {
+  grep -q 'gen-contract-rules.py' "$HARNESS_DIR/analyze.sh" && echo k4wire-ok
+}
+check "analyze.sh runs gen-contract-rules before kantra (K4)" 0 "k4wire-ok"
+
+# K12 — adversarial refute
+run_case() {
+  mkfix
+  cat > bad.diff <<'EOF'
+diff --git a/src/test/java/T.java b/src/test/java/T.java
+--- a/src/test/java/T.java
++++ b/src/test/java/T.java
+@@ -1,3 +1,4 @@
++    assertThat(true).isTrue();
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff bad.diff 2>&1) || true
+  echo "$out" | grep -q 'G-PLACE' && echo k12place-ok
+}
+check "refute-diff REFUTES ceremonial assertThat(true) (K12)" 0 "k12place-ok"
+
+run_case() {
+  mkfix
+  cat > bad.diff <<'EOF'
+diff --git a/src/main/java/M.java b/src/main/java/M.java
+--- a/src/main/java/M.java
++++ b/src/main/java/M.java
+@@ -1,2 +1,3 @@
++public class M implements ExceptionMapper<Exception> {
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff bad.diff 2>&1) || true
+  echo "$out" | grep -q 'MAPPER-EXCEPTION' && echo k12map-ok
+}
+check "refute-diff REFUTES ExceptionMapper<Exception> (K12)" 0 "k12map-ok"
+
+run_case() {
+  mkfix
+  cat > ok.diff <<'EOF'
+diff --git a/src/main/java/Ok.java b/src/main/java/Ok.java
+--- a/src/main/java/Ok.java
++++ b/src/main/java/Ok.java
+@@ -1,2 +1,3 @@
++  public List<Product> products() { return catalog.products(); }
+EOF
+  python3 "$HARNESS_DIR/refute-diff.py" --diff ok.diff
+}
+check "refute-diff PASS on honest catalog call (K12)" 0 "PASS"
+
+run_case() {
+  grep -q 'refute_high_stakes' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'refute-diff.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ship-blocked-k12' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'K12 refused escalation' "$HARNESS_DIR/supervisor.sh" \
+    && echo k12wire-ok
+}
+check "K12 wired on escalation + pre-push ship" 0 "k12wire-ok"
+
+# K10 — solved-example hints
+run_case() {
+  mkfix
+  mkdir -p migration/hints
+  printf 'Replace javax.* with jakarta.* via harvest; keep package rename from migration.yaml.\n' \
+    > migration/hints/springboot-javax-to-jakarta-00000.md
+  cat > tasks.md <<'EOF'
+#### T-001: Jakarta rename
+**Class**: rewrite
+**Findings**: springboot-javax-to-jakarta-00000
+**Goal**: Rename javax imports
+**Acceptance**: compiles
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001)
+  echo "$out" | grep -q 'Solved-example hints' \
+    && echo "$out" | grep -q 'springboot-javax-to-jakarta-00000' \
+    && echo k10inj-ok
+}
+check "task-packet injects migration/hints (K10)" 0 "k10inj-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/hints
+  ! python3 "$HARNESS_DIR/write-hint.py" demo-rule-00001 'use coolstore CartEndpoint' \
+    && python3 "$HARNESS_DIR/write-hint.py" demo-rule-00001 'Feign → @RegisterRestClient + @RestClient inject' \
+    && grep -q 'RegisterRestClient' migration/hints/demo-rule-00001.md \
+    && echo k10write-ok
+}
+check "write-hint rejects specimen ids and writes clean hint (K10)" 0 "k10write-ok"
 
 echo "----"
 echo "$PASS/$N passed"

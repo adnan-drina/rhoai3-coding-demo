@@ -374,6 +374,14 @@ sonar_check() { # $1 = inloop|full  (default full)
   echo "sonar check GREEN (new-code gate)"
 }
 
+# O-QJACOCO — also exposed as `sensors.sh qjacoco` for behavioural instruments.
+qjacoco_check() {
+  if [ ! -s target/jacoco-report/jacoco.xml ]; then
+    fail coverage "O-QJACOCO: quarkus-jacoco report missing (target/jacoco-report/jacoco.xml) — coverage number is not trustworthy; do not chase Sonar new_coverage until @QuarkusTest instrumentation lands after mvn verify"
+  fi
+  echo "qjacoco check GREEN"
+}
+
 milestone_sensor() { # $1 = inloop|full (default inloop)
   # Harvest fidelity first (cheap, pure python): staged legacy HARVEST
   # classes must survive into the destination modulo approved transforms
@@ -395,16 +403,25 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
     python3 .hermes/harness/harvest-fidelity.py \
       || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
   fi
-  $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
-    || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
+  # SENSOR_SKIP_MVN=1 — instrument-only (O-INSTQUAL / O-QJACOCO fixture).
+  if [ "${SENSOR_SKIP_MVN:-}" = "1" ]; then
+    echo "milestone mvn WAIVED (SENSOR_SKIP_MVN=1)"
+  else
+    $MVN clean verify > /tmp/sensor-milestone.log 2>&1 \
+      || fail milestone "$(grep -E 'ERROR|FAIL' /tmp/sensor-milestone.log | head -5)"
+  fi
   # O-QJACOCO (Poll 55): Sonar new_coverage is untrustworthy when the
   # @QuarkusTest jacoco report is missing — CartEndpoint can be 0% while
   # CartEndpointTest is GREEN. Full/preflight must hard-fail before ship
   # correction chases an unreachable metric (ceremonial-test hazard).
-  if [ "${1:-inloop}" = "full" ] && [ ! -s target/jacoco-report/jacoco.xml ]; then
-    fail coverage "O-QJACOCO: quarkus-jacoco report missing (target/jacoco-report/jacoco.xml) — coverage number is not trustworthy; do not chase Sonar new_coverage until @QuarkusTest instrumentation lands after mvn verify"
+  if [ "${1:-inloop}" = "full" ]; then
+    qjacoco_check
   fi
-  sonar_check "${1:-inloop}"
+  if [ "${SENSOR_SKIP_SONAR:-}" = "1" ]; then
+    echo "sonar check WAIVED (SENSOR_SKIP_SONAR=1)"
+  else
+    sonar_check "${1:-inloop}"
+  fi
   # K5: findings dimension at milestone only (not per-task — kantra cost).
   findings_sensor
   # G-FID: fidelity GREEN ≠ scope clean — summarize later-story classes already in src/main
@@ -844,5 +861,6 @@ case "${1:-}" in
   static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; restassured_contract; redesign_sig_check; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   findings)  findings_sensor; echo "FINDINGS CHECK DONE";;
-  *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static|findings"; exit 2;;
+  qjacoco)   qjacoco_check;;
+  *) echo "usage: sensors.sh seed|task|milestone|sonar|fidelity|preflight|package|static|findings|qjacoco"; exit 2;;
 esac

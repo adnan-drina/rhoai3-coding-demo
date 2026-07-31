@@ -654,6 +654,41 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
 # Reset HEAD and return 1 so the caller does not treat it as success.
 # O-REDARCH: archive the red tip to /tmp/strays/<tag>/ before hard-reset so
 # escalation RCA still has the worker/MiniMax output.
+# K12 — adversarial refute at MiniMax escalation commits + pre-push ship.
+# Deterministic core (refute-diff.py); optional LLM when REFUTE_LLM=1.
+refute_high_stakes() { # $1=sha $2=tag -> 0 pass, 1 refused
+  local sha="${1:-HEAD}" tag="${2:-k12}"
+  [ -f .hermes/harness/refute-diff.py ] || return 0
+  local out="/tmp/refute-${tag}.txt"
+  if ! python3 .hermes/harness/refute-diff.py "$sha" >"$out" 2>&1; then
+    log "$tag: K12 REFUTED — $(tr '\n' ' ' <"$out")"
+    event "$tag" 0 k12_refuted "$(head -3 "$out" | tr '\n' ';')"
+    mkdir -p migration
+    {
+      echo "## K12 refute — $tag — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo ""
+      echo "sha: $(git rev-parse --short "$sha" 2>/dev/null || echo "$sha")"
+      echo ""
+      cat "$out"
+      echo ""
+    } >> migration/refute-log.md
+    git add migration/refute-log.md >/dev/null 2>&1 || true
+    return 1
+  fi
+  log "$tag: K12 refute PASS ($(git rev-parse --short "$sha" 2>/dev/null || echo "$sha"))"
+  if [ "${REFUTE_LLM:-0}" = "1" ]; then
+    orch "refute-${tag}" \
+"K12 adversarial refute. Bias to REJECT on uncertainty. Read git show ${sha} and migration/refute-log.md. Find fail-open catch, canned literal, never-called dependency, weakened assertion, ceremonial status map, ExceptionMapper<Exception>, mock fabrication. Write ONE line to migration/refute-verdict.txt: PASS or REFUTED:<reason>. Do not edit src/. Commit message must start with 'K12 refute:' only if you append evidence to migration/refute-log.md." \
+      || true
+    if [ -f migration/refute-verdict.txt ] && grep -qi '^REFUTED' migration/refute-verdict.txt; then
+      log "$tag: K12 LLM REFUTED — $(tr '\n' ' ' < migration/refute-verdict.txt)"
+      event "$tag" 0 k12_llm_refuted "$(head -1 migration/refute-verdict.txt)"
+      return 1
+    fi
+  fi
+  return 0
+}
+
 refuse_red_task_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
   local prefix="$1" tag="$2" red_sha arch
   case "$prefix" in
@@ -685,6 +720,7 @@ run_stage() {
     # O-ESCALGPLACE: a prior hung MiniMax session may have committed (possibly
     # with G-PLACE assertThat(true)) before sensors ran. Never treat an
     # existing prefix commit as success without refuse_red_task_commit.
+    # early-commit-gate.py is the pure sensor-rc contract (instruments).
     if committed "$prefix"; then
       if refuse_red_task_commit "$prefix" "$tag"; then
         return 0
@@ -824,16 +860,31 @@ phase_f_retro() {
   cp "$EVENTS" migration/retro-events.csv 2>/dev/null || true
   cp "$METRICS" migration/retro-metrics.csv 2>/dev/null || true
   git add migration/retro-*.csv >/dev/null 2>&1 || true
+  # O-RETROAPPEND: archive prior proposals before overwrite so misdiagnoses
+  # remain in migration/retro-history/ (V10 Poll 67 erased two records).
+  local retro_label
+  retro_label=$(echo "${STORY_SPEC_PREFIX:-run}" | awk '{print $1}')
+  if [ -f .hermes/harness/archive-retro.py ]; then
+    local archived
+    archived=$(python3 .hermes/harness/archive-retro.py --label "$retro_label" 2>/dev/null || echo noop)
+    [ "$archived" != "noop" ] && log "Retro: O-RETROAPPEND archived prior proposals → $archived"
+    git add migration/retro-history/ >/dev/null 2>&1 || true
+  fi
   orch "retro" \
-"Use the migration-harness skill. The migration run/story is CLOSED — this is Retro. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, migration/discovered.md (K9 forward-looking scope — not debt), remaining briefs under migration/briefs/ (if any), and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md. Write migration/retro-proposals.md with EXACTLY these markdown sections (both required):
+"Use the migration-harness skill. The migration run/story is CLOSED — this is Retro. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, migration/discovered.md (K9 forward-looking scope — not debt), remaining briefs under migration/briefs/ (if any), migration/retro-history/ (prior story retros — do not delete), and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md. Write migration/retro-proposals.md for THIS story only with EXACTLY these markdown sections (both required). Prior stories are already archived under migration/retro-history/ — do NOT delete that directory.
 
 ## Brief updates (auto-applicable)
 Concrete edits for REMAINING story briefs only (not the story just finished). Fold actionable rows from migration/discovered.md when they fit. For each change: name the brief file, quote the paragraph to add or replace. Empty list is fine if nothing should change.
 
 ## Skill / harness proposals (human-only)
-(1) the three costliest failure patterns of THIS run, citing evidence; (2) for each pattern one CONCRETE proposed change to a specific skill or sensor — quote exact text and name file/section; (3) ARTIFACT review of this run's commits (harvest fidelity, story-scope, fabrication); (4) harness waste. PROPOSE ONLY.
+(1) the three costliest failure patterns of THIS story/run, citing evidence; (2) for each pattern one CONCRETE proposed change to a specific skill or sensor — quote exact text and name file/section; (3) ARTIFACT review of this story's commits (harvest fidelity, story-scope, fabrication); (4) harness waste. PROPOSE ONLY. Prefer evidence-based attribution over repeating prior archived misdiagnoses.
 
-Do NOT modify any skill, harness script, or brief in this session — proposals file only. Finish with ONE commit whose message STARTS with 'Retro:'.
+## K10 hints (optional)
+For each Findings rule that this story solved cleanly, optionally run:
+`python3 .hermes/harness/write-hint.py <rule-id> '<≤5 lines: before→after shape, no specimen class/package names>'`
+Hints land in migration/hints/ and are injected into later task packets.
+
+Do NOT modify any skill, harness script, or brief in this session — proposals file only. Finish with ONE commit whose message STARTS with 'Retro:' and includes migration/retro-history/ if present.
 ${RUN_CONTRACT}"
   committed "Retro" && log "Retro: retro proposals committed $(git log --oneline -1)" \
     || log "Retro: retro session did not commit — skipped (non-blocking)"
@@ -1093,6 +1144,16 @@ run_worker_task() { # $1=task-id → 0 if committed
   }
   [ -n "$packet" ] || return 1
   log_task START "$T" "Actor: $(worker_label) — MiniMax not used for coding"
+  # O-WORKERWEDGE-RCA: after a wedge/thrash kill this story, skip further
+  # Qwen attempts (economy) — MiniMax escalation owns remaining coding.
+  local story_key
+  story_key=$(echo "${STORY_SPEC_PREFIX:-run}" | awk '{print $1}')
+  if [ -f /tmp/worker-wedge-skip ] && grep -qxF "$story_key" /tmp/worker-wedge-skip 2>/dev/null; then
+    log "$T: skip worker — prior wedge/thrash this story (O-WORKERWEDGE-RCA)"
+    echo "worker skipped — prior wedge class this story (O-WORKERWEDGE-RCA)" >> "/tmp/oc-${T}.err"
+    WORKER_LAST_RC=143
+    return 1
+  fi
   # O-WORKERWEDGE / O-OCSTALL: hard timeout alone burns 1800s on a hung OpenCode
   # with a frozen session JSON. Run under timeout in the background and kill early
   # if /tmp/oc-${T}.json stops growing (default 300s unchanged).
@@ -1147,6 +1208,20 @@ run_worker_task() { # $1=task-id → 0 if committed
   rc=$?
   WORKER_LAST_RC=$rc
   wait_for_worker
+  # O-WORKERWEDGE-RCA: classify kill/fail cause; skip further worker seats this story.
+  if [ -f .hermes/harness/wedge-classify.py ] && [ -f "/tmp/oc-${T}.err" ]; then
+    local wclass
+    wclass=$(python3 .hermes/harness/wedge-classify.py \
+      "/tmp/oc-${T}.err" "/tmp/oc-${T}.json" 2>/dev/null || echo OTHER)
+    case "$wclass" in
+      READ_THRASH|JSON_STALE|TRUNCATION)
+        echo "$story_key" >> /tmp/worker-wedge-skip
+        sort -u /tmp/worker-wedge-skip -o /tmp/worker-wedge-skip 2>/dev/null || true
+        log "$T: O-WORKERWEDGE-RCA class=$wclass — further worker seats skipped this story"
+        event "$T" 0 worker_wedge_class "$wclass"
+        ;;
+    esac
+  fi
   # O-OCERR: OpenCode often leaves stderr empty; surefire noise is in the JSON.
   if [ ! -s "/tmp/oc-${T}.err" ] && [ -s "/tmp/oc-${T}.json" ]; then
     python3 - "/tmp/oc-${T}.json" "/tmp/oc-${T}.err" <<'PY' 2>/dev/null || true
@@ -1381,6 +1456,16 @@ ${esc_evidence:+$esc_evidence
     fi
     log_task END "$T" "committed via MiniMax escalation — $(git log --oneline -1 | cut -c1-80)"
     record_rule_outcomes "$T" "escalation"
+    # K12: refute MiniMax escalation tip before accepting it.
+    if ! refute_high_stakes HEAD "$T-k12"; then
+      log "$T: K12 refused escalation commit — resetting tip + debt freeze"
+      git reset --hard HEAD~1 >>"$LOG" 2>&1 || true
+      record_debt "$T" k12 "escalation commit REFUTED (see migration/refute-log.md)"
+      touch /tmp/debt-freeze
+      touch /tmp/supervisor-pause
+      debt_frozen && return 1
+      return 1
+    fi
   else
     log_task SKIP "$T" "exhausted — recorded in debt; O-DEBTFRZ freeze (not moving on)"
     log "$T: exhausted — recorded; freezing (O-DEBTFRZ)"
@@ -1546,7 +1631,8 @@ wait_pipeline() { # $1=previous newest run; $2=1 if git push was up-to-date
   # (SHIP_ONLY re-earn), fall back to the newest existing run. When push
   # advanced remote commits, a NEW PipelineRun is required — do NOT judge a
   # stale prior Succeeded run (S06 empty-delta false ship on …-push-7k7vn).
-  local prev="$1" push_uptodate="${2:-0}" name="" i
+  # Decision core: nopushpr-decide.py (instrumented).
+  local prev="$1" push_uptodate="${2:-0}" name="" i decision
   local max_new=12
   [ "$push_uptodate" = "1" ] || max_new=36  # ~6m for webhook/PR to appear
   for i in $(seq 1 "$max_new"); do
@@ -1554,12 +1640,14 @@ wait_pipeline() { # $1=previous newest run; $2=1 if git push was up-to-date
     [ -n "$name" ] && [ "$name" != "$prev" ] && break
     sleep 10
   done
-  if [ -z "$name" ] || [ "$name" = "$prev" ]; then
-    if [ "$push_uptodate" != "1" ]; then
-      log "M5 ship: O-NOPUSHPR — commits pushed but no new PipelineRun within $((max_new * 10))s — refusing stale ${prev:-none}"
-      echo "none no-trigger"
-      return
-    fi
+  decision=$(python3 .hermes/harness/nopushpr-decide.py \
+    "$push_uptodate" "${prev:-}" "${name:-}" 2>/dev/null || true)
+  if [ "$decision" = "no-trigger" ]; then
+    log "M5 ship: O-NOPUSHPR — commits pushed but no new PipelineRun within $((max_new * 10))s — refusing stale ${prev:-none}"
+    echo "none no-trigger"
+    return
+  fi
+  if [ "$decision" = "judge-existing" ]; then
     name=$(newest_pipelinerun)
     [ -n "$name" ] || name="$prev"
     if [ -z "$name" ]; then
@@ -1660,6 +1748,13 @@ ${RUN_CONTRACT}" \
       write_run_report "ship-blocked-package"; echo "ship-blocked-package" > /tmp/supervisor-done; exit 3
     fi
     log "M5 ship: preflight budget exhausted — pushing anyway (factory as arbiter)"
+  fi
+  # K12: adversarial refute of tip before push (escalation+ship high-stakes).
+  if ! refute_high_stakes HEAD "m5-ship-k12"; then
+    event "m5-ship" 0 ship_blocked k12_refuted
+    record_debt "M5 ship" k12 "pre-push REFUTED (see migration/refute-log.md)"
+    log "M5 ship: BLOCKED — K12 refute refused the tip. Story NOT shipped."
+    write_run_report "ship-blocked-k12"; echo "ship-blocked-k12" > /tmp/supervisor-done; exit 3
   fi
   PREV=$(newest_pipelinerun)
   PUSH_OUT=$(git push origin main 2>&1) || { log "FATAL: git push failed"; echo "$PUSH_OUT" >> "$LOG"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
