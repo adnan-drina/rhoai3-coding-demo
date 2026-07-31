@@ -391,7 +391,7 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # set by the launcher) for a confirmed false positive — a worker session
   # CANNOT set the supervisor subprocess's env, so it cannot self-waive.
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
-  # it to escape a real fidelity RED — V5 T-004 fabricated-CatalogService.)
+  # it to escape a real fidelity RED — V5 T-004 fabricated client.)  # ALLOWED: coolstore-default-fallback (historical note)
   placeholder_tests
   # G-AC3 (V9 S01): catch ceremonial acceptance surfaces in-loop, not only
   # at deploy preflight — status-map / "OK" endpoints must not land in S01.
@@ -550,7 +550,7 @@ wiring_invariants() {
     # when the grep found NO injection points (an interface-only story where
     # the @RegisterRestClient client has no injector yet): empty grep → pipe
     # exit 1 → silent `exit 1` → empty-log false RED. That is the root of the
-    # V5 run-4 S03 cascade (CatalogService present, no impl to inject it).
+    # V5 run-4 S03 cascade (REST client present, no impl to inject it).
     local _points
     _points=$(grep -rn "$iface [a-zA-Z]" src/main --include="*.java" 2>/dev/null | grep -vE "interface $iface|import |class ")
     [ -n "$_points" ] || continue
@@ -697,19 +697,22 @@ PY
   echo "O-REDATTRIB: $owner" >&2
 }
 
-# O-ACCEPTGEN: load acceptance.collection/service/… from migration.yaml.
-# Coolstore products/CatalogService defaults apply when collection is products.
+# O-ACCEPTGEN / Poll 81 B1: load acceptance.* from migration.yaml.
+# Fallback literals below are Coolstore defaults only (ALLOWED: coolstore-default-fallback).
 _acceptance_load_cfg() {
-  ACC_COLLECTION=products
-  ACC_SERVICE=CatalogService
-  ACC_ENDPOINT_ENV=CATALOG_ENDPOINT
-  ACC_ITEM_TYPE=Product
-  ACC_MOCK_CLASS=MockCatalogService
-  ACC_GETTER=getProducts
-  ACC_PROOF_RE='products\(|getProducts\(|CatalogService|CATALOG_ENDPOINT|List<.*Product'
-  ACC_RETURN_RE='return[[:space:]]+.*\b(products|getProducts)\s*\(|return[[:space:]]+products\b'
+  ACC_COLLECTION=products  # ALLOWED: coolstore-default-fallback
+  ACC_COLLECTION_LABEL=products
+  ACC_BARE_ARRAY=0
+  ACC_SERVICE=CatalogService  # ALLOWED: coolstore-default-fallback
+  ACC_ENDPOINT_ENV=CATALOG_ENDPOINT  # ALLOWED: coolstore-default-fallback
+  ACC_ITEM_TYPE=Product  # ALLOWED: coolstore-default-fallback
+  ACC_MOCK_CLASS=MockCatalogService  # ALLOWED: coolstore-default-fallback
+  ACC_GETTER=getProducts  # ALLOWED: coolstore-default-fallback
+  ACC_PROOF_RE='products\(|getProducts\(|CatalogService|CATALOG_ENDPOINT|List<.*Product'  # ALLOWED: coolstore-default-fallback
+  ACC_RETURN_RE='return[[:space:]]+.*\b(products|getProducts)\s*\(|return[[:space:]]+products\b'  # ALLOWED: coolstore-default-fallback
   # shellcheck disable=SC1090
   eval "$(python3 "$SELF_DIR/acceptance_config.py" --yaml migration.yaml --export-shell 2>/dev/null)" || true
+  ACC_COLLECTION_LABEL="${ACC_COLLECTION_LABEL:-$ACC_COLLECTION}"
 }
 
 # V6 R3/R6 — ship-contract static checks (acceptance fail-open + mapper breadth).
@@ -741,7 +744,7 @@ acceptance_ship_contract() {
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'service_interfaces_ready|interfaces_ready|"status"\s*,' "$f" 2>/dev/null; then
-      fail acceptance "ceremonial status-map acceptance in $f (V6) — must return ${ACC_COLLECTION}[] / live fetch, not a status Map"
+      fail acceptance "ceremonial status-map acceptance in $f (V6) — must return ${ACC_COLLECTION_LABEL} / live fetch, not a status Map"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
   # G-OK (V7/V8): plain String / "OK" TEXT acceptance is not collection proof.
@@ -750,7 +753,7 @@ acceptance_ship_contract() {
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'return[[:space:]]+"OK"|return[[:space:]]+"ok"|public[[:space:]]+String[[:space:]]+[a-zA-Z0-9_]*\(' "$f" 2>/dev/null; then
       if ! grep -qE "$ACC_PROOF_RE" "$f" 2>/dev/null; then
-        fail acceptance "ceremonial String/OK acceptance in $f (G-OK) — must return ${ACC_COLLECTION}[] / live fetch, not TEXT \"OK\""
+        fail acceptance "ceremonial String/OK acceptance in $f (G-OK) — must return ${ACC_COLLECTION_LABEL} / live fetch, not TEXT \"OK\""
       fi
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
@@ -760,7 +763,7 @@ acceptance_ship_contract() {
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if ! grep -qE "$ACC_PROOF_RE" "$f" 2>/dev/null; then
       _redattrib_gcat "$f"
-      fail acceptance "acceptance surface $f lacks collection fetch (G-CAT) — must reference ${ACC_SERVICE:-service}/${ACC_COLLECTION}()/${ACC_ENDPOINT_ENV:-endpoint} from migration.yaml acceptance.* (not ceremonial status DTO/record/Map/String)"
+      fail acceptance "acceptance surface $f lacks collection fetch (G-CAT) — must reference ${ACC_SERVICE:-service}/${ACC_GETTER}()/${ACC_ENDPOINT_ENV:-endpoint} from migration.yaml acceptance.* (not ceremonial status DTO/record/Map/String)"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
   # G-CATBODY: collection side-effect + status DTO still ships count=0 —
@@ -769,10 +772,10 @@ acceptance_ship_contract() {
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'new[[:space:]]+AcceptanceStatus|record[[:space:]]+AcceptanceStatus|"accepted"|"degraded"' "$f" 2>/dev/null; then
-      fail acceptance "acceptance surface $f returns ceremonial status DTO (G-CATBODY) — return ${ACC_COLLECTION}[] (${ACC_GETTER}/${ACC_COLLECTION}()), not status/message"
+      fail acceptance "acceptance surface $f returns ceremonial status DTO (G-CATBODY) — return ${ACC_COLLECTION_LABEL} (${ACC_GETTER}()), not status/message"
     fi
     if ! grep -qE "$ACC_RETURN_RE" "$f" 2>/dev/null; then
-      fail acceptance "acceptance surface $f does not return collection (G-CATBODY) — handler must return ${ACC_COLLECTION}()/${ACC_GETTER}() result (ship counts ${ACC_COLLECTION}[])"
+      fail acceptance "acceptance surface $f does not return collection (G-CATBODY) — handler must return ${ACC_GETTER}() result (ship counts ${ACC_COLLECTION_LABEL})"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
   # G-FAKE: mock service class (or hardcoded List.of itemType) in src/main

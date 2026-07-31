@@ -14,7 +14,12 @@ acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
   # O-ACCEPTGEN: collection/service/endpointEnv/itemType parameterize the
   # ship-proof shape (sensors G-CAT/G-CATBODY + acceptance-products.py).
-  # Other specimens set e.g. collection: vetList (and matching service tokens).
+  # Bare-array specimens (Poll 81 / B1 — REST petclinic GET /petclinic/api/vets):
+  #   collection: _array
+  #   getter: getAllVets
+  #   service: ClinicService
+  #   itemType: VetDto
+  #   path: /petclinic/api/vets
   path: /api/cart/acceptance-check
   collection: products
   service: CatalogService
@@ -28,6 +33,8 @@ analysis:
   # namespace jump, cloud-readiness (OpenShift deploy), the JDK jump.
   # NO source filter — it only narrows (excludes source-labelless rules
   # incl. custom ones). Applies to IDE analysis AND the harness run.
+  # Poll 81 E2 / petclinic PROBE: materialize mode (PROBE: source-only ≡ full).
+  mode: source-only
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
 targetContract:
   # The DECIDED modern contract for REDESIGN classes (services/endpoints).

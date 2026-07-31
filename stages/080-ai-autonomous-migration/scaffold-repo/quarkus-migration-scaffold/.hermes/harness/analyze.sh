@@ -31,10 +31,17 @@ python3 .hermes/harness/gen-contract-rules.py \
 # (including the custom contract rules) and narrows the set.
 A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
 [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
+# Poll 81 E2: analysis.mode from migration.yaml (default source-only).
+A_MODE=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 -E "^[[:space:]]*mode:" | awk '{print $2}' | tr -d '"' || true)
+A_MODE="${A_MODE:-source-only}"
+case "$A_MODE" in
+  source-only|full) ;;
+  *) echo "WARN: analysis.mode '$A_MODE' unsupported — using source-only"; A_MODE=source-only ;;
+esac
 K_ARGS=""
 for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
 [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
-echo "analyze: kantra args: $K_ARGS (source-only mode)"
+echo "analyze: kantra args: $K_ARGS (mode=$A_MODE)"
 # Neutral cwd: the JDTLS-based java provider dumps Equinox state into CWD.
 # Java 21 REQUIRED: kantra's analyzer bundles declare osgi.ee=JavaSE-21 —
 # under the pod default (17) JDTLS never starts and the provider waits
@@ -42,7 +49,7 @@ echo "analyze: kantra args: $K_ARGS (source-only mode)"
 # our rule set needs no dependency analysis and keeps the run minutes-scale.
 (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
   /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
-  $K_ARGS --mode source-only --json-output --overwrite) || true
+  $K_ARGS --mode "$A_MODE" --json-output --overwrite) || true
 mkdir -p migration
 cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
   || { echo "FATAL: M1 ground truth unavailable"; exit 1; }
@@ -63,7 +70,7 @@ else
 fi
 (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
   /tmp/kantra/kantra analyze -i "$DEST_SRC" -o /tmp/kantra-dest \
-  $K_ARGS --mode source-only --json-output --overwrite) 2>/dev/null || true
+  $K_ARGS --mode "$A_MODE" --json-output --overwrite) 2>/dev/null || true
 if [ -f /tmp/kantra-dest/output.json ]; then
   cp /tmp/kantra-dest/output.json migration/mta-findings-dest-baseline.json
   ORACLE_ROOT=/projects/modernized python3 .hermes/harness/dest-presatisfied.py \

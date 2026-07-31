@@ -29,7 +29,8 @@ ACCEPT_LITERAL_PATTERNS=(
 PKG_DEFAULT_ALLOW='plan-lint\.py|parse-roadmap\.py|harvest-fidelity\.py|sensors\.sh|outer-loop\.sh'
 
 # Defaults / loaders that intentionally mention Coolstore-shaped tokens.
-ACCEPT_LITERAL_ALLOW='acceptance_config\.py|acceptance-products\.py|sensors\.sh|supervisor\.sh|gen-contract-rules\.py'
+# Poll 81 P3: sensors.sh is NOT blanket-allowed — use line-level ALLOWED:.
+ACCEPT_LITERAL_ALLOW='acceptance_config\.py|acceptance-products\.py|supervisor\.sh|gen-contract-rules\.py'
 
 FAIL=0
 while IFS= read -r -d '' f; do

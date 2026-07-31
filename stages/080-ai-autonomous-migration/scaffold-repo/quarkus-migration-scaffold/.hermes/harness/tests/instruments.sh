@@ -247,6 +247,23 @@ run_case() {
 }
 check "acceptance-products ignores products key when collection is vetList (O-ACCEPTGEN)" 0 ""
 
+# Poll 81 / B1 — REST petclinic: bare JSON array (not {vetList:[…]})
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /petclinic/api/vets\n  collection: _array\n  getter: getAllVets\n  service: ClinicService\n  itemType: VetDto\n  idFields: [id]\n' > migration.yaml
+  printf '%s\n' '[{"id":1,"firstName":"James","lastName":"Carter"},{"id":2,"firstName":"Helen","lastName":"Leary"}]' \
+    | python3 "$HARNESS_DIR/acceptance-products.py" --yaml migration.yaml
+}
+check "acceptance-products counts bare vet array (Poll 81 B1)" 0 "2"
+
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /petclinic/api/vets\n  collection: _array\n  getter: getAllVets\n' > migration.yaml
+  out=$(printf '%s\n' '{"vetList":[{"id":1}]}' | python3 "$HARNESS_DIR/acceptance-products.py" --yaml migration.yaml)
+  [ "$out" = "0" ]
+}
+check "acceptance-products rejects vetList wrapper when collection is _array (Poll 81 B1)" 0 ""
+
 # 11. mandatory findings must be mapped
 run_case() {
   mkfix

@@ -5,6 +5,15 @@ Path was already parameterized; collection/service/endpointEnv/itemType
 were Coolstore-hardcoded in sensors and the ship counter. Specimens set
 acceptance.collection (and friends) here; Coolstore defaults apply only
 when collection is omitted or remains ``products``.
+
+Bare-array specimens (Poll 81 / B1 — REST petclinic ``GET /petclinic/api/vets``
+returns a top-level JSON array, not ``{vetList:[…]}``) set:
+
+    acceptance:
+      collection: _array
+      getter: getAllVets
+      service: ClinicService
+      itemType: VetDto
 """
 from __future__ import annotations
 
@@ -20,6 +29,9 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None
 
+# Sentinel: ship body must be a top-level JSON array (no collection key).
+BARE_ARRAY = "_array"
+
 # Coolstore-shaped defaults — used only when collection is products/absent.
 _PRODUCTS_DEFAULTS = {
     "collection": "products",
@@ -28,6 +40,7 @@ _PRODUCTS_DEFAULTS = {
     "itemType": "Product",
     "idFields": ["itemId", "id", "item_id"],
     "mockClass": "MockCatalogService",
+    "getter": "getProducts",
 }
 
 
@@ -51,7 +64,6 @@ def _parse_simple(text: str) -> dict:
             continue
         key, val = m.group(1), m.group(2).strip()
         if key == "idFields":
-            # inline list: [a, b] or leave for yaml path
             inner = val.strip("[]")
             data[key] = [x.strip().strip("\"'") for x in inner.split(",") if x.strip()]
             continue
@@ -59,6 +71,10 @@ def _parse_simple(text: str) -> dict:
             continue
         data[key] = val.strip("\"'")
     return data
+
+
+def is_bare_array(cfg: dict) -> bool:
+    return str(cfg.get("collection") or "") == BARE_ARRAY
 
 
 def load(path: str | Path = "migration.yaml") -> dict:
@@ -74,6 +90,16 @@ def load(path: str | Path = "migration.yaml") -> dict:
     collection = str(raw.get("collection") or _PRODUCTS_DEFAULTS["collection"])
     if collection == "products":
         base = dict(_PRODUCTS_DEFAULTS)
+    elif collection == BARE_ARRAY:
+        base = {
+            "collection": BARE_ARRAY,
+            "service": "",
+            "endpointEnv": "",
+            "itemType": "",
+            "idFields": ["id"],
+            "mockClass": "",
+            "getter": "",
+        }
     else:
         base = {
             "collection": collection,
@@ -82,58 +108,75 @@ def load(path: str | Path = "migration.yaml") -> dict:
             "itemType": "",
             "idFields": ["id", "itemId"],
             "mockClass": "",
+            "getter": "",
         }
-    for key in ("path", "service", "endpointEnv", "itemType", "mockClass", "collection"):
+    for key in ("path", "service", "endpointEnv", "itemType", "mockClass",
+                "collection", "getter"):
         if raw.get(key) not in (None, ""):
             base[key] = str(raw[key])
     if isinstance(raw.get("idFields"), list) and raw["idFields"]:
         base["idFields"] = [str(x) for x in raw["idFields"]]
+    if not base.get("getter"):
+        base["getter"] = _getter(base["collection"], base)
     base.setdefault("path", "")
     return base
 
 
-def _getter(collection: str) -> str:
+def _getter(collection: str, cfg: dict | None = None) -> str:
+    cfg = cfg or {}
+    if cfg.get("getter"):
+        return str(cfg["getter"])
+    if collection == BARE_ARRAY:
+        return "getAll"
     if not collection:
         return "getProducts"
     return "get" + collection[0].upper() + collection[1:]
 
 
 def proof_ere(cfg: dict) -> str:
-    """Extended regex for grep -E — any catalog/collection proof token."""
+    """Extended regex for grep -E — any collection proof token."""
     col = cfg["collection"]
-    getter = _getter(col)
-    parts = [re.escape(col) + r"\(", re.escape(getter) + r"\("]
+    getter = _getter(col, cfg)
+    parts: list[str] = [re.escape(getter) + r"\("]
+    if col != BARE_ARRAY:
+        parts.insert(0, re.escape(col) + r"\(")
     if cfg.get("service"):
         parts.append(re.escape(cfg["service"]))
     if cfg.get("endpointEnv"):
         parts.append(re.escape(cfg["endpointEnv"]))
     if cfg.get("itemType"):
         parts.append(r"List<.*" + re.escape(cfg["itemType"]))
+        parts.append(r"Collection<.*" + re.escape(cfg["itemType"]))
     return "|".join(parts)
 
 
 def return_ere(cfg: dict) -> str:
     col = cfg["collection"]
-    getter = _getter(col)
+    getter = _getter(col, cfg)
+    names = [getter]
+    if col != BARE_ARRAY:
+        names.append(col)
+    alt = "|".join(re.escape(n) for n in names)
     return (
         r"return[[:space:]]+.*\b("
-        + re.escape(col)
-        + r"|"
-        + re.escape(getter)
-        + r")\s*\(|return[[:space:]]+"
-        + re.escape(col)
-        + r"\b"
+        + alt
+        + r")\s*\(|return[[:space:]]+("
+        + alt
+        + r")\b"
     )
 
 
 def export_shell(cfg: dict) -> str:
+    label = "bare-array" if is_bare_array(cfg) else cfg["collection"]
     lines = [
         f"ACC_COLLECTION={shlex.quote(cfg['collection'])}",
+        f"ACC_COLLECTION_LABEL={shlex.quote(label)}",
+        f"ACC_BARE_ARRAY={'1' if is_bare_array(cfg) else '0'}",
         f"ACC_SERVICE={shlex.quote(cfg.get('service') or '')}",
         f"ACC_ENDPOINT_ENV={shlex.quote(cfg.get('endpointEnv') or '')}",
         f"ACC_ITEM_TYPE={shlex.quote(cfg.get('itemType') or '')}",
         f"ACC_MOCK_CLASS={shlex.quote(cfg.get('mockClass') or '')}",
-        f"ACC_GETTER={shlex.quote(_getter(cfg['collection']))}",
+        f"ACC_GETTER={shlex.quote(_getter(cfg['collection'], cfg))}",
         f"ACC_PROOF_RE={shlex.quote(proof_ere(cfg))}",
         f"ACC_RETURN_RE={shlex.quote(return_ere(cfg))}",
         f"ACC_ID_FIELDS={shlex.quote(','.join(cfg.get('idFields') or []))}",
