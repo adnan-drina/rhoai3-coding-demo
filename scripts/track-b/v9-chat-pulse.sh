@@ -36,7 +36,7 @@ needle = next((c for c in cands if len(c) >= 12), cands[0] if cands else "")
 if not needle:
     sys.exit(1)
 # Scan newest jsonl transcripts (mtime) for assistant text containing needle
-files = sorted(glob.glob(os.path.join(td, "*.jsonl")), key=os.path.getmtime, reverse=True)[:5]
+files = sorted(glob.glob(os.path.join(td, "**", "*.jsonl"), recursive=True), key=os.path.getmtime, reverse=True)[:5]
 cutoff = time.time() - 3600  # last hour
 found = False
 for fp in files:
