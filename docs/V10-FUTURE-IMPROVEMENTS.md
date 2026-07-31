@@ -131,6 +131,23 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-WORKERWEDGE-RCA | ✅ | RCA 2026-07-31: V10 wedges were **three classes** — READ_THRASH (explore loop, no mutate), JSON_STALE (OpenCode hang after context burn), TRUNCATION (mid-thought cut on ~64K). Mitigations O-WORKERREAD/O-WORKERWEDGE remain; durable: `wedge-classify.py` + skip further worker seats this story + EXECUTION FIRST-mutate tip. Instruments. Full worker-tier revival (serving/context) remains strategic follow-on, not a cart remount. |
 | O-SPECIMEN-CRIT | 📋 | Next-specimen selection criteria (do not remount cart): (1) optional/potential kantra findings so K3 adopt/defer fires; (2) ≥2 stories sharing a surface for K1-SHARED; (3) Spring idioms the Quarkus scaffold does **not** pre-satisfy so K6 oracle discriminates; (4) non-trivial deps for K8. Candidates: `mca-coolstore` monolith round or an external Spring Boot service — pick before provision. |
 
+## Demo log UX (Poll 77 — `/tmp/outer-loop.log` is the workshop view)
+
+Wave A (⬜ before next demo run). Wave B/C (📋). Detail table in
+`tmp/KAI-WAVE1-REVIEW.md` Poll 77.
+
+| ID | Status | Notes |
+|----|--------|-------|
+| O-UXLOG-TRUNC | ✅ | Fixed 2026-07-31: append (rotate >5MiB); RESUME banner + N-of-M stories from story-state.csv. |
+| O-UXLOG-SENSE | ✅ | Fixed 2026-07-31: post_commit_verify GREEN → outer_log `✓ SENSE … GREEN after T-NNN (…s)`. |
+| O-UXLOG-SHIP | ✅ | Fixed 2026-07-31: outer_log push/pipeline/rollout/acceptance/preflight-fix rounds. |
+| O-UXLOG-ESCWHY | 📋 | U4: escalation lines carry wedge/rc reason + sparse worker heartbeat. |
+| O-UXLOG-WRITERS | 📋 | U5: all writers through timestamped helper; dedupe WARN/roster/URL. |
+| O-UXLOG-BUDGET | 📋 | U6: heartbeats show "Ns of budget". |
+| O-UXLOG-LEGEND | 📋 | U7: cold-open legend (glyphs + M1–M5 one-liners). |
+| O-UXLOG-SUMMARY | 📋 | U8: story END + RUN COMPLETE roll-ups. |
+| O-UXLOG-WORDING | 📋 | U9: plain session≠gate wording; skips print oracle evidence. |
+
 ## O-NOPUSHPR — empty-delta M5 ship reuses prior PipelineRun (✅)
 
 **Seen:** S06 ship pushed evaluate SHA but supervisor reported *no new

@@ -479,6 +479,8 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
   fi
   log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
+  local _sense_t0 _sense_elapsed
+  _sense_t0=$(date +%s)
   if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
     event "$tag" 0 sensor_red_post_commit verify
     # O-SONARBLEED: in-loop Sonar RED only on prior-task files — do not burn
@@ -645,6 +647,13 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
       fi
       record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
+  else
+    # O-UXLOG-SENSE (Poll 77 U3): GREEN sensors visible on the demo log.
+    _sense_elapsed=$(( $(date +%s) - _sense_t0 ))
+    case "$SENSOR_KIND" in
+      milestone) outer_log "         ✓ SENSE milestone sensor GREEN after ${tag} (verify+sonar, ${_sense_elapsed}s)" ;;
+      *)         outer_log "         ✓ SENSE task sensor GREEN after ${tag} (compile+test, ${_sense_elapsed}s)" ;;
+    esac
   fi
   debt_frozen && return 1
   return 0
@@ -1719,6 +1728,7 @@ while :; do
     PREF_R=$((PREF_R+1))
     if [ "$PREF_R" -le "$MAX_PER_CLASS" ]; then
       log "M5 ship: pre-push preflight RED (round $PREF_R) — fixing before push"
+      outer_log "         M5 ship: preflight RED — fix round ${PREF_R}/${MAX_PER_CLASS} starting"
       event "m5-ship" 0 "preflight_red" "round=$PREF_R"
       run_stage "Preflight fix r${PREF_R}" "preflightfix-r${PREF_R}" \
 "Use the migration-harness skill and read SHIPPING.md in its directory. The pre-push preflight is RED - the failure evidence is in /tmp/preflight-failure.txt, read it with your file tools. Fix the root cause (build wiring against the WORKING scaffold pom conventions; coverage gaps need real tests for the uncovered classes - never weaken assertions). Finish with .hermes/harness/sensors.sh preflight GREEN, then commit ONE commit. DO NOT PUSH.
@@ -1765,6 +1775,8 @@ ${RUN_CONTRACT}" \
     PUSH_UPTODATE=1
   fi
   log "M5 ship: pushed $(git rev-parse --short HEAD), waiting for pipeline (uptodate=$PUSH_UPTODATE)"
+  # O-UXLOG-SHIP (Poll 77 U2): climax visible on the demo outer-loop log.
+  outer_log "         M5 ship: pushed $(git rev-parse --short HEAD) — waiting for factory pipeline"
   RESULT=$(wait_pipeline "$PREV" "$PUSH_UPTODATE"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
   # O-SHIPNOPR: up-to-date push with no new PR → acceptance-only recheck.
   # O-NOPUSHPR: commits were pushed but no new PR → do NOT pretend success.
@@ -1781,6 +1793,7 @@ ${RUN_CONTRACT}" \
   fi
   event "m5-ship" 0 "pipeline_$PR_ST" "$PR_NAME"
   log "M5 ship: pipeline $PR_NAME -> $PR_ST"
+  outer_log "         M5 ship: pipeline ${PR_NAME} → ${PR_ST}"
   if [ "$PR_ST" = "succeeded" ]; then
     # Non-deploy story (M5 hybrid shipping): the factory quality gate IS
     # the story's finish line — no acceptance surface expected yet.
@@ -1805,6 +1818,7 @@ ${RUN_CONTRACT}" \
     DEP=$(OC get deploy -n "$NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
     if [ -n "$DEP" ]; then
       OC rollout status "deploy/$DEP" -n "$NS" --timeout=180s >> "$LOG" 2>&1 || true
+      outer_log "         M5 ship: rollout ready (deploy/${DEP})"
     else
       sleep 10
     fi
@@ -1826,6 +1840,7 @@ print(m.group(1) if m else '')
     ACC=$(curl -sk -o /tmp/acceptance-body.json -w "%{http_code}" "https://${ROUTE}${ACC_PATH}" 2>/dev/null || echo 000)
     PRODUCTS=$(python3 .hermes/harness/acceptance-products.py < /tmp/acceptance-body.json 2>/dev/null || echo 0)
     log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} catalog products)"
+    outer_log "         M5 ship: acceptance probe: / → ${CODE}, ${ACC_PATH} → ${ACC}, products=${PRODUCTS}"
     if [ "$ACC_PATH" != "$ACC_PATH_STAMP" ]; then
       log "M5 ship: ACCEPTANCE PATH CHANGED ('$ACC_PATH_STAMP' -> '$ACC_PATH') — V6 R1 forbidden goalpost move"
       {

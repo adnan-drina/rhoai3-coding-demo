@@ -120,7 +120,20 @@ HBEOF
 
 fail_run() { phase_fail "$1"; echo "outer-failed: $1" > /tmp/outer-loop-done; exit 1; }
 
-: > "$LOG"
+# O-UXLOG-TRUNC (Poll 77 U1): never wipe the demo narrative on relaunch.
+# Append; rotate only when the file is huge (~5 MiB).
+if [ -s "$LOG" ]; then
+  _log_sz=$(wc -c <"$LOG" 2>/dev/null | tr -d ' ' || echo 0)
+  if [ "${_log_sz:-0}" -gt 5000000 ]; then
+    mv "$LOG" "${LOG}.prev.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  fi
+  {
+    echo ""
+    echo "[$(date -u +%F' '%T)] ——— RESUME outer-loop (append; prior narrative preserved) ———"
+  } >> "$LOG"
+else
+  : > "$LOG"
+fi
 phase_start "Outer loop — autonomous migration" \
   "Models: $(orch_label) · $(worker_label) | progress: $LOG | resume: $STATE"
 
@@ -198,6 +211,12 @@ STORIES=$(python3 "$HARNESS/parse-roadmap.py" migration/roadmap.md)
 [ -n "$STORIES" ] || fail_run "roadmap parsed to zero stories"
 STORY_IDS=$(echo "$STORIES" | cut -d'|' -f1 | tr '\n' ' ')
 STORY_COUNT=$(echo "$STORIES" | grep -c . || echo 0)
+# O-UXLOG-TRUNC: resume banner with ledger progress (demo-facing).
+DONE_N=$(awk -F, '$2=="complete"{n++} END{print n+0}' "$STATE" 2>/dev/null || echo 0)
+if [ "${DONE_N:-0}" -gt 0 ]; then
+  DONE_LIST=$(awk -F, '$2=="complete"{printf "%s ",$1}' "$STATE" 2>/dev/null)
+  log "         Resuming: ${DONE_N} of ${STORY_COUNT} stories complete (${DONE_LIST})— continuing at next incomplete"
+fi
 phase_start "Story loop — ${STORY_COUNT} stories (${STORY_IDS})"
 
 STORY_IDX=0

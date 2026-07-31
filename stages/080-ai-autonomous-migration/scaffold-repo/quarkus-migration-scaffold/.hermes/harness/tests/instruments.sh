@@ -2932,6 +2932,32 @@ run_case() {
 }
 check "write-hint rejects specimen ids and writes clean hint (K10)" 0 "k10write-ok"
 
+# O-UXLOG Wave A (Poll 77)
+run_case() {
+  # Must not unconditionally truncate; must resume-append.
+  ! grep -qE '^: > "\$LOG"$' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-UXLOG-TRUNC' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'RESUME outer-loop' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'Resuming:.*stories complete' "$HARNESS_DIR/outer-loop.sh" \
+    && echo uxtrunc-ok
+}
+check "outer-loop appends log + RESUME banner (O-UXLOG-TRUNC)" 0 "uxtrunc-ok"
+
+run_case() {
+  grep -q 'O-UXLOG-SENSE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'SENSE task sensor GREEN' "$HARNESS_DIR/supervisor.sh" \
+    && echo uxsense-ok
+}
+check "post_commit_verify mirrors GREEN sense (O-UXLOG-SENSE)" 0 "uxsense-ok"
+
+run_case() {
+  grep -q 'O-UXLOG-SHIP' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'waiting for factory pipeline' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'acceptance probe:' "$HARNESS_DIR/supervisor.sh" \
+    && echo uxship-ok
+}
+check "M5 ship milestones mirrored to outer_log (O-UXLOG-SHIP)" 0 "uxship-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 [ "$FAIL" -eq 0 ]
