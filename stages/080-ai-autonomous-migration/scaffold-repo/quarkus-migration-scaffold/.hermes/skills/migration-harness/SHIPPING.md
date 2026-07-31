@@ -106,10 +106,12 @@ unit tests for the least-covered classes listed:
 unmet. The contract is: route `/` serves 200 (a minimal index page over
 the app's API is enough — a UI waive in the plan is overridden here),
 and the `acceptance.path` from migration.yaml returns 200 with a
-**non-empty JSON array of catalog products** (or `{"products":[...]}`
-with a non-empty array) fetched via the live catalog client — never a
-bare status object, never canned domain data (forbidden-fabrication
-class; run-4 false green). Keep `quarkus.http.root-path` at its default:
+**non-empty JSON array** for `acceptance.collection` (Coolstore default
+`products`, or e.g. `{"vetList":[...]}` — O-ACCEPTGEN) fetched via the
+live client named in `acceptance.service` / `acceptance.endpointEnv` —
+never a bare status object, never canned domain data
+(forbidden-fabrication class; run-4 false green). Keep
+`quarkus.http.root-path` at its default:
 relocating it moves `/q/health` and `/` and breaks both the boot check
 and this acceptance.
 
@@ -117,12 +119,14 @@ and this acceptance.
 
 1. **Do not edit** `migration.yaml` `acceptance.path` (R1). Implement the
    stamped path; goalpost moves are rejected by the supervisor.
-2. Acceptance handler must call the catalog (`@RegisterRestClient` /
-   `CatalogService` or equivalent) and return real products (R2).
+2. Acceptance handler must call the live client (`@RegisterRestClient` /
+   `acceptance.service` or equivalent) and return the configured
+   collection (R2 / O-ACCEPTGEN).
 3. **No fail-open**: never `catch` → `Response.ok(...)` that forces HTTP
    200 with empty/canned success (R3).
-4. Wire `CATALOG_ENDPOINT` into `k8s/` Deployment `env` for the in-cluster
-   catalog URL (R5) — `application.properties` alone is not enough.
+4. Wire `acceptance.endpointEnv` (Coolstore: `CATALOG_ENDPOINT`) into
+   `k8s/` Deployment `env` for the in-cluster URL (R5) —
+   `application.properties` alone is not enough.
    **O-CATALOGDNS:** the host in that URL must resolve. If you use a short
    name (`http://catalog-service:8080`), co-deploy a `Service` (+ backing
    workload) named `catalog-service` under `k8s/` that serves the client's

@@ -231,6 +231,22 @@ run_case() {
 }
 check "acceptance-products rejects bare status objects (run-4 false green)" 0 ""
 
+# O-ACCEPTGEN — collection key from migration.yaml (petclinic-shaped vetList)
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /api/vets/acceptance-check\n  collection: vetList\n  service: VetService\n  itemType: Vet\n' > migration.yaml
+  printf '%s\n' '{"vetList":[{"id":"1"},{"id":"2"}]}' | python3 "$HARNESS_DIR/acceptance-products.py" --yaml migration.yaml
+}
+check "acceptance-products counts vetList from migration.yaml (O-ACCEPTGEN)" 0 "2"
+
+run_case() {
+  mkfix
+  printf 'acceptance:\n  path: /api/vets/acceptance-check\n  collection: vetList\n' > migration.yaml
+  out=$(printf '%s\n' '{"products":[{"id":"1"}]}' | python3 "$HARNESS_DIR/acceptance-products.py" --yaml migration.yaml)
+  [ "$out" = "0" ]
+}
+check "acceptance-products ignores products key when collection is vetList (O-ACCEPTGEN)" 0 ""
+
 # 11. mandatory findings must be mapped
 run_case() {
   mkfix
@@ -987,6 +1003,28 @@ run_case() {
 }
 check "harvest-from-staging harvests src/test targets (O-HARVESTSTALL)" 0 "HARVEST TEST OK"
 
+# O-PKGPREFIX — petclinic legacyPackage must not rewrite Spring Boot imports
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/org/springframework/samples/petclinic/model
+  cat > migration/staging/src/main/java/org/springframework/samples/petclinic/model/Owner.java <<'EOF'
+package org.springframework.samples.petclinic.model;
+import org.springframework.boot.SpringApplication;
+import org.springframework.samples.petclinic.model.Person;
+public class Owner extends Person { }
+EOF
+  printf 'legacyPackage: org.springframework.samples.petclinic\ntargetPackage: com.demo\n' > migration.yaml
+  bash "$HARVEST_SH" model/Owner.java >/dev/null 2>&1
+  dest=src/main/java/com/demo/model/Owner.java
+  { [ -f "$dest" ] \
+    && grep -q 'package com.demo.model' "$dest" \
+    && grep -q 'import org.springframework.boot.SpringApplication' "$dest" \
+    && grep -q 'import com.demo.model.Person' "$dest" \
+    && ! grep -q 'org.springframework.samples.petclinic' "$dest"; } \
+    && echo "PKGPREFIX OK boot untouched" || echo "FAIL"
+}
+check "harvest rename leaves org.springframework.boot untouched (O-PKGPREFIX)" 0 "PKGPREFIX OK"
+
 run_case() {
   mkfix
   mkdir -p .hermes/skills/migration-harness/scripts .hermes/harness \
@@ -1490,6 +1528,27 @@ EOF
   SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
 check "static sensors reject catalog-fetch status DTO acceptance (G-CATBODY)" 1 "G-CATBODY"
+
+# O-ACCEPTGEN — G-CAT tokens follow acceptance.collection (vetList specimen)
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  printf 'acceptance:\n  path: /api/vets/acceptance-check\n  collection: vetList\n  service: VetService\n  itemType: Vet\n' > migration.yaml
+  cat > src/main/java/com/demo/rest/AcceptanceEndpoint.java <<'EOF'
+package com.demo.rest;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import java.util.List;
+@Path("/api/vets")
+public class AcceptanceEndpoint {
+  VetService vets;
+  @GET @Path("acceptance-check")
+  public List acceptanceCheck() { return vets.vetList(); }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors accept vetList collection proof (O-ACCEPTGEN G-CAT)" 0 "STATIC CHECKS GREEN"
 
 run_case() {
   out=$(printf '%s\n' '[{"name":"Car"},{"name":"Bike"}]' | python3 "$HARNESS_DIR/acceptance-products.py")

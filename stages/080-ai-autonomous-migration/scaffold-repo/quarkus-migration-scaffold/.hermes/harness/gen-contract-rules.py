@@ -52,9 +52,9 @@ def _parse_simple(text: str) -> dict:
                 val = m.group(1).strip().strip("\"'")
                 data[section].append(val)
         if section == "acceptance":
-            m = re.match(r"^\s*path:\s*(\S+)", line)
+            m = re.match(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*:\s*(\S+)", line)
             if m:
-                data["acceptance"]["path"] = m.group(1).strip().strip("\"'")
+                data["acceptance"][m.group(1)] = m.group(2).strip().strip("\"'")
     return data
 
 
@@ -138,7 +138,9 @@ def emit_rules(contract: dict) -> str:
       pattern: "ExceptionMapper\\\\s*<\\\\s*Exception\\\\s*>"
 """
     )
-    acc = (contract.get("acceptance") or {}).get("path")
+    acc_block = contract.get("acceptance") or {}
+    acc = acc_block.get("path")
+    collection = acc_block.get("collection") or "products"
     if acc:
         leaf = acc.rstrip("/").split("/")[-1]
         rules.append(
@@ -147,10 +149,10 @@ def emit_rules(contract: dict) -> str:
   effort: 3
   description: Acceptance path {acc} must have a real handler surface
   message: >
-    migration.yaml acceptance.path is `{acc}`. Plan a task that implements
-    the handler (leaf `{leaf}` / acceptanceCheck) with a live catalog-backed
-    proof — not a ceremonial status map. Sensors enforce at ship; this rule
-    owns planning-time visibility.
+    migration.yaml acceptance.path is `{acc}` (collection `{collection}`).
+    Plan a task that implements the handler (leaf `{leaf}` / acceptanceCheck)
+    with a live collection-backed proof — not a ceremonial status map.
+    Sensors enforce at ship (O-ACCEPTGEN); this rule owns planning-time visibility.
   labels:
     - konveyor.io/target=quarkus
   when:

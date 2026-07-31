@@ -68,10 +68,16 @@ def _join_continuations(lines):
     return out
 
 
+_PKG_RENAME = re.compile(
+    r"(?<![A-Za-z0-9_])" + re.escape(LEGACY_PKG) + r"(?=[\.;\s]|$)"
+)
+
+
 def normalize(text):
     out = []
     for line in text.splitlines():
-        line = line.replace(LEGACY_PKG, TARGET_PKG)
+        # O-PKGPREFIX: same package-boundary rename as harvest-from-staging.sh
+        line = _PKG_RENAME.sub(TARGET_PKG, line)
         line = re.sub(r"new (\w+)<[^>]+>\(\)", r"new \1<>()", line)
         s = line.strip()
         if not s or s.startswith("//") or s.startswith("*") or s.startswith("/*") or s.endswith("*/"):

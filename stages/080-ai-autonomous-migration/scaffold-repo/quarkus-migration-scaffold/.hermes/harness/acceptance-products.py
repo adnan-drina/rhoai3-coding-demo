@@ -1,58 +1,87 @@
 #!/usr/bin/env python3
-"""Count catalog products in an acceptance-check JSON body (V6 R4 / G-FAKE).
+"""Count acceptance-collection items in a ship JSON body (V6 R4 / G-FAKE).
 
 Reads stdin. Prints a non-negative integer:
-  - len(obj["products"]) if body is an object with a products array of
-    product-shaped dicts (each with itemId or id)
-  - len(array) if the body is a JSON array of such product objects
+  - len(obj[collection]) if body is an object with a collection array of
+    item-shaped dicts (each with a configured id field)
+  - len(array) if the body is a JSON array of such objects
   - 0 otherwise (bare status objects, string bodies, empty arrays,
-    products without ids — run-4 / G-FAKE false greens)
+    items without ids — run-4 / G-FAKE false greens)
+
+Collection key and id fields come from migration.yaml acceptance.*
+(O-ACCEPTGEN); defaults remain Coolstore products/itemId.
 
 Exit 0 when JSON parses; exit 1 on invalid JSON / empty stdin.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+from pathlib import Path
+
+# Same directory import when run as script from harness/
+_SELF = Path(__file__).resolve().parent
+if str(_SELF) not in sys.path:
+    sys.path.insert(0, str(_SELF))
+
+from acceptance_config import load as load_acceptance  # noqa: E402
 
 
-def _product_ids(products: list) -> list:
+def _item_ids(items: list, id_fields: list[str]) -> list:
     ids = []
-    for p in products:
+    for p in items:
         if not isinstance(p, dict):
             continue
-        for key in ("itemId", "id", "item_id"):
+        for key in id_fields:
             if p.get(key) not in (None, ""):
                 ids.append(p.get(key))
                 break
     return ids
 
 
-def product_count(data: object) -> int:
-    products: list | None = None
+def item_count(data: object, collection: str, id_fields: list[str]) -> int:
+    items: list | None = None
     if isinstance(data, list):
-        products = data
+        items = data
     elif isinstance(data, dict):
-        raw = data.get("products")
+        raw = data.get(collection)
         if isinstance(raw, list):
-            products = raw
+            items = raw
         else:
             return 0
     else:
         return 0
 
-    if not products:
+    if not items:
         return 0
-    if not all(isinstance(p, dict) for p in products):
+    if not all(isinstance(p, dict) for p in items):
         return 0
-    # G-FAKE: require stable product identity fields (not nameless maps)
-    ids = _product_ids(products)
-    if len(ids) != len(products):
+    ids = _item_ids(items, id_fields)
+    if len(ids) != len(items):
         return 0
-    return len(products)
+    return len(items)
+
+
+# Backward-compatible alias for instruments / callers
+def product_count(data: object, collection: str = "products",
+                  id_fields: list[str] | None = None) -> int:
+    return item_count(data, collection, id_fields or ["itemId", "id", "item_id"])
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--yaml", default="migration.yaml")
+    ap.add_argument("--collection", default="")
+    ap.add_argument("--id-fields", default="")
+    args = ap.parse_args()
+    cfg = load_acceptance(args.yaml)
+    collection = args.collection or cfg["collection"]
+    if args.id_fields:
+        id_fields = [x.strip() for x in args.id_fields.split(",") if x.strip()]
+    else:
+        id_fields = list(cfg.get("idFields") or ["itemId", "id", "item_id"])
+
     raw = sys.stdin.read()
     if not raw.strip():
         print(0)
@@ -62,7 +91,7 @@ def main() -> int:
     except json.JSONDecodeError:
         print(0)
         return 1
-    print(product_count(data))
+    print(item_count(data, collection, id_fields))
     return 0
 
 

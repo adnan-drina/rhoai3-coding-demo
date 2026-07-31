@@ -12,7 +12,14 @@ migration:
   targetPackage: com.demo
 acceptance:
   # The harness supervisor asserts this after deploy (M5 ship success).
+  # O-ACCEPTGEN: collection/service/endpointEnv/itemType parameterize the
+  # ship-proof shape (sensors G-CAT/G-CATBODY + acceptance-products.py).
+  # Other specimens set e.g. collection: vetList (and matching service tokens).
   path: /api/cart/acceptance-check
+  collection: products
+  service: CatalogService
+  endpointEnv: CATALOG_ENDPOINT
+  itemType: Product
   needsDatabase: false
 analysis:
   # MTA rule selection is LABEL FILTERING (targets pick only matching

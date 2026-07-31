@@ -43,7 +43,7 @@ def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
         body = text[start:end]
         # O-AC2: last-task bodies used to swallow story-level waiver appendices
-        # (e.g. "CATALOG_ENDPOINT … waived"), falsely triggering preserve skip.
+        # (e.g. "<endpointEnv> … waived"), falsely triggering preserve skip.
         body = re.split(
             r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
             body,
@@ -220,9 +220,9 @@ def is_verify_task(title: str) -> bool:
     """O-ACVERIFY: Verify/Ensure/Confirm/Validate tasks must not preserve-skip.
 
     S05 T-003: 'Verify existing catalog-backed acceptance' skipped because
-    CATALOG_ENDPOINT appeared in Acceptance/preserve prose while the real
-    work was proving acceptance.path + products[] (G-CAT). Env token presence
-    ≠ verification complete.
+    an endpointEnv token appeared in Acceptance/preserve prose while the real
+    work was proving acceptance.path + collection body (G-CAT / O-ACCEPTGEN).
+    Env token presence ≠ verification complete.
     """
     return bool(re.search(r"^\s*(Verify|Ensure|Confirm|Validate)\b", title, re.I))
 

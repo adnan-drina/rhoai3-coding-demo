@@ -70,7 +70,18 @@ if echo "$dst" | grep -qE '(^|/)src/main/java/' \
 fi
 
 mkdir -p "$(dirname "$dst")"
-sed "s/${LEG//./\\.}/$TGT/g" "$src" > "$dst"
+# O-PKGPREFIX: package-boundary rename — replace LEG only when not glued to a
+# longer identifier char before the match, and only when followed by `.` / end
+# of package token. Proves org.springframework.samples.petclinic → target does
+# not rewrite org.springframework.boot.* (petclinic is not a prefix of boot);
+# also blocks mid-token false hits (e.g. xcom.redhat.coolstore).
+python3 - "$LEG" "$TGT" "$src" "$dst" <<'PY'
+import re, sys
+leg, tgt, src, dst = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+text = open(src, encoding="utf-8").read()
+pat = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(leg) + r"(?=[\.;\s]|$)")
+open(dst, "w", encoding="utf-8").write(pat.sub(tgt, text))
+PY
 
 # Post-conditions: dest exists under the '/'-joined target package, no dotted dir.
 grep -q "package[[:space:]]\+$(echo "$TGT" | sed 's/\./\\./g')" "$dst" \

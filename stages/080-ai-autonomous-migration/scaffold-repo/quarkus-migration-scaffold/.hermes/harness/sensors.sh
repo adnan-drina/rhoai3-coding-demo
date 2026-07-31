@@ -697,9 +697,25 @@ PY
   echo "O-REDATTRIB: $owner" >&2
 }
 
+# O-ACCEPTGEN: load acceptance.collection/service/… from migration.yaml.
+# Coolstore products/CatalogService defaults apply when collection is products.
+_acceptance_load_cfg() {
+  ACC_COLLECTION=products
+  ACC_SERVICE=CatalogService
+  ACC_ENDPOINT_ENV=CATALOG_ENDPOINT
+  ACC_ITEM_TYPE=Product
+  ACC_MOCK_CLASS=MockCatalogService
+  ACC_GETTER=getProducts
+  ACC_PROOF_RE='products\(|getProducts\(|CatalogService|CATALOG_ENDPOINT|List<.*Product'
+  ACC_RETURN_RE='return[[:space:]]+.*\b(products|getProducts)\s*\(|return[[:space:]]+products\b'
+  # shellcheck disable=SC1090
+  eval "$(python3 "$SELF_DIR/acceptance_config.py" --yaml migration.yaml --export-shell 2>/dev/null)" || true
+}
+
 # V6 R3/R6 — ship-contract static checks (acceptance fail-open + mapper breadth).
 acceptance_ship_contract() {
   [ -d src/main/java ] || return 0
+  _acceptance_load_cfg
   if grep -RIqE 'ExceptionMapper\s*<\s*Exception\s*>' src/main/java 2>/dev/null; then
     fail mapper "ExceptionMapper<Exception> is forbidden (remaps NotFound→503) — narrow to catalog/service failures (V6 R6)"
   fi
@@ -720,58 +736,59 @@ acceptance_ship_contract() {
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
   # V6 abort: ceremonial status-map acceptance (service_interfaces_ready /
-  # story-id Map) ships a 200 JSON object that is not a products[] catalog
-  # proof — reject whenever such a marker appears on an acceptance surface.
+  # story-id Map) ships a 200 JSON object that is not a collection proof
+  # — reject whenever such a marker appears on an acceptance surface.
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'service_interfaces_ready|interfaces_ready|"status"\s*,' "$f" 2>/dev/null; then
-      fail acceptance "ceremonial status-map acceptance in $f (V6) — must return catalog products[] / live fetch, not a status Map"
+      fail acceptance "ceremonial status-map acceptance in $f (V6) — must return ${ACC_COLLECTION}[] / live fetch, not a status Map"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
-  # G-OK (V7/V8): plain String / "OK" TEXT acceptance is not catalog proof.
+  # G-OK (V7/V8): plain String / "OK" TEXT acceptance is not collection proof.
   # Non-deploy stories otherwise story-gate-pass with return "OK".
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'return[[:space:]]+"OK"|return[[:space:]]+"ok"|public[[:space:]]+String[[:space:]]+[a-zA-Z0-9_]*\(' "$f" 2>/dev/null; then
-      # Allow String only if the file also fetches a catalog / products list.
-      if ! grep -qE 'products\(|CatalogService|CATALOG_ENDPOINT|List<.*Product' "$f" 2>/dev/null; then
-        fail acceptance "ceremonial String/OK acceptance in $f (G-OK) — must return catalog products[] / live fetch, not TEXT \"OK\""
+      if ! grep -qE "$ACC_PROOF_RE" "$f" 2>/dev/null; then
+        fail acceptance "ceremonial String/OK acceptance in $f (G-OK) — must return ${ACC_COLLECTION}[] / live fetch, not TEXT \"OK\""
       fi
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
-  # G-CAT / O-ACCEPTREC (Poll 50): positive catalog requirement for ANY
-  # acceptance surface — closes record/DTO/sealed-interface evasion of G-OK
-  # and status-map greps (Java record AcceptanceStatus("accepted", …)).
+  # G-CAT / O-ACCEPTREC (Poll 50) / O-ACCEPTGEN: positive collection requirement
+  # for ANY acceptance surface — tokens from migration.yaml acceptance.*.
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
-    if ! grep -qE 'products\(|CatalogService|CATALOG_ENDPOINT|List<.*Product' "$f" 2>/dev/null; then
-      # O-REDATTRIB: mid-story G-CAT RED often belongs to an earlier task —
-      # attribute before MiniMax burns seats on the current tid.
+    if ! grep -qE "$ACC_PROOF_RE" "$f" 2>/dev/null; then
       _redattrib_gcat "$f"
-      fail acceptance "acceptance surface $f lacks catalog fetch (G-CAT) — must reference CatalogService/products()/CATALOG_ENDPOINT (not ceremonial status DTO/record/Map/String)"
+      fail acceptance "acceptance surface $f lacks collection fetch (G-CAT) — must reference ${ACC_SERVICE:-service}/${ACC_COLLECTION}()/${ACC_ENDPOINT_ENV:-endpoint} from migration.yaml acceptance.* (not ceremonial status DTO/record/Map/String)"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
-  # G-CATBODY (Poll 51 live): catalog side-effect + status DTO still ships
-  # products=0 — require the handler to *return* products, not wrap a fetch in
+  # G-CATBODY: collection side-effect + status DTO still ships count=0 —
+  # require the handler to *return* the collection, not wrap a fetch in
   # AcceptanceStatus("accepted", …).
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
     if grep -qE 'new[[:space:]]+AcceptanceStatus|record[[:space:]]+AcceptanceStatus|"accepted"|"degraded"' "$f" 2>/dev/null; then
-      fail acceptance "acceptance surface $f returns ceremonial status DTO (G-CATBODY) — return catalog products[] (List<Product>/products()/getProducts()), not status/message"
+      fail acceptance "acceptance surface $f returns ceremonial status DTO (G-CATBODY) — return ${ACC_COLLECTION}[] (${ACC_GETTER}/${ACC_COLLECTION}()), not status/message"
     fi
-    if ! grep -qE 'return[[:space:]]+.*\b(products|getProducts)\s*\(|return[[:space:]]+products\b' "$f" 2>/dev/null; then
-      fail acceptance "acceptance surface $f does not return catalog products (G-CATBODY) — handler must return products()/getProducts() result (ship counts products[])"
+    if ! grep -qE "$ACC_RETURN_RE" "$f" 2>/dev/null; then
+      fail acceptance "acceptance surface $f does not return collection (G-CATBODY) — handler must return ${ACC_COLLECTION}()/${ACC_GETTER}() result (ship counts ${ACC_COLLECTION}[])"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
-  # G-FAKE: MockCatalogService (or hardcoded List.of Product pairs) in src/main
-  # is not a live catalog — ship must use @RestClient CatalogService.
-  if find src/main/java -type f -name 'MockCatalogService.java' 2>/dev/null | grep -q .; then
-    fail acceptance "MockCatalogService in src/main (G-FAKE) — use @RegisterRestClient CatalogService + CATALOG_ENDPOINT"
+  # G-FAKE: mock service class (or hardcoded List.of itemType) in src/main
+  # is not a live fetch — ship must use the configured client/endpoint.
+  if [ -n "${ACC_MOCK_CLASS:-}" ] \
+    && find src/main/java -type f -name "${ACC_MOCK_CLASS}.java" 2>/dev/null | grep -q .; then
+    fail acceptance "${ACC_MOCK_CLASS} in src/main (G-FAKE) — use @RegisterRestClient ${ACC_SERVICE:-client} + ${ACC_ENDPOINT_ENV:-endpoint env}"
   fi
   while IFS= read -r -d '' f; do
     grep -qE 'acceptanceCheck|acceptance-check|/acceptance' "$f" 2>/dev/null || continue
-    if grep -qE 'List\.of\s*\(\s*new[[:space:]]+Product|getMockProducts' "$f" 2>/dev/null; then
-      fail acceptance "hardcoded mock products in acceptance surface $f (G-FAKE) — fetch live catalog"
+    local fake_re='getMockProducts'
+    if [ -n "${ACC_ITEM_TYPE:-}" ]; then
+      fake_re="List\\.of\\s*\\(\\s*new[[:space:]]+${ACC_ITEM_TYPE}|getMockProducts"
+    fi
+    if grep -qE "$fake_re" "$f" 2>/dev/null; then
+      fail acceptance "hardcoded mock ${ACC_COLLECTION} in acceptance surface $f (G-FAKE) — fetch live collection"
     fi
   done < <(find src/main/java -type f -name '*.java' -print0 2>/dev/null)
 }

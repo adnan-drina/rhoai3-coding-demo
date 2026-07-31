@@ -16,7 +16,7 @@ import re
 import sys
 
 # Class methods with visibility; interface methods are often implicit-public
-# without a modifier (`List products();`).
+# without a modifier (`List items();`).
 CLASS_METHOD = re.compile(
     r"(?:^|\n)\s*(?:public|protected)\s+(?:static\s+)?(?:[\w.<>,\[\]\s]+)\s+(\w+)\s*\(",
     re.M,

@@ -1811,8 +1811,14 @@ ${RUN_CONTRACT}" \
       exit 0
     fi
     # E2: success = demo acceptance, not HTTP liveness — index page serves
-    # AND acceptance.path returns a non-empty **products array** (V6 R2/R4).
-    # Bare JSON objects must not count as 1 item (run-4 false green).
+    # AND acceptance.path returns a non-empty **collection array** (V6 R2/R4 /
+    # O-ACCEPTGEN). Bare JSON objects must not count as 1 item (run-4 false green).
+    ACC_COLLECTION=$(python3 -c "
+import sys
+sys.path.insert(0, '.hermes/harness')
+from acceptance_config import load
+print(load('migration.yaml').get('collection') or 'products')
+" 2>/dev/null || echo products)
     ROUTE=$(OC get route -n "$NS" -o jsonpath='{.items[0].spec.host}' 2>/dev/null)
     # Prefer rollout readiness over a fixed sleep (V6 P4.2).
     DEP=$(OC get deploy -n "$NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
@@ -1839,8 +1845,8 @@ print(m.group(1) if m else '')
     CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${ROUTE}/" 2>/dev/null || echo 000)
     ACC=$(curl -sk -o /tmp/acceptance-body.json -w "%{http_code}" "https://${ROUTE}${ACC_PATH}" 2>/dev/null || echo 000)
     PRODUCTS=$(python3 .hermes/harness/acceptance-products.py < /tmp/acceptance-body.json 2>/dev/null || echo 0)
-    log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} catalog products)"
-    outer_log "         M5 ship: acceptance probe: / → ${CODE}, ${ACC_PATH} → ${ACC}, products=${PRODUCTS}"
+    log "M5 ship: route / -> ${CODE}; ${ACC_PATH} -> HTTP ${ACC} (${PRODUCTS} ${ACC_COLLECTION})"
+    outer_log "         M5 ship: acceptance probe: / → ${CODE}, ${ACC_PATH} → ${ACC}, ${ACC_COLLECTION}=${PRODUCTS}"
     if [ "$ACC_PATH" != "$ACC_PATH_STAMP" ]; then
       log "M5 ship: ACCEPTANCE PATH CHANGED ('$ACC_PATH_STAMP' -> '$ACC_PATH') — V6 R1 forbidden goalpost move"
       {
@@ -1852,24 +1858,24 @@ print(m.group(1) if m else '')
       } > /tmp/deploy-failure.txt
       FAILED_TASK="acceptance-deploy"
     elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
-      event "m5-ship" 0 "acceptance_pass" "route=${CODE},products=${PRODUCTS}"
+      event "m5-ship" 0 "acceptance_pass" "route=${CODE},${ACC_COLLECTION}=${PRODUCTS}"
       clear_debt
-      write_run_report "success: shipped, route 200, ${PRODUCTS} products"
+      write_run_report "success: shipped, route 200, ${PRODUCTS} ${ACC_COLLECTION}"
       phase_f_retro
       git push origin main >> "$LOG" 2>&1 || true
-      echo "success route=${ROUTE} http=${CODE} products=${PRODUCTS}" > /tmp/supervisor-done
+      echo "success route=${ROUTE} http=${CODE} ${ACC_COLLECTION}=${PRODUCTS}" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: migration shipped and accepted"
       if [ "${SHIP_ONLY:-}" = "1" ]; then
-        outer_log "OK END    SHIP_ONLY — success http=${CODE} products=${PRODUCTS}; outer-loop still idle"
+        outer_log "OK END    SHIP_ONLY — success http=${CODE} ${ACC_COLLECTION}=${PRODUCTS}; outer-loop still idle"
       fi
       exit 0
     else
-      log "M5 ship: pipeline green but ACCEPTANCE failed (/ ${CODE}, products ${PRODUCTS}) — deploy-correction round"
+      log "M5 ship: pipeline green but ACCEPTANCE failed (/ ${CODE}, ${ACC_COLLECTION} ${PRODUCTS}) — deploy-correction round"
       {
         echo "Acceptance failure: pipeline green but the demo acceptance is unmet."
         echo "Route / returned HTTP ${CODE} (need 200 — an index page must exist)."
-        echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} catalog products (need 200 and a non-empty JSON array of products, or {\"products\":[...]} — not a bare status object)."
-        echo "Mandatory correction checklist (V6): keep acceptance.path unchanged; catalog-backed body; k8s CATALOG_ENDPOINT env; narrow ExceptionMapper away from Exception; no fail-open catch→200."
+        echo "${ACC_PATH} returned HTTP ${ACC} with ${PRODUCTS} ${ACC_COLLECTION} (need 200 and a non-empty JSON array, or {\"${ACC_COLLECTION}\":[...]} — not a bare status object)."
+        echo "Mandatory correction checklist (V6/O-ACCEPTGEN): keep acceptance.path unchanged; collection-backed body per migration.yaml acceptance.collection; k8s endpoint env; narrow ExceptionMapper away from Exception; no fail-open catch→200."
         echo "See SHIPPING.md acceptance-correction for the contract and decided fixes."
       } > /tmp/deploy-failure.txt
       FAILED_TASK="acceptance-deploy"

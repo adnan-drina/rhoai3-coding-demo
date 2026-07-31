@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """O-MSGCLAIM — subject claims class work that the commit diff does not touch.
 
-S04 T-002: escalation message claimed CatalogService Feign→REST convert while
+S04 T-002: escalation message claimed a *Service Feign→REST convert while
 the file was unchanged. Exit 1 when CamelCase *Service/*Endpoint/*Impl names
 in the subject are absent from changed paths.
 
