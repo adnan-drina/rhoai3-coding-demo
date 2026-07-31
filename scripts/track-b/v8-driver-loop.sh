@@ -304,13 +304,13 @@ refresh_task_analysis_pending() {
     echo '```bash'
     echo "bash scripts/track-b/v9-capture-diff.sh --oc ${head_sha:-HEAD}"
     echo "# write detailed tmp/docs-archive/V9-QUALITY-GATE.md section (code + action quality)"
-    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE1-REVIEW.md"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE2-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-task-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare \`echo SHA > tmp/V9-TASK-ANALYSIS.sha\` does **not** clear —"
     echo "sha file must contain \`# validated:\` from the clear script."
-    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE1-REVIEW.md\`"
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE2-REVIEW.md\`"
     echo "that cites the sha (Wave-1 handshake — gate log alone fails)."
     echo
     echo "## Mandatory checklist"
@@ -390,12 +390,12 @@ refresh_milestone_analysis_pending() {
     echo
     echo '```bash'
     echo "# write comprehensive tmp/docs-archive/V9-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
-    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE1-REVIEW.md"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE2-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-m-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare sha write does **not** clear — needs \`# validated:\` from clear script."
-    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE1-REVIEW.md\`"
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE2-REVIEW.md\`"
     echo "that cites the sha (Wave-1 handshake)."
   } >"$M_PENDING_FILE"
 }

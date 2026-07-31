@@ -65,7 +65,7 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-POM-PRE | ✅ | *Symptom of O-DESTBASE* — closed by scaffold-presatisfied omit + already-complete (2026-07-31). |
 | O-THIN-PAD | ✅ | *Symptom of O-DESTBASE* — closed by scaffold-presatisfied omit + already-complete (2026-07-31). |
 | O-NOWAIT | ✅ | Implementing agent must not leave supervisor-pause / freeze for human GO — decide+execute resume/abort in-band (2026-07-30). |
-| O-REVDOC | ✅ | O-DRV3/O-DRV5 clear requires Implementing note citing sha in `tmp/KAI-WAVE1-REVIEW.md` (`qg_require_wave1_review_note`); gate log alone insufficient — script-enforced handshake (2026-07-30). |
+| O-REVDOC | ✅ | O-DRV3/O-DRV5 clear requires Implementing note citing sha in active review doc (`tmp/KAI-WAVE2-REVIEW.md`; Wave 1 archive `tmp/KAI-WAVE1-REVIEW.md`) (`qg_require_wave1_review_note`); gate log alone insufficient — script-enforced handshake (2026-07-30; active doc → WAVE2 2026-07-31). |
 | O-FGRETRO | ✅ | Fixed 2026-07-31: `/tmp/probe-reeval-needed` → `fgretro-reeval.py` reopens ALREADY COMPLETE / Already satisfied skips the hardened probe refuses; `committed()` honors `/tmp/fgretro-reopen.txt`; HOTSWAP re-enter touches probe-reeval. |
 | O-ESCWCONVERT | ✅ | Fixed earlier + instruments: WORKER_LAST_RC must be 0; escw-eligible requires @SessionScoped/@Inject when task asks (S04 T-005). |
 | O-LATERCDI | ✅ | Fixed: supervisor keep-if-injected when STORY_SCOPE injects an interface the later class implements (S04 CartEndpoint→ShoppingCartService). |
@@ -139,7 +139,7 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 ## Demo log UX (Poll 77 — `/tmp/outer-loop.log` is the workshop view)
 
 Wave A (⬜ before next demo run). Wave B/C (📋). Detail table in
-`tmp/KAI-WAVE1-REVIEW.md` Poll 77.
+`tmp/KAI-WAVE2-REVIEW.md` (migrated from Wave 1 archive Poll 77).
 
 | ID | Status | Notes |
 |----|--------|-------|

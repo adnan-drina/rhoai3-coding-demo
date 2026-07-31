@@ -15,9 +15,9 @@ ROOT="$(qg_root)"
 # V9 gate doc remains archived until a V10 quality-gate file is opened.
 GATE_DOC="${GATE_DOC:-${ROOT}/tmp/docs-archive/V9-QUALITY-GATE.md}"
 BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
-# Wave-1 due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
+# Active Wave due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
 # clear scripts refuse unless a note cites the sha — gate log alone is not enough.
-REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE1-REVIEW.md}"
+REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE2-REVIEW.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace defaults (override via env — do not hardcode elsewhere).
@@ -228,7 +228,7 @@ PY
 }
 
 # Require an ### Implementing note in REVIEW_DOC that cites this sha.
-# Skips only when REVIEW_DOC is absent (non-Wave-1 runs). Hard-fail when present.
+# Skips only when REVIEW_DOC is absent (non-Wave-2 runs). Hard-fail when present.
 qg_require_wave1_review_note() {
   local sha="$1"
   local short="${sha:0:7}"
