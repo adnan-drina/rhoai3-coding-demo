@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# O-DRV3 — clear task analysis ONLY after a real V9-QUALITY-GATE.md review.
+# O-DRV3 — clear task analysis ONLY after:
+#   1) a real V9-QUALITY-GATE.md review (substance + diff evidence), AND
+#   2) an Implementing note in tmp/KAI-WAVE1-REVIEW.md citing this sha
+#      (when that review doc exists — Wave-1 handshake).
 #
 # Usage:
 #   bash scripts/track-b/v9-clear-task-analysis.sh <full-or-short-sha>
+# Bare `echo SHA > tmp/V9-TASK-ANALYSIS.sha` does NOT clear.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=/dev/null
@@ -56,7 +60,8 @@ PY
 
 qg_validate_task_section "$BODY"
 qg_validate_diff_evidence "$SHA" "$BODY"
+qg_require_wave1_review_note "$SHA"
 
 qg_write_validated_sha "${ROOT}/tmp/V9-TASK-ANALYSIS.sha" "$SHA"
 rm -f "$PENDING"
-echo "O-DRV3: cleared task analysis for $SHA (gate+diff validated)"
+echo "O-DRV3: cleared task analysis for $SHA (gate+diff+review-doc validated)"

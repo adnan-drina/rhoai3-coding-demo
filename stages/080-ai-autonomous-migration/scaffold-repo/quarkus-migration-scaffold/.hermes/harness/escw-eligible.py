@@ -86,12 +86,35 @@ def main() -> int:
         return 0
 
     # Target destination .java files must exist for ESCW (conversion tasks).
-    for want in re.findall(
+    targets = re.findall(
         r"(?:Target|→|->)[^\n]*?(src/main/java/[A-Za-z0-9_./-]+\.java)", blob
-    ):
+    )
+    for want in targets:
         if not (ROOT / want).is_file():
             print(f"missing-target:{want}")
             return 1
+
+    # O-ESCWCONVERT (S04 T-005): existence of a harvested JAX-RS stub is not
+    # "Convert … session management / constructor injection" complete. Require
+    # the contract the task text asks for before allow-empty.
+    convertish = bool(
+        re.search(
+            r"(?i)\bconvert\b|session management|@SessionScoped|"
+            r"constructor injection|Quarkus session",
+            blob,
+        )
+    )
+    if convertish and targets:
+        for want in targets:
+            text = (ROOT / want).read_text(encoding="utf-8", errors="replace")
+            if re.search(r"(?i)session management|@SessionScoped|Quarkus session", blob):
+                if not re.search(r"@SessionScoped|SessionScoped", text):
+                    print(f"need-session-scope:{want}")
+                    return 1
+            if re.search(r"(?i)constructor injection|@Autowired|@Inject", blob):
+                if "@Inject" not in text and "jakarta.inject.Inject" not in text:
+                    print(f"need-inject:{want}")
+                    return 1
 
     # Package-structure: need .gitkeep or any file in the named directory.
     if re.search(r"(?i)package structure|empty package", blob):
@@ -104,6 +127,27 @@ def main() -> int:
             if not any(p.iterdir()):
                 print(f"empty-pkgdir:{d}")
                 return 1
+
+    # K6: Findings still present in oracle → never allow-empty ESCW.
+    oracle = ROOT / ".hermes/harness/findings-oracle.py"
+    if not oracle.is_file():
+        oracle = Path(__file__).resolve().parent / "findings-oracle.py"
+    if oracle.is_file():
+        import subprocess
+
+        env = os.environ.copy()
+        env["ORACLE_ROOT"] = str(ROOT)
+        env["ALREADY_COMPLETE_ROOT"] = str(ROOT)
+        proc = subprocess.run(
+            [sys.executable, str(oracle), str(tasks), tid],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        out = (proc.stdout or "").strip()
+        if proc.returncode == 1 and out.startswith("present:"):
+            print(f"findings-present:{out.split(':', 1)[1][:80]}")
+            return 1
 
     print("eligible")
     return 0

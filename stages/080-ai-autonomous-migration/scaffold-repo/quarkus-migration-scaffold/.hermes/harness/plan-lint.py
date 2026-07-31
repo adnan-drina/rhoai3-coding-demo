@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Deterministic M3 plan lint (improvement plan B2).
 
-Usage: plan-lint.py <tasks.md> [mta-findings.json] [--findings-scope id1,id2]
+Usage: plan-lint.py <tasks.md> [mta-findings.json]
+         [--findings-scope id1,id2] [--story-deploy true|false]
 
 --findings-scope (M3 story scoping, redesign §3): restrict the
 mandatory-findings coverage check to the listed rule ids — the story's
 assigned findings from the roadmap. All other checks stay global.
+
+--story-deploy (O-M3ACCEPT): when true, acceptance.path must be tasked with
+Java @Path substance. When false (non-deploy stories), path must NOT be
+tasked with endpoint substance (defer to deploy story; S-AC1/G-OK). When
+omitted, defaults to true for back-compat with older instrument fixtures.
 
 Checks (exit 0 = plan accepted, 1 = revision required; findings printed
 one per line as 'LINT:<class>: <detail>'):
@@ -22,6 +28,7 @@ one per line as 'LINT:<class>: <detail>'):
 import json
 import re
 import sys
+from pathlib import Path
 
 problems = []
 
@@ -49,10 +56,16 @@ def _map_pkg_path(rel: str, legacy_slash: str, target_slash: str) -> str:
 
 
 _JAVA_PATH = re.compile(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java")
+# K1-SHARED: pom / properties / k8s may also be Target/Owns claims.
+_SHARED_PATH = re.compile(
+    r"(?<![\w./])(?:pom\.xml|"
+    r"src/(?:main|test)/resources/[A-Za-z0-9_./-]+\.(?:properties|ya?ml|xml)|"
+    r"k8s/[A-Za-z0-9_./-]+)"
+)
 # Lines that declare ownership (not disclaimers).
 _CLAIM_LINE = re.compile(
     r"(?i)(?:^\s*\*?\*?(?:Absorbs|Owns|Target\s*design|Target|Design)\*?\*?\s*:)"
-    r"|(?:→|->)\s*`?src/"
+    r"|(?:→|->)\s*`?(?:src/|pom\.xml|k8s/)"
 )
 _OOS_LINE = re.compile(
     r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
@@ -86,6 +99,8 @@ def _declared_claim_paths(body: str) -> set[str]:
         if not _CLAIM_LINE.search(line):
             continue
         for p in _JAVA_PATH.findall(line):
+            paths.add(_norm_incident_uri(p))
+        for p in _SHARED_PATH.findall(line):
             paths.add(_norm_incident_uri(p))
     return paths
 
@@ -139,6 +154,13 @@ def main():
     if "--profile" in args:
         i = args.index("--profile")
         profile_path = args[i + 1]
+        del args[i:i + 2]
+    # O-M3ACCEPT: default True preserves pre-flag instrument behaviour.
+    story_deploy = True
+    if "--story-deploy" in args:
+        i = args.index("--story-deploy")
+        raw = (args[i + 1] if i + 1 < len(args) else "true").strip().lower()
+        story_deploy = raw in ("1", "true", "yes", "on")
         del args[i:i + 2]
     tasks_path = args[0]
     text = open(tasks_path).read()
@@ -274,12 +296,19 @@ def main():
         r"run validation|validate (?:the )?gate|note for later|remember (?:the )?path)\b",
         re.I,
     )
+    # S-SOFT-NARROW: title-leading Verify/Ensure/Confirm/Validate is soft even
+    # when the body cites a path (Poll 29 T-009/T-010; pairs with O-ACVERIFY).
+    soft_title = re.compile(r"^\s*(verify|ensure|confirm|validate)\b", re.I)
     for _, tid, title in heads:
         body = bodies.get(tid, "")
         if not substance.search(body):
             lint("substance", f"{tid}: task body names no code/config path it changes — ceremonial task (waivers belong in spec prose, not tasks)")
         # S-SOFT: soft prepare / verification-only tasks even when they cite a path
-        if soft.search(title) or soft.search(body.split("\n", 3)[0] if body else ""):
+        if (
+            soft.search(title)
+            or soft_title.search(title)
+            or soft.search(body.split("\n", 3)[0] if body else "")
+        ):
             lint(
                 "substance",
                 f"{tid}: soft prepare/verification-only task (S-SOFT) — fold into a concrete file-changing task",
@@ -302,7 +331,8 @@ def main():
                 lint("preserve", f"preserved integration '{item}' mapped to no task")
         # Ship acceptance is part of the contract (cart run #2: the stamped
         # acceptance.path had no endpoint anywhere in the plan, discovered
-        # only at ship time). The path must be mapped to a task.
+        # only at ship time). O-M3ACCEPT: only deploy stories must task it
+        # with Java substance; non-deploy stories must defer (S-AC1/G-OK).
         # V5/run-4: a comment (or blank lines) between `acceptance:` and
         # `path:` made the old immediate-next-line regex miss entirely, so
         # S05 plan-lint stayed green with the path untasked (V6 R7).
@@ -311,23 +341,38 @@ def main():
             my,
             _re.M,
         )
-        if m and m.group(1) not in text:
-            lint("acceptance", f"acceptance path '{m.group(1)}' (migration.yaml) mapped to no task — the app must serve it")
-        elif m:
-            # V6 R7 substance: covering tasks must name a Java resource surface
-            # (@Path / Endpoint / src/main/...java) — not a ceremonial string cite.
+        if m:
             path = m.group(1)
             covering = [b for b in bodies.values() if path in b]
-            if covering:
-                joined = "\n".join(covering)
-                if not re.search(
-                    r"@Path|src/main/java/\S+\.java|\bEndpoint\b|\bResource\b|acceptanceCheck",
-                    joined,
-                ):
+            endpoint_re = (
+                r"@Path|src/main/java/\S+\.java|\bEndpoint\b|\bResource\b|acceptanceCheck"
+            )
+            has_endpoint = bool(
+                covering
+                and re.search(endpoint_re, "\n".join(covering))
+            )
+            if story_deploy:
+                if path not in text:
+                    lint(
+                        "acceptance",
+                        f"acceptance path '{path}' (migration.yaml) mapped to no task "
+                        f"— the app must serve it",
+                    )
+                elif covering and not has_endpoint:
+                    # V6 R7 substance: covering tasks must name a Java resource
+                    # surface — not a ceremonial string cite.
                     lint(
                         "acceptance",
                         f"acceptance path '{path}' tasked without Java @Path/resource substance "
                         f"— ceremonial mapping (V6 R7)",
+                    )
+            else:
+                # Non-deploy: inverse — endpoint substance is forbidden here.
+                if has_endpoint:
+                    lint(
+                        "acceptance",
+                        f"acceptance path '{path}' tasked with endpoint substance on a "
+                        f"non-deploy story — defer to the deploy story (O-M3ACCEPT / S-AC1)",
                     )
     except FileNotFoundError:
         pass
@@ -350,12 +395,27 @@ def main():
             recipe_log = open("migration/recipe-log.md").read()
         except OSError:
             recipe_log = ""
+        # O-DESTBASE / K6: scaffold-presatisfied (+ M1-generated) rules are
+        # already true on the Quarkus destination — omit from M3 ownership.
+        presat = set()
+        for _base in (
+            Path("migration/scaffold-presatisfied.generated.txt"),
+            Path(".hermes/harness/scaffold-presatisfied.txt"),
+            Path(__file__).resolve().parent / "scaffold-presatisfied.txt",
+        ):
+            try:
+                for _ln in _base.read_text(encoding="utf-8").splitlines():
+                    _ln = _ln.strip()
+                    if _ln and not _ln.startswith("#"):
+                        presat.add(_ln)
+            except OSError:
+                continue
         target_slash = target_pkg.replace(".", "/")
         # Per-file owners across all in-scope mandatory rules (conflict is
         # file-level — two tasks must not claim the same incident file).
         file_owners: dict[str, set[str]] = {}
         for rid, v in mandatory.items():
-            if rid in recipe_log:
+            if rid in recipe_log or rid in presat:
                 continue
             incidents = v.get("incidents") or []
             # Zero-incident rules: keep rule-id string-mention (pre-K1).
@@ -379,14 +439,22 @@ def main():
                     for tid, body in bodies.items()
                     if _task_owns_incident(body, legacy_rel, target_rel)
                 ]
-                key = legacy_rel
-                file_owners.setdefault(key, set()).update(owners)
                 if not owners:
                     lint(
                         "incident-unowned",
                         f"{rid} {legacy_rel} owned by no task "
                         f"(claim via Target/→ {target_rel}, Absorbs:, or Owns:)",
                     )
+                # K1-SHARED (Poll 11): pom/properties/k8s are shared surfaces —
+                # require ownership but do not incident-conflict across tasks.
+                # Restrict conflict tracking to src/**/*.java only.
+                def _src_java(p: str) -> bool:
+                    return p.endswith(".java") and (
+                        p.startswith("src/") or "/src/" in p
+                    )
+
+                if _src_java(legacy_rel) or _src_java(target_rel):
+                    file_owners.setdefault(legacy_rel, set()).update(owners)
         for fpath, owners in sorted(file_owners.items()):
             if len(owners) > 1:
                 claimed = " and ".join(sorted(owners))
@@ -489,18 +557,60 @@ def main():
             "add model-level characterization tests (deferring service tests ≠ empty tests; V8 S02)",
         )
 
-    # S-AC1 (V9 S01 HOLD): platform stories must not schedule ceremonial
-    # acceptance placeholders (status-map / "simple status") — that belongs
-    # on the deploying story with a real catalog/products proof (G-OK/G-FAKE).
-    if re.search(
+    # K2-LABEL (V10 Poll 13): task-packet reads **Findings**: — a **Finds**:
+    # alias used to pass plan-lint (whole-doc id scan) while injecting zero
+    # evidence. Require the canonical label when a task cites rule ids.
+    for _, tid, _title in heads:
+        body = bodies.get(tid, "")
+        if re.search(r"(?im)^\*?\*?Findings\*?\*?\s*:", body):
+            continue
+        if re.search(r"(?im)^\*?\*?Finds?\*?\*?\s*:", body):
+            lint(
+                "K2-LABEL",
+                f"{tid}: use canonical **Findings**: (not Finds/Finding) so "
+                f"task-packet injects Analysis evidence (K2)",
+            )
+
+    # S-AC1 (V9 S01 HOLD / V10 S01): platform stories must not schedule
+    # ceremonial acceptance placeholders (status-map / MinimalAcceptance /
+    # "simple status") — that belongs on the deploying story with a real
+    # catalog/products proof (G-OK/G-FAKE). Cite acceptance.path as a full
+    # literal string in prose/defer notes; do not invent a status endpoint.
+    # O-M3GOK (S05): also catch status/ok and String "ok" acceptance tasked
+    # onto CartEndpoint / any endpoint (deploy=true must keep catalog-backed
+    # products[] proof — G-CAT / G-OK).
+    # S-AC1-NEG: skip lines that negate the placeholder (e.g. "No
+    # MinimalAcceptanceEndpoint…") so defer prose does not false-RED.
+    _ac1_pat = re.compile(
         r"(?i)acceptance endpoint placeholder|simple status response|"
-        r"returns simple status|status response for web surface",
-        text,
-    ):
+        r"returns simple status|status response for web surface|"
+        r"MinimalAcceptanceEndpoint|platform_ready|"
+        r"Map\.of\s*\(\s*\"status\"|"
+        r"Return JSON response with status information|"
+        r"platform readiness verification|"
+        r"status/ok|"
+        r"return\s+[\"']ok[\"']|"
+        r"AcceptanceStatus|"
+        r"ceremonial\s+status|"
+        r"@Path\s*\(\s*[\"']/?status[\"']",
+    )
+    _ac1_neg = re.compile(
+        r"(?i)\b(no|not|never|without|avoid|do\s+not|don't|must\s+not|do\s+NOT)\b"
+        r".{0,80}(MinimalAcceptance|platform_ready|Map\.of|status/ok|"
+        r"AcceptanceStatus|ceremonial\s+status|simple status|status response)",
+    )
+    _ac1_hit = False
+    for _line in text.splitlines():
+        if _ac1_neg.search(_line):
+            continue
+        if _ac1_pat.search(_line):
+            _ac1_hit = True
+            break
+    if _ac1_hit:
         lint(
             "S-AC1",
             "plan schedules a ceremonial acceptance placeholder/status response — "
-            "defer real acceptance to the deploy story (V9 S01 HOLD / G-OK)",
+            "defer real acceptance to the deploy story (V9 S01 HOLD / G-OK / O-M3GOK)",
         )
 
     # S-PKGDIR (O-PKGDIR V9 S03): package-structure / mkdir tasks must require
@@ -518,6 +628,32 @@ def main():
                 f"{tid}: package-structure task must require .gitkeep or "
                 f"package-info.java so git can commit (O-PKGDIR)",
             )
+
+    # O-PKGORD (Poll 20): package-rename before any harvested .java → empty
+    # ESCW. Defer until staging or src has at least one .java to rename.
+    _has_java = False
+    for _root in (
+        Path("src/main/java"),
+        Path("src/test/java"),
+        Path("migration/staging/src/main/java"),
+        Path("migration/staging/src/test/java"),
+    ):
+        if _root.is_dir() and any(_root.rglob("*.java")):
+            _has_java = True
+            break
+    if not _has_java:
+        for _, tid, title in heads:
+            blob = f"{title}\n{bodies.get(tid, '')}"
+            if re.search(
+                r"(?i)package\s*rename|rename\s+(the\s+)?package|"
+                r"apply\s+(the\s+)?package\s+rename|legacyPackage\s*→",
+                blob,
+            ):
+                lint(
+                    "O-PKGORD",
+                    f"{tid}: package-rename scheduled with no harvested .java "
+                    f"in src/ or migration/staging — defer to first harvest story",
+                )
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# O-DRV5 — clear milestone analysis ONLY after a comprehensive gate entry
-# with Verdict ADVANCE|HOLD|ABORT.
+# O-DRV5 — clear milestone analysis ONLY after:
+#   1) a comprehensive gate entry with Verdict ADVANCE|HOLD|ABORT, AND
+#   2) an Implementing note in tmp/KAI-WAVE1-REVIEW.md citing this sha
+#      (when that review doc exists — Wave-1 handshake).
 #
 # Usage:
 #   bash scripts/track-b/v9-clear-m-analysis.sh <sha> [--require-advance]
@@ -46,6 +48,7 @@ if [ "$REQUIRE_ADVANCE" = "1" ]; then
   echo "$BODY" | grep -qiE '\*\*Verdict:\*\*[[:space:]]*ADVANCE' \
     || qg_die "ADVANCE required but gate verdict is not ADVANCE"
 fi
+qg_require_wave1_review_note "$SHA"
 
 qg_write_validated_sha "${ROOT}/tmp/V9-M-ANALYSIS.sha" "$SHA"
 # Watermark outer M line if present in pending
@@ -54,4 +57,4 @@ if [ -f "$PENDING" ]; then
   [ -n "$OUTER" ] && printf '%s\n' "${OUTER#OUTER: }" > "${ROOT}/tmp/V9-OUTER-M-WATERMARK"
 fi
 rm -f "$PENDING"
-echo "O-DRV5: cleared milestone analysis for $SHA (gate+verdict validated)"
+echo "O-DRV5: cleared milestone analysis for $SHA (gate+verdict+review-doc validated)"

@@ -83,6 +83,49 @@ fi
 .hermes/harness/sensors.sh seed >> "$LOG" 2>&1 || log "WARN: isolated repo seed failed — sensors fall back to red-on-use"
 event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
 
+# K11: per-Findings-rule outcome for O-DRV5 / run-report aggregation.
+record_rule_outcomes() { # $1=tid $2=outcome-token
+  local tid="$1" outcome="$2" ids
+  [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
+  ids=$(python3 - "$TASKS_FILE" "$tid" <<'PY' 2>/dev/null || true
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+tid = sys.argv[2]
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+body = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    break
+ids = []
+for m in re.finditer(r"(?im)^\s*-?\s*\*\*Findings\*\*:\s*(.+)$", body):
+    ids.extend(re.findall(r"[a-z][a-z0-9_-]*-\d+", m.group(1), re.I))
+print(" ".join(dict.fromkeys(ids)))
+PY
+)
+  for rid in $ids; do
+    [ -n "$rid" ] || continue
+    event "$tid" 0 "rule:${rid}" "$outcome"
+  done
+}
+
+# K9: seed forward-looking discovered channel (not debt).
+ensure_discovered() {
+  [ -f migration/discovered.md ] && return 0
+  mkdir -p migration
+  cat > migration/discovered.md <<'EOF'
+# Discovered work (K9)
+
+Forward-looking scope intelligence — **not** sensor debt (`migration/debt.md`).
+Workers append out-of-scope needs here instead of acting on them.
+
+| when (UTC) | task | file/area | need |
+|---|---|---|---|
+EOF
+}
+
 # Process contract only — ALL judgment guidance (packet rules, sensors,
 # gate bars, dispatch discipline) lives in the migration-harness skill
 # and AGENTS.md. The supervisor injects nothing but run configuration
@@ -90,7 +133,13 @@ event() { echo "$(date -u +%s),$1,$2,$3,$4" >> "$EVENTS"; }
 RUN_CONTRACT="Run contract: the worker model for this run is WORKER_MODEL_PLACEHOLDER. DO NOT PUSH anywhere - the supervisor ships. Finish with ONE commit using the exact message prefix stated below."
 RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
-committed() { git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"; }
+committed() {
+  # O-FGRETRO: probe harden may invalidate prior ALREADY COMPLETE skips.
+  if [ -f /tmp/fgretro-reopen.txt ] && grep -qx "$1" /tmp/fgretro-reopen.txt 2>/dev/null; then
+    return 1
+  fi
+  git log --oneline "${RUN_BASE}..HEAD" | grep -q " $1:"
+}
 
 # O-T6b / O-T6c / O-STY: never sweep harness or staging fidelity trees into T-NNN commits.
 stage_for_task_commit() {
@@ -224,8 +273,18 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   local tag="$1" prompt="$2" t0 t1 rc
   # Pause point (V3): operators touch /tmp/supervisor-pause for a clean
   # intervention window between sessions — no kills, no target/ races.
-  while [ -f /tmp/supervisor-pause ]; do
-    log "PAUSED (rm /tmp/supervisor-pause to continue)"; sleep 30
+  # O-HOTSWAP: /tmp/harness-update requests a mid-run harness deploy — pause
+  # cleanly (do not die → outer no-done-marker → false S0N,failed).
+  while [ -f /tmp/supervisor-pause ] || [ -f /tmp/harness-update ]; do
+    if [ -f /tmp/harness-update ]; then
+      touch /tmp/supervisor-pause
+      printf 'paused\n' > /tmp/harness-update-ack
+      log "O-HOTSWAP: /tmp/harness-update seen — paused for harness deploy (rm harness-update + supervisor-pause to resume)"
+      outer_log "         O-HOTSWAP: supervisor paused for harness update — will resume mid-story (not failed)"
+    else
+      log "PAUSED (rm /tmp/supervisor-pause to continue)"
+    fi
+    sleep 30
   done
   wait_for_worker
   t0=$(date +%s)
@@ -261,21 +320,66 @@ scope_enforce() { # $1=commit-prefix
   # double instead. LATER_CLASSES = simple class names, set by the outer
   # loop from the roadmap's later-story scope.
   if [ -n "${LATER_CLASSES:-}" ]; then
-    local lviol=""
-    for f in $(git diff --name-only --diff-filter=A HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
-      case " ${LATER_CLASSES} " in *" $(basename "$f" .java) "*) lviol="$lviol $f";; esac
+    local lviol="" keep="" f bn
+    # O-ESCWSCOPE: also catch *modifications* to later-story classes (not only adds).
+    for f in $(git diff --name-only HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
+      bn=$(basename "$f" .java)
+      case " ${LATER_CLASSES} " in *" ${bn} "*)
+        # O-LATERCDI: do not strip a later-story producer if THIS story's scoped
+        # classes already inject an interface it implements (S04 CartEndpoint
+        # → ShoppingCartService before S05 Impl). Reverting leaves Arc
+        # UnsatisfiedResolutionException and sfix↔scope thrash.
+        if [ -n "${STORY_SCOPE:-}" ] && [ -f "$f" ] && \
+           python3 - "$f" ${STORY_SCOPE} <<'PY' 2>/dev/null
+import re, sys
+later = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+ifaces = re.findall(r"\bimplements\s+([A-Za-z0-9_.,\s]+)", later)
+names = []
+for chunk in ifaces:
+    names.extend(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", chunk))
+if not names:
+    sys.exit(1)
+scope_txt = []
+for p in sys.argv[2:]:
+    try:
+        scope_txt.append(open(p, encoding="utf-8", errors="replace").read())
+    except OSError:
+        pass
+blob = "\n".join(scope_txt)
+for n in names:
+    if re.search(rf"\b{n}\b", blob) and re.search(
+        rf"(inject\.Inject|@Inject|constructor|[,(]\s*{n}\s+\w+)", blob
+    ):
+        sys.exit(0)
+sys.exit(1)
+PY
+        then
+          keep="$keep $f"
+          log "scope sensor: O-LATERCDI keep ${bn} — STORY_SCOPE injects an interface it implements"
+        else
+          lviol="$lviol $f"
+        fi
+        ;;
+      esac
     done
     if [ -n "$lviol" ]; then
       event "scope" 0 later_story_class "${lviol# }"
       log "scope sensor: reverted src/main class(es) a LATER story owns:${lviol}"
       # S-LC: demo-visible — later-story fabrication must not hide in supervisor.log only
-      outer_log "         SCOPE REVERT (S-LC): removed later-story class(es) created early:${lviol} — keep them in migration/staging until their story"
+      outer_log "         SCOPE REVERT (S-LC/O-ESCWSCOPE): removed/reverted later-story class(es):${lviol} — keep them in migration/staging until their story"
       {
         echo "The story-scope sensor reverted src/main class(es) owned by a LATER story:${lviol}"
-        echo "These REDESIGN classes are converted in a later story — do NOT create them now."
+        echo "These REDESIGN classes are converted in a later story — do NOT create or mutate them now (O-ESCWSCOPE)."
         echo "Prefer migration/staging until the owning story; characterization tests use Mockito / test-local fakes — never the real src/main class."
+        echo "Stay on this task's Owns/Target paths only."
       } > /tmp/scope-violation.txt
-      git rm -q $lviol 2>/dev/null
+      for f in $lviol; do
+        if git diff --name-only --diff-filter=A HEAD~1..HEAD -- "$f" 2>/dev/null | grep -q .; then
+          git rm -q "$f" 2>/dev/null || rm -f "$f"
+        else
+          git checkout HEAD~1 -- "$f" 2>/dev/null || true
+        fi
+      done
       git add -A && git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })" 2>/dev/null
     fi
   fi
@@ -377,6 +481,23 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
   log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
   if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
     event "$tag" 0 sensor_red_post_commit verify
+    # O-SONARBLEED: in-loop Sonar RED only on prior-task files — do not burn
+    # MiniMax sfix editing ShippingServiceTest etc. for an unrelated T-NNN.
+    case "$prefix" in
+      T-*)
+        if [ -n "${TASKS_FILE:-}" ] && [ -f .hermes/harness/sonar-task-scope.py ] \
+          && [ -s /tmp/sonar-violations.txt ] \
+          && grep -qE 'SENSOR RED:sonar|in-loop gate:|new violations' \
+               /tmp/sensor-milestone.log /tmp/sensor-sonar.log /tmp/sensor-task.log 2>/dev/null; then
+          if ! python3 .hermes/harness/sonar-task-scope.py "$TASKS_FILE" "$prefix" \
+               /tmp/sonar-violations.txt > /tmp/sonar-scope.out 2>&1; then
+            log "$tag: O-SONARBLEED — $(tr '\n' ' ' </tmp/sonar-scope.out) — skip sfix (out-of-task Sonar only)"
+            event "$tag" 0 sonar_bleed_skip "$(tr '\n' ' ' </tmp/sonar-scope.out)"
+            return 0
+          fi
+        fi
+        ;;
+    esac
     # Deterministic style-autofix first (V3 measured: 152 min of model
     # time went to mechanically-fixable style violations).
     .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 || true
@@ -392,8 +513,10 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       discard_staging_autofix
       if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         stage_for_task_commit
+        # O-SFIXCREDIT: autofix uses distinct prefix so sfix credit cannot
+        # match an earlier autofix SHA (S04 T-003 false GREEN).
         git diff --cached --quiet || \
-          git commit -q -m "${prefix} sensor fix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
+          git commit -q -m "${prefix} sensor autofix: deterministic style-autofix (OpenRewrite cleanup recipes)" 2>/dev/null
         event "$tag" 0 style_autofix resolved
         log "$tag: style-autofix resolved the red deterministically — no model session needed"
         return 0
@@ -410,28 +533,70 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       else
         stage_for_task_commit
         if ! git diff --cached --quiet; then
-          git commit -q -m "${prefix} sensor fix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
+          git commit -q -m "${prefix} sensor autofix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
           event "$tag" 0 style_autofix partial
           log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
         fi
       fi
     fi
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
+    # K7: capture post-RED signature and diff vs pre-task baseline — NEW failures
+    # are this commit's debt (cannot be waived as pre-existing / out of scope).
+    local FSIG_BEFORE="/tmp/failure-sig-before-${prefix}.txt"
+    local FSIG_AFTER="/tmp/failure-sig-after-${tag}.txt"
+    local FDELTA="/tmp/failure-delta-${tag}.txt"
+    if [ -f .hermes/harness/failure-sig.py ]; then
+      python3 .hermes/harness/failure-sig.py capture "$FSIG_AFTER" \
+        /tmp/sensor-task.log /tmp/sensor-milestone.log /tmp/sensor-sonar.log \
+        /tmp/sonar-violations.txt >> "$LOG" 2>&1 || true
+      python3 .hermes/harness/failure-sig.py diff \
+        "${FSIG_BEFORE:-/dev/null}" "$FSIG_AFTER" > "$FDELTA" 2>/dev/null || true
+      cp "$FDELTA" /tmp/failure-delta.txt 2>/dev/null || true
+      log "$tag: K7 failure-delta — $(grep -m1 '^SUMMARY' "$FDELTA" 2>/dev/null || echo n/a)"
+    else
+      : > "$FDELTA"
+    fi
+    local K7_DELTA_NOTE=""
+    if [ -s "$FDELTA" ] && grep -q '^NEW:' "$FDELTA" 2>/dev/null; then
+      K7_DELTA_NOTE="
+K7 FAILURE DELTA (authoritative — /tmp/failure-delta.txt): these failures are NEW since task start — you MUST fix them; claiming pre-existing/out-of-scope is REFUTED by data:
+$(grep '^NEW:' "$FDELTA" | head -40)
+"
+    fi
     # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
     # inside fix sessions). Point the model at the dimension-specific cheap
     # recheck so it stops re-running the whole build per fix.
     # O-SFIXLOOP: hard-refuse milestone inside the session via /tmp/sensor-fix-mode
     # (prompt-only was ignored — V9 S03 T-008 ran milestone 5×).
     touch /tmp/sensor-fix-mode
+    # O-SFIXCREDIT: require HEAD to move after sfix — prior autofix must not
+    # satisfy committed("… sensor fix").
+    PRE_SFIX_HEAD=$(git rev-parse HEAD)
     orch "${tag}-sfix" \
-"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO).
-${RUN_CONTRACT}"
+"Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. add a dependency ONLY if this stage's findings require it. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO). S5976: prefer @ParameterizedTest + @CsvSource — never delete characterization cases (O-SFIXCOUNT/O-SFIXDIRTY).
+${K7_DELTA_NOTE}${RUN_CONTRACT}"
     rm -f /tmp/sensor-fix-mode
     # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
     # milestone-red (fidelity/sonar) is not cleared by a task-sensor green,
     # and a commit with the right prefix is not proof the red went away.
-    if committed "${prefix} sensor fix"; then
-      if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+    if [ "$(git rev-parse HEAD)" != "$PRE_SFIX_HEAD" ] && committed "${prefix} sensor fix"; then
+      # K7: commit message claiming pre-existing/out-of-scope while NEW delta
+      # exists → machine-refute (same as still-RED path).
+      if [ -s "$FDELTA" ] && grep -q '^NEW:' "$FDELTA" 2>/dev/null \
+        && git log -1 --format=%B | grep -qiE 'pre-existing|out of scope|out-of-scope|not introduced'; then
+        event "$tag" 0 k7_refute_preexisting "$(grep -c '^NEW:' "$FDELTA" || true)"
+        log "$tag: K7 refute — sfix claimed pre-existing/out-of-scope but failure-delta has NEW keys"
+        if git log -1 --format=%s | grep -qE 'sensor fix:'; then
+          _red=$(git rev-parse HEAD)
+          _arch="/tmp/strays/${tag}-sfix-k7-$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$_arch"
+          cp "$FDELTA" "$_arch/failure-delta.txt" 2>/dev/null || true
+          git show --stat "$_red" >"$_arch/stat.txt" 2>&1 || true
+          printf '%s\n' "$_red" >"$_arch/sha.txt"
+          git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+          record_debt "$tag" "$SENSOR_KIND" "K7 refute: sfix claimed pre-existing despite NEW failure-delta"
+        fi
+      elif .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         log "$tag: sensor-fix committed and ${SENSOR_KIND} GREEN $(git log --oneline -1)"
       else
         # O-SFIXSCOPE: never keep a sensor-fix commit that left the sensor RED
@@ -446,11 +611,22 @@ ${RUN_CONTRACT}"
           git show "$_red" >"$_arch/full.diff" 2>&1 || true
           git format-patch -1 "$_red" -o "$_arch" >>"$LOG" 2>&1 || true
           printf '%s\n' "$_red" >"$_arch/sha.txt"
+          cp "$FDELTA" "$_arch/failure-delta.txt" 2>/dev/null || true
           log "$tag: O-SFIXSCOPE — archiving RED sensor-fix $_red → $_arch then resetting"
           git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
         fi
         record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
       fi
+    elif [ "$(git rev-parse HEAD)" = "$PRE_SFIX_HEAD" ] && committed "${prefix} sensor fix"; then
+      log "$tag: O-SFIXCREDIT — sfix did not move HEAD (stale sensor-fix match ignored)"
+      event "$tag" 0 sfix_no_new_commit credit
+      # O-SFIXDIRTY: drop uncommitted thinning before next task
+      if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
+        log "$tag: O-SFIXDIRTY — discarding uncommitted sfix dirt under src/"
+        git checkout -q -- src/ 2>/dev/null || true
+        git clean -fdq -- src/ 2>/dev/null || true
+      fi
+      record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
       # O-T6c: exclude .hermes/ (and staging) from escalation/sfix mechan commits.
@@ -461,6 +637,12 @@ ${RUN_CONTRACT}"
         log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
       fi
     else
+      # O-SFIXDIRTY: failed sfix must not leave thinned tests dirty for later commit
+      if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
+        log "$tag: O-SFIXDIRTY — discarding uncommitted sfix dirt under src/"
+        git checkout -q -- src/ 2>/dev/null || true
+        git clean -fdq -- src/ 2>/dev/null || true
+      fi
       record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
   fi
@@ -500,13 +682,38 @@ run_stage() {
   local prefix="$1" tag="$2" prompt="$3" rprompt="$4"
   local attempt=1 pf=0
   while [ $attempt -le $MAX_ATTEMPTS ]; do
-    committed "$prefix" && return 0
+    # O-ESCALGPLACE: a prior hung MiniMax session may have committed (possibly
+    # with G-PLACE assertThat(true)) before sensors ran. Never treat an
+    # existing prefix commit as success without refuse_red_task_commit.
+    if committed "$prefix"; then
+      if refuse_red_task_commit "$prefix" "$tag"; then
+        return 0
+      fi
+      attempt=$((attempt+1))
+      continue
+    fi
     local p="$prompt"; [ $attempt -gt 1 ] && p="$rprompt"
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
     if committed "$prefix"; then
       event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"
       # O-SFIXSCOPE: refuse red T-NNN commits (do not proceed to post_commit_verify as success)
       if ! refuse_red_task_commit "$prefix" "$tag"; then
+        attempt=$((attempt+1))
+        continue
+      fi
+      # O-MSGCLAIM: subject inventing class work not in the diff — reset tip
+      # (S04 T-002 CatalogService claim with unchanged file).
+      if [ -f .hermes/harness/msgclaim-check.py ] \
+        && ! python3 .hermes/harness/msgclaim-check.py HEAD > /tmp/msgclaim.out 2>&1; then
+        log "$tag: O-MSGCLAIM — $(cat /tmp/msgclaim.out 2>/dev/null | tr '\n' ' ') — resetting dishonest tip"
+        event "$tag" "$attempt" msgclaim_reset "$(cat /tmp/msgclaim.out 2>/dev/null | tr '\n' ' ')"
+        _red=$(git rev-parse HEAD)
+        _arch="/tmp/strays/${tag}-msgclaim-$(date -u +%Y%m%dT%H%M%SZ)"
+        mkdir -p "$_arch"
+        git show --stat "$_red" >"$_arch/stat.txt" 2>&1 || true
+        git show "$_red" >"$_arch/full.diff" 2>&1 || true
+        printf '%s\n' "$_red" >"$_arch/sha.txt"
+        git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
         attempt=$((attempt+1))
         continue
       fi
@@ -618,10 +825,10 @@ phase_f_retro() {
   cp "$METRICS" migration/retro-metrics.csv 2>/dev/null || true
   git add migration/retro-*.csv >/dev/null 2>&1 || true
   orch "retro" \
-"Use the migration-harness skill. The migration run/story is CLOSED — this is Retro. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, remaining briefs under migration/briefs/ (if any), and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md. Write migration/retro-proposals.md with EXACTLY these markdown sections (both required):
+"Use the migration-harness skill. The migration run/story is CLOSED — this is Retro. Evidence to read with your file tools: migration/run-report.md, migration/retro-events.csv, migration/retro-metrics.csv, migration/run-log.md, migration/debt.md, migration/discovered.md (K9 forward-looking scope — not debt), remaining briefs under migration/briefs/ (if any), and the skill files PLANNING.md, EXECUTION.md, SHIPPING.md, MAPPINGS.md. Write migration/retro-proposals.md with EXACTLY these markdown sections (both required):
 
 ## Brief updates (auto-applicable)
-Concrete edits for REMAINING story briefs only (not the story just finished). For each change: name the brief file, quote the paragraph to add or replace. Empty list is fine if nothing should change.
+Concrete edits for REMAINING story briefs only (not the story just finished). Fold actionable rows from migration/discovered.md when they fit. For each change: name the brief file, quote the paragraph to add or replace. Empty list is fine if nothing should change.
 
 ## Skill / harness proposals (human-only)
 (1) the three costliest failure patterns of THIS run, citing evidence; (2) for each pattern one CONCRETE proposed change to a specific skill or sensor — quote exact text and name file/section; (3) ARTIFACT review of this run's commits (harvest fidelity, story-scope, fabrication); (4) harness waste. PROPOSE ONLY.
@@ -662,6 +869,26 @@ write_run_report() { # $1 = outcome line
     echo '```'
     awk -F, 'NR>1 {print $4}' "$EVENTS" | sort | uniq -c | sort -rn
     echo '```'
+    echo ""
+    echo "## Per-rule outcomes (K11)"
+    echo ""
+    echo "| rule | outcomes |"
+    echo "|---|---|"
+    awk -F, '
+      $4 ~ /^rule:/ {
+        r=substr($4,6); o=$5; c[r]=c[r] (c[r]?", ":"") o
+      }
+      END { for (r in c) printf "| `%s` | %s |\n", r, c[r] }
+    ' "$EVENTS" | sort
+    if ! awk -F, '$4 ~ /^rule:/ {found=1} END{exit !found}' "$EVENTS" 2>/dev/null; then
+      echo "| _(none recorded)_ | |"
+    fi
+    if [ -f migration/discovered.md ] && grep -qE '^\| 20' migration/discovered.md 2>/dev/null; then
+      echo ""
+      echo "## Discovered work (K9)"
+      echo ""
+      echo "See migration/discovered.md — $(grep -cE '^\| 20' migration/discovered.md 2>/dev/null || echo 0) row(s)."
+    fi
   } > migration/run-report.md
   git add migration/run-report.md && git commit -q -m "Run report: $1" 2>/dev/null || true
 }
@@ -708,7 +935,10 @@ fi
 TASKS_FILE="${STORY_TASKS:-$(ls specs/*/tasks.md 2>/dev/null | head -1)}"
 SCOPE_ARGS=""
 [ -n "$PLAN_SCOPE" ] && SCOPE_ARGS="--findings-scope $PLAN_SCOPE"
-LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS 2>&1)
+# O-M3ACCEPT: supervisor must pass the same deploy flag outer-loop uses —
+# otherwise a lint-green non-deploy plan is re-REDed here and burns m3-lint.
+DEPLOY_ARGS="--story-deploy ${STORY_DEPLOY:-true}"
+LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS 2>&1)
 if [ $? -ne 0 ] && ! committed "M3 revision"; then
   log "plan lint: revision required"; echo "$LINT_OUT" | head -20 >> "$LOG"
   printf '%s\n' "$LINT_OUT" > /tmp/plan-lint.txt
@@ -719,7 +949,7 @@ Commit prefix: 'M3 revision:'." \
 "Use the migration-harness skill and read PLANNING.md in its directory. Finish revising the plan per /tmp/plan-lint.txt and commit with prefix 'M3 revision:'.
 ${RUN_CONTRACT}" \
     || log "plan lint: revision round exhausted — proceeding with the plan as-is (recorded)"
-  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS 2>&1) \
+  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS 2>&1) \
     && log "plan lint: PASS after revision" || log "plan lint: still failing after revision — proceeding, findings logged"
 fi
 
@@ -863,11 +1093,59 @@ run_worker_task() { # $1=task-id → 0 if committed
   }
   [ -n "$packet" ] || return 1
   log_task START "$T" "Actor: $(worker_label) — MiniMax not used for coding"
+  # O-WORKERWEDGE / O-OCSTALL: hard timeout alone burns 1800s on a hung OpenCode
+  # with a frozen session JSON. Run under timeout in the background and kill early
+  # if /tmp/oc-${T}.json stops growing (default 300s unchanged).
+  : > "/tmp/oc-${T}.json"
+  : > "/tmp/oc-${T}.err"
   timeout 1800 opencode run "$packet" \
     -m "$WORKER_MODEL" --auto --format json \
     -f "$TASKS_FILE" -f AGENTS.md \
-    > "/tmp/oc-${T}.json" 2>"/tmp/oc-${T}.err"
+    > "/tmp/oc-${T}.json" 2>"/tmp/oc-${T}.err" &
+  local wpid=$!
+  local stale=0 last_sz=-1 sz
+  local stale_limit="${WORKER_JSON_STALE_SECS:-300}"
+  while kill -0 "$wpid" 2>/dev/null; do
+    sleep 60
+    sz=$(stat -c%s "/tmp/oc-${T}.json" 2>/dev/null || echo 0)
+    if [ "$sz" -eq "$last_sz" ]; then
+      stale=$((stale + 60))
+    else
+      stale=0
+      last_sz=$sz
+    fi
+    # O-WORKERREAD: kill early on read/glob thrash with zero mutate/bash
+    # (Poll 55 T-007: 30 reads / 3 globs / 0 bash before wedge).
+    if [ -f .hermes/harness/worker-read-watch.py ] \
+      && thrash=$(python3 .hermes/harness/worker-read-watch.py "/tmp/oc-${T}.json" 2>/dev/null); then
+      log "$T: worker read-thrash — ${thrash} — killing early (O-WORKERREAD)"
+      {
+        echo "worker read-thrash — ${thrash} (O-WORKERREAD)"
+        echo "abort: reads+globs exceeded with no edit/bash — escalate or replan"
+      } >> "/tmp/oc-${T}.err"
+      kill "$wpid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$wpid" 2>/dev/null || true
+      pkill -9 -x opencode 2>/dev/null || true
+      break
+    fi
+    if [ "$stale" -ge "$stale_limit" ]; then
+      log "$T: worker wedged — no session JSON growth for ${stale}s — killing early (O-WORKERWEDGE)"
+      {
+        echo "worker wedged — no session output for ${stale}s (O-WORKERWEDGE)"
+        echo "session JSON size frozen at ${sz} bytes"
+      } >> "/tmp/oc-${T}.err"
+      kill "$wpid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$wpid" 2>/dev/null || true
+      # also reap any orphaned opencode child of the timeout wrapper
+      pkill -9 -x opencode 2>/dev/null || true
+      break
+    fi
+  done
+  wait "$wpid" 2>/dev/null
   rc=$?
+  WORKER_LAST_RC=$rc
   wait_for_worker
   # O-OCERR: OpenCode often leaves stderr empty; surefire noise is in the JSON.
   if [ ! -s "/tmp/oc-${T}.err" ] && [ -s "/tmp/oc-${T}.json" ]; then
@@ -970,6 +1248,12 @@ try_worker_verified_noop() { # $1=task-id → 0 if committed
   local T="$1" why
   committed "$T" && return 0
   [ -z "$(app_dirt)" ] || return 1
+  # O-ESCWCONVERT: only after a successful worker exit (rc=0). A wedged/killed
+  # worker (rc=143/124/…) with a clean tree is incomplete — escalate, don't ESCW.
+  [ "${WORKER_LAST_RC:-1}" = "0" ] || {
+    log "$T: O-ESCW skip allow-empty — worker rc=${WORKER_LAST_RC:-unset} (not verified)"
+    return 1
+  }
   if ! why=$(ALREADY_COMPLETE_ROOT="$PWD" python3 .hermes/harness/escw-eligible.py \
        "$TASKS_FILE" "$T" 2>/tmp/escw-eligible.err); then
     log "$T: O-ESCW3 skip allow-empty — deliverables still required ($(cat /tmp/escw-eligible.err 2>/dev/null | tr '\n' ' '; echo "$why" | tr '\n' ' '))"
@@ -990,22 +1274,44 @@ try_worker_verified_noop() { # $1=task-id → 0 if committed
 
 run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local T="$1"
+  # O-REDATTRIB: sensors attribute G-CAT to the owning acceptance task.
+  export CURRENT_TASK="$T"
+  export STORY_TASKS="${TASKS_FILE:-${STORY_TASKS:-}}"
+  # K7: baseline failure signature before worker/commit (empty if green).
+  if [ -f .hermes/harness/failure-sig.py ]; then
+    python3 .hermes/harness/failure-sig.py capture "/tmp/failure-sig-before-${T}.txt" \
+      /tmp/sensor-task.log /tmp/sensor-milestone.log /tmp/sensor-sonar.log \
+      /tmp/sonar-violations.txt >> "$LOG" 2>&1 || true
+  fi
   if debt_frozen; then
     log "$T: O-DEBTFRZ — skip (debt freeze active)"
     return 1
   fi
   if try_already_complete "$T"; then
     log_task SKIP "$T" "already complete (fast path); skipped worker"
+    record_rule_outcomes "$T" "already_complete"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     debt_frozen && return 1
     return 0
+  fi
+  # O-HARVESTSTALL: rewrite tasks with missing Target .java — harvest from
+  # staging before worker so Qwen is not wedged on a clean tree (S05 T-001).
+  if [ "$(task_class "$T")" = "rewrite" ] \
+    && [ -f .hermes/harness/preseed-targets.py ]; then
+    if PRESEED_ROOT="$PWD" python3 .hermes/harness/preseed-targets.py \
+         "$TASKS_FILE" "$T" > /tmp/preseed-${T}.out 2>/tmp/preseed-${T}.err; then
+      if grep -q '^seeded:' /tmp/preseed-${T}.out 2>/dev/null; then
+        log "$T: O-HARVESTSTALL preseed — $(tr '\n' ' ' </tmp/preseed-${T}.out)"
+      fi
+    fi
   fi
   # O-PKGDIR before mechan: empty dirs → .gitkeep so mkdir work can commit
   ensure_trackable_packages
   # O-T6: untracked/dirty target tree already green — don't burn a model seat
   if try_mechan_commit "$T"; then
     log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
+    record_rule_outcomes "$T" "mechan"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     debt_frozen && return 1
@@ -1017,15 +1323,18 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
       scope_enforce "$T"
       post_commit_verify "$T" "$T"
       log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "worker_green"
       debt_frozen && return 1
       return 0
     fi
     log "$T: O-SFIXSCOPE reset worker RED commit — continuing to escalation path"
+    record_rule_outcomes "$T" "worker_reset"
   fi
   # O-T6e: second mechan pass after worker (gitkeep / late writes / ESCW2 dirt)
   ensure_trackable_packages
   if try_mechan_commit "$T"; then
     log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
+    record_rule_outcomes "$T" "mechan"
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     debt_frozen && return 1
@@ -1036,6 +1345,7 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
+    record_rule_outcomes "$T" "escw"
     debt_frozen && return 1
     return 0
   fi
@@ -1053,6 +1363,7 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   if run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
 MODEL ROUTING (V7): You are MiniMax orchestrator on ESCALATION. Prefer dispatching opencode (-m ${WORKER_MODEL}) for all file-changing work. Do NOT apply mechanical rewrite/harvest edits with your own tools unless the worker already failed — Qwen has unlimited tokens; MiniMax is rate-limited.
+O-ESCWSCOPE: edit ONLY this task's Owns/Target paths from ${TASKS_FILE}. Do NOT create or mutate later-story classes (${LATER_CLASSES:-none}) or unrelated services.
 Worker discipline (V6 P2.1/P2.2): run opencode in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
 ${esc_evidence:+$esc_evidence
 }Worker packet (authoritative goal + constraints):
@@ -1069,9 +1380,11 @@ ${esc_evidence:+$esc_evidence
         --no-verify >>"$LOG" 2>&1 || true
     fi
     log_task END "$T" "committed via MiniMax escalation — $(git log --oneline -1 | cut -c1-80)"
+    record_rule_outcomes "$T" "escalation"
   else
     log_task SKIP "$T" "exhausted — recorded in debt; O-DEBTFRZ freeze (not moving on)"
     log "$T: exhausted — recorded; freezing (O-DEBTFRZ)"
+    record_rule_outcomes "$T" "exhausted"
     touch /tmp/debt-freeze
     touch /tmp/supervisor-pause
   fi
@@ -1112,6 +1425,23 @@ flush_batch() { # $1=space-separated rewrite task ids
   done
 } 2>/dev/null || true
 
+ensure_discovered
+
+# O-FGRETRO: after mid-run probe harden (/tmp/probe-reeval-needed), re-check
+# ALREADY COMPLETE / Already satisfied skips — reopen tasks the new probe refuses.
+if [ -f /tmp/probe-reeval-needed ] && [ -f .hermes/harness/fgretro-reeval.py ]; then
+  FGRETO_ROOT="$PWD" python3 .hermes/harness/fgretro-reeval.py \
+    "$TASKS_FILE" "$RUN_BASE" > /tmp/fgretro-reopen.txt 2>/tmp/fgretro-reeval.err || true
+  if [ -s /tmp/fgretro-reopen.txt ]; then
+    log "O-FGRETRO: re-opening $(tr '\n' ' ' </tmp/fgretro-reopen.txt | head -c 200)"
+    outer_log "         O-FGRETRO: re-dispatch $(tr '\n' ' ' </tmp/fgretro-reopen.txt)"
+  else
+    rm -f /tmp/fgretro-reopen.txt
+    log "O-FGRETRO: probe re-eval — no false skips to reopen"
+  fi
+  rm -f /tmp/probe-reeval-needed
+fi
+
 BATCH=""
 for T in $TASK_IDS; do
   if debt_frozen; then
@@ -1148,17 +1478,41 @@ if ! committed "M5 evaluate"; then
   [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
   K_ARGS=""; for t in $A_TARGETS; do K_ARGS="$K_ARGS --target $t"; done
   [ -d .hermes/rules ] && K_ARGS="$K_ARGS --rules /projects/modernized/.hermes/rules"
+  # O-DELTASTAGING: staging is legacy-by-design; .hermes is harness — exclude
+  # both from the after-scan so phantom residuals do not inflate the delta.
+  AFTER_SRC=/tmp/kantra-after-src
+  rm -rf "$AFTER_SRC"
+  mkdir -p "$AFTER_SRC"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude 'migration/staging/' --exclude '.hermes/' --exclude 'target/' \
+      --exclude '.git/' \
+      /projects/modernized/ "$AFTER_SRC/" >> "$LOG" 2>&1 \
+      || cp -a /projects/modernized/. "$AFTER_SRC/" 2>/dev/null || true
+  else
+    cp -a /projects/modernized/. "$AFTER_SRC/" 2>/dev/null || true
+    rm -rf "$AFTER_SRC/migration/staging" "$AFTER_SRC/.hermes" "$AFTER_SRC/target" \
+      "$AFTER_SRC/.git" 2>/dev/null || true
+  fi
   (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-    /tmp/kantra/kantra analyze -i /projects/modernized -o /tmp/kantra-after \
+    /tmp/kantra/kantra analyze -i "$AFTER_SRC" -o /tmp/kantra-after \
     $K_ARGS --mode source-only --json-output --overwrite) >> "$LOG" 2>&1 \
     && cp /tmp/kantra-after/output.json migration/mta-findings-after.json 2>/dev/null \
-    && log "M5 evaluate: after-analysis complete (script step)" \
+    && log "M5 evaluate: after-analysis complete (script step; O-DELTASTAGING excluded staging/.hermes)" \
     || log "WARN: after-analysis failed — M5 evaluate proceeds without the delta"
+  # O-DELTABASE: mechanical absence-vs-conversion split (do not credit empty trees).
+  if [ -f migration/mta-findings-after.json ] && [ -f .hermes/harness/findings-delta.py ]; then
+    FINDINGS_DELTA_ROOT="$PWD" python3 .hermes/harness/findings-delta.py \
+      > migration/findings-delta.txt 2>/tmp/findings-delta.err \
+      || log "WARN: findings-delta.py failed — see /tmp/findings-delta.err"
+    cp migration/findings-delta.txt /tmp/findings-delta.txt 2>/dev/null || true
+    log "M5 evaluate: O-DELTABASE summary — $(grep -m1 '^SUMMARY' migration/findings-delta.txt 2>/dev/null || echo n/a)"
+  fi
   run_stage "M5 evaluate" "m5-evaluate" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute M5 evaluate per SHIPPING.md. The harness ALREADY RAN the after-analysis: migration/mta-findings-after.json (use .hermes/skills/migration-harness/scripts/extract_findings.py to summarize it — do NOT run analysis tools yourself). Append the findings delta to the run-log with every remaining finding individually explained (resolved here / owned by a later story / genuine debt). Run .hermes/harness/sensors.sh preflight and record the result honestly — do NOT claim factory/preflight green unless that command exits 0 (L-M5e; mvn verify alone is not enough).
+"Use the migration-harness skill and read SHIPPING.md in its directory. All tasks are executed (see migration/run-log.md and migration/debt.md). Execute M5 evaluate per SHIPPING.md. The harness ALREADY RAN the after-analysis: migration/mta-findings-after.json AND migration/findings-delta.txt (O-DELTABASE). Use findings-delta.txt as the authoritative delta — ABSENT-NOT-LANDED and SCAFFOLD-PRESATISFIED must NOT be counted as resolved; only the RESOLVED section is story credit. Also cite METRIC src_main_java / residual_incidents. Optionally use extract_findings.py for remaining rule detail. Append the findings delta to the run-log with every remaining finding individually explained (resolved here / absent-not-landed / owned by a later story / genuine debt). Run .hermes/harness/sensors.sh preflight and record the result honestly — do NOT claim factory/preflight green unless that command exits 0 (L-M5e; mvn verify alone is not enough).
 ${RUN_CONTRACT}
 Commit prefix: 'M5 evaluate:'. DO NOT PUSH." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue M5 evaluate; verify migration/mta-findings-after.json and the delta section exist, run .hermes/harness/sensors.sh preflight, state GREEN or RED honestly in the commit message (L-M5e), then commit starting 'M5 evaluate:'. ${RUN_CONTRACT}" \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue M5 evaluate; verify migration/mta-findings-after.json and migration/findings-delta.txt exist, run .hermes/harness/sensors.sh preflight, state GREEN or RED honestly in the commit message (L-M5e), then commit starting 'M5 evaluate:'. ${RUN_CONTRACT}" \
     || log "M5 evaluate: exhausted — shipping without final re-analysis commit"
   # L-M5e: mechanical honesty check — evaluate commit must not be treated as
   # ship-ready when preflight is RED (V8 S02 overstated evaluate).
@@ -1187,24 +1541,32 @@ OC() { oc --server=https://kubernetes.default.svc --token="$(cat $SA/token)" --c
 newest_pipelinerun() { OC get pipelinerun -n "$NS" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null; }
 pipeline_status()   { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.conditions[0].status} {.status.conditions[0].reason}' 2>/dev/null; }
 
-wait_pipeline() { # $1=previous newest run; waits for a NEW run to reach a terminal state; echoes "name status"
-  # O-SHIPNOPR: when git push is "Everything up-to-date" (SHIP_ONLY re-earn),
-  # no new PipelineRun is created. Always fall back to the newest existing
-  # run — never return an empty name (empty → false "gate" correction burn).
-  local prev="$1" name="" i
-  for i in $(seq 1 12); do
+wait_pipeline() { # $1=previous newest run; $2=1 if git push was up-to-date
+  # O-SHIPNOPR / O-NOPUSHPR: when push is Truly "Everything up-to-date"
+  # (SHIP_ONLY re-earn), fall back to the newest existing run. When push
+  # advanced remote commits, a NEW PipelineRun is required — do NOT judge a
+  # stale prior Succeeded run (S06 empty-delta false ship on …-push-7k7vn).
+  local prev="$1" push_uptodate="${2:-0}" name="" i
+  local max_new=12
+  [ "$push_uptodate" = "1" ] || max_new=36  # ~6m for webhook/PR to appear
+  for i in $(seq 1 "$max_new"); do
     name=$(newest_pipelinerun)
     [ -n "$name" ] && [ "$name" != "$prev" ] && break
     sleep 10
   done
   if [ -z "$name" ] || [ "$name" = "$prev" ]; then
+    if [ "$push_uptodate" != "1" ]; then
+      log "M5 ship: O-NOPUSHPR — commits pushed but no new PipelineRun within $((max_new * 10))s — refusing stale ${prev:-none}"
+      echo "none no-trigger"
+      return
+    fi
     name=$(newest_pipelinerun)
     [ -n "$name" ] || name="$prev"
     if [ -z "$name" ]; then
       echo "none no-trigger"
       return
     fi
-    log "M5 ship: no new PipelineRun (push may be up-to-date) — judging existing $name"
+    log "M5 ship: no new PipelineRun (up-to-date push) — judging existing $name (O-SHIPNOPR)"
   fi
   for i in $(seq 1 120); do
     local st; st=$(pipeline_status "$name")
@@ -1303,13 +1665,24 @@ ${RUN_CONTRACT}" \
   PUSH_OUT=$(git push origin main 2>&1) || { log "FATAL: git push failed"; echo "$PUSH_OUT" >> "$LOG"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
   echo "$PUSH_OUT" >> "$LOG"
   LAST_PUSHED=$(git rev-parse HEAD)
-  log "M5 ship: pushed $(git rev-parse --short HEAD), waiting for pipeline"
-  RESULT=$(wait_pipeline "$PREV"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
-  # O-SHIPNOPR: empty / no-trigger must not fall into gate-fix (burns MiniMax).
+  PUSH_UPTODATE=0
+  if echo "$PUSH_OUT" | grep -qiE 'up-to-date|Everything up-to-date|already up to date'; then
+    PUSH_UPTODATE=1
+  fi
+  log "M5 ship: pushed $(git rev-parse --short HEAD), waiting for pipeline (uptodate=$PUSH_UPTODATE)"
+  RESULT=$(wait_pipeline "$PREV" "$PUSH_UPTODATE"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
+  # O-SHIPNOPR: up-to-date push with no new PR → acceptance-only recheck.
+  # O-NOPUSHPR: commits were pushed but no new PR → do NOT pretend success.
   if [ -z "$PR_NAME" ] || [ "$PR_NAME" = "none" ] || [ "$PR_ST" = "no-trigger" ]; then
-    log "M5 ship: no PipelineRun to judge (up-to-date push) — acceptance-only recheck (O-SHIPNOPR)"
-    PR_ST=succeeded
-    PR_NAME="${PREV:-none}"
+    if [ "$PUSH_UPTODATE" = "1" ]; then
+      log "M5 ship: no PipelineRun to judge (up-to-date push) — acceptance-only recheck (O-SHIPNOPR)"
+      PR_ST=succeeded
+      PR_NAME="${PREV:-none}"
+    else
+      log "M5 ship: O-NOPUSHPR — pushed new commits but no PipelineRun triggered — ship FAIL (stale pipeline not judged)"
+      PR_ST=failed
+      PR_NAME="${PREV:-none}"
+    fi
   fi
   event "m5-ship" 0 "pipeline_$PR_ST" "$PR_NAME"
   log "M5 ship: pipeline $PR_NAME -> $PR_ST"

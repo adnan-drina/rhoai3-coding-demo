@@ -123,6 +123,12 @@ applies the rename:
 .hermes/skills/migration-harness/scripts/harvest-from-staging.sh model/Product.java
 ```
 
+**Rewrite test migrations (O-HARVESTSTALL / O-ESCALGPLACE):** before inventing
+new test stubs, harvest or port the staging/legacy test basename the task
+names. Never close with `assertThat(true)` / `assertTrue(true)` (G-PLACE) —
+run `.hermes/harness/sensors.sh task` GREEN before declaring success
+(escalation path included; supervisor refuses red commits).
+
 Pass only the package-relative path (`model/Product.java`,
 `service/CatalogService.java`) — never the package directories, never an
 absolute or dotted path. Hand-building `src/main/java/$TGT/...` is how a
@@ -146,6 +152,12 @@ replace** (what `harvest-from-staging.sh` does). Example:
 `com.demo.coolstore.*` when `targetPackage` is `com.demo` — that partial
 rename compiles, fails the package sensor, and breaks imports across
 stories (V6 abort). Worker packets must map to `$TGTP/...` paths only.
+
+**Feign → MicroProfile REST client (O-RESTCLIENTDEP):** import
+`org.eclipse.microprofile.rest.client.inject.RegisterRestClient` — never
+`...annotation.RegisterRestClient`. After edits: `mvn -q compile` before
+exit (wrong package fails with cannot-find-symbol even when the Quarkus
+REST-client dep is on the pom).
 
 **Class: infer** — bounded worker run. The worker's JSON event stream is
 huge (often hundreds of KB) — NEVER let it print to your terminal; it
@@ -324,6 +336,11 @@ runtime only. Do not `git add .hermes` / `git add -A` without resetting
 `.hermes`. Nested `.hermes/harness/harness/` from a bad copy is also
 forbidden in git.
 
+**Characterization first commit (O-CHARWEDGE):** for endpoint RestAssured
+tasks, create/port the Target `*Endpoint*Test.java` and get one green
+request assertion committed **before** chasing WireMock / pom dependency
+rabbit holes. WireMock without the Target test file is a wedge (S04 T-007).
+
 **RestAssured / JAX-RS endpoint tests (O-RESTJSON / O-RESTEMPTY / O-TESTISO):**
 when writing `@QuarkusTest` RestAssured suites for migrated endpoints:
 
@@ -332,6 +349,8 @@ when writing `@QuarkusTest` RestAssured suites for migrated endpoints:
    `body("shoppingCartItemList.find { it.product.itemId == '…' }.quantity", …)`
    (or the real DTO field names from the harvest). Root-level
    `find { it.product… }` returns null and fails GREEN-looking tests.
+   **Enforced:** `sensors.sh` `restassured_contract` REDs `.body("find {`
+   (O-RESTGUIDE / Poll 53 — prose alone did not transfer).
 2. **Empty path segments** — `pathParam("id", "")` often yields **200/404/405**
    from JAX-RS routing, not a resource-level 400. Do not assert 400 on empty
    path params unless the API uses query/form params (or a dedicated

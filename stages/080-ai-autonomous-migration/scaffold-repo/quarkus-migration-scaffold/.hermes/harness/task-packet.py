@@ -132,13 +132,43 @@ def _rule_matches(rid: str, wanted: list[str]) -> bool:
     return False
 
 
+def _snip_norm(snip: str) -> str:
+    return re.sub(r"\s+", " ", (snip or "").strip())
+
+
+def _is_low_value_config_snip(uri: str, line: str, snip: str) -> bool:
+    """K2-SNIP: skip head-of-file snips for pom/props/yaml (budget waste)."""
+    u = (uri or "").lower()
+    if not any(
+        u.endswith(x) for x in ("pom.xml", ".properties", ".yaml", ".yml", ".xml")
+    ):
+        return False
+    try:
+        ln = int(line)
+    except ValueError:
+        ln = 999
+    if ln <= 5:
+        return True
+    s = snip.lstrip()
+    return bool(
+        s.startswith("<?xml")
+        or s.startswith("<project")
+        or s.startswith("#")
+        or s.startswith("<!--")
+    )
+
+
 def _inc_dict(rid: str, desc: str, inc: dict) -> dict:
     msg = (inc.get("message") or desc or "").strip()
     snip = (inc.get("codeSnip") or inc.get("code") or "").strip()
+    uri = _uri_display(str(inc.get("uri") or "?"))
+    line = str(inc.get("lineNumber") or "?")
+    if snip and _is_low_value_config_snip(uri, line, snip):
+        snip = ""
     return {
         "rule": rid,
-        "uri": _uri_display(str(inc.get("uri") or "?")),
-        "line": str(inc.get("lineNumber") or "?"),
+        "uri": uri,
+        "line": line,
         "message": msg,
         "code": snip,
     }
@@ -208,10 +238,18 @@ def format_evidence(hits: list[dict]) -> str:
         "Analysis evidence (from MTA — the authoritative description of the problem):"
     ]
     content_used = 0
+    seen_snips: set[str] = set()
     for h in hits:
         lines.append(f"- {h['rule']} at {h['uri']}: line {h['line']}")
         msg = _trim(h["message"]) if h["message"] else ""
         code = _trim(h["code"]) if h["code"] else ""
+        # K2-SNIP: drop identical codeSnips after the first (budget binds first).
+        if code:
+            key = _snip_norm(code)
+            if key in seen_snips:
+                code = ""
+            else:
+                seen_snips.add(key)
         # K2-CAP: combined message+code budget across the section.
         for label, chunk in (("message", msg), ("code", code)):
             if not chunk:
@@ -255,7 +293,9 @@ def main() -> int:
     cls_m = re.search(r"\b(rewrite|infer)\b", cls, re.I)
     cls = cls_m.group(1).lower() if cls_m else "infer"
     goal = field(body, "Goal") or title
-    findings = field(body, "Findings") or "(see tasks.md)"
+    # K2-LABEL: M3 sometimes writes **Finds**: / **Finding**: — accept aliases
+    # so evidence injection is not silently skipped (Poll 13).
+    findings = field(body, "Findings", "Finds", "Finding") or "(see tasks.md)"
     acceptance = field(body, "Acceptance") or "mvn -q clean test passes; commit ready"
     # Keep packet bounded — full body is attached via -f tasks.md
     design = ""
@@ -288,9 +328,17 @@ def main() -> int:
 
     evidence_block = ""
     fpath = resolve_findings_path(tasks_path, findings_arg)
+    wanted: list[str] = []
     if fpath is not None:
         wanted = parse_finding_ids(findings)
         evidence_block = format_evidence(collect_evidence(fpath, wanted))
+        # K2-LABEL: never silently omit evidence when Findings ids were parsed.
+        if wanted and not evidence_block.strip():
+            print(
+                f"WARN: {tid}: K2 no evidence resolved for {len(wanted)} Findings "
+                f"id(s) — check label / mta-findings.json match (Poll 13)",
+                file=sys.stderr,
+            )
 
     evidence_section = f"\n{evidence_block}\n" if evidence_block else "\n"
 
@@ -303,7 +351,9 @@ Constraints:
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)
 {dest_line}
 - Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST)
-- For Class rewrite: use .hermes/skills/migration-harness/scripts/harvest-from-staging.sh for harvests; do not re-run OpenRewrite
+- For Class rewrite: FIRST action when a Target .java is missing — run .hermes/skills/migration-harness/scripts/harvest-from-staging.sh <package-relative-path> (works for src/main and src/test). Do not re-run OpenRewrite. Do not invent assertThat(true) stubs (G-PLACE / O-HARVESTSTALL).
+- Before adding a Maven dependency: run python3 .hermes/harness/verify-dep.py <groupId> <artifactId> [version] (K8 advisory WARN only — factory resolve is authority).
+- Out-of-scope needs discovered mid-task: append via `python3 .hermes/harness/append-discovered.py {tid} <file-or-area> <one-line-need>` (K9) — do NOT act on them (scope sensor reverts). Never confuse with migration/debt.md.
 - Worker model for this run is {worker}
 Inputs: tasks.md (attached), AGENTS.md (attached), migration/staging when harvesting
 Acceptance: {acceptance}

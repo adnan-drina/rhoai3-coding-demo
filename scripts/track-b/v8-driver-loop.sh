@@ -51,12 +51,22 @@ AUTO_RESTART="${V8_AUTO_RESTART:-1}"
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/lib.sh"
+# lib.sh enables `set -e`; the wake loop must survive a failed tick
+# (oc blips, empty greps) or the driver dies silently with an empty log.
+set +e
+set -uo pipefail
 POD="$(qg_ws_pod)"
 CTR="$(qg_ws_ctr)"
 NS="$(qg_ws_ns)"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
 load_env >/dev/null
+set +e
+set -uo pipefail
+# Always prefer explicit V8_WS_* over stale .env defaults after load_env.
+POD="${V8_WS_POD:-$POD}"
+CTR="${V8_WS_CONTAINER:-$CTR}"
+NS="${V8_WS_NS:-$NS}"
 
 ensure_oc_session() {
   if oc whoami >/dev/null 2>&1; then
@@ -94,6 +104,20 @@ restart_outer_if_needed() {
   if [ "${V9_ALLOW_OPEN_BANK:-0}" != "1" ]; then
     if ! bash "${ROOT}/scripts/track-b/v9-bank-gate.sh" honesty >/dev/null 2>&1; then
       echo "O-DRV2: outer=DOWN but honesty bank ⬜ open — NOT auto-restarting (run v9-bank-gate.sh)"
+      return 0
+    fi
+  fi
+  # O-DRV2-FAILHOLD: if the latest outer phase line is X FAIL, do not
+  # blind-restart into the same failure (and do not skip a RED uncommitted
+  # M3 plan into M4). Once a newer START/OK line appears, auto-restart may
+  # resume.
+  if ensure_oc_session >/dev/null 2>&1; then
+    if oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc \
+      'last=$(grep -E "X FAIL|> START|OK END|OK GATE" /tmp/outer-loop.log 2>/dev/null | tail -1)
+       echo "$last" | grep -q "X FAIL"' 2>/dev/null; then
+      echo "O-DRV2: outer=DOWN after latest X FAIL — NOT auto-restarting (fix HOLD first)"
+      printf 'AGENT_LOOP_TICK_v8driver_CRITICAL {"ts":"%s","prompt":"O-DRV2-FAILHOLD: outer DOWN after X FAIL. FIRST: chat pulse + O-DRV4 ack. Then diagnose /tmp/outer-loop.log, bank, durableize, only then preflight --start."}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       return 0
     fi
   fi
@@ -280,18 +304,22 @@ refresh_task_analysis_pending() {
     echo '```bash'
     echo "bash scripts/track-b/v9-capture-diff.sh --oc ${head_sha:-HEAD}"
     echo "# write detailed tmp/docs-archive/V9-QUALITY-GATE.md section (code + action quality)"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE1-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-task-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare \`echo SHA > tmp/V9-TASK-ANALYSIS.sha\` does **not** clear —"
     echo "sha file must contain \`# validated:\` from the clear script."
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE1-REVIEW.md\`"
+    echo "that cites the sha (Wave-1 handshake — gate log alone fails)."
     echo
     echo "## Mandatory checklist"
     echo
     echo "1. Capture diff evidence + **read the generated code**."
     echo "2. AI code quality vs task goal/acceptance/legacy."
     echo "3. AI action quality: worker / mechan / MiniMax / sfix."
-    echo "4. Bank every durable gap (⬜). Clear via script above."
+    echo "4. Bank every durable gap (⬜). Write Implementing note in review doc."
+    echo "5. Clear via script above (not bare sha write)."
     echo
     echo "If MiniMax escalation: clear \`tmp/V9-ESCALATION-PENDING.md\` first"
     echo "via \`v9-clear-escalation.sh\`."
@@ -362,10 +390,13 @@ refresh_milestone_analysis_pending() {
     echo
     echo '```bash'
     echo "# write comprehensive tmp/docs-archive/V9-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE1-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-m-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare sha write does **not** clear — needs \`# validated:\` from clear script."
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE1-REVIEW.md\`"
+    echo "that cites the sha (Wave-1 handshake)."
   } >"$M_PENDING_FILE"
 }
 

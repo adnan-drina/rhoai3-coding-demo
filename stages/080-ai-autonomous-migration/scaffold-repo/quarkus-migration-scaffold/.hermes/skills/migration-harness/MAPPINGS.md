@@ -70,7 +70,7 @@ For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
 |---|---|
 | `@SpringBootApplication` / `SpringApplication.run` | Delete — Quarkus has no main class by default |
 | `@Service` / `@Component` + `@Autowired` | `@ApplicationScoped` + constructor injection |
-| `@FeignClient(url = "${VAR}")` interface | MicroProfile REST client: `@RegisterRestClient(configKey=...)` + `@Path`; URL via `quarkus.rest-client.<key>.url=${VAR}` |
+| `@FeignClient(url = "${VAR}")` interface | MicroProfile REST client: `@RegisterRestClient(configKey=...)` + `@Path`; URL via `quarkus.rest-client.<key>.url=${VAR}`. **Import (O-RESTCLIENTDEP):** `org.eclipse.microprofile.rest.client.inject.RegisterRestClient` — never `...annotation.RegisterRestClient` (will not compile). After wiring: `mvn -q compile` before exit. |
 | `spring-boot-starter-jersey` + `ResourceConfig` | Drop — `quarkus-rest` serves JAX-RS resources directly; keep the `javax→jakarta` rewrite on the resources |
 | Spring `@GetMapping` etc. on client interfaces | JAX-RS `@GET`/`@Path` equivalents |
 | `spring-boot-starter-actuator` | `quarkus-smallrye-health` (`/q/health`) |

@@ -40,6 +40,32 @@ echo "analyze: kantra args: $K_ARGS (source-only mode)"
 mkdir -p migration
 cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
   || { echo "FATAL: M1 ground truth unavailable"; exit 1; }
+# K6: kantra on pristine destination (exclude staging/.hermes) → dest-baseline
+# for scaffold-presatisfied.generated.txt (pom/config pre-satisfied only).
+DEST_SRC=/tmp/kantra-dest-src
+rm -rf "$DEST_SRC" /tmp/kantra-dest
+mkdir -p "$DEST_SRC"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude 'migration/staging/' --exclude '.hermes/' --exclude 'target/' \
+    --exclude '.git/' \
+    /projects/modernized/ "$DEST_SRC/" 2>/dev/null || true
+else
+  cp -a /projects/modernized/. "$DEST_SRC/" 2>/dev/null || true
+  rm -rf "$DEST_SRC/migration/staging" "$DEST_SRC/.hermes" "$DEST_SRC/target" \
+    "$DEST_SRC/.git" 2>/dev/null || true
+fi
+(cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
+  /tmp/kantra/kantra analyze -i "$DEST_SRC" -o /tmp/kantra-dest \
+  $K_ARGS --mode source-only --json-output --overwrite) 2>/dev/null || true
+if [ -f /tmp/kantra-dest/output.json ]; then
+  cp /tmp/kantra-dest/output.json migration/mta-findings-dest-baseline.json
+  ORACLE_ROOT=/projects/modernized python3 .hermes/harness/dest-presatisfied.py \
+    || echo "WARN: dest-presatisfied generation failed"
+  echo "analyze: K6 dest-baseline + scaffold-presatisfied.generated.txt"
+else
+  echo "WARN: K6 dest-baseline kantra failed — static scaffold-presatisfied.txt only"
+fi
 # Spec input bundle (docs/MTA-TO-SPEC-MAPPING.md): the mechanical
 # projections of the findings are computed here, not re-derived by the
 # sequencing model — dependency order, the findings inventory with the
@@ -52,7 +78,9 @@ python3 .hermes/harness/findings-inventory.py migration/mta-findings.json \
 .hermes/harness/recipe-transform.sh /projects/legacy migration/findings-inventory.md \
   || echo "WARN: recipe transform failed — recipe-class rules fall back to plan tasks"
 SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
-git add migration/mta-findings.json migration/dependency-order.md \
+git add migration/mta-findings.json migration/mta-findings-dest-baseline.json \
+        migration/scaffold-presatisfied.generated.txt \
+        migration/dependency-order.md \
         migration/findings-inventory.md migration/recipe-log.md migration/staging 2>/dev/null
 git commit -q -m "M1 analyze: ground truth + spec input bundle (supervisor script step)
 

@@ -208,18 +208,53 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   story_done "$SID" && { phase_ok "${SID} (${SLUG_HINT}) — already complete; skipping"; continue; }
 
   # -------------------------------------------------------- M3 SPECIFY
+  # O-M3SKIP: never treat "tasks.md exists" as GREEN. Untracked/half-written
+  # specs after a failed M3 (or auto-restart) must re-lint; only skip mchat
+  # when plan-lint is already green.
   SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-  if [ -z "$SPEC_TASKS" ]; then
-    BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
-    [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
-    SLUG=$(basename "$BRIEF" .md)
+  BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
+  [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
+  SLUG=$(basename "$BRIEF" .md)
+  M3_DONE=0
+  # O-M3ACCEPT: plan-lint must know deploy vs non-deploy (roadmap flag).
+  M3_LINT_CMD="python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md --story-deploy ${DEPLOY}"
+  if [ -n "$SPEC_TASKS" ] \
+    && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
+         --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
+         --story-deploy "$DEPLOY" \
+         > /tmp/plan-lint.txt 2>&1; then
+    [ -n "$(git status --porcelain specs/)" ] \
+      && git add specs/ \
+      && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+    phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+    phase_ok "M3 SPECIFY — ${SLUG} spec already present and plan-lint-green ($SPEC_TASKS); commit $(git rev-parse --short HEAD)"
+    M3_DONE=1
+  elif [ -n "$SPEC_TASKS" ]; then
+    phase_gate "M3 SPECIFY ${SID} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
+    log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
+  fi
+  if [ "$M3_DONE" != "1" ]; then
     # O-M3KILL: hermes SIGKILL (rc=137/143) from operator freeze must NOT spend
     # a plan-lint attempt — otherwise two freezes look like "failed lint twice".
     ATTEMPT=1
     while [ "$ATTEMPT" -le 2 ]; do
+      # O-M3QUOTA-GATE: if a prior session (or quota sleep) left a lint-green
+      # spec, advance immediately — never re-burn MiniMax / sleep 900 first.
+      SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
+      if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1; then
+        [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+        phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+        phase_ok "M3 SPECIFY — ${SLUG} spec/plan/tasks plan-lint-green; commit $(git rev-parse --short HEAD)"
+        M3_DONE=1
+        break
+      fi
       phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [attempt ${ATTEMPT}/2]"
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. A deterministic lint gates the plan — verify yourself with: python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. PACKAGE RENAME: full prefix legacyPackage→targetPackage only (never targetPackage.coolstore when targetPackage is com.demo)."
-      [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} failed its plan lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify the lint command from the findings file exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH."
+      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. PACKAGE RENAME: full prefix legacyPackage→targetPackage only (never targetPackage.coolstore when targetPackage is com.demo). ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} failed its plan lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH."
+      # If a RED spec is already on disk, attempt 1 is a fix pass (same as attempt 2 prompt).
+      if [ -n "$SPEC_TASKS" ] && [ "$ATTEMPT" = "1" ]; then
+        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
+      fi
       mchat "m3-${SID}-a${ATTEMPT}" "$P" "M3 SPECIFY ${SID}"
       mchat_rc=$?
       if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
@@ -227,22 +262,39 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         phase_retry "M3 SPECIFY ${SID} — session killed (rc=${mchat_rc}); not counting as lint fail"
         continue
       fi
+      # Gate before quota (O-M3QUOTA-GATE): a 429 session may still have left a
+      # lint-green commit — advance; only sleep when the plan is still RED.
       SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-      if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md > /tmp/plan-lint.txt 2>&1; then
+      if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1; then
         [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
         phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
         phase_ok "M3 SPECIFY — ${SLUG} spec/plan/tasks plan-lint-green; commit $(git rev-parse --short HEAD)"
+        M3_DONE=1
         break
       fi
-      { echo "Lint command: python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md"
-        [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md 2>&1 || echo "tasks.md missing entirely"; } > /tmp/plan-lint.txt
+      # O-M3QUOTA: MiniMax 429 must not burn a plan-lint attempt (mirror O-M3KILL).
+      if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-a${ATTEMPT}.log" 2>/dev/null; then
+        log "         O-M3QUOTA: M3 session rate-limited and plan still RED — attempt ${ATTEMPT} NOT spent; backoff 15m then retry same attempt"
+        phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s (not counting as lint fail)"
+        sleep 900
+        continue
+      fi
+      # O-M3EVID: do not `|| echo missing` on plan-lint RED — that lied to retry prompts.
+      {
+        echo "Lint command: ${M3_LINT_CMD}"
+        if [ -z "$SPEC_TASKS" ]; then
+          echo "tasks.md missing entirely"
+        else
+          python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
+            --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
+            --story-deploy "$DEPLOY" 2>&1 || true
+        fi
+      } > /tmp/plan-lint.txt
       phase_gate "M3 SPECIFY ${SID} plan-lint" RED "full findings /tmp/plan-lint.txt"
       [ "$ATTEMPT" = "2" ] && fail_run "M3 SPECIFY ${SID} failed its plan lint twice"
       phase_retry "M3 SPECIFY ${SID} — bouncing once"
       ATTEMPT=$((ATTEMPT + 1))
     done
-  else
-    phase_ok "M3 SPECIFY — ${SID} spec already present ($SPEC_TASKS)"
   fi
 
   # ----------------------------------------------------- M4/M5 EXECUTE
@@ -263,16 +315,35 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   # REDESIGN class). Derived from the roadmap scope of subsequent stories.
   LATER_CLASSES=$(echo "$STORIES" | awk -F'|' -v cur="$SID" 'seen{print $4} $1==cur{seen=1}' \
     | tr ', ' '\n' | sed -E 's/\.java$//; s#.*[./]##' | grep -E '^[A-Z][A-Za-z0-9]*$' | sort -u | tr '\n' ' ')
-  rm -f /tmp/supervisor-done
+  # O-HOTSWAP: supervisor may pause on /tmp/harness-update; re-enter M4
+  # without recording S0N,failed (mid-task deploy is not a story failure).
+  HOTSWAP_TRIES=0
+  while true; do
+  rm -f /tmp/supervisor-done /tmp/harness-update-ack
   if [ -n "${RESUME_RUN_BASE:-}" ] && [ "${RESUME_STORY:-}" = "$SID" ]; then
     STORY_RUN_BASE="$RESUME_RUN_BASE"
     log "         O-RESUME: using RESUME_RUN_BASE=$(git rev-parse --short "$STORY_RUN_BASE") for $SID only"
   else
-    STORY_RUN_BASE="$(git rev-parse HEAD)"
+    # O-M4REPLAY: mid-story restart with RUN_BASE=HEAD re-dispatches already
+    # committed T-NNN (empty RUN_BASE..HEAD → committed() always false).
+    # If this story's spec exists and T-NNN commits already follow it, resume
+    # from the spec's parent so those tasks stay "committed".
+    SPEC_SHA=$(git log -1 --format=%H --grep="^${SID} spec:" 2>/dev/null || true)
+    if [ -n "$SPEC_SHA" ] && [ -f "$SPEC_TASKS" ] \
+      && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE ' T-[0-9]+:'; then
+      STORY_RUN_BASE=$(git rev-parse "${SPEC_SHA}^" 2>/dev/null || git rev-parse "$SPEC_SHA")
+      log "         O-M4REPLAY: auto resume base=$(git rev-parse --short "$STORY_RUN_BASE") from ${SID} spec (T-NNN already present)"
+    else
+      STORY_RUN_BASE="$(git rev-parse HEAD)"
+    fi
   fi
-  phase_start "M4/M5 EXECUTE — implement & ship ${SLUG_HINT} (${STORY_IDX}/${STORY_COUNT})" \
-    "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log | run_base=$(git rev-parse --short "$STORY_RUN_BASE")"
-  log "         Note: M4 rewrite+infer coding → $(worker_label) first; MiniMax only for orch/escalation (WORKER_FIRST) — supervisor.log records actor"
+  if [ "$HOTSWAP_TRIES" -eq 0 ]; then
+    phase_start "M4/M5 EXECUTE — implement & ship ${SLUG_HINT} (${STORY_IDX}/${STORY_COUNT})" \
+      "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log | run_base=$(git rev-parse --short "$STORY_RUN_BASE")"
+    log "         Note: M4 rewrite+infer coding → $(worker_label) first; MiniMax only for orch/escalation (WORKER_FIRST) — supervisor.log records actor"
+  else
+    log "         O-HOTSWAP: re-entering M4/M5 for ${SID} (attempt $((HOTSWAP_TRIES+1)); run_base=$(git rev-parse --short "$STORY_RUN_BASE"))"
+  fi
   env RUN_BASE="$STORY_RUN_BASE" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
@@ -283,6 +354,20 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       PRESERVE_CHECK="$PC" \
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
+  if [ "$OUTCOME" = "no-done-marker" ] && [ -f /tmp/harness-update-ack ]; then
+    HOTSWAP_TRIES=$((HOTSWAP_TRIES + 1))
+    if [ "$HOTSWAP_TRIES" -gt 3 ]; then
+      log "         O-HOTSWAP: exceeded re-enter budget — treating as failure"
+    else
+      log "         O-HOTSWAP: harness update pause ended without done marker — re-entering (not failed)"
+      rm -f /tmp/harness-update /tmp/harness-update-ack /tmp/supervisor-pause
+      # O-FGRETRO: mid-run probe deploy may invalidate prior ALREADY COMPLETE skips.
+      touch /tmp/probe-reeval-needed
+      continue
+    fi
+  fi
+  break
+  done
   case "$OUTCOME" in
     debt-freeze*)
       # O-DEBTFRZ: supervisor froze on unresolved task/milestone debt — do NOT
@@ -308,7 +393,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ -f migration/retro-proposals.md ] && [ -n "$(echo "$REMAINING_BRIEFS" | tr -d ' ')" ]; then
         phase_start "BRIEF REFRESH — apply retro updates after ${SID}"
         mchat "brief-refresh-${SID}" \
-"Use the migration-harness skill. Read migration/retro-proposals.md and apply ONLY the section titled '## Brief updates (auto-applicable)' to these remaining briefs:${REMAINING_BRIEFS}. Do not edit completed-story briefs, specs, skills, or harness scripts. If that section is empty or has no actionable edits, make no file changes. If you change briefs, finish with ONE commit whose message STARTS with 'Brief refresh:'. DO NOT PUSH." \
+"Use the migration-harness skill. Read migration/retro-proposals.md and apply ONLY the section titled '## Brief updates (auto-applicable)' to these remaining briefs:${REMAINING_BRIEFS}. Also read migration/discovered.md (K9) if present — fold clearly actionable out-of-scope needs into those remaining briefs when they fit; leave the rest listed. Do not edit completed-story briefs, specs, skills, or harness scripts. If nothing actionable, make no file changes. If you change briefs, finish with ONE commit whose message STARTS with 'Brief refresh:'. DO NOT PUSH." \
           "BRIEF REFRESH" \
           || log "         brief refresh session failed — continuing (non-blocking)"
         [ -n "$(git status --porcelain migration/briefs/)" ] \

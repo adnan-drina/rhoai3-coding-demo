@@ -15,10 +15,14 @@ ROOT="$(qg_root)"
 # V9 gate doc remains archived until a V10 quality-gate file is opened.
 GATE_DOC="${GATE_DOC:-${ROOT}/tmp/docs-archive/V9-QUALITY-GATE.md}"
 BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
+# Wave-1 due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
+# clear scripts refuse unless a note cites the sha — gate log alone is not enough.
+REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE1-REVIEW.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace defaults (override via env — do not hardcode elsewhere).
-QG_WS_POD_DEFAULT="workspace2daa86efaa344a9d-6d99c65d69-66dtd"
+# coolstore-cart-service-v10 (Wave 1 / V10 run)
+QG_WS_POD_DEFAULT="workspace9b602ab164e54d66-79897b695d-tw2q2"
 QG_WS_NS_DEFAULT="wksp-ai-developer"
 QG_WS_CTR_DEFAULT="development-tooling"
 # O-FALSECOMPLETE — exact harness story-complete subjects only.
@@ -221,6 +225,32 @@ PY
   # Fallback: body must mention git show / --stat / concrete src path
   echo "$body" | grep -qiE 'git show|`--stat`|--stat|src/(main|test)/' \
     || qg_die "no tmp/V9-DIFF-EVIDENCE/${sha}.stat and gate lacks diff/path citations — run v9-capture-diff.sh first"
+}
+
+# Require an ### Implementing note in REVIEW_DOC that cites this sha.
+# Skips only when REVIEW_DOC is absent (non-Wave-1 runs). Hard-fail when present.
+qg_require_wave1_review_note() {
+  local sha="$1"
+  local short="${sha:0:7}"
+  [ -f "$REVIEW_DOC" ] || return 0
+  python3 - "$REVIEW_DOC" "$sha" "$short" <<'PY' || qg_die "no Implementing note in ${REVIEW_DOC#$ROOT/} cites sha $short — append findings there before clearing (handshake rules 4–5; gate log alone is insufficient)"
+import sys, re
+path, full, short = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(path, encoding="utf-8", errors="replace").read()
+parts = re.split(r"(?m)^(### Implementing note[^\n]*)$", text)
+hits = []
+for i in range(1, len(parts), 2):
+    header = parts[i]
+    rest = parts[i + 1] if i + 1 < len(parts) else ""
+    # Body ends at next ## / ### heading
+    body = re.split(r"(?m)^#{2,3} ", rest, maxsplit=1)[0]
+    blob = header + "\n" + body
+    if full in blob or short in blob:
+        hits.append(header.strip())
+if not hits:
+    sys.exit(2)
+print("review-note-ok:", hits[-1])
+PY
 }
 
 qg_write_validated_sha() {

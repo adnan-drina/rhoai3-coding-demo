@@ -35,12 +35,17 @@ SNAP=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     printf "%s\n" "$DIRTY"
     echo "DIRTY_END"
   fi
+  # O-HANDCOMMIT: committed remounts while idle are invisible to dirty-only detect.
+  # Flag src/ commits in the last 30m when no supervisor attempt is open.
+  RECENT=$(git log --since="30 minutes ago" --oneline -- src/ 2>/dev/null | head -8)
+  if [ -n "$RECENT" ]; then
+    echo "RECENT_BEGIN"
+    printf "%s\n" "$RECENT"
+    echo "RECENT_END"
+  fi
 ' 2>/dev/null | qg_strip_oc_noise || true)
 
-echo "$SNAP" | grep -q 'DIRTY_BEGIN' || { rm -f "$PENDING"; echo "handfix: clean src/"; exit 0; }
-
-# If any agent is UP, dirty tree is expected — not a hand-fix smell.
-# Match agents= anywhere on the line (after strip); also tolerate noise leftovers.
+# If any agent is UP, dirty/recent commits are expected — not a hand-fix smell.
 AGENTS=$(echo "$SNAP" | grep -E 'agents=(UP|DOWN)/' | head -1 || true)
 if echo "$AGENTS" | grep -q 'UP'; then
   echo "handfix: agents busy ($AGENTS) — skip"
@@ -48,18 +53,44 @@ if echo "$AGENTS" | grep -q 'UP'; then
   exit 0
 fi
 
-DIRTY=$(echo "$SNAP" | sed -n '/DIRTY_BEGIN/,/DIRTY_END/p' | grep -v DIRTY_)
+HAS_DIRTY=0
+HAS_RECENT=0
+echo "$SNAP" | grep -q 'DIRTY_BEGIN' && HAS_DIRTY=1
+echo "$SNAP" | grep -q 'RECENT_BEGIN' && HAS_RECENT=1
+
+if [ "$HAS_DIRTY" -eq 0 ] && [ "$HAS_RECENT" -eq 0 ]; then
+  rm -f "$PENDING"
+  echo "handfix: clean src/ (no dirty, no recent commits)"
+  exit 0
+fi
+
+DIRTY=$(echo "$SNAP" | sed -n '/DIRTY_BEGIN/,/DIRTY_END/p' | grep -v DIRTY_ || true)
+RECENT=$(echo "$SNAP" | sed -n '/RECENT_BEGIN/,/RECENT_END/p' | grep -v RECENT_ || true)
 {
-  echo "# V9 HANDFIX PENDING (O-HAND) — temporary→durable→re-run"
+  echo "# V9 HANDFIX PENDING (O-HAND / O-HANDCOMMIT) — temporary→durable→re-run"
   echo
   echo "- written: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`"
-  echo "- agents idle with dirty \`src/\` — likely a hand / probe edit"
+  if [ "$HAS_DIRTY" -eq 1 ]; then
+    echo "- agents idle with dirty \`src/\` — likely a hand / probe edit"
+  fi
+  if [ "$HAS_RECENT" -eq 1 ]; then
+    echo "- agents idle with recent \`src/\` commits (30m) and no open supervisor — possible hand remount (O-HANDCOMMIT)"
+  fi
   echo
-  echo "## Dirty paths"
-  echo '```'
-  echo "$DIRTY"
-  echo '```'
-  echo
+  if [ "$HAS_DIRTY" -eq 1 ]; then
+    echo "## Dirty paths"
+    echo '```'
+    echo "$DIRTY"
+    echo '```'
+    echo
+  fi
+  if [ "$HAS_RECENT" -eq 1 ]; then
+    echo "## Recent src/ commits (30m)"
+    echo '```'
+    echo "$RECENT"
+    echo '```'
+    echo
+  fi
   echo "## Required before clear"
   echo
   echo "1. Validate the probe (does it fix the failure class?)."

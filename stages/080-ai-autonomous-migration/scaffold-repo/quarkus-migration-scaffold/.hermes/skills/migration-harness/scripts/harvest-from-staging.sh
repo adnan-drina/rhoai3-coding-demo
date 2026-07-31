@@ -30,12 +30,44 @@ TGT=$(grep -m1 -E "^[[:space:]]*targetPackage:" migration.yaml | awk '{print $2}
 [ -n "$LEG" ] && [ -n "$TGT" ] || { echo "FATAL: legacyPackage/targetPackage missing from migration.yaml"; exit 2; }
 
 # '/'-joined package paths — the whole point: a dotted directory cannot arise.
+# O-HARVESTSTALL: also harvest src/test when main is absent (rewrite test migrations).
 LEGP=${LEG//./\/}
 TGTP=${TGT//./\/}
-src="migration/staging/src/main/java/$LEGP/$rel"
-dst="src/main/java/$TGTP/$rel"
+src_main="migration/staging/src/main/java/$LEGP/$rel"
+src_test="migration/staging/src/test/java/$LEGP/$rel"
+if [ -f "$src_main" ]; then
+  src="$src_main"
+  dst="src/main/java/$TGTP/$rel"
+elif [ -f "$src_test" ]; then
+  src="$src_test"
+  dst="src/test/java/$TGTP/$rel"
+else
+  echo "FATAL: staged source not found: $src_main (or $src_test)"
+  echo "  (path is relative to the package root; migration/staging holds the M1-transformed legacy)"
+  exit 2
+fi
 
-[ -f "$src" ] || { echo "FATAL: staged source not found: $src"; echo "  (path is relative to the package root; migration/staging holds the M1-transformed legacy)"; exit 2; }
+# O-REDESIGNREVERT: do not overwrite a converted CDI/JAX-RS dest with staging
+# Spring/legacy — fidelity polarity flips once converted (match staging = fail).
+if [ -f "$dst" ] && [ "${HARVEST_FORCE:-}" != "1" ]; then
+  if grep -qE '@(ApplicationScoped|RequestScoped|Singleton|Inject|Path|RegisterRestClient)\b' "$dst" 2>/dev/null \
+    && grep -qE '@(RestController|Service|Component|Autowired|SpringBootApplication|Configuration)\b' "$src" 2>/dev/null; then
+    echo "FATAL: O-REDESIGNREVERT — $dst is already converted (CDI/JAX-RS); refusing overwrite from Spring staging $src"
+    echo "  Convert in place, or HARVEST_FORCE=1 only when intentional re-baseline."
+    exit 4
+  fi
+fi
+
+# O-HARVESTBRK: landing Spring REST/config into src/main after Spring deps are
+# gone leaves an uncompilable tree. Refuse unless pom still has spring-boot.
+if echo "$dst" | grep -qE '(^|/)src/main/java/' \
+  && grep -qE '@(RestController|SpringBootApplication|Configuration|Component|Service)\b' "$src" 2>/dev/null; then
+  if ! grep -qE 'spring-boot' pom.xml 2>/dev/null; then
+    echo "FATAL: O-HARVESTBRK — staging $src still has Spring stereotypes but pom has no spring-boot"
+    echo "  Convert annotations before harvest, or harvest into a convert task that lands Quarkus shape."
+    exit 5
+  fi
+fi
 
 mkdir -p "$(dirname "$dst")"
 sed "s/${LEG//./\\.}/$TGT/g" "$src" > "$dst"

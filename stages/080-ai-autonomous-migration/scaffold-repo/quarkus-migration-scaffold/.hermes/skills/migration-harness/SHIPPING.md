@@ -10,13 +10,28 @@
 
 ```bash
 kantra-ensure
-/tmp/kantra/kantra analyze -i /projects/modernized -o /tmp/kantra-after \
+# O-DELTASTAGING: scan a copy that excludes migration/staging and .hermes
+# (staging is legacy-by-design — counting it as residual is a false delta).
+# The supervisor builds /tmp/kantra-after-src with those excludes; sessions
+# must NOT re-run kantra themselves.
+/tmp/kantra/kantra analyze -i /tmp/kantra-after-src -o /tmp/kantra-after \
   --target quarkus --json-output --overwrite || true
 cp /tmp/kantra-after/output.json /projects/modernized/migration/mta-findings-after.json
 ```
 
 Done means the baseline findings are resolved (or waived in the spec) —
 not "the agent says done."
+
+**O-DELTABASE:** after the after-scan, the supervisor runs
+`.hermes/harness/findings-delta.py` → `migration/findings-delta.txt`.
+Absence of a rule in the after-scan is **not** automatically resolved:
+- **RESOLVED** — incident basename exists under `src/` (or pom/props landed)
+  and the rule is gone after.
+- **ABSENT-NOT-LANDED** — rule gone but nothing landed in `src/` (empty
+  harvest / scaffold-only). Score these **0** toward resolve %.
+- **SCAFFOLD-PRESATISFIED** — destination already satisfied (no story credit).
+Always cite the `METRIC src_main_java` / `residual_incidents` lines so
+pom/props residual cannot hide real Java progress.
 
 2. Factory pre-flight: run `.hermes/harness/sensors.sh preflight`
    (isolated clean verify, new-code sonar/coverage gate, prod-profile

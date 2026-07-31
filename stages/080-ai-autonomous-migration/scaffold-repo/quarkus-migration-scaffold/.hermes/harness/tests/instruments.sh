@@ -597,6 +597,57 @@ EOF
 }
 check "static sensors reject fail-open acceptance catch→ok (V6 R3)" 1 "acceptance"
 
+# O-FAILOPEN-DTO (Poll 52): catch→status DTO is also fail-open 200
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  cat > src/main/java/com/demo/rest/AcceptanceEndpoint.java <<'EOF'
+package com.demo.rest;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import java.util.List;
+@Path("/api/cart")
+public class AcceptanceEndpoint {
+  CatalogService catalog;
+  @GET @Path("acceptance-check")
+  public List acceptanceCheck() {
+    try { return catalog.products(); }
+    catch (Exception e) { return java.util.Collections.emptyList(); }
+  }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject fail-open acceptance catch→emptyList (O-FAILOPEN-DTO)" 1 "O-FAILOPEN-DTO"
+
+# O-RESTGUIDE (Poll 53): root-level body("find { must RED
+run_case() {
+  sensor_fixture
+  mkdir -p src/test/java/com/demo/rest
+  cat > src/test/java/com/demo/rest/CartEndpointTest.java <<'EOF'
+package com.demo.rest;
+import io.quarkus.test.junit.QuarkusTest;
+import org.junit.jupiter.api.Test;
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.is;
+@QuarkusTest
+class CartEndpointTest {
+  @Test void a() { given().when().get("/cart/1").then().body("find { it.x == 1 }.y", is(1)); }
+  @Test void b() { given().when().get("/cart/2").then().statusCode(200); }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject RestAssured root find{} (O-RESTGUIDE/O-RESTJSON)" 1 "O-RESTJSON"
+
+# O-QJACOCO (Poll 55): preflight/full milestone must mention missing quarkus report
+run_case() {
+  grep -q 'O-QJACOCO' "$SENSORS" \
+    && grep -q 'jacoco-report/jacoco.xml' "$SENSORS" \
+    && echo qjacoco-ok
+}
+check "sensors.sh hard-fails missing quarkus-jacoco report (O-QJACOCO)" 0 "qjacoco-ok"
+
 # 17d. V6 R5 — deploy story requires env preserve in k8s/
 run_case() {
   sensor_fixture
@@ -641,12 +692,14 @@ EOF
 check "static sensors reject Deployment-named host without Service (O-CATALOGSVC)" 1 "O-CATALOG"
 
 # 17f. root index required when deploy=true
+# G-CAT-FIXTURES (Poll 51): acceptance surface must reference catalog so G-CAT
+# does not mask the missing-index assertion.
 run_case() {
   sensor_fixture
   mkdir -p k8s src/main/java/com/demo/rest
   printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
   printf 'apiVersion: v1\nkind: Service\nmetadata:\n  name: catalog\nspec:\n  ports: [{port: 8080}]\n' > k8s/catalog-svc.yaml
-  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  CatalogService catalog;\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return catalog.products(); }\n}\n' \
     > src/main/java/com/demo/rest/CartEndpoint.java
   STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
@@ -908,6 +961,44 @@ run_case() {
 }
 check "harvest-from-staging writes '/'-joined dest + renames package (V5 opt1)" 0 "HARVEST OK"
 
+# O-HARVESTSTALL — harvest src/test + mechan preseed missing Target tests
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/test/java/com/redhat/coolstore/service
+  printf 'package com.redhat.coolstore.service;\npublic class ShoppingCartServiceTest { }\n' \
+    > migration/staging/src/test/java/com/redhat/coolstore/service/ShoppingCartServiceTest.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  bash "$HARVEST_SH" service/ShoppingCartServiceTest.java >/dev/null 2>&1
+  { [ -f src/test/java/com/demo/service/ShoppingCartServiceTest.java ] \
+    && grep -q "package com.demo.service" src/test/java/com/demo/service/ShoppingCartServiceTest.java; } \
+    && echo "HARVEST TEST OK" || echo "FAIL"
+}
+check "harvest-from-staging harvests src/test targets (O-HARVESTSTALL)" 0 "HARVEST TEST OK"
+
+run_case() {
+  mkfix
+  mkdir -p .hermes/skills/migration-harness/scripts .hermes/harness \
+    migration/staging/src/test/java/com/redhat/coolstore/service
+  cp "$HARVEST_SH" .hermes/skills/migration-harness/scripts/harvest-from-staging.sh
+  cp "$HARNESS_DIR/preseed-targets.py" .hermes/harness/preseed-targets.py
+  printf 'package com.redhat.coolstore.service;\npublic class ShoppingCartServiceTest { }\n' \
+    > migration/staging/src/test/java/com/redhat/coolstore/service/ShoppingCartServiceTest.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Test migration to Quarkus
+**Class**: rewrite
+**Target design**:
+- → `src/test/java/com/demo/service/ShoppingCartServiceTest.java`
+**Goal**: Port staging unit tests
+**Acceptance**: ShoppingCartServiceTest exists under target package
+EOF
+  out=$(PRESEED_ROOT="$FIX" python3 .hermes/harness/preseed-targets.py tasks.md T-001)
+  echo "$out"
+  [ -f src/test/java/com/demo/service/ShoppingCartServiceTest.java ] && echo "$out" | grep -q seeded
+}
+check "preseed-targets harvests missing rewrite test Target (O-HARVESTSTALL)" 0 "seeded:"
+
 # 70. parse-roadmap translates legacy scope paths to target (V5 scope-path bug:
 #     the roadmap names classes by legacy path, but src/main is target-package,
 #     so the scope sensor reverted legitimate harvests as out-of-scope).
@@ -1026,7 +1117,8 @@ run_case() {
   printf 'apiVersion: v1\nkind: Service\nmetadata:\n  name: catalog\nspec:\n  ports: [{port: 8080}]\n' > k8s/catalog-svc.yaml
   printf '<html>ok</html>\n' > src/main/resources/META-INF/resources/index.html
   printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
-  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return null; }\n}\n' \
+  # G-CAT-FIXTURES (Poll 51): P0c green path must also satisfy G-CAT catalog fetch
+  printf 'package com.demo.rest;\nimport jakarta.ws.rs.Path;\n@Path("/api/cart")\npublic class CartEndpoint {\n  CatalogService catalog;\n  @Path("acceptance-check")\n  public Object acceptanceCheck() { return catalog.products(); }\n}\n' \
     > src/main/java/com/demo/rest/CartEndpoint.java
   STORY_DEPLOY=true SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
@@ -1165,6 +1257,25 @@ EOF
 }
 check "already-complete still skips real preserve-subject tasks (O-AC2)" 0 "present:CATALOG_ENDPOINT"
 
+# O-AC-K8S — k8s comment/sample must not satisfy preserve when props lack token (V10 T-003)
+run_case() {
+  mkfix
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.http.port=8080\n' > src/main/resources/application.properties
+  printf '# Legacy clients call GET ${CATALOG_ENDPOINT}/api/products\n' > k8s/catalog-service.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Harvest and convert application.properties configuration
+**Class**: rewrite
+**Target design**: → `src/main/resources/application.properties`
+**Goal**: Migrate configuration; preserve CATALOG_ENDPOINT environment variable
+**Acceptance**: CATALOG_ENDPOINT present in application.properties
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-003; echo "rc=$?"
+}
+check "already-complete does not skip on k8s-only CATALOG_ENDPOINT (O-AC-K8S)" 0 "rc=1"
+
 # O-AC3 — class conversion mentioning CATALOG_ENDPOINT must not skip when .java missing
 run_case() {
   mkfix
@@ -1187,6 +1298,47 @@ EOF
   ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-006; echo "rc=$?"
 }
 check "already-complete does not skip missing CatalogService.java (O-AC3)" 0 "rc=1"
+
+
+# O-AC-NONJAVA — Target application.properties must not preserve-skip on token alone
+run_case() {
+  mkfix
+  mkdir -p src/main/resources
+  printf 'CATALOG_ENDPOINT=http://localhost:8081\n' > src/main/resources/application.properties
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-007: Environment Configuration Validation
+**Class**: infer
+**Findings**: demo-env-integration-00001
+**Target design**: → `src/main/resources/application.properties`
+**Goal**: Validate CATALOG_ENDPOINT; create test configuration for property resolution
+**Acceptance**: test config demonstrates env fallback
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-007; echo "rc=$?"
+}
+check "already-complete does not skip props Target on preserve token (O-AC-NONJAVA)" 0 "rc=1"
+
+# O-ACVERIFY — Verify/Ensure tasks must not preserve-skip on ENV token alone
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/rest src/main/resources k8s
+  printf 'quarkus.rest-client.catalog.url=${CATALOG_ENDPOINT}\n' > src/main/resources/application.properties
+  printf 'env:\n  - name: CATALOG_ENDPOINT\n    value: http://catalog:8080\n' > k8s/app.yaml
+  printf 'package com.demo.rest;\npublic class AcceptanceEndpoint {}\n' \
+    > src/main/java/com/demo/rest/AcceptanceEndpoint.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Verify existing catalog-backed acceptance (S04)
+**Class**: infer
+**Goal**: Confirm AcceptanceEndpoint still returns catalog products[]; preserve CATALOG_ENDPOINT
+**Target design**: → `src/main/java/com/demo/rest/AcceptanceEndpoint.java`
+**Acceptance**: /api/cart/acceptance-check returns products[]; CATALOG_ENDPOINT remains wired
+EOF
+  printf 'preserve:\n  - CATALOG_ENDPOINT\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-003; echo "rc=$?"
+}
+check "already-complete does not skip Verify acceptance on CATALOG_ENDPOINT (O-ACVERIFY)" 0 "rc=1"
 
 # O-T6d — characterization task must not mechan-commit main-only dirty tree
 MM_PY="$HARNESS_DIR/mechan-match.py"
@@ -1280,6 +1432,53 @@ run_case() {
 }
 check "static sensors reject ceremonial String/OK acceptance (G-OK)" 1 "acceptance"
 
+# O-ACCEPTREC / G-CAT (Poll 50): Java record status DTO evades G-OK/G-AC2 greps
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  cat > src/main/java/com/demo/rest/AcceptanceEndpoint.java <<'EOF'
+package com.demo.rest;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+@Path("/api/cart")
+public class AcceptanceEndpoint {
+  @GET @Path("acceptance-check") @Produces(MediaType.APPLICATION_JSON)
+  public AcceptanceStatus acceptanceCheck() {
+    return new AcceptanceStatus("accepted", "cart service is healthy");
+  }
+  public record AcceptanceStatus(String status, String message) {}
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject ceremonial record acceptance (G-CAT/O-ACCEPTREC)" 1 "G-CAT"
+
+# G-CATBODY: catalog fetch side-effect + status DTO still ships products=0
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/java/com/demo/rest
+  cat > src/main/java/com/demo/rest/AcceptanceEndpoint.java <<'EOF'
+package com.demo.rest;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import java.util.List;
+@Path("/api/cart")
+public class AcceptanceEndpoint {
+  CatalogService catalogService;
+  @GET @Path("acceptance-check")
+  public AcceptanceStatus acceptanceCheck() {
+    List products = catalogService.getProducts();
+    return new AcceptanceStatus("accepted", "products: " + products.size());
+  }
+  public record AcceptanceStatus(String status, String message) {}
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject catalog-fetch status DTO acceptance (G-CATBODY)" 1 "G-CATBODY"
+
 run_case() {
   out=$(printf '%s\n' '[{"name":"Car"},{"name":"Bike"}]' | python3 "$HARNESS_DIR/acceptance-products.py")
   echo "count=$out"
@@ -1333,6 +1532,33 @@ EOF
   python3 "$LINT" tasks.md
 }
 check "plan-lint rejects soft prepare-for tasks (S-SOFT)" 1 "S-SOFT"
+
+run_case() {
+  # S-SOFT-NARROW: title "Verify X" must fail even when body cites a path
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-009: Verify existing catalog-backed acceptance
+**Class**: infer
+**Target design**: → `src/main/java/com/demo/rest/AcceptanceEndpoint.java`
+**Goal**: Confirm products[] still returned
+**Acceptance**: /api/cart/acceptance-check returns catalog products
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md --story-deploy true
+}
+check "plan-lint rejects Verify-title tasks (S-SOFT-NARROW)" 1 "S-SOFT"
+
+run_case() {
+  grep -q 'O-DELTASTAGING' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'kantra-after-src' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'exclude.*migration/staging' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-RESTCLIENTDEP' "$HARNESS_DIR/../skills/migration-harness/MAPPINGS.md" \
+    && grep -q 'rest.client.inject.RegisterRestClient' \
+         "$HARNESS_DIR/../skills/migration-harness/MAPPINGS.md" \
+    && echo deltarest-ok
+}
+check "O-DELTASTAGING after-scan excludes + O-RESTCLIENTDEP import tip" 0 "deltarest-ok"
 
 run_case() {
   grep -q 'outer-loop-heartbeat' "$HARNESS_DIR/outer-loop.sh" \
@@ -1406,6 +1632,150 @@ EOF
 check "plan-lint rejects ceremonial acceptance placeholder tasks (S-AC1)" 1 "S-AC1"
 
 run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Acceptance Path Implementation
+**Class**: infer
+**Target design**: → `src/main/java/com/demo/rest/MinimalAcceptanceEndpoint.java`
+- Create MinimalAcceptanceEndpoint.java with @Path("/api/cart")
+- Return JSON response with status information / platform readiness verification
+```java
+public Map<String, String> acceptanceCheck() {
+    return Map.of("status", "platform_ready", "story", "S01");
+}
+```
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects MinimalAcceptanceEndpoint status-map (S-AC1 V10)" 1 "S-AC1"
+
+run_case() {
+  # S-AC1-NEG: negation prose must not trip S-AC1
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+Do NOT schedule MinimalAcceptanceEndpoint / status-map placeholders (S-AC1/G-OK).
+
+#### T-001: Convert pom to Quarkus BOM
+**Class**: rewrite
+**Owns**: pom.xml
+- Replace Spring Boot parent with Quarkus BOM in `pom.xml`.
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md --story-deploy false
+}
+check "plan-lint accepts No MinimalAcceptanceEndpoint defer prose (S-AC1-NEG)" 0 "PLAN OK"
+
+run_case() {
+  grep -q 'sensor autofix:' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXCREDIT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXDIRTY' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'PRE_SFIX_HEAD' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ParameterizedTest' "$HARNESS_DIR/sensors.sh" \
+    && echo sfix-ok
+}
+check "O-SFIXCREDIT/DIRTY/COUNT wiring in supervisor+sensors" 0 "sfix-ok"
+
+run_case() {
+  # O-M3GOK: status/ok acceptance on CartEndpoint must fail plan-lint
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Add acceptance status/ok on CartEndpoint
+**Class**: infer
+**Target design**: → `src/main/java/com/demo/rest/CartEndpoint.java`
+- Add `@Path("acceptance-check")` returning status/ok for deploy verification
+- Method may `return "ok"` until catalog wiring lands
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\nacceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md --story-deploy true
+}
+check "plan-lint rejects status/ok acceptance on CartEndpoint (O-M3GOK)" 1 "S-AC1"
+
+run_case() {
+  # O-M3ACCEPT: non-deploy story may omit acceptance.path entirely
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert pom to Quarkus BOM
+**Class**: rewrite
+**Owns**: pom.xml
+- Replace Spring Boot parent with Quarkus BOM in `pom.xml`.
+EOF
+  printf 'acceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md --story-deploy false
+}
+check "plan-lint accepts non-deploy plan without acceptance.path (O-M3ACCEPT)" 0 "PLAN OK"
+
+run_case() {
+  # O-M3ACCEPT: non-deploy must not task endpoint substance for acceptance.path
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Acceptance endpoint early
+**Class**: infer
+**Owns**: MinimalAcceptanceEndpoint.java
+- Serve `/api/cart/acceptance-check` via `@Path` on
+  `src/main/java/com/demo/rest/MinimalAcceptanceEndpoint.java` Endpoint.
+EOF
+  printf 'acceptance:\n  path: /api/cart/acceptance-check\n' > migration.yaml
+  python3 "$LINT" tasks.md --story-deploy false
+}
+check "plan-lint rejects acceptance endpoint on non-deploy story (O-M3ACCEPT)" 1 "O-M3ACCEPT"
+
+run_case() {
+  # O-M3EVID / O-M3ACCEPT / O-M3QUOTA wiring in outer-loop
+  ! grep -nE 'plan-lint\.py.*"\$SPEC_TASKS".*\|\|.*tasks\.md missing' \
+    "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3EVID' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'story-deploy' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3QUOTA' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3QUOTA-GATE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'sleep 900' "$HARNESS_DIR/outer-loop.sh" \
+    && echo om3evid-ok
+}
+check "outer-loop O-M3EVID + O-M3ACCEPT + O-M3QUOTA wiring" 0 "om3evid-ok"
+
+run_case() {
+  # K2-LABEL: Finds: alias must still inject evidence; plan-lint rejects non-canonical
+  mkfix
+  mkdir -p migration
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived.
+
+#### T-001: Convert pom
+**Class**: rewrite
+**Finds**: springboot-parent-pom-to-quarkus-00000
+**Owns**: pom.xml
+- Edit `pom.xml` parent to Quarkus BOM.
+EOF
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/mta-findings.json <<'JSON'
+[{"violations":{"springboot-parent-pom-to-quarkus-00000":{"category":"mandatory","incidents":[{"uri":"file:///projects/legacy/pom.xml","message":"replace parent with Quarkus BOM","codeSnip":"<parent>spring</parent>"}]}}}]
+JSON
+  n=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001 qwen 2>/dev/null \
+    | sed -n '/Analysis evidence/,/Target Design/p' | grep -cE '^- ' || true)
+  lint_out=$(python3 "$LINT" tasks.md migration/mta-findings.json --story-deploy false 2>&1 || true)
+  [ "$n" -ge 1 ] && echo "$lint_out" | grep -q K2-LABEL && echo k2label-ok
+}
+check "K2-LABEL alias injects evidence and plan-lint requires Findings" 0 "k2label-ok"
+
+run_case() {
+  grep -q 'story-deploy' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'DEPLOY_ARGS' "$HARNESS_DIR/supervisor.sh" \
+    && echo osupaccept-ok
+}
+check "supervisor passes --story-deploy to plan-lint (O-SUPACCEPT)" 0 "osupaccept-ok"
+
+run_case() {
   # G-AC3: acceptance_ship_contract invoked inside milestone_sensor body
   awk '/^milestone_sensor\(\)/,/^sonar_check\(\)|^fidelity_check\(\)|^preflight\(\)/' "$SENSORS" \
     | grep -q 'acceptance_ship_contract' && echo gac3-ok
@@ -1469,6 +1839,8 @@ run_case() {
   grep -q 'O-OCERR' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'refuse_red_task_commit' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'O-SFIXSCOPE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ESCALGPLACE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-NOPUSHPR' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'O-RESTJSON' "$exec_md" \
     && echo ocerr-rest-ok
 }
@@ -1533,6 +1905,29 @@ EOF
   ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-008
 }
 check "escw-eligible allows service characterization when service tests exist (O-ESCW3)" 0 "tests-present"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/rest
+  # JAX-RS stub without session/inject — must NOT ESCW for Convert+session task
+  cat > src/main/java/com/demo/rest/CartEndpoint.java <<'EOF'
+package com.demo.rest;
+import jakarta.ws.rs.Path;
+@Path("/cart")
+public class CartEndpoint { }
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-005: Convert CartEndpoint to JAX-RS with Quarkus session management
+**Class**: infer
+- Replace session scope with Quarkus session management
+- Convert @Autowired field injection to constructor injection
+**Target design**: → `src/main/java/com/demo/rest/CartEndpoint.java`
+EOF
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-005; echo rc=$?
+}
+check "escw-eligible refuses Convert session stub without @SessionScoped (O-ESCWCONVERT)" 0 "need-session-scope"
+
 
 run_case() {
   mkfix
@@ -1636,6 +2031,91 @@ EOF
   python3 "$LINT" tasks.md f.json
 }
 check "plan-lint rejects incident file claimed by two tasks (K1)" 1 "LINT:incident-conflict"
+
+run_case() {
+  # K1-SHARED: pom claimed by two tasks must NOT incident-conflict
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Quarkus BOM
+**Class**: rewrite
+- Target: → `pom.xml`
+
+#### T-002: Add rest-client dep
+**Class**: rewrite
+**Owns**: pom.xml
+- Also edits pom.xml for quarkus-rest-client-jackson
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"javaee-pom-to-quarkus-00010": {
+  "category": "mandatory",
+  "incidents": [
+    {"uri": "file:///projects/legacy/pom.xml", "lineNumber": 1}
+  ]
+}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint allows shared pom ownership without conflict (K1-SHARED)" 0 "PLAN OK"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Package rename legacy→target
+**Class**: rewrite
+**Goal**: Apply package rename across sources
+**Acceptance**: no legacyPackage under src/main
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects package-rename with no harvested java (O-PKGORD)" 1 "O-PKGORD"
+
+run_case() {
+  grep -q 'O-M4REPLAY' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-WORKERREAD' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'worker-read-watch.py' "$HARNESS_DIR/supervisor.sh" \
+    && echo m4worker-ok
+}
+check "O-M4REPLAY + O-WORKERREAD wiring" 0 "m4worker-ok"
+
+run_case() {
+  grep -q 'O-MSGCLAIM' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'msgclaim-check.py' "$HARNESS_DIR/supervisor.sh" \
+    && test -f "$HARNESS_DIR/msgclaim-check.py" \
+    && echo msgclaim-ok
+}
+check "O-MSGCLAIM wiring" 0 "msgclaim-ok"
+
+run_case() {
+  # msgclaim-check: subject claims CatalogService but diff only touches Other.java
+  mkfix
+  git init -q
+  git config user.email t@t; git config user.name t
+  mkdir -p src/main/java/com/demo
+  printf 'class Other {}\n' > src/main/java/com/demo/Other.java
+  git add -A && git commit -q -m 'init'
+  printf 'class Other { int x; }\n' > src/main/java/com/demo/Other.java
+  git add -A && git commit -q -m 'T-002: CatalogService Feign to REST convert'
+  python3 "$HARNESS_DIR/msgclaim-check.py" HEAD; echo "rc=$?"
+}
+check "msgclaim-check rejects subject class absent from diff (O-MSGCLAIM)" 0 "rc=1"
+
+run_case() {
+  local top detect
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  detect="${top}/scripts/track-b/v9-handfix-detect.sh"
+  [ -n "$top" ] && [ -f "$detect" ] \
+    && grep -qE 'O-HANDCOMMIT|RECENT_BEGIN' "$detect" \
+    && echo handcommit-ok
+}
+check "O-HANDCOMMIT recent-commit detect wiring" 0 "handcommit-ok"
 
 run_case() {
   mkfix
@@ -1915,6 +2395,332 @@ print(n)
   [ "$content" -le 2400 ] && echo "k2-cap2-ok content=$content"
 }
 check "task-packet enforces 2400-char combined evidence budget (K2-CAP)" 0 "k2-cap2-ok"
+
+# O-DESTBASE — scaffold-presatisfied omit + already-complete (via K6 oracle)
+run_case() {
+  mkfix
+  mkdir -p .hermes/harness migration
+  cp "$HARNESS_DIR/scaffold-presatisfied.txt" .hermes/harness/
+  cp "$HARNESS_DIR/already-complete.py" .hermes/harness/
+  cp "$HARNESS_DIR/findings-oracle.py" .hermes/harness/
+  printf '<project><build><plugins><plugin><artifactId>quarkus-maven-plugin</artifactId></plugin></plugins></build></project>\n' > pom.xml
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "springboot-parent-pom-to-quarkus-00000":{"description":"p","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]}
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+#### T-001: Convert Spring Boot parent to Quarkus
+**Findings**: springboot-parent-pom-to-quarkus-00000
+**Goal**: Use Quarkus parent
+**Acceptance**: pom has quarkus-maven-plugin
+EOF
+  ALREADY_COMPLETE_ROOT="$FIX" python3 .hermes/harness/already-complete.py tasks.md T-001
+}
+check "already-complete skips scaffold-presatisfied Findings (O-DESTBASE)" 0 "oracle-absent:"
+
+# O-HARVESTBRK — Spring REST into src/main without spring-boot
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/redhat/coolstore/rest
+  printf 'package com.redhat.coolstore.rest;\n@RestController\npublic class CartEndpoint {}\n' \
+    > migration/staging/src/main/java/com/redhat/coolstore/rest/CartEndpoint.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  printf '<project></project>\n' > pom.xml
+  out=$(bash "$HARVEST_SH" rest/CartEndpoint.java 2>&1 || true)
+  echo "$out" | grep -q O-HARVESTBRK && echo harvestbrk-ok
+}
+check "harvest refuses Spring REST without spring-boot (O-HARVESTBRK)" 0 "harvestbrk-ok"
+
+# O-REDESIGNREVERT — refuse overwrite of converted dest
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/redhat/coolstore/service \
+    src/main/java/com/demo/service
+  printf 'package com.redhat.coolstore.service;\n@Service\npublic class CatalogService { public void products(){} }\n' \
+    > migration/staging/src/main/java/com/redhat/coolstore/service/CatalogService.java
+  printf 'package com.demo.service;\n@ApplicationScoped\npublic class CatalogService { public void products(){} }\n' \
+    > src/main/java/com/demo/service/CatalogService.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  printf '<project><dependency>spring-boot</dependency></project>\n' > pom.xml
+  out=$(bash "$HARVEST_SH" service/CatalogService.java 2>&1 || true)
+  echo "$out" | grep -q O-REDESIGNREVERT && echo redesignrevert-ok
+}
+check "harvest refuses overwrite of CDI dest (O-REDESIGNREVERT)" 0 "redesignrevert-ok"
+
+# O-REDESIGNSIG / O-IFACERENAME
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/redhat/coolstore/service \
+    src/main/java/com/demo/service
+  printf 'package com.redhat.coolstore.service;\npublic interface CatalogService { java.util.List products(); }\n' \
+    > migration/staging/src/main/java/com/redhat/coolstore/service/CatalogService.java
+  printf 'package com.demo.service;\n@RegisterRestClient\npublic interface CatalogService { java.util.List getProducts(); }\n' \
+    > src/main/java/com/demo/service/CatalogService.java
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$HARNESS_DIR/redesign-sig.py" >/dev/null; echo "rc=$?"
+}
+check "redesign-sig catches interface method rename (O-IFACERENAME)" 0 "rc=1"
+
+# O-HOTSWAP wiring
+run_case() {
+  grep -q 'harness-update-ack' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-HOTSWAP' "$HARNESS_DIR/outer-loop.sh" \
+    && echo hotswap-ok
+}
+check "O-HOTSWAP wiring (pause + outer re-enter)" 0 "hotswap-ok"
+
+# O-REDATTRIB wiring
+run_case() {
+  grep -q '_redattrib_gcat' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'CURRENT_TASK' "$HARNESS_DIR/supervisor.sh" \
+    && echo redattrib-ok
+}
+check "O-REDATTRIB wiring" 0 "redattrib-ok"
+
+# O-DELTABASE — absence without src/ is not resolved
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness src/main/java
+  cp "$HARNESS_DIR/findings-delta.py" .hermes/harness/
+  cp "$HARNESS_DIR/scaffold-presatisfied.txt" .hermes/harness/
+  # before: springboot rule on a class that was never harvested + one presat rule
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "springboot-web-to-quarkus-99999":{"description":"x","incidents":[{"uri":"file:///legacy/Foo.java","lineNumber":1}]},
+  "springboot-parent-pom-to-quarkus-00000":{"description":"y","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]},
+  "custom-landed-00001":{"description":"z","incidents":[{"uri":"file:///src/main/java/com/demo/Bar.java","lineNumber":1}]}
+}}]
+EOF
+  # after: only custom-landed gone (and we plant Bar.java) + parent gone
+  printf 'package com.demo;\npublic class Bar {}\n' > src/main/java/Bar.java
+  cat > migration/mta-findings-after.json <<'EOF'
+[{"violations":{}}]
+EOF
+  out=$(FINDINGS_DELTA_ROOT="$FIX" python3 .hermes/harness/findings-delta.py)
+  echo "$out" | grep -q 'absent_not_landed=1' \
+    && echo "$out" | grep -q 'scaffold_presatisfied=1' \
+    && echo "$out" | grep -q 'resolved=1' \
+    && echo "$out" | grep -q 'DELTABASE:resolved=1:absent=1' \
+    && echo deltabases-ok
+}
+check "findings-delta splits absent vs resolved (O-DELTABASE)" 0 "deltabases-ok"
+
+# O-FGRETRO wiring + reopen list
+run_case() {
+  grep -q 'fgretro-reeval.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'probe-reeval-needed' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'fgretro-reopen.txt' "$HARNESS_DIR/supervisor.sh" \
+    && echo fgretro-ok
+}
+check "O-FGRETRO wiring (reeval + reopen + HOTSWAP touch)" 0 "fgretro-ok"
+
+# K6 — findings oracle + dest-presatisfied
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness src/main/java
+  cp "$HARNESS_DIR/findings-oracle.py" .hermes/harness/
+  cp "$HARNESS_DIR/scaffold-presatisfied.txt" .hermes/harness/
+  printf '<project><build><plugins><plugin><artifactId>quarkus-maven-plugin</artifactId></plugin></plugins></build></project>\n' > pom.xml
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "springboot-parent-pom-to-quarkus-00000":{"description":"p","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]}
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+#### T-001: Convert Spring Boot parent to Quarkus
+**Findings**: springboot-parent-pom-to-quarkus-00000
+**Goal**: Quarkus parent
+EOF
+  ORACLE_ROOT="$FIX" python3 .hermes/harness/findings-oracle.py tasks.md T-001; echo "rc=$?"
+}
+check "findings-oracle absent on Quarkus pom (K6)" 0 "rc=0"
+
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness
+  cp "$HARNESS_DIR/findings-oracle.py" .hermes/harness/
+  cp "$HARNESS_DIR/escw-eligible.py" .hermes/harness/
+  # after-scan still has the rule → present → ESCW blocked
+  cat > migration/mta-findings-after.json <<'EOF'
+[{"violations":{
+  "custom-still-00001":{"description":"x","incidents":[{"uri":"file:///src/main/java/Foo.java","lineNumber":1}]}
+}}]
+EOF
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "custom-still-00001":{"description":"x","incidents":[{"uri":"file:///src/main/java/Foo.java","lineNumber":1}]}
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+#### T-002: Convert Foo
+**Findings**: custom-still-00001
+**Goal**: convert
+**Target design**:
+- → `src/main/java/com/demo/Foo.java`
+EOF
+  mkdir -p src/main/java/com/demo
+  printf 'package com.demo;\npublic class Foo {}\n' > src/main/java/com/demo/Foo.java
+  ALREADY_COMPLETE_ROOT="$FIX" python3 .hermes/harness/escw-eligible.py tasks.md T-002; echo "rc=$?"
+}
+check "escw-eligible blocks when findings still present (K6)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness
+  cp "$HARNESS_DIR/dest-presatisfied.py" .hermes/harness/
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "springboot-parent-pom-to-quarkus-00000":{"description":"p","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]},
+  "spring-ann-on-missing-00001":{"description":"j","incidents":[{"uri":"file:///Foo.java","lineNumber":1}]}
+}}]
+EOF
+  cat > migration/mta-findings-dest-baseline.json <<'EOF'
+[{"violations":{}}]
+EOF
+  ORACLE_ROOT="$FIX" python3 .hermes/harness/dest-presatisfied.py
+  grep -q 'springboot-parent-pom-to-quarkus-00000' migration/scaffold-presatisfied.generated.txt \
+    && ! grep -q 'spring-ann-on-missing-00001' migration/scaffold-presatisfied.generated.txt \
+    && echo destpresat-ok
+}
+check "dest-presatisfied only config/landed rules (K6)" 0 "destpresat-ok"
+
+run_case() {
+  grep -q 'mta-findings-dest-baseline' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'findings-oracle.py' "$HARNESS_DIR/already-complete.py" \
+    && echo k6wire-ok
+}
+check "K6 wiring (analyze dest-baseline + already-complete oracle)" 0 "k6wire-ok"
+
+# K7 — failure-sig capture/diff
+run_case() {
+  mkfix
+  printf '%s\n' \
+    '[ERROR] com.demo.FooTest.bar Time elapsed: 0.1 s <<< FAILURE!' \
+    'src/main/java/com/demo/Foo.java:[10,1] error: cannot find symbol' \
+    'S1066 FooTest.java' \
+    > before.log
+  printf '%s\n' \
+    '[ERROR] com.demo.FooTest.bar Time elapsed: 0.1 s <<< FAILURE!' \
+    '[ERROR] com.demo.FooTest.baz Time elapsed: 0.1 s <<< FAILURE!' \
+    'src/main/java/com/demo/Foo.java:[10,1] error: cannot find symbol' \
+    'S1066 FooTest.java' \
+    > after.log
+  python3 "$HARNESS_DIR/failure-sig.py" capture before.sig before.log
+  python3 "$HARNESS_DIR/failure-sig.py" capture after.sig after.log
+  out=$(python3 "$HARNESS_DIR/failure-sig.py" diff before.sig after.sig; echo rc=$?)
+  echo "$out" | grep -q 'NEW:test:com.demo.FooTest.baz' \
+    && echo "$out" | grep -q 'rc=1' \
+    && echo k7diff-ok
+}
+check "failure-sig diffs NEW test failures (K7)" 0 "k7diff-ok"
+
+run_case() {
+  grep -q 'failure-sig.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'K7 FAILURE DELTA\|k7_refute_preexisting\|failure-delta' "$HARNESS_DIR/supervisor.sh" \
+    && echo k7wire-ok
+}
+check "K7 wiring (baseline + sfix delta + refute)" 0 "k7wire-ok"
+
+# K2-SNIP — dedup code + drop config head snips
+run_case() {
+  mkfix
+  mkdir -p migration
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations": {
+  "cfg-00001": {
+    "category": "mandatory",
+    "description": "cfg",
+    "incidents": [
+      {"uri": "file:///pom.xml", "lineNumber": 1, "message": "POM-MSG", "codeSnip": "<?xml version=\"1.0\"?>"},
+      {"uri": "file:///a/A.java", "lineNumber": 10, "message": "A-MSG", "codeSnip": "SAME_SNIP_BODY"},
+      {"uri": "file:///a/B.java", "lineNumber": 20, "message": "B-MSG", "codeSnip": "SAME_SNIP_BODY"}
+    ]
+  }
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-040: Snip budget
+**Class**: infer
+**Findings**: cfg-00001
+**Goal**: snip hygiene
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-040 qwen27b/qwen3-6-27b migration/mta-findings.json)
+  echo "$out" | grep -q 'POM-MSG' \
+    && ! echo "$out" | grep -q '<?xml' \
+    && [ "$(echo "$out" | grep -c 'SAME_SNIP_BODY')" -eq 1 ] \
+    && echo k2snip-ok
+}
+check "task-packet dedups snips and skips pom head (K2-SNIP)" 0 "k2snip-ok"
+
+# K8 — verify-dep advisory
+run_case() {
+  out=$(python3 "$HARNESS_DIR/verify-dep.py" org.apache.commons commons-lang3 2>&1 || true)
+  echo "$out" | grep -qE 'OK:verify-dep|WARN:verify-dep' && echo verifydep-ok
+}
+check "verify-dep advisory exits soft (K8)" 0 "verifydep-ok"
+
+run_case() {
+  grep -q 'verify-dep.py' "$HARNESS_DIR/task-packet.py" && echo k8wire-ok
+}
+check "K8 wiring in task-packet" 0 "k8wire-ok"
+
+# K9 — discovered channel
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness
+  cp "$HARNESS_DIR/append-discovered.py" .hermes/harness/
+  ORACLE_ROOT="$FIX" python3 .hermes/harness/append-discovered.py T-001 src/main/Foo.java "needs Quarkus REST client"
+  grep -q 'T-001' migration/discovered.md && grep -q 'needs Quarkus' migration/discovered.md && echo k9ok
+}
+check "append-discovered writes structured row (K9)" 0 "k9ok"
+
+run_case() {
+  grep -q 'append-discovered.py' "$HARNESS_DIR/task-packet.py" \
+    && grep -q 'discovered.md' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'ensure_discovered' "$HARNESS_DIR/supervisor.sh" \
+    && echo k9wire-ok
+}
+check "K9 wiring (packet + brief-refresh + seed)" 0 "k9wire-ok"
+
+# K11 — rule outcome ledger wiring
+run_case() {
+  grep -q 'record_rule_outcomes' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'Per-rule outcomes' "$HARNESS_DIR/supervisor.sh" \
+    && echo k11wire-ok
+}
+check "K11 wiring (record + run-report table)" 0 "k11wire-ok"
+
+# K5 — findings-diff
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness
+  cp "$HARNESS_DIR/findings-diff.py" .hermes/harness/
+  cp "$HARNESS_DIR/scaffold-presatisfied.txt" .hermes/harness/
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "custom-survive-00001":{"description":"x","incidents":[{"uri":"file:///Foo.java","lineNumber":1,"message":"still here"}]},
+  "springboot-parent-pom-to-quarkus-00000":{"description":"p","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]}
+}}]
+EOF
+  cat > migration/mta-findings-current.json <<'EOF'
+[{"violations":{
+  "custom-survive-00001":{"description":"x","incidents":[{"uri":"file:///Foo.java","lineNumber":1,"message":"still here"}]}
+}}]
+EOF
+  ! python3 .hermes/harness/findings-diff.py migration/mta-findings.json migration/mta-findings-current.json --scope custom-survive-00001 \
+    && python3 .hermes/harness/findings-diff.py migration/mta-findings.json migration/mta-findings-current.json --scope springboot-parent-pom-to-quarkus-00000 \
+    && echo k5diff-ok
+}
+check "findings-diff RED on surviving scope (K5)" 0 "k5diff-ok"
+
+run_case() {
+  grep -q 'findings_sensor' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'findings)' "$HARNESS_DIR/sensors.sh" \
+    && echo k5wire-ok
+}
+check "K5 wiring (milestone/preflight findings sensor)" 0 "k5wire-ok"
 
 echo "----"
 echo "$PASS/$N passed"

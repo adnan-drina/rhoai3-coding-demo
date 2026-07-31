@@ -80,8 +80,15 @@ every infer body (file mappings/signatures/annotations); the legacy
 user-facing surface (web UI / index page) covered by a task or
 explicitly waived with a reason; every mandatory finding, every
 migration.yaml `preserve:` item, and the migration.yaml
-`acceptance.path` mapped to a task; and no legacy-package targets — the
-project root is `migration.yaml` `targetPackage` (never the `legacyPackage`).
+`acceptance.path` handled per **O-M3ACCEPT** / roadmap `deploy:`:
+on **deploy=true** stories, cite the **full literal string** (e.g.
+`/api/cart/acceptance-check`) in a covering task with real `@Path`
+substance; on **deploy=false** stories, do **not** task that path with
+endpoint substance (omit from tasks, or defer in prose — S-AC1 / G-OK).
+Never schedule `MinimalAcceptanceEndpoint`, status-map, or
+`platform_ready` placeholders. Lint: `plan-lint.py … --story-deploy <flag>`.
+And no legacy-package targets — the project root is `migration.yaml`
+`targetPackage` (never the `legacyPackage`).
 Package rename is a **full prefix replace**:
 `legacyPackage.service` → `targetPackage.service`
 (e.g. `com.redhat.coolstore.service` → `com.demo.service`).

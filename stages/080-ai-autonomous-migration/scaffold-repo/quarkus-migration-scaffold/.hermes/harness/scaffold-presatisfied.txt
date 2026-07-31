@@ -1,0 +1,17 @@
+# O-DESTBASE / K6 interim — legacy MTA rules already satisfied by the pristine
+# Quarkus migration scaffold (destination starts without Spring Boot parent/
+# plugins/web). Plan-lint treats these like recipe-log covered: do NOT schedule
+# convert tasks for them (avoids O-POM-PRE / O-THIN-PAD no-op/pad work).
+# Expand when M1 kantra-on-modernized proves additional absences.
+springboot-parent-pom-to-quarkus-00000
+springboot-plugins-to-quarkus-0000
+springboot-plugins-to-quarkus-00000
+springboot-properties-to-quarkus-00000
+springboot-web-to-quarkus-00000
+springboot-annotations-to-quarkus-00000
+springboot-di-to-quarkus-00000
+javaee-pom-to-quarkus-00010
+javaee-pom-to-quarkus-00020
+javaee-pom-to-quarkus-00030
+javaee-pom-to-quarkus-00040
+javaee-pom-to-quarkus-00050

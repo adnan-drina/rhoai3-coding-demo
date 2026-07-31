@@ -14,7 +14,8 @@ Allowed skip paths (only):
    Acceptance / Target design — O-AC2) is already present in the tree
    (and in k8s/ when STORY_DEPLOY=true for ENV_STYLE tokens). Waiver
    prose must not trigger this path. O-AC3: blocked when Target design
-   names a destination .java that is still missing (class conversion).
+   names a destination path that is still missing (class/config conversion).
+   O-AC-NONJAVA: non-.java Targets (properties/yaml/k8s) never preserve-skip.
 2. Explicit removal task (title or body) naming a concrete src/.../*.java
    path whose basename is absent under src/main/java and src/test/java.
 """
@@ -87,7 +88,14 @@ def preserve_items(myaml: str) -> list[str]:
 
 
 def tree_has(token: str) -> bool:
-    for rel in ("src/main", "pom.xml", "k8s"):
+    """True when token appears under application sources (not k8s docs).
+
+    O-AC-K8S (V10 T-003): k8s/ comments and sample manifests must not satisfy
+    preserve for ENV-style tokens when the working tree still lacks them in
+    src/main (e.g. application.properties). Deploy stories add k8s_has() as
+    an *extra* requirement below — never as a substitute for src presence.
+    """
+    for rel in ("src/main", "pom.xml"):
         p = ROOT / rel
         if p.is_file():
             try:
@@ -124,31 +132,54 @@ def k8s_has(token: str) -> bool:
 
 def _target_java_paths(body: str) -> list[str]:
     """Destination .java paths cited on Target/→ lines (not staging/legacy)."""
+    return [p for p in _target_paths(body) if p.endswith(".java")]
+
+
+def _target_paths(body: str) -> list[str]:
+    """Destination paths on Target/→ lines: java, props/yaml, k8s (O-AC-NONJAVA)."""
     paths: list[str] = []
     for line in body.splitlines():
         if not re.search(r"(?:Target|→|->)", line, re.I):
             continue
         paths.extend(
-            re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", line)
+            re.findall(
+                r"(?:src/(?:main|test)/(?:java/[A-Za-z0-9_./]+\.java|resources/[A-Za-z0-9_./-]+\.(?:properties|ya?ml|xml))|k8s/[A-Za-z0-9_./-]+)",
+                line,
+            )
         )
+        # also bare migration.yaml when cited as Target
+        paths.extend(re.findall(r"(?<![\w./])migration\.yaml\b", line))
     return [p for p in paths if "migration/staging" not in p and "/legacy/" not in p]
 
 
-def missing_target_java(body: str) -> bool:
-    """O-AC3: True when a Target destination .java is still absent under src/.
+def missing_target_path(body: str) -> bool:
+    """O-AC3/O-AC-NONJAVA: True when a Target destination path is still absent.
 
-    Preserve tokens (e.g. CATALOG_ENDPOINT) often appear in Goal/Target of
-    class-conversion tasks; that must not skip creating the missing class
-    (V9 S03 T-006 CatalogService false already-complete).
+    Extends .java-only O-AC3 to application.properties, yaml, k8s/**, migration.yaml.
     """
     src_root = ROOT / "src"
-    for path in _target_java_paths(body):
+    for path in _target_paths(body):
         if (ROOT / path).is_file():
             continue
         leaf = Path(path).name
-        if src_root.is_dir() and list(src_root.rglob(leaf)):
+        if path.endswith(".java") and src_root.is_dir() and list(src_root.rglob(leaf)):
             continue
         return True
+    return False
+
+
+def missing_target_java(body: str) -> bool:
+    """Back-compat alias for instruments — same as missing_target_path for .java."""
+    return missing_target_path(body)
+
+
+def nonjava_target_blocks_preserve(body: str) -> bool:
+    """O-AC-NONJAVA: Target design naming non-.java deliverables must not
+    preserve-skip — token presence ≠ config/test deliverable complete.
+    """
+    for path in _target_paths(body):
+        if not path.endswith(".java"):
+            return True
     return False
 
 
@@ -185,6 +216,17 @@ def is_removal_task(title: str, body: str) -> bool:
     return False
 
 
+def is_verify_task(title: str) -> bool:
+    """O-ACVERIFY: Verify/Ensure/Confirm/Validate tasks must not preserve-skip.
+
+    S05 T-003: 'Verify existing catalog-backed acceptance' skipped because
+    CATALOG_ENDPOINT appeared in Acceptance/preserve prose while the real
+    work was proving acceptance.path + products[] (G-CAT). Env token presence
+    ≠ verification complete.
+    """
+    return bool(re.search(r"^\s*(Verify|Ensure|Confirm|Validate)\b", title, re.I))
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("usage: already-complete.py <tasks.md> <T-xxx>", file=sys.stderr)
@@ -201,15 +243,21 @@ def main() -> int:
     if myp.is_file():
         myaml = myp.read_text(encoding="utf-8", errors="replace")
 
-    # O-AC3: missing destination .java blocks preserve fast-path.
-    if not missing_target_java(body):
+    # O-AC3 / O-AC-NONJAVA / O-ACVERIFY: missing Target, non-java Target, or
+    # verify-class titles block preserve fast-path.
+    if (
+        not missing_target_path(body)
+        and not nonjava_target_blocks_preserve(body)
+        and not is_verify_task(title)
+    ):
         for item in preserve_items(myaml):
             if not preserve_is_task_subject(title, body, item):
                 continue
-            if re.fullmatch(r"[A-Z][A-Z0-9_]+", item) and deploy:
-                if not k8s_has(item):
-                    continue
-            elif not tree_has(item):
+            # Application tree must carry the token. ENV-style + deploy also
+            # requires k8s/ (real env wiring), never k8s-alone (O-AC-K8S).
+            if not tree_has(item):
+                continue
+            if re.fullmatch(r"[A-Z][A-Z0-9_]+", item) and deploy and not k8s_has(item):
                 continue
             print(f"present:{item}")
             return 0
@@ -233,6 +281,56 @@ def main() -> int:
                 return 1
             print(f"absent:{leaf}")
             return 0
+
+    # K6 / O-DESTBASE: findings oracle — all Findings ids absent (after-scan,
+    # tree heuristic, or scaffold-presatisfied) → genuine already-complete.
+    oracle = ROOT / ".hermes/harness/findings-oracle.py"
+    if not oracle.is_file():
+        oracle = Path(__file__).resolve().parent / "findings-oracle.py"
+    if oracle.is_file():
+        import subprocess
+
+        env = os.environ.copy()
+        env["ORACLE_ROOT"] = str(ROOT)
+        env["ALREADY_COMPLETE_ROOT"] = str(ROOT)
+        proc = subprocess.run(
+            [sys.executable, str(oracle), str(tasks), tid],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        out = (proc.stdout or "").strip()
+        if proc.returncode == 0 and out.startswith("absent:"):
+            print(f"oracle-{out}")
+            return 0
+        # returncode 3 = no-findings → fall through; 1 = present → do not skip
+    else:
+        # Fallback when oracle script not deployed: static scaffold-presatisfied.
+        findings = re.findall(r"(?im)^\s*-?\s*\*\*Findings\*\*:\s*(.+)$", body)
+        ids: list[str] = []
+        for block in findings:
+            ids.extend(re.findall(r"[a-z][a-z0-9_-]*-\d+", block, re.I))
+        if ids:
+            presat: set[str] = set()
+            for base in (
+                ROOT / "migration/scaffold-presatisfied.generated.txt",
+                ROOT / ".hermes/harness/scaffold-presatisfied.txt",
+                Path(__file__).resolve().parent / "scaffold-presatisfied.txt",
+            ):
+                try:
+                    for ln in base.read_text(encoding="utf-8").splitlines():
+                        ln = ln.strip()
+                        if ln and not ln.startswith("#"):
+                            presat.add(ln)
+                except OSError:
+                    continue
+            if ids and all(i in presat for i in ids):
+                pom = ROOT / "pom.xml"
+                if pom.is_file():
+                    ptxt = pom.read_text(encoding="utf-8", errors="replace")
+                    if "quarkus-maven-plugin" in ptxt and "spring-boot" not in ptxt.lower():
+                        print("scaffold-presatisfied:" + ",".join(ids[:6]))
+                        return 0
 
     return 1
 
