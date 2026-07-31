@@ -22,10 +22,13 @@ REQUIRED = [
     "Class roles",
 ]
 
-# a class carrying one of these is a REDESIGN class (owns runtime behavior)
+# a class carrying one of these is a REDESIGN class (owns runtime behavior).
+# O-MAPPINGS-PETCLINIC: @Aspect / AspectJ imports are hard REDESIGN (no Quarkus AOP).
+# Do NOT match bare @Before/@After — those collide with JUnit.
 REDESIGN_ANNO = re.compile(
     r"@(Service|Component|RestController|Repository|Path|ApplicationScoped"
-    r"|Singleton|RequestScoped|RegisterRestClient)\b")
+    r"|Singleton|RequestScoped|RegisterRestClient|Aspect)\b"
+    r"|org\.aspectj\.|org\.springframework\.aop\.")
 
 # a citation is a source path with optional :line, a finding rule id, or
 # a test class reference

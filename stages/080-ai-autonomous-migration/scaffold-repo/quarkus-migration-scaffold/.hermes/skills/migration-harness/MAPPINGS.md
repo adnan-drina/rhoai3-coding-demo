@@ -104,20 +104,41 @@ extensions; compat mode hides the migration instead of doing it):
 | `@RequestBody` | no annotation — JAX-RS body param |
 | `@ConfigurationProperties(prefix="app")` | `@ConfigMapping(prefix = "app")` |
 | `@Scheduled(cron=...)` / `(fixedRate=1000)` | `@io.quarkus.scheduler.Scheduled(cron=...)` / `(every = "1s")` |
-| `@Secured` / `@PreAuthorize("hasRole('X')")` | `@RolesAllowed("X")` |
-| `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>`; `@Query` JPQL → Panache `find()` |
+| `@Secured` / `@PreAuthorize("hasRole('X')")` | `@RolesAllowed("X")` — SpEL beyond `hasRole`/`hasAuthority` is REDESIGN, not string rewrite |
+| JDBC-backed Spring Security users | `quarkus-elytron-security-jdbc` + `quarkus.security.jdbc.*` properties (REST specimens with JDBC auth) |
+| `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>` (Long ids) or `PanacheRepositoryBase<T,ID>` (non-Long); `@Query` JPQL → Panache `find()` |
+| Spring Data derived `findByX…` | **No Panache equivalent** — explicit `@Query` / `find("…", params)`; infer-class — briefs carry decided query text |
+| `@Aspect` / `@Around` / AspectJ | **Hard REDESIGN** (Quarkus has no AOP) — §7 decides per-method metric annotations *or* Hibernate metrics property; never harvest Aspect classes as-is |
 | `@SpringBootTest` / `@MockBean` | `@QuarkusTest` / `@InjectMock` (+ `@RestClient` qualifier when mocking a REST client) |
 | `@InjectMock` (Quarkus 3.2+) | `io.quarkus.test.InjectMock` (not the older package) |
 | `@TestPropertySource` / `@ActiveProfiles` | `@QuarkusTestProfile` with `getConfigOverrides()` |
+| MockMvc + `@WithMockUser` | Full rewrite to RestAssured `@QuarkusTest`; **no `@WithMockUser`** — create real users per role. Budget in M2/M3 test briefs (largest effort class on REST specimens) |
 
 **DI scope default:** prefer `@ApplicationScoped` over `@Singleton` — proxied,
 mockable, live-reload friendly (`@Singleton` is eager, not mockable; use only
-with a reason).
+with a reason). **Injection visibility (O-MAPPINGS-PETCLINIC):** no `private`
+`@Inject` / `@Autowired` members — package-private or constructor injection;
+`@Autowired`→`@Inject`, `@Component`→`@ApplicationScoped`.
 
 **Panache vs Spring Data:** prefer `PanacheRepository<T>` (service-layer
 separation) over Panache active record (`extends PanacheEntity`); both are
 valid when a DB story chooses Panache. SpEL in Spring `@Query` is not supported
-— rewrite to Panache `find()` / explicit JPQL.
+— rewrite to Panache `find()` / explicit JPQL. Derived query methods have no
+1:1 Panache map — always decide the JPQL in the brief.
+
+**Accepted deviations (do not "fix" into Coolstore-shaped work):**
+
+| Pattern | Stance |
+|---|---|
+| CORS | Global `quarkus.http.cors.*` only — no per-controller `@CrossOrigin` equivalent |
+| OpenAPI | No path-scanning filter equivalent — document if the legacy used one |
+| JMX | Unsupported under native — waive when the profile is native-capable |
+
+**Metrics naming (preserve-token class):** Micrometer vs MicroProfile Metrics
+names can break Grafana. On Quarkus 3 prefer Micrometer (`quarkus-micrometer`)
+unless the org standardizes on MP Metrics — verify before choosing
+`quarkus-smallrye-metrics`. If dashboards exist, put metric name tokens in
+`migration.yaml` `preserve:`.
 
 **Spring Boot starters → Quarkus extensions (Full path, RH BOM 3.27.3.SP1):**
 
@@ -126,11 +147,15 @@ valid when a DB story chooses Panache. SpEL in Spring `@Query` is not supported
 | `spring-boot-starter-web` / `webflux` | `quarkus-rest-jackson` |
 | `spring-boot-starter-data-jpa` | `quarkus-hibernate-orm-panache` (or `quarkus-hibernate-orm` + `EntityManager`) |
 | `spring-boot-starter-validation` | `quarkus-hibernate-validator` |
-| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (+ `quarkus-smallrye-metrics` when metrics needed) |
+| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (+ Micrometer or smallrye-metrics per metrics-naming tip above) |
+| `spring-boot-starter-security` (JDBC) | `quarkus-elytron-security-jdbc` (or OIDC/JWT when that is the decided contract) |
+| `spring-boot-starter-aop` | **Drop** — redesign call sites; no AspectJ runtime |
 | `spring-cloud-starter-openfeign` | `quarkus-rest-client-jackson` + `@RegisterRestClient` |
 
 **REJECT for destination:** any `quarkus-spring-*` extension (MTA and
-upstream skills may suggest them — native Quarkus only).
+upstream skills may suggest them — native Quarkus only). This harness takes
+the **standards path** (full rename → JAX-RS / Panache / CDI), not Spring
+compat extensions — see SKILL.md.
 
 **Config property map (Spring → Quarkus):**
 

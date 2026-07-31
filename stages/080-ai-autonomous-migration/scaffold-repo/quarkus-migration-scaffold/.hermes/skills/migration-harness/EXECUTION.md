@@ -348,6 +348,12 @@ tasks, create/port the Target `*Endpoint*Test.java` and get one green
 request assertion committed **before** chasing WireMock / pom dependency
 rabbit holes. WireMock without the Target test file is a wedge (S04 T-007).
 
+**MockMvc → RestAssured (O-MAPPINGS-PETCLINIC):** Spring `MockMvc` suites are
+a full rewrite, not a harvest. There is **no** `@WithMockUser` equivalent —
+tests that need roles must create real users (or use the decided security
+test helper). Budget this in M2/M3 test-task briefs; do not discover it as
+surprise M4 debt on REST specimens.
+
 **RestAssured / JAX-RS endpoint tests (O-RESTJSON / O-RESTEMPTY / O-TESTISO):**
 when writing `@QuarkusTest` RestAssured suites for migrated endpoints:
 

@@ -863,6 +863,16 @@ run_case() {
 }
 check "profile-rubric flags a @Service class not classified REDESIGN in §7" 1 "classroles"
 
+# O-MAPPINGS-PETCLINIC — @Aspect classes must be §7 REDESIGN (Quarkus has no AOP)
+run_case() {
+  mkfix; printf '## 7. Class roles & target contract\n- `CallMonitoringAspect` — HARVEST\n' > profile.md
+  mkdir -p legacy/com/demo
+  printf 'package com.demo;\nimport org.aspectj.lang.annotation.Aspect;\n@Aspect\npublic class CallMonitoringAspect {}\n' \
+    > legacy/com/demo/CallMonitoringAspect.java
+  python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy
+}
+check "profile-rubric flags @Aspect class not classified REDESIGN (O-MAPPINGS-PETCLINIC)" 1 "classroles"
+
 # 56-57. §7 with ### HARVEST/REDESIGN subheadings must parse (V5 catch:
 # section split truncated §7 at the first ### and false-flagged classroles)
 sub7_profile() {

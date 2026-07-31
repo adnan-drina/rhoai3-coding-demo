@@ -57,6 +57,17 @@ Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`
 | `/projects/modernized` | Destination repo (this repo). Code changes land through tasks. |
 | `migration/staging` | M1's OpenRewrite output (recipe-transformed legacy). Rewrite tasks HARVEST from here — never re-run OpenRewrite or make a scratch copy. |
 
+## Standards path vs Spring-compat extensions (O-MAPPINGS-PETCLINIC)
+
+This harness migrates to **native Quarkus APIs** (JAX-RS, CDI, Panache,
+MicroProfile / Micrometer as decided in MAPPINGS.md) — the **standards
+path**. Do **not** add `quarkus-spring-web`, `quarkus-spring-data-jpa`,
+`quarkus-spring-security`, or other `quarkus-spring-*` extensions to keep
+Spring annotations compiling. Compat reduces code churn (valid for some
+enterprise stories) but hides the modernization the demo and MTA findings
+are meant to exercise. If a future specimen needs compat, that is an
+explicit `migration.yaml` strategy decision — default remains standards.
+
 ### Autonomous sessions never ask for consent
 
 Harness runs are headless oneshots: nobody can answer a question you ask.
