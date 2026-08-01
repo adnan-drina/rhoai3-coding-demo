@@ -64,6 +64,15 @@ session** with you. In that session:
 4. `mvn -q clean verify` green, JaCoCo coverage ≥ 80%, then ONE commit
    starting `Gate fix:` — the supervisor re-pushes and re-observes.
 
+**O-GATESCOPE:** gate/build/preflight correction commits may edit
+`src/main` paths **named in `/tmp/gate-violations.txt`** even when those
+paths are outside the current story's `STORY_SCOPE`. The story-scope
+sensor keeps those allowlisted files and only reverts other out-of-scope
+`src/main` edits. Do not park factory-named DTO/smell fixes in
+`migration/debt.md` as "out of scope" — fix them in the Gate fix commit.
+For Java records, put Bean Validation constraints on **record components**
+(not only accessors) so `validator.validate(record)` fires (O-RECORDBV).
+
 The supervisor classifies WHICH pipeline stage failed and starts the
 matching correction session:
 
@@ -82,6 +91,57 @@ validation vs Flyway DDL drift, missing config/env, missing runtime
 dependency. Fix the ROOT CAUSE in the repository (source, migrations,
 `application.properties`, or `k8s/`); never weaken validation to make
 the error disappear.
+
+**O-PREFLIGHTH2:** never flip the default `quarkus.datasource.db-kind` to
+`h2` just to green local preflight. Factory deploy injects a PostgreSQL
+JDBC URL; an H2 driver then crash-loops. Use `%dev`/`%test` profiles or
+env overrides for local H2; keep prod/default postgresql aligned with
+`k8s/` and `QUARKUS_DATASOURCE_*`.
+
+**O-HTTPPORT:** when converting Spring `server.port` → `quarkus.http.port`,
+do **not** copy a non-8080 legacy port (e.g. Petclinic `9966`) unless
+`k8s/*/containerPort` + Service/probes (or `QUARKUS_HTTP_PORT`) match.
+Default/keep **8080** for the deploy contract. Sensors fail
+`http_port_deploy_contract` on mismatch (same failure class as
+O-PREFLIGHTH2: locally justified, deploy-broken). Prefer rewriting a
+`# preserve:` marker to point at the Quarkus successor over deleting it.
+
+**O-GENSEED:** if `quarkus.hibernate-orm.sql-load-script` is set, do **not**
+use `database.generation=validate` or `none` — fresh DB then has no schema
+for `import.sql` / validate fails. Prefer `update` or `drop-and-create`
+when seeding. Sensor `gen_seed_contract` REDs the mismatch.
+
+**O-PCTFILE / G2:** Quarkus config profiles use either (1) `application-{profile}.properties`
+(e.g. `application-dev.properties` — **no** `%` in the filename) or (2)
+`%dev.key=value` / `%prod.key=value` **keys inside** a properties file.
+Never create `application-%hsqldb.properties` (literal percent in the name) —
+that is not a profile selector. Prefer collapsing Spring multi-DB profile
+files into `%dev`/`%test`/`%prod` stanzas; MySQL gone or listed in
+`migration/deferred-by-decision.txt`. `%prod` datasource values are
+Secret/env-fed (`QUARKUS_DATASOURCE_*`) — never hardcode passwords (D1).
+
+**O-GATEACHIEVE / N14 / D2:** factory keeps the Sonar **80%** new_coverage
+bar. When preflight is RED on a coverage gap ≥15 points with no
+issue/hotspot blockers, the supervisor **blocks ship** and pages the
+operator instead of burning MiniMax fix seats.
+
+**O-HEALTHROOT / O-CTXROOT / O-ACCEPTROOT:** preserve servlet
+context-path as `quarkus.http.root-path=/…` (QuarkusTest RestAssured
+expects this — do **not** switch tests/main to `quarkus.rest.path` alone
+or you get 405/404). Pair with `quarkus.http.non-application-root-path=/q`
+so probes stay at `/q/health*`. Ship acceptance may curl `/` or, when
+root-path is set, `${root-path}/` for the index (supervisor O-ACCEPTROOT).
+**O-ACCEPTPROBE:** log the URL that actually returned index 200
+(`/` vs `${root-path}/`) — external `/` may still be 404.
+Keep `src/test/resources` on `http.root-path` matching main.
+
+**O-SEEDIMPORT:** when `acceptance.needsDatabase` (or the stamped
+handler 404s on empty collections), load the legacy populate script as
+`import.sql` (`quarkus.hibernate-orm.sql-load-script=import.sql`). An
+empty table that returns HTTP 404 is not an acceptance pass. Always use
+**explicit column lists** — Hibernate physical column order can differ
+from legacy `INSERT … VALUES` (e.g. pets `owner_id` before `type_id`);
+a mid-script FK error rolls back the whole load.
 
 **Gate correction** (`/tmp/gate-violations.txt`): as described above —
 small per-rule packets, consolidation for duplication, semantics

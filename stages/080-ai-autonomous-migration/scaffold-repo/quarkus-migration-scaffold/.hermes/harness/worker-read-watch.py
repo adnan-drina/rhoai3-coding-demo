@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""O-WORKERREAD — exit 0 when worker is read/glob thrashing with no mutate.
+"""O-WORKERREAD / O-FIRSTMUT — exit 0 when worker is read/glob thrashing with no file mutate.
 
-Poll 55 / S04 T-007: Qwen did 30 reads + 3 globs + 1 edit + 0 bash before
-wedge. Kill early when reads+globs exceed the threshold and there is no
-bash/edit/write progress.
+Poll 55 / S04 T-007: Qwen did 30 reads + 3 globs with no progress before wedge.
+R-222 / S03 T-007: 23 reads + 2 bash + 0 edit/write — bash was wrongly counted as
+a mutate, so the watch never fired and the session burned to JSON_STALE/TRUNCATION.
+FIRST-mutate (N13): only edit/write count as mutates; bash/shell do not.
 
 Usage: worker-read-watch.py <oc-T-NNN.json>
 Exit 0 = kill worker; exit 1 = continue.
@@ -11,11 +12,17 @@ Exit 0 = kill worker; exit 1 = continue.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
-READ_GLOBS_MAX = int(__import__("os").environ.get("WORKER_READ_GLOB_MAX", "20"))
+READ_GLOBS_MAX = int(os.environ.get("WORKER_READ_GLOB_MAX", "20"))
+
+READ_TOOLS = frozenset({"read", "read_file"})
+GLOB_TOOLS = frozenset({"glob", "grep"})
+# O-FIRSTMUT: file mutations only — bash/shell are not progress toward a commit.
+MUTATE_TOOLS = frozenset({"edit", "write"})
 
 
 def _events(raw: str) -> list:
@@ -26,9 +33,13 @@ def _events(raw: str) -> list:
         if not line:
             continue
         try:
-            evs.append(json.loads(line))
+            obj = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(obj, list):
+            evs.extend(obj)
+        else:
+            evs.append(obj)
     if not evs:
         try:
             blob = json.loads(raw)
@@ -42,17 +53,45 @@ def _events(raw: str) -> list:
 
 
 def _tool_name(ev: dict) -> str:
-    for k in ("tool", "name", "type"):
-        v = ev.get(k)
-        if isinstance(v, str) and v:
-            return v.lower()
+    # OpenCode: {"type":"tool_use","part":{"type":"tool","tool":"read",...}}
+    # Do NOT treat top-level/part "type" as the tool name (tool_use / tool).
     part = ev.get("part") or ev.get("message") or {}
     if isinstance(part, dict):
-        for k in ("tool", "name", "type"):
-            v = part.get(k)
-            if isinstance(v, str) and v:
-                return v.lower()
+        t = part.get("tool") or part.get("name")
+        if isinstance(t, str) and t.lower() not in ("tool", "tool_use", ""):
+            return t.lower()
+    for k in ("tool", "name"):
+        v = ev.get(k)
+        if isinstance(v, str) and v.lower() not in ("tool", "tool_use", ""):
+            return v.lower()
     return ""
+
+
+def _count_regex(raw: str) -> tuple[int, int, int]:
+    reads = len(re.findall(r'"tool"\s*:\s*"(read|Read|read_file)"', raw))
+    reads += len(re.findall(r'"name"\s*:\s*"(read|Read|read_file)"', raw))
+    globs = len(re.findall(r'"tool"\s*:\s*"(glob|Glob|grep|Grep)"', raw, re.I))
+    globs += len(re.findall(r'"name"\s*:\s*"(glob|Glob|grep|Grep)"', raw, re.I))
+    mutates = len(re.findall(r'"tool"\s*:\s*"(edit|Edit|write|Write)"', raw))
+    mutates += len(re.findall(r'"name"\s*:\s*"(edit|Edit|write|Write)"', raw))
+    return reads, globs, mutates
+
+
+def _count_events(evs: list) -> tuple[int, int, int]:
+    reads = globs = mutates = 0
+    for ev in evs:
+        if not isinstance(ev, dict):
+            continue
+        name = _tool_name(ev)
+        if not name:
+            continue
+        if name in READ_TOOLS:
+            reads += 1
+        elif name in GLOB_TOOLS:
+            globs += 1
+        elif name in MUTATE_TOOLS:
+            mutates += 1
+    return reads, globs, mutates
 
 
 def main() -> int:
@@ -62,38 +101,11 @@ def main() -> int:
     if not p.is_file() or p.stat().st_size < 200:
         return 1
     raw = p.read_text(encoding="utf-8", errors="replace")
-    # Fast path: count tool-ish tokens even if JSONL is messy.
-    reads = len(re.findall(r'"tool"\s*:\s*"(read|Read|read_file)"', raw))
-    reads += len(re.findall(r'"name"\s*:\s*"(read|Read|read_file)"', raw))
-    globs = len(re.findall(r'"tool"\s*:\s*"(glob|Glob|grep|Grep)"', raw, re.I))
-    globs += len(re.findall(r'"name"\s*:\s*"(glob|Glob|grep|Grep)"', raw, re.I))
-    mutates = len(
-        re.findall(
-            r'"tool"\s*:\s*"(edit|Edit|write|Write|bash|Bash|shell|Shell)"',
-            raw,
-            re.I,
-        )
-    )
-    mutates += len(
-        re.findall(
-            r'"name"\s*:\s*"(edit|Edit|write|Write|bash|Bash|shell|Shell)"',
-            raw,
-            re.I,
-        )
-    )
-    # Prefer structured counts when available.
-    for ev in _events(raw):
-        if not isinstance(ev, dict):
-            continue
-        name = _tool_name(ev)
-        if not name:
-            continue
-        if name in ("read", "read_file"):
-            reads += 1
-        elif name in ("glob", "grep"):
-            globs += 1
-        elif name in ("edit", "write", "bash", "shell"):
-            mutates += 1
+    evs = _events(raw)
+    if evs:
+        reads, globs, mutates = _count_events(evs)
+    else:
+        reads, globs, mutates = _count_regex(raw)
 
     if reads + globs > READ_GLOBS_MAX and mutates == 0:
         print(f"read-thrash:reads={reads}:globs={globs}:mutates={mutates}")

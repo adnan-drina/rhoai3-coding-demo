@@ -17,6 +17,8 @@ M2_RUN="${M2_RUN:-/tmp/m2-run}"
 #   UseDiamondOperator             (java:S2293)
 #   IsEmptyCallOnCollections       (java:S1155)
 #   RemoveUnusedLocalVariables     (java:S1481)
+#   RenameLocalVariablesToCamelCase / RenamePrivateFieldsToCamelCase
+#                                  (java:S117 — O-SFIXS117 / EFF-1)
 #   SimplifyChainedAssertJAssertions (java:S5838 — S03: 24 of 26
 #   preflight violations were this one rule, burning two 900s fix
 #   sessions; the recipe collapses assertThat(x.size()).isEqualTo(n)
@@ -27,7 +29,7 @@ M2_RUN="${M2_RUN:-/tmp/m2-run}"
 mvn -q -Dmaven.repo.local="$M2_RUN" \
   org.openrewrite.maven:rewrite-maven-plugin:5.46.1:run \
   -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-static-analysis:1.21.1,org.openrewrite.recipe:rewrite-testing-frameworks:2.23.1 \
-  -Drewrite.activeRecipes=org.openrewrite.java.RemoveUnusedImports,org.openrewrite.java.testing.cleanup.TestsShouldNotBePublic,org.openrewrite.staticanalysis.UseDiamondOperator,org.openrewrite.staticanalysis.IsEmptyCallOnCollections,org.openrewrite.staticanalysis.RemoveUnusedLocalVariables,org.openrewrite.java.testing.assertj.SimplifyChainedAssertJAssertions \
+  -Drewrite.activeRecipes=org.openrewrite.java.RemoveUnusedImports,org.openrewrite.java.testing.cleanup.TestsShouldNotBePublic,org.openrewrite.staticanalysis.UseDiamondOperator,org.openrewrite.staticanalysis.IsEmptyCallOnCollections,org.openrewrite.staticanalysis.RemoveUnusedLocalVariables,org.openrewrite.staticanalysis.RenameLocalVariablesToCamelCase,org.openrewrite.staticanalysis.RenamePrivateFieldsToCamelCase,org.openrewrite.java.testing.assertj.SimplifyChainedAssertJAssertions \
   > /tmp/style-autofix.log 2>&1 || { echo "style-autofix: recipes failed — /tmp/style-autofix.log"; exit 1; }
 # O-S1066: deterministic nested-if collapse (recipe absent from 1.21.1)
 python3 "$(dirname "$0")/s1066-collapse.py" . >> /tmp/style-autofix.log 2>&1 || true

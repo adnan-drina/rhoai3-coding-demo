@@ -373,9 +373,11 @@ sonar_check() { # $1 = inloop|full  (default full)
     return 0
   fi
   if [ $rc -ne 0 ]; then
+    # O-SONAROPAQUE: report.py emits QUALITYGATE/HOTSPOTS/issues/coverage —
+    # not violations-only (M5 ship thrashed on empty issues while hotspot %).
     python3 .hermes/harness/sonar-report.py "$SONAR_HOST" "$PROJECT_KEY" --coverage >/dev/null 2>/tmp/sonar-violations.txt
     cat /tmp/sonar-violations.txt
-    fail sonar "quality gate red — violations above; full log /tmp/sensor-sonar.log"
+    fail sonar "quality gate red — conditions above; full log /tmp/sensor-sonar.log"
   fi
   echo "sonar check GREEN (new-code gate)"
 }
@@ -403,6 +405,11 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # at deploy preflight — status-map / "OK" endpoints must not land in S01.
   acceptance_ship_contract
   package_scope
+  # O-HTTPPORT / O-GENSEED: milestone does not run full wiring — still catch
+  # deploy-contract breaks that task-sensor would see on other paths.
+  http_port_deploy_contract
+  gen_seed_contract
+  pct_file_contract
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
   else
@@ -583,6 +590,84 @@ wiring_invariants() {
   # caught deterministically in-loop instead of by post-ship review.
   OUT=$(python3 "$SELF_DIR/wiring-check.py" src/main/java 2>/dev/null) \
     || fail wiring "$(echo "$OUT" | head -3)"
+  http_port_deploy_contract
+  gen_seed_contract
+  pct_file_contract
+}
+
+# O-HTTPPORT — quarkus.http.port must match k8s http containerPort (or
+# QUARKUS_HTTP_PORT env). Copying legacy server.port (e.g. 9966) while
+# Service/probes stay on 8080 is a deploy crash-loop that compile/test miss.
+http_port_deploy_contract() {
+  local props="src/main/resources/application.properties"
+  [ -f "$props" ] || return 0
+  [ -d k8s ] || return 0
+  local app_port
+  app_port=$(grep -E '^[[:space:]]*quarkus\.http\.port=' "$props" 2>/dev/null \
+    | head -1 | cut -d= -f2 | tr -d '[:space:]')
+  [ -n "$app_port" ] || return 0
+  # Deploy env override is the runtime authority when present.
+  local env_file env_val=""
+  env_file=$(grep -REl 'name:[[:space:]]*QUARKUS_HTTP_PORT' k8s 2>/dev/null | head -1 || true)
+  if [ -n "$env_file" ]; then
+    env_val=$(grep -A5 'name:[[:space:]]*QUARKUS_HTTP_PORT' "$env_file" \
+      | grep -E 'value:' | head -1 | awk '{print $2}' | tr -d '"' || true)
+    [ -n "$env_val" ] && app_port="$env_val"
+  fi
+  APP_PORT="$app_port" python3 - <<'PY' \
+    || fail wiring "quarkus.http.port=${app_port} mismatches k8s http containerPort (O-HTTPPORT) — do not copy legacy server.port; keep deploy contract (usually 8080) or set QUARKUS_HTTP_PORT"
+import os, pathlib, re, sys
+app_port = os.environ.get("APP_PORT", "").strip()
+if not app_port.isdigit():
+    sys.exit(0)
+want = int(app_port)
+dbish = {5432, 3306, 6379, 27017, 11211}
+ports = []
+root = pathlib.Path("k8s")
+for p in root.rglob("*"):
+    if p.suffix not in {".yaml", ".yml"}:
+        continue
+    text = p.read_text(encoding="utf-8", errors="replace")
+    for m in re.finditer(r"containerPort:\s*(\d+)", text):
+        n = int(m.group(1))
+        if n not in dbish:
+            ports.append(n)
+if not ports:
+    sys.exit(0)
+sys.exit(0 if want in ports else 1)
+PY
+}
+
+# O-GENSEED (R-225/R-226): sql-load-script requires a generation mode that
+# creates/updates schema. validate/none + import.sql → empty tables / validate
+# fail on fresh DB (seed skipped or schema missing).
+gen_seed_contract() {
+  local props="src/main/resources/application.properties"
+  [ -f "$props" ] || return 0
+  grep -qE '^[[:space:]]*quarkus\.hibernate-orm\.sql-load-script=' "$props" 2>/dev/null \
+    || return 0
+  local gen
+  gen=$(grep -E '^[[:space:]]*quarkus\.hibernate-orm\.database\.generation=' "$props" 2>/dev/null \
+    | head -1 | cut -d= -f2 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  [ -n "$gen" ] || return 0
+  case "$gen" in
+    validate|none)
+      fail wiring "sql-load-script set but database.generation=${gen} (O-GENSEED) — use update or drop-and-create so import.sql can seed a fresh DB"
+      ;;
+  esac
+}
+
+# O-PCTFILE (R-230/F-68/T-012): Quarkus profile-aware *files* are
+# application-{profile}.properties (no percent). The `%profile.` prefix is
+# for keys inside a properties file — a literal `application-%foo.properties`
+# filename is not a profile selector and is ignored / confusing (S03 T-012
+# MiniMax tip `4032cdf`).
+pct_file_contract() {
+  local bad
+  bad=$(find src/main/resources src/test/resources -maxdepth 1 -type f \
+    \( -name 'application-%*.properties' -o -name 'application-%*.yaml' \
+       -o -name 'application-%*.yml' \) 2>/dev/null | head -5 | tr '\n' ' ')
+  [ -z "$bad" ] || fail wiring "literal % in profile filename(s): ${bad}(O-PCTFILE) — use application-{profile}.properties or %profile.key= inside application.properties"
 }
 
 preserved_integrations() {
@@ -831,6 +916,21 @@ print(m.group(1) if m else '')
 }
 
 preflight() {
+  # O-PREFLIGHTDIM (F-70/F-37): cap full preflights per ship session.
+  # S01 burned ~30m / 9× full milestone-via-preflight on one RED. Prefer
+  # dimension sensors (sonar|task|fidelity) in the fix loop; allow this
+  # many full preflights then refuse (closing preflight after a GREEN
+  # dimension pass should reset /tmp/preflight-count).
+  local _pf_n=0 _pf_cap="${PREFLIGHT_FULL_CAP:-3}"
+  if [ -f /tmp/preflight-count ]; then
+    _pf_n=$(cat /tmp/preflight-count 2>/dev/null || echo 0)
+  fi
+  _pf_n=$((_pf_n + 1))
+  printf '%s\n' "$_pf_n" > /tmp/preflight-count
+  if [ "$_pf_n" -gt "$_pf_cap" ]; then
+    echo "REFUSED (O-PREFLIGHTDIM): full preflight #${_pf_n} exceeds cap ${_pf_cap} — use .hermes/harness/sensors.sh sonar|task|fidelity then ONE closing preflight (rm /tmp/preflight-count)"
+    exit 2
+  fi
   wiring_invariants
   preserved_integrations
   acceptance_ship_contract

@@ -47,6 +47,25 @@ sensors, scaffold skills, live migration workspace):
    (body + transcript fidelity). Ack-only is invalid. Driver must be
    running (`tmp/v8-driver-loop.sh` / `v9-ensure-driver.sh`); if DOWN,
    start it. Silence / fake ack is P0.
+   **O-WAKE-CATCHUP / O-REVIEWDOC (script-proofed)** — every wake tick and
+   every material lead action must update `tmp/KAI-WAVE2-REVIEW.md`. Absorb
+   *all* review-doc sections after **your** last `### Implementing note`
+   (not only the final heading). Wake refreshes
+   `tmp/V10-REVIEW-SINCE-LAST.md` and opens
+   `tmp/V10-REVIEW-CATCHUP-PENDING.md` when unabsorbed content exists; clear
+   only via `bash scripts/track-b/v10-review-catchup.sh ack` after a newer
+   Implementing note that passes the lead-note contract (below). Memory /
+   operator reminders are not the control.
+   **Lead agent = Grok** for Wave-2 petclinic Track B. Every Implementing
+   note MUST:
+   1. Identify the writer: `**Agent:** Grok (lead)` in the body (and prefer
+      heading suffix `— Grok (lead)`).
+   2. List what was reviewed/acted on from other agents:
+      `**Reviewed:**` bullets and/or stable `ACK:R-NNN` / `ACK:F-NN` tokens.
+   3. State live run action taken (or "watching only") so the doc is the
+      audit trail — chat pulses alone are insufficient.
+   4. Close with `— Grok (lead)`.
+   `v10-review-catchup.sh ack` refuses notes missing Agent/Reviewed|ACK.
    **O-DRV6 / O-DEBTFRZ** — debt RED freezes the supervisor (no next task).
    **O-DRV3/5/7 clears** — only via `scripts/track-b/v9-clear-*.sh` (see
    `scripts/track-b/README.md`). Bare SHA files do not clear.

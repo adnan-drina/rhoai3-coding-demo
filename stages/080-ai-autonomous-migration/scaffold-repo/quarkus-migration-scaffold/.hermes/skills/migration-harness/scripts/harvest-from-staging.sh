@@ -35,14 +35,25 @@ LEGP=${LEG//./\/}
 TGTP=${TGT//./\/}
 src_main="migration/staging/src/main/java/$LEGP/$rel"
 src_test="migration/staging/src/test/java/$LEGP/$rel"
+# O-DTOSTAGING: OpenAPI-generated DTOs often live under legacy
+# target/generated-sources/openapi (not copied into migration/staging).
+openapi_main="/projects/legacy/target/generated-sources/openapi/src/main/java/$LEGP/$rel"
+openapi_alt="target/generated-sources/openapi/src/main/java/$LEGP/$rel"
 if [ -f "$src_main" ]; then
   src="$src_main"
   dst="src/main/java/$TGTP/$rel"
 elif [ -f "$src_test" ]; then
   src="$src_test"
   dst="src/test/java/$TGTP/$rel"
+elif [ -f "$openapi_main" ]; then
+  src="$openapi_main"
+  dst="src/main/java/$TGTP/$rel"
+elif [ -f "$openapi_alt" ]; then
+  src="$openapi_alt"
+  dst="src/main/java/$TGTP/$rel"
 else
   echo "FATAL: staged source not found: $src_main (or $src_test)"
+  echo "  also checked OpenAPI generated: $openapi_main"
   echo "  (path is relative to the package root; migration/staging holds the M1-transformed legacy)"
   exit 2
 fi
@@ -75,12 +86,60 @@ mkdir -p "$(dirname "$dst")"
 # of package token. Proves org.springframework.samples.petclinic → target does
 # not rewrite org.springframework.boot.* (petclinic is not a prefix of boot);
 # also blocks mid-token false hits (e.g. xcom.redhat.coolstore).
-python3 - "$LEG" "$TGT" "$src" "$dst" <<'PY'
+# O-HARVESTREPO: when pom has no spring-boot, convert Spring @Repository
+# impls to CDI @ApplicationScoped (else Arc UnsatisfiedResolution / compile RED).
+NO_SPRING=0
+grep -qE 'spring-boot' pom.xml 2>/dev/null || NO_SPRING=1
+python3 - "$LEG" "$TGT" "$src" "$dst" "$NO_SPRING" <<'PY'
 import re, sys
-leg, tgt, src, dst = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+leg, tgt, src, dst, no_spring = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] == "1"
 text = open(src, encoding="utf-8").read()
 pat = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(leg) + r"(?=[\.;\s]|$)")
-open(dst, "w", encoding="utf-8").write(pat.sub(tgt, text))
+text = pat.sub(tgt, text)
+# O-DTOSTAGING / jakarta harvest: OpenAPI codegen often still emits javax.*
+text = text.replace("javax.validation.", "jakarta.validation.")
+text = text.replace("javax.annotation.", "jakarta.annotation.")
+if no_spring and re.search(r"@Repository\b", text):
+    text = text.replace(
+        "import org.springframework.stereotype.Repository;\n", ""
+    )
+    text = re.sub(
+        r"import org\.springframework\.context\.annotation\.Profile;\n", "", text
+    )
+    text = text.replace(
+        "import org.springframework.dao.DataAccessException;\n",
+        "import jakarta.persistence.PersistenceException;\n",
+    )
+    text = re.sub(
+        r"import org\.springframework\.orm\.hibernate5\.support\.OpenSessionInViewFilter;\n",
+        "",
+        text,
+    )
+    if "jakarta.enterprise.context.ApplicationScoped" not in text:
+        # insert after package block's first import cluster
+        text = re.sub(
+            r"(package [^\n]+;\n)",
+            r"\1\nimport jakarta.enterprise.context.ApplicationScoped;\n",
+            text,
+            count=1,
+        )
+    text = re.sub(r"@Repository\b", "@ApplicationScoped", text)
+    text = re.sub(r"@Profile\([^)]*\)\s*\n", "", text)
+    text = text.replace("DataAccessException", "PersistenceException")
+    # persistence-to-quarkus: @PersistenceContext → @Inject EntityManager
+    if "@PersistenceContext" in text:
+        text = text.replace(
+            "import jakarta.persistence.PersistenceContext;\n", ""
+        )
+        if "jakarta.inject.Inject" not in text:
+            text = re.sub(
+                r"(package [^\n]+;\n)",
+                r"\1\nimport jakarta.inject.Inject;\n",
+                text,
+                count=1,
+            )
+        text = text.replace("@PersistenceContext", "@Inject")
+open(dst, "w", encoding="utf-8").write(text)
 PY
 
 # Post-conditions: dest exists under the '/'-joined target package, no dotted dir.

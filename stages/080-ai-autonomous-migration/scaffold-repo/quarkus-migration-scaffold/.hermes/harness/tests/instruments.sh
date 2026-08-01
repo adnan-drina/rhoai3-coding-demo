@@ -33,7 +33,9 @@ check() { # $1=name $2=expected-exit(0|1) $3=expected-substring-of-output ("" = 
   if [ "$rc" = "$want_rc" ] && { [ -z "$want_out" ] || grep -q "$want_out" <<<"$out"; }; then
     PASS=$((PASS+1)); echo "ok $N - $name"
   else
-    FAIL=$((FAIL+1)); echo "FAIL $N - $name (rc=$rc want=$want_rc; output below)"
+    # Emit TAP `not ok` so `grep '^not ok'` catches red suites (R-216).
+    FAIL=$((FAIL+1)); echo "not ok $N - $name"
+    echo "FAIL $N - $name (rc=$rc want=$want_rc; output below)"
     sed 's/^/    /' <<<"$out"
   fi
 }
@@ -407,6 +409,83 @@ run_case() {
 }
 check "harvest-fidelity skips converted (annotated) classes" 0 "GREEN"
 
+# O-FIDELITYVALID — Spring BindingResult → Jakarta ConstraintViolation is conversion
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m src/main/java/m
+  cat > migration/staging/src/main/java/m/BindingErrorsResponse.java <<'EOF'
+package m;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+public class BindingErrorsResponse {
+  public void addAllErrors(BindingResult bindingResult){
+    for(FieldError fieldError : bindingResult.getFieldErrors()){
+      error.setObjectName(fieldError.getObjectName());
+    }
+  }
+}
+EOF
+  cat > src/main/java/m/BindingErrorsResponse.java <<'EOF'
+package m;
+import jakarta.validation.ConstraintViolation;
+import java.util.List;
+public class BindingErrorsResponse {
+  public void addAllErrors(List<ConstraintViolation<?>> violations){
+    for(ConstraintViolation<?> violation : violations){
+      error.setObjectName(violation.getRootBeanClass().getSimpleName());
+    }
+  }
+}
+EOF
+  python3 "$HARNESS_DIR/harvest-fidelity.py"; echo "rc=$?"
+}
+check "harvest-fidelity skips Spring→Jakarta validation conversion (O-FIDELITYVALID)" 0 "GREEN"
+
+# O-FIDELITYDAO — Spring DAO throws + PropertyComparator drops are approved
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m src/main/java/m
+  cat > migration/staging/src/main/java/m/OwnerRepository.java <<'EOF'
+package m;
+import org.springframework.dao.DataAccessException;
+public interface OwnerRepository {
+  void save(Owner owner) throws DataAccessException;
+}
+EOF
+  cat > src/main/java/m/OwnerRepository.java <<'EOF'
+package m;
+public interface OwnerRepository {
+  void save(Owner owner);
+}
+EOF
+  cat > migration/staging/src/main/java/m/Owner.java <<'EOF'
+package m;
+import org.springframework.beans.support.MutableSortDefinition;
+import org.springframework.beans.support.PropertyComparator;
+import java.util.*;
+public class Owner {
+  public List<Pet> getPets() {
+    List<Pet> sortedPets = new ArrayList<>(getPetsInternal());
+    PropertyComparator.sort(sortedPets, new MutableSortDefinition("name", true, true));
+    return sortedPets;
+  }
+}
+EOF
+  cat > src/main/java/m/Owner.java <<'EOF'
+package m;
+import java.util.*;
+public class Owner {
+  public List<Pet> getPets() {
+    List<Pet> sortedPets = new ArrayList<>(getPetsInternal());
+    sortedPets.sort(Comparator.comparing(Pet::getName, Comparator.nullsLast(String::compareTo)));
+    return sortedPets;
+  }
+}
+EOF
+  python3 "$HARNESS_DIR/harvest-fidelity.py"; echo "rc=$?"
+}
+check "harvest-fidelity allows Spring DAO/support drops (O-FIDELITYDAO)" 0 "GREEN"
+
 # --- roadmap-lint (M2) -----------------------------------------------------
 
 roadmap_fixture() { # $1 = briefs? (yes|no)
@@ -602,6 +681,172 @@ green_pom() {
 </project>
 EOF
 }
+
+# Quarkus-shaped pom for O-PLANEXISTS (already-migrated BOM/plugin, no Spring)
+quarkus_pom() {
+  cat <<'EOF'
+<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>3.15.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <build><plugins>
+    <plugin>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-maven-plugin</artifactId>
+      <version>3.15.1</version>
+    </plugin>
+  </plugins></build>
+</project>
+EOF
+}
+
+# O-PLANEXISTS (N10/F-66): already-Quarkus tree → Spring→Quarkus convert tasks are dead
+run_case() {
+  mkfix
+  quarkus_pom > pom.xml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert Spring Boot Parent to Quarkus Platform BOM
+**Class**: rewrite
+- Replace spring-boot-starter-parent with quarkus platform BOM.
+
+#### T-002: Design the cart endpoint
+**Class**: infer
+- Target: → src/main/java/com/demo/rest/CartEndpoint.java with @Path("/api/cart")
+EOF
+  python3 "$LINT" tasks.md
+}
+check "lint rejects dead Spring-parent convert on Quarkus pom (O-PLANEXISTS)" 1 "O-PLANEXISTS"
+
+run_case() {
+  mkfix
+  quarkus_pom > pom.xml
+  mkdir -p src/main/java/com/demo
+  printf 'package com.demo;\npublic class App {}\n' > src/main/java/com/demo/App.java
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Swap javax imports
+**Class**: rewrite
+- Mechanical jakarta rename across src/main/java sources.
+
+#### T-010: Remove Spring Boot Application Class
+**Class**: infer
+**Shape**: remove
+- Remove @SpringBootApplication entrypoint; Quarkus uses generated main.
+EOF
+  python3 "$LINT" tasks.md
+}
+check "lint rejects dead @SpringBootApplication remove (O-PLANEXISTS)" 1 "O-PLANEXISTS"
+
+run_case() {
+  mkfix
+  cat > pom.xml <<'EOF'
+<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>3.15.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-health</artifactId>
+    </dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-maven-plugin</artifactId>
+      <version>3.15.1</version>
+    </plugin>
+  </plugins></build>
+</project>
+EOF
+  mkdir -p src/main/java/com/demo
+  printf 'package com.demo;\npublic class App {}\n' > src/main/java/com/demo/App.java
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Swap javax imports
+**Class**: rewrite
+- Mechanical jakarta rename across src/main/java sources.
+
+#### T-011: Convert Actuator to Quarkus Health Endpoints
+**Class**: infer
+- Replace spring-boot-starter-actuator with quarkus-smallrye-health (/q/health).
+EOF
+  python3 "$LINT" tasks.md
+}
+check "lint rejects dead actuator→health convert (O-PLANEXISTS/O-PLANHEALTH)" 1 "O-PLANEXISTS"
+
+# O-PLANEXISTSSKIP: delivered T-NNN commits suppress dead-work RED (mid-story re-lint)
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@t
+  git config user.name t
+  cat > pom.xml <<'EOF'
+<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>3.15.1</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <build><plugins>
+    <plugin>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-maven-plugin</artifactId>
+      <version>3.15.1</version>
+    </plugin>
+  </plugins></build>
+</project>
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert Spring Boot Parent to Quarkus Platform BOM
+**Class**: rewrite
+- Replace spring-boot-starter-parent with quarkus platform BOM.
+
+#### T-002: Design the cart endpoint
+**Class**: infer
+- Target: → src/main/java/com/demo/rest/CartEndpoint.java with @Path("/api/cart")
+EOF
+  git add pom.xml tasks.md
+  git commit -q -m "T-001: Convert Spring Boot Parent to Quarkus Platform BOM"
+  # T-001 is delivered → must NOT O-PLANEXISTS; T-002 still needs design (OK)
+  out=$(python3 "$LINT" tasks.md 2>&1) || true
+  echo "$out" | grep -q 'O-PLANEXISTS: T-001' && echo 'leak-t001' && return 1
+  echo "$out" | grep -q 'O-PLANEXISTS' && echo 'other-exists' && return 1
+  echo skip-ok
+}
+check "lint skips O-PLANEXISTS for already-committed tasks (O-PLANEXISTSSKIP)" 0 "skip-ok"
 
 sensor_fixture() { # a static-green tree
   mkfix
@@ -1042,6 +1287,34 @@ run_case() {
 }
 check "harvest-from-staging writes '/'-joined dest + renames package (V5 opt1)" 0 "HARVEST OK"
 
+run_case() {
+  # O-DTOSTAGING: harvest falls back to OpenAPI generated-sources
+  mkfix
+  mkdir -p .hermes/skills/migration-harness/scripts
+  cp "$HARVEST_SH" .hermes/skills/migration-harness/scripts/harvest-from-staging.sh
+  cat > migration.yaml <<'EOF'
+legacyPackage: org.springframework.samples.petclinic
+targetPackage: com.demo
+EOF
+  mkdir -p /tmp/openapi-dto-fix/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto
+  # Use relative openapi_alt path under repo: target/generated-sources/...
+  mkdir -p target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto
+  cat > target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/OwnerDto.java <<'EOF'
+package org.springframework.samples.petclinic.dto;
+import javax.validation.Valid;
+import javax.annotation.Generated;
+public class OwnerDto { @Valid String name; }
+EOF
+  out=$(bash .hermes/skills/migration-harness/scripts/harvest-from-staging.sh dto/OwnerDto.java)
+  echo "$out"
+  grep -q 'jakarta.validation' src/main/java/com/demo/dto/OwnerDto.java \
+    && grep -q 'package com.demo.dto' src/main/java/com/demo/dto/OwnerDto.java \
+    && echo DTOSTAGING_OK
+}
+check "harvest-from-staging OpenAPI fallback + jakarta (O-DTOSTAGING)" 0 "DTOSTAGING_OK"
+
+# restore note: prior harvest check above — continue O-HARVESTSTALL
+
 # O-HARVESTSTALL — harvest src/test + mechan preseed missing Target tests
 run_case() {
   mkfix
@@ -1201,6 +1474,70 @@ run_case() {
 }
 check "wiring passes ctor CatalogClient with @RestClient (V6 P1.4)" 0 "STATIC CHECKS GREEN"
 
+# O-HTTPPORT — legacy server.port copy vs k8s containerPort (R-220 / Petclinic 9966)
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.http.port=9966\nquarkus.http.root-path=/petclinic\n' > src/main/resources/application.properties
+  printf 'containers:\n  - ports:\n      - containerPort: 8080\n        name: http\n' > k8s/app.yaml
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects quarkus.http.port≠k8s containerPort (O-HTTPPORT)" 1 "O-HTTPPORT"
+
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.http.port=8080\n' > src/main/resources/application.properties
+  printf 'containers:\n  - ports:\n      - containerPort: 8080\n        name: http\n' > k8s/app.yaml
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring passes matching quarkus.http.port and containerPort (O-HTTPPORT)" 0 "STATIC CHECKS GREEN"
+
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources k8s
+  printf 'quarkus.http.port=9966\n' > src/main/resources/application.properties
+  printf 'env:\n  - name: QUARKUS_HTTP_PORT\n    value: "8080"\ncontainers:\n  - ports:\n      - containerPort: 8080\n' > k8s/app.yaml
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring passes QUARKUS_HTTP_PORT env override aligned with containerPort (O-HTTPPORT)" 0 "STATIC CHECKS GREEN"
+
+# O-GENSEED (R-225/R-226): sql-load-script + validate/none is a fresh-DB break
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf 'quarkus.hibernate-orm.database.generation=validate\nquarkus.hibernate-orm.sql-load-script=import.sql\n' \
+    > src/main/resources/application.properties
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects sql-load-script with generation=validate (O-GENSEED)" 1 "O-GENSEED"
+
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf 'quarkus.hibernate-orm.database.generation=update\nquarkus.hibernate-orm.sql-load-script=import.sql\n' \
+    > src/main/resources/application.properties
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring passes sql-load-script with generation=update (O-GENSEED)" 0 "STATIC CHECKS GREEN"
+
+# O-PCTFILE (R-230/T-012): literal % in application-%*.properties filename is not a profile
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf 'quarkus.datasource.db-kind=hsql\n' > src/main/resources/'application-%hsqldb.properties'
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects application-%profile.properties filename (O-PCTFILE)" 1 "O-PCTFILE"
+
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf 'quarkus.datasource.db-kind=hsql\n' > src/main/resources/application-hsqldb.properties
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring accepts application-profile.properties without percent (O-PCTFILE)" 0 "STATIC CHECKS GREEN"
+
 # 76. V6 R7 / P0c — handler-before-deploy when STORY_DEPLOY=true
 run_case() {
   sensor_fixture
@@ -1320,6 +1657,27 @@ EOF
   out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-002); echo "$out"
 }
 check "already-complete skips explicit Remove when .java absent (V6 P2.4)" 0 "absent:JerseyConfig"
+
+# O-ACCREATE — Create *Test with "removal" in body must NOT skip when target absent
+run_case() {
+  mkfix
+  mkdir -p src/test/java/com/demo/util
+  # deliberately NO EntityUtilsMigrationTest.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-009: Create EntityUtils migration integration tests
+**Class**: infer
+**Target design**: → `src/test/java/com/demo/util/EntityUtilsMigrationTest.java`
+**Evidence**: EntityUtils removal requires integration testing
+**Task Details**:
+- Create integration tests verifying Stream API replacement works correctly
+- **Absorbs**: EntityUtils removal verification
+**Target**: → `src/test/java/com/demo/util/EntityUtilsMigrationTest.java`
+EOF
+  printf 'legacyPackage: org.springframework.samples.petclinic\ntargetPackage: com.demo\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-009; echo "rc=$?"
+}
+check "already-complete does not skip Create *Test when absent (O-ACCREATE)" 0 "rc=1"
 
 # O-AC2 — preserve token in Story Scope Waivers must not skip unrelated tasks
 run_case() {
@@ -1474,6 +1832,74 @@ EOF
   printf 'src/test/java/com/demo/model/DomainModelTest.java\n' | python3 "$MM_PY" tasks.md T-006; echo "rc=$?"
 }
 check "mechan-match accepts characterization with src/test (O-T6d)" 0 "rc=0"
+
+# O-SCAFFOLDDIR — structure task + gitkeep tree must not fail on discovered.md noise
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create target package directory structure
+**Class: rewrite**
+**Target design**: Create `src/main/java/com/demo` directory structure with `.gitkeep` files
+**Target**: → `src/main/java/com/demo/`
+**Owns**: Empty directory creation
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/.gitkeep' \
+    'src/main/java/com/demo/model/.gitkeep' \
+    'src/test/java/com/demo/model/.gitkeep' \
+    'migration/discovered.md' \
+    | python3 "$MM_PY" tasks.md T-001; echo "rc=$?"
+}
+check "mechan-match accepts structure gitkeeps despite discovered.md (O-SCAFFOLDDIR)" 0 "rc=0"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create target package directory structure
+**Class: rewrite**
+**Target design**: Create package directory structure with `.gitkeep` files
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/model/BaseEntity.java' \
+    'src/main/java/com/demo/model/.gitkeep' \
+    | python3 "$MM_PY" tasks.md T-001; echo "rc=$?"
+}
+check "mechan-match refuses structure task when real java outside soft scope (O-SCAFFOLDDIR)" 0 "rc=1"
+
+# O-STRUCTINFO — package-info *tasks* must not be classified as gitkeep-only
+# structure (Wave2 T-003: Target text "package structure" → structure-non-gitkeep).
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Update package-info files with Jakarta documentation
+**Class: rewrite**
+**Target design**: Updated package-info.java files in com.demo package structure
+**Target**: → `src/main/java/com/demo/*/package-info.java`
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/model/package-info.java' \
+    'src/main/java/com/demo/rest/package-info.java' \
+    | python3 "$MM_PY" tasks.md T-003; echo "rc=$?"
+}
+check "mechan-match accepts package-info.java for package-info task (O-STRUCTINFO)" 0 "rc=0"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create target package directory structure
+**Class: rewrite**
+**Target design**: Create directory structure with `.gitkeep` or package-info.java
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/model/package-info.java' \
+    'src/main/java/com/demo/rest/.gitkeep' \
+    | python3 "$MM_PY" tasks.md T-001; echo "rc=$?"
+}
+check "mechan-match accepts package-info.java on structure task (O-STRUCTINFO)" 0 "rc=0"
 
 # 83. V6 abort — ceremonial status-map acceptance is rejected statically
 run_case() {
@@ -1946,6 +2372,8 @@ run_case() {
   grep -q 'sensor-fix-mode' "$SENSORS" \
     && grep -q 'O-SFIXLOOP' "$SENSORS" \
     && grep -q 's1066-collapse' "$HARNESS_DIR/style-autofix.sh" \
+    && grep -q 'RenameLocalVariablesToCamelCase' "$HARNESS_DIR/style-autofix.sh" \
+    && grep -q 'RenamePrivateFieldsToCamelCase' "$HARNESS_DIR/style-autofix.sh" \
     && test -f "$HARNESS_DIR/s1066-collapse.py" \
     && grep -q 'app_dirt' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'O-M3KILL' "$HARNESS_DIR/outer-loop.sh" \
@@ -2204,6 +2632,125 @@ EOF
   python3 "$LINT" tasks.md
 }
 check "plan-lint rejects package-rename with no harvested java (O-PKGORD)" 1 "O-PKGORD"
+
+run_case() {
+  # O-DTOFIRST: mapper harvest before DTO harvest must RED
+  # mkfix required — prior cases leave migration.yaml with preserve/acceptance
+  # (K4) that would false-RED the ordering accept fixtures (R-216).
+  mkfix
+  cat > tasks.md <<'EOF'
+UI surface: waived (API-only).
+
+#### T-005: Harvest MapStruct mappers with Jakarta updates
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: Update mapper interfaces
+**Target**: `src/main/java/com/demo/mapper/*.java`
+
+#### T-006: Harvest DTOs with Jakarta validation imports
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: Harvest DTOs
+**Target**: `src/main/java/com/demo/dto/*.java`
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects mapper-before-DTO order (O-DTOFIRST)" 1 "O-DTOFIRST"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+UI surface: waived (API-only).
+
+#### T-005: Harvest DTOs with Jakarta validation imports
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: Harvest DTOs
+**Target**: `src/main/java/com/demo/dto/*.java`
+
+#### T-006: Harvest MapStruct mappers with Jakarta updates
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: Update mapper interfaces
+**Target**: `src/main/java/com/demo/mapper/*.java`
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint accepts DTO-before-mapper order (O-DTOFIRST)" 0 "PLAN OK"
+
+run_case() {
+  # O-CDIORDER: service CDI before repository CDI must RED
+  mkfix
+  cat > tasks.md <<'EOF'
+UI surface: waived (API-only).
+
+#### T-007: Convert ClinicServiceImpl to Quarkus CDI
+**Class**: rewrite
+**Findings**: springboot-di-to-quarkus-00003
+**Goal**: Convert Spring @Service to Quarkus @ApplicationScoped with CDI injection
+**Target**: `src/main/java/com/demo/service/ClinicServiceImpl.java`
+
+#### T-010: Convert JPA repository implementations to CDI
+**Class**: rewrite
+**Findings**: springboot-di-to-quarkus-00003
+**Goal**: Convert JPA repository implementations to CDI
+**Target**: `src/main/java/com/demo/repository/jpa/*.java`
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects service-CDI-before-repo order (O-CDIORDER)" 1 "O-CDIORDER"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+UI surface: waived (API-only).
+
+#### T-009: Convert JPA repository implementations to CDI
+**Class**: rewrite
+**Findings**: springboot-di-to-quarkus-00003
+**Goal**: Convert JPA repository implementations to CDI
+**Target**: `src/main/java/com/demo/repository/jpa/*.java`
+
+#### T-010: Convert ClinicServiceImpl to Quarkus CDI
+**Class**: rewrite
+**Findings**: springboot-di-to-quarkus-00003
+**Goal**: Convert Spring @Service to Quarkus @ApplicationScoped with CDI injection
+**Target**: `src/main/java/com/demo/service/ClinicServiceImpl.java`
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint accepts repo-before-service-CDI order (O-CDIORDER)" 0 "PLAN OK"
+
+run_case() {
+  grep -q 'O-HARVESTREPO\|@Repository' \
+    "$HARNESS_DIR/../skills/migration-harness/scripts/harvest-from-staging.sh" \
+    && echo harvestrepo-ok
+}
+check "O-HARVESTREPO wiring in harvest-from-staging" 0 "harvestrepo-ok"
+
+run_case() {
+  grep -q 'commit-hygiene.py' "$HARNESS_DIR/supervisor.sh" \
+    && test -f "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q 'O-COMMITHYGIENE\|O-GITBAK\|O-POMUNC' "$HARNESS_DIR/supervisor.sh" \
+    && echo hygiene-wire-ok
+}
+check "O-GITBAK/O-SIMPLEDTO/O-POMUNC commit-hygiene wiring" 0 "hygiene-wire-ok"
+
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@t; git config user.name t
+  mkdir -p src/main/java/com/demo/dto src/main/java/com/demo/mapper
+  printf '<project></project>\n' > pom.xml
+  git add -A && git commit -q -m 'init'
+  printf 'package com.demo.dto;\npublic class OwnerDto {}\n' > src/main/java/com/demo/dto/OwnerDto.java
+  printf 'package com.demo.dto;\n@Generated public class OwnerAllOfDto {}\n' > src/main/java/com/demo/dto/OwnerAllOfDto.java.bak
+  printf 'package com.demo.mapper;\nimport org.mapstruct.Mapper;\n@Mapper\npublic interface OwnerMapper {}\n' \
+    > src/main/java/com/demo/mapper/OwnerMapper.java
+  git add -A && git commit -q -m 'T-005: bad harvest'
+  python3 "$HARNESS_DIR/commit-hygiene.py" HEAD; echo "rc=$?"
+}
+check "commit-hygiene rejects bak+mapstruct-without-pom (O-GITBAK/O-POMUNC)" 0 "rc=1"
 
 run_case() {
   grep -q 'O-M4REPLAY' "$HARNESS_DIR/outer-loop.sh" \
@@ -2598,6 +3145,245 @@ run_case() {
 }
 check "O-HOTSWAP wiring (pause + outer re-enter)" 0 "hotswap-ok"
 
+# O-HOTSWAPRELOAD: after harness-update, exit for outer re-exec (not in-process resume)
+run_case() {
+  grep -q 'hotswap_pause_gate' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-HOTSWAPRELOAD' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'hotswap-inflight' "$HARNESS_DIR/supervisor.sh" \
+    && echo hotswapreload-ok
+}
+check "O-HOTSWAPRELOAD wiring (exit after harness-update for fresh load)" 0 "hotswapreload-ok"
+
+run_case() {
+  grep -q 'O-HOTSWAPLOCK' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'supervisor.lock' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'sleep 15' "$HARNESS_DIR/outer-loop.sh" \
+    && echo hotswaplock-ok
+}
+check "O-HOTSWAPLOCK wiring (drop flock + settle before re-enter)" 0 "hotswaplock-ok"
+
+run_case() {
+  grep -q 'O-WEDGERESUME' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'clearing stale worker-wedge-skip' "$HARNESS_DIR/supervisor.sh" \
+    && echo wedgeresume-ok
+}
+check "O-WEDGERESUME wiring (clear wedge-skip at supervisor start)" 0 "wedgeresume-ok"
+
+run_case() {
+  grep -q 'O-INFERABSENT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'task_oracle' "$HARNESS_DIR/supervisor.sh" \
+    && echo inferabsent-ok
+}
+check "O-INFERABSENT wiring (skip worker on infer+absent)" 0 "inferabsent-ok"
+
+run_case() {
+  grep -q 'O-ESCREOPENCODE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'YOU OWN all file-changing work' "$HARNESS_DIR/supervisor.sh" \
+    && echo escreopencode-ok
+}
+check "O-ESCREOPENCODE wiring (no opencode re-dispatch after wedge)" 0 "escreopencode-ok"
+
+run_case() {
+  grep -q 'O-ANTISCOPE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'Other problems will be solved in subsequent steps' "$HARNESS_DIR/supervisor.sh" \
+    && echo antiscope-ok
+}
+check "O-ANTISCOPE wiring (prompt scope discipline)" 0 "antiscope-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Convert Spring Boot Parent
+**Class**: rewrite
+- Replace spring-boot-starter-parent.
+
+#### T-002: Something infer
+**Class: infer**
+- Infer design work.
+EOF
+  out=$(python3 - "$FIX/tasks.md" <<'PY'
+import re, sys
+def field(body, *names):
+    for name in names:
+        m = re.search(rf"^\*\*{re.escape(name)}\s*:\s*(.+?)\*\*\s*$", body, re.M | re.I)
+        if m: return m.group(1).strip()
+        m = re.search(rf"^\*\*{re.escape(name)}\*\*\s*:?\s*(.+)$", body, re.M | re.I)
+        if m: return m.group(1).strip()
+        m = re.search(rf"^{re.escape(name)}\s*:\s*(.+)$", body, re.M | re.I)
+        if m: return m.group(1).strip()
+    return ""
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+):", text, flags=re.M)
+for i in range(1, len(blocks) - 1, 2):
+    cls = field(blocks[i + 1], "Class", "Type") or "infer"
+    m = re.search(r"\b(rewrite|infer)\b", cls, re.I)
+    print(f"{blocks[i]}:{(m.group(1).lower() if m else 'infer')}")
+PY
+)
+  echo "$out" | grep -qx 'T-001:rewrite' || { echo "bad-t001:$out"; return 1; }
+  echo "$out" | grep -qx 'T-002:infer' || { echo "bad-t002:$out"; return 1; }
+  echo classprompt-ok
+}
+check "O-CLASSPROMPT parses **Class**: rewrite form (not false infer)" 0 "classprompt-ok"
+
+run_case() {
+  python3 "$HARNESS_DIR/sensor-gate.py" decide 0 && echo allow || echo bad
+  python3 "$HARNESS_DIR/sensor-gate.py" decide 1; [ $? -eq 1 ] || return 1
+  python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "T-012: foo" || return 1
+  python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "chore: ignore"; [ $? -eq 1 ] || return 1
+  echo sensorgate-ok
+}
+check "O-SENSORGATE decide/needs-gate both directions (N12)" 0 "sensorgate-ok"
+
+run_case() {
+  grep -q 'O-SENSORGATE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'refusing checkpoint commit' "$HARNESS_DIR/supervisor.sh" \
+    && echo sensorgate-wire-ok
+}
+check "O-SENSORGATE wiring (hook install + refuse RED checkpoint)" 0 "sensorgate-wire-ok"
+
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@t; git config user.name t
+  mkdir -p src/main/java/com/demo/service src/main/java/com/demo/other
+  printf 'package com.demo.service;\npublic class Svc {}\n' > src/main/java/com/demo/service/Svc.java
+  printf 'package com.demo.other;\npublic class Oth {}\n' > src/main/java/com/demo/other/Oth.java
+  git add -A && git commit -q -m init
+  printf 'package com.demo.service;\npublic class Svc { int x; }\n' > src/main/java/com/demo/service/Svc.java
+  printf 'package com.demo.other;\npublic class Oth { int y; }\n' > src/main/java/com/demo/other/Oth.java
+  git add -A && git commit -q -m 'T-001: touch both'
+  sha2=$(git rev-parse HEAD)
+  # Relative arch/ — run_case runs under command-substitution; avoid $FIX races.
+  mkdir -p arch
+  printf '%s\n' "$sha2" > arch/sha.txt
+  git reset --hard HEAD~1 >/dev/null
+  cat > tasks.md <<'EOF'
+#### T-001: Convert Svc
+**Class**: rewrite
+**Shape**: modify
+**Target**: → `src/main/java/com/demo/service/Svc.java`
+EOF
+  out=$(python3 "$HARNESS_DIR/sfix-partial-salvage.py" "$PWD/arch" tasks.md T-001)
+  echo "$out" | grep -q 'SALVAGED' || { echo "$out"; return 1; }
+  echo "$out" | grep -q 'Svc.java' || { echo "$out"; return 1; }
+  echo "$out" | grep -q 'dropped_oos' || { echo "expected oos drop: $out"; return 1; }
+  grep -q 'int x' src/main/java/com/demo/service/Svc.java || return 1
+  grep -q 'int y' src/main/java/com/demo/other/Oth.java 2>/dev/null && return 1
+  echo sfixpartial-ok
+}
+check "O-SFIXPARTIAL salvages in-scope only (drops out-of-scope)" 0 "sfixpartial-ok"
+
+run_case() {
+  mkfix
+  printf 'COVERAGE new_coverage=38.6%% (gate requires >= 80%%) — see SHIPPING.md\n' > log.txt
+  python3 "$HARNESS_DIR/gate-achievability.py" log.txt; [ $? -eq 10 ] || return 1
+  printf 'COMPILATION ERROR\nCOVERAGE new_coverage=38.6%% (gate requires >= 80%%)\n' > log2.txt
+  python3 "$HARNESS_DIR/gate-achievability.py" log2.txt; [ $? -eq 0 ] || return 1
+  echo gateachieve-ok
+}
+check "O-GATEACHIEVE decision-needed vs code-fixable (N14/D2)" 0 "gateachieve-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+# Legacy dependency analysis
+## Conversion order (dependencies first — the tree must compile at every commit)
+1. com.example.legacy.dto.ItemDto (src/main/java/com/example/legacy/dto/ItemDto.java)
+2. com.example.legacy.mapper.ItemMapper (src/main/java/com/example/legacy/mapper/ItemMapper.java)
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only service; no legacy web frontend).
+
+#### T-001: Harvest ItemMapper types
+**Class**: rewrite
+**Shape**: create
+**Goal**: mapper first (bad order)
+**Target**: → `src/main/java/com/demo/mapper/ItemMapper.java`
+
+#### T-002: Harvest ItemDto types
+**Class**: rewrite
+**Shape**: create
+**Goal**: dto second (should be first)
+**Target**: → `src/main/java/com/demo/dto/ItemDto.java`
+EOF
+  echo '[]' > f.json
+  out=$(PLAN_LINT_REQUIRE_SHAPE=0 python3 "$LINT" tasks.md f.json 2>&1 || true)
+  echo "$out" | grep -q 'O-PLANORDER' || { echo "expected PLANORDER: $out"; return 1; }
+  echo planorder-red-ok
+}
+check "O-PLANORDER refuses dep-order inversion (DTO after mapper)" 0 "planorder-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order (dependencies first — the tree must compile at every commit)
+1. com.example.legacy.dto.ItemDto (src/main/java/com/example/legacy/dto/ItemDto.java)
+2. com.example.legacy.mapper.ItemMapper (src/main/java/com/example/legacy/mapper/ItemMapper.java)
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only service; no legacy web frontend).
+
+#### T-001: Harvest ItemDto types
+**Class**: rewrite
+**Shape**: create
+**Goal**: dto first
+**Target**: → `src/main/java/com/demo/dto/ItemDto.java`
+
+#### T-002: Harvest ItemMapper types
+**Class**: rewrite
+**Shape**: create
+**Goal**: mapper second
+**Target**: → `src/main/java/com/demo/mapper/ItemMapper.java`
+EOF
+  echo '[]' > f.json
+  out=$(PLAN_LINT_REQUIRE_SHAPE=0 python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-PLANORDER' && { echo "unexpected: $out"; return 1; }
+  echo "$out" | grep -q 'PLAN OK' || { echo "want PLAN OK: $out"; return 1; }
+  echo planorder-ok
+}
+check "O-PLANORDER accepts dependency-first task order" 0 "planorder-ok"
+
+run_case() {
+  grep -q 'O-NULLACTION' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ADDLINFO' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXPARTIAL' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-GATEACHIEVE' "$HARNESS_DIR/supervisor.sh" \
+    && echo f70-prompts-ok
+}
+check "F-70 prompt/wiring (NULLACTION/ADDLINFO/SFIXPARTIAL/GATEACHIEVE)" 0 "f70-prompts-ok"
+
+# O-SPECFROZEN: stage_for_task_commit restores complete-story specs (R-229)
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@t
+  git config user.name t
+  mkdir -p specs/S01-foundation specs/S03-platform migration
+  printf '# S01\n#### T-001: Keep me\n#### T-002: Keep me too\n' > specs/S01-foundation/tasks.md
+  printf '# S03\n#### T-012: Profiles\n' > specs/S03-platform/tasks.md
+  printf 'S01,complete,1\nS03,running,2\n' > migration/story-state.csv
+  git add .
+  git commit -q -m "base"
+  # Gut S01 like the confused M3/worker did
+  printf '# S01 gutted\n#### T-001: only one left\n' > specs/S01-foundation/tasks.md
+  STORY_TASKS=specs/S03-platform/tasks.md
+  eval "$(sed -n '/^complete_story_ids()/,/^stage_for_task_commit()/{ /^stage_for_task_commit()/q; p; }' "$HARNESS_DIR/supervisor.sh")"
+  eval "$(sed -n '/^stage_for_task_commit()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  stage_for_task_commit
+  grep -c '^#### T-0' specs/S01-foundation/tasks.md | grep -qx 2 || { echo "s01-not-restored"; return 1; }
+  git diff --cached --name-only | grep -q 'S01-foundation' && { echo "s01-still-staged"; return 1; }
+  echo specfrozen-ok
+}
+check "stage_for_task_commit restores complete-story specs (O-SPECFROZEN)" 0 "specfrozen-ok"
+
 # O-REDATTRIB wiring
 run_case() {
   grep -q '_redattrib_gcat' "$HARNESS_DIR/sensors.sh" \
@@ -2923,6 +3709,45 @@ run_case() {
 }
 check "O-WORKERWEDGE-RCA skip + EXECUTION FIRST-mutate tip" 0 "wedge-rca-wire"
 
+# O-FIRSTMUT (R-222/N13): bash alone must NOT exempt read-thrash (T-007: 23 read + 2 bash + 0 edit)
+run_case() {
+  mkfix
+  # Synthetic OpenCode-shaped events: 22 reads + 2 bash + 0 edit/write
+  python3 - <<'PY' > oc.json
+import json
+evs = []
+for i in range(22):
+    evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": f"r{i}"}})
+for i in range(2):
+    evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "bash", "callID": f"b{i}"}})
+print(json.dumps(evs))
+PY
+  out=$(python3 "$HARNESS_DIR/worker-read-watch.py" oc.json); rc=$?
+  [ "$rc" -eq 0 ] && echo "$out" | grep -q 'read-thrash' && echo firstmut-kill
+}
+check "worker-read-watch kills read+bash with zero edit (O-FIRSTMUT)" 0 "firstmut-kill"
+
+run_case() {
+  mkfix
+  python3 - <<'PY' > oc.json
+import json
+evs = [{"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": "r0"}}]
+for i in range(5):
+    evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": f"r{i}"}})
+evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "edit", "callID": "e0"}})
+print(json.dumps(evs))
+PY
+  python3 "$HARNESS_DIR/worker-read-watch.py" oc.json; echo "rc=$?"
+}
+check "worker-read-watch continues after first edit (O-FIRSTMUT)" 0 "rc=1"
+
+run_case() {
+  grep -q 'clear_worker_wedge_skip' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-WEDGESKIP' "$HARNESS_DIR/supervisor.sh" \
+    && echo wedgeskip-ok
+}
+check "O-WEDGESKIP clears worker-wedge-skip after commit" 0 "wedgeskip-ok"
+
 # K7 wiring audit (O-INSTQUAL): keep name-grep only as companion to behavioural
 run_case() {
   # Behavioural failure-sig already above; confirm refute path is not grep-only.
@@ -2962,6 +3787,64 @@ run_case() {
   grep -q 'gen-contract-rules.py' "$HARNESS_DIR/analyze.sh" && echo k4wire-ok
 }
 check "analyze.sh runs gen-contract-rules before kantra (K4)" 0 "k4wire-ok"
+
+# O-STAMP-AUTO / O-STAMP-GATE (F-4)
+STAMP_FIX="$HARNESS_DIR/tests/fixtures"
+run_case() {
+  mkfix
+  legacy="$STAMP_FIX/stamp-petclinic"
+  python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write --json \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); a=d['acceptance']; m=d['migration']; \
+assert m['legacyPackage']=='org.springframework.samples.petclinic'; \
+assert a['path']=='/petclinic/api/vets'; assert a['collection']=='_array'; \
+assert a['getter']=='getAllVets'; assert a['service']=='ClinicService'; \
+assert a['itemType']=='VetDto'; \
+assert 'endpointEnv' not in a; print('stamp-petclinic-ok')"
+}
+check "contract-stamp petclinic fixture matches F-2 acceptance (O-STAMP-AUTO)" 0 "stamp-petclinic-ok"
+
+run_case() {
+  mkfix
+  legacy="$STAMP_FIX/stamp-petclinic"
+  python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write >/dev/null
+  python3 "$HARNESS_DIR/contract-stamp-gate.py" --legacy "$legacy" --yaml migration.yaml \
+    && echo stamp-petclinic-gate-ok
+}
+check "contract-stamp petclinic gate GREEN (O-STAMP-GATE)" 0 "stamp-petclinic-gate-ok"
+
+run_case() {
+  mkfix
+  legacy="$STAMP_FIX/stamp-cart"
+  python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write --json \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); a=d['acceptance']; m=d['migration']; \
+assert m['legacyPackage']=='com.redhat.coolstore' and m['targetPackage']=='com.demo'; \
+assert a['path']=='/api/cart/acceptance-check' and a['collection']=='products'; \
+assert a['getter']=='getProducts' and a['service']=='CatalogService'; \
+assert a['itemType']=='Product' and a['endpointEnv']=='CATALOG_ENDPOINT'; \
+assert a['needsDatabase'] is False; print('stamp-cart-ok')"
+}
+check "contract-stamp cart fixture regression (O-STAMP-AUTO)" 0 "stamp-cart-ok"
+
+run_case() {
+  mkfix
+  legacy="$STAMP_FIX/stamp-surfaceless"
+  python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write --json \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); \
+assert d['contract']['status']=='UNDECIDED'; assert d['acceptance']['path']=='UNDECIDED'; \
+print('stamp-undecided-ok')"
+  rc=0
+  python3 "$HARNESS_DIR/contract-stamp-gate.py" --legacy "$legacy" --yaml migration.yaml >/dev/null 2>&1 || rc=$?
+  [ "$rc" = "1" ] && echo gate-hold-ok
+}
+check "contract-stamp surface-less → UNDECIDED + gate hold (O-STAMP-GATE)" 0 "gate-hold-ok"
+
+run_case() {
+  grep -q 'O-STAMP-AUTO' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'contract-stamp.py' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'contract-stamp-gate.py' "$HARNESS_DIR/outer-loop.sh" \
+    && echo stamp-wire-ok
+}
+check "outer-loop wires contract-stamp before M1 analyze (O-STAMP-AUTO)" 0 "stamp-wire-ok"
 
 # K12 — adversarial refute
 run_case() {
@@ -3004,6 +3887,54 @@ EOF
   python3 "$HARNESS_DIR/refute-diff.py" --diff ok.diff
 }
 check "refute-diff PASS on honest catalog call (K12)" 0 "PASS"
+
+# O-K12WEAKTEST: annotation isNotNull + strong asserts must PASS; bare isNotNull REFUTES
+run_case() {
+  mkfix
+  cat > test.diff <<'EOF'
+diff --git a/src/test/java/com/demo/model/OwnerTest.java b/src/test/java/com/demo/model/OwnerTest.java
+--- a/src/test/java/com/demo/model/OwnerTest.java
++++ b/src/test/java/com/demo/model/OwnerTest.java
+@@ -1,2 +1,6 @@
++        assertThat(addressField.getAnnotation(NotEmpty.class)).isNotNull();
++        assertThat(foundPet).isNotNull();
++        assertThat(foundPet.getName()).isEqualTo("Spot");
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff test.diff 2>&1) || true
+  echo "$out" | grep -q 'PASS' && echo k12weaktest-ok
+}
+check "refute-diff PASS on characterization isNotNull+isEqualTo (O-K12WEAKTEST)" 0 "k12weaktest-ok"
+
+# O-K12NEST: nested getOwner() must not defeat strong-assert detection
+run_case() {
+  mkfix
+  cat > nest.diff <<'EOF'
+diff --git a/src/test/java/com/demo/CircularGroupIntegrationTest.java b/src/test/java/com/demo/CircularGroupIntegrationTest.java
+--- a/src/test/java/com/demo/CircularGroupIntegrationTest.java
++++ b/src/test/java/com/demo/CircularGroupIntegrationTest.java
+@@ -1,2 +1,5 @@
++        assertThat(owner).isNotNull();
++        assertThat(pet.getOwner()).isSameAs(owner);
++        assertThat(pet.getVisits()).isNotEmpty();
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff nest.diff 2>&1) || true
+  echo "$out" | grep -q 'PASS' && echo k12nest-ok
+}
+check "refute-diff PASS on nested-paren AssertJ (O-K12NEST)" 0 "k12nest-ok"
+
+run_case() {
+  mkfix
+  cat > weak.diff <<'EOF'
+diff --git a/src/test/java/com/demo/WeakTest.java b/src/test/java/com/demo/WeakTest.java
+--- a/src/test/java/com/demo/WeakTest.java
++++ b/src/test/java/com/demo/WeakTest.java
+@@ -1,2 +1,3 @@
++        assertThat(result).isNotNull();
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff weak.diff 2>&1) || true
+  echo "$out" | grep -q 'WEAK-ASSERT' && echo k12weakonly-ok
+}
+check "refute-diff REFUTES bare isNotNull-only test (O-K12WEAKTEST)" 0 "k12weakonly-ok"
 
 run_case() {
   grep -q 'refute_high_stakes' "$HARNESS_DIR/supervisor.sh" \
@@ -3070,6 +4001,166 @@ run_case() {
 }
 check "M5 ship milestones mirrored to outer_log (O-UXLOG-SHIP)" 0 "uxship-ok"
 
+run_case() {
+  grep -q 'O-SPECREBASE' "$HARNESS_DIR/outer-loop.sh" && echo specrebase-ok
+}
+check "O-SPECREBASE wiring in outer-loop" 0 "specrebase-ok"
+
+run_case() {
+  grep -q 'O-JDBCREGRESS' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q 'present:JpaRepositoryImpl-cdi\|jdbc.repository' "$HARNESS_DIR/already-complete.py" \
+    && echo jdbcregress-ok
+}
+check "O-JDBCREGRESS / O-JDBCSKIP wiring" 0 "jdbcregress-ok"
+
+run_case() {
+  grep -q 'is_convert_task\|O-ACRESTABS' "$HARNESS_DIR/already-complete.py" \
+    && grep -q 'throws\\s\*Exception\|O-FIDSONAR' "$HARNESS_DIR/harvest-fidelity.py" \
+    && echo acrestabs-ok
+}
+check "O-ACRESTABS / O-FIDSONAR wiring" 0 "acrestabs-ok"
+
+# O-ESCALORACLE: Shape + Oracle on packet; escalation prompt forbids fabricate-delete
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-090: Remove Spring Boot main application class
+**Class**: rewrite
+**Goal**: Delete PetClinicApplication — Quarkus has no main
+**Owns**: src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java
+**Acceptance**: PetClinicApplication.java absent; mvn -q test
+EOF
+  out=$(python3 "$TP_PY" tasks.md T-090 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -qE '^Shape:[[:space:]]*remove' \
+    && echo "$out" | grep -qE '^Oracle:[[:space:]]*absent' \
+    && echo "$out" | grep -q 'O-ESCALORACLE' \
+    && grep -q 'O-ESCALORACLE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'esc_oracle' "$HARNESS_DIR/supervisor.sh" \
+    && echo escaloracle-ok
+}
+check "task-packet+supervisor carry Shape/Oracle on escalation (O-ESCALORACLE)" 0 "escaloracle-ok"
+
+# O-ACCEPTPROBE: acceptance log names the index URL that scored 200
+run_case() {
+  grep -q 'ACC_INDEX_URL' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ACCEPTPROBE' "$HARNESS_DIR/supervisor.sh" \
+    && echo acceptprobe-ok
+}
+check "acceptance probe logs winning index URL (O-ACCEPTPROBE)" 0 "acceptprobe-ok"
+
+# O-SFIXWORKER / O-M3WORKER: Qwen-first routing with MiniMax rescue/backstop
+run_case() {
+  grep -q 'WORKER_SFIX_FIRST' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'run_worker_prompt' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXWORKER' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sfix_minimax_rescue' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixworker-ok
+}
+check "sensor-fix Qwen-first + MiniMax rescue wiring (O-SFIXWORKER)" 0 "sfixworker-ok"
+
+run_case() {
+  grep -q 'SFIX_MINIMAX_RESCUE_MAX' "$HARNESS_DIR/supervisor.sh" \
+    && grep -qE 'while \[ "\$_sfix_rescue" -lt "\$\{SFIX_MINIMAX_RESCUE_MAX' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixcap-ok
+}
+check "sfix MiniMax rescue capped by SFIX_MINIMAX_RESCUE_MAX (R-218)" 0 "sfixcap-ok"
+
+# O-T1FINDINGS behavioural (R-223): stage_for_task_commit must leave findings unstaged
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p migration src/main/resources .hermes
+  printf 'quarkus.http.port=8080\n' > src/main/resources/application.properties
+  printf '{"ok":true}\n' > migration/mta-findings-current.json
+  git add -A && git commit -q -m init
+  printf 'quarkus.http.port=8080\n# touched\n' > src/main/resources/application.properties
+  printf '{"stale":true,"port":9966}\n' > migration/mta-findings-current.json
+  # Inline the staging helper (same as supervisor stage_for_task_commit)
+  git add -A
+  git reset -q -- .hermes migration/staging migration/mta-findings-current.json 2>/dev/null || true
+  git commit -q -m "T-007: Convert Database Configuration Properties"
+  if git diff-tree --no-commit-id --name-only -r HEAD | grep -qx 'migration/mta-findings-current.json'; then
+    echo "FAIL: findings still in tip"; return 1
+  fi
+  git diff-tree --no-commit-id --name-only -r HEAD | grep -q 'application.properties' \
+    && echo t1findings-ok
+}
+check "stage_for_task_commit excludes mta-findings-current.json (O-T1FINDINGS behavioural)" 0 "t1findings-ok"
+
+# O-T1FINDESC behavioural: scrub_findings_from_tip rewrites a tip that swept findings
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p migration src/main/resources
+  printf 'port=8080\n' > src/main/resources/application.properties
+  printf '{"base":true}\n' > migration/mta-findings-current.json
+  git add -A && git commit -q -m init
+  printf 'port=8080\nx\n' > src/main/resources/application.properties
+  printf '{"stale":9966}\n' > migration/mta-findings-current.json
+  git add -A
+  git commit -q -m "T-007: Convert Database Configuration Properties"
+  # Extract + run scrub (LOG required by helper)
+  LOG=/dev/null
+  # shellcheck disable=SC1090
+  eval "$(sed -n '/^scrub_findings_from_tip()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  scrub_findings_from_tip
+  if git diff-tree --no-commit-id --name-only -r HEAD | grep -qx 'migration/mta-findings-current.json'; then
+    echo "FAIL: findings still in tip after scrub"; return 1
+  fi
+  grep -q '"base":true' migration/mta-findings-current.json \
+    && git log -1 --format=%s | grep -q '^T-007:' \
+    && echo t1findesc-ok
+}
+check "scrub_findings_from_tip removes findings from escalation tip (O-T1FINDESC)" 0 "t1findesc-ok"
+
+run_case() {
+  grep -q 'WORKER_M3_FIRST' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3WORKER' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '^wchat()' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_ORCH_BACKSTOP' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3worker-ok
+}
+check "M3 Qwen draft + MiniMax backstop wiring (O-M3WORKER)" 0 "m3worker-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  printf 'package com.demo; class A {}\n' > src/main/java/com/demo/A.java
+  cat > migration/mta-findings.json <<'J'
+[{"violations": {
+  "rule-landed-00001": {"category":"mandatory","incidents":[{"uri":"file:///x/A.java"}]},
+  "localhost-jdbc-00002": {"category":"mandatory","incidents":[{"uri":"file:///x/Db.java"}]},
+  "rule-absent-00003": {"category":"mandatory","incidents":[{"uri":"file:///x/Missing.java"}]}
+}}]
+J
+  echo '[]' > migration/mta-findings-after.json
+  printf 'localhost-jdbc-00002\n' > migration/deferred-by-decision.txt
+  out=$(python3 "$HARNESS_DIR/findings-delta.py" 2>&1)
+  echo "$out" | grep -q 'deferred_by_decision=1' || { echo "$out"; return 1; }
+  echo "$out" | grep -q 'absent_not_landed=1' || { echo "$out"; return 1; }
+  echo "$out" | grep -q 'resolved=1' || { echo "$out"; return 1; }
+  echo "$out" | grep -q 'DEFERRED-BY-DECISION' || { echo "$out"; return 1; }
+  echo deferred-ok
+}
+check "O-LEDGERFALSE deferred_by_decision class (F-60)" 0 "deferred-ok"
+
+run_case() {
+  grep -q 'O-PREFLIGHTDIM' "$SENSORS" \
+    && grep -q 'preflight-count' "$SENSORS" \
+    && grep -q 'preflight-count' "$HARNESS_DIR/supervisor.sh" \
+    && echo preflightdim-ok
+}
+check "O-PREFLIGHTDIM wiring (cap + ship reset)" 0 "preflightdim-ok"
+
 echo "----"
 echo "$PASS/$N passed"
-[ "$FAIL" -eq 0 ]
+if [ "$FAIL" -ne 0 ]; then
+  echo "# instruments FAIL count=$FAIL" >&2
+  exit 1
+fi
+exit 0

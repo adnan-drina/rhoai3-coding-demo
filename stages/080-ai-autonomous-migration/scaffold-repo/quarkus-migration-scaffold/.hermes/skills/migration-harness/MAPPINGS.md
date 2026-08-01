@@ -135,10 +135,12 @@ valid when a DB story chooses Panache. SpEL in Spring `@Query` is not supported
 | JMX | Unsupported under native — waive when the profile is native-capable |
 
 **Metrics naming (preserve-token class):** Micrometer vs MicroProfile Metrics
-names can break Grafana. On Quarkus 3 prefer Micrometer (`quarkus-micrometer`)
-unless the org standardizes on MP Metrics — verify before choosing
-`quarkus-smallrye-metrics`. If dashboards exist, put metric name tokens in
-`migration.yaml` `preserve:`.
+names can break Grafana. **When MTA `springboot-metrics-to-quarkus-*` is in
+FINDINGS scope**, replace `quarkus-micrometer*` / Micrometer registry deps with
+`quarkus-smallrye-metrics` (MAPPINGS rule + K5). Otherwise on Quarkus 3 prefer
+Micrometer only if those rules are waived/out of scope — verify before keeping
+`quarkus-micrometer-registry-prometheus`. If dashboards exist, put metric name
+tokens in `migration.yaml` `preserve:`.
 
 **Spring Boot starters → Quarkus extensions (Full path, RH BOM 3.27.3.SP1):**
 

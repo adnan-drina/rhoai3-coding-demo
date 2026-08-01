@@ -21,16 +21,36 @@ REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE2-REVIEW.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace defaults (override via env — do not hardcode elsewhere).
-# coolstore-cart-service-v10 (Wave 1 / V10 run)
-QG_WS_POD_DEFAULT="workspace9b602ab164e54d66-79897b695d-tw2q2"
+# Wave 2 specimen workspace name; resolve live pod by label (F-5 W1 / R-87).
+QG_WS_NAME_DEFAULT="${V10_WS_NAME:-petclinic-rest-v1}"
 QG_WS_NS_DEFAULT="wksp-ai-developer"
 QG_WS_CTR_DEFAULT="development-tooling"
+# Legacy cart Wave-1 pod — only used if label resolve fails and V8_WS_POD unset.
+QG_WS_POD_DEFAULT="workspace9b602ab164e54d66-79897b695d-tw2q2"
 # O-FALSECOMPLETE — exact harness story-complete subjects only.
 QG_STORY_COMPLETE_RE='^S0[0-9] story complete: (success .+|story-gate-passed)$'
 
 qg_die() { echo "quality-gate: $*" >&2; exit 1; }
 
-qg_ws_pod() { printf '%s\n' "${V8_WS_POD:-$QG_WS_POD_DEFAULT}"; }
+qg_ws_pod() {
+  if [[ -n "${V8_WS_POD:-}" ]]; then
+    printf '%s\n' "$V8_WS_POD"
+    return 0
+  fi
+  local name ns pod
+  name="${V10_WS_NAME:-$QG_WS_NAME_DEFAULT}"
+  ns="$(qg_ws_ns)"
+  if command -v oc >/dev/null 2>&1; then
+    pod=$(oc get pod -n "$ns" \
+      -l "controller.devfile.io/devworkspace_name=${name}" \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [[ -n "${pod:-}" ]]; then
+      printf '%s\n' "$pod"
+      return 0
+    fi
+  fi
+  printf '%s\n' "$QG_WS_POD_DEFAULT"
+}
 qg_ws_ns() { printf '%s\n' "${V8_WS_NS:-$QG_WS_NS_DEFAULT}"; }
 qg_ws_ctr() { printf '%s\n' "${V8_WS_CONTAINER:-$QG_WS_CTR_DEFAULT}"; }
 
@@ -187,7 +207,9 @@ qg_validate_diff_evidence() {
   [ -f "$evid" ] || evid="${ROOT}/tmp/V9-DIFF-EVIDENCE/${short}.stat"
   if [ -f "$evid" ]; then
     local n
-    n=$(grep -cE '^\s|bin/|src/|pom\.xml|migration/' "$evid" 2>/dev/null || echo 0)
+    # Count citable path lines (include specs/ — M3 plan commits are specs-only).
+    n=$(grep -cE '^\s|bin/|src/|pom\.xml|migration/|specs/' "$evid" 2>/dev/null || echo 0)
+    n=$(printf '%s' "$n" | tr -dc '0-9')
     [ "${n:-0}" -ge 1 ] || qg_die "diff evidence file empty: $evid"
     # At least one path from evidence must appear in gate body
     # O-DRV3EV: path citation is mandatory — evidence file size alone is not enough.

@@ -59,6 +59,34 @@ def sites(v: dict) -> list[str]:
     return out
 
 
+def _src_file_for_basename(name: str) -> Path | None:
+    root = Path("src")
+    if not root.is_dir():
+        return None
+    hits = list(root.rglob(name))
+    return hits[0] if hits else None
+
+
+def incident_remediated(rid: str, site: str) -> bool:
+    """O-TXKANTRA: kantra may still emit transaction-to-quarkus-* after
+    jakarta.transaction.Transactional is present on the class/method.
+    Treat @Transactional on the destination source as cleared.
+    """
+    name = site.split(":", 1)[0]
+    if not name.endswith(".java"):
+        return False
+    if rid.startswith("transaction-to-quarkus"):
+        dest = _src_file_for_basename(name)
+        if dest is None:
+            return False
+        try:
+            text = dest.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return "@Transactional" in text
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("baseline")
@@ -91,6 +119,8 @@ def main() -> int:
         cur = after.get(rid)
         if cur and (cur.get("incidents") or []):
             for s in sites(cur)[:5]:
+                if incident_remediated(rid, s):
+                    continue
                 problems.append(f"FINDINGS:survives:{rid}: {s}")
         # Newly appearing scoped rule (was in scope list but not baseline?) — rare
     # New rules in after that match scope prefixes and weren't in before
@@ -100,6 +130,8 @@ def main() -> int:
         if rid in scope or any(rid.startswith(s.rstrip("0")[:12]) for s in scope if len(s) >= 12):
             if v.get("incidents"):
                 for s in sites(v)[:3]:
+                    if incident_remediated(rid, s):
+                        continue
                     problems.append(f"FINDINGS:new:{rid}: {s}")
 
     if problems:

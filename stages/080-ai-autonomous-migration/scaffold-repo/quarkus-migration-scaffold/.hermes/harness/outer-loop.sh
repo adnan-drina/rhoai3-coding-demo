@@ -19,23 +19,37 @@ set -u
 export PATH=$HOME/.opencode/bin:$HOME/.local/bin:$PATH
 cd /projects/modernized
 
-# Same two-writer protection as the supervisor: refuse to start if either
-# an outer loop or a bare supervisor is already running.
-# L-H1: ignore heartbeat helper processes (cmd contains outer-loop-heartbeat).
-if pgrep -af "harness/outer-loo[p]\.sh" 2>/dev/null \
-    | grep -v "outer-loop-heartbeat" \
-    | awk -v self="$$" -v pp="$PPID" '$1 != self && $1 != pp { found=1 } END { exit found?0:1 }'; then
-  echo "FATAL: another outer loop is already running — refusing to start" >&2; exit 1
+# Same two-writer protection as the supervisor (O-SUPFLOCK / O-OUTERFLOCK).
+# F-18: bare pgrep -f matches oc-exec -lc probe text — observer-induced
+# refuse-to-start. Hold outer flock for process life; probe supervisor lock
+# without keeping it (child supervisor.sh must be able to acquire).
+OUTER_LOCK="${OUTER_LOCK:-/tmp/outer-loop.lock}"
+exec 8>"$OUTER_LOCK"
+if ! flock -n 8; then
+  echo "FATAL: another outer loop holds $OUTER_LOCK — refusing to start" >&2
+  exit 1
 fi
-if pgrep -f "harness/superviso[r]\.sh" >/dev/null 2>&1; then
-  echo "FATAL: a supervisor is already running — refusing to start" >&2; exit 1
+printf '%s\n' "$$" >&8
+SUPERVISOR_LOCK="${SUPERVISOR_LOCK:-/tmp/supervisor.lock}"
+exec 9>"$SUPERVISOR_LOCK"
+if ! flock -n 9; then
+  echo "FATAL: a supervisor holds $SUPERVISOR_LOCK — refusing to start" >&2
+  exit 1
 fi
+# Release supervisor lock so the M4 child can take it.
+flock -u 9
+exec 9>&-
 
 ORCH_PROVIDER="${ORCH_PROVIDER:-custom:maas-m2}"
 ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
 WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
+# O-M3WORKER: M3 SPECIFY drafts on Qwen (plan-lint is the cheap verifier);
+# MiniMax is a capped backstop after worker attempts fail lint.
+WORKER_M3_FIRST="${WORKER_M3_FIRST:-true}"
+M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
+M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-1}"
 LOG=/tmp/outer-loop.log
 STATE=migration/story-state.csv
 HARNESS=.hermes/harness
@@ -80,41 +94,66 @@ phase_retry() { log "$(_sym '↻' 'R') RETRY  $1"; }
 # retry, then the loop stops and reports (a defective plan must never
 # reach execution ungated).
 # Logs Actor + sparse heartbeats; session rc ≠ gate success (V6 notes).
-mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
-  local tag="$1" prompt="$2" title="${3:-$1}" t0 now elapsed rc hb_pid slog
-  t0=$(date +%s)
-  slog="/tmp/outer-${tag}.log"
-  log "         Actor: $(orch_label) — session ${tag} → ${slog}"
-  # L-H1: distinct process name so single-instance guard ignores heartbeats
+_outer_heartbeat_start() { # $1=title $2=t0 $3=slog $4=kind → sets hb_pid
+  local title="$1" t0="$2" slog="$3" kind="${4:-orchestrator}"
   cat > /tmp/outer-loop-heartbeat.sh <<'HBEOF'
 #!/usr/bin/env bash
 # outer-loop-heartbeat — not the outer loop itself
-SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"; LOG="${5:-/tmp/outer-loop.log}"
+SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"; LOG="${5:-/tmp/outer-loop.log}"; KIND="${6:-orchestrator}"
 while true; do
   sleep "$SECS"
   now=$(date +%s); elapsed=$((now - T0))
-  # L-R1: surface MiniMax rate limits while the session is still open
-  if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
+  if [ "$KIND" = "orchestrator" ] && grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
     echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s) — details ${SLOG}" >> "$LOG"
   else
-    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on orchestrator (${elapsed}s) — details ${SLOG}" >> "$LOG"
+    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on ${KIND} (${elapsed}s) — details ${SLOG}" >> "$LOG"
   fi
 done
 HBEOF
   chmod +x /tmp/outer-loop-heartbeat.sh
-  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" &
+  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" "$kind" &
   hb_pid=$!
+}
+
+mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
+  local tag="$1" prompt="$2" title="${3:-$1}" t0 now rc hb_pid slog
+  t0=$(date +%s)
+  slog="/tmp/outer-${tag}.log"
+  log "         Actor: $(orch_label) — session ${tag} → ${slog}"
+  _outer_heartbeat_start "$title" "$t0" "$slog" orchestrator
   timeout "$SESSION_TIMEOUT" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
     < /dev/null > "$slog" 2>&1
   rc=$?
   kill "$hb_pid" 2>/dev/null || true
   wait "$hb_pid" 2>/dev/null || true
   now=$(date +%s)
-  # L-R1: one summary line if the finished session hit quota
   if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$slog" 2>/dev/null; then
     log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — supervisor backs off 15m on orch 429s"
   fi
   log "·        ${title} session finished ($((now - t0))s, hermes_rc=${rc}) — checking gate next (session≠gate)"
+  return $rc
+}
+
+# O-M3WORKER: OpenCode/Qwen seat for M3 SPECIFY (plan-lint gated).
+wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
+  local tag="$1" prompt="$2" title="${3:-$1}" t0 now rc hb_pid slog
+  shift 3 || true
+  t0=$(date +%s)
+  slog="/tmp/outer-${tag}.log"
+  log "         Actor: $(worker_label) — session ${tag} → ${slog}"
+  _outer_heartbeat_start "$title" "$t0" "$slog" worker
+  # shellcheck disable=SC2086
+  timeout "$SESSION_TIMEOUT" opencode run "$prompt" \
+    -m "$WORKER_MODEL" --auto --format json \
+    -f AGENTS.md \
+    -f "${SKILLDIR}/PLANNING.md" \
+    "$@" \
+    < /dev/null > "$slog" 2>&1
+  rc=$?
+  kill "$hb_pid" 2>/dev/null || true
+  wait "$hb_pid" 2>/dev/null || true
+  now=$(date +%s)
+  log "·        ${title} session finished ($((now - t0))s, worker_rc=${rc}) — checking gate next (session≠gate)"
   return $rc
 }
 
@@ -136,6 +175,33 @@ else
 fi
 phase_start "Outer loop — autonomous migration" \
   "Models: $(orch_label) · $(worker_label) | progress: $LOG | resume: $STATE"
+
+# O-STAMP-AUTO: derive migration.yaml from legacy tree before M1 ground truth.
+LEGACY_ROOT="${LEGACY_ROOT:-/projects/legacy}"
+if [ -d "$LEGACY_ROOT" ]; then
+  phase_start "M1 contract stamp — auto-derived specimen contract (O-STAMP-AUTO)"
+  if python3 "$HARNESS/contract-stamp.py" stamp --legacy "$LEGACY_ROOT" --yaml migration.yaml --write \
+      >> "$LOG" 2>&1; then
+    if git diff --quiet migration.yaml 2>/dev/null; then
+      log "         contract-stamp: migration.yaml already current"
+    else
+      git add migration.yaml
+      if git commit -m "M1 contract: auto-derived specimen stamp" >> "$LOG" 2>&1; then
+        log "         contract-stamp: committed migration.yaml"
+      else
+        log "         contract-stamp: migration.yaml updated (commit skipped — review tree)"
+      fi
+    fi
+  else
+    fail_run "M1 contract stamp — contract-stamp.py failed (see $LOG)"
+  fi
+  if ! python3 "$HARNESS/contract-stamp-gate.py" --legacy "$LEGACY_ROOT" --yaml migration.yaml >> "$LOG" 2>&1; then
+    fail_run "M1 contract stamp gate — O-STAMP-GATE RED (see $LOG)"
+  fi
+  phase_ok "M1 contract stamp — O-STAMP-GATE GREEN"
+else
+  log "WARN: LEGACY_ROOT $LEGACY_ROOT missing — skipping O-STAMP-AUTO"
+fi
 
 # ------------------------------------------------------------- M1 ANALYZE
 phase_start "M1 ANALYZE — establish migration ground truth (MTA + recipes)" \
@@ -253,55 +319,28 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
     log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
   fi
   if [ "$M3_DONE" != "1" ]; then
-    # O-M3KILL: hermes SIGKILL (rc=137/143) from operator freeze must NOT spend
-    # a plan-lint attempt — otherwise two freezes look like "failed lint twice".
-    ATTEMPT=1
-    while [ "$ATTEMPT" -le 2 ]; do
-      # O-M3QUOTA-GATE: if a prior session (or quota sleep) left a lint-green
-      # spec, advance immediately — never re-burn MiniMax / sleep 900 first.
-      SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-      if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1; then
-        [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-        phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-        phase_ok "M3 SPECIFY — ${SLUG} spec/plan/tasks plan-lint-green; commit $(git rev-parse --short HEAD)"
-        M3_DONE=1
-        break
-      fi
-      phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [attempt ${ATTEMPT}/2]"
+    # O-M3WORKER: Qwen drafts (≤M3_WORKER_ATTEMPTS), then MiniMax backstop
+    # (≤M3_ORCH_BACKSTOP). plan-lint remains the gate — session≠success.
+    # O-M3KILL: SIGKILL must NOT spend an attempt.
+    m3_build_prompt() { # $1=fresh|fix — sets P from brief or plan-lint RED fix
+      local mode="${1:-fresh}"
       P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. PACKAGE RENAME: full prefix legacyPackage→targetPackage only (never targetPackage.coolstore when targetPackage is com.demo). ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
-      [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} failed its plan lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH."
-      # If a RED spec is already on disk, attempt 1 is a fix pass (same as attempt 2 prompt).
-      if [ -n "$SPEC_TASKS" ] && [ "$ATTEMPT" = "1" ]; then
+      if [ "$mode" = "fix" ]; then
         P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/, verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
       fi
-      mchat "m3-${SID}-a${ATTEMPT}" "$P" "M3 SPECIFY ${SID}"
-      mchat_rc=$?
-      if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
-        log "         O-M3KILL: M3 session killed (hermes_rc=${mchat_rc}) — attempt ${ATTEMPT} NOT spent; retrying same attempt"
-        phase_retry "M3 SPECIFY ${SID} — session killed (rc=${mchat_rc}); not counting as lint fail"
-        continue
-      fi
-      # Gate before quota (O-M3QUOTA-GATE): a 429 session may still have left a
-      # lint-green commit — advance; only sleep when the plan is still RED.
+    }
+    m3_lint_green() {
       SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-      if [ -n "$SPEC_TASKS" ] && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json --findings-scope "$FINDINGS" --profile migration/architecture-profile.md --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1; then
-        [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-        phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-        phase_ok "M3 SPECIFY — ${SLUG} spec/plan/tasks plan-lint-green; commit $(git rev-parse --short HEAD)"
-        M3_DONE=1
-        break
-      fi
-      # O-M3QUOTA: MiniMax 429 must not burn a plan-lint attempt (mirror O-M3KILL).
-      if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-a${ATTEMPT}.log" 2>/dev/null; then
-        log "         O-M3QUOTA: M3 session rate-limited and plan still RED — attempt ${ATTEMPT} NOT spent; backoff 15m then retry same attempt"
-        phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s (not counting as lint fail)"
-        sleep 900
-        continue
-      fi
-      # O-M3EVID: do not `|| echo missing` on plan-lint RED — that lied to retry prompts.
+      [ -n "$SPEC_TASKS" ] || return 1
+      python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
+        --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
+        --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1
+    }
+    m3_write_lint_evidence() {
+      # O-M3EVID: never `|| echo missing` on plan-lint RED — write real findings.
       {
         echo "Lint command: ${M3_LINT_CMD}"
-        if [ -z "$SPEC_TASKS" ]; then
+        if [ -z "${SPEC_TASKS:-}" ]; then
           echo "tasks.md missing entirely"
         else
           python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
@@ -309,11 +348,128 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
             --story-deploy "$DEPLOY" 2>&1 || true
         fi
       } > /tmp/plan-lint.txt
-      phase_gate "M3 SPECIFY ${SID} plan-lint" RED "full findings /tmp/plan-lint.txt"
-      [ "$ATTEMPT" = "2" ] && fail_run "M3 SPECIFY ${SID} failed its plan lint twice"
-      phase_retry "M3 SPECIFY ${SID} — bouncing once"
-      ATTEMPT=$((ATTEMPT + 1))
-    done
+    }
+
+    # --- Phase A: Qwen worker attempts (default 2) ---
+    # O-M3QUOTA-GATE: if a prior session left lint-green, advance before any seat.
+    if [ "${WORKER_M3_FIRST:-true}" = "true" ]; then
+      ATTEMPT=1
+      while [ "$ATTEMPT" -le "${M3_WORKER_ATTEMPTS:-2}" ]; do
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via worker path; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [worker attempt ${ATTEMPT}/${M3_WORKER_ATTEMPTS}]"
+        log "         O-M3WORKER: draft/fix via $(worker_label) (plan-lint verifier; MiniMax backstop if still RED)"
+        SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
+        if [ "$ATTEMPT" -gt 1 ] || [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
+        wchat "m3-${SID}-w${ATTEMPT}" "$P" "M3 SPECIFY ${SID} (worker)" \
+          -f "$BRIEF" -f migration/architecture-profile.md
+        mchat_rc=$?
+        if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
+          log "         O-M3KILL: worker M3 killed (rc=${mchat_rc}) — attempt ${ATTEMPT} NOT spent"
+          phase_retry "M3 SPECIFY ${SID} — worker session killed; not counting as lint fail"
+          continue
+        fi
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after Qwen; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        m3_write_lint_evidence
+        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "worker attempt ${ATTEMPT} — /tmp/plan-lint.txt"
+        phase_retry "M3 SPECIFY ${SID} — Qwen plan still RED"
+        ATTEMPT=$((ATTEMPT + 1))
+      done
+    fi
+
+    # --- Phase B: MiniMax backstop (default 1) when worker path did not green ---
+    if [ "$M3_DONE" != "1" ] && [ "${M3_ORCH_BACKSTOP:-1}" -ge 1 ]; then
+      ATTEMPT=1
+      while [ "$ATTEMPT" -le "${M3_ORCH_BACKSTOP:-1}" ]; do
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax backstop ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
+        log "         O-M3WORKER: MiniMax backstop after Qwen plan-lint RED"
+        SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
+        m3_build_prompt fix
+        mchat "m3-${SID}-orch${ATTEMPT}" "$P" "M3 SPECIFY ${SID} (orch backstop)"
+        mchat_rc=$?
+        if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
+          log "         O-M3KILL: orch M3 killed (rc=${mchat_rc}) — backstop NOT spent"
+          phase_retry "M3 SPECIFY ${SID} — orch session killed; not counting"
+          continue
+        fi
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax backstop; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-orch${ATTEMPT}.log" 2>/dev/null; then
+          log "         O-M3QUOTA: MiniMax backstop rate-limited — NOT spent; backoff 15m"
+          phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s"
+          sleep 900
+          continue
+        fi
+        m3_write_lint_evidence
+        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "orch backstop — /tmp/plan-lint.txt"
+        ATTEMPT=$((ATTEMPT + 1))
+      done
+    elif [ "$M3_DONE" != "1" ] && [ "${WORKER_M3_FIRST:-true}" != "true" ]; then
+      # Legacy path: WORKER_M3_FIRST=false → two MiniMax attempts (pre-O-M3WORKER).
+      ATTEMPT=1
+      while [ "$ATTEMPT" -le 2 ]; do
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [attempt ${ATTEMPT}/2]"
+        SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
+        if [ "$ATTEMPT" -gt 1 ] || [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
+        mchat "m3-${SID}-a${ATTEMPT}" "$P" "M3 SPECIFY ${SID}"
+        mchat_rc=$?
+        if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
+          phase_retry "M3 SPECIFY ${SID} — session killed (rc=${mchat_rc}); not counting as lint fail"
+          continue
+        fi
+        if m3_lint_green; then
+          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
+          M3_DONE=1
+          break
+        fi
+        if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-a${ATTEMPT}.log" 2>/dev/null; then
+          phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s (not counting as lint fail)"
+          sleep 900
+          continue
+        fi
+        m3_write_lint_evidence
+        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "full findings /tmp/plan-lint.txt"
+        [ "$ATTEMPT" = "2" ] && fail_run "M3 SPECIFY ${SID} failed its plan lint twice"
+        phase_retry "M3 SPECIFY ${SID} — bouncing once"
+        ATTEMPT=$((ATTEMPT + 1))
+      done
+    fi
+
+    if [ "$M3_DONE" != "1" ]; then
+      fail_run "M3 SPECIFY ${SID} failed plan-lint after Qwen attempts + MiniMax backstop"
+    fi
   fi
 
   # ----------------------------------------------------- M4/M5 EXECUTE
@@ -351,6 +507,38 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
     if [ -n "$SPEC_SHA" ] && [ -f "$SPEC_TASKS" ] \
       && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE ' T-[0-9]+:'; then
       STORY_RUN_BASE=$(git rev-parse "${SPEC_SHA}^" 2>/dev/null || git rev-parse "$SPEC_SHA")
+      # O-SPECREBASE: a mid-story `S0N spec:` recommit (e.g. DTO-first plan
+      # fix) can sit *after* earlier T-NNN. SPEC^ then hides those commits from
+      # committed() → false replay (Wave2 T-002 after T-007 sensor-fix restart).
+      # Walk base back to the parent of any task commit that exists in history
+      # but is missing from SPEC^..HEAD.
+      # O-SPECREBASE: only rewrite tasks already progressed in SPEC..HEAD
+      # (max T-NNN). Ignoring higher ids avoids walking into prior stories'
+      # reused T-00N subjects (Wave2 false base → old T-007/T-008).
+      _maxn=0
+      while read -r _ht; do
+        _hn=${_ht#T-}; _hn=$((10#${_hn}))
+        [ "$_hn" -gt "$_maxn" ] && _maxn=$_hn
+      done < <(git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -oE 'T-[0-9]+' | sort -u)
+      _hidden=""
+      while read -r _tid; do
+        [ -n "$_tid" ] || continue
+        _tn=${_tid#T-}; _tn=$((10#${_tn}))
+        [ "$_tn" -le "$_maxn" ] || continue
+        _tsha=$(git log -1 --format=%H "$SPEC_SHA" --grep="^${_tid}:" 2>/dev/null || true)
+        [ -n "$_tsha" ] || continue
+        if ! git log --oneline "${STORY_RUN_BASE}..HEAD" 2>/dev/null | grep -q " ${_tid}:"; then
+          _cand=$(git rev-parse "${_tsha}^" 2>/dev/null || true)
+          [ -n "$_cand" ] || continue
+          if git merge-base --is-ancestor "$_cand" "$STORY_RUN_BASE" 2>/dev/null; then
+            STORY_RUN_BASE="$_cand"
+            _hidden="${_hidden} ${_tid}"
+          fi
+        fi
+      done < <(grep -oE 'T-[0-9]+' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      if [ -n "$_hidden" ]; then
+        log "         O-SPECREBASE: walked run_base back to $(git rev-parse --short "$STORY_RUN_BASE") (pre-spec tasks:${_hidden})"
+      fi
       log "         O-M4REPLAY: auto resume base=$(git rev-parse --short "$STORY_RUN_BASE") from ${SID} spec (T-NNN already present)"
     else
       STORY_RUN_BASE="$(git rev-parse HEAD)"
@@ -373,18 +561,32 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       PRESERVE_CHECK="$PC" \
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
-  if [ "$OUTCOME" = "no-done-marker" ] && [ -f /tmp/harness-update-ack ]; then
+  # O-HOTSWAP-INFLIGHT: keep a sticky marker across re-enter attempts. Clearing
+  # harness-update-ack before a successful supervisor start used to turn a
+  # failed re-exec (e.g. O-SUPCMDLINE false positive) into false S0N,failed
+  # on the *second* no-done-marker (Wave2 2026-07-31).
+  if [ "$OUTCOME" = "no-done-marker" ] \
+    && { [ -f /tmp/harness-update-ack ] || [ -f /tmp/hotswap-inflight ]; }; then
     HOTSWAP_TRIES=$((HOTSWAP_TRIES + 1))
-    if [ "$HOTSWAP_TRIES" -gt 3 ]; then
+    # O-HOTSWAPBUDGET (R-218 recovery): was 3 — rapid kill+re-enter races
+    # burned the budget in <1s and false-failed S03. Allow 8 + settle delay.
+    if [ "$HOTSWAP_TRIES" -gt 8 ]; then
       log "         O-HOTSWAP: exceeded re-enter budget — treating as failure"
+      rm -f /tmp/hotswap-inflight /tmp/harness-update /tmp/harness-update-ack
     else
       log "         O-HOTSWAP: harness update pause ended without done marker — re-entering (not failed)"
+      touch /tmp/hotswap-inflight
       rm -f /tmp/harness-update /tmp/harness-update-ack /tmp/supervisor-pause
       # O-FGRETRO: mid-run probe deploy may invalidate prior ALREADY COMPLETE skips.
       touch /tmp/probe-reeval-needed
+      # O-HOTSWAPLOCK (R-227): drop stale flock + longer settle — rapid kill+re-enter
+      # left /tmp/supervisor.lock held and burned the re-enter budget (S03).
+      rm -f /tmp/supervisor.lock
+      sleep 15
       continue
     fi
   fi
+  rm -f /tmp/hotswap-inflight
   break
   done
   case "$OUTCOME" in

@@ -14,6 +14,9 @@ filename), diff after normalizing approved transforms:
   - comment-only lines (sonar-driven comment additions)
   - diamond operator (new X<...>() -> new X<>())
   - added annotation lines (CDI/MP annotations are conversion work)
+  - Spring DAO / support drops on Quarkus classpath (O-FIDELITYDAO):
+    `throws DataAccessException`, PropertyComparator/MutableSortDefinition,
+    ToStringCreator — JDK Comparator / plain toString are approved
 Anything else prints 'FIDELITY:<file>: <line>' and exits 1.
 Classes only in one tree are skipped (conversion adds/removes are
 story work, not drift).
@@ -99,8 +102,34 @@ def normalize(text):
         # `x + a+ ...`). Whitespace is already an approved, lossy transform
         # (the \s+ collapse above), so this stays within that contract.
         s = re.sub(r"\s*\+\s*", "+", s)
+        # O-FIDELITYDAO: Spring DAO checked exceptions are not on the Quarkus
+        # classpath — stripping `throws DataAccessException` is required for
+        # compile, not silent harvest drift (S02 T-004).
+        s = re.sub(r"throws\s*DataAccessException\b", "", s)
+        # O-FIDSONAR: Sonar S112 / signature polish — ignore throws clauses.
+        # Wave2 T-015: dest `throws IllegalArgumentException` vs staged
+        # `throws Exception` (normalized away) still FIDELITY RED on
+        # `void saveUser(User user);` absent — strip all throws on both sides.
+        s = re.sub(r"throws\s+[A-Za-z0-9_.,\s]+", "", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        if not s:
+            continue
         out.append(s)
     return _join_continuations(out)
+
+
+def _approved_spring_support_drop(line: str) -> bool:
+    """Staged Spring-support lines that Quarkus harvests replace with JDK APIs.
+
+    O-FIDELITYDAO (S02 T-004): PropertyComparator/MutableSortDefinition →
+    Comparator.comparing; ToStringCreator → ordinary toString. Re-harvesting
+    Spring support to green-wash fidelity trips O-SFIXNOSPRING.
+    """
+    if "PropertyComparator" in line or "MutableSortDefinition" in line:
+        return True
+    if "ToStringCreator" in line:
+        return True
+    return False
 
 
 def main():
@@ -124,9 +153,22 @@ def main():
                 # fidelity applies to pure harvests only.
                 if re.search(r"@(ApplicationScoped|RequestScoped|Singleton|Inject|Path|RegisterRestClient)\b", raw_dest):
                     continue
-                a = normalize(open(staged[fn], encoding="utf-8", errors="replace").read())
-                b = normalize(open(os.path.join(dp, fn), encoding="utf-8", errors="replace").read())
-                missing = [l for l in a if l not in b]
+                staged_raw = open(staged[fn], encoding="utf-8", errors="replace").read()
+                # O-FIDELITYVALID (Wave2 T-004): Spring BindingResult/FieldError
+                # → Jakarta ConstraintViolation is intentional validation API
+                # conversion (task "…with Jakarta validation"), not silent
+                # harvest drift. Treat like CDI/JAX-RS conversion — skip.
+                if re.search(r"\b(BindingResult|FieldError)\b", staged_raw) and re.search(
+                    r"\bConstraintViolation\b", raw_dest
+                ):
+                    continue
+                a = normalize(staged_raw)
+                b = normalize(raw_dest)
+                missing = [
+                    l
+                    for l in a
+                    if l not in b and not _approved_spring_support_drop(l)
+                ]
                 # Conversion vs harvest (real-tree lesson: converted
                 # classes legitimately restructure): only a file that
                 # retained most staged lines is a HARVEST — a few
@@ -138,7 +180,11 @@ def main():
                     print(f"FIDELITY:{fn}: staged line absent from destination: {l[:90]}")
                     problems += 1
     if problems:
-        print(f"HARVEST FIDELITY RED: {problems} drifted lines (approved transforms: package, whitespace, comments, annotations, diamond)")
+        print(
+            f"HARVEST FIDELITY RED: {problems} drifted lines "
+            "(approved transforms: package, whitespace, comments, annotations, "
+            "diamond, Spring-DAO/support drops)"
+        )
         print("FIX: the destination class must match its migration/staging source (approved")
         print("     transforms only). Re-harvest the drifted file from migration/staging, or")
         print("     revert an invented/fabricated class. Do NOT hand-edit constants to match.")

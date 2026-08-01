@@ -47,20 +47,67 @@ def main() -> int:
         print("no-task", file=sys.stderr)
         return 1
 
-    staged = [
-        ln.strip()
-        for ln in sys.stdin.read().splitlines()
-        if ln.strip()
-        and not ln.strip().startswith(".hermes/")
-        and not ln.strip().startswith("migration/staging/")
-    ]
+    # Harness bookkeeping often dirties the tree (ensure_discovered, run-log).
+    # Ignore like .hermes/staging — Wave2 T-001: discovered.md alone caused
+    # unexpected-paths on an otherwise valid .gitkeep scaffold (O-SCAFFOLDDIR).
+    _ignore_prefixes = (
+        ".hermes/",
+        "migration/staging/",
+    )
+    _ignore_exact = {
+        "migration/discovered.md",
+        "migration/run-log.md",
+        "migration/mta-findings-current.json",
+        "migration/mta-findings-after.json",
+        "migration/findings-delta.txt",
+        "migration/mta-findings.json",
+    }
+    _ignore_prefixes = _ignore_prefixes + (
+        "migration/mta-findings-",
+    )
+
+    staged = []
+    for ln in sys.stdin.read().splitlines():
+        p = ln.strip()
+        if not p:
+            continue
+        if any(p.startswith(pref) for pref in _ignore_prefixes):
+            continue
+        if p in _ignore_exact:
+            continue
+        staged.append(p)
+
+    blob = f"{title}\n{body}"
+    paths = re.findall(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", blob)
+    # O-ACCREATE: Create/Add/… titles never use removal-already-absent (Wave2
+    # T-009: body said "EntityUtils removal" while the work is Create *Test).
+    create_task = bool(
+        re.search(
+            r"(?i)^\s*(Create|Add|Implement|Write|Author|Introduce|Build)\b",
+            title,
+        )
+    )
+    # O-T6DREMOVAL (R-104/Wave2 T-005): removal/refactor tasks whose Target
+    # path is already absent are satisfied with an empty stage — O-T6d's
+    # "path overlap" assumption is for create/modify harvests, not absences.
+    removal_task = (not create_task) and bool(
+        re.search(r"(?i)\bremoved?\b|\bremoval\b|\bdelet(?:e|ion)\b|\brefactored\b", blob)
+    )
+    if removal_task and paths and all(not Path(w).exists() for w in paths):
+        # Ignore harness bookkeeping dirt — absence of the target is the work.
+        print("removal-already-absent")
+        return 0
+
     if not staged:
         print("empty-stage")
         return 1
 
-    blob = f"{title}\n{body}"
     wants_tests = bool(
-        re.search(r"(?i)\bcharacterization\b|src/test/|DomainModelTest|\bunit tests?\b", blob)
+        re.search(
+            r"(?i)\bcharacterization\b|src/test/|DomainModelTest|"
+            r"\bunit tests?\b|\bintegration tests?\b",
+            blob,
+        )
     )
     if wants_tests:
         if any(p.startswith("src/test/") for p in staged):
@@ -68,16 +115,59 @@ def main() -> int:
         print("need-src-test")
         return 1
 
-    paths = re.findall(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", body)
     if paths:
         for want in paths:
             for got in staged:
                 if got == want or got.endswith("/" + Path(want).name):
                     return 0
+        # Deletion staged as the target path also counts (git rm / deleted).
+        if removal_task and any(
+            got == want or got.endswith("/" + Path(want).name)
+            for want in paths
+            for got in staged
+        ):
+            return 0
         print("no-path-overlap")
         return 1
 
-    # Soft tasks (package dirs, pom): allow src/ or pom.xml only.
+    # O-SCAFFOLDDIR / O-STRUCTINFO: directory-scaffold tasks accept .gitkeep
+    # and package-info.java under src/{main,test}/java/ (T-001 allows either
+    # for commitability). Do NOT classify package-info *content* tasks as
+    # structure-only — "com.demo package structure" in T-003 Target design
+    # previously tripped structure-non-gitkeep on real package-info.java
+    # (Wave2 wake17) and forced MiniMax after a successful Qwen write.
+    package_info_task = bool(re.search(r"(?i)package-info", title))
+    structure_task = (not package_info_task) and bool(
+        re.search(
+            r"(?i)directory structure|(?<![\w-])package structure|\.gitkeep|empty package|package director",
+            blob,
+        )
+    )
+    if structure_task:
+        def _scaffold_ok(p: str) -> bool:
+            return (
+                p.endswith("/.gitkeep")
+                or p.endswith(".gitkeep")
+                or p.endswith("/package-info.java")
+                or p.endswith("package-info.java")
+                or p == "pom.xml"
+                or p.startswith("k8s/")
+            )
+
+        bad = [p for p in staged if not _scaffold_ok(p)]
+        if not bad and all(
+            p.startswith("src/main/java/")
+            or p.startswith("src/test/java/")
+            or p == "pom.xml"
+            or p.startswith("k8s/")
+            for p in staged
+        ):
+            return 0
+        if bad:
+            print("structure-non-gitkeep")
+            return 1
+
+    # Soft tasks (package dirs, pom, package-info): allow src/ or pom.xml only.
     if all(p.startswith("src/") or p == "pom.xml" or p.startswith("k8s/") for p in staged):
         return 0
     print("unexpected-paths")

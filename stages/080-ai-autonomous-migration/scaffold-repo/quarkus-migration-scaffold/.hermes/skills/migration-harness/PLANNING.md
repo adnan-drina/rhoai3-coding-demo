@@ -67,9 +67,21 @@ contract into the same layout stage 070 uses:
   before infer tasks. Every mandatory finding maps to at least one task;
   every task cites its finding rule ids.
 
+**Shape (O-SHAPEDECL):** every task MUST declare
+`**Shape**: create|modify|remove|structure|verify` so M4 consumers
+(already-complete, mechan-match, escalation) do not guess from free text.
+
+**Config profiles (G2):** Quarkus uses `%dev` / `%test` / `%prod` **key
+prefixes inside `application.properties`** (or `application-dev.properties`
+alongside the base file). Do NOT invent `application-%profile.properties`
+filenames, custom profile-selection machinery, or multi-DB Spring profile
+ports. `%prod` datasource values are Secret/env-fed
+(`QUARKUS_DATASOURCE_*`), never hardcoded passwords (D1 durable form).
+
 The plan lint (`.hermes/harness/plan-lint.py`) enforces, deterministically:
 task headings `#### T-NNN: title` (any heading depth 2–6; zero-padded
 numeric ids, each used once); a `Class: rewrite|infer` marker per task;
+a `**Shape**:` marker per task (O-SHAPEDECL);
 all rewrite tasks before the first infer task; **S-INFTEST** — after the
 first infer task, characterization / package-verify / follow-on work must
 also be Class infer (plan-lint forbids rewrite after infer began; V9 S03);
@@ -79,7 +91,10 @@ decided design content in
 every infer body (file mappings/signatures/annotations); the legacy
 user-facing surface (web UI / index page) covered by a task or
 explicitly waived with a reason; every mandatory finding, every
-migration.yaml `preserve:` item, and the migration.yaml
+migration.yaml `preserve:` item (**verbatim token match** — e.g. if
+`preserve:` lists `server.servlet.context-path`, that exact string must
+appear in a task body; synonyms like "API base path" do not satisfy
+plan-lint), and the migration.yaml
 `acceptance.path` handled per **O-M3ACCEPT** / roadmap `deploy:`:
 on **deploy=true** stories, cite the **full literal string** (e.g.
 `/api/cart/acceptance-check`) in a covering task with real `@Path`
@@ -119,6 +134,19 @@ run #2's failures):
 - **Conversion order within a story:** extensions and BOM first, then
   models, then resources, then config keys, then tests
   (`extensions → models → resources → config → tests`).
+- **DTO before MapStruct mappers (O-DTOFIRST):** when a story harvests
+  both DTOs and MapStruct mapper interfaces that reference those DTOs,
+  schedule the DTO harvest task **before** the mapper task so each
+  commit compiles. Mapper-first → worker RED on missing `*.dto` →
+  MiniMax escalation that invents stubs (Wave2 petclinic T-005).
+- **Repository CDI before service CDI (O-CDIORDER):** when a story both
+  converts Spring `@Service` facades to `@ApplicationScoped` **and**
+  lands repository CDI/Panache/JDBC/JPA impl beans, schedule the
+  **repository** tasks **before** the service CDI tasks. Service-first
+  → task sensor GREEN (Surefire) then milestone Arc
+  `UnsatisfiedResolutionException` on injected repository interfaces
+  (Wave2 petclinic T-007). Harvest of Spring `@Repository` impls into a
+  Quarkus pom must land `@ApplicationScoped` (O-HARVESTREPO).
 - **Conversion tasks follow `migration/dependency-order.md`** (M1
   emits it): dependencies before dependents — models and utilities
   first, endpoints last — so the tree compiles at every commit. Cart
@@ -147,7 +175,9 @@ run #2's failures):
   write-then-rewrite waste this process eliminates (V4 shipped faithful
   because its tests pinned legacy create-on-GET/dedupe-order). The infer
   task for a redesign class must state its §7 target shape (plan-lint
-  §7-traceability enforces this); MAPPINGS "Production-grade defaults" is
+  §7-traceability enforces this — cite decisive tokens from §7 such as
+  `thread-safe`, `ConcurrentHashMap`, `404`, `400` in the **same task
+  body that names the class**); MAPPINGS "Production-grade defaults" is
   the source of the shapes.
 - **A test task never precedes the classes it exercises.** A task that
   ports or framework-converts tests referencing types X, Y, Z must be

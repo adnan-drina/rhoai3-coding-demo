@@ -24,13 +24,39 @@ one per line as 'LINT:<class>: <detail>'):
                (requires the findings JSON); when the rule has incidents,
                each incident file must be owned by exactly one task (K1)
   incident-unowned / incident-conflict — K1 ownership failures
+  O-PLANEXISTS — task work target already gone / already Quarkus (N10/R-217b)
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 problems = []
+
+
+def _committed_task_ids() -> set:
+    """Task ids that already have a T-NNN: tip in git history.
+
+    O-PLANEXISTSSKIP (R-227 / hotswap re-enter): mid-story plan re-lint must
+    not RED delivered tasks — the tree is already Quarkus, so every completed
+    Spring→Quarkus convert looks "dead" and would force a destructive M3
+    revision (Wave2 S03 after O-HOTSWAPRELOAD).
+    """
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "--format=%s"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    ids = set()
+    for line in out.splitlines():
+        m = re.match(r"^(T-\d+):", line)
+        if m:
+            ids.add(m.group(1))
+    return ids
 
 
 def lint(cls, detail):
@@ -654,6 +680,294 @@ def main():
                     f"{tid}: package-rename scheduled with no harvested .java "
                     f"in src/ or migration/staging — defer to first harvest story",
                 )
+
+    # O-DTOFIRST: DTO (type-dependency) harvest must precede MapStruct/mapper
+    # harvest in the same story — otherwise mapper compile RED → MiniMax.
+    def _task_num(tid: str) -> int:
+        m = re.search(r"(\d+)$", tid)
+        return int(m.group(1)) if m else 0
+
+    _dto_re = re.compile(
+        r"(?i)\b(harvest\s+dto|dto[s]?\s+with\s+jakarta|jakarta\s+validation\s+imports|"
+        r"data\s+transfer\s+object|/dto/|\.dto\.)"
+    )
+    _mapper_re = re.compile(
+        r"(?i)\b(mapstruct|harvest\s+.*mapper|mapper\s+interface|/mapper/|\.mapper\.)"
+    )
+    dto_tasks, mapper_tasks = [], []
+    for _, tid, title in heads:
+        blob = f"{title}\n{bodies.get(tid, '')}"
+        # Prefer Target path signals; title/goal fallback.
+        is_dto = bool(_dto_re.search(blob)) and not re.search(
+            r"(?i)mapstruct|/mapper/", blob
+        )
+        is_mapper = bool(_mapper_re.search(blob))
+        if is_dto:
+            dto_tasks.append(tid)
+        if is_mapper:
+            mapper_tasks.append(tid)
+    if dto_tasks and mapper_tasks:
+        first_mapper = min(mapper_tasks, key=_task_num)
+        last_dto = max(dto_tasks, key=_task_num)
+        if _task_num(first_mapper) <= _task_num(last_dto):
+            lint(
+                "O-DTOFIRST",
+                f"{first_mapper} MapStruct/mapper harvest precedes or equals "
+                f"{last_dto} DTO harvest — schedule DTO (type deps) before "
+                f"mappers (O-DTOFIRST)",
+            )
+
+    # O-CDIORDER: repository CDI/Panache beans before services that @Inject them.
+    # Service-first → task GREEN (unit tests) then milestone Arc
+    # UnsatisfiedResolutionException (Wave2 petclinic T-007).
+    # Migration-general: no specimen class names (F-70 Phase 0.5 / F-57 §3).
+    _svc_cdi_re = re.compile(
+        r"(?i)\b(convert\s+\w*service\w*\s+to\s+quarkus\s+cdi|"
+        r"@ApplicationScoped.*service|serviceimpl\s+to\s+quarkus|"
+        r"spring\s+@Service\s+to\s+quarkus)"
+    )
+    _repo_cdi_re = re.compile(
+        r"(?i)\b(repository\s+implementation|jpa\s+repository|jdbc\s+repository|"
+        r"convert\s+.*repository|/repository/|panache|"
+        r"spring\s+data\s+jpa\s+repositor)"
+    )
+    svc_cdi_tasks, repo_cdi_tasks = [], []
+    for _, tid, title in heads:
+        blob = f"{title}\n{bodies.get(tid, '')}"
+        if _svc_cdi_re.search(blob) or (
+            re.search(r"(?i)quarkus\s+cdi|@ApplicationScoped", blob)
+            and re.search(r"(?i)service", blob)
+            and not re.search(r"(?i)repository", blob)
+        ):
+            svc_cdi_tasks.append(tid)
+        if _repo_cdi_re.search(blob):
+            repo_cdi_tasks.append(tid)
+    if svc_cdi_tasks and repo_cdi_tasks:
+        first_svc = min(svc_cdi_tasks, key=_task_num)
+        first_repo = min(repo_cdi_tasks, key=_task_num)
+        if _task_num(first_svc) < _task_num(first_repo):
+            lint(
+                "O-CDIORDER",
+                f"{first_svc} service CDI precedes {first_repo} repository "
+                f"CDI/Panache — schedule repository beans before services "
+                f"that @Inject them (O-CDIORDER)",
+            )
+
+    # O-SHAPEDECL (F-28): every task declares Shape for M4 consumers.
+    # Strict (RED) when PLAN_LINT_REQUIRE_SHAPE=1 (live M3); else WARN so
+    # legacy instrument fixtures stay green during the transition.
+    import os as _os
+
+    _shape_re = re.compile(
+        r"^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*\s*$"
+        r"|^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\s*$"
+        r"|^Shape\s*:\s*(create|modify|remove|structure|verify)\s*$",
+        re.M | re.I,
+    )
+    _require_shape = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "") in (
+        "1",
+        "true",
+        "yes",
+    )
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        if not _shape_re.search(body):
+            msg = f"{tid}: missing **Shape**: create|modify|remove|structure|verify"
+            if _require_shape:
+                lint("O-SHAPEDECL", msg)
+            else:
+                print(f"WARN:O-SHAPEDECL: {msg}")
+
+    # G5 / O-INFERABSENT predictor (WARN tier — does not fail PLAN OK):
+    # infer + Oracle:absent is the S03 T-007/T-012 wedge signature.
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        if classes.get(tid) != "infer":
+            continue
+        om = re.search(
+            r"^\*\*Oracle\s*:\s*(absent|present)\*\*"
+            r"|^\*\*Oracle\*\*\s*:?\s*(absent|present)"
+            r"|^Oracle\s*:\s*(absent|present)",
+            body,
+            re.M | re.I,
+        )
+        oracle = ""
+        if om:
+            oracle = next(g for g in om.groups() if g).lower()
+        if oracle == "absent":
+            print(
+                f"WARN:O-INFERABSENT: {tid}: infer + Oracle:absent — "
+                f"pre-dispatch skip/escalate (wedge predictor)"
+            )
+
+    # O-PLANORDER (N11): conversion order from migration/dependency-order.md
+    # + bean-uniqueness (same Target .java owned by two tasks).
+    root = Path.cwd()
+
+    def _path_to_fqn(rel: str) -> str:
+        for kind in ("main", "test"):
+            pref = f"src/{kind}/java/"
+            if rel.startswith(pref) and rel.endswith(".java"):
+                return rel[len(pref) : -5].replace("/", ".")
+        return ""
+
+    dep_md = root / "migration" / "dependency-order.md"
+    fqn_rank: dict[str, int] = {}
+    if dep_md.is_file():
+        for line in dep_md.read_text(encoding="utf-8", errors="replace").splitlines():
+            dm = re.match(r"^\s*(\d+)\.\s+([\w.]+)\s+\(", line)
+            if dm:
+                fqn_rank[dm.group(2)] = int(dm.group(1))
+
+    task_fqns: dict[str, set[str]] = {tid: set() for _, tid, _ in heads}
+    target_owners: dict[str, str] = {}
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        # Only Claim lines count as ownership (not "Out of scope: …Beta.java").
+        claimed: list[str] = []
+        for line in body.splitlines():
+            if _OOS_LINE.search(line):
+                continue
+            if _CLAIM_LINE.search(line) or "→" in line or "->" in line:
+                claimed.extend(_JAVA_PATH.findall(line))
+        for rel in claimed:
+            prev = target_owners.get(rel)
+            if prev and prev != tid:
+                lint(
+                    "O-PLANORDER",
+                    f"bean-uniqueness: {rel} owned by both {prev} and {tid}",
+                )
+            else:
+                target_owners[rel] = tid
+            fqn = _path_to_fqn(rel)
+            if fqn:
+                task_fqns[tid].add(fqn)
+                # Also accept legacy→target remap for dep-order matching
+                if legacy_pkg and target_pkg and fqn.startswith(target_pkg + "."):
+                    task_fqns[tid].add(
+                        legacy_pkg + fqn[len(target_pkg) :]
+                    )
+
+    if fqn_rank:
+        task_for_fqn: dict[str, str] = {}
+        for tid, fqns in task_fqns.items():
+            for f in fqns:
+                # Prefer exact dep-order keys; keep first owner
+                task_for_fqn.setdefault(f, tid)
+        # If A converts before B in dependency-order (rank A < rank B),
+        # A's task number must be ≤ B's task number.
+        owned = [(f, r) for f, r in fqn_rank.items() if f in task_for_fqn]
+        for i, (f1, r1) in enumerate(owned):
+            for f2, r2 in owned[i + 1 :]:
+                if r1 >= r2:
+                    continue
+                t1, t2 = task_for_fqn[f1], task_for_fqn[f2]
+                if t1 != t2 and _task_num(t1) > _task_num(t2):
+                    lint(
+                        "O-PLANORDER",
+                        f"{t2} ({f2}) precedes {t1} ({f1}) but "
+                        f"dependency-order converts {f1} before {f2}",
+                    )
+
+    # O-PLANEXISTS (N10 / R-217b / F-66): every task must still have real work.
+    # rewrite/convert of Spring→Quarkus is dead when Quarkus is already in place;
+    # remove tasks are dead when the named symbol/file is already absent.
+    try:
+        pom = (root / "pom.xml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        pom = ""
+    has_quarkus_bom = bool(re.search(r"quarkus-(?:universe-)?bom", pom))
+    has_spring_parent = bool(re.search(r"spring-boot-starter-parent", pom))
+    has_quarkus_plugin = bool(re.search(r"quarkus-maven-plugin", pom))
+    has_spring_plugin = bool(re.search(r"spring-boot-maven-plugin", pom))
+    has_spring_dep = bool(re.search(r"spring-boot-starter", pom))
+
+    def _src_has(pattern: str) -> bool:
+        rx = re.compile(pattern)
+        for base in (root / "src/main/java", root / "src/test/java"):
+            if not base.is_dir():
+                continue
+            for p in base.rglob("*.java"):
+                try:
+                    if rx.search(p.read_text(encoding="utf-8", errors="replace")):
+                        return True
+                except OSError:
+                    continue
+        return False
+
+    delivered = _committed_task_ids()
+    for _, tid, title in heads:
+        # Already shipped this run — skip dead-work RED (mid-story re-enter).
+        if tid in delivered:
+            continue
+        blob = f"{title}\n{bodies.get(tid, '')}"
+        # Spring Boot parent / platform BOM → Quarkus
+        if re.search(r"(?i)spring\s*boot\s*parent|platform\s*bom|quarkus\s*platform\s*bom", blob):
+            if has_quarkus_bom and not has_spring_parent:
+                lint(
+                    "O-PLANEXISTS",
+                    f"{tid}: Spring Boot parent/BOM already absent and Quarkus BOM "
+                    f"present — task is dead (O-PLANEXISTS)",
+                )
+        # Spring Boot Maven plugin → Quarkus plugin
+        if re.search(r"(?i)spring\s*boot\s*maven\s*plugin", blob) and re.search(
+            r"(?i)\b(replace|convert)\b", title
+        ):
+            if has_quarkus_plugin and not has_spring_plugin:
+                lint(
+                    "O-PLANEXISTS",
+                    f"{tid}: spring-boot-maven-plugin already absent and "
+                    f"quarkus-maven-plugin present — task is dead (O-PLANEXISTS)",
+                )
+        # Spring Boot dependencies → Quarkus extensions
+        if re.search(r"(?i)spring\s*boot\s*dependenc|spring-specific\s*dependenc", blob) and re.search(
+            r"(?i)\b(convert|replace|remove)\b", title
+        ):
+            if has_quarkus_bom and not has_spring_dep:
+                lint(
+                    "O-PLANEXISTS",
+                    f"{tid}: Spring Boot dependencies already absent under Quarkus "
+                    f"BOM — task is dead (O-PLANEXISTS)",
+                )
+        # Remove @SpringBootApplication (S03 T-010 class)
+        if re.search(r"(?i)@?SpringBootApplication", blob) and re.search(
+            r"(?i)\b(remove|delete|eliminate)\b", blob
+        ):
+            if not _src_has(r"@SpringBootApplication"):
+                lint(
+                    "O-PLANEXISTS",
+                    f"{tid}: @SpringBootApplication already absent — remove task "
+                    f"is dead (O-PLANEXISTS)",
+                )
+        # Actuator → SmallRye Health (S03 T-011 / O-PLANHEALTH): dead when
+        # quarkus-smallrye-health is present and Spring actuator is gone.
+        if re.search(r"(?i)actuator", blob) and re.search(
+            r"(?i)health|smallrye", blob
+        ):
+            has_smallrye = bool(re.search(r"quarkus-smallrye-health", pom))
+            has_actuator_dep = bool(re.search(r"spring-boot-starter-actuator", pom))
+            has_actuator_src = _src_has(
+                r"org\.springframework\.boot\.actuate|@Endpoint\b"
+            )
+            if has_smallrye and not has_actuator_dep and not has_actuator_src:
+                lint(
+                    "O-PLANEXISTS",
+                    f"{tid}: spring-boot-starter-actuator already absent and "
+                    f"quarkus-smallrye-health present — health convert is dead "
+                    f"(O-PLANEXISTS)",
+                )
+        # Shape:remove / Remove title with Target .java that is already gone
+        if re.search(r"(?i)\*\*Shape\*\*\s*:\s*`?remove`?", blob) or re.match(
+            r"(?i)^\s*Remove\b", title
+        ):
+            for m in _JAVA_PATH.finditer(blob):
+                rel = m.group(0)
+                if not (root / rel).is_file():
+                    lint(
+                        "O-PLANEXISTS",
+                        f"{tid}: remove/Target {rel} already absent — task is dead "
+                        f"(O-PLANEXISTS)",
+                    )
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")

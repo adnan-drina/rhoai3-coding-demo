@@ -64,6 +64,15 @@ def task_block(text: str, tid: str) -> tuple[str, str]:
 
 def field(body: str, *names: str) -> str:
     for name in names:
+        # O-PACKETFIELD: M3 often writes **Class: rewrite** (colon inside
+        # bold). The older **Class**: rewrite form is still accepted.
+        m = re.search(
+            rf"^\*\*{re.escape(name)}\s*:\s*(.+?)\*\*\s*$",
+            body,
+            re.M | re.I,
+        )
+        if m:
+            return m.group(1).strip()
         m = re.search(
             rf"^\*\*{re.escape(name)}\*\*\s*:?\s*(.+)$",
             body,
@@ -315,6 +324,26 @@ def main() -> int:
     cls_m = re.search(r"\b(rewrite|infer)\b", cls, re.I)
     cls = cls_m.group(1).lower() if cls_m else "infer"
     goal = field(body, "Goal") or title
+    # O-ESCALORACLE / O-SHAPEDECL: carry deliverable shape + oracle so
+    # MiniMax escalation cannot fabricate a deletion target (F-23).
+    shape = (field(body, "Shape") or "").lower().strip()
+    if shape not in {"create", "modify", "remove", "structure", "verify", "harvest"}:
+        blob = f"{title}\n{body}".lower()
+        if re.search(r"\b(remove|removal|delete|deletion|drop|erase)\b", blob):
+            shape = "remove"
+        elif re.search(r"\b(harvest|openrewrite|staging)\b", blob):
+            shape = "harvest"
+        elif re.search(r"\b(structure|gitkeep|scaffold)\b", blob):
+            shape = "structure"
+        elif re.search(r"\b(characterization|characterize|verify|assert)\b", blob):
+            shape = "verify"
+        elif re.search(r"\b(create|creating|add|adding|introduce|introducing)\b", blob):
+            shape = "create"
+        else:
+            shape = "modify" if cls == "rewrite" else "modify"
+    oracle = (field(body, "Oracle") or "").lower().strip()
+    if oracle not in {"absent", "present"}:
+        oracle = "absent" if shape == "remove" else "present"
     # K2-LABEL: M3 sometimes writes **Finds**: / **Finding**: — accept aliases
     # so evidence injection is not silently skipped (Poll 13).
     findings = field(body, "Findings", "Finds", "Finding") or "(see tasks.md)"
@@ -377,12 +406,15 @@ def main() -> int:
 
     packet = f"""Task ID: {tid}
 Class: {cls}
+Shape: {shape}
+Oracle: {oracle}
 Goal: {goal}
 Findings: {findings}{evidence_section}{hints_section}Target Design: {design}
 Constraints:
 - Follow AGENTS.md and the repo skills; no scope creep
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)
 {dest_line}
+- O-ESCALORACLE: Shape={shape} Oracle={oracle}. If Oracle=absent / Shape=remove: success is verified ABSENCE of named targets — do NOT create a file just to delete it, and do NOT invent deletion targets not listed in Owns/Target.
 - Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST)
 - For Class rewrite: FIRST action when a Target .java is missing — run .hermes/skills/migration-harness/scripts/harvest-from-staging.sh <package-relative-path> (works for src/main and src/test). Do not re-run OpenRewrite. Do not invent assertThat(true) stubs (G-PLACE / O-HARVESTSTALL).
 - Before adding a Maven dependency: run python3 .hermes/harness/verify-dep.py <groupId> <artifactId> [version] (K8 advisory WARN only — factory resolve is authority).

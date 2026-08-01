@@ -201,10 +201,51 @@ def java_basenames_absent(body: str) -> Optional[str]:
     return Path(paths[0]).stem
 
 
+def is_create_task(title: str) -> bool:
+    """O-ACCREATE: Create/Add/… tasks must never already-complete via absent.
+
+    Wave2 T-009: 'Create EntityUtils migration integration tests' body mentions
+    'EntityUtils removal' (context for what to test). Bare \\bremoval\\b made
+    is_removal_task true → absent Test.java → false ALREADY COMPLETE skip.
+    """
+    return bool(
+        re.search(
+            r"^\s*(Create|Add|Implement|Write|Author|Introduce|Build)\b",
+            title,
+            re.I,
+        )
+    )
+
+
+def is_convert_task(title: str) -> bool:
+    """O-ACRESTABS: Convert/Port/Harvest/Migrate must not absent-skip.
+
+    Wave2 T-013: 'Convert remaining REST controllers' body mentions
+    'Remove RootRestController' / 'removed' → is_removal_task true →
+    absent PetRestController → false ALREADY COMPLETE while controllers
+    still need harvest/JAX-RS.
+    """
+    return bool(
+        re.search(
+            r"^\s*(Convert|Port|Harvest|Migrate|Rewrite|Transform)\b",
+            title,
+            re.I,
+        )
+    )
+
+
 def is_removal_task(title: str, body: str) -> bool:
+    # O-ACCREATE / O-ACRESTABS: create/convert-shaped titles are never removal skips.
+    if is_create_task(title) or is_convert_task(title):
+        return False
+    # O-T6DREMOVAL / R-104: titles like "Handle … removal" / "(removed/refactored)"
     if re.search(
         r"^\s*(Remove|Delete|Drop|Eliminate)\b", title, re.I
-    ) or re.search(r"\b(already absent|must not exist)\b", body, re.I):
+    ) or re.search(
+        r"\b(removal|removed|already absent|must not exist)\b",
+        f"{title}\n{body}",
+        re.I,
+    ):
         return True
     # Body-led removal of a named class/file — require remove/delete near a .java path.
     for m in re.finditer(
@@ -300,7 +341,13 @@ def main() -> int:
             env=env,
         )
         out = (proc.stdout or "").strip()
-        if proc.returncode == 0 and out.startswith("absent:"):
+        # O-ACCREATE: findings-oracle "absent" means finding cleared — never
+        # means "create target missing, skip the create task".
+        if (
+            proc.returncode == 0
+            and out.startswith("absent:")
+            and not is_create_task(title)
+        ):
             print(f"oracle-{out}")
             return 0
         # returncode 3 = no-findings → fall through; 1 = present → do not skip
@@ -331,6 +378,25 @@ def main() -> int:
                     if "quarkus-maven-plugin" in ptxt and "spring-boot" not in ptxt.lower():
                         print("scaffold-presatisfied:" + ",".join(ids[:6]))
                         return 0
+
+    # O-JDBCSKIP / O-JDBCREGRESS: JDBC repository CDI when Quarkus JPA
+    # @ApplicationScoped impls already cover the repository interfaces —
+    # skip rather than re-adding spring-jdbc (Wave2 T-009).
+    blob = f"{title}\n{body}"
+    if re.search(r"(?i)jdbc\s+repository|/repository/jdbc/", blob):
+        jpa = list((ROOT / "src/main/java").rglob("Jpa*RepositoryImpl.java"))
+        jdbc = list((ROOT / "src/main/java").rglob("repository/jdbc/Jdbc*RepositoryImpl.java"))
+        jpa_cdi = 0
+        for p in jpa:
+            try:
+                if "@ApplicationScoped" in p.read_text(encoding="utf-8", errors="replace"):
+                    jpa_cdi += 1
+            except OSError:
+                continue
+        if jpa_cdi >= 3 and not jdbc:
+            # kind must be present|absent|oracle-absent (supervisor try_already_complete)
+            print(f"present:JpaRepositoryImpl-cdi({jpa_cdi})")
+            return 0
 
     return 1
 

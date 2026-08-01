@@ -50,12 +50,17 @@ SMELLS: list[tuple[str, re.Pattern[str], str]] = [
         ),
         "ceremonial status-map acceptance",
     ),
-    (
-        "WEAK-ASSERT",
-        re.compile(r"^\+.*assertThat\s*\([^)]+\)\s*\.\s*isNotNull\s*\(\s*\)\s*;\s*$", re.M),
-        "weak isNotNull-only assertion (suspect)",
-    ),
 ]
+
+# Bare assertThat(x).isNotNull(); — ceremonial when it is the only substance.
+# O-K12WEAKTEST / O-K12NEST: do NOT parse assertThat(...) args with [^)]+ —
+# nested calls like getOwner() made strong-assert detection false-negative
+# (Wave2 T-019 CircularGroupIntegrationTest). Instead: any non-isNotNull
+# assertThat on an added line counts as substance.
+_WEAK_ISNOTNULL = re.compile(
+    r"^\+.*assertThat\s*\(.*\)\s*\.\s*isNotNull\s*\(\s*\)\s*;\s*$"
+)
+_ASSERTTHAT_LINE = re.compile(r"^\+.*\bassertThat\s*\(")
 
 
 def load_diff(sha: str | None, diff_path: Path | None) -> str:
@@ -70,11 +75,30 @@ def load_diff(sha: str | None, diff_path: Path | None) -> str:
     return r.stdout or ""
 
 
+def _weak_assert_smell(diff: str) -> bool:
+    saw_weak_non_ann = False
+    for line in diff.splitlines():
+        if line.startswith("++") or not _ASSERTTHAT_LINE.search(line):
+            continue
+        if "import " in line:
+            continue
+        if _WEAK_ISNOTNULL.match(line):
+            if "getAnnotation" in line or "Annotation" in line:
+                continue
+            saw_weak_non_ann = True
+            continue
+        # Any other assertThat (isSameAs/extracting/hasSize/…) is substance.
+        return False
+    return saw_weak_non_ann
+
+
 def refute(diff: str) -> list[str]:
     hits: list[str] = []
     for sid, pat, note in SMELLS:
         if pat.search(diff):
             hits.append(f"REFUTED:{sid}:{note}")
+    if _weak_assert_smell(diff):
+        hits.append("REFUTED:WEAK-ASSERT:weak isNotNull-only assertion (suspect)")
     return hits
 
 

@@ -8,6 +8,9 @@ A rule gone from "after" is NOT automatically RESOLVED:
   - ABSENT-NOT-LANDED — none of the before-incident basenames exist under
     src/main (or src/test). Empty harvest / scaffold-only tree must score
     0 resolved (quietly wrong > loudly wrong).
+  - DEFERRED-BY-DECISION (O-LEDGERFALSE / F-60) — listed in
+    migration/deferred-by-decision.txt (one rule id per line); excluded
+    from the in-scope denominator (ceiling 17/(28−N)).
   - RESOLVED — at least one incident basename exists under src/ AND the rule
     no longer fires on the after-scan (conversion or cleanup evidence).
 
@@ -117,8 +120,17 @@ def main() -> int:
         return 0
 
     presat = load_presat(root)
+    deferred_ids: set[str] = set()
+    dpath = root / "migration" / "deferred-by-decision.txt"
+    if dpath.is_file():
+        for line in dpath.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line:
+                deferred_ids.add(line)
+
     resolved: list[str] = []
     absent: list[str] = []
+    deferred: list[str] = []
     scaffold: list[str] = []
     remaining = sorted(set(before) & set(after))
     new_rules = sorted(set(after) - set(before))
@@ -142,15 +154,22 @@ def main() -> int:
                     break
         if landed:
             resolved.append(rid)
+        elif rid in deferred_ids or any(
+            rid.startswith(d.rstrip("*")) for d in deferred_ids if d.endswith("*")
+        ):
+            deferred.append(rid)
         else:
             absent.append(rid)
 
     java_main = count_java(root, "src/main/java")
     java_test = count_java(root, "src/test/java")
     sites = after_sites(after)
-    # Honest rate: resolved / (resolved+absent+remaining) — never inflate with absent.
-    denom = len(resolved) + len(absent) + len(remaining)
-    rate = (100.0 * len(resolved) / denom) if denom else 0.0
+    # Honest floor still counts absent_not_landed. In-scope pct excludes
+    # deferred_by_decision from the denominator (F-60 / F-70 N14 arithmetic).
+    denom_floor = len(resolved) + len(absent) + len(deferred) + len(remaining)
+    rate = (100.0 * len(resolved) / denom_floor) if denom_floor else 0.0
+    denom_in = len(resolved) + len(absent) + len(remaining)
+    rate_in = (100.0 * len(resolved) / denom_in) if denom_in else 0.0
 
     print("# Findings delta (O-DELTABASE — absence ≠ resolved)")
     print()
@@ -161,8 +180,10 @@ def main() -> int:
     )
     print(
         f"SUMMARY resolved={len(resolved)} absent_not_landed={len(absent)} "
+        f"deferred_by_decision={len(deferred)} "
         f"scaffold_presatisfied={len(scaffold)} remaining={len(remaining)} "
-        f"new_after={len(new_rules)} honest_resolve_pct={rate:.1f}"
+        f"new_after={len(new_rules)} honest_resolve_pct={rate:.1f} "
+        f"in_scope_resolve_pct={rate_in:.1f}"
     )
     print()
     print("## RESOLVED (landed evidence + rule absent after)")
@@ -175,6 +196,12 @@ def main() -> int:
     for rid in absent:
         print(f"- {rid}")
     if not absent:
+        print("- (none)")
+    print()
+    print("## DEFERRED-BY-DECISION (O-LEDGERFALSE — excluded from in-scope denom)")
+    for rid in deferred:
+        print(f"- {rid}")
+    if not deferred:
         print("- (none)")
     print()
     print("## SCAFFOLD-PRESATISFIED (destination already satisfied — no story credit)")
@@ -197,7 +224,7 @@ def main() -> int:
     print()
     print(
         f"DELTABASE:resolved={len(resolved)}:absent={len(absent)}:"
-        f"presat={len(scaffold)}:remaining={len(remaining)}"
+        f"deferred={len(deferred)}:presat={len(scaffold)}:remaining={len(remaining)}"
     )
     return 0
 

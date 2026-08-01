@@ -35,12 +35,26 @@ escalation). Treat the rule message as authoritative remediation guidance.
 | Seat | Model | Owns |
 |------|-------|------|
 | Worker (default for M4 coding) | Qwen3.6 27B via OpenCode | `rewrite` + `infer` file changes |
-| Orchestrator | MiniMax M2 via Hermes | M1–M3, sensor-fix, M5, escalation after worker fail |
+| Worker (O-SFIXWORKER) | Qwen3.6 27B via OpenCode | sensor-fix first; cheap sensor re-verify |
+| Worker (O-M3WORKER) | Qwen3.6 27B via OpenCode | M3 SPECIFY draft/fix; plan-lint verifies |
+| Orchestrator | MiniMax M2 via Hermes | M1–M2, M5 evaluate/ship, M4 escalation, capped sfix/M3 rescue |
 
 Mechanical harvest/POM/port work is **not** a MiniMax job. The supervisor
-runs OpenCode first (`WORKER_FIRST=true`). If you are in an escalation
+runs OpenCode first (`WORKER_FIRST=true`). Sensor-fix also runs Qwen first
+(`WORKER_SFIX_FIRST=true`) with one MiniMax rescue if the triggering sensor
+stays RED. M3 drafts on Qwen (`WORKER_M3_FIRST=true`, ≤2 attempts) with one
+MiniMax backstop if plan-lint stays RED. If you are in an escalation
 session: dispatch `opencode` for file-changing work; do not apply rewrite
 edits with your own tools unless the worker already failed.
+
+**Measure after this routing:** MiniMax session-minutes (sfix+M3+escalation)
+and M4 rescue rate must not rise — revisit M5 evaluate only if both improve.
+
+**O-ESCALORACLE:** the worker packet carries `Shape:` (create|modify|remove|
+structure|verify|harvest) and `Oracle:` (absent|present). On escalation,
+honor those fields — if Oracle=absent / Shape=remove, prove named targets
+are gone; never create a file solely to delete it; never invent unlisted
+deletion targets.
 
 ### Redesign classes are built to their target, not to legacy
 
@@ -258,7 +272,11 @@ migration-general — V9 S03 T-008 probe):**
 
 **Sensor-fix sessions (O-SFIXLOOP):** when the supervisor dispatches a
 sensor-fix, verify with the *cheap* dimension check only
-(`.hermes/harness/sensors.sh sonar|task|fidelity|package`).
+(`.hermes/harness/sensors.sh sonar|task|fidelity|package|findings`).
+If `/tmp/sensor-milestone.log` shows `FINDINGS:` / `FINDINGS RED`, the
+dimension is **findings** — fix the listed pom/code incidents and verify
+with `sensors.sh findings` only (O-SFIXWRONGDIM: do not polish unrelated
+tests/comments while FINDINGS is RED).
 `sensors.sh milestone` is refused during sensor-fix (exits 2).
 
 **Never wrap harness sensors in a short `timeout` (O-SONARTIME):**
