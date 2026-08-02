@@ -544,14 +544,14 @@ data:
         return 0
       fi
       cat > "${shim}" <<'XZEOF'
-#!/usr/bin/env python3.11
-# rhoai3-coding-demo: python xz shim (Hermes node .tar.xz when image lacks xz)
-import sys, lzma
-if not any(a in ("-d", "-dc", "--decompress") for a in sys.argv[1:]):
-    sys.stderr.write("xz shim: only decompression supported\n")
-    sys.exit(1)
-sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))
-XZEOF
+    #!/usr/bin/env python3.11
+    # rhoai3-coding-demo: python xz shim (Hermes node .tar.xz when image lacks xz)
+    import sys, lzma
+    if not any(a in ("-d", "-dc", "--decompress") for a in sys.argv[1:]):
+        sys.stderr.write("xz shim: only decompression supported\n")
+        sys.exit(1)
+    sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))
+    XZEOF
       chmod 755 "${shim}"
       export PATH="${HOME}/.local/bin:${PATH}"
     }
