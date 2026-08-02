@@ -30,6 +30,10 @@ def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
         start = m.end()
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
         body = text[start:end]
+        # O-T6dCHARSEC: same as mechan-match — strip ## section titles between
+        # T-NNN blocks so "Characterization Tests" headings do not mark the
+        # prior harvest task as wants_tests.
+        body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
         body = re.split(
             r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
             body,
@@ -89,10 +93,44 @@ def main() -> int:
     targets = re.findall(
         r"(?:Target|→|->)[^\n]*?(src/main/java/[A-Za-z0-9_./-]+\.java)", blob
     )
-    for want in targets:
-        if not (ROOT / want).is_file():
-            print(f"missing-target:{want}")
-            return 1
+
+    # O-ESCW3SCOPE (v2 S05 T-006): finding-scope / Absorbs tasks list later-story
+    # Target arrows (REST/security/util) that must stay ABSENT. Requiring those
+    # as missing-target forced MiniMax escalation. For these tasks, require
+    # **Absorbs** paths (already-delivered prior work) instead of all Target dests.
+    finding_scope = bool(
+        re.search(
+            r"(?i)finding-scope|findings-scope|"
+            r"no new\b.{0,80}\bfrom this task|"
+            r"reserved for later",
+            blob,
+        )
+    )
+    if finding_scope:
+        # Absorbs often mixes prior-story deliveries with later-story claim paths
+        # (REST/security/util) that Acceptance says must stay absent — only prior
+        # deliveries are required to exist.
+        later_pkg = re.compile(r"/(?:rest|security|util|openapi)/")
+        absorbs: list[str] = []
+        for m in re.finditer(r"(?im)^\*\*Absorbs\*\*:?\s*(.+)$", body):
+            absorbs.extend(
+                re.findall(r"src/main/java/[A-Za-z0-9_./-]+\.java", m.group(1))
+            )
+        for want in absorbs:
+            if later_pkg.search(want):
+                if (ROOT / want).is_file():
+                    print(f"unexpected-later:{want}")
+                    return 1
+                continue
+            if not (ROOT / want).is_file():
+                print(f"missing-absorb:{want}")
+                return 1
+        # Do not require later-story Target destinations.
+    else:
+        for want in targets:
+            if not (ROOT / want).is_file():
+                print(f"missing-target:{want}")
+                return 1
 
     # O-ESCWCONVERT (S04 T-005): existence of a harvested JAX-RS stub is not
     # "Convert … session management / constructor injection" complete. Require
@@ -104,7 +142,7 @@ def main() -> int:
             blob,
         )
     )
-    if convertish and targets:
+    if convertish and targets and not finding_scope:
         for want in targets:
             text = (ROOT / want).read_text(encoding="utf-8", errors="replace")
             if re.search(r"(?i)session management|@SessionScoped|Quarkus session", blob):
@@ -127,6 +165,58 @@ def main() -> int:
             if not any(p.iterdir()):
                 print(f"empty-pkgdir:{d}")
                 return 1
+
+    # O-T6EEMPTYESC: POM/dep tips — named quarkus artifactIds already in pom
+    # means worker-verified satisfied even when findings-oracle still "present"
+    # (MTA may still emit springboot-security-* until after-scan; dep tip is done).
+    pom = ROOT / "pom.xml"
+    if pom.is_file() and re.search(
+        r"(?i)pom\.xml|quarkus-security|quarkus-smallrye|elytron-security|"
+        r"Add Quarkus .+ dependenc",
+        blob,
+    ):
+        # Only Goal/Acceptance — Findings ids like springboot-…-quarkus-00000
+        # must not be mistaken for artifactIds (O-T6EEMPTYESC).
+        focus_parts = [title]
+        for m in re.finditer(
+            r"(?is)\*\*(?:Goal|Acceptance)\*\*.*?(?=\n\*\*|\n#{2,6}\s|\Z)",
+            body,
+        ):
+            focus_parts.append(m.group(0))
+        focus = "\n".join(focus_parts)
+        arts = re.findall(
+            r"\b(quarkus-[a-z][a-z0-9-]{2,})\b", focus, re.I
+        )
+        arts = [
+            a
+            for a in arts
+            if a.lower()
+            not in {
+                "quarkus-maven-plugin",
+                "quarkus-bom",
+            }
+            and not re.search(r"-\d{3,}$", a)  # not rule-id suffixes
+        ]
+        # de-dupe
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for a in arts:
+            k = a.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(a)
+        arts = uniq
+        if arts:
+            ptxt = pom.read_text(encoding="utf-8", errors="replace")
+            if all(
+                re.search(
+                    rf"<artifactId>\s*{re.escape(a)}\s*<", ptxt, re.I
+                )
+                for a in arts[:8]
+            ):
+                print("pom-deps-present:" + ",".join(arts[:6]))
+                return 0
 
     # K6: Findings still present in oracle → never allow-empty ESCW.
     oracle = ROOT / ".hermes/harness/findings-oracle.py"

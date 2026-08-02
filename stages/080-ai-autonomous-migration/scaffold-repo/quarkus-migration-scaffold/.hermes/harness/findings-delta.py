@@ -110,6 +110,37 @@ def main() -> int:
     root = Path(os.environ.get("FINDINGS_DELTA_ROOT", ".")).resolve()
     before_p = Path(sys.argv[1]) if len(sys.argv) > 1 else root / "migration/mta-findings.json"
     after_p = Path(sys.argv[2]) if len(sys.argv) > 2 else root / "migration/mta-findings-after.json"
+    # O-M5STALE (W3-146): refuse to score when after-scan failed / was
+    # substituted. No rule may move into RESOLVED; drop the word "honest".
+    # Check BEFORE empty-before skip so a failed delta still stamps STALE.
+    stale = os.environ.get("FINDINGS_DELTA_STALE", "").strip() in {"1", "true", "yes"}
+    if not stale and before_p.is_file() and after_p.is_file():
+        try:
+            stale = before_p.read_bytes() == after_p.read_bytes() and before_p.stat().st_size > 2
+        except OSError:
+            stale = False
+    if stale:
+        java_main = count_java(root, "src/main/java")
+        java_test = count_java(root, "src/test/java")
+        print("# Findings delta — STALE-AFTER (O-M5STALE)")
+        print()
+        print("STALE-AFTER: after-scan missing, failed, or identical to before — NOT SCORED")
+        print(f"METRIC src_main_java={java_main} src_test_java={java_test}")
+        print(
+            "SUMMARY resolved=0 absent_not_landed=0 deferred_by_decision=0 "
+            "scaffold_presatisfied=0 remaining=0 new_after=0 "
+            "stale_resolve_pct=UNSCORED"
+        )
+        print()
+        print("## RESOLVED (landed evidence + rule absent after)")
+        print("- (none — STALE-AFTER; refusing credit)")
+        print()
+        print("## ABSENT-NOT-LANDED (do NOT credit as resolved — nothing in src/)")
+        print("- (none — STALE-AFTER)")
+        print()
+        print("DELTABASE:resolved=0:absent=0:deferred=0:presat=0:remaining=0:stale=1")
+        return 0
+
     before = load_rules(before_p)
     after = load_rules(after_p)
     if not before:

@@ -92,6 +92,7 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-SFIXDIRTY | ✅ | Fixed 2026-07-31: failed/no-commit sfix discards uncommitted `src/` dirt before next task (checkout+clean). |
 | O-IFACERENAME | ✅ | Fixed 2026-07-31: covered by `redesign-sig.py` (interfaces + converted classes) on task/static sensors. |
 | O-REDESIGNSIG | ✅ | Fixed 2026-07-31: `redesign-sig.py` compares public method names vs staging; wired into task_sensor + static. Seed constants still manual/fidelity. |
+| O-REDESIGNSIGANNOT | ✅ | Fixed 2026-08-01: `redesign-sig.py` strips comments/annotations before scrape — `@Query("...")` + license `2.0 (...)` were false method names (`Query`, `0`), blocking honest Spring-Data→CDI demotion. Instrument: `O-REDESIGNSIGANNOT`. |
 | O-PKGORD | ✅ | Fixed 2026-07-31: plan-lint rejects package-rename tasks when no `.java` in src/ or migration/staging (Poll 20). |
 | K1-SHARED | ✅ | Fixed 2026-07-31: incident-conflict only for `src/**/*.java`; pom/props/k8s still require ownership (Poll 11). |
 | S-AC1-NEG | ✅ | Fixed 2026-07-31: plan-lint S-AC1 skips negation lines (no/not/never/… MinimalAcceptance…). |
@@ -133,14 +134,22 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-ANALYZERPIN | ⬜ | R-96/F-9: stamp analyzer engine into baseline (`migration.yaml analysis.engine` or sidecar) at M1; `findings-delta.py` WARN/refuse before/after across different engines. Same pin reasoning as specimen SHA. Land before/with M2. |
 | O-SIZING-RECIPE | ⬜ | F-9/F-11: gate line for javax-import N-of-113 recipe-covered + M3 ownership tally. Live: recipe-log lists `javax-to-jakarta-import-00001`; S01 scope=`springboot-annotations-to-quarkus-00002` only (9 tasks, plan-lint OK) — javax block likely S02/S03. Still need explicit N-of-113 + “266→owned/recipe/unowned” in M3 gate notes. |
 | O-WEDGECTXMET | ⬜ | F-10: on every Wave-2 wedge record frozen JSON size + OpenCode finish/stop reason (opencode.db finish column); adjudicate ~190–196KB / 64K-ctx exhaustion hypothesis. Later (if confirmed): context budget (packet trim / fewer -f) not only liveness kill. |
-| O-SFIXNOSPRING | ✅ | Fixed 2026-07-31 (F-21/wake24): after sfix commit, sfix-no-spring.py refuses NEW org.springframework imports / spring-* pom deps vs PRE_SFIX_HEAD (reset). Type-level fidelity inversion tripwire. |
+| O-SFIXNOSPRING | ✅ | Fixed 2026-07-31 (F-21/wake24): after sfix commit, sfix-no-spring.py refuses NEW org.springframework imports / spring-* pom deps vs PRE_SFIX_HEAD (reset). Type-level fidelity inversion tripwire. **O-SFIXNOSPRINGSDATA** 2026-08-01: allow `org.springframework.data.*` imports when pom has `quarkus-spring-data-jpa` (v2 S04 T-005 false reset of fidelity tip restoring `Repository<T,ID>` → O-DEBTFRZ). |
 | O-FIDELITYMAP | ⬜ | F-21: source harvest-fidelity approved transforms from MAPPINGS+task Findings (line-scoped); supersede per-incident skips long-term. O-FIDELITYVALID is the validation family instance. |
 | O-FIDELITYVALID | ✅ | Fixed 2026-07-31 (wake23): harvest-fidelity skips when staging has BindingResult/FieldError and dest has ConstraintViolation (Spring→Jakarta validation conversion). Wave2 T-004 false RED. Instrument. |
+| O-BINDERRDROP | ⬜ | S02 T-003: O-HARVESTSTALL preseed left Spring `BindingResult`/`FieldError` in Quarkus tree (compile RED). Worker deleted `addAllErrors(...)` to green compile instead of Spring→Jakarta `ConstraintViolation` conversion (O-FIDELITYVALID only waives when ConstraintViolation present). Tip/preseed: for validation DTO harvest, apply BindingResult→ConstraintViolation transform in preseed OR block delete-method compile escapes; EXECUTION tip for Harvest *Errors* classes. |
+| O-ORFFSHIM | ⬜ | S02 T-007: harvest preseed left Spring `ObjectRetrievalFailureException`; worker added invented `com.demo.util.ObjectRetrievalFailureException` shim (not in staging) so EntityUtils compiles. Prefer approved transform: map Spring ORM exception → `IllegalArgumentException`/`NoResultException` (or task-declared replacement) without fabricating a same-named class; tip/preseed like O-BINDERRDROP. Fidelity may still GREEN if only EntityUtils compared. |
+| O-T6dCHARSEC | ✅ | Fixed 2026-08-01: `mechan-match.py` + `escw-eligible.py` truncate task body at any `##` section heading so intermediate titles like `## Model Characterization Tests` (between T-008/T-009) do not leak into prior harvest tasks → false `wants_tests`/`need-src-test` → MiniMax guard-refused escalation despite Person.java already staged. Live S02 T-008: Qwen rc=0 + preseed; O-T6d blocked; MiniMax committed `c5fd34d`. Retest: T-008+Person path → mechan-match rc=0; T-009 still need-src-test. |
+| O-SFIXFINDINGS | ⬜ | S02 T-004-sfix: Qwen sensor-fix for HARVEST FIDELITY RED committed `T-004 sensor fix: update findings tracking after scan` (findings JSON only) — BindingErrors `addAllErrors` still missing. Milestone stayed RED → MiniMax rescue. Durableize: refuse sfix commits that touch only `mta-findings*.json` / delta when fidelity/package/compile RED; tip must require dest.java fix first. |
+| O-SFIXAUTOLOG | ⬜ | S02 T-008: style-autofix committed `T-008 sensor autofix: partial deterministic style-autofix` touching only `migration/run-log.md` while logging "fixed some violations"; Sonar still RED (S1118 EntityUtils, S1948 ORFF). Refuse autofix commits with no src/** delta when violations remain; do not claim partial fix on run-log-only. |
+| O-SFIXSTALL | ⬜ | S02 T-008-sfix: OpenCode sat ~14m with log frozen (8 tool uses, 0 writes) on trivial S1118/S1948; operator killed seat → MiniMax rescue. Add sfix empty-write early-abort (like O-M3EMPTY) when write-count=0 for N min, or deterministic autofix recipes for S1118 (private ctor on abstract util) + S1948 (Serializable/transient on exception fields). |
+| O-S1118ABSTRACT | ✅ | Fixed 2026-08-01 (probe+durable tip owed in style-autofix): S1118 on abstract util — keep `abstract` and add private ctor; MiniMax dropped `abstract` → harvest fidelity RED → O-SFIXSCOPE archived honest Sonar fix `8a3668b` and O-DEBTFRZ. Live recover: abstract+private ctor + ORFF transient → fidelity+sonar GREEN; commit after freeze. Add deterministic autofix recipe. |
 | O-RESTBATCH | ⬜ | Wave2 T-012/T-013: Qwen JSON_STALE on multi-controller JAX-RS harvest; prefer mechanical harvest-from-staging + annotation recipe batch before worker/MiniMax (pair with O-HARVESTREPO). |
 | O-ACREMULTI | ⬜ | Wave2 T-014: Remove-task already-complete skips on first absent leaf (ApplicationSwaggerConfig) without verifying all listed removals/refactors (Roles→@ApplicationScoped). Require all named targets absent/satisfied before absent-oracle skip. |
 | O-ACRESTABS | ✅ | Fixed 2026-07-31: is_convert_task blocks absent-oracle for Convert/Port/Harvest/Migrate titles (Wave2 T-013 false PetRestController absent skip). |
 | O-FIDSONAR | ✅ | Fixed 2026-07-31: harvest-fidelity strips all `throws …` clauses (T-015: IllegalArgumentException vs Exception still RED; broadened). |
 | O-ACCREATE | ✅ | Fixed 2026-07-31 (wake45): Create/Add/Implement titles never already-complete via absent (is_removal_task short-circuit + findings-oracle absent gated). Wave2 T-009 body mentioned "removal" → false skip of missing EntityUtilsMigrationTest. Instrument. |
+| O-ACHARVEST | ✅ | Fixed 2026-08-01: `already-complete.py` findings-oracle `absent:` skip now also requires `not is_convert_task(title)` and `not missing_target_path(body)` (O-ACCREATE already blocked Create). Live S02 T-002/T-003: Harvest BaseEntity/BindingErrorsResponse allow-empty ALREADY COMPLETE via `oracle-absent:javax-to-jakarta-import-00001` while target `.java` missing — finding absent because nothing harvested yet. Sensors GREEN (compile vacuous). HOLD→reset to T-001→retest. Related smell: harvest-fidelity GREEN with zero dest classes (bank O-FIDVACUOUS if still vacuous after retest). |
 | O-PLANORDER | ✅ | Fixed 2026-08-01 (F-70/N11): plan-lint consumes `migration/dependency-order.md` + bean-uniqueness on Target paths. Instruments both directions. Retest-owed: re-lint archived S02/S03 plans on fresh M3. |
 | O-RULETEST | ⬜ | F-70/N7: kantra test coverage for generated custom rules. |
 | O-DEPDELTA | ⬜ | F-70/B7: mvn dependency:list diff at M5. |
@@ -199,7 +208,7 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-STRAYPKGINFO | ✅ | Fixed 2026-07-31 (F-19/wake19): stray sweep keeps package-info.java under src/{main,test}/java/ (not only .gitkeep). Hazard was thin-escalation wipe of Qwen package-info; T-003 HEAD already had all 4 (caught-or-clean). KEPT-SCAFFOLD.txt. |
 | O-STRAYSCAFFOLD | ✅ | Fixed 2026-07-31: post-commit stray sweep keeps src/{main,test}/java/**/*.gitkeep on disk (writes KEPT-GITKEEP.txt); archives other src/ strays only. R-100: discard proven harmful (9/12 recreated). Partial restore 2d6304d. Structure-task sensor acceptance still ⬜ follow-on. |
 | O-GUARDCOMP | ⬜ | F-13/F-19/F-23: guard-interaction defects + **tolerance must widen never narrow** (O-SCAFFOLDDIR gitkeep-only → T-003). Composition fixtures + O-DRV3 diff-read. F-23: every oracle/guard needs **end-to-end branch fixtures** per verdict (absent → skip-before-worker; present → block-ESCW) — component stdout alone missed O-ACORACLE consumer wiring until T-005 burned MiniMax. Specimens: T-001 O-T6d×stray×fidelity; T-003 structure-non-gitkeep; T-005 oracle-ignored dispatch. |
-| O-ESCALCAUSE | ✅ | Fixed 2026-07-31: cause file + events (worker-failed|guard-refused|quota). F-20 P3: file also carries last O-T6d reason line + worker_rc (wake21). |
+| O-ESCALCAUSE | ✅ | Fixed 2026-07-31: cause file + events. **Re-fixed 2026-08-02 (W3-143):** classify from O-KILLREASON `.err` (`supervisor-pause`/`debt-freeze`/`read-thrash`/`worker-wedge`/`sigint`); **O-ESCALPAUSE** suppresses MiniMax on pause/debt kills (was constant worker-failed 11/11). |
 | O-SKEL-CATALOG | 📋 | R-87: RHDH migration skeleton still deploys `catalog-service` into non-Coolstore namespaces (seen in `petclinic-rest-v1-dev`). Gate behind values / specimen needs, or document always-on. Harmless at rest; avoid false wiring checks. |
 | O-WAKE-GROK | ✅ | Fixed 2026-07-31 (F-5): `tmp/v10-smart-wake-loop.sh` W1 label pod (`V10_WS_NAME=petclinic-rest-v1`), W2 `V10-GROK-HEARTBEAT` idle default 600s, W3 `MIN_EMIT_GAP_S=120` (nudge exempt), W4 `MAX_QUIET_S=900` timer, W5 `V10-WAKE-EMIT.last` + redeliver + DELIVERY-BROKEN osascript. `lib-quality-gates.sh` `qg_ws_pod` label resolve. Lock + never `pgrep -f` wake path. Behavioral instrument suite still 📋 follow-on. |
 | O-WAKE-CATCHUP | ✅ | Fixed 2026-07-31: wake emits refresh `scripts/track-b/v10-review-catchup.sh` → `tmp/V10-REVIEW-SINCE-LAST.md` (full slice after last Implementing note); opens `V10-REVIEW-CATCHUP-PENDING` (+R / reason=catchup) until newer Implementing note + `… catchup.sh ack`. Prompt + stage-080-track-b rule; not memory-only. |
@@ -208,6 +217,36 @@ Default `BANK_DOC` is this file (`scripts/track-b/lib-quality-gates.sh`).
 | O-STAMP-GATE | ✅ | Fixed 2026-07-31: `contract-stamp-gate.py` + minimal YAML loader (no PyYAML); verifies package/path/UNDECIDED; wired in outer-loop after stamp. |
 | O-STAMP-TEMPLATE | 📋 | Next specimen: template shrinks to name + legacy URL + neutral sentinels (not cart defaults); harness fills the rest. |
 | O-GOLDENFRESH | ⬜ | F-6/F-20: publish-fp + repo/published/pod three-way in preflight (commit lag auditability). **2026-07-31 review correction:** live md5 "parity split" across R-95–R-105 was hot-swap-first development (working tree + `/tmp/harness-update`), not stale pod gates — withdraw false alarm; keep publish-fp for committed golden sync. **F-72 (2026-08-01):** Phase-1 landings live on v2 pod + uncommitted in local golden (`stages/080-…/scaffold-repo/…/.hermes`); demo-repo SoT lag is the real instance — commit golden before next provision/reset; three-way preflight still open. |
+| O-PKEXAMPLE | ✅ | Fixed 2026-08-01: outer-loop builds `PKG_RENAME_HINT` from migration.yaml `legacyPackage`/`targetPackage` (M2/M3 prompts). Retest-owed: next M2/M3 session packet shows specimen packages, not Coolstore. Was: hardcoded `com.redhat.coolstore.X → com.demo.X`. |
+| O-M2CEREMONY | ✅ | Fixed 2026-08-01: SEQUENCING unique-ownership tip + M2 a1/a2 prompts name LINT:coverage/substance/deploy. Live v2 probe: dropped S07 dual-claim of `springboot-di-to-quarkus-00003` → lint GREEN (`753a3cc`); outer restart resumes M2-skip → stories. Retest-owed: next fresh M2 a1 avoids dual-owner without hand patch. |
+| O-OUTERSTALE | ⬜ | Preflight/O-DRV2 restart can no-op when `/tmp/outer-loop.lock` holds a dead pid (v2 post-M2-fail: lock pid 2280 dead; `pgrep -f outer-loop` also false-positive on oc-exec). Fix: start path treats lock pid `kill -0` fail as stale and clears; avoid pgrep -f for liveness. 2026-08-01. |
+| O-FLYWAYDEP | ⬜ | v2 S03 deploy tip `6fc1f51` added `quarkus-flyway` to pom without committed SQL migrations (MiniMax deploy-fix residue). Prefer drop unused dep or require real migration scripts; do not leave empty Flyway on classpath for readiness theater.
+| O-ENTITYDSPROD | ✅ | Fixed 2026-08-01 v2 S03 deploy: O-ENTITYDS unprofiled H2 made factory inject postgres JDBC URL into H2 driver (`Driver does not support the provided URL`). Default=`postgresql`; H2 only `%dev`/`%test`. Live tip `5baa60d`. Refines O-PREFLIGHTH2 vs O-ENTITYDS conflict. Do not add Flyway to clear readiness.
+| O-SHIPBUDGET | ⬜ | v2 S03 M5 ship: after fix-r2 commit e101810, supervisor logged `preflight budget exhausted — pushing anyway (factory as arbiter)` without a proven full-preflight GREEN (MiniMax short-timeout preflights + O-PFCOUNTRM). Prefer HOLD/one untimed closing preflight before push, or make factory-arbiter path explicit + auto O-DRV5 HOLD on budget-exhaust ship.
+| O-PFCOUNTRM | ⬜ | Hermes agent sandbox blocked `rm /tmp/preflight-count` during MiniMax preflight fix-r2 (v2 S03 M5 ship); O-PREFLIGHTDIM docs tell workers to clear the counter for ONE closing preflight. Allowlist that path (or auto-clear when dimension sensors GREEN) so agents are not stuck at cap=4.
+| O-DTOCOV | ✅ | Fixed 2026-08-01: scaffold+live pom `sonar.exclusions` + coverage/CPD exclusions = `**/dto/**` (OpenAPI harvest). Coverage-only was insufficient (54× S1128 unused imports). Live tip commits on v2 S03 ship. Do not invent BaseDto (O-SFIXDUPBASE) or ceremonial coverage theater. |
+| O-T6dPKGINFO | ✅ | Fixed 2026-08-01: mechan-match accepts package-info.java-only stages; build-verification titles that mention characterization/src/test no longer force need-src-test → MiniMax (v2 S03 T-008). Instrument. |
+| O-MAPPRESEED | ✅ | Fixed 2026-08-01: after O-HARVESTSTALL MapStruct preseed, `ensure-mapstruct-pom.py` adds mapstruct 1.6.3 + annotationProcessorPaths and `@Mapper(componentModel="jakarta-cdi")` (O-MAPCDI). v2 T-006: Qwen READ_THRASH while pom lacked mapstruct → MiniMax; DTOs already present (O-DTOFIRST ok). |
+| O-COMMITID | ✅ | Fixed 2026-08-01: `committed()` matches subject-leading `T-NNN:` only; O-SPECREBASE extracts only subject-leading task ids and floors search at prior story-complete (v2 plan message `(T-005)` + ancient T-005 → false skip all tasks → dishonest M5). |
+| O-OUTERSTART | ✅ | Fixed 2026-08-01: `v9-preflight-outer-start.sh --start` now `disown`s + `stdbuf -oL` and verifies `kill -0` after 1s. Plain `nohup … &` under `oc exec bash -lc` returned a dead PID with no log append (v2 after O-DEBTFRZ). |
+| O-M3EMPTY | ✅ | Fixed 2026-08-01 + tightened 2026-08-02: fresh prompt when tasks.md absent; default `M3_EMPTY_ABORT_SECS=360` (was 720); PLANNING requires **tasks.md first**. Retest-owed: next M3 without lead tip. |
+| O-S6813MISREAD | ✅ | Fixed 2026-08-01: tip `4e4c378` ctor-inject EntityManager on all Jpa*RepositoryImpl (cleared 7× S6813); EXECUTION.md O-SONARFIX now states S6813 ≠ JPQL param theater. Probe: Qwen/MiniMax misread (`a5837a3`) burned seats — durable tip in skill.
+| O-JPACTX | ✅ | Fixed 2026-08-01: tip `4e4c378` added `@Transactional` on JPA save/delete + ctor inject; EXECUTION.md O-SONARFIX documents mutating EntityManager methods need `jakarta.transaction.Transactional`.
+| O-ACVERIFY2 | ✅ | Fixed 2026-08-01: `is_verify_task` matches characterization/package verify; block findings-oracle absent skip for verify titles; `preserve untouched` prose is not preserve-subject (v2 S04 T-006 false skip on `petclinic.security.enable` → dishonest M5). |
+| O-ACCOMMITSKIP | ✅ | Fixed 2026-08-01: `committed()` ignores latest `T-NNN: ALREADY COMPLETE` when `already-complete.py` still exits must-run (v2 S04 T-004 false skip `b64e0bd` blocked JDBC harvest on M4 replay). |
+| O-JDBCSKIPSTAGING | ✅ | Fixed 2026-08-01: `already-complete.py` O-JDBCSKIP no longer prints `present:JpaRepositoryImpl-cdi` when `migration/staging/**/jdbc/Jdbc*RepositoryImpl.java` still exists (v2 S04 T-004 false skip `b64e0bd` while jdbc dir empty). Wave2 JPA-only skip preserved when staging has no JDBC.
+| O-M3KILLGREEN | ✅ | Fixed 2026-08-01: O-M3KILL (rc 137/143) now runs `m3_lint_green` before kill-retry — tip/operator green `tasks.md` no longer infinite-loops (v2 S04). outer-loop.sh worker path.
+| O-M3QWENSTALL | ⬜ | S04 w1 (2026-08-01): same — 720s O-M3EMPTY, mkdir only, 0 writes; tip tasks.md + O-M3FIRSTWRITE PLANNING. Also S02+S03 M3: OpenCode reads for minutes with 0 write tools then O-M3EMPTY@720s (S03 w1: 44 reads/0 writes; w2 same smell). Tip already says write first batch — not followed. Consider: earlier abort when write-count=0 for N min; or inject hard first-write checklist into OpenCode M3 prompt. | **Also S05 M3 w1 (2026-08-01):** wrote specs then plan-lint RED (O-M3ACCEPT path + scoped unowned); after re-read tasks.md hung ~12m+ on model (`ep_poll`) with 0 further tools — killed timeout to unblock attempt2/MiniMax.
+| O-SFIXALREADYGREEN | ⬜ | S01 m3-lint sfix: Qwen `d1e0e80` cleared findings but supervisor still launched MiniMax rescue (stale post-session milestone RED). MiniMax then committed ceremonial `dc8dbf9` “no action needed”. Fix: re-run findings/milestone *after* worker commit before spending rescue seat; skip rescue when dimension already GREEN. Recurred v2 S04 T-003: tip already GREEN (`5186613`) yet MiniMax rescue burned ~9m and committed ceremonial findings-only `a6778fc` mistitled as S6813 SQL injection. 2026-08-01. |
+| O-ESCNOCOMMIT | ✅ | Fixed 2026-08-01 (v2 S01 T-003): after MiniMax escalation, require HEAD subject `^T-NNN:` before END/K12. Findings-only tip → O-T1FINDESC undo left prior SHA; supervisor still logged “committed via MiniMax” on T-002 (`e2aa463`) + K12 PASS → false advance. On miss: try O-ESCW allow-empty, else debt-freeze. |
+| O-ESCWFINDINGS | ✅ | Fixed 2026-08-01 (same T-003): `app_dirt` excludes `migration/mta-findings-current.json` so O-ESCW is not blocked by inventory dirt (worker rc=0 + absent Shape=remove → MiniMax burn). Aligns with O-T1FINDINGS. |
+| O-M2DIORPHAN | ✅ | Fixed 2026-08-01 live (`0a9ab90`): M2 unique-ownership dropped DI dual-claim onto S01 without a task claiming `ApplicationSwaggerConfig` → outer restart plan-lint `incident-unowned` → false O-M3SKIP. Rule must stay with the story that scopes the incident file (moved `springboot-di-to-quarkus-00002` S01→S07). SEQUENCING tip owed if not already. |
+| O-DUPPROP | ✅ | Fixed 2026-08-02: `commit-hygiene.py` refuses tips that leave duplicate keys in application.properties. |
+| O-M5EVALDELETE | ✅ | Fixed 2026-08-01: SHIPPING + evaluate prompt forbid deleting landed src/main/java / required deps; supervisor restores deletions vs pre-eval HEAD and O-DEBTFRZ (v2 S04 MiniMax deleted springdatajpa + pom swap then shipped). |
+| O-M5EVALHARVEST | ✅ | Fixed 2026-08-01 (v2 S01 M5): evaluate MiniMax harvested model/repo/rest/service/dto/mapper/util to chase REMAINING pom rules / ABSENT-NOT-LANDED. Prompt+SHIPPING forbid harvest; supervisor resets evaluate tip that adds those package trees on deploy=false POM stories. |
+| O-BOOTPORTSTALE | ✅ | Fixed 2026-08-01: `boot_check` kills prior `quarkus-run.jar` when :8099 busy before start. |
+| O-BOOTROOT | ✅ | Fixed 2026-08-01 (v2 S01): boot_check also curls `${quarkus.http.root-path}/q/health` (O-HEALTHROOT). Bare `/q/health` timed out 120s when `%prod` root-path=/petclinic; MiniMax thrash. Scaffold tip: `quarkus.http.non-application-root-path=/q`. |
+| O-M5SHIPHARVEST | ✅ | Fixed 2026-08-01 (v2 S01 ship): preflight-fix MiniMax harvested staging to chase O-QJACOCO missing report on platform story (no @QuarkusTest). `qjacoco_check` SKIPs without @QuarkusTest (O-QJACOCONOTEST); preflightfix prompt forbids harvest. |
 | O-SFIXS5853 | ⬜ | T-007: Qwen wrote consecutive `assertThat(x).a(); assertThat(x).b();` → java:S5853; rewrite sfix 0-file; MiniMax sfix chained AssertJ. Tip/worker packet: chain AssertJ on same subject in characterization tests so worker-direct avoids MiniMax sfix seat. |
 | O-SFIXMSG | ⬜ | T-008 `325db8d` subject claimed "fidelity drift" but diff was sonar S1130 (+ BaseEntityTest assert). R-109: BaseEntityTest change was a *strengthening* and milestone-tree-wide repair is legitimate — keep bank for **subject/dimension mismatch** only, not the cross-file edit. |
 | O-SFIXATTR | ⬜ | F-26/F-16: supervisor ✓ END after sfix credits coding worker even when MiniMax orch ran sensor-fix (T-007 `6aa8cd2`). Fix log/event actor for sfix path so seat accounting and review ledgers stay honest.
@@ -260,17 +299,17 @@ no-trigger`) instead of greening on a stale Succeeded run.
 
 | ID | Status | Notes |
 |----|--------|-------|
-| O-DTOFIRST | ✅ | Fixed 2026-07-31 (Wave2 T-005 HOLD):  Planner/batch: harvest DTOs (type deps) **before** MapStruct mappers. T-005 Qwen RED on missing `com.demo.dto` owned by T-006 → MiniMax. Prefer reorder over soft compile. Do not invent stub DTOs / steal next-task scope. |
+| O-DTOFIRST | ✅ | Fixed 2026-07-31 (Wave2 T-005 HOLD): DTO harvest before MapStruct mappers when both tasks exist. **Reopened gap 2026-08-01** (v2 S03): mapper-only story with `com.demo.dto` imports skipped the rule (`dto_tasks` empty) → Qwen compile RED → MiniMax. Closed: plan-lint also REDs mapper tasks that reference `/dto/`/`.dto.` when the story has no DTO harvest task. Instrument: mapper-only+dto-refs. Prefer reorder/defer — do not invent stub DTOs. |
 | O-GITBAK | ✅ | Fixed 2026-07-31 (Wave2 T-005 HOLD):  Refuse staging/commit `*.bak` / `*~` / `.orig` under src/ (`62413ff` committed 8 OpenAPI dumps as `.bak`). |
 | O-SIMPLEDTO | ✅ | Fixed 2026-07-31 (Wave2 T-005 HOLD):  Refuse thin hand-rolled DTO beans when staging has OpenAPI-shaped DTO; do not rename harvest to `.bak` and invent stubs (`OwnerDto.java` vs `.bak` in `62413ff`). |
 | O-WEDGESKIP | ✅ | Fixed 2026-07-31: clear_worker_wedge_skip after mechan/worker/escalation success; skip no longer sticky for whole story.  O-WORKERWEDGE-RCA skips **all** further worker seats for the story (Wave2 T-007 ClinicServiceImpl → MiniMax immediately after T-005 DTO wedge). Durable: scope skip to same failure class / same task pattern, or clear RCA after O-DTOSTAGING-class fix lands mid-story. |
 | O-SCRATCHPY | ⬜ | Escalation invents scratch `harvest_*.py` instead of bundled `harvest-from-staging.sh` (Wave2 T-005 MiniMax). Tip+refuse commit of repo-root scratch harvesters. |
 | O-DTOALLOF | ⬜ | MiniMax OpenAPI harvest skipped `*AllOfDto`/`*FieldsDto` required by composition DTOs (Wave2 T-005). Harvest must include all OpenAPI dto/*.java under package; tip never filter AllOf/Fields. |
 | O-DTOSTAGING | ✅ | Fixed 2026-07-31: harvest-from-staging OpenAPI generated-sources fallback + javax.validation/annotation→jakarta; instrument DTOSTAGING_OK.  OpenAPI-generated DTOs live under legacy `target/generated-sources/openapi` not `migration/staging` — harvest-from-staging / O-HARVESTSTALL preseed misses them; worker wanders (Wave2 T-005 ~6m). Durable: M1/staging copy or harvest script path for openapi dto root from migration.yaml; preseed Targets from that tree.  Retest-owed (F-70 0.3): no fresh-run proof since land. |
-| O-SPECREBASE | ✅ | Fixed 2026-07-31: O-M4REPLAY walks run_base back past pre-spec T-NNN when mid-story `S0N spec:` recommit hides them (Wave2 restart after T-007 sensor-fix used ef9dbd2^=aab2b81 → false T-002 OpenCode replay). |
+| O-SPECREBASE | ✅ | Fixed 2026-07-31: O-M4REPLAY walks run_base back past pre-spec T-NNN when mid-story `S0N spec:` recommit hides them. **Hardened 2026-08-01 (O-COMMITID):** subject-leading `T-NNN:` only + floor at prior story-complete — plan subjects with `(T-005)` no longer walk into ancient prior-story task commits. |
 | O-POMUNC | ✅ | Fixed 2026-07-31 (Wave2 T-005 HOLD):  Task GREEN must not rely on uncommitted pom deps — MapStruct left dirty while mappers committed (`62413ff`). Same-commit pom or RED. |
 | O-TXDROP | ⬜ | Wave2 T-007 `30ff504`: Spring `@Transactional` dropped on *all* service methods (staging had ~29; target has 0 annotations — only a javadoc mention). Task said replace with jakarta/hibernate TX or remove for *read-only*; mutating save/delete lost TX. Durable: tip + optional commit-hygiene/sensor — preserve `jakarta.transaction.Transactional` on write methods when staging/legacy had Spring TX; findings `transaction-to-quarkus-*` not cleared by CDI-only. |
-| O-SDJPA-SKIP | ⬜ | Wave2 T-011: when Spring Data task only needs Override delete helpers and Jpa* @ApplicationScoped already cover repos, prefer already-complete / mechanical harvest over Qwen READ_THRASH→MiniMax (pair with O-JDBCSKIP). |
+| O-SDJPA-SKIP | ⬜ | Wave2 T-011: when Spring Data task only needs Override delete helpers and Jpa* @ApplicationScoped already cover repos, prefer already-complete / mechanical harvest over Qwen READ_THRASH→MiniMax (pair with O-JDBCSKIP). Recurred v2 S04 T-005: preseed+Qwen READ_THRASH→MiniMax `dfa3ce7`; fidelity RED dropped `Repository<T,ID>` from Owner/Pet interface extends — tip: either keep Spring Data extends under quarkus-spring-data-jpa OR teach fidelity that redesign may drop Spring Data base interfaces when Quarkus CDI+EM path is chosen. |
 | O-JDBCREGRESS | ✅ | Fixed 2026-07-31: commit-hygiene refuses spring-jdbc/tx/orm re-add under quarkus-maven-plugin; already-complete O-JDBCSKIP when ≥3 Jpa*RepositoryImpl @ApplicationScoped and no Jdbc* yet (Wave2 T-009 MiniMax Spring regress HOLD).  Retest-owed (F-70 0.3): no fresh-run proof since land. |
 | O-TXKANTRA | ✅ | Fixed 2026-07-31: findings-diff treats transaction-to-quarkus-* as remediated when destination source has @Transactional (kantra false-survive after CDI TX). |
 | O-HARVESTREPO | ✅ | Fixed 2026-07-31: harvest-from-staging converts Spring @Repository→@ApplicationScoped, strips @Profile, DataAccessException→PersistenceException, PersistenceContext→Inject when pom has no spring-boot. |
@@ -297,9 +336,250 @@ no-trigger`) instead of greening on a stale Succeeded run.
 | O-WEDGERESUME | ✅ | Fixed 2026-08-01: clear `/tmp/worker-wedge-skip` at supervisor start (stale skip after abort forced MiniMax). Instrument. |
 | O-ESCREOPENCODE | ✅ | Fixed 2026-08-01 (T-007/T-012/T-018): after wedge/INFERABSENT, escalation prompt forbids re-dispatching opencode — MiniMax owns file edits. Instrument. |
 | O-QTESTROOT | ⬜ | Tip: QuarkusTest RestAssured already applies quarkus.http.root-path — do not prefix `/petclinic` again (double path → 404). |
-| O-CHARREAD | ⬜ | Wave2 T-017/T-018: Qwen READ_THRASH on characterization/integration test tasks (reads≥30, mutates=0) → MiniMax every time. Tip/packet: start by writing one *Test.java skeleton from AS-IS service/REST signatures before broad reads; or mechanical test scaffold from interface method list. |
+| O-CHARREAD | ⬜ | Wave2 T-017/T-018 + **v2 S05 T-005**: Qwen READ_THRASH on characterization (reads=21, mutates=0, O-WORKERREAD kill rc=143) → MiniMax every time. Tip/packet: start by writing one *Test.java skeleton from AS-IS service signatures before broad reads; or mechanical test scaffold from interface method list. |
+| O-ESCTERM60 | ⬜ | Implemented 2026-08-01 (retest-owed): `commit-gated.sh` runs `sensors.sh task` then `SKIP_SENSOR_GATE=1 git commit`; EXECUTION + escalation/continue prompts. Was: Hermes bare `git commit` killed at 60s by commit-msg sensor (v2 S05 T-005). |
+| O-ESCW3SCOPE | ✅ | Fixed 2026-08-01: finding-scope ESCW skips later-story Target missing-target; Absorbs under rest/security/util must stay absent. Retest: v2 S05 T-006 → O-ESCW after O-ESCNOCOMMIT `61e8fcd`. Instrument. |
+| O-SONARLINEFIX | ✅ | Fixed 2026-08-02: S112 on throw-site NOSONAR; S1130 drop test throws; S2925 AtomicLong backdate (+ rewrite throws InterruptedException). Cleared S05 T-006 milestone (tip 93a5a2c). Retest: next style-autofix path. |
+| O-FRZSIG | ✅ | Fixed 2026-08-02 (F-74/F1): `freeze-harness.sh` default = pause marker only (no TERM/KILL). `--hard` kills registered `/tmp/sessions/T-*.pid` only; defers if `/tmp/m5-round-active`. Retest-owed: next O-DEBTFRZ. |
+| O-KILLLEDGER | ✅ | Fixed 2026-08-02 (F-74/F5): `harness-kill.sh` / `harness_kill` appends tag/pid/sig/cause to `/tmp/kill-ledger.log`. Wired into freeze `--hard`. Full kill-site conversion with O-PIDKILLREG at S05 boundary. |
+| O-OCGROUP | ✅ | Fixed 2026-08-02 (F-74/F3): `session_reap_group` / `harness_kill_group` TERM→KILL process group — reaps opencode `serve` linger. |
+| O-PIDREG | ✅ | Alias of O-PIDKILLREG — `/tmp/sessions/<tag>.pid` + setsid; instruments `pidreg-ok`. |
+| O-FAILSIGFILE | ✅ | Fixed 2026-08-02 (W3-92): `failure-sig.py` parses `java:RULE (n): file:line[,…]` per line; same-line-only legacy. Stops sfix aiming at wrong *Impl/*Test file. Instrument `failsigfile-ok`. Retest: next sfix capture. |
+| O-M4REPLAYNOSPEC | ✅ | Fixed 2026-08-02: when no \`^S0N spec:\` tip, O-M4REPLAY fell through to RUN_BASE=HEAD and re-dispatched all T-NNN. Now resume from T-001^ after prior story-complete. Live: RESUME_STORY=S05 RESUME_RUN_BASE=8cabda40. |
+| O-PIDKILLREG | ✅ | Fixed 2026-08-02 (F-74/F2): `session-registry.sh` + setsid register; `wait_for_worker`/wedge/residual use identity kill only; unregistered opencode = finding. Retest: next worker session end. |
+| O-CGMEM | ✅ | Fixed 2026-08-02 (F-74/F4): DevWorkspace + scaffold/template `memoryLimit` 6Gi→12Gi (applies at S05 boundary; pod restart expected). |
+| O-MAPUSESEMPTY | ⬜ | v2 S05 T-005 MiniMax: cleared MapStruct `uses=` to `{}` on Owner/Pet/VetMapper during service char tests (claimed CDI UnsatisfiedDependency). May break nested mapping later. Tip: do not empty `uses` to green Arc for unrelated unit tests; fix test classpath/mocks or scope to service package only (pair O-ESCWSCOPE). |
+| O-MECHANDOC | ⬜ | v2 S05 T-005 mechanical closure swept `migration/T-005-COMPLETION.md` + run-log into T-NNN tip. `stage_for_task_commit` should exclude ceremonial migration/*.md completion notes (keep tests/pom only). |
 | O-CHARVOIDSAVE | ⬜ | Wave2 T-017: MiniMax stubbed `given(repo.save(x)).willReturn(y)` but harvested repos use `void save` → testCompile RED ('void type not allowed'). Tip: for void save/delete use `doNothing().when(repo).save(...)`; prefer real entity beans over mocks when characterizing mutating services (UserService ROLE_). Also mockito-junit-jupiter not on pom — use MockitoAnnotations.openMocks. |
 | O-CHARWISH | ⬜ | Wave2 T-016: MiniMax characterization asserted wished Spring Petclinic semantics (Role.user wired, Role dedupe, getPet ignores-new-by-default, Visit null date, insertion-order specialties) instead of AS-IS modernized code. Tip: read entity methods before asserting; characterize actual behavior. Operator-aligned expectations then GREEN 428 tests (`40013bf`). |
 | O-CHARREFLECT | ⬜ | Wave2 T-016: reflection tests (`getDeclaredField`/`getMethod`) omitted `throws Exception` → testCompile RED; MiniMax stalled ~20m. Tip/scaffold: characterization reflection helpers declare throws Exception or use assertDoesNotThrow. |
 | O-SFIXDUPBASE | ⬜ | Wave2 T-015 sfix: MiniMax extracted BaseDto to clear DTO duplication, then Sonar RED worse (S1128 unused imports + S2160 equals-without-super). Duplication on Simple DTOs should not drive inheritance refactors mid-sensor-fix; prefer accept duplication debt or suppress, not BaseDto. |
 | O-SFIXMISDIM | ⬜ | Wave2 T-007: style-autofix rewrote DTO unused-imports (c7e7e53) while milestone RED was Arc UnsatisfiedResolutionException — wrong dimension. Also O-SFIXDIRTY discarded good Jpa*Impl harvest after sfix broke OwnerDto. Wave2 T-011: autofix committed f8ff7df (run-log.md only) while 4× S6813 field @Inject remained — ceremonial no-op; do not count as partial fix. |
+
+## O-M5EVALMUTATE ⬜ — M5 evaluate mutates harvested prod to satisfy invented tests
+
+**Seen:** S02 M5 evaluate MiniMax (2026-08-01) opened `EntityUtils()` (was private)
+and rewrote `BindingErrorsResponse` ctor chaining so new util/rest characterization
+tests pass — production churn during evaluate, not story Owns rewrite.
+
+**Wanted:** M5 evaluate must not weaken Sonar/fidelity shapes (private util ctor,
+harvested API) to green invented tests; prefer fix tests or document residual.
+Gate: refuse evaluate commit if src/main harvest diffs vs pre-M5 tip without
+explicit residual-debt rationale.
+
+## O-M5SHIPCOV ⬜ — M5 ship invents removed bootstrap for Jacoco coverage
+
+**Seen:** S02 preflight r2 MiniMax recreated `PetClinicApplication` + tests after T-004
+Remove, chasing coverage while ignoring O-M5EVALMUTATE harvest mutations and
+O-PREFLIGHTDIM cap.
+
+**Wanted:** If coverage RED and bootstrap intentionally absent, escalate-noaction /
+document residual — never recreate removed Spring Boot entrypoint. Prefer fix tests
+to match harvest over mutating prod (pair with O-M5EVALMUTATE refuse).
+
+## O-M3DUPHARVEST ⬜ — M3 plan re-tasks already-shipped harvest from prior story
+
+**Seen:** S03 MiniMax backstop plan (2026-08-01) T-002 harvests BaseEntity/NamedEntity/Person
+already shipped in S02; T-008 is a meta "commit specs" task after M3 already committed.
+
+**Wanted:** plan-lint / brief-diff: refuse tasks whose target paths already exist from
+prior story-complete (or mark already-complete AC explicitly). M3 must not invent
+ceremonial commit tasks for specs already on tip.
+
+## O-GODNODEORDER ⬜ — god-node harvest before Owner forces scope creep
+
+**Seen:** S03 T-003 (Pet/Visit/PetType) worker also landed Owner.java to satisfy
+Pet.owner compile; fidelity RED after tip; style-autofix then touched unrelated
+EntityUtils tests (1548dc4).
+
+**Wanted:** plan-lint order: harvest Owner (and other Pet dependencies) before
+or with god-nodes; or allow compile with stub only in staging. Scope sensor should
+flag Owner as O-ESCWSCOPE when not in T-003 Owns unless explicitly paired.
+
+## O-SFIXRESCUE ⬜ — MiniMax sfix rescue after Qwen already cleared RED dims
+
+**Seen:** S03 T-003: Qwen sfix committed Pet.getVisits fidelity fix (`6264acd`);
+dims fidelity+sonar GREEN; MiniMax rescue still launched because milestone was
+RED at handoff / O-SFIXLOOP refused milestone, then thrash on GREEN findings.
+
+**Wanted:** Before MiniMax rescue, re-run dimension sensors; skip rescue if
+fidelity+sonar+task GREEN. Do not burn MiniMax on stale milestone RED.
+
+## O-ENTITYDS ✅ — default-profile datasource required once @Entity lands
+
+**Seen:** S03 T-003: task sensor GREEN (%dev H2) but milestone `mvn verify` RED —
+Quarkus Hibernate could not find datasource `<default>` because JDBC was
+`%dev.`-only. After god-node entities, package/verify failed → O-DEBTFRZ.
+
+**Fixed:** unprofiled H2 defaults in `application.properties` (O-ENTITYDS comment).
+Live tip commit on petclinic-rest-v2. Prefer same in scaffold for deploy=false
+entity harvest stories.
+
+## O-M5JDBCSONAR ✅ — M5 preflight Sonar GREEN after JDBC/JPA coverage tips
+
+**Seen:** S04 M5 after dual-Arc tip (`quarkus-spring-data-jpa` removed): preflight
+past Arc/fidelity; Sonar RED — ~27 new violations + ~0% new coverage on
+`jdbc/*` `@Alternative` harvest. style-autofix only partial; MiniMax preflight
+raced and corrupted pom / deleted JPA.
+
+**Progress 2026-08-01:** violations cleared; new_coverage ~72% after JDBC+JPA
+tests + O-JACOCOARGLINE/O-JACOCOREUSE. Still short of 80% (delete/save tails).
+
+**Fixed 2026-08-01:** preflight GREEN after coverage tips + jacoco wiring
+(O-JACOCOARGLINE/O-JACOCOREUSE). Supervisor-pause cleared for ship.
+
+## O-JACOCOARGLINE ✅ — surefire must consume jacoco `@{argLine}`
+
+**Seen:** S04 M5: `JdbcRepositoryCoverageTest` GREEN but Sonar/jacoco showed
+jdbc/* at 0% after `@QuarkusTest` landed — surefire omitted jacoco agent
+(`argLine`), so plain JUnit never wrote `jacoco-quarkus.exec`.
+
+**Fixed:** empty `<argLine></argLine>` property + surefire `<argLine>@{argLine}</argLine>`
+in live petclinic pom (tip). Mirror into scaffold default pom when present.
+
+
+## O-JACOCOREUSE ✅ — QuarkusTest must not wipe plain-JUnit jacoco exec
+
+**Fixed 2026-08-01:** `quarkus.jacoco.reuse-data-file=true` + shared
+`target/jacoco-quarkus.exec` (with O-JACOCOARGLINE surefire `@{argLine}`).
+
+## O-SHIPPFSTALE ⬜ — M5 ship preflight-fix ignores tip-GREEN between seats
+
+**Seen:** S04 M5: tip made `sensors.sh preflight` GREEN (`08c9981`) while
+supervisor was paused; on pause-clear MiniMax still launched on stale
+`/tmp/preflight-failure.txt` RED and burned seats.
+
+**Wanted:** Before each preflight-fix Hermes seat, re-run preflight (or trust
+fresh GREEN log newer than failure file). If GREEN, skip MiniMax and proceed
+to ship. Do not relaunch correction on stale RED evidence.
+
+## O-SUREFIREIT ✅ — Surefire skips `*IT.java` by default
+
+**Seen:** S04 M5 factory gate: local preflight GREEN with `JpaRepositoriesIT`
+(@QuarkusTest) but Tekton maven-build never ran it (160 tests, no QuarkusTest)
+→ Sonar new_coverage 66.7% with jpa/* at 0%.
+
+**Fixed:** rename to `*Test.java` + surefire `<includes>` for `**/*IT.java`.
+
+## O-MMRESET ✅ — MiniMax/hygiene must not reset honest Gate fix tips
+
+**Seen:** S04 M5: after tip `605649d` Gate fix r1, MiniMax gate seat ran
+`git reset --hard HEAD~1`, discarded the fix, added mockito test that does
+not compile, then ship declared gate exhausted.
+
+**Wanted:** Forbid hard reset in ship/gate prompts; sensor-gate on dirty/reset;
+if tip commit matches `Gate fix rN:` prefix and milestone GREEN, skip MiniMax.
+
+
+## O-JDBCREGRESSFALSE ✅ — hygiene only flags *new* spring-jdbc adds
+
+**Seen:** S04 Gate fix r1 (surefire includes) touched pom.xml; O-JDBCREGRESS
+reset the tip because spring-jdbc/tx already present for honest JDBC CDI.
+
+**Fixed:** `commit-hygiene.py` compares tip pom vs parent — only net-new
+spring-jdbc/tx/orm artifacts trip O-JDBCREGRESS.
+
+## O-M3DIABSORB ⬜ — multi-story findings-scope needs Absorbs help
+
+**Seen:** S05 M3 (2026-08-01): `springboot-di-to-quarkus-00003` spans repos/services/REST/security.
+Worker hung on plan-lint RED (O-M3ACCEPT path literal + K1 unowned prior/later files).
+Absorbs bullet lists are ignored (parser only reads same-line tokens / `→ src/` claim lines);
+legacy paths in Target position trip LINT:package.
+
+**Wanted:** M3 fix prompt + PLANNING tip: for shared finding ids, emit Target `legacy → targetPackage/...`
+arrows (or same-line Absorbs of target paths) for prior-story and later-story incidents; never put
+acceptance.path literal in non-deploy tasks.md. Optional: plan-lint treat target-tree files from
+completed stories as already owned.
+
+## O-S112LEGACYTHROW ✅ — harvest `throws Exception` + NOSONAR / fidelity
+
+**Seen:** S05 T-003 milestone sonar: `UserService.saveUser(... ) throws Exception` (faithful Spring harvest) → java:S112; style-autofix 0 files.
+
+**Also S05:** T-003-sfix-w *removed* an existing tip NOSONAR on UserService (undo). Sfix prompts must not strip NOSONAR/preserve markers. MiniMax tip with findings.json churn → O-SFIXSCOPE reset; inline NOSONAR failed harvest-fidelity after O-FIDSONAR throws-strip (EOL comment left on normalized line).
+
+**Fixed 2026-08-01:** tip NOSONAR on preserved signature (`a8466e1`); **O-FIDEOLCOMMENT** — `harvest-fidelity.py` strips end-of-line `//` comments so NOSONAR does not false-RED. Scaffold + live harness synced. Sfix-undo still a prompt smell (watch).
+
+## O-FIDEOLCOMMENT ✅ — fidelity must strip end-of-line `//` comments
+
+**Seen:** S05 T-003 — after O-FIDSONAR strips `throws …`, staged `void saveUser(User user);` ≠ dest `void saveUser(User user); // NOSONAR …` → FIDELITY RED / O-DEBTFRZ.
+
+**Fixed 2026-08-01:** `normalize()` strips `\s*//.*$` after comment-only-line skip (scaffold + live `.hermes/harness/harvest-fidelity.py`).
+
+## O-ESCTERM60 ⬜ — Hermes 60s terminal kills `git commit` + task-sensor hook
+
+**Implemented 2026-08-01 (retest-owed on next Hermes gated commit):** `commit-gated.sh` + EXECUTION tip + escalation/continue prompt line.
+
+**Seen:** v2 S05 T-005 MiniMax escalation (2026-08-01): staged Clinic/UserServiceImplTest + mockito pom;
+`git commit` invoked via Hermes terminal timed out at 60s three times while commit-msg/pre-commit
+runs full `sensors.sh task` (Quarkus test boot ~10s + suite). Tip stayed at T-004; agent also hit
+MaaS 429 token limits mid-retry and `python3 -c` deny for jacoco XML.
+
+**Wanted:** Longer terminal timeout for commit/sensor commands in escalation path, OR two-phase
+commit (hook-skip + supervisor post-verify). Document so MiniMax does not thrash 60s commits.
+| O-M3EMPTYTASKS | ✅ | Fixed 2026-08-02 with O-M3EMPTY: PLANNING.md + EXECUTION.md require `tasks.md` first; abort 360s. Retest-owed on fresh re-run M3. |
+| O-T6WRONGTITLE | ✅ | Fixed 2026-08-02: Convert/Port/Migrate titles excluded from removal-already-absent; absent-removal requires empty stage after ignore. S06 T-001 false tip reset. Instrument t6wrongtitle-ok. Retest: next Convert mechan. |
+| O-RESTCREATE | ⬜ | S06 T-001: Qwen rc=0 clean tree — never wrote OwnerRestController (Target absent); ESCW3 correctly blocked; MiniMax escalated. Tip/skill: Convert REST when dest missing = create from legacy harvest, not noop. Retest: next Convert REST with absent dest. |
+| O-ESCWDEBT | ⬜ | S06 T-001: after O-DEBTFRZ, O-ESCW claimed already-satisfied with HEAD=`debt: T-001…` tip — must never ESCW against debt/scope-revert subjects. |
+| O-SFIXTESTCOMP | ⬜ | S06 T-001 sfix added OwnerRestControllerTest with Mockito thenReturn Set type errors → task RED → debt; dirt discarded restored GREEN. sfix should not invent broken tests that poison the task sensor. |
+| O-DEBTFRZRACE | ⬜ | S06 T-001: O-SFIXWORKER logged task GREEN after Qwen, then still wrote debt RED + O-DEBTFRZ HOLD (orphan/untracked OwnerRestControllerTest poison). Debt must re-sensor clean tree before freeze; do not freeze on discarded dirt. |
+| O-ORPHANOC | ⬜ | After O-ESCW/already-satisfied, MiniMax/Qwen opencode (pid ~23m) stayed alive unregistered and kept writing broken tests. ESCW/complete must harness_kill registered + ledger-kill known session tags for that task. |
+| O-RESTREADTHRASH | ⬜ | S06 T-002: Qwen READ_THRASH (21r/0w) on Convert VetRestController when Target absent — same O-RESTCREATE class as T-001; worker needs create-from-legacy tip before first mutate, or earlier FIRSTMUT kill with create brief. |
+| O-RESTS2589 | ✅ | S06 T-004 milestone: Sonar S2589 on Visit/Pet RestControllers (redundant null/id checks harvested from Spring). Skill tip: after JAX-RS convert, drop always-true/false guards; style-autofix cleared S1128 but not S2589. |
+| O-SFIXMILESTONE | ✅ | S06 T-004 sfix: Qwen ran sensors.sh milestone → REFUSED (O-SFIXLOOP); burned full 15m seat then MiniMax rescue. Sfix prompt must say sonar|task only for post-milestone RED; never instruct milestone re-run. |
+| O-IFACERENAME-REST | ✅ | S06 T-005/T-007: Qwen renames legacy public methods for "correctness" (getAllSpecialtys→Specialties; addOwner→addUser) → redesign-sig RED → MiniMax. Tip must: copy legacy method names verbatim from staging/oracle; never rename for grammar/semantics. |
+| O-QWENJUNKFILE | ⬜ | S06 T-007: Qwen left empty untracked \`CDI\` file at repo root. Worker/session cleanup should drop non-target artifacts before exit; O-SFIXDIRTY-style discard for stray root files. |
+| O-RESTINVENTCRUD | ⬜ | S06 T-007: MiniMax expanded UserRestController beyond staging (only addOwner) inventing get/update/delete + missing UserService APIs → compile RED / bad tests. Escalation must stay staging-faithful for Shape=modify Oracle=present — do not invent CRUD surface. |
+| O-SFIXDIRTYLEAD | ✅ | Lead discarded out-of-scope User* mapper/repo/service dirt + CDI + poison UserRestControllerTest during MiniMax 15m quota backoff; committed staging-faithful T-007. |
+| O-WORKERSTALL | ⬜ | S06 T-008: Qwen wrote RootRestController+test then sat ~25m with no commit until lead killed (rc=143). Need FIRSTMUT/idle-after-dirt kill or post-write commit nudge when Target file exists and tree dirty. |
+| O-CREATEFIRSTMUT | ✅ | Fixed 2026-08-02: Shape=create injects O-CREATEFIRSTMUT first-write tip + `WORKER_READ_GLOB_MAX=10`; EXECUTION.md + PLANNING.md updated. Retest-owed: next create task on re-run. |
+| O-M3EMPTY | ✅ | Fixed 2026-08-02: default `M3_EMPTY_ABORT_SECS=360`; PLANNING.md requires `tasks.md` first. Prior empty-detect logic retained. Retest-owed: next M3 worker seat. |
+| O-EXMAPSPRING | ✅ | Fixed 2026-08-02: lead tip `35b8197` maps PersistenceException→503 / ValidationException→400 / EntityNotFound+ObjectRetrieval→404 via ExceptionMapper&lt;Throwable&gt; (V6 R6 forbids ExceptionMapper&lt;Exception&gt;); no Spring DAO. Skill tip: ExceptionMapper create tasks prefer jakarta/app types. Retest: T-009 tip GREEN. |
+| O-RESTAPIPREFIX | ⬜ | S06 T-001..T-008 Convert REST landed `@Path("/vets")` etc; staging is `api/vets`. Acceptance `/petclinic/api/vets` failed until T-010 added `/api` prefix. Tip: harvest `@RequestMapping("api/…")` into JAX-RS `@Path("/api/…")` on Convert. |
+| O-ACCPATHROOT | ✅ | Fixed 2026-08-02: `acceptance_path_handler` stripped only full path / bare leaf — missed `@Path("/api/vets")` under `quarkus.http.root-path=/petclinic`. Now strips root-path and matches resource `@Path` / embedded leaf. Retest: STORY_DEPLOY=true sensors.sh static. |
+| O-PRODSCHEMA | ✅ | Fixed 2026-08-02 seed path; **corrected 2026-08-02 Wave3**: unprofiled `drop-and-create` is forbidden (prod schema drop on boot — W3-131/132). Use `%dev`/`%test`/`%acceptancetest` only; `prod_schema_contract` + commit-hygiene enforce. |
+| O-ACCEPTCRUD | ⬜ | S06 T-010: MiniMax wrote 15 CRUD/400 acceptance tests beyond migration.yaml acceptance.path; BindingErrorsResponse Jackson 500 → RED. Escalation must prefer GET acceptance.path + array body only. |
+| O-BINDERRJSON | ✅ | Fixed 2026-08-02 tip `91eeca1`: BindingError + getBindingErrors getters so Quarkus Jackson can serialize entity(BindingErrorsResponse). Retest: preflight GREEN. |
+| O-SFIXPOSTCOMMIT | ⬜ | S06 T-009: MiniMax tip `2f6e81c` GREEN at commit then post-commit task RED from untracked poison PetClinicExceptionMapperTest (ConstraintViolation ctor) → O-SFIXSCOPE archive+reset. Escalation must not leave inventing tests untracked after commit-gated; commit-gated should refuse if untracked test dirt under Owns. |
+| O-ESCALAFTERRESET | ⬜ | S06 T-009: after O-SFIXSCOPE reset tip to T-008, MiniMax attempt-2 rewrote broken mapper + sensor binary-log RED → O-DEBTFRZ while lead tip was about to land. Post-reset escalation needs clean-tree re-sensor + prefer commit existing GREEN dirt before new invent. |
+| O-SECJDBCDEP | ✅ | Fixed S07 T-002 lead `e7ce56d`: use **`quarkus-elytron-security-jdbc`** (BOM-managed); bare `quarkus-security-jdbc` fails POM (missing version). Tip/skill: JDBC basic-auth stories add elytron-jdbc with security. |
+
+| O-WORKERWEDGESKIP | ⬜ | S07 T-002: O-WORKERWEDGE JSON_STALE → sticky skip further Qwen seats for story (MiniMax-only). Prefer first-write scaffold for Shape=create so wedge never fires; optionally clear sticky after lead tip GREEN so later tasks can retry worker. |
+| O-ALREADYPROP | ✅ | Fixed 2026-08-02: `already-complete.py` — Target/Owns `.java` blocks preserve-token skip (`target_java_blocks_preserve`). Instrument: missing BasicAuth + preserve token → rc=1. Retest-owed: fresh re-run S07-class security story. |
+| O-T6EEMPTYESC | ✅ | Fixed 2026-08-02: `escw-eligible.py` — pom/dep tasks with named `quarkus-*` artifactIds already in pom → `pom-deps-present` ESCW even if findings-oracle still present. Instrument + O-ESCW path. |
+| O-KANTRAMISS | ✅ | Fixed 2026-08-02: M5 calls `kantra-ensure` then analyzes; if binary still missing, substitutes `mta-findings-current.json` / `mta-findings.json` as after-scan. |
+| O-RESUMEBASEEXCL | ✅ | Fixed 2026-08-02: `committed()` includes `git log -1 $RUN_BASE` so tip at RESUME_RUN_BASE counts. Wire instrument. |
+| O-ALREADYFINDING | ✅ | Fixed 2026-08-02: `annotation_work_incomplete` blocks oracle-absent skip when RolesAllowed/PreAuthorize work still missing on Owns/Target. Instrument: VetRestController without @RolesAllowed + oracle absent → rc=1. |
+| O-WIREUP | ✅ | Fixed 2026-08-02 (W3-141): `wireup-check.py` — staging `@Around`/`@Aspect`/… requires dest CDI attachment or ≥1 consumer; empty `@ApplicationScoped` RED. Task/static sensor. Fixture: CallMonitoringAspect. **FP fix W3-150:** package-private `@ConfigProperty`/`@Inject` fields count as members (O-WIREUP-FP). |
+| O-DESTBASE | ✅ | Re-fixed 2026-08-02: oracle-absent skip no longer blanket-blocked by `is_convert_task` — `missing_target_path` covers O-ACRESTABS; Convert+scaffold-presatisfied parent-pom may skip again. |
+| O-TMPARCHIVE | ✅ | Fixed 2026-08-02 (W3-150): outer-loop RUN COMPLETE copies supervisor/outer logs, kill-ledger, oc-*.json/.err, sensors into `migration/run-archives/<ts>-<sha>/` (PVC). |
+| O-ALREADYREPL | ✅ | Fixed 2026-08-02 (W3-140): `replacement_constructs_missing` — named `quarkus-*` in Goal/Acceptance/Target must be in pom before already-complete skip. |
+| O-M5STALE | ✅ | Fixed 2026-08-02 (W3-146): failed/substituted after-scan → `STALE-AFTER` + `stale_resolve_pct=UNSCORED`; no RESOLVED credit; drop "honest". |
+| O-KANTRAPATH | ✅ | Fixed 2026-08-02 (W3-99/145): default `KANTRA_HOME=/projects/.tools/kantra` (PVC); `kantra-path.sh` + gitops kantra-ensure; /tmp fallback only. |
+| O-SECAUTHTEST | ✅ | Fixed 2026-08-02 (W3-142): sensor requires 401/403 test when `@RolesAllowed` + `*.security.enable` present; EXECUTION tip `@TestProfile`. |
+| O-SIGINT | ⬜ | Wave3: 8/15 non-zero exits are rc=130 SIGINT; harness kills use TERM/KILL only. O-ESCALCAUSE now labels `sigint`. Root source still unknown (OpenCode/session?) — watch kill-ledger on next run. |
+| O-SFIXNOSPRINGSDATA | ✅ | Fixed 2026-08-02 (W3-70): `sfix-no-spring.py` keys on any `quarkus-spring-*` artifact, not only `quarkus-spring-data-jpa`. |
+
+## Wave-3 close counsel (Fable 5 — banked 2026-08-02)
+
+Strategic backlog after S01–S07 ship. **Honesty gates from the Wave-3 retro
+(O-WIREUP…O-KANTRAPATH) are separate and already ✅.** These rows are the
+quality / performance / durability frontier — do not treat full bank-gate
+as a wipe blocker except where noted.
+
+| ID | Status | Note |
+|----|--------|------|
+| O-COMMITSHRINK | ⬜ | F-75/A1: session→commit silent test shrink (T-010 413→90→29). Gate: undeclared net drop of tests/asserts vs session tree → refuse. **Highest pre-rerun quality item that touches delivery.** One-time S06/S07 audit owed. |
+| O-DEGRADED | ✅ | F-75/A2 largely covered by **O-M5STALE** (STALE-AFTER / unscores). Extend stamp to run-report sections if needed. |
+| O-FRZFALSE | ⬜ | F-75/A3: retry-before-freeze (2-of-2 RED) + flake ledger. |
+| O-LOGCOLLIDE | ⬜ | F-75/A4: key `/tmp/oc-*` by `<story>-<task>-<attempt>`. |
+| O-HDRFIDELITY | ⬜ | F-75/A5: harvest-fidelity licence-header preservation. |
+| O-PLANSKEL | ⬜ | G6: `plan-skeleton.py` at M3 — compile task universe from M1 artifacts; model fills judgment slots. Spec: `tmp/GENERAL-HARNESS-IMPROVEMENTS.md` §7. Retroactive validate vs W2/W3 plans before live. |
+| O-DECIDE | ⬜ | G9: Decisions section in skeleton (with G6). Highest quality-per-effort for silent-choice losses. |
+| O-MAPGEN | ⬜ | N5 — already banked above; land before specimen #3 M1. |
+| O-RULELINKS | ⬜ | N6 — already banked above; same extraction pass as N5. |
+| O-RECIPEPREPASS | ⬜ | G4/N16 — already banked; performance: kill whole mechanical worker seats. |
+| O-GOLDENFRESH | ⬜ | Already banked; pair with wave-close commit of golden `.hermes` before next provision. |
+| O-DEMOREPLAY | ⬜ | B6: record blessed W3 run for workshop replay. Capture now while tip `d7a278b` + artifacts exist. |
+| O-CGMEM | ✅ | Template `memoryLimit` 12Gi (scaffold migration). Counsel said 13Gi — confirm live cgroup; raise template if measured 13. Do not re-patch per workspace. |
+| O-W3RETROPROOF | ⬜ | Formal Wave-3 retro close: signal-death % vs &lt;10% target, corrections vs halving, kill-ledger ⨝ session table (every rc has cause). Credibility artifact for demo. |
+| O-DOCPROMOTE | ⬜ | Promote V2/GENERAL/RAG + Wave retros + F-73 RCA from `tmp/` → `docs/`; archive wave reviews with V-series. D2 coverage bar → factory config. |

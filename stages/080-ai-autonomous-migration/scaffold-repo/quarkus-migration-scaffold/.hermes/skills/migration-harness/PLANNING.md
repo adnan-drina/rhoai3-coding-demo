@@ -5,6 +5,13 @@ cite the catalog, do not re-derive architecture per run. `tasks.md` MUST
 follow [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) — the supervisor's plan
 lint bounces non-conforming plans.
 
+**O-M3EMPTY — write `tasks.md` first.** Do not spend the session only
+reading. Within the first tool batch: `mkdir -p specs/<slug>/` and
+**write `tasks.md` first** (plan-lint gate), then `plan.md` / `spec.md`
+(stubs OK, then refine). An empty `specs/<slug>/` directory or a session
+with zero writes is aborted after ~360s (`M3_EMPTY_ABORT_SECS`) and wastes
+the seat. Verify with plan-lint, then one commit `SNN spec:`.
+
 M1 ground truth and the architecture profile live in [ANALYSIS.md](ANALYSIS.md)
 (and `analyze.sh`). This file owns M3. The normalize snippet below is
 kept so whole-app supervisor runs that land here without an outer-loop
@@ -27,8 +34,11 @@ if [ -n "$latest" ]; then
   cp "$latest" /projects/modernized/migration/mta-findings.json
 else
   # No IDE analysis available — produce ground truth with the kantra sensor
+  # (O-KANTRAPATH: ${KANTRA_HOME:-/projects/.tools/kantra}/kantra).
   kantra-ensure
-  /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
+  KBIN="${KANTRA_HOME:-/projects/.tools/kantra}/kantra"
+  [ -x "$KBIN" ] || KBIN=/tmp/kantra/kantra
+  "$KBIN" analyze -i /projects/legacy -o /tmp/kantra-baseline \
     --target quarkus --json-output --overwrite || true
   # kantra has a known bug marshaling the dependencies file: the command may
   # exit 1 even though the violations output.json is complete. Trust the file.
@@ -236,3 +246,10 @@ task via **declared fields** (not Out-of-scope disclaimers):
 `LINT:incident-conflict:` when a file has zero owners or two+. Package
 mapping is `legacyPackage` → `targetPackage` from `migration.yaml`.
 
+## O-M3FIRSTWRITE (mandatory — before any legacy deep-read)
+
+Within the **first tool batch**, create `specs/<slug>/tasks.md` (and
+`spec.md` / `plan.md` stubs if missing) using TASKS-TEMPLATE.md structure.
+Then run `.hermes/harness/plan-lint.py` and only then deepen reads to fix
+RED. Reading every legacy file before the first write is O-M3QWENSTALL and
+burns the O-M3EMPTY 720s seat.

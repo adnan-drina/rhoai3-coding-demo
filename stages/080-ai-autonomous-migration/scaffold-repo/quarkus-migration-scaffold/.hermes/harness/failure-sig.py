@@ -38,17 +38,30 @@ def parse_text(text: str) -> set[str]:
         keys.add(f"compile:{Path(m.group(1)).name}:{msg}")
     for m in re.finditer(r"(?m)cannot find symbol\s*\n\s*symbol:\s*(\S+)", text):
         keys.add(f"compile:symbol:{m.group(1)}")
-    # Sonar violations file: RULE file:line or similar
+    # Sonar violations — primary format from sonar-report.py / sensors.sh:
+    #   java:S2925 (1): src/test/.../ClinicServiceImplTest.java:332
+    #   java:S1130 (2): path/A.java:32, path/B.java:43
+    # O-FAILSIGFILE (W3-92): never pair file:line on one line with the rule on
+    # the *next* line — that misattributed S2925→UserServiceImplTest and burned
+    # a full sfix+rescue on the wrong file.
     for m in re.finditer(
-        r"(?m)^(S\d+|java:[A-Za-z0-9_.]+)\s+(\S+\.java)",
+        r"(?m)^(java:[A-Za-z0-9_.]+|S\d+)\s*\(\d+\):\s*(.+)$",
+        text,
+    ):
+        rule = m.group(1)
+        for fm in re.finditer(r"([A-Za-z0-9_./-]+\.java):\d+", m.group(2)):
+            keys.add(f"sonar:{rule}:{Path(fm.group(1)).name}")
+    # Legacy same-line: "S1066 FooTest.java" or "Foo.java:10 java:S112"
+    for m in re.finditer(
+        r"(?m)^(S\d+|java:[A-Za-z0-9_.]+)\s+(\S+\.java)\s*$",
         text,
     ):
         keys.add(f"sonar:{m.group(1)}:{Path(m.group(2)).name}")
     for m in re.finditer(
-        r"(?m)([A-Za-z0-9_./-]+\.java):(\d+)\s+(S\d+|java:[A-Za-z0-9_.]+)",
+        r"(?m)([A-Za-z0-9_./-]+\.java):\d+[^\S\n]+(S\d+|java:[A-Za-z0-9_.]+)\b",
         text,
     ):
-        keys.add(f"sonar:{m.group(3)}:{Path(m.group(1)).name}")
+        keys.add(f"sonar:{m.group(2)}:{Path(m.group(1)).name}")
     # SENSOR RED lines
     for m in re.finditer(r"SENSOR RED \((\w+)\):\s*(.+)$", text, re.M):
         kind = m.group(1)

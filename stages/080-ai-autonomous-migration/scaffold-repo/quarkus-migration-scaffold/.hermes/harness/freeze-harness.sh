@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
-# O-KILLREL — stop Track B agents without matching absolute harness paths.
-# Live argv is often: bash .hermes/harness/outer-loop.sh (relative, no leading /).
-# Patterns must match the relative form used by outer-loop's self-guard.
+# O-FRZSIG (F-73/F1 / F-74) — freeze = signal, not slaughter.
+# Default: set the pause marker the loops already honor at checkpoints
+# (O-DEBTFRZ contract: do not continue to the next task). Kills NOTHING
+# unless --hard, and then only REGISTERED task workers (never ship-loop
+# hermes, never m5-evaluate). Mid-M5 freezes are deferred.
 set -euo pipefail
 cd "${SENSOR_ROOT:-/projects/modernized}"
 
-SELF_PAT='freeze-harnes[s]\.sh'
-kill_pat() {
-  local pat="$1"
-  # shellcheck disable=SC2009
-  ps -eo pid=,args= | while read -r pid args; do
-    echo "$args" | grep -qE "$SELF_PAT" && continue
-    echo "$args" | grep -qE "$pat" || continue
-    kill -TERM "$pid" 2>/dev/null || true
-  done
-  sleep 1
-  ps -eo pid=,args= | while read -r pid args; do
-    echo "$args" | grep -qE "$SELF_PAT" && continue
-    echo "$args" | grep -qE "$pat" || continue
-    kill -KILL "$pid" 2>/dev/null || true
-  done
-}
+HERE=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=harness-kill.sh
+. "$HERE/harness-kill.sh"
 
-# Character-class trick avoids matching this script's own argv text.
-kill_pat 'harness/outer-loo[p]\.sh'
-kill_pat 'harness/superviso[r]\.sh'
-kill_pat 'venv/bin/python.*hermes cha[t]'
-kill_pat '[o]pencode (run|serve)'
+# One-marker rule: never fire hard (or even re-freeze loudly) mid M5 round.
+if [[ -f /tmp/m5-round-active ]]; then
+  touch /tmp/supervisor-pause-deferred
+  echo "freeze-harness: deferred — /tmp/m5-round-active present (pause queued)"
+  exit 0
+fi
 
-touch /tmp/supervisor-pause 2>/dev/null || true
-echo "freeze-harness: agents signaled; /tmp/supervisor-pause touched"
-pgrep -af 'harness/outer-loo[p]\.sh|harness/superviso[r]\.sh|hermes cha[t]|[o]pencode' \
-  && echo "freeze-harness: WARNING still running" || echo "freeze-harness: clear"
+touch /tmp/supervisor-pause
+echo "freeze-harness: pause marker set — loops stop at next checkpoint (no sessions killed)"
+
+if [[ "${1:-}" == "--hard" ]]; then
+  shopt -s nullglob
+  for f in /tmp/sessions/T-*.pid; do
+    [[ -f "$f" ]] || continue
+    pid=$(tr -d '[:space:]' <"$f" || true)
+    tag=$(basename "$f" .pid)
+    # Skip protected tags even if mis-registered.
+    case "$tag" in
+      m5-evaluate|m5-*|preflight*|ship*|gatefix*) continue ;;
+    esac
+    harness_kill "$tag" "$pid" TERM freeze-hard
+  done
+  echo "freeze-harness: --hard TERM sent to registered T-* workers only (see /tmp/kill-ledger.log)"
+fi

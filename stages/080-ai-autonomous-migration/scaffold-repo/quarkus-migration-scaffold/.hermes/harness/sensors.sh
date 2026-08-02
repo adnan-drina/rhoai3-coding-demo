@@ -314,6 +314,26 @@ redesign_sig_check() {
     || fail task "redesign public method set drifted from staging (O-REDESIGNSIG/O-IFACERENAME) — keep legacy method names"
 }
 
+# O-WIREUP (W3-141): attachment/reachability, not just method-name shape.
+wireup_check() {
+  [ -f "$SELF_DIR/wireup-check.py" ] || return 0
+  OUT=$(python3 "$SELF_DIR/wireup-check.py" 2>/dev/null) \
+    || fail task "$(echo "$OUT" | head -3)"
+}
+
+# O-SECAUTHTEST (W3-142): if RolesAllowed + security.enable exist, require a
+# test that asserts 401/403 (security-enabled path must be exercised).
+security_auth_test_contract() {
+  local props="src/main/resources/application.properties"
+  [ -f "$props" ] || return 0
+  grep -qE '\.security\.enable=' "$props" 2>/dev/null || return 0
+  grep -Rql '@RolesAllowed' src/main/java --include='*.java' 2>/dev/null || return 0
+  if ! grep -RqlE '401|403|Unauthorized|Forbidden|Status\.UNAUTHORIZED|Status\.FORBIDDEN' \
+       src/test/java --include='*.java' 2>/dev/null; then
+    fail task "O-SECAUTHTEST — @RolesAllowed + security.enable present but no test asserts 401/403 (use @TestProfile / configOverrides)"
+  fi
+}
+
 task_sensor() {
   tree_hygiene
   package_scope
@@ -322,6 +342,8 @@ task_sensor() {
   placeholder_tests
   restassured_contract
   redesign_sig_check
+  wireup_check
+  security_auth_test_contract
   # G-AC3 / O-ACCEPTREC (Poll 50): ceremonial acceptance must fail on the
   # per-task sensor, not only at milestone/preflight/ship — T-006 record DTO
   # otherwise lands GREEN via task-only post-commit verify.
@@ -384,10 +406,19 @@ sonar_check() { # $1 = inloop|full  (default full)
 
 # O-QJACOCO — also exposed as `sensors.sh qjacoco` for behavioural instruments.
 qjacoco_check() {
-  if [ ! -s target/jacoco-report/jacoco.xml ]; then
-    fail coverage "O-QJACOCO: quarkus-jacoco report missing (target/jacoco-report/jacoco.xml) — coverage number is not trustworthy; do not chase Sonar new_coverage until @QuarkusTest instrumentation lands after mvn verify"
+  if [ -s target/jacoco-report/jacoco.xml ]; then
+    echo "qjacoco check GREEN"
+    return 0
   fi
-  echo "qjacoco check GREEN"
+  # O-M5SHIPHARVEST / O-QJACOCONOTEST: platform stories (deploy=false, no
+  # @QuarkusTest yet) cannot produce quarkus-jacoco.xml — hard-failing here
+  # sent MiniMax ship preflight-fix into full staging harvest (Wave2 S01).
+  # Skip until at least one @QuarkusTest exists under src/test.
+  if ! grep -RqlE '@QuarkusTest' src/test/java 2>/dev/null; then
+    echo "qjacoco check SKIP (O-QJACOCONOTEST: no @QuarkusTest yet — not a harvest signal)"
+    return 0
+  fi
+  fail coverage "O-QJACOCO: quarkus-jacoco report missing (target/jacoco-report/jacoco.xml) — coverage number is not trustworthy; do not chase Sonar new_coverage until @QuarkusTest instrumentation lands after mvn verify"
 }
 
 milestone_sensor() { # $1 = inloop|full (default inloop)
@@ -466,7 +497,11 @@ findings_sensor() {
     cp "${FINDINGS_SENSOR_JSON}" "$cur"
   elif [ "${FINDINGS_SENSOR_REUSE:-}" = "1" ] && [ -f "$cur" ]; then
     :
-  elif [ -x /tmp/kantra/kantra ] || [ -f /tmp/kantra/kantra ]; then
+  elif KBIN=$(
+      # shellcheck disable=SC1091
+      . "$SELF_DIR/kantra-path.sh" 2>/dev/null
+      kantra_bin 2>/dev/null
+    ) && [ -n "$KBIN" ]; then
     local A_TARGETS K_ARGS t DEST_SRC
     A_TARGETS=$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 "targets:" | sed 's/.*\[\(.*\)\].*/\1/; s/,/ /g')
     [ -n "$A_TARGETS" ] || A_TARGETS="quarkus jakarta-ee9 cloud-readiness"
@@ -487,7 +522,7 @@ findings_sensor() {
         "$DEST_SRC/.git" 2>/dev/null || true
     fi
     (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-      /tmp/kantra/kantra analyze -i "$DEST_SRC" -o /tmp/kantra-findings-out \
+      "$KBIN" analyze -i "$DEST_SRC" -o /tmp/kantra-findings-out \
       $K_ARGS --mode source-only --json-output --overwrite) \
       > /tmp/sensor-findings.log 2>&1 \
       || { echo "WARN findings: kantra failed — see /tmp/sensor-findings.log (not hard RED)"; return 0; }
@@ -526,17 +561,35 @@ boot_check() {
             QUARKUS_DATASOURCE_USERNAME="${DEV_DB_USER:-coolstore}"
             QUARKUS_DATASOURCE_PASSWORD="${DEV_DB_PASSWORD:-coolstore}")
   fi
+  # O-BOOTPORTSTALE: drop a prior quarkus-run on the probe port before start.
+  if command -v ss >/dev/null 2>&1; then
+    ss -lptn 2>/dev/null | grep -q ':8099' && {
+      for p in $(ps -eo pid=,args= | awk '/[q]uarkus-run\.jar/{print $1}'); do
+        kill -9 "$p" 2>/dev/null || true
+      done
+      sleep 1
+    }
+  fi
   env "${DB_ENV[@]}" QUARKUS_HTTP_PORT=8099 \
     java -jar target/quarkus-app/quarkus-run.jar > /tmp/sensor-boot.log 2>&1 &
   local pid=$!
-  local up=""
+  local up="" root=""
+  # O-HEALTHROOT / O-BOOTROOT: preserved servlet context-path as
+  # quarkus.http.root-path moves /q/health under ${root}/q/health unless
+  # non-application-root-path=/q is set. Probe both.
+  root=$(grep -E '^(%prod\.)?quarkus\.http\.root-path=' src/main/resources/application.properties 2>/dev/null \
+    | tail -1 | sed -E 's/^[^=]+=//;s/[[:space:]]+$//' || true)
+  root=${root%/}
   for _ in $(seq 1 30); do
     sleep 2
-    if curl -sf http://localhost:8099/q/health >/dev/null 2>&1; then up=yes; break; fi
+    if curl -sf http://localhost:8099/q/health >/dev/null 2>&1 \
+      || { [ -n "$root" ] && curl -sf "http://localhost:8099${root}/q/health" >/dev/null 2>&1; }; then
+      up=yes; break
+    fi
     kill -0 $pid 2>/dev/null || break
   done
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
-  [ "$up" = "yes" ] || fail boot "$(grep -iE 'ERROR|Caused by|SchemaManagement|Migration' /tmp/sensor-boot.log | head -6)"
+  [ "$up" = "yes" ] || fail boot "$(grep -iE 'ERROR|Caused by|SchemaManagement|Migration|Port .* in use' /tmp/sensor-boot.log | head -6)"
   echo "boot check GREEN (Flyway + schema validation against the dev DB)"
 }
 
@@ -592,6 +645,7 @@ wiring_invariants() {
     || fail wiring "$(echo "$OUT" | head -3)"
   http_port_deploy_contract
   gen_seed_contract
+  prod_schema_contract
   pct_file_contract
 }
 
@@ -644,17 +698,31 @@ PY
 gen_seed_contract() {
   local props="src/main/resources/application.properties"
   [ -f "$props" ] || return 0
-  grep -qE '^[[:space:]]*quarkus\.hibernate-orm\.sql-load-script=' "$props" 2>/dev/null \
+  grep -qE '^[[:space:]]*%?(dev|test|acceptancetest)\.?quarkus\.hibernate-orm\.sql-load-script=|^[[:space:]]*quarkus\.hibernate-orm\.sql-load-script=' "$props" 2>/dev/null \
     || return 0
+  # Prefer profiled generation for seed; unprofiled drop-and-create is O-PRODSCHEMA.
+  if grep -qE '^[[:space:]]*%(dev|test|acceptancetest)\.quarkus\.hibernate-orm\.database\.generation=(drop-and-create|update)\b' "$props" 2>/dev/null; then
+    return 0
+  fi
   local gen
   gen=$(grep -E '^[[:space:]]*quarkus\.hibernate-orm\.database\.generation=' "$props" 2>/dev/null \
     | head -1 | cut -d= -f2 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
   [ -n "$gen" ] || return 0
   case "$gen" in
     validate|none)
-      fail wiring "sql-load-script set but database.generation=${gen} (O-GENSEED) — use update or drop-and-create so import.sql can seed a fresh DB"
+      fail wiring "sql-load-script set but database.generation=${gen} (O-GENSEED) — use %dev/%test/%acceptancetest drop-and-create|update (not prod drop-and-create)"
       ;;
   esac
+}
+
+# O-PRODSCHEMA (W3-131/132): unprofiled drop-and-create drops production schema
+# on boot when profiled variants already exist (or always — prod must not recreate).
+prod_schema_contract() {
+  local props="src/main/resources/application.properties"
+  [ -f "$props" ] || return 0
+  if grep -qE '^[[:space:]]*quarkus\.hibernate-orm\.database\.generation=drop-and-create\b' "$props" 2>/dev/null; then
+    fail wiring "unprofiled database.generation=drop-and-create (O-PRODSCHEMA) — use %dev/%test/%acceptancetest only; prod must not drop schema on boot"
+  fi
 }
 
 # O-PCTFILE (R-230/F-68/T-012): Quarkus profile-aware *files* are
@@ -890,11 +958,15 @@ acceptance_ship_contract() {
 # V6 R7 / P0c — before deploy, the stamped acceptance.path must have a Java
 # handler (full path, leaf @Path, or acceptanceCheck method). Plan-lint alone
 # only requires the path string in tasks.md; this catches ceremonial tasks.
+# O-ACCPATHROOT: acceptance.path often includes quarkus.http.root-path
+# (e.g. /petclinic/api/vets) while @Path is only the resource suffix
+# (/api/vets). Strip root-path before matching; also accept @Path containing
+# the resource path or the leaf segment.
 acceptance_path_handler() {
   [ "${STORY_DEPLOY:-false}" = "true" ] || return 0
   [ -f migration.yaml ] || return 0
   [ -d src/main/java ] || fail acceptance "STORY_DEPLOY=true but src/main/java is absent — cannot serve acceptance.path"
-  local acc_path leaf
+  local acc_path leaf root_path resource_path
   acc_path=$(python3 -c "
 import re,sys
 try: my=open('migration.yaml').read()
@@ -904,11 +976,39 @@ print(m.group(1) if m else '')
 " 2>/dev/null)
   [ -n "$acc_path" ] || return 0
   leaf="${acc_path##*/}"
+  root_path=$(python3 -c "
+import re,sys
+try: p=open('src/main/resources/application.properties').read()
+except FileNotFoundError: sys.exit(0)
+# prefer unprofiled quarkus.http.root-path=
+m=re.search(r'^(?!%)quarkus\\.http\\.root-path=(\\S+)', p, re.M)
+if not m:
+    m=re.search(r'^quarkus\\.http\\.root-path=(\\S+)', p, re.M)
+print(m.group(1).rstrip('/') if m else '')
+" 2>/dev/null || true)
+  resource_path="$acc_path"
+  if [ -n "$root_path" ] && [[ "$acc_path" == "$root_path"/* ]]; then
+    resource_path="${acc_path#"$root_path"}"
+  fi
+  # normalize leading slash for matching
+  resource_path="/${resource_path#/}"
   if grep -RIqF --include='*.java' "$acc_path" src/main/java 2>/dev/null; then
     return 0
   fi
+  # @Path("/api/vets") or @Path("api/vets") matching resource suffix after root-path
+  if [ -n "$resource_path" ] && [ "$resource_path" != "/" ] && grep -RIqE --include='*.java' \
+      "@Path\\(\"${resource_path}\"|@Path\\(\"${resource_path#/}\"|@Path\\('${resource_path}'|@Path\\('${resource_path#/}'" \
+      src/main/java 2>/dev/null; then
+    return 0
+  fi
   if [ -n "$leaf" ] && grep -RIqE --include='*.java' \
-      "@Path\\(\"${leaf}\"|@Path\\('/${leaf}'|acceptanceCheck|acceptance-check" \
+      "@Path\\(\"${leaf}\"|@Path\\(\"/${leaf}\"|@Path\\('/${leaf}'|@Path\\('${leaf}'|acceptanceCheck|acceptance-check" \
+      src/main/java 2>/dev/null; then
+    return 0
+  fi
+  # leaf embedded in a longer @Path (e.g. @Path("/api/vets") when leaf=vets)
+  if [ -n "$leaf" ] && grep -RIqE --include='*.java' \
+      "@Path\\(\"[^\"]*/${leaf}\"|@Path\\('[^']*/${leaf}'" \
       src/main/java 2>/dev/null; then
     return 0
   fi
@@ -984,7 +1084,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; restassured_contract; redesign_sig_check; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
+  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; restassured_contract; redesign_sig_check; wireup_check; security_auth_test_contract; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   findings)  findings_sensor; echo "FINDINGS CHECK DONE";;
   qjacoco)   qjacoco_check;;

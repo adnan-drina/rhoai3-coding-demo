@@ -6,8 +6,9 @@ Exit 1 when HEAD (or given sha) commits:
   - both dto/*.java and dto/*.bak in the same commit (O-SIMPLEDTO)
   - Java importing org.mapstruct / @Mapper while tree pom at sha lacks
     a mapstruct dependency (O-POMUNC)
-  - pom.xml re-adds spring-jdbc / spring-tx / spring-orm while
-    quarkus-maven-plugin is present (O-JDBCREGRESS)
+  - pom.xml newly adds spring-jdbc / spring-tx / spring-orm vs parent
+    while quarkus-maven-plugin is present (O-JDBCREGRESS). Pre-existing
+    deps for honest Jdbc*RepositoryImpl CDI are allowed.
 
 Usage: commit-hygiene.py [sha]
 """
@@ -76,17 +77,53 @@ def main() -> int:
                 + ",".join(mapstruct_java[:4])
             )
 
-    # O-JDBCREGRESS: after Quarkus BOM, never re-introduce Spring JDBC/ORM
-    # modules to greenwash a JDBC harvest (Wave2 T-009 MiniMax).
+    # O-JDBCREGRESS: after Quarkus BOM, never *newly* introduce Spring
+    # JDBC/ORM modules to greenwash a JDBC harvest (Wave2 T-009 MiniMax).
+    # Compare to parent — pre-existing spring-jdbc for Jdbc*Impl is OK
+    # (O-JDBCREGRESSFALSE: Gate fix r1 was falsely reset when pom touched).
     if "pom.xml" in names:
         pom_text = _show_file(sha, "pom.xml")
+        parent = f"{sha}^"
+        parent_pom = _show_file(parent, "pom.xml")
         if "quarkus-maven-plugin" in pom_text:
             bad = []
             for art in ("spring-jdbc", "spring-tx", "spring-orm"):
-                if re.search(rf"<artifactId>\s*{re.escape(art)}\s*<", pom_text, re.I):
+                pat = rf"<artifactId>\s*{re.escape(art)}\s*<"
+                in_tip = bool(re.search(pat, pom_text, re.I))
+                in_parent = bool(re.search(pat, parent_pom, re.I)) if parent_pom else False
+                if in_tip and not in_parent:
                     bad.append(art)
             if bad:
                 problems.append("O-JDBCREGRESS:spring-readd:" + ",".join(bad))
+
+    # O-DUPPROP: refuse tips that leave duplicate keys in application.properties
+    # (S07 T-002 era: petclinic.security.enable / quarkus.security.jdbc.* twice).
+    # O-PRODSCHEMA: refuse unprofiled drop-and-create (W3-131/132).
+    prop_paths = [
+        n
+        for n in names
+        if n.endswith("application.properties")
+        or n.endswith("application.yaml")
+        or n.endswith("application.yml")
+    ]
+    for pp in prop_paths:
+        body = _show_file(sha, pp)
+        if not body or pp.endswith((".yaml", ".yml")):
+            continue
+        keys: list[str] = []
+        for ln in body.splitlines():
+            s = ln.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            keys.append(s.split("=", 1)[0].strip())
+        dup = sorted({k for k in keys if keys.count(k) > 1})
+        if dup:
+            problems.append("O-DUPPROP:" + pp + ":" + ",".join(dup[:8]))
+        if re.search(
+            r"(?m)^[ \t]*quarkus\.hibernate-orm\.database\.generation=drop-and-create\b",
+            body,
+        ):
+            problems.append("O-PRODSCHEMA:unprofiled-drop-and-create:" + pp)
 
     if problems:
         print("\n".join(problems))

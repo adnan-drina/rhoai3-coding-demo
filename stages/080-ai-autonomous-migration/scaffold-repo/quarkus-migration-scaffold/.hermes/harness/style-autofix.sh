@@ -33,5 +33,7 @@ mvn -q -Dmaven.repo.local="$M2_RUN" \
   > /tmp/style-autofix.log 2>&1 || { echo "style-autofix: recipes failed — /tmp/style-autofix.log"; exit 1; }
 # O-S1066: deterministic nested-if collapse (recipe absent from 1.21.1)
 python3 "$(dirname "$0")/s1066-collapse.py" . >> /tmp/style-autofix.log 2>&1 || true
+# O-SONARLINEFIX: S112 NOSONAR / S1130 redundant throws / S2925 sleep→cache backdate
+python3 "$(dirname "$0")/sonar-line-fix.py" /tmp/sonar-violations.txt >> /tmp/style-autofix.log 2>&1 || true
 CHANGED=$(git diff --name-only -- src/ | wc -l | tr -d ' ')
 echo "style-autofix: recipes complete, $CHANGED files changed"

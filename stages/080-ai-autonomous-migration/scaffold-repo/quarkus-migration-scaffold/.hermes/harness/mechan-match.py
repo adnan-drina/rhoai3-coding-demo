@@ -26,6 +26,11 @@ def _task_body_local(tasks_file: Path, tid: str) -> tuple[str, str]:
         start = m.end()
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
         body = text[start:end]
+        # O-T6dCHARSEC: intermediate ## section titles between T-NNN blocks
+        # (e.g. "## Model Characterization Tests" before T-009) must not leak
+        # into the prior task body — they falsely trip wants_tests →
+        # need-src-test and MiniMax-escalate an already-good main harvest.
+        body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
         body = re.split(
             r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
             body,
@@ -79,11 +84,14 @@ def main() -> int:
 
     blob = f"{title}\n{body}"
     paths = re.findall(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", blob)
-    # O-ACCREATE: Create/Add/… titles never use removal-already-absent (Wave2
-    # T-009: body said "EntityUtils removal" while the work is Create *Test).
+    # O-ACCREATE / O-T6WRONGTITLE: Convert/Port/Create/… never use
+    # removal-already-absent. S06 T-001: title "Convert OwnerRestController"
+    # body said "remove @RestController" + Target path absent → false
+    # removal-already-absent → mechan tip of only devfile.yaml.
     create_task = bool(
         re.search(
-            r"(?i)^\s*(Create|Add|Implement|Write|Author|Introduce|Build)\b",
+            r"(?i)^\s*(Create|Add|Implement|Write|Author|Introduce|Build|"
+            r"Convert|Port|Migrate|Redesign|Harvest|Transform|Replace)\b",
             title,
         )
     )
@@ -94,13 +102,25 @@ def main() -> int:
         re.search(r"(?i)\bremoved?\b|\bremoval\b|\bdelet(?:e|ion)\b|\brefactored\b", blob)
     )
     if removal_task and paths and all(not Path(w).exists() for w in paths):
-        # Ignore harness bookkeeping dirt — absence of the target is the work.
+        # O-T6WRONGTITLE: absence satisfaction requires NO unexpected staged
+        # paths after ignore filter (else bookkeeping becomes the tip).
+        if staged:
+            print("removal-absent-but-unexpected-stage")
+            return 1
         print("removal-already-absent")
         return 0
 
     if not staged:
         print("empty-stage")
         return 1
+
+    # O-T6dPKGINFO / O-STRUCTINFO: package-info.java-only stages are valid for
+    # build-verification / package-doc tasks even when the body mentions
+    # "characterization tests" / src/test as a verify step (v2 S03 T-008:
+    # Qwen wrote package-info → need-src-test → MiniMax).
+    if all(p.endswith("package-info.java") for p in staged):
+        print("package-info-only")
+        return 0
 
     wants_tests = bool(
         re.search(
@@ -109,11 +129,22 @@ def main() -> int:
             blob,
         )
     )
-    if wants_tests:
+    # Verify/build-validation titles cite running tests without owning them.
+    verify_task = bool(
+        re.search(
+            r"(?i)\bbuild verification\b|\bpackage validation\b|"
+            r"\bverify the migrated\b|\bpackage verification\b",
+            title,
+        )
+    )
+    if wants_tests and not verify_task:
         if any(p.startswith("src/test/") for p in staged):
             return 0
         print("need-src-test")
         return 1
+    if wants_tests and verify_task:
+        # Fall through to path / soft-src checks (pom, package-info, etc.).
+        pass
 
     if paths:
         for want in paths:

@@ -701,7 +701,11 @@ def main():
         is_dto = bool(_dto_re.search(blob)) and not re.search(
             r"(?i)mapstruct|/mapper/", blob
         )
-        is_mapper = bool(_mapper_re.search(blob))
+        # Ignore package-structure / verify tasks that only mention /mapper/
+        # paths or summarize MapStruct in acceptance text (S03 T-001/T-008).
+        is_mapper = bool(_mapper_re.search(blob)) and not re.search(
+            r"(?i)\*\*Shape\*\*:\s*(structure|verify)\b", blob
+        )
         if is_dto:
             dto_tasks.append(tid)
         if is_mapper:
@@ -716,6 +720,22 @@ def main():
                 f"{last_dto} DTO harvest — schedule DTO (type deps) before "
                 f"mappers (O-DTOFIRST)",
             )
+
+    # O-DTOFIRST (absent-DTO story): mapper-only plans still compile-RED when
+    # mapper tasks reference *.dto / /dto/ but the story never harvests DTOs
+    # (petclinic-rest-v2 S03 T-005 → MiniMax). Ordering rule above is a no-op
+    # when dto_tasks is empty — close that hole.
+    if mapper_tasks and not dto_tasks:
+        for tid in mapper_tasks:
+            blob = bodies.get(tid, "")
+            if re.search(r"(?i)(/dto/|\.dto\.|dto\s+imports|com\.demo\.dto)", blob):
+                lint(
+                    "O-DTOFIRST",
+                    f"{tid} MapStruct/mapper harvest references DTOs but this "
+                    f"story has no DTO harvest task — add DTO harvest before "
+                    f"mappers or defer mappers (O-DTOFIRST)",
+                )
+                break
 
     # O-CDIORDER: repository CDI/Panache beans before services that @Inject them.
     # Service-first → task GREEN (unit tests) then milestone Arc

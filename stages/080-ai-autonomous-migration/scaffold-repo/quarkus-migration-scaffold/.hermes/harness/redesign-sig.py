@@ -21,11 +21,51 @@ CLASS_METHOD = re.compile(
     r"(?:^|\n)\s*(?:public|protected)\s+(?:static\s+)?(?:[\w.<>,\[\]\s]+)\s+(\w+)\s*\(",
     re.M,
 )
-IFACE_METHOD = re.compile(r"\b(\w+)\s*\([^;{}]*\)\s*;")
+# After strip_noise, iface methods are `ReturnType name(...);` — require a
+# type token before the name so license text / stray tokens cannot match.
+IFACE_METHOD = re.compile(
+    r"(?:^|\n)\s*(?:(?:default|static)\s+)?(?:[\w.<>,\[\]?]+\s+)+(\w+)\s*\([^;{}]*\)\s*;",
+    re.M,
+)
 INTERFACE = re.compile(r"\b(?:public\s+)?interface\s+(\w+)")
 CONVERTED = re.compile(
     r"@(ApplicationScoped|RequestScoped|Singleton|Inject|Path|RegisterRestClient)\b"
 )
+
+
+def strip_noise(text: str) -> str:
+    """O-REDESIGNSIGANNOT — drop comments and annotations before method scrape.
+
+    Naive ``name(...);`` matching treats ``@Query("...")`` + the following
+    method as one capture named ``Query``, and license ``Version 2.0 (...)``
+    as a method named ``0``. Strip those so only real API names remain.
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"//.*?$", "", text, flags=re.M)
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "@":
+            j = i + 1
+            while j < n and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            if j < n and text[j] == "(":
+                depth = 0
+                while j < n:
+                    if text[j] == "(":
+                        depth += 1
+                    elif text[j] == ")":
+                        depth -= 1
+                        if depth == 0:
+                            j += 1
+                            break
+                    j += 1
+            i = j
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
 
 
 def public_methods(text: str) -> set[str]:
@@ -43,6 +83,7 @@ def public_methods(text: str) -> set[str]:
         "enum",
         "record",
     }
+    text = strip_noise(text)
     names: set[str] = set()
     for m in CLASS_METHOD.finditer(text):
         if m.group(1) not in skip:

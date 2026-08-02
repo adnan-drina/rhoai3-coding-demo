@@ -10,13 +10,9 @@
 
 ```bash
 kantra-ensure
-# O-DELTASTAGING: scan a copy that excludes migration/staging and .hermes
-# (staging is legacy-by-design — counting it as residual is a false delta).
-# The supervisor builds /tmp/kantra-after-src with those excludes; sessions
-# must NOT re-run kantra themselves.
-/tmp/kantra/kantra analyze -i /tmp/kantra-after-src -o /tmp/kantra-after \
-  --target quarkus --json-output --overwrite || true
-cp /tmp/kantra-after/output.json /projects/modernized/migration/mta-findings-after.json
+# O-KANTRAPATH: binary lives under ${KANTRA_HOME:-/projects/.tools/kantra}
+# (not /tmp — pod restart wipes /tmp). Supervisor owns the after-scan.
+# O-DELTASTAGING: scan a copy that excludes migration/staging and .hermes.
 ```
 
 Done means the baseline findings are resolved (or waived in the spec) —
@@ -32,6 +28,32 @@ Absence of a rule in the after-scan is **not** automatically resolved:
 - **SCAFFOLD-PRESATISFIED** — destination already satisfied (no story credit).
 Always cite the `METRIC src_main_java` / `residual_incidents` lines so
 pom/props residual cannot hide real Java progress.
+
+**O-M5STALE:** if after-analysis fails or is substituted (no live kantra
+delta), `findings-delta.txt` is stamped `STALE-AFTER` with
+`stale_resolve_pct=UNSCORED` — **no rule may move into RESOLVED** and the
+word "honest" must not appear. Re-run kantra before claiming resolve %.
+
+**O-M5EVALHARVEST:** evaluate is a **delta report + optional in-story
+pom/props closeout**, not a second harvest pass. Never
+`harvest-from-staging` or create `model/`/`repository/`/`rest/`/`service/`
+trees to clear REMAINING / ABSENT-NOT-LANDED. Explain those rows in
+`migration/run-log.md` (later story / not landed). Pom-plugin residuals
+(e.g. compiler/failsafe rule ids) → edit `pom.xml` only, or leave as
+honest residual if out of story Owns.
+
+**O-M5EVALDELETE:** never delete or empty story Owns / already-landed
+`src/main/java` harvest to “fix” REMAINING or compile stories. If
+sensors are RED, say so in the evaluate commit — do not remove
+`repository/**` (or other landed packages) or swap away required deps
+(e.g. `quarkus-spring-data-jpa`). Supervisor restores deletions and
+FREEZEs ship when evaluate dirt includes tracked deletes under
+`src/main/java` / `pom.xml`.
+
+**O-M5SHIPHARVEST / O-QJACOCONOTEST:** preflight-fix must not harvest to
+satisfy O-QJACOCO. If there is no `@QuarkusTest` yet, sensors skip the
+jacoco.xml hard-fail — do not invent app classes for coverage on a
+platform story.
 
 2. Factory pre-flight: run `.hermes/harness/sensors.sh preflight`
    (isolated clean verify, new-code sonar/coverage gate, prod-profile
@@ -211,3 +233,24 @@ Round budget is supervisor-enforced across all three classes. A final
 rejection halts the run with the evidence preserved for the retro —
 never bypass or water down the gate.
 
+
+## O-DTOCOV — OpenAPI DTO package vs Sonar new-code coverage
+
+Harvested OpenAPI `**/dto/**` beans routinely trip Sonar new-code coverage,
+CPD, and unused-import / regex rules (S1128/S6353). Scaffold default:
+`sonar.exclusions` + `sonar.coverage.exclusions` + `sonar.cpd.exclusions` =
+`**/dto/**`. Prefer that over inventing BaseDto hierarchies, ceremonial
+getter tests, or hand-scrubbing generator imports mid-sfix. Do not weaken
+the gate for non-DTO packages.
+
+## O-ENTITYDSPROD — default datasource vs factory postgres URL
+
+Once `@Entity` lands, package/verify needs a default-profile datasource
+(O-ENTITYDS). Putting unprofiled `db-kind=h2` satisfies verify but breaks
+factory deploy when the Deployment injects
+`QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://…` — H2 driver rejects the URL
+and readiness stays 503.
+
+**Rule:** default (and prod) `quarkus.datasource.db-kind=postgresql` with a
+placeholder JDBC URL; confine H2 to `%dev` / `%test` only. Never clear
+deploy readiness with Flyway scaffolding or index.html theater.

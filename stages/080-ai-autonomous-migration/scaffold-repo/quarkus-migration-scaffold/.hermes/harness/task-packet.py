@@ -414,6 +414,7 @@ Constraints:
 - Follow AGENTS.md and the repo skills; no scope creep
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)
 {dest_line}
+- O-IFACERENAME / O-REDESIGNSIG: preserve legacy *public method names* verbatim from migration/staging (even if misspelled or semantically odd, e.g. getAllSpecialtys, addOwner on UserRestController). Never rename methods for grammar/clarity — redesign-sig will RED and block commit.
 - O-ESCALORACLE: Shape={shape} Oracle={oracle}. If Oracle=absent / Shape=remove: success is verified ABSENCE of named targets — do NOT create a file just to delete it, and do NOT invent deletion targets not listed in Owns/Target.
 - Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST)
 - For Class rewrite: FIRST action when a Target .java is missing — run .hermes/skills/migration-harness/scripts/harvest-from-staging.sh <package-relative-path> (works for src/main and src/test). Do not re-run OpenRewrite. Do not invent assertThat(true) stubs (G-PLACE / O-HARVESTSTALL).

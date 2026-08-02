@@ -143,12 +143,16 @@ names. Never close with `assertThat(true)` / `assertTrue(true)` (G-PLACE) —
 run `.hermes/harness/sensors.sh task` GREEN before declaring success
 (escalation path included; supervisor refuses red commits).
 
-**FIRST mutate (O-WORKERWEDGE-RCA / O-WORKERREAD):** within the first ~5 tool
-calls, `edit`/`write`/`bash` the task Target (or run
+**FIRST mutate (O-WORKERWEDGE-RCA / O-WORKERREAD / O-CREATEFIRSTMUT):** within
+the first ~5 tool calls, `edit`/`write` the task Target (or run
 `harvest-from-staging.sh`). Do **not** burn the seat on read/glob tours —
 the supervisor kills read-thrash and frozen JSON sessions, then skips
-further worker seats for the rest of the story. Characterization: Target
-`*Test` first commit before WireMock/pom rabbit holes.
+further worker seats for the rest of the story. **Shape=create:** the Target
+basename must exist after the first write batch (threshold is tighter —
+~10 reads with 0 writes → kill). Characterization: Target `*Test` first
+before WireMock/pom rabbit holes. **M3 SPECIFY:** write
+`specs/<slug>/tasks.md` first (lint gate), then plan/spec — do not explore
+for 12 minutes with an empty specs tree (O-M3EMPTY).
 
 Pass only the package-relative path (`model/Product.java`,
 `service/CatalogService.java`) — never the package directories, never an
@@ -269,6 +273,18 @@ migration-general — V9 S03 T-008 probe):**
   `Instant` (or equivalent) and advance time deterministically.
 - **S1066** — collapsible nested `if` → single `if (a && b)` (also covered
   by style-autofix `CollapsibleIfStatements`).
+- **S6813** — field dependency injection must not be used. Fix by
+  **constructor-injecting** collaborators (`private final EntityManager em`
+  + `public Foo(EntityManager em)`). Do **not** “fix” S6813 by rewriting
+  JPQL/SQL string concatenation to `:params` — that addresses a different
+  rule (and may be good separately) but leaves S6813 RED (O-S6813MISREAD).
+- **S125** — remove commented-out statements in production code (including
+  legacy `//this.em.remove(...)` residue after redesign).
+- **JPA writes need `@Transactional`** — after redesigning Spring Data /
+  `@PersistenceContext` repos to plain `EntityManager`, annotate
+  mutating methods (`save` / `delete` / `persist` / `merge` / `remove`)
+  with `jakarta.transaction.Transactional` (O-JPACTX). Reads may stay
+  non-transactional unless the brief requires otherwise.
 
 **Sensor-fix sessions (O-SFIXLOOP):** when the supervisor dispatches a
 sensor-fix, verify with the *cheap* dimension check only
@@ -283,6 +299,19 @@ tests/comments while FINDINGS is RED).
 `sensors.sh sonar` needs ~2–3 minutes. `timeout 60 .hermes/harness/sensors.sh sonar`
 exits 124 before the gate finishes (V9 S03 T-008). Use the sensors
 unwrapped, or `timeout` ≥ 600s.
+
+**Hermes/MiniMax gated commits (O-ESCTERM60):** do **not** run bare
+`git commit` for `T-NNN:` / `sensor fix:` tips under a short terminal
+timeout. The commit-msg hook re-runs `sensors.sh task` (~90–120s) and a
+60s tool timeout kills the commit (exit 124) before the tip lands. Prefer:
+
+```bash
+# terminal timeout ≥300s (or background+notify). Stages optional paths.
+.hermes/harness/commit-gated.sh 'T-005: …' src/test/java/…/FooTest.java pom.xml
+```
+
+That runs the task sensor once, then `SKIP_SENSOR_GATE=1 git commit`.
+Do not stage `migration/mta-findings-current.json` on coding tips (O-SFIXSCOPE).
 
 Characterization-test packets (S01 retro: all four escalations were
 this task class) additionally carry: (1) the specific legacy test cases
@@ -447,3 +476,27 @@ leave the tree uncommitted, record the failure evidence in
 read from the JaCoCo report, never inferences like "compilation success
 indicates coverage".
 
+## O-IFACERENAME — preserve legacy public method names
+
+When converting/porting a class that exists in `migration/staging`, keep the **exact** public method names from staging (including legacy typos like `getAllSpecialtys` or odd names like `addOwner` on `UserRestController`). Renaming for grammar or domain clarity trips redesign-sig (O-REDESIGNSIG) and forces MiniMax escalation. Fix call sites only if the plan explicitly renames.
+
+## O-WIREUP — attach redesigned components
+
+Signature preservation is not enough. If staging had `@Around` / `@Aspect` /
+`@Scheduled` / `@EventListener`, the destination must carry a CDI attachment
+(`@Interceptor` + `@InterceptorBinding`, `@AroundInvoke`, `@Observes`, …)
+**or** be referenced by another source file. Empty `@ApplicationScoped` beans
+with no members fail the sensor. Do not ship hollow aspect/config classes.
+
+## O-SECAUTHTEST — exercise the security-enabled path
+
+When adding `@RolesAllowed` / JDBC security and a `*.security.enable` property,
+ship at least one `@QuarkusTest` + `@TestProfile` (or configOverrides) that sets
+security enabled and asserts **401 or 403** on a protected route. The
+security-disabled acceptance path alone cannot prove authorization.
+
+## O-PRODSCHEMA — never unprofiled drop-and-create
+
+Use `%dev` / `%test` / `%acceptancetest` for `database.generation=drop-and-create`.
+Bare (production) `quarkus.hibernate-orm.database.generation=drop-and-create`
+fails wiring — it drops the prod schema on every boot.

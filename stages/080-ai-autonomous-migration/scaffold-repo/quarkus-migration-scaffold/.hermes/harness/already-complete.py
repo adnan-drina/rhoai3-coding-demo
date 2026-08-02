@@ -77,6 +77,13 @@ def preserve_is_task_subject(title: str, body: str, item: str) -> bool:
         focus,
     ):
         return False
+    # O-ACPRESERVEUNTOUCHED: "Preserve untouched this story: TOKEN" is a
+    # non-goal constraint (do-not-regress), not the subject of the task.
+    if re.search(
+        rf"(?is)preserve\s+untouched.{{0,160}}{re.escape(item)}",
+        focus,
+    ):
+        return False
     return True
 
 
@@ -264,8 +271,133 @@ def is_verify_task(title: str) -> bool:
     an endpointEnv token appeared in Acceptance/preserve prose while the real
     work was proving acceptance.path + collection body (G-CAT / O-ACCEPTGEN).
     Env token presence ≠ verification complete.
+
+    O-ACVERIFY2: also titles whose work is characterization / package verify
+    (v2 S04 T-006: 'Repository characterization tests and package verify'
+    preserve-skipped on petclinic.security.enable from Target-design prose).
     """
-    return bool(re.search(r"^\s*(Verify|Ensure|Confirm|Validate)\b", title, re.I))
+    return bool(
+        re.search(
+            r"(?i)^\s*(Verify|Ensure|Confirm|Validate)\b"
+            r"|\bcharacterization\b|\bpackage verify\b|\bverify\b",
+            title,
+        )
+    )
+
+
+def _owns_and_target_java(body: str) -> list[str]:
+    """Target → paths plus Owns: listed .java paths (O-ALREADYFINDING)."""
+    paths = list(_target_java_paths(body))
+    for m in re.finditer(r"(?im)^\*\*Owns\*\*:?\s*(.+)$", body):
+        paths.extend(
+            re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", m.group(1))
+        )
+    # de-dupe, preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in paths:
+        if p in seen or "migration/staging" in p or "/legacy/" in p:
+            continue
+        seen.add(p)
+        out.append(p)
+    return out
+
+
+def target_java_blocks_preserve(body: str) -> bool:
+    """O-ALREADYPROP: Target/Owns .java means class work — preserve token ≠ done.
+
+    S07 T-002/T-009: `petclinic.security.enable` present while
+    BasicAuthenticationConfig missing or VetRestController lacked @RolesAllowed.
+    Property-only preserve tasks (no Target .java) still skip via present:TOKEN.
+    """
+    return bool(_owns_and_target_java(body))
+
+
+def _focus_blob(title: str, body: str) -> str:
+    parts = [title]
+    for m in re.finditer(
+        r"(?is)\*\*(?:Goal|Acceptance|Target design)\*\*.*?(?=\n\*\*|\n#{2,6}\s|\Z)",
+        body,
+    ):
+        parts.append(m.group(0))
+    return "\n".join(parts)
+
+
+def replacement_constructs_missing(title: str, body: str) -> Optional[str]:
+    """O-ALREADYREPL (W3-140): skip only when declared replacements exist.
+
+    Wave 3 S07: oracle-absent / preserve-token skips accepted T-005/T-009 while
+    Target work was incomplete. Require quarkus-* deps named in Goal/Acceptance/
+    Target design to be present in pom.xml before any already-complete skip.
+    Annotation gaps are handled by annotation_work_incomplete.
+    """
+    focus = _focus_blob(title, body)
+    arts = sorted(
+        set(
+            re.findall(
+                r"\b(quarkus-[a-z0-9][a-z0-9-]{2,})\b",
+                focus,
+                re.I,
+            )
+        )
+    )
+    # Drop finding-id lookalikes (quarkus-00000) and overly generic tokens.
+    arts = [a for a in arts if not re.search(r"-\d{3,}$", a)]
+    if not arts:
+        return None
+    pom = ROOT / "pom.xml"
+    if not pom.is_file():
+        return "need-pom:" + ",".join(arts[:6])
+    try:
+        ptxt = pom.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "need-pom:" + ",".join(arts[:6])
+    missing = [a for a in arts if a not in ptxt]
+    if missing:
+        return "need-deps:" + ",".join(missing[:6])
+    return None
+
+
+def annotation_work_incomplete(title: str, body: str) -> Optional[str]:
+    """O-ALREADYFINDING: RolesAllowed / PreAuthorize work not done on Targets.
+
+    Finding-absent must not skip Shape=modify annotation harvest when Owns/
+    Target REST classes still lack @RolesAllowed.
+    """
+    blob = f"{title}\n{body}"
+    if not re.search(
+        r"(?i)@?RolesAllowed|@?PreAuthorize|role.?based|security annotation",
+        blob,
+    ):
+        return None
+    paths = _owns_and_target_java(body)
+    if not paths:
+        # Title asks for RolesAllowed but no paths — do not oracle-skip.
+        return "rolesallowed-no-paths"
+    missing: list[str] = []
+    for want in paths:
+        p = ROOT / want
+        if not p.is_file():
+            # basename search under src/
+            leaf = Path(want).name
+            hits = list((ROOT / "src").rglob(leaf)) if (ROOT / "src").is_dir() else []
+            if not hits:
+                missing.append(want)
+                continue
+            p = hits[0]
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            missing.append(want)
+            continue
+        if "@RolesAllowed" not in text and "RolesAllowed" not in text:
+            try:
+                missing.append(str(p.relative_to(ROOT)))
+            except ValueError:
+                missing.append(want)
+    if missing:
+        return "need-RolesAllowed:" + ",".join(missing[:6])
+    return None
 
 
 def main() -> int:
@@ -284,12 +416,17 @@ def main() -> int:
     if myp.is_file():
         myaml = myp.read_text(encoding="utf-8", errors="replace")
 
-    # O-AC3 / O-AC-NONJAVA / O-ACVERIFY: missing Target, non-java Target, or
-    # verify-class titles block preserve fast-path.
+    # O-AC3 / O-AC-NONJAVA / O-ACVERIFY / O-ALREADYPROP / O-ALREADYREPL:
+    # missing Target, non-java Target, Target/Owns .java class work, verify
+    # titles, or missing named quarkus-* replacements block preserve skip.
+    repl_gap = replacement_constructs_missing(title, body)
     if (
         not missing_target_path(body)
         and not nonjava_target_blocks_preserve(body)
+        and not target_java_blocks_preserve(body)
         and not is_verify_task(title)
+        and annotation_work_incomplete(title, body) is None
+        and repl_gap is None
     ):
         for item in preserve_items(myaml):
             if not preserve_is_task_subject(title, body, item):
@@ -341,12 +478,26 @@ def main() -> int:
             env=env,
         )
         out = (proc.stdout or "").strip()
-        # O-ACCREATE: findings-oracle "absent" means finding cleared — never
-        # means "create target missing, skip the create task".
+        # O-ACCREATE / O-ACHARVEST: findings-oracle "absent" means finding
+        # cleared in the *current* tree — never means skip Create/Harvest when
+        # the Target destination is still missing. Live S02 T-002/T-003: Harvest
+        # BaseEntity skipped via oracle-absent while Target .java absent.
+        # O-DESTBASE: Convert titles MAY oracle-skip when findings are
+        # scaffold-presatisfied and no Target path is missing — the blanket
+        # is_convert_task block broke parent-pom already-complete (instrument).
+        # O-ACRESTABS still holds via missing_target_path for Convert REST.
+        # O-ALREADYFINDING: finding absent ≠ @RolesAllowed / Target work done.
+        ann_gap = annotation_work_incomplete(title, body)
+        if repl_gap is None:
+            repl_gap = replacement_constructs_missing(title, body)
         if (
             proc.returncode == 0
             and out.startswith("absent:")
             and not is_create_task(title)
+            and not is_verify_task(title)  # O-ACVERIFY2: verify ≠ finding-absent
+            and not missing_target_path(body)
+            and ann_gap is None
+            and repl_gap is None
         ):
             print(f"oracle-{out}")
             return 0
@@ -382,10 +533,17 @@ def main() -> int:
     # O-JDBCSKIP / O-JDBCREGRESS: JDBC repository CDI when Quarkus JPA
     # @ApplicationScoped impls already cover the repository interfaces —
     # skip rather than re-adding spring-jdbc (Wave2 T-009).
+    # O-JDBCSKIPSTAGING: do NOT skip when staging/legacy still has
+    # Jdbc*RepositoryImpl to harvest (petclinic S04 T-004) — "JPA present +
+    # live jdbc empty" is incomplete work, not already-complete.
     blob = f"{title}\n{body}"
     if re.search(r"(?i)jdbc\s+repository|/repository/jdbc/", blob):
         jpa = list((ROOT / "src/main/java").rglob("Jpa*RepositoryImpl.java"))
         jdbc = list((ROOT / "src/main/java").rglob("repository/jdbc/Jdbc*RepositoryImpl.java"))
+        staging_root = ROOT / "migration/staging"
+        staging_jdbc: list[Path] = []
+        if staging_root.is_dir():
+            staging_jdbc = list(staging_root.rglob("repository/jdbc/Jdbc*RepositoryImpl.java"))
         jpa_cdi = 0
         for p in jpa:
             try:
@@ -393,7 +551,7 @@ def main() -> int:
                     jpa_cdi += 1
             except OSError:
                 continue
-        if jpa_cdi >= 3 and not jdbc:
+        if jpa_cdi >= 3 and not jdbc and not staging_jdbc:
             # kind must be present|absent|oracle-absent (supervisor try_already_complete)
             print(f"present:JpaRepositoryImpl-cdi({jpa_cdi})")
             return 0

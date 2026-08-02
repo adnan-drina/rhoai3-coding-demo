@@ -12,6 +12,7 @@ filename), diff after normalizing approved transforms:
   - package/import rename legacyPackage -> targetPackage (migration.yaml)
   - whitespace/blank-line/trailing-newline differences
   - comment-only lines (sonar-driven comment additions)
+  - end-of-line `//` comments (O-FIDEOLCOMMENT / NOSONAR on code lines)
   - diamond operator (new X<...>() -> new X<>())
   - added annotation lines (CDI/MP annotations are conversion work)
   - Spring DAO / support drops on Quarkus classpath (O-FIDELITYDAO):
@@ -84,6 +85,13 @@ def normalize(text):
         line = re.sub(r"new (\w+)<[^>]+>\(\)", r"new \1<>()", line)
         s = line.strip()
         if not s or s.startswith("//") or s.startswith("*") or s.startswith("/*") or s.endswith("*/"):
+            continue
+        # O-FIDEOLCOMMENT: strip trailing // comments so NOSONAR / Sonar rationale
+        # on a code line does not fail membership after O-FIDSONAR throws-strip
+        # (S05 UserService: staged `void saveUser(User user);` vs dest same +
+        # `// NOSONAR java:S112 …`).
+        s = re.sub(r"\s*//.*$", "", s).strip()
+        if not s:
             continue
         if re.fullmatch(r"@\w+(\([^)]*\))?", s):  # annotation-only lines
             continue

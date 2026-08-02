@@ -26,7 +26,7 @@ tasks harvest the transformed file from there (never re-run these):
 | `@Remote` interface / remote EJB | Drop the interface; direct `@Inject` of the implementation |
 | JNDI `InitialContext.lookup(...)` | `@Inject` the service |
 | JMS MDB / Topic within the app | **CDI events** (`Event<T>.fire` / `@Observes`) — in-process pub/sub needs no broker. Use SmallRye Reactive Messaging ONLY when messaging is genuinely out-of-process |
-| `persistence.xml` + `@PersistenceContext` | `application.properties` datasource + constructor-injected `EntityManager`; schema via Flyway (see the worker's `quarkus-persistence-conventions` skill) |
+| `persistence.xml` + `@PersistenceContext` | `application.properties` datasource + **constructor-injected** `EntityManager` (not field `@Inject` — Sonar S6813); mutating methods (`save`/`delete`/persist/merge/remove) need `@Transactional`; schema via Flyway (see the worker's `quarkus-persistence-conventions` skill) |
 | Startup servlets / init `@PostConstruct` | `void onStart(@Observes StartupEvent ev)` |
 | `javax.json` (JSON-P) | Jackson (`ObjectMapper`) |
 | JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |

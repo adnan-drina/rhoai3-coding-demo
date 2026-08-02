@@ -18,7 +18,11 @@ if [ -f migration/mta-findings.json ]; then
 fi
 
 echo "analyze: running the harness-owned kantra analysis"
+# shellcheck source=kantra-path.sh
+. "$(dirname "$0")/kantra-path.sh" 2>/dev/null || true
+export KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
 kantra-ensure || true
+KBIN=$(kantra_bin 2>/dev/null || echo /tmp/kantra/kantra)
 # K4: materialize preserve/forbidden/acceptance as custom analyzer rules
 # from migration.yaml (sensors stay defense-in-depth).
 python3 .hermes/harness/gen-contract-rules.py \
@@ -48,11 +52,11 @@ echo "analyze: kantra args: $K_ARGS (mode=$A_MODE)"
 # forever (the root cause of every observed kantra wedge). source-only:
 # our rule set needs no dependency analysis and keeps the run minutes-scale.
 (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-  /tmp/kantra/kantra analyze -i /projects/legacy -o /tmp/kantra-baseline \
+  "$KBIN" analyze -i /projects/legacy -o /tmp/kantra-baseline \
   $K_ARGS --mode "$A_MODE" --json-output --overwrite) || true
 mkdir -p migration
 cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
-  || { echo "FATAL: M1 ground truth unavailable"; exit 1; }
+  || { echo "FATAL: M1 ground truth unavailable (bin=$KBIN)"; exit 1; }
 # K6: kantra on pristine destination (exclude staging/.hermes) → dest-baseline
 # for scaffold-presatisfied.generated.txt (pom/config pre-satisfied only).
 DEST_SRC=/tmp/kantra-dest-src
@@ -69,7 +73,7 @@ else
     "$DEST_SRC/.git" 2>/dev/null || true
 fi
 (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-  /tmp/kantra/kantra analyze -i "$DEST_SRC" -o /tmp/kantra-dest \
+  "$KBIN" analyze -i "$DEST_SRC" -o /tmp/kantra-dest \
   $K_ARGS --mode "$A_MODE" --json-output --overwrite) 2>/dev/null || true
 if [ -f /tmp/kantra-dest/output.json ]; then
   cp /tmp/kantra-dest/output.json migration/mta-findings-dest-baseline.json

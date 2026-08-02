@@ -1801,6 +1801,58 @@ EOF
 }
 check "already-complete does not skip Verify acceptance on CATALOG_ENDPOINT (O-ACVERIFY)" 0 "rc=1"
 
+# O-ALREADYPROP — Target .java named → preserve token alone must not skip
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/security src/main/resources
+  printf 'petclinic.security.enable=false\n' > src/main/resources/application.properties
+  # Target class missing — preserve must not skip
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Redesign BasicAuthenticationConfig to Quarkus Security basic auth
+**Class**: infer
+**Shape**: create
+**Findings**: springboot-security-to-quarkus-00000
+**Goal**: Create BasicAuthenticationConfig; preserve petclinic.security.enable
+**Target design**: → `src/main/java/com/demo/security/BasicAuthenticationConfig.java`
+**Acceptance**: BasicAuthenticationConfig present; petclinic.security.enable gated
+EOF
+  printf 'preserve:\n  - petclinic.security.enable\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-002; echo "rc=$?"
+}
+check "already-complete does not skip missing BasicAuth on preserve token (O-ALREADYPROP)" 0 "rc=1"
+
+# O-ALREADYFINDING — finding absent + Target exists without @RolesAllowed → must-run
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/rest src/main/resources .hermes/harness
+  printf 'petclinic.security.enable=false\n' > src/main/resources/application.properties
+  printf 'package com.demo.rest;\npublic class VetRestController {}\n' \
+    > src/main/java/com/demo/rest/VetRestController.java
+  # Stub findings-oracle: always absent (finding cleared)
+  cat > .hermes/harness/findings-oracle.py <<'PY'
+#!/usr/bin/env python3
+import sys
+print("absent:springboot-security-to-quarkus-00000")
+sys.exit(0)
+PY
+  chmod +x .hermes/harness/findings-oracle.py
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-009: Wire RolesAllowed and deploy acceptance on VetRestController
+**Class**: infer
+**Shape**: modify
+**Findings**: springboot-security-to-quarkus-00000
+**Goal**: Add @RolesAllowed on VetRestController; preserve petclinic.security.enable
+**Target design**: → `src/main/java/com/demo/rest/VetRestController.java`
+**Owns**: src/main/java/com/demo/rest/VetRestController.java
+**Acceptance**: @RolesAllowed present; /api/vets 200 when security off
+EOF
+  printf 'preserve:\n  - petclinic.security.enable\n' > migration.yaml
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-009; echo "rc=$?"
+}
+check "already-complete does not skip RolesAllowed gap on finding-absent (O-ALREADYFINDING)" 0 "rc=1"
+
 # O-T6d — characterization task must not mechan-commit main-only dirty tree
 MM_PY="$HARNESS_DIR/mechan-match.py"
 run_case() {
@@ -1900,6 +1952,47 @@ EOF
     | python3 "$MM_PY" tasks.md T-001; echo "rc=$?"
 }
 check "mechan-match accepts package-info.java on structure task (O-STRUCTINFO)" 0 "rc=0"
+
+run_case() {
+  # O-T6dPKGINFO: build verification mentioning characterization must accept
+  # package-info.java-only stage (not need-src-test).
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-008: Build verification and package validation
+**Class: infer**
+**Target design**: → `pom.xml` and `src/main/java/com/demo/model/package-info.java`
+**Actions**:
+1. Run `mvn test` to verify characterization tests pass
+2. Create package-info.java for model package
+**Package verification**:
+- Tests pass (PetTypeTest, VisitTest, PetTest)
+EOF
+  printf '%s\n' 'src/main/java/com/demo/model/package-info.java' \
+    | python3 "$MM_PY" tasks.md T-008; echo "rc=$?"
+}
+check "mechan-match accepts package-info on build-verify task (O-T6dPKGINFO)" 0 "rc=0"
+
+# O-T6WRONGTITLE — Convert + "remove Spring" body must not false-absent
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Convert OwnerRestController to JAX-RS
+**Class: infer**
+**Target design**: → `src/main/java/com/demo/rest/OwnerRestController.java`
+**Actions**:
+1. Remove `@RestController` / Spring Web annotations; use JAX-RS `@Path`.
+2. Port endpoints from legacy OwnerRestController.
+EOF
+  # Target absent + bookkeeping dirt must REFUSE (S06 false tip class)
+  out=$(printf '%s\n' 'devfile.yaml' 'migration/mta-findings-after.json' \
+    | python3 "$MM_PY" tasks.md T-001; echo rc=$?)
+  echo "$out" | grep -qE 'rc=1' \
+    && echo "$out" | grep -vqE 'removal-already-absent' \
+    && echo t6wrongtitle-ok
+}
+check "O-T6WRONGTITLE Convert refuses removal-already-absent + bookkeeping" 0 "t6wrongtitle-ok"
 
 # 83. V6 abort — ceremonial status-map acceptance is rejected statically
 run_case() {
@@ -2391,6 +2484,16 @@ run_case() {
 check "O-DEBTFRZ supervisor freeze + outer-loop hold" 0 "debtfrz-ok"
 
 run_case() {
+  grep -q 'O-FRZSIG' "$HARNESS_DIR/freeze-harness.sh" \
+    && grep -q 'no sessions killed' "$HARNESS_DIR/freeze-harness.sh" \
+    && ! grep -qE "kill_pat.*hermes|pkill.*opencode" "$HARNESS_DIR/freeze-harness.sh" \
+    && test -f "$HARNESS_DIR/harness-kill.sh" \
+    && grep -q 'harness_kill' "$HARNESS_DIR/harness-kill.sh" \
+    && echo frzsig-ok
+}
+check "O-FRZSIG freeze is pause-marker (not slaughter) + O-KILLLEDGER helper" 0 "frzsig-ok"
+
+run_case() {
   local exec_md="$HARNESS_DIR/../skills/migration-harness/EXECUTION.md"
   grep -q 'O-OCERR' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'refuse_red_task_commit' "$HARNESS_DIR/supervisor.sh" \
@@ -2461,6 +2564,26 @@ EOF
   ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-008
 }
 check "escw-eligible allows service characterization when service tests exist (O-ESCW3)" 0 "tests-present"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  echo 'class JdbcOwnerRepositoryImpl {}' > src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-006: Finding-scope boundaries (prior + later)
+**Class**: infer
+**Shape**: structure
+No new SUTs. Claim residual DI finding incidents already delivered or reserved for later stories.
+**Target design**:
+- `src/main/java/org.example/JdbcOwnerRepositoryImpl.java` → `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java`
+- `src/main/java/org.example/RootRestController.java` → `src/main/java/com/demo/rest/RootRestController.java`
+**Absorbs**: `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java` `src/main/java/com/demo/rest/RootRestController.java`
+**Acceptance**: plan-lint green; no new repository/rest/security/util src/main from this task
+EOF
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-006
+}
+check "escw-eligible finding-scope ignores later-story Target dest (O-ESCW3SCOPE)" 0 "eligible"
 
 run_case() {
   mkfix
@@ -2677,6 +2800,23 @@ EOF
   python3 "$LINT" tasks.md
 }
 check "plan-lint accepts DTO-before-mapper order (O-DTOFIRST)" 0 "PLAN OK"
+
+run_case() {
+  # O-DTOFIRST absent-DTO: mapper-only story that references /dto/ must RED
+  mkfix
+  cat > tasks.md <<'EOF'
+UI surface: waived (API-only).
+
+#### T-005: Harvest mapper interfaces
+**Class**: rewrite
+**Findings**: javax-to-jakarta-import-00001
+**Goal**: Harvest MapStruct mappers; update dto imports to com.demo.dto
+**Target**: `src/main/java/com/demo/mapper/*.java`
+**Actions**: Update import statements: model → com.demo.model, dto imports → com.demo.dto
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects mapper-only story with dto refs (O-DTOFIRST)" 1 "O-DTOFIRST"
 
 run_case() {
   # O-CDIORDER: service CDI before repository CDI must RED
@@ -3137,6 +3277,31 @@ run_case() {
 }
 check "redesign-sig catches interface method rename (O-IFACERENAME)" 0 "rc=1"
 
+# O-REDESIGNSIGANNOT — @Query / license must not fake method names
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo/repository \
+    src/main/java/com/demo/repository
+  printf '%s\n' \
+    'package com.demo.repository;' \
+    '/** Licensed under Apache License, Version 2.0 (the "License"); */' \
+    'import org.springframework.data.jpa.repository.Query;' \
+    'public interface SpringDataOwnerRepository {' \
+    '  @Query("SELECT o FROM Owner o WHERE o.id = :id")' \
+    '  Owner findById(int id);' \
+    '}' \
+    > migration/staging/src/main/java/com/demo/repository/SpringDataOwnerRepository.java
+  printf '%s\n' \
+    'package com.demo.repository;' \
+    '/** Licensed under Apache License, Version 2.0 (the "License"); */' \
+    'public interface SpringDataOwnerRepository {' \
+    '  Owner findById(int id);' \
+    '}' \
+    > src/main/java/com/demo/repository/SpringDataOwnerRepository.java
+  out=$(python3 "$HARNESS_DIR/redesign-sig.py" 2>&1); echo "rc=$?"; echo "$out"
+}
+check "redesign-sig ignores @Query/license tokens (O-REDESIGNSIGANNOT)" 0 "rc=0"
+
 # O-HOTSWAP wiring
 run_case() {
   grep -q 'harness-update-ack' "$HARNESS_DIR/supervisor.sh" \
@@ -3479,6 +3644,44 @@ EOF
 }
 check "escw-eligible blocks when findings still present (K6)" 0 "rc=1"
 
+# O-T6EEMPTYESC — pom deps present → ESCW even if findings-oracle would block
+run_case() {
+  mkfix
+  mkdir -p migration .hermes/harness
+  cp "$HARNESS_DIR/escw-eligible.py" .hermes/harness/
+  cat > pom.xml <<'EOF'
+<project>
+  <dependencies>
+    <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-security</artifactId></dependency>
+    <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-smallrye-openapi</artifactId></dependency>
+    <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-elytron-security-jdbc</artifactId></dependency>
+  </dependencies>
+</project>
+EOF
+  cat > migration/mta-findings-after.json <<'EOF'
+[{"violations":{
+  "springboot-security-to-quarkus-00000":{"description":"x","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]}
+}}]
+EOF
+  cat > migration/mta-findings.json <<'EOF'
+[{"violations":{
+  "springboot-security-to-quarkus-00000":{"description":"x","incidents":[{"uri":"file:///pom.xml","lineNumber":1}]}
+}}]
+EOF
+  cat > tasks.md <<'EOF'
+#### T-001: Add Quarkus Security and OpenAPI dependencies
+**Class**: infer
+**Shape**: modify
+**Findings**: springboot-security-to-quarkus-00000
+**Goal**: Add quarkus-security quarkus-smallrye-openapi quarkus-elytron-security-jdbc to pom.xml
+**Target design**: → pom.xml
+**Acceptance**: pom.xml declares Quarkus Security + OpenAPI deps
+EOF
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 .hermes/harness/escw-eligible.py tasks.md T-001)
+  echo "$out"
+}
+check "escw-eligible allows pom-deps-present despite findings (O-T6EEMPTYESC)" 0 "pom-deps-present:"
+
 run_case() {
   mkfix
   mkdir -p migration .hermes/harness
@@ -3528,6 +3731,25 @@ run_case() {
     && echo k7diff-ok
 }
 check "failure-sig diffs NEW test failures (K7)" 0 "k7diff-ok"
+
+# O-FAILSIGFILE (W3-92) — sonar-report multi-line format must keep rule↔file
+run_case() {
+  mkfix
+  printf '%s\n' \
+    'QUALITYGATE FAIL new_violations: actual=3 threshold=0 comparator=GT' \
+    'java:S112 (1): src/main/java/com/demo/service/UserServiceImpl.java:26' \
+    'java:S1130 (2): src/test/java/com/demo/service/UserServiceImplTest.java:32, src/test/java/com/demo/service/UserServiceImplTest.java:43' \
+    'java:S2925 (1): src/test/java/com/demo/service/ClinicServiceImplTest.java:332' \
+    > sonar-violations.txt
+  python3 "$HARNESS_DIR/failure-sig.py" capture out.sig sonar-violations.txt
+  grep -qx 'sonar:java:S2925:ClinicServiceImplTest.java' out.sig \
+    && grep -qx 'sonar:java:S1130:UserServiceImplTest.java' out.sig \
+    && grep -qx 'sonar:java:S112:UserServiceImpl.java' out.sig \
+    && ! grep -q 'sonar:java:S2925:UserServiceImplTest.java' out.sig \
+    && ! grep -q 'sonar:java:S1130:UserServiceImpl.java' out.sig \
+    && echo failsigfile-ok
+}
+check "O-FAILSIGFILE sonar rule↔file attribution (no cross-line)" 0 "failsigfile-ok"
 
 run_case() {
   grep -q 'failure-sig.py' "$HARNESS_DIR/supervisor.sh" \
@@ -3987,6 +4209,35 @@ run_case() {
 check "outer-loop appends log + RESUME banner (O-UXLOG-TRUNC)" 0 "uxtrunc-ok"
 
 run_case() {
+  grep -q 'O-RESUMEBASEEXCL' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'git log --oneline -1 "${RUN_BASE}"' "$HARNESS_DIR/supervisor.sh" \
+    && echo resumebase-ok
+}
+check "committed() includes RUN_BASE tip (O-RESUMEBASEEXCL)" 0 "resumebase-ok"
+
+run_case() {
+  grep -q 'O-KANTRAMISS' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'kantra-ensure' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'mta-findings-current.json' "$HARNESS_DIR/supervisor.sh" \
+    && echo kantramiss-ok
+}
+check "M5 after-scan calls kantra-ensure + cache fallback (O-KANTRAMISS)" 0 "kantramiss-ok"
+
+run_case() {
+  grep -q 'O-CREATEFIRSTMUT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'CREATE_READ_GLOB_MAX' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'M3_EMPTY_ABORT_SECS:-360' "$HARNESS_DIR/outer-loop.sh" \
+    && echo createfirst-ok
+}
+check "Shape=create first-write tip + M3 empty abort 360s (O-CREATEFIRSTMUT)" 0 "createfirst-ok"
+
+run_case() {
+  grep -q 'O-DUPPROP' "$HARNESS_DIR/commit-hygiene.py" \
+    && echo dupprop-ok
+}
+check "commit-hygiene refuses duplicate application.properties keys (O-DUPPROP)" 0 "dupprop-ok"
+
+run_case() {
   grep -q 'O-UXLOG-SENSE' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'SENSE task sensor GREEN' "$HARNESS_DIR/supervisor.sh" \
     && echo uxsense-ok
@@ -4156,6 +4407,139 @@ run_case() {
     && echo preflightdim-ok
 }
 check "O-PREFLIGHTDIM wiring (cap + ship reset)" 0 "preflightdim-ok"
+
+
+run_case() {
+  grep -q 'O-M4REPLAYNOSPEC' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'T-001:' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m4replaynospec-ok
+}
+check "O-M4REPLAYNOSPEC resume from T-001^ when no S0N spec tip" 0 "m4replaynospec-ok"
+
+run_case() {
+  test -f "$HARNESS_DIR/session-registry.sh" \
+    && grep -q 'O-PIDREG\|session_register' "$HARNESS_DIR/session-registry.sh" \
+    && grep -q 'session_reap_group\|O-OCGROUP' "$HARNESS_DIR/session-registry.sh" \
+    && grep -q 'session_register' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'setsid timeout' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'setsid timeout' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -q 'pkill -9 -x opencode' "$HARNESS_DIR/supervisor.sh" \
+    && echo pidreg-ok
+}
+check "O-PIDREG/O-OCGROUP setsid registry; no name-based opencode pkill" 0 "pidreg-ok"
+
+# --- Wave 3 retro pre-rerun gates (W3-140..147) ---
+run_case() {
+  FIX=$(mktemp -d)
+  mkdir -p "$FIX/migration/staging/util" "$FIX/src/main/java/com/demo/util"
+  cat > "$FIX/migration/staging/util/CallMonitoringAspect.java" <<'JAVA'
+package util;
+@Aspect
+public class CallMonitoringAspect {
+  @Around("within(@Repository *)")
+  public Object invoke(Object p) { return p; }
+}
+JAVA
+  cat > "$FIX/src/main/java/com/demo/util/CallMonitoringAspect.java" <<'JAVA'
+package com.demo.util;
+import jakarta.enterprise.context.ApplicationScoped;
+@ApplicationScoped
+public class CallMonitoringAspect {
+  public Object invoke(Object p) { return p; }
+  public void reset() {}
+  public boolean isEnabled() { return true; }
+  public void setEnabled(boolean v) {}
+  public long getCallCount() { return 0; }
+  public long getCallTime() { return 0; }
+}
+JAVA
+  out=$(cd "$FIX" && python3 "$HARNESS_DIR/wireup-check.py" 2>&1); rc=$?
+  rm -rf "$FIX"
+  [ "$rc" = "1" ] && echo "$out" | grep -q 'O-WIREUP' && echo wireup-ok
+}
+check "wireup-check RED on unwired aspect (O-WIREUP)" 0 "wireup-ok"
+
+run_case() {
+  grep -q 'O-ESCALPAUSE\|supervisor-pause' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'esc_cause="supervisor-pause"' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'esc_cause="sigint"' "$HARNESS_DIR/supervisor.sh" \
+    && echo escalcause-ok
+}
+check "O-ESCALCAUSE reads kill why + suppress pause (O-ESCALPAUSE)" 0 "escalcause-ok"
+
+run_case() {
+  FIX=$(mktemp -d)
+  mkdir -p "$FIX/migration"
+  echo '[]' > "$FIX/migration/mta-findings.json"
+  cp "$FIX/migration/mta-findings.json" "$FIX/migration/mta-findings-after.json"
+  out=$(FINDINGS_DELTA_STALE=1 FINDINGS_DELTA_ROOT="$FIX" python3 "$HARNESS_DIR/findings-delta.py")
+  rm -rf "$FIX"
+  echo "$out" | grep -q 'STALE-AFTER' \
+    && echo "$out" | grep -q 'stale_resolve_pct=UNSCORED' \
+    && ! echo "$out" | grep -q 'honest_resolve_pct' \
+    && echo m5stale-ok
+}
+check "findings-delta STALE-AFTER unscores (O-M5STALE)" 0 "m5stale-ok"
+
+run_case() {
+  test -f "$HARNESS_DIR/kantra-path.sh" \
+    && grep -q '/projects/.tools/kantra' "$HARNESS_DIR/kantra-path.sh" \
+    && grep -q 'kantra-path.sh\|kantra_bin\|KANTRA_HOME' "$HARNESS_DIR/supervisor.sh" \
+    && echo kantrapath-ok
+}
+check "kantra durable home helper (O-KANTRAPATH)" 0 "kantrapath-ok"
+
+run_case() {
+  grep -q 'replacement_constructs_missing\|O-ALREADYREPL' "$HARNESS_DIR/already-complete.py" \
+    && FIX=$(mktemp -d) \
+    && mkdir -p "$FIX" \
+    && printf '%s\n' '<?xml version="1.0"?><project></project>' > "$FIX/pom.xml" \
+    && cat > "$FIX/tasks.md" <<'MD'
+## T-001: Add security deps
+**Goal**: add quarkus-security and quarkus-elytron-security-jdbc
+**Acceptance**: deps present
+**Findings**: springboot-security-to-quarkus-00000
+MD
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$HARNESS_DIR/already-complete.py" "$FIX/tasks.md" T-001 2>&1); rc=$?
+  rm -rf "$FIX"
+  [ "$rc" = "1" ] && echo alreadyrepl-ok
+}
+check "already-complete blocks skip when named quarkus-* missing (O-ALREADYREPL)" 0 "alreadyrepl-ok"
+
+run_case() {
+  grep -q 'O-SECAUTHTEST\|security_auth_test_contract' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'prod_schema_contract\|O-PRODSCHEMA' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-PRODSCHEMA' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q 'quarkus-spring-' "$HARNESS_DIR/sfix-no-spring.py" \
+    && echo w3misc-ok
+}
+check "O-SECAUTHTEST + O-PRODSCHEMA + W3-70 sfix spring ext key" 0 "w3misc-ok"
+
+run_case() {
+  FIX=$(mktemp -d)
+  mkdir -p "$FIX/src/main/java/com/demo"
+  cat > "$FIX/src/main/java/com/demo/ConfigBean.java" <<'JAVA'
+package com.demo;
+import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+@ApplicationScoped
+public class ConfigBean {
+  @ConfigProperty(name="app.security.enable", defaultValue="false")
+  boolean securityEnabled;
+}
+JAVA
+  out=$(cd "$FIX" && python3 "$HARNESS_DIR/wireup-check.py" 2>&1); rc=$?
+  rm -rf "$FIX"
+  [ "$rc" = "0" ] && echo "$out" | grep -q 'wireup-check GREEN' && echo wireupfp-ok
+}
+check "wireup-check GREEN on package-private @ConfigProperty bean (O-WIREUP-FP)" 0 "wireupfp-ok"
+
+run_case() {
+  grep -q 'O-TMPARCHIVE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'run-archives' "$HARNESS_DIR/outer-loop.sh" \
+    && echo tmparchive-ok
+}
+check "outer-loop archives /tmp forensics at RUN COMPLETE (O-TMPARCHIVE)" 0 "tmparchive-ok"
 
 echo "----"
 echo "$PASS/$N passed"
