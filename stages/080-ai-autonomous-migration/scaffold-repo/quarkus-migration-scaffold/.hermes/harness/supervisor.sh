@@ -193,6 +193,18 @@ shape = (shape_m.group(1).strip().lower() if shape_m else "")
 paths = sorted(set(re.findall(
     r"(?:src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep)", body
 )))
+# O-ACSTRUCT: Target dirs (`→ src/main/java/com/demo/dto/`) synthesize
+# `.gitkeep` when Shape=structure — bare "Create `.gitkeep`" prose without a
+# full path used to leave paths empty and committed() falsely GREEN.
+if not paths:
+    for m in re.finditer(r"src/(?:main|test)/java/[A-Za-z0-9_./]+", body):
+        d = m.group(0).rstrip("/")
+        if d.endswith(".java") or d.endswith(".gitkeep"):
+            continue
+        from pathlib import Path as _P
+        if not _P(d).suffix:
+            paths.append(f"{d}/.gitkeep")
+    paths = sorted(set(paths))
 structish = shape == "structure" or bool(paths) or bool(
     re.search(r"(?i)\.gitkeep|package structure|directory structure", body)
 )
@@ -284,6 +296,8 @@ stage_scope_revert_paths() {
     fi
   done
   git reset -q HEAD -- migration/mta-findings-current.json \
+    migration/scaffold-presatisfied.generated.txt \
+    migration/scaffold-presatisfied.txt \
     .hermes migration/staging 2>/dev/null || true
 }
 
@@ -315,6 +329,25 @@ committed() {
       if ! python3 .hermes/harness/already-complete.py "$TASKS_FILE" "$1" >/dev/null 2>&1; then
         return 1
       fi
+    fi
+    # O-ACSTRUCTCOMMIT: allow-empty ALREADY COMPLETE never satisfies
+    # Shape=structure — the tip must contain the Target .gitkeep (W4 T-003:
+    # a419d88 empty tip + dirty gitkeep → skip → ship archived the deliverable).
+    if [ -n "$(structure_gitkeep_targets "$1")" ]; then
+      local _acsha _acfiles=""
+      _acsha=$(echo "$_hit" | awk '{print $1}')
+      _acfiles=$(git diff-tree --no-commit-id --name-only -r "$_acsha" 2>/dev/null || true)
+      if [ -z "$_acfiles" ]; then
+        log "$1: O-ACSTRUCTCOMMIT — allow-empty ALREADY COMPLETE does not satisfy structure Target"
+        return 1
+      fi
+      local _tgt
+      for _tgt in $(structure_gitkeep_targets "$1"); do
+        if ! git cat-file -e "${_acsha}:${_tgt}" 2>/dev/null; then
+          log "$1: O-ACSTRUCTCOMMIT — ALREADY COMPLETE tip lacks ${_tgt}"
+          return 1
+        fi
+      done
     fi
   fi
   # O-SCOPEBACKFILL: never mark ✓ when structure/.gitkeep Target is still
@@ -377,8 +410,12 @@ restore_frozen_specs() {
 stage_for_task_commit() {
   restore_frozen_specs
   git add -A
+  # O-STRUCTPRESAT: never sweep O-DESTBASE inventory into T-NNN tips
+  # (false structure-non-gitkeep after valid .gitkeep — W4 T-003).
   git reset -q -- .hermes migration/staging \
-    migration/mta-findings-current.json 2>/dev/null || true
+    migration/mta-findings-current.json \
+    migration/scaffold-presatisfied.generated.txt \
+    migration/scaffold-presatisfied.txt 2>/dev/null || true
   # Belt: never stage frozen complete-story specs even if restore raced.
   for d in $(frozen_spec_paths); do
     git reset -q HEAD -- "$d" 2>/dev/null || true
@@ -924,8 +961,12 @@ sfix_red_dims() {
   if echo "$logblob" | grep -qE 'COMPILATION ERROR|BUILD FAILURE|cannot find symbol'; then
     dims="${dims:+$dims }task"
   fi
+  # O-SONAR401 / O-SFIXDIMNONE: auth/bootstrap failures are not a sonar
+  # *violation* dimension — leave dims empty so dispatcher can refuse the seat.
   if echo "$logblob" | grep -qE 'SENSOR RED:sonar|SENSOR RED \(sonar\)|in-loop gate:|QUALITYGATE FAIL|new violations'; then
-    dims="${dims:+$dims }sonar"
+    if ! echo "$logblob" | grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized|scanner bootstrapping has failed'; then
+      dims="${dims:+$dims }sonar"
+    fi
   fi
   # de-dupe whitespace tokens
   dims=$(echo "$dims" | tr ' ' '\n' | awk 'NF && !seen[$0]++' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
@@ -1067,6 +1108,16 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         fi
       fi
     fi
+    # O-SONAR401: auth/bootstrap failure is infra — do not burn Qwen/MiniMax sfix.
+    if [ "$SENSOR_KIND" = "milestone" ] || [ "$SENSOR_KIND" = "sonar" ]; then
+      if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized' /tmp/sensor-sonar.log /tmp/sensor-milestone.log 2>/dev/null; then
+        log "$tag: O-SONAR401 — Sonar auth failed; skip sensor-fix (refresh SONAR_TOKEN)"
+        outer_log "         O-SONAR401: skip ${prefix} sfix — Sonar 401; not a code violation"
+        event "$tag" 0 sonar401_skip "$SENSOR_KIND"
+        record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+        return 0
+      fi
+    fi
     log "$tag: committed but the ${SENSOR_KIND} sensor is RED — dispatching sensor-fix session"
     # K7: capture post-RED signature and diff vs pre-task baseline — NEW failures
     # are this commit's debt (cannot be waived as pre-existing / out of scope).
@@ -1152,6 +1203,20 @@ O-FIDELITYSORT: PropertyComparator → keep ArrayList<>(get*Internal()) + list.s
           ;;
       esac
       log "$tag: O-SFIXHINTFIDELITY — sfix dims=[${SFIX_DIMS:-none}] primary=${SFIX_PRIMARY}"
+      # O-SFIXDIMNONE (W4-022a): dims=[none] means sensor unavailable / infra —
+      # not violations. Refuse the seat (same shape as O-SFIXNODELTA).
+      if [ -z "${SFIX_DIMS}" ]; then
+        log "$tag: O-SFIXDIMNONE — sfix dims empty (sensor unavailable); skip sensor-fix seat"
+        outer_log "         O-SFIXDIMNONE: skip ${prefix} sfix (dims=none; see sensor logs / O-SONAR401)"
+        event "$tag" 0 sfix_dimnone_skip "$SENSOR_KIND"
+        if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized' /tmp/sensor-sonar.log /tmp/sensor-milestone.log 2>/dev/null; then
+          record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+        else
+          record_debt "$prefix" "O-SFIXDIMNONE sensor unavailable (no violation dims) — inspect sensor logs" || true
+        fi
+        rm -f /tmp/sensor-fix-mode
+        return 0
+      fi
     fi
     SFIX_PROMPT="Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's ${SFIX_RED_DESC} — read /tmp/sensor-task.log, /tmp/sensor-milestone.log, /tmp/sensor-fidelity.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If those logs show FINDINGS: or FINDINGS RED lines, the RED dimension is findings — fix those file:line incidents (typical: replace quarkus-micrometer* with quarkus-smallrye-metrics) and verify with .hermes/harness/sensors.sh findings; do NOT commit unrelated comment/test polish while FINDINGS is RED (O-SFIXWRONGDIM). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. O-FIDELITYVALID / O-SFIXNOSPRING: Spring BindingResult/FieldError → Jakarta ConstraintViolation is an approved validation conversion — do NOT re-harvest Spring validation types or add org.springframework.* imports / spring-* pom deps to green-wash fidelity. Re-run .hermes/harness/sensors.sh fidelity after harness updates; if already GREEN, commit nothing for fidelity. add a dependency ONLY if this stage's findings require it. VERIFY HINT: ${SFIX_VERIFY_HINT}. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED / O-SFIXMILESTONE): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; FINDINGS:/FINDINGS RED: .hermes/harness/sensors.sh findings; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO). S5976: prefer @ParameterizedTest + @CsvSource — never delete characterization cases (O-SFIXCOUNT/O-SFIXDIRTY).
 ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
@@ -1168,6 +1233,16 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
         log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after Qwen (skip MiniMax; dims=${SFIX_DIMS:-recheck})"
         event "$tag" 0 sfix_worker_green "$SENSOR_KIND"
       else
+        # O-SONAR401 / O-SFIXDIMNONE (W4-022a/W4-023): never MiniMax-rescue an
+        # auth/bootstrap failure the worker already diagnosed — seat cannot mint tokens.
+        if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized|scanner bootstrapping has failed' \
+             /tmp/sensor-sonar.log /tmp/sensor-milestone.log 2>/dev/null \
+          || [ -z "${SFIX_DIMS:-}" ]; then
+          log "$tag: O-SONAR401/O-SFIXDIMNONE — skip MiniMax sfix rescue (sensor unavailable)"
+          outer_log "         O-SONAR401: skip MiniMax sfix rescue — refresh SONAR_TOKEN"
+          event "$tag" 0 sfix_auth_skip_rescue "$SENSOR_KIND"
+          record_debt "$prefix" "O-SONAR401 Sonar auth/unavailable — refresh SONAR_TOKEN; sfix/rescue skipped" || true
+        else
         local _sfix_rescue=0
         while [ "$_sfix_rescue" -lt "${SFIX_MINIMAX_RESCUE_MAX:-1}" ]; do
           _sfix_rescue=$((_sfix_rescue + 1))
@@ -1180,6 +1255,7 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
             break
           fi
         done
+        fi
       fi
     else
       orch "${tag}-sfix" "$SFIX_PROMPT" || true
@@ -1791,9 +1867,14 @@ SCOPE_ARGS=""
 # O-M3ACCEPT: supervisor must pass the same deploy flag outer-loop uses —
 # otherwise a lint-green non-deploy plan is re-REDed here and burns m3-lint.
 DEPLOY_ARGS="--story-deploy ${STORY_DEPLOY:-true}"
+# O-M3DTOSCOPE / O-M3SUPSCOPE: pass roadmap file scope so supervisor re-lint
+# matches outer-loop M3 gate — without --story-scope, dto/** incidents on a
+# pom/properties story false-RED and burn MiniMax M3 revision (S01 fcc506c).
+STORY_SCOPE_ARGS=()
+[ -n "${STORY_SCOPE:-}" ] && STORY_SCOPE_ARGS=(--story-scope "$STORY_SCOPE")
 # O-SHAPEDECL: live M3 requires **Shape** on every task (instruments stay WARN).
 export PLAN_LINT_REQUIRE_SHAPE="${PLAN_LINT_REQUIRE_SHAPE:-1}"
-LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS 2>&1)
+LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1)
 if [ $? -ne 0 ] && ! committed "M3 revision"; then
   log "plan lint: revision required"; echo "$LINT_OUT" | head -20 >> "$LOG"
   printf '%s\n' "$LINT_OUT" > /tmp/plan-lint.txt
@@ -1805,7 +1886,7 @@ Commit prefix: 'M3 revision:'." \
 "Use the migration-harness skill and read PLANNING.md in its directory. Finish revising ONLY ${TASKS_FILE} per /tmp/plan-lint.txt and commit with prefix 'M3 revision:'. O-SPECFROZEN: never mutate complete stories' specs/.
 ${RUN_CONTRACT}" \
     || log "plan lint: revision round exhausted — proceeding with the plan as-is (recorded)"
-  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS 2>&1) \
+  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1) \
     && log "plan lint: PASS after revision" || log "plan lint: still failing after revision — proceeding, findings logged"
 fi
 
@@ -1959,6 +2040,28 @@ try_already_complete() { # $1=task-id → 0 if auto-committed
       # O-ACORACLE (Wave2 T-005): already-complete.py emits oracle-absent:<id>
       # when Findings are gone — was ignored (kind not in case) so worker ran
       # then O-T6d no-path-overlap → false MiniMax on an already-absent removal.
+      # O-ACSTRUCTCOMMIT: Shape=structure with Target .gitkeep on disk must
+      # commit the deliverable — never allow-empty (W4 T-003: 1b1dda7 empty tip
+      # while dto/.gitkeep stayed untracked → ship archived it).
+      if [ -n "$(structure_gitkeep_targets "$T")" ]; then
+        local _sg _staged=0
+        for _sg in $(structure_gitkeep_targets "$T"); do
+          if [ -f "$_sg" ]; then
+            git add -- "$_sg" 2>/dev/null || true
+            _staged=1
+          fi
+        done
+        if [ "$_staged" = "1" ] && ! git diff --cached --quiet 2>/dev/null; then
+          git commit -q -m "${T}: ALREADY COMPLETE — structure Target present (${detail}) (O-ACSTRUCTCOMMIT)" 2>/dev/null \
+            || git commit -m "${T}: ALREADY COMPLETE — structure Target present (${detail}) (O-ACSTRUCTCOMMIT)" >/dev/null 2>&1 \
+            || return 1
+          event "$T" 0 already_complete "structure:$detail"
+          log "$T: ALREADY COMPLETE — structure Target committed (${detail}); skipped opencode"
+          return 0
+        fi
+        log "$T: O-ACSTRUCTCOMMIT — oracle-absent but structure Target not on disk; must-run"
+        return 1
+      fi
       git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${detail} already absent (V6 P2.4)" 2>/dev/null \
         || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${detail} already absent (V6 P2.4)" >/dev/null 2>&1
       event "$T" 0 already_complete "absent:$detail"
@@ -2819,12 +2922,37 @@ while :; do
   # tree, not the pollution.
   STRAYS=$(git ls-files --others --exclude-standard -- src/ | head)
   if [ -n "$STRAYS" ]; then
-    log "M5 ship: archiving untracked src/ strays before preflight (fabrication-pollution guard): $(echo $STRAYS | tr '\n' ' ')"
-    mkdir -p /tmp/strays/preflight
-    git ls-files --others --exclude-standard -- src/ | while read -r f; do
-      mkdir -p "/tmp/strays/preflight/$(dirname "$f")"
-      mv "$f" "/tmp/strays/preflight/$f" 2>/dev/null || rm -f "$f"
-    done
+    # O-SHIPSTRAYSTRUCT: never archive declared structure .gitkeep Targets —
+    # they are task deliverables awaiting commit, not fabrication pollution
+    # (W4 T-003: ship swept dto/.gitkeep after false already-complete skip).
+    _keep_struct=""
+    if [ -n "${TASKS_FILE:-}" ]; then
+      for _tid in $(grep -oE 'T-[A-Za-z0-9]*[0-9]+' "$TASKS_FILE" 2>/dev/null | sort -u); do
+        _keep_struct="$_keep_struct $(structure_gitkeep_targets "$_tid")"
+      done
+    fi
+    _arch_list=""
+    while read -r f; do
+      [ -n "$f" ] || continue
+      _skip=0
+      for _k in $_keep_struct; do
+        [ "$f" = "$_k" ] && _skip=1 && break
+      done
+      [ "$_skip" = "1" ] && continue
+      _arch_list="$_arch_list $f"
+    done <<EOF
+$(git ls-files --others --exclude-standard -- src/)
+EOF
+    if [ -n "$(echo $_arch_list | tr -d ' ')" ]; then
+      log "M5 ship: archiving untracked src/ strays before preflight (fabrication-pollution guard): $_arch_list"
+      mkdir -p /tmp/strays/preflight
+      for f in $_arch_list; do
+        mkdir -p "/tmp/strays/preflight/$(dirname "$f")"
+        mv "$f" "/tmp/strays/preflight/$f" 2>/dev/null || rm -f "$f"
+      done
+    else
+      log "M5 ship: O-SHIPSTRAYSTRUCT — kept untracked structure Target(s); no strays archived"
+    fi
   fi
   # Pre-push preflight (cart run #2): the factory failed maven-build on a
   # defect (unpinned compiler plugin) the local full check catches — never
@@ -2849,6 +2977,19 @@ while :; do
         echo "ship-blocked-coverage-decision" > /tmp/supervisor-done
         exit 3
       fi
+    fi
+    # O-SONAR401: Sonar auth/bootstrap RED is infra — never burn MiniMax
+    # preflight-fix seats (W4 wake43/44: preflight named O-SONAR401 401).
+    if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized|scanner bootstrapping has failed' \
+      /tmp/preflight-failure.txt 2>/dev/null; then
+      event "m5-ship" 0 ship_blocked sonar_auth
+      record_debt "M5 ship" sonar \
+        "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN; preflight-fix skipped"
+      log "M5 ship: BLOCKED — O-SONAR401 Sonar auth failed. Not burning preflight-fix seats."
+      outer_log "         M5 ship: BLOCKED — Sonar 401; refresh SONAR_TOKEN (O-SONAR401)"
+      write_run_report "ship-blocked-sonar-auth"
+      echo "ship-blocked-sonar-auth" > /tmp/supervisor-done
+      exit 3
     fi
     if [ "$PREF_R" -le "$MAX_PER_CLASS" ]; then
       log "M5 ship: pre-push preflight RED (round $PREF_R) — fixing before push"
@@ -2892,7 +3033,26 @@ ${RUN_CONTRACT}" \
     write_run_report "ship-blocked-k12"; echo "ship-blocked-k12" > /tmp/supervisor-done; exit 3
   fi
   PREV=$(newest_pipelinerun)
-  PUSH_OUT=$(git push origin main 2>&1) || { log "FATAL: git push failed"; echo "$PUSH_OUT" >> "$LOG"; write_run_report "push-failed"; echo push-failed > /tmp/supervisor-done; exit 1; }
+  # O-SHIPREMOTE (W4-026a): name non-fast-forward / diverged remotes distinctly —
+  # after wipe+restart, origin/main may still carry the aborted run tip.
+  # Never force-push from the harness; operator reconciles with full SHA.
+  if ! PUSH_OUT=$(git push origin main 2>&1); then
+    echo "$PUSH_OUT" >> "$LOG"
+    if echo "$PUSH_OUT" | grep -qiE 'non-fast-forward|\[rejected\].*\(non-fast-forward\)|fetch first|tip of your current branch is behind'; then
+      event "m5-ship" 0 ship_blocked remote_diverged
+      record_debt "M5 ship" remote \
+        "O-SHIPREMOTE origin/main diverged (non-fast-forward) — operator force-update with full SHA or ship other branch; harness will not force-push"
+      log "M5 ship: BLOCKED — O-SHIPREMOTE remote diverged (non-fast-forward). Not force-pushing."
+      outer_log "         M5 ship: BLOCKED — origin/main diverged; reconcile remote before ship (O-SHIPREMOTE)"
+      write_run_report "ship-blocked-remote-diverged"
+      echo "ship-blocked-remote-diverged" > /tmp/supervisor-done
+      exit 3
+    fi
+    log "FATAL: git push failed"
+    write_run_report "push-failed"
+    echo push-failed > /tmp/supervisor-done
+    exit 1
+  fi
   echo "$PUSH_OUT" >> "$LOG"
   LAST_PUSHED=$(git rev-parse HEAD)
   PUSH_UPTODATE=0

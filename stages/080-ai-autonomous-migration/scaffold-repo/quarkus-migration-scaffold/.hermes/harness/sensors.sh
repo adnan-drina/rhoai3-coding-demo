@@ -371,6 +371,11 @@ sonar_check() { # $1 = inloop|full  (default full)
       -Dsonar.projectKey="$PROJECT_KEY" -Dsonar.qualitygate.wait=$gate_wait \
       > /tmp/sensor-sonar.log 2>&1
   local rc=$?
+  # O-SONAR401: invalid/expired token must not look like a code-violation RED
+  # that burns Qwen/MiniMax sfix (S01 T-002: HTTP 401 on analysis/version).
+  if [ $rc -ne 0 ] && grep -qE 'HTTP 401|401 Unauthorized|Not authorized|check the property sonar\.token' /tmp/sensor-sonar.log; then
+    fail sonar "O-SONAR401: Sonar auth failed (401) — refresh SONAR_TOKEN; not a code sfix"
+  fi
   # Violation evidence comes from the single helper (audit consolidation).
   if [ "$mode" = "inloop" ]; then
     [ $rc -ne 0 ] && fail sonar "analysis submit failed — /tmp/sensor-sonar.log"

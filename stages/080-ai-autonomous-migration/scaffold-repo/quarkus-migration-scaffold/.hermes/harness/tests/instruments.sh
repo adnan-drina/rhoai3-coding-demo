@@ -1679,6 +1679,35 @@ EOF
 }
 check "already-complete does not skip Create *Test when absent (O-ACCREATE)" 0 "rc=1"
 
+# O-ACSTRUCT — Shape=structure Target package dir missing must NOT oracle-skip
+# (W4-024a: T-003 ALREADY COMPLETE while src/main/java/com/demo/dto/ absent).
+run_case() {
+  mkfix
+  mkdir -p .hermes/harness
+  # Minimal findings-oracle that claims Findings absent (the false path).
+  cat > .hermes/harness/findings-oracle.py <<'PY'
+#!/usr/bin/env python3
+import sys
+print("absent:removed-javaee-modules-00020")
+sys.exit(0)
+PY
+  chmod +x .hermes/harness/findings-oracle.py
+  printf 'quarkus-maven-plugin\n' > pom.xml
+  # deliberately NO src/main/java/com/demo/dto/.gitkeep
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Prepare DTO package structure for S02 model harvest
+**Findings**: removed-javaee-modules-00020 (17)
+**Shape**: structure
+**Target design**:
+- **Target**: → `src/main/java/com/demo/dto/` (create package structure)
+- **Structure**: Create `.gitkeep` file in target package directory
+**Acceptance**: Target package directory created with `.gitkeep`
+EOF
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$AC_PY" tasks.md T-003; echo "rc=$?"
+}
+check "already-complete does not skip structure Target when dir missing (O-ACSTRUCT)" 0 "rc=1"
+
 # O-AC2 — preserve token in Story Scope Waivers must not skip unrelated tasks
 run_case() {
   mkfix
@@ -1993,6 +2022,84 @@ EOF
     | python3 "$MM_PY" tasks.md T-001; echo "rc=$?"
 }
 check "mechan-match accepts package-info.java on structure task (O-STRUCTINFO)" 0 "rc=0"
+
+# O-STRUCTPRESAT — dirty scaffold-presatisfied must not fail .gitkeep structure
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Prepare DTO package structure for S02 model harvest
+**Class**: rewrite
+**Shape**: structure
+**Target design**:
+- **Target**: → `src/main/java/com/demo/dto/` (create package structure)
+- **Structure**: Create `.gitkeep` file in target package directory
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/dto/.gitkeep' \
+    'migration/scaffold-presatisfied.generated.txt' \
+    | python3 "$MM_PY" tasks.md T-003; echo "rc=$?"
+}
+check "mechan-match ignores scaffold-presatisfied with structure gitkeep (O-STRUCTPRESAT)" 0 "rc=0"
+
+# O-SONAR401INST / W4-025a/W4-027 — wiring + behavioural classify + phrases.
+run_case() {
+  grep -q 'O-SONAR401' "$SENSORS" \
+    && grep -q 'ship-blocked-sonar-auth' "$HARNESS_DIR/supervisor.sh" \
+    && grep -qE 'HTTP 401|401 Unauthorized' "$HARNESS_DIR/supervisor.sh" \
+    && echo sonar401-wired
+}
+check "supervisor+sensors wire O-SONAR401 ship block (O-SONAR401INST)" 0 "sonar401-wired"
+
+run_case() {
+  # Behavioural: sensors.sh sonar path classifies HTTP 401 log as O-SONAR401
+  # (not a code-violation RED). Exercise the grep gate on a fixture log.
+  mkfix
+  printf '%s\n' \
+    'Error on analysis/version: HTTP 401 Unauthorized' \
+    'Please check the property sonar.token or the environment variable SONAR_TOKEN.' \
+    > /tmp/sensor-sonar.log
+  if grep -qE 'HTTP 401|401 Unauthorized|Not authorized|check the property sonar\.token' /tmp/sensor-sonar.log \
+    && grep -q 'O-SONAR401' "$SENSORS"; then
+    echo sonar401-classify-ok
+  fi
+}
+check "O-SONAR401 classify greps match fixture 401 log (O-SONAR401INST)" 0 "sonar401-classify-ok"
+
+run_case() {
+  grep -q 'O-SFIXDIMNONE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'dims=\[none\]' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'record_debt' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixdimnone-wired
+}
+check "supervisor wires O-SFIXDIMNONE skip (O-SONAR401INST)" 0 "sfixdimnone-wired"
+
+run_case() {
+  grep -q 'O-SHIPREMOTE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ship-blocked-remote-diverged' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'will not force-push' "$HARNESS_DIR/supervisor.sh" \
+    && grep -qE 'non-fast-forward' "$HARNESS_DIR/supervisor.sh" \
+    && echo shipremote-wired
+}
+check "supervisor wires O-SHIPREMOTE diverge block (O-SONAR401INST)" 0 "shipremote-wired"
+
+run_case() {
+  # Phrase fixtures — the exact log tokens the guards match must remain stable.
+  printf '%s\n' \
+    'SENSOR RED (sonar): O-SONAR401: Sonar auth failed (401)' \
+    ' ! [rejected]  main -> main (non-fast-forward)' \
+    'hint: Updates were rejected because the tip of your current branch is behind' \
+    | grep -qE 'O-SONAR401|non-fast-forward|tip of your current branch is behind' \
+    && echo phrase-fixtures-ok
+}
+check "O-SONAR401/O-SHIPREMOTE match phrases still recognizable (O-SONAR401INST)" 0 "phrase-fixtures-ok"
+
+run_case() {
+  grep -q 'O-RESUMEHIDE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'walked RESUME_RUN_BASE back' "$HARNESS_DIR/outer-loop.sh" \
+    && echo resumehide-wired
+}
+check "outer-loop wires O-RESUMEHIDE walk-back (O-RESUMEHIDE)" 0 "resumehide-wired"
 
 run_case() {
   # O-T6dPKGINFO: build verification mentioning characterization must accept
@@ -2540,6 +2647,23 @@ EOF
   python3 "$LINT" tasks.md
 }
 check "plan-lint accepts package-structure task with .gitkeep (S-PKGDIR)" 0 "PLAN OK"
+
+# O-SHAPELINT — Shape=structure without package/.gitkeep Target (property convert)
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert legacy database property files to Quarkus profile format
+**Class**: rewrite
+**Shape**: structure
+**Target design**:
+- Merge HSQLDB config → `%dev.quarkus.datasource.*` in application.properties
+**Acceptance**: Quarkus profiles available
+EOF
+  printf 'legacyPackage: org.springframework.samples.petclinic\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint rejects Shape=structure without package Target (O-SHAPELINT)" 1 "O-SHAPELINT"
 
 run_case() {
   grep -q 'sensor-fix-mode' "$SENSORS" \
@@ -3142,6 +3266,55 @@ EOF
   python3 "$LINT" tasks.md f.json
 }
 check "plan-lint Out-of-scope path does not own incident (K1-OWN)" 1 "LINT:incident-unowned"
+
+# O-M3DTOSCOPE: --story-scope skips incident-unowned for files outside roadmap scope
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert pom
+**Class**: rewrite
+**Shape**: modify
+**Findings**: removed-javaee-modules-00020
+**Goal**: convert pom only
+**Target design**: → `pom.xml`
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"removed-javaee-modules-00020": {"category": "mandatory", "incidents": [
+  {"uri": "file:///projects/legacy/pom.xml", "lineNumber": 1},
+  {"uri": "file:///projects/legacy/src/main/java/com/redhat/coolstore/dto/FooDto.java", "lineNumber": 2}
+]}}}]
+EOF
+  python3 "$LINT" tasks.md f.json --story-scope 'pom.xml,src/main/resources/application.properties'
+}
+check "plan-lint story-scope skips out-of-scope dto incidents (O-M3DTOSCOPE)" 0 "PLAN OK"
+
+# O-M3GENSRC: generated-sources never require ownership
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert pom
+**Class**: rewrite
+**Shape**: modify
+**Findings**: mapstruct-00001
+**Goal**: convert pom
+**Target design**: → `pom.xml`
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"mapstruct-00001": {"category": "mandatory", "incidents": [
+  {"uri": "file:///projects/legacy/target/generated-sources/annotations/FooMapperImpl.java", "lineNumber": 1}
+]}}}]
+EOF
+  python3 "$LINT" tasks.md f.json
+}
+check "plan-lint skips generated-sources incident-unowned (O-M3GENSRC)" 0 "PLAN OK"
 
 # K1-CONF: disclaimer must not manufacture conflict with real owner
 run_case() {
@@ -4627,6 +4800,27 @@ run_case() {
     && echo m3worker-ok
 }
 check "M3 Qwen draft + MiniMax backstop wiring (O-M3WORKER)" 0 "m3worker-ok"
+
+run_case() {
+  # O-M3ROUTE: default MiniMax-first; O-M3DTOSCOPE / Class+Shape preseed wired.
+  grep -qE 'WORKER_M3_FIRST="\$\{WORKER_M3_FIRST:-false\}"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3ROUTE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'story-scope' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3DTOSCOPE' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q '\*\*Class\*\*: rewrite' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '\*\*Shape\*\*: modify' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3route-ok
+}
+check "M3 MiniMax-first + story-scope + Class/Shape preseed (O-M3ROUTE/O-M3DTOSCOPE)" 0 "m3route-ok"
+
+run_case() {
+  # O-M3SUPSCOPE: supervisor plan-lint must pass --story-scope (parity with outer).
+  grep -q 'STORY_SCOPE_ARGS' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'story-scope' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M3SUPSCOPE\|O-M3DTOSCOPE' "$HARNESS_DIR/supervisor.sh" \
+    && echo m3supscope-ok
+}
+check "supervisor plan-lint passes --story-scope (O-M3SUPSCOPE)" 0 "m3supscope-ok"
 
 run_case() {
   mkfix

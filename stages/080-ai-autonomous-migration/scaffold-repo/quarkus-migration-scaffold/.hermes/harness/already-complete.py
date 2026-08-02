@@ -142,32 +142,119 @@ def _target_java_paths(body: str) -> list[str]:
     return [p for p in _target_paths(body) if p.endswith(".java")]
 
 
+def is_structure_task(title: str, body: str) -> bool:
+    """O-ACSTRUCT: Shape=structure or package-structure /.gitkeep deliverable."""
+    if re.search(r"(?im)^\*\*Shape\*\*\s*:?\s*structure\b", body):
+        return True
+    if re.search(r"(?im)^\*\*Shape\s*:\s*structure\*\*", body):
+        return True
+    if re.search(r"(?i)\.gitkeep|package structure|directory structure", body):
+        return True
+    if re.search(r"(?i)\b(prepare|create)\b.+\b(package|directory)\s+structure\b", title):
+        return True
+    return False
+
+
+def _target_dir_paths(body: str) -> list[str]:
+    """Package dirs on Target/→ lines (trailing / or bare java package path).
+
+    O-ACSTRUCT: `→ src/main/java/com/demo/dto/` is a deliverable; finding-absent
+    must not skip while the directory (and usually `.gitkeep`) is missing.
+    """
+    dirs: list[str] = []
+    for line in body.splitlines():
+        if not re.search(r"(?:Target|→|->)", line, re.I):
+            continue
+        for m in re.finditer(
+            r"src/(?:main|test)/java/[A-Za-z0-9_./]+",
+            line,
+        ):
+            p = m.group(0).rstrip("/")
+            if p.endswith(".java") or p.endswith(".gitkeep"):
+                continue
+            # Prefer directory form; drop if a .java file was partially matched
+            if "/java/" in p and not Path(p).suffix:
+                dirs.append(p)
+    return [p for p in dirs if "migration/staging" not in p and "/legacy/" not in p]
+
+
+def structure_gitkeep_paths(body: str) -> list[str]:
+    """Declared or synthesized .gitkeep paths for structure Targets (O-ACSTRUCT)."""
+    paths = sorted(
+        set(
+            re.findall(
+                r"src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep",
+                body,
+            )
+        )
+    )
+    if paths:
+        return [p for p in paths if "migration/staging" not in p]
+    out: list[str] = []
+    for d in _target_dir_paths(body):
+        out.append(f"{d}/.gitkeep")
+    return out
+
+
+def missing_structure_deliverable(title: str, body: str) -> bool:
+    """True when Shape=structure Target dir/.gitkeep is still absent (O-ACSTRUCT)."""
+    if not is_structure_task(title, body):
+        return False
+    keeps = structure_gitkeep_paths(body)
+    if keeps:
+        for path in keeps:
+            if not (ROOT / path).is_file():
+                return True
+        return False
+    # Structure task with only a Target dir (no .gitkeep cite) — dir must exist.
+    dirs = _target_dir_paths(body)
+    if not dirs:
+        return True  # structure claim with no Target path → refuse skip
+    for d in dirs:
+        if not (ROOT / d).is_dir():
+            return True
+    return False
+
+
 def _target_paths(body: str) -> list[str]:
-    """Destination paths on Target/→ lines: java, props/yaml, k8s (O-AC-NONJAVA)."""
+    """Destination paths on Target/→ lines: java, props/yaml, k8s (O-AC-NONJAVA).
+
+    O-ACSTRUCT: also .gitkeep and package directories under src/*/java/.
+    """
     paths: list[str] = []
     for line in body.splitlines():
         if not re.search(r"(?:Target|→|->)", line, re.I):
             continue
         paths.extend(
             re.findall(
-                r"(?:src/(?:main|test)/(?:java/[A-Za-z0-9_./]+\.java|resources/[A-Za-z0-9_./-]+\.(?:properties|ya?ml|xml))|k8s/[A-Za-z0-9_./-]+)",
+                r"(?:src/(?:main|test)/(?:java/[A-Za-z0-9_./]+\.java|java/[A-Za-z0-9_./]+/\.gitkeep|resources/[A-Za-z0-9_./-]+\.(?:properties|ya?ml|xml))|k8s/[A-Za-z0-9_./-]+)",
                 line,
             )
         )
         # also bare migration.yaml when cited as Target
         paths.extend(re.findall(r"(?<![\w./])migration\.yaml\b", line))
+        # package dirs (trailing slash or bare) — checked as dir-or-.gitkeep below
+        for d in re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+/?", line):
+            d = d.rstrip("/")
+            if not d.endswith(".java") and not Path(d).suffix:
+                paths.append(f"{d}/.gitkeep")
     return [p for p in paths if "migration/staging" not in p and "/legacy/" not in p]
 
 
 def missing_target_path(body: str) -> bool:
     """O-AC3/O-AC-NONJAVA: True when a Target destination path is still absent.
 
-    Extends .java-only O-AC3 to application.properties, yaml, k8s/**, migration.yaml.
+    Extends .java-only O-AC3 to application.properties, yaml, k8s/**, migration.yaml,
+    and structure `.gitkeep` / package dirs (O-ACSTRUCT).
     """
     src_root = ROOT / "src"
     for path in _target_paths(body):
-        if (ROOT / path).is_file():
+        p = ROOT / path
+        if p.is_file():
             continue
+        # Structure package deliverable: require the .gitkeep file itself
+        if path.endswith("/.gitkeep"):
+            return True
         leaf = Path(path).name
         if path.endswith(".java") and src_root.is_dir() and list(src_root.rglob(leaf)):
             continue
@@ -416,10 +503,13 @@ def main() -> int:
     if myp.is_file():
         myaml = myp.read_text(encoding="utf-8", errors="replace")
 
-    # O-AC3 / O-AC-NONJAVA / O-ACVERIFY / O-ALREADYPROP / O-ALREADYREPL:
-    # missing Target, non-java Target, Target/Owns .java class work, verify
-    # titles, or missing named quarkus-* replacements block preserve skip.
+    # O-AC3 / O-AC-NONJAVA / O-ACVERIFY / O-ALREADYPROP / O-ALREADYREPL /
+    # O-ACSTRUCT: missing Target, non-java Target, Target/Owns .java class work,
+    # verify titles, structure package/.gitkeep, or missing named quarkus-*
+    # replacements block preserve skip.
     repl_gap = replacement_constructs_missing(title, body)
+    if missing_structure_deliverable(title, body):
+        return 1
     if (
         not missing_target_path(body)
         and not nonjava_target_blocks_preserve(body)
@@ -496,6 +586,8 @@ def main() -> int:
             and not is_create_task(title)
             and not is_verify_task(title)  # O-ACVERIFY2: verify ≠ finding-absent
             and not missing_target_path(body)
+            # O-ACSTRUCT: finding-absent ≠ package structure until .gitkeep exists
+            and not missing_structure_deliverable(title, body)
             and ann_gap is None
             and repl_gap is None
         ):

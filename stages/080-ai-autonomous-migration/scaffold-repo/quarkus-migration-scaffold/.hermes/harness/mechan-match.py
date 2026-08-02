@@ -66,9 +66,14 @@ def main() -> int:
         "migration/mta-findings-after.json",
         "migration/findings-delta.txt",
         "migration/mta-findings.json",
+        # O-STRUCTPRESAT (W4 T-003): dirty O-DESTBASE inventory must not
+        # force structure-non-gitkeep after a valid .gitkeep write.
+        "migration/scaffold-presatisfied.generated.txt",
+        "migration/scaffold-presatisfied.txt",
     }
     _ignore_prefixes = _ignore_prefixes + (
         "migration/mta-findings-",
+        "migration/scaffold-presatisfied",
     )
 
     staged = []

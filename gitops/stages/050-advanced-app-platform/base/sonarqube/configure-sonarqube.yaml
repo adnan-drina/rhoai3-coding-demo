@@ -137,12 +137,33 @@ spec:
               AUTH="admin:${ADMIN_PASS}"
 
               # --- 2. Scanner token for the pipeline ---
-              curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/revoke" \
-                --data-urlencode "name=platform-pipeline" >/dev/null || true
-              TOKEN_RESPONSE=$(curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/generate" \
-                --data-urlencode "name=platform-pipeline")
-              TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-              [ -n "${TOKEN}" ] || { echo "ERROR: token generation failed: ${TOKEN_RESPONSE}"; exit 1; }
+              # O-SONARMIRROR / W4-029a: do NOT revoke+regenerate on every PostSync.
+              # Blind rotation races the workspace mirror: wksp keeps the revoked
+              # token in env until remount → O-SONAR401 false ship-block. Reuse
+              # the existing secret token when it still validates.
+              TOKEN=""
+              if oc get secret sonarqube-credentials -n app-platform-build >/dev/null 2>&1; then
+                EXISTING=$(oc get secret sonarqube-credentials -n app-platform-build \
+                  -o jsonpath='{.data.token}' | base64 -d || true)
+                if [ -n "${EXISTING}" ]; then
+                  code=$(curl -s -o /tmp/sonar-tok-probe.txt -w '%{http_code}' \
+                    -u "${EXISTING}:" "${SONAR}/api/v2/analysis/version" || echo 000)
+                  if [ "${code}" = "200" ]; then
+                    TOKEN="${EXISTING}"
+                    echo "Reusing valid platform-pipeline token (O-SONARMIRROR; skip revoke)"
+                  else
+                    echo "Existing token probe HTTP ${code} — will mint a fresh one"
+                  fi
+                fi
+              fi
+              if [ -z "${TOKEN}" ]; then
+                curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/revoke" \
+                  --data-urlencode "name=platform-pipeline" >/dev/null || true
+                TOKEN_RESPONSE=$(curl -s -u "${AUTH}" -X POST "${SONAR}/api/user_tokens/generate" \
+                  --data-urlencode "name=platform-pipeline")
+                TOKEN=$(echo "${TOKEN_RESPONSE}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+                [ -n "${TOKEN}" ] || { echo "ERROR: token generation failed: ${TOKEN_RESPONSE}"; exit 1; }
+              fi
               oc create secret generic sonarqube-credentials -n app-platform-build \
                 --from-literal=host="${SONAR}" \
                 --from-literal=token="${TOKEN}" \

@@ -3,6 +3,7 @@
 
 Usage: plan-lint.py <tasks.md> [mta-findings.json]
          [--findings-scope id1,id2] [--story-deploy true|false]
+         [--story-scope path1,path2]
 
 --findings-scope (M3 story scoping, redesign §3): restrict the
 mandatory-findings coverage check to the listed rule ids — the story's
@@ -12,6 +13,11 @@ assigned findings from the roadmap. All other checks stay global.
 Java @Path substance. When false (non-deploy stories), path must NOT be
 tasked with endpoint substance (defer to deploy story; S-AC1/G-OK). When
 omitted, defaults to true for back-compat with older instrument fixtures.
+
+--story-scope (O-M3DTOSCOPE): comma-separated roadmap scope path globs. When
+set, incident-unowned is only enforced for incidents whose legacy path
+matches a scope entry — platform stories must not own **/dto/** just
+because a findings-scope rule also hits later-story files.
 
 Checks (exit 0 = plan accepted, 1 = revision required; findings printed
 one per line as 'LINT:<class>: <detail>'):
@@ -26,6 +32,7 @@ one per line as 'LINT:<class>: <detail>'):
   incident-unowned / incident-conflict — K1 ownership failures
   O-PLANEXISTS — task work target already gone / already Quarkus (N10/R-217b)
 """
+import fnmatch
 import json
 import re
 import subprocess
@@ -33,6 +40,35 @@ import sys
 from pathlib import Path
 
 problems = []
+
+
+def _incident_in_story_scope(legacy_rel: str, scopes: list[str]) -> bool:
+    """True if incident path is inside roadmap story scope (or scope unset).
+
+    O-M3DTOSCOPE: findings-scope rule ids can list incidents across packages;
+    ownership is only required for files the story's scope actually covers.
+    """
+    if not scopes:
+        return True
+    rel = legacy_rel.lstrip("./")
+    base = rel.rsplit("/", 1)[-1]
+    for raw in scopes:
+        g = raw.strip().lstrip("./")
+        if not g:
+            continue
+        if rel == g or rel.endswith("/" + g):
+            return True
+        if fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(rel, "*/" + g):
+            return True
+        # basename match for shared roots (pom.xml) and exact file scopes
+        if g == base or g.endswith("/" + base):
+            return True
+        # directory prefix (scope entry without wildcard)
+        if not any(ch in g for ch in "*?[") and (
+            rel.startswith(g.rstrip("/") + "/") or rel.startswith(g + "/")
+        ):
+            return True
+    return False
 
 
 def _committed_task_ids() -> set:
@@ -69,7 +105,23 @@ def _norm_incident_uri(uri: str) -> str:
         i = u.find(marker)
         if i >= 0:
             return u[i:]
-    return u.lstrip("/") if u != "?" else "?"
+    rel = u.lstrip("/") if u != "?" else "?"
+    if rel == "?":
+        return "?"
+    # Strip workspace prefixes so pom.xml / root files match roadmap scope
+    # (O-M3DTOSCOPE): incidents often arrive as projects/legacy/pom.xml.
+    for pref in (
+        "projects/legacy/",
+        "projects/modernized/",
+        "legacy/",
+        "modernized/",
+    ):
+        if rel.startswith(pref):
+            rel = rel[len(pref) :]
+            break
+    if rel.endswith("/pom.xml") or rel == "pom.xml":
+        return "pom.xml"
+    return rel
 
 
 def _map_pkg_path(rel: str, legacy_slash: str, target_slash: str) -> str:
@@ -188,6 +240,18 @@ def main():
         raw = (args[i + 1] if i + 1 < len(args) else "true").strip().lower()
         story_deploy = raw in ("1", "true", "yes", "on")
         del args[i:i + 2]
+    # O-M3DTOSCOPE: roadmap story scope (comma-separated path globs). When set,
+    # incident-unowned is only enforced for incidents inside that scope — S01
+    # platform must not own **/dto/** just because removed-javaee is in findings.
+    story_scope_raw = ""
+    if "--story-scope" in args:
+        i = args.index("--story-scope")
+        story_scope_raw = args[i + 1] if i + 1 < len(args) else ""
+        del args[i:i + 2]
+    # parse-roadmap emits space-separated scope; outer may also pass commas.
+    # Splitting only on "," treated the whole string as one blob → no path
+    # matched → every incident skipped (false PLAN OK on S01 fcc506c).
+    story_scope = [s for s in re.split(r"[\s,]+", story_scope_raw) if s]
     tasks_path = args[0]
     text = open(tasks_path).read()
 
@@ -458,6 +522,16 @@ def main():
                     continue
                 legacy_rel = _norm_incident_uri(str(inc.get("uri") or "?"))
                 if legacy_rel == "?":
+                    continue
+                # O-M3GENSRC: MapStruct/OpenAPI generated under target/generated-sources
+                # is build noise — never require M3 task ownership (S01 platform RED).
+                if "/target/generated-sources/" in f"/{legacy_rel}" or legacy_rel.startswith(
+                    "target/generated-sources/"
+                ):
+                    continue
+                # O-M3DTOSCOPE: skip incidents outside this story's roadmap scope
+                # (e.g. removed-javaee dto/** on a pom/properties-only S01).
+                if not _incident_in_story_scope(legacy_rel, story_scope):
                     continue
                 target_rel = _map_pkg_path(legacy_rel, legacy_path, target_slash)
                 owners = [
@@ -819,6 +893,37 @@ def main():
                 lint("O-SHAPEDECL", msg)
             else:
                 print(f"WARN:O-SHAPEDECL: {msg}")
+
+    # O-SHAPELINT: Shape=structure requires a package/.gitkeep Target deliverable.
+    # Property/datasource converts marked structure get O-STRUCTTGT .gitkeep-only
+    # packets and burn the worker (W4 S01 T-002). Migration-general.
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        sm = re.search(
+            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
+            r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+            body,
+        )
+        if not sm:
+            continue
+        shape = next(g for g in sm.groups() if g).lower()
+        if shape != "structure":
+            continue
+        blob = f"{title}\n{body}"
+        has_pkg = bool(
+            re.search(
+                r"(?i)src/(?:main|test)/java/[A-Za-z0-9_./]+/\.gitkeep"
+                r"|src/(?:main|test)/java/[A-Za-z0-9_./]+/"
+                r"|\.gitkeep|package-info\.java|package structure",
+                blob,
+            )
+        )
+        if not has_pkg:
+            lint(
+                "O-SHAPELINT",
+                f"{tid}: Shape=structure requires Target package dir / .gitkeep "
+                f"(or package-info) — use modify/create for property/file converts",
+            )
 
     # G5 / O-INFERABSENT predictor (WARN tier — does not fail PLAN OK):
     # infer + Oracle:absent is the S03 T-007/T-012 wedge signature.

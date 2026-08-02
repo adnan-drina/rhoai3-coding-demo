@@ -111,6 +111,13 @@ sensors, scaffold skills, live migration workspace):
     Coolstore cart names, packages, item ids, and endpoints belong in story
     artifacts or explicit test fixtures — never as the only shape a “durable”
     fix understands.
+12. **O-IDLEWSFP — dual idle clock.** Review / wake idle ladders that decide
+    whether the *run* is stalled must key on **`workspace_fp` alone**
+    (HEAD + outer/supervisor liveness + story-state / outer-loop.log). Host
+    `harness_fp` / project dirty / monitor_fp reset an *agent-implementing*
+    clock only — they must not clear `run_idle` while the specimen is stuck
+    (Wave4 W4-023a: harness edits masked Sonar-401 sfix stall). Helper:
+    `scripts/track-b/v10-idle-clock.sh`.
 
 ## Anti-patterns (forbidden)
 

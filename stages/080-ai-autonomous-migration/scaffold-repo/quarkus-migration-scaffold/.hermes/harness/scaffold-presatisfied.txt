@@ -15,3 +15,7 @@ javaee-pom-to-quarkus-00020
 javaee-pom-to-quarkus-00030
 javaee-pom-to-quarkus-00040
 javaee-pom-to-quarkus-00050
+javaee-pom-to-quarkus-00060
+springboot-actuator-to-quarkus-0100
+springboot-metrics-to-quarkus-0100
+springboot-cache-to-quarkus-00000

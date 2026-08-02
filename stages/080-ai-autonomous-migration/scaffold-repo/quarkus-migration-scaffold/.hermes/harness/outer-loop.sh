@@ -50,11 +50,12 @@ ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
 WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
-# O-M3WORKER: M3 SPECIFY drafts on Qwen (plan-lint is the cheap verifier);
-# MiniMax is a capped backstop after worker attempts fail lint.
-WORKER_M3_FIRST="${WORKER_M3_FIRST:-true}"
+# O-M3ROUTE / O-M3WORKER: M3 SPECIFY open-ended doc draft → MiniMax first
+# (Qwen is 0-for-3 on M3; file-level harvest remains worker-first in M4).
+# Set WORKER_M3_FIRST=true to restore Qwen-draft + MiniMax backstop.
+WORKER_M3_FIRST="${WORKER_M3_FIRST:-false}"
 M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
-M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-1}"
+M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-2}"
 LOG=/tmp/outer-loop.log
 STATE=migration/story-state.csv
 HARNESS=.hermes/harness
@@ -385,11 +386,12 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   SLUG=$(basename "$BRIEF" .md)
   M3_DONE=0
   # O-M3ACCEPT: plan-lint must know deploy vs non-deploy (roadmap flag).
-  M3_LINT_CMD="python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md --story-deploy ${DEPLOY}"
+  # O-M3DTOSCOPE: pass roadmap scope so plan-lint ignores out-of-story files (dto/).
+  M3_LINT_CMD="python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md --story-deploy ${DEPLOY} --story-scope '${SCOPE}'"
   if [ -n "$SPEC_TASKS" ] \
     && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
          --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
-         --story-deploy "$DEPLOY" \
+         --story-deploy "$DEPLOY" --story-scope "$SCOPE" \
          > /tmp/plan-lint.txt 2>&1; then
     [ -n "$(git status --porcelain specs/)" ] \
       && git add specs/ \
@@ -412,9 +414,9 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ "$mode" = "fix" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
         mode=fresh
       fi
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
       if [ "$mode" = "fix" ]; then
-        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/ (create specs/${SLUG}/{spec,plan,tasks}.md from the brief if tasks.md is missing), verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
+        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/ (create specs/${SLUG}/{spec,plan,tasks}.md from the brief if tasks.md is missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. Drop O-PLANEXISTS-dead Spring→Quarkus converts already satisfied by the scaffold. Scope=${SCOPE}. Verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
       fi
     }
     m3_lint_green() {
@@ -422,7 +424,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       [ -n "$SPEC_TASKS" ] || return 1
       python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
         --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
-        --story-deploy "$DEPLOY" > /tmp/plan-lint.txt 2>&1
+        --story-deploy "$DEPLOY" --story-scope "$SCOPE" > /tmp/plan-lint.txt 2>&1
     }
     m3_write_lint_evidence() {
       # O-M3EVID: never `|| echo missing` on plan-lint RED — write real findings.
@@ -433,7 +435,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         else
           python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
             --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
-            --story-deploy "$DEPLOY" 2>&1 || true
+            --story-deploy "$DEPLOY" --story-scope "$SCOPE" 2>&1 || true
         fi
       } > /tmp/plan-lint.txt
     }
@@ -462,11 +464,17 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
 
 #### T-001: TODO — replace from brief (O-M3QWENSTALL preseed)
 **Class**: rewrite
+**Shape**: modify
 **Findings**:
-**Goal**: Replace this skeleton from ${BRIEF} in the first tool batch
+**Goal**: Replace this skeleton from ${BRIEF} in the FIRST tool batch (write/edit this file)
 **Target design**:
-- TODO → TODO
+- pom.xml → pom.xml
 **Acceptance**: plan-lint green; sensors green
+
+# O-M3SHAPEPATCH / O-M3CLASSFMT: every T-NNN needs **Class**: rewrite|infer
+# and **Shape**: create|modify|remove|structure|verify (not free-form verbs).
+# O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator converts when
+# the Quarkus scaffold already satisfies them — verify pom.xml first and omit.
 EOF
           log "         O-M3QWENSTALL: preseeded specs/${SLUG}/tasks.md skeleton before worker seat"
           SPEC_TASKS="specs/${SLUG}/tasks.md"
@@ -530,11 +538,21 @@ EOF
           M3_DONE=1
           break
         fi
-        phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax backstop ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
-        log "         O-M3WORKER: MiniMax backstop after Qwen plan-lint RED"
+        if [ "${WORKER_M3_FIRST:-true}" = "true" ]; then
+          phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax backstop ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
+          log "         O-M3WORKER: MiniMax backstop after Qwen plan-lint RED"
+          seat_tag="orch${ATTEMPT}"
+          seat_label="M3 SPECIFY ${SID} (orch backstop)"
+        else
+          # O-M3ROUTE: MiniMax drafts first (Qwen 0-for-N on open-ended M3).
+          phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax draft ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
+          log "         O-M3ROUTE: MiniMax draft (WORKER_M3_FIRST=false)"
+          seat_tag="a${ATTEMPT}"
+          seat_label="M3 SPECIFY ${SID}"
+        fi
         SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-        m3_build_prompt fix
-        mchat "m3-${SID}-orch${ATTEMPT}" "$P" "M3 SPECIFY ${SID} (orch backstop)"
+        if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
+        mchat "m3-${SID}-${seat_tag}" "$P" "$seat_label"
         mchat_rc=$?
         if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
           log "         O-M3KILL: orch M3 killed (rc=${mchat_rc}) — backstop NOT spent"
@@ -544,62 +562,24 @@ EOF
         if m3_lint_green; then
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
           phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax backstop; commit $(git rev-parse --short HEAD)"
+          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
         fi
-        if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-orch${ATTEMPT}.log" 2>/dev/null; then
-          log "         O-M3QUOTA: MiniMax backstop rate-limited — NOT spent; backoff 15m"
+        if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-${seat_tag}.log" 2>/dev/null; then
+          log "         O-M3QUOTA: MiniMax rate-limited — NOT spent; backoff 15m"
           phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s"
           sleep 900
           continue
         fi
         m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "orch backstop — /tmp/plan-lint.txt"
-        ATTEMPT=$((ATTEMPT + 1))
-      done
-    elif [ "$M3_DONE" != "1" ] && [ "${WORKER_M3_FIRST:-true}" != "true" ]; then
-      # Legacy path: WORKER_M3_FIRST=false → two MiniMax attempts (pre-O-M3WORKER).
-      ATTEMPT=1
-      while [ "$ATTEMPT" -le 2 ]; do
-        if m3_lint_green; then
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
-          M3_DONE=1
-          break
-        fi
-        phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [attempt ${ATTEMPT}/2]"
-        SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-        if [ "$ATTEMPT" -gt 1 ] || [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
-        mchat "m3-${SID}-a${ATTEMPT}" "$P" "M3 SPECIFY ${SID}"
-        mchat_rc=$?
-        if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
-          phase_retry "M3 SPECIFY ${SID} — session killed (rc=${mchat_rc}); not counting as lint fail"
-          continue
-        fi
-        if m3_lint_green; then
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
-          M3_DONE=1
-          break
-        fi
-        if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-a${ATTEMPT}.log" 2>/dev/null; then
-          phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s (not counting as lint fail)"
-          sleep 900
-          continue
-        fi
-        m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "full findings /tmp/plan-lint.txt"
-        [ "$ATTEMPT" = "2" ] && fail_run "M3 SPECIFY ${SID} failed its plan lint twice"
-        phase_retry "M3 SPECIFY ${SID} — bouncing once"
+        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "MiniMax attempt ${ATTEMPT} — /tmp/plan-lint.txt"
         ATTEMPT=$((ATTEMPT + 1))
       done
     fi
 
     if [ "$M3_DONE" != "1" ]; then
-      fail_run "M3 SPECIFY ${SID} failed plan-lint after Qwen attempts + MiniMax backstop"
+      fail_run "M3 SPECIFY ${SID} failed plan-lint after M3 attempts (WORKER_M3_FIRST=${WORKER_M3_FIRST:-true})"
     fi
   fi
 
@@ -629,6 +609,39 @@ EOF
   if [ -n "${RESUME_RUN_BASE:-}" ] && [ "${RESUME_STORY:-}" = "$SID" ]; then
     STORY_RUN_BASE="$RESUME_RUN_BASE"
     log "         O-RESUME: using RESUME_RUN_BASE=$(git rev-parse --short "$STORY_RUN_BASE") for $SID only"
+    # O-RESUMEHIDE: a RESUME_RUN_BASE tip that sits *after* earlier T-NNN commits
+    # hides those tips from committed() (RUN_BASE..HEAD) → ceremonial ALREADY
+    # COMPLETE replay (Wave4 S01 resume @1efdd65 re-tipped T-001/T-002). Walk
+    # base back so every in-story T-NNN tip is an ancestor-or-equal of the range
+    # start (O-RESUMEBASEEXCL still counts the tip at RUN_BASE itself).
+    if [ -f "$SPEC_TASKS" ]; then
+      _floor=$(git log -1 --format=%H --grep="story complete" "${STORY_RUN_BASE}^" 2>/dev/null || true)
+      [ -n "$_floor" ] || _floor=$(git rev-list --max-parents=0 HEAD | tail -1)
+      _hidden=""
+      while read -r _tid; do
+        [ -n "$_tid" ] || continue
+        _tsha=$(git log -1 --format=%H --grep="^${_tid}:" "${_floor}..HEAD" 2>/dev/null || true)
+        [ -n "$_tsha" ] || continue
+        # Already visible in RUN_BASE..HEAD, or is the RUN_BASE tip itself.
+        if git log --oneline "${STORY_RUN_BASE}..HEAD" 2>/dev/null | grep -qE "^[0-9a-f]+ ${_tid}:"; then
+          continue
+        fi
+        if [ "$(git rev-parse "$STORY_RUN_BASE")" = "$_tsha" ] \
+          || git log -1 --format=%s "$STORY_RUN_BASE" 2>/dev/null | grep -qE "^${_tid}:"; then
+          continue
+        fi
+        # Tip is a strict ancestor of RESUME tip → hidden; walk to its parent.
+        if git merge-base --is-ancestor "$_tsha" "$STORY_RUN_BASE" 2>/dev/null; then
+          _cand=$(git rev-parse "${_tsha}^" 2>/dev/null || true)
+          [ -n "$_cand" ] || continue
+          STORY_RUN_BASE="$_cand"
+          _hidden="${_hidden} ${_tid}"
+        fi
+      done < <(grep -oE 'T-[0-9]+' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      if [ -n "$_hidden" ]; then
+        log "         O-RESUMEHIDE: walked RESUME_RUN_BASE back to $(git rev-parse --short "$STORY_RUN_BASE") (hidden tips:${_hidden})"
+      fi
+    fi
   else
     # O-M4REPLAY: mid-story restart with RUN_BASE=HEAD re-dispatches already
     # committed T-NNN (empty RUN_BASE..HEAD → committed() always false).
