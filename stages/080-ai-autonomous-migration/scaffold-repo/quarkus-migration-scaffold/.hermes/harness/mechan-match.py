@@ -147,6 +147,24 @@ def main() -> int:
         pass
 
     if paths:
+        # O-T6COMPLETE: create/harvest tips must land *all* declared Target
+        # basenames (disk ∪ staged). Matching only the first path allowed
+        # T-002 to mechan-commit BaseEntity while NamedEntity/Person missing.
+        if create_task and not removal_task:
+
+            def _present(want: str) -> bool:
+                if Path(want).is_file():
+                    return True
+                name = Path(want).name
+                return any(got == want or got.endswith("/" + name) for got in staged)
+
+            missing = [w for w in paths if not _present(w)]
+            if missing:
+                print(
+                    "missing-targets:"
+                    + ",".join(Path(w).name for w in missing[:8])
+                )
+                return 1
         for want in paths:
             for got in staged:
                 if got == want or got.endswith("/" + Path(want).name):

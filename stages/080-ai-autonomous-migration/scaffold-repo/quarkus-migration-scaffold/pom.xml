@@ -17,13 +17,20 @@
     <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
     <quarkus.platform.group-id>com.redhat.quarkus.platform</quarkus.platform.group-id>
     <quarkus.platform.version>3.27.3.SP1-redhat-00002</quarkus.platform.version>
+    <!-- O-JACOCOARGLINE -->
+    <argLine></argLine>
     <surefire-plugin.version>3.5.3</surefire-plugin.version>
     <!-- Both report locations: quarkus-jacoco writes the first for
          @QuarkusTest runs; jacoco-maven-plugin writes the second for plain
          JUnit tests (migration model/unit tests). Sonar imports whichever
          exists. -->
     <sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml,target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-  </properties>
+    <!-- O-DTOCOV: OpenAPI-harvested DTOs are generated shapes — exclude from
+         analysis/coverage/CPD (do not invent BaseDto / theater tests / import theater). -->
+    <sonar.exclusions>**/dto/**</sonar.exclusions>
+    <sonar.coverage.exclusions>**/dto/**</sonar.coverage.exclusions>
+    <sonar.cpd.exclusions>**/dto/**</sonar.cpd.exclusions>
+</properties>
 
   <repositories>
     <repository>
@@ -115,6 +122,14 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire-plugin.version}</version>
         <configuration>
+          <!-- O-JACOCOARGLINE -->
+          <argLine>@{argLine}</argLine>
+          <!-- O-SUREFIREIT -->
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+            <include>**/*IT.java</include>
+          </includes>
           <systemPropertyVariables>
             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
           </systemPropertyVariables>

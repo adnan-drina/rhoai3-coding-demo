@@ -166,6 +166,127 @@ O-NULLACTION: If after a few honest attempts the issue cannot be solved without 
 O-ADDLINFO: End your session notes with ADDITIONAL-WORK: <bullets or none> (K9 feed)."
 RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
+# O-SCOPEBACKFILL: structure / .gitkeep Target paths for a task (space-separated).
+# Empty when Shape≠structure and no Target/Owns .gitkeep — non-structure tasks
+# are unaffected. Migration-general (any package path from tasks.md).
+structure_gitkeep_targets() { # $1=task-id
+  local tid="$1"
+  [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
+  python3 - "$TASKS_FILE" "$tid" <<'PY' 2>/dev/null || true
+import re, sys
+path, tid = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+body = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    break
+if not body:
+    sys.exit(0)
+shape_m = re.search(r"^\*\*Shape\s*:\s*(.+?)\*\*\s*$", body, re.M | re.I)
+if not shape_m:
+    shape_m = re.search(r"^\*\*Shape\*\*\s*:?\s*(.+)$", body, re.M | re.I)
+shape = (shape_m.group(1).strip().lower() if shape_m else "")
+paths = sorted(set(re.findall(
+    r"(?:src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep)", body
+)))
+structish = shape == "structure" or bool(paths) or bool(
+    re.search(r"(?i)\.gitkeep|package structure|directory structure", body)
+)
+if not structish:
+    sys.exit(0)
+for p in paths:
+    print(p)
+PY
+}
+
+# O-SCOPEBACKFILL: True (exit 0) when a structure/.gitkeep Target is still missing.
+structure_targets_missing() { # $1=task-id
+  local tid="$1" t missing=0
+  for t in $(structure_gitkeep_targets "$tid"); do
+    if [ ! -f "$t" ]; then
+      missing=1
+      break
+    fi
+  done
+  [ "$missing" -eq 1 ]
+}
+
+# O-SCOPEBACKFILL: after scope revert, mechanically restore missing structure
+# Targets (.gitkeep) and commit a clear ${T}: tip — never leave the ledger ✓
+# against a tip that is only "scope revert" while the deliverable is absent.
+scope_structure_backfill() { # $1=commit-prefix (T-NNN)
+  local prefix="$1" missing="" t title
+  case "$prefix" in T-*) ;; *) return 0 ;; esac
+  [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
+  for t in $(structure_gitkeep_targets "$prefix"); do
+    if [ ! -f "$t" ]; then
+      mkdir -p "$(dirname "$t")"
+      touch "$t"
+      missing="$missing $t"
+    fi
+  done
+  [ -n "$missing" ] || return 0
+  log "scope sensor: O-SCOPEBACKFILL — restoring structure deliverable(s):${missing}"
+  outer_log "         O-SCOPEBACKFILL: created${missing} after scope revert (structure Target was absent)"
+  event "$prefix" 0 scope_backfill "${missing# }"
+  for t in $missing; do
+    git add -- "$t" 2>/dev/null || true
+  done
+  title=$(task_title "$prefix" 2>/dev/null || true)
+  [ -n "$title" ] || title="Restore structure package deliverable"
+  # Prefer a real ${T}: subject (not "scope revert") so committed()/ledger
+  # cite a deliverable tip. Leave dirty only if commit fails.
+  if ! git diff --cached --quiet 2>/dev/null; then
+    # Subject must stay `${T}: …` (not "… scope revert …") so committed()
+    # and ledger tips cite a deliverable tip distinct from the wipe commit.
+    git commit -q -m "${prefix}: ${title} (O-SCOPEBACKFILL)" 2>/dev/null \
+      || git commit -q -m "${prefix}: structure deliverable .gitkeep (O-SCOPEBACKFILL)" 2>/dev/null \
+      || log "scope sensor: O-SCOPEBACKFILL — staged${missing} but commit failed (left dirty for mechan)"
+  fi
+}
+
+# O-SFIXNODELTA: True (exit 0) when HEAD tip has no meaningful content —
+# empty churn, or only structure scaffold (.gitkeep / package-info.java).
+# Migration-general: any Spring Boot → Quarkus structure tip must not own
+# a sensor-fix that edits pom/src under the task's name.
+sfix_tip_content_empty() {
+  local files numstat add del
+  files=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
+  [ -z "$files" ] && return 0
+  # Structure-only tip
+  if ! printf '%s\n' "$files" | grep -qvE '(^|/)\.gitkeep$|(^|/)package-info\.java$'; then
+    return 0
+  fi
+  # Zero insertions+deletions (incl. mode-only / empty blob adds)
+  numstat=$(git diff-tree --no-commit-id --numstat -r HEAD 2>/dev/null || true)
+  [ -z "$numstat" ] && return 0
+  add=$(printf '%s\n' "$numstat" | awk '{ if ($1 ~ /^[0-9]+$/) s+=$1 } END { print s+0 }')
+  del=$(printf '%s\n' "$numstat" | awk '{ if ($2 ~ /^[0-9]+$/) s+=$2 } END { print s+0 }')
+  [ "${add:-0}" -eq 0 ] && [ "${del:-0}" -eq 0 ] && return 0
+  return 1
+}
+
+# O-REVERTPURE: stage only the reverted paths for a scope-revert commit —
+# never `git add -A` (that sweeps regenerated mta-findings-current.json).
+stage_scope_revert_paths() {
+  local f
+  for f in "$@"; do
+    [ -n "$f" ] || continue
+    if [ -e "$f" ]; then
+      git add -- "$f" 2>/dev/null || true
+    else
+      # Deletion already staged by `git rm`, or needs -u after plain rm.
+      git add -u -- "$f" 2>/dev/null || true
+    fi
+  done
+  git reset -q HEAD -- migration/mta-findings-current.json \
+    .hermes migration/staging 2>/dev/null || true
+}
+
 committed() {
   # O-FGRETRO: probe harden may invalidate prior ALREADY COMPLETE skips.
   if [ -f /tmp/fgretro-reopen.txt ] && grep -qx "$1" /tmp/fgretro-reopen.txt 2>/dev/null; then
@@ -194,6 +315,24 @@ committed() {
       if ! python3 .hermes/harness/already-complete.py "$TASKS_FILE" "$1" >/dev/null 2>&1; then
         return 1
       fi
+    fi
+  fi
+  # O-SCOPEBACKFILL: never mark ✓ when structure/.gitkeep Target is still
+  # absent — a prior T-NNN: tip + scope-revert tip must not satisfy the ledger
+  # while the declared deliverable is missing (v3 S01 T-003).
+  if structure_targets_missing "$1"; then
+    log "$1: O-SCOPEBACKFILL — not committed (structure Target still absent)"
+    return 1
+  fi
+  # Belt: tip that is only a scope-revert subject cannot satisfy completion
+  # when a structure Target was declared (scope revert never matches T-NNN:
+  # above; this guards HEAD-only callers that pass the tip subject).
+  local _subj
+  _subj=$(git log -1 --format=%s 2>/dev/null || true)
+  if echo "$_subj" | grep -qE "^${1}[[:space:]]+scope[[:space:]]+revert"; then
+    if [ -n "$(structure_gitkeep_targets "$1")" ] && structure_targets_missing "$1"; then
+      log "$1: O-SCOPEBACKFILL — HEAD is scope-revert and Target still missing"
+      return 1
     fi
   fi
   return 0
@@ -596,62 +735,78 @@ PY
           git checkout HEAD~1 -- "$f" 2>/dev/null || true
         fi
       done
-      git add -A && git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })" 2>/dev/null
+      # O-REVERTPURE: stage only reverted paths — never git add -A
+      # (v3 T-003: scope revert swept migration/mta-findings-current.json).
+      stage_scope_revert_paths $lviol
+      if ! git diff --cached --quiet 2>/dev/null; then
+        git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })" 2>/dev/null
+      fi
     fi
   fi
   # (B) this-story path-scope check --------------------------------------
-  [ -n "${STORY_SCOPE:-}" ] || return 0
-  # Only path-form scope entries are enforceable (V4 first-run catch: M2
-  # wrote class FQNs — enforcing those would mass-revert every edit).
-  # Enforcement covers src/main/java only: resources (application
-  # .properties) are shared story surface, not class ownership.
-  local pathscope="" e
-  for e in ${STORY_SCOPE}; do case "$e" in src/*) pathscope="$pathscope $e";; esac; done
-  if [ -z "$pathscope" ]; then
-    log "scope sensor: no path-form scope entries — enforcement skipped (informational scope)"
-    return 0
-  fi
-  # O-GATESCOPE: M5 ship correction commits (Gate/Build/Preflight fix) may
-  # edit src/main paths the factory named in /tmp/gate-violations.txt even
-  # when those paths are outside STORY_SCOPE. Reverting them after a Gate
-  # fix caused Sonar↔scope deadlock (Wave2 petclinic: DTO S6207 fixed then
-  # reverted → BV tests RED → O-DEBTFRZ). Story tasks still cannot widen
-  # scope this way — only ship-correction prefixes.
-  local gate_allow=""
-  case "$prefix" in
-    "Gate fix"*|"Build fix"*|"Preflight fix"*)
-      if [ -f /tmp/gate-violations.txt ]; then
-        # shellcheck disable=SC2013
-        gate_allow=$(grep -oE 'src/main/[^[:space:],:]+' /tmp/gate-violations.txt 2>/dev/null \
-          | sed 's/[:].*$//' | sort -u | tr '\n' ' ')
+  if [ -n "${STORY_SCOPE:-}" ]; then
+    # Only path-form scope entries are enforceable (V4 first-run catch: M2
+    # wrote class FQNs — enforcing those would mass-revert every edit).
+    # Enforcement covers src/main/java only: resources (application
+    # .properties) are shared story surface, not class ownership.
+    local pathscope="" e
+    for e in ${STORY_SCOPE}; do case "$e" in src/*) pathscope="$pathscope $e";; esac; done
+    if [ -z "$pathscope" ]; then
+      log "scope sensor: no path-form scope entries — enforcement skipped (informational scope)"
+    else
+      # O-GATESCOPE: M5 ship correction commits (Gate/Build/Preflight fix) may
+      # edit src/main paths the factory named in /tmp/gate-violations.txt even
+      # when those paths are outside STORY_SCOPE. Reverting them after a Gate
+      # fix caused Sonar↔scope deadlock (Wave2 petclinic: DTO S6207 fixed then
+      # reverted → BV tests RED → O-DEBTFRZ). Story tasks still cannot widen
+      # scope this way — only ship-correction prefixes.
+      local gate_allow=""
+      case "$prefix" in
+        "Gate fix"*|"Build fix"*|"Preflight fix"*)
+          if [ -f /tmp/gate-violations.txt ]; then
+            # shellcheck disable=SC2013
+            gate_allow=$(grep -oE 'src/main/[^[:space:],:]+' /tmp/gate-violations.txt 2>/dev/null \
+              | sed 's/[:].*$//' | sort -u | tr '\n' ' ')
+          fi
+          ;;
+      esac
+      local viol="" kept=""
+      for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
+        case " ${pathscope} " in *" $f "*) continue;; esac
+        case " ${gate_allow} " in
+          *" $f "*)
+            kept="$kept $f"
+            log "scope sensor: O-GATESCOPE keep $f — named in /tmp/gate-violations.txt"
+            ;;
+          *) viol="$viol $f";;
+        esac
+      done
+      [ -n "$kept" ] && event "scope" 1 gatescope_keep "${kept# }"
+      if [ -n "$viol" ]; then
+        event "scope" 0 scope_violation "${viol# }"
+        log "scope sensor: out-of-scope src/main edits reverted:${viol}"
+        {
+          echo "The story-scope sensor reverted out-of-scope src/main modifications:${viol}"
+          echo "This story's src/main scope: ${STORY_SCOPE}"
+          echo "Rule: finish the task WITHIN scope; if it genuinely requires an out-of-scope edit, record that need in migration/debt.md instead of making the edit."
+          if [ -n "$gate_allow" ]; then
+            echo "O-GATESCOPE: ship correction may keep src/main paths listed in /tmp/gate-violations.txt (kept:${kept:- none})."
+          fi
+        } > /tmp/scope-violation.txt
+        git checkout HEAD~1 -- $viol 2>/dev/null
+        # O-REVERTPURE: stage only reverted paths — never git add -A
+        stage_scope_revert_paths $viol
+        if ! git diff --cached --quiet 2>/dev/null; then
+          git commit -q -m "${prefix} scope revert: story-scope sensor reverted out-of-scope src/main edits (${viol# })" 2>/dev/null
+        fi
+      else
+        rm -f /tmp/scope-violation.txt
       fi
-      ;;
-  esac
-  local viol="" kept=""
-  for f in $(git diff --name-only --diff-filter=M HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
-    case " ${pathscope} " in *" $f "*) continue;; esac
-    case " ${gate_allow} " in
-      *" $f "*)
-        kept="$kept $f"
-        log "scope sensor: O-GATESCOPE keep $f — named in /tmp/gate-violations.txt"
-        ;;
-      *) viol="$viol $f";;
-    esac
-  done
-  [ -n "$kept" ] && event "scope" 1 gatescope_keep "${kept# }"
-  [ -n "$viol" ] || { rm -f /tmp/scope-violation.txt; return 0; }
-  event "scope" 0 scope_violation "${viol# }"
-  log "scope sensor: out-of-scope src/main edits reverted:${viol}"
-  {
-    echo "The story-scope sensor reverted out-of-scope src/main modifications:${viol}"
-    echo "This story's src/main scope: ${STORY_SCOPE}"
-    echo "Rule: finish the task WITHIN scope; if it genuinely requires an out-of-scope edit, record that need in migration/debt.md instead of making the edit."
-    if [ -n "$gate_allow" ]; then
-      echo "O-GATESCOPE: ship correction may keep src/main paths listed in /tmp/gate-violations.txt (kept:${kept:- none})."
     fi
-  } > /tmp/scope-violation.txt
-  git checkout HEAD~1 -- $viol 2>/dev/null
-  git add -A && git commit -q -m "${prefix} scope revert: story-scope sensor reverted out-of-scope src/main edits (${viol# })" 2>/dev/null
+  fi
+  # O-SCOPEBACKFILL / O-STRUCTREVERT: after any scope revert, restore missing
+  # structure/.gitkeep Targets so the task is not marked ✓ with deliverable absent.
+  scope_structure_backfill "$prefix"
 }
 
 # --- Debt ledger (V5 finding #4) --------------------------------------------
@@ -661,9 +816,39 @@ PY
 # migration/debt.md and commit it. This is the record; the M5 ship gate
 # INDEPENDENTLY blocks on the factory-uncatchable dimensions (fidelity,
 # package) so unresolved debt of those kinds can never ship.
+# O-DEBTFRZRACE / O-SFIXDIRTY: orphan untracked or uncommitted poison under
+# src/ must not drive debt freeze. Discard src dirt (migration-general —
+# no specimen class names).
+discard_src_dirt() { # optional $1=tag for log
+  local tag="${1:-harness}"
+  [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ] || return 0
+  log "$tag: O-SFIXDIRTY — discarding uncommitted/orphan dirt under src/"
+  git checkout -q -- src/ 2>/dev/null || true
+  git clean -fdq -- src/ 2>/dev/null || true
+}
+
 record_debt() { # $1=tag $2=sensor-kind $3=short-reason
   local tag="$1" kind="$2" reason="$3"
+  # O-DEBTFRZRACE: before writing debt/freeze for sensor kinds, discard
+  # orphan src/ poison and re-run the triggering sensor on a clean tree.
+  # False RED from discarded dirt must not freeze (S06 T-001).
+  case "$kind" in
+    task|milestone|sonar)
+      discard_src_dirt "$tag"
+      if .hermes/harness/sensors.sh "$kind" >> "$LOG" 2>&1; then
+        log "$tag: O-DEBTFRZRACE false-red averted — ${kind} GREEN after clean-tree recheck (not recording debt/freeze)"
+        event "$tag" 0 debtfrzrace_averted "$kind"
+        return 0
+      fi
+      ;;
+  esac
   [ -f migration/debt.md ] || printf '# Migration debt ledger\n\nUnresolved sensor REDs recorded by the supervisor: each is a defect that\nsurvived its fix session. The M5 ship gate blocks on fidelity/package debt.\n' > migration/debt.md
+  # O-DEBTNONE: drop template "(none)" placeholders once a real ## entry exists
+  if grep -qE '^\(none\)$|^- \(none\)$|^None\.$' migration/debt.md 2>/dev/null; then
+    sed -i.bak -E '/^\(none\)$/d; /^- \(none\)$/d; /^None\.$/d' migration/debt.md 2>/dev/null \
+      || sed -i '' -E '/^\(none\)$/d; /^- \(none\)$/d; /^None\.$/d' migration/debt.md
+    rm -f migration/debt.md.bak
+  fi
   {
     printf '\n## %s — %s RED\n' "$tag" "$kind"
     printf -- '- head: %s\n' "$(git rev-parse --short HEAD 2>/dev/null)"
@@ -692,6 +877,21 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
 
 debt_frozen() { [ -f /tmp/debt-freeze ]; }
 
+# O-REVHOLD: review/lead HOLD file blocks story-gate-passed (W4-015d).
+# Create migration/HOLD (or /tmp/review-hold) with a reason; remove when cleared.
+review_hold_blocks_ship() {
+  if [ -f migration/HOLD ] || [ -f /tmp/review-hold ]; then
+    local why
+    why=$(head -3 migration/HOLD /tmp/review-hold 2>/dev/null | tr '\n' ' ' | head -c 200)
+    log "O-REVHOLD: refusing story close — HOLD present (${why:-see migration/HOLD})"
+    event "m5-ship" 0 review_hold_block "${why:-HOLD}"
+    write_run_report "ship-blocked-review-hold: ${why:-migration/HOLD}"
+    echo "review-hold" > /tmp/supervisor-done
+    return 0
+  fi
+  return 1
+}
+
 # Clear the ledger on a GREEN ship ONLY when no unresolved ## entries remain.
 # V6 P2.5 / V5 S4: wiping debt on a "green" ship that still listed milestone
 # REDs erased the audit trail (false cleanliness). Unresolved ## debt must
@@ -704,6 +904,61 @@ clear_debt() {
     return 0
   fi
   log "debt ledger has no unresolved ## entries — nothing to clear"
+}
+
+# O-SFIXHINTFIDELITY: detect which cheap dimension(s) the milestone RED cited.
+# Writes /tmp/sensor-fix-dim (primary) for prompt routing.
+sfix_red_dims() {
+  local dims="" logblob
+  logblob=$(cat /tmp/sensor-fidelity.log /tmp/sensor-milestone.log \
+              /tmp/sensor-sonar.log /tmp/sensor-task.log 2>/dev/null || true)
+  if [ -f /tmp/sensor-fix-dim ]; then
+    dims=$(tr -d '[:space:]' </tmp/sensor-fix-dim)
+  fi
+  if echo "$logblob" | grep -qE 'FIDELITY:|HARVEST FIDELITY|SENSOR RED:fidelity|SENSOR RED \(fidelity\)'; then
+    dims="${dims:+$dims }fidelity"
+  fi
+  if echo "$logblob" | grep -qE 'FINDINGS RED|FINDINGS:'; then
+    dims="${dims:+$dims }findings"
+  fi
+  if echo "$logblob" | grep -qE 'COMPILATION ERROR|BUILD FAILURE|cannot find symbol'; then
+    dims="${dims:+$dims }task"
+  fi
+  if echo "$logblob" | grep -qE 'SENSOR RED:sonar|SENSOR RED \(sonar\)|in-loop gate:|QUALITYGATE FAIL|new violations'; then
+    dims="${dims:+$dims }sonar"
+  fi
+  # de-dupe whitespace tokens
+  dims=$(echo "$dims" | tr ' ' '\n' | awk 'NF && !seen[$0]++' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  echo "$dims"
+}
+
+# O-SFIXLOOP / O-SFIXFALSEGREEN: during sensor-fix, milestone is REFUSED —
+# recheck the *cited* cheap dimensions (never sonar-only when fidelity RED).
+sfix_loop_recheck() { # $1=SENSOR_KIND
+  local kind="$1" dims d rc=0
+  if [ "$kind" != "milestone" ]; then
+    .hermes/harness/sensors.sh "$kind"
+    return $?
+  fi
+  dims=$(sfix_red_dims)
+  if [ -z "$dims" ]; then
+    # Unknown milestone RED — require both fidelity and sonar before GREEN
+    # (v3 T-003: sonar-only recheck skipped MiniMax while fidelity still RED).
+    dims="fidelity sonar"
+  fi
+  primary=$(echo "$dims" | awk '{print $1}')
+  printf '%s\n' "$primary" > /tmp/sensor-fix-dim
+  for d in $dims; do
+    case "$d" in
+      fidelity) .hermes/harness/sensors.sh fidelity || rc=1 ;;
+      findings) .hermes/harness/sensors.sh findings || rc=1 ;;
+      task)     .hermes/harness/sensors.sh task || rc=1 ;;
+      sonar)    .hermes/harness/sensors.sh sonar || rc=1 ;;
+      package)  .hermes/harness/sensors.sh package || rc=1 ;;
+      *)        .hermes/harness/sensors.sh sonar || rc=1 ;;
+    esac
+  done
+  return "$rc"
 }
 
 # --- Post-commit verification (extracted so the batch path shares it) -----
@@ -722,6 +977,34 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
   fi
   log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
+  if [ "$SENSOR_KIND" = "milestone" ] && [ -f .hermes/harness/findings-milestone-scope.py ] \
+    && [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ]; then
+    _kms=$(FINDINGS_MILESTONE_SCOPE_ROOT="$PWD" PLAN_SCOPE="${PLAN_SCOPE:-}" \
+      python3 .hermes/harness/findings-milestone-scope.py "$TASKS_FILE" "${RUN_BASE:-HEAD}" \
+      2>/tmp/findings-milestone-scope.err || true)
+    if [ -n "$_kms" ]; then
+      export FINDINGS_SCOPE="$_kms"
+      log "$tag: O-K5MILESCOPE — in-loop K5 rules=$(echo "$_kms" | tr ',' ' ' | wc -w | tr -d ' ') from completed tasks"
+    else
+      unset FINDINGS_SCOPE
+      log "$tag: O-K5MILESCOPE — no Findings on completed tasks; in-loop K5 skip"
+    fi
+  fi
+  # O-DTOCOV: OpenAPI dto harvest without pom exclusions → milestone Sonar RED
+  # (+coverage/CPD/S6353). Patch pom before the sensor runs (migration-general).
+  if [ -f .hermes/harness/ensure-dtocov-pom.py ]; then
+    if python3 .hermes/harness/ensure-dtocov-pom.py "$PWD" > /tmp/dtocov-${tag}.out 2>&1; then
+      if grep -q '^ok:pom-updated' /tmp/dtocov-${tag}.out 2>/dev/null; then
+        if ! git diff --quiet pom.xml 2>/dev/null; then
+          stage_for_task_commit
+          git add pom.xml
+          git commit -q -m "${prefix} harness: O-DTOCOV sonar exclusions for dto package" \
+            >> "$LOG" 2>&1 || true
+          log "$tag: O-DTOCOV — $(tr '\n' ' ' </tmp/dtocov-${tag}.out)"
+        fi
+      fi
+    fi
+  fi
   local _sense_t0 _sense_elapsed
   _sense_t0=$(date +%s)
   if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
@@ -808,6 +1091,24 @@ K7 FAILURE DELTA (authoritative — /tmp/failure-delta.txt): these failures are 
 $(grep '^NEW:' "$FDELTA" | head -40)
 "
     fi
+    # O-SFIXNODELTA: after failure-delta, before O-SFIXWORKER — do not dispatch
+    # a task-attributed sensor-fix when K7 SUMMARY new=0 gone=0 AND the tip
+    # has no content (0-byte / structure .gitkeep only). That RED is pre-existing
+    # or signature/sensor disagree; burning Qwen→MiniMax under T-NNN misattributes
+    # the repair (v3 T-004: empty .gitkeep tip → sfix edited pom.xml). Prefer
+    # skip+continue (story/milestone attribution later) over false MiniMax.
+    case "$prefix" in
+      T-*)
+        if [ -f "$FDELTA" ] \
+          && grep -qE '^SUMMARY new=0 gone=0([[:space:]]|$)' "$FDELTA" 2>/dev/null \
+          && sfix_tip_content_empty; then
+          log "$tag: O-SFIXNODELTA — K7 new=0 gone=0 and tip empty/structure-only — skip task-attributed sfix (no seat burn)"
+          outer_log "         O-SFIXNODELTA: skip ${prefix} sfix (K7 delta 0/0 + empty/structure tip); RED not this tip's debt"
+          event "$tag" 0 sfix_nodelta_skip "$SENSOR_KIND"
+          return 0
+        fi
+        ;;
+    esac
     # Cheap-loop guidance (V4 finding #1: ~5100s of full `mvn clean verify`
     # inside fix sessions). Point the model at the dimension-specific cheap
     # recheck so it stops re-running the whole build per fix.
@@ -819,12 +1120,41 @@ $(grep '^NEW:' "$FDELTA" | head -40)
     PRE_SFIX_HEAD=$(git rev-parse HEAD)
     local SFIX_PROMPT
     local SFIX_VERIFY_HINT="verify with .hermes/harness/sensors.sh sonar|task|fidelity|package|findings as appropriate"
+    local SFIX_RED_DESC="post-commit '${SENSOR_KIND}' sensor is RED"
+    local SFIX_DIMS SFIX_PRIMARY SFIX_FIDELITY_NOTE=""
+    SFIX_DIMS=$(sfix_red_dims)
+    SFIX_PRIMARY=$(echo "${SFIX_DIMS:-sonar}" | awk '{print $1}')
+    printf '%s\n' "$SFIX_PRIMARY" > /tmp/sensor-fix-dim
     if [ "$SENSOR_KIND" = "milestone" ]; then
-      # O-SFIXMILESTONE: models keep re-running sensors.sh milestone (REFUSED) and burn the seat
-      SFIX_VERIFY_HINT="milestone RED is usually sonar — verify with .hermes/harness/sensors.sh sonar ONLY (never sensors.sh milestone; O-SFIXLOOP refuses it)"
+      # O-SFIXHINTFIDELITY / O-SFIXMILESTONE: name the *triggering* dimension —
+      # never default "usually sonar" when FIDELITY lines are present.
+      case "$SFIX_PRIMARY" in
+        fidelity)
+          SFIX_VERIFY_HINT="PRIMARY dimension is fidelity — verify with .hermes/harness/sensors.sh fidelity FIRST (never sensors.sh milestone; O-SFIXLOOP refuses it). Fix FIDELITY: lines in /tmp/sensor-fidelity.log / /tmp/sensor-milestone.log before any sonar chase (O-SFIXFIDELITY)."
+          SFIX_RED_DESC="post-commit quality gate RED — HARVEST FIDELITY (not sonar). Fix drifted lines from /tmp/sensor-fidelity.log"
+          SFIX_FIDELITY_NOTE="
+O-SFIXFIDELITY PRIMARY TARGETS (paste/fix these before sonar):
+$(grep -E '^FIDELITY:|HARVEST FIDELITY' /tmp/sensor-fidelity.log /tmp/sensor-milestone.log 2>/dev/null | head -40)
+O-FIDELITYSORT: PropertyComparator → keep ArrayList<>(get*Internal()) + list.sort(Comparator); do not stream().sorted().collect; do not re-harvest Spring support.
+"
+          ;;
+        findings)
+          SFIX_VERIFY_HINT="PRIMARY dimension is findings — verify with .hermes/harness/sensors.sh findings ONLY (never milestone)"
+          SFIX_RED_DESC="post-commit quality gate RED — FINDINGS dimension"
+          ;;
+        task)
+          SFIX_VERIFY_HINT="PRIMARY dimension is compile/test — verify with .hermes/harness/sensors.sh task ONLY (never milestone)"
+          SFIX_RED_DESC="post-commit quality gate RED — compile/test (task) dimension"
+          ;;
+        *)
+          SFIX_VERIFY_HINT="PRIMARY dimension is sonar — verify with .hermes/harness/sensors.sh sonar ONLY (never sensors.sh milestone; O-SFIXLOOP refuses it)"
+          SFIX_RED_DESC="post-commit quality gate RED (milestone bundle failed — fix sonar from /tmp/sensor-sonar.log; NOT a milestone re-run)"
+          ;;
+      esac
+      log "$tag: O-SFIXHINTFIDELITY — sfix dims=[${SFIX_DIMS:-none}] primary=${SFIX_PRIMARY}"
     fi
-    SFIX_PROMPT="Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's post-commit '${SENSOR_KIND}' sensor is RED — read /tmp/sensor-task.log, /tmp/sensor-milestone.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If those logs show FINDINGS: or FINDINGS RED lines, the RED dimension is findings — fix those file:line incidents (typical: replace quarkus-micrometer* with quarkus-smallrye-metrics) and verify with .hermes/harness/sensors.sh findings; do NOT commit unrelated comment/test polish while FINDINGS is RED (O-SFIXWRONGDIM). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. O-FIDELITYVALID / O-SFIXNOSPRING: Spring BindingResult/FieldError → Jakarta ConstraintViolation is an approved validation conversion — do NOT re-harvest Spring validation types or add org.springframework.* imports / spring-* pom deps to green-wash fidelity. Re-run .hermes/harness/sensors.sh fidelity after harness updates; if already GREEN, commit nothing for fidelity. add a dependency ONLY if this stage's findings require it. VERIFY HINT: ${SFIX_VERIFY_HINT}. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED / O-SFIXMILESTONE): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; FINDINGS:/FINDINGS RED: .hermes/harness/sensors.sh findings; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO). S5976: prefer @ParameterizedTest + @CsvSource — never delete characterization cases (O-SFIXCOUNT/O-SFIXDIRTY).
-${K7_DELTA_NOTE}${RUN_CONTRACT}"
+    SFIX_PROMPT="Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's ${SFIX_RED_DESC} — read /tmp/sensor-task.log, /tmp/sensor-milestone.log, /tmp/sensor-fidelity.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If those logs show FINDINGS: or FINDINGS RED lines, the RED dimension is findings — fix those file:line incidents (typical: replace quarkus-micrometer* with quarkus-smallrye-metrics) and verify with .hermes/harness/sensors.sh findings; do NOT commit unrelated comment/test polish while FINDINGS is RED (O-SFIXWRONGDIM). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. O-FIDELITYVALID / O-SFIXNOSPRING: Spring BindingResult/FieldError → Jakarta ConstraintViolation is an approved validation conversion — do NOT re-harvest Spring validation types or add org.springframework.* imports / spring-* pom deps to green-wash fidelity. Re-run .hermes/harness/sensors.sh fidelity after harness updates; if already GREEN, commit nothing for fidelity. add a dependency ONLY if this stage's findings require it. VERIFY HINT: ${SFIX_VERIFY_HINT}. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED / O-SFIXMILESTONE): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; FINDINGS:/FINDINGS RED: .hermes/harness/sensors.sh findings; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO). S5976: prefer @ParameterizedTest + @CsvSource — never delete characterization cases (O-SFIXCOUNT/O-SFIXDIRTY).
+${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
     # O-SFIXWORKER: Qwen first (cheap verifier); MiniMax rescue capped by
     # SFIX_MINIMAX_RESCUE_MAX (default 1 — R-218 enforced integer, not a comment).
     if [ "${WORKER_SFIX_FIRST:-true}" = "true" ]; then
@@ -832,8 +1162,10 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
       outer_log "         O-SFIXWORKER: sensor-fix → $(worker_label); MiniMax rescue≤${SFIX_MINIMAX_RESCUE_MAX:-1}"
       event "$tag" 0 sfix_worker_first "$SENSOR_KIND"
       run_worker_prompt "${tag}-sfix-w" "$SFIX_PROMPT" || true
-      if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after Qwen (skip MiniMax)"
+      if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+        # O-SFIXFALSEGREEN: log names cited dims — skip MiniMax only when
+        # sfix_loop_recheck (all cited cheap dims, incl fidelity) is GREEN.
+        log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after Qwen (skip MiniMax; dims=${SFIX_DIMS:-recheck})"
         event "$tag" 0 sfix_worker_green "$SENSOR_KIND"
       else
         local _sfix_rescue=0
@@ -843,7 +1175,7 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
           outer_log "         O-SFIXWORKER: MiniMax rescue ${_sfix_rescue}/${SFIX_MINIMAX_RESCUE_MAX}"
           event "$tag" 0 sfix_minimax_rescue "${SENSOR_KIND}:${_sfix_rescue}"
           orch "${tag}-sfix-r${_sfix_rescue}" "$SFIX_PROMPT" || true
-          if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+          if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
             log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after MiniMax rescue ${_sfix_rescue}"
             break
           fi
@@ -932,18 +1264,28 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
             fi
           fi
         fi
-        record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
+        # O-DEBTFRZRACE: after O-SFIXSCOPE reset, discard orphan src/ poison and
+        # recheck before debt — a prior sfix_loop_recheck GREEN must win over
+        # a stale dirty-tree RED.
+        discard_src_dirt "$tag"
+        if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard+recheck (post sfix reset)"
+          event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
+        else
+          record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
+        fi
       fi
     elif [ "$(git rev-parse HEAD)" = "$PRE_SFIX_HEAD" ] && committed "${prefix} sensor fix"; then
       log "$tag: O-SFIXCREDIT — sfix did not move HEAD (stale sensor-fix match ignored)"
       event "$tag" 0 sfix_no_new_commit credit
-      # O-SFIXDIRTY: drop uncommitted thinning before next task
-      if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
-        log "$tag: O-SFIXDIRTY — discarding uncommitted sfix dirt under src/"
-        git checkout -q -- src/ 2>/dev/null || true
-        git clean -fdq -- src/ 2>/dev/null || true
+      # O-SFIXDIRTY + O-DEBTFRZRACE: drop poison, recheck; only debt if still RED
+      discard_src_dirt "$tag"
+      if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+        log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (no new sfix commit)"
+        event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
+      else
+        record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
       fi
-      record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
       # O-T6c: exclude .hermes/ (and staging) from escalation/sfix mechan commits.
@@ -954,13 +1296,14 @@ ${K7_DELTA_NOTE}${RUN_CONTRACT}"
         log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
       fi
     else
-      # O-SFIXDIRTY: failed sfix must not leave thinned tests dirty for later commit
-      if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
-        log "$tag: O-SFIXDIRTY — discarding uncommitted sfix dirt under src/"
-        git checkout -q -- src/ 2>/dev/null || true
-        git clean -fdq -- src/ 2>/dev/null || true
+      # O-SFIXDIRTY + O-DEBTFRZRACE: discard poison then recheck before debt
+      discard_src_dirt "$tag"
+      if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+        log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (sfix else-path)"
+        event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
+      else
+        record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
       fi
-      record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
     fi
   else
     # O-UXLOG-SENSE (Poll 77 U3): GREEN sensors visible on the demo log.
@@ -1049,6 +1392,50 @@ refuse_red_task_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
   return 1
 }
 
+# O-ESCALAFTERRESET: after O-SFIXSCOPE resets a RED tip, do not immediately
+# invent via MiniMax. Prefer commit existing GREEN dirt; discard orphan src/
+# poison; re-sensor. Return 0 = skip escalation (treat success / tip landed).
+post_reset_escalation_gate() { # $1=task-id -> 0 skip esc, 1 continue to esc
+  local T="$1"
+  case "$T" in
+    T-*) ;;
+    *) return 1 ;;
+  esac
+  # Prefer commit existing GREEN dirt before discarding/inventing.
+  if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
+    if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+      log "$T: O-ESCALAFTERRESET — task GREEN with post-reset dirt; prefer mechan/commit (no invent)"
+      event "$T" 0 escal_after_reset green_dirt
+      if try_mechan_commit "$T"; then
+        return 0
+      fi
+      # GREEN dirt that mechan could not title-match — leave for CONTINUE
+      # commit-gated; do not discard good work and do not invent.
+      touch "/tmp/escal-after-reset-${T}"
+      return 1
+    fi
+    # RED with dirt — orphan poison (untracked tests etc.); discard then recheck
+    log "$T: O-ESCALAFTERRESET — discarding orphan/uncommitted src/ after O-SFIXSCOPE reset"
+    discard_src_dirt "$T"
+  fi
+  if .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+    log "$T: O-ESCALAFTERRESET — task GREEN on clean tree after reset; skip MiniMax invent"
+    event "$T" 0 escal_after_reset clean_green
+    if try_mechan_commit "$T"; then
+      return 0
+    fi
+    if try_worker_verified_noop "$T"; then
+      return 0
+    fi
+    # Clean+GREEN but no tip yet — escalate with commit-first guidance only
+    touch "/tmp/escal-after-reset-${T}"
+    log "$T: O-ESCALAFTERRESET — clean GREEN but no tip; CONTINUE must commit-gated without invent"
+    return 1
+  fi
+  touch "/tmp/escal-after-reset-${T}"
+  return 1
+}
+
 # run_stage <commit-prefix> <tag> <prompt> <retry-prompt> -> 0 committed / 1 exhausted
 run_stage() {
   local prefix="$1" tag="$2" prompt="$3" rprompt="$4"
@@ -1062,10 +1449,20 @@ run_stage() {
       if refuse_red_task_commit "$prefix" "$tag"; then
         return 0
       fi
+      # O-ESCALAFTERRESET: after reset, prefer GREEN commit / skip invent
+      if post_reset_escalation_gate "$prefix"; then
+        event "$tag" "$attempt" success escal_after_reset
+        return 0
+      fi
       attempt=$((attempt+1))
       continue
     fi
     local p="$prompt"; [ $attempt -gt 1 ] && p="$rprompt"
+    # O-ESCALAFTERRESET: strengthen CONTINUE when prior tip was reset
+    if [ $attempt -gt 1 ] && [ -f "/tmp/escal-after-reset-${prefix}" ]; then
+      p="O-ESCALAFTERRESET: A prior ${prefix} tip was O-SFIXSCOPE-reset. Inspect git status FIRST. If sensors.sh task is GREEN on a clean or dirty-but-good tree, land ONE commit starting '${prefix}:' via \`.hermes/harness/commit-gated.sh\` WITHOUT inventing new files/tests and WITHOUT rewriting already-GREEN tip content. Do not re-break mappers/tests that sensors already accept.
+${p}"
+    fi
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
     # O-NULLACTION (N17): honest stop without fabrication is success, not a burn.
     if [ -f "/tmp/escalation-noaction-${tag}.txt" ] || [ -f "/tmp/escalation-noaction-${prefix}.txt" ]; then
@@ -1084,6 +1481,10 @@ run_stage() {
       event "$tag" "$attempt" success commit; log "$tag: committed $(git log --oneline -1)"
       # O-SFIXSCOPE: refuse red T-NNN commits (do not proceed to post_commit_verify as success)
       if ! refuse_red_task_commit "$prefix" "$tag"; then
+        if post_reset_escalation_gate "$prefix"; then
+          event "$tag" "$attempt" success escal_after_reset
+          return 0
+        fi
         attempt=$((attempt+1))
         continue
       fi
@@ -1931,6 +2332,17 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
     fi
     log "$T: O-SFIXSCOPE reset worker RED commit — continuing to escalation path"
     record_rule_outcomes "$T" "worker_reset"
+    # O-ESCALAFTERRESET: clean orphan poison + re-sensor; prefer commit GREEN
+    # dirt / ESCW over MiniMax invent on a freshly reset tip.
+    if post_reset_escalation_gate "$T"; then
+      scope_enforce "$T"
+      post_commit_verify "$T" "$T"
+      log_task END "$T" "O-ESCALAFTERRESET — GREEN after reset (no MiniMax invent) — $(git log --oneline -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "escal_after_reset"
+      clear_worker_wedge_skip
+      debt_frozen && return 1
+      return 0
+    fi
   fi
   # O-T6e: second mechan pass after worker (gitkeep / late writes / ESCW2 dirt)
   ensure_trackable_packages
@@ -2036,7 +2448,7 @@ ${esc_evidence:+$esc_evidence
 ${esc_packet:-'(task-packet unavailable — read ${TASKS_FILE} for ${T})'}
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
-"Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode via \`.hermes/harness/commit-gated.sh '${T}: …'\` (O-ESCTERM60; terminal timeout ≥300; no bare git commit). ${esc_routing} Foreground only; bundled scripts only — no heredocs / python3 -c.
+"Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. O-ESCALAFTERRESET: if a prior tip was O-SFIXSCOPE-reset, do NOT invent new files/tests or rewrite already-GREEN tip content — if sensors.sh task is GREEN on a clean or dirty-but-good tree, land ONE commit starting '${T}:' via \`.hermes/harness/commit-gated.sh '${T}: …'\` only. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode via \`.hermes/harness/commit-gated.sh '${T}: …'\` (O-ESCTERM60; terminal timeout ≥300; no bare git commit). ${esc_routing} Foreground only; bundled scripts only — no heredocs / python3 -c.
 ${esc_evidence:+$esc_evidence
 }${RUN_CONTRACT}"; then
     # O-T1FINDESC: scrub before amend so the attributed tip stays clean.
@@ -2511,6 +2923,9 @@ ${RUN_CONTRACT}" \
     # Non-deploy story (M5 hybrid shipping): the factory quality gate IS
     # the story's finish line — no acceptance surface expected yet.
     if [ "$STORY_DEPLOY" != "true" ]; then
+      if review_hold_blocks_ship; then
+        exit 3
+      fi
       event "m5-ship" 0 "story_gate_pass" "non-deploy story"
       clear_debt
       write_run_report "story gate passed (non-deploy story): pipeline + quality gate green"
@@ -2596,6 +3011,9 @@ print((m.group(1).rstrip('/') if m else ''), end='')
       } > /tmp/deploy-failure.txt
       FAILED_TASK="acceptance-deploy"
     elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
+      if review_hold_blocks_ship; then
+        exit 3
+      fi
       event "m5-ship" 0 "acceptance_pass" "route=${CODE},${ACC_COLLECTION}=${PRODUCTS}"
       clear_debt
       write_run_report "success: shipped, route 200, ${PRODUCTS} ${ACC_COLLECTION}"

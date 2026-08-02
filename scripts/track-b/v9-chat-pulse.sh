@@ -11,7 +11,7 @@
 # line to appear in a recent assistant message in the agent transcript.
 # Set V9_SKIP_TRANSCRIPT_CHECK=1 only if transcripts are unavailable.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TS="${1:-}"
 if [ -z "$TS" ]; then
   echo "usage: $0 <tick-ts-from-V9-CHAT-PULSE-PENDING>" >&2

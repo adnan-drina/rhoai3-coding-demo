@@ -147,12 +147,22 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   return $rc
 }
 
+# O-M3QWENSTALL: OpenCode JSON log has write/edit tools (not bash/read-only).
+_m3_log_has_write() {
+  local slog="$1"
+  [ -f "$slog" ] || return 1
+  grep -qE '"tool"\s*:\s*"(edit|write|Write|Edit)"' "$slog" 2>/dev/null \
+    || grep -qE '"name"\s*:\s*"(edit|write|Write|Edit)"' "$slog" 2>/dev/null
+}
+
 # O-M3WORKER: OpenCode/Qwen seat for M3 SPECIFY (plan-lint gated).
 # O-M3EMPTY: set M3_EXPECT_TASKS=specs/<slug>/tasks.md before wchat; if still
-# missing after M3_EMPTY_ABORT_SECS (default 720), abort the seat and return 1
+# missing after M3_EMPTY_ABORT_SECS (default 360), abort the seat and return 1
 # so the attempt is spent (unlike O-M3KILL 137/143).
+# O-M3QWENSTALL: M3_STALL_ABORT_SECS (default 120) kills read-only seats with
+# no tasks.md and zero write/edit tools — before burning a second 360s worker.
 wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
-  local tag="$1" prompt="$2" title="${3:-$1}" t0 now rc hb_pid slog tp watch_pid
+  local tag="$1" prompt="$2" title="${3:-$1}" t0 now rc hb_pid slog tp watch_pid stall_pid
   shift 3 || true
   t0=$(date +%s)
   slog="/tmp/outer-${tag}.log"
@@ -170,13 +180,39 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
   tp=$!
   session_register "$tag" "$tp"
   watch_pid=""
+  stall_pid=""
   if [ -n "${M3_EXPECT_TASKS:-}" ]; then
     (
-      # O-M3EMPTY / O-M3QWENSTALL: default 360s (was 720) — kill empty seats sooner
+      # O-M3QWENSTALL: read-thrash with zero writes — abort at 120s default.
+      # Preseeded skeleton still counts as stalled until worker writes/edits
+      # (or replaces the O-M3QWENSTALL preseed marker).
+      stall_s="${M3_STALL_ABORT_SECS:-120}"
+      step=15
+      elapsed=0
+      _m3_tasks_real() {
+        [ -f "$M3_EXPECT_TASKS" ] || return 1
+        ! grep -q 'O-M3QWENSTALL preseed' "$M3_EXPECT_TASKS" 2>/dev/null
+      }
+      while [ "$elapsed" -lt "$stall_s" ]; do
+        sleep "$step"
+        elapsed=$((elapsed + step))
+        _m3_tasks_real && exit 0
+        _m3_log_has_write "$slog" && exit 0
+      done
+      if ! _m3_tasks_real && ! _m3_log_has_write "$slog"; then
+        echo "[$(date -u +%F' '%T)]          O-M3QWENSTALL: abort — no real tasks.md mutate, 0 writes after ${stall_s}s" >> "$LOG"
+        touch "/tmp/m3-empty-abort-${tag}"
+        kill "$tp" 2>/dev/null || true
+      fi
+    ) &
+    stall_pid=$!
+    (
+      # O-M3EMPTY: final backstop when tasks.md never lands (or stays preseed)
       abort_s="${M3_EMPTY_ABORT_SECS:-360}"
       sleep "$abort_s"
-      if [ ! -f "$M3_EXPECT_TASKS" ]; then
-        echo "[$(date -u +%F' '%T)]          O-M3EMPTY: abort — ${M3_EXPECT_TASKS} missing after ${abort_s}s" >> "$LOG"
+      if [ ! -f "$M3_EXPECT_TASKS" ] \
+        || grep -q 'O-M3QWENSTALL preseed' "$M3_EXPECT_TASKS" 2>/dev/null; then
+        echo "[$(date -u +%F' '%T)]          O-M3EMPTY: abort — ${M3_EXPECT_TASKS} missing/preseed after ${abort_s}s" >> "$LOG"
         touch "/tmp/m3-empty-abort-${tag}"
         kill "$tp" 2>/dev/null || true
       fi
@@ -186,6 +222,10 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
   wait "$tp"
   rc=$?
   session_reap_group "$tag" "$tp" "session-end"
+  if [ -n "$stall_pid" ]; then
+    kill "$stall_pid" 2>/dev/null || true
+    wait "$stall_pid" 2>/dev/null || true
+  fi
   if [ -n "$watch_pid" ]; then
     kill "$watch_pid" 2>/dev/null || true
     wait "$watch_pid" 2>/dev/null || true
@@ -372,7 +412,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ "$mode" = "fix" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
         mode=fresh
       fi
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
       if [ "$mode" = "fix" ]; then
         P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/ (create specs/${SLUG}/{spec,plan,tasks}.md from the brief if tasks.md is missing), verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
       fi
@@ -413,6 +453,24 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [worker attempt ${ATTEMPT}/${M3_WORKER_ATTEMPTS}]"
         log "         O-M3WORKER: draft/fix via $(worker_label) (plan-lint verifier; MiniMax backstop if still RED)"
         SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
+        # O-M3QWENSTALL: mechan-preseed tasks.md skeleton before Qwen seat so the
+        # worker mutates an existing file (0-write explore stalls burned 120s→MiniMax).
+        if [ -z "$SPEC_TASKS" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
+          mkdir -p "specs/${SLUG}"
+          cat > "specs/${SLUG}/tasks.md" <<EOF
+# ${SLUG} Tasks
+
+#### T-001: TODO — replace from brief (O-M3QWENSTALL preseed)
+**Class**: rewrite
+**Findings**:
+**Goal**: Replace this skeleton from ${BRIEF} in the first tool batch
+**Target design**:
+- TODO → TODO
+**Acceptance**: plan-lint green; sensors green
+EOF
+          log "         O-M3QWENSTALL: preseeded specs/${SLUG}/tasks.md skeleton before worker seat"
+          SPEC_TASKS="specs/${SLUG}/tasks.md"
+        fi
         # O-M3EMPTY: attempt>1 with no tasks.md must stay on fresh create, not fix.
         if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
         M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
@@ -422,10 +480,14 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         mchat_rc=$?
         unset M3_EXPECT_TASKS
         if [ -f "/tmp/m3-empty-abort-m3-${SID}-w${ATTEMPT}" ]; then
-          log "         O-M3EMPTY: worker produced no tasks.md — attempt ${ATTEMPT} spent (early abort)"
+          log "         O-M3EMPTY/O-M3QWENSTALL: worker produced no tasks.md — attempt ${ATTEMPT} spent (early abort)"
           m3_write_lint_evidence
           phase_gate "M3 SPECIFY ${SID} plan-lint" RED "O-M3EMPTY early abort — /tmp/plan-lint.txt"
           phase_retry "M3 SPECIFY ${SID} — empty write; advancing"
+          if [ "$ATTEMPT" -eq 1 ] && [ "${M3_SKIP_W2_ON_EMPTY:-true}" = "true" ]; then
+            log "         O-M3QWENSTALL: w1 read-only/empty — skip w2, MiniMax backstop next"
+            ATTEMPT="${M3_WORKER_ATTEMPTS:-2}"
+          fi
           ATTEMPT=$((ATTEMPT + 1))
           continue
         fi
@@ -685,6 +747,13 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       fail_run "$SID debt-freeze (O-DEBTFRZ) — fix debt, durableize, re-run; do not advance"
       ;;
     success*|story-gate-passed*)
+      # O-REVHOLD: review HOLD must not become story-complete in the ledger
+      if [ -f migration/HOLD ] || [ -f /tmp/review-hold ]; then
+        phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} review-hold (O-REVHOLD); HEAD $(git rev-parse --short HEAD)"
+        echo "${SID},review-hold,$(date -u +%s)" >> "$STATE"
+        git add "$STATE" && git commit -q -m "${SID} story HOLD: review-hold (O-REVHOLD)" 2>/dev/null || true
+        fail_run "$SID review-hold (O-REVHOLD) — clear migration/HOLD after durableize; do not advance"
+      fi
       phase_ok "M4/M5 EXECUTE — ${SLUG_HINT} complete (${OUTCOME}); HEAD $(git rev-parse --short HEAD)"
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story complete: ${OUTCOME}" 2>/dev/null || true

@@ -178,6 +178,24 @@ replace** (what `harvest-from-staging.sh` does). Example:
 rename compiles, fails the package sensor, and breaks imports across
 stories (V6 abort). Worker packets must map to `$TGTP/...` paths only.
 
+**PropertyComparator → JDK sort (O-FIDELITYSORT / O-FIDELITYDAO):** when
+staging uses `PropertyComparator.sort(list, new MutableSortDefinition(...))`,
+drop the Spring support call **and keep the staged list shape**:
+`List<T> sortedX = new ArrayList<>(getXInternal());` then
+`sortedX.sort(Comparator.comparing(...));` then the same
+`Collections.unmodifiableList(sortedX)` return. Do **not** rewrite to
+`stream().sorted(...).collect(...)` — harvest-fidelity already forgives the
+Spring `PropertyComparator` line but REDs the collateral `new ArrayList<>(…)`
+absence (v3 S02 T-003 / W4-018). Never re-harvest Spring beans.support
+imports to green-wash fidelity.
+
+**OpenAPI DTO harvest (O-DTOCOV):** harvested `**/dto/**` beans are
+generated shapes — the supervisor runs `ensure-dtocov-pom.py` before
+milestone Sonar so `pom.xml` carries `sonar.exclusions` /
+`sonar.coverage.exclusions` / `sonar.cpd.exclusions` for `**/dto/**`.
+Do not invent BaseDto hierarchies or ceremonial getter tests to clear
+coverage/CPD/S6353 on dto harvest commits (see SHIPPING.md).
+
 **Feign → MicroProfile REST client (O-RESTCLIENTDEP):** import
 `org.eclipse.microprofile.rest.client.inject.RegisterRestClient` — never
 `...annotation.RegisterRestClient`. After edits: `mvn -q compile` before
@@ -295,6 +313,11 @@ with `sensors.sh findings` only (O-SFIXWRONGDIM: do not polish unrelated
 tests/comments while FINDINGS is RED).
 `sensors.sh milestone` is refused during sensor-fix (exits 2).
 
+**O-SFIXNODELTA:** the supervisor skips a *task-attributed* sensor-fix when
+K7 failure-delta reports `SUMMARY new=0 gone=0` **and** the tip has no
+content (0-byte / structure `.gitkeep` only). That RED is not this tip's
+debt — do not burn a seat editing unrelated files under the task name.
+
 **Never wrap harness sensors in a short `timeout` (O-SONARTIME):**
 `sensors.sh sonar` needs ~2–3 minutes. `timeout 60 .hermes/harness/sensors.sh sonar`
 exits 124 before the gate finishes (V9 S03 T-008). Use the sensors
@@ -384,6 +407,20 @@ names `→ src/main/java/.../CartEndpoint.java`, create that exact file and
 class name. Do not invent Quarkus-idiomatic renames (`CartResource`,
 `CartController`). O-T6d will refuse mechan-commit on path mismatch and
 burn a MiniMax escalation (V9 S04 T-001).
+
+**Structure / `.gitkeep` targets (O-STRUCTTGT):** when `Shape: structure` or
+the Target path ends with `.gitkeep`, the deliverable is package directories
+plus `.gitkeep` only. Do **not** harvest or create entity/DTO `.java` classes
+even if **Absorbs** lists later-story sources — those cites are ownership
+markers for future tasks. Task packets gate O-TGTNAME to the `.gitkeep` path
+only (v3 S01 T-003: Absorbs scrape → full model harvest → scope revert).
+
+**After scope revert (O-SCOPEBACKFILL / O-REVERTPURE):** if the story-scope
+sensor removes later-story classes from a structure task, the supervisor
+restores the declared Target `.gitkeep` mechanically and commits a clear
+`T-NNN:` tip — a tip that is only `scope revert` must never mark the task ✓
+while the Target is absent. Scope-revert commits stage **only** the reverted
+paths (never `git add -A` / `mta-findings-current.json`).
 
 **Never commit `.hermes/` (O-HERMNEST):** harness files are workspace
 runtime only. Do not `git add .hermes` / `git add -A` without resetting

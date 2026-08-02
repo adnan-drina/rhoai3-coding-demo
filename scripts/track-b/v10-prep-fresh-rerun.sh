@@ -8,7 +8,7 @@ source "$ROOT/scripts/lib.sh" 2>/dev/null || true
 cd "$ROOT"
 
 HARNESS_SRC="$ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes"
-WS_NAME="${V10_WS_NAME:-petclinic-rest-v2}"
+WS_NAME="${V10_WS_NAME:-petclinic-rest-v3}"
 NS="${V10_NS:-wksp-ai-developer}"
 
 echo "=== 1) Honesty + Wave3 retro bank rows (must be ✅) ==="
@@ -74,32 +74,24 @@ PY
 )
 
 echo "=== 3) Sync golden .hermes → live workspace (if oc available) ==="
+SCAFFOLD="$ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 if command -v oc >/dev/null 2>&1 && oc whoami >/dev/null 2>&1; then
+  load_env >/dev/null 2>&1 || true
+  check_oc_logged_in >/dev/null 2>&1 || true
   POD=$(oc get pod -n "$NS" -l "controller.devfile.io/devworkspace_name=${WS_NAME}" \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
   if [ -n "${POD:-}" ]; then
-    echo "Syncing harness to ${NS}/${POD}:/projects/modernized/.hermes ..."
-    for rel in \
-      harness/already-complete.py \
-      harness/escw-eligible.py \
-      harness/commit-hygiene.py \
-      harness/supervisor.sh \
-      harness/outer-loop.sh \
-      harness/sensors.sh \
-      harness/analyze.sh \
-      harness/findings-delta.py \
-      harness/wireup-check.py \
-      harness/kantra-path.sh \
-      harness/sfix-no-spring.py \
-      harness/worker-read-watch.py \
-      skills/migration-harness/EXECUTION.md \
-      skills/migration-harness/PLANNING.md \
-      skills/migration-harness/SHIPPING.md
-    do
-      oc exec -n "$NS" "$POD" -c development-tooling -- mkdir -p "/projects/modernized/.hermes/$(dirname "$rel")"
-      oc cp "$HARNESS_SRC/$rel" "$NS/$POD:/projects/modernized/.hermes/$rel" -c development-tooling
-      echo "  synced $rel"
-    done
+    echo "Tar-sync entire golden .hermes → ${NS}/${POD}:/projects/modernized/.hermes ..."
+    ( cd "$SCAFFOLD" && tar cf - .hermes ) | oc exec -i -n "$NS" "$POD" -c development-tooling -- \
+      bash -lc 'cd /projects/modernized && tar xf -'
+    echo "  synced .hermes/ ($(find "$HARNESS_SRC" -type f | wc -l | tr -d " ") files in golden tree)"
+    # shellcheck source=/dev/null
+    source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+    export V10_WS_NAME="$WS_NAME" V8_WS_NS="$NS"
+    qg_remote_orchestrator_preflight || {
+      echo "WARN: orchestrator preflight RED after sync — run workspace init (ensure_hermes) on pod" >&2
+      exit 1
+    }
     oc exec -n "$NS" "$POD" -c development-tooling -- bash -lc '
       export KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
       command -v kantra-ensure >/dev/null && kantra-ensure || echo "WARN: kantra-ensure not in PATH"

@@ -252,4 +252,10 @@ Within the **first tool batch**, create `specs/<slug>/tasks.md` (and
 `spec.md` / `plan.md` stubs if missing) using TASKS-TEMPLATE.md structure.
 Then run `.hermes/harness/plan-lint.py` and only then deepen reads to fix
 RED. Reading every legacy file before the first write is O-M3QWENSTALL and
-burns the O-M3EMPTY 720s seat.
+burns the O-M3EMPTY seat (~120s read-only abort via O-M3QWENSTALL, 360s
+missing tasks.md). Verify with plan-lint, then one commit `SNN spec:`.
+
+**S-CHAR (O-M3CHARSCOPE):** plan-lint requires `src/test/` only when a task
+**Owns** or **Target**-schedules `src/main/java/<targetPackage>/model/*.java`
+(harvest), not when **Absorbs** cites legacy model paths. Shape=structure/verify
+package prep (.gitkeep) does not trigger S-CHAR — entity harvest stories do.

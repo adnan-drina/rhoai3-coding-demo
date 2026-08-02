@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # O-DRV5 — clear milestone analysis ONLY after:
 #   1) a comprehensive gate entry with Verdict ADVANCE|HOLD|ABORT, AND
-#   2) an Implementing note in tmp/KAI-WAVE2-REVIEW.md citing this sha
+#   2) an Implementing note in tmp/KAI-WAVE4-REVIEW.md citing this sha
 #      (when that review doc exists — Wave-1 handshake).
 #
 # Usage:

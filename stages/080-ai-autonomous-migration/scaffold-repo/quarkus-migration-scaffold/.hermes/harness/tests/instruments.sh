@@ -1885,6 +1885,47 @@ EOF
 }
 check "mechan-match accepts characterization with src/test (O-T6d)" 0 "rc=0"
 
+# O-T6COMPLETE — harvest tip listing 3 Targets must not mechan on 1/3
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model
+  printf 'class BaseEntity {}\n' > src/main/java/com/demo/model/BaseEntity.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Harvest BaseEntity NamedEntity Person
+**Class**: rewrite
+**Goal**: Harvest entity base classes
+**Target design**:
+- → src/main/java/com/demo/model/BaseEntity.java
+- → src/main/java/com/demo/model/NamedEntity.java
+- → src/main/java/com/demo/model/Person.java
+**Acceptance**: all three present
+EOF
+  printf 'src/main/java/com/demo/model/BaseEntity.java\n' | python3 "$MM_PY" tasks.md T-002; echo "rc=$?"
+}
+check "mechan-match refuses partial harvest tip (O-T6COMPLETE)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model
+  printf 'class BaseEntity {}\n' > src/main/java/com/demo/model/BaseEntity.java
+  printf 'class NamedEntity {}\n' > src/main/java/com/demo/model/NamedEntity.java
+  printf 'class Person {}\n' > src/main/java/com/demo/model/Person.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Harvest BaseEntity NamedEntity Person
+**Class**: rewrite
+**Goal**: Harvest entity base classes
+**Target design**:
+- → src/main/java/com/demo/model/BaseEntity.java
+- → src/main/java/com/demo/model/NamedEntity.java
+- → src/main/java/com/demo/model/Person.java
+**Acceptance**: all three present
+EOF
+  printf 'src/main/java/com/demo/model/BaseEntity.java\n' | python3 "$MM_PY" tasks.md T-002; echo "rc=$?"
+}
+check "mechan-match accepts full harvest tip (O-T6COMPLETE)" 0 "rc=0"
+
 # O-SCAFFOLDDIR — structure task + gitkeep tree must not fail on discovered.md noise
 run_case() {
   mkfix
@@ -2246,6 +2287,45 @@ EOF
 }
 check "plan-lint rejects model harvest with no src/test tasks (S-CHAR)" 1 "S-CHAR"
 
+# O-M3CHARSCOPE: legacy Absorbs model cites + Shape=structure must not S-CHAR
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+
+UI surface: waived (API-only service; no legacy web frontend).
+
+#### T-003: model package structure
+**Class**: rewrite
+**Shape**: structure
+**Target design**: → `src/main/java/com/demo/model/.gitkeep`
+**Owns**: src/main/java/com/demo/model/.gitkeep
+**Absorbs**: src/main/java/org/example/legacy/model/Foo.java
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  python3 "$LINT" tasks.md
+}
+check "S-CHAR skips structure+Absorbs legacy model cites (O-M3CHARSCOPE)" 0 "PLAN OK"
+
+run_case() {
+  grep -q 'O-M3QWENSTALL' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_STALL_ABORT_SECS:-120' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_SKIP_W2_ON_EMPTY' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3stall-ok
+}
+check "M3 stall abort 120s + skip w2 on empty w1 (O-M3QWENSTALL)" 0 "m3stall-ok"
+
+run_case() {
+  grep -q 'O-M3QWENSTALL: preseeded' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3QWENSTALL preseed' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_tasks_real' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-REVHOLD' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'review_hold_blocks_ship' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-DEBTNONE' "$HARNESS_DIR/supervisor.sh" \
+    && echo m3preseed-revhold-ok
+}
+check "M3 preseed + O-REVHOLD + O-DEBTNONE wiring" 0 "m3preseed-revhold-ok"
+
 run_case() {
   grep -q 'L-M5e' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'm5-evaluate-preflight' "$HARNESS_DIR/supervisor.sh" \
@@ -2484,6 +2564,39 @@ run_case() {
 check "O-DEBTFRZ supervisor freeze + outer-loop hold" 0 "debtfrz-ok"
 
 run_case() {
+  # O-DEBTFRZRACE: discard src dirt + re-sensor before debt freeze; avert false RED
+  grep -q 'O-DEBTFRZRACE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'discard_src_dirt' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'false-red averted' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'debtfrzrace_averted' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/^record_debt\(\)/,/^debt_frozen\(\)/ {
+           if (/discard_src_dirt/) d=1
+           if (/sensors\.sh.*kind/ || /sensors\.sh "\$kind"/) s=1
+           if (/false-red averted/) a=1
+         }
+         END { exit !(d && s && a) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo debtfrzrace-ok
+}
+check "O-DEBTFRZRACE discard+recheck before debt freeze" 0 "debtfrzrace-ok"
+
+run_case() {
+  # O-ESCALAFTERRESET: post O-SFIXSCOPE reset gate + CONTINUE invent ban
+  grep -q 'O-ESCALAFTERRESET' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'post_reset_escalation_gate' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'escal-after-reset-' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'WITHOUT inventing new files/tests' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXSCOPE reset worker RED commit' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/post_reset_escalation_gate\(\)/,/^run_stage\(\)/ {
+           if (/discard_src_dirt|O-SFIXDIRTY/) d=1
+           if (/try_mechan_commit/) m=1
+           if (/sensors\.sh task/) s=1
+         }
+         END { exit !(d && m && s) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo escalafterreset-ok
+}
+check "O-ESCALAFTERRESET post-reset gate + CONTINUE guidance" 0 "escalafterreset-ok"
+
+run_case() {
   grep -q 'O-FRZSIG' "$HARNESS_DIR/freeze-harness.sh" \
     && grep -q 'no sessions killed' "$HARNESS_DIR/freeze-harness.sh" \
     && ! grep -qE "kill_pat.*hermes|pkill.*opencode" "$HARNESS_DIR/freeze-harness.sh" \
@@ -2625,6 +2738,31 @@ EOF
     && echo tgtname-ok
 }
 check "task-packet mandates Target basename and no .hermes commit (O-TGTNAME/O-HERMNEST)" 0 "tgtname-ok"
+
+# O-STRUCTTGT — structure/.gitkeep must not O-TGTNAME-mandate Absorbs .java
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Create model package structure with .gitkeep
+**Class**: rewrite
+**Shape**: structure
+**Goal**: Create model package structure with .gitkeep
+**Target design**: → `src/main/java/com/demo/model/.gitkeep`
+**Owns**: src/main/java/com/demo/model/.gitkeep
+**Absorbs**: src/main/java/org/example/legacy/model/BaseEntity.java
+**Absorbs**: src/main/java/org/example/legacy/model/Owner.java
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-003 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-STRUCTTGT' \
+    && echo "$out" | grep -q 'src/main/java/com/demo/model/.gitkeep' \
+    && ! echo "$out" | grep -q 'BaseEntity.java' \
+    && ! echo "$out" | grep -q 'Owner.java' \
+    && ! echo "$out" | grep -q 'harvest-from-staging.sh' \
+    && grep -q 'O-STRUCTTGT' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo structtgt-ok
+}
+check "task-packet gates O-TGTNAME on structure/.gitkeep (O-STRUCTTGT)" 0 "structtgt-ok"
 
 run_case() {
   grep -q 'scrub_hermes_from_git' "$HARNESS_DIR/supervisor.sh" \
@@ -2875,6 +3013,29 @@ run_case() {
     && echo hygiene-wire-ok
 }
 check "O-GITBAK/O-SIMPLEDTO/O-POMUNC commit-hygiene wiring" 0 "hygiene-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/example/dto
+  cat > pom.xml <<'EOF'
+<project><modelVersion>4.0.0</modelVersion>
+<properties>
+  <sonar.coverage.jacoco.xmlReportPaths>target/jacoco-report/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+</properties>
+</project>
+EOF
+  printf 'package com.example.dto;\npublic class SampleDto {}\n' > src/main/java/com/example/dto/SampleDto.java
+  python3 "$HARNESS_DIR/ensure-dtocov-pom.py" . && grep -q 'sonar.exclusions' pom.xml && grep -Fq '**/dto/**' pom.xml && echo dtocov-ok
+}
+check "ensure-dtocov-pom adds dto sonar exclusions (O-DTOCOV)" 0 "dtocov-ok"
+
+run_case() {
+  grep -q 'sfix_loop_recheck' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'SFIX_RED_DESC' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ensure-dtocov-pom.py' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfix-dtocov-wire-ok
+}
+check "O-DTOCOV + O-SFIX-PROMPT-CONFLICT supervisor wiring" 0 "sfix-dtocov-wire-ok"
 
 run_case() {
   mkfix
@@ -3858,6 +4019,28 @@ run_case() {
 }
 check "K5 wiring (milestone/preflight findings sensor)" 0 "k5wire-ok"
 
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01 .hermes/harness
+  cp "$HARNESS_DIR/findings-milestone-scope.py" .hermes/harness/
+  git init -q
+  git config user.email test@test
+  git config user.name test
+  cat > specs/S01/tasks.md <<'EOF'
+### T-001: dto
+**Findings**: openapi-dto-harvest-00001
+### T-002: pom metrics
+**Findings**: javaee-pom-to-quarkus-00030, metrics-to-quarkus-00001
+EOF
+  git add specs/S01/tasks.md && git commit -q -m "init"
+  git commit -q --allow-empty -m "T-001: harvest dto"
+  out=$(python3 .hermes/harness/findings-milestone-scope.py specs/S01/tasks.md HEAD)
+  echo "$out" | grep -q 'openapi-dto-harvest-00001' \
+    && ! echo "$out" | grep -q 'javaee-pom-to-quarkus-00030' \
+    && echo k5milescope-ok
+}
+check "findings-milestone-scope limits in-loop K5 (O-K5MILESCOPE)" 0 "k5milescope-ok"
+
 # --- O-RETROAPPEND / O-INSTQUAL / O-WORKERWEDGE-RCA (Poll 76 F3) ------------
 
 run_case() {
@@ -4310,6 +4493,73 @@ run_case() {
 }
 check "sensor-fix Qwen-first + MiniMax rescue wiring (O-SFIXWORKER)" 0 "sfixworker-ok"
 
+# O-SFIXNODELTA: skip task-attributed sfix when K7 new=0/gone=0 + empty tip
+run_case() {
+  grep -q 'sfix_tip_content_empty' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXNODELTA' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sfix_nodelta_skip' "$HARNESS_DIR/supervisor.sh" \
+    && grep -qE 'SUMMARY new=0 gone=0' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixnodelta-ok
+}
+check "O-SFIXNODELTA skips sfix on K7 0/0 + empty/structure tip" 0 "sfixnodelta-ok"
+
+# O-SFIXHINTFIDELITY / O-SFIXFALSEGREEN — dim detect + multi-dim recheck
+run_case() {
+  grep -q 'sfix_red_dims' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXHINTFIDELITY' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXFALSEGREEN' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sensor-fidelity.log' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-FIDELITYSORT' "$HARNESS_DIR/sensors.sh" \
+    && echo sfixhint-ok
+}
+check "sfix dim routing + fidelity log persist (O-SFIXHINTFIDELITY)" 0 "sfixhint-ok"
+
+# O-ESCW3PKGDIR — legacy pkgdir must not block Target .gitkeep ESCW
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model
+  : > src/main/java/com/demo/model/.gitkeep
+  cat > migration.yaml <<'EOF'
+legacyPackage: org.springframework.samples.petclinic
+targetPackage: com.demo
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create model package structure
+**Class**: rewrite
+**Goal**: package structure
+**Target**: → src/main/java/com/demo/model/
+**Source**: org/springframework/samples/petclinic/model/
+**Acceptance**: empty package with .gitkeep
+EOF
+  ALREADY_COMPLETE_ROOT="$FIX" python3 "$HARNESS_DIR/escw-eligible.py" tasks.md T-001; echo "rc=$?"
+}
+check "escw-eligible ignores legacy pkgdir (O-ESCW3PKGDIR)" 0 "rc=0"
+
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p src/main/java/com/demo/repository
+  printf 'x\n' > README
+  git add -A && git commit -q -m init
+  # Structure tip: .gitkeep with 0 content lines
+  : > src/main/java/com/demo/repository/.gitkeep
+  git add src/main/java/com/demo/repository/.gitkeep
+  git commit -q -m "T-004: Create repository package structure with .gitkeep"
+  # shellcheck disable=SC1090
+  eval "$(sed -n '/^sfix_tip_content_empty()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  sfix_tip_content_empty || { echo "FAIL: structure .gitkeep tip should be empty"; return 1; }
+  # Content tip must NOT be empty
+  printf 'package com.demo; class X {}\n' > src/main/java/com/demo/X.java
+  git add src/main/java/com/demo/X.java
+  git commit -q -m "T-005: Add class"
+  ! sfix_tip_content_empty || { echo "FAIL: content tip should not be empty"; return 1; }
+  echo sfixnodelta-beh-ok
+}
+check "sfix_tip_content_empty behavioural (O-SFIXNODELTA)" 0 "sfixnodelta-beh-ok"
+
 run_case() {
   grep -q 'SFIX_MINIMAX_RESCUE_MAX' "$HARNESS_DIR/supervisor.sh" \
     && grep -qE 'while \[ "\$_sfix_rescue" -lt "\$\{SFIX_MINIMAX_RESCUE_MAX' "$HARNESS_DIR/supervisor.sh" \
@@ -4540,6 +4790,96 @@ run_case() {
     && echo tmparchive-ok
 }
 check "outer-loop archives /tmp forensics at RUN COMPLETE (O-TMPARCHIVE)" 0 "tmparchive-ok"
+
+# O-REVERTPURE / O-SCOPEBACKFILL — scope revert stages only reverted paths;
+# structure/.gitkeep Target is restored after later-story wipe (W4-010).
+run_case() {
+  grep -q 'stage_scope_revert_paths' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-REVERTPURE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'scope_structure_backfill' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SCOPEBACKFILL' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SCOPEBACKFILL' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && ! grep -E 'git add -A && git commit.*scope revert' "$HARNESS_DIR/supervisor.sh" \
+    && echo revertpure-wiring-ok
+}
+check "scope_enforce wires O-REVERTPURE + O-SCOPEBACKFILL (no git add -A)" 0 "revertpure-wiring-ok"
+
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p migration src/main/java/com/demo/dto
+  printf '{"base":true}\n' > migration/mta-findings-current.json
+  printf 'x\n' > src/main/java/com/demo/dto/.gitkeep
+  git add -A && git commit -q -m init
+  # Simulate worker tip that added later-story entities (no .gitkeep)
+  mkdir -p src/main/java/com/demo/model
+  printf 'package com.demo.model; public class Owner {}\n' \
+    > src/main/java/com/demo/model/Owner.java
+  printf '{"stale":9966}\n' > migration/mta-findings-current.json
+  git add -A && git commit -q -m "T-003: Create model package structure with .gitkeep"
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Create model package structure with .gitkeep
+**Class**: rewrite
+**Shape**: structure
+**Goal**: Create model package structure with .gitkeep
+**Target design**: → `src/main/java/com/demo/model/.gitkeep`
+**Owns**: src/main/java/com/demo/model/.gitkeep
+EOF
+  TASKS_FILE="$PWD/tasks.md"
+  LATER_CLASSES="Owner"
+  STORY_SCOPE=""
+  LOG=/dev/null
+  outer_log() { :; }
+  log() { :; }
+  event() { :; }
+  task_title() { echo "Create model package structure with .gitkeep"; }
+  # shellcheck disable=SC1090
+  eval "$(sed -n '/^structure_gitkeep_targets()/,/^stage_scope_revert_paths()/{ /^stage_scope_revert_paths()/q; p; }' "$HARNESS_DIR/supervisor.sh")"
+  eval "$(sed -n '/^stage_scope_revert_paths()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  eval "$(sed -n '/^scope_structure_backfill()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  # Minimal scope_enforce later-story path (A) + backfill — mirror supervisor
+  scope_enforce() {
+    local prefix="$1" f lviol=""
+    if [ -n "${LATER_CLASSES:-}" ]; then
+      for f in $(git diff --name-only HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
+        bn=$(basename "$f" .java)
+        case " ${LATER_CLASSES} " in *" ${bn} "*) lviol="$lviol $f";; esac
+      done
+      if [ -n "$lviol" ]; then
+        for f in $lviol; do
+          if git diff --name-only --diff-filter=A HEAD~1..HEAD -- "$f" 2>/dev/null | grep -q .; then
+            git rm -q "$f" 2>/dev/null || rm -f "$f"
+          else
+            git checkout HEAD~1 -- "$f" 2>/dev/null || true
+          fi
+        done
+        stage_scope_revert_paths $lviol
+        if ! git diff --cached --quiet 2>/dev/null; then
+          git commit -q -m "${prefix} scope revert: removed later-story class(es) created early (${lviol# })"
+        fi
+      fi
+    fi
+    scope_structure_backfill "$prefix"
+  }
+  scope_enforce T-003
+  # Findings must NOT be in the scope-revert commit; .gitkeep must exist
+  rev=$(git log --format=%H --grep='^T-003 scope revert:' -1)
+  if [ -z "$rev" ]; then echo "FAIL: no scope-revert commit"; return 1; fi
+  if git diff-tree --no-commit-id --name-only -r "$rev" | grep -qx 'migration/mta-findings-current.json'; then
+    echo "FAIL: findings swept into scope revert"; return 1
+  fi
+  git diff-tree --no-commit-id --name-only -r "$rev" | grep -q 'Owner.java' \
+    || { echo "FAIL: Owner.java not in scope-revert tip"; return 1; }
+  [ -f src/main/java/com/demo/model/.gitkeep ] || { echo "FAIL: .gitkeep missing"; return 1; }
+  git log -1 --format=%s | grep -qE '^T-003:' \
+    && git log -1 --format=%s | grep -q 'O-SCOPEBACKFILL' \
+    && ! git log -1 --format=%s | grep -qi 'scope revert' \
+    && echo scopebackfill-ok
+}
+check "scope revert pure + structure .gitkeep backfill (O-REVERTPURE/O-SCOPEBACKFILL)" 0 "scopebackfill-ok"
 
 echo "----"
 echo "$PASS/$N passed"

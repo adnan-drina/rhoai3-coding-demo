@@ -571,12 +571,34 @@ def main():
                 lint("target-trace", f"REDESIGN class {cls}: §7 decides a target shape "
                                      f"({', '.join(sorted(want))}) that no task cites")
 
-    # S-CHAR (V8 S02 HOLD): harvesting model classes without any src/test
-    # task drops characterization / coverage — deferring *service* tests is
-    # fine; emptying test obligations is not.
-    if re.search(r"src/main/java/\S*/model/\S+\.java", text) and not re.search(
-        r"src/test/", text
-    ):
+    # S-CHAR (V8 S02 HOLD; O-M3CHARSCOPE): target-side model *.java harvest
+    # must name src/test — legacy **Absorbs** cites and Shape=structure prep
+    # (.gitkeep) must not false-RED platform stories (petclinic S01).
+    target_slash = target_pkg.replace(".", "/")
+    _tgt_model_java = re.compile(
+        rf"src/main/java/{re.escape(target_slash)}/model/[A-Za-z0-9_./-]+\.java"
+    )
+    _absorbs_line = re.compile(r"(?i)^\s*\*?\*?Absorbs\*?\*?\s*:")
+    _structure_shape = re.compile(
+        r"(?i)\*\*Shape\*\*:\s*(structure|verify)\b"
+    )
+
+    def _schar_claim_text(body: str) -> str:
+        return "\n".join(
+            ln
+            for ln in body.splitlines()
+            if not _absorbs_line.match(ln.strip())
+        )
+
+    _schar_needs_tests = False
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        if _structure_shape.search(body):
+            continue
+        if _tgt_model_java.search(_schar_claim_text(body)):
+            _schar_needs_tests = True
+            break
+    if _schar_needs_tests and not re.search(r"src/test/", text):
         lint(
             "S-CHAR",
             "plan targets src/main/.../model/*.java but names no src/test/ path — "

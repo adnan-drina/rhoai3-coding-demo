@@ -91,10 +91,13 @@ EOF
     fidelity)
       cat <<'EOF'
 FIX: the destination class must MATCH its migration/staging source (approved
-transforms only: package, whitespace, comments, annotations, diamond).
-Re-harvest the drifted file from migration/staging, or REVERT a class that
-was invented/fabricated instead of harvested. Do not hand-edit constants or
-serialVersionUID to match. Never disable or waive this check.
+transforms only: package, whitespace, comments, annotations, diamond,
+PropertyComparator→JDK sort). O-FIDELITYSORT: when staging uses
+PropertyComparator.sort, keep `List<T> sortedX = new ArrayList<>(getXInternal());`
+then `sortedX.sort(Comparator.comparing(...))` — do NOT rewrite to stream().sorted()
+and do NOT re-harvest org.springframework.beans.support.* (O-SFIXNOSPRING).
+Re-harvest only when the dest truly drifted; REVERT fabricated classes.
+Never disable or waive this check. Evidence: /tmp/sensor-fidelity.log and FIDELITY: lines.
 EOF
       ;;
     task|milestone)
@@ -404,6 +407,30 @@ sonar_check() { # $1 = inloop|full  (default full)
   echo "sonar check GREEN (new-code gate)"
 }
 
+# O-K5MILESCOPE: in-loop milestone checks Findings only for tasks already
+# committed (T-NNN: tips since RUN_BASE). Later pom/metrics/native rules
+# must not RED early harvest tasks (migration-general; v3 S01 T-001).
+_k5_milestone_scope_inloop() {
+  [ -n "${FINDINGS_SCOPE:-}" ] && return 0
+  [ -f "$SELF_DIR/findings-milestone-scope.py" ] || return 0
+  local tf="${STORY_TASKS:-${TASKS_FILE:-}}"
+  [ -n "$tf" ] && [ -f "$tf" ] || tf=$(ls specs/*/tasks.md 2>/dev/null | head -1)
+  [ -n "$tf" ] && [ -f "$tf" ] || return 0
+  local scoped n
+  scoped=$(FINDINGS_MILESTONE_SCOPE_ROOT="$PWD" python3 "$SELF_DIR/findings-milestone-scope.py" \
+    "$tf" "${RUN_BASE:-HEAD}" 2>/dev/null) || scoped=""
+  if [ -n "$scoped" ]; then
+    FINDINGS_SCOPE="$scoped"
+    export FINDINGS_SCOPE
+    n=$(echo "$scoped" | tr ',' '\n' | grep -c . || true)
+    echo "findings in-loop scope: ${n} rule(s) from completed tasks (O-K5MILESCOPE)"
+  else
+    FINDINGS_SCOPE=""
+    export FINDINGS_SCOPE
+    echo "findings in-loop scope: none — K5 waived for completed tasks without Findings (O-K5MILESCOPE)"
+  fi
+}
+
 # O-QJACOCO — also exposed as `sensors.sh qjacoco` for behavioural instruments.
 qjacoco_check() {
   if [ -s target/jacoco-report/jacoco.xml ]; then
@@ -444,8 +471,20 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
   else
-    python3 .hermes/harness/harvest-fidelity.py \
-      || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
+    # O-SFIXHINTFIDELITY: fidelity runs before mvn — persist evidence so sfix
+    # sees FIDELITY lines in /tmp/sensor-milestone.log (was often 0B on RED).
+    if ! python3 .hermes/harness/harvest-fidelity.py \
+         > /tmp/sensor-fidelity.log 2>&1; then
+      cat /tmp/sensor-fidelity.log
+      {
+        echo "SENSOR RED:fidelity (HARVEST FIDELITY — primary sfix dimension)"
+        cat /tmp/sensor-fidelity.log
+      } > /tmp/sensor-milestone.log
+      printf '%s\n' fidelity > /tmp/sensor-fix-dim
+      fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines / /tmp/sensor-fidelity.log)"
+    fi
+    cat /tmp/sensor-fidelity.log
+    rm -f /tmp/sensor-fix-dim
   fi
   # SENSOR_SKIP_MVN=1 — instrument-only (O-INSTQUAL / O-QJACOCO fixture).
   if [ "${SENSOR_SKIP_MVN:-}" = "1" ]; then
@@ -467,6 +506,11 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
     sonar_check "${1:-inloop}"
   fi
   # K5: findings dimension at milestone only (not per-task — kantra cost).
+  if [ "${1:-inloop}" = "inloop" ]; then
+    _k5_milestone_scope_inloop
+  elif [ -z "${FINDINGS_SCOPE:-}" ]; then
+    unset FINDINGS_SCOPE
+  fi
   findings_sensor
   # G-FID: fidelity GREEN ≠ scope clean — summarize later-story classes already in src/main
   if [ -n "${LATER_CLASSES:-}" ]; then
@@ -1050,9 +1094,19 @@ fidelity_check() {
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED"; return 0
   fi
-  python3 .hermes/harness/harvest-fidelity.py \
-    || fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines)"
+  if ! python3 .hermes/harness/harvest-fidelity.py \
+       > /tmp/sensor-fidelity.log 2>&1; then
+    cat /tmp/sensor-fidelity.log
+    {
+      echo "SENSOR RED:fidelity (HARVEST FIDELITY — primary sfix dimension)"
+      cat /tmp/sensor-fidelity.log
+    } >> /tmp/sensor-milestone.log 2>/dev/null || cp /tmp/sensor-fidelity.log /tmp/sensor-milestone.log
+    printf '%s\n' fidelity > /tmp/sensor-fix-dim
+    fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines / /tmp/sensor-fidelity.log)"
+  fi
+  cat /tmp/sensor-fidelity.log
   echo "fidelity check GREEN"
+  echo "harvest fidelity GREEN" >> /tmp/sensor-milestone.log 2>/dev/null || true
 }
 
 sonar_only() {

@@ -28,10 +28,10 @@ Stage 070's template scaffolded a greenfield service from nothing. The migration
 
 1. Open **Self-service** and choose the **Application migration** template.
 2. Provide the input the template asks for:
-  - **Project name**: becomes the per-run destination repository, namespace, and workspace name (e.g. `coolstore-cart-v6`).
-  - **Legacy repository URL**: HTTPS Git URL clonable without credentials. The demo default is the Coolstore **cart** service ([coolstore-cart-legacy](https://github.com/adnan-drina/coolstore-cart-legacy.git)) — small enough for a workshop run. The monolith round used [mca-coolstore](https://github.com/rhpds/mca-coolstore.git).
-  - **Needs database**: leave off for cart (stateless); enable when the legacy app persists to PostgreSQL.
-3. Create, and watch the template run: fetch the migration scaffold → stamp provenance (and cart-demo harness defaults: acceptance path, preserve/forbidden, `targetContract`) into `migration.yaml` → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination, `/projects/legacy` next to `/projects/modernized`. For a non-cart legacy app, edit `migration.yaml` in the destination repo after create.
+  - **Project name**: becomes the per-run destination repository, namespace, and workspace name (e.g. `coolstore-cart-v6`, `petclinic-rest-v2`).
+  - **Legacy repository URL**: HTTPS Git URL clonable without credentials. Two demo inputs are maintained: the Coolstore **cart** service ([coolstore-cart-legacy](https://github.com/adnan-drina/coolstore-cart-legacy.git)) — small and stateless, good for a short workshop run — and the **Spring PetClinic REST** service ([spring-petclinic-rest-legacy](https://github.com/adnan-drina/spring-petclinic-rest-legacy), pinned at v2.6.2), the validated showcase: a database-backed REST API with OpenAPI-generated DTOs, three alternative persistence layers, and profile-driven configuration — the shapes a real migration has to decide about. The monolith round used [mca-coolstore](https://github.com/rhpds/mca-coolstore.git).
+  - **Needs database**: leave off for cart (stateless); enable for PetClinic and any legacy app that persists to a database.
+3. Create, and watch the template run: fetch the migration scaffold → publish the **destination** repository → register it in the catalog (its first push bootstraps the namespace and pipeline through the platform dispatcher). The legacy code itself is **not** copied anywhere: the workspace clones it read-only at start, side by side with the destination, `/projects/legacy` next to `/projects/modernized`. The migration contract in `migration.yaml` — acceptance path and response shape, preserve/forbidden lists, the `targetContract` flags — is **derived automatically from the legacy source** when the harness first starts (`contract-stamp.py` reads the controllers, tests, and configuration and writes the stamp; a gate blocks the run if the stamp is missing or stale). You review the stamped contract rather than authoring it; adjust a decided flag in `migration.yaml` only when you want to override the derivation.
 
 **What you should see:** a new catalog component for the migration **destination** (the legacy app never appears in the catalog), with links to the destination repository, Dev Spaces, and SonarQube, the same self-service pattern as stage 070, now wrapped around code that already exists.
 
@@ -155,7 +155,7 @@ Named deterministic gates enforce each hand-off:
 |---|---|---|
 | `profile-rubric` | End of M1 | Architecture profile completeness: components, integration surfaces, contract sources, domain seams all present |
 | `roadmap-lint` | End of M2 | Story dependency order is valid, every story has a brief, deploy milestones are marked |
-| `plan-lint --profile` | End of M3 (per story) | Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings |
+| `plan-lint --profile` | End of M3 (per story) | Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings — plus the semantic checks: every task's target must still **exist in the tree** (no dead tasks), task order must respect the M1 dependency graph (dependencies convert before dependents, no two tasks may produce competing beans for one interface), and every task declares its `Class`, `Shape`, and `Oracle` so downstream guards read declared fields instead of guessing from titles |
 | `wiring-check` | Mid-M4 (per milestone) | Integration surfaces actually wire (imports resolve, endpoints register, dependency injection connects) |
 | Preflight (build + boot + quality gate) | End of M5 (per story) | Full Maven build, SonarQube gate, application boots, deploy stories serve acceptance endpoints |
 
@@ -261,12 +261,15 @@ Each task runs in a fresh orchestrator session. Hermes writes a **task packet** 
 > **Why these models:** the two harness roles have different failure
 > modes **and different quotas**, so the platform seats them separately.
 > The **orchestrator** (MiniMax M2, 196K context) is selected for lean
-> long-horizon supervision — and is **rate-limited**, so it owns M1–M3,
-> sensor-fix judgment, M5 evaluate, and escalation only. The **worker**
+> long-horizon supervision — and is **rate-limited**, so it owns M1–M2,
+> sensor-fix judgment, M5 evaluate, and escalation. The **worker**
 > (`qwen3-6-27b` on the cluster GPU behind MaaS) has **unlimited** tokens
 > here and owns all M4 coding (`rewrite` + `infer`) via OpenCode first
-> (`WORKER_FIRST`). Mechanical harvest is not a MiniMax job. Selection
-> history lives in `docs/OPERATIONS.md`; seat rules in
+> (`WORKER_FIRST`) — and drafts **M3 plans** worker-first too, with
+> plan-lint as the deterministic verifier and MiniMax as the backstop
+> when a draft stays red: the seat rule is *verifiability decides the
+> seat*, not task difficulty. Mechanical harvest is not a MiniMax job.
+> Selection history lives in `docs/OPERATIONS.md`; seat rules in
 > `.hermes/skills/migration-harness/REFERENCE.md`.
 
 ---
@@ -331,7 +334,7 @@ Under Track B, deploy stories must also hit the acceptance path from `migration.
 - [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit carried over from stage 070.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs) is the CLI-first agent harness that owns the autonomous migration loop.
 - [OpenCode](https://opencode.ai/) is the coding worker inside the harness, dispatched by Hermes one bounded task at a time, and remains available interactively, carried over from stage 070.
-- [Coolstore cart (legacy demo input)](https://github.com/adnan-drina/coolstore-cart-legacy) is the default Spring Boot migration target; the [Coolstore monolith](https://github.com/rhpds/mca-coolstore) remains available for longer runs.
+- [Coolstore cart (legacy demo input)](https://github.com/adnan-drina/coolstore-cart-legacy) is the small, stateless Spring Boot migration target — the first specimen the harness shipped; [Spring PetClinic REST (legacy demo input)](https://github.com/adnan-drina/spring-petclinic-rest-legacy) is the database-backed validated showcase, pinned at v2.6.2 so every run migrates the same code; the [Coolstore monolith](https://github.com/rhpds/mca-coolstore) remains available for longer runs.
 
 ## References
 

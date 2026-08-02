@@ -17,7 +17,7 @@
 #   bash scripts/track-b/v10-review-catchup.sh check
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-REVIEW_DOC="${V10_REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE2-REVIEW.md}"
+REVIEW_DOC="${V10_REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE4-REVIEW.md}"
 SINCE_FILE="${V10_REVIEW_SINCE_LAST:-${ROOT}/tmp/V10-REVIEW-SINCE-LAST.md}"
 PENDING="${V10_REVIEW_CATCHUP_PENDING:-${ROOT}/tmp/V10-REVIEW-CATCHUP-PENDING.md}"
 ACK_SHA="${V10_REVIEW_CATCHUP_SHA:-${ROOT}/tmp/V10-REVIEW-CATCHUP.sha}"
@@ -93,8 +93,8 @@ def reviewer_signal(after: str) -> bool:
         return False
     return bool(
         re.search(
-            r"(?m)^(## |### )?(Poll |Review poll|F-[0-9]|Idle note|Model-efficiency|KAI-IDLE-NUDGE)"
-            r"|\*\*Verdict:\*\*|## F-[0-9]|## Review poll",
+            r"(?m)^(## |### )?(Poll |Poll W4-|Review poll|F-[0-9]|W4-[0-9]|Idle note|Model-efficiency|KAI-IDLE-NUDGE)"
+            r"|\*\*Verdict:\*\*|## F-[0-9]|## W4-[0-9]|## Review poll|## Poll W4-",
             after,
         )
     ) or bool(re.search(r"(?m)^## ", after))
@@ -132,7 +132,7 @@ def refresh():
                     "passes O-REVIEWDOC (required fields):",
                     "",
                     "- `**Agent:** Grok (lead)`",
-                    "- `**Reviewed:**` bullets and/or `ACK:R-NNN` / `ACK:F-NN`",
+                    "- `**Reviewed:**` bullets and/or `ACK:W4-NNN` / `ACK:R-NNN` / `ACK:F-NN` / `ACK:O-*`",
                     "- live action taken (not chat-only)",
                     "- closing line `— Grok (lead)`",
                     "",
@@ -179,14 +179,18 @@ def note_body(text: str, start: int) -> str:
     return "".join(lines[:i])
 
 def validate_lead_note(body: str):
-    """O-REVIEWDOC contract for Wave-2 lead (Grok) Implementing notes."""
+    """O-REVIEWDOC contract for Wave-4 lead (Grok) Implementing notes."""
     errors = []
     if not re.search(r"(?im)\*\*Agent:\*\*\s*Grok(\s*\(lead\))?", body):
         errors.append("missing **Agent:** Grok (lead)")
-    has_ack = bool(re.search(r"\bACK:(R-\d+|F-\d+|O-[A-Z0-9-]+)\b", body))
+    has_ack = bool(
+        re.search(r"\bACK:(W4-\d+|R-\d+|F-\d+|O-[A-Z0-9-]+)\b", body)
+    )
     has_reviewed = bool(re.search(r"(?im)\*\*Reviewed:\*\*", body))
     if not (has_ack or has_reviewed):
-        errors.append("missing **Reviewed:** section and/or ACK:R-|F-|O- tokens")
+        errors.append(
+            "missing **Reviewed:** section and/or ACK:W4-|R-|F-|O- tokens"
+        )
     if not re.search(r"(?m)^—\s*Grok(\s*\(lead\))?\s*$", body):
         errors.append("missing closing signature line '— Grok (lead)'")
     return errors

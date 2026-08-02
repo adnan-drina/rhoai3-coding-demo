@@ -530,11 +530,38 @@ data:
       fi
     }
 
+    ensure_hermes_xz_shim() {
+      # Hermes' installer extracts a bundled Node .tar.xz via system tar → xz.
+      # Dev Spaces UBI tooling images often omit the xz RPM and microdnf cannot
+      # write /var/cache/yum as the workspace user — provide a tiny xz -d shim.
+      if command -v xz >/dev/null 2>&1; then
+        return 0
+      fi
+      mkdir -p "${HOME}/.local/bin"
+      local shim="${HOME}/.local/bin/xz"
+      if [ -x "${shim}" ] && grep -q 'rhoai3-coding-demo: python xz shim' "${shim}" 2>/dev/null; then
+        export PATH="${HOME}/.local/bin:${PATH}"
+        return 0
+      fi
+      cat > "${shim}" <<'XZEOF'
+#!/usr/bin/env python3.11
+# rhoai3-coding-demo: python xz shim (Hermes node .tar.xz when image lacks xz)
+import sys, lzma
+if not any(a in ("-d", "-dc", "--decompress") for a in sys.argv[1:]):
+    sys.stderr.write("xz shim: only decompression supported\n")
+    sys.exit(1)
+sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))
+XZEOF
+      chmod 755 "${shim}"
+      export PATH="${HOME}/.local/bin:${PATH}"
+    }
+
     ensure_hermes() {
       # Stage 080 harness orchestrator (Hermes Agent CLI). The installer is
       # self-contained (bundles Node 22 + Python 3.11 under ~/.hermes) and
       # offers no version pinning yet — same floating pattern as the
       # opencode installer above. --skip-browser keeps the install headless.
+      ensure_hermes_xz_shim
       if [ ! -x "${HOME}/.local/bin/hermes" ]; then
         curl -fsSL --retry 3 --max-time 300 -o /tmp/hermes-install.sh \
           https://hermes-agent.nousresearch.com/install.sh \

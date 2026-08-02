@@ -17,7 +17,7 @@ GATE_DOC="${GATE_DOC:-${ROOT}/tmp/docs-archive/V9-QUALITY-GATE.md}"
 BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
 # Active Wave due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
 # clear scripts refuse unless a note cites the sha — gate log alone is not enough.
-REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE2-REVIEW.md}"
+REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE4-REVIEW.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace defaults (override via env — do not hardcode elsewhere).
@@ -250,7 +250,7 @@ PY
 }
 
 # Require an ### Implementing note in REVIEW_DOC that cites this sha.
-# Skips only when REVIEW_DOC is absent (non-Wave-2 runs). Hard-fail when present.
+# Skips only when REVIEW_DOC is absent (non-Wave-4 runs). Hard-fail when present.
 qg_require_wave1_review_note() {
   local sha="$1"
   local short="${sha:0:7}"
@@ -288,4 +288,40 @@ qg_sha_is_validated() {
   local f="$1"
   [ -f "$f" ] || return 1
   grep -qE '^# validated:' "$f"
+}
+
+# O-SESSIONREG-PREFLIGHT / O-HERMES-CLI-PREFLIGHT — remote harness before outer start.
+qg_remote_orchestrator_preflight() {
+  local pod ns ctr
+  pod="$(qg_ws_pod)"; ns="$(qg_ws_ns)"; ctr="$(qg_ws_ctr)"
+  if ! command -v oc >/dev/null 2>&1; then
+    qg_die "oc required for orchestrator preflight (session-registry + hermes CLI)"
+  fi
+  oc exec -n "$ns" "$pod" -c "$ctr" -- bash -lc '
+    set -euo pipefail
+    cd /projects/modernized
+    reg=.hermes/harness/session-registry.sh
+    if [ ! -f "$reg" ]; then
+      echo "quality-gate: missing $reg — tar-sync golden scaffold .hermes/ (v10-prep-fresh-rerun.sh)" >&2
+      exit 1
+    fi
+    bash -n "$reg"
+    bash -n .hermes/harness/outer-loop.sh
+    # shellcheck source=/dev/null
+    . "$reg"
+    if ! declare -F session_register >/dev/null 2>&1; then
+      echo "quality-gate: session_register not defined after sourcing $reg" >&2
+      exit 1
+    fi
+    export PATH="${HOME}/.local/bin:${HOME}/.opencode/bin:${PATH}"
+    if ! command -v hermes >/dev/null 2>&1; then
+      echo "quality-gate: hermes not on PATH — run workspace init (ensure_hermes) or fix xz shim" >&2
+      exit 1
+    fi
+    if ! hermes --help >/dev/null 2>&1 && ! hermes --version >/dev/null 2>&1; then
+      echo "quality-gate: hermes CLI not executable (hermes --help/--version failed)" >&2
+      exit 1
+    fi
+    echo "orchestrator-preflight: session-registry + hermes OK"
+  '
 }

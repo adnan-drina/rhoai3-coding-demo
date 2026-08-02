@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # O-DRV3 — clear task analysis ONLY after:
 #   1) a real V9-QUALITY-GATE.md review (substance + diff evidence), AND
-#   2) an Implementing note in tmp/KAI-WAVE2-REVIEW.md citing this sha
+#   2) an Implementing note in tmp/KAI-WAVE4-REVIEW.md citing this sha
 #      (when that review doc exists — Wave-1 handshake).
 #
 # Usage:

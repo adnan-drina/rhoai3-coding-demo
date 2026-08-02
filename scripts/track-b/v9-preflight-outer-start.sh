@@ -56,6 +56,11 @@ if [ "${V9_ALLOW_STORY_COMPLETE_LINT:-1}" = "1" ]; then
   bash "${ROOT}/scripts/track-b/v9-story-complete-lint.sh" --oc
 fi
 
+# O-SESSIONREG-PREFLIGHT / O-HERMES-CLI-PREFLIGHT (live workspace)
+if [ "${V9_SKIP_ORCH_PREFLIGHT:-0}" != "1" ]; then
+  qg_remote_orchestrator_preflight
+fi
+
 echo "PREFLIGHT GREEN"
 
 if [ "$DO_START" = "1" ]; then
@@ -66,12 +71,22 @@ if [ "$DO_START" = "1" ]; then
     echo already_running
     exit 0
   fi
+  # O-OUTERSTART: oc-exec bash -lc can reap the background job when the remote
+  # shell exits unless we disown; plain nohup alone was returning a dead PID.
   oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized || exit 1
     : >> /tmp/outer-loop.log
     nohup env -u RUN_BASE -u RESUME_RUN_BASE -u RESUME_STORY \
       WORKER_FIRST=true OUTER_LOOP_PLAIN=1 \
-      .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
-    echo started_pid=$!
+      stdbuf -oL -eL .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
+    OPID=$!
+    disown "$OPID" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$OPID" 2>/dev/null; then
+      echo started_pid=$OPID alive=1
+    else
+      echo started_pid=$OPID alive=0
+      exit 1
+    fi
   '
 fi

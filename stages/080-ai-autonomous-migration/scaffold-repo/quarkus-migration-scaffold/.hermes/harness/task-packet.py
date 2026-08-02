@@ -361,20 +361,69 @@ def main() -> int:
 
     # O-TGTNAME: extract destination .java basenames from the task body so the
     # worker cannot invent CartResource when the plan says CartEndpoint.
-    dest_names = sorted(
-        {
-            Path(m).name
-            for m in re.findall(
-                r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", f"{title}\n{body}"
+    # O-STRUCTTGT: Shape=structure / Target .gitkeep must NOT scrape Absorbs
+    # (or other later-story) .java paths as mandatory destinations — that made
+    # Qwen harvest full entity packages on package-structure seats (v3 T-003).
+    blob_for_paths = f"{title}\n{body}"
+    gitkeep_paths = sorted(
+        set(
+            re.findall(
+                r"src/(?:main|test)/[A-Za-z0-9_./-]*/\.gitkeep", blob_for_paths
             )
-        }
+        )
     )
-    dest_line = (
-        f"- Target destination basename(s) are MANDATORY: {', '.join(dest_names)} "
-        f"— create/edit exactly those file names (O-TGTNAME; never rename "
-        f"Endpoint→Resource or invent alternate class names)"
-        if dest_names
-        else "- When Target design names a destination .java path, use that exact basename"
+    design_ends_gitkeep = bool(
+        re.search(r"(?:^|[\s`→>-])\.?/?[\w./-]*\.gitkeep\b", design or "", re.I)
+        or re.search(r"\.gitkeep\b", design or "")
+    )
+    struct_tgt = shape == "structure" or bool(gitkeep_paths) or design_ends_gitkeep
+    if struct_tgt:
+        dest_names = gitkeep_paths or (
+            [".gitkeep"] if design_ends_gitkeep or shape == "structure" else []
+        )
+        dest_line = (
+            f"- Target destination path(s) are MANDATORY: {', '.join(dest_names)} "
+            f"— create ONLY those package-structure files (O-TGTNAME/O-STRUCTTGT); "
+            f"do NOT harvest or create entity/DTO .java classes from Absorbs/staging"
+            if dest_names
+            else (
+                "- Shape=structure / .gitkeep Target: create package directories + "
+                ".gitkeep only (O-TGTNAME/O-STRUCTTGT); do NOT harvest entity classes"
+            )
+        )
+    else:
+        dest_names = sorted(
+            {
+                Path(m).name
+                for m in re.findall(
+                    r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java", blob_for_paths
+                )
+            }
+        )
+        dest_line = (
+            f"- Target destination basename(s) are MANDATORY: {', '.join(dest_names)} "
+            f"— create/edit exactly those file names (O-TGTNAME; never rename "
+            f"Endpoint→Resource or invent alternate class names)"
+            if dest_names
+            else "- When Target design names a destination .java path, use that exact basename"
+        )
+    struct_tip = (
+        "\n- O-STRUCTTGT: Shape=structure / Target .gitkeep — create package dirs + "
+        ".gitkeep only; do NOT harvest entity classes. Absorbs .java cites are "
+        "later-story ownership markers, not this task's deliverable."
+        if struct_tgt
+        else ""
+    )
+    harvest_tip = (
+        ""
+        if struct_tgt
+        else (
+            "\n- For Class rewrite: FIRST action when a Target .java is missing — run "
+            ".hermes/skills/migration-harness/scripts/harvest-from-staging.sh "
+            "<package-relative-path> (works for src/main and src/test). Do not "
+            "re-run OpenRewrite. Do not invent assertThat(true) stubs "
+            "(G-PLACE / O-HARVESTSTALL)."
+        )
     )
 
     evidence_block = ""
@@ -413,11 +462,10 @@ Findings: {findings}{evidence_section}{hints_section}Target Design: {design}
 Constraints:
 - Follow AGENTS.md and the repo skills; no scope creep
 - Package rename is full legacyPackage → targetPackage prefix replace (never invent targetPackage.coolstore)
-{dest_line}
+{dest_line}{struct_tip}
 - O-IFACERENAME / O-REDESIGNSIG: preserve legacy *public method names* verbatim from migration/staging (even if misspelled or semantically odd, e.g. getAllSpecialtys, addOwner on UserRestController). Never rename methods for grammar/clarity — redesign-sig will RED and block commit.
 - O-ESCALORACLE: Shape={shape} Oracle={oracle}. If Oracle=absent / Shape=remove: success is verified ABSENCE of named targets — do NOT create a file just to delete it, and do NOT invent deletion targets not listed in Owns/Target.
-- Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST)
-- For Class rewrite: FIRST action when a Target .java is missing — run .hermes/skills/migration-harness/scripts/harvest-from-staging.sh <package-relative-path> (works for src/main and src/test). Do not re-run OpenRewrite. Do not invent assertThat(true) stubs (G-PLACE / O-HARVESTSTALL).
+- Never git add or commit .hermes/ or migration/staging/ (harness/runtime only; O-HERMNEST){harvest_tip}
 - Before adding a Maven dependency: run python3 .hermes/harness/verify-dep.py <groupId> <artifactId> [version] (K8 advisory WARN only — factory resolve is authority).
 - Out-of-scope needs discovered mid-task: append via `python3 .hermes/harness/append-discovered.py {tid} <file-or-area> <one-line-need>` (K9) — do NOT act on them (scope sensor reverts). Never confuse with migration/debt.md.
 - Worker model for this run is {worker}

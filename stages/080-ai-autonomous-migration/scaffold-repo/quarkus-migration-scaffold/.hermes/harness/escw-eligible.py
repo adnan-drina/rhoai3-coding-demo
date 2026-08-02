@@ -155,9 +155,42 @@ def main() -> int:
                     return 1
 
     # Package-structure: need .gitkeep or any file in the named directory.
+    # O-ESCW3PKGDIR: only require Target/→ package dirs under targetPackage —
+    # never refuse allow-empty citing legacyPackage path (Absorbs/Source).
     if re.search(r"(?i)package structure|empty package", blob):
         dirs = re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./-]+/", blob)
-        for d in dirs:
+        tgt_dirs = re.findall(
+            r"(?:Target|→|->)[^\n]*?(src/(?:main|test)/java/[A-Za-z0-9_./-]+/)",
+            blob,
+        )
+        check_dirs = tgt_dirs if tgt_dirs else dirs
+        legacy_seg = ""
+        tgt_seg = ""
+        myaml = ROOT / "migration.yaml"
+        if myaml.is_file():
+            ytxt = myaml.read_text(encoding="utf-8", errors="replace")
+            m_leg = re.search(
+                r"(?m)^\s*legacyPackage:\s*['\"]?([A-Za-z0-9_.]+)['\"]?", ytxt
+            )
+            m_tgt = re.search(
+                r"(?m)^\s*targetPackage:\s*['\"]?([A-Za-z0-9_.]+)['\"]?", ytxt
+            )
+            if m_leg:
+                legacy_seg = m_leg.group(1).replace(".", "/")
+            if m_tgt:
+                tgt_seg = m_tgt.group(1).replace(".", "/")
+        filtered: list[str] = []
+        for d in check_dirs:
+            dn = d.replace("\\", "/")
+            if legacy_seg and f"/{legacy_seg}/" in f"/{dn}":
+                continue
+            if tgt_seg and f"/{tgt_seg}/" not in f"/{dn}" and tgt_dirs:
+                # Target-line dirs must sit under targetPackage when configured
+                continue
+            filtered.append(d)
+        if not filtered and tgt_dirs:
+            filtered = list(tgt_dirs)
+        for d in filtered:
             p = ROOT / d.rstrip("/")
             if not p.is_dir():
                 print(f"missing-pkgdir:{d}")
