@@ -70,7 +70,7 @@ components:
           value: "false"
         - name: HUB_PROFILE_SYNC_ENABLED
           value: "false"
-      memoryLimit: 6Gi
+      memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
         - name: m2
