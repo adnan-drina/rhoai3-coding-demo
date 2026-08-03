@@ -30,6 +30,17 @@ fi
 
 bash "${ROOT}/scripts/track-b/v9-coolstore-lint.sh"
 
+# O-PLANCORPUS / O-DEFAULTAUDIT — archived-plan re-lint + defaults inventory
+# before restart (live M3 flag parity; known-RED 6348afe-class must stay RED).
+if [ "${V9_SKIP_PLAN_CORPUS:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-plan-corpus-gate.sh"
+fi
+
+# O-EXECCORPUS — archived execution honesty replay (sfixnodelta / escalation-cause)
+if [ "${V9_SKIP_EXEC_CORPUS:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-exec-corpus-gate.sh"
+fi
+
 # Block if advance pending
 if [ -f "${ROOT}/tmp/V9-ADVANCE-PENDING.md" ]; then
   qg_die "V9-ADVANCE-PENDING.md present — clear with v9-advance-gate.sh clear S0N"
@@ -59,6 +70,18 @@ fi
 # O-SESSIONREG-PREFLIGHT / O-HERMES-CLI-PREFLIGHT (live workspace)
 if [ "${V9_SKIP_ORCH_PREFLIGHT:-0}" != "1" ]; then
   qg_remote_orchestrator_preflight
+fi
+
+# O-HERMESPREFLIGHT — fail-closed pod↔worktree .hermes digest match.
+# Refuse outer start on mismatch (does not auto-sync; does not start outer).
+if [ "${V9_SKIP_HERMES_PARITY:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-hermes-parity.sh"
+fi
+
+# O-GOLDENFRESH — publish-fp + three-way repo/published/pod (commit-lag class).
+# Distinct from O-HERMESPREFLIGHT: catches unpublished golden SoT drift.
+if [ "${V9_SKIP_GOLDEN_FRESH:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-golden-fresh.sh"
 fi
 
 echo "PREFLIGHT GREEN"

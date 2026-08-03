@@ -97,6 +97,11 @@ first infer task, characterization / package-verify / follow-on work must
 also be Class infer (plan-lint forbids rewrite after infer began; V9 S03);
 **S-PKGDIR** — package-structure / mkdir tasks must require `.gitkeep` or
 `package-info.java` (empty dirs are uncommittable; O-PKGDIR);
+**O-SHAPELINT** — `Shape: structure` requires a package-dir / `.gitkeep` /
+`package-info` Target (property/file converts must use `modify`/`create`);
+**O-STRUCTJAVA** — `Shape: structure` must **not** list non-scaffold `.java`
+Targets (Panache/harvest/convert belong under `create`/`modify`; Absorbs
+`.java` cites alone are OK). Lint class: `LINT:O-STRUCTJAVA`;
 decided design content in
 every infer body (file mappings/signatures/annotations); the legacy
 user-facing surface (web UI / index page) covered by a task or
@@ -112,6 +117,58 @@ substance; on **deploy=false** stories, do **not** task that path with
 endpoint substance (omit from tasks, or defer in prose — S-AC1 / G-OK).
 Never schedule `MinimalAcceptanceEndpoint`, status-map, or
 `platform_ready` placeholders. Lint: `plan-lint.py … --story-deploy <flag>`.
+**O-M3TASKSCOPE** — when the outer loop passes `--story-scope` (roadmap
+scope paths), every non-test Target/`→` destination must fall inside that
+scope (package-remapped). Repository-layer stories must not schedule
+service/controller/endpoint Targets; defer those to the owning story.
+Characterization `src/test/` is allowed. Lint class: `LINT:O-M3TASKSCOPE`.
+
+**O-PLANCORPUS (standing archived-plan re-lint):** every `plan-lint.py`
+change must keep the committed corpus green and the known-RED
+`s03-6348afe-class` fixture still RED under the **live M3 flag set**
+(`--findings-scope --profile --story-deploy --story-scope`). That case
+holds the **real** `6348afe` tip (101 lines; W4-108b) plus archival
+S01/S02/S03 tips under `tests/fixtures/plan-corpus/`. Run
+`bash .hermes/harness/plan-corpus-lint.sh` (host:
+`bash scripts/track-b/v10-plan-corpus-gate.sh`). Omitting `--story-scope`
+inflates `incident-unowned` noise (~17–19 LINTs) and is a false
+confirmation — never validate plan-lint that way.
+
+**O-M3ALL (whole-plan-set before any M4):** after M2, the outer loop
+authors **every** story plan, then runs
+`bash .hermes/harness/m3-all-lint.sh --mode=whole-set` before the first
+M4. Cross-story checks (not visible to per-story plan-lint):
+
+| Check | Property |
+|---|---|
+| K1 partition | each finding id owned by exactly one story |
+| File Owns partition (A4) | each Owns path/class owned by exactly one story |
+| Port coverage | repository-layer stories declare `Port` |
+| Later-class leakage | no earlier story Owns a class in a later scope |
+| Projected tree | lint context = dest ∪ prior Owns; `Shape=create` into prior → RED |
+| Oracle completeness | every task declares `**Oracle**: present\|absent` |
+| Assumes closure (A6) | every `**Assumes**:` is satisfied by earlier Owns/output |
+
+Waterfall antidotes are **mandatory**: JIT re-lint before each story M4
+(`--mode=jit --story SNN`); any Owns/Port/Shape/Oracle/Assumes amend
+triggers whole-set re-lint; plan-vs-reality delta is a first-class signal.
+Do not make JIT or amend re-lint optional.
+
+After whole-set GREEN the outer loop **freezes** the merged prediction
+table (`migration/.m3-all-predictions.md`) and requires an **operator
+gate** (`migration/.m3-all-operator-gate` with `status: APPROVED` and
+matching `predictions_fp`) before the first M4. Non-interactive /
+instrument runs may set `M3_ALL_OPERATOR_AUTO=1`.
+
+**Skeleton-first compose (mandatory on author pass):** before any M3
+model seat, `python3 .hermes/harness/m3-all-compose.py` generates (or
+refreshes) a mechanical `tasks.md` for every roadmap story — task IDs,
+Owns from scope, Class/Shape/Port/Oracle/Assumes field lines present,
+Oracle derived from the filesystem, Port seeded for repository paths,
+Assumes seeded from prior Owns. Models fill JUDGMENT markers only; the
+composer never overwrites a non-skeleton authored plan
+(`<!-- O-M3ALL-SKELETON -->`). Disable only via `M3_ALL_COMPOSE=0`
+(diagnostics).
 And no legacy-package targets — the project root is `migration.yaml`
 `targetPackage` (never the `legacyPackage`).
 Package rename is a **full prefix replace**:
@@ -157,6 +214,77 @@ run #2's failures):
   `UnsatisfiedResolutionException` on injected repository interfaces
   (Wave2 petclinic T-007). Harvest of Spring `@Repository` impls into a
   Quarkus pom must land `@ApplicationScoped` (O-HARVESTREPO).
+- **Spring DAO exceptions are not preserve tokens (O-M3PRESERVEDAO /
+  O-DAOEXMAP / W4-085a):** when harvesting repository interfaces, do
+  **not** write Target prose “Preserve DataAccessException” / keep
+  `org.springframework.dao.*` throws. On a Quarkus pom those types are
+  off-classpath — remap with an **exact-symbol mapping table** (never a
+  substring one-liner that invents `EmptyResultPersistenceException`):
+
+  | legacy | target |
+  |---|---|
+  | `DataAccessException` | `jakarta.persistence.PersistenceException` |
+  | `EmptyResultDataAccessException` | `jakarta.persistence.NoResultException` |
+  | `DataRetrievalFailureException` | `jakarta.persistence.PersistenceException` |
+  | `ObjectRetrievalFailureException` | `jakarta.persistence.EntityNotFoundException` |
+
+  Or omit throws. Never add `spring-tx`/`spring-dao`/`spring-jdbc`/
+  `spring-orm`, and never invent a local `DataAccessException` stub under
+  `targetPackage` (fights O-FIDELITYDAO / O-HARVESTREPO / O-JDBCREGRESS /
+  O-SPRINGRESIDUE). Preserve method *names* and behaviour, not Spring DAO
+  exception types. Plan-lint class: `LINT:O-M3PRESERVEDAO`.
+- **Oracle is derived, never defaulted (O-ORACLEDERIVE / O-INFERABSENT):**
+  Oracle `present|absent` is computed from the filesystem — does a legacy
+  test exist for this Target? does the Target exist in the destination?
+  Do **not** omit `Oracle:` and rely on a silent `present` default (that
+  hid the S03 infer+absent READ_THRASH wedge). Plan-lint derives the fact
+  regardless of whether M3 emits the field. **`Class: infer` +
+  derived-absent fails `PLAN OK` (`LINT:O-INFERABSENT`)** unless a
+  documented proceed path applies: (1) `Shape: create` (reshape — use
+  create-procedure / Port=reimplement mapping), (2) `Shape: verify`
+  (explicit deferral, e.g. god-node char with no oracle), or (3) one-line
+  `Proceed: O-NULLACTION` (non-punitive fixture / honest-stop override —
+  O-NULLACTION-shaped). Prefer reshape over override.
+- **Port axis — rename vs reimplement (O-PORTREIMPL / O-FIDELITYPORT /
+  O-REIMPLCREATE):** every `Shape: create|modify` convert that swaps APIs
+  (Spring Data→Panache, JDBC/`JdbcTemplate`→Agroal/`java.sql`, Spring DAO
+  exceptions→Jakarta) must declare `**Port**: rename|reimplement`. Use
+  **rename** when the target API is essentially the source API
+  (package/CDI annotation swap only — e.g. JPA `EntityManager` impls). Use
+  **reimplement** when the target API differs — then include an **API
+  mapping table** (legacy→target pairs; per-type, never substring invent)
+  and either (a) split harvest-then-convert into two tasks, or (b) keep a
+  single `Shape: create` seat with convert-after-harvest mandatory
+  (`O-SDJPAHARVESTONLY`). **O-FIDELITYPORT:** sensors scope harvest
+  byte-match fidelity to `Port: rename` only; `Port: reimplement` uses
+  redesign-sig / public signatures. **O-REIMPLCREATE:** `Port:
+  reimplement` + `Shape: create` must declare the create-procedure
+  (harvest-from-staging → API mapping → first-write anchor; O-RESTCREATE
+  class) — packet always injects the tip. Plan-lint classes:
+  `LINT:O-PORTREIMPL`, `LINT:O-REIMPLCREATE`.
+- **Spec→tasks Port coverage (O-SPECREIMPL / ARCH A2):** every
+  REDESIGN / OPEN DESIGN class named in sibling `spec.md` must appear in
+  some task with `**Port**: reimplement`. Plan-lint class:
+  `LINT:O-SPECREIMPL` (soft when `spec.md` is absent).
+- **Spring Data Targets need spring-data or redesign (O-T4SPRINGDATA /
+  O-SDJPA-SKIP):** do **not** schedule `SpringData*` harvest Targets on a
+  Quarkus pom without `spring-data` / `quarkus-spring-data-*` deps unless
+  the task declares `**Port**: reimplement` + Panache mapping, or
+  redesign/skip/defer / Already-complete when ≥3 `Jpa*RepositoryImpl`
+  `@ApplicationScoped` already cover domain repos (Override-only —
+  `O-SDJPA-SKIP`). Plan-lint class: `LINT:O-T4SPRINGDATA`.
+- **Spring Data → Panache (O-SDJPAHARVEST / O-SDJPAHARVESTONLY):**
+  consolidate/convert tasks must use `Shape: create|modify` (never
+  `structure` with `.java` Targets — O-STRUCTJAVA) and
+  `**Port**: reimplement` with a mapping table (`@Query`→Panache
+  `find`/`list`, domain-repo contracts preserved). Acceptance must require
+  convert-after-harvest (not Spring Data residue / Panache=0 —
+  `O-SDJPAHARVESTONLY`), keep domain-repo `extends`/`implements`, rewrite
+  `@Query` → Panache `find`/`list` bodies (no orphan `@NamedQuery` on repo
+  ifaces, no hollow finders), and own/Absorbs staging Override
+  `*RepositoryImpl` when present. Empty Panache shells and harvest-only
+  Spring Data dirt are not Acceptance. Sensor classes: `O-SDJPAHARVEST`,
+  `O-SDJPAHARVESTONLY`.
 - **Conversion tasks follow `migration/dependency-order.md`** (M1
   emits it): dependencies before dependents — models and utilities
   first, endpoints last — so the tree compiles at every commit. Cart
@@ -174,6 +302,13 @@ run #2's failures):
   placeholder `assertThat(true)` tests (V8 S02 T-005 abort / G-PLACE).
   God nodes flagged in dependency-order.md get characterization **in
   the story that converts them**, before or with that conversion.
+- **Characterization Source→Target must exist (O-CHARORACLE):** when a
+  char task cites `src/test/…/FooTest.java → src/test/…/FooTest.java` (or
+  a `Source:` / `Legacy test:` path), that SOURCE file must already exist
+  under `migration/staging` or the legacy specimen. Phantom oracles cause
+  worker READ_THRASH then MiniMax hollow invent. Plan-lint class:
+  `LINT:O-CHARORACLE`. Drop/re-scope the task or cite a real staging/legacy
+  test — never schedule invent-from-nothing characterization.
 - **Tests pin the TARGET for redesign classes, LEGACY for harvest
   classes** (architecture-profile §7). A HARVEST class's tests assert
   legacy values. A REDESIGN class's tests assert its §7 target contract;

@@ -14,10 +14,13 @@ Java @Path substance. When false (non-deploy stories), path must NOT be
 tasked with endpoint substance (defer to deploy story; S-AC1/G-OK). When
 omitted, defaults to true for back-compat with older instrument fixtures.
 
---story-scope (O-M3DTOSCOPE): comma-separated roadmap scope path globs. When
-set, incident-unowned is only enforced for incidents whose legacy path
-matches a scope entry — platform stories must not own **/dto/** just
-because a findings-scope rule also hits later-story files.
+--story-scope (O-M3DTOSCOPE / O-M3TASKSCOPE): comma/space-separated roadmap
+scope path globs. When set: (1) incident-unowned is only enforced for
+incidents whose legacy path matches a scope entry — platform stories must
+not own **/dto/** just because a findings-scope rule also hits later-story
+files; (2) O-M3TASKSCOPE REDs non-test Target/→ destinations outside that
+scope (repository stories must not schedule service/controller/endpoint
+Targets).
 
 Checks (exit 0 = plan accepted, 1 = revision required; findings printed
 one per line as 'LINT:<class>: <detail>'):
@@ -31,6 +34,8 @@ one per line as 'LINT:<class>: <detail>'):
                each incident file must be owned by exactly one task (K1)
   incident-unowned / incident-conflict — K1 ownership failures
   O-PLANEXISTS — task work target already gone / already Quarkus (N10/R-217b)
+  O-SPECREIMPL — (ARCH A2) when sibling spec.md names REDESIGN/OPEN DESIGN
+               classes, each must appear in some task with Port: reimplement
 """
 import fnmatch
 import json
@@ -38,6 +43,26 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from oracle_derive import (  # type: ignore
+        derive_oracle,
+        inferabsent_blocks,
+        task_shape as _oracle_task_shape,
+    )
+except ImportError:  # pragma: no cover
+    import importlib.util
+
+    _odp = Path(__file__).resolve().parent / "oracle_derive.py"
+    _spec = importlib.util.spec_from_file_location("oracle_derive", _odp)
+    _od = importlib.util.module_from_spec(_spec)  # type: ignore
+    assert _spec and _spec.loader
+    _spec.loader.exec_module(_od)
+    derive_oracle = _od.derive_oracle
+    inferabsent_blocks = _od.inferabsent_blocks
+    _oracle_task_shape = _od.task_shape
 
 problems = []
 
@@ -67,6 +92,155 @@ def _incident_in_story_scope(legacy_rel: str, scopes: list[str]) -> bool:
         if not any(ch in g for ch in "*?[") and (
             rel.startswith(g.rstrip("/") + "/") or rel.startswith(g + "/")
         ):
+            return True
+    return False
+
+
+def _pkg_path_variants(rel: str, legacy_pkg: str, target_pkg: str) -> list[str]:
+    """legacy↔target package remaps for a src/{main,test}/java path."""
+    rel = (rel or "").lstrip("./")
+    out = [rel]
+    if not legacy_pkg or not target_pkg or legacy_pkg == target_pkg:
+        return out
+    leg = legacy_pkg.replace(".", "/")
+    tgt = target_pkg.replace(".", "/")
+    for kind in ("main", "test"):
+        lp = f"src/{kind}/java/{leg}/"
+        tp = f"src/{kind}/java/{tgt}/"
+        if rel.startswith(tp):
+            out.append(lp + rel[len(tp) :])
+        if rel.startswith(lp):
+            out.append(tp + rel[len(lp) :])
+    # de-dupe preserve order
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def _expand_scope_pkg_variants(
+    scopes: list[str], legacy_pkg: str, target_pkg: str
+) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for s in scopes:
+        for v in _pkg_path_variants(s.strip(), legacy_pkg, target_pkg):
+            if v and v not in seen:
+                seen.add(v)
+                expanded.append(v)
+    return expanded
+
+
+def _norm_work_path(raw: str) -> str:
+    """Normalize a Target work path (strip ticks / trailing globs)."""
+    p = (raw or "").strip().strip("`").lstrip("./")
+    p = re.sub(r"/\*\*?$", "", p)
+    p = re.sub(r"/\*$", "", p)
+    return p
+
+
+# Work destinations under Target/→ (broader than .java-only ownership claims).
+_WORK_PATH = re.compile(
+    r"(?:src/main/[A-Za-z0-9_./${}*-]+|pom\.xml|k8s/[A-Za-z0-9_./-]+)"
+)
+
+
+def _target_work_paths(body: str) -> list[str]:
+    """Collect non-test Target/→ destinations for O-M3TASKSCOPE.
+
+    Scans Target / Target design blocks and arrow lines. Skips Out-of-scope
+    and Absorbs/Owns-only deferral lines (those are not work Targets).
+    """
+    paths: list[str] = []
+    seen: set[str] = set()
+    in_target = False
+    for line in body.splitlines():
+        if _OOS_LINE.search(line):
+            in_target = False
+            continue
+        hm = re.match(r"^\s*\*?\*?([A-Za-z][A-Za-z0-9 ]*?)\*?\*?\s*:", line)
+        if hm:
+            field = hm.group(1).strip().lower()
+            if field.startswith("target") or field == "design":
+                in_target = True
+            elif field in (
+                "absorbs",
+                "owns",
+                "class",
+                "shape",
+                "goal",
+                "findings",
+                "acceptance",
+                "oracle",
+                "out of scope",
+            ):
+                in_target = False
+                if field in ("absorbs", "owns"):
+                    continue
+        if not in_target and "→" not in line and "->" not in line:
+            continue
+        if not in_target and not re.search(r"(?i)target", line):
+            # Bare arrow outside Target blocks: only count when the line
+            # itself is a Target claim (`Target: … → src/…`).
+            if not re.search(r"(?i)\btarget\b", line):
+                continue
+        # Prefer RHS destinations of arrows; fall back to any work path
+        # (covers `legacy.java → Update imports…` prose RHS).
+        rhs = [
+            _norm_work_path(m.group(1))
+            for m in re.finditer(
+                r"(?:→|->)\s*`?(" + _WORK_PATH.pattern + r")", line
+            )
+        ]
+        rhs = [p for p in rhs if p]
+        cands = rhs if rhs else [_norm_work_path(m.group(0)) for m in _WORK_PATH.finditer(line)]
+        for p in cands:
+            if not p or p in seen:
+                continue
+            if p.startswith("src/test/"):
+                continue
+            seen.add(p)
+            paths.append(p)
+    return paths
+
+
+def _work_path_in_story_scope(
+    rel: str, scopes: list[str], legacy_pkg: str, target_pkg: str
+) -> bool:
+    """True if a Target work path is inside roadmap story scope.
+
+    O-M3TASKSCOPE: match exact/fnmatch scope entries (with legacy↔target
+    remap) or the immediate parent directory of a scoped file (so a
+    repository-layer story may Target sibling repository files / package
+    wildcards, but not service/controller/rest layers).
+    """
+    if not scopes:
+        return True
+    expanded = _expand_scope_pkg_variants(scopes, legacy_pkg, target_pkg)
+    variants = _pkg_path_variants(rel, legacy_pkg, target_pkg)
+    for v in variants:
+        if _incident_in_story_scope(v, expanded):
+            return True
+    # Immediate parents of scoped files (remapped).
+    allowed_dirs: set[str] = set()
+    for s in expanded:
+        sn = s.lstrip("./")
+        if "/" in sn:
+            allowed_dirs.add(sn.rsplit("/", 1)[0] + "/")
+    for v in variants:
+        vn = v.lstrip("./")
+        base = vn.rsplit("/", 1)[-1] if "/" in vn else vn
+        # Package-dir / wildcard Targets (…/repository or …/repository/**).
+        if base not in (".gitkeep", "package-info.java") and "." not in base:
+            vd = vn.rstrip("/") + "/"
+            for s in expanded:
+                if s.lstrip("./").startswith(vd):
+                    return True
+        parent = vn.rsplit("/", 1)[0] + "/" if "/" in vn else ""
+        if parent and parent in allowed_dirs:
             return True
     return False
 
@@ -645,6 +819,151 @@ def main():
                 lint("target-trace", f"REDESIGN class {cls}: §7 decides a target shape "
                                      f"({', '.join(sorted(want))}) that no task cites")
 
+        # O-PORTDERIVE (ARCH A1): Port is derived from §7 REDESIGN — convert
+        # tasks that target a REDESIGN class default to Port: reimplement.
+        # O-PORTREIMPL stays the API-swap consistency / mapping-table check.
+        _port_decl = re.compile(
+            r"(?im)^\*\*Port\*\*\s*:?\s*(rename|reimplement)\b"
+            r"|^\*\*Port\s*:\s*(rename|reimplement)\*\*"
+            r"|^Port\s*:\s*(rename|reimplement)\b"
+        )
+        _rename_ok = re.compile(
+            r"(?i)\b(same\s+API|transliteration|API\s+unchanged|"
+            r"justify(?:ied)?\s+rename|Port:\s*rename\s*\()\b"
+        )
+        for _, tid, title in heads:
+            body = bodies.get(tid, "")
+            blob = f"{title}\n{body}"
+            if not re.search(
+                r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify)\b"
+                r"|^\*\*Shape\s*:\s*(create|modify)\*\*",
+                body,
+            ):
+                continue
+            hit = sorted(
+                c for c in redesign
+                if re.search(
+                    rf"src/(?:main|test)/java/\S*\b{re.escape(c)}\.java"
+                    rf"|\b{re.escape(c)}\.java\b",
+                    blob,
+                )
+            )
+            if not hit:
+                continue
+            pm = _port_decl.search(body)
+            if not pm:
+                lint(
+                    "O-PORTDERIVE",
+                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} require "
+                    f"**Port**: reimplement (derived from architecture-profile "
+                    f"§7 / O-PORTDERIVE) — declare Port or justify "
+                    f"Port: rename (same API)",
+                )
+                continue
+            port_val = next(g for g in pm.groups() if g).lower()
+            if port_val == "rename" and not _rename_ok.search(blob):
+                lint(
+                    "O-PORTDERIVE",
+                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} default to "
+                    f"Port: reimplement — Port: rename needs same-API / "
+                    f"transliteration justification (O-PORTDERIVE)",
+                )
+
+    # O-SPECREIMPL (ARCH A2): sibling spec.md REDESIGN/OPEN DESIGN classes
+    # must land as Port: reimplement tasks (middle-hop coverage). Soft when
+    # spec.md is absent so older fixtures stay green.
+    #
+    # Extraction is intentionally narrow (false-green risk elsewhere is
+    # worse than missing a soft prose mention):
+    #   1) same-line role form: `Foo` / **Foo** / Foo.java near REDESIGN|
+    #      OPEN DESIGN (not the platform bullet label "**REDESIGN**: …")
+    #   2) under a heading that itself contains "Redesign", only primary
+    #      class subjects: **Foo** (`…Foo.java`) / `Foo.java` / Foo.java
+    _spec_path = Path(tasks_path).resolve().parent / "spec.md"
+    if _spec_path.is_file():
+        try:
+            _spec_text = _spec_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            _spec_text = ""
+        if _spec_text.strip():
+            _spec_skip = {
+                "REDESIGN",
+                "HARVEST",
+                "OPEN",
+                "DESIGN",
+                "Required",
+                "Implementations",
+                "JDBC",
+                "JPA",
+                "Spring",
+                "Data",
+                "Target",
+                "Legacy",
+                "Preserve",
+                "Contract",
+            }
+            _name_any = re.compile(
+                r"`([A-Z][A-Za-z0-9]+)`|\*\*([A-Z][A-Za-z0-9]+)\*\*"
+                r"|\b([A-Z][A-Za-z0-9]+)\.java\b"
+            )
+            _name_primary = re.compile(
+                r"\*\*([A-Z][A-Za-z0-9]+)\*\*\s*\([^)]*\.java\)"
+                r"|`([A-Z][A-Za-z0-9]+)\.java`"
+                r"|\b([A-Z][A-Za-z0-9]+)\.java\b"
+            )
+            _spec_cls: set[str] = set()
+            _in_redesign_sec = False
+            for _ln in _spec_text.splitlines():
+                if re.match(r"^#{1,6}\s+", _ln):
+                    _in_redesign_sec = bool(re.search(r"(?i)\bredesign\b", _ln))
+                    continue
+                # Platform prose label — not a class-role declaration
+                if re.search(r"(?i)^\s*[-*]\s*\*\*REDESIGN\*\*\s*:", _ln):
+                    continue
+                if re.search(r"(?i)\b(?:REDESIGN|OPEN DESIGN)\b", _ln):
+                    if "HARVEST" in _ln and not re.search(
+                        r"(?i)\bREDESIGN\b", _ln
+                    ):
+                        continue
+                    for mm in _name_any.finditer(_ln):
+                        nm = mm.group(1) or mm.group(2) or mm.group(3)
+                        if nm and nm not in _spec_skip:
+                            _spec_cls.add(nm)
+                    continue
+                if _in_redesign_sec:
+                    for mm in _name_primary.finditer(_ln):
+                        nm = mm.group(1) or mm.group(2) or mm.group(3)
+                        if nm and nm not in _spec_skip:
+                            _spec_cls.add(nm)
+            _port_reimpl = re.compile(
+                r"(?im)^\*\*Port\*\*\s*:?\s*reimplement\b"
+                r"|^\*\*Port\s*:\s*reimplement\*\*"
+                r"|^Port\s*:\s*reimplement\b"
+            )
+            for cls in sorted(_spec_cls):
+                covered = False
+                for _, tid, title in heads:
+                    body = bodies.get(tid, "")
+                    blob = f"{title}\n{body}"
+                    if not re.search(
+                        rf"src/(?:main|test)/java/\S*\b{re.escape(cls)}\.java"
+                        rf"|\b{re.escape(cls)}\.java\b"
+                        rf"|Target:[^\n]*\b{re.escape(cls)}\b"
+                        rf"|`{re.escape(cls)}`",
+                        blob,
+                    ):
+                        continue
+                    if _port_reimpl.search(body):
+                        covered = True
+                        break
+                if not covered:
+                    lint(
+                        "O-SPECREIMPL",
+                        f"spec.md names REDESIGN/OPEN DESIGN class {cls} but "
+                        f"no task declares **Port**: reimplement for it "
+                        f"(O-SPECREIMPL / ARCH A2)",
+                    )
+
     # S-CHAR (V8 S02 HOLD; O-M3CHARSCOPE): target-side model *.java harvest
     # must name src/test — legacy **Absorbs** cites and Shape=structure prep
     # (.gitkeep) must not false-RED platform stories (petclinic S01).
@@ -869,9 +1188,11 @@ def main():
                 f"that @Inject them (O-CDIORDER)",
             )
 
-    # O-SHAPEDECL (F-28): every task declares Shape for M4 consumers.
-    # Strict (RED) when PLAN_LINT_REQUIRE_SHAPE=1 (live M3); else WARN so
-    # legacy instrument fixtures stay green during the transition.
+    # O-SHAPEDECL / O-M3SHAPEHARD (F-28): every task declares Shape for M4.
+    # Default HARD (RED) so outer-loop M3_LINT_CMD and drafter self-verify
+    # share the same bar without env choreography. Grandfather soft via
+    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
+    # fixture modernization only.
     import os as _os
 
     _shape_re = re.compile(
@@ -880,11 +1201,18 @@ def main():
         r"|^Shape\s*:\s*(create|modify|remove|structure|verify)\s*$",
         re.M | re.I,
     )
-    _require_shape = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "") in (
+    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+    _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
         "1",
         "true",
         "yes",
     )
+    if _shape_env in ("0", "false", "no") or _shape_warn:
+        _require_shape = False
+    elif _shape_env in ("1", "true", "yes"):
+        _require_shape = True
+    else:
+        _require_shape = True  # O-M3SHAPEHARD default
     for _, tid, _ in heads:
         body = bodies.get(tid, "")
         if not _shape_re.search(body):
@@ -925,26 +1253,132 @@ def main():
                 f"(or package-info) — use modify/create for property/file converts",
             )
 
-    # G5 / O-INFERABSENT predictor (WARN tier — does not fail PLAN OK):
-    # infer + Oracle:absent is the S03 T-007/T-012 wedge signature.
+    # O-STRUCTJAVA: Shape=structure must not list non-scaffold .java Targets.
+    # Structure seats get O-STRUCTTGT .gitkeep-only packets; Panache/harvest
+    # .java Targets under Shape=structure confuse the worker (READ_THRASH →
+    # MiniMax). Use Shape=create|modify for convert/implement; allow only
+    # package-info.java as a structure soft deliverable. Absorbs/Owns cites
+    # are ignored (_target_work_paths). Migration-general.
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        sm = re.search(
+            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
+            r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+            body,
+        )
+        if not sm:
+            continue
+        shape = next(g for g in sm.groups() if g).lower()
+        if shape != "structure":
+            continue
+        bad_java: list[str] = []
+        seen_j: set[str] = set()
+        for dest in _target_work_paths(body):
+            base = Path(dest).name
+            if not dest.endswith(".java"):
+                continue
+            if base == "package-info.java":
+                continue
+            if dest not in seen_j:
+                seen_j.add(dest)
+                bad_java.append(dest)
+        # Also catch Target-design basenames without src/ prefix
+        # (e.g. `SpringDataOwnerRepository.java` on a structure seat).
+        in_target = False
+        for line in body.splitlines():
+            hm = re.match(r"^\s*\*?\*?([A-Za-z][A-Za-z0-9 ]*?)\*?\*?\s*:", line)
+            if hm:
+                field = hm.group(1).strip().lower()
+                if field.startswith("target") or field == "design":
+                    in_target = True
+                elif field in (
+                    "absorbs",
+                    "owns",
+                    "class",
+                    "shape",
+                    "goal",
+                    "findings",
+                    "acceptance",
+                    "oracle",
+                    "out of scope",
+                ):
+                    in_target = False
+            if not in_target:
+                continue
+            for m in re.finditer(
+                r"\b([A-Za-z_][A-Za-z0-9_]+\.java)\b", line
+            ):
+                base = m.group(1)
+                if base == "package-info.java":
+                    continue
+                if base not in seen_j:
+                    seen_j.add(base)
+                    bad_java.append(base)
+        if bad_java:
+            # Prefer full paths over bare basenames already covered by a path.
+            covered = {
+                Path(p).name for p in bad_java if "/" in p
+            }
+            uniq = [
+                p
+                for p in bad_java
+                if "/" in p or p not in covered
+            ]
+            sample = ", ".join(f"`{p}`" for p in uniq[:4])
+            more = "…" if len(uniq) > 4 else ""
+            lint(
+                "O-STRUCTJAVA",
+                f"{tid}: Shape=structure must not Target .java sources "
+                f"({sample}{more}) — use create/modify for convert/harvest/"
+                f"implement; structure delivers package dirs + .gitkeep "
+                f"(or package-info.java only)",
+            )
+
+    # O-M3TASKSCOPE: when --story-scope is set, RED non-test Target/→
+    # destinations outside roadmap scope (migration-general; parameterized by
+    # scope list + migration.yaml package remap — no specimen class names).
+    # Repository-layer stories must not schedule service/controller/endpoint
+    # Targets. Characterization src/test/ and Out-of-scope/Absorbs deferrals
+    # are allowed.
+    if story_scope:
+        for _, tid, _title in heads:
+            body = bodies.get(tid, "")
+            for dest in _target_work_paths(body):
+                if _work_path_in_story_scope(
+                    dest, story_scope, legacy_pkg, target_pkg
+                ):
+                    continue
+                lint(
+                    "O-M3TASKSCOPE",
+                    f"{tid}: Target `{dest}` is outside --story-scope "
+                    f"(roadmap scope keywords/paths) — drop or defer to the "
+                    f"owning story; characterization src/test/ only",
+                )
+
+    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
+    # (legacy test for Target? Target in destination?) — never default
+    # undeclared → present. infer + derived-absent fails PLAN OK unless a
+    # documented proceed path applies (Shape=create|verify, or
+    # Proceed: O-NULLACTION one-liner for fixtures / honest stop).
     for _, tid, _ in heads:
         body = bodies.get(tid, "")
-        if classes.get(tid) != "infer":
+        cls = classes.get(tid, "")
+        if cls != "infer":
             continue
-        om = re.search(
-            r"^\*\*Oracle\s*:\s*(absent|present)\*\*"
-            r"|^\*\*Oracle\*\*\s*:?\s*(absent|present)"
-            r"|^Oracle\s*:\s*(absent|present)",
-            body,
-            re.M | re.I,
+        oracle = derive_oracle(
+            body, root=Path.cwd(), legacy_pkg=legacy_pkg, target_pkg=target_pkg
         )
-        oracle = ""
-        if om:
-            oracle = next(g for g in om.groups() if g).lower()
-        if oracle == "absent":
-            print(
-                f"WARN:O-INFERABSENT: {tid}: infer + Oracle:absent — "
-                f"pre-dispatch skip/escalate (wedge predictor)"
+        shape = _oracle_task_shape(body)
+        if inferabsent_blocks(
+            cls=cls, oracle=oracle, shape=shape, body=body
+        ):
+            lint(
+                "O-INFERABSENT",
+                f"{tid}: infer + derived Oracle:absent (no legacy test for "
+                f"Target and Target missing from destination) — reshape to "
+                f"Shape=create (create-procedure), Shape=verify (deferral), "
+                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
+                f"O-ORACLEDERIVE)",
             )
 
     # O-PLANORDER (N11): conversion order from migration/dependency-order.md
@@ -960,11 +1394,14 @@ def main():
 
     dep_md = root / "migration" / "dependency-order.md"
     fqn_rank: dict[str, int] = {}
+    god_nodes: set[str] = set()
     if dep_md.is_file():
         for line in dep_md.read_text(encoding="utf-8", errors="replace").splitlines():
             dm = re.match(r"^\s*(\d+)\.\s+([\w.]+)\s+\(", line)
             if dm:
                 fqn_rank[dm.group(2)] = int(dm.group(1))
+                if re.search(r"(?i)god-node", line):
+                    god_nodes.add(dm.group(2))
 
     task_fqns: dict[str, set[str]] = {tid: set() for _, tid, _ in heads}
     target_owners: dict[str, str] = {}
@@ -1014,6 +1451,111 @@ def main():
                         "O-PLANORDER",
                         f"{t2} ({f2}) precedes {t1} ({f1}) but "
                         f"dependency-order converts {f1} before {f2}",
+                    )
+
+    # S-GODORDER: god-node harvest must follow an earlier-indexed
+    # characterization that names the class (plan-lint, not predicate grammar).
+    # Complements S-CHAR (any src/test existence) — v3 S02 inverted god nodes
+    # before T-013 tail characterization with no gate.
+    # O-GODORDERMID / W4-048a: mid-M4 hot-swap must NOT force MiniMax to
+    # renumber already-committed T-NNN tips. Skip harvest tasks that already
+    # have a T-NNN: tip since RUN_BASE (fresh M3 still REDs — no tip yet).
+    if god_nodes:
+        import subprocess as _sp
+
+        def _is_char_task(title: str, body: str) -> bool:
+            blob = f"{title}\n{body}"
+            return bool(
+                re.search(r"(?i)\bcharacterization\b", blob)
+                or re.search(r"src/test/", blob)
+            )
+
+        def _names_simple(blob: str, simple: str) -> bool:
+            return bool(
+                re.search(rf"\b{re.escape(simple)}\b", blob)
+                or re.search(rf"\b{re.escape(simple)}Test\b", blob)
+            )
+
+        def _tip_already_committed(tid: str) -> bool:
+            if _os.environ.get("PLAN_LINT_GODORDER_STRICT", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                return False
+            run_base = _os.environ.get("RUN_BASE", "").strip()
+            # O-GODORDERUNSET: without RUN_BASE, `git log HEAD --grep ^T-NNN:`
+            # matches prior-story tips and falsely skips S-GODORDER on fresh M3
+            # (v3 S03 573cc08 outer GREEN → supervisor RED). Mid-run skip only
+            # when RUN_BASE is set (O-GODORDERMID / W4-048a).
+            if not run_base:
+                return False
+            rev_range = f"{run_base}..HEAD"
+            try:
+                out = _sp.check_output(
+                    [
+                        "git",
+                        "log",
+                        "--oneline",
+                        rev_range,
+                        "--grep",
+                        rf"^{re.escape(tid)}:",
+                        "-E",
+                    ],
+                    cwd=str(root),
+                    stderr=_sp.DEVNULL,
+                    text=True,
+                )
+            except (_sp.CalledProcessError, FileNotFoundError, OSError):
+                return False
+            return bool(out.strip())
+
+        for _, tid, title in heads:
+            body = bodies.get(tid, "")
+            if _structure_shape.search(body):
+                continue
+            if _is_char_task(title, body) and not re.search(
+                r"(?i)\bharvest\b|\bconvert\b|src/main/java/", f"{title}\n{body}"
+            ):
+                continue
+            if _tip_already_committed(tid):
+                print(
+                    f"WARN:S-GODORDER: {tid}: harvest tip already committed — "
+                    f"skip mid-run renumber (O-GODORDERMID / W4-048a)"
+                )
+                continue
+            owned_gods = sorted(task_fqns.get(tid, set()) & god_nodes)
+            # Also match target-pkg remapped gods via simple-name Owns paths
+            for g in list(god_nodes):
+                simple = g.rsplit(".", 1)[-1]
+                if re.search(
+                    rf"src/main/java/[A-Za-z0-9_./]+/{re.escape(simple)}\.java",
+                    body,
+                ):
+                    if g not in owned_gods:
+                        owned_gods.append(g)
+            seen_simple: set[str] = set()
+            for gfqn in owned_gods:
+                simple = gfqn.rsplit(".", 1)[-1]
+                if simple in seen_simple:
+                    continue
+                seen_simple.add(simple)
+                earlier = False
+                for _, otid, otitle in heads:
+                    if _task_num(otid) >= _task_num(tid):
+                        continue
+                    obody = bodies.get(otid, "")
+                    if _is_char_task(otitle, obody) and _names_simple(
+                        f"{otitle}\n{obody}", simple
+                    ):
+                        earlier = True
+                        break
+                if not earlier:
+                    lint(
+                        "S-GODORDER",
+                        f"{tid}: god-node {simple} harvest lacks earlier "
+                        f"characterization naming {simple} "
+                        f"(dependency-order mark; put char tests before convert)",
                     )
 
     # O-PLANEXISTS (N10 / R-217b / F-66): every task must still have real work.
@@ -1115,6 +1657,474 @@ def main():
                         f"{tid}: remove/Target {rel} already absent — task is dead "
                         f"(O-PLANEXISTS)",
                     )
+
+    # O-PORTREIMPL: API-swap convert tasks must declare Port: rename|reimplement.
+    # S03 evidence (W4-101 / clean-stop): harness vocabulary had Class+Shape but
+    # no axis for "target API ≠ source API". T-003 (EntityManager unchanged =
+    # rename) went first-pass green; T-002/T-004 (JDBC→Agroal / Spring Data→
+    # Panache = reimplement) burned seats under transliteration assumptions.
+    # Migration-general — keyword/API signals only; no specimen class names.
+    _port_re = re.compile(
+        r"(?im)^\*\*Port\*\*\s*:?\s*(rename|reimplement)\b"
+        r"|^\*\*Port\s*:\s*(rename|reimplement)\*\*"
+        r"|^Port\s*:\s*(rename|reimplement)\b"
+    )
+    _port_reimpl_signal = re.compile(
+        r"(?i)\b("
+        r"spring\s*data|springdatajpa|panache|"
+        r"namedparameterjdbctemplate|simplejdbcinsert|jdbctemplate|"
+        r"agroal|java\.sql\.|javax\.sql\.|"
+        r"re-?implement|consolidat\w*\s+.*repositor|"
+        r"convert\w*\s+.*(?:panache|agroal|jdbc)|"
+        r"@query\b|crudrepository|jpa\.repository"
+        r")\b"
+    )
+    _port_map_table = re.compile(
+        r"(?i)(?:legacy|from|spring|source).{0,40}(?:→|->|=>|to|⇒).{0,40}"
+        r"(?:target|panache|agroal|jakarta|quarkus|persistence)|"
+        r"(?:mapping\s+table|api\s+mapping|exception\s+map)|"
+        r"DataAccessException.{0,20}PersistenceException|"
+        r"EmptyResultDataAccessException.{0,20}NoResultException|"
+        r"@Query.{0,40}(?:panache|find\(|list\()|"
+        r"JdbcTemplate.{0,40}(?:DataSource|java\.sql)|"
+        r"harvest.?then.?convert|convert.?after.?harvest|"
+        r"O-SDJPAHARVEST|O-JDBCHARVESTAPI|O-DAOEXMAP"
+    )
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        blob = f"{title}\n{body}"
+        sm = re.search(
+            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify)\b"
+            r"|^\*\*Shape\s*:\s*(create|modify)\*\*",
+            body,
+        )
+        if not sm:
+            continue
+        if not _port_reimpl_signal.search(blob):
+            continue
+        # Skip pure package/structure harvest titles without API swap verbs
+        if re.search(r"(?i)\b(package\s+rename|package-info|\.gitkeep)\b", blob) and not re.search(
+            r"(?i)\b(panache|agroal|jdbctemplate|spring\s*data|@query)\b", blob
+        ):
+            continue
+        pm = _port_re.search(body)
+        if not pm:
+            lint(
+                "O-PORTREIMPL",
+                f"{tid}: API-swap convert (Spring Data/JDBC/Panache/Agroal) "
+                f"must declare **Port**: rename|reimplement — reimplement when "
+                f"target API differs from staging (not a transliteration). "
+                f"Prefer harvest-then-convert split or Shape=create + "
+                f"O-SDJPAHARVESTONLY convert-after-harvest (O-PORTREIMPL)",
+            )
+            continue
+        port_val = next(g for g in pm.groups() if g).lower()
+        if port_val == "reimplement" and not _port_map_table.search(blob):
+            lint(
+                "O-PORTREIMPL",
+                f"{tid}: Port=reimplement requires an API mapping table "
+                f"(legacy→target pairs, e.g. @Query→Panache find/list, "
+                f"DataAccessException→PersistenceException) or explicit "
+                f"harvest-then-convert / O-SDJPAHARVEST convert-after-harvest "
+                f"prose (O-PORTREIMPL / O-DAOEXMAP)",
+            )
+        # O-REIMPLCREATE: Port=reimplement Shape=create must carry create-
+        # procedure prose (harvest → mapping → first-write). Packet always
+        # injects the tip; plan-lint refuses plans that omit the procedure.
+        if port_val == "reimplement" and re.search(
+            r"(?im)^\*\*Shape\*\*\s*:?\s*create\b|^\*\*Shape\s*:\s*create\*\*",
+            body,
+        ):
+            if not re.search(
+                r"(?i)harvest.?from.?staging|harvest.?then.?convert|"
+                r"convert.?after.?harvest|create.?from.?legacy|"
+                r"O-SDJPAHARVEST|O-REIMPLCREATE|O-RESTCREATE|first.?write",
+                blob,
+            ):
+                lint(
+                    "O-REIMPLCREATE",
+                    f"{tid}: Port=reimplement Shape=create must declare the "
+                    f"create-procedure (harvest-from-staging → API mapping "
+                    f"table → first-write anchor; O-RESTCREATE class) "
+                    f"(O-REIMPLCREATE)",
+                )
+
+    # O-M3PRESERVEDAO: M3 Target prose "Preserve DataAccessException" / add
+    # spring-tx fights O-FIDELITYDAO / O-HARVESTREPO — Quarkus poms have no
+    # spring-dao. Remap to PersistenceException or drop throws; never
+    # greenwash with spring-tx/spring-jdbc/spring-orm.
+    # W4-085a / O-DAOEXMAP: when Preserve/remap is mentioned, require an
+    # exact-symbol mapping table (EmptyResult→NoResult, ObjectRetrieval→
+    # EntityNotFound, …) — RED substring-only
+    # "DataAccessException→PersistenceException" one-liners that invite
+    # inventing EmptyResultPersistenceException under spring.dao.
+    _dao_remap_ok = re.compile(
+        r"(?i)PersistenceException|jakarta\.persistence|"
+        r"strip\s+(throws\s+)?DataAccess|remap.{0,40}DataAccess|"
+        r"drop\s+throws|omit\s+throws|remove\s+throws.{0,40}DataAccess|"
+        r"no\s+spring-(tx|dao|jdbc|orm)",
+    )
+    _dao_preserve_bad = re.compile(
+        r"(?i)(?:preserv\w*|maintain|keep|retain).{0,60}"
+        r"(?:DataAccessException|DataRetrievalFailureException|"
+        r"EmptyResultDataAccessException|ObjectRetrievalFailureException|"
+        r"org\.springframework\.dao)|"
+        r"(?:DataAccessException|DataRetrievalFailureException|"
+        r"EmptyResultDataAccessException|ObjectRetrievalFailureException|"
+        r"org\.springframework\.dao).{0,60}"
+        r"(?:preserv\w*|maintain|keep|retain)|"
+        r"keep\s+throws\s+DataAccess|"
+        r"throws\s+DataAccessException.{0,40}(?:preserv|unchanged|verbatim)",
+    )
+    _dao_spring_dep_bad = re.compile(
+        r"(?i)(?:add|include|depend|bring\s+back|re-?add).{0,50}"
+        r"spring-(?:tx|dao|jdbc|orm)|"
+        r"spring-(?:tx|dao|jdbc|orm).{0,50}"
+        r"(?:add|include|depend|provided|compile\s+green|greenwash)",
+    )
+    _dao_preserve_neg = re.compile(
+        r"(?i)\b(no|not|never|without|avoid|do\s+not|don't|must\s+not|"
+        r"do\s+NOT)\b.{0,60}(?:preserv\w*|keep|retain|maintain).{0,60}"
+        r"(?:DataAccessException|DataRetrievalFailureException|"
+        r"org\.springframework\.dao)",
+    )
+    _dao_family_mention = re.compile(
+        r"(?i)\b(?:DataAccessException|EmptyResultDataAccessException|"
+        r"DataRetrievalFailureException|ObjectRetrievalFailureException|"
+        r"org\.springframework\.dao)\b"
+    )
+    _dao_omit_throws = re.compile(
+        r"(?i)(?:omit|drop|remove|strip)\s+throws|no\s+throws\s+DataAccess|"
+        r"without\s+throws"
+    )
+    _dao_exact_empty = re.compile(
+        r"(?i)EmptyResultDataAccessException.{0,80}NoResultException|"
+        r"NoResultException.{0,80}EmptyResultDataAccessException"
+    )
+    _dao_exact_orf = re.compile(
+        r"(?i)ObjectRetrievalFailureException.{0,80}EntityNotFoundException|"
+        r"EntityNotFoundException.{0,80}ObjectRetrievalFailureException"
+    )
+    # Standalone DataAccessException→PersistenceException (not EmptyResult*).
+    # (?<!EmptyResult) is fixed-width — required by Python re lookbehind.
+    _dao_exact_dae = re.compile(
+        r"(?i)(?<!EmptyResult)DataAccessException.{0,80}PersistenceException|"
+        r"PersistenceException.{0,80}(?<!EmptyResult)DataAccessException"
+    )
+    for _, tid, title in heads:
+        blob = f"{title}\n{bodies.get(tid, '')}"
+        if _dao_spring_dep_bad.search(blob) and not re.search(
+            r"(?i)never\s+add|do\s+not\s+add|must\s+not\s+add|forbid|"
+            r"refuse|O-JDBCREGRESS|O-HYGIENEWORKER",
+            blob,
+        ):
+            lint(
+                "O-M3PRESERVEDAO",
+                f"{tid}: do not schedule spring-tx/spring-dao/spring-jdbc/"
+                f"spring-orm to green Spring DAO harvest — remap with an "
+                f"exact-symbol table (EmptyResultDataAccessException→"
+                f"NoResultException, ObjectRetrievalFailureException→"
+                f"EntityNotFoundException, DataAccessException→"
+                f"PersistenceException) or drop throws "
+                f"(O-M3PRESERVEDAO / O-JDBCREGRESS / W4-085a)",
+            )
+            continue
+        if (
+            _dao_preserve_bad.search(blob)
+            and not _dao_remap_ok.search(blob)
+            and not _dao_preserve_neg.search(blob)
+        ):
+            lint(
+                "O-M3PRESERVEDAO",
+                f"{tid}: do not Preserve/keep Spring DataAccessException "
+                f"(or spring.dao types) on Quarkus harvest — provide an "
+                f"exact-symbol mapping table "
+                f"(EmptyResultDataAccessException→NoResultException, "
+                f"ObjectRetrievalFailureException→EntityNotFoundException, "
+                f"DataAccessException→PersistenceException) or omit throws; "
+                f"never substring-invent *PersistenceException under "
+                f"org.springframework (O-M3PRESERVEDAO / O-DAOEXMAP / W4-085a)",
+            )
+            continue
+        # W4-085a: remap path (even with parenthetical "or omit throws")
+        # requires exact-symbol table. Omit-throws-ONLY (no remap verb /
+        # mapping arrow) remains a valid exit without a table.
+        _dao_remap_path = re.search(
+            r"(?i)\bremap\b|mapping\s+table|exception\s+map|"
+            r"(?<!EmptyResult)DataAccessException.{0,40}(?:→|->|=>|to)\s*"
+            r"`?PersistenceException|"
+            r"(?:→|->|=>)\s*`?PersistenceException",
+            blob,
+        )
+        _dao_has_exact_table = (
+            _dao_exact_empty.search(blob)
+            and _dao_exact_orf.search(blob)
+            and _dao_exact_dae.search(blob)
+        )
+        if (
+            _dao_family_mention.search(blob)
+            and _dao_remap_path
+            and not _dao_has_exact_table
+        ):
+            lint(
+                "O-M3PRESERVEDAO",
+                f"{tid}: Spring DAO exception remap must include an "
+                f"exact-symbol mapping table — at minimum "
+                f"DataAccessException→PersistenceException, "
+                f"EmptyResultDataAccessException→NoResultException, "
+                f"ObjectRetrievalFailureException→EntityNotFoundException "
+                f"(per-type; never substring rewrite). Omit-throws-only "
+                f"(no remap) is OK without a table. "
+                f"(O-M3PRESERVEDAO / O-DAOEXMAP / W4-085a)",
+            )
+
+    # O-T4SPRINGDATA: do not require SpringData* harvest Targets in
+    # rewrite/create when Quarkus pom has no spring-data deps — unless
+    # Port=reimplement / Panache convert / redesign / skip / defer.
+    has_spring_data_dep = bool(
+        re.search(r"(?i)spring-data|quarkus-spring-data", pom)
+    )
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        blob = f"{title}\n{body}"
+        has_sd_target = bool(
+            re.search(
+                r"(?i)SpringData\w+\.java|springdatajpa/[A-Za-z0-9_./-]+\.java|"
+                r"SpringData\w+Repository",
+                blob,
+            )
+        )
+        if not has_sd_target:
+            continue
+        if re.search(
+            r"(?i)\*\*Port\*\*\s*:?\s*reimplement|Port\s*:\s*reimplement|"
+            r"\bredesign\b|\bdefer(?:red)?\b|\bskip\b|panache|"
+            r"O-SDJPA|O-T4SPRINGDATA|O-SDJPA-SKIP|"
+            r"convert.?after.?harvest|harvest.?then.?convert|"
+            r"already.?complete",
+            blob,
+        ):
+            continue
+        sm = re.search(
+            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify)\b"
+            r"|^\*\*Shape\s*:\s*(create|modify)\*\*",
+            body,
+        )
+        if not sm:
+            continue
+        if has_quarkus_plugin and not has_spring_data_dep and not has_spring_dep:
+            lint(
+                "O-T4SPRINGDATA",
+                f"{tid}: SpringData* Target on Quarkus pom without spring-data "
+                f"deps — do not burn harvest/compile seats. Declare "
+                f"**Port**: reimplement + Panache mapping table, or "
+                f"redesign/skip/defer / O-SDJPA-SKIP (Jpa* CDI cover). "
+                f"(O-T4SPRINGDATA)",
+            )
+
+    # O-CHARORACLE: characterization Source→Target (or Source:) under
+    # src/test/ must resolve to an existing file in migration/staging or a
+    # legacy specimen root. Phantom oracle → Qwen READ_THRASH → MiniMax
+    # invents hollow G-PLACE suites (Wave4 S03 T-002). Migration-general:
+    # path existence only — no specimen class names.
+    def _is_char_task_blob(title: str, body: str) -> bool:
+        blob = f"{title}\n{body}"
+        return bool(
+            re.search(
+                r"(?i)\bcharacterization\b|\bcharacterize\b|"
+                r"\bport\s+legacy\s+.{0,40}\btest|\blegacy\s+test",
+                blob,
+            )
+            or (
+                re.search(r"(?i)\bsrc/test/", blob)
+                and re.search(
+                    r"(?i)\b(test|assert|verify|pin)\b", blob
+                )
+            )
+        )
+
+    def _char_oracle_roots() -> list[Path]:
+        roots: list[Path] = []
+        for cand in (
+            root / "migration" / "staging",
+            Path("/projects/legacy"),
+            root / "legacy",
+            root.parent / "legacy",
+        ):
+            try:
+                if cand.is_dir() and cand not in roots:
+                    roots.append(cand)
+            except OSError:
+                continue
+        return roots
+
+    def _norm_oracle_rel(raw: str) -> str:
+        rel = (raw or "").strip().strip("`").lstrip("./")
+        rel = re.sub(r"^/?projects/legacy/", "", rel)
+        return rel
+
+    def _oracle_file_exists(rel: str, roots: list[Path]) -> bool:
+        rel = _norm_oracle_rel(rel)
+        if not rel.endswith(".java"):
+            return False
+        for base in roots:
+            try:
+                if (base / rel).is_file():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    _char_src_arrow = re.compile(
+        r"(?P<src>(?:/?projects/legacy/)?"
+        r"src/test/java/[A-Za-z0-9_./-]+\.java)\s*(?:→|->)\s*"
+        r"`?(?:src/test/java/[A-Za-z0-9_./-]+\.java)",
+    )
+    _char_source_field = re.compile(
+        r"(?im)(?:\*\*)?(?:Source|Oracle\s*path|Legacy\s*test)(?:\*\*)?\s*:\s*`?"
+        r"((?:/?projects/legacy/)?src/test/java/[A-Za-z0-9_./-]+\.java)",
+    )
+    oracle_roots = _char_oracle_roots()
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        if tid in delivered:
+            continue
+        if not _is_char_task_blob(title, body):
+            continue
+        blob = f"{title}\n{body}"
+        cited: list[str] = []
+        seen_src: set[str] = set()
+        for m in _char_src_arrow.finditer(blob):
+            rel = _norm_oracle_rel(m.group("src"))
+            if rel and rel not in seen_src:
+                seen_src.add(rel)
+                cited.append(rel)
+        for m in _char_source_field.finditer(blob):
+            rel = _norm_oracle_rel(m.group(1))
+            if rel and rel not in seen_src:
+                seen_src.add(rel)
+                cited.append(rel)
+        if not cited:
+            continue
+        missing = [p for p in cited if not _oracle_file_exists(p, oracle_roots)]
+        if missing:
+            lint(
+                "O-CHARORACLE",
+                f"{tid}: characterization Source/oracle path(s) absent from "
+                f"migration/staging and legacy specimen — {', '.join(missing[:4])}"
+                f"{'…' if len(missing) > 4 else ''}. Drop/re-scope the char task "
+                f"or cite an existing staging/legacy test (do not invent G-PLACE)",
+            )
+
+    # O-COLLABOWN: Shape=modify/create convert/harvest Targets must own (or
+    # explicitly defer) every same-package type their staging sources
+    # reference. Missing collaborators → compile-impossible convert →
+    # tree-fix stub-nuke (O-TREEFIXSTUB). Migration-general: staging
+    # directory peers only — no specimen class names.
+    staging_main = root / "migration" / "staging" / "src" / "main" / "java"
+    claimed_by_base: dict[str, str] = {}
+    deferred_bases: set[str] = set()
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        for line in body.splitlines():
+            if _OOS_LINE.search(line):
+                for m in _JAVA_PATH.finditer(line):
+                    deferred_bases.add(Path(m.group(0)).stem)
+                for m in re.finditer(r"\b([A-Z][\w]+)\b", line):
+                    deferred_bases.add(m.group(1))
+                continue
+            if _CLAIM_LINE.search(line) or "→" in line or "->" in line:
+                for m in _JAVA_PATH.finditer(line):
+                    rel = m.group(0)
+                    claimed_by_base.setdefault(Path(rel).stem, tid)
+    _collab_task = re.compile(
+        r"(?i)\b(harvest|convert|rewrite|jdbc|repository|cdi|@autowired|"
+        r"namedparameterjdbctemplate|simplejdbcinsert)\b"
+    )
+    _shape_cm = re.compile(
+        r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify)\b"
+        r"|^\*\*Shape\s*:\s*(create|modify)\*\*"
+    )
+    if staging_main.is_dir():
+        for _, tid, title in heads:
+            body = bodies.get(tid, "")
+            blob = f"{title}\n{body}"
+            if not _shape_cm.search(blob) or not _collab_task.search(blob):
+                continue
+            targets: list[str] = []
+            for line in body.splitlines():
+                if _OOS_LINE.search(line):
+                    continue
+                if _CLAIM_LINE.search(line) or "→" in line or "->" in line:
+                    targets.extend(_JAVA_PATH.findall(line))
+            targets = [t for t in targets if t.startswith("src/main/") and t.endswith(".java")]
+            if not targets:
+                continue
+            missing_collabs: list[str] = []
+            for tgt in targets:
+                # Map target path → staging via package remap
+                variants = _pkg_path_variants(tgt, legacy_pkg, target_pkg)
+                staging_file = None
+                for v in variants:
+                    # migration/staging/<src/main/java/...> or under staging_main
+                    for cand in (
+                        root / "migration" / "staging" / v,
+                        staging_main
+                        / (
+                            v[len("src/main/java/") :]
+                            if v.startswith("src/main/java/")
+                            else v
+                        ),
+                    ):
+                        try:
+                            if cand.is_file():
+                                staging_file = cand
+                                break
+                        except OSError:
+                            continue
+                    if staging_file:
+                        break
+                if staging_file is None:
+                    continue
+                try:
+                    src_text = staging_file.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                peer_dir = staging_file.parent
+                peers = {
+                    p.stem
+                    for p in peer_dir.glob("*.java")
+                    if p.name not in ("package-info.java", "module-info.java")
+                    and p.stem != staging_file.stem
+                }
+                self_base = staging_file.stem
+                for peer in sorted(peers):
+                    if peer == self_base:
+                        continue
+                    # Same-package type use: peer appears as a type token
+                    if not re.search(
+                        rf"\b{re.escape(peer)}\b", src_text
+                    ):
+                        continue
+                    if peer in claimed_by_base or peer in deferred_bases:
+                        continue
+                    missing_collabs.append(peer)
+            # de-dupe preserve order
+            seen_c: set[str] = set()
+            uniq_c: list[str] = []
+            for c in missing_collabs:
+                if c not in seen_c:
+                    seen_c.add(c)
+                    uniq_c.append(c)
+            if uniq_c:
+                lint(
+                    "O-COLLABOWN",
+                    f"{tid}: Target staging peers referenced but not owned/"
+                    f"deferred: {', '.join(uniq_c[:6])}"
+                    f"{'…' if len(uniq_c) > 6 else ''} — claim via Target/"
+                    f"Owns/Absorbs or Out-of-scope/Deferred (O-COLLABOWN; "
+                    f"pairs O-TREEFIXSTUB)",
+                )
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")

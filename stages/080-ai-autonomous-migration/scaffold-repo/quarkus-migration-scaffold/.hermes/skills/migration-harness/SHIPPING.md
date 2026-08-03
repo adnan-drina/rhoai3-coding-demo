@@ -55,6 +55,83 @@ satisfy O-QJACOCO. If there is no `@QuarkusTest` yet, sensors skip the
 jacoco.xml hard-fail — do not invent app classes for coverage on a
 platform story.
 
+**O-SHIPFIXCOMMIT:** when local `mvn test` / `sensors.sh task` is GREEN on
+**tests-only** dirt (`src/main` clean), commit the `Preflight fix rN:` tip
+**before** burning the seat on full `sensors.sh preflight` / sonar.
+Supervisor also mechan-tips that class on seat timeout/`no_commit` (does
+not require full preflight GREEN first). Never leave unpaid green coverage
+tests sitting for attempt ≥2.
+
+**O-SHIPFIXPOM:** mechan "tests-only" tips stage **`src/test/` only** — never
+sweep unrelated `pom.xml` dependency adds (e.g. unused assertj-core) into a
+tip whose subject claims tests-only. Real build-wiring pom edits need an
+explicit agent commit (not the timeout mechan path).
+
+**O-SHIPFIXJACOCO / O-SHIPFIXFINDINGS:** see boot/preflight tip hygiene under
+O-BOOTSQLPROV below — no jacoco.report* strip, no findings-JSON thrash.
+
+**O-PREFCONT:** preflight-fix attempt ≥2 is a **continuation**, not a
+cold rewrite. Inspect `git status` first; continue from existing
+dirty/untracked work **without** inventing new files/tests and **without**
+rewriting already-present dirty tip content. Characterization floor: do
+not shrink `@Test` / assertion counts vs attempt start (**O-PREFCONTUT:**
+floor counts tracked + untracked); keep typed
+`assertThrows(UnsupportedOperationException)` for unmodifiable getters
+(O-SHIPASSERTWEAK).
+
+**O-PREFDIMTHRASH / O-SONARFIX (S5778):** when preflight/sonar reports
+`java:S5778`, arrange the mutation **outside** a single-invocation
+`assertThrows` — do **not** thrash brace/bind/assertj cosmetics or burn the
+seat on form-only edits while the failure file is only
+`REFUSED (O-PREFLIGHTDIM)`. Prefer dim sensors (`sonar`/`task`/`fidelity`)
+then **one** closing preflight. Supervisor auto-resets `/tmp/preflight-count`
+at each fix-round start and on refuse (do not fight the cap by `rm`).
+
+**O-SHIPROUNDBASE:** each M5 ship entry stamps `/tmp/ship-session-base` and
+scopes Preflight/Gate/Build fix `committed()` checks to that base
+(exclusive). Prior-session `Preflight fix rN:` tips under story `RUN_BASE`
+must not auto-burn a fresh round. Diverged/abandoned `origin/main` tips are
+**not** authority — never pull/merge them; O-SHIPREMOTE blocks non-FF push
+until an operator reconciles to an honest tip (force-with-lease of known
+thrash only — harness never force-pushes).
+
+**O-SHIPNOPRSTALE:** each M5 ship entry also stamps
+`/tmp/ship-session-started` (unix epoch). On Everything up-to-date
+(O-SHIPNOPR), the supervisor may judge an existing PipelineRun **only** when
+that run was created at/after the stamp **and** its `revision` param matches
+HEAD. Prior Failed/Succeeded runs from abandoned ship rounds must **not**
+open Deploy/Build/Gate fix seats — HOLD with `ship-blocked-stale-pipeline`
+and wait for a post-session PipelineRun (operator/webhook trigger). Pair with
+O-NOPUSHPR (stale Succeeded false-green when commits were pushed).
+
+**O-SHIPBUDGET:** after preflight-fix rounds are spent, the supervisor runs
+**one** untimed closing preflight. GREEN → push. Still RED (including boot /
+`Schema-validation: missing table`) → **HOLD** with
+`ship-blocked-preflight-budget` — never log `pushing anyway (factory as
+arbiter)`. Factory cannot invent Flyway/schema/wiring; unpaid preflight must
+not reach `git push`.
+
+**O-BOOTNOFLYWAY / O-BOOTDEVPG / O-BOOTSQLPROV:** preflight `boot_check` uses
+prod-profile + DEV Postgres. Schema provenance is **Flyway/Liquibase
+migration files only** (`db/migration/*.sql` or `db/changelog/*`) —
+`sql-load-script` is **not** provenance (it seeds data after schema exists).
+Entity-only stories before Flyway keep the same DEV Postgres URL and set
+`QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION=drop-and-create` for the probe
+only — never `QUARKUS_PROFILE=dev`/H2 (build-time postgresql db-kind rejects
+`jdbc:h2:…`; see O-ENTITYDSPROD / O-PREFLIGHTH2). Preflight-fix must **not**
+add `sql-load-script` / `import.sql` solely to flip provenance or clear boot
+RED; prefer real Flyway or leave generation override to the sensor. Do not
+pair `%prod.sql-load-script` with `%prod.generation=validate` (O-GENSEED).
+
+**O-SHIPFIXJACOCO:** Preflight/boot tips must not strip
+`quarkus.jacoco.report` / `quarkus.jacoco.report-location` while keeping
+`quarkus.jacoco.data-file` (scaffold O-QJACOCO wiring). Only touch jacoco
+props when qjacoco/coverage RED cites them.
+
+**O-SHIPFIXFINDINGS:** Preflight/Gate/Build/Deploy fix tips must not bundle
+`migration/mta-findings-current.json` churn. Supervisor scrubs that path from
+those tips (same as T-NNN via O-T1FINDESC).
+
 2. Factory pre-flight: run `.hermes/harness/sensors.sh preflight`
    (isolated clean verify, new-code sonar/coverage gate, prod-profile
    boot where applicable). **L-M5e:** the evaluate commit message must
@@ -232,6 +309,25 @@ and this acceptance.
 Round budget is supervisor-enforced across all three classes. A final
 rejection halts the run with the evidence preserved for the retro —
 never bypass or water down the gate.
+
+## O-GUARDMANIFEST — computable guard coverage (ARCH-B2)
+
+`.hermes/harness/guard-manifest.md` (generated by `guard-manifest.sh`)
+lists each guard with **stage × mechanism × verification** (L1 fixture /
+L2 corpus / L3 live). Run `bash .hermes/harness/guard-manifest.sh --check`
+after harness edits. Bank **retest-owed** rows should cite a Guard ID +
+tier here instead of prose-only greps.
+
+## O-EVIDLIVE — K-system evidence liveness at story-gate
+
+Before `story-gate-passed` / acceptance success, the supervisor runs
+`.hermes/harness/evidence-liveness.sh heartbeat <SID>` then `check <SID>`.
+Each active K-system (K1, K2, K3, K9, K11) must have ≥1 ledger row in
+`migration/evidence-liveness.md` for that story — or the gate REDs
+(`evidlive-red`). Legitimate empties still emit an explicit none/checked
+row (K9 `(none this story)`, K11 `rule:_none` when no Findings). K10 is
+retired from this gate (optional ADVANCE-gated hints). Silent channels
+with Findings but zero `k2:evidence` / `rule:` events are a hard RED.
 
 
 ## O-DTOCOV — OpenAPI DTO package vs Sonar new-code coverage

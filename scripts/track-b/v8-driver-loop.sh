@@ -261,10 +261,12 @@ refresh_task_analysis_pending() {
 
   new_commits=""
   if [ -n "$last_sha" ] && [ -n "$head_sha" ] && [ "$last_sha" != "$head_sha" ]; then
-    # T-NNN work + sensor-fix + debt: T-NNN (O-DRV3 must not skip debt REDs)
+    # T-NNN work + sensor-fix + debt tips (O-DRV3 / O-DEBTMSUBJ: include
+    # milestone debt subjects like `debt: m5-evaluate milestone RED`, not only
+    # `debt: T-NNN`).
     new_commits=$(oc_git log --oneline --no-merges "${last_sha}..${head_sha}" \
-      | grep -E '^[0-9a-f]{7,40} (T-[0-9]|debt: T-[0-9])' || true)
-  elif [ -z "$last_sha" ] && echo "$head_short" | grep -qE '^[0-9a-f]{7,40} (T-[0-9]|debt: T-[0-9])'; then
+      | grep -E '^[0-9a-f]{7,40} (T-[0-9]|debt: )' || true)
+  elif [ -z "$last_sha" ] && echo "$head_short" | grep -qE '^[0-9a-f]{7,40} (T-[0-9]|debt: )'; then
     new_commits="$head_short"
   fi
 
@@ -282,7 +284,7 @@ refresh_task_analysis_pending() {
   fi
 
   anomaly_on_new=0
-  echo "$new_commits" | grep -qiE 'sensor fix|Already satisfied|style-autofix|escalat|debt: T-' \
+  echo "$new_commits" | grep -qiE 'sensor fix|Already satisfied|style-autofix|escalat|debt: ' \
     && anomaly_on_new=1
 
   {
@@ -404,11 +406,12 @@ refresh_milestone_analysis_pending() {
 refresh_debt_hold_pending() {
   local head_subj debt_hits ledger_n
   head_subj=$(oc_git log -1 --format='%s' | head -1)
-  debt_hits=$(oc_git log --oneline -20 | grep -E 'debt: T-[0-9].*RED' || true)
+  # O-DEBTMSUBJ: match any `debt: … RED` tip (task or milestone/m5-evaluate).
+  debt_hits=$(oc_git log --oneline -20 | grep -E 'debt: .*RED' || true)
   ledger_n=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc \
     'grep -c "^## " migration/debt.md 2>/dev/null || echo 0' 2>/dev/null | strip_oc_noise | tr -d '[:space:]')
   ledger_n=${ledger_n:-0}
-  if echo "$head_subj" | grep -qE 'debt: T-[0-9].*RED' \
+  if echo "$head_subj" | grep -qE 'debt: .*RED' \
     || [ -n "$debt_hits" ] \
     || { [ "$ledger_n" -gt 0 ] 2>/dev/null; }; then
     {

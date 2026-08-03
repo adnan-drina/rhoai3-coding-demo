@@ -101,6 +101,16 @@ clean durability proof ([`V8-ABORT.md`](V8-ABORT.md)). V9 gate:
 
 | ID | Status | Notes |
 |----|--------|-------|
+| O-M5EVALTESTMAIN | ✅ | Fixed 2026-08-02 wake#153–156: see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-M5PRECLAIM | ✅ | Fixed 2026-08-02 wake#153–156: see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-M5EVALBURN | ✅ | Fixed 2026-08-02 wake#153–156: see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-STYLEFIDELITY | ✅ | Fixed 2026-08-02 wake#153–156: see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-SFIXMUTATE | ✅ | Fixed 2026-08-02 wake#153–156: see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-SFIXRESCUEDISCARD | ✅ | Fixed 2026-08-02 wake#152: `sfix_commit_green_dirt` + keep-tip-on-cited-GREEN; see docs/V10-FUTURE-IMPROVEMENTS.md. |
+| O-SFIXSIGINT | ✅ | Fixed 2026-08-02 wake#152: tip/archive after orch 124/130; paired with O-SFIXRESCUEDISCARD. |
+| O-DEBTMSUBJ | ✅ | Fixed 2026-08-02 wake#152: driver matches `debt: .*RED` / any `debt: ` tip. |
+| O-DEBTSHIPRACE | ✅ | Fixed 2026-08-02 wake#152: M5 ship blocked when debt-freeze set. |
+| O-INFERLATEWRITE | ⬜ | [EFFICIENCY] Infer/characterize seats: tip or preseed first `src/test` write <120s (T-013 petclinic-rest-v3 ttfw≈331s / 18% budget before OwnerTest/PetTest/VisitTest). |
 | G-FID | ✅ | Milestone WARN when later-story classes present under `src/main` |
 | G-AC2 | ✅ prior | Ceremonial status-map reject; products[] still ship bar |
 | G-OK | ✅ | Static reject String/`"OK"` acceptance without catalog fetch |

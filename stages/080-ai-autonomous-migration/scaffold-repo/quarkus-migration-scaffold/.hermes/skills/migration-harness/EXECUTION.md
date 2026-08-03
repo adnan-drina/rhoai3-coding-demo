@@ -44,8 +44,15 @@ runs OpenCode first (`WORKER_FIRST=true`). Sensor-fix also runs Qwen first
 (`WORKER_SFIX_FIRST=true`) with one MiniMax rescue if the triggering sensor
 stays RED. M3 drafts on Qwen (`WORKER_M3_FIRST=true`, ≤2 attempts) with one
 MiniMax backstop if plan-lint stays RED. If you are in an escalation
-session: dispatch `opencode` for file-changing work; do not apply rewrite
-edits with your own tools unless the worker already failed.
+session **without** O-ESCREOPENCODE: prefer dispatching `opencode` for
+file-changing work. **O-ESCREOPENCODE / O-ESCREOPENCODE-ENFORCE /
+O-ESCREOPENCODE-SENSORRED:** after a wedged/skipped/incomplete worker
+(READ_THRASH, JSON_STALE, INFERABSENT, WORKERWEDGE, CHARORACLE,
+O-STEPFINISHRED / cause `sensor-red` / SENSOR RED false-complete), MiniMax
+**owns** file edits — do **not** re-dispatch `opencode`/Qwen (that nurses
+hollow invent after harvest-only). The supervisor PATH-refuses and kills
+opencode spawn during that escalation. Prefer O-NULLACTION
+(`/tmp/escalation-noaction-<tid>.txt`) over hollow invent.
 
 **Measure after this routing:** MiniMax session-minutes (sfix+M3+escalation)
 and M4 rescue rate must not rise — revisit M5 evaluate only if both improve.
@@ -143,20 +150,35 @@ names. Never close with `assertThat(true)` / `assertTrue(true)` (G-PLACE) —
 run `.hermes/harness/sensors.sh task` GREEN before declaring success
 (escalation path included; supervisor refuses red commits).
 
-**FIRST mutate (O-WORKERWEDGE-RCA / O-WORKERREAD / O-CREATEFIRSTMUT):** within
-the first ~5 tool calls, `edit`/`write` the task Target (or run
-`harvest-from-staging.sh`). Do **not** burn the seat on read/glob tours —
-the supervisor kills read-thrash and frozen JSON sessions, then skips
-further worker seats for the rest of the story. **Shape=create:** the Target
-basename must exist after the first write batch (threshold is tighter —
-~10 reads with 0 writes → kill). Characterization: Target `*Test` first
+**FIRST mutate (O-WORKERWEDGE-RCA / O-WORKERREAD / O-CREATEFIRSTMUT /
+O-FIRSTMUTBASH / O-INFERFIRSTWRITE / O-TASKMUTATE):** within the first ~5 tool
+calls, `edit`/`write` the task Target (or run `harvest-from-staging.sh`). Do
+**not** burn the seat on read/glob tours — the supervisor kills read-thrash,
+frozen JSON sessions, and **M4 seats with 0 edit/write past ~120s**
+(O-TASKMUTATE / ARCH-C1 — same first-write deadline as M3/sfix), then skips
+further worker seats for the rest of the story. Plain `bash`
+(`ls`/`cat`/explore) does **not** count as first mutate (O-FIRSTMUT). A
+successful `harvest-from-staging.sh` that prints `harvested: … -> …` **does**
+count (O-FIRSTMUTBASH) — do not get false READ_THRASH-killed after landing
+Targets. **Class=infer with multiple Targets (O-INFERFIRSTWRITE):** after
+Targets already exist (preseed/harvest), the first mutate must be a *concrete
+import/API edit* on one named leaf Target (prefer `*RowMapper` /
+`*Extractor` / small helper) — e.g. drop `org.springframework.jdbc.*` and add
+`DataSource`+`@Inject` — before touring the full sibling stack. Harvest-as-
+mutate alone is not enough once files are on disk. **Shape=create:** the
+Target basename must exist after the first write batch (threshold is tighter
+— ~10 reads with 0 writes → kill). Characterization: Target `*Test` first
 before WireMock/pom rabbit holes. **M3 SPECIFY:** write
 `specs/<slug>/tasks.md` first (lint gate), then plan/spec — do not explore
 for 12 minutes with an empty specs tree (O-M3EMPTY).
 
-Pass only the package-relative path (`model/Product.java`,
-`service/CatalogService.java`) — never the package directories, never an
-absolute or dotted path. Hand-building `src/main/java/$TGT/...` is how a
+Pass the package-relative path (`model/Product.java`,
+`service/CatalogService.java`, `repository/jdbc/JdbcPet.java`) — never the
+package directories, never an absolute or dotted path. **O-HARVESTFULLPATH:**
+if you copy a Target-design line
+(`src/main/java/<legacyPackage>/repository/jdbc/JdbcPet.java`), the script
+strips the `src/(main|test)/java/<legacy|targetPackage>/` prefix — prefer
+the short form anyway. Hand-building `src/main/java/$TGT/...` is how a
 session once wrote the target package as a dotted directory `com.demo/`
 (compiles, ships silently, and the command policy denies the `rm` to undo
 it — a long stall). The script makes that impossible; the `package` sensor
@@ -188,6 +210,175 @@ drop the Spring support call **and keep the staged list shape**:
 Spring `PropertyComparator` line but REDs the collateral `new ArrayList<>(…)`
 absence (v3 S02 T-003 / W4-018). Never re-harvest Spring beans.support
 imports to green-wash fidelity.
+
+**Port: rename | reimplement (O-PORTREIMPL / O-FIDELITYPORT /
+O-REIMPLCREATE):** when the task packet declares `Port: reimplement`
+(or Spring Data→Panache / JDBC→Agroal), treat the seat as an API swap —
+convert-after-harvest is mandatory (`O-SDJPAHARVESTONLY`); follow the
+task's API mapping table (per-type); do not tip-accept harvest-only
+Spring Data or empty Panache shells. **O-FIDELITYPORT:** harvest
+byte-match fidelity applies only to `Port: rename` (default harvest);
+on `Port: reimplement` the fidelity dimension is redesign-sig / public
+signatures — not Spring-import byte-match. **O-REIMPLCREATE /
+O-RESTCREATE:** `Port: reimplement` + `Shape: create` always carries the
+create-procedure tip — (1) `harvest-from-staging.sh` / write Target
+basename first (create-from-legacy, not noop), (2) cite+apply the API
+mapping table, (3) first-write anchor before sibling tour
+(`O-CREATEFIRSTMUT`). Plan-lint REDs missing Port / mapping /
+create-procedure prose on API-swap creates.
+
+**DataAccessException / no spring-tx (O-M3PRESERVEDAO / O-DAOEXMAP /
+O-HYGIENEWORKER / O-FIDELITYDAO / W4-085a):** when harvesting repository
+interfaces into a Quarkus pom (no `spring-boot`), **remap per exact symbol**
+or strip throws — never substring-replace `DataAccessException` inside
+`EmptyResultDataAccessException` (invents
+`EmptyResultPersistenceException` under `org.springframework.dao`). Table:
+
+| legacy | target |
+|---|---|
+| `DataAccessException` | `jakarta.persistence.PersistenceException` |
+| `EmptyResultDataAccessException` | `jakarta.persistence.NoResultException` |
+| `DataRetrievalFailureException` | `jakarta.persistence.PersistenceException` |
+| `ObjectRetrievalFailureException` | `jakarta.persistence.EntityNotFoundException` |
+
+Canonical taught-side copy of this table: `MAPPINGS.md` §Spring Boot →
+Quarkus (Spring DAO exceptions). Never add `spring-tx`/`spring-jdbc`/
+`spring-orm`, and **never invent** a local
+`targetPackage…DataAccessException` stub (S03 T-001 `f8dbcfe`). M3 must
+not say “Preserve DataAccessException” without the table (plan-lint
+`O-M3PRESERVEDAO`). Prefer `harvest-from-staging.sh`.
+
+**Spring residue = 0 (O-SPRINGRESIDUE):** after Class=infer /
+Port=reimplement convert, `org.springframework` under `src/main/java` must
+be 0 (comments ignored). Sensors + commit-hygiene RED
+`O-SPRINGRESIDUE` (peer of `O-CDIPARTIAL` / `O-JDBCHARVESTAPI`). Invented
+`*PersistenceException` under `org.springframework.*` is RED.
+
+**Spring Data → Panache harvest (O-SDJPAHARVEST / O-SDJPAHARVESTONLY /
+O-T4SPRINGDATA / O-SDJPA-SKIP):**
+when the Quarkus pom has **no** `spring-data` / `quarkus-spring-data-*`,
+do not burn harvest/compile seats on `SpringData*` — declare
+`Port: reimplement` + Panache mapping, or Already-satisfied /
+redesign-skip when ≥3 `Jpa*RepositoryImpl` `@ApplicationScoped` cover
+domain repos and Override-only work is done (**O-SDJPA-SKIP** /
+**O-T4SPRINGDATA**). If keeping Spring Data `extends`, pom must carry
+`quarkus-spring-data-jpa`. For Shape=`create`|`modify` Panache
+consolidate/convert, `harvest-from-staging.sh` alone is **not**
+task-complete (**O-SDJPAHARVESTONLY**). After harvest, before
+`step_finish` / tip-accept / Already-satisfied: rewrite every Target
+Spring Data repo to `PanacheRepository` / `PanacheRepositoryBase`, drop
+`org.springframework.data.*`, and implement finder bodies — do **not**
+exit 0 on Spring Data residue / Panache=0 dirt (sensors RED
+`O-SDJPAHARVESTONLY`; supervisor rewrites false `rc=0`→`42` via
+O-STEPFINISHRED). Consolidating is also **not** bare
+`extends PanacheRepository<T>` plus empty finder shells
+(**O-SDJPAHARVEST**). Keep the staging **domain-repository contract**
+(`extends`/`implements` `<DomainRepository>` **and**
+`PanacheRepository` or `PanacheRepositoryBase`). Rewrite staging method
+`@Query` JPQL into Panache `find`/`list` **default or class methods** —
+never park orphan `@NamedQuery` on the repository interface. Hollow
+`ReturnType finder(...);` without a query body fails sensors. When staging
+has `*RepositoryImpl` Override delete bodies, harvest those Impl classes
+with the Override interfaces (iface-only ≠ consolidate). Prefer an
+`@ApplicationScoped` class implementing the domain iface +
+`PanacheRepositoryBase` when Override Impls need `EntityManager`. Sensors
++ commit-hygiene RED `O-SDJPAHARVEST` / `O-SDJPAHARVESTONLY`. Plan Shape
+for Panache/convert `.java` Targets must be `create`/`modify`
+(O-STRUCTJAVA).
+
+**Partial CDI / Spring JDBC harvest (O-CDIPARTIAL / O-JDBCHARVESTAPI /
+O-SPRINGRESIDUE / O-AGROALHELPERSIG / O-STEPFINISHRED):**
+`harvest-from-staging.sh` may stamp `@ApplicationScoped` and remap
+`@Autowired`→`@Inject`, but that is **not** task-complete for JDBC *Impl
+classes. Before `step_finish` / tip-accept / Already-satisfied: (1) every
+CDI-scoped Target must use jakarta `@Inject` (no leftover `@Autowired`);
+(2) drop **all** `org.springframework` under `src/main/java` (comments
+ignored) — rewrite `NamedParameterJdbcTemplate` / `SimpleJdbcInsert` /
+`JdbcTemplate` to Agroal `DataSource` + `java.sql` (or `EntityManager`) —
+never re-add `spring-jdbc` (O-JDBCREGRESS / O-SPRINGRESIDUE); (3)
+**O-AGROALHELPERSIG** — preserve staging *exact public* helper method
+names on the Impl class itself through the rewrite (`mapRow`,
+`create*ParameterSource`, `extractData`, …). Inline Spring `RowMapper` /
+`ParameterSource` as same-named *public* methods on the converted Impl —
+do **not** rename (`mapRow`→`mapVetRow`), privatize, or move-only onto a
+RowMapper collaborator (redesign-sig REDs missing names while
+`spring.jdbc=0`); (4) **O-STEPFINISHRED** — run
+`.hermes/harness/sensors.sh task` before claiming complete; if SENSOR RED
+(incl. O-AGROALHELPERSIG / O-SPRINGRESIDUE), refuse `step_finish` /
+tip-accept / Already-satisfied / prose "ready for commit" — keep editing
+until GREEN then `commit-gated.sh`, or exit honest-incomplete (supervisor
+rewrites false worker `rc=0`→`42` and escalates as `sensor-red`, not
+`worker-failed`). Sensors + commit-hygiene RED `O-CDIPARTIAL` /
+`O-JDBCHARVESTAPI` / `O-SPRINGRESIDUE` on partial trees; ESCW refuses
+allow-empty. Pair O-FIRSTMUT — zero edit/write after harvest-only is a
+failure, not done.
+
+**Escalation util / non-Owns refuse (O-ESCWSCOPEUTIL):** MiniMax/Hermes
+escalation must edit **only** this task's Owns/Target paths. Do **not**
+create or harvest `src/main/**/util/*` (or any later-story class listed in
+`LATER_CLASSES`) mid-convert to clear compile errors — keep those in
+`migration/staging` until their owning story. The scope sensor removes
+untracked later-class dirt (`O-ESCWSCOPEUTIL`); tip REJECT if util
+collaborators land with a convert tip. Pair O-ESCWSCOPE / O-COLLABOWN
+(missing same-package peers → own/defer them in plan, never invent util).
+
+**MiniMax scope-quit with unfinished residue (O-MMSCOPEQUIT):** when any
+sibling Target under the same task already proves the Agroal / `DataSource`
++ `java.sql` pattern (or sensors RED `O-JDBCHARVESTAPI` / leftover
+`org.springframework` on remaining Targets), MiniMax/Hermes escalation
+must **not** exit with "scope reclassification", "task splitting",
+"human approval", or similar scope-quit narratives. Sensors refusing a
+partial tip are **not** a scope defect — continue the remaining Targets
+in the same seat until `org.springframework` residue = 0 and sensors
+GREEN, or stop with an honest sensor-RED / O-NULLACTION that does **not**
+ask to split the convert stack. Pair W4-085 §2 (convert titles understate
+stack replacement).
+
+**Tree-fix must not stub-nuke (O-TREEFIXSTUB / O-COLLABOWN):** clearing
+`org.springframework` residue by rewriting owned Targets to comment-only
+`/* REMOVED: … */` husks, deleting type bodies, or deleting interface
+methods is **forbidden**. That can leave sensors falsely GREEN while the
+convert stack is dishonest. Tree-fix / tip-accept / commit-hygiene RED
+`O-TREEFIXSTUB` on comment-only stubs and on tips that delete owned Target
+`.java` paths. For JDBC convert stacks, implement the **full** repository
+API with Agroal `DataSource` + `java.sql` (or `EntityManager`). If
+same-package collaborators required by Target files are not owned or
+explicitly deferred (`O-COLLABOWN` plan defect), prefer honest
+`O-NULLACTION` over stub-delete.
+
+**Characterization oracle present (O-CHARORACLE / O-NULLACTION):** when
+porting/characterizing via `Source→Target` under `src/test/`, the SOURCE
+file must exist in `migration/staging` or `/projects/legacy`. If the packet
+carries `O-CHARORACLE: characterization oracle ABSENT`, do **not** invent
+hollow / `assertThat(true)` / G-PLACE tests. Write
+`/tmp/escalation-noaction-<tid>.txt` with `O-CHARORACLE: oracle absent` and
+STOP — that is success (O-NULLACTION), not a burn. Re-plan M3 to drop the
+phantom path. **O-ESCREOPENCODE-ENFORCE / O-ESCREOPENCODE-SENSORRED:** do
+not reopen OpenCode/Qwen to continue the invent path after this tip or
+after O-STEPFINISHRED / sensor-red escalation — supervisor refuses/kills
+that spawn.
+
+**Infer + derived-absent oracle (O-INFERABSENT / O-ORACLEDERIVE):** the
+packet `Oracle:` line is **derived** (legacy test for Target? Target in
+destination?) — never a silent `present` default. If the packet tips
+`O-INFERABSENT`, this is a plan defect: write
+`/tmp/escalation-noaction-<tid>.txt` with `O-INFERABSENT` and STOP
+(O-NULLACTION). M3 must reshape to `Shape: create` (create-procedure),
+`Shape: verify` (deferral), or an explicit one-line `Proceed: O-NULLACTION`.
+Do not READ_THRASH inventing behaviour with nothing to observe.
+
+**Collection getters / harvest fidelity (O-STYLEFIDELITY):** when staging
+returns a mutable field (`return roles;`), keep that return shape after
+harvest. Do **not** wrap with `Set.copyOf` / `Collections.unmodifiable*` to
+appease Sonar S2384 — that is a behavioural change (UOE on mutate-in-place
+callers) and fidelity RED. Fix S2384 via approved recipe paths or document
+debt; never land defensive-copy harvest drift in style-autofix or sfix.
+
+**Sensor-fix first mutate (O-SFIXMUTATE):** after you name the
+fidelity/sonar root cause from `/tmp/sensor-*.log`, your **next** tool must
+be `edit`/`write` on the drifted file. Diagnose-then-read thrash with 0
+mutates is killed early (~120s) and escalated — do not burn the full sfix
+budget re-reading the same logs.
 
 **OpenAPI DTO harvest (O-DTOCOV):** harvested `**/dto/**` beans are
 generated shapes — the supervisor runs `ensure-dtocov-pom.py` before
@@ -278,9 +469,16 @@ lives in test scope only.
 migration-general — V9 S03 T-008 probe):**
 
 - **S5778** — `assertThrows` / `assertDoesNotThrow` lambdas must contain
-  a *single* method invocation (no setup statements *and* no constructor
+  a *single* method invocation (no setup steps *and* no constructor
   calls inside the lambda — `() -> list.add(new Foo())` is two calls).
   Put arrange steps (including `new`) before the assert.
+  **O-SHIPASSERTWEAK:** never “fix” S5778 by deleting
+  `assertThrows(UnsupportedOperationException)` (or renaming
+  `*_returnsUnmodifiable*` → `*_returnsListWithExpectedBehavior` and
+  keeping only `assertNotNull`/size/`assertSame`). Keep the typed
+  unmodifiable contract: arrange the element outside the lambda, then
+  `assertThrows(UnsupportedOperationException.class, () -> list.add(x))`.
+  Broad `catch (Exception)` / empty-catch “expected” is also forbidden.
 - **S2864** — iterate `map.entrySet()` when both key and value are needed;
   do not `keySet()` + `get(key)`.
 - **S5976** — near-identical tests that differ only by a constant (e.g.
@@ -415,12 +613,28 @@ even if **Absorbs** lists later-story sources — those cites are ownership
 markers for future tasks. Task packets gate O-TGTNAME to the `.gitkeep` path
 only (v3 S01 T-003: Absorbs scrape → full model harvest → scope revert).
 
+**Shape=structure + `.java` Targets (O-STRUCTJAVA):** if Target design names
+real `.java` sources (Panache/harvest/convert) under `Shape: structure`, that
+is a **plan defect** — plan-lint REDs it at M3 (`LINT:O-STRUCTJAVA`). If a
+seat still reaches you with that contradiction, write
+`/tmp/escalation-noaction-<tid>.txt` with `O-STRUCTJAVA` and STOP
+(O-NULLACTION) so M3 can reshape to `create`/`modify`. Do **not** tip
+`.gitkeep`-only as satisfying a Panache/class Goal, and do not READ_THRASH
+trying to invent both.
+
 **After scope revert (O-SCOPEBACKFILL / O-REVERTPURE):** if the story-scope
 sensor removes later-story classes from a structure task, the supervisor
 restores the declared Target `.gitkeep` mechanically and commits a clear
 `T-NNN:` tip — a tip that is only `scope revert` must never mark the task ✓
 while the Target is absent. Scope-revert commits stage **only** the reverted
 paths (never `git add -A` / `mta-findings-current.json`).
+
+**Owns-only staging (O-OWNSTAGE):** `stage_for_task_commit` / worker
+auto-commit stage **only** paths declared in the task's Owns/Target (via
+`task-stage-paths.py`). Sibling entities under the same package stay
+untracked for their owning tip — do not ride along on `git add -A`.
+`mechan-match.py` refuses create/harvest tips that still stage extra
+`src/**/*.java` outside Owns/Target (`ownstage-extra`).
 
 **Never commit `.hermes/` (O-HERMNEST):** harness files are workspace
 runtime only. Do not `git add .hermes` / `git add -A` without resetting
@@ -531,6 +745,21 @@ When adding `@RolesAllowed` / JDBC security and a `*.security.enable` property,
 ship at least one `@QuarkusTest` + `@TestProfile` (or configOverrides) that sets
 security enabled and asserts **401 or 403** on a protected route. The
 security-disabled acceptance path alone cannot prove authorization.
+
+## O-DSKIND — JDBC + db-kind when Hibernate / @Entity lands
+
+Adding `quarkus-hibernate-orm` (or harvesting `@Entity`) without
+`quarkus-jdbc-*` and `quarkus.datasource.db-kind` fails Quarkus boot with
+`ConfigurationException: Datasource must be defined`. Wire in the same
+task family:
+
+- deps: `quarkus-jdbc-h2` + `quarkus-jdbc-postgresql`
+- `%dev` / `%test` → `db-kind=h2` (+ mem JDBC URL); default/`%prod` → `postgresql`
+- `%dev` / `%test` → `hibernate-orm.database.generation=drop-and-create` until a seed story
+
+Harness `ensure-dskind.py` patches post-commit if the worker omits this;
+task-packet injects the tip on entity/JPA harvests. See SHIPPING.md
+O-ENTITYDSPROD (never leave unprofiled H2 as the deploy default).
 
 ## O-PRODSCHEMA — never unprofiled drop-and-create
 

@@ -1,0 +1,6 @@
+legacyPackage: org.springframework.samples.petclinic
+targetPackage: com.demo
+preserve: []
+forbidden: []
+acceptance:
+  path: /api/unused

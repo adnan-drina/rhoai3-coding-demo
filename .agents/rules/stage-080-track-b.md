@@ -113,11 +113,13 @@ sensors, scaffold skills, live migration workspace):
     fix understands.
 12. **O-IDLEWSFP — dual idle clock.** Review / wake idle ladders that decide
     whether the *run* is stalled must key on **`workspace_fp` alone**
-    (HEAD + outer/supervisor liveness + story-state / outer-loop.log). Host
+    (HEAD + outer/supervisor liveness + story-state / outer-loop.log).
     `harness_fp` / project dirty / monitor_fp reset an *agent-implementing*
     clock only — they must not clear `run_idle` while the specimen is stuck
     (Wave4 W4-023a: harness edits masked Sonar-401 sfix stall). Helper:
-    `scripts/track-b/v10-idle-clock.sh`.
+    `scripts/track-b/v10-idle-clock.sh`. **O-HARNESSFP-POD:** `harness_fp` is
+    `hash(host_fp|pod_fp)` so pod harness sync is visible agent activity and
+    refreshes poll `last_activity` without touching `idle_note_level`.
 
 ## Anti-patterns (forbidden)
 

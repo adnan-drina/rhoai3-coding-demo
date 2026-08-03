@@ -1,0 +1,5 @@
+# Extracted from petclinic-rest-v3 /projects/modernized (PVC RO mount)
+# sha=be070fb
+# story=S03-data-access-layer
+# extracted_at=2026-08-03T06:56:53Z
+# subject=M3 revision: drop phantom repository char oracle (O-CHARORACLE)

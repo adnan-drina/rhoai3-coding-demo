@@ -16,9 +16,12 @@
 # Usage:  harvest-from-staging.sh <package-relative-path>
 #   e.g.  harvest-from-staging.sh model/Product.java
 #         harvest-from-staging.sh service/CatalogService.java
-# The path is RELATIVE TO THE PACKAGE ROOT (below com/redhat/coolstore or
-# com/demo). Do not include the package directories, and never pass an
-# absolute or dotted path. Run from the modernized repo root.
+#         harvest-from-staging.sh repository/jdbc/JdbcPet.java
+# Preferred: path RELATIVE TO THE PACKAGE ROOT (below legacyPackage /
+# targetPackage). O-HARVESTFULLPATH also accepts Target-design full paths
+# (src/main/java/<legacyPackage>/… or src/main/java/<targetPackage>/…) and
+# strips them — workers copy-paste Target lines and must not FATAL.
+# Never pass an absolute or dotted path. Run from the modernized repo root.
 set -euo pipefail
 
 rel="${1:?usage: harvest-from-staging.sh <package-relative-path, e.g. model/Product.java>}"
@@ -33,6 +36,40 @@ TGT=$(grep -m1 -E "^[[:space:]]*targetPackage:" migration.yaml | awk '{print $2}
 # O-HARVESTSTALL: also harvest src/test when main is absent (rewrite test migrations).
 LEGP=${LEG//./\/}
 TGTP=${TGT//./\/}
+
+# O-HARVESTFULLPATH: normalize Target-design / copy-pasted full java paths to
+# package-relative before joining under migration/staging/.../$LEGP/.
+_orig_rel="$rel"
+for _pfx in \
+  "src/main/java/${LEGP}/" \
+  "src/test/java/${LEGP}/" \
+  "src/main/java/${TGTP}/" \
+  "src/test/java/${TGTP}/" \
+  "migration/staging/src/main/java/${LEGP}/" \
+  "migration/staging/src/test/java/${LEGP}/"
+do
+  case "$rel" in
+    "${_pfx}"*) rel="${rel#"${_pfx}"}" ;;
+  esac
+done
+# Also strip a bare src/(main|test)/java/ prefix when what follows is already
+# $LEGP/… or $TGTP/… (workers sometimes omit the staging/ root).
+case "$rel" in
+  src/main/java/*|src/test/java/*)
+    _rest="${rel#src/*/java/}"
+    case "$_rest" in
+      "${LEGP}/"*|"${TGTP}/"*)
+        rel="${_rest#${LEGP}/}"
+        rel="${rel#${TGTP}/}"
+        ;;
+    esac
+    ;;
+esac
+if [ "$rel" != "$_orig_rel" ]; then
+  echo "O-HARVESTFULLPATH: normalized '$_orig_rel' → '$rel'"
+fi
+unset _pfx _orig_rel _rest
+
 src_main="migration/staging/src/main/java/$LEGP/$rel"
 src_test="migration/staging/src/test/java/$LEGP/$rel"
 # O-DTOSTAGING: OpenAPI-generated DTOs often live under legacy
@@ -139,8 +176,26 @@ if no_spring and re.search(r"@Repository\b", text):
                 count=1,
             )
         text = text.replace("@PersistenceContext", "@Inject")
+    # O-CDIPARTIAL: @Repository→@ApplicationScoped alone is incomplete CDI —
+    # also remap @Autowired → @Inject (never leave Spring DI on CDI beans).
+    if no_spring and re.search(r"@Autowired\b", text):
+        text = text.replace(
+            "import org.springframework.beans.factory.annotation.Autowired;\n",
+            "",
+        )
+        if "jakarta.inject.Inject" not in text:
+            text = re.sub(
+                r"(package [^\n]+;\n)",
+                r"\1\nimport jakarta.inject.Inject;\n",
+                text,
+                count=1,
+            )
+        text = re.sub(r"@Autowired\b", "@Inject", text)
 open(dst, "w", encoding="utf-8").write(text)
 PY
+# O-JDBCHARVESTAPI: harvest does NOT rewrite NamedParameterJdbcTemplate /
+# SimpleJdbcInsert → Agroal/java.sql. Worker must finish that rewrite; sensor
+# cdi-partial-check.py REDs spring.jdbc|dao|orm leftovers under quarkus pom.
 
 # Post-conditions: dest exists under the '/'-joined target package, no dotted dir.
 grep -q "package[[:space:]]\+$(echo "$TGT" | sed 's/\./\\./g')" "$dst" \

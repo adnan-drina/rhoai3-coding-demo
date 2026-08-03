@@ -128,6 +128,43 @@ APP_ROOT="$GITR" REQUIRE_STORY=S05 \
   && ok "ready when S05 complete in story-state" \
   || bad "ready should pass with S05,complete"
 
+echo "== O-HERMESWSRESOLVE: explicit / single Running / refuse (no named default) =="
+# Source must not hard-default a specimen workspace name.
+if grep -nE 'QG_WS_NAME_DEFAULT=.*petclinic|V10_WS_NAME:-petclinic' \
+  "${ROOT}/scripts/track-b/lib-quality-gates.sh" \
+  "${ROOT}/scripts/track-b/v10-prep-fresh-rerun.sh" 2>/dev/null \
+  | grep -vE '^\s*#'; then
+  bad "stale named workspace default still present"
+else
+  ok "no petclinic-* named default in resolve path"
+fi
+# Explicit env wins over Running list.
+got=$(V10_WS_NAME=explicit-ws QG_WS_RUNNING_LIST=$'other-ws' qg_ws_name 2>/dev/null || true)
+if [ "$got" = "explicit-ws" ]; then
+  ok "explicit V10_WS_NAME wins"
+else
+  bad "explicit V10_WS_NAME failed: got='$got'"
+fi
+# Single Running → resolve
+got=$(unset V10_WS_NAME; QG_WS_RUNNING_LIST=$'only-running' qg_ws_name 2>/dev/null || true)
+if [ "$got" = "only-running" ]; then
+  ok "single Running DevWorkspace resolves"
+else
+  bad "single Running resolve failed: got='$got'"
+fi
+# Zero Running → refuse
+if ( unset V10_WS_NAME; QG_WS_RUNNING_LIST='' qg_ws_name ) >/dev/null 2>&1; then
+  bad "zero Running should REFUSE"
+else
+  ok "zero Running refuses"
+fi
+# Multi Running → refuse
+if ( unset V10_WS_NAME; QG_WS_RUNNING_LIST=$'a\nb' qg_ws_name ) >/dev/null 2>&1; then
+  bad "multi Running should REFUSE"
+else
+  ok "multi Running refuses"
+fi
+
 echo
 echo "gate-instruments: ${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

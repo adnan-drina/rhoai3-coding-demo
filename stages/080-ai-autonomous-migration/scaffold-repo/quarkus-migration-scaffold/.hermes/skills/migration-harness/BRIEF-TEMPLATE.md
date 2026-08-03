@@ -54,6 +54,9 @@ tests`).
 
 - **Findings**: the mandatory rule ids this story resolves (from the
   roadmap entry).
+- **seat-budget**: `<N>` — expected OpenCode seats from roadmap
+  `kind × incident count` (O-SEATBUDGET / ARCH A5). Same integer as
+  roadmap `- seat-budget: N`. Supervisor escalates on overrun.
 - **Preserve**: the `preserve:` items whose surfaces live in scope —
   spell out the env var names/values mechanism to keep.
 - **Behavioral pins**: the assertion values that must hold after this

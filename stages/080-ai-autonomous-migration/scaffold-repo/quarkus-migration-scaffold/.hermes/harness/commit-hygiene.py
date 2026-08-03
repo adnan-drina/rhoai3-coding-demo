@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""O-GITBAK / O-SIMPLEDTO / O-POMUNC / O-JDBCREGRESS — refuse dishonest commits.
+"""O-GITBAK / O-SIMPLEDTO / O-POMUNC / O-JDBCREGRESS / O-CDIPARTIAL /
+O-TREEFIXSTUB — refuse dishonest commits.
 
 Exit 1 when HEAD (or given sha) commits:
   - src/**/*.bak, *~, *.orig (O-GITBAK)
@@ -9,6 +10,11 @@ Exit 1 when HEAD (or given sha) commits:
   - pom.xml newly adds spring-jdbc / spring-tx / spring-orm vs parent
     while quarkus-maven-plugin is present (O-JDBCREGRESS). Pre-existing
     deps for honest Jdbc*RepositoryImpl CDI are allowed.
+  - @ApplicationScoped (+siblings) still carrying @Autowired, or
+    spring.jdbc|dao|orm / NamedParameterJdbcTemplate leftovers under a
+    Quarkus pom without spring-jdbc (O-CDIPARTIAL / O-JDBCHARVESTAPI).
+  - comment-only / REMOVED stubs under src/main, or deleted owned Target
+    .java paths (O-TREEFIXSTUB — tree-fix must not stub-nuke).
 
 Usage: commit-hygiene.py [sha]
 """
@@ -17,6 +23,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _show_names(sha: str) -> list[str]:
@@ -81,6 +88,8 @@ def main() -> int:
     # JDBC/ORM modules to greenwash a JDBC harvest (Wave2 T-009 MiniMax).
     # Compare to parent — pre-existing spring-jdbc for Jdbc*Impl is OK
     # (O-JDBCREGRESSFALSE: Gate fix r1 was falsely reset when pom touched).
+    # O-POMDISCARD: refuse tips that newly add panache/spring-data deps when
+    # the tip (and tree) has no matching src Panache/Spring Data usage.
     if "pom.xml" in names:
         pom_text = _show_file(sha, "pom.xml")
         parent = f"{sha}^"
@@ -95,6 +104,39 @@ def main() -> int:
                     bad.append(art)
             if bad:
                 problems.append("O-JDBCREGRESS:spring-readd:" + ",".join(bad))
+            # Orphan panache / spring-data dep without src usage
+            orphan_arts = []
+            for art, src_pat in (
+                ("quarkus-hibernate-orm-panache", r"PanacheRepository|io\.quarkus\.hibernate\.orm\.panache"),
+                ("spring-data", r"org\.springframework\.data"),
+            ):
+                pat = rf"<artifactId>\s*{re.escape(art)}[^<]*<"
+                in_tip = bool(re.search(pat, pom_text, re.I))
+                in_parent = bool(re.search(pat, parent_pom, re.I)) if parent_pom else False
+                if in_tip and not in_parent:
+                    # Any tip java file or tree src cite?
+                    tip_java = [n for n in names if n.endswith(".java") and n.startswith("src/")]
+                    has_src = False
+                    for jn in tip_java:
+                        body = _show_file(sha, jn)
+                        if body and re.search(src_pat, body):
+                            has_src = True
+                            break
+                    if not has_src:
+                        # Also scan working tree (tip may be pom-only)
+                        src_root = Path("src/main/java")
+                        if src_root.is_dir():
+                            for p in src_root.rglob("*.java"):
+                                try:
+                                    if re.search(src_pat, p.read_text(encoding="utf-8", errors="replace")):
+                                        has_src = True
+                                        break
+                                except OSError:
+                                    continue
+                    if not has_src:
+                        orphan_arts.append(art)
+            if orphan_arts:
+                problems.append("O-POMDISCARD:orphan-pom-deps:" + ",".join(orphan_arts))
 
     # O-DUPPROP: refuse tips that leave duplicate keys in application.properties
     # (S07 T-002 era: petclinic.security.enable / quarkus.security.jdbc.* twice).
@@ -124,6 +166,58 @@ def main() -> int:
             body,
         ):
             problems.append("O-PRODSCHEMA:unprofiled-drop-and-create:" + pp)
+
+    # O-CDIPARTIAL / O-JDBCHARVESTAPI — tip-accept refuse (O-HYGIENEWORKER).
+    checker = Path(__file__).resolve().parent / "cdi-partial-check.py"
+    if checker.is_file() and any(n.endswith(".java") for n in names):
+        try:
+            out = subprocess.check_output(
+                [sys.executable, str(checker), "--sha", sha],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            # exit 0 → clean; check_output only returns on 0
+            _ = out
+        except subprocess.CalledProcessError as exc:
+            for ln in (exc.output or "").splitlines():
+                ln = ln.strip()
+                if ln:
+                    problems.append(ln)
+
+    # O-TREEFIXSTUB — tip-accept refuse comment-only / REMOVED stubs and
+    # deleted owned Targets (tree-fix false-green path).
+    stub_checker = Path(__file__).resolve().parent / "tree-fix-stub-check.py"
+    if stub_checker.is_file() and any(
+        n.endswith(".java") and n.startswith("src/") for n in names
+    ):
+        try:
+            subprocess.check_output(
+                [sys.executable, str(stub_checker), "--sha", sha],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.CalledProcessError as exc:
+            for ln in (exc.output or "").splitlines():
+                ln = ln.strip()
+                if ln:
+                    problems.append(ln)
+
+    # O-SDJPAHARVEST — tip-accept refuse hollow Panache / dropped domain extends.
+    sdjpa_checker = Path(__file__).resolve().parent / "sdjpa-harvest-check.py"
+    if sdjpa_checker.is_file() and any(
+        n.endswith(".java") and n.startswith("src/") for n in names
+    ):
+        try:
+            subprocess.check_output(
+                [sys.executable, str(sdjpa_checker), "--sha", sha],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.CalledProcessError as exc:
+            for ln in (exc.output or "").splitlines():
+                ln = ln.strip()
+                if ln:
+                    problems.append(ln)
 
     if problems:
         print("\n".join(problems))

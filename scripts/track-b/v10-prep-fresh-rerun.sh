@@ -8,8 +8,14 @@ source "$ROOT/scripts/lib.sh" 2>/dev/null || true
 cd "$ROOT"
 
 HARNESS_SRC="$ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes"
-WS_NAME="${V10_WS_NAME:-petclinic-rest-v3}"
-NS="${V10_NS:-wksp-ai-developer}"
+# shellcheck source=/dev/null
+source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+# O-HERMESWSRESOLVE: no stale named default — explicit V10_WS_NAME or single Running DW.
+WS_NAME="$(qg_ws_name)" || {
+  echo "REFUSE: set V10_WS_NAME or ensure exactly one Running DevWorkspace (O-HERMESWSRESOLVE)" >&2
+  exit 1
+}
+NS="${V10_NS:-$(qg_ws_ns)}"
 
 echo "=== 1) Honesty + Wave3 retro bank rows (must be ✅) ==="
 HONESTY="O-ALREADYPROP O-ALREADYFINDING O-T6EEMPTYESC O-RESUMEBASEEXCL O-KANTRAMISS O-CREATEFIRSTMUT O-M3EMPTY O-DUPPROP O-WIREUP O-ALREADYREPL O-ESCALCAUSE O-M5STALE O-KANTRAPATH O-SECAUTHTEST O-PRODSCHEMA"
@@ -82,11 +88,13 @@ if command -v oc >/dev/null 2>&1 && oc whoami >/dev/null 2>&1; then
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
   if [ -n "${POD:-}" ]; then
     echo "Tar-sync entire golden .hermes → ${NS}/${POD}:/projects/modernized/.hermes ..."
-    ( cd "$SCAFFOLD" && tar cf - .hermes ) | oc exec -i -n "$NS" "$POD" -c development-tooling -- \
-      bash -lc 'cd /projects/modernized && tar xf -'
-    echo "  synced .hermes/ ($(find "$HARNESS_SRC" -type f | wc -l | tr -d " ") files in golden tree)"
-    # shellcheck source=/dev/null
-    source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+    # Wipe first: tar xf does not delete leftovers. macOS tar can also emit
+    # AppleDouble `._*` sidecars that poison O-HERMESPREFLIGHT digests.
+    oc exec -n "$NS" "$POD" -c development-tooling -- \
+      bash -lc 'cd /projects/modernized && rm -rf .hermes && mkdir -p .hermes'
+    ( cd "$SCAFFOLD" && COPYFILE_DISABLE=1 tar cf - .hermes ) | oc exec -i -n "$NS" "$POD" -c development-tooling -- \
+      bash -lc 'cd /projects/modernized && tar xf - && find .hermes -name "._*" -delete 2>/dev/null || true'
+    echo "  synced .hermes/ ($(find "$HARNESS_SRC" -type f ! -name '._*' ! -name '.DS_Store' | wc -l | tr -d " ") files in golden tree)"
     export V10_WS_NAME="$WS_NAME" V8_WS_NS="$NS"
     qg_remote_orchestrator_preflight || {
       echo "WARN: orchestrator preflight RED after sync — run workspace init (ensure_hermes) on pod" >&2

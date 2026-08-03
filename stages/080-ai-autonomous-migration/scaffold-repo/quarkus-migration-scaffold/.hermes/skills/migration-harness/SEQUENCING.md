@@ -16,7 +16,10 @@ leaves the repository buildable, sensor-green, and closer to done.
   class; recipe-executed rules are ALREADY DONE (`migration/
   recipe-log.md`) — no story owns them. Non-mandatory rules appear in a
   decision table — mark each under `## Non-mandatory decisions` as
-  `adopt` or `defer (reason)` (K3); roadmap-lint enforces the marks.
+  `adopt` or `defer (reason)` (K3). Either bullets
+  (`- rule-id: defer (reason)`) or a markdown table
+  (`| rule-id | defer | reason |`) is accepted; roadmap-lint enforces
+  the marks.
 - `migration.yaml` — preserve/forbidden/acceptance contracts
 
 ## How to cut stories
@@ -112,6 +115,8 @@ through the standard loop — it is not a special story class to remember.
 - deploy: true|false
 - done: <one-sentence checkable done-criterion>
 - rationale: <why this story, why now — cite dependency-order/profile>
+- kind: rename|reimplement|mixed   # required when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND / ARCH A3). mixed needs a split/justification phrase.
+- seat-budget: <N>                 # required when kind is set (O-SEATBUDGET / ARCH A5). Derive N = rate(kind) × ceil(owned-finding incidents / 10): rename=1, reimplement=5, mixed=5. Publish the same N in the brief. Supervisor escalates when actual seats exceed N × SEAT_BUDGET_OVER_FACTOR (default 2).
 
 ## S02: ...
 ```
@@ -160,6 +165,6 @@ fabricated plan the tests then pin, which no later gate can unwind.
 ## Output contract
 
 Verify yourself before committing:
-`python3 .hermes/harness/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy`
-must exit 0 (the trailing legacy dir enables the fabrication cross-check).
+`python3 .hermes/harness/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md`
+must exit 0 (legacy dir = fabrication cross-check; profile = O-PORTDERIVE REDESIGN target-contract gate; `kind:` = O-STORYKIND on OPEN DESIGN / §7 REDESIGN stories; `seat-budget:` = O-SEATBUDGET from kind × incident count).
 Commit everything in ONE commit, prefix `M2 sequence:`.

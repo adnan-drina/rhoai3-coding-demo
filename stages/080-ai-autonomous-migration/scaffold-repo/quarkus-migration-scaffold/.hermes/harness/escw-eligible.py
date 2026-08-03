@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,11 +57,54 @@ def main() -> int:
         return 1
 
     blob = f"{title}\n{body}"
+
+    # O-ESCWVERIFYABS: Shape=verify + Oracle=absent + absence/defer Goal is
+    # success when named phantom *Test paths are gone — never require inventing
+    # characterization tests (Wave4 S03 T-000: "Characterization deferred" title
+    # matched wants_tests → need-src-test → MiniMax for a verify-absent tip).
+    shape_verify = bool(
+        re.search(r"(?im)^\*\*Shape\*\*\s*:?\s*verify\b|^\*\*Shape\s*:\s*verify\*\*", body)
+    )
+    oracle_absent = bool(
+        re.search(r"(?im)^\*\*Oracle\*\*\s*:?\s*absent\b|^\*\*Oracle\s*:\s*absent\*\*", body)
+    )
+    verify_abs_lang = bool(
+        re.search(
+            r"(?i)verify absence|characterization\s+deferred|deferred\s+[—-]|do NOT invent|"
+            r"hollow\s+(G-PLACE\s+)?[Rr]epository|must not invent|no hollow",
+            blob,
+        )
+    )
+    if shape_verify and oracle_absent and verify_abs_lang:
+        # Patterns like PetTypeRepository*Test.java / `*Foo*Test.java`
+        phantoms = re.findall(
+            r"([A-Za-z0-9_]+)\*Test\.java|\`([^*`]+\*[^*`]*Test\.java)\`",
+            blob,
+        )
+        test_root = ROOT / "src/test"
+        if test_root.is_dir():
+            for a, b in phantoms:
+                raw = a or b
+                key = raw.replace("*", "").replace(".java", "").replace("Test", "")
+                if not key:
+                    continue
+                for p in test_root.rglob("*Test.java"):
+                    if key in p.name:
+                        print(f"phantom-present:{p.name}")
+                        return 1
+        print("verify-absent-ok")
+        return 0
+
+    # Real characterization / unit-test delivery — not verify-absent deferrals.
     wants_tests = bool(
         re.search(
             r"(?i)\bcharacterization\b|src/test/|DomainModelTest|\bunit tests?\b",
             blob,
         )
+    ) and not (
+        shape_verify
+        and oracle_absent
+        and re.search(r"(?i)deferred|verify absence|do NOT invent|hollow", blob)
     )
     if wants_tests:
         tests = (
@@ -138,7 +182,8 @@ def main() -> int:
     convertish = bool(
         re.search(
             r"(?i)\bconvert\b|session management|@SessionScoped|"
-            r"constructor injection|Quarkus session",
+            r"constructor injection|Quarkus session|@Autowired|cdi\b|"
+            r"jdbc\s+repository|@ApplicationScoped",
             blob,
         )
     )
@@ -149,9 +194,68 @@ def main() -> int:
                 if not re.search(r"@SessionScoped|SessionScoped", text):
                     print(f"need-session-scope:{want}")
                     return 1
-            if re.search(r"(?i)constructor injection|@Autowired|@Inject", blob):
+            if re.search(r"(?i)constructor injection|@Autowired|@Inject|cdi\b|jdbc", blob):
                 if "@Inject" not in text and "jakarta.inject.Inject" not in text:
                     print(f"need-inject:{want}")
+                    return 1
+                # O-CDIPARTIAL: ApplicationScoped + leftover @Autowired ≠ done
+                if re.search(r"@Autowired\b", text):
+                    print(f"partial-cdi-autowired:{want}")
+                    return 1
+
+    # O-CDIPARTIAL / O-JDBCHARVESTAPI: tree-wide refuse Already-satisfied when
+    # any CDI bean still carries @Autowired or spring.jdbc APIs under quarkus.
+    # Skip finding-scope / structure claim tasks (O-ESCW3SCOPE) — those are not
+    # CDI-convert seats.
+    checker = Path(__file__).resolve().parent / "cdi-partial-check.py"
+    if (
+        checker.is_file()
+        and not finding_scope
+        and re.search(
+            r"(?i)\bconvert\b|cdi\b|@Autowired|jdbc\s+repository|"
+            r"NamedParameterJdbc|SimpleJdbcInsert|@Inject|ApplicationScoped",
+            blob,
+        )
+    ):
+        try:
+            out = subprocess.check_output(
+                [sys.executable, str(checker)],
+                text=True,
+                stderr=subprocess.STDOUT,
+                cwd=str(ROOT),
+            )
+            _ = out
+        except subprocess.CalledProcessError as exc:
+            first = (exc.output or "").strip().splitlines()
+            print(first[0] if first else "cdi-partial")
+            return 1
+
+    # O-ESCWSTRUCTTGT: Target .gitkeep (or Shape=structure) must exist on disk
+    # before allow-empty — never claim Already satisfied with an empty tree tip.
+    gitkeep_tgts = re.findall(
+        r"(?:Target|→|->|Owns)[^\n]*?(src/(?:main|test)/[A-Za-z0-9_./-]*/\.gitkeep)",
+        blob,
+    )
+    if gitkeep_tgts or re.search(
+        r"(?i)\*\*Shape\*\*\s*:\s*structure|\bShape\s*:\s*structure\b", blob
+    ):
+        for gk in gitkeep_tgts:
+            if not (ROOT / gk).is_file():
+                print(f"missing-gitkeep:{gk}")
+                return 1
+        if not gitkeep_tgts and re.search(
+            r"(?i)package structure|package-info|\.gitkeep", blob
+        ):
+            # Structure task without an explicit .gitkeep path still needs a
+            # Target package dir under targetPackage with at least one file.
+            tgt_dirs = re.findall(
+                r"(?:Target|→|->)[^\n]*?(src/(?:main|test)/java/[A-Za-z0-9_./-]+/)",
+                blob,
+            )
+            for d in tgt_dirs:
+                p = ROOT / d.rstrip("/")
+                if not p.is_dir() or not any(p.iterdir()):
+                    print(f"missing-struct:{d}")
                     return 1
 
     # Package-structure: need .gitkeep or any file in the named directory.
@@ -256,8 +360,6 @@ def main() -> int:
     if not oracle.is_file():
         oracle = Path(__file__).resolve().parent / "findings-oracle.py"
     if oracle.is_file():
-        import subprocess
-
         env = os.environ.copy()
         env["ORACLE_ROOT"] = str(ROOT)
         env["ALREADY_COMPLETE_ROOT"] = str(ROOT)

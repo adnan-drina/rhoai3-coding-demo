@@ -1,0 +1,8 @@
+# O-EXECCORPUS seed provenance
+# archive=tmp/s03-clean-stop-20260803T052227Z/s03-run-archives.tgz
+# prefix=20260803T052227Z-clean-stop-s03/
+# host_unpacked=tmp/s03-clean-stop-20260803T052227Z/files/
+# seat_corpus=tmp/run-archives/S03-20260803/s03-seat-corpus.tgz
+# seeded_at=2026-08-03T08:16:00Z
+# wake=384
+# specimen=petclinic-rest-v3 S03 (migration-general honesty classes; Coolstore-free)

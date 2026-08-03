@@ -18,7 +18,35 @@ log_step()    { echo -e "\n${BLUE}▶ $*${NC}"; }
 load_env() {
     local env_file="${REPO_ROOT:-.}/.env"
     if [[ -f "$env_file" ]]; then
-        set -a; source "$env_file"; set +a
+        # W4-121a / O-ENVNOCLOBBER: do not clobber already-exported vars.
+        # `set -a; source .env` used to overwrite caller-explicit V10_WS_NAME
+        # (and any other override) with stale pins — parity/idle then targeted
+        # a Stopped workspace (W4-120a). Snapshot pre-set keys, source, restore.
+        local _preserves=()
+        local _line _key
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+            [[ "$_line" =~ ^[[:space:]]*$ ]] && continue
+            _line="${_line#export }"
+            _key="${_line%%=*}"
+            _key="${_key#"${_key%%[![:space:]]*}"}"
+            _key="${_key%"${_key##*[![:space:]]}"}"
+            [[ -z "$_key" || "$_key" == *[!A-Za-z0-9_]* ]] && continue
+            if [[ -n "${!_key+x}" ]]; then
+                _preserves+=("$_key=${!_key}")
+            fi
+        done < "$env_file"
+        set -a
+        # shellcheck disable=SC1090
+        source "$env_file"
+        set +a
+        # Bash 3.2 + set -u: empty "${arr[@]}" is unbound (W4-126a).
+        local _p
+        if ((${#_preserves[@]} > 0)); then
+            for _p in "${_preserves[@]}"; do
+                export "$_p"
+            done
+        fi
     fi
 }
 

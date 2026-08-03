@@ -89,6 +89,20 @@ For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
 | `@Cacheable` / `@CacheEvict` / `@CachePut` | `@CacheResult` / `@CacheInvalidate` / `@CacheInvalidateAll` (`quarkus-cache`) |
 | `@FormParam` / `@CookieParam` / `@MatrixParam` / `@Context` | Same JAX-RS names (Spring `@RequestParam` form, `@CookieValue`, `@MatrixVariable`, injected types) |
 
+**Spring DAO exceptions → Jakarta Persistence (O-M3PRESERVEDAO / plan-lint):**
+remap **per exact symbol**, never substring-replace `DataAccessException`
+inside names like `EmptyResultDataAccessException` (that invents
+`EmptyResultPersistenceException` under `org.springframework.dao` — does
+not exist; will not compile). Cross-ref EXECUTION.md O-M3PRESERVEDAO /
+O-DAOEXMAP and plan-lint `O-M3PRESERVEDAO`.
+
+| legacy | target |
+|---|---|
+| `DataAccessException` | `jakarta.persistence.PersistenceException` |
+| `EmptyResultDataAccessException` | `jakarta.persistence.NoResultException` |
+| `DataRetrievalFailureException` | `jakarta.persistence.PersistenceException` |
+| `ObjectRetrievalFailureException` | `jakarta.persistence.EntityNotFoundException` |
+
 Extended Spring catalog (harvested from the upstream
 [quarkusio/quarkus-skills](https://github.com/quarkusio/quarkus-skills)
 `migrate-spring-to-quarkus` annotation map, 2026-07 — decided for this
@@ -120,11 +134,20 @@ with a reason). **Injection visibility (O-MAPPINGS-PETCLINIC):** no `private`
 `@Inject` / `@Autowired` members — package-private or constructor injection;
 `@Autowired`→`@Inject`, `@Component`→`@ApplicationScoped`.
 
-**Panache vs Spring Data:** prefer `PanacheRepository<T>` (service-layer
-separation) over Panache active record (`extends PanacheEntity`); both are
-valid when a DB story chooses Panache. SpEL in Spring `@Query` is not supported
-— rewrite to Panache `find()` / explicit JPQL. Derived query methods have no
-1:1 Panache map — always decide the JPQL in the brief.
+**Panache vs Spring Data:** prefer `PanacheRepository<T>` / 
+`PanacheRepositoryBase<T,ID>` (service-layer separation) over Panache active
+record (`extends PanacheEntity`); both are valid when a DB story chooses
+Panache. SpEL in Spring `@Query` is not supported — rewrite to Panache
+`find()` / explicit JPQL. Derived query methods have no 1:1 Panache map —
+always decide the JPQL in the brief. **O-SDJPAHARVEST / O-SDJPAHARVESTONLY:** when staging
+`SpringData*Repository` `extends DomainRepository, Repository<…>`,
+harvest-from-staging alone is incomplete — convert to Panache and drop
+`org.springframework.data` before tip-accept (`O-SDJPAHARVESTONLY`). The
+Panache convert must keep the domain-repo contract (not drop it for bare
+`PanacheRepository`), turn `@Query` into real Panache method bodies (never
+orphan `@NamedQuery` on the repo iface / hollow finder declarations), and
+harvest Override `*RepositoryImpl` delete bodies with the Override
+interfaces.
 
 **Accepted deviations (do not "fix" into Coolstore-shaped work):**
 

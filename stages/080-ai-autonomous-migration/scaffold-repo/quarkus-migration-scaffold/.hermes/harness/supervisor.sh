@@ -29,14 +29,45 @@ SUPERVISOR_LOG=/tmp/supervisor.log
 # O-SUPCMDLINE / O-SUPFLOCK: never use bare pgrep -f (oc-exec -lc text and
 # even argv-shaped matches false-positive → refuse start → no-done → false
 # S0N,failed). Hold an exclusive flock for the life of this process.
+# O-LOCKSTALE: clear lock files whose recorded PID is dead before flock.
+clear_stale_pid_lock() { # $1=lockfile
+  local lock="$1" pid=""
+  [ -f "$lock" ] || return 0
+  pid=$(tr -d '[:space:]' <"$lock" 2>/dev/null || true)
+  if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$lock"
+    echo "O-LOCKSTALE cleared pid=${pid} ($lock)" >&2
+  fi
+}
 SUPERVISOR_LOCK="${SUPERVISOR_LOCK:-/tmp/supervisor.lock}"
+clear_stale_pid_lock "$SUPERVISOR_LOCK"
 exec 9>"$SUPERVISOR_LOCK"
 if ! flock -n 9; then
-  echo "FATAL: another supervisor holds $SUPERVISOR_LOCK — refusing to start" >&2
-  exit 1
+  clear_stale_pid_lock "$SUPERVISOR_LOCK"
+  exec 9>"$SUPERVISOR_LOCK"
+  if ! flock -n 9; then
+    echo "FATAL: another supervisor holds $SUPERVISOR_LOCK — refusing to start" >&2
+    exit 1
+  fi
 fi
 printf '%s\n' "$$" >&9
 # Keep FD 9 open (flock) until process exit.
+
+# O-LOGCOLLIDE: key OpenCode seat logs by story so S0N T-001 does not clobber
+# prior-story /tmp/oc-T-001.{json,err}. Falls back to unprefixed when STORY_ID
+# cannot be derived (adhoc/SHIP_ONLY).
+oc_seat_base() { # $1=tag → /tmp/oc-<story>-<tag> or /tmp/oc-<tag>
+  local tag="$1" sid="${STORY_ID:-}"
+  if [ -z "$sid" ]; then
+    sid=$(printf '%s' "${STORY_SPEC_PREFIX:-}" | awk '{print $1}')
+  fi
+  if [[ "$sid" =~ ^S[0-9]+$ ]]; then
+    printf '/tmp/oc-%s-%s' "$sid" "$tag"
+  else
+    printf '/tmp/oc-%s' "$tag"
+  fi
+}
+
 
 ORCH_PROVIDER="${ORCH_PROVIDER:-custom:maas-m2}"
 ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
@@ -56,7 +87,15 @@ FIX_TIMEOUT="${FIX_TIMEOUT:-900}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
 # O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
-if [ "${V9_KEEP_DEBT_FREEZE:-0}" != "1" ]; then
+# O-DEBTSHIPRACE: if the debt ledger still has unresolved `##` entries, KEEP
+# freeze across hotswap/re-enter — do not wipe and race into M5 ship.
+if [ "${V9_KEEP_DEBT_FREEZE:-0}" = "1" ]; then
+  :
+elif [ -f migration/debt.md ] && grep -qE '^## ' migration/debt.md 2>/dev/null; then
+  touch /tmp/debt-freeze /tmp/supervisor-pause
+  # log not yet open — outer/stderr only
+  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved ## entries in migration/debt.md" >&2
+else
   rm -f /tmp/debt-freeze /tmp/supervisor-pause
 fi
 
@@ -166,14 +205,16 @@ O-NULLACTION: If after a few honest attempts the issue cannot be solved without 
 O-ADDLINFO: End your session notes with ADDITIONAL-WORK: <bullets or none> (K9 feed)."
 RUN_CONTRACT="${RUN_CONTRACT//WORKER_MODEL_PLACEHOLDER/$WORKER_MODEL}"
 
-# O-SCOPEBACKFILL: structure / .gitkeep Target paths for a task (space-separated).
-# Empty when Shape≠structure and no Target/Owns .gitkeep — non-structure tasks
-# are unaffected. Migration-general (any package path from tasks.md).
+# O-SCOPEBACKFILL: structure deliverable paths for a task (space-separated).
+# Emits Target/Owns `.gitkeep` and/or `package-info.java` — never Source/Absorbs
+# legacy paths. Empty when Shape≠structure and no structure Owns/Target.
+# Migration-general (any package path from tasks.md).
 structure_gitkeep_targets() { # $1=task-id
   local tid="$1"
   [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
   python3 - "$TASKS_FILE" "$tid" <<'PY' 2>/dev/null || true
 import re, sys
+from pathlib import Path as _P
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
 heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
@@ -190,32 +231,58 @@ shape_m = re.search(r"^\*\*Shape\s*:\s*(.+?)\*\*\s*$", body, re.M | re.I)
 if not shape_m:
     shape_m = re.search(r"^\*\*Shape\*\*\s*:?\s*(.+)$", body, re.M | re.I)
 shape = (shape_m.group(1).strip().lower() if shape_m else "")
+
+# O-STRUCTPKGINFO: strip Source/Absorbs legacy lines before path scrape —
+# never invent structure Targets under legacyPackage (pair O-ESCW3LEGACYPKG).
+body_tgt = "\n".join(
+    ln for ln in body.splitlines()
+    if not re.search(r"(?i)^\s*[-*]?\s*\*\*(?:Source|Absorbs)\*\*", ln)
+    and not re.search(r"(?i)/projects/legacy/|legacyPackage", ln)
+)
+
+# Explicit deliverables first (hyphen-safe: package-info.java).
 paths = sorted(set(re.findall(
-    r"(?:src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep)", body
+    r"src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep", body_tgt
 )))
-# O-ACSTRUCT: Target dirs (`→ src/main/java/com/demo/dto/`) synthesize
-# `.gitkeep` when Shape=structure — bare "Create `.gitkeep`" prose without a
-# full path used to leave paths empty and committed() falsely GREEN.
-if not paths:
-    for m in re.finditer(r"src/(?:main|test)/java/[A-Za-z0-9_./]+", body):
+pkginfo = sorted(set(re.findall(
+    r"src/(?:main|test)/java/[A-Za-z0-9_./-]+/package-info\.java", body_tgt
+)))
+# O-ACSTRUCT: Target dirs synthesize `.gitkeep` when Shape=structure and no
+# explicit .gitkeep / package-info Owns yet.
+if not paths and not pkginfo:
+    for m in re.finditer(r"src/(?:main|test)/java/[A-Za-z0-9_./-]+", body_tgt):
         d = m.group(0).rstrip("/")
         if d.endswith(".java") or d.endswith(".gitkeep"):
             continue
-        from pathlib import Path as _P
+        # Reject truncated "…/package" from package-info hyphen split (legacy).
+        if d.endswith("/package") or d.endswith(".package"):
+            continue
         if not _P(d).suffix:
             paths.append(f"{d}/.gitkeep")
     paths = sorted(set(paths))
-structish = shape == "structure" or bool(paths) or bool(
-    re.search(r"(?i)\.gitkeep|package structure|directory structure", body)
+# Prefer package-info as the structure file when Owns declares it; keep
+# sibling .gitkeep only when explicitly listed (not synthesized alongside).
+deliverables = list(pkginfo) if pkginfo else list(paths)
+if pkginfo and paths:
+    # Explicit .gitkeep in Owns/Target still required; synthesized dirs alone
+    # are dropped when package-info is the declared Owns file.
+    explicit_gk = sorted(set(re.findall(
+        r"(?:Owns|Target|→|->)[^\n]*?(src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep)",
+        body_tgt,
+    )))
+    deliverables = sorted(set(pkginfo + explicit_gk))
+structish = shape == "structure" or bool(deliverables) or bool(
+    re.search(r"(?i)\.gitkeep|package structure|directory structure|package-info", body)
 )
 if not structish:
     sys.exit(0)
-for p in paths:
+for p in deliverables:
     print(p)
 PY
 }
 
-# O-SCOPEBACKFILL: True (exit 0) when a structure/.gitkeep Target is still missing.
+# O-SCOPEBACKFILL: True (exit 0) when a structure Target is still missing.
+# Accepts .gitkeep OR package-info.java deliverables from structure_gitkeep_targets.
 structure_targets_missing() { # $1=task-id
   local tid="$1" t missing=0
   for t in $(structure_gitkeep_targets "$tid"); do
@@ -235,6 +302,12 @@ scope_structure_backfill() { # $1=commit-prefix (T-NNN)
   case "$prefix" in T-*) ;; *) return 0 ;; esac
   [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
   for t in $(structure_gitkeep_targets "$prefix"); do
+    # Only auto-create `.gitkeep` placeholders — never empty package-info.java
+    # (O-STRUCTPKGINFO: Owns may be package-info; worker must copy real content).
+    case "$t" in
+      *.gitkeep) ;;
+      *) continue ;;
+    esac
     if [ ! -f "$t" ]; then
       mkdir -p "$(dirname "$t")"
       touch "$t"
@@ -310,14 +383,31 @@ committed() {
   # "… DTOs (T-005) before …" or cross-story noise inside the body (O-COMMITID).
   # O-RESUMEBASEEXCL: RUN_BASE..HEAD is exclusive of RUN_BASE — include the
   # tip at RUN_BASE itself so RESUME_RUN_BASE=<tipsha> counts that tip.
-  local _hit _range_log=""
-  if [ -n "${RUN_BASE:-}" ] && git rev-parse --verify "${RUN_BASE}^{commit}" >/dev/null 2>&1; then
-    _range_log=$(
-      git log --oneline "${RUN_BASE}..HEAD" 2>/dev/null
-      git log --oneline -1 "${RUN_BASE}" 2>/dev/null
-    )
+  # O-SHIPROUNDBASE: Preflight/Gate/Build fix round satisfaction uses
+  # /tmp/ship-session-base (exclusive) when present — prior-session tips and
+  # abandoned origin tips are not authority for a fresh ship round budget.
+  local _hit _range_log="" _base="${RUN_BASE:-}" _include_base=1 _ssb=""
+  case "$1" in
+    "Preflight fix"*|"Gate fix"*|"Build fix"*)
+      if [ -f /tmp/ship-session-base ]; then
+        _ssb=$(tr -d '[:space:]' </tmp/ship-session-base 2>/dev/null || true)
+        if [ -n "$_ssb" ] && git rev-parse --verify "${_ssb}^{commit}" >/dev/null 2>&1; then
+          _base="$_ssb"
+          _include_base=0
+        fi
+      fi
+      ;;
+  esac
+  if [ -n "$_base" ] && git rev-parse --verify "${_base}^{commit}" >/dev/null 2>&1; then
+    _range_log=$(git log --oneline "${_base}..HEAD" 2>/dev/null || true)
+    if [ "$_include_base" = "1" ]; then
+      _range_log=$(
+        printf '%s\n' "$_range_log"
+        git log --oneline -1 "${_base}" 2>/dev/null || true
+      )
+    fi
   else
-    _range_log=$(git log --oneline 2>/dev/null)
+    _range_log=$(git log --oneline 2>/dev/null || true)
   fi
   _hit=$(printf '%s\n' "$_range_log" | grep -E "^[0-9a-f]+ ${1}:" | head -1 || true)
   [ -n "$_hit" ] || return 1
@@ -408,19 +498,75 @@ restore_frozen_specs() {
 }
 
 stage_for_task_commit() {
+  # Optional $1 = T-NNN (else CURRENT_TASK). O-OWNSTAGE: when the task
+  # declares Owns/Target paths, stage only those — never git add -A scoop of
+  # sibling entities (S02 T-009 Owner tip bundled Pet+Visit).
   restore_frozen_specs
-  git add -A
+  # O-POMDISCARD: refuse to stage pom-only orphan panache/spring-data deps
+  # when src/ has no matching usage (burned-seat leftover).
+  discard_orphan_pom "stage"
+  local tid="${1:-${CURRENT_TASK:-}}"
+  local allow_n=0
+  local p
+  if [ -n "$tid" ] && [ -n "${TASKS_FILE:-${STORY_TASKS:-}}" ] \
+    && [ -f "${TASKS_FILE:-${STORY_TASKS}}" ] \
+    && [ -f .hermes/harness/task-stage-paths.py ]; then
+    local _tf="${TASKS_FILE:-${STORY_TASKS}}"
+    local _paths
+    _paths=$(python3 .hermes/harness/task-stage-paths.py "$_tf" "$tid" 2>/dev/null || true)
+    if [ -n "$_paths" ]; then
+      # Drop prior index so siblings staged earlier cannot ride along.
+      git reset -q 2>/dev/null || true
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if [ -e "$p" ] || [ -L "$p" ]; then
+          git add -- "$p" 2>/dev/null || true
+          allow_n=$((allow_n + 1))
+        else
+          # Owned path deleted in the working tree — stage the deletion.
+          git add -u -- "$p" 2>/dev/null || true
+          allow_n=$((allow_n + 1))
+        fi
+      done <<EOF
+$_paths
+EOF
+      if [ "$allow_n" -gt 0 ]; then
+        log "stage: O-OWNSTAGE allowlist ${tid%% *} (${allow_n} path-ops)"
+      fi
+    fi
+  fi
+  if [ "$allow_n" -eq 0 ]; then
+    # No declared Owns/Target (or no task context) — legacy full stage + reset.
+    git add -A
+  fi
   # O-STRUCTPRESAT: never sweep O-DESTBASE inventory into T-NNN tips
   # (false structure-non-gitkeep after valid .gitkeep — W4 T-003).
+  # O-ARCHIVESTAGE: never scoop O-TMPARCHIVE forensic trees into T-NNN tips
+  # (S03 T-001 d7bde2a bundled 47 run-archives files with spring-tx harvest).
   git reset -q -- .hermes migration/staging \
     migration/mta-findings-current.json \
     migration/scaffold-presatisfied.generated.txt \
-    migration/scaffold-presatisfied.txt 2>/dev/null || true
+    migration/scaffold-presatisfied.txt \
+    migration/run-archives run-archives 2>/dev/null || true
   # Belt: never stage frozen complete-story specs even if restore raced.
   for d in $(frozen_spec_paths); do
     git reset -q HEAD -- "$d" 2>/dev/null || true
     git checkout -q HEAD -- "$d" 2>/dev/null || true
   done
+  # O-POMDISCARD belt: if pom still staged with panache/spring-data but src
+  # has no usage, unstage + revert pom so tip cannot scoop orphan deps.
+  if git diff --cached --name-only 2>/dev/null | grep -qx 'pom.xml'; then
+    if ! { [ -d src/main/java ] && grep -RqlE \
+        'io\.quarkus\.hibernate\.orm\.panache|PanacheRepository|org\.springframework\.data' \
+        src/main/java --include='*.java' 2>/dev/null; }; then
+      if git show ":pom.xml" 2>/dev/null | grep -Eqi \
+          'quarkus-hibernate-orm-panache|hibernate-orm-panache|spring-data'; then
+        log "stage: O-POMDISCARD — unstaging/reverting orphan pom.xml from tip"
+        git reset -q HEAD -- pom.xml 2>/dev/null || true
+        git checkout -q HEAD -- pom.xml 2>/dev/null || true
+      fi
+    fi
+  fi
 }
 
 # O-HOTSWAPRELOAD (R-227 / T-011): pause for /tmp/harness-update, then EXIT
@@ -428,10 +574,33 @@ stage_for_task_commit() {
 # function bodies — O-T1FINDESC was on disk but never ran live (T-011 tip
 # still swept findings; zero O-T1FINDESC log lines in supervisor.log).
 # Leaves harness-update-ack + hotswap-inflight; does NOT write supervisor-done.
+#
+# O-HOTSWAPSTALE: a zero-byte /tmp/harness-update with on-disk supervisor
+# md5 matching this process's SUPERVISOR_VERSION means deploy already
+# applied (or never needed) — auto-clear instead of parking the run.
+# Arm harness-update *after* syncing new harness bytes so md5 differs.
 hotswap_pause_gate() {
   local tag="${1:-}"
   local saw_update=0
+  local cur_md5
   while [ -f /tmp/supervisor-pause ] || [ -f /tmp/harness-update ]; do
+    # O-HOTSWAPSTALE — empty marker + md5 parity → clear and continue
+    if [ -f /tmp/harness-update ] && [ ! -s /tmp/harness-update ]; then
+      cur_md5=$(md5sum "$0" 2>/dev/null | cut -c1-8)
+      if [ -n "$cur_md5" ] && [ "$cur_md5" = "$SUPERVISOR_VERSION" ]; then
+        if [ -n "$tag" ]; then
+          log "$tag: O-HOTSWAPSTALE zero-byte harness-update + md5 parity ($cur_md5) — auto-clear"
+        else
+          log "O-HOTSWAPSTALE: zero-byte harness-update + supervisor md5 parity ($cur_md5) — auto-clear"
+          outer_log "         O-HOTSWAPSTALE: cleared stale zero-byte harness-update (md5 parity)"
+        fi
+        rm -f /tmp/harness-update
+        if [ -f /tmp/harness-update-ack ]; then
+          rm -f /tmp/supervisor-pause /tmp/harness-update-ack /tmp/hotswap-inflight
+        fi
+        continue
+      fi
+    fi
     if [ -f /tmp/harness-update ]; then
       saw_update=1
       touch /tmp/supervisor-pause
@@ -456,18 +625,20 @@ hotswap_pause_gate() {
   fi
 }
 
-# O-T1FINDESC (R-223): MiniMax/Hermes may `git commit` directly and bypass
-# stage_for_task_commit, sweeping mta-findings-current.json into a T-NNN tip
-# (S03 T-007). If HEAD includes that path, rewrite the tip without it.
+# O-T1FINDESC (R-223) / O-SHIPFIXFINDINGS: MiniMax/Hermes may `git commit`
+# directly and bypass stage_for_task_commit, sweeping
+# mta-findings-current.json into a T-NNN or Preflight/Gate/Build fix tip
+# (S03 T-007; wake#200 Preflight fix r1). If HEAD includes that path,
+# rewrite the tip without it.
 scrub_findings_from_tip() {
   local msg files
   files=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
   echo "$files" | grep -qx 'migration/mta-findings-current.json' || return 0
-  # Only rewrite T-NNN / SNN tips — never chore/debt/run-report.
+  # Rewrite task + ship-correction tips — never chore/debt/run-report.
   # Note: ids are T-007 (hyphen), not T007 — do not use ^(T|S)[0-9]+.
-  git log -1 --format=%s | grep -qE '^(T-[0-9]+|S[0-9]+):' || return 0
+  git log -1 --format=%s | grep -qE '^(T-[0-9]+|S[0-9]+|Preflight fix|Gate fix|Build fix|Deploy fix):' || return 0
   msg=$(git log -1 --format=%B)
-  log "O-T1FINDESC: tip includes mta-findings-current.json — rewriting commit without it"
+  log "O-T1FINDESC/O-SHIPFIXFINDINGS: tip includes mta-findings-current.json — rewriting commit without it"
   git reset --soft HEAD~1 >>"$LOG" 2>&1 || return 0
   git reset -q HEAD -- migration/mta-findings-current.json 2>/dev/null || true
   git checkout -q HEAD -- migration/mta-findings-current.json 2>/dev/null || true
@@ -563,12 +734,16 @@ app_dirt() {
   # never a T-NNN deliverable. Counting it as app dirt blocks O-ESCW and forces
   # MiniMax to tip a findings-only commit (then O-T1FINDESC undoes it → false
   # advance on prior HEAD). Exclude alongside .hermes/ and migration/staging/.
+  # O-ESCWVERIFYABS / O-ARCHIVESTAGE: migration/run-archives is forensic scoop —
+  # never a task deliverable; untracked archives must not block ESCW allow-empty
+  # (Wave4 S03 T-000: Qwen verify-absent rc=0 → MiniMax because ?? run-archives).
   git status --porcelain --untracked-files=all 2>/dev/null | awk '{
     p=$2
     if ($1 ~ /^R/ || $1 ~ /^C/) {
       for (i=1;i<=NF;i++) if ($i=="->") { p=$(i+1); break }
     }
     if (p !~ /^\.hermes\// && p !~ /^migration\/staging\// \
+        && p !~ /^migration\/run-archives(\/|$)/ && p !~ /^run-archives(\/|$)/ \
         && p != "migration/mta-findings-current.json") print p
   }'
 }
@@ -590,6 +765,47 @@ ensure_trackable_packages() {
 discard_staging_autofix() {
   git checkout -q -- migration/staging 2>/dev/null || true
   git reset -q -- migration/staging 2>/dev/null || true
+}
+
+# O-STYLEFIDELITY: stage only post-autofix diffs under src/ — never git add -A
+# (W4-054a: stage_for_task_commit scooped dirty evaluate leftovers like
+# Set.copyOf / role.setUser into a "deterministic style-autofix" tip).
+style_autofix_stage() {
+  discard_staging_autofix
+  restore_frozen_specs
+  git reset -q 2>/dev/null || true
+  local f
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      migration/staging/*|.hermes/*) continue ;;
+      src/*) git add -- "$f" 2>/dev/null || true ;;
+    esac
+  done < <(git diff --name-only -- src/ 2>/dev/null; git ls-files --others --exclude-standard -- src/ 2>/dev/null)
+}
+
+# O-STYLEFIDELITY: park pre-existing src/ dirt so OpenRewrite cannot commit
+# evaluate leftovers; archive under /tmp/strays (not restored — sfix starts clean).
+park_src_dirt_for_autofix() { # $1=tag
+  local tag="$1" arch dirt
+  dirt=$(git status --porcelain -- src/ 2>/dev/null || true)
+  [ -n "$dirt" ] || return 0
+  arch="/tmp/strays/${tag}-pre-autofix-dirt-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$arch"
+  printf '%s\n' "$dirt" >"$arch/status.txt"
+  git diff -- src/ >"$arch/dirty.diff" 2>/dev/null || true
+  git diff --cached -- src/ >"$arch/cached.diff" 2>/dev/null || true
+  # Copy untracked src files into archive before clean.
+  git ls-files --others --exclude-standard -- src/ 2>/dev/null \
+    | while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        mkdir -p "$arch/$(dirname "$f")"
+        cp -a "$f" "$arch/$f" 2>/dev/null || true
+      done
+  log "$tag: O-STYLEFIDELITY — parking pre-autofix src/ dirt → $arch (not scooped into autofix tip)"
+  event "$tag" 0 style_autofix_park_dirt "$arch"
+  git checkout -q -- src/ 2>/dev/null || true
+  git clean -fdq -- src/ 2>/dev/null || true
 }
 
 # --- Story mode (redesign M-process, first outer-loop slice) --------------
@@ -642,6 +858,88 @@ classify() { # $1=rc $2=session-log -> failure class on stdout
   echo no_commit
 }
 
+# O-ESCREOPENCODE / O-ESCREOPENCODE-ENFORCE / O-ESCREOPENCODE-SENSORRED:
+# after wedge/thrash/INFERABSENT/CHARORACLE OR sensor-red / O-STEPFINISHRED
+# (false-complete under SENSOR RED), MiniMax owns file edits — do not
+# re-dispatch OpenCode/Qwen (Wave4 W4-100a: V7 "Prefer opencode" nursed
+# hollow Panache after harvest-only → O-STEPFINISHRED).
+escreopencode_should() { # $1=task id (T-NNN)
+  local T="$1" cause_file
+  [ -n "$T" ] || return 1
+  [ -f "/tmp/escalation-no-opencode-${T}" ] && return 0
+  if [ -f "$(oc_seat_base "$T").err" ] \
+    && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE|O-CHARORACLE|O-STEPFINISHRED' \
+      "$(oc_seat_base "$T").err" 2>/dev/null; then
+    return 0
+  fi
+  # O-ESCREOPENCODE-SENSORRED: cause file / sensor log after false-complete.
+  cause_file="/tmp/escalation-cause-${T}.txt"
+  if [ -f "$cause_file" ] \
+    && head -1 "$cause_file" 2>/dev/null | grep -qiE '^sensor-red$'; then
+    return 0
+  fi
+  if [ -f "$(oc_seat_base "$T").err" ] \
+    && grep -qiE 'SENSOR RED|task sensor RED' \
+      "$(oc_seat_base "$T").err" 2>/dev/null; then
+    return 0
+  fi
+  if [ -f /tmp/worker-wedge-skip ] \
+    && grep -qxF "$(echo "${STORY_SPEC_PREFIX:-run}" | awk '{print $1}')" \
+      /tmp/worker-wedge-skip 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+# Arm deny-shim + marker so orch() refuses/kills a second opencode seat.
+arm_escreopencode() { # $1=task id
+  local T="$1"
+  [ -n "$T" ] || return 0
+  printf '%s\n' "$T" > "/tmp/escalation-no-opencode-${T}"
+  printf '%s\n' "$T" > /tmp/escalation-no-opencode-active
+  mkdir -p /tmp/escreopencode-deny
+  cat > /tmp/escreopencode-deny/opencode <<'SH'
+#!/usr/bin/env bash
+# O-ESCREOPENCODE-ENFORCE — PATH refuse during MiniMax-owned escalation.
+echo "O-ESCREOPENCODE-ENFORCE: refused opencode during MiniMax-owned escalation (do not re-dispatch wedged worker). Own edits with MiniMax tools, or O-NULLACTION via /tmp/escalation-noaction-<tid>.txt" >&2
+exit 75
+SH
+  chmod +x /tmp/escreopencode-deny/opencode
+}
+
+# Kill MiniMax-spawned opencode during O-ESCREOPENCODE escalation.
+# Intentional exception to O-PIDREG "finding, not killing" — prompt-only
+# forbid was insufficient (Wave4 S03 T-002 reopened Qwen invent path).
+escreopencode_kill_spawned() { # $1=task id $2=hermes wpid
+  local T="$1" hermes_pid="$2" opid pgid hpgid
+  command -v pgrep >/dev/null 2>&1 || return 0
+  for opid in $(pgrep -x opencode 2>/dev/null || true); do
+    [[ "$opid" =~ ^[0-9]+$ ]] || continue
+    # Never kill the hermes session pid itself (not named opencode anyway).
+    [ "$opid" = "$hermes_pid" ] && continue
+    # Prefer group kill when opencode shares hermes pgid (tool child).
+    pgid=$(ps -o pgid= -p "$opid" 2>/dev/null | tr -d ' ')
+    hpgid=$(ps -o pgid= -p "$hermes_pid" 2>/dev/null | tr -d ' ')
+    log "$T: O-ESCREOPENCODE-ENFORCE — killing MiniMax-spawned opencode pid=${opid} (pgid=${pgid:-?})"
+    event "$T" 0 escreopencode_enforce "pid=${opid}"
+    printf '%s tag=%s pid=%s sig=TERM cause=escreopencode-enforce\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "escre-${T}" "$opid" \
+      >>"${KILL_LEDGER:-/tmp/kill-ledger.log}" 2>/dev/null || true
+    if [[ -n "$pgid" && -n "$hpgid" && "$pgid" == "$hpgid" ]]; then
+      kill -TERM "$opid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$opid" 2>/dev/null || true
+    else
+      kill -TERM -- "-$opid" 2>/dev/null || kill -TERM "$opid" 2>/dev/null || true
+      sleep 1
+      kill -KILL -- "-$opid" 2>/dev/null || kill -KILL "$opid" 2>/dev/null || true
+    fi
+    printf '%s tag=%s pid=%s sig=KILL cause=escreopencode-enforce-kill\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "escre-${T}" "$opid" \
+      >>"${KILL_LEDGER:-/tmp/kill-ledger.log}" 2>/dev/null || true
+  done
+}
+
 orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   local tag="$1" prompt="$2" t0 t1 rc wpid
   # Pause point (V3): operators touch /tmp/supervisor-pause for a clean
@@ -656,13 +954,43 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   ORCH_LAST_BUDGET="$SESSION_TIMEOUT"
   case "$tag" in *sfix*|*treefix*|*-lint*|*preflightfix*) budget="${FIX_TIMEOUT:-900}";; esac
   ORCH_LAST_BUDGET="$budget"
+  # O-ESCREOPENCODE-ENFORCE: when marker armed for this T-NNN, PATH-deny
+  # opencode for the Hermes child and kill any absolute-path spawn.
+  local esc_enforce=0 enforce_tid="" watch_pid="" save_path="$PATH"
+  if [[ "$tag" =~ ^(T-[0-9]+) ]]; then
+    enforce_tid="${BASH_REMATCH[1]}"
+    if [ -f "/tmp/escalation-no-opencode-${enforce_tid}" ]; then
+      esc_enforce=1
+      arm_escreopencode "$enforce_tid"
+      export PATH="/tmp/escreopencode-deny:${PATH}"
+      log "$tag: O-ESCREOPENCODE-ENFORCE armed — opencode spawn denied/killed this escalation"
+    fi
+  fi
   # O-PIDREG/O-OCGROUP: setsid + register + group-TERM at end.
   setsid timeout "$budget" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
     > "/tmp/sup-${tag}.log" 2>&1 &
   wpid=$!
+  # Restore supervisor PATH immediately — only the Hermes child inherits deny.
+  PATH="$save_path"
+  export PATH
   session_register "$tag" "$wpid"
+  if [ "$esc_enforce" -eq 1 ]; then
+    (
+      while kill -0 "$wpid" 2>/dev/null; do
+        escreopencode_kill_spawned "$enforce_tid" "$wpid"
+        sleep 3
+      done
+    ) &
+    watch_pid=$!
+  fi
   wait "$wpid"
   rc=$?
+  if [ -n "$watch_pid" ]; then
+    kill "$watch_pid" 2>/dev/null || true
+    wait "$watch_pid" 2>/dev/null || true
+    # Final sweep after Hermes exit (race: spawn just before exit).
+    escreopencode_kill_spawned "$enforce_tid" "$wpid"
+  fi
   session_reap_group "$tag" "$wpid" "session-end"
   t1=$(date +%s)
   echo "${tag},${t0},${t1},$((t1-t0)),rc=${rc}" >> "$METRICS"
@@ -672,22 +1000,88 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
 
 # O-SFIXWORKER: freeform OpenCode seat for sensor-fix. Same FIX_TIMEOUT as
 # MiniMax sfix. Caller re-runs the triggering sensor to decide rescue.
-run_worker_prompt() { # $1=tag $2=prompt ; logs /tmp/oc-<tag>.{json,err}
+# O-SFIXMUTATE: for *sfix* tags, poll oc-json and early-kill diagnose-freeze
+# (0 edit/write past SFIX_MUTATE_DEADLINE_SECS, default 120) so MiniMax rescue
+# is not blocked by a full FIX_TIMEOUT burn.
+run_worker_prompt() { # $1=tag $2=prompt ; logs $(oc_seat_base <tag>).{json,err}
   local tag="$1" prompt="$2" t0 t1 rc budget wpid
   wait_for_worker
   t0=$(date +%s)
   budget="${FIX_TIMEOUT:-900}"
-  : > "/tmp/oc-${tag}.json"
-  : > "/tmp/oc-${tag}.err"
-  log "$tag: Actor: $(worker_label) — OpenCode session → /tmp/oc-${tag}.json"
+  : > "$(oc_seat_base "$tag").json"
+  : > "$(oc_seat_base "$tag").err"
+  log "$tag: Actor: $(worker_label) — OpenCode session → $(oc_seat_base "$tag").json"
   setsid timeout "$budget" opencode run "$prompt" \
     -m "$WORKER_MODEL" --auto --format json \
     -f AGENTS.md \
-    > "/tmp/oc-${tag}.json" 2>"/tmp/oc-${tag}.err" &
+    > "$(oc_seat_base "$tag").json" 2>"$(oc_seat_base "$tag").err" &
   wpid=$!
   session_register "$tag" "$wpid"
-  wait "$wpid"
-  rc=$?
+  case "$tag" in
+    *sfix*)
+      local elapsed=0 last_sz=-1 stale=0 sz thrash
+      local mutate_deadline="${SFIX_MUTATE_DEADLINE_SECS:-120}"
+      local stale_limit="${SFIX_JSON_STALE_SECS:-180}"
+      while kill -0 "$wpid" 2>/dev/null; do
+        sleep 30
+        elapsed=$((elapsed + 30))
+        sz=$(stat -c%s "$(oc_seat_base "$tag").json" 2>/dev/null || echo 0)
+        if [ "$sz" -eq "$last_sz" ]; then
+          stale=$((stale + 30))
+        else
+          stale=0
+          last_sz=$sz
+        fi
+        # Tighter read-thrash + mutate deadline for sfix (O-SFIXMUTATE).
+        if [ -f .hermes/harness/worker-read-watch.py ]; then
+          thrash=$(
+            WORKER_READ_GLOB_MAX="${SFIX_READ_GLOB_MAX:-8}" \
+            WORKER_MUTATE_DEADLINE_SECS="$mutate_deadline" \
+            python3 .hermes/harness/worker-read-watch.py \
+              "$(oc_seat_base "$tag").json" "$elapsed" 2>/dev/null || true
+          )
+          if [ -n "$thrash" ]; then
+            log "$tag: O-SFIXMUTATE — ${thrash} — killing early for rescue/escalate"
+            {
+              echo "sfix diagnose-freeze — ${thrash} (O-SFIXMUTATE)"
+              echo "abort: 0 edit/write after diagnose budget — escalate to MiniMax rescue"
+            } >> "$(oc_seat_base "$tag").err"
+            event "$tag" 0 sfix_mutate_kill "$thrash"
+            harness_kill_group "$tag" "$wpid" TERM "sfix-mutate"
+            sleep 2
+            harness_kill_group "$tag" "$wpid" KILL "sfix-mutate-kill"
+            break
+          fi
+        fi
+        if [ "$stale" -ge "$stale_limit" ]; then
+          log "$tag: O-SFIXMUTATE — oc-json frozen ${stale}s@${sz}B — killing early"
+          {
+            echo "sfix wedged — no session JSON growth for ${stale}s (O-SFIXMUTATE)"
+            echo "session JSON size frozen at ${sz} bytes"
+          } >> "$(oc_seat_base "$tag").err"
+          event "$tag" 0 sfix_json_stale "${stale}s"
+          harness_kill_group "$tag" "$wpid" TERM "sfix-json-stale"
+          sleep 2
+          harness_kill_group "$tag" "$wpid" KILL "sfix-json-stale-kill"
+          break
+        fi
+        if [ -f /tmp/supervisor-pause ] || [ -f /tmp/debt-freeze ]; then
+          local why="supervisor-pause"
+          [ -f /tmp/debt-freeze ] && why="debt-freeze"
+          harness_kill_group "$tag" "$wpid" TERM "$why"
+          sleep 2
+          harness_kill_group "$tag" "$wpid" KILL "${why}-kill"
+          break
+        fi
+      done
+      wait "$wpid" 2>/dev/null
+      rc=$?
+      ;;
+    *)
+      wait "$wpid"
+      rc=$?
+      ;;
+  esac
   session_reap_group "$tag" "$wpid" "session-end"
   wait_for_worker
   t1=$(date +%s)
@@ -713,6 +1107,30 @@ scope_enforce() { # $1=commit-prefix
   # loop from the roadmap's later-story scope.
   if [ -n "${LATER_CLASSES:-}" ]; then
     local lviol="" keep="" f bn
+    # O-ESCWSCOPEUTIL: scrub *untracked* later-story classes mid-convert
+    # (commit-diff alone missed util/EntityUtils before tip).
+    local uviol=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      bn=$(basename "$f" .java)
+      case " ${LATER_CLASSES} " in *" ${bn} "*)
+        uviol="$uviol $f"
+        ;;
+      esac
+    done < <(git ls-files --others --exclude-standard -- 'src/main/java' 2>/dev/null \
+      | grep '\.java$' || true)
+    if [ -n "$uviol" ]; then
+      event "scope" 0 later_story_untracked "${uviol# }"
+      log "scope sensor: O-ESCWSCOPEUTIL removing untracked later-story class(es):${uviol}"
+      outer_log "         SCOPE SCRUB (O-ESCWSCOPEUTIL): removed untracked later-story class(es):${uviol} — keep them in migration/staging until their story"
+      {
+        echo "O-ESCWSCOPEUTIL removed untracked later-story class(es):${uviol}"
+        echo "Do NOT create/harvest util/* or LATER_CLASSES mid-convert — stay on Owns/Target only."
+      } > /tmp/scope-violation.txt
+      for f in $uviol; do
+        rm -f "$f"
+      done
+    fi
     # O-ESCWSCOPE: also catch *modifications* to later-story classes (not only adds).
     for f in $(git diff --name-only HEAD~1..HEAD -- src/main/java/ 2>/dev/null); do
       bn=$(basename "$f" .java)
@@ -856,12 +1274,188 @@ PY
 # O-DEBTFRZRACE / O-SFIXDIRTY: orphan untracked or uncommitted poison under
 # src/ must not drive debt freeze. Discard src dirt (migration-general —
 # no specimen class names).
+# O-POMDISCARD (W4-101a): after src/ discard/reset, orphan pom.xml deps
+# (e.g. quarkus-hibernate-orm-panache added by a burned seat with no surviving
+# Panache src) must not remain dirty for the next git add -A. Migration-
+# general — dep artifact names only; no specimen class names.
+discard_orphan_pom() { # optional $1=tag
+  local tag="${1:-harness}"
+  [ -f pom.xml ] || return 0
+  git status --porcelain -- pom.xml 2>/dev/null | grep -q . || return 0
+  # If src still cites Panache / spring-data convert markers, keep pom dirt.
+  if [ -d src/main/java ] && grep -RqlE \
+      'io\.quarkus\.hibernate\.orm\.panache|PanacheRepository|org\.springframework\.data' \
+      src/main/java --include='*.java' 2>/dev/null; then
+    return 0
+  fi
+  # Orphan dep smell: dirty pom mentions panache (or spring-data) while src
+  # has zero matching usage after discard.
+  if grep -Eqi 'quarkus-hibernate-orm-panache|hibernate-orm-panache|spring-data' pom.xml 2>/dev/null; then
+    log "$tag: O-POMDISCARD — reverting orphan pom.xml (no matching src Panache/Spring Data usage)"
+    git checkout -q -- pom.xml 2>/dev/null || true
+  fi
+}
+
 discard_src_dirt() { # optional $1=tag for log
   local tag="${1:-harness}"
-  [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ] || return 0
-  log "$tag: O-SFIXDIRTY — discarding uncommitted/orphan dirt under src/"
-  git checkout -q -- src/ 2>/dev/null || true
-  git clean -fdq -- src/ 2>/dev/null || true
+  local had_src=0
+  if [ -n "$(git status --porcelain -- src/ 2>/dev/null)" ]; then
+    had_src=1
+    log "$tag: O-SFIXDIRTY — discarding uncommitted/orphan dirt under src/"
+    git checkout -q -- src/ 2>/dev/null || true
+    git clean -fdq -- src/ 2>/dev/null || true
+  fi
+  # Always check orphan pom after any src discard (and when src already clean
+  # but pom still dirty from a prior burned seat).
+  if [ "$had_src" -eq 1 ] || [ -n "$(git status --porcelain -- pom.xml 2>/dev/null)" ]; then
+    discard_orphan_pom "$tag"
+  fi
+}
+
+# O-SFIXRESCUEDISCARD / O-SFIXSIGINT: when cited sfix dims are GREEN on a
+# dirty tree (Qwen or MiniMax rescue), tip that work BEFORE full milestone
+# re-verify / O-SFIXDIRTY discard / SIGINT teardown. Full sensors.sh can still
+# RED on another dim (or exit 130 mid-findings) — discarding then destroys a
+# tip-backed fidelity/sonar win. Uses sfix_loop_recheck (cited dims), not the
+# full milestone bundle. Migration-general — no specimen class names.
+
+# O-SFIXTESTPAIR: when fidelity sfix reverts a harvest class to staging, the
+# packet must include characterization tests that reference that class — else
+# revert ↔ autofix oscillation (fidelity GREEN / tests RED).
+sfix_test_pair_note() {
+  local classes c tests="" line
+  classes=$(
+    grep -Eh '^FIDELITY:' /tmp/sensor-fidelity.log /tmp/sensor-milestone.log 2>/dev/null \
+      | sed -E 's/^FIDELITY:([^:]+):.*/\1/' \
+      | sed -E 's|.*/||; s|\.java$||' \
+      | sort -u || true
+  )
+  [ -n "$classes" ] || return 0
+  for c in $classes; do
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      tests="${tests}
+  - ${line}"
+    done < <(git grep -l --fixed-strings "$c" -- 'src/test/java' 2>/dev/null || true)
+  done
+  [ -n "$tests" ] || return 0
+  cat <<EOF
+O-SFIXTESTPAIR: fidelity revert of harvest class(es) [${classes//$'\n'/ }] MUST revise coupled tests in the SAME commit:${tests}
+Do not leave characterization asserting autofix-only contracts (e.g. UnsupportedOperationException on Set.copyOf) after reverting to staging return shapes. Verify with: mvn -q test -Dtest=<SimpleNames> then .hermes/harness/sensors.sh fidelity && .hermes/harness/sensors.sh task.
+EOF
+}
+
+sfix_commit_green_dirt() { # $1=prefix $2=tag $3=SENSOR_KIND → 0 if tip landed
+  local prefix="$1" tag="$2" kind="$3"
+  [ -n "$(git status --porcelain)" ] || return 1
+  if ! sfix_loop_recheck "$kind" >> "$LOG" 2>&1; then
+    return 1
+  fi
+  stage_for_task_commit
+  if git diff --cached --quiet 2>/dev/null; then
+    return 1
+  fi
+  if SKIP_SENSOR_GATE=1 git commit -m \
+      "${prefix} sensor fix: O-SFIXRESCUEDISCARD tip of ${kind}-green dirty tree" \
+      >/dev/null 2>&1; then
+    log "$tag: O-SFIXRESCUEDISCARD — mechan-committed ${kind}-GREEN dirty tree $(git log --oneline -1)"
+    event "$tag" 0 sfix_rescue_commit "$kind"
+    return 0
+  fi
+  # Commit failed — archive dirt instead of silent wipe (O-SFIXSIGINT safety).
+  local _arch="/tmp/strays/${tag}-sfix-green-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$_arch"
+  git status --porcelain >"$_arch/status.txt" 2>/dev/null || true
+  git diff >"$_arch/dirty.diff" 2>/dev/null || true
+  git diff --cached >"$_arch/cached.diff" 2>/dev/null || true
+  log "$tag: O-SFIXRESCUEDISCARD — commit failed; archived green dirt → $_arch (not discarding yet)"
+  event "$tag" 0 sfix_rescue_archive "$kind"
+  return 1
+}
+
+# O-PREFCONTUT: working-tree @Test count (tracked + untracked). `git grep`
+# alone is blind to new untracked *Test.java — the case the floor protects.
+count_test_annotations() {
+  if [ -d src/test ]; then
+    grep -rho --include='*.java' '@Test' src/test 2>/dev/null | wc -l | tr -d ' '
+  else
+    echo 0
+  fi
+}
+
+# O-SHIPFIXCOMMIT: preflight/gate/build fix seats often burn the 900s budget on
+# sensors.sh sonar AFTER local tests are already GREEN, leaving unpaid
+# tests-only dirt for attempt≥2 (which then rewrites — O-PREFCONT). On
+# timeout/no_commit, tip task-GREEN dirt when src/main is clean — do not wait
+# for full preflight GREEN or attempt exhaustion. Migration-general.
+pref_commit_green_dirt() { # $1=prefix $2=tag → 0 if tip landed
+  local prefix="$1" tag="$2"
+  [ -n "$(git status --porcelain)" ] || return 1
+  case "$tag" in
+    preflightfix*|gatefix*|buildfix*) ;;
+    *) return 1 ;;
+  esac
+  # Coverage/wiring tips only — refuse if src/main still dirty.
+  if [ -n "$(git status --porcelain -- src/main/ 2>/dev/null)" ]; then
+    log "$tag: O-SHIPFIXCOMMIT — src/main dirty; defer tip (not tests-only/wiring)"
+    return 1
+  fi
+  # O-SHIPFIXPOM: tip subject claims tests-only — require src/test dirt and
+  # stage ONLY src/test/ (never git add -A). Unrelated pom deps (assertj, etc.)
+  # must not ride into a "tests-only" mechan tip (W4-066a / fa95d79).
+  if [ -z "$(git status --porcelain -- src/test/ 2>/dev/null)" ]; then
+    log "$tag: O-SHIPFIXPOM — no src/test dirt; refuse non-test tip (pom/wiring needs agent commit)"
+    return 1
+  fi
+  if git status --porcelain | awk 'NF>=2 {p=$2; if (p !~ /^src\/test\//) found=1} END {exit !found}'; then
+    log "$tag: O-SHIPFIXPOM — non-test dirt present (pom/etc); staging src/test only"
+  fi
+  # Characterization floor (O-PREFCONT / O-PREFCONTUT): refuse tip that shrinks
+  # @Test count vs attempt-start snapshot when present (includes untracked).
+  if [ -f "/tmp/pref-char-floor-${tag}.txt" ]; then
+    local _floor _now
+    _floor=$(tr -d '[:space:]' <"/tmp/pref-char-floor-${tag}.txt" 2>/dev/null || echo 0)
+    _now=$(count_test_annotations)
+    if [ "${_floor:-0}" -gt 0 ] && [ "${_now:-0}" -lt "$_floor" ]; then
+      log "$tag: O-PREFCONT — refuse tip; @Test count ${_now} < floor ${_floor}"
+      event "$tag" 0 prefcont_floor_refuse "now=${_now};floor=${_floor}"
+      return 1
+    fi
+  fi
+  if ! .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
+    log "$tag: O-SHIPFIXCOMMIT — task sensor RED; refuse mid-seat tip (keeps O-SHIPASSERTWEAK etc.)"
+    return 1
+  fi
+  # Stage tests only — do NOT call stage_for_task_commit (git add -A).
+  restore_frozen_specs
+  git add -- src/test/
+  git reset -q -- .hermes migration/staging \
+    migration/mta-findings-current.json \
+    migration/scaffold-presatisfied.generated.txt \
+    migration/scaffold-presatisfied.txt 2>/dev/null || true
+  if git diff --cached --quiet 2>/dev/null; then
+    return 1
+  fi
+  if SKIP_SENSOR_GATE=1 git commit -m \
+      "${prefix}: O-SHIPFIXCOMMIT tip of task-GREEN tests-only dirt (pre-sonar / seat timeout)" \
+      >/dev/null 2>&1; then
+    log "$tag: O-SHIPFIXCOMMIT — mechan-committed task-GREEN tests-only dirt $(git log --oneline -1)"
+    event "$tag" 0 shipfix_timeout_commit tests_only
+    return 0
+  fi
+  return 1
+}
+
+# Snapshot @Test count at attempt start for O-PREFCONT floor checks.
+pref_snapshot_char_floor() { # $1=tag
+  local tag="$1"
+  case "$tag" in
+    preflightfix*|gatefix*|buildfix*) ;;
+    *) return 0 ;;
+  esac
+  # O-PREFCONTUT: include untracked new test classes (grep -rho, not git grep).
+  count_test_annotations >"/tmp/pref-char-floor-${tag}.txt" 2>/dev/null \
+    || echo 0 >"/tmp/pref-char-floor-${tag}.txt"
 }
 
 record_debt() { # $1=tag $2=sensor-kind $3=short-reason
@@ -898,7 +1492,7 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
   # next task (V9 S04 T-002→T-003 silent advance). Ship-gate fidelity/package
   # debt at M5 still records; freeze applies to in-story task/milestone kinds.
   case "$kind" in
-    task|milestone|sonar)
+    task|milestone|sonar|seat-budget)
       touch /tmp/debt-freeze
       touch /tmp/supervisor-pause
       log "$tag: ${kind} RED recorded in migration/debt.md — O-DEBTFRZ FREEZE (do not continue to next task)"
@@ -914,6 +1508,23 @@ record_debt() { # $1=tag $2=sensor-kind $3=short-reason
 
 debt_frozen() { [ -f /tmp/debt-freeze ]; }
 
+# O-SEATBUDGET / ARCH A5 — escalate when story seats exceed budget × factor.
+check_seat_budget_overrun() { # $1=tag (task id or batch label)
+  local tag="${1:-seat-budget}" sid="${STORY_ID:-}"
+  local sb=".hermes/harness/seat-budget.py"
+  [ -n "$sid" ] || return 0
+  [ -f "$sb" ] || return 0
+  [ -f "/tmp/story-seat-budget-${sid}" ] || return 0
+  if python3 "$sb" check-overrun --sid "$sid" >> "$LOG" 2>&1; then
+    return 0
+  fi
+  log "$tag: O-SEATBUDGET OVERRUN — actual seats exceed budget×factor for ${sid} — escalating (debt-freeze)"
+  outer_log "         O-SEATBUDGET: OVERRUN ${sid} — debt-freeze (actual > budget×factor)" 2>/dev/null || true
+  record_debt "$tag" "seat-budget" \
+    "O-SEATBUDGET: actual OpenCode seats exceed kind×incidents budget×factor for ${sid}"
+  return 1
+}
+
 # O-REVHOLD: review/lead HOLD file blocks story-gate-passed (W4-015d).
 # Create migration/HOLD (or /tmp/review-hold) with a reason; remove when cleared.
 review_hold_blocks_ship() {
@@ -926,6 +1537,38 @@ review_hold_blocks_ship() {
     echo "review-hold" > /tmp/supervisor-done
     return 0
   fi
+  return 1
+}
+
+# O-EVIDLIVE: each active K-system ≥1 ledger row per story or story-gate RED.
+# Heartbeat fills legitimate-none channels (K9 none, K11 no-Findings); silent
+# required channels (Findings+zero K11, Findings+zero K2, empty K3) RED.
+evidence_liveness_blocks_ship() {
+  local sid="${STORY_ID:-}"
+  if [ -z "$sid" ]; then
+    sid=$(printf '%s' "${STORY_SPEC_PREFIX:-}" | awk '{print $1}')
+  fi
+  [[ "$sid" =~ ^S[0-9]+$ ]] || sid="${sid:-story}"
+  if [ ! -f .hermes/harness/evidence-liveness.sh ]; then
+    log "WARN:O-EVIDLIVE: evidence-liveness.sh missing — refusing silent skip"
+    event "m5-ship" 0 evidlive_missing "no-script"
+    write_run_report "ship-blocked-evidlive: missing evidence-liveness.sh"
+    echo "evidlive-red" > /tmp/supervisor-done
+    return 0
+  fi
+  STORY_TASKS="${STORY_TASKS:-${TASKS_FILE:-}}" \
+    SUPERVISOR_EVENTS="$EVENTS" \
+    bash .hermes/harness/evidence-liveness.sh heartbeat "$sid" >> "$LOG" 2>&1 || true
+  if ! STORY_TASKS="${STORY_TASKS:-${TASKS_FILE:-}}" \
+    SUPERVISOR_EVENTS="$EVENTS" \
+    bash .hermes/harness/evidence-liveness.sh check "$sid" >> "$LOG" 2>&1; then
+    log "O-EVIDLIVE: refusing story close — silent K-system(s) (see migration/evidence-liveness.md)"
+    event "m5-ship" 0 evidlive_red "$sid"
+    write_run_report "ship-blocked-evidlive: silent K-system(s) for ${sid}"
+    echo "evidlive-red" > /tmp/supervisor-done
+    return 0
+  fi
+  log "O-EVIDLIVE: PASS (${sid})"
   return 1
 }
 
@@ -959,6 +1602,13 @@ sfix_red_dims() {
     dims="${dims:+$dims }findings"
   fi
   if echo "$logblob" | grep -qE 'COMPILATION ERROR|BUILD FAILURE|cannot find symbol'; then
+    dims="${dims:+$dims }task"
+  fi
+  # O-SFIXDIMNONE / O-DSKIND: Quarkus config/build failures (missing jdbc,
+  # Datasource must be defined, Agroal driver) are wiring/task — never dims=none
+  # skip. v3 S02 T-007: empty dims → skipped sfix → HOTSWAP advanced on RED.
+  if echo "$logblob" | grep -qiE \
+    'ConfigurationException|Datasource must be defined|Unable to find a JDBC driver|quarkus-maven-plugin|Failed to build quarkus|AgroalProcessor|HibernateOrmProcessor'; then
     dims="${dims:+$dims }task"
   fi
   # O-SONAR401 / O-SFIXDIMNONE: auth/bootstrap failures are not a sonar
@@ -1046,6 +1696,21 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       fi
     fi
   fi
+  # O-DSKIND: hibernate-orm / @Entity without jdbc+db-kind → ConfigurationException
+  # milestone RED (v3 S02 T-007). Wire before sensors; migration-general.
+  if [ -f .hermes/harness/ensure-dskind.py ]; then
+    if python3 .hermes/harness/ensure-dskind.py "$PWD" > /tmp/dskind-${tag}.out 2>&1; then
+      if grep -q '^ok:dskind-updated' /tmp/dskind-${tag}.out 2>/dev/null; then
+        if ! git diff --quiet -- pom.xml src/main/resources/application.properties 2>/dev/null; then
+          stage_for_task_commit
+          git add pom.xml src/main/resources/application.properties 2>/dev/null || true
+          git commit -q -m "${prefix} harness: O-DSKIND jdbc + profiled db-kind for hibernate" \
+            >> "$LOG" 2>&1 || true
+          log "$tag: O-DSKIND — $(tr '\n' ' ' </tmp/dskind-${tag}.out)"
+        fi
+      fi
+    fi
+  fi
   local _sense_t0 _sense_elapsed
   _sense_t0=$(date +%s)
   if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
@@ -1069,8 +1734,15 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
     esac
     # Deterministic style-autofix first (V3 measured: 152 min of model
     # time went to mechanically-fixable style violations).
+    # O-STYLEFIDELITY: park pre-existing src/ dirt so evaluate leftovers
+    # (defensive-copy / bidirectional-link harvest drift) are never scooped
+    # into a "deterministic style-autofix" tip via stage_for_task_commit.
+    park_src_dirt_for_autofix "$tag"
+    local _pre_autofix_fid_rc=0
+    .hermes/harness/sensors.sh fidelity >/tmp/fidelity-pre-autofix.log 2>&1 \
+      || _pre_autofix_fid_rc=$?
     .hermes/harness/style-autofix.sh >> "$LOG" 2>&1 || true
-    if [ -n "$(git status --porcelain)" ]; then
+    if [ -n "$(git status --porcelain -- src/)" ]; then
       # The autofix's changes are deterministic OpenRewrite fixes — KEEP them
       # even when the full sensor is still RED. V5 run-4: the old path did
       # `git checkout -- .` here, discarding the autofix (e.g. the ArrayList
@@ -1080,8 +1752,25 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       # the sfix starts from the cleaner tree.
       # O-STY: never commit OpenRewrite edits under migration/staging/
       discard_staging_autofix
+      # O-STYLEFIDELITY: refuse src/main behavioural harvest mutations that
+      # worsen fidelity (Set.copyOf / null-check / setUser-style drift).
+      # Do NOT add defensive-copy to approved transforms — behaviour change.
+      local _post_autofix_fid_rc=0
+      .hermes/harness/sensors.sh fidelity >/tmp/fidelity-post-autofix.log 2>&1 \
+        || _post_autofix_fid_rc=$?
+      if [ "$_post_autofix_fid_rc" -ne 0 ] \
+        && { [ "$_pre_autofix_fid_rc" -eq 0 ] \
+          || [ -n "$(git diff --name-only -- src/main/ 2>/dev/null)" ]; }; then
+        if [ -n "$(git diff --name-only -- src/main/ 2>/dev/null)" ] \
+          || [ -n "$(git ls-files --others --exclude-standard -- src/main/ 2>/dev/null)" ]; then
+          log "$tag: O-STYLEFIDELITY — autofix/dirt broke or worsened fidelity — reverting src/main (keep test-only recipe fixes)"
+          event "$tag" 0 style_autofix_fidelity_revert "pre=${_pre_autofix_fid_rc}:post=${_post_autofix_fid_rc}"
+          git checkout -q -- src/main/ 2>/dev/null || true
+          git clean -fdq -- src/main/ 2>/dev/null || true
+        fi
+      fi
       if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        stage_for_task_commit
+        style_autofix_stage
         # O-SFIXCREDIT: autofix uses distinct prefix so sfix credit cannot
         # match an earlier autofix SHA (S04 T-003 false GREEN).
         git diff --cached --quiet || \
@@ -1100,11 +1789,22 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         event "$tag" 0 style_autofix reverted_broke_build
         log "$tag: style-autofix broke compilation — reverted (never commit a non-compiling tree); sfix works from the original"
       else
-        stage_for_task_commit
+        style_autofix_stage
         if ! git diff --cached --quiet; then
-          git commit -q -m "${prefix} sensor autofix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
-          event "$tag" 0 style_autofix partial
-          log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
+          # Final fidelity gate on what we are about to tip.
+          if ! .hermes/harness/sensors.sh fidelity >/tmp/fidelity-pre-autofix-commit.log 2>&1 \
+            && [ -n "$(git diff --cached --name-only -- src/main/ 2>/dev/null)" ]; then
+            log "$tag: O-STYLEFIDELITY — refusing autofix tip with fidelity-RED src/main staged"
+            event "$tag" 0 style_autofix_fidelity_refuse
+            git reset -q 2>/dev/null || true
+            git checkout -q -- src/main/ 2>/dev/null || true
+            style_autofix_stage
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -q -m "${prefix} sensor autofix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
+            event "$tag" 0 style_autofix partial
+            log "$tag: style-autofix fixed some violations (committed, compiles); remaining go to a sfix session"
+          fi
         fi
       fi
     fi
@@ -1187,6 +1887,7 @@ $(grep '^NEW:' "$FDELTA" | head -40)
 O-SFIXFIDELITY PRIMARY TARGETS (paste/fix these before sonar):
 $(grep -E '^FIDELITY:|HARVEST FIDELITY' /tmp/sensor-fidelity.log /tmp/sensor-milestone.log 2>/dev/null | head -40)
 O-FIDELITYSORT: PropertyComparator → keep ArrayList<>(get*Internal()) + list.sort(Comparator); do not stream().sorted().collect; do not re-harvest Spring support.
+$(sfix_test_pair_note)
 "
           ;;
         findings)
@@ -1206,19 +1907,38 @@ O-FIDELITYSORT: PropertyComparator → keep ArrayList<>(get*Internal()) + list.s
       # O-SFIXDIMNONE (W4-022a): dims=[none] means sensor unavailable / infra —
       # not violations. Refuse the seat (same shape as O-SFIXNODELTA).
       if [ -z "${SFIX_DIMS}" ]; then
-        log "$tag: O-SFIXDIMNONE — sfix dims empty (sensor unavailable); skip sensor-fix seat"
-        outer_log "         O-SFIXDIMNONE: skip ${prefix} sfix (dims=none; see sensor logs / O-SONAR401)"
-        event "$tag" 0 sfix_dimnone_skip "$SENSOR_KIND"
-        if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized' /tmp/sensor-sonar.log /tmp/sensor-milestone.log 2>/dev/null; then
-          record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+        # Re-scan logs once more — milestone stdout may land after first parse.
+        SFIX_DIMS=$(sfix_red_dims)
+        SFIX_PRIMARY=$(echo "$SFIX_DIMS" | awk '{print $1}')
+      fi
+      if [ -z "${SFIX_DIMS}" ]; then
+        # O-SFIXDIMNONE: only skip for true infra/auth unavailability. Never
+        # skip when SENSOR_KIND=milestone on a RED tip — force task dim so
+        # Qwen/sfix can wire jdbc/db-kind (v3 S02 T-007 false advance).
+        if [ "$SENSOR_KIND" = "milestone" ] \
+          && grep -qE 'SENSOR RED \(milestone\)|Failed to build quarkus|ConfigurationException|Datasource must be defined' \
+               /tmp/sensor-milestone.log "$LOG" 2>/dev/null; then
+          SFIX_DIMS=task
+          SFIX_PRIMARY=task
+          printf '%s\n' task > /tmp/sensor-fix-dim
+          log "$tag: O-SFIXDIMNONE — remapped empty dims → task (milestone build/config RED)"
+          outer_log "         O-SFIXDIMNONE: remap dims=none→task for ${prefix} milestone RED"
         else
-          record_debt "$prefix" "O-SFIXDIMNONE sensor unavailable (no violation dims) — inspect sensor logs" || true
+          log "$tag: O-SFIXDIMNONE — sfix dims empty (sensor unavailable); skip sensor-fix seat"
+          outer_log "         O-SFIXDIMNONE: skip ${prefix} sfix (dims=none; see sensor logs / O-SONAR401)"
+          event "$tag" 0 sfix_dimnone_skip "$SENSOR_KIND"
+          if grep -qE 'O-SONAR401|HTTP 401|401 Unauthorized' /tmp/sensor-sonar.log /tmp/sensor-milestone.log 2>/dev/null; then
+            record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+          else
+            record_debt "$prefix" "O-SFIXDIMNONE sensor unavailable (no violation dims) — inspect sensor logs" || true
+          fi
+          rm -f /tmp/sensor-fix-mode
+          return 0
         fi
-        rm -f /tmp/sensor-fix-mode
-        return 0
       fi
     fi
     SFIX_PROMPT="Use the migration-harness skill and read EXECUTION.md in its directory. The stage '${prefix}' was just committed but the supervisor's ${SFIX_RED_DESC} — read /tmp/sensor-task.log, /tmp/sensor-milestone.log, /tmp/sensor-fidelity.log and /tmp/sensor-sonar.log for the exact errors (sonar violations are listed inline when the gate is red). If those logs show FINDINGS: or FINDINGS RED lines, the RED dimension is findings — fix those file:line incidents (typical: replace quarkus-micrometer* with quarkus-smallrye-metrics) and verify with .hermes/harness/sensors.sh findings; do NOT commit unrelated comment/test polish while FINDINGS is RED (O-SFIXWRONGDIM). If /tmp/scope-violation.txt exists, the story-scope sensor reverted out-of-scope edits — read it and repair WITHIN the story scope only. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency). PACKAGE DIRECTION IS ONE-WAY: this migration RENAMES the legacy package to the target package (migration.yaml legacyPackage -> targetPackage). The target package is ALWAYS correct; a file under the legacy package in src/main is the defect. If a class is in the wrong place, move it INTO the target package and rewrite its 'package'/imports to the target — NEVER move or revert a class into the legacy package, and NEVER rewrite target-package files back to the legacy package to 'match' staged source (migration/staging holds legacy-package source by design; fidelity already accounts for the rename). A 'harvest fidelity RED' is about drifted CONTENT, not the package. O-FIDELITYVALID / O-SFIXNOSPRING: Spring BindingResult/FieldError → Jakarta ConstraintViolation is an approved validation conversion — do NOT re-harvest Spring validation types or add org.springframework.* imports / spring-* pom deps to green-wash fidelity. Re-run .hermes/harness/sensors.sh fidelity after harness updates; if already GREEN, commit nothing for fidelity. add a dependency ONLY if this stage's findings require it. VERIFY HINT: ${SFIX_VERIFY_HINT}. CHEAP FIX LOOP (O-SFIXLOOP — ENFORCED / O-SFIXMILESTONE): fix ALL listed violations in ONE pass, then verify ONCE with the dimension-specific check — sonar violations: .hermes/harness/sensors.sh sonar; FINDINGS:/FINDINGS RED: .hermes/harness/sensors.sh findings; fidelity drift: .hermes/harness/sensors.sh fidelity; a legacy package under src/main: .hermes/harness/sensors.sh package; compile/test failure: .hermes/harness/sensors.sh task. DO NOT run .hermes/harness/sensors.sh milestone — it is REFUSED during this session (exits 2). Commit ONE commit starting '${prefix} sensor fix:' the moment your dimension check is green; do not polish further. O-SONARTIME: NEVER wrap .hermes/harness/sensors.sh in timeout <600s (sonar needs 2–3m; timeout 60 → exit 124). O-SFIXSCOPE: NEVER commit while the dimension check is still RED claiming failures are 'pre-existing' or 'out of scope' — fix them or stop without commit (V9 S04 T-003). For RestAssured RED: fix JSON paths under the collection property, empty-path 400 myths, and test isolation (EXECUTION O-RESTJSON/O-RESTEMPTY/O-TESTISO). S5976: prefer @ParameterizedTest + @CsvSource — never delete characterization cases (O-SFIXCOUNT/O-SFIXDIRTY).
+O-SFIXMUTATE: AFTER naming the fidelity/sonar root cause, your NEXT tool MUST be edit/write on the drifted file — do NOT keep reading. Supervisor kills diagnose-freeze (0 mutates ~120s) and escalates. O-STYLEFIDELITY: restore staged harvest return shapes (mutable collection returns when staging returns the field); never add Set.copyOf / unmodifiable defensive copies or bidirectional setUser hooks to green-wash Sonar S2384 — that breaks harvest fidelity and characterization contracts.
 ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
     # O-SFIXWORKER: Qwen first (cheap verifier); MiniMax rescue capped by
     # SFIX_MINIMAX_RESCUE_MAX (default 1 — R-218 enforced integer, not a comment).
@@ -1232,6 +1952,8 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
         # sfix_loop_recheck (all cited cheap dims, incl fidelity) is GREEN.
         log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after Qwen (skip MiniMax; dims=${SFIX_DIMS:-recheck})"
         event "$tag" 0 sfix_worker_green "$SENSOR_KIND"
+        # O-SFIXRESCUEDISCARD: tip dirty GREEN before later full-sensor/discard.
+        sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND" || true
       else
         # O-SONAR401 / O-SFIXDIMNONE (W4-022a/W4-023): never MiniMax-rescue an
         # auth/bootstrap failure the worker already diagnosed — seat cannot mint tokens.
@@ -1249,16 +1971,23 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
           log "$tag: O-SFIXWORKER — ${SENSOR_KIND} still RED after Qwen — MiniMax rescue ${_sfix_rescue}/${SFIX_MINIMAX_RESCUE_MAX}"
           outer_log "         O-SFIXWORKER: MiniMax rescue ${_sfix_rescue}/${SFIX_MINIMAX_RESCUE_MAX}"
           event "$tag" 0 sfix_minimax_rescue "${SENSOR_KIND}:${_sfix_rescue}"
+          # O-SFIXSIGINT: orch may return 124/130 after primary dim already GREEN
+          # in the dirty tree — always try tip/archive before next rescue/teardown.
           orch "${tag}-sfix-r${_sfix_rescue}" "$SFIX_PROMPT" || true
           if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
             log "$tag: O-SFIXWORKER — ${SENSOR_KIND} GREEN after MiniMax rescue ${_sfix_rescue}"
+            sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND" || true
             break
           fi
+          # Rescue timed out / SIGINT with partial dim win still dirty — tip if
+          # cited dims cleared even when the full loop above raced.
+          sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND" || true
         done
         fi
       fi
     else
       orch "${tag}-sfix" "$SFIX_PROMPT" || true
+      sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND" || true
     fi
     rm -f /tmp/sensor-fix-mode
     # #6: re-verify the TRIGGERING sensor (${SENSOR_KIND}), not `task` — a
@@ -1300,7 +2029,15 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
       elif .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
         log "$tag: sensor-fix committed and ${SENSOR_KIND} GREEN $(git log --oneline -1)"
       else
-        # O-SFIXSCOPE: never keep a sensor-fix commit that left the sensor RED
+        # O-SFIXRESCUEDISCARD: if cited dims still GREEN, KEEP the tip (do not
+        # O-SFIXSCOPE-reset a real dim win because full milestone/sonar lagged
+        # or SIGINT'd). Residual full-sensor RED → debt/freeze, tip stays.
+        if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+          log "$tag: O-SFIXRESCUEDISCARD — keep tip; cited dims GREEN while full ${SENSOR_KIND} still RED"
+          event "$tag" 0 sfix_keep_tip_cited_green "$SENSOR_KIND"
+          record_debt "$tag" "$SENSOR_KIND" "sensor-fix tip kept (cited dims GREEN) but full ${SENSOR_KIND} still RED"
+        else
+        # O-SFIXSCOPE: never keep a sensor-fix commit that left cited dims RED
         # (V9 S04 T-003: session claimed "pre-existing / out of scope" and committed).
         event "$tag" 0 sfix_committed_still_red verify
         if git log -1 --format=%s | grep -qE 'sensor fix:'; then
@@ -1343,25 +2080,38 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
         # O-DEBTFRZRACE: after O-SFIXSCOPE reset, discard orphan src/ poison and
         # recheck before debt — a prior sfix_loop_recheck GREEN must win over
         # a stale dirty-tree RED.
-        discard_src_dirt "$tag"
+        # O-SFIXRESCUEDISCARD: try tip-of-green before discard.
+        sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND" || true
+        if [ "$(git rev-parse HEAD)" = "$PRE_SFIX_HEAD" ]; then
+          discard_src_dirt "$tag"
+        fi
         if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
           log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard+recheck (post sfix reset)"
           event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
         else
           record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
         fi
+        fi
       fi
     elif [ "$(git rev-parse HEAD)" = "$PRE_SFIX_HEAD" ] && committed "${prefix} sensor fix"; then
       log "$tag: O-SFIXCREDIT — sfix did not move HEAD (stale sensor-fix match ignored)"
       event "$tag" 0 sfix_no_new_commit credit
-      # O-SFIXDIRTY + O-DEBTFRZRACE: drop poison, recheck; only debt if still RED
-      discard_src_dirt "$tag"
-      if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (no new sfix commit)"
-        event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
+      # O-SFIXRESCUEDISCARD before O-SFIXDIRTY wipe
+      if sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND"; then
+        :
       else
-        record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
+        discard_src_dirt "$tag"
+        if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
+          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (no new sfix commit)"
+          event "$tag" 0 debtfrzrace_averted "$SENSOR_KIND"
+        else
+          record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
+        fi
       fi
+    elif sfix_commit_green_dirt "$prefix" "$tag" "$SENSOR_KIND"; then
+      # O-SFIXRESCUEDISCARD primary path: cited-dim GREEN dirty → tip (covers
+      # the case where full sensors.sh milestone would still RED/SIGINT).
+      log "$tag: O-SFIXRESCUEDISCARD — closed dirty ${SENSOR_KIND}-GREEN via cited-dim tip"
     elif [ -n "$(git status --porcelain)" ] && .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
       # Mechanical closure — verifies the TRIGGERING sensor (#6), not task.
       # O-T6c: exclude .hermes/ (and staging) from escalation/sfix mechan commits.
@@ -1372,7 +2122,7 @@ ${SFIX_FIDELITY_NOTE}${K7_DELTA_NOTE}${RUN_CONTRACT}"
         log "$tag: sensor-fix work was ${SENSOR_KIND}-GREEN but uncommitted — supervisor completed the commit"
       fi
     else
-      # O-SFIXDIRTY + O-DEBTFRZRACE: discard poison then recheck before debt
+      # O-SFIXDIRTY + O-DEBTFRZRACE: only discard after commit-green attempt failed
       discard_src_dirt "$tag"
       if sfix_loop_recheck "$SENSOR_KIND" >> "$LOG" 2>&1; then
         log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (sfix else-path)"
@@ -1468,6 +2218,36 @@ refuse_red_task_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
   return 1
 }
 
+# O-HYGIENEWORKER: worker/mechan/ESCW success paths used to call
+# post_commit_verify without commit-hygiene.py — O-JDBCREGRESS (spring-tx
+# re-add) only ran inside run_stage MiniMax path. S03 T-001 d7bde2a landed
+# spring-tx + GREEN sensors. Shared refuse for every tip-accept path.
+refuse_unhygienic_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
+  local prefix="$1" tag="$2" red_sha arch
+  [ -f .hermes/harness/commit-hygiene.py ] || return 0
+  # O-TREEFIXSTUB: Tree fix tips must pass hygiene (was bypassing — stub-nuke
+  # tip 84632cf landed REMOVED husks with sensors falsely GREEN).
+  case "$prefix" in
+    T-*|S*|Preflight*|Gate*|Build*|Deploy*|Tree\ fix*|Tree*) ;;
+    *) return 0 ;;
+  esac
+  git log -1 --format=%s | grep -qE "^(${prefix}|T-[0-9]+|S[0-9]+|Tree fix)" || return 0
+  if python3 .hermes/harness/commit-hygiene.py HEAD > /tmp/commit-hygiene.out 2>&1; then
+    return 0
+  fi
+  red_sha=$(git rev-parse HEAD)
+  arch="/tmp/strays/${tag}-hygiene-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$arch"
+  git show --stat "$red_sha" >"$arch/stat.txt" 2>&1 || true
+  git show "$red_sha" >"$arch/full.diff" 2>&1 || true
+  cp /tmp/commit-hygiene.out "$arch/hygiene.txt" 2>/dev/null || true
+  printf '%s\n' "$red_sha" >"$arch/sha.txt"
+  log "$tag: O-COMMITHYGIENE — $(tr '\n' ' ' </tmp/commit-hygiene.out) — resetting dishonest tip (O-HYGIENEWORKER/O-TREEFIXSTUB)"
+  event "$tag" 0 commit_hygiene_reset "$(tr '\n' ' ' </tmp/commit-hygiene.out)"
+  git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+  return 1
+}
+
 # O-ESCALAFTERRESET: after O-SFIXSCOPE resets a RED tip, do not immediately
 # invent via MiniMax. Prefer commit existing GREEN dirt; discard orphan src/
 # poison; re-sensor. Return 0 = skip escalation (treat success / tip landed).
@@ -1539,6 +2319,17 @@ run_stage() {
       p="O-ESCALAFTERRESET: A prior ${prefix} tip was O-SFIXSCOPE-reset. Inspect git status FIRST. If sensors.sh task is GREEN on a clean or dirty-but-good tree, land ONE commit starting '${prefix}:' via \`.hermes/harness/commit-gated.sh\` WITHOUT inventing new files/tests and WITHOUT rewriting already-GREEN tip content. Do not re-break mappers/tests that sensors already accept.
 ${p}"
     fi
+    # O-PREFCONT: strengthen preflight/gate/build CONTINUE — forbid rewrite of
+    # existing dirty/untracked work + characterization floor (W4-062).
+    if [ $attempt -gt 1 ]; then
+      case "$tag" in
+        preflightfix*|gatefix*|buildfix*)
+          p="O-PREFCONT: Inspect git status FIRST. Continue from EXISTING dirty/untracked work WITHOUT inventing new files/tests and WITHOUT rewriting already-present dirty tip content. Characterization floor: do not shrink @Test / assertion counts vs attempt start; keep typed assertThrows(UnsupportedOperationException) for unmodifiable collection getters (O-SHIPASSERTWEAK). Prefer commit-gated tip of task-GREEN tests-only dirt BEFORE sensors.sh sonar/preflight when the seat budget is tight (O-SHIPFIXCOMMIT).
+${p}"
+          ;;
+      esac
+    fi
+    pref_snapshot_char_floor "$tag"
     orch "${tag}-a${attempt}p${pf}" "$p"; local rc=$?
     # O-NULLACTION (N17): honest stop without fabrication is success, not a burn.
     if [ -f "/tmp/escalation-noaction-${tag}.txt" ] || [ -f "/tmp/escalation-noaction-${prefix}.txt" ]; then
@@ -1580,20 +2371,9 @@ ${p}"
         attempt=$((attempt+1))
         continue
       fi
-      # O-GITBAK / O-SIMPLEDTO / O-POMUNC: refuse *.bak debris, thin-DTO+bak,
-      # and MapStruct Java without mapstruct in pom (Wave2 T-005 62413ff).
-      if [ -f .hermes/harness/commit-hygiene.py ] \
-        && ! python3 .hermes/harness/commit-hygiene.py HEAD > /tmp/commit-hygiene.out 2>&1; then
-        log "$tag: O-COMMITHYGIENE — $(cat /tmp/commit-hygiene.out 2>/dev/null | tr '\n' ' ') — resetting dishonest tip"
-        event "$tag" "$attempt" commit_hygiene_reset "$(cat /tmp/commit-hygiene.out 2>/dev/null | tr '\n' ' ')"
-        _red=$(git rev-parse HEAD)
-        _arch="/tmp/strays/${tag}-hygiene-$(date -u +%Y%m%dT%H%M%SZ)"
-        mkdir -p "$_arch"
-        git show --stat "$_red" >"$_arch/stat.txt" 2>&1 || true
-        git show "$_red" >"$_arch/full.diff" 2>&1 || true
-        cp /tmp/commit-hygiene.out "$_arch/hygiene.txt" 2>/dev/null || true
-        printf '%s\n' "$_red" >"$_arch/sha.txt"
-        git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+      # O-GITBAK / O-SIMPLEDTO / O-POMUNC / O-JDBCREGRESS via shared refuse
+      # (O-HYGIENEWORKER — same gate as worker/mechan tip-accept paths).
+      if ! refuse_unhygienic_commit "$prefix" "$tag"; then
         attempt=$((attempt+1))
         continue
       fi
@@ -1683,11 +2463,24 @@ ${p}"
           *)     prompt="$rprompt";;
         esac
         pf=$((pf+1));;
-      timeout)
-        log "$tag: session hit the ${ORCH_LAST_BUDGET:-$SESSION_TIMEOUT}s budget — attempt $attempt burned, partial work stays for the next attempt"
-        attempt=$((attempt+1));;
-      no_commit)
-        log "$tag: session ended without commit — attempt $attempt burned"
+      timeout|no_commit)
+        if [ "$cls" = "timeout" ]; then
+          log "$tag: session hit the ${ORCH_LAST_BUDGET:-$SESSION_TIMEOUT}s budget — attempt $attempt burned, partial work stays for the next attempt"
+        else
+          log "$tag: session ended without commit — attempt $attempt burned"
+        fi
+        # O-SHIPFIXCOMMIT: tip unpaid task-GREEN tests-only dirt before a2
+        # rewrite / next sonar burn (do not require full preflight GREEN).
+        if pref_commit_green_dirt "$prefix" "$tag"; then
+          if committed "$prefix"; then
+            scrub_findings_from_tip
+            scrub_frozen_specs_from_tip
+            event "$tag" "$attempt" success shipfix_timeout_commit
+            scope_enforce "$prefix"
+            post_commit_verify "$prefix" "$tag"
+            return 0
+          fi
+        fi
         attempt=$((attempt+1));;
     esac
     if [ $pf -ge $MAX_PLATFORM_RETRIES ]; then
@@ -1703,6 +2496,18 @@ ${p}"
   # supervisor completes the commit itself; the deeper gates (pre-push
   # preflight, factory) still guard everything downstream.
   if [ -n "$(git status --porcelain)" ]; then
+    # O-SHIPFIXCOMMIT: prefer tests-only tip path for ship-fix tags first.
+    if pref_commit_green_dirt "$prefix" "$tag"; then
+      if committed "$prefix"; then
+        scrub_findings_from_tip
+        scrub_frozen_specs_from_tip
+        event "$tag" "$MAX_ATTEMPTS" mechanical_commit shipfix_closure
+        log "$tag: O-SHIPFIXCOMMIT — exhausted-attempts tip of task-GREEN tests-only dirt ($(git log --oneline -1))"
+        scope_enforce "$prefix"
+        post_commit_verify "$prefix" "$tag"
+        return 0
+      fi
+    fi
     if .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
       # O-T6c: MiniMax escalation closure must not sweep .hermes/ into T-NNN:
       stage_for_task_commit
@@ -1878,16 +2683,37 @@ LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-find
 if [ $? -ne 0 ] && ! committed "M3 revision"; then
   log "plan lint: revision required"; echo "$LINT_OUT" | head -20 >> "$LOG"
   printf '%s\n' "$LINT_OUT" > /tmp/plan-lint.txt
-  run_stage "M3 revision" "m3-lint" \
+  if ! run_stage "M3 revision" "m3-lint" \
 "Use the migration-harness skill and read PLANNING.md and MAPPINGS.md in its directory. The plan lint REJECTED ${TASKS_FILE} — the findings are in /tmp/plan-lint.txt (read it with your file tools). Revise ONLY ${TASKS_FILE} (and sibling files in that same specs/<story>/ directory) to fix every lint finding: infer tasks must carry the decided target design (file mappings, signatures, annotations — cite MAPPINGS.md shapes). Do not renumber or remove completed work.
 O-SPECFROZEN: NEVER edit specs/ for a story whose migration/story-state.csv last status is complete (e.g. S01 after S01,complete). Do not delete delivered tasks from finished stories.
 ${RUN_CONTRACT}
 Commit prefix: 'M3 revision:'." \
 "Use the migration-harness skill and read PLANNING.md in its directory. Finish revising ONLY ${TASKS_FILE} per /tmp/plan-lint.txt and commit with prefix 'M3 revision:'. O-SPECFROZEN: never mutate complete stories' specs/.
-${RUN_CONTRACT}" \
-    || log "plan lint: revision round exhausted — proceeding with the plan as-is (recorded)"
-  LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1) \
-    && log "plan lint: PASS after revision" || log "plan lint: still failing after revision — proceeding, findings logged"
+${RUN_CONTRACT}"; then
+    # O-M3LINTPROCEED: exhaustion is not permission to M4 — re-lint below.
+    log "O-M3LINTPROCEED: revision round exhausted — re-linting; will HOLD if still RED (no M4)"
+  fi
+fi
+
+# O-M3LINTPROCEED: M4 entry requires plan-lint GREEN. Never "proceed as-is"
+# after exhausted m3-lint / still-RED tip (S03 573cc08 false-green → M4 risk).
+LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1) || {
+  log "O-M3LINTPROCEED: plan-lint still RED — refusing M4 (HOLD/re-M3)"
+  echo "$LINT2" | head -30 >> "$LOG"
+  printf '%s\n' "$LINT2" > /tmp/plan-lint.txt
+  printf '%s\n' "O-M3LINTPROCEED: plan-lint RED after m3-lint — HOLD; re-M3 (do not enter M4)" > /tmp/supervisor-pause
+  write_run_report "m3-lint-hold"
+  echo "m3-lint-hold" > /tmp/supervisor-done
+  exit 1
+}
+log "plan lint: PASS (M4 entry gate)"
+# O-EVIDLIVE: K1 exercised this story (ownership lint ran green).
+if [ -f .hermes/harness/evidence-liveness.sh ]; then
+  _evid_sid="${STORY_ID:-}"
+  [ -z "$_evid_sid" ] && _evid_sid=$(printf '%s' "${STORY_SPEC_PREFIX:-}" | awk '{print $1}')
+  [[ "$_evid_sid" =~ ^S[0-9]+$ ]] || _evid_sid="${_evid_sid:-story}"
+  bash .hermes/harness/evidence-liveness.sh record "$_evid_sid" K1 1 "plan-lint PASS" \
+    >> "$LOG" 2>&1 || true
 fi
 
 # ---------------------------------------------------------------- M4
@@ -1909,9 +2735,19 @@ if ! .hermes/harness/sensors.sh task >> "$LOG" 2>&1; then
   log "loop entry: tree sensor RED — dispatching tree-fix session before tasks"
   orch "treefix" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. The working tree is RED before task execution: .hermes/harness/sensors.sh task fails — read /tmp/sensor-task.log for the exact errors. Diagnose and fix the ROOT CAUSE (typical: files harvested prematurely without their extension/dependency, or into the wrong package — fix or revert them; add a dependency ONLY if already-committed task scope requires it). Run .hermes/harness/sensors.sh task until GREEN, then commit ONE commit whose message STARTS with 'Tree fix:'.
+O-TREEFIXSTUB: NEVER clear spring residue by rewriting owned Targets to comment-only /* REMOVED */ husks or by deleting type bodies / interface methods. For JDBC convert stacks implement the FULL repository API with Agroal DataSource + java.sql (or EntityManager) — do not stub-delete collaborators. If same-package collaborators required by Targets are absent (O-COLLABOWN), write /tmp/escalation-noaction-treefix.txt with O-NULLACTION reason and STOP — that is success. Sensors + commit-hygiene RED O-TREEFIXSTUB on REMOVED stubs.
 ${RUN_CONTRACT}"
-  committed "Tree fix" && log "loop entry: tree fix committed $(git log --oneline -1)" \
-    || log "loop entry: tree-fix did not commit — proceeding on a red tree (recorded)"
+  if committed "Tree fix"; then
+    # O-TREEFIXSTUB / O-HYGIENEWORKER: tree-fix tips used to bypass tip-accept
+    # hygiene — refuse REMOVED stubs / spring re-adds immediately.
+    if refuse_unhygienic_commit "Tree fix" "treefix"; then
+      log "loop entry: tree fix committed $(git log --oneline -1)"
+    else
+      log "loop entry: O-TREEFIXSTUB — dishonest Tree fix tip reset (REMOVED stubs / hygiene)"
+    fi
+  else
+    log "loop entry: tree-fix did not commit — proceeding on a red tree (recorded)"
+  fi
 fi
 
 # Per-task class map (for batching): rewrite-class tasks are mechanical
@@ -1950,10 +2786,12 @@ PYEOF
 )
 task_class() { echo "$TASK_CLASSES" | grep -m1 "^$1:" | cut -d: -f2; }
 
-# Oracle from tasks.md (O-INFERABSENT) — absent|present; default present.
+# Oracle derived from filesystem (O-ORACLEDERIVE / O-INFERABSENT) —
+# absent|present; NEVER default undeclared → present.
 task_oracle() {
-  python3 - "$TASKS_FILE" "$1" <<'PY' 2>/dev/null || echo present
-import re, sys
+  python3 - "$TASKS_FILE" "$1" <<'PY' 2>/dev/null || echo absent
+import importlib.util, re, sys
+from pathlib import Path
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
 heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
@@ -1964,13 +2802,36 @@ for i, m in enumerate(heads):
     end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
     body = text[m.end():end]
     break
-m = re.search(r"^\*\*Oracle\s*:\s*(.+?)\*\*\s*$", body, re.M | re.I)
-if not m:
-    m = re.search(r"^\*\*Oracle\*\*\s*:?\s*(.+)$", body, re.M | re.I)
-if not m:
-    m = re.search(r"^Oracle\s*:\s*(.+)$", body, re.M | re.I)
-val = (m.group(1).strip().lower() if m else "")
-print("absent" if val.startswith("absent") else "present")
+odp = Path(".hermes/harness/oracle_derive.py")
+spec = importlib.util.spec_from_file_location("oracle_derive", odp)
+mod = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(mod)
+print(mod.derive_oracle(body, root=Path.cwd()))
+PY
+}
+
+# Shape from tasks.md (for O-INFERABSENT proceed: create|verify).
+task_shape() {
+  python3 - "$TASKS_FILE" "$1" <<'PY' 2>/dev/null || echo ""
+import importlib.util, re, sys
+from pathlib import Path
+path, tid = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+body = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    break
+odp = Path(".hermes/harness/oracle_derive.py")
+spec = importlib.util.spec_from_file_location("oracle_derive", odp)
+mod = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(mod)
+print(mod.task_shape(body))
 PY
 }
 
@@ -2108,6 +2969,10 @@ run_worker_task() { # $1=task-id → 0 if committed
     return 1
   }
   [ -n "$packet" ] || return 1
+  # O-EVIDLIVE / K2: mark Analysis evidence presence for story-gate liveness.
+  if printf '%s\n' "$packet" | grep -q '^Analysis evidence'; then
+    event "$T" 0 "k2:evidence" "packet"
+  fi
   # O-CREATEFIRSTMUT: Shape=create — tighter read-thrash kill + first-write tip
   # so Qwen cannot burn 10–15m exploring before Target exists (S06/S07).
   local shape
@@ -2127,46 +2992,67 @@ run_worker_task() { # $1=task-id → 0 if committed
   story_key=$(echo "${STORY_SPEC_PREFIX:-run}" | awk '{print $1}')
   if [ -f /tmp/worker-wedge-skip ] && grep -qxF "$story_key" /tmp/worker-wedge-skip 2>/dev/null; then
     log "$T: skip worker — prior wedge/thrash this story (O-WORKERWEDGE-RCA; clears on next task commit — O-WEDGESKIP)"
-    echo "worker skipped — prior wedge class this story (O-WORKERWEDGE-RCA)" >> "/tmp/oc-${T}.err"
+    echo "worker skipped — prior wedge class this story (O-WORKERWEDGE-RCA)" >> "$(oc_seat_base "$T").err"
     WORKER_LAST_RC=143
     return 1
   fi
   # O-WORKERWEDGE / O-OCSTALL: hard timeout alone burns 1800s on a hung OpenCode
   # with a frozen session JSON. Run under timeout in the background and kill early
-  # if /tmp/oc-${T}.json stops growing (default 300s unchanged).
-  : > "/tmp/oc-${T}.json"
-  : > "/tmp/oc-${T}.err"
+  # if $(oc_seat_base "$T").json stops growing (default 300s unchanged).
+  : > "$(oc_seat_base "$T").json"
+  : > "$(oc_seat_base "$T").err"
   # O-PIDREG/O-OCGROUP: setsid so group-TERM reaps opencode serve children.
   setsid timeout 1800 opencode run "$packet" \
     -m "$WORKER_MODEL" --auto --format json \
     -f "$TASKS_FILE" -f AGENTS.md \
-    > "/tmp/oc-${T}.json" 2>"/tmp/oc-${T}.err" &
+    > "$(oc_seat_base "$T").json" 2>"$(oc_seat_base "$T").err" &
   local wpid=$!
   session_register "$T" "$wpid"
-  local stale=0 last_sz=-1 sz
+  local stale=0 last_sz=-1 sz elapsed=0 thrash
   local stale_limit="${WORKER_JSON_STALE_SECS:-300}"
+  # ARCH-C1 / O-TASKMUTATE: same first-write deadline as M3/sfix (default 120s).
+  # Productive seats first-write at 0–38s; next cluster ~331s — 120s is well clear.
+  local mutate_deadline="${WORKER_MUTATE_DEADLINE_SECS:-120}"
   while kill -0 "$wpid" 2>/dev/null; do
     sleep 60
-    sz=$(stat -c%s "/tmp/oc-${T}.json" 2>/dev/null || echo 0)
+    elapsed=$((elapsed + 60))
+    sz=$(stat -c%s "$(oc_seat_base "$T").json" 2>/dev/null || echo 0)
     if [ "$sz" -eq "$last_sz" ]; then
       stale=$((stale + 60))
     else
       stale=0
       last_sz=$sz
     fi
-    # O-WORKERREAD / O-FIRSTMUT: kill early on read/glob thrash with zero
-    # edit/write (bash alone does NOT count as mutate — R-222 T-007: 23 reads
-    # + 2 bash + 0 edit escaped the old watch and burned to JSON_STALE).
+    # O-WORKERREAD / O-FIRSTMUT / O-FIRSTMUTBASH / O-TASKMUTATE (ARCH-C1):
+    # kill early on read/glob thrash OR no first edit/write past mutate
+    # deadline. Plain bash does NOT count (R-222 T-007). Successful
+    # harvest-from-staging.sh DOES count (O-FIRSTMUTBASH).
     if [ -f .hermes/harness/worker-read-watch.py ] \
-      && thrash=$(python3 .hermes/harness/worker-read-watch.py "/tmp/oc-${T}.json" 2>/dev/null); then
-      log "$T: worker read-thrash — ${thrash} — killing early (O-WORKERREAD/O-FIRSTMUT)"
-      {
-        echo "worker read-thrash — ${thrash} (O-WORKERREAD/O-FIRSTMUT)"
-        echo "abort: reads+globs exceeded with no edit/write — escalate or replan"
-      } >> "/tmp/oc-${T}.err"
-      harness_kill_group "$T" "$wpid" TERM "read-thrash"
-      sleep 2
-      harness_kill_group "$T" "$wpid" KILL "read-thrash-kill"
+      && thrash=$(
+           WORKER_MUTATE_DEADLINE_SECS="$mutate_deadline" \
+           python3 .hermes/harness/worker-read-watch.py \
+             "$(oc_seat_base "$T").json" "$elapsed" 2>/dev/null
+         ); then
+      if echo "$thrash" | grep -q 'mutate-deadline'; then
+        log "$T: worker first-write deadline — ${thrash} — killing early (O-TASKMUTATE/ARCH-C1)"
+        {
+          echo "worker first-write deadline — ${thrash} (O-TASKMUTATE)"
+          echo "abort: 0 edit/write after ${mutate_deadline}s — escalate or replan"
+        } >> "$(oc_seat_base "$T").err"
+        event "$T" 0 task_mutate_kill "$thrash"
+        harness_kill_group "$T" "$wpid" TERM "mutate-deadline"
+        sleep 2
+        harness_kill_group "$T" "$wpid" KILL "mutate-deadline-kill"
+      else
+        log "$T: worker read-thrash — ${thrash} — killing early (O-WORKERREAD/O-FIRSTMUT)"
+        {
+          echo "worker read-thrash — ${thrash} (O-WORKERREAD/O-FIRSTMUT)"
+          echo "abort: reads+globs exceeded with no edit/write — escalate or replan"
+        } >> "$(oc_seat_base "$T").err"
+        harness_kill_group "$T" "$wpid" TERM "read-thrash"
+        sleep 2
+        harness_kill_group "$T" "$wpid" KILL "read-thrash-kill"
+      fi
       break
     fi
     if [ "$stale" -ge "$stale_limit" ]; then
@@ -2174,7 +3060,7 @@ run_worker_task() { # $1=task-id → 0 if committed
       {
         echo "worker wedged — no session output for ${stale}s (O-WORKERWEDGE)"
         echo "session JSON size frozen at ${sz} bytes"
-      } >> "/tmp/oc-${T}.err"
+      } >> "$(oc_seat_base "$T").err"
       harness_kill_group "$T" "$wpid" TERM "worker-wedge"
       sleep 2
       harness_kill_group "$T" "$wpid" KILL "worker-wedge-kill"
@@ -2191,7 +3077,7 @@ run_worker_task() { # $1=task-id → 0 if committed
         echo "worker killed — ${why} (O-KILLREASON)"
         [ -f /tmp/supervisor-pause ] && { echo "--- /tmp/supervisor-pause ---"; head -n 20 /tmp/supervisor-pause; }
         [ -f /tmp/debt-freeze ] && { echo "--- /tmp/debt-freeze ---"; head -n 20 /tmp/debt-freeze; }
-      } >> "/tmp/oc-${T}.err"
+      } >> "$(oc_seat_base "$T").err"
       harness_kill_group "$T" "$wpid" TERM "$why"
       sleep 2
       harness_kill_group "$T" "$wpid" KILL "${why}-kill"
@@ -2205,17 +3091,17 @@ run_worker_task() { # $1=task-id → 0 if committed
   wait_for_worker
   # O-KILLREASON: if .err still empty after SIGTERM and freeze markers exist,
   # backfill (covers external pkill before this loop learned to write).
-  if [ ! -s "/tmp/oc-${T}.err" ] && { [ -f /tmp/supervisor-pause ] || [ -f /tmp/debt-freeze ]; }; then
+  if [ ! -s "$(oc_seat_base "$T").err" ] && { [ -f /tmp/supervisor-pause ] || [ -f /tmp/debt-freeze ]; }; then
     {
       echo "worker exit rc=${rc} with empty .err during freeze (O-KILLREASON backfill)"
       [ -f /tmp/supervisor-pause ] && { echo "--- /tmp/supervisor-pause ---"; head -n 20 /tmp/supervisor-pause; }
-    } >> "/tmp/oc-${T}.err"
+    } >> "$(oc_seat_base "$T").err"
   fi
   # O-WORKERWEDGE-RCA: classify kill/fail cause; skip further worker seats this story.
-  if [ -f .hermes/harness/wedge-classify.py ] && [ -f "/tmp/oc-${T}.err" ]; then
+  if [ -f .hermes/harness/wedge-classify.py ] && [ -f "$(oc_seat_base "$T").err" ]; then
     local wclass
     wclass=$(python3 .hermes/harness/wedge-classify.py \
-      "/tmp/oc-${T}.err" "/tmp/oc-${T}.json" 2>/dev/null || echo OTHER)
+      "$(oc_seat_base "$T").err" "$(oc_seat_base "$T").json" 2>/dev/null || echo OTHER)
     case "$wclass" in
       READ_THRASH|JSON_STALE|TRUNCATION)
         echo "$story_key" >> /tmp/worker-wedge-skip
@@ -2226,8 +3112,8 @@ run_worker_task() { # $1=task-id → 0 if committed
     esac
   fi
   # O-OCERR: OpenCode often leaves stderr empty; surefire noise is in the JSON.
-  if [ ! -s "/tmp/oc-${T}.err" ] && [ -s "/tmp/oc-${T}.json" ]; then
-    python3 - "/tmp/oc-${T}.json" "/tmp/oc-${T}.err" <<'PY' 2>/dev/null || true
+  if [ ! -s "$(oc_seat_base "$T").err" ] && [ -s "$(oc_seat_base "$T").json" ]; then
+    python3 - "$(oc_seat_base "$T").json" "$(oc_seat_base "$T").err" <<'PY' 2>/dev/null || true
 import re, sys
 src, dst = sys.argv[1], sys.argv[2]
 raw = open(src, encoding="utf-8", errors="replace").read()
@@ -2255,7 +3141,7 @@ if out:
     )
 PY
   fi
-  log "$T: worker exit rc=${rc} (details /tmp/oc-${T}.err)"
+  log "$T: worker exit rc=${rc} (details $(oc_seat_base "$T").err)"
   if committed "$T"; then
     return 0
   fi
@@ -2281,10 +3167,37 @@ PY
       committed "$T" && return 0
       log "$T: O-T6e worker auto-commit failed — commit command did not produce '${T}:' prefix"
     else
+      # O-STEPFINISHRED: OpenCode often exits rc=0 with prose "complete / ready
+      # for commit" while redesign-sig/task sensors are still RED (e.g.
+      # O-AGROALHELPERSIG mapRow drop). Tip-accept correctly refuses; do NOT
+      # treat that exit as success — rewrite rc so escalation is honest
+      # (sensor-red), not worker-failed/rc=0 false-complete.
       log "$T: O-T6e worker auto-commit skip — task sensor RED after worker (see /tmp/sensor-task.log)"
+      if [ "${WORKER_LAST_RC:-1}" = "0" ]; then
+        WORKER_LAST_RC=42
+        {
+          echo "O-STEPFINISHRED: worker exited 0 with uncommitted app dirt but task sensor RED — incomplete (not success)"
+          echo "refuse tip-accept / Already-satisfied / step_finish under SENSOR RED; fix signature then commit-gated, or escalate honestly"
+          grep -E 'SENSOR RED|REDESIGN SIG RED|O-AGROALHELPERSIG|fail ' /tmp/sensor-task.log 2>/dev/null | head -8 || true
+        } >> "$(oc_seat_base "$T").err"
+        log "$T: O-STEPFINISHRED — rewriting worker_rc 0→42 (false-complete under sensor RED)"
+        event "$T" 0 stepfinish_red "worker_rc=42"
+      fi
     fi
   else
     log "$T: O-T6e worker left no app dirt (only .hermes/staging or clean) — no auto-commit"
+    # O-STEPFINISHRED: clean-tree rc=0 still false-complete when task sensor RED
+    # (worker claimed done without landing dirt that would tip-accept).
+    if [ "${WORKER_LAST_RC:-1}" = "0" ] \
+      && ! .hermes/harness/sensors.sh task > /tmp/sensor-task.log 2>&1; then
+      WORKER_LAST_RC=42
+      {
+        echo "O-STEPFINISHRED: worker exited 0 on clean tree but task sensor RED — incomplete (not Already-satisfied)"
+        grep -E 'SENSOR RED|REDESIGN SIG RED|O-AGROALHELPERSIG|fail ' /tmp/sensor-task.log 2>/dev/null | head -8 || true
+      } >> "$(oc_seat_base "$T").err"
+      log "$T: O-STEPFINISHRED — rewriting worker_rc 0→42 (clean-tree false-complete under sensor RED)"
+      event "$T" 0 stepfinish_red "worker_rc=42;clean"
+    fi
   fi
   return 1
 }
@@ -2336,6 +3249,13 @@ try_worker_verified_noop() { # $1=task-id → 0 if committed
     log "$T: O-ESCW skip allow-empty — worker rc=${WORKER_LAST_RC:-unset} (not verified)"
     return 1
   }
+  # O-ESCWSTRUCTTGT: never allow-empty "Already satisfied" while Shape=structure
+  # / Target .gitkeep is still absent — that tip poisons HEAD then still escalates
+  # (v3 S02 T-001: 51dad87 empty tip + O-SCOPEBACKFILL refuse + MiniMax).
+  if structure_targets_missing "$T"; then
+    log "$T: O-ESCWSTRUCTTGT skip allow-empty — structure Target still absent"
+    return 1
+  fi
   if ! why=$(ALREADY_COMPLETE_ROOT="$PWD" python3 .hermes/harness/escw-eligible.py \
        "$TASKS_FILE" "$T" 2>/tmp/escw-eligible.err); then
     log "$T: O-ESCW3 skip allow-empty — deliverables still required ($(cat /tmp/escw-eligible.err 2>/dev/null | tr '\n' ' '; echo "$why" | tr '\n' ' '))"
@@ -2350,6 +3270,14 @@ try_worker_verified_noop() { # $1=task-id → 0 if committed
       log "$T: O-ESCW allow-empty already-satisfied commit (no MiniMax escalation)"
       return 0
     }
+    # Tip landed but committed() refused (structure/ACSTRUCT) — drop the empty tip
+    # so MiniMax/escalation does not inherit a false Already-satisfied HEAD.
+    if git log -1 --format=%s 2>/dev/null | grep -qE "^${T}: Already satisfied"; then
+      git reset --soft HEAD~1 2>/dev/null \
+        || git reset --mixed HEAD~1 2>/dev/null \
+        || true
+      log "$T: O-ESCWSTRUCTTGT — reset false Already-satisfied tip (Target still absent)"
+    fi
   fi
   return 1
 }
@@ -2401,101 +3329,178 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   ensure_trackable_packages
   # O-T6: untracked/dirty target tree already green — don't burn a model seat
   if try_mechan_commit "$T"; then
-    log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
-    record_rule_outcomes "$T" "mechan"
-    scope_enforce "$T"
-    post_commit_verify "$T" "$T"
-    debt_frozen && return 1
-    return 0
+    if refuse_unhygienic_commit "$T" "$T"; then
+      log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "mechan"
+      scope_enforce "$T"
+      post_commit_verify "$T" "$T"
+      debt_frozen && return 1
+      return 0
+    fi
+    log "$T: O-HYGIENEWORKER reset mechan tip — continuing"
+    record_rule_outcomes "$T" "hygiene_reset"
   fi
-  # O-INFERABSENT (R-231): infer + Oracle:absent is the S03 T-007/T-012 wedge
-  # signature (high-read/0-write → JSON_STALE). Skip Qwen; escalate with
-  # MiniMax-owned edits (O-ESCREOPENCODE) instead of burning 300s×N.
+  # O-INFERABSENT (R-231 / Wave4 §2.2): infer + *derived* Oracle:absent is
+  # the S03 T-007/T-012 wedge (high-read/0-write → JSON_STALE). Skip Qwen
+  # unless a proceed path applies (Shape=create|verify or Proceed:
+  # O-NULLACTION). Escalate with MiniMax-owned edits (O-ESCREOPENCODE).
   local skip_worker=0
-  if [ "$(task_class "$T")" = "infer" ] && [ "$(task_oracle "$T")" = "absent" ]; then
+  if python3 - "$TASKS_FILE" "$T" <<'PY' 2>/dev/null
+import importlib.util, re, sys
+from pathlib import Path
+path, tid = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+body = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    break
+odp = Path(".hermes/harness/oracle_derive.py")
+spec = importlib.util.spec_from_file_location("oracle_derive", odp)
+mod = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(mod)
+cls_m = re.search(r"^[^\n]*(?:Class|Type)[^\n]*?\b(rewrite|infer)\b", body, re.M | re.I)
+cls = cls_m.group(1).lower() if cls_m else "infer"
+oracle = mod.derive_oracle(body, root=Path.cwd())
+shape = mod.task_shape(body)
+sys.exit(0 if mod.inferabsent_blocks(cls=cls, oracle=oracle, shape=shape, body=body) else 1)
+PY
+  then
     skip_worker=1
-    log "$T: O-INFERABSENT — skip worker (infer+Oracle:absent wedge signature)"
+    log "$T: O-INFERABSENT — skip worker (infer+derived-Oracle:absent wedge)"
     {
-      echo "O-INFERABSENT — worker skipped (infer + Oracle:absent)"
-      echo "escalate with MiniMax-owned file edits; do not re-dispatch opencode"
-    } > "/tmp/oc-${T}.err"
+      echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
+      echo "reshape Shape=create|verify or Proceed: O-NULLACTION; do not re-dispatch opencode"
+    } > "$(oc_seat_base "$T").err"
     WORKER_LAST_RC=143
-    printf '%s\n' "$T" > "/tmp/escalation-no-opencode-${T}"
+    arm_escreopencode "$T"
   fi
   if [ "$skip_worker" -eq 0 ] && [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
     # O-SFIXSCOPE: worker may commit then leave task RED — reset and escalate
     if refuse_red_task_commit "$T" "$T"; then
-      scope_enforce "$T"
-      post_commit_verify "$T" "$T"
-      log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
-      record_rule_outcomes "$T" "worker_green"
-      clear_worker_wedge_skip
-      debt_frozen && return 1
-      return 0
+      # O-HYGIENEWORKER: refuse spring-tx/jdbc/orm re-add etc. before GREEN advance
+      if refuse_unhygienic_commit "$T" "$T"; then
+        scope_enforce "$T"
+        post_commit_verify "$T" "$T"
+        log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
+        record_rule_outcomes "$T" "worker_green"
+        clear_worker_wedge_skip
+        debt_frozen && return 1
+        return 0
+      fi
+      log "$T: O-HYGIENEWORKER reset worker tip — continuing to escalation path"
+      record_rule_outcomes "$T" "hygiene_reset"
+    else
+      log "$T: O-SFIXSCOPE reset worker RED commit — continuing to escalation path"
+      record_rule_outcomes "$T" "worker_reset"
     fi
-    log "$T: O-SFIXSCOPE reset worker RED commit — continuing to escalation path"
-    record_rule_outcomes "$T" "worker_reset"
     # O-ESCALAFTERRESET: clean orphan poison + re-sensor; prefer commit GREEN
     # dirt / ESCW over MiniMax invent on a freshly reset tip.
     if post_reset_escalation_gate "$T"; then
-      scope_enforce "$T"
-      post_commit_verify "$T" "$T"
-      log_task END "$T" "O-ESCALAFTERRESET — GREEN after reset (no MiniMax invent) — $(git log --oneline -1 | cut -c1-80)"
-      record_rule_outcomes "$T" "escal_after_reset"
-      clear_worker_wedge_skip
-      debt_frozen && return 1
-      return 0
+      if refuse_unhygienic_commit "$T" "$T"; then
+        scope_enforce "$T"
+        post_commit_verify "$T" "$T"
+        log_task END "$T" "O-ESCALAFTERRESET — GREEN after reset (no MiniMax invent) — $(git log --oneline -1 | cut -c1-80)"
+        record_rule_outcomes "$T" "escal_after_reset"
+        clear_worker_wedge_skip
+        debt_frozen && return 1
+        return 0
+      fi
+      log "$T: O-HYGIENEWORKER reset after O-ESCALAFTERRESET — continuing"
+      record_rule_outcomes "$T" "hygiene_reset"
     fi
   fi
   # O-T6e: second mechan pass after worker (gitkeep / late writes / ESCW2 dirt)
   ensure_trackable_packages
   if try_mechan_commit "$T"; then
-    log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
-    record_rule_outcomes "$T" "mechan"
-    scope_enforce "$T"
-    post_commit_verify "$T" "$T"
-    debt_frozen && return 1
-    return 0
+    if refuse_unhygienic_commit "$T" "$T"; then
+      log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "mechan"
+      scope_enforce "$T"
+      post_commit_verify "$T" "$T"
+      debt_frozen && return 1
+      return 0
+    fi
+    log "$T: O-HYGIENEWORKER reset mechan tip after worker — continuing"
+    record_rule_outcomes "$T" "hygiene_reset"
   fi
   # O-ESCW: worker verified, nothing to change — close without MiniMax
   if try_worker_verified_noop "$T"; then
-    scope_enforce "$T"
-    post_commit_verify "$T" "$T"
-    log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
-    record_rule_outcomes "$T" "escw"
-    debt_frozen && return 1
-    return 0
+    if refuse_unhygienic_commit "$T" "$T"; then
+      scope_enforce "$T"
+      post_commit_verify "$T" "$T"
+      log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "escw"
+      debt_frozen && return 1
+      return 0
+    fi
+    log "$T: O-HYGIENEWORKER reset ESCW tip — continuing"
+    record_rule_outcomes "$T" "hygiene_reset"
   fi
   # O-ESCALCAUSE: classify why MiniMax is taking over (rescue vs redo).
   # Prefer O-KILLREASON / wedge text already written to .err (W3-143) — never
   # collapse pause-kills into the constant worker-failed.
   local esc_cause="worker-failed"
   local esc_detail=""
-  if [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'supervisor-pause' "/tmp/oc-${T}.err" 2>/dev/null; then
+  if [ -f "$(oc_seat_base "$T").err" ] && grep -qiE 'supervisor-pause' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="supervisor-pause"
-    esc_detail=$(grep -m1 'worker killed —' "/tmp/oc-${T}.err" 2>/dev/null || echo "O-KILLREASON supervisor-pause")
-  elif [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'debt-freeze' "/tmp/oc-${T}.err" 2>/dev/null; then
+    esc_detail=$(grep -m1 'worker killed —' "$(oc_seat_base "$T").err" 2>/dev/null || echo "O-KILLREASON supervisor-pause")
+  elif [ -f "$(oc_seat_base "$T").err" ] && grep -qiE 'debt-freeze' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="debt-freeze"
-    esc_detail=$(grep -m1 'worker killed —' "/tmp/oc-${T}.err" 2>/dev/null || echo "O-KILLREASON debt-freeze")
-  elif [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'O-WORKERREAD|read-thrash|O-FIRSTMUT' "/tmp/oc-${T}.err" 2>/dev/null; then
+    esc_detail=$(grep -m1 'worker killed —' "$(oc_seat_base "$T").err" 2>/dev/null || echo "O-KILLREASON debt-freeze")
+  elif [ -f "$(oc_seat_base "$T").err" ] && grep -qiE 'O-WORKERREAD|read-thrash|O-FIRSTMUT' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="read-thrash"
-    esc_detail=$(grep -m1 'read-thrash\|O-WORKERREAD\|O-FIRSTMUT' "/tmp/oc-${T}.err" 2>/dev/null | head -1 || true)
-  elif [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'O-WORKERWEDGE|worker wedged' "/tmp/oc-${T}.err" 2>/dev/null; then
+    esc_detail=$(grep -m1 'read-thrash\|O-WORKERREAD\|O-FIRSTMUT' "$(oc_seat_base "$T").err" 2>/dev/null | head -1 || true)
+  elif [ -f "$(oc_seat_base "$T").err" ] && grep -qiE 'O-WORKERWEDGE|worker wedged' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="worker-wedge"
-    esc_detail=$(grep -m1 'wedged\|O-WORKERWEDGE' "/tmp/oc-${T}.err" 2>/dev/null | head -1 || true)
-  elif [ -f "/tmp/oc-${T}.err" ] && grep -qiE '429|rate.?limit|quota|Too Many Requests' "/tmp/oc-${T}.err" 2>/dev/null; then
+    esc_detail=$(grep -m1 'wedged\|O-WORKERWEDGE' "$(oc_seat_base "$T").err" 2>/dev/null | head -1 || true)
+  elif [ -f "$(oc_seat_base "$T").err" ] && grep -qiE '429|rate.?limit|quota|Too Many Requests' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="quota"
   elif [ "${WORKER_LAST_RC:-}" = "130" ]; then
     # O-SIGINT: harness kills use TERM/KILL (143/137); rc=130 is external INT.
     esc_cause="sigint"
     esc_detail="worker_rc=130 (SIGINT — not harness TERM/KILL; see kill-ledger)"
-  elif tail -n 80 "$LOG" 2>/dev/null | grep -qE "${T}: O-T6d|unexpected-paths"; then
-    esc_cause="guard-refused"
-  elif [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'unexpected-paths|staged paths mismatch|O-T6d' "/tmp/oc-${T}.err" 2>/dev/null; then
+  # O-STEPFINISHRED / O-ESCALCAUSE-STALE: prefer latest post-worker sensor RED
+  # over an earlier pre-worker O-T6d empty-stage / guard-refused (v3 S01 T-001:
+  # cause stayed guard-refused while real reason was task sensor RED /
+  # O-HTTPPORT). Also match O-T6e "task sensor RED after worker" and
+  # O-STEPFINISHRED .err — wake#293 labeled worker-failed/rc=0 dishonestly.
+  elif [ -f "$(oc_seat_base "$T").err" ] \
+    && grep -qiE 'O-STEPFINISHRED' "$(oc_seat_base "$T").err" 2>/dev/null; then
+    esc_cause="sensor-red"
+    esc_detail=$(grep -E 'O-STEPFINISHRED|SENSOR RED|REDESIGN SIG RED|O-AGROALHELPERSIG|fail ' \
+      "$(oc_seat_base "$T").err" /tmp/sensor-task.log 2>/dev/null \
+      | tail -5 | tr '\n' ';' | cut -c1-240)
+  elif grep -qE 'SENSOR RED|O-HTTPPORT|REDESIGN SIG RED|O-AGROALHELPERSIG' \
+         /tmp/sensor-task.log /tmp/sensor-milestone.log /tmp/sensor-sonar.log 2>/dev/null \
+    && tail -n 160 "$LOG" 2>/dev/null \
+         | grep -qE "${T}:.*(committed but the|sensor is RED|task sensor RED|O-STEPFINISHRED|O-T6e.*sensor RED|post_commit|O-SFIX|Actor:|mechanical commit|already satisfied)"; then
+    esc_cause="sensor-red"
+    esc_detail=$(grep -E 'SENSOR RED|O-HTTPPORT|REDESIGN SIG RED|O-AGROALHELPERSIG|fail ' \
+      /tmp/sensor-task.log /tmp/sensor-milestone.log /tmp/sensor-sonar.log 2>/dev/null \
+      | tail -5 | tr '\n' ';' | cut -c1-240)
+  elif _esc_last=$(tail -n 200 "$LOG" 2>/dev/null | grep -E "${T}:" | tail -1) \
+    && [ -n "$_esc_last" ]; then
+    # Only classify guard-refused when the *latest* log line for this task is
+    # still the mechan/path guard — not a stale earlier O-T6d after worker ran.
+    if echo "$_esc_last" | grep -qE 'O-T6d|unexpected-paths|staged paths mismatch'; then
+      esc_cause="guard-refused"
+      esc_detail=$(echo "$_esc_last" | sed 's/^.*O-T6d /O-T6d /')
+    elif [ -f "$(oc_seat_base "$T").err" ] \
+      && grep -qiE 'unexpected-paths|staged paths mismatch|O-T6d' "$(oc_seat_base "$T").err" 2>/dev/null \
+      && ! echo "$_esc_last" | grep -qE 'Actor:|committed|sensor|O-SFIX|post_commit'; then
+      esc_cause="guard-refused"
+    fi
+    unset _esc_last
+  elif [ -f "$(oc_seat_base "$T").err" ] && grep -qiE 'unexpected-paths|staged paths mismatch|O-T6d' "$(oc_seat_base "$T").err" 2>/dev/null; then
     esc_cause="guard-refused"
   fi
   # F-20 P3: cause file carries guard id + reason when known (self-contained).
-  if [ -z "$esc_detail" ]; then
+  if [ -z "$esc_detail" ] && [ "$esc_cause" = "guard-refused" ]; then
     esc_detail=$(tail -n 80 "$LOG" 2>/dev/null | grep -E "${T}: O-T6d" | tail -1 | sed 's/^.*O-T6d /O-T6d /' || true)
   fi
   {
@@ -2529,29 +3534,32 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   local esc_shape esc_oracle
   esc_shape=$(printf '%s\n' "$esc_packet" | sed -n 's/^Shape:[[:space:]]*//p' | head -1)
   esc_oracle=$(printf '%s\n' "$esc_packet" | sed -n 's/^Oracle:[[:space:]]*//p' | head -1)
-  # O-ESCREOPENCODE: after wedge/thrash/INFERABSENT, MiniMax owns edits — do not
-  # re-dispatch the same wedged OpenCode class (S03 T-007/T-012).
-  local esc_routing
-  if [ -f "/tmp/escalation-no-opencode-${T}" ] \
-    || { [ -f "/tmp/oc-${T}.err" ] && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE' "/tmp/oc-${T}.err" 2>/dev/null; } \
-    || { [ -f /tmp/worker-wedge-skip ] && grep -qxF "$(echo "${STORY_SPEC_PREFIX:-run}" | awk '{print $1}')" /tmp/worker-wedge-skip 2>/dev/null; }; then
-    esc_routing="MODEL ROUTING (O-ESCREOPENCODE): You are MiniMax on ESCALATION after a wedged/skipped worker. YOU OWN all file-changing work with your own tools. Do NOT dispatch opencode (-m ${WORKER_MODEL}) — re-invoking the wedged worker class burns another seat."
+  # O-ESCREOPENCODE (+ ENFORCE / SENSORRED): after wedge/thrash/INFERABSENT/
+  # CHARORACLE/sensor-red/O-STEPFINISHRED, MiniMax owns edits — do not
+  # re-dispatch the incomplete OpenCode class. Prompt forbid alone failed
+  # (Wave4 S03 T-002 invent; W4-100a sensor-red nested Qwen hollow).
+  local esc_routing esc_worker_disc
+  if escreopencode_should "$T"; then
+    arm_escreopencode "$T"
+    esc_routing="MODEL ROUTING (O-ESCREOPENCODE): You are MiniMax on ESCALATION after a wedged/skipped/sensor-red worker. YOU OWN all file-changing work with your own tools. Do NOT dispatch opencode (-m ${WORKER_MODEL}) — re-invoking the incomplete worker class burns another seat (incl. O-STEPFINISHRED / sensor-red). O-ESCREOPENCODE-ENFORCE: supervisor DENIES/KILLS any opencode spawn during this escalation."
+    esc_worker_disc="O-ESCREOPENCODE-ENFORCE: opencode is refused (exit 75) and killed if spawned. Do NOT attempt opencode. Own file edits with MiniMax tools. If O-CHARORACLE/oracle absent or fabrication would be required: write /tmp/escalation-noaction-${T}.txt with reason and STOP (O-NULLACTION success). NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only."
   else
     esc_routing="MODEL ROUTING (V7): You are MiniMax orchestrator on ESCALATION. Prefer dispatching opencode (-m ${WORKER_MODEL}) for all file-changing work. Do NOT apply mechanical rewrite/harvest edits with your own tools unless the worker already failed — Qwen has unlimited tokens; MiniMax is rate-limited."
+    esc_worker_disc="Worker discipline (V6 P2.1/P2.2): if you do launch opencode, run it in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only."
   fi
   if run_stage "$T" "$T" \
 "Use the migration-harness skill and read EXECUTION.md in its directory. Execute M4 for task ${T} from ${TASKS_FILE} ONLY.
 ${esc_routing}
-O-ESCWSCOPE: edit ONLY this task's Owns/Target paths from ${TASKS_FILE}. Do NOT create or mutate later-story classes (${LATER_CLASSES:-none}) or unrelated services.
+O-ESCWSCOPE / O-ESCWSCOPEUTIL: edit ONLY this task's Owns/Target paths from ${TASKS_FILE}. Do NOT create or mutate later-story classes (${LATER_CLASSES:-none}), src/main/**/util/* collaborators, or unrelated services. Untracked later-class dirt is removed (O-ESCWSCOPEUTIL) — tip REJECT if util lands with a convert tip.
 O-ESCALORACLE: Shape=${esc_shape:-unknown} Oracle=${esc_oracle:-unknown}. If Oracle=absent or Shape=remove: prove named targets are ABSENT — never create a file solely to delete it; never invent unlisted deletion targets.
-Worker discipline (V6 P2.1/P2.2): if you do launch opencode, run it in the FOREGROUND with a terminal timeout ≥1800s; WAIT for exit; NEVER background it; NEVER use python3 <<heredoc, python3 -c multi-line, or scratch OpenRewrite — bundled scripts only.
+${esc_worker_disc}
 O-ESCTERM60: land the tip with \`.hermes/harness/commit-gated.sh '${T}: …'\` (terminal timeout ≥300). Do NOT bare \`git commit\` — commit-msg sensor exceeds short tool timeouts.
 ${esc_evidence:+$esc_evidence
 }Worker packet (authoritative goal + constraints):
 ${esc_packet:-'(task-packet unavailable — read ${TASKS_FILE} for ${T})'}
 ${RUN_CONTRACT}
 Finish with ONE commit whose message STARTS with '${T}:'. Stop after ${T}." \
-"Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. O-ESCALAFTERRESET: if a prior tip was O-SFIXSCOPE-reset, do NOT invent new files/tests or rewrite already-GREEN tip content — if sensors.sh task is GREEN on a clean or dirty-but-good tree, land ONE commit starting '${T}:' via \`.hermes/harness/commit-gated.sh '${T}: …'\` only. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode via \`.hermes/harness/commit-gated.sh '${T}: …'\` (O-ESCTERM60; terminal timeout ≥300; no bare git commit). ${esc_routing} Foreground only; bundled scripts only — no heredocs / python3 -c.
+"Use the migration-harness skill and read EXECUTION.md in its directory. Continue M4 for task ${T} from ${TASKS_FILE} ONLY. Inspect git status first. O-ESCALAFTERRESET: if a prior tip was O-SFIXSCOPE-reset, do NOT invent new files/tests or rewrite already-GREEN tip content — if sensors.sh task is GREEN on a clean or dirty-but-good tree, land ONE commit starting '${T}:' via \`.hermes/harness/commit-gated.sh '${T}: …'\` only. If a previous worker left complete work and sensors are GREEN, commit ONE commit starting '${T}:' WITHOUT launching opencode via \`.hermes/harness/commit-gated.sh '${T}: …'\` (O-ESCTERM60; terminal timeout ≥300; no bare git commit). ${esc_routing} ${esc_worker_disc} Foreground only; bundled scripts only — no heredocs / python3 -c.
 ${esc_evidence:+$esc_evidence
 }${RUN_CONTRACT}"; then
     # O-T1FINDESC: scrub before amend so the attributed tip stays clean.
@@ -2667,6 +3675,11 @@ for T in $TASK_IDS; do
     echo "debt-freeze" > /tmp/supervisor-done
     exit 78
   fi
+  # O-SEATBUDGET: tripwire before dispatching more seats
+  check_seat_budget_overrun "$T" || {
+    echo "debt-freeze" > /tmp/supervisor-done
+    exit 78
+  }
   if committed "$T"; then
     log "$T: already committed"
     log_task SKIP "$T" "already committed — skipping"
@@ -2674,13 +3687,18 @@ for T in $TASK_IDS; do
   fi
   if [ "$(task_class "$T")" = "rewrite" ]; then
     BATCH="$BATCH $T"
-    [ "$(echo $BATCH | wc -w | tr -d ' ')" -ge "$BATCH_MAX" ] && { flush_batch "$BATCH"; BATCH=""; }
+    [ "$(echo $BATCH | wc -w | tr -d ' ')" -ge "$BATCH_MAX" ] && { flush_batch "$BATCH"; BATCH=""; check_seat_budget_overrun "batch" || true; }
     continue
   fi
   flush_batch "$BATCH"; BATCH=""
   run_task "$T" || true
+  check_seat_budget_overrun "$T" || {
+    echo "debt-freeze" > /tmp/supervisor-done
+    exit 78
+  }
 done
 flush_batch "$BATCH"; BATCH=""
+check_seat_budget_overrun "M4-end" || true
 if debt_frozen; then
   log "O-DEBTFRZ: M4 ended under debt freeze — not entering M5"
   echo "debt-freeze" > /tmp/supervisor-done
@@ -2775,9 +3793,25 @@ if ! committed "M5 evaluate"; then
 O-M5EVALHARVEST: Do NOT run harvest-from-staging or create/copy src/main/java packages for later stories. ABSENT-NOT-LANDED means explain in run-log (owned by later story / not landed yet) — never materialize those classes here. REMAINING pom/plugin rules (e.g. javaee-pom-to-quarkus-00030/00050): edit pom.xml only, or document as residual debt if out of this story's Owns. Story scope paths: ${STORY_SCOPE:-see roadmap}. Later classes (${LATER_CLASSES:-none}) are forbidden.
 O-M5EVALDELETE: Do NOT delete or empty already-landed src/main/java under story Owns (including repository/**) and do NOT remove required deps (e.g. quarkus-spring-data-jpa) to clear REMAINING — document RED honestly instead.
 ${RUN_CONTRACT}
-Commit prefix: 'M5 evaluate:'. DO NOT PUSH." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue M5 evaluate; verify migration/mta-findings-after.json and migration/findings-delta.txt exist, run .hermes/harness/sensors.sh preflight, state GREEN or RED honestly in the commit message (L-M5e), then commit starting 'M5 evaluate:'. O-M5EVALHARVEST: no harvest / no later-story packages — pom/props/run-log only unless already in story scope. O-M5EVALDELETE: do not delete landed src/main/java or required pom deps. ${RUN_CONTRACT}" \
+Commit prefix: 'M5 evaluate:'. DO NOT PUSH. O-M5EVALTESTMAIN: do NOT commit characterization tests that require src/main harvest transforms absent from this tip — co-commit approved main+tests or leave tests uncommitted. O-M5EVALBURN: ALWAYS commit findings-delta.txt + run-log append even when preflight is RED (honest L-M5e RED tip beats a no-commit burn)." \
+"Use the migration-harness skill and read SHIPPING.md in its directory. Continue M5 evaluate; verify migration/mta-findings-after.json and migration/findings-delta.txt exist, run .hermes/harness/sensors.sh preflight, state GREEN or RED honestly in the commit message (L-M5e), then commit starting 'M5 evaluate:'. O-M5EVALHARVEST: no harvest / no later-story packages — pom/props/run-log only unless already in story scope. O-M5EVALDELETE: do not delete landed src/main/java or required pom deps. O-M5EVALBURN: commit findings-delta/run-log even on preflight RED. ${RUN_CONTRACT}" \
     || log "M5 evaluate: exhausted — shipping without final re-analysis commit"
+  # O-M5EVALBURN: if the model seat burned with no tip, mechan-commit harness
+  # findings artifacts so the story has an honest evaluate marker (not silence).
+  if ! committed "M5 evaluate"; then
+    if [ -f migration/findings-delta.txt ] || [ -f migration/mta-findings-after.json ]; then
+      git add -f migration/findings-delta.txt migration/findings-delta.STALE \
+        migration/mta-findings-after.json migration/run-log.md 2>/dev/null || true
+      if ! git diff --cached --quiet 2>/dev/null; then
+        if SKIP_SENSOR_GATE=1 git commit -q -m \
+          "M5 evaluate: O-M5EVALBURN mechan findings-delta (no model tip; preflight not claimed GREEN)" \
+          >>"$LOG" 2>&1; then
+          log "M5 evaluate: O-M5EVALBURN — mechan-committed findings artifacts after no-commit burn"
+          event "m5-evaluate" 0 m5_eval_burn_mechan
+        fi
+      fi
+    fi
+  fi
   # O-M5EVALDELETE: working-tree or tip deletions under src/main/java / pom → restore + FREEZE (v2 S04).
   _m5_del=$(git diff --name-only --diff-filter=D "${_m5_eval_base}" -- src/main/java pom.xml 2>/dev/null || true)
   if committed "M5 evaluate"; then
@@ -2823,7 +3857,39 @@ Commit prefix: 'M5 evaluate:'. DO NOT PUSH." \
       log "M5 evaluate: preflight GREEN (L-M5e bar)"
     else
       log "M5 evaluate: preflight RED after evaluate commit (L-M5e) — not ship-ready; ship loop will correct — $(grep -E 'SENSOR RED|COVERAGE' /tmp/m5-evaluate-preflight.txt | head -3 | tr '\n' ' ')"
+      # O-M5PRECLAIM: tip subject must not claim preflight=GREEN when proof is RED/REFUSED.
+      _m5_subj=$(git log -1 --format=%s)
+      if echo "$_m5_subj" | grep -qiE 'preflight[[:space:]]*=[[:space:]]*GREEN'; then
+        _m5_new=$(printf '%s\n' "$_m5_subj" | sed -E 's/[Pp]reflight[[:space:]]*=[[:space:]]*GREEN/preflight=RED/g')
+        if [ "$_m5_new" != "$_m5_subj" ]; then
+          git commit --amend -q -m "$_m5_new" >>"$LOG" 2>&1 || true
+          log "M5 evaluate: O-M5PRECLAIM — rewrote false preflight=GREEN → RED in tip subject"
+          event "m5-evaluate" 0 m5_preclaim_rewrite "preflight=RED"
+        fi
+      fi
+      unset _m5_subj _m5_new
     fi
+    # O-M5EVALTESTMAIN: refuse evaluate tips that land src/test characterization
+    # requiring src/main mutations absent from the tip (tests RED vs tip main).
+    # Co-commit approved transforms + tests, or leave tests uncommitted.
+    _m5_tests=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null \
+      | grep -E '^src/test/' | head -5 || true)
+    _m5_main=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null \
+      | grep -E '^src/main/' | head -5 || true)
+    if [ -n "${_m5_tests}" ] && [ -z "${_m5_main}" ]; then
+      if ! .hermes/harness/sensors.sh task >/tmp/m5-evaluate-testmain.log 2>&1; then
+        log "M5 evaluate: O-M5EVALTESTMAIN — tip landed src/test without src/main and task RED; resetting tip"
+        event "m5-evaluate" 0 m5_eval_testmain_reset
+        _arch="/tmp/strays/m5-evaluate-testmain-$(date -u +%Y%m%dT%H%M%SZ)"
+        mkdir -p "$_arch"
+        git show --stat HEAD >"$_arch/stat.txt" 2>&1 || true
+        git show HEAD >"$_arch/full.diff" 2>&1 || true
+        git reset --hard HEAD~1 >>"$LOG" 2>&1 || true
+        record_debt "m5-evaluate" "milestone" \
+          "O-M5EVALTESTMAIN: evaluate tests without co-committed src/main (task RED)" || true
+      fi
+    fi
+    unset _m5_tests _m5_main _arch
   fi
 fi
 
@@ -2842,14 +3908,34 @@ OC() { oc --server=https://kubernetes.default.svc --token="$(cat $SA/token)" --c
 
 newest_pipelinerun() { OC get pipelinerun -n "$NS" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null; }
 pipeline_status()   { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.status.conditions[0].status} {.status.conditions[0].reason}' 2>/dev/null; }
+pipeline_created()  { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null; }
+pipeline_revision() { OC get pipelinerun "$1" -n "$NS" -o jsonpath='{.spec.params[?(@.name=="revision")].value}' 2>/dev/null; }
+
+# O-SHIPNOPRSTALE: uptodate O-SHIPNOPR may only judge a PR created at/after
+# this ship session (and matching HEAD revision when known).
+pipelinerun_session_fresh() { # $1=pr name → fresh|stale|no-pr
+  local name="$1" created rev head sess decision
+  [ -n "$name" ] || { echo no-pr; return; }
+  created=$(pipeline_created "$name")
+  rev=$(pipeline_revision "$name")
+  head=$(git rev-parse HEAD 2>/dev/null || true)
+  sess=""
+  [ -f /tmp/ship-session-started ] && sess=$(tr -d '[:space:]' </tmp/ship-session-started)
+  decision=$(python3 .hermes/harness/shipnoprstale-decide.py \
+    "${created:-}" "${sess:-}" "${rev:-}" "${head:-}" 2>/dev/null || echo stale)
+  echo "$decision"
+}
 
 wait_pipeline() { # $1=previous newest run; $2=1 if git push was up-to-date
   # O-SHIPNOPR / O-NOPUSHPR: when push is Truly "Everything up-to-date"
   # (SHIP_ONLY re-earn), fall back to the newest existing run. When push
   # advanced remote commits, a NEW PipelineRun is required — do NOT judge a
   # stale prior Succeeded run (S06 empty-delta false ship on …-push-7k7vn).
-  # Decision core: nopushpr-decide.py (instrumented).
-  local prev="$1" push_uptodate="${2:-0}" name="" i decision
+  # O-SHIPNOPRSTALE: uptodate judge-existing must still be post-session
+  # (creation ≥ /tmp/ship-session-started) and revision-aligned with HEAD —
+  # abandoned Failed/Succeeded PRs must not open Deploy-fix seats.
+  # Decision core: nopushpr-decide.py + shipnoprstale-decide.py (instrumented).
+  local prev="$1" push_uptodate="${2:-0}" name="" i decision freshness
   local max_new=12
   [ "$push_uptodate" = "1" ] || max_new=36  # ~6m for webhook/PR to appear
   for i in $(seq 1 "$max_new"); do
@@ -2871,7 +3957,46 @@ wait_pipeline() { # $1=previous newest run; $2=1 if git push was up-to-date
       echo "none no-trigger"
       return
     fi
-    log "M5 ship: no new PipelineRun (up-to-date push) — judging existing $name (O-SHIPNOPR)"
+    freshness=$(pipelinerun_session_fresh "$name")
+    if [ "$freshness" != "fresh" ]; then
+      # Give operator a short window to trigger a post-session PR (no Deploy-fix).
+      log "M5 ship: O-SHIPNOPRSTALE — existing $name is pre-session/abandoned ($freshness); waiting for post-session PipelineRun"
+      outer_log "         M5 ship: O-SHIPNOPRSTALE — refusing stale ${name}; waiting for new PipelineRun"
+      local waited_name=""
+      for i in $(seq 1 36); do
+        waited_name=$(newest_pipelinerun)
+        if [ -n "$waited_name" ] && [ "$waited_name" != "$name" ]; then
+          if [ "$(pipelinerun_session_fresh "$waited_name")" = "fresh" ]; then
+            name="$waited_name"
+            freshness=fresh
+            log "M5 ship: O-SHIPNOPRSTALE — post-session PipelineRun $name appeared"
+            break
+          fi
+        fi
+        # Same name may be replaced after delete; re-check newest.
+        if [ -n "$waited_name" ] && [ "$(pipelinerun_session_fresh "$waited_name")" = "fresh" ]; then
+          name="$waited_name"
+          freshness=fresh
+          log "M5 ship: O-SHIPNOPRSTALE — post-session PipelineRun $name appeared"
+          break
+        fi
+        sleep 10
+      done
+      if [ "$freshness" != "fresh" ]; then
+        log "M5 ship: O-SHIPNOPRSTALE — no post-session PipelineRun — ship-blocked-stale-pipeline (no Deploy-fix)"
+        echo "none stale-pipeline"
+        return
+      fi
+    fi
+    log "M5 ship: no new PipelineRun (up-to-date push) — judging existing $name (O-SHIPNOPR; session-fresh)"
+  elif [ "$decision" = "proceed" ] && [ -n "$name" ]; then
+    # New PR after push: still refuse if revision≠HEAD (wrong trigger).
+    freshness=$(pipelinerun_session_fresh "$name")
+    if [ "$freshness" = "stale" ]; then
+      log "M5 ship: O-SHIPNOPRSTALE — new PipelineRun $name failed session/revision check — ship-blocked-stale-pipeline"
+      echo "none stale-pipeline"
+      return
+    fi
   fi
   for i in $(seq 1 120); do
     local st; st=$(pipeline_status "$name")
@@ -2891,12 +4016,42 @@ gate_violations() { # writes /tmp/gate-violations.txt; echoes count
     --out /tmp/gate-violations.txt --coverage 2>/dev/null || echo 0
 }
 
+# O-DEBTSHIPRACE: debt-freeze must hard-stop ship/preflight fix rounds.
+# record_debt may land in the same second as evaluate→ship fallthrough;
+# never start preflight-fix while /tmp/debt-freeze is set.
+if debt_frozen; then
+  log "M5 ship: O-DEBTSHIPRACE — debt-freeze present; refusing ship/preflight fix rounds"
+  outer_log "         M5 ship: O-DEBTSHIPRACE — blocked by debt-freeze (no preflight fix)"
+  touch /tmp/supervisor-pause
+  echo "debt-freeze" > /tmp/supervisor-done
+  exit 78
+fi
+
 log "M5 ship: shipping (namespace=$NS, sonar key=$SONAR_KEY)"
 BUILD_R=0; GATE_R=0; DEPLOY_R=0; PREF_R=0
 MAX_PER_CLASS=2
 LAST_PUSHED=""
 # O-PREFLIGHTDIM: fresh ship session gets a clean full-preflight budget.
+# O-SHIPROUNDBASE: stamp exclusive ship-session base so Preflight/Gate/Build
+# fix committed() checks do not auto-satisfy from prior-session tips under
+# story RUN_BASE (W4-068a: r1 burned in ~26s after restart). Abandoned
+# origin/main tips are not authority — fetch for geometry only; never pull/merge.
 rm -f /tmp/preflight-count
+git rev-parse HEAD >/tmp/ship-session-base
+# O-SHIPNOPRSTALE: wall-clock session start — PipelineRuns created before
+# this stamp are abandoned/prior-round and must not drive Deploy-fix.
+date -u +%s >/tmp/ship-session-started
+log "M5 ship: O-SHIPROUNDBASE — ship-session-base=$(tr -d '[:space:]' </tmp/ship-session-base)"
+log "M5 ship: O-SHIPNOPRSTALE — ship-session-started=$(tr -d '[:space:]' </tmp/ship-session-started)"
+if git fetch origin --prune >/tmp/ship-fetch.out 2>&1; then
+  if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null \
+    && ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+    log "M5 ship: O-SHIPROUNDBASE — origin/main diverged (not ancestor/descendant); abandoned remote tip is NOT authority (no pull/merge; O-SHIPREMOTE blocks non-FF)"
+    outer_log "         M5 ship: O-SHIPROUNDBASE — diverged origin/main ignored as authority (reconcile before push)"
+  fi
+else
+  log "M5 ship: O-SHIPROUNDBASE — git fetch origin failed (continuing; push may hit O-SHIPREMOTE)"
+fi
 # Cart run #2: a gate round "exhausted" while the fix (96.7% coverage)
 # sat committed as a checkpoint — and the old loop broke straight to
 # factory-failed. An exhausted round only ends the run when it produced
@@ -2957,9 +4112,41 @@ EOF
   # Pre-push preflight (cart run #2): the factory failed maven-build on a
   # defect (unpinned compiler plugin) the local full check catches — never
   # burn a pipeline round on a locally-detectable failure. Bounded like
-  # every fix class; when the budget is spent, push and let the factory
-  # arbitrate.
-  if ! .hermes/harness/sensors.sh preflight > /tmp/preflight-failure.txt 2>&1; then
+  # every fix class; when the budget is spent, O-SHIPBUDGET runs one
+  # closing preflight then HOLDs if still RED (no push-anyway).
+  _pref_ok=0
+  if .hermes/harness/sensors.sh preflight > /tmp/preflight-failure.next 2>&1; then
+    cp /tmp/preflight-failure.next /tmp/preflight-failure.txt
+    _pref_ok=1
+  elif grep -qE 'REFUSED \(O-PREFLIGHTDIM\)' /tmp/preflight-failure.next 2>/dev/null; then
+    # O-PREFDIMTHRASH / O-PFEVID: REFUSED is a budget signal, not unpaid RED.
+    # Do not clobber real QUALITYGATE evidence with refuse; reset count and
+    # run ONE closing preflight before burning a fix seat (wake#184 thrash).
+    log "M5 ship: O-PREFDIMTHRASH — full-preflight cap refuse; reset count + one closing preflight (no seat on refuse)"
+    outer_log "         M5 ship: O-PREFDIMTHRASH — refuse→reset→closing preflight (not a fix seat)"
+    event "m5-ship" 0 preflightdim_refuse_reset "cap"
+    cat /tmp/preflight-failure.next >> /tmp/preflight-refuse.log 2>/dev/null || true
+    # O-PFEVID: keep prior real evidence if present; refuse goes to refuse.log only.
+    if ! grep -qE 'QUALITYGATE|new_violations|coverage|java:S' /tmp/preflight-failure.txt 2>/dev/null; then
+      if [ -f /tmp/sensor-sonar.log ] && grep -qE 'QUALITYGATE|java:S' /tmp/sensor-sonar.log 2>/dev/null; then
+        grep -E 'QUALITYGATE|FAIL|java:S|coverage|ERROR' /tmp/sensor-sonar.log \
+          | tail -n 40 > /tmp/preflight-failure.txt 2>/dev/null || true
+        echo "(O-PFEVID: restored from sensor-sonar.log after O-PREFLIGHTDIM refuse)" \
+          >> /tmp/preflight-failure.txt
+      fi
+    fi
+    rm -f /tmp/preflight-count
+    if .hermes/harness/sensors.sh preflight > /tmp/preflight-failure.txt 2>&1; then
+      log "M5 ship: closing preflight GREEN after O-PREFLIGHTDIM reset"
+      _pref_ok=1
+    else
+      log "M5 ship: closing preflight still RED after dim reset — proceeding to fix rounds"
+    fi
+  else
+    cp /tmp/preflight-failure.next /tmp/preflight-failure.txt
+  fi
+  rm -f /tmp/preflight-failure.next
+  if [ "$_pref_ok" != "1" ]; then
     PREF_R=$((PREF_R+1))
     # O-GATEACHIEVE / N14 / D2 durable: coverage-gap decision-class REDs page
     # the operator — do not burn MiniMax ship-fix seats on unachievable bars.
@@ -2995,22 +4182,20 @@ EOF
       log "M5 ship: pre-push preflight RED (round $PREF_R) — fixing before push"
       outer_log "         M5 ship: preflight RED — fix round ${PREF_R}/${MAX_PER_CLASS} starting"
       event "m5-ship" 0 "preflight_red" "round=$PREF_R"
+      # O-PREFDIMTHRASH / O-PFCOUNTRM: each fix round gets a fresh full-preflight
+      # budget so seats are not stuck on REFUSED with no real unpaid evidence.
+      rm -f /tmp/preflight-count
       run_stage "Preflight fix r${PREF_R}" "preflightfix-r${PREF_R}" \
-"Use the migration-harness skill and read SHIPPING.md in its directory. The pre-push preflight is RED - the failure evidence is in /tmp/preflight-failure.txt, read it with your file tools. Fix the root cause (build wiring against the WORKING scaffold pom conventions; coverage gaps need real tests for the uncovered classes - never weaken assertions). Finish with .hermes/harness/sensors.sh preflight GREEN, then commit ONE commit. DO NOT PUSH.
+"Use the migration-harness skill and read SHIPPING.md in its directory. The pre-push preflight is RED - the failure evidence is in /tmp/preflight-failure.txt, read it with your file tools. Fix the root cause (build wiring against the WORKING scaffold pom conventions; coverage gaps need real tests for the uncovered classes - never weaken assertions; keep typed assertThrows(UnsupportedOperationException) for unmodifiable getters — O-SHIPASSERTWEAK). O-SONARFIX/S5778: arrange mutation outside a single-invocation assertThrows — do NOT thrash brace/bind/assertj cosmetics or add unused assertj-core to pom. Prefer .hermes/harness/sensors.sh sonar|task (dim) then ONE closing preflight. O-SHIPFIXCOMMIT: when local mvn test / sensors.sh task is GREEN on tests-only dirt, COMMIT the 'Preflight fix r${PREF_R}:' tip BEFORE running full sensors.sh preflight/sonar — unpaid green tests must not burn the seat timeout. Do not commit unrelated pom deps in a tests-only tip (O-SHIPFIXPOM). Finish with .hermes/harness/sensors.sh preflight GREEN when budget allows, then commit ONE commit. DO NOT PUSH.
 O-M5SHIPHARVEST: Do NOT harvest-from-staging or create later-story packages (model/repository/rest/service/…) to clear preflight. If O-QJACOCO / coverage RED and this story has no @QuarkusTest yet (platform/POM story), do not invent app code — fix pom/wiring only or stop with /tmp/escalation-noaction-preflightfix.txt. Story scope: ${STORY_SCOPE:-roadmap}. Later classes forbidden: ${LATER_CLASSES:-none}.
 ${RUN_CONTRACT}
 Commit prefix: 'Preflight fix r${PREF_R}:'." \
-"Use the migration-harness skill and read SHIPPING.md in its directory. Continue preflight-correction round ${PREF_R}; inspect git status and /tmp/preflight-failure.txt, finish the root-cause fix, run .hermes/harness/sensors.sh preflight until GREEN, and commit ONE commit starting 'Preflight fix r${PREF_R}:'. DO NOT PUSH. O-M5SHIPHARVEST: no harvest / no later-story packages.
+"Use the migration-harness skill and read SHIPPING.md in its directory. O-PREFCONT: Inspect git status FIRST. Continue from EXISTING dirty/untracked work WITHOUT inventing new files/tests and WITHOUT rewriting already-present dirty tip content. Characterization floor: do not shrink @Test / assertion counts; keep typed assertThrows(UnsupportedOperationException) (O-SHIPASSERTWEAK). O-SONARFIX/S5778: arrange outside assertThrows — no brace/assertj cosmetic thrash. O-SHIPFIXCOMMIT: tip task-GREEN tests-only dirt before sonar when the seat is tight (src/test only — O-SHIPFIXPOM). Finish the root-cause fix from /tmp/preflight-failure.txt, run dim sensors then ONE closing preflight until GREEN when budget allows, and commit ONE commit starting 'Preflight fix r${PREF_R}:'. DO NOT PUSH. O-M5SHIPHARVEST: no harvest / no later-story packages.
 ${RUN_CONTRACT}" \
         || log "M5 ship: preflight-fix round $PREF_R did not converge"
       continue
     fi
-    # V5 finding #4: build/coverage/boot preflight failures may push — the
-    # factory re-checks them. But fidelity drift and a legacy-package
-    # inversion are NOT arbitrated by the factory (legacy-package code
-    # compiles and passes sonar), so "push anyway" would ship the defect.
-    # Block the ship on those two dimensions and stop the run with a durable
-    # record (the outer loop treats a non-success marker as a failed story).
+    # Fidelity / legacy-package cannot be arbitrated by the factory.
     if ! .hermes/harness/sensors.sh fidelity > /tmp/ship-fidelity.txt 2>&1; then
       event "m5-ship" 0 ship_blocked fidelity_red
       record_debt "M5 ship" fidelity "harvest fidelity RED at ship — factory cannot arbitrate (see /tmp/ship-fidelity.txt)"
@@ -3023,7 +4208,35 @@ ${RUN_CONTRACT}" \
       log "M5 ship: BLOCKED — legacy-package inversion cannot be arbitrated by the factory. Story NOT shipped."
       write_run_report "ship-blocked-package"; echo "ship-blocked-package" > /tmp/supervisor-done; exit 3
     fi
-    log "M5 ship: preflight budget exhausted — pushing anyway (factory as arbiter)"
+    # O-SHIPBUDGET: never "push anyway" on unpaid preflight (esp. boot RED).
+    # One untimed closing preflight after the fix-round budget; GREEN → push.
+    # Still RED → HOLD + debt (factory cannot invent schema/Flyway/wiring).
+    log "M5 ship: O-SHIPBUDGET — fix budget spent; one closing preflight (no push-anyway)"
+    outer_log "         M5 ship: O-SHIPBUDGET — closing preflight after budget (refuse push-anyway)"
+    rm -f /tmp/preflight-count
+    if .hermes/harness/sensors.sh preflight > /tmp/preflight-failure.txt 2>&1; then
+      log "M5 ship: O-SHIPBUDGET closing preflight GREEN — proceeding to push"
+      _pref_ok=1
+    else
+      _boot_red=0
+      grep -qiE 'SENSOR RED \(boot\)|Schema-validation|SchemaManagementException|missing table' \
+        /tmp/preflight-failure.txt 2>/dev/null && _boot_red=1
+      event "m5-ship" 0 ship_blocked preflight_budget
+      if [ "$_boot_red" = "1" ]; then
+        record_debt "M5 ship" boot \
+          "O-SHIPBUDGET unpaid boot RED after preflight fix budget (see /tmp/preflight-failure.txt) — not pushing"
+        log "M5 ship: BLOCKED — O-SHIPBUDGET unpaid boot RED after fix budget. Story NOT shipped."
+        outer_log "         M5 ship: BLOCKED — O-SHIPBUDGET boot RED unpaid (no push-anyway)"
+      else
+        record_debt "M5 ship" preflight \
+          "O-SHIPBUDGET preflight budget exhausted with unpaid RED (see /tmp/preflight-failure.txt) — not pushing"
+        log "M5 ship: BLOCKED — O-SHIPBUDGET unpaid preflight after fix budget. Story NOT shipped."
+        outer_log "         M5 ship: BLOCKED — O-SHIPBUDGET unpaid preflight (no push-anyway)"
+      fi
+      write_run_report "ship-blocked-preflight-budget"
+      echo "ship-blocked-preflight-budget" > /tmp/supervisor-done
+      exit 3
+    fi
   fi
   # K12: adversarial refute of tip before push (escalation+ship high-stakes).
   if ! refute_high_stakes HEAD "m5-ship-k12"; then
@@ -3063,6 +4276,18 @@ ${RUN_CONTRACT}" \
   # O-UXLOG-SHIP (Poll 77 U2): climax visible on the demo outer-loop log.
   outer_log "         M5 ship: pushed $(git rev-parse --short HEAD) — waiting for factory pipeline"
   RESULT=$(wait_pipeline "$PREV" "$PUSH_UPTODATE"); PR_NAME=${RESULT% *}; PR_ST=${RESULT#* }
+  # O-SHIPNOPRSTALE: abandoned/prior-round PipelineRun must HOLD — never
+  # open Deploy/Build/Gate fix seats on a pre-session Failed/Succeeded run.
+  if [ "$PR_ST" = "stale-pipeline" ]; then
+    event "m5-ship" 0 ship_blocked stale_pipeline
+    record_debt "M5 ship" pipeline \
+      "O-SHIPNOPRSTALE: uptodate push with only pre-session PipelineRun(s) — trigger a new run for HEAD or reconcile; no Deploy-fix" || true
+    log "M5 ship: BLOCKED — O-SHIPNOPRSTALE stale/abandoned PipelineRun (no Deploy-fix). Story NOT shipped."
+    outer_log "         M5 ship: BLOCKED — O-SHIPNOPRSTALE stale pipeline (need post-session PipelineRun)"
+    write_run_report "ship-blocked-stale-pipeline"
+    echo "ship-blocked-stale-pipeline" > /tmp/supervisor-done
+    exit 3
+  fi
   # O-SHIPNOPR: up-to-date push with no new PR → acceptance-only recheck.
   # O-NOPUSHPR: commits were pushed but no new PR → do NOT pretend success.
   if [ -z "$PR_NAME" ] || [ "$PR_NAME" = "none" ] || [ "$PR_ST" = "no-trigger" ]; then
@@ -3084,6 +4309,9 @@ ${RUN_CONTRACT}" \
     # the story's finish line — no acceptance surface expected yet.
     if [ "$STORY_DEPLOY" != "true" ]; then
       if review_hold_blocks_ship; then
+        exit 3
+      fi
+      if evidence_liveness_blocks_ship; then
         exit 3
       fi
       event "m5-ship" 0 "story_gate_pass" "non-deploy story"
@@ -3172,6 +4400,9 @@ print((m.group(1).rstrip('/') if m else ''), end='')
       FAILED_TASK="acceptance-deploy"
     elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
       if review_hold_blocks_ship; then
+        exit 3
+      fi
+      if evidence_liveness_blocks_ship; then
         exit 3
       fi
       event "m5-ship" 0 "acceptance_pass" "route=${CODE},${ACC_COLLECTION}=${PRODUCTS}"

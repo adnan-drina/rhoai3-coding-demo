@@ -2,6 +2,7 @@
 """M2 gate: deterministic roadmap/brief check (redesign §2).
 
 Usage: roadmap-lint.py <roadmap.md> [findings-inventory.md] [legacy-dir]
+                       [architecture-profile.md]
 
 Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
   stories    — parseable S<NN> headings, unique, with required fields
@@ -23,17 +24,80 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                catch it — the plan is well-formed, just false.
   non-mandatory — (K3) every non-mandatory inventory rule is marked
                adopt or defer (reason) in the roadmap or a brief
+  O-PORTDERIVE — (ARCH A1) stories that own OPEN DESIGN findings or scope
+               a profile §7 REDESIGN class must carry a REDESIGN target-
+               contract in the brief (class + target shape). Profile path
+               is argv[4] or sibling architecture-profile.md.
+  O-STORYKIND — (ARCH A3) those same stories must declare
+               kind: rename|reimplement|mixed. OPEN DESIGN forbids bare
+               rename; mixed requires justification / split suggestion.
+  O-SEATBUDGET — (ARCH A5) stories with kind must declare seat-budget: N
+               matching kind × incident count (unit-normalized; see
+               seat-budget.py). Brief must publish the same N.
 """
 import glob
+import importlib.util
 import os
 import re
 import sys
 
 problems = []
 
+_SB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seat-budget.py")
+_sb_spec = importlib.util.spec_from_file_location("seat_budget", _SB_PATH)
+seat_budget = importlib.util.module_from_spec(_sb_spec)
+assert _sb_spec.loader is not None
+_sb_spec.loader.exec_module(seat_budget)
+
 
 def lint(cls, detail):
     problems.append(f"LINT:{cls}: {detail}")
+
+
+_TARGET_SHAPE = re.compile(
+    r"(?i)(?:→|->|=>|target\s*:|target contract|JAX-RS|@ApplicationScoped|"
+    r"Panache|ConcurrentHashMap|ExceptionMapper|\b404\b|CDI|Agroal|"
+    r"@Path\b|PersistenceException|compute\()"
+)
+_CLASS_TOKEN = re.compile(r"`([A-Z][A-Za-z0-9]+)`|\*\*([A-Z][A-Za-z0-9]+)\*\*")
+
+
+def brief_has_redesign_contract(btext: str) -> bool:
+    """REDESIGN/OPEN DESIGN + CapWord class + target-shape token (O-PORTDERIVE)."""
+    if not re.search(r"(?i)\bREDESIGN\b|\bOPEN DESIGN\b", btext):
+        return False
+    if not _CLASS_TOKEN.search(btext):
+        return False
+    return bool(_TARGET_SHAPE.search(btext))
+
+
+def redesign_classes_from_profile(prof: str) -> set:
+    """CapWord classes governed by REDESIGN in architecture-profile §7."""
+    sec7 = ""
+    m = re.search(r"^(#{2,6})[ \t]+.*Class roles.*$", prof, re.M | re.I)
+    if not m:
+        return set()
+    level = len(m.group(1))
+    rest = prof[m.end():]
+    nxt = re.search(r"^#{1," + str(level) + r"}[ \t]", rest, re.M)
+    sec7 = rest[: nxt.start()] if nxt else rest
+    java_named = set(re.findall(r"\b([A-Z]\w+)\.java\b", sec7))
+    name_re = re.compile(r"`([A-Z]\w+)`|\*\*([A-Z]\w+)\*\*|\b([A-Z]\w+)\.java\b")
+    out = set()
+    for mm in name_re.finditer(sec7):
+        nm = mm.group(1) or mm.group(2) or mm.group(3)
+        ls = sec7.rfind("\n", 0, mm.start()) + 1
+        le = sec7.find("\n", mm.start())
+        line = sec7[ls: le if le >= 0 else len(sec7)]
+        if "HARVEST" in line and "REDESIGN" not in line:
+            continue
+        pre = sec7[: mm.start()]
+        if "REDESIGN" in line or pre.rfind("REDESIGN") > pre.rfind("HARVEST"):
+            # Prefer .java-backed names; also accept backtick CapWords on a
+            # line that itself says REDESIGN (scope often uses bare names).
+            if nm in java_named or ("REDESIGN" in line and mm.group(1)):
+                out.add(nm)
+    return out
 
 
 _JKW = {"if", "for", "while", "switch", "catch", "return", "new", "throws",
@@ -166,13 +230,26 @@ def main():
     # coverage vs the inventory's mandatory (recipe/rewrite/infer/OPEN) sets;
     # recipe-executed and non-mandatory ids are exempt from story ownership
     inv = ""
+    open_design = set()
     if len(sys.argv) > 2 and os.path.exists(sys.argv[2]):
         inv = open(sys.argv[2], encoding="utf-8").read()
         must, exempt = set(), set()
-        for m in re.finditer(r"^-\s*(rewrite|infer|OPEN DESIGN):\s*\d+\s*—\s*(.+)$", inv, re.M):
-            must |= {i.strip() for i in m.group(2).split(",")}
-        for m in re.finditer(r"^-\s*(recipe|non-mandatory):\s*\d+\s*—\s*(.+)$", inv, re.M):
-            exempt |= {i.strip() for i in m.group(2).split(",")}
+        def _rule_ids(blob: str) -> set:
+            # Only real rule-ids (reject empty "0 —" tails / inventory prose).
+            return {
+                i.strip()
+                for i in blob.split(",")
+                if i.strip()
+                and re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+", i.strip())
+            }
+
+        for m in re.finditer(r"^-\s*(rewrite|infer|OPEN DESIGN):\s*\d+\s*—\s*(.*)$", inv, re.M):
+            ids_line = _rule_ids(m.group(2))
+            must |= ids_line
+            if m.group(1) == "OPEN DESIGN":
+                open_design |= ids_line
+        for m in re.finditer(r"^-\s*(recipe|non-mandatory):\s*\d+\s*—\s*(.*)$", inv, re.M):
+            exempt |= _rule_ids(m.group(2))
         for fid in sorted(must - set(owned)):
             lint("coverage", f"mandatory finding {fid} owned by no story")
         for fid in sorted(set(owned) & exempt):
@@ -181,6 +258,26 @@ def main():
     # briefs exist and are complete
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
     legacy_dir = sys.argv[3] if len(sys.argv) > 3 and os.path.isdir(sys.argv[3]) else None
+    # O-PORTDERIVE: optional profile (argv[4] or sibling architecture-profile.md)
+    profile_path = None
+    if len(sys.argv) > 4 and os.path.isfile(sys.argv[4]):
+        profile_path = sys.argv[4]
+    else:
+        for cand in (
+            os.path.join(base, "architecture-profile.md"),
+            os.path.join(os.path.dirname(base), "architecture-profile.md"),
+        ):
+            if os.path.isfile(cand):
+                profile_path = cand
+                break
+    redesign_cls = set()
+    if profile_path:
+        try:
+            redesign_cls = redesign_classes_from_profile(
+                open(profile_path, encoding="utf-8").read()
+            )
+        except OSError:
+            redesign_cls = set()
     brief_texts = []
     for sid in ids:
         matches = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
@@ -196,6 +293,121 @@ def main():
             lint("briefs", f"{sid}: brief has no code excerpt (In scope must quote legacy lines)")
         if legacy_dir:
             brief_fidelity(sid, btext, legacy_dir)
+        # O-PORTDERIVE / ARCH A1 — REDESIGN signal must survive M1→brief
+        scope = field(sid, "scope") or ""
+        findings_raw = (field(sid, "findings") or "").strip()
+        story_fids = {
+            f for f in re.split(r"[,\s]+", findings_raw) if f and f != "-"
+        }
+        owns_open = bool(story_fids & open_design)
+        scope_hit = sorted(
+            c for c in redesign_cls
+            if re.search(rf"\b{re.escape(c)}(?:\.java)?\b", scope)
+        )
+        if owns_open or scope_hit:
+            if not brief_has_redesign_contract(btext):
+                why = []
+                if owns_open:
+                    why.append(
+                        "owns OPEN DESIGN finding(s) "
+                        + ",".join(sorted(story_fids & open_design))
+                    )
+                if scope_hit:
+                    why.append(
+                        "scope names §7 REDESIGN class(es) "
+                        + ",".join(scope_hit)
+                    )
+                lint(
+                    "O-PORTDERIVE",
+                    f"{sid}: brief missing REDESIGN target contract "
+                    f"({'; '.join(why)}) — name each REDESIGN class with a "
+                    f"target shape from architecture-profile §7 "
+                    f"(O-PORTDERIVE / ARCH A1)",
+                )
+        # O-STORYKIND / ARCH A3 — transform kind is the story-level Port
+        kind_raw = field(sid, "kind")
+        if owns_open or scope_hit:
+            if not kind_raw:
+                lint(
+                    "O-STORYKIND",
+                    f"{sid}: missing field 'kind' (rename|reimplement|mixed) — "
+                    f"required when story owns OPEN DESIGN or scopes §7 "
+                    f"REDESIGN (O-STORYKIND / ARCH A3)",
+                )
+            else:
+                km = re.match(
+                    r"(?i)^(rename|reimplement|mixed)\b",
+                    kind_raw.strip(),
+                )
+                if not km:
+                    lint(
+                        "O-STORYKIND",
+                        f"{sid}: kind must be rename|reimplement|mixed "
+                        f"(got '{kind_raw[:60]}') (O-STORYKIND / ARCH A3)",
+                    )
+                else:
+                    kval = km.group(1).lower()
+                    if owns_open and kval == "rename":
+                        lint(
+                            "O-STORYKIND",
+                            f"{sid}: owns OPEN DESIGN finding(s) — kind cannot "
+                            f"be 'rename' alone; use reimplement or mixed "
+                            f"(O-STORYKIND / ARCH A3)",
+                        )
+                    if kval == "mixed":
+                        just_blob = " ".join(
+                            [
+                                kind_raw,
+                                field(sid, "rationale") or "",
+                                field(sid, "done") or "",
+                            ]
+                        )
+                        if not re.search(
+                            r"(?i)\b(split|justif|both\s+kinds?|"
+                            r"rename\s*\+?\s*reimplement|"
+                            r"reimplement\s+and\s+rename|"
+                            r"mixed\s+because|harvest\s*\+?\s*convert|"
+                            r"cannot\s+split)\b",
+                            just_blob,
+                        ):
+                            lint(
+                                "O-STORYKIND",
+                                f"{sid}: kind: mixed requires justification / "
+                                f"split suggestion (O-STORYKIND / ARCH A3)",
+                            )
+        # O-SEATBUDGET / ARCH A5 — kind × incidents → seat-budget on roadmap+brief
+        kind_for_budget = seat_budget.parse_kind(kind_raw) if kind_raw else None
+        if kind_for_budget:
+            inc = seat_budget.story_incident_total(inv, story_fids)
+            try:
+                expected = seat_budget.expected_budget(kind_for_budget, inc)
+            except ValueError as e:
+                lint("O-SEATBUDGET", f"{sid}: {e}")
+                expected = None
+            declared = seat_budget.parse_seat_budget_field(field(sid, "seat-budget"))
+            if declared is None:
+                lint(
+                    "O-SEATBUDGET",
+                    f"{sid}: missing field 'seat-budget' — derive from "
+                    f"kind×incidents ({kind_for_budget}×{inc} → {expected}) "
+                    f"(O-SEATBUDGET / ARCH A5)",
+                )
+            elif expected is not None and declared != expected:
+                lint(
+                    "O-SEATBUDGET",
+                    f"{sid}: seat-budget: {declared} != expected {expected} "
+                    f"(kind={kind_for_budget} × incidents={inc} / "
+                    f"unit={seat_budget.unit_size()}) "
+                    f"(O-SEATBUDGET / ARCH A5)",
+                )
+            elif expected is not None and not seat_budget.brief_has_seat_budget(
+                btext, expected
+            ):
+                lint(
+                    "O-SEATBUDGET",
+                    f"{sid}: brief must publish seat-budget: {expected} "
+                    f"(O-SEATBUDGET / ARCH A5)",
+                )
 
     # K3 — every non-mandatory inventory rule needs adopt / defer (reason)
     # in the roadmap or a brief (not silently dropped).
@@ -212,14 +424,32 @@ def main():
             nm.add(m.group(1))
         if nm:
             corpus = text + "\n" + "\n".join(brief_texts)
-            # - `rule-id`: adopt | defer (reason)
+            # Bullet: - `rule-id`: adopt | defer (reason)
+            # Table:  | rule-id | adopt|defer | reason |  (mirrors inventory K3 table)
             dec_re = re.compile(
                 r"^-\s*`?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+)`?\s*:\s*"
                 r"(adopt|defer)\b(?:\s*\(([^)]*)\))?",
                 re.M | re.I,
             )
-            decisions = {m.group(1): (m.group(2).lower(), (m.group(3) or "").strip())
-                         for m in dec_re.finditer(corpus)}
+            dec_table_re = re.compile(
+                r"^\|\s*`?([a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+)`?\s*\|\s*"
+                r"(adopt|defer)\s*\|\s*([^|\n]*?)\s*\|?\s*$",
+                re.M | re.I,
+            )
+            decisions = {}
+            for m in dec_re.finditer(corpus):
+                decisions[m.group(1)] = (
+                    m.group(2).lower(),
+                    (m.group(3) or "").strip(),
+                )
+            for m in dec_table_re.finditer(corpus):
+                rid = m.group(1)
+                if rid in decisions:
+                    continue
+                decisions[rid] = (
+                    m.group(2).lower(),
+                    (m.group(3) or "").strip(),
+                )
             for rid in sorted(nm):
                 if rid not in decisions:
                     lint(
@@ -230,7 +460,8 @@ def main():
                 elif decisions[rid][0] == "defer" and not decisions[rid][1]:
                     lint(
                         "non-mandatory",
-                        f"{rid}: defer requires a reason in parentheses (K3)",
+                        f"{rid}: defer requires a reason in parentheses (K3) "
+                        f"(or a non-empty reason column in the decision table)",
                     )
 
     print("\n".join(problems) if problems else

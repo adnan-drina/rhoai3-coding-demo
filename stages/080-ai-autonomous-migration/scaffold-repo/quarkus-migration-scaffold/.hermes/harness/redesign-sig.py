@@ -24,7 +24,8 @@ CLASS_METHOD = re.compile(
 # After strip_noise, iface methods are `ReturnType name(...);` — require a
 # type token before the name so license text / stray tokens cannot match.
 IFACE_METHOD = re.compile(
-    r"(?:^|\n)\s*(?:(?:default|static)\s+)?(?:[\w.<>,\[\]?]+\s+)+(\w+)\s*\([^;{}]*\)\s*;",
+    # O-INSTREGRESS: also match single-line `{ Type name(...); }` bodies.
+    r"(?:^|\n|\{)\s*(?:(?:default|static)\s+)?(?:[\w.<>,\[\]?]+\s+)+(\w+)\s*\([^;{}]*\)\s*;",
     re.M,
 )
 INTERFACE = re.compile(r"\b(?:public\s+)?interface\s+(\w+)")
@@ -111,8 +112,16 @@ def walk_java(root: str) -> dict[str, str]:
 
 
 def main() -> int:
-    staging = sys.argv[1] if len(sys.argv) > 1 else "migration/staging/src/main/java"
-    dest = sys.argv[2] if len(sys.argv) > 2 else "src/main/java"
+    # O-FIDELITYPORT: --mode=reimpl checks public signatures on *all* paired
+    # files (Port=reimplement acceptance regime). Default mode stays
+    # iface/converted-only (O-REDESIGNSIG / O-IFACERENAME).
+    args = list(sys.argv[1:])
+    mode = "default"
+    if args and args[0] in ("--mode=reimpl", "--reimpl"):
+        mode = "reimpl"
+        args = args[1:]
+    staging = args[0] if len(args) > 0 else "migration/staging/src/main/java"
+    dest = args[1] if len(args) > 1 else "src/main/java"
     if not os.path.isdir(staging) or not os.path.isdir(dest):
         print("redesign-sig skipped — missing staging or dest tree")
         return 0
@@ -125,7 +134,7 @@ def main() -> int:
         raw_d = dests[fn]
         is_iface = bool(INTERFACE.search(raw_s) or INTERFACE.search(raw_d))
         is_conv = bool(CONVERTED.search(raw_d))
-        if not (is_iface or is_conv):
+        if mode != "reimpl" and not (is_iface or is_conv):
             continue
         a, b = public_methods(raw_s), public_methods(raw_d)
         # Ignore ctor-looking names matching file stem.
@@ -135,10 +144,45 @@ def main() -> int:
         missing = sorted(a - b)
         extra = sorted(b - a)
         if missing:
+            helperish = [
+                m
+                for m in missing
+                if m == "mapRow"
+                or m == "extractData"
+                or m.startswith("create")
+                and m.endswith("ParameterSource")
+            ]
+            # O-AGROALHELPERSIG: catch rename/privatize smells (mapRow→mapVetRow
+            # / mapVisitRow) even when the exact public name is absent.
+            rename_smell = [
+                e
+                for e in extra
+                if helperish
+                and (
+                    e.startswith("map")
+                    and e.endswith("Row")
+                    and e != "mapRow"
+                    or "ParameterSource" in e
+                    and e not in a
+                )
+            ]
+            tag = (
+                " (O-AGROALHELPERSIG — keep *exact public* helper names on Impl; "
+                "do not rename/privatize/move-only to RowMapper)"
+                if helperish
+                else ""
+            )
             print(
                 f"SIG:{fn}: public methods absent vs staging (keep legacy names): "
                 + ", ".join(missing[:8])
+                + tag
             )
+            if rename_smell:
+                print(
+                    f"SIG:{fn}: O-AGROALHELPERSIG rename/privatize smell — "
+                    f"dest has {', '.join(rename_smell[:4])} but staging "
+                    f"public helpers missing: {', '.join(helperish[:4])}"
+                )
             problems += 1
         if is_iface and extra and not missing:
             # Renames often show as missing+extra; flag pure renames too.
@@ -149,12 +193,19 @@ def main() -> int:
                 f"{', '.join(missing[:4])}; dest has {', '.join(extra[:4])}"
             )
     if problems:
+        tag = (
+            "O-FIDELITYPORT/O-REDESIGNSIG"
+            if mode == "reimpl"
+            else "O-REDESIGNSIG/O-IFACERENAME/O-AGROALHELPERSIG"
+        )
         print(
-            f"REDESIGN SIG RED: {problems} file(s) — O-REDESIGNSIG/O-IFACERENAME "
-            "(preserve legacy public method names on redesign/interfaces)"
+            f"REDESIGN SIG RED: {problems} file(s) — {tag} "
+            "(preserve legacy public method names through "
+            "redesign / Port=reimplement / JDBC→Agroal rewrite)"
         )
         return 1
-    print("redesign-sig GREEN")
+    label = "reimpl-sig" if mode == "reimpl" else "redesign-sig"
+    print(f"{label} GREEN")
     return 0
 
 

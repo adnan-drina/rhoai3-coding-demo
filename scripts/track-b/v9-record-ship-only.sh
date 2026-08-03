@@ -30,9 +30,9 @@ if [ -z "$OUT" ]; then
 fi
 
 case "$OUT" in
-  success*) ;;
+  success*|story-gate-passed) ;;
   *)
-    echo "REFUSE: supervisor-done is not success* (got: $OUT)" >&2
+    echo "REFUSE: supervisor-done is not success*/story-gate-passed (got: $OUT)" >&2
     exit 1
     ;;
 esac

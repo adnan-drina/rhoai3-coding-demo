@@ -90,14 +90,16 @@ EOF
       ;;
     fidelity)
       cat <<'EOF'
-FIX: the destination class must MATCH its migration/staging source (approved
-transforms only: package, whitespace, comments, annotations, diamond,
-PropertyComparator→JDK sort). O-FIDELITYSORT: when staging uses
-PropertyComparator.sort, keep `List<T> sortedX = new ArrayList<>(getXInternal());`
-then `sortedX.sort(Comparator.comparing(...))` — do NOT rewrite to stream().sorted()
-and do NOT re-harvest org.springframework.beans.support.* (O-SFIXNOSPRING).
-Re-harvest only when the dest truly drifted; REVERT fabricated classes.
-Never disable or waive this check. Evidence: /tmp/sensor-fidelity.log and FIDELITY: lines.
+FIX: O-FIDELITYPORT — acceptance regime follows task **Port**:
+  Port=rename (default): destination must MATCH migration/staging (approved
+    transforms only: package, whitespace, comments, annotations, diamond,
+    PropertyComparator→JDK sort). O-FIDELITYSORT: keep ArrayList+List.sort —
+    not stream().sorted(); never re-harvest org.springframework.beans.support.*
+    (O-SFIXNOSPRING). Evidence: FIDELITY: lines in /tmp/sensor-fidelity.log.
+  Port=reimplement: byte-match harvest fidelity is NOT the gate — preserve
+    public method signatures (redesign-sig / SIG: lines). Apply the API mapping
+    table; do not transliterate Spring imports to green-wash.
+Never disable or waive this check.
 EOF
       ;;
     task|milestone)
@@ -262,6 +264,22 @@ placeholder_tests() {
   [ -z "$hits" ] || fail task "placeholder/ceremonial test assertions (G-PLACE) — replace with real behavior checks or defer the task; hits: $(echo "$hits" | tr '\n' ' ')"
 }
 
+# O-SHIPASSERTWEAK: refuse characterization-drop of unmodifiable-collection
+# contracts (S5778 dodge via rename + soft asserts, or catch(Exception)
+# "expected"). Migration-general — any Spring→Quarkus specimen.
+ship_assert_weaken() {
+  [ -d src/test/java ] || return 0
+  local hits
+  hits=$(grep -RInE --include='*.java' \
+    'returnsListWithExpectedBehavior' \
+    src/test/java 2>/dev/null | head -8 || true)
+  [ -z "$hits" ] || fail task "characterization assert weaken (O-SHIPASSERTWEAK) — restore typed assertThrows(UnsupportedOperationException) for unmodifiable getters; do not rename *_returnsUnmodifiable* → *ListWithExpectedBehavior; hits: $(echo "$hits" | tr '\n' ' ')"
+  hits=$(grep -RInE --include='*.java' \
+    'catch[[:space:]]*\([[:space:]]*Exception[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\)' \
+    src/test/java 2>/dev/null | grep -iE 'expected|/\*|//' | head -8 || true)
+  [ -z "$hits" ] || fail task "broad catch(Exception) expected (O-SHIPASSERTWEAK) — use assertThrows(specific); hits: $(echo "$hits" | tr '\n' ' ')"
+}
+
 # O-RESTGUIDE / O-RESTJSON (Poll 53): EXECUTION prose failed to transfer —
 # reject root-level RestAssured find { } (must be under collection property).
 restassured_contract() {
@@ -317,11 +335,96 @@ redesign_sig_check() {
     || fail task "redesign public method set drifted from staging (O-REDESIGNSIG/O-IFACERENAME) — keep legacy method names"
 }
 
+# O-FIDELITYPORT: Port=rename → harvest byte-match; Port=reimplement →
+# behavioural/signature contract (redesign-sig --mode=reimpl). Migration-
+# general — reads **Port** from CURRENT_TASK in tasks.md only.
+task_port_mode() {
+  local tid="${CURRENT_TASK:-}" tasks=""
+  tasks="${STORY_TASKS:-${TASKS_FILE:-}}"
+  if [ -z "$tasks" ] || [ ! -f "$tasks" ]; then
+    tasks=$(ls specs/*/tasks.md 2>/dev/null | head -1)
+  fi
+  [ -n "$tid" ] && [ -n "$tasks" ] && [ -f "$tasks" ] || { echo ""; return 0; }
+  python3 - "$tasks" "$tid" <<'PY'
+import re, sys
+path, tid = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+body = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    start = m.end()
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[start:end]
+    break
+pm = re.search(
+    r"(?im)^\*\*Port\*\*\s*:?\s*(rename|reimplement)\b"
+    r"|^\*\*Port\s*:\s*(rename|reimplement)\*\*"
+    r"|^Port\s*:\s*(rename|reimplement)\b",
+    body,
+)
+if not pm:
+    print("")
+    raise SystemExit(0)
+print(next(g for g in pm.groups() if g).lower())
+PY
+}
+
+# Run the Port-scoped fidelity dimension into /tmp/sensor-fidelity.log.
+# Exit 0 GREEN, 1 RED (caller fails the sensor).
+run_port_scoped_fidelity() {
+  local port
+  port="$(task_port_mode)"
+  if [ "$port" = "reimplement" ]; then
+    {
+      echo "O-FIDELITYPORT: Port=reimplement — harvest byte-match SKIPPED; using redesign-sig behavioural/signature contract"
+      python3 "$SELF_DIR/redesign-sig.py" --mode=reimpl
+    } > /tmp/sensor-fidelity.log 2>&1
+    return $?
+  fi
+  # Port=rename or undeclared (harvest default): byte-match harvest fidelity.
+  if [ -n "$port" ]; then
+    {
+      echo "O-FIDELITYPORT: Port=${port} — harvest byte-match fidelity"
+      python3 "$SELF_DIR/harvest-fidelity.py"
+    } > /tmp/sensor-fidelity.log 2>&1
+    return $?
+  fi
+  python3 "$SELF_DIR/harvest-fidelity.py" > /tmp/sensor-fidelity.log 2>&1
+}
+
 # O-WIREUP (W3-141): attachment/reachability, not just method-name shape.
 wireup_check() {
   [ -f "$SELF_DIR/wireup-check.py" ] || return 0
   OUT=$(python3 "$SELF_DIR/wireup-check.py" 2>/dev/null) \
     || fail task "$(echo "$OUT" | head -3)"
+}
+
+# O-CDIPARTIAL / O-JDBCHARVESTAPI / O-SPRINGRESIDUE: CDI stamp without
+# Inject, Spring JDBC APIs, or any org.springframework under src/main —
+# refuse before mvn (cheap).
+cdi_partial_check() {
+  [ -f "$SELF_DIR/cdi-partial-check.py" ] || return 0
+  OUT=$(python3 "$SELF_DIR/cdi-partial-check.py" 2>/dev/null) \
+    || fail task "$(echo "$OUT" | head -5) — finish Autowired→Inject; org.springframework under src/main/java must be 0 (Agroal/java.sql or EntityManager; exact DAO exception map — never invent *PersistenceException under spring.*); never tip-accept partial CDI / spring residue"
+}
+
+# O-TREEFIXSTUB: comment-only / REMOVED husks under src/main are not a fix —
+# tree-fix must implement Agroal/java.sql (or O-NULLACTION), never stub-nuke.
+tree_fix_stub_check() {
+  [ -f "$SELF_DIR/tree-fix-stub-check.py" ] || return 0
+  OUT=$(python3 "$SELF_DIR/tree-fix-stub-check.py" 2>/dev/null) \
+    || fail task "$(echo "$OUT" | head -5) — O-TREEFIXSTUB: restore real types (Agroal/java.sql full API) or O-NULLACTION; never REMOVED/comment stubs"
+}
+
+# O-SDJPAHARVEST / O-SDJPAHARVESTONLY: Spring Data → Panache must convert
+# after harvest (no spring-data residue), keep domain-repo extends, no
+# orphan @NamedQuery on repo ifaces, no hollow finders, harvest Override Impls.
+sdjpa_harvest_check() {
+  [ -f "$SELF_DIR/sdjpa-harvest-check.py" ] || return 0
+  OUT=$(python3 "$SELF_DIR/sdjpa-harvest-check.py" 2>/dev/null) \
+    || fail task "$(echo "$OUT" | head -5) — O-SDJPAHARVEST/O-SDJPAHARVESTONLY: convert after harvest (Panache + no org.springframework.data); preserve domain-repo extends + Panache query bodies; harvest Override *Impl; no hollow finders / orphan NamedQuery"
 }
 
 # O-SECAUTHTEST (W3-142): if RolesAllowed + security.enable exist, require a
@@ -343,9 +446,13 @@ task_sensor() {
   wiring_invariants
   forbidden_patterns
   placeholder_tests
+  ship_assert_weaken
   restassured_contract
   redesign_sig_check
   wireup_check
+  cdi_partial_check
+  tree_fix_stub_check
+  sdjpa_harvest_check
   security_auth_test_contract
   # G-AC3 / O-ACCEPTREC (Poll 50): ceremonial acceptance must fail on the
   # per-task sensor, not only at milestone/preflight/ship — T-006 record DTO
@@ -415,7 +522,11 @@ sonar_check() { # $1 = inloop|full  (default full)
 # O-K5MILESCOPE: in-loop milestone checks Findings only for tasks already
 # committed (T-NNN: tips since RUN_BASE). Later pom/metrics/native rules
 # must not RED early harvest tasks (migration-general; v3 S01 T-001).
+# O-K5WAIVELEAK: empty completed-task Findings must short-circuit findings_sensor
+# — do NOT fall through to PLAN_SCOPE / --scope-all (bash ${VAR:-alt} treats
+# empty FINDINGS_SCOPE as unset; v3 S02 T-007 false RED on metrics-0200).
 _k5_milestone_scope_inloop() {
+  unset FINDINGS_K5_WAIVED
   [ -n "${FINDINGS_SCOPE:-}" ] && return 0
   [ -f "$SELF_DIR/findings-milestone-scope.py" ] || return 0
   local tf="${STORY_TASKS:-${TASKS_FILE:-}}"
@@ -427,11 +538,14 @@ _k5_milestone_scope_inloop() {
   if [ -n "$scoped" ]; then
     FINDINGS_SCOPE="$scoped"
     export FINDINGS_SCOPE
+    unset FINDINGS_K5_WAIVED
     n=$(echo "$scoped" | tr ',' '\n' | grep -c . || true)
     echo "findings in-loop scope: ${n} rule(s) from completed tasks (O-K5MILESCOPE)"
   else
     FINDINGS_SCOPE=""
     export FINDINGS_SCOPE
+    FINDINGS_K5_WAIVED=1
+    export FINDINGS_K5_WAIVED
     echo "findings in-loop scope: none — K5 waived for completed tasks without Findings (O-K5MILESCOPE)"
   fi
 }
@@ -464,6 +578,7 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
   # it to escape a real fidelity RED — V5 T-004 fabricated client.)  # ALLOWED: coolstore-default-fallback (historical note)
   placeholder_tests
+  ship_assert_weaken
   # G-AC3 (V9 S01): catch ceremonial acceptance surfaces in-loop, not only
   # at deploy preflight — status-map / "OK" endpoints must not land in S01.
   acceptance_ship_contract
@@ -476,17 +591,16 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED (operator override)"
   else
-    # O-SFIXHINTFIDELITY: fidelity runs before mvn — persist evidence so sfix
-    # sees FIDELITY lines in /tmp/sensor-milestone.log (was often 0B on RED).
-    if ! python3 .hermes/harness/harvest-fidelity.py \
-         > /tmp/sensor-fidelity.log 2>&1; then
+    # O-SFIXHINTFIDELITY + O-FIDELITYPORT: Port=rename → harvest-fidelity;
+    # Port=reimplement → redesign-sig (byte-match unsatisfiable on API swap).
+    if ! run_port_scoped_fidelity; then
       cat /tmp/sensor-fidelity.log
       {
-        echo "SENSOR RED:fidelity (HARVEST FIDELITY — primary sfix dimension)"
+        echo "SENSOR RED:fidelity (HARVEST FIDELITY / O-FIDELITYPORT — primary sfix dimension)"
         cat /tmp/sensor-fidelity.log
       } > /tmp/sensor-milestone.log
       printf '%s\n' fidelity > /tmp/sensor-fix-dim
-      fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines / /tmp/sensor-fidelity.log)"
+      fail fidelity "Port-scoped fidelity RED (see FIDELITY:/SIG: lines / /tmp/sensor-fidelity.log) — Port=rename=byte-match; Port=reimplement=public signatures"
     fi
     cat /tmp/sensor-fidelity.log
     rm -f /tmp/sensor-fix-dim
@@ -513,8 +627,11 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # K5: findings dimension at milestone only (not per-task — kantra cost).
   if [ "${1:-inloop}" = "inloop" ]; then
     _k5_milestone_scope_inloop
-  elif [ -z "${FINDINGS_SCOPE:-}" ]; then
-    unset FINDINGS_SCOPE
+  else
+    unset FINDINGS_K5_WAIVED
+    if [ -z "${FINDINGS_SCOPE:-}" ]; then
+      unset FINDINGS_SCOPE
+    fi
   fi
   findings_sensor
   # G-FID: fidelity GREEN ≠ scope clean — summarize later-story classes already in src/main
@@ -538,6 +655,12 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
 # injects a prebuilt current snapshot (instruments / offline).
 findings_sensor() {
   [ "${FINDINGS_CHECK:-on}" = "off" ] && { echo "findings check WAIVED (operator override)"; return 0; }
+  # O-K5WAIVELEAK: in-loop milestone with zero completed-task Findings must
+  # not evaluate PLAN_SCOPE / --scope-all (empty FINDINGS_SCOPE + :- fallback).
+  if [ "${FINDINGS_K5_WAIVED:-}" = "1" ]; then
+    echo "findings check WAIVED (O-K5WAIVELEAK: no completed-task Findings in-loop)"
+    return 0
+  fi
   [ -f migration/mta-findings.json ] || { echo "findings check skip — no M1 baseline"; return 0; }
   [ -f "$SELF_DIR/findings-diff.py" ] || { echo "findings check skip — findings-diff.py absent"; return 0; }
   local cur="migration/mta-findings-current.json"
@@ -600,15 +723,39 @@ findings_sensor() {
 boot_check() {
   # Prod-profile boot against the dev PostgreSQL: exercises Flyway +
   # Hibernate schema validation — the drift class no unit test catches.
+  # O-BOOTNOFLYWAY / O-BOOTDEVPG: packaged jar defaults to prod;
+  # %prod.generation=validate against an empty DEV DB false-REDs
+  # (missing table) when entities landed but Flyway/import.sql have not.
+  # Do NOT switch to QUARKUS_PROFILE=dev/H2 here — db-kind is often
+  # build-time postgresql (O-ENTITYDSPROD / O-PREFLIGHTH2), so %dev H2
+  # URLs fail with "Driver does not support the provided URL: jdbc:h2:…".
+  # Before schema provenance: keep DEV Postgres URL, override generation
+  # to drop-and-create for the probe only.
+  # O-BOOTSQLPROV: sql-load-script alone is NOT schema provenance — it seeds
+  # data and needs a schema first. Counting it as provenance skipped
+  # drop-and-create while %prod.generation=validate → missing table [owners].
+  # Only Flyway/Liquibase migration files flip has_schema_prov.
   $MVN clean package -DskipTests > /tmp/sensor-package.log 2>&1 \
     || fail boot "package failed — /tmp/sensor-package.log"
   # DB env only when the app actually has a JDBC extension — a DB-less
   # migration (e.g. the cart service) boots plain.
   DB_ENV=()
+  BOOT_EXTRA=()
+  local has_schema_prov=0
+  if [ -n "$(find src/main/resources/db/migration -name '*.sql' 2>/dev/null | head -1)" ] \
+    || [ -n "$(find src/main/resources/db/changelog -name '*.xml' -o -name '*.yaml' -o -name '*.yml' -o -name '*.sql' 2>/dev/null | head -1)" ]; then
+    has_schema_prov=1
+  fi
   if grep -q "quarkus-jdbc" pom.xml 2>/dev/null; then
     DB_ENV=(QUARKUS_DATASOURCE_JDBC_URL="$DEV_DB_URL"
             QUARKUS_DATASOURCE_USERNAME="${DEV_DB_USER:-coolstore}"
             QUARKUS_DATASOURCE_PASSWORD="${DEV_DB_PASSWORD:-coolstore}")
+    if [ "$has_schema_prov" != "1" ]; then
+      # Entity harvest before Flyway — do not prod-validate empty Postgres.
+      # sql-load-script (if present) still needs drop-and-create here (O-BOOTSQLPROV).
+      BOOT_EXTRA=(QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION=drop-and-create)
+      echo "boot check: O-BOOTDEVPG — no Flyway/Liquibase migrations; DEV Postgres + generation=drop-and-create (O-BOOTSQLPROV: sql-load ≠ provenance)"
+    fi
   fi
   # O-BOOTPORTSTALE: drop a prior quarkus-run on the probe port before start.
   if command -v ss >/dev/null 2>&1; then
@@ -619,7 +766,7 @@ boot_check() {
       sleep 1
     }
   fi
-  env "${DB_ENV[@]}" QUARKUS_HTTP_PORT=8099 \
+  env "${DB_ENV[@]}" "${BOOT_EXTRA[@]}" QUARKUS_HTTP_PORT=8099 \
     java -jar target/quarkus-app/quarkus-run.jar > /tmp/sensor-boot.log 2>&1 &
   local pid=$!
   local up="" root=""
@@ -639,7 +786,11 @@ boot_check() {
   done
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   [ "$up" = "yes" ] || fail boot "$(grep -iE 'ERROR|Caused by|SchemaManagement|Migration|Port .* in use' /tmp/sensor-boot.log | head -6)"
-  echo "boot check GREEN (Flyway + schema validation against the dev DB)"
+  if [ "$has_schema_prov" = "1" ]; then
+    echo "boot check GREEN (Flyway + schema validation against the dev DB)"
+  else
+    echo "boot check GREEN (O-BOOTDEVPG DEV Postgres drop-and-create — schema provenance deferred)"
+  fi
 }
 
 wiring_invariants() {
@@ -649,6 +800,16 @@ wiring_invariants() {
     || fail wiring "pom.xml lost the jacoco-maven-plugin (coverage gate will read 0%)"
   grep -q "sonar.coverage.jacoco.xmlReportPaths" pom.xml \
     || fail wiring "pom.xml lost sonar.coverage.jacoco.xmlReportPaths"
+  # O-SHIPFIXJACOCO: preflight/boot tips must not strip quarkus.jacoco.report*
+  # while keeping data-file (harness O-QJACOCO wiring). Only drop when the
+  # whole jacoco stanza is intentionally removed with the extension.
+  local _props="src/main/resources/application.properties"
+  if [ -f "$_props" ] && grep -qE '^[[:space:]]*quarkus\.jacoco\.data-file=' "$_props" 2>/dev/null; then
+    grep -qE '^[[:space:]]*quarkus\.jacoco\.report=' "$_props" 2>/dev/null \
+      || fail wiring "quarkus.jacoco.report missing while data-file set (O-SHIPFIXJACOCO) — do not strip report wiring in Preflight/boot tips"
+    grep -qE '^[[:space:]]*quarkus\.jacoco\.report-location=' "$_props" 2>/dev/null \
+      || fail wiring "quarkus.jacoco.report-location missing while data-file set (O-SHIPFIXJACOCO) — do not strip report wiring in Preflight/boot tips"
+  fi
   # Cart run #2 factory failure: the factory's older Maven defaults to
   # maven-compiler-plugin 3.1, which predates <release> and compiles at
   # source 5. Local builds mask this (newer Maven). The plugin pin is a
@@ -744,9 +905,22 @@ PY
 # O-GENSEED (R-225/R-226): sql-load-script requires a generation mode that
 # creates/updates schema. validate/none + import.sql → empty tables / validate
 # fail on fresh DB (seed skipped or schema missing).
+# O-BOOTSQLPROV: %prod.sql-load-script + %prod.generation=validate|none is also
+# RED (preflight tips used that pair to fake schema provenance).
 gen_seed_contract() {
   local props="src/main/resources/application.properties"
   [ -f "$props" ] || return 0
+  # Profiled prod seed + validate/none — check even when %dev is drop-and-create.
+  if grep -qE '^[[:space:]]*%prod\.quarkus\.hibernate-orm\.sql-load-script=' "$props" 2>/dev/null; then
+    local prod_gen
+    prod_gen=$(grep -E '^[[:space:]]*%prod\.quarkus\.hibernate-orm\.database\.generation=' "$props" 2>/dev/null \
+      | head -1 | cut -d= -f2 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "${prod_gen}" in
+      validate|none|"")
+        fail wiring "%prod.sql-load-script set but %prod.database.generation=${prod_gen:-unset} (O-GENSEED/O-BOOTSQLPROV) — use update or prefer Flyway; do not pair prod seed with validate"
+        ;;
+    esac
+  fi
   grep -qE '^[[:space:]]*%?(dev|test|acceptancetest)\.?quarkus\.hibernate-orm\.sql-load-script=|^[[:space:]]*quarkus\.hibernate-orm\.sql-load-script=' "$props" 2>/dev/null \
     || return 0
   # Prefer profiled generation for seed; unprofiled drop-and-create is O-PRODSCHEMA.
@@ -1077,7 +1251,10 @@ preflight() {
   _pf_n=$((_pf_n + 1))
   printf '%s\n' "$_pf_n" > /tmp/preflight-count
   if [ "$_pf_n" -gt "$_pf_cap" ]; then
-    echo "REFUSED (O-PREFLIGHTDIM): full preflight #${_pf_n} exceeds cap ${_pf_cap} — use .hermes/harness/sensors.sh sonar|task|fidelity then ONE closing preflight (rm /tmp/preflight-count)"
+    # O-PREFDIMTHRASH / O-PFCOUNTRM: refuse is a budget signal. Supervisor
+    # resets /tmp/preflight-count at fix-round start and on refuse→closing
+    # path — seats should NOT rm the counter themselves.
+    echo "REFUSED (O-PREFLIGHTDIM): full preflight #${_pf_n} exceeds cap ${_pf_cap} — use .hermes/harness/sensors.sh sonar|task|fidelity then ONE closing preflight (supervisor resets preflight-count; do not rm)"
     exit 2
   fi
   wiring_invariants
@@ -1094,20 +1271,19 @@ preflight() {
 }
 
 fidelity_check() {
-  # Standalone harvest-fidelity (the cheap dimension-specific recheck for a
-  # fidelity-triggered sfix — pure python, no Maven).
+  # Standalone Port-scoped fidelity (cheap sfix recheck — pure python).
+  # O-FIDELITYPORT: Port=reimplement uses redesign-sig, not byte-match.
   if [ "${FIDELITY_CHECK:-on}" = "off" ]; then
     echo "fidelity check WAIVED"; return 0
   fi
-  if ! python3 .hermes/harness/harvest-fidelity.py \
-       > /tmp/sensor-fidelity.log 2>&1; then
+  if ! run_port_scoped_fidelity; then
     cat /tmp/sensor-fidelity.log
     {
-      echo "SENSOR RED:fidelity (HARVEST FIDELITY — primary sfix dimension)"
+      echo "SENSOR RED:fidelity (HARVEST FIDELITY / O-FIDELITYPORT — primary sfix dimension)"
       cat /tmp/sensor-fidelity.log
     } >> /tmp/sensor-milestone.log 2>/dev/null || cp /tmp/sensor-fidelity.log /tmp/sensor-milestone.log
     printf '%s\n' fidelity > /tmp/sensor-fix-dim
-    fail fidelity "harvested class drifted from staged legacy source (see FIDELITY lines / /tmp/sensor-fidelity.log)"
+    fail fidelity "Port-scoped fidelity RED (see FIDELITY:/SIG: lines / /tmp/sensor-fidelity.log) — Port=rename=byte-match; Port=reimplement=public signatures"
   fi
   cat /tmp/sensor-fidelity.log
   echo "fidelity check GREEN"
@@ -1143,7 +1319,7 @@ case "${1:-}" in
   preflight) preflight;;
   # static: every check that needs no Maven/JVM — used by the X1
   # instrument test suite (tests/instruments.bats) against fixture trees.
-  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; restassured_contract; redesign_sig_check; wireup_check; security_auth_test_contract; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
+  static)    tree_hygiene; package_scope; forbidden_patterns; placeholder_tests; ship_assert_weaken; restassured_contract; redesign_sig_check; wireup_check; cdi_partial_check; tree_fix_stub_check; sdjpa_harvest_check; security_auth_test_contract; wiring_invariants; preserved_integrations; acceptance_ship_contract; acceptance_path_handler; root_index_present; echo "STATIC CHECKS GREEN";;
   package)   package_scope; echo "PACKAGE SCOPE GREEN";;
   findings)  findings_sensor; echo "FINDINGS CHECK DONE";;
   qjacoco)   qjacoco_check;;

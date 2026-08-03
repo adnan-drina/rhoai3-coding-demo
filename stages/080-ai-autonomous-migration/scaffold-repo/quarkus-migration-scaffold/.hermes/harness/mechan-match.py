@@ -170,6 +170,31 @@ def main() -> int:
                     + ",".join(Path(w).name for w in missing[:8])
                 )
                 return 1
+
+        def _claimed(got: str) -> bool:
+            for want in paths:
+                if got == want or got.endswith("/" + Path(want).name):
+                    return True
+            return False
+
+        # O-OWNSTAGE belt: create/harvest may not tip sibling .java files that
+        # are outside declared Owns/Target (S02 T-009 Owner+Pet+Visit).
+        if create_task and not removal_task:
+            extras = [
+                p
+                for p in staged
+                if p.startswith("src/")
+                and p.endswith(".java")
+                and not p.endswith("package-info.java")
+                and not _claimed(p)
+            ]
+            if extras:
+                print(
+                    "ownstage-extra:"
+                    + ",".join(Path(e).name for e in extras[:8])
+                )
+                return 1
+
         for want in paths:
             for got in staged:
                 if got == want or got.endswith("/" + Path(want).name):

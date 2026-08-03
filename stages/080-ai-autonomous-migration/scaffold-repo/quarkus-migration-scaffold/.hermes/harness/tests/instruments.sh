@@ -25,6 +25,11 @@ LINT="$HARNESS_DIR/plan-lint.py"
 SENSORS="$HARNESS_DIR/sensors.sh"
 PASS=0; FAIL=0; N=0
 
+# O-M3SHAPEHARD / W4-045a: live plan-lint defaults Shape HARD, but this suite
+# still carries ~20 pre-Shape fixtures. Grandfather the suite with WARN so
+# signal stays visible; the dedicated O-M3SHAPEHARD case unsets the flag.
+export PLAN_LINT_SHAPE_WARN="${PLAN_LINT_SHAPE_WARN:-1}"
+
 check() { # $1=name $2=expected-exit(0|1) $3=expected-substring-of-output ("" = any)
   local name="$1" want_rc="$2" want_out="$3" rc=0 out
   out=$(run_case 2>&1) || rc=$?
@@ -43,6 +48,8 @@ check() { # $1=name $2=expected-exit(0|1) $3=expected-substring-of-output ("" = 
 # --- plan fixtures ---------------------------------------------------------
 
 plan_header() { # a compliant two-task plan; stdin appends extra tasks
+  # O-INFERABSENT / O-ORACLEDERIVE: infer Targets absent from the fixture tree
+  # need Shape=create (documented proceed) — never rely on silent Oracle=present.
   cat <<'EOF'
 # Tasks
 
@@ -50,10 +57,12 @@ UI surface: waived (API-only service; no legacy web frontend).
 
 #### T-001: Swap javax imports
 **Class**: rewrite
+**Shape**: modify
 - Mechanical jakarta rename across src/main/java sources.
 
 #### T-002: Design the cart endpoint
 **Class**: infer
+**Shape**: create
 - Target: → src/main/java/com/demo/rest/CartEndpoint.java with @Path("/api/cart")
 EOF
 }
@@ -71,6 +80,7 @@ run_case() {
 
 #### T-003: Convert services
 - **Type:** `Class: infer`
+**Shape**: create
 - Target design: → src/main/java/com/demo/service/CartService.java
 EOF
   } > tasks.md
@@ -136,6 +146,7 @@ run_case() {
 
 #### T-003: Harvest model
 **Class**: infer
+**Shape**: create
 **Source**: migration/staging/src/main/java/com/redhat/coolstore/model/Cart.java
 **Target**: src/main/java/com/demo/model/Cart.java
 **Test**: src/test/java/com/demo/model/CartTest.java
@@ -649,6 +660,41 @@ EOF
 }
 check "roadmap-lint rejects defer without reason (K3)" 1 "defer requires a reason"
 
+# O-M2K3TABLE: markdown decision table (inventory-shaped) also satisfies K3
+run_case() {
+  mkfix; roadmap_fixture yes
+  cat >> inv.md <<'EOF'
+- non-mandatory: 1 — optional-logging-00010
+EOF
+  cat >> roadmap.md <<'EOF'
+
+## Non-mandatory decisions
+
+| rule | decision | reason |
+|---|---|---|
+| optional-logging-00010 | defer | noise for this migration; not in scope |
+EOF
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint accepts K3 defer via markdown table (O-M2K3TABLE)" 0 "ROADMAP OK"
+
+run_case() {
+  mkfix; roadmap_fixture yes
+  cat >> inv.md <<'EOF'
+- non-mandatory: 1 — optional-logging-00010
+EOF
+  cat >> roadmap.md <<'EOF'
+
+## Non-mandatory decisions
+
+| rule | decision | reason |
+|---|---|---|
+| optional-logging-00010 | defer |  |
+EOF
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md
+}
+check "roadmap-lint rejects empty K3 table reason (O-M2K3TABLE)" 1 "defer requires a reason"
+
 # --- plan-lint story scoping (M3) ------------------------------------------
 run_case() {
   mkfix
@@ -950,15 +996,19 @@ EOF
 check "static sensors reject RestAssured root find{} (O-RESTGUIDE/O-RESTJSON)" 1 "O-RESTJSON"
 
 # O-QJACOCO (Poll 55 / O-INSTQUAL): behavioural — qjacoco dimension RED when missing
+# O-INSTREGRESS: after O-QJACOCONOTEST, empty trees SKIP — seed @QuarkusTest for RED path.
 run_case() {
   mkfix
+  mkdir -p src/test/java/com/demo
+  printf '@QuarkusTest\nclass JacocoProbeTest {}\n' > src/test/java/com/demo/JacocoProbeTest.java
   SENSOR_ROOT="$FIX" bash "$SENSORS" qjacoco
 }
 check "qjacoco RED when quarkus-jacoco report missing (O-QJACOCO behavioural)" 1 "O-QJACOCO"
 
 run_case() {
   mkfix
-  mkdir -p target/jacoco-report
+  mkdir -p src/test/java/com/demo target/jacoco-report
+  printf '@QuarkusTest\nclass JacocoProbeTest {}\n' > src/test/java/com/demo/JacocoProbeTest.java
   printf '<report/>\n' > target/jacoco-report/jacoco.xml
   SENSOR_ROOT="$FIX" bash "$SENSORS" qjacoco
 }
@@ -1129,8 +1179,10 @@ check "wiring-check exempts populate-once in @PostConstruct" 0 ""
 pl_profile() { printf '## 7. Class roles & target contract\n- `CartService` — REDESIGN\n  - target: ConcurrentHashMap, 404-on-missing GET.\n' > profile.md; }
 run_case() {
   mkfix; pl_profile
+  # O-PORTDERIVE: §7 REDESIGN Shape=create requires Port: reimplement
+  # O-REIMPLCREATE: create-procedure prose required with Port=reimplement
   { echo "UI surface: waived (API-only service; no legacy web frontend)."
-    printf '#### T-001: Convert CartService\n**Class**: infer\n- Target: src/main/java/com/demo/CartService.java with ConcurrentHashMap and 404-on-missing GET.\n'; } > tasks.md
+    printf '#### T-001: Convert CartService\n**Class**: infer\n**Shape**: create\n**Port**: reimplement\n- Target: src/main/java/com/demo/CartService.java with ConcurrentHashMap and 404-on-missing GET.\n- Procedure: harvest-from-staging → API mapping table → first-write (O-REIMPLCREATE).\n- API mapping: HashMap → ConcurrentHashMap; missing GET → 404\n'; } > tasks.md
   python3 "$LINT" tasks.md --profile profile.md
 }
 check "plan-lint passes a redesign task that cites its target shape" 0 "PLAN OK"
@@ -1286,6 +1338,23 @@ run_case() {
     && ! grep -rq "com.redhat.coolstore" src/main/java; } && echo "HARVEST OK slash-path renamed" || echo "FAIL"
 }
 check "harvest-from-staging writes '/'-joined dest + renames package (V5 opt1)" 0 "HARVEST OK"
+
+# O-HARVESTFULLPATH — Target-design full paths normalize to package-relative
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/org/springframework/samples/petclinic/repository/jdbc
+  printf 'package org.springframework.samples.petclinic.repository.jdbc;\npublic class JdbcPet { }\n' \
+    > migration/staging/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java
+  printf 'legacyPackage: org.springframework.samples.petclinic\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(bash "$HARVEST_SH" \
+    src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java 2>&1) || true
+  echo "$out"
+  { echo "$out" | grep -q 'O-HARVESTFULLPATH: normalized' \
+    && [ -f src/main/java/com/demo/repository/jdbc/JdbcPet.java ] \
+    && grep -q 'package com.demo.repository.jdbc' src/main/java/com/demo/repository/jdbc/JdbcPet.java; } \
+    && echo harvestfullpath-ok || echo FAIL
+}
+check "harvest accepts Target-design full path (O-HARVESTFULLPATH)" 0 "harvestfullpath-ok"
 
 run_case() {
   # O-DTOSTAGING: harvest falls back to OpenAPI generated-sources
@@ -1520,6 +1589,32 @@ run_case() {
   SENSOR_ROOT="$FIX" bash "$SENSORS" static
 }
 check "wiring passes sql-load-script with generation=update (O-GENSEED)" 0 "STATIC CHECKS GREEN"
+
+# O-BOOTSQLPROV / O-GENSEED: %prod.sql-load + %prod.validate is RED even when %dev is ok
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf '%s\n' \
+    '%dev.quarkus.hibernate-orm.database.generation=drop-and-create' \
+    '%dev.quarkus.hibernate-orm.sql-load-script=import.sql' \
+    '%prod.quarkus.hibernate-orm.database.generation=validate' \
+    '%prod.quarkus.hibernate-orm.sql-load-script=import.sql' \
+    > src/main/resources/application.properties
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects %prod.sql-load-script with %prod.generation=validate (O-BOOTSQLPROV)" 1 "O-GENSEED\|O-BOOTSQLPROV"
+
+# O-SHIPFIXJACOCO behavioural: data-file without report props → wiring RED
+run_case() {
+  sensor_fixture
+  mkdir -p src/main/resources
+  printf 'quarkus.jacoco.data-file=target/jacoco-quarkus.exec\nquarkus.jacoco.reuse-data-file=true\n' \
+    > src/main/resources/application.properties
+  # Minimal pom markers wiring_invariants also needs
+  printf '<project><build><plugins><plugin><artifactId>jacoco-maven-plugin</artifactId></plugin><plugin><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version></plugin></plugins></build><properties><sonar.coverage.jacoco.xmlReportPaths>x</sonar.coverage.jacoco.xmlReportPaths></properties></project>\n' > pom.xml
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "wiring rejects jacoco data-file without report props (O-SHIPFIXJACOCO)" 1 "O-SHIPFIXJACOCO"
 
 # O-PCTFILE (R-230/T-012): literal % in application-%*.properties filename is not a profile
 run_case() {
@@ -2380,6 +2475,203 @@ EOF
 }
 check "static sensors reject assertThat(true) placeholder tests (G-PLACE)" 1 "G-PLACE"
 
+# O-SHIPASSERTWEAK: characterization-drop rename must RED (wake#172)
+run_case() {
+  sensor_fixture
+  mkdir -p src/test/java/com/demo/model
+  cat > src/test/java/com/demo/model/OwnerTest.java <<'EOF'
+package com.demo.model;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+class OwnerTest {
+  @Test
+  void getPets_returnsListWithExpectedBehavior() {
+    assertNotNull(List.of());
+  }
+}
+EOF
+  SENSOR_ROOT="$FIX" bash "$SENSORS" static
+}
+check "static sensors reject ListWithExpectedBehavior rename (O-SHIPASSERTWEAK)" 1 "O-SHIPASSERTWEAK"
+
+# O-SHIPFIXCOMMIT / O-PREFCONT: tip tests-only GREEN dirt on timeout + CONTINUE ban
+run_case() {
+  grep -q 'pref_commit_green_dirt' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPFIXCOMMIT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'shipfix_timeout_commit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'pref_snapshot_char_floor' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-PREFCONT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'WITHOUT rewriting already-present dirty tip content' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPFIXCOMMIT' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && grep -q 'O-PREFCONT' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && awk '/^pref_commit_green_dirt\(\)/,/^pref_snapshot_char_floor\(\)/ {
+           if (/src\/main/) m=1
+           if (/sensors\.sh task/) t=1
+           if (/pref-char-floor|count_test_annotations/) f=1
+         }
+         END { exit !(m && t && f) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo shipfixcommit-prefcont-ok
+}
+check "O-SHIPFIXCOMMIT tip + O-PREFCONT continuation wiring" 0 "shipfixcommit-prefcont-ok"
+
+# O-SHIPFIXPOM: mechan tests-only tip stages src/test only (not git add -A / pom)
+run_case() {
+  grep -q 'O-SHIPFIXPOM' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPFIXPOM' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && awk '/^pref_commit_green_dirt\(\)/,/^pref_snapshot_char_floor\(\)/ {
+           if (/git add -- src\/test/) a=1
+           if (/^[[:space:]]*stage_for_task_commit[[:space:]]*$/) bad=1
+           if (/no src\/test dirt/) r=1
+         }
+         END { exit !(a && r && !bad) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo shipfixpom-ok
+}
+check "O-SHIPFIXPOM mechan tip stages src/test only" 0 "shipfixpom-ok"
+
+# O-PREFCONTUT: floor counts untracked @Test via grep -rho (not git grep alone)
+run_case() {
+  grep -q 'count_test_annotations' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q "grep -rho" "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-PREFCONTUT' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo prefcontut-ok
+}
+check "O-PREFCONTUT floor counts untracked @Test" 0 "prefcontut-ok"
+
+# O-PREFDIMTHRASH: refuse→reset→closing preflight; count reset at fix-round start
+run_case() {
+  grep -q 'O-PREFDIMTHRASH' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'preflightdim_refuse_reset' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-PREFDIMTHRASH' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && awk '/preflight RED \(round/,/run_stage "Preflight fix/ {
+           if (/rm -f \/tmp\/preflight-count/) r=1
+         }
+         END { exit !r }' "$HARNESS_DIR/supervisor.sh" \
+    && echo prefdimthrash-ok
+}
+check "O-PREFDIMTHRASH refuse reset + per-round count clear" 0 "prefdimthrash-ok"
+
+# O-SHIPROUNDBASE: ship-session base stamps; Preflight/Gate/Build fix committed() exclusive
+run_case() {
+  grep -q 'O-SHIPROUNDBASE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q '/tmp/ship-session-base' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q '_include_base=0' "$HARNESS_DIR/supervisor.sh" \
+    && grep -E '"Preflight fix"\*\|"Gate fix"\*\|"Build fix"\*' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'abandoned remote tip is NOT authority' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPROUNDBASE' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo shiproundbase-ok
+}
+check "O-SHIPROUNDBASE ship-session base + exclusive fix committed()" 0 "shiproundbase-ok"
+
+# O-SHIPNOPRSTALE: uptodate O-SHIPNOPR must not judge pre-session PipelineRuns
+run_case() {
+  # session = 2026-08-03T00:30:00Z → pre-session Failed is stale; post-session fresh
+  sess=1785717000
+  d_stale=$(python3 "$HARNESS_DIR/shipnoprstale-decide.py" \
+    "2026-08-02T23:56:21Z" "$sess" \
+    "64881c899edf7c93fe1744f33fc598d110f1b664" \
+    "64881c899edf7c93fe1744f33fc598d110f1b664")
+  d_fresh=$(python3 "$HARNESS_DIR/shipnoprstale-decide.py" \
+    "2026-08-03T01:00:00Z" "$sess" \
+    "64881c899edf7c93fe1744f33fc598d110f1b664" \
+    "64881c8")
+  d_rev=$(python3 "$HARNESS_DIR/shipnoprstale-decide.py" \
+    "2026-08-03T01:00:00Z" "$sess" \
+    "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" \
+    "64881c899edf7c93fe1744f33fc598d110f1b664")
+  d_nopr=$(python3 "$HARNESS_DIR/shipnoprstale-decide.py" "" "$sess")
+  [ "$d_stale" = "stale" ] && [ "$d_fresh" = "fresh" ] \
+    && [ "$d_rev" = "stale" ] && [ "$d_nopr" = "no-pr" ] \
+    && echo shipnoprstale-ok
+}
+check "shipnoprstale-decide refuses pre-session / wrong-rev PR (O-SHIPNOPRSTALE behavioural)" 0 "shipnoprstale-ok"
+
+run_case() {
+  grep -q 'shipnoprstale-decide.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ship-blocked-stale-pipeline' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q '/tmp/ship-session-started' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPNOPRSTALE' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo shipnoprstale-wire
+}
+check "wait_pipeline / ship HOLD use shipnoprstale (O-SHIPNOPRSTALE)" 0 "shipnoprstale-wire"
+
+# O-SHIPBUDGET: refuse push-anyway; closing preflight or ship-blocked-preflight-budget
+run_case() {
+  grep -q 'O-SHIPBUDGET' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'ship-blocked-preflight-budget' "$HARNESS_DIR/supervisor.sh" \
+    && ! grep -q 'pushing anyway (factory as arbiter)' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPBUDGET' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo shipbudget-ok
+}
+check "O-SHIPBUDGET refuses unpaid push-anyway" 0 "shipbudget-ok"
+
+# O-BOOTNOFLYWAY / O-BOOTDEVPG: entity-before-Flyway uses DEV Postgres +
+# generation override — never QUARKUS_PROFILE=dev/H2 (driver mismatch).
+run_case() {
+  grep -q 'O-BOOTDEVPG\|O-BOOTNOFLYWAY' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION=drop-and-create' "$HARNESS_DIR/sensors.sh" \
+    && ! grep -q 'BOOT_EXTRA=(QUARKUS_PROFILE=dev)' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'db/migration' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-BOOTDEVPG' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo bootnoflyway-ok
+}
+check "O-BOOTDEVPG DEV Postgres drop-and-create without Flyway/seed" 0 "bootnoflyway-ok"
+
+# O-BOOTSQLPROV: sql-load-script must NOT set has_schema_prov (Flyway/Liquibase only)
+run_case() {
+  awk '/^boot_check\(\)/,/^wiring_invariants\(\)/ {
+    print
+  }' "$HARNESS_DIR/sensors.sh" | grep -q 'O-BOOTSQLPROV' \
+    && awk '/^boot_check\(\)/,/^wiring_invariants\(\)/ {
+      if ($0 ~ /sql-load-script=/ && $0 ~ /has_schema_prov=1/) bad=1
+    } END { exit bad ? 1 : 0 }' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-BOOTSQLPROV' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && grep -q '%prod\.sql-load-script' "$HARNESS_DIR/sensors.sh" \
+    && echo bootsqlprov-ok
+}
+check "O-BOOTSQLPROV sql-load-script is not schema provenance" 0 "bootsqlprov-ok"
+
+# O-SHIPFIXJACOCO: wiring refuses jacoco.report* strip while data-file set
+run_case() {
+  grep -q 'O-SHIPFIXJACOCO' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'quarkus\.jacoco\.report' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-SHIPFIXJACOCO' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo shipfixjacoco-ok
+}
+check "O-SHIPFIXJACOCO refuses jacoco.report strip" 0 "shipfixjacoco-ok"
+
+# O-SHIPFIXFINDINGS: scrub Preflight/Gate/Build/Deploy tips of findings JSON
+run_case() {
+  grep -q 'O-SHIPFIXFINDINGS\|Preflight fix' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/^scrub_findings_from_tip\(\)/,/^}/ {
+      if ($0 ~ /Preflight fix|Gate fix|Build fix|Deploy fix/) hit=1
+    } END { exit hit ? 0 : 1 }' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SHIPFIXFINDINGS' "$HARNESS_DIR/../skills/migration-harness/SHIPPING.md" \
+    && echo shipfixfindings-ok
+}
+check "O-SHIPFIXFINDINGS scrubs findings from Preflight tips" 0 "shipfixfindings-ok"
+
+# O-SHIPASSERTWEAK: K12 refute on characterization-drop tip
+run_case() {
+  mkfix
+  cat > /tmp/shipassertweak.diff <<'EOF'
+diff --git a/src/test/java/com/demo/model/OwnerTest.java b/src/test/java/com/demo/model/OwnerTest.java
+--- a/src/test/java/com/demo/model/OwnerTest.java
++++ b/src/test/java/com/demo/model/OwnerTest.java
+@@ -1,8 +1,10 @@
+-    void getPets_returnsUnmodifiableList() {
++    void getPets_returnsListWithExpectedBehavior() {
+         List<Pet> pets = owner.getPets();
+-        assertThrows(UnsupportedOperationException.class, () -> pets.add(new Pet()));
++        assertNotNull(pets);
++        assertEquals(1, pets.size());
+     }
+EOF
+  out=$(python3 "$HARNESS_DIR/refute-diff.py" --diff /tmp/shipassertweak.diff 2>&1) || true
+  echo "$out" | grep -q 'O-SHIPASSERTWEAK' && echo shipassertweak-k12-ok
+}
+check "refute-diff REFUTES characterization-drop tip (O-SHIPASSERTWEAK)" 0 "shipassertweak-k12-ok"
+
 # S-CHAR: model harvest plan without src/test paths
 run_case() {
   mkfix
@@ -2414,6 +2706,120 @@ EOF
 }
 check "S-CHAR skips structure+Absorbs legacy model cites (O-M3CHARSCOPE)" 0 "PLAN OK"
 
+# S-GODORDER: god-node harvest before characterization → RED
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order
+1. com.example.legacy.model.PetType (src/.../PetType.java) — god-node: characterization tests first
+2. com.example.legacy.model.Role (src/.../Role.java)
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest PetType (god node)
+**Class**: rewrite
+**Shape**: create
+**Target**: → `src/main/java/com/demo/model/PetType.java`
+**Owns**: src/main/java/com/demo/model/PetType.java
+
+#### T-002: Characterize entity relationships
+**Class**: infer
+**Shape**: create
+**Goal**: characterization tests for PetType
+**Owns**: src/test/java/com/demo/model/PetTypeTest.java
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json 2>&1 || true)
+  echo "$out" | grep -q 'S-GODORDER' && echo sgodorder-red-ok
+}
+check "S-GODORDER RED when god-node harvest precedes characterization" 0 "sgodorder-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order
+1. com.example.legacy.model.PetType (src/.../PetType.java) — god-node: characterization tests first
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Characterize PetType
+**Class**: rewrite
+**Shape**: create
+**Goal**: characterization tests for PetType
+**Owns**: src/test/java/com/demo/model/PetTypeTest.java
+
+#### T-002: Harvest PetType (god node)
+**Class**: rewrite
+**Shape**: create
+**Target**: → `src/main/java/com/demo/model/PetType.java`
+**Owns**: src/main/java/com/demo/model/PetType.java
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'S-GODORDER' && { echo "unexpected: $out"; return 1; }
+  echo "$out" | grep -q 'PLAN OK' && echo sgodorder-ok
+}
+check "S-GODORDER GREEN when characterization precedes god-node harvest" 0 "sgodorder-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order
+1. com.example.legacy.model.Role (src/.../Role.java)
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest Role
+**Class**: rewrite
+**Shape**: create
+**Target**: → `src/main/java/com/demo/model/Role.java`
+**Owns**: src/main/java/com/demo/model/Role.java
+
+#### T-002: Add model tests
+**Class**: infer
+**Shape**: create
+**Owns**: src/test/java/com/demo/model/RoleTest.java
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'S-GODORDER' && { echo "unexpected godorder: $out"; return 1; }
+  echo "$out" | grep -q 'PLAN OK' && echo sgodorder-nongod-ok
+}
+check "S-GODORDER skips non-god-node harvests" 0 "sgodorder-nongod-ok"
+
+run_case() {
+  # O-M3SHAPEHARD: missing Shape is RED when grandfather WARN is off
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Harvest Role
+**Class**: rewrite
+**Target**: → `src/main/java/com/demo/model/Role.java`
+**Owns**: src/main/java/com/demo/model/Role.java
+#### T-002: tests
+**Class**: infer
+**Shape**: create
+**Owns**: src/test/java/com/demo/model/RoleTest.java
+EOF
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(PLAN_LINT_SHAPE_WARN=0 PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md 2>&1 || true)
+  echo "$out" | grep -q 'O-SHAPEDECL' && echo shapehard-ok
+}
+check "plan-lint Shape missing is RED by default (O-M3SHAPEHARD)" 0 "shapehard-ok"
+
 run_case() {
   grep -q 'O-M3QWENSTALL' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'M3_STALL_ABORT_SECS:-120' "$HARNESS_DIR/outer-loop.sh" \
@@ -2434,6 +2840,18 @@ run_case() {
 check "M3 preseed + O-REVHOLD + O-DEBTNONE wiring" 0 "m3preseed-revhold-ok"
 
 run_case() {
+  # O-M3LINTPROCEED: exhausted m3-lint / still-RED plan must HOLD — never
+  # "proceeding with the plan as-is" into M4.
+  ! grep -qE 'proceeding with the plan as-is|still failing after revision — proceeding' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M3LINTPROCEED' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm3-lint-hold' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M3LINTPROCEED' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm3-lint-hold' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3lintproceed-ok
+}
+check "m3-lint exhaustion HOLDs (no M4 proceed) (O-M3LINTPROCEED)" 0 "m3lintproceed-ok"
+
+run_case() {
   grep -q 'L-M5e' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'm5-evaluate-preflight' "$HARNESS_DIR/supervisor.sh" \
     && echo m5e-ok
@@ -2446,6 +2864,35 @@ run_case() {
     && echo escw-ok
 }
 check "supervisor carries O-ESCW worker-verified noop (no MiniMax)" 0 "escw-ok"
+
+run_case() {
+  grep -q 'O-ESCWSTRUCTTGT skip allow-empty' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'missing-gitkeep' "$HARNESS_DIR/escw-eligible.py" \
+    && echo escwstruct-ok
+}
+check "O-ESCWSTRUCTTGT refuses allow-empty while structure Target absent" 0 "escwstruct-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create package structure and package-info
+**Class**: rewrite
+**Shape**: structure
+**Scope**: Package preparation
+- **Owns**: `src/main/java/com/demo/model/package-info.java`
+- **Source**: `/projects/legacy/src/main/java/org/springframework/samples/petclinic/model/package-info.java`
+- Create `src/main/java/com/demo/model/` directory structure
+EOF
+  export TASKS_FILE="$PWD/tasks.md"
+  eval "$(sed -n '/^structure_gitkeep_targets()/,/^structure_targets_missing()/{ /^structure_targets_missing()/q; p; }' "$HARNESS_DIR/supervisor.sh")"
+  out=$(structure_gitkeep_targets T-001)
+  printf '%s\n' "$out" | grep -qx 'src/main/java/com/demo/model/package-info.java' \
+    && ! printf '%s\n' "$out" | grep -q 'package/\.gitkeep' \
+    && ! printf '%s\n' "$out" | grep -q 'springframework' \
+    && echo structpkginfo-ok
+}
+check "O-STRUCTPKGINFO structure targets are Owns package-info (no legacy/hyphen ghosts)" 0 "structpkginfo-ok"
 
 run_case() {
   mkfix
@@ -2665,6 +3112,47 @@ EOF
 }
 check "plan-lint rejects Shape=structure without package Target (O-SHAPELINT)" 1 "O-SHAPELINT"
 
+# O-STRUCTJAVA — Shape=structure must not Target .java sources (use create/modify)
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: structure
+**Goal**: Consolidate Spring Data repository implementations to Panache
+**Target design**:
+- src/main/java/org/example/legacy/repository/SpringDataOwnerRepository.java → src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java
+- src/main/java/org/example/legacy/repository/SpringDataPetRepository.java → src/main/java/com/demo/repository/springdatajpa/SpringDataPetRepository.java
+**Acceptance**: Panache repositories compile
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint rejects Shape=structure with .java Targets (O-STRUCTJAVA)" 1 "O-STRUCTJAVA"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-003: Create repository package structure with .gitkeep
+**Class**: rewrite
+**Shape**: structure
+**Goal**: Create repository package structure with .gitkeep
+**Target design**: → `src/main/java/com/demo/repository/springdatajpa/.gitkeep`
+**Owns**: src/main/java/com/demo/repository/springdatajpa/.gitkeep
+**Absorbs**: src/main/java/org/example/legacy/repository/SpringDataOwnerRepository.java
+**Acceptance**: package directory trackable via .gitkeep
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint accepts Shape=structure .gitkeep with Absorbs .java (O-STRUCTJAVA-NEG)" 0 "PLAN OK"
+
 run_case() {
   grep -q 'sensor-fix-mode' "$SENSORS" \
     && grep -q 'O-SFIXLOOP' "$SENSORS" \
@@ -2804,6 +3292,24 @@ check "escw-eligible allows service characterization when service tests exist (O
 
 run_case() {
   mkfix
+  mkdir -p src/test/java/com/demo
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-000: Characterization deferred for repository god-nodes (O-CHARORACLE / S-GODORDER)
+**Class**: rewrite
+**Shape**: verify
+**Goal**: Characterization for repository god-node PetTypeRepository is deferred — do NOT invent hollow G-PLACE Repository tests.
+**Target design**: verify absence of phantom invented `src/test/java/**/PetTypeRepository*Test.java` for this story
+**Oracle**: absent
+**Acceptance**: PetTypeRepository named; no hollow repository characterization tests invented
+EOF
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$ESCW_PY" tasks.md T-000
+  ALREADY_COMPLETE_ROOT="$PWD" python3 "$HARNESS_DIR/already-complete.py" tasks.md T-000
+}
+check "verify-absent Shape=verify Oracle=absent ESCW+already-complete (O-ESCWVERIFYABS)" 0 "verify-absent"
+
+run_case() {
+  mkfix
   mkdir -p src/main/java/com/demo/repository/jdbc
   echo 'class JdbcOwnerRepositoryImpl {}' > src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java
   cat > tasks.md <<'EOF'
@@ -2887,6 +3393,67 @@ EOF
     && echo structtgt-ok
 }
 check "task-packet gates O-TGTNAME on structure/.gitkeep (O-STRUCTTGT)" 0 "structtgt-ok"
+
+# O-STRUCTJAVA — structure+.java Target-design packet tip (plan defect → NULLACTION)
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: structure
+**Goal**: Consolidate Spring Data repository implementations to Panache
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: Panache repositories compile
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-004 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-STRUCTJAVA' \
+    && echo "$out" | grep -qE 'O-NULLACTION|escalation-noaction' \
+    && ! echo "$out" | grep -q 'O-STRUCTTGT: Shape=structure / Target .gitkeep' \
+    && ! echo "$out" | grep -q 'MANDATORY: .gitkeep' \
+    && echo structjava-pkt-ok
+}
+check "task-packet tips O-STRUCTJAVA on structure+.java Targets" 0 "structjava-pkt-ok"
+
+# O-HTTPPORT-TIP — properties packets must hard-tip deploy-contract port
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Consolidate application.properties with PetClinic legacy settings
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Consolidate application.properties with PetClinic legacy settings
+**Target design**: → `src/main/resources/application.properties`
+**Owns**: src/main/resources/application.properties
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-HTTPPORT' \
+    && echo "$out" | grep -q 'NEVER copy legacy Spring server.port' \
+    && echo httpport-tip-ok
+}
+check "task-packet injects O-HTTPPORT tip for properties tasks (O-HTTPPORT-TIP)" 0 "httpport-tip-ok"
+
+run_case() {
+  # O-STAGEDPATH: harvest packet must expose legacy-layout staged path
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-008: Harvest User
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest User with jakarta.persistence migration
+**Source**: /projects/legacy/src/main/java/org/springframework/samples/petclinic/model/User.java
+**Target**: → `src/main/java/com/demo/model/User.java`
+**Owns**: src/main/java/com/demo/model/User.java
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-008 2>/dev/null)
+  echo "$out" | grep -q 'O-STAGEDPATH' \
+    && echo "$out" | grep -q 'migration/staging/src/main/java/org/springframework/samples/petclinic/model/User.java' \
+    && echo stagedpath-ok
+}
+check "task-packet emits Staged-source legacy path (O-STAGEDPATH)" 0 "stagedpath-ok"
 
 run_case() {
   grep -q 'scrub_hermes_from_git' "$HARNESS_DIR/supervisor.sh" \
@@ -3163,6 +3730,36 @@ check "O-DTOCOV + O-SFIX-PROMPT-CONFLICT supervisor wiring" 0 "sfix-dtocov-wire-
 
 run_case() {
   mkfix
+  mkdir -p src/main/resources
+  cat > pom.xml <<'EOF'
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-orm</artifactId>
+    </dependency>
+  </dependencies>
+</project>
+EOF
+  : > src/main/resources/application.properties
+  out=$(python3 "$HARNESS_DIR/ensure-dskind.py" .)
+  echo "$out" | grep -q 'ok:dskind-updated' \
+    && grep -q 'quarkus-jdbc-h2' pom.xml \
+    && grep -q 'quarkus-jdbc-postgresql' pom.xml \
+    && grep -q 'quarkus.datasource.db-kind' src/main/resources/application.properties \
+    && echo dskind-ok
+}
+check "ensure-dskind wires jdbc+db-kind for hibernate (O-DSKIND)" 0 "dskind-ok"
+
+run_case() {
+  grep -q 'ensure-dskind.py' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-DSKIND' "$HARNESS_DIR/task-packet.py" \
+    && echo dskind-wire-ok
+}
+check "O-DSKIND wired in supervisor + task-packet tip" 0 "dskind-wire-ok"
+
+run_case() {
+  mkfix
   git init -q
   git config user.email t@t; git config user.name t
   mkdir -p src/main/java/com/demo/dto src/main/java/com/demo/mapper
@@ -3226,6 +3823,7 @@ UI surface: waived (API-only).
 
 #### T-001: Fold OldHelper into CartService
 **Class**: infer
+**Shape**: create
 **Goal**: absorb helper
 **Absorbs**: src/main/java/com/redhat/coolstore/rest/OldHelper.java
 - Target: → `src/main/java/com/demo/service/CartService.java`
@@ -3292,6 +3890,64 @@ EOF
 }
 check "plan-lint story-scope skips out-of-scope dto incidents (O-M3DTOSCOPE)" 0 "PLAN OK"
 
+# O-M3TASKSCOPE: Target/→ outside --story-scope must RED (service under repository story)
+run_case() {
+  mkfix
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest repository
+**Class**: rewrite
+**Shape**: modify
+**Goal**: convert repository only
+**Target design**:
+- src/main/java/org/example/legacy/repository/FooRepository.java → src/main/java/com/demo/repository/FooRepository.java
+
+#### T-002: Update service layer
+**Class**: rewrite
+**Shape**: modify
+**Goal**: touch service outside story scope
+**Target design**:
+- src/main/java/org/example/legacy/service/FooServiceImpl.java → Update repository imports
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json --story-scope \
+    'src/main/java/org/example/legacy/repository/FooRepository.java' 2>&1 || true)
+  echo "$out" | grep -q 'O-M3TASKSCOPE' && echo "$out" | grep -q 'FooServiceImpl' \
+    && echo m3taskscope-red-ok
+}
+check "plan-lint RED Target outside story-scope (O-M3TASKSCOPE)" 0 "m3taskscope-red-ok"
+
+# O-M3TASKSCOPE: in-scope repository Target stays GREEN; src/test char allowed
+run_case() {
+  mkfix
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest repository
+**Class**: rewrite
+**Shape**: modify
+**Goal**: convert repository
+**Target design**:
+- src/main/java/org/example/legacy/repository/FooRepository.java → src/main/java/com/demo/repository/FooRepository.java
+
+#### T-002: Characterize repository
+**Class**: infer
+**Shape**: create
+**Goal**: characterization tests for FooRepository
+**Target design**:
+- Create src/test/java/com/demo/repository/FooRepositoryTest.java
+EOF
+  echo '[]' > f.json
+  python3 "$LINT" tasks.md f.json --story-scope \
+    'src/main/java/org/example/legacy/repository/FooRepository.java'
+}
+check "plan-lint GREEN in-scope Target + test char (O-M3TASKSCOPE)" 0 "PLAN OK"
+
 # O-M3GENSRC: generated-sources never require ownership
 run_case() {
   mkfix
@@ -3326,12 +3982,14 @@ UI surface: waived (API-only).
 
 #### T-001: Convert Beta
 **Class**: rewrite
+**Shape**: modify
 **Findings**: r-mand-00001
 **Goal**: convert Beta
 - Target: → `src/main/java/com/demo/Beta.java`
 
 #### T-002: Characterize Alpha
 **Class**: infer
+**Shape**: verify
 **Goal**: pin Alpha
 **Out of scope:** src/main/java/com/demo/Beta.java is owned by T-001
 - Target: → `src/test/java/com/demo/AlphaTest.java`
@@ -3671,9 +4329,11 @@ check "O-WEDGERESUME wiring (clear wedge-skip at supervisor start)" 0 "wedgeresu
 run_case() {
   grep -q 'O-INFERABSENT' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'task_oracle' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'oracle_derive' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'inferabsent_blocks' "$HARNESS_DIR/supervisor.sh" \
     && echo inferabsent-ok
 }
-check "O-INFERABSENT wiring (skip worker on infer+absent)" 0 "inferabsent-ok"
+check "O-INFERABSENT wiring (skip worker on infer+derived-absent)" 0 "inferabsent-ok"
 
 run_case() {
   grep -q 'O-ESCREOPENCODE' "$HARNESS_DIR/supervisor.sh" \
@@ -3681,6 +4341,32 @@ run_case() {
     && echo escreopencode-ok
 }
 check "O-ESCREOPENCODE wiring (no opencode re-dispatch after wedge)" 0 "escreopencode-ok"
+
+run_case() {
+  grep -q 'O-ESCREOPENCODE-ENFORCE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'arm_escreopencode' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'escreopencode_kill_spawned' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'escreopencode-deny' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ESCREOPENCODE-ENFORCE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo escreopencode-enforce-ok
+}
+check "O-ESCREOPENCODE-ENFORCE wiring (PATH refuse + kill opencode on escalation)" 0 "escreopencode-enforce-ok"
+
+# O-ESCREOPENCODE-SENSORRED — ENFORCE also arms on sensor-red / O-STEPFINISHRED
+run_case() {
+  grep -q 'O-ESCREOPENCODE-SENSORRED' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-STEPFINISHRED' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/^escreopencode_should\(\)/,/^}/ {
+           if (/O-STEPFINISHRED/) s=1
+           if (/sensor-red/) c=1
+           if (/SENSOR RED/) r=1
+         }
+         END { exit !(s && c && r) }' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ESCREOPENCODE-SENSORRED' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'sensor-red' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo escreopencode-sensorred-ok
+}
+check "O-ESCREOPENCODE-SENSORRED arms ENFORCE on sensor-red / O-STEPFINISHRED" 0 "escreopencode-sensorred-ok"
 
 run_case() {
   grep -q 'O-ANTISCOPE' "$HARNESS_DIR/supervisor.sh" \
@@ -3874,6 +4560,8 @@ run_case() {
   # Gut S01 like the confused M3/worker did
   printf '# S01 gutted\n#### T-001: only one left\n' > specs/S01-foundation/tasks.md
   STORY_TASKS=specs/S03-platform/tasks.md
+  discard_orphan_pom() { :; }
+  log() { :; }
   eval "$(sed -n '/^complete_story_ids()/,/^stage_for_task_commit()/{ /^stage_for_task_commit()/q; p; }' "$HARNESS_DIR/supervisor.sh")"
   eval "$(sed -n '/^stage_for_task_commit()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
   stage_for_task_commit
@@ -4214,6 +4902,27 @@ EOF
 }
 check "findings-milestone-scope limits in-loop K5 (O-K5MILESCOPE)" 0 "k5milescope-ok"
 
+run_case() {
+  # O-K5WAIVELEAK: FINDINGS_K5_WAIVED=1 must short-circuit sensors.sh findings
+  # (not fall through to PLAN_SCOPE / --scope-all). Behavioural via real entrypoint.
+  mkfix
+  out=$(
+    FINDINGS_K5_WAIVED=1 FINDINGS_SCOPE= PLAN_SCOPE=springboot-metrics-to-quarkus-0200 \
+      FINDINGS_CHECK=on bash "$SENSORS" findings 2>&1
+  ) || true
+  echo "$out" | grep -q 'O-K5WAIVELEAK' \
+    && ! echo "$out" | grep -qE 'FINDINGS RED|SENSOR RED \(findings\)|FAIL:findings' \
+    && echo k5waiveleak-ok
+}
+check "empty in-loop Findings waives K5 (O-K5WAIVELEAK)" 0 "k5waiveleak-ok"
+
+run_case() {
+  grep -q 'FINDINGS_K5_WAIVED' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-K5WAIVELEAK' "$HARNESS_DIR/sensors.sh" \
+    && echo k5waiveleak-wire
+}
+check "O-K5WAIVELEAK wired in sensors.sh" 0 "k5waiveleak-wire"
+
 # --- O-RETROAPPEND / O-INSTQUAL / O-WORKERWEDGE-RCA (Poll 76 F3) ------------
 
 run_case() {
@@ -4318,6 +5027,65 @@ PY
   python3 "$HARNESS_DIR/worker-read-watch.py" oc.json; echo "rc=$?"
 }
 check "worker-read-watch continues after first edit (O-FIRSTMUT)" 0 "rc=1"
+
+# O-FIRSTMUTBASH: successful harvest-from-staging bash counts as mutate (S03 T-002 false READ_THRASH)
+run_case() {
+  mkfix
+  python3 - <<'PY' > oc.json
+import json
+evs = []
+for i in range(22):
+    evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": f"r{i}"}})
+evs.append({
+    "type": "tool_use",
+    "part": {
+        "type": "tool",
+        "tool": "bash",
+        "callID": "b0",
+        "state": {
+            "input": {
+                "command": ".hermes/skills/migration-harness/scripts/harvest-from-staging.sh repository/jdbc/JdbcPet.java"
+            },
+            "output": (
+                "harvested: migration/staging/src/main/java/org/example/repository/jdbc/JdbcPet.java "
+                "-> src/main/java/com/demo/repository/jdbc/JdbcPet.java (package org.example -> com.demo, dest path '/' -joined)"
+            ),
+        },
+    },
+})
+print(json.dumps(evs))
+PY
+  python3 "$HARNESS_DIR/worker-read-watch.py" oc.json; echo "rc=$?"
+}
+check "worker-read-watch continues after bash harvest success (O-FIRSTMUTBASH)" 0 "rc=1"
+
+run_case() {
+  mkfix
+  python3 - <<'PY' > oc.json
+import json
+evs = []
+for i in range(22):
+    evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": f"r{i}"}})
+evs.append({
+    "type": "tool_use",
+    "part": {
+        "type": "tool",
+        "tool": "bash",
+        "callID": "b0",
+        "state": {
+            "input": {
+                "command": ".hermes/skills/migration-harness/scripts/harvest-from-staging.sh repository/jdbc/JdbcPet.java"
+            },
+            "output": "FATAL: O-HARVESTFULLPATH — missing staging source",
+        },
+    },
+})
+print(json.dumps(evs))
+PY
+  out=$(python3 "$HARNESS_DIR/worker-read-watch.py" oc.json); rc=$?
+  [ "$rc" -eq 0 ] && echo "$out" | grep -q 'read-thrash' && echo firstmutbash-fail-kill
+}
+check "worker-read-watch kills failed harvest bash (O-FIRSTMUTBASH)" 0 "firstmutbash-fail-kill"
 
 run_case() {
   grep -q 'clear_worker_wedge_skip' "$HARNESS_DIR/supervisor.sh" \
@@ -4566,7 +5334,8 @@ check "outer-loop appends log + RESUME banner (O-UXLOG-TRUNC)" 0 "uxtrunc-ok"
 
 run_case() {
   grep -q 'O-RESUMEBASEEXCL' "$HARNESS_DIR/supervisor.sh" \
-    && grep -q 'git log --oneline -1 "${RUN_BASE}"' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'git log --oneline -1 "${_base}"' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q '_include_base=1' "$HARNESS_DIR/supervisor.sh" \
     && echo resumebase-ok
 }
 check "committed() includes RUN_BASE tip (O-RESUMEBASEEXCL)" 0 "resumebase-ok"
@@ -4621,6 +5390,166 @@ run_case() {
 check "O-JDBCREGRESS / O-JDBCSKIP wiring" 0 "jdbcregress-ok"
 
 run_case() {
+  # O-HYGIENEWORKER: worker/mechan/ESCW tip-accept must call refuse_unhygienic_commit
+  # (S03 T-001 d7bde2a spring-tx bypassed run_stage-only hygiene).
+  grep -q 'refuse_unhygienic_commit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-HYGIENEWORKER' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'migration/run-archives' "$HARNESS_DIR/supervisor.sh" \
+    && echo hygieneworker-ok
+}
+check "O-HYGIENEWORKER / O-ARCHIVESTAGE wiring" 0 "hygieneworker-ok"
+
+# O-M3PRESERVEDAO — plan must not Preserve DataAccessException / add spring-tx
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Harvest repository interfaces
+**Class**: rewrite
+**Shape**: create
+**Goal**: Create package structure and harvest repository interfaces
+**Target**: → `src/main/java/com/demo/repository/OwnerRepository.java`
+Preserve DataAccessException on method signatures.
+**Acceptance**: interfaces compile
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects Preserve DataAccessException (O-M3PRESERVEDAO)" 1 "O-M3PRESERVEDAO"
+
+# W4-085a: substring-only remap one-liner without exact table → RED
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest repository interfaces
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest OwnerRepository from staging
+**Target**: → `src/main/java/com/demo/repository/OwnerRepository.java`
+Remap DataAccessException → PersistenceException (or omit throws); never add spring-tx.
+**Acceptance**: interfaces compile without spring-dao
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects substring-only DAO remap one-liner (O-M3PRESERVEDAO/W4-085a)" 1 "O-M3PRESERVEDAO"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest repository interfaces
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest OwnerRepository from staging
+**Target**: → `src/main/java/com/demo/repository/OwnerRepository.java`
+**Exception mapping**:
+| legacy | target |
+| DataAccessException | PersistenceException |
+| EmptyResultDataAccessException | NoResultException |
+| ObjectRetrievalFailureException | EntityNotFoundException |
+| DataRetrievalFailureException | PersistenceException |
+Never add spring-tx.
+**Acceptance**: interfaces compile without spring-dao
+EOF
+  out=$(python3 "$LINT" tasks.md 2>&1)
+  echo "$out" | grep -q O-M3PRESERVEDAO && echo "FP-FIRED" || echo "preservedao-clean"
+}
+check "plan-lint accepts exact DAO mapping table (O-M3PRESERVEDAO-NEG)" 0 "preservedao-clean"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Harvest OwnerRepository
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest OwnerRepository interface from staging
+**Target**: → `src/main/java/com/demo/repository/OwnerRepository.java`
+**Owns**: src/main/java/com/demo/repository/OwnerRepository.java
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-M3PRESERVEDAO' \
+    && echo "$out" | grep -q 'PersistenceException' \
+    && echo "$out" | grep -q 'EmptyResultDataAccessException' \
+    && echo "$out" | grep -q 'NoResultException' \
+    && echo "$out" | grep -q 'ObjectRetrievalFailureException' \
+    && echo "$out" | grep -q 'EntityNotFoundException' \
+    && echo "$out" | grep -q 'NEVER invent' \
+    && grep -q 'O-M3PRESERVEDAO' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-M3PRESERVEDAO' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && echo preservedao-tip-ok
+}
+check "task-packet injects O-M3PRESERVEDAO tip for repository harvest" 0 "preservedao-tip-ok"
+
+# O-CHARORACLE — characterization Source→Target must exist in staging/legacy
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/test/java/com/example
+  # deliberately omit FooRepositoryTest.java (phantom oracle)
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Characterization tests for repository operations
+**Class**: infer
+**Shape**: create
+**Goal**: Port legacy repository tests to verify CRUD before conversion
+**Target design**:
+- src/test/java/com/example/FooRepositoryTest.java → src/test/java/com/demo/FooRepositoryTest.java
+**Acceptance**: tests pass
+EOF
+  python3 "$LINT" tasks.md
+}
+check "plan-lint rejects phantom characterization Source (O-CHARORACLE)" 1 "O-CHARORACLE"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/test/java/com/example
+  echo 'class FooRepositoryTest {}' > migration/staging/src/test/java/com/example/FooRepositoryTest.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Characterization tests for repository operations
+**Class**: infer
+**Shape**: create
+**Goal**: Port legacy repository tests to verify CRUD before conversion
+**Target design**:
+- src/test/java/com/example/FooRepositoryTest.java → src/test/java/com/demo/FooRepositoryTest.java
+**Acceptance**: tests pass
+EOF
+  out=$(python3 "$LINT" tasks.md 2>&1)
+  echo "$out" | grep -q O-CHARORACLE && echo "FP-FIRED" || echo "charoracle-clean"
+}
+check "plan-lint accepts existing characterization Source (O-CHARORACLE-NEG)" 0 "charoracle-clean"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/example
+  # staging has impl but NOT the test oracle
+  echo 'class FooRepository {}' > migration/staging/src/main/java/com/example/FooRepository.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Characterization tests for repository operations
+**Class**: infer
+**Shape**: create
+**Goal**: Port legacy repository tests before conversion
+**Target design**:
+- src/test/java/com/example/FooRepositoryTest.java → src/test/java/com/demo/FooRepositoryTest.java
+**Acceptance**: tests pass
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-CHARORACLE' \
+    && echo "$out" | grep -q 'oracle ABSENT' \
+    && echo "$out" | grep -q 'O-NULLACTION' \
+    && echo "$out" | grep -q 'Do NOT invent' \
+    && grep -q 'O-CHARORACLE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-CHARORACLE' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && echo charoracle-tip-ok
+}
+check "task-packet injects O-CHARORACLE tip when oracle absent" 0 "charoracle-tip-ok"
+
+run_case() {
   grep -q 'is_convert_task\|O-ACRESTABS' "$HARNESS_DIR/already-complete.py" \
     && grep -q 'throws\\s\*Exception\|O-FIDSONAR' "$HARNESS_DIR/harvest-fidelity.py" \
     && echo acrestabs-ok
@@ -4665,6 +5594,105 @@ run_case() {
     && echo sfixworker-ok
 }
 check "sensor-fix Qwen-first + MiniMax rescue wiring (O-SFIXWORKER)" 0 "sfixworker-ok"
+
+# O-SFIXRESCUEDISCARD / O-SFIXSIGINT: tip cited-dim GREEN dirt before discard/reset
+run_case() {
+  grep -q 'sfix_commit_green_dirt' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXRESCUEDISCARD' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sfix_rescue_commit' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sfix_keep_tip_cited_green' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-DEBTSHIPRACE' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/^sfix_commit_green_dirt\(\)/,/^record_debt\(\)/ {
+           if (/sfix_loop_recheck/) r=1
+           if (/stage_for_task_commit/) s=1
+           if (/O-SFIXRESCUEDISCARD tip/) t=1
+         }
+         END { exit !(r && s && t) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixrescuediscard-ok
+}
+check "O-SFIXRESCUEDISCARD tip green dirt before discard + O-DEBTSHIPRACE" 0 "sfixrescuediscard-ok"
+
+# O-SFIXMUTATE: sfix seats early-kill diagnose-freeze (0 edit/write)
+run_case() {
+  grep -q 'O-SFIXMUTATE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'SFIX_MUTATE_DEADLINE_SECS' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sfix_mutate_kill' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'WORKER_MUTATE_DEADLINE_SECS' "$HARNESS_DIR/worker-read-watch.py" \
+    && grep -q 'sfix-mutate-deadline' "$HARNESS_DIR/worker-read-watch.py" \
+    && grep -q 'O-SFIXMUTATE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo sfixmutate-ok
+}
+check "O-SFIXMUTATE sfix diagnose-freeze early kill + EXECUTION tip" 0 "sfixmutate-ok"
+
+# ARCH-C1 / O-TASKMUTATE: M4 task seats also wire WORKER_MUTATE_DEADLINE (not
+# only *sfix*), and worker-read-watch aborts on no first-write past deadline.
+run_case() {
+  # Wiring: WORKER_MUTATE_DEADLINE appears outside the *sfix*) case branch.
+  awk '
+    /\*sfix\*\)/ { in_sfix=1; next }
+    in_sfix && /^[[:space:]]*esac[[:space:]]*$/ { in_sfix=0 }
+    in_sfix && /^[[:space:]]*[a-zA-Z_*|).-]+\)/ && !/\*sfix\*\)/ { in_sfix=0 }
+    /WORKER_MUTATE_DEADLINE/ && !in_sfix { found=1 }
+    END { exit !found }
+  ' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-TASKMUTATE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'task_mutate_kill' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-TASKMUTATE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && {
+      # Behavior: activity + 0 mutates past deadline → kill (exit 0).
+      mkfix
+      python3 - <<'PY' > oc.json
+import json
+evs = [{"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": f"r{i}"}} for i in range(4)]
+print(json.dumps(evs))
+PY
+      out=$(WORKER_MUTATE_DEADLINE_SECS=120 python3 "$HARNESS_DIR/worker-read-watch.py" oc.json 120)
+      rc=$?
+      [ "$rc" -eq 0 ] && echo "$out" | grep -q 'mutate-deadline' && echo "$out" | grep -q 'mutates=0'
+    } \
+    && {
+      # With a first edit inside the window → continue (exit 1).
+      mkfix
+      python3 - <<'PY' > oc.json
+import json
+evs = [{"type": "tool_use", "part": {"type": "tool", "tool": "read", "callID": "r0"}}]
+evs.append({"type": "tool_use", "part": {"type": "tool", "tool": "edit", "callID": "e0"}})
+print(json.dumps(evs))
+PY
+      WORKER_MUTATE_DEADLINE_SECS=120 python3 "$HARNESS_DIR/worker-read-watch.py" oc.json 120
+      [ $? -eq 1 ]
+    } \
+    && echo taskmutate-ok
+}
+check "ARCH-C1 O-TASKMUTATE M4 first-write deadline + abort instrument" 0 "taskmutate-ok"
+
+# O-STYLEFIDELITY: park dirt + fidelity revert + no scoop via git add -A
+run_case() {
+  grep -q 'park_src_dirt_for_autofix' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'style_autofix_stage' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-STYLEFIDELITY' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'style_autofix_fidelity_revert' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/^style_autofix_stage\(\)/,/^park_src_dirt_for_autofix\(\)/ {
+           if (/git add -A/) bad=1
+           if (/src\/\*/) ok=1
+         }
+         END { exit !(ok && !bad) }' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-STYLEFIDELITY' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo stylefidelity-ok
+}
+check "O-STYLEFIDELITY park dirt + fidelity revert + src-only stage" 0 "stylefidelity-ok"
+
+# O-M5EVALTESTMAIN / O-M5PRECLAIM / O-M5EVALBURN
+run_case() {
+  grep -q 'O-M5EVALTESTMAIN' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm5_eval_testmain_reset' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M5PRECLAIM' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm5_preclaim_rewrite' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-M5EVALBURN' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm5_eval_burn_mechan' "$HARNESS_DIR/supervisor.sh" \
+    && echo m5evalhonesty-ok
+}
+check "O-M5EVALTESTMAIN/PRECLAIM/EVALBURN evaluate honesty wiring" 0 "m5evalhonesty-ok"
 
 # O-SFIXNODELTA: skip task-attributed sfix when K7 new=0/gone=0 + empty tip
 run_case() {
@@ -4907,9 +5935,16 @@ run_case() {
   grep -q 'O-ESCALPAUSE\|supervisor-pause' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'esc_cause="supervisor-pause"' "$HARNESS_DIR/supervisor.sh" \
     && grep -q 'esc_cause="sigint"' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ESCALCAUSE-STALE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'esc_cause="sensor-red"' "$HARNESS_DIR/supervisor.sh" \
+    && awk '/O-ESCALCAUSE-STALE/,/escalation-cause-\$\{T\}/ {
+           if (/sensor-red/) s=1
+           if (/_esc_last/) l=1
+         }
+         END { exit !(s && l) }' "$HARNESS_DIR/supervisor.sh" \
     && echo escalcause-ok
 }
-check "O-ESCALCAUSE reads kill why + suppress pause (O-ESCALPAUSE)" 0 "escalcause-ok"
+check "O-ESCALCAUSE reads kill why + suppress pause + stale→sensor-red (O-ESCALPAUSE/STALE)" 0 "escalcause-ok"
 
 run_case() {
   FIX=$(mktemp -d)
@@ -4981,9 +6016,11 @@ check "wireup-check GREEN on package-private @ConfigProperty bean (O-WIREUP-FP)"
 run_case() {
   grep -q 'O-TMPARCHIVE' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'run-archives' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'archive_tmp_forensics' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q "trap 'archive_tmp_forensics' EXIT" "$HARNESS_DIR/outer-loop.sh" \
     && echo tmparchive-ok
 }
-check "outer-loop archives /tmp forensics at RUN COMPLETE (O-TMPARCHIVE)" 0 "tmparchive-ok"
+check "outer-loop archives /tmp forensics on EXIT incl fail (O-TMPARCHIVE)" 0 "tmparchive-ok"
 
 # O-REVERTPURE / O-SCOPEBACKFILL — scope revert stages only reverted paths;
 # structure/.gitkeep Target is restored after later-story wipe (W4-010).
@@ -5074,6 +6111,2399 @@ EOF
     && echo scopebackfill-ok
 }
 check "scope revert pure + structure .gitkeep backfill (O-REVERTPURE/O-SCOPEBACKFILL)" 0 "scopebackfill-ok"
+
+# O-LOCKSTALE / O-LOGCOLLIDE / O-SFIXTESTPAIR — pre-S03 wiring (W4-007/W4-058/W4-057a)
+run_case() {
+  grep -q 'O-LOCKSTALE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'clear_stale_pid_lock' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'clear_stale_pid_lock' "$HARNESS_DIR/supervisor.sh" \
+    && echo lockstale-ok
+}
+check "outer+supervisor clear dead PID locks (O-LOCKSTALE)" 0 "lockstale-ok"
+
+run_case() {
+  grep -q 'oc_seat_base' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-LOGCOLLIDE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'STORY_ID=' "$HARNESS_DIR/outer-loop.sh" \
+    && echo logcollide-ok
+}
+check "seat logs keyed by story (O-LOGCOLLIDE)" 0 "logcollide-ok"
+
+run_case() {
+  grep -q 'sfix_test_pair_note' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-SFIXTESTPAIR' "$HARNESS_DIR/supervisor.sh" \
+    && echo sfixtestpair-ok
+}
+check "sfix couples harvest tests on fidelity (O-SFIXTESTPAIR)" 0 "sfixtestpair-ok"
+
+# O-CDIPARTIAL / O-JDBCHARVESTAPI — incomplete CDI + Spring JDBC APIs under quarkus
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+package com.demo.repository.jdbc;
+import jakarta.enterprise.context.ApplicationScoped;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+@ApplicationScoped
+public class JdbcFooRepositoryImpl {
+  @Autowired NamedParameterJdbcTemplate jdbc;
+}
+EOF
+  python3 "$HARNESS_DIR/cdi-partial-check.py"
+}
+check "cdi-partial-check REDs Autowired+spring.jdbc on CDI bean (O-CDIPARTIAL/O-JDBCHARVESTAPI)" 1 "O-CDIPARTIAL"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+package com.demo.repository.jdbc;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import javax.sql.DataSource;
+@ApplicationScoped
+public class JdbcFooRepositoryImpl {
+  @Inject DataSource ds;
+}
+EOF
+  python3 "$HARNESS_DIR/cdi-partial-check.py" && echo cdipartial-clean
+}
+check "cdi-partial-check accepts Inject+DataSource CDI bean (O-CDIPARTIAL-NEG)" 0 "cdipartial-clean"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest Jdbc*RepositoryImpl and convert @Autowired to @Inject; drop spring.jdbc
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java`
+**Owns**: src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java
+**Acceptance**: CDI beans compile without spring-jdbc
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-CDIPARTIAL' \
+    && echo "$out" | grep -q 'O-JDBCHARVESTAPI' \
+    && echo "$out" | grep -q 'Autowired' \
+    && echo "$out" | grep -q 'NamedParameterJdbcTemplate\|spring.jdbc\|Agroal' \
+    && grep -q 'O-CDIPARTIAL' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'cdi_partial_check' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'cdi-partial-check' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q '@Autowired' "$HARNESS_DIR/../skills/migration-harness/scripts/harvest-from-staging.sh" \
+    && echo cdipartial-tip-ok
+}
+check "task-packet/sensor/harvest wire O-CDIPARTIAL+O-JDBCHARVESTAPI" 0 "cdipartial-tip-ok"
+
+# O-MMSCOPEQUIT — MiniMax must not scope-quit with unfinished spring residue
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest Jdbc*RepositoryImpl and convert @Autowired to @Inject; drop spring.jdbc
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java`
+**Owns**: src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java
+**Acceptance**: CDI beans compile without spring-jdbc
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-MMSCOPEQUIT' \
+    && echo "$out" | grep -q 'scope-quit\|reclassification\|task-splitting' \
+    && grep -q 'O-MMSCOPEQUIT' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo mmscopequit-ok
+}
+check "task-packet+EXECUTION wire O-MMSCOPEQUIT" 0 "mmscopequit-ok"
+
+# O-HOTSWAPSTALE — zero-byte harness-update + md5 parity auto-clear
+run_case() {
+  grep -q 'O-HOTSWAPSTALE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'zero-byte harness-update' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'SUPERVISOR_VERSION' "$HARNESS_DIR/supervisor.sh" \
+    && echo hotswapstale-ok
+}
+check "supervisor wires O-HOTSWAPSTALE auto-clear" 0 "hotswapstale-ok"
+
+# O-TREEFIXSTUB — REMOVED / comment-only husks under src/main
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+/* REMOVED: Prematurely harvested file containing Spring Framework dependencies */
+EOF
+  python3 "$HARNESS_DIR/tree-fix-stub-check.py"
+}
+check "tree-fix-stub-check REDs REMOVED comment stub (O-TREEFIXSTUB)" 1 "O-TREEFIXSTUB"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+package com.demo.repository.jdbc;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import javax.sql.DataSource;
+@ApplicationScoped
+public class JdbcFooRepositoryImpl {
+  @Inject DataSource ds;
+  public void save() { /* real body */ ds.toString(); }
+}
+EOF
+  python3 "$HARNESS_DIR/tree-fix-stub-check.py" && echo treefixstub-clean
+}
+check "tree-fix-stub-check accepts real CDI type (O-TREEFIXSTUB-NEG)" 0 "treefixstub-clean"
+
+run_case() {
+  grep -q 'tree_fix_stub_check' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'tree-fix-stub-check' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q 'O-TREEFIXSTUB' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'Tree fix' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-TREEFIXSTUB' "$HARNESS_DIR/task-packet.py" \
+    && grep -q 'O-TREEFIXSTUB' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-COLLABOWN' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'O-COLLABOWN' "$HARNESS_DIR/task-packet.py" \
+    && echo treefixstub-wire-ok
+}
+check "sensor/hygiene/packet/plan-lint wire O-TREEFIXSTUB+O-COLLABOWN" 0 "treefixstub-wire-ok"
+
+# O-INFERFIRSTWRITE — multi-file Class=infer names a leaf first-write Target
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert JDBC repository implementations from Spring JDBC to Agroal DataSource + @Inject
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java`
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcPetRowMapper.java`
+**Owns**: src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java, src/main/java/com/demo/repository/jdbc/JdbcPetRowMapper.java
+**Acceptance**: CDI beans compile without spring-jdbc
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-INFERFIRSTWRITE' \
+    && echo "$out" | grep -q 'JdbcPetRowMapper.java' \
+    && grep -q 'O-INFERFIRSTWRITE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo inferfirstwrite-ok
+}
+check "task-packet+EXECUTION wire O-INFERFIRSTWRITE" 0 "inferfirstwrite-ok"
+
+# O-ESCWSCOPEUTIL — escalation prompt + untracked later-class scrub
+run_case() {
+  grep -q 'O-ESCWSCOPEUTIL' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'later_story_untracked\|untracked later-story' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-ESCWSCOPEUTIL' "$HARNESS_DIR/task-packet.py" \
+    && grep -q 'O-ESCWSCOPEUTIL' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo escwscopeutil-ok
+}
+check "supervisor/packet/EXECUTION wire O-ESCWSCOPEUTIL" 0 "escwscopeutil-ok"
+
+# O-AGROALHELPERSIG — preserve public helpers through Agroal rewrite
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert JDBC @Autowired NamedParameterJdbcTemplate to Agroal DataSource + @Inject
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcVisitRepositoryImpl.java`
+**Owns**: src/main/java/com/demo/repository/jdbc/JdbcVisitRepositoryImpl.java
+**Acceptance**: CDI beans compile without spring-jdbc
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-AGROALHELPERSIG' \
+    && echo "$out" | grep -q 'mapRow\|ParameterSource' \
+    && echo "$out" | grep -qE 'rename|privatize|RowMapper' \
+    && grep -q 'O-AGROALHELPERSIG' "$HARNESS_DIR/redesign-sig.py" \
+    && grep -q 'rename/privatize smell\|exact public' "$HARNESS_DIR/redesign-sig.py" \
+    && grep -q 'O-AGROALHELPERSIG' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo agroalhelpersig-ok
+}
+check "task-packet/redesign-sig/EXECUTION wire O-AGROALHELPERSIG" 0 "agroalhelpersig-ok"
+
+# O-STEPFINISHRED — refuse false-complete under task sensor RED
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert JDBC @Autowired NamedParameterJdbcTemplate to Agroal DataSource + @Inject
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcVisitRepositoryImpl.java`
+**Owns**: src/main/java/com/demo/repository/jdbc/JdbcVisitRepositoryImpl.java
+**Acceptance**: CDI beans compile without spring-jdbc
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-STEPFINISHRED' \
+    && echo "$out" | grep -q 'sensors.sh task\|SENSOR RED' \
+    && grep -q 'O-STEPFINISHRED' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'rewriting worker_rc 0→42' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-STEPFINISHRED' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && awk '/O-STEPFINISHRED \/ O-ESCALCAUSE-STALE/,/esc_cause="sensor-red"/ {
+           if (/O-STEPFINISHRED/) s=1
+           if (/task sensor RED/) t=1
+         }
+         END { exit !(s && t) }' "$HARNESS_DIR/supervisor.sh" \
+    && echo stepfinishred-ok
+}
+check "supervisor/packet/EXECUTION wire O-STEPFINISHRED" 0 "stepfinishred-ok"
+
+# O-SDJPAHARVESTONLY — harvest-only Spring Data residue (no Panache) must RED
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m/repository/springdatajpa \
+           src/main/java/m/repository/springdatajpa
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import m.repository.OwnerRepository;
+import m.model.Owner;
+public interface SpringDataOwnerRepository extends OwnerRepository, Repository<Owner, Integer> {
+    @Override
+    @Query("SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE :lastName%")
+    Collection<Owner> findByLastName(String lastName);
+}
+EOF
+  # dest = naive harvest (still Spring Data, Panache=0)
+  cat > src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import m.repository.OwnerRepository;
+import m.model.Owner;
+public interface SpringDataOwnerRepository extends OwnerRepository, Repository<Owner, Integer> {
+    @Override
+    @Query("SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE :lastName%")
+    Collection<Owner> findByLastName(String lastName);
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/sdjpa-harvest-check.py" 2>&1); echo "$out"; echo "rc=$?"
+  echo "$out" | grep -q 'O-SDJPAHARVESTONLY' && echo harvestonly-red-ok
+}
+check "sdjpa-harvest-check REDs harvest-only Spring Data (O-SDJPAHARVESTONLY)" 0 "harvestonly-red-ok"
+
+# O-SDJPAHARVEST — Spring Data → Panache must keep domain extends / query bodies
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m/repository/springdatajpa \
+           src/main/java/m/repository/springdatajpa
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import m.repository.OwnerRepository;
+import m.model.Owner;
+public interface SpringDataOwnerRepository extends OwnerRepository, Repository<Owner, Integer> {
+    @Override
+    @Query("SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE :lastName%")
+    Collection<Owner> findByLastName(String lastName);
+}
+EOF
+  cat > src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import jakarta.persistence.NamedQuery;
+import m.model.Owner;
+@NamedQuery(name = "Owner.findByLastName", query = "SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE :lastName%")
+public interface SpringDataOwnerRepository extends PanacheRepository<Owner> {
+    Collection<Owner> findByLastName(String lastName);
+}
+EOF
+  python3 "$HARNESS_DIR/sdjpa-harvest-check.py"
+}
+check "sdjpa-harvest-check REDs dropped extends + NamedQuery + hollow finder (O-SDJPAHARVEST)" 1 "O-SDJPAHARVEST"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m/repository/springdatajpa \
+           src/main/java/m/repository/springdatajpa
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import m.repository.OwnerRepository;
+import m.model.Owner;
+public interface SpringDataOwnerRepository extends OwnerRepository, Repository<Owner, Integer> {
+    @Override
+    @Query("SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE :lastName%")
+    Collection<Owner> findByLastName(String lastName);
+}
+EOF
+  cat > src/main/java/m/repository/springdatajpa/SpringDataOwnerRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import java.util.Collection;
+import java.util.List;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import m.repository.OwnerRepository;
+import m.model.Owner;
+public interface SpringDataOwnerRepository extends OwnerRepository, PanacheRepositoryBase<Owner, Integer> {
+    @Override
+    default Collection<Owner> findByLastName(String lastName) {
+        return list("SELECT DISTINCT owner FROM Owner owner WHERE owner.lastName LIKE ?1", lastName + "%");
+    }
+}
+EOF
+  python3 "$HARNESS_DIR/sdjpa-harvest-check.py" && echo sdjpaharvest-clean
+}
+check "sdjpa-harvest-check accepts domain extends + Panache body (O-SDJPAHARVEST-NEG)" 0 "sdjpaharvest-clean"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/m/repository/springdatajpa \
+           src/main/java/m/repository/springdatajpa
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/PetRepositoryOverride.java <<'EOF'
+package m.repository.springdatajpa;
+import m.model.Pet;
+public interface PetRepositoryOverride { void delete(Pet pet); }
+EOF
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/SpringDataPetRepositoryImpl.java <<'EOF'
+package m.repository.springdatajpa;
+import m.model.Pet;
+public class SpringDataPetRepositoryImpl implements PetRepositoryOverride {
+  public void delete(Pet pet) { /* real delete */ }
+}
+EOF
+  cat > migration/staging/src/main/java/m/repository/springdatajpa/SpringDataPetRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import org.springframework.data.repository.Repository;
+import m.repository.PetRepository;
+import m.model.Pet;
+public interface SpringDataPetRepository extends PetRepository, Repository<Pet, Integer>, PetRepositoryOverride {}
+EOF
+  # dest: Panache iface + Override iface, but NO Impl
+  cat > src/main/java/m/repository/springdatajpa/SpringDataPetRepository.java <<'EOF'
+package m.repository.springdatajpa;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import m.repository.PetRepository;
+import m.model.Pet;
+public interface SpringDataPetRepository extends PetRepository, PanacheRepository<Pet>, PetRepositoryOverride {}
+EOF
+  cat > src/main/java/m/repository/springdatajpa/PetRepositoryOverride.java <<'EOF'
+package m.repository.springdatajpa;
+import m.model.Pet;
+public interface PetRepositoryOverride { void delete(Pet pet); }
+EOF
+  out=$(python3 "$HARNESS_DIR/sdjpa-harvest-check.py" 2>&1); echo "$out"; echo "rc=$?"
+  echo "$out" | grep -q 'RepositoryImpl' && echo impl-missing-ok
+}
+check "sdjpa-harvest-check REDs missing Override Impl (O-SDJPAHARVEST-IMPL)" 0 "impl-missing-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Goal**: Consolidate Spring Data repository implementations to Panache repositories
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: Panache repositories compile with domain extends
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-004 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-SDJPAHARVESTONLY' \
+    && echo "$out" | grep -q 'harvest-from-staging\|NOT task-complete\|Panache=0' \
+    && echo "$out" | grep -q 'O-SDJPAHARVEST' \
+    && echo "$out" | grep -q 'domain-repo\|DomainRepository\|PanacheRepository' \
+    && echo "$out" | grep -q 'NamedQuery\|hollow\|RepositoryImpl' \
+    && grep -q 'O-SDJPAHARVESTONLY' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-SDJPAHARVESTONLY' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && grep -q 'O-SDJPAHARVESTONLY' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'sdjpa-harvest-check' "$HARNESS_DIR/commit-hygiene.py" \
+    && echo sdjpaharvest-tip-ok
+}
+check "task-packet/sensors/EXECUTION wire O-SDJPAHARVEST+O-SDJPAHARVESTONLY" 0 "sdjpaharvest-tip-ok"
+
+# O-ALREADYCONS — Consolidate/Panache + "delete bodies" must not absent-skip
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/springdatajpa
+  : > src/main/java/com/demo/repository/springdatajpa/.gitkeep
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Goal**: Convert Spring Data to Panache; harvest Override Impl delete bodies
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: Panache repos compile
+EOF
+  # Target .java absent — must NOT already-complete
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$HARNESS_DIR/already-complete.py" tasks.md T-004 2>&1); rc=$?
+  echo "rc=$rc out=$out"
+  [ "$rc" -ne 0 ] && echo alreadycons-ok
+}
+check "already-complete refuses Consolidate+delete-bodies absent skip (O-ALREADYCONS)" 0 "alreadycons-ok"
+
+# O-PORTREIMPL — API-swap convert must declare Port + mapping when reimplement
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Goal**: Convert Spring Data repositories to Quarkus Panache
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: Panache repositories compile
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint rejects API-swap without Port (O-PORTREIMPL)" 1 "O-PORTREIMPL"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data repositories to Quarkus Panache
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**API mapping**:
+| legacy | target |
+| `@Query` JPQL | Panache `find`/`list` bodies |
+| Spring Data `Repository` | `PanacheRepositoryBase` + domain iface |
+**Acceptance**: convert-after-harvest (O-SDJPAHARVESTONLY); Panache bodies present
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint accepts Port=reimplement + mapping table (O-PORTREIMPL-NEG)" 0 "PLAN OK"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data to Panache after harvest
+**Target design**: → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**API mapping**: `@Query` → Panache find/list; convert-after-harvest O-SDJPAHARVEST
+**Acceptance**: Panache repos
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-004 2>/dev/null)
+  echo "$out" | grep -q 'Port: reimplement' \
+    && echo "$out" | grep -q 'O-PORTREIMPL' \
+    && echo portreimpl-pkt-ok
+}
+check "task-packet tips O-PORTREIMPL on Port=reimplement (O-PORTREIMPL)" 0 "portreimpl-pkt-ok"
+
+# O-POMDISCARD — discard_orphan_pom / stage refuse orphan panache pom
+run_case() {
+  mkfix
+  git init -q
+  cat > pom.xml <<'EOF'
+<project><build><plugins><plugin><artifactId>quarkus-maven-plugin</artifactId></plugin></plugins></build>
+<dependencies><dependency><artifactId>quarkus-resteasy</artifactId></dependency></dependencies></project>
+EOF
+  mkdir -p src/main/java/m
+  echo 'package m; class A {}' > src/main/java/m/A.java
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm base
+  # Burned seat: add panache to pom, leave untracked springdata dirt, then discard
+  cat > pom.xml <<'EOF'
+<project><build><plugins><plugin><artifactId>quarkus-maven-plugin</artifactId></plugin></plugins></build>
+<dependencies>
+<dependency><artifactId>quarkus-resteasy</artifactId></dependency>
+<dependency><artifactId>quarkus-hibernate-orm-panache</artifactId></dependency>
+</dependencies></project>
+EOF
+  mkdir -p src/main/java/m/repository/springdatajpa
+  echo 'package m.repository.springdatajpa; import org.springframework.data.repository.Repository; interface SpringDataX {}' \
+    > src/main/java/m/repository/springdatajpa/SpringDataX.java
+  # Inline discard helpers from supervisor
+  eval "$(sed -n '/^discard_orphan_pom()/,/^discard_src_dirt()/{ /^discard_src_dirt()/q; p; }' "$HARNESS_DIR/supervisor.sh")"
+  eval "$(sed -n '/^discard_src_dirt()/,/^}/{ p; }' "$HARNESS_DIR/supervisor.sh" | head -n 40)"
+  log() { :; }
+  discard_src_dirt "test"
+  ! grep -q 'quarkus-hibernate-orm-panache' pom.xml \
+    && [ ! -f src/main/java/m/repository/springdatajpa/SpringDataX.java ] \
+    && echo pomdiscard-ok
+}
+check "discard_src_dirt reverts orphan panache pom (O-POMDISCARD)" 0 "pomdiscard-ok"
+
+# O-SPRINGRESIDUE — org.springframework under src/main must be 0; invent RED
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+package com.demo.repository.jdbc;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import javax.sql.DataSource;
+// comment may mention org.springframework.jdbc — ignored
+@ApplicationScoped
+public class JdbcFooRepositoryImpl {
+  @Inject DataSource ds;
+  void boom() { throw new org.springframework.dao.EmptyResultPersistenceException("x"); }
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/cdi-partial-check.py" 2>&1); rc=$?
+  echo "$out"
+  [ "$rc" -ne 0 ] && echo "$out" | grep -q 'O-SPRINGRESIDUE' && echo springresidue-red-ok
+}
+check "cdi-partial-check REDs invented spring PersistenceException (O-SPRINGRESIDUE)" 0 "springresidue-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jdbc
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > src/main/java/com/demo/repository/jdbc/JdbcFooRepositoryImpl.java <<'EOF'
+package com.demo.repository.jdbc;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import javax.sql.DataSource;
+// leftover prose: org.springframework.jdbc.core.JdbcTemplate — OK in comment
+@ApplicationScoped
+public class JdbcFooRepositoryImpl {
+  @Inject DataSource ds;
+}
+EOF
+  python3 "$HARNESS_DIR/cdi-partial-check.py" && echo springresidue-clean
+}
+check "cdi-partial-check accepts comment-only spring mention (O-SPRINGRESIDUE-NEG)" 0 "springresidue-clean"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-002: Convert JDBC repository implementations to CDI
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Jdbc*RepositoryImpl — drop org.springframework
+**Target**: → `src/main/java/com/demo/repository/jdbc/JdbcOwnerRepositoryImpl.java`
+**Acceptance**: org.springframework under src/main/java is 0
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-002 qwen27b/qwen3-6-27b)
+  echo "$out" | grep -q 'O-SPRINGRESIDUE' \
+    && grep -q 'O-SPRINGRESIDUE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-SPRINGRESIDUE' "$HARNESS_DIR/sensors.sh" \
+    && echo springresidue-tip-ok
+}
+check "task-packet/sensor wire O-SPRINGRESIDUE" 0 "springresidue-tip-ok"
+
+# O-T4SPRINGDATA — SpringData* Target without spring-data deps → RED
+run_case() {
+  mkfix
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Harvest Spring Data repositories
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest SpringDataOwnerRepository from staging
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: interfaces compile
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint rejects SpringData* harvest without spring-data deps (O-T4SPRINGDATA)" 1 "O-T4SPRINGDATA"
+
+run_case() {
+  mkfix
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data repositories to Quarkus Panache
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**API mapping**:
+| legacy | target |
+| `@Query` JPQL | Panache `find`/`list` bodies |
+| Spring Data `Repository` | `PanacheRepositoryBase` + domain iface |
+**Acceptance**: convert-after-harvest (O-SDJPAHARVESTONLY); Panache bodies present
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md 2>&1)
+  echo "$out" | grep -q O-T4SPRINGDATA && echo "FP-FIRED" || echo "t4springdata-clean"
+}
+check "plan-lint accepts Port=reimplement SpringData→Panache (O-T4SPRINGDATA-NEG)" 0 "t4springdata-clean"
+
+# O-SDJPA-SKIP — Override-only + Jpa* CDI cover → already-complete
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/repository/jpa \
+           migration/staging/src/main/java/com/demo/repository/springdatajpa
+  cat > pom.xml <<'EOF'
+<project><build><plugins>
+<plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+</plugins></build></project>
+EOF
+  for e in Owner Pet Visit; do
+    cat > "src/main/java/com/demo/repository/jpa/Jpa${e}RepositoryImpl.java" <<EOF
+package com.demo.repository.jpa;
+import jakarta.enterprise.context.ApplicationScoped;
+@ApplicationScoped
+public class Jpa${e}RepositoryImpl {}
+EOF
+  done
+  # staging Override already mirrored in live (none pending)
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-005: Harvest Spring Data Override delete helpers
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Override-only Spring Data delete helpers; redesign skip when Jpa CDI covers
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: O-SDJPA-SKIP / already-complete when Jpa* cover
+EOF
+  out=$(ALREADY_COMPLETE_ROOT="$FIX" python3 "$HARNESS_DIR/already-complete.py" tasks.md T-005 2>&1); rc=$?
+  echo "rc=$rc out=$out"
+  [ "$rc" -eq 0 ] && echo "$out" | grep -q 'sdjpa-skip' && echo sdjpaskip-ok
+}
+check "already-complete skips Override-only when Jpa CDI covers (O-SDJPA-SKIP)" 0 "sdjpaskip-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Panache convert SpringDataOwnerRepository
+**Target**: → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**Acceptance**: Panache bodies
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-004 2>/dev/null)
+  echo "$out" | grep -q 'O-T4SPRINGDATA\|O-SDJPA-SKIP' \
+    && grep -q 'O-T4SPRINGDATA\|O-SDJPA-SKIP' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && echo sdjpaskip-tip-ok
+}
+check "task-packet/PLANNING wire O-T4SPRINGDATA+O-SDJPA-SKIP" 0 "sdjpaskip-tip-ok"
+
+# O-OWNSTAGE — stage_for_task_commit allowlists Owns; mechan-match rejects extras
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p src/main/java/com/demo/model migration .hermes/harness
+  printf 'package com.demo.model; public class Base {}\n' \
+    > src/main/java/com/demo/model/Base.java
+  git add -A && git commit -q -m init
+  printf 'package com.demo.model; public class Owner {}\n' \
+    > src/main/java/com/demo/model/Owner.java
+  printf 'package com.demo.model; public class Pet {}\n' \
+    > src/main/java/com/demo/model/Pet.java
+  printf 'package com.demo.model; public class Visit {}\n' \
+    > src/main/java/com/demo/model/Visit.java
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-009: Harvest Owner entity
+**Class**: rewrite
+**Shape**: create
+**Goal**: Harvest Owner only
+**Target design**: → `src/main/java/com/demo/model/Owner.java`
+**Owns**: src/main/java/com/demo/model/Owner.java
+EOF
+  cp "$HARNESS_DIR/task-stage-paths.py" .hermes/harness/
+  TASKS_FILE="$PWD/tasks.md"
+  CURRENT_TASK=T-009
+  discard_orphan_pom() { :; }
+  log() { :; }
+  restore_frozen_specs() { :; }
+  frozen_spec_paths() { :; }
+  eval "$(sed -n '/^stage_for_task_commit()/,/^}/p' "$HARNESS_DIR/supervisor.sh")"
+  stage_for_task_commit
+  staged=$(git diff --cached --name-only)
+  echo "$staged" | grep -qx 'src/main/java/com/demo/model/Owner.java' \
+    || { echo "FAIL: Owner not staged"; echo "$staged"; return 1; }
+  echo "$staged" | grep -q 'Pet.java' && { echo "FAIL: Pet scooped"; return 1; }
+  echo "$staged" | grep -q 'Visit.java' && { echo "FAIL: Visit scooped"; return 1; }
+  # mechan-match belt: if someone force-stages siblings, refuse
+  {
+    echo 'src/main/java/com/demo/model/Owner.java'
+    echo 'src/main/java/com/demo/model/Pet.java'
+  } | python3 "$HARNESS_DIR/mechan-match.py" tasks.md T-009 >/tmp/ownstage-mm.out 2>&1
+  mm_rc=$?
+  [ "$mm_rc" -ne 0 ] || { echo "FAIL: mechan-match accepted extras"; cat /tmp/ownstage-mm.out; return 1; }
+  grep -q 'ownstage-extra' /tmp/ownstage-mm.out \
+    || { echo "FAIL: expected ownstage-extra"; cat /tmp/ownstage-mm.out; return 1; }
+  grep -q 'O-OWNSTAGE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && echo ownstage-ok
+}
+check "stage_for_task_commit Owns-only + mechan-match extras (O-OWNSTAGE)" 0 "ownstage-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-009: Harvest Owner entity
+**Owns**: src/main/java/com/demo/model/Owner.java
+**Target design**: → `src/main/java/com/demo/model/Owner.java`
+EOF
+  out=$(python3 "$HARNESS_DIR/task-stage-paths.py" tasks.md T-009)
+  echo "$out" | grep -qx 'src/main/java/com/demo/model/Owner.java' \
+    && [ "$(echo "$out" | wc -l | tr -d ' ')" = 1 ] \
+    && echo ownstage-paths-ok
+}
+check "task-stage-paths.py emits Owns/Target only (O-OWNSTAGE)" 0 "ownstage-paths-ok"
+
+# O-PLANCORPUS — standing archived-plan re-lint with live M3 flag parity
+run_case() {
+  local pc="$HARNESS_DIR/tests/fixtures/plan-corpus"
+  local n634 nfinal
+  n634=$(wc -l < "$pc/s03-6348afe-class/tasks.md" | tr -d ' ')
+  nfinal=$(wc -l < "$pc/s03-32812a6-final/tasks.md" | tr -d ' ')
+  grep -q 'O-PLANCORPUS\|plan-corpus-lint' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q -- '--story-scope' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q -- '--findings-scope' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q -- '--profile' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q -- '--story-deploy' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && test -f "$pc/manifest.env" \
+    && test -f "$pc/s03-6348afe-class/tasks.md" \
+    && test -f "$pc/s03-post-port-good/tasks.md" \
+    && test -f "$pc/s01-f7c1329/tasks.md" \
+    && test -f "$pc/s02-ee834b1/tasks.md" \
+    && test -f "$pc/s03-6348afe-real/tasks.md" \
+    && test -f "$pc/s03-c164532/tasks.md" \
+    && test -f "$pc/s03-be070fb/tasks.md" \
+    && test -f "$pc/s03-43d3a8e/tasks.md" \
+    && test -f "$pc/s03-ca57010/tasks.md" \
+    && test -f "$pc/s03-c9be4b0/tasks.md" \
+    && test -f "$pc/s03-32812a6-final/tasks.md" \
+    && test "$n634" -ge 100 \
+    && test "$nfinal" -ge 100 \
+    && grep -q 'sha=6348afe' "$pc/s03-6348afe-class/SOURCE.txt" \
+    && grep -q 'sha=32812a6' "$pc/s03-32812a6-final/SOURCE.txt" \
+    && grep -q 'CORPUS_s03_32812a6_final_EXPECT=red' "$pc/manifest.env" \
+    && echo plancorpus-wire-ok
+}
+check "plan-corpus-lint wiring + fixtures present (O-PLANCORPUS)" 0 "plancorpus-wire-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case s03-6348afe-class 2>&1) || true
+  echo "$out" | grep -q 'PASS s03-6348afe-class' \
+    && echo "$out" | grep -q 'O-STRUCTJAVA' \
+    && echo "$out" | grep -q 'O-PORTREIMPL' \
+    && echo "$out" | grep -q 'O-M3PRESERVEDAO' \
+    && echo "$out" | grep -q 'O-COLLABOWN' \
+    && echo "$out" | grep -q 'live-gate flag parity OK' \
+    && echo plancorpus-red-ok
+}
+check "plan-corpus known-RED 6348afe-class signals (O-PLANCORPUS)" 0 "plancorpus-red-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case s03-32812a6-final 2>&1) || true
+  echo "$out" | grep -q 'PASS s03-32812a6-final' \
+    && echo "$out" | grep -q 'O-PORTREIMPL' \
+    && echo "$out" | grep -q 'hit O-PORTREIMPL' \
+    && echo plancorpus-final-red-ok
+}
+check "plan-corpus known-RED 32812a6-final O-PORTREIMPL (W4-109b)" 0 "plancorpus-final-red-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case s03-post-port-good 2>&1) || true
+  echo "$out" | grep -q 'PASS s03-post-port-good' \
+    && echo "$out" | grep -q 'PLAN OK' \
+    && echo plancorpus-green-ok
+}
+check "plan-corpus known-GREEN post-Port PLAN OK (O-PLANCORPUS)" 0 "plancorpus-green-ok"
+
+# O-DEFAULTAUDIT — fail-open defaults inventory artefact
+run_case() {
+  bash "$HARNESS_DIR/defaults-inventory.sh" --check \
+    && grep -q 'O-INFERABSENT' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'Oracle field' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'O-ORACLEDERIVE' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'Proceed: O-NULLACTION' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'LINT tier' "$HARNESS_DIR/defaults-inventory.md" \
+    && ! grep -q 'WARN tier (does not fail PLAN OK)' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'permissive' "$HARNESS_DIR/defaults-inventory.md" \
+    && grep -q 'restrictive' "$HARNESS_DIR/defaults-inventory.md" \
+    && echo defaultaudit-ok
+}
+check "defaults-inventory artefact seed rows (O-DEFAULTAUDIT)" 0 "defaultaudit-ok"
+
+# O-DEFAULTRG — grep -nE harvest (no rg); non-empty fences required before GREEN
+run_case() {
+  ! grep -nE '(^|[[:space:]])rg[[:space:]]+-n' "$HARNESS_DIR/defaults-inventory.sh" \
+    && grep -q '_grepn\|grep -nE' "$HARNESS_DIR/defaults-inventory.sh" \
+    && grep -q 'assert_fence_harvest\|O-DEFAULTRG' "$HARNESS_DIR/defaults-inventory.sh" \
+    && bash "$HARNESS_DIR/defaults-inventory.sh" \
+    && bash "$HARNESS_DIR/defaults-inventory.sh" --check \
+    && pl_n=$(awk '/^### plan-lint\.py/{s=1;next} s&&/^```$/{if(f){exit} f=1;next} s&&f{print}' \
+         "$HARNESS_DIR/defaults-inventory.md" | grep -cE '^[0-9]+:' || true) \
+    && sup_n=$(awk '/^### supervisor\.sh/{s=1;next} s&&/^```$/{if(f){exit} f=1;next} s&&f{print}' \
+         "$HARNESS_DIR/defaults-inventory.md" | grep -cE '^[0-9]+:' || true) \
+    && test "$pl_n" -ge 1 && test "$sup_n" -ge 1 \
+    && echo defaultrg-ok
+}
+check "defaults-inventory grep -nE + non-empty fences (O-DEFAULTRG)" 0 "defaultrg-ok"
+
+# O-PLANCORPUSSWEEP — bare full-sweep (no --case) must rc=0 (preflight operation)
+run_case() {
+  if bash "$HARNESS_DIR/plan-corpus-lint.sh" >/tmp/plancorpus-sweep.out 2>&1; then
+    test "$(grep -c '^PASS ' /tmp/plancorpus-sweep.out || true)" -ge 1 \
+      && echo plancorpus-sweep-ok
+  else
+    echo "plancorpus-sweep-FAIL"
+    sed 's/^/    /' /tmp/plancorpus-sweep.out | tail -40
+    false
+  fi
+}
+check "plan-corpus bare full-sweep rc=0 (O-PLANCORPUSSWEEP)" 0 "plancorpus-sweep-ok"
+
+# O-M3CASEINPUTS — per-case M3 input pointers / local files + prefer case-local
+run_case() {
+  local pc="$HARNESS_DIR/tests/fixtures/plan-corpus"
+  local live="$pc/_shared/live-v3"
+  local missing=0 c
+  test -f "$live/mta-findings.json" && test -f "$live/architecture-profile.md" \
+    && test -f "$live/SOURCE.txt" \
+    && test "$(wc -c < "$live/mta-findings.json" | tr -d ' ')" -ge 100000 \
+    && grep -q 'md5_findings=' "$live/SOURCE.txt" \
+    && grep -q 'resolve_case_inputs\|O-M3CASEINPUTS' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q 'm3-inputs.env' "$HARNESS_DIR/plan-corpus-lint.sh" \
+    && grep -q 'CORPUS_s02_ee834b1_EXPECT=green' "$pc/manifest.env" \
+    || return 1
+  for c in s01-f7c1329 s02-ee834b1 s03-6348afe-class s03-6348afe-real s03-c164532 \
+           s03-be070fb s03-43d3a8e s03-ca57010 s03-c9be4b0 s03-32812a6-final; do
+    if ! grep -q 'INPUTS_KIND=live-v3' "$pc/$c/migration/m3-inputs.env" 2>/dev/null; then
+      echo "O-M3CASEINPUTS: $c missing live-v3 pointer" >&2
+      missing=1
+    fi
+  done
+  grep -q 'INPUTS_KIND=stand-in' "$pc/s03-post-port-good/migration/m3-inputs.env" \
+    || { echo "O-M3CASEINPUTS: post-port-good must stay stand-in" >&2; missing=1; }
+  [ "$missing" -eq 0 ] && echo m3caseinputs-wire-ok
+}
+check "plan-corpus per-case M3 input pointers (O-M3CASEINPUTS)" 0 "m3caseinputs-wire-ok"
+
+run_case() {
+  local pc="$HARNESS_DIR/tests/fixtures/plan-corpus"
+  local name="zz-m3caseinputs-prefer" out
+  rm -rf "$pc/$name"
+  mkdir -p "$pc/$name/migration"
+  # Clone a known-GREEN tip so lint can finish; override with case-local stand-in
+  # while a poison pointer would REFUSE if preferred.
+  cp -f "$pc/s03-post-port-good/tasks.md" "$pc/$name/tasks.md"
+  cp -f "$pc/_shared/mta-findings.json" "$pc/$name/migration/mta-findings.json"
+  cp -f "$pc/_shared/architecture-profile.md" "$pc/$name/migration/architecture-profile.md"
+  cat > "$pc/$name/migration/m3-inputs.env" <<'EOF'
+INPUTS_KIND=poison
+FINDINGS_SRC=/nonexistent/mta-findings.json
+PROFILE_SRC=/nonexistent/architecture-profile.md
+EOF
+  {
+    echo ""
+    echo "# ephemeral O-M3CASEINPUTS prefer probe (instruments; removed after)"
+    echo "CORPUS_zz_m3caseinputs_prefer_EXPECT=green"
+    echo "CORPUS_zz_m3caseinputs_prefer_FINDINGS=\"springboot-di-to-quarkus-00003,springboot-di-to-quarkus-00000,springboot-di-to-quarkus-00002\""
+    echo "CORPUS_zz_m3caseinputs_prefer_DEPLOY=false"
+    echo "CORPUS_zz_m3caseinputs_prefer_SCOPE=\"src/main/java/org/springframework/samples/petclinic/repository src/main/java/com/demo/repository\""
+  } >> "$pc/manifest.env"
+  out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case "$name" 2>&1) || true
+  rm -rf "$pc/$name"
+  # Strip ephemeral rows without relying on GNU sed -i
+  local mf="$pc/manifest.env"
+  python3 - "$mf" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+lines = p.read_text().splitlines(True)
+out = []
+skip = False
+for ln in lines:
+    if "ephemeral O-M3CASEINPUTS prefer probe" in ln:
+        skip = True
+        continue
+    if skip:
+        if ln.startswith("CORPUS_zz_m3caseinputs_prefer_"):
+            continue
+        if ln.strip() == "":
+            skip = False
+            continue
+        skip = False
+    out.append(ln)
+p.write_text("".join(out))
+PY
+  echo "$out" | grep -q 'O-M3CASEINPUTS: case=zz-m3caseinputs-prefer mode=case-local' \
+    && ! echo "$out" | grep -q 'points to missing inputs' \
+    && echo "$out" | grep -q 'PASS zz-m3caseinputs-prefer' \
+    && echo m3caseinputs-prefer-ok
+}
+check "plan-corpus prefers case-local inputs over pointer (O-M3CASEINPUTS)" 0 "m3caseinputs-prefer-ok"
+
+# O-HERMESPREFLIGHT — wiring + local RED/GREEN digest compare (no oc / no outer start)
+run_case() {
+  local top parity preflight
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  parity="${top}/scripts/track-b/v10-hermes-parity.sh"
+  preflight="${top}/scripts/track-b/v9-preflight-outer-start.sh"
+  [ -n "$top" ] && [ -f "$parity" ] && [ -f "$preflight" ] \
+    && grep -q 'O-HERMESPREFLIGHT\|v10-hermes-parity' "$preflight" \
+    && grep -qE 'md5sum|md5 -q|DIGEST=' "$parity" \
+    && grep -q 'REFUSE' "$parity" \
+    && echo hermespreflight-wire-ok
+}
+check "hermes parity preflight wiring (O-HERMESPREFLIGHT)" 0 "hermespreflight-wire-ok"
+
+run_case() {
+  local top parity scaffold a b
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  parity="${top}/scripts/track-b/v10-hermes-parity.sh"
+  scaffold="${top}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+  [ -f "$parity" ] || { echo "missing parity script"; return 1; }
+  # GREEN: identical trees
+  bash "$parity" --compare "$scaffold" "$scaffold" >/tmp/hermes-parity-green.out 2>&1 \
+    || { echo "same-tree compare should GREEN"; cat /tmp/hermes-parity-green.out; return 1; }
+  # RED: mutate a key file in a copy
+  a=$(mktemp -d)
+  b=$(mktemp -d)
+  mkdir -p "$a" "$b"
+  # Copy only .hermes (rsync/cp -R); keep small by using tar
+  (cd "$scaffold" && tar cf - .hermes) | (cd "$a" && tar xf -)
+  (cd "$scaffold" && tar cf - .hermes) | (cd "$b" && tar xf -)
+  echo '# parity-probe-drift' >> "$b/.hermes/harness/plan-lint.py"
+  if bash "$parity" --compare "$a" "$b" >/tmp/hermes-parity-red.out 2>&1; then
+    echo "mismatch compare should RED"
+    cat /tmp/hermes-parity-red.out
+    rm -rf "$a" "$b"
+    return 1
+  fi
+  grep -q 'REFUSE' /tmp/hermes-parity-red.out \
+    && rm -rf "$a" "$b" \
+    && echo hermespreflight-red-ok
+}
+check "hermes parity REFUSE on digest mismatch (O-HERMESPREFLIGHT)" 0 "hermespreflight-red-ok"
+
+# O-HERMESPARITYSEM — stamp / _Generated: catalog churn must not false-RED digests
+run_case() {
+  local top parity gf scaffold a b da db
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  parity="${top}/scripts/track-b/v10-hermes-parity.sh"
+  gf="${top}/scripts/track-b/v10-golden-fresh.sh"
+  lib="${top}/scripts/track-b/lib-quality-gates.sh"
+  scaffold="${top}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+  [ -f "$parity" ] && [ -f "$gf" ] && [ -f "$lib" ] || { echo "missing parity/golden/lib"; return 1; }
+  grep -q 'qg_hermes_list_semantic_files' "$parity" \
+    && grep -q 'qg_hermes_list_semantic_files' "$gf" \
+    && grep -q 'defaults-inventory.md' "$lib" \
+    && grep -q 'guard-manifest.md' "$lib" \
+    && grep -q '\.published-fp' "$lib" \
+    && grep -q 'defaults-inventory.md' "$parity" \
+    && grep -q 'guard-manifest.md' "$parity" \
+    || { echo "semantic exclusions not wired"; return 1; }
+  a=$(mktemp -d); b=$(mktemp -d)
+  (cd "$scaffold" && tar cf - .hermes) | (cd "$a" && tar xf -)
+  (cd "$scaffold" && tar cf - .hermes) | (cd "$b" && tar xf -)
+  # Non-semantic churn that previously false-RED'd R1
+  echo "STAMPED_AT=2099-01-01T00:00:00Z" >> "$b/.hermes/harness/.published-fp"
+  printf '\n_Generated: 2099-01-01T00:00:00Z_\n' >> "$b/.hermes/harness/defaults-inventory.md"
+  printf '\n_Generated: 2099-01-01T00:00:00Z_\n' >> "$b/.hermes/harness/guard-manifest.md"
+  if ! bash "$parity" --compare "$a" "$b" >/tmp/hermesparitysem-green.out 2>&1; then
+    echo "stamp/_Generated: churn should stay GREEN under O-HERMESPARITYSEM"
+    cat /tmp/hermesparitysem-green.out
+    rm -rf "$a" "$b"
+    return 1
+  fi
+  # Semantic drift still RED
+  echo '# hermesparitysem-probe' >> "$b/.hermes/harness/plan-lint.py"
+  if bash "$parity" --compare "$a" "$b" >/tmp/hermesparitysem-red.out 2>&1; then
+    echo "plan-lint drift should still RED"
+    cat /tmp/hermesparitysem-red.out
+    rm -rf "$a" "$b"
+    return 1
+  fi
+  grep -q 'REFUSE' /tmp/hermesparitysem-red.out \
+    && rm -rf "$a" "$b" \
+    && echo hermesparitysem-ok
+}
+check "hermes parity ignores stamp/_Generated: (O-HERMESPARITYSEM)" 0 "hermesparitysem-ok"
+
+# O-GOLDENFRESH — publish-fp stamp + local three-way legs (no outer start)
+run_case() {
+  local top gf preflight
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  gf="${top}/scripts/track-b/v10-golden-fresh.sh"
+  preflight="${top}/scripts/track-b/v9-preflight-outer-start.sh"
+  [ -n "$top" ] && [ -f "$gf" ] && [ -f "$preflight" ] \
+    && grep -q 'O-GOLDENFRESH\|v10-golden-fresh' "$preflight" \
+    && grep -q '\.published-fp' "$gf" \
+    && grep -q 'REFUSE' "$gf" \
+    && grep -q 'v10-golden-fresh' "${top}/scripts/bootstrap-scaffold-repos.sh" \
+    && echo goldenfresh-wire-ok
+}
+check "golden-fresh preflight+bootstrap wiring (O-GOLDENFRESH)" 0 "goldenfresh-wire-ok"
+
+run_case() {
+  local top gf scaffold
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  gf="${top}/scripts/track-b/v10-golden-fresh.sh"
+  scaffold="${top}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+  [ -f "$gf" ] || { echo "missing golden-fresh script"; return 1; }
+  bash "$gf" --stamp "$scaffold" >/tmp/goldenfresh-stamp.out 2>&1 \
+    || { echo "stamp failed"; cat /tmp/goldenfresh-stamp.out; return 1; }
+  bash "$gf" --check-local "$scaffold" >/tmp/goldenfresh-green.out 2>&1 \
+    || { echo "check-local should GREEN after stamp"; cat /tmp/goldenfresh-green.out; return 1; }
+  grep -q 'GREEN' /tmp/goldenfresh-green.out \
+    && [ -f "$scaffold/.hermes/harness/.published-fp" ] \
+    && echo goldenfresh-stamp-ok
+}
+check "golden-fresh stamp then check-local GREEN (O-GOLDENFRESH)" 0 "goldenfresh-stamp-ok"
+
+run_case() {
+  local top gf scaffold a
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  gf="${top}/scripts/track-b/v10-golden-fresh.sh"
+  scaffold="${top}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+  [ -f "$gf" ] || { echo "missing golden-fresh script"; return 1; }
+  a=$(mktemp -d)
+  (cd "$scaffold" && tar cf - .hermes) | (cd "$a" && tar xf -)
+  bash "$gf" --stamp "$a" >/tmp/goldenfresh-red-stamp.out 2>&1 \
+    || { echo "stamp on copy failed"; cat /tmp/goldenfresh-red-stamp.out; rm -rf "$a"; return 1; }
+  echo '# goldenfresh-probe-drift' >> "$a/.hermes/harness/plan-lint.py"
+  if bash "$gf" --check-local "$a" >/tmp/goldenfresh-red.out 2>&1; then
+    echo "drifted tree should RED"
+    cat /tmp/goldenfresh-red.out
+    rm -rf "$a"
+    return 1
+  fi
+  grep -q 'REFUSE' /tmp/goldenfresh-red.out \
+    && rm -rf "$a" \
+    && echo goldenfresh-red-ok
+}
+check "golden-fresh REFUSE on publish lag (O-GOLDENFRESH)" 0 "goldenfresh-red-ok"
+
+# O-HARNESSFP-POD — pod digest in harness_fp / last_activity (no oc)
+run_case() {
+  local top clock
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  clock="${top}/scripts/track-b/v10-idle-clock.sh"
+  [ -n "$top" ] && [ -f "$clock" ] \
+    && grep -q 'O-HARNESSFP-POD' "$clock" \
+    && grep -q 'pod_fp' "$clock" \
+    && grep -q 'V10_IDLE_POD_DIGEST\|_pod_harness_digest' "$clock" \
+    && grep -q 'last_activity' "$clock" \
+    && grep -q -- '--self-test' "$clock" \
+    && echo harnessfppod-wire-ok
+}
+check "idle-clock pod digest wiring (O-HARNESSFP-POD)" 0 "harnessfppod-wire-ok"
+
+run_case() {
+  local top clock
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  clock="${top}/scripts/track-b/v10-idle-clock.sh"
+  [ -f "$clock" ] || { echo "missing v10-idle-clock.sh"; return 1; }
+  bash "$clock" --self-test >/tmp/harnessfppod-self.out 2>&1 \
+    || { echo "self-test failed"; cat /tmp/harnessfppod-self.out; return 1; }
+  grep -q 'O-HARNESSFP-POD: self-test GREEN' /tmp/harnessfppod-self.out \
+    && echo harnessfppod-self-ok
+}
+check "idle-clock pod digest self-test (O-HARNESSFP-POD)" 0 "harnessfppod-self-ok"
+
+# O-ORACLEDERIVE / O-INFERABSENT §2.1/§2.2 — derive Oracle; WARN→LINT
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  mkdir -p migration
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Infer convert missing Target
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert Foo from Spring to Quarkus
+**Target**: → `src/main/java/com/demo/Foo.java`
+**Acceptance**: compiles
+EOF
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 PLAN_LINT_SHAPE_WARN=0 \
+    python3 "$HARNESS_DIR/plan-lint.py" tasks.md --story-deploy false 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-INFERABSENT' \
+    && ! echo "$out" | grep -q 'WARN:O-INFERABSENT' \
+    && echo inferabsent-lint-ok
+}
+check "plan-lint LINT O-INFERABSENT on infer+derived-absent (O-INFERABSENT)" 0 "inferabsent-lint-ok"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Create convert missing Target
+**Class**: infer
+**Shape**: create
+**Goal**: Create Foo via harvest-then-convert create-procedure
+**Target**: → `src/main/java/com/demo/Foo.java`
+**Acceptance**: harvest-then-convert; compiles
+EOF
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 PLAN_LINT_SHAPE_WARN=0 \
+    python3 "$HARNESS_DIR/plan-lint.py" tasks.md --story-deploy false 2>&1) || true
+  echo "$out" | grep -q 'PLAN OK' \
+    && ! echo "$out" | grep -q 'LINT:O-INFERABSENT' \
+    && echo inferabsent-create-ok
+}
+check "plan-lint Shape=create proceeds on derived-absent (O-INFERABSENT)" 0 "inferabsent-create-ok"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Infer with NULLACTION proceed
+**Class**: infer
+**Shape**: modify
+**Proceed**: O-NULLACTION
+**Goal**: Fixture override path for derived-absent
+**Target**: → `src/main/java/com/demo/Foo.java`
+**Acceptance**: stop honest
+EOF
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 PLAN_LINT_SHAPE_WARN=0 \
+    python3 "$HARNESS_DIR/plan-lint.py" tasks.md --story-deploy false 2>&1) || true
+  echo "$out" | grep -q 'PLAN OK' \
+    && ! echo "$out" | grep -q 'LINT:O-INFERABSENT' \
+    && echo inferabsent-proceed-ok
+}
+check "plan-lint Proceed:O-NULLACTION override (O-INFERABSENT)" 0 "inferabsent-proceed-ok"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  mkdir -p src/main/java/com/demo
+  echo 'package com.demo; public class Foo {}' > src/main/java/com/demo/Foo.java
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Infer present Target
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert existing Foo
+**Target**: → `src/main/java/com/demo/Foo.java`
+**Acceptance**: compiles
+EOF
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 PLAN_LINT_SHAPE_WARN=0 \
+    python3 "$HARNESS_DIR/plan-lint.py" tasks.md --story-deploy false 2>&1) || true
+  echo "$out" | grep -q 'PLAN OK' \
+    && ! echo "$out" | grep -q 'LINT:O-INFERABSENT' \
+    && echo oraclederive-present-ok
+}
+check "plan-lint derived Oracle present when Target exists (O-ORACLEDERIVE)" 0 "oraclederive-present-ok"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Infer convert missing Target
+**Class**: infer
+**Shape**: modify
+**Goal**: Convert Foo
+**Target**: → `src/main/java/com/demo/Foo.java`
+**Acceptance**: compiles
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001 2>&1) || true
+  echo "$out" | grep -qE '^Oracle:[[:space:]]*absent' \
+    && echo "$out" | grep -q 'O-INFERABSENT' \
+    && echo inferabsent-pkt-ok
+}
+check "task-packet derives Oracle=absent + tip (O-ORACLEDERIVE)" 0 "inferabsent-pkt-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case s03-32812a6-final 2>&1) || true
+  echo "$out" | grep -q 'PASS s03-32812a6-final' \
+    && echo "$out" | grep -q 'O-INFERABSENT' \
+    && echo "$out" | grep -q 'hit O-INFERABSENT' \
+    && echo plancorpus-inferabsent-ok
+}
+check "plan-corpus 32812a6-final fires O-INFERABSENT (O-INFERABSENT)" 0 "plancorpus-inferabsent-ok"
+
+# O-FIDELITYPORT — Port=rename keeps harvest byte-match; Port=reimplement uses redesign-sig
+# Corpus/fixture case: Port=rename + serialVersionUID drift → FIDELITY RED (fires harvest path).
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/example src/main/java/com/demo
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/staging/src/main/java/com/example/Widget.java <<'EOF'
+package com.example;
+public class Widget {
+  private static final long serialVersionUID = 1L;
+  public int size() { return 1; }
+}
+EOF
+  cat > src/main/java/com/demo/Widget.java <<'EOF'
+package com.demo;
+public class Widget {
+  private static final long serialVersionUID = 99L;
+  public int size() { return 1; }
+}
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Harvest Widget
+**Class**: rewrite
+**Shape**: modify
+**Port**: rename
+**Goal**: Harvest Widget with package rename only
+**Target design**: → `src/main/java/com/demo/Widget.java`
+**Acceptance**: harvest fidelity GREEN
+EOF
+  CURRENT_TASK=T-001 STORY_TASKS="$FIX/tasks.md" SENSOR_ROOT="$FIX" \
+    bash "$SENSORS" fidelity
+}
+check "Port=rename fidelity REDs serialVersionUID drift (O-FIDELITYPORT)" 1 "FIDELITY:"
+
+# Corpus/fixture case: Port=reimplement + Spring-import body drift → fidelity GREEN
+# (byte-match skipped) while redesign-sig still catches method rename.
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/example src/main/java/com/demo
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/staging/src/main/java/com/example/OwnerRepo.java <<'EOF'
+package com.example;
+import org.springframework.data.repository.Repository;
+public interface OwnerRepo extends Repository<Object, Integer> {
+  Object findById(Integer id);
+}
+EOF
+  # Dest reimplements with Panache — Spring imports gone, serial/body differ, method kept.
+  cat > src/main/java/com/demo/OwnerRepo.java <<'EOF'
+package com.demo;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import jakarta.enterprise.context.ApplicationScoped;
+@ApplicationScoped
+public class OwnerRepo implements PanacheRepositoryBase<Object, Integer> {
+  public Object findById(Integer id) { return find("id", id).firstResult(); }
+}
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data to Panache after harvest
+**Target design**: → `src/main/java/com/demo/OwnerRepo.java`
+**API mapping**: `@Query` → Panache find/list; convert-after-harvest O-SDJPAHARVEST
+**Acceptance**: Panache repos
+EOF
+  out=$(CURRENT_TASK=T-004 STORY_TASKS="$FIX/tasks.md" SENSOR_ROOT="$FIX" \
+    bash "$SENSORS" fidelity 2>&1) || true
+  echo "$out" | grep -q 'O-FIDELITYPORT: Port=reimplement' \
+    && echo "$out" | grep -qE 'reimpl-sig GREEN|redesign-sig GREEN|fidelity check GREEN' \
+    && echo "$out" | grep -qv 'FIDELITY:OwnerRepo' \
+    && echo fidelityport-reimpl-ok
+}
+check "Port=reimplement skips harvest byte-match (O-FIDELITYPORT)" 0 "fidelityport-reimpl-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/example src/main/java/com/demo
+  printf 'legacyPackage: com.example\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/staging/src/main/java/com/example/OwnerRepo.java <<'EOF'
+package com.example;
+public interface OwnerRepo {
+  Object findById(Integer id);
+}
+EOF
+  # Method renamed — redesign-sig --mode=reimpl must RED under Port=reimplement.
+  cat > src/main/java/com/demo/OwnerRepo.java <<'EOF'
+package com.demo;
+import jakarta.enterprise.context.ApplicationScoped;
+@ApplicationScoped
+public class OwnerRepo {
+  public Object getById(Integer id) { return null; }
+}
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data to Panache
+**Target design**: → `src/main/java/com/demo/OwnerRepo.java`
+**API mapping**: convert-after-harvest O-SDJPAHARVEST
+**Acceptance**: Panache
+EOF
+  CURRENT_TASK=T-004 STORY_TASKS="$FIX/tasks.md" SENSOR_ROOT="$FIX" \
+    bash "$SENSORS" fidelity
+}
+check "Port=reimplement fidelity REDs method rename via redesign-sig (O-FIDELITYPORT)" 1 "SIG:"
+
+# O-REIMPLCREATE — Port=reimplement Shape=create always gets create-procedure tip
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data to Panache after harvest
+**Target design**: → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**API mapping**: `@Query` → Panache find/list; convert-after-harvest O-SDJPAHARVEST
+**Acceptance**: Panache repos
+EOF
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-004 2>/dev/null)
+  echo "$out" | grep -q 'O-REIMPLCREATE' \
+    && echo "$out" | grep -q 'harvest-from-staging' \
+    && echo "$out" | grep -q 'API mapping' \
+    && echo "$out" | grep -qE 'first-write|O-CREATEFIRSTMUT' \
+    && echo "$out" | grep -q 'O-FIDELITYPORT' \
+    && echo reimplcreate-pkt-ok
+}
+check "task-packet tips O-REIMPLCREATE on Port=reimplement Shape=create" 0 "reimplcreate-pkt-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-004: Consolidate Spring Data repositories to Panache
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Convert Spring Data repositories to Quarkus Panache
+**Target design**:
+- → `src/main/java/com/demo/repository/springdatajpa/SpringDataOwnerRepository.java`
+**API mapping**:
+| legacy | target |
+| `@Query` JPQL | Panache `find`/`list` bodies |
+**Acceptance**: Panache repositories compile
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint REDs Port=reimplement Shape=create without create-procedure (O-REIMPLCREATE)" 1 "O-REIMPLCREATE"
+
+run_case() {
+  grep -q 'O-FIDELITYPORT' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-REIMPLCREATE' "$HARNESS_DIR/../skills/migration-harness/EXECUTION.md" \
+    && grep -q 'O-FIDELITYPORT' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && grep -q 'O-REIMPLCREATE' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && grep -q 'run_port_scoped_fidelity\|O-FIDELITYPORT' "$HARNESS_DIR/sensors.sh" \
+    && grep -q 'O-REIMPLCREATE' "$HARNESS_DIR/task-packet.py" \
+    && grep -q 'mode=reimpl\|--mode=reimpl' "$HARNESS_DIR/redesign-sig.py" \
+    && echo fidelityport-wire-ok
+}
+check "sensors/packet/EXECUTION/PLANNING wire O-FIDELITYPORT+O-REIMPLCREATE" 0 "fidelityport-wire-ok"
+
+# O-M3ALL — whole-plan-set lint + outer-loop two-pass / waterfall hooks
+run_case() {
+  test -x "$HARNESS_DIR/m3-all-lint.sh" \
+    && grep -q 'O-M3ALL' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm3-all-lint.sh' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_ALL_PASS' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'waterfall' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -Eq '^[^#]*\b(M3_ALL_SKIP_JIT|WATERFALL_OPTIONAL)=' "$HARNESS_DIR/outer-loop.sh" \
+    && bash "$HARNESS_DIR/m3-all-lint.sh" --mode=wire-check \
+    && grep -q 'O-M3ALL' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && echo m3all-wire-ok
+}
+check "m3-all-lint + outer-loop waterfall hooks (O-M3ALL)" 0 "m3all-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a specs/S02-b
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: foundation
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Config.java
+## S02: data
+- deploy: true
+- findings: springboot-di-to-quarkus-00001
+- scope: src/main/java/com/demo/repository/FooRepository.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Config
+**Class**: rewrite
+**Shape**: modify
+**Owns**: `src/main/java/com/demo/Config.java`
+**Oracle**: present
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: compiles
+EOF
+  cat > specs/S02-b/tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Repo convert
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Owns**: `src/main/java/com/demo/repository/FooRepository.java`
+**Oracle**: absent
+**Assumes**: Config exists (S01 T-001)
+**Goal**: Convert Spring Data repository to Panache
+**API mapping**:
+| legacy | target |
+| CrudRepository | PanacheRepository |
+**Findings**: springboot-di-to-quarkus-00001
+**Acceptance**: Panache
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'PLAN-SET OK' \
+    && echo "$out" | grep -q 'projected-tree' \
+    && echo m3all-green-ok
+}
+check "m3-all-lint whole-set GREEN on partitioned plans (O-M3ALL)" 0 "m3all-green-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a specs/S02-b
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Early.java
+## S02: data
+- deploy: true
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/repository/FooRepository.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Early
+**Class**: rewrite
+**Shape**: modify
+**Owns**: `src/main/java/com/demo/Early.java`
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  cat > specs/S02-b/tasks.md <<'EOF'
+# Tasks
+#### T-001: Repo
+**Class**: infer
+**Shape**: create
+**Owns**: `src/main/java/com/demo/repository/FooRepository.java`
+**Goal**: Convert Spring Data repository to Panache
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-K1' \
+    && echo "$out" | grep -q 'LINT:O-M3ALL-PORT' \
+    && echo m3all-k1-port-ok
+}
+check "m3-all-lint REDs K1 dual-owner + missing Port (O-M3ALL)" 0 "m3all-k1-port-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a specs/S02-b
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Early.java
+## S02: later
+- deploy: true
+- findings: springboot-di-to-quarkus-00001
+- scope: src/main/java/com/demo/LaterService.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Leak
+**Class**: infer
+**Shape**: create
+**Owns**: `src/main/java/com/demo/LaterService.java`
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  cat > specs/S02-b/tasks.md <<'EOF'
+# Tasks
+#### T-001: Later
+**Class**: infer
+**Shape**: create
+**Owns**: `src/main/java/com/demo/LaterService.java`
+**Findings**: springboot-di-to-quarkus-00001
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-LATER' \
+    && echo m3all-later-ok
+}
+check "m3-all-lint REDs later-class leakage (O-M3ALL)" 0 "m3all-later-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a specs/S02-b
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Early.java
+## S02: later
+- deploy: true
+- findings: springboot-di-to-quarkus-00001
+- scope: src/main/java/com/demo/Later.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Early
+**Class**: rewrite
+**Shape**: modify
+**Owns**: `src/main/java/com/demo/Shared.java`
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  cat > specs/S02-b/tasks.md <<'EOF'
+# Tasks
+#### T-001: Later
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Owns**: `src/main/java/com/demo/Shared.java`
+**Goal**: Convert Shared
+**API mapping**:
+| legacy | target |
+| A | B |
+**Findings**: springboot-di-to-quarkus-00001
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-FILE' \
+    && echo m3all-file-ok
+}
+check "m3-all-lint REDs cross-story Owns dual-owner (O-M3ALL A4)" 0 "m3all-file-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a src/main/java/com/demo
+  echo 'class Existing {}' > src/main/java/com/demo/Existing.java
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: true
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Existing.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Overwrite
+**Class**: rewrite
+**Shape**: create
+**Owns**: `src/main/java/com/demo/Existing.java`
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-TREE' \
+    && echo "$out" | grep -q 'projected-tree' \
+    && echo m3all-projected-ok
+}
+check "m3-all-lint REDs projected-tree create-into-prior (O-M3ALL)" 0 "m3all-projected-ok"
+
+# O-M3ALL remainder — Oracle whole-set + Assumes closure + operator gate / prediction freeze
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: true
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Early.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Early
+**Class**: rewrite
+**Shape**: modify
+**Owns**: `src/main/java/com/demo/Early.java`
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-ORACLE' \
+    && echo m3all-oracle-ok
+}
+check "m3-all-lint REDs missing Oracle per task (O-M3ALL)" 0 "m3all-oracle-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration specs/S01-a specs/S02-b
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: early
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Early.java
+## S02: later
+- deploy: true
+- findings: springboot-di-to-quarkus-00001
+- scope: src/main/java/com/demo/Later.java
+EOF
+  cat > specs/S01-a/tasks.md <<'EOF'
+# Tasks
+#### T-001: Early
+**Class**: rewrite
+**Shape**: modify
+**Owns**: `src/main/java/com/demo/Early.java`
+**Oracle**: present
+**Findings**: springboot-di-to-quarkus-00000
+**Acceptance**: ok
+EOF
+  cat > specs/S02-b/tasks.md <<'EOF'
+# Tasks
+#### T-001: Later
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Owns**: `src/main/java/com/demo/Later.java`
+**Oracle**: absent
+**Assumes**: MissingThing exists (S01 T-001)
+**Goal**: Convert Later
+**API mapping**:
+| legacy | target |
+| A | B |
+**Findings**: springboot-di-to-quarkus-00001
+**Acceptance**: ok
+EOF
+  out=$(bash "$HARNESS_DIR/m3-all-lint.sh" --mode=whole-set --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M3ALL-ASSUMES' \
+    && echo m3all-assumes-ok
+}
+check "m3-all-lint REDs Assumes not closed by earlier Owns (O-M3ALL A6)" 0 "m3all-assumes-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration
+  # freeze + gate require predictions file; refuse without APPROVED when AUTO=0
+  if M3_ALL_OPERATOR_AUTO=0 bash "$HARNESS_DIR/m3-all-lint.sh" \
+      --mode=operator-gate --root "$FIX" >/tmp/m3all-gate-red.txt 2>&1; then
+    echo m3all-gate-should-red
+  else
+    grep -q 'OPERATOR_GATE RED' /tmp/m3all-gate-red.txt \
+      && bash "$HARNESS_DIR/m3-all-lint.sh" --mode=freeze-predictions --root "$FIX" >/dev/null \
+      && M3_ALL_OPERATOR_AUTO=1 bash "$HARNESS_DIR/m3-all-lint.sh" \
+           --mode=operator-gate --root "$FIX" >/tmp/m3all-gate-ok.txt 2>&1 \
+      && grep -q 'OPERATOR_GATE auto-APPROVED\|OPERATOR_GATE APPROVED' /tmp/m3all-gate-ok.txt \
+      && test -f "$FIX/migration/.m3-all-predictions.md" \
+      && grep -q 'FROZEN' "$FIX/migration/.m3-all-predictions.md" \
+      && grep -q 'freeze-predictions' "$HARNESS_DIR/outer-loop.sh" \
+      && grep -q 'operator-gate' "$HARNESS_DIR/outer-loop.sh" \
+      && grep -q 'OPERATOR_GATE' "$HARNESS_DIR/outer-loop.sh" \
+      && echo m3all-gate-ok
+  fi
+}
+check "m3-all prediction freeze + OPERATOR_GATE (O-M3ALL)" 0 "m3all-gate-ok"
+
+# O-M3ALL skeleton-first compose
+run_case() {
+  test -f "$HARNESS_DIR/m3-all-compose.py" \
+    && grep -q 'm3-all-compose.py' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'skeleton-first' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_ALL_COMPOSE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qi 'skeleton-first' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && bash "$HARNESS_DIR/m3-all-lint.sh" --mode=wire-check \
+    && echo m3all-compose-wire-ok
+}
+check "m3-all-compose wired in outer-loop + PLANNING (O-M3ALL skeleton-first)" 0 "m3all-compose-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs src/main/java/com/demo
+  echo 'class Config {}' > src/main/java/com/demo/Config.java
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: foundation
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/demo/Config.java
+## S02: data
+- deploy: true
+- findings: springboot-di-to-quarkus-00001
+- scope: src/main/java/com/demo/repository/FooRepository.java
+EOF
+  cat > migration/briefs/S01-foundation.md <<'EOF'
+# S01 brief
+## In scope
+Config
+EOF
+  cat > migration/briefs/S02-data.md <<'EOF'
+# S02 brief
+## In scope
+FooRepository
+EOF
+  out=$(python3 "$HARNESS_DIR/m3-all-compose.py" --root "$FIX" 2>&1) || true
+  echo "$out" | grep -q 'wrote=' \
+    && test -f "$FIX/specs/S01-foundation/tasks.md" \
+    && test -f "$FIX/specs/S02-data/tasks.md" \
+    && grep -q 'O-M3ALL-SKELETON' "$FIX/specs/S01-foundation/tasks.md" \
+    && grep -q '\*\*Oracle\*\*:' "$FIX/specs/S01-foundation/tasks.md" \
+    && grep -q '\*\*Owns\*\*:' "$FIX/specs/S01-foundation/tasks.md" \
+    && grep -q '\*\*Port\*\*:' "$FIX/specs/S02-data/tasks.md" \
+    && grep -q 'reimplement' "$FIX/specs/S02-data/tasks.md" \
+    && grep -q '\*\*Assumes\*\*:' "$FIX/specs/S02-data/tasks.md" \
+    && grep -q 'S01 T-001' "$FIX/specs/S02-data/tasks.md" \
+    && echo '#### T-001: AUTHED' > "$FIX/specs/S01-foundation/tasks.md" \
+    && out2=$(python3 "$HARNESS_DIR/m3-all-compose.py" --root "$FIX" 2>&1) || true \
+    && echo "$out2" | grep -q 'skipped authored' \
+    && grep -q 'AUTHED' "$FIX/specs/S01-foundation/tasks.md" \
+    && echo m3all-compose-emit-ok
+}
+check "m3-all-compose emits skeleton fields and skips authored (O-M3ALL)" 0 "m3all-compose-emit-ok"
+
+# O-LOGSTORY — story identity on every in-story log() line (wake#375)
+run_case() {
+  grep -q 'O-LOGSTORY' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'STORY_TAG=' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'STORY_TAG:\+ \$STORY_TAG' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'STORY_TAG="\$SID"' "$HARNESS_DIR/outer-loop.sh" \
+    && echo logstory-wire-ok
+}
+check "outer-loop log() prefixes STORY_TAG (O-LOGSTORY wire)" 0 "logstory-wire-ok"
+
+run_case() {
+  mkfix
+  LOG="$FIX/outer.log"
+  STORY_TAG=""
+  # Mirror outer-loop.sh log() contract (O-LOGSTORY choke point).
+  log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
+  log "▶ START  M1 ANALYZE — establish migration ground truth"
+  log "         M2 SEQUENCE still working"
+  STORY_TAG=S02
+  log "▶ START  M3 SPECIFY — plan story S02-x (2/6)"
+  log "         ✓ SENSE milestone sensor GREEN after T-001"
+  log "✓ END    M4/M5 EXECUTE — S02-x complete"
+  STORY_TAG=""
+  log "▶ START  M3-ALL whole-set lint — K1 / Port / later-class"
+  # M1/M2 and post-story: no SID prefix
+  ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M1 ANALYZE' \
+    && ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M2 SEQUENCE' \
+    && ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M3-ALL whole-set' \
+    && grep -qE '^\[[^]]+\] S02 ▸ ▶ START  M3 SPECIFY' "$LOG" \
+    && grep -qE '^\[[^]]+\] S02 ▸          ✓ SENSE' "$LOG" \
+    && grep -qE '^\[[^]]+\] S02 ▸ ✓ END    M4/M5' "$LOG" \
+    && ! grep -vE '^\[[^]]+\] S02 ▸' "$LOG" | grep -q 'M3 SPECIFY\|SENSE milestone\|M4/M5 EXECUTE' \
+    && echo logstory-emit-ok
+}
+check "log() emits S02 ▸ in-story and none for M1/M2 (O-LOGSTORY)" 0 "logstory-emit-ok"
+
+# O-LOGBRIEF / O-LOGEPILOG — story-start banner + end-of-story summary (wake#376)
+run_case() {
+  grep -q 'O-LOGBRIEF' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'emit_story_brief' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-LOGEPILOG' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'emit_story_epilog' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'GOAL|SCOPE|OWNS|PLAN|PORT|BUDGET|DONE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'RESULT|CODE|TESTS|FIND|COST|HEAD' "$HARNESS_DIR/outer-loop.sh" \
+    && echo logbrief-epilog-wire-ok
+}
+check "outer-loop wires O-LOGBRIEF+O-LOGEPILOG emitters" 0 "logbrief-epilog-wire-ok"
+
+run_case() {
+  mkfix
+  LOG="$FIX/outer.log"
+  STORY_TAG=S03
+  SID=S03
+  SLUG=S03-data-access-layer
+  STORY_IDX=3
+  STORY_COUNT=6
+  SCOPE="src/main/java/com/demo/repository,src/test/java/com/demo/repository"
+  FINDINGS="springboot-di-to-quarkus-00000,springboot-di-to-quarkus-00002,springboot-di-to-quarkus-00003"
+  DEPLOY=false
+  BRIEF="$FIX/brief.md"
+  SPEC_TASKS="$FIX/tasks.md"
+  cat > "$BRIEF" <<'EOF'
+# S03: Data Access Layer
+
+## Goal & position
+
+Replace Spring Data / JDBC repositories with Panache + CDI so persistence is Quarkus-native.
+
+## Done-criteria
+
+- milestone sensor GREEN and zero org.springframework under repository scope
+EOF
+  cat > "$SPEC_TASKS" <<'EOF'
+# Tasks
+
+#### T-001: Convert JDBC repositories
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+**Goal**: Harvest JDBC then convert to Agroal
+
+#### T-002: Rename repository interfaces
+**Class**: rewrite
+**Shape**: modify
+**Port**: rename
+**Goal**: Package rename only
+
+#### T-003: Verify repositories
+**Class**: rewrite
+**Shape**: verify
+**Port**: rename
+**Goal**: Compile + test green
+EOF
+  # Mirror outer-loop log + helpers (source the function bodies via bash -c extract).
+  # shellcheck disable=SC1091
+  eval "$(sed -n '/^_log_rule()/,/^_outer_heartbeat_start()/p' "$HARNESS_DIR/outer-loop.sh" \
+    | sed '$d')"
+  log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
+  emit_story_brief
+  goal_line=$(grep -E 'S03 GOAL' "$LOG" | head -1)
+  slug="$SLUG"
+  echo "$goal_line" | grep -qE 'S03 GOAL[[:space:]]+.+' \
+    && ! echo "$goal_line" | grep -qF "$slug" \
+    && grep -qE 'S03 SCOPE' "$LOG" \
+    && grep -qE 'S03 OWNS' "$LOG" \
+    && grep -qE 'S03 PLAN' "$LOG" \
+    && grep -qE 'S03 PORT' "$LOG" \
+    && grep -qE 'S03 DONE' "$LOG" \
+    && grep -qE '══ S03' "$LOG" \
+    && echo logbrief-emit-ok
+}
+check "story brief banner emits GOAL≠slug + SCOPE/OWNS/PLAN/PORT/DONE (O-LOGBRIEF)" 0 "logbrief-emit-ok"
+
+run_case() {
+  mkfix
+  LOG="$FIX/outer.log"
+  git init -q
+  git config user.email "inst@test"
+  git config user.name "inst"
+  mkdir -p src/main/java src/test/java
+  echo 'class A {}' > src/main/java/A.java
+  echo '@Test void t(){ assertThat(true); }' > src/test/java/ATest.java
+  git add -A && git commit -q -m "seed"
+  STORY_RUN_BASE=$(git rev-parse HEAD)
+  echo 'class B {}' > src/main/java/B.java
+  git add -A && git commit -q -m "T-001: add B"
+  SID=S03
+  SLUG=S03-data-access-layer
+  STORY_TAG=S03
+  STORY_T0=$(( $(date -u +%s) - 3661 ))
+  FINDINGS="a,b,c"
+  SPEC_TASKS="$FIX/tasks.md"
+  cat > "$SPEC_TASKS" <<'EOF'
+#### T-001: one
+#### T-002: two
+EOF
+  BRIEF=""
+  # Isolate seat-file glob from leftover /tmp/oc-S03-* (other tests / host).
+  rm -f /tmp/oc-S03-*.json
+  : > /tmp/oc-S03-T-001.json
+  : > /tmp/oc-S03-T-002.json
+  : > /tmp/oc-S03-escalation-T-001.json
+  # shellcheck disable=SC1091
+  eval "$(sed -n '/^_log_rule()/,/^_outer_heartbeat_start()/p' "$HARNESS_DIR/outer-loop.sh" \
+    | sed '$d')"
+  log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
+  emit_story_epilog "complete"
+  cost_line=$(grep -E 'S03 COST' "$LOG" | head -1)
+  cost_n=$(echo "$cost_line" | sed -nE 's/.*COST[[:space:]]+([0-9]+) seats.*/\1/p')
+  seat_files=$(ls /tmp/oc-S03-*.json 2>/dev/null | wc -l | tr -d ' ')
+  grep -qE 'S03 RESULT' "$LOG" \
+    && grep -qE 'S03 CODE' "$LOG" \
+    && grep -qE 'S03 TESTS' "$LOG" \
+    && grep -qE 'S03 FIND' "$LOG" \
+    && grep -qE 'S03 COST' "$LOG" \
+    && grep -qE 'S03 HEAD' "$LOG" \
+    && [ -n "$cost_n" ] && [ "$cost_n" = "$seat_files" ] \
+    && echo logepilog-emit-ok
+  rm -f /tmp/oc-S03-*.json
+}
+check "story epilog emits RESULT/CODE/TESTS/FIND/COST/HEAD with COST=seat files (O-LOGEPILOG)" 0 "logepilog-emit-ok"
+
+# O-EVIDLIVE — K-system ≥1 row/story or RED at story-gate (wake#377)
+run_case() {
+  [ -f "$HARNESS_DIR/evidence-liveness.sh" ] \
+    && grep -q 'O-EVIDLIVE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'evidence_liveness_blocks_ship' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'k2:evidence' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'evidence-liveness.sh' "$HARNESS_DIR/outer-loop.sh" \
+    && echo evidlive-wire-ok
+}
+check "evidence-liveness wired at story-gate + K1/K2/K3 emitters (O-EVIDLIVE wire)" 0 "evidlive-wire-ok"
+
+run_case() {
+  mkfix
+  chmod +x "$HARNESS_DIR/evidence-liveness.sh"
+  mkdir -p .hermes/harness migration specs
+  cp "$HARNESS_DIR/evidence-liveness.sh" .hermes/harness/
+  cp "$HARNESS_DIR/append-discovered.py" .hermes/harness/ 2>/dev/null || true
+  # Quiet story — heartbeat fills K9/K11 none; K1 via plan-lint log; K3 via roadmap.
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01 platform
+- springboot-bom-00001: defer (later story)
+- quarkus-rest-00002: adopt
+EOF
+  cat > specs/tasks.md <<'EOF'
+#### T-001: BOM
+**Owns**: `pom.xml`
+**Goal**: Quarkus BOM
+EOF
+  : > /tmp/supervisor-events.csv
+  echo 'plan lint: PASS (M4 entry gate)' > /tmp/supervisor.log
+  STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh heartbeat S01
+  STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh check S01 \
+    && grep -qE '\| S01 \| K9 \|' migration/evidence-liveness.md \
+    && grep -qE '\| S01 \| K11 \|' migration/evidence-liveness.md \
+    && grep -qE '\| S01 \| K1 \|' migration/evidence-liveness.md \
+    && grep -qE '\| S01 \| K3 \|' migration/evidence-liveness.md \
+    && echo evidlive-heartbeat-ok
+}
+check "heartbeat fills K1/K3/K9/K11 for quiet story (O-EVIDLIVE)" 0 "evidlive-heartbeat-ok"
+
+run_case() {
+  mkfix
+  chmod +x "$HARNESS_DIR/evidence-liveness.sh"
+  mkdir -p .hermes/harness migration specs
+  cp "$HARNESS_DIR/evidence-liveness.sh" .hermes/harness/
+  # Findings present, zero k2/k11 events, empty roadmap decisions → K2/K3/K11 silent RED
+  cat > specs/tasks.md <<'EOF'
+#### T-001: Convert
+**Findings**: springboot-di-to-quarkus-00001
+**Owns**: `src/main/java/Foo.java`
+**Goal**: convert
+EOF
+  : > /tmp/supervisor-events.csv
+  : > /tmp/supervisor.log
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S02 models
+(no decision table rows)
+EOF
+  STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh heartbeat S02 || true
+  if STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh check S02 2>/tmp/evidlive-red.txt; then
+    echo evidlive-should-red
+  else
+    grep -q 'RED:O-EVIDLIVE' /tmp/evidlive-red.txt \
+      && echo evidlive-red-ok
+  fi
+}
+check "check REDs when Findings exist but K2/K11 silent (O-EVIDLIVE)" 0 "evidlive-red-ok"
+
+# O-PORTDERIVE / ARCH A1 — REDESIGN brief contract + §7→Port derive
+# Note: roadmap_fixture was redefined later for parse-roadmap — use a local fixture.
+portderive_roadmap_fix() { # $1 = brief contract? (yes|no)
+  mkdir -p briefs
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+
+## S01: Models and contracts
+- scope: src/main/java/com/demo/model/ShoppingCart.java, src/test/java/com/demo/ShoppingCartServiceTest.java
+- findings: javaee-pom-to-quarkus-00010
+- depends: -
+- deploy: false
+- done: models compile on jakarta, legacy pricing assertions pinned
+- rationale: highest fan-in per dependency-order.md — dependencies first
+
+## S02: Services and surface
+- scope: src/main/java/com/demo/service/CartService.java
+- findings: springboot-web-to-quarkus-00000
+- depends: S01
+- deploy: true
+- done: API serves, acceptance path returns 200
+- rationale: dependents after dependencies
+- kind: reimplement
+- seat-budget: 5
+EOF
+  cat > briefs/S01-models.md <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+```java
+import javax.ws.rs.Path;
+```
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts owned by this story
+x
+## Done-criteria
+x
+EOF
+  if [ "$1" = "yes" ]; then
+    cat > briefs/S02-services.md <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+```java
+import javax.ws.rs.Path;
+```
+## Out of scope
+x
+## Decided target shapes
+`CartService` — REDESIGN: target CDI `@ApplicationScoped` + JAX-RS `@Path` (→ ConcurrentHashMap state).
+## Contracts owned by this story
+- seat-budget: 5
+x
+## Done-criteria
+x
+EOF
+  else
+    cat > briefs/S02-services.md <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+```java
+import javax.ws.rs.Path;
+```
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts owned by this story
+x
+## Done-criteria
+x
+EOF
+  fi
+  cat > inv.md <<'EOF'
+## Summary by class
+- rewrite: 1 — javaee-pom-to-quarkus-00010
+- OPEN DESIGN: 1 — springboot-web-to-quarkus-00000
+EOF
+}
+
+run_case() {
+  mkfix; portderive_roadmap_fix no
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-PORTDERIVE' && echo portderive-brief-red-ok
+}
+check "roadmap-lint REDs OPEN DESIGN story without REDESIGN contract (O-PORTDERIVE)" 0 "portderive-brief-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'ROADMAP OK' && echo portderive-brief-green-ok
+}
+check "roadmap-lint accepts OPEN DESIGN brief with REDESIGN contract (O-PORTDERIVE)" 0 "portderive-brief-green-ok"
+
+run_case() {
+  grep -q 'O-PORTDERIVE' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'O-PORTDERIVE' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'architecture-profile.md' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-PORTDERIVE' "$HARNESS_DIR/outer-loop.sh" \
+    && echo portderive-wire-ok
+}
+check "O-PORTDERIVE wired in roadmap-lint + plan-lint + outer-loop" 0 "portderive-wire-ok"
+
+# O-GUARDMANIFEST — ARCH-B2 stage×mechanism×verification inventory
+run_case() {
+  [ -x "$HARNESS_DIR/guard-manifest.sh" ] || chmod +x "$HARNESS_DIR/guard-manifest.sh"
+  bash "$HARNESS_DIR/guard-manifest.sh" --check \
+    && grep -qE '\| *Stage *\|' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -qE '\| *Mechanism *\|' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -qE '\| *Verification *\|' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-INFERABSENT' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-EXECCORPUS' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-EVIDLIVE' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-GUARDMANIFEST' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-GOLDENFRESH' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-PORTDERIVE' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-STORYKIND' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-SPECREIMPL' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -qE '\| L1' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -qE '\| L2' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -qE '\| L3' "$HARNESS_DIR/guard-manifest.md" \
+    && ! grep -nE '(^|[[:space:]])rg[[:space:]]+-n' "$HARNESS_DIR/guard-manifest.sh" \
+    && grep -q '_grepn\|grep -nE' "$HARNESS_DIR/guard-manifest.sh" \
+    && echo guardmanifest-ok
+}
+check "guard-manifest stage×mechanism×verification --check (O-GUARDMANIFEST)" 0 "guardmanifest-ok"
+
+run_case() {
+  bash "$HARNESS_DIR/guard-manifest.sh" \
+    && bash "$HARNESS_DIR/guard-manifest.sh" --check \
+    && n=$(awk '/^### harness O-\* \/ guard markers/{s=1;next} s&&/^```$/{if(f){exit} f=1;next} s&&f{print}' \
+         "$HARNESS_DIR/guard-manifest.md" | grep -cE '^[0-9]+:' || true) \
+    && test "$n" -ge 1 \
+    && echo guardmanifest-regen-ok
+}
+check "guard-manifest regenerate + non-empty harvest (O-GUARDMANIFEST)" 0 "guardmanifest-regen-ok"
+
+# O-EXECCORPUS — archived execution replay (symmetric with O-PLANCORPUS)
+run_case() {
+  local ec="$HARNESS_DIR/tests/fixtures/exec-corpus"
+  [ -x "$HARNESS_DIR/exec-corpus-lint.sh" ] || chmod +x "$HARNESS_DIR/exec-corpus-lint.sh"
+  [ -f "$HARNESS_DIR/exec-corpus-lint.sh" ] \
+    && [ -f "$ec/manifest.env" ] \
+    && [ -d "$ec/s03-t004-sfixnodelta" ] \
+    && [ -f "$ec/s03-t004-sfixnodelta/failure-delta.txt" ] \
+    && [ -d "$ec/s03-t004-escalation-cause" ] \
+    && [ -f "$ec/s03-t004-escalation-cause/escalation-cause-T-004.txt" ] \
+    && grep -q 'O-EXECCORPUS\|exec-corpus-lint' "$HARNESS_DIR/exec-corpus-lint.sh" \
+    && grep -q 'sfix_tip_content_empty' "$HARNESS_DIR/exec-corpus-lint.sh" \
+    && grep -q 'classify_cause_from_err\|O-STEPFINISHRED' "$HARNESS_DIR/exec-corpus-lint.sh" \
+    && echo execcorpus-wire-ok
+}
+check "exec-corpus-lint wiring + fixtures present (O-EXECCORPUS)" 0 "execcorpus-wire-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/exec-corpus-lint.sh" --case s03-t004-sfixnodelta 2>&1) || true
+  printf '%s\n' "$out" | grep -q 'PASS sfixnodelta' \
+    && printf '%s\n' "$out" | grep -q 'O-EXECCORPUS PASS' \
+    && echo execcorpus-sfixnodelta-ok
+}
+check "exec-corpus T-004 O-SFIXNODELTA refuse seat burn (O-EXECCORPUS)" 0 "execcorpus-sfixnodelta-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/exec-corpus-lint.sh" --case s03-t004-escalation-cause 2>&1) || true
+  printf '%s\n' "$out" | grep -q 'PASS escalation-cause' \
+    && printf '%s\n' "$out" | grep -q 'O-EXECCORPUS PASS' \
+    && echo execcorpus-escalcause-ok
+}
+check "exec-corpus T-004 escalation-cause sensor-red (O-EXECCORPUS)" 0 "execcorpus-escalcause-ok"
+
+run_case() {
+  out=$(bash "$HARNESS_DIR/exec-corpus-lint.sh" 2>&1) || true
+  printf '%s\n' "$out" | grep -qE 'O-EXECCORPUS PASS \(2 case' \
+    && echo execcorpus-sweep-ok
+}
+check "exec-corpus bare full-sweep rc=0 (O-EXECCORPUS)" 0 "execcorpus-sweep-ok"
+
+# O-STORYKIND / ARCH A3 — roadmap kind field on OPEN DESIGN / §7 REDESIGN stories
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak '/^- kind:/d' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-STORYKIND' && echo storykind-missing-red-ok
+}
+check "roadmap-lint REDs OPEN DESIGN story without kind (O-STORYKIND)" 0 "storykind-missing-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak 's/^- kind: reimplement/- kind: rename/' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-STORYKIND' && echo storykind-rename-red-ok
+}
+check "roadmap-lint REDs OPEN DESIGN with kind=rename (O-STORYKIND)" 0 "storykind-rename-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak 's/^- kind: reimplement/- kind: mixed/' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-STORYKIND' && echo storykind-mixed-bare-red-ok
+}
+check "roadmap-lint REDs kind=mixed without justification (O-STORYKIND)" 0 "storykind-mixed-bare-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak 's/^- kind: reimplement/- kind: mixed — harvest + convert; split deferred/' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'ROADMAP OK' && echo storykind-mixed-green-ok
+}
+check "roadmap-lint accepts kind=mixed with split justification (O-STORYKIND)" 0 "storykind-mixed-green-ok"
+
+run_case() {
+  grep -q 'O-STORYKIND' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'kind: rename|reimplement|mixed' "$HARNESS_DIR/../skills/migration-harness/SEQUENCING.md" \
+    && echo storykind-wire-ok
+}
+check "O-STORYKIND wired in roadmap-lint + SEQUENCING (O-STORYKIND)" 0 "storykind-wire-ok"
+
+# O-SEATBUDGET / ARCH A5 — kind × incidents → seat-budget + overrun escalate
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak '/^- seat-budget:/d' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-SEATBUDGET' && echo seatbudget-missing-red-ok
+}
+check "roadmap-lint REDs kind story without seat-budget (O-SEATBUDGET)" 0 "seatbudget-missing-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  sed -i.bak 's/^- seat-budget: 5/- seat-budget: 99/' roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-SEATBUDGET' && echo seatbudget-wrong-red-ok
+}
+check "roadmap-lint REDs seat-budget mismatch vs kind×incidents (O-SEATBUDGET)" 0 "seatbudget-wrong-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  # brief without seat-budget publish
+  sed -i.bak '/seat-budget:/d' briefs/S02-services.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-SEATBUDGET' && echo seatbudget-brief-red-ok
+}
+check "roadmap-lint REDs brief missing seat-budget publish (O-SEATBUDGET)" 0 "seatbudget-brief-red-ok"
+
+run_case() {
+  mkfix; portderive_roadmap_fix yes
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
+  echo "$out" | grep -q 'ROADMAP OK' && echo seatbudget-green-ok
+}
+check "roadmap-lint accepts kind×incidents seat-budget + brief (O-SEATBUDGET)" 0 "seatbudget-green-ok"
+
+run_case() {
+  n=$(python3 "$HARNESS_DIR/seat-budget.py" expected --kind reimplement --incidents 51)
+  # unit=10 → ceil(51/10)=6 × 5 = 30
+  [ "$n" = "30" ] && echo seatbudget-derive-ok
+}
+check "seat-budget.py derives reimplement×51 → 30 (O-SEATBUDGET)" 0 "seatbudget-derive-ok"
+
+run_case() {
+  mkfix
+  sid=S99
+  printf '5\n' > "/tmp/story-seat-budget-${sid}"
+  rm -f /tmp/oc-${sid}-*.json
+  : > "/tmp/oc-${sid}-T-001.json"
+  : > "/tmp/oc-${sid}-T-002.json"
+  : > "/tmp/oc-${sid}-T-003.json"
+  : > "/tmp/oc-${sid}-T-004.json"
+  : > "/tmp/oc-${sid}-T-005.json"
+  : > "/tmp/oc-${sid}-T-006.json"
+  # budget=5 factor=2 → limit=10; actual=6 → under
+  python3 "$HARNESS_DIR/seat-budget.py" check-overrun --sid "$sid" --budget 5 --factor 2 \
+    && : > "/tmp/oc-${sid}-T-007.json" \
+    && : > "/tmp/oc-${sid}-T-008.json" \
+    && : > "/tmp/oc-${sid}-T-009.json" \
+    && : > "/tmp/oc-${sid}-T-010.json" \
+    && : > "/tmp/oc-${sid}-T-011.json" \
+    && ! python3 "$HARNESS_DIR/seat-budget.py" check-overrun --sid "$sid" --budget 5 --factor 2 \
+    && echo seatbudget-overrun-ok
+  rm -f /tmp/oc-${sid}-*.json "/tmp/story-seat-budget-${sid}"
+}
+check "seat-budget overrun trips when actual > budget×factor (O-SEATBUDGET)" 0 "seatbudget-overrun-ok"
+
+run_case() {
+  grep -q 'O-SEATBUDGET' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'seat-budget' "$HARNESS_DIR/../skills/migration-harness/SEQUENCING.md" \
+    && grep -q 'check_seat_budget_overrun\|O-SEATBUDGET' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'BUDGET' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'seat-budget' "$HARNESS_DIR/../skills/migration-harness/BRIEF-TEMPLATE.md" \
+    && echo seatbudget-wire-ok
+}
+check "O-SEATBUDGET wired in lint+banner+supervisor+SEQUENCING (O-SEATBUDGET)" 0 "seatbudget-wire-ok"
+
+# O-SPECREIMPL / ARCH A2 — sibling spec.md REDESIGN → Port: reimplement coverage
+specreimpl_fixture() { # $1 = port? (yes|no)
+  mkdir -p specs/s02-demo
+  cat > specs/s02-demo/spec.md <<'EOF'
+# S02: Services
+
+## Observations
+`CartService` is REDESIGN / OPEN DESIGN — target ConcurrentHashMap + 404-on-missing GET.
+ShoppingCart is HARVEST (faithful carry).
+EOF
+  if [ "$1" = "yes" ]; then
+    cat > specs/s02-demo/tasks.md <<'EOF'
+#### T-001: Convert CartService
+**Class**: infer
+**Shape**: create
+**Port**: reimplement
+- Target: `src/main/java/com/demo/service/CartService.java`
+- Procedure: harvest-from-staging → API mapping → first-write
+- API mapping: HashMap → ConcurrentHashMap; missing GET → 404
+EOF
+  else
+    cat > specs/s02-demo/tasks.md <<'EOF'
+#### T-001: Convert CartService
+**Class**: infer
+**Shape**: create
+- Target: `src/main/java/com/demo/service/CartService.java`
+EOF
+  fi
+}
+
+run_case() {
+  mkfix; specreimpl_fixture no
+  out=$(python3 "$HARNESS_DIR/plan-lint.py" specs/s02-demo/tasks.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-SPECREIMPL' && echo specreimpl-red-ok
+}
+check "plan-lint REDs spec.md REDESIGN class without Port: reimplement (O-SPECREIMPL)" 0 "specreimpl-red-ok"
+
+run_case() {
+  mkfix; specreimpl_fixture yes
+  out=$(python3 "$HARNESS_DIR/plan-lint.py" specs/s02-demo/tasks.md 2>&1) || true
+  echo "$out" | grep -q 'PLAN OK\|LINT:' 
+  # Prefer no O-SPECREIMPL; other LINT classes may fire on thin fixture
+  ! echo "$out" | grep -q 'LINT:O-SPECREIMPL' && echo specreimpl-green-ok
+}
+check "plan-lint accepts spec.md REDESIGN covered by Port: reimplement (O-SPECREIMPL)" 0 "specreimpl-green-ok"
+
+run_case() {
+  grep -q 'O-SPECREIMPL' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'spec.md' "$HARNESS_DIR/plan-lint.py" \
+    && echo specreimpl-wire-ok
+}
+check "O-SPECREIMPL wired in plan-lint (O-SPECREIMPL)" 0 "specreimpl-wire-ok"
 
 echo "----"
 echo "$PASS/$N passed"

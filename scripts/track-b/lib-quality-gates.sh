@@ -20,17 +20,52 @@ BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
 REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE4-REVIEW.md}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
-# DevWorkspace defaults (override via env — do not hardcode elsewhere).
-# Wave 2 specimen workspace name; resolve live pod by label (F-5 W1 / R-87).
-QG_WS_NAME_DEFAULT="${V10_WS_NAME:-petclinic-rest-v1}"
+# DevWorkspace targeting (O-HERMESWSRESOLVE) — never default to a named workspace
+# that ages out (v1→v2→v3→v4…). Resolve at call time via qg_ws_name.
 QG_WS_NS_DEFAULT="wksp-ai-developer"
 QG_WS_CTR_DEFAULT="development-tooling"
-# Legacy cart Wave-1 pod — only used if label resolve fails and V8_WS_POD unset.
-QG_WS_POD_DEFAULT="workspace9b602ab164e54d66-79897b695d-tw2q2"
 # O-FALSECOMPLETE — exact harness story-complete subjects only.
 QG_STORY_COMPLETE_RE='^S0[0-9] story complete: (success .+|story-gate-passed)$'
 
 qg_die() { echo "quality-gate: $*" >&2; exit 1; }
+
+# Resolve target DevWorkspace name (O-HERMESWSRESOLVE).
+# Order: explicit V10_WS_NAME → single Running DevWorkspace in ns → REFUSE.
+# Instruments: set QG_WS_RUNNING_LIST (newline-separated names, may be empty)
+# to exercise resolution without oc. Multi/zero Running → refuse.
+qg_ws_name() {
+  local ns names count
+  if [[ -n "${V10_WS_NAME:-}" ]]; then
+    printf '%s\n' "$V10_WS_NAME"
+    return 0
+  fi
+  ns="$(qg_ws_ns)"
+  if [[ -n "${QG_WS_RUNNING_LIST+x}" ]]; then
+    names="$(printf '%s\n' "$QG_WS_RUNNING_LIST" | sed '/^$/d')"
+  elif command -v oc >/dev/null 2>&1; then
+    names="$(
+      oc get devworkspace -n "$ns" \
+        -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{"\n"}{end}' \
+        2>/dev/null || true
+    )"
+    names="$(printf '%s\n' "$names" | sed '/^$/d')"
+  else
+    echo "quality-gate: V10_WS_NAME unset and oc unavailable — refuse stale workspace default (O-HERMESWSRESOLVE)" >&2
+    return 1
+  fi
+  count="$(printf '%s\n' "$names" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [[ "${count:-0}" -eq 1 ]]; then
+    printf '%s\n' "$(printf '%s\n' "$names" | sed '/^$/d' | head -1)"
+    return 0
+  fi
+  if [[ "${count:-0}" -eq 0 ]]; then
+    echo "quality-gate: V10_WS_NAME unset and no Running DevWorkspace in ${ns} — refuse (O-HERMESWSRESOLVE)" >&2
+    return 1
+  fi
+  echo "quality-gate: V10_WS_NAME unset and ${count} Running DevWorkspaces in ${ns} — set V10_WS_NAME explicitly:" >&2
+  printf '%s\n' "$names" | sed '/^$/d' | sed 's/^/  /' >&2
+  return 1
+}
 
 qg_ws_pod() {
   if [[ -n "${V8_WS_POD:-}" ]]; then
@@ -38,21 +73,42 @@ qg_ws_pod() {
     return 0
   fi
   local name ns pod
-  name="${V10_WS_NAME:-$QG_WS_NAME_DEFAULT}"
+  name="$(qg_ws_name)" || return 1
   ns="$(qg_ws_ns)"
   if command -v oc >/dev/null 2>&1; then
     pod=$(oc get pod -n "$ns" \
       -l "controller.devfile.io/devworkspace_name=${name}" \
+      --field-selector=status.phase=Running \
       -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
     if [[ -n "${pod:-}" ]]; then
       printf '%s\n' "$pod"
       return 0
     fi
   fi
-  printf '%s\n' "$QG_WS_POD_DEFAULT"
+  echo "quality-gate: no Running pod for DevWorkspace ${name} in ${ns} (O-HERMESWSRESOLVE)" >&2
+  return 1
 }
 qg_ws_ns() { printf '%s\n' "${V8_WS_NS:-$QG_WS_NS_DEFAULT}"; }
 qg_ws_ctr() { printf '%s\n' "${V8_WS_CONTAINER:-$QG_WS_CTR_DEFAULT}"; }
+
+# O-HERMESPARITYSEM — semantic .hermes digest file list (cwd = parent of .hermes).
+# Excludes stamps / regenerated catalogs; generators (.sh) remain hashed.
+# Keep identical predicates in v10-hermes-parity.sh / v10-golden-fresh.sh pod exec.
+qg_hermes_list_semantic_files() {
+  find .hermes -type f \
+    ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '.DS_Store' \
+    ! -name '*.bak' ! -name '._*' \
+    ! -path './.hermes/harness/.published-fp' ! -name '.published-fp' \
+    ! -path './.hermes/harness/defaults-inventory.md' ! -name 'defaults-inventory.md' \
+    ! -path './.hermes/harness/guard-manifest.md' ! -name 'guard-manifest.md' \
+    2>/dev/null | LC_ALL=C sort
+}
+
+# Same find predicates as a single line for embedding in `oc exec` digests.
+qg_hermes_semantic_find_cmd() {
+  printf '%s\n' \
+    'find .hermes -type f ! -path "*/__pycache__/*" ! -name "*.pyc" ! -name ".DS_Store" ! -name "*.bak" ! -name "._*" ! -path "./.hermes/harness/.published-fp" ! -name ".published-fp" ! -path "./.hermes/harness/defaults-inventory.md" ! -name "defaults-inventory.md" ! -path "./.hermes/harness/guard-manifest.md" ! -name "guard-manifest.md"'
+}
 
 qg_story_complete_ok() {
   printf '%s\n' "$1" | grep -Eq "$QG_STORY_COMPLETE_RE"

@@ -318,19 +318,41 @@ def is_convert_task(title: str) -> bool:
     'Remove RootRestController' / 'removed' → is_removal_task true →
     absent PetRestController → false ALREADY COMPLETE while controllers
     still need harvest/JAX-RS.
+
+    O-ALREADYCONS: Consolidate/Implement Panache (or similar) titles are
+    convert-shaped — Target absence means not done, never removal-skip.
     """
     return bool(
         re.search(
-            r"^\s*(Convert|Port|Harvest|Migrate|Rewrite|Transform)\b",
+            r"^\s*(Convert|Port|Harvest|Migrate|Rewrite|Transform|"
+            r"Consolidate|Implement)\b",
             title,
             re.I,
         )
     )
 
 
+def _shape_of(body: str) -> str:
+    m = re.search(
+        r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
+        r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+        body or "",
+    )
+    if not m:
+        return ""
+    return next(g for g in m.groups() if g).lower()
+
+
 def is_removal_task(title: str, body: str) -> bool:
-    # O-ACCREATE / O-ACRESTABS: create/convert-shaped titles are never removal skips.
+    # O-ACCREATE / O-ACRESTABS / O-ALREADYCONS: create/convert-shaped titles
+    # are never removal skips.
     if is_create_task(title) or is_convert_task(title):
+        return False
+    # O-ALREADYCONS: Shape=create|modify with missing Target .java is never
+    # an absence-success (Wave4 S03 T-004: "delete bodies" near Target paths
+    # false-fired body-led removal after reset).
+    shape = _shape_of(body)
+    if shape in {"create", "modify"} and missing_target_path(body):
         return False
     # O-T6DREMOVAL / R-104: titles like "Handle … removal" / "(removed/refactored)"
     if re.search(
@@ -341,9 +363,12 @@ def is_removal_task(title: str, body: str) -> bool:
         re.I,
     ):
         return True
-    # Body-led removal of a named class/file — require remove/delete near a .java path.
+    # Body-led removal of a named class/file — require remove/delete near a
+    # .java path. Do NOT match "delete bodies" / "delete body" (Override Impl
+    # harvest prose) — that false-skipped Consolidate→Panache (O-ALREADYCONS).
     for m in re.finditer(
-        r"\b(remove|delete|drop|eliminate)\b(.{0,80}?src/(?:main|test)/java/[A-Za-z0-9_./]+\.java)",
+        r"\b(remove|delete|drop|eliminate)\b(?!\s+bod(?:y|ies)\b)"
+        r"(.{0,80}?src/(?:main|test)/java/[A-Za-z0-9_./]+\.java)",
         body,
         re.I | re.S,
     ):
@@ -487,6 +512,44 @@ def annotation_work_incomplete(title: str, body: str) -> Optional[str]:
     return None
 
 
+def verify_absence_already_ok(title: str, body: str) -> Optional[str]:
+    """O-ACVERIFYABS / O-ESCWVERIFYABS: Shape=verify Oracle=absent deferral.
+
+    Wave4 S03 T-000: characterization deferred — success is verified ABSENCE of
+    phantom repository tests, not inventing them. Fast-path before worker so
+    MiniMax is not burned on run-log-only tips.
+    """
+    if _shape_of(body) != "verify":
+        return None
+    if not re.search(
+        r"(?im)^\*\*Oracle\*\*\s*:?\s*absent\b|^\*\*Oracle\s*:\s*absent\*\*",
+        body,
+    ):
+        return None
+    blob = f"{title}\n{body}"
+    if not re.search(
+        r"(?i)verify absence|characterization\s+deferred|do NOT invent|hollow|"
+        r"must not invent|no hollow",
+        blob,
+    ):
+        return None
+    phantoms = re.findall(
+        r"([A-Za-z0-9_]+)\*Test\.java|\`([^*`]+\*[^*`]*Test\.java)\`",
+        blob,
+    )
+    test_root = ROOT / "src/test"
+    if test_root.is_dir():
+        for a, b in phantoms:
+            raw = a or b
+            key = raw.replace("*", "").replace(".java", "").replace("Test", "")
+            if not key:
+                continue
+            for p in test_root.rglob("*Test.java"):
+                if key in p.name:
+                    return None  # phantom present — must-run
+    return "verify-absent"
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("usage: already-complete.py <tasks.md> <T-xxx>", file=sys.stderr)
@@ -502,6 +565,12 @@ def main() -> int:
     myp = ROOT / "migration.yaml"
     if myp.is_file():
         myaml = myp.read_text(encoding="utf-8", errors="replace")
+
+    # O-ACVERIFYABS: Shape=verify + Oracle=absent + absence/defer Goal.
+    vabs = verify_absence_already_ok(title, body)
+    if vabs:
+        print(f"absent:{vabs}")
+        return 0
 
     # O-AC3 / O-AC-NONJAVA / O-ACVERIFY / O-ALREADYPROP / O-ALREADYREPL /
     # O-ACSTRUCT: missing Target, non-java Target, Target/Owns .java class work,
@@ -647,6 +716,68 @@ def main() -> int:
             # kind must be present|absent|oracle-absent (supervisor try_already_complete)
             print(f"present:JpaRepositoryImpl-cdi({jpa_cdi})")
             return 0
+
+    # O-SDJPA-SKIP / O-T4SPRINGDATA: Spring Data Override-only (or redesign
+    # skip) when Quarkus Jpa* @ApplicationScoped already cover domain repos
+    # and pom has no spring-data — skip rather than Qwen READ_THRASH→MiniMax
+    # (Wave2 T-011 / v2 S04 T-005). Do NOT skip Port=reimplement Panache
+    # consolidate seats or when staging Override Impls still need harvest.
+    if re.search(
+        r"(?i)spring\s*data|springdatajpa|SpringData\w+Repository", blob
+    ):
+        pom_path = ROOT / "pom.xml"
+        pom_txt = ""
+        if pom_path.is_file():
+            try:
+                pom_txt = pom_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pom_txt = ""
+        has_sd_dep = bool(
+            re.search(r"(?i)spring-data|quarkus-spring-data", pom_txt)
+        )
+        # Panache consolidate / Port=reimplement must still run
+        if re.search(
+            r"(?i)panache|consolidat|\*\*Port\*\*\s*:?\s*reimplement|"
+            r"Port\s*:\s*reimplement",
+            blob,
+        ):
+            pass
+        elif not has_sd_dep:
+            jpa = list((ROOT / "src/main/java").rglob("Jpa*RepositoryImpl.java"))
+            jpa_cdi = 0
+            for p in jpa:
+                try:
+                    if "@ApplicationScoped" in p.read_text(
+                        encoding="utf-8", errors="replace"
+                    ):
+                        jpa_cdi += 1
+                except OSError:
+                    continue
+            staging_root = ROOT / "migration/staging"
+            staging_ov: list[Path] = []
+            if staging_root.is_dir():
+                staging_ov = [
+                    p
+                    for p in staging_root.rglob("*RepositoryImpl.java")
+                    if "springdatajpa" in str(p).replace("\\", "/")
+                    or "Override" in p.name
+                ]
+            live_ov_names = {
+                p.name
+                for p in (ROOT / "src/main/java").rglob("*RepositoryImpl.java")
+            }
+            pending_ov = [p for p in staging_ov if p.name not in live_ov_names]
+            override_focus = bool(
+                re.search(
+                    r"(?i)\boverride\b|delete\s+(?:helper|bod)|"
+                    r"O-SDJPA-SKIP|redesign|defer|already.?complete",
+                    blob,
+                )
+            )
+            # Override-only / redesign-skip with JPA cover and no pending Impl
+            if jpa_cdi >= 3 and override_focus and not pending_ov:
+                print(f"present:JpaRepositoryImpl-cdi-sdjpa-skip({jpa_cdi})")
+                return 0
 
     return 1
 

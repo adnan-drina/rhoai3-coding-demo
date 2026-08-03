@@ -54,6 +54,12 @@ push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
 # --- 2. quarkus-migration-scaffold (authored in this repo) ---
 log "Staging quarkus-migration-scaffold"
 cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
+# O-GOLDENFRESH: stamp publish fingerprint into staged + SoT trees before push
+# so preflight can three-way compare repo == published == pod.
+bash "$REPO_ROOT/scripts/track-b/v10-golden-fresh.sh" --stamp \
+  "$WORKDIR/quarkus-migration-scaffold"
+bash "$REPO_ROOT/scripts/track-b/v10-golden-fresh.sh" --stamp \
+  "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
 push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
@@ -62,3 +68,5 @@ log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"
 echo "    'All repositories' so template-created repos trigger the pipeline."
 echo "  - Re-running this script force-pushes golden state (demo reset)."
+echo "  - O-GOLDENFRESH: .hermes/harness/.published-fp stamped; preflight refuses"
+echo "    outer start when repo/published/pod digests diverge."

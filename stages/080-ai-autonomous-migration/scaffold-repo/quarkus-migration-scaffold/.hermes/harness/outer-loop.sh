@@ -3,8 +3,13 @@
 # Stage 080 OUTER LOOP — drives the full M-process end-to-end:
 #   M1 ANALYZE (analyze.sh + architecture-profile session, rubric-gated)
 #   M2 SEQUENCE (roadmap + briefs session, roadmap-lint-gated)
-#   per story: M3 SPECIFY (spec session, plan-lint-gated)
+#   M3-ALL (O-M3ALL): author/lint EVERY story plan, then whole-set lint,
+#           BEFORE any M4 (K1 partition / Port coverage / later-class)
+#   per story: M3-JIT re-lint (waterfall antidote; amend→whole-set) +
 #              M4/M5 (one supervisor.sh child run with computed story env)
+#
+# Waterfall antidotes are mandatory (JIT + amend window + delta-as-signal).
+# Do not add M3_ALL_SKIP_JIT / WATERFALL_OPTIONAL escape hatches.
 #
 # The outer loop owns STORY ITERATION and the M1/M2/M3 gates; supervisor.sh
 # stays the proven per-story execution engine. Story state persists in
@@ -28,18 +33,38 @@ SUPERVISOR_LOG=/tmp/outer-loop.log
 # F-18: bare pgrep -f matches oc-exec -lc probe text — observer-induced
 # refuse-to-start. Hold outer flock for process life; probe supervisor lock
 # without keeping it (child supervisor.sh must be able to acquire).
+# O-LOCKSTALE: clear lock files whose recorded PID is dead before flock.
+clear_stale_pid_lock() { # $1=lockfile
+  local lock="$1" pid=""
+  [ -f "$lock" ] || return 0
+  pid=$(tr -d '[:space:]' <"$lock" 2>/dev/null || true)
+  if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$lock"
+    echo "O-LOCKSTALE cleared pid=${pid} ($lock)" >&2
+  fi
+}
 OUTER_LOCK="${OUTER_LOCK:-/tmp/outer-loop.lock}"
+clear_stale_pid_lock "$OUTER_LOCK"
 exec 8>"$OUTER_LOCK"
 if ! flock -n 8; then
-  echo "FATAL: another outer loop holds $OUTER_LOCK — refusing to start" >&2
-  exit 1
+  clear_stale_pid_lock "$OUTER_LOCK"
+  exec 8>"$OUTER_LOCK"
+  if ! flock -n 8; then
+    echo "FATAL: another outer loop holds $OUTER_LOCK — refusing to start" >&2
+    exit 1
+  fi
 fi
 printf '%s\n' "$$" >&8
 SUPERVISOR_LOCK="${SUPERVISOR_LOCK:-/tmp/supervisor.lock}"
+clear_stale_pid_lock "$SUPERVISOR_LOCK"
 exec 9>"$SUPERVISOR_LOCK"
 if ! flock -n 9; then
-  echo "FATAL: a supervisor holds $SUPERVISOR_LOCK — refusing to start" >&2
-  exit 1
+  clear_stale_pid_lock "$SUPERVISOR_LOCK"
+  exec 9>"$SUPERVISOR_LOCK"
+  if ! flock -n 9; then
+    echo "FATAL: a supervisor holds $SUPERVISOR_LOCK — refusing to start" >&2
+    exit 1
+  fi
 fi
 # Release supervisor lock so the M4 child can take it.
 flock -u 9
@@ -56,6 +81,11 @@ HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
 WORKER_M3_FIRST="${WORKER_M3_FIRST:-false}"
 M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
 M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-2}"
+# O-M3ALL: after M2, author all story plans before any M4 (default on).
+# Set M3_ALL=0 only for emergency single-story resume diagnostics.
+# After whole-set GREEN: freeze-predictions + OPERATOR_GATE (M3_ALL_OPERATOR_AUTO=1
+# auto-approves the gate for non-interactive / instrument runs).
+M3_ALL="${M3_ALL:-1}"
 LOG=/tmp/outer-loop.log
 STATE=migration/story-state.csv
 HARNESS=.hermes/harness
@@ -85,7 +115,10 @@ _sym() { # $1=pretty $2=plain
   if [ "$PLAIN" = "1" ]; then echo "$2"; else echo "$1"; fi
 }
 
-log() { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
+# O-LOGSTORY: when inside a story loop, prefix every log() line with "SID ▸".
+# STORY_TAG is empty for M1/M2 and between stories — do not set at call sites.
+STORY_TAG="${STORY_TAG:-}"
+log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
 phase_start() { # $1=code+title  [$2=extra]
   log "$(_sym '▶' '>') START  $1"
   [ -n "${2:-}" ] && log "         $2"
@@ -97,6 +130,244 @@ phase_gate() { # $1=name $2=RED|GREEN $3=detail
   else log "$(_sym '✗' 'X') GATE   $1 — RED${3:+ — $3}"; fi
 }
 phase_retry() { log "$(_sym '↻' 'R') RETRY  $1"; }
+
+# O-LOGBRIEF / O-LOGEPILOG — emission-only story banners (wake#376).
+# Pure log UX: no control-flow changes. Derive from brief/spec/tasks + git.
+_log_rule() { # $1=left text → pad with ═ to ~70 cols
+  local left="$1" pad="" i
+  i=${#left}
+  while [ "$i" -lt 70 ]; do pad="${pad}═"; i=$((i + 1)); done
+  log "${left}${pad}"
+}
+
+_story_title_human() {
+  # Prefer brief H1 "S03: Data Access Layer"; else humanize slug after SID-.
+  local t="" slug="${SLUG:-$SID}"
+  if [ -n "${BRIEF:-}" ] && [ -f "$BRIEF" ]; then
+    t=$(sed -nE 's/^#[[:space:]]*S[0-9]+:[[:space:]]*(.+)$/\1/p' "$BRIEF" | head -1)
+  fi
+  if [ -z "$t" ] && [ -f "specs/${slug}/spec.md" ]; then
+    t=$(sed -nE 's/^#[[:space:]]*S[0-9]+:[[:space:]]*(.+)$/\1/p' "specs/${slug}/spec.md" | head -1)
+    [ -n "$t" ] || t=$(sed -nE 's/^#[[:space:]]*(.+)$/\1/p' "specs/${slug}/spec.md" | head -1)
+  fi
+  if [ -z "$t" ]; then
+    t=$(printf '%s' "$slug" | sed -E "s/^${SID}-//; s/-/ /g")
+  fi
+  printf '%s' "$t"
+}
+
+_story_goal_line() {
+  # One sentence — brief Goal & position prose, else first task **Goal**, else title.
+  # Must not equal the raw slug (instrument + operator ask).
+  local slug="${SLUG:-$SID}" goal="" line
+  if [ -n "${BRIEF:-}" ] && [ -f "$BRIEF" ]; then
+    goal=$(awk '
+      BEGIN { in_sec=0 }
+      /^## Goal/ { in_sec=1; next }
+      /^## / { if (in_sec) exit }
+      in_sec && NF && $0 !~ /^<!--/ && $0 !~ /^What this story/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit
+      }
+    ' "$BRIEF")
+  fi
+  if [ -z "$goal" ] && [ -f "specs/${slug}/spec.md" ]; then
+    goal=$(awk '
+      NR==1 { next }
+      /^## / { if (seen) exit; next }
+      NF && $0 !~ /^<!--/ && $0 !~ /^#/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit
+      }
+    ' "specs/${slug}/spec.md")
+  fi
+  if [ -z "$goal" ] && [ -n "${SPEC_TASKS:-}" ] && [ -f "$SPEC_TASKS" ]; then
+    goal=$(sed -nE 's/^\*\*Goal\*\*[[:space:]]*:[[:space:]]*(.+)$/\1/p' "$SPEC_TASKS" | head -1)
+  fi
+  [ -n "$goal" ] || goal=$(_story_title_human)
+  # Guard lazy slug fallback — never emit GOAL equal to slug.
+  if [ "$goal" = "$slug" ] || [ "$goal" = "$SID" ]; then
+    goal=$(_story_title_human)
+  fi
+  # Truncate to one readable line.
+  line=$(printf '%s' "$goal" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^(.{160}).*/\1…/')
+  printf '%s' "$line"
+}
+
+_story_done_line() {
+  local deploy="${DEPLOY:-false}" done=""
+  if [ -n "${BRIEF:-}" ] && [ -f "$BRIEF" ]; then
+    done=$(awk '
+      BEGIN { in_sec=0 }
+      /^## Done-criteria/ { in_sec=1; next }
+      /^## / { if (in_sec) exit }
+      in_sec && /^- / {
+        sub(/^-[[:space:]]*/, "");
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "");
+        if ($0 !~ /^</ && length($0) > 8) { print; exit }
+      }
+    ' "$BRIEF")
+  fi
+  if [ -z "$done" ]; then
+    if [ "$deploy" = "true" ]; then
+      done="milestone sensor GREEN + factory pipeline green + acceptance path serving"
+    else
+      done="milestone sensor GREEN + story scope clean of forbidden Spring residue (deploy=false)"
+    fi
+  fi
+  printf '%s' "$done" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^(.{160}).*/\1…/'
+}
+
+emit_story_brief() {
+  # O-LOGBRIEF: banner after M4/M5 phase_start — GOAL/SCOPE/OWNS/PLAN/PORT/BUDGET/DONE.
+  local title goal scope_txt owns_n owns_ids plan_line port_line done_line
+  local budget_line="—" budget_n="" kind_s="" inc_s=""
+  local tasks_f="${SPEC_TASKS:-}"
+  local n_files=0 n_tasks=0 rewrite=0 infer=0
+  local create=0 modify=0 remove=0 structure=0 verify=0
+  local port_re=0 port_rn=0
+  title=$(_story_title_human)
+  goal=$(_story_goal_line)
+  done_line=$(_story_done_line)
+  # O-SEATBUDGET: publish derived/declared budget + arm overrun marker.
+  if [ -f migration/roadmap.md ] && [ -f "$HARNESS/seat-budget.py" ]; then
+    local inv_f="migration/findings-inventory.md" der=""
+    [ -f "$inv_f" ] || inv_f="/dev/null"
+    der=$(python3 "$HARNESS/seat-budget.py" from-story \
+      migration/roadmap.md "$inv_f" "$SID" 2>/dev/null || true)
+    if [ -n "$der" ]; then
+      budget_n=$(printf '%s' "$der" | awk -F'\t' '{print $1}')
+      kind_s=$(printf '%s' "$der" | sed -nE 's/.*kind=([^[:space:]]+).*/\1/p')
+      inc_s=$(printf '%s' "$der" | sed -nE 's/.*incidents=([0-9]+).*/\1/p')
+      budget_line="${budget_n} seats (kind=${kind_s} × incidents=${inc_s} / unit=${SEAT_BUDGET_INCIDENTS_PER_UNIT:-10}; over@${SEAT_BUDGET_OVER_FACTOR:-2}×)"
+      printf '%s\n' "$budget_n" > "/tmp/story-seat-budget-${SID}"
+    fi
+  fi
+  if [ -z "$budget_n" ] && [ -f migration/roadmap.md ]; then
+    budget_n=$(awk -v sid="$SID" '
+      $0 ~ "^## "sid {p=1; next}
+      p && /^## / {exit}
+      p && /^- seat-budget:/ {
+        sub(/^- seat-budget:[[:space:]]*/, ""); print; exit
+      }
+    ' migration/roadmap.md)
+    if [ -n "$budget_n" ]; then
+      budget_line="${budget_n} seats (roadmap seat-budget)"
+      printf '%s\n' "$budget_n" > "/tmp/story-seat-budget-${SID}"
+    fi
+  fi
+  if [ -n "$SCOPE" ]; then
+    n_files=$(printf '%s' "$SCOPE" | tr ', ' '\n' | grep -c . || true)
+  fi
+  scope_txt="${SCOPE:-—}"
+  [ "${#scope_txt}" -gt 90 ] && scope_txt="${scope_txt:0:87}…"
+  scope_txt="${scope_txt} — ${n_files} paths · deploy=${DEPLOY:-false}"
+  owns_ids="${FINDINGS:-}"
+  owns_n=$(printf '%s' "$owns_ids" | tr ', ' '\n' | grep -c . || true)
+  if [ -n "$tasks_f" ] && [ -f "$tasks_f" ]; then
+    eval "$(python3 - "$tasks_f" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+tasks = re.findall(r"(?m)^####\s+(T-\d+):", text)
+rewrite = len(re.findall(r"(?im)^\*\*Class\*\*\s*:\s*rewrite\b", text))
+infer = len(re.findall(r"(?im)^\*\*Class\*\*\s*:\s*infer\b", text))
+shapes = {k: len(re.findall(rf"(?im)^\*\*Shape\*\*\s*:\s*{k}\b", text))
+          for k in ("create", "modify", "remove", "structure", "verify")}
+port_re = len(re.findall(r"(?im)^\*\*Port\*\*\s*:\s*reimplement\b", text))
+port_rn = len(re.findall(r"(?im)^\*\*Port\*\*\s*:\s*rename\b", text))
+print(f"n_tasks={len(tasks)}")
+print(f"rewrite={rewrite}")
+print(f"infer={infer}")
+for k, v in shapes.items():
+    print(f"{k}={v}")
+print(f"port_re={port_re}")
+print(f"port_rn={port_rn}")
+PY
+)"
+    plan_line="${n_tasks:-0} tasks · class: ${rewrite} rewrite ${infer} infer · shape: ${create} create ${modify} modify ${remove} remove ${structure} structure ${verify} verify"
+    port_line="${port_re} reimplement · ${port_rn} rename"
+  else
+    plan_line="tasks.md missing — plan counts unavailable"
+    port_line="—"
+  fi
+  _log_rule "══ ${SID} (${STORY_IDX}/${STORY_COUNT}) — ${title} "
+  log "${SID} GOAL    ${goal}"
+  log "${SID} SCOPE   ${scope_txt}"
+  log "${SID} OWNS    ${owns_n} findings — $(printf '%s' "$owns_ids" | tr ',' '/' | tr -d ' ')"
+  [ -n "$owns_ids" ] && log "${SID} OWNS    ids: ${owns_ids}"
+  log "${SID} PLAN    ${plan_line}"
+  log "${SID} PORT    ${port_line}"
+  log "${SID} BUDGET  ${budget_line}"
+  log "${SID} DONE    when ${done_line}"
+}
+
+_fmt_duration() { # $1=seconds
+  local s="${1:-0}" h m
+  [ "$s" -lt 0 ] && s=0
+  h=$((s / 3600)); m=$(((s % 3600) / 60))
+  if [ "$h" -gt 0 ]; then printf '%dh%02dm' "$h" "$m"
+  else printf '%dm' "$m"; fi
+}
+
+emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
+  # O-LOGEPILOG: measured end-of-story summary — RESULT/CODE/TESTS/FIND/COST/HEAD.
+  local outcome="${1:-complete}" elapsed=0 dur title
+  local total=0 shipped=0 debt_note="" shortstat="" java_now=0
+  local tests_now=0 asserts_now=0 seats=0 seats_w=0 seats_e=0
+  local sensor_red=0 sfix_n=0 m3_rev=0
+  local owned_n=0 head_s find_line
+  local base="${STORY_RUN_BASE:-}"
+  title=$(_story_title_human)
+  if [ -n "${STORY_T0:-}" ]; then
+    elapsed=$(( $(date -u +%s) - STORY_T0 ))
+  fi
+  dur=$(_fmt_duration "$elapsed")
+  head_s=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  if [ -n "${SPEC_TASKS:-}" ] && [ -f "$SPEC_TASKS" ]; then
+    total=$(grep -cE '^#### T-[0-9]+' "$SPEC_TASKS" 2>/dev/null || echo 0)
+  fi
+  if [ -n "$base" ]; then
+    shipped=$(git log --oneline "${base}..HEAD" 2>/dev/null \
+      | grep -cE '^[0-9a-f]+ T-[0-9]+:' || true)
+    shortstat=$(git diff --shortstat "${base}..HEAD" 2>/dev/null \
+      | sed -E 's/^ *//' || true)
+  fi
+  [ -n "$shortstat" ] || shortstat="no delta"
+  java_now=$(find src/main -name '*.java' 2>/dev/null | wc -l | tr -d ' ')
+  tests_now=$(grep -RInE '@Test\b' src/test 2>/dev/null | wc -l | tr -d ' ')
+  asserts_now=$(grep -RInE 'assert[A-Z(]|assertThat\(' src/test 2>/dev/null | wc -l | tr -d ' ')
+  # COST seats = story-keyed OpenCode JSON files (claimed→measured).
+  seats=$(ls /tmp/oc-"${SID}"-*.json 2>/dev/null | wc -l | tr -d ' ')
+  seats_e=$(ls /tmp/oc-"${SID}"-*.json 2>/dev/null \
+    | xargs -n1 basename 2>/dev/null \
+    | grep -ciE 'escalat|minimax|orch' || true)
+  if [ "$seats" -gt "$seats_e" ]; then seats_w=$((seats - seats_e)); else seats_w=0; fi
+  if [ -f /tmp/supervisor.log ]; then
+    sensor_red=$(grep -cE "SENSOR RED|milestone sensor RED|task sensor RED" /tmp/supervisor.log 2>/dev/null || true)
+    sfix_n=$(grep -cE 'sensor-fix|sfix dispatch|SFIX' /tmp/supervisor.log 2>/dev/null || true)
+  fi
+  if [ -n "$base" ]; then
+    m3_rev=$(git log --oneline "${base}..HEAD" 2>/dev/null | grep -cE "${SID} spec:" || true)
+  else
+    m3_rev=$(git log --oneline -20 2>/dev/null | grep -cE "${SID} spec:" || true)
+  fi
+  owned_n=$(printf '%s' "${FINDINGS:-}" | tr ', ' '\n' | grep -c . || true)
+  if [ -f migration/debt.md ] && grep -qE "${SID}|T-[0-9]+" migration/debt.md 2>/dev/null; then
+    debt_note=$(grep -oE 'T-[0-9]+' migration/debt.md 2>/dev/null | head -1 || true)
+    [ -n "$debt_note" ] && debt_note=" · ${debt_note} → migration/debt.md"
+  fi
+  find_line="${owned_n} owned"
+  case "$outcome" in
+    success*|story-gate-passed*|complete*) find_line="${owned_n} owned → resolved (story complete)" ;;
+    debt-freeze*) find_line="${owned_n} owned · debt-freeze (see migration/debt.md)" ;;
+    *) find_line="${owned_n} owned · outcome=${outcome}" ;;
+  esac
+  _log_rule "══ ${SID} ${outcome} — ${dur} "
+  log "${SID} RESULT  ${shipped}/${total} tasks shipped${debt_note}"
+  log "${SID} CODE    ${shortstat} · src/main .java=${java_now}"
+  log "${SID} TESTS   @Test ${tests_now} · asserts ${asserts_now}"
+  log "${SID} FIND    ${find_line}"
+  log "${SID} COST    ${seats} seats (${seats_w} worker · ${seats_e} escalation) · ${sensor_red} sensor RED · ${sfix_n} sfix · ${m3_rev} M3 revisions"
+  log "${SID} HEAD    ${head_s}"
+}
 
 # Bounded session runner for the M1/M2/M3 authoring gates. Simpler than
 # the supervisor's classifier on purpose: these are single-artifact
@@ -241,6 +512,41 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
   return $rc
 }
 
+# O-TMPARCHIVE: PVC-side copy of forensic /tmp (success AND fail — W4-029b).
+# EXIT trap so debt-freeze / X FAIL / signal paths archive before /tmp recycle.
+_TMPARCHIVE_DONE=0
+archive_tmp_forensics() {
+  [ "${_TMPARCHIVE_DONE:-0}" = "1" ] && return 0
+  _TMPARCHIVE_DONE=1
+  local _arch_root _arch
+  _arch_root="${RUN_ARCHIVE_ROOT:-/projects/modernized/migration/run-archives}"
+  _arch="${_arch_root}/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  mkdir -p "$_arch" 2>/dev/null || true
+  if [ -d "$_arch" ]; then
+    shopt -s nullglob
+    for p in \
+      /tmp/supervisor.log /tmp/outer-loop.log /tmp/kill-ledger.log \
+      /tmp/findings-delta.txt /tmp/outer-git-push.log \
+      /tmp/escalation-cause-*.txt /tmp/oc-*.json /tmp/oc-*.err \
+      /tmp/sensor-*.log /tmp/sonar-violations.txt
+    do
+      cp -a "$p" "$_arch/" 2>/dev/null || true
+    done
+    shopt -u nullglob
+    printf 'head=%s\narchived_at=%s\n' \
+      "$(git rev-parse HEAD 2>/dev/null || true)" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_arch/ARCHIVE.txt" 2>/dev/null || true
+    if declare -F log >/dev/null 2>&1; then
+      log "O-TMPARCHIVE — forensic /tmp → ${_arch}"
+    else
+      echo "[$(date -u +%F' '%T)] O-TMPARCHIVE — forensic /tmp → ${_arch}" >> /tmp/outer-loop.log 2>/dev/null || true
+    fi
+  elif declare -F log >/dev/null 2>&1; then
+    log "WARN: O-TMPARCHIVE — could not create ${_arch}"
+  fi
+}
+trap 'archive_tmp_forensics' EXIT
+
 fail_run() { phase_fail "$1"; echo "outer-failed: $1" > /tmp/outer-loop-done; exit 1; }
 
 # O-UXLOG-TRUNC (Poll 77 U1): never wipe the demo narrative on relaunch.
@@ -326,19 +632,31 @@ fi
 
 # ------------------------------------------------------------ M2 SEQUENCE
 roadmap_green() {
-  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy > /tmp/roadmap-lint.txt 2>&1
+  # O-PORTDERIVE: pass architecture-profile.md so §7 REDESIGN ↔ brief contract is gated
+  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
 }
 if roadmap_green; then
   phase_ok "M2 SEQUENCE — roadmap already present and lint-green"
 else
   for ATTEMPT in 1 2; do
     phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/2]"
-    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Each mandatory finding id in exactly ONE story (no LINT:coverage dual-owner); story scope must list real code/test paths (no ceremonial name-only scopes); last story deploy=true; do not claim recipe-executed findings. A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
-    [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read SEQUENCING.md in its directory. A previous M2 attempt failed its lint — the findings are in /tmp/roadmap-lint.txt (read it with your file tools). LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). When kind is set, also declare seat-budget: N derived from kind × owned-finding incident count (O-SEATBUDGET / ARCH A5; rename=1 reimplement=5 mixed=5 seats per ceil(incidents/10) unit) and publish the same N in the brief. Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Each mandatory finding id in exactly ONE story (no LINT:coverage dual-owner); story scope must list real code/test paths (no ceremonial name-only scopes); last story deploy=true; do not claim recipe-executed findings. A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read SEQUENCING.md in its directory. A previous M2 attempt failed its lint — the findings are in /tmp/roadmap-lint.txt (read it with your file tools). LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
     mchat "m2-sequence-a${ATTEMPT}" "$P" "M2 SEQUENCE"
     if roadmap_green; then
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "commit $(git rev-parse --short HEAD)"
+      # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
+      if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
+        _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt)' migration/roadmap.md 2>/dev/null || true)
+        _k3n=${_k3n:-0}
+        if [ "${_k3n:-0}" -gt 0 ] 2>/dev/null; then
+          for _sid in $(grep -E '^## S[0-9]+' migration/roadmap.md | sed -E 's/^## (S[0-9]+).*/\1/'); do
+            bash "$HARNESS/evidence-liveness.sh" record "$_sid" K3 "$_k3n" "roadmap-lint GREEN adopt/defer" \
+              >> "$LOG" 2>&1 || true
+          done
+        fi
+      fi
       # Name concrete briefs for the demo log.
       log "         • migration/roadmap.md ($(grep -cE '^## S[0-9]' migration/roadmap.md 2>/dev/null || echo 0) stories)"
       for b in migration/briefs/S*.md; do
@@ -367,14 +685,41 @@ if [ "${DONE_N:-0}" -gt 0 ]; then
   DONE_LIST=$(awk -F, '$2=="complete"{printf "%s ",$1}' "$STATE" 2>/dev/null)
   log "         Resuming: ${DONE_N} of ${STORY_COUNT} stories complete (${DONE_LIST})— continuing at next incomplete"
 fi
-phase_start "Story loop — ${STORY_COUNT} stories (${STORY_IDS})"
+# O-M3ALL: two-pass story loop — (1) author all plans + whole-set lint,
+# then (2) JIT re-lint + M4/M5. Waterfall antidotes stay mandatory.
+M3_ALL_PASSES="author execute"
+[ "${M3_ALL}" = "1" ] || M3_ALL_PASSES="execute"
+
+for M3_ALL_PASS in $M3_ALL_PASSES; do
+if [ "$M3_ALL_PASS" = "author" ]; then
+  phase_start "M3-ALL author — ${STORY_COUNT} story plans before any M4 (O-M3ALL)" \
+    "Whole-set lint after this pass; M4 refused until PLAN-SET OK"
+  # O-M3ALL skeleton-first: one deterministic compose after M2 before any
+  # model seat. Creates/refreshes skeleton tasks.md (Owns/Oracle/Port/Assumes
+  # slots); never overwrites a non-skeleton authored plan.
+  if [ "${M3_ALL_COMPOSE:-1}" = "1" ]; then
+    phase_start "M3-ALL skeleton-first compose (O-M3ALL)"
+    if python3 "$HARNESS/m3-all-compose.py" --root . \
+        > /tmp/m3-all-compose.txt 2>&1; then
+      phase_gate "M3-ALL compose" GREEN "$(tail -1 /tmp/m3-all-compose.txt)"
+      phase_ok "M3-ALL skeleton-first compose — see /tmp/m3-all-compose.txt"
+    else
+      phase_gate "M3-ALL compose" RED "see /tmp/m3-all-compose.txt"
+      fail_run "O-M3ALL skeleton-first compose RED (see /tmp/m3-all-compose.txt)"
+    fi
+  fi
+else
+  phase_start "Story loop — ${STORY_COUNT} stories (${STORY_IDS}) [O-M3ALL execute: JIT+M4]"
+fi
 
 STORY_IDX=0
 while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   [ -n "$SID" ] || continue
   STORY_IDX=$((STORY_IDX + 1))
+  # O-LOGSTORY: story identity on every log() line for this SID (cleared below).
+  STORY_TAG="$SID"
   SLUG_HINT=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1 | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' || echo "$SID")
-  story_done "$SID" && { phase_ok "${SID} (${SLUG_HINT}) — already complete; skipping"; continue; }
+  story_done "$SID" && { phase_ok "${SID} (${SLUG_HINT}) — already complete; skipping"; STORY_TAG=""; continue; }
 
   # -------------------------------------------------------- M3 SPECIFY
   # O-M3SKIP: never treat "tasks.md exists" as GREEN. Untracked/half-written
@@ -414,7 +759,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ "$mode" = "fix" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
         mode=fresh
       fi
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. O-SPECREIMPL: every REDESIGN/OPEN DESIGN class named in spec.md must appear in some task with **Port**: reimplement. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
       if [ "$mode" = "fix" ]; then
         P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/ (create specs/${SLUG}/{spec,plan,tasks}.md from the brief if tasks.md is missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. Drop O-PLANEXISTS-dead Spring→Quarkus converts already satisfied by the scaffold. Scope=${SCOPE}. Verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
       fi
@@ -583,6 +928,35 @@ EOF
     fi
   fi
 
+  # O-M3ALL author pass: no M4 until every story plan exists + whole-set GREEN.
+  if [ "$M3_ALL_PASS" = "author" ]; then
+    phase_ok "M3-ALL author — ${SID} plan ready (defer M4 until whole-set lint)"
+    STORY_TAG=""
+    continue
+  fi
+
+  # ----------------------------------------------------- M3-ALL JIT (waterfall)
+  # Mandatory antidotes: JIT re-lint; Owns/Port/Shape amend → whole-set re-lint;
+  # plan-vs-reality delta is first-class (never suppress).
+  phase_start "M3-ALL JIT — re-lint ${SID} before M4 (waterfall antidote)"
+  set +e
+  bash "$HARNESS/m3-all-lint.sh" --mode=jit --story "$SID" --root . \
+    > /tmp/m3-all-jit.txt 2>&1
+  _m3all_rc=$?
+  set -e
+  if [ "$_m3all_rc" = "3" ]; then
+    log "         O-M3ALL-AMEND: Owns/Port/Shape changed — whole-set re-lint"
+    bash "$HARNESS/m3-all-lint.sh" --mode=whole-set --root . \
+      > /tmp/m3-all-whole.txt 2>&1 \
+      || fail_run "O-M3ALL whole-set RED after ${SID} amend (see /tmp/m3-all-whole.txt)"
+    phase_gate "M3-ALL whole-set (post-amend)" GREEN "amend re-lint OK"
+  elif [ "$_m3all_rc" != "0" ]; then
+    phase_gate "M3-ALL JIT ${SID}" RED "see /tmp/m3-all-jit.txt"
+    fail_run "O-M3ALL JIT RED for ${SID} (see /tmp/m3-all-jit.txt)"
+  else
+    phase_gate "M3-ALL JIT ${SID}" GREEN "waterfall antidote"
+  fi
+
   # ----------------------------------------------------- M4/M5 EXECUTE
   # One supervisor child per story with computed env. Default RUN_BASE=HEAD
   # at story start keeps every phase prefix story-scoped (no cross-story
@@ -708,11 +1082,15 @@ EOF
   if [ "$HOTSWAP_TRIES" -eq 0 ]; then
     phase_start "M4/M5 EXECUTE — implement & ship ${SLUG_HINT} (${STORY_IDX}/${STORY_COUNT})" \
       "Models: $(orch_label) · $(worker_label) | deploy=${DEPLOY} findings=${FINDINGS} preserve=${PC} later-classes=$(echo $LATER_CLASSES | wc -w | tr -d ' ') | supervisor: /tmp/supervisor.log | run_base=$(git rev-parse --short "$STORY_RUN_BASE")"
+    # O-LOGBRIEF: operator-facing story summary (GOAL≠slug; PORT early).
+    STORY_T0=$(date -u +%s)
+    emit_story_brief
     log "         Note: M4 rewrite+infer coding → $(worker_label) first; MiniMax only for orch/escalation (WORKER_FIRST) — supervisor.log records actor"
   else
     log "         O-HOTSWAP: re-entering M4/M5 for ${SID} (attempt $((HOTSWAP_TRIES+1)); run_base=$(git rev-parse --short "$STORY_RUN_BASE"))"
   fi
   env RUN_BASE="$STORY_RUN_BASE" \
+      STORY_ID="$SID" \
       STORY_SPEC_PREFIX="${SID} spec" \
       PLAN_SCOPE="$FINDINGS" \
       STORY_DEPLOY="$DEPLOY" \
@@ -755,19 +1133,31 @@ EOF
       # O-DEBTFRZ: supervisor froze on unresolved task/milestone debt — do NOT
       # mark the story complete or continue to dependents.
       phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} debt-freeze (O-DEBTFRZ); HEAD $(git rev-parse --short HEAD)"
+      emit_story_epilog "debt-freeze"
       echo "${SID},debt-freeze,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story HOLD: debt-freeze (O-DEBTFRZ)" 2>/dev/null || true
       fail_run "$SID debt-freeze (O-DEBTFRZ) — fix debt, durableize, re-run; do not advance"
+      ;;
+    m3-lint-hold*|plan-lint-hold*)
+      # O-M3LINTPROCEED: exhausted m3-lint with plan still RED — HOLD/re-M3,
+      # never treat as execute success or silent M4 advance.
+      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} m3-lint-hold (O-M3LINTPROCEED); HEAD $(git rev-parse --short HEAD)"
+      emit_story_epilog "m3-lint-hold"
+      echo "${SID},m3-lint-hold,$(date -u +%s)" >> "$STATE"
+      git add "$STATE" && git commit -q -m "${SID} story HOLD: m3-lint-hold (O-M3LINTPROCEED)" 2>/dev/null || true
+      fail_run "$SID m3-lint-hold (O-M3LINTPROCEED) — plan-lint RED after revision; re-M3, do not advance to M4"
       ;;
     success*|story-gate-passed*)
       # O-REVHOLD: review HOLD must not become story-complete in the ledger
       if [ -f migration/HOLD ] || [ -f /tmp/review-hold ]; then
         phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} review-hold (O-REVHOLD); HEAD $(git rev-parse --short HEAD)"
+        emit_story_epilog "review-hold"
         echo "${SID},review-hold,$(date -u +%s)" >> "$STATE"
         git add "$STATE" && git commit -q -m "${SID} story HOLD: review-hold (O-REVHOLD)" 2>/dev/null || true
         fail_run "$SID review-hold (O-REVHOLD) — clear migration/HOLD after durableize; do not advance"
       fi
       phase_ok "M4/M5 EXECUTE — ${SLUG_HINT} complete (${OUTCOME}); HEAD $(git rev-parse --short HEAD)"
+      emit_story_epilog "complete"
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story complete: ${OUTCOME}" 2>/dev/null || true
       # Outer loop (automated): apply Retro's "Brief updates" section to
@@ -798,13 +1188,41 @@ EOF
       # building on a red foundation. Resume later: story-state.csv keeps
       # completed stories; relaunch outer-loop.sh to continue.
       phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} (${OUTCOME})"
+      emit_story_epilog "failed"
       echo "${SID},failed,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story FAILED: ${OUTCOME}" 2>/dev/null || true
       git push origin main >> "$LOG" 2>&1 || true
       fail_run "$SID did not ship (${OUTCOME}) — run stopped before dependent stories"
       ;;
   esac
+  STORY_TAG=""
 done <<< "$STORIES"
+STORY_TAG=""
+
+if [ "$M3_ALL_PASS" = "author" ]; then
+  phase_start "M3-ALL whole-set lint — K1 / Port / later-class / Oracle / Assumes (O-M3ALL)"
+  if bash "$HARNESS/m3-all-lint.sh" --mode=whole-set --root . \
+      > /tmp/m3-all-whole.txt 2>&1; then
+    phase_gate "M3-ALL whole-set" GREEN "$(grep -E 'PLAN-SET OK|OK:' /tmp/m3-all-whole.txt | tail -3 | tr '\n' '; ')"
+    # Prediction freeze + operator gate between whole-set GREEN and first M4.
+    phase_start "M3-ALL freeze-predictions + OPERATOR_GATE (O-M3ALL)"
+    bash "$HARNESS/m3-all-lint.sh" --mode=freeze-predictions --root . \
+      > /tmp/m3-all-predictions.txt 2>&1 \
+      || fail_run "O-M3ALL freeze-predictions failed (see /tmp/m3-all-predictions.txt)"
+    if bash "$HARNESS/m3-all-lint.sh" --mode=operator-gate --root . \
+        > /tmp/m3-all-operator-gate.txt 2>&1; then
+      phase_gate "M3-ALL OPERATOR_GATE" GREEN "$(tail -1 /tmp/m3-all-operator-gate.txt)"
+      phase_ok "M3-ALL — whole-plan-set GREEN + predictions frozen + OPERATOR_GATE; proceeding to JIT+M4"
+    else
+      phase_gate "M3-ALL OPERATOR_GATE" RED "see /tmp/m3-all-operator-gate.txt"
+      fail_run "O-M3ALL OPERATOR_GATE RED — approve migration/.m3-all-operator-gate after reviewing predictions (or M3_ALL_OPERATOR_AUTO=1)"
+    fi
+  else
+    phase_gate "M3-ALL whole-set" RED "see /tmp/m3-all-whole.txt"
+    fail_run "O-M3ALL whole-set RED — fix plans before any M4 (see /tmp/m3-all-whole.txt)"
+  fi
+fi
+done  # M3_ALL_PASS
 
 phase_ok "Outer loop — all stories shipped; HEAD $(git rev-parse --short HEAD)"
 # Keep git remote chatter out of the demo narrative (L-SHIPLOG) — one summary line.
@@ -813,30 +1231,8 @@ if git push origin main >> /tmp/outer-git-push.log 2>&1; then
 else
   log "         git push: failed — see /tmp/outer-git-push.log (non-fatal at run end)"
 fi
-# O-TMPARCHIVE (W3-150): PVC-side copy of forensic /tmp so pod restart does
-# not erase supervisor.log / kill-ledger / oc-*.json for the retro.
-_arch_root="${RUN_ARCHIVE_ROOT:-/projects/modernized/migration/run-archives}"
-_arch="${_arch_root}/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-mkdir -p "$_arch" 2>/dev/null || true
-if [ -d "$_arch" ]; then
-  shopt -s nullglob
-  for p in \
-    /tmp/supervisor.log /tmp/outer-loop.log /tmp/kill-ledger.log \
-    /tmp/findings-delta.txt /tmp/outer-git-push.log \
-    /tmp/escalation-cause-*.txt /tmp/oc-*.json /tmp/oc-*.err \
-    /tmp/sensor-*.log /tmp/sonar-violations.txt
-  do
-    cp -a "$p" "$_arch/" 2>/dev/null || true
-  done
-  shopt -u nullglob
-  printf 'head=%s\narchived_at=%s\n' \
-    "$(git rev-parse HEAD 2>/dev/null || true)" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_arch/ARCHIVE.txt" 2>/dev/null || true
-  log "O-TMPARCHIVE — forensic /tmp → ${_arch}"
-else
-  log "WARN: O-TMPARCHIVE — could not create ${_arch}"
-fi
-unset _arch _arch_root
+# O-TMPARCHIVE — archive via EXIT trap (success path); explicit call keeps log order.
+archive_tmp_forensics
 echo "outer-complete" > /tmp/outer-loop-done
 log "========== RUN COMPLETE — outer-loop exited; marker /tmp/outer-loop-done =========="
 log "         Further supervisor activity (e.g. SHIP_ONLY) is NOT a new outer-loop run."

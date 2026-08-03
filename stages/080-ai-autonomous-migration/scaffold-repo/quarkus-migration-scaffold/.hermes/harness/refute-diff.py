@@ -50,6 +50,20 @@ SMELLS: list[tuple[str, re.Pattern[str], str]] = [
         ),
         "ceremonial status-map acceptance",
     ),
+    # O-SHIPASSERTWEAK: S5778 dodge via rename dropping unmodifiable contracts
+    (
+        "O-SHIPASSERTWEAK-RENAME",
+        re.compile(r"^\+.*returnsListWithExpectedBehavior", re.M),
+        "characterization-drop rename (unmodifiable→ListWithExpectedBehavior)",
+    ),
+    (
+        "O-SHIPASSERTWEAK-CATCH",
+        re.compile(
+            r"^\+.*catch\s*\(\s*Exception\b[^)]*\)\s*\{[^}]*(/\*|//).*expected",
+            re.I | re.M,
+        ),
+        "catch(Exception) expected (typed assertThrows required)",
+    ),
 ]
 
 # Bare assertThat(x).isNotNull(); — ceremonial when it is the only substance.
@@ -92,6 +106,22 @@ def _weak_assert_smell(diff: str) -> bool:
     return saw_weak_non_ann
 
 
+def _unmodifiable_drop(diff: str) -> bool:
+    """O-SHIPASSERTWEAK: removed typed UOE assert + Unmodifiable rename."""
+    dropped_uoe = bool(
+        re.search(
+            r"^-.*assertThrows\s*\(\s*UnsupportedOperationException",
+            diff,
+            re.M,
+        )
+    )
+    renamed = bool(
+        re.search(r"^-.*returnsUnmodifiable", diff, re.M)
+        and re.search(r"^\+.*returnsListWithExpectedBehavior", diff, re.M)
+    )
+    return dropped_uoe and renamed
+
+
 def refute(diff: str) -> list[str]:
     hits: list[str] = []
     for sid, pat, note in SMELLS:
@@ -99,6 +129,10 @@ def refute(diff: str) -> list[str]:
             hits.append(f"REFUTED:{sid}:{note}")
     if _weak_assert_smell(diff):
         hits.append("REFUTED:WEAK-ASSERT:weak isNotNull-only assertion (suspect)")
+    if _unmodifiable_drop(diff):
+        hits.append(
+            "REFUTED:O-SHIPASSERTWEAK-DROP:removed assertThrows(UOE) + Unmodifiable rename"
+        )
     return hits
 
 
