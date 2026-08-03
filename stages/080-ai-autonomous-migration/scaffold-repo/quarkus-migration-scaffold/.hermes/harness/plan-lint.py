@@ -534,6 +534,37 @@ def main():
     for i in range(1, len(parts) - 1, 2):
         bodies[parts[i]] = parts[i + 1]
 
+    # O-SCOPENOGEN — Owns/Target/→ must not point at build outs (gitignored;
+    # M1 staging excludes them). Pair roadmap-lint O-SCOPENOGEN.
+    _gen_path_re = re.compile(
+        r"(?:^|/)(?:target|build)(?:/)|(?:^|/)generated-sources/"
+    )
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        for lm in re.finditer(
+            r"(?im)^\s*\*?\*?(?:Owns|Absorbs|Target(?:\s*design)?)\*?\*?\s*:\s*`?([^`\n]+)`?",
+            body,
+        ):
+            raw = lm.group(1).strip().strip("`").replace("\\", "/").lstrip("./")
+            if _gen_path_re.search(raw):
+                lint(
+                    "O-SCOPENOGEN",
+                    f"{tid}: {lm.group(0).split(':')[0].strip()} path is "
+                    f"build-generated ({raw}) — own src/ or staging harvest "
+                    f"dest, never target/ (O-SCOPENOGEN)",
+                )
+        for lm in re.finditer(
+            r"(?im)^\s*[-*]\s*→\s*`?([^`\n]+)`?",
+            body,
+        ):
+            raw = lm.group(1).strip().strip("`").replace("\\", "/").lstrip("./")
+            if _gen_path_re.search(raw):
+                lint(
+                    "O-SCOPENOGEN",
+                    f"{tid}: Target arrow path is build-generated ({raw}) — "
+                    f"use src/ dest (O-SCOPENOGEN)",
+                )
+
     classes = {}
     for _, tid, _ in heads:
         body = bodies.get(tid, "")
@@ -757,12 +788,11 @@ def main():
                 legacy_rel = _norm_incident_uri(str(inc.get("uri") or "?"))
                 if legacy_rel == "?":
                     continue
-                # O-M3GENSRC: MapStruct/OpenAPI generated under target/generated-sources
-                # is build noise — never require M3 task ownership (S01 platform RED).
-                if "/target/generated-sources/" in f"/{legacy_rel}" or legacy_rel.startswith(
-                    "target/generated-sources/"
-                ):
-                    continue
+                # O-M3GENSRC retired (W4-171): the old unconditional skip of
+                # target/generated-sources/** masked Harvest→target/ Owns.
+                # O-SCOPENOGEN keeps build outs out of roadmap scope / Owns;
+                # O-M3DTOSCOPE skips out-of-scope incidents. Do not re-add a
+                # blanket generated-sources continue here.
                 # O-M3DTOSCOPE: skip incidents outside this story's roadmap scope
                 # (e.g. removed-javaee dto/** on a pom/properties-only S01).
                 if not _incident_in_story_scope(legacy_rel, story_scope):
@@ -1513,13 +1543,11 @@ def main():
                         f"dependency-order converts {f1} before {f2}",
                     )
 
-    # S-GODORDER: god-node harvest must follow an earlier-indexed
-    # characterization that names the class (plan-lint, not predicate grammar).
-    # Complements S-CHAR (any src/test existence) — v3 S02 inverted god nodes
-    # before T-013 tail characterization with no gate.
-    # O-GODORDERMID / W4-048a: mid-M4 hot-swap must NOT force MiniMax to
-    # renumber already-committed T-NNN tips. Skip harvest tasks that already
-    # have a T-NNN: tip since RUN_BASE (fresh M3 still REDs — no tip yet).
+    # S-GODORDER / O-GODORDERCVT: god-node *convert* must follow an earlier
+    # characterization that names the class. Harvest may precede char (tests
+    # need the class on disk) — requiring char-before-harvest is unsatisfiable
+    # and caused M3 thrash under 429 (W4-172). Complements S-CHAR.
+    # O-GODORDERMID / W4-048a: mid-M4 skip when tip already in RUN_BASE..HEAD.
     if god_nodes:
         import subprocess as _sp
 
@@ -1528,6 +1556,27 @@ def main():
             return bool(
                 re.search(r"(?i)\bcharacterization\b", blob)
                 or re.search(r"src/test/", blob)
+            )
+
+        def _is_harvest_only(title: str, body: str) -> bool:
+            """True when task is harvest/create-from-staging without convert."""
+            blob = f"{title}\n{body}"
+            if not re.search(r"(?i)\bharvest\b|harvest-from-staging", blob):
+                return False
+            if re.search(
+                r"(?i)\bconvert\b|\breimplement\b|\*\*Port\*\*:\s*reimplement",
+                blob,
+            ):
+                return False
+            return True
+
+        def _is_convert_task(title: str, body: str) -> bool:
+            blob = f"{title}\n{body}"
+            return bool(
+                re.search(
+                    r"(?i)\bconvert\b|\breimplement\b|\*\*Port\*\*:\s*reimplement",
+                    blob,
+                )
             )
 
         def _names_simple(blob: str, simple: str) -> bool:
@@ -1578,9 +1627,15 @@ def main():
                 r"(?i)\bharvest\b|\bconvert\b|src/main/java/", f"{title}\n{body}"
             ):
                 continue
+            # O-GODORDERCVT: pure harvest does not require prior char
+            if _is_harvest_only(title, body):
+                continue
+            # Only gate convert/reimplement (behavioural change)
+            if not _is_convert_task(title, body):
+                continue
             if _tip_already_committed(tid):
                 print(
-                    f"WARN:S-GODORDER: {tid}: harvest tip already committed — "
+                    f"WARN:S-GODORDER: {tid}: convert tip already committed — "
                     f"skip mid-run renumber (O-GODORDERMID / W4-048a)"
                 )
                 continue
@@ -1613,9 +1668,10 @@ def main():
                 if not earlier:
                     lint(
                         "S-GODORDER",
-                        f"{tid}: god-node {simple} harvest lacks earlier "
+                        f"{tid}: god-node {simple} convert lacks earlier "
                         f"characterization naming {simple} "
-                        f"(dependency-order mark; put char tests before convert)",
+                        f"(O-GODORDERCVT; harvest may precede char; "
+                        f"put char tests before convert)",
                     )
 
     # O-PLANEXISTS (N10 / R-217b / F-66): every task must still have real work.

@@ -37,7 +37,15 @@ Before and after the M2 seat, `m2-compose.py` deterministically:
   adopt/defer **reasons**)
 - sets `deploy: true` on the last story
 - when `kind:` is set, writes computed `seat-budget: N` from
-  `seat-budget.py` (kind × incidents / unit) into roadmap + brief
+  `seat-budget.py` (kind × max(incident units, scope-path floor) —
+  O-SEATSIZE) into roadmap + brief
+- strips `target/` / `build/` paths from story scope (O-SCOPENOGEN)
+- when `migration/staging/` exists, **scope is the staging partition**
+  (O-STAGESCOPE) — tests use ownership-by-subject; model does not
+  author paths. `roadmap-lint` O-SCOPECOVER asserts total coverage.
+- when `migration/staging/` exists, **scope is the staging partition**
+  (O-STAGESCOPE) — tests use ownership-by-subject; model does not
+  author paths. `roadmap-lint` O-SCOPECOVER asserts total coverage.
 
 Do **not** re-derive that arithmetic. Publish the compose/lint
 `seat-budget` value. Spend judgment on story boundaries/rationale,
@@ -146,7 +154,8 @@ through the standard loop — it is not a special story class to remember.
 - done: <one-sentence checkable done-criterion>
 - rationale: <why this story, why now — cite dependency-order/profile>
 - kind: rename|reimplement|mixed   # required when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND / ARCH A3). mixed needs a split/justification phrase.
-- seat-budget: <N>                 # required when kind is set (O-SEATBUDGET / ARCH A5). Derive N = rate(kind) × ceil(owned-finding incidents / 10): rename=1, reimplement=5, mixed=5. Publish the same N in the brief. Supervisor escalates when actual seats exceed N × SEAT_BUDGET_OVER_FACTOR (default 2).
+- seat-budget: <N>                 # required when kind is set (O-SEATBUDGET / ARCH A5 + O-SEATSIZE). N = max(rate×ceil(incidents/10), ceil(scope_paths×rate/SEAT_BUDGET_SCOPE_PER_UNIT), rate) with rename=1, reimplement/mixed=5; scope_paths exclude target/build (O-SCOPENOGEN). Publish the same N in the brief. Supervisor escalates when actual seats exceed N × SEAT_BUDGET_OVER_FACTOR (default 2).
+- scope: <paths>                   # never list target/ or build/ outs (O-SCOPENOGEN) — harvest DTOs via staging/src destinations
 
 ## S02: ...
 ```

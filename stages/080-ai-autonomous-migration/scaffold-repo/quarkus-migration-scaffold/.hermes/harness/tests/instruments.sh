@@ -2706,7 +2706,7 @@ EOF
 }
 check "S-CHAR skips structure+Absorbs legacy model cites (O-M3CHARSCOPE)" 0 "PLAN OK"
 
-# S-GODORDER: god-node harvest before characterization → RED
+# O-GODORDERCVT: god-node *convert* before characterization → RED
 run_case() {
   mkfix
   mkdir -p migration
@@ -2720,23 +2720,61 @@ EOF
 # Tasks
 UI surface: waived (API-only).
 
-#### T-001: Harvest PetType (god node)
+#### T-001: Convert PetType entity (god node)
 **Class**: rewrite
-**Shape**: create
+**Shape**: modify
+**Goal**: convert PetType behaviour (javax→jakarta field types)
 **Target**: → `src/main/java/com/demo/model/PetType.java`
 **Owns**: src/main/java/com/demo/model/PetType.java
+**Acceptance**: PetType compiles under jakarta
 
 #### T-002: Characterize entity relationships
 **Class**: infer
 **Shape**: create
 **Goal**: characterization tests for PetType
 **Owns**: src/test/java/com/demo/model/PetTypeTest.java
+**Acceptance**: PetTypeTest pins name field
 EOF
   echo '[]' > f.json
   out=$(python3 "$LINT" tasks.md f.json 2>&1 || true)
   echo "$out" | grep -q 'S-GODORDER' && echo sgodorder-red-ok
 }
-check "S-GODORDER RED when god-node harvest precedes characterization" 0 "sgodorder-red-ok"
+check "S-GODORDER RED when god-node convert precedes characterization (O-GODORDERCVT)" 0 "sgodorder-red-ok"
+
+run_case() {
+  # O-GODORDERCVT: harvest may precede char (class must exist for tests)
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order
+1. com.example.legacy.model.PetType (src/.../PetType.java) — god-node: characterization tests first
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Harvest PetType (god node)
+**Class**: rewrite
+**Shape**: create
+**Goal**: harvest PetType from staging
+**Target**: → `src/main/java/com/demo/model/PetType.java`
+**Owns**: src/main/java/com/demo/model/PetType.java
+**Acceptance**: PetType.java exists under com.demo.model
+
+#### T-002: Characterize PetType
+**Class**: infer
+**Shape**: create
+**Goal**: characterization tests for PetType
+**Owns**: src/test/java/com/demo/model/PetTypeTest.java
+**Acceptance**: PetTypeTest pins identity fields
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'S-GODORDER' && { echo "unexpected: $out"; return 1; }
+  echo "$out" | grep -q 'PLAN OK' && echo sgodorder-harvest-first-ok
+}
+check "S-GODORDER GREEN when god-node harvest precedes characterization (O-GODORDERCVT)" 0 "sgodorder-harvest-first-ok"
 
 run_case() {
   mkfix
@@ -2755,19 +2793,22 @@ UI surface: waived (API-only).
 **Shape**: create
 **Goal**: characterization tests for PetType
 **Owns**: src/test/java/com/demo/model/PetTypeTest.java
+**Acceptance**: PetTypeTest pins name field
 
-#### T-002: Harvest PetType (god node)
+#### T-002: Convert PetType entity (god node)
 **Class**: rewrite
-**Shape**: create
+**Shape**: modify
+**Goal**: convert PetType behaviour (javax→jakarta field types)
 **Target**: → `src/main/java/com/demo/model/PetType.java`
 **Owns**: src/main/java/com/demo/model/PetType.java
+**Acceptance**: PetType compiles under jakarta
 EOF
   echo '[]' > f.json
   out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
   echo "$out" | grep -q 'S-GODORDER' && { echo "unexpected: $out"; return 1; }
   echo "$out" | grep -q 'PLAN OK' && echo sgodorder-ok
 }
-check "S-GODORDER GREEN when characterization precedes god-node harvest" 0 "sgodorder-ok"
+check "S-GODORDER GREEN when characterization precedes god-node convert (O-GODORDERCVT)" 0 "sgodorder-ok"
 
 run_case() {
   mkfix
@@ -3982,7 +4023,8 @@ EOF
 }
 check "plan-lint GREEN in-scope Target + test char (O-M3TASKSCOPE)" 0 "PLAN OK"
 
-# O-M3GENSRC: generated-sources never require ownership
+# O-M3GENSRC retired (W4-171): out-of-scope generated-sources skipped via
+# O-M3DTOSCOPE only — no blanket target/ continue (that masked O-SCOPENOGEN).
 run_case() {
   mkfix
   printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
@@ -3996,15 +4038,46 @@ UI surface: waived (API-only).
 **Findings**: mapstruct-00001
 **Goal**: convert pom
 **Target design**: → `pom.xml`
+**Acceptance**: pom.xml converts to Quarkus BOM
 EOF
   cat > f.json <<'EOF'
 [{"violations": {"mapstruct-00001": {"category": "mandatory", "incidents": [
   {"uri": "file:///projects/legacy/target/generated-sources/annotations/FooMapperImpl.java", "lineNumber": 1}
 ]}}}]
 EOF
-  python3 "$LINT" tasks.md f.json
+  # story-scope=pom.xml → generated-sources incident out of scope → PLAN OK
+  out=$(python3 "$LINT" tasks.md f.json --story-scope 'pom.xml' 2>&1) || true
+  echo "$out" | grep -q 'PLAN OK' \
+    && ! echo "$out" | grep -q 'incident-unowned' \
+    && echo m3gensrc-retired-dtoscope-ok
 }
-check "plan-lint skips generated-sources incident-unowned (O-M3GENSRC)" 0 "PLAN OK"
+check "plan-lint skips out-of-scope generated-sources via O-M3DTOSCOPE (O-M3GENSRC retired)" 0 "m3gensrc-retired-dtoscope-ok"
+
+run_case() {
+  mkfix
+  printf 'legacyPackage: com.redhat.coolstore\ntargetPackage: com.demo\n' > migration.yaml
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Convert pom
+**Class**: rewrite
+**Shape**: modify
+**Findings**: mapstruct-00001
+**Goal**: convert pom
+**Target design**: → `pom.xml`
+**Acceptance**: pom.xml converts to Quarkus BOM
+EOF
+  cat > f.json <<'EOF'
+[{"violations": {"mapstruct-00001": {"category": "mandatory", "incidents": [
+  {"uri": "file:///projects/legacy/target/generated-sources/annotations/FooMapperImpl.java", "lineNumber": 1}
+]}}}]
+EOF
+  # no --story-scope → must NOT silently skip; incident-unowned RED (no mask)
+  out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'incident-unowned' && echo m3gensrc-retired-nomask-ok
+}
+check "plan-lint no longer blanked-skips generated-sources without story-scope (O-M3GENSRC retired)" 0 "m3gensrc-retired-nomask-ok"
 
 # K1-CONF: disclaimer must not manufacture conflict with real owner
 run_case() {
@@ -5865,7 +5938,7 @@ check "M3 Qwen draft + MiniMax backstop wiring (O-M3WORKER)" 0 "m3worker-ok"
 
 run_case() {
   # O-M3ROUTE: default MiniMax-first; O-M3DTOSCOPE / Class+Shape preseed wired.
-  grep -qE 'WORKER_M3_FIRST="\$\{WORKER_M3_FIRST:-false\}"' "$HARNESS_DIR/outer-loop.sh" \
+  grep -qE 'WORKER_M3_FIRST="\$\{WORKER_M3_FIRST:-true\}"' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3ROUTE' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'story-scope' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3DTOSCOPE' "$HARNESS_DIR/plan-lint.py" \
@@ -8832,6 +8905,214 @@ run_case() {
     && echo monstart-wire-ok
 }
 check "preflight --start wires dual-monitor (O-MONSTART)" 0 "monstart-wire-ok"
+
+# O-SCOPENOGEN — exclude build outs from M2 scope seed + lint RED Owns/scope
+run_case() {
+  grep -q 'is_generated_build_path\|O-SCOPENOGEN' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'O-SCOPENOGEN' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'O-SCOPENOGEN' "$HARNESS_DIR/plan-lint.py" \
+    && echo scopenogen-wire-ok
+}
+check "O-SCOPENOGEN wired in m2-compose + roadmap-lint + plan-lint" 0 "scopenogen-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    src/main/java/com/demo/model \
+    target/generated-sources/openapi/src/main/java/com/demo/dto
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## removed-javaee-modules-00020 [rewrite]
+
+- ee modules
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+- /projects/legacy/target/generated-sources/openapi/src/main/java/com/demo/dto/OwnerDto.java: line 1
+
+## Summary by class
+
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode skeleton 2>&1) || true
+  ! grep -q 'target/generated' "$FIX/migration/roadmap.md" \
+    && grep -q 'src/main/java/com/demo/model/Owner.java' "$FIX/migration/roadmap.md" \
+    && echo "$out" | grep -q 'O-M2COMPOSE' \
+    && echo scopenogen-skeleton-ok
+}
+check "m2-compose skeleton drops target/ from scope (O-SCOPENOGEN)" 0 "scopenogen-skeleton-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-di-to-quarkus-00000 [rewrite]
+
+- di
+- Decided target: cdi
+- /projects/legacy/src/main/java/com/demo/service/Foo.java: line 1
+
+## Summary by class
+
+- rewrite: 1 — springboot-di-to-quarkus-00000
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+
+## S01: Model
+- scope: src/main/java/com/demo/model/Owner.java, target/generated-sources/openapi/src/main/java/com/demo/dto/OwnerDto.java
+- findings: springboot-di-to-quarkus-00000
+- depends: -
+- deploy: true
+- done: model ready
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill >/dev/null 2>&1 || true
+  ! grep -q 'target/generated' migration/roadmap.md \
+    && out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true) \
+    && ! echo "$out" | grep -q 'LINT:O-SCOPENOGEN' \
+    && echo scopenogen-fill-ok
+}
+check "m2-compose fill strips target/ so roadmap-lint O-SCOPENOGEN green (O-SCOPENOGEN)" 0 "scopenogen-fill-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Harvest DTO
+**Class**: rewrite
+**Shape**: create
+**Owns**: `target/generated-sources/openapi/src/main/java/com/demo/dto/OwnerDto.java`
+**Oracle**: absent
+**Goal**: harvest
+**Target design**:
+- → `target/generated-sources/openapi/src/main/java/com/demo/dto/OwnerDto.java`
+**Acceptance**: OwnerDto exists
+EOF
+  out=$(python3 "$LINT" tasks.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-SCOPENOGEN' && echo scopenogen-plan-red-ok
+}
+check "plan-lint REDs Owns under target/ (O-SCOPENOGEN)" 0 "scopenogen-plan-red-ok"
+
+# O-SEATSIZE — scope-path floor on seat-budget (incident-only inversion fix)
+run_case() {
+  grep -q 'scope_path_count\|O-SEATSIZE\|scope_paths' "$HARNESS_DIR/seat-budget.py" \
+    && grep -q 'scope_paths' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'scope_path_count' "$HARNESS_DIR/m2-compose.py" \
+    && echo seatsize-wire-ok
+}
+check "O-SEATSIZE wired in seat-budget + roadmap-lint + m2-compose" 0 "seatsize-wire-ok"
+
+run_case() {
+  # rename × 1 incident → incident budget 1; 12 scope paths → ceil(12*1/2)=6
+  n=$(python3 "$HARNESS_DIR/seat-budget.py" expected --kind rename --incidents 1 --scope-paths 12)
+  [ "$n" = "6" ] && echo seatsize-derive-ok
+}
+check "seat-budget.py floors rename×1inc on 12 scope paths → 6 (O-SEATSIZE)" 0 "seatsize-derive-ok"
+
+# O-SCOPECOVER — staging file must appear in exactly one story scope
+run_case() {
+  grep -q 'O-SCOPECOVER' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'staging path in no story' "$HARNESS_DIR/roadmap-lint.py" \
+    && echo scopecover-wire-ok
+}
+check "O-SCOPECOVER wired in roadmap-lint" 0 "scopecover-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/test/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/test/java/com/demo/model/ValidatorTests.java
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain model foundation
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model ready
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-SCOPECOVER' && echo scopecover-orphan-red-ok
+}
+check "roadmap-lint REDs staging file missing from scope (O-SCOPECOVER)" 0 "scopecover-orphan-red-ok"
+
+# O-STAGESCOPE — skeleton/fill scope from staging partition
+run_case() {
+  grep -q 'O-STAGESCOPE\|apply_staging_scope\|staging_layer_scopes' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'subject_under_test\|ownership-by-subject' "$HARNESS_DIR/m2-compose.py" \
+    && echo stagescope-wire-ok
+}
+check "O-STAGESCOPE wired in m2-compose" 0 "stagescope-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/java/com/demo/rest \
+    migration/staging/src/test/java/com/demo/rest \
+    migration/staging/src/test/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/rest/OwnerRestController.java
+  printf 'package x;\n' > migration/staging/src/test/java/com/demo/rest/OwnerRestControllerTests.java
+  printf 'package x;\n' > migration/staging/src/test/java/com/demo/model/ValidatorTests.java
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## springboot-webmvc-to-quarkus-00000 [OPEN DESIGN]
+- web
+- Decided target: jaxrs
+- /projects/legacy/src/main/java/com/demo/rest/OwnerRestController.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+- OPEN DESIGN: 1 — springboot-webmvc-to-quarkus-00000
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode skeleton 2>&1) || true
+  # OwnerRestControllerTests must land with surface story (subject), not orphaned
+  echo "$out" | grep -q 'O-M2COMPOSE' \
+    && grep -q 'OwnerRestControllerTests.java' migration/roadmap.md \
+    && grep -q 'ValidatorTests.java' migration/roadmap.md \
+    && ! grep -q 'target/' migration/roadmap.md \
+    && echo stagescope-skeleton-ok
+}
+check "m2-compose skeleton scopes staging tests by subject (O-STAGESCOPE)" 0 "stagescope-skeleton-ok"
+
+# O-GODORDERCVT wire
+run_case() {
+  grep -q 'O-GODORDERCVT' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q '_is_harvest_only' "$HARNESS_DIR/plan-lint.py" \
+    && echo godordercvt-wire-ok
+}
+check "O-GODORDERCVT wired in plan-lint (char-before-convert)" 0 "godordercvt-wire-ok"
+
+# O-PYCGITIGNORE wire
+run_case() {
+  gi="$HARNESS_DIR/../../.gitignore"
+  grep -q '__pycache__/' "$gi" && grep -q '\*\.pyc' "$gi" && echo pycgitignore-wire-ok
+}
+check "scaffold .gitignore ignores __pycache__ and *.pyc (O-PYCGITIGNORE)" 0 "pycgitignore-wire-ok"
 
 echo "----"
 echo "$PASS/$N passed"

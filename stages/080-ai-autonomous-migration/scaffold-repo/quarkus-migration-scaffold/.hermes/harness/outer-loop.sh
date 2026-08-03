@@ -77,8 +77,10 @@ SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
 # O-M3ROUTE / O-M3WORKER: M3 SPECIFY open-ended doc draft → MiniMax first
 # (Qwen is 0-for-3 on M3; file-level harvest remains worker-first in M4).
-# Set WORKER_M3_FIRST=true to restore Qwen-draft + MiniMax backstop.
-WORKER_M3_FIRST="${WORKER_M3_FIRST:-false}"
+# O-M3ROUTE / W4-172: default Qwen-draft + MiniMax backstop (sidesteps MiniMax
+# quota burn on M3 author). Set WORKER_M3_FIRST=false for MiniMax-first draft.
+# Inline defaults below MUST match this (were :-true while line defaulted false).
+WORKER_M3_FIRST="${WORKER_M3_FIRST:-true}"
 M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
 M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-2}"
 # O-M3ALL: after M2, author all story plans before any M4 (default on).

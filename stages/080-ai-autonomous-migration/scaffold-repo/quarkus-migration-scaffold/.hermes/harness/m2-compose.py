@@ -71,6 +71,153 @@ assert _sb_spec.loader is not None
 _sb_spec.loader.exec_module(seat_budget)
 
 
+def is_generated_build_path(path: str) -> bool:
+    """O-SCOPENOGEN — build outputs must not seed story scope or Owns.
+
+    Kantra scans legacy `target/` (OpenAPI DTOs, MapStruct *Impl). Those paths
+    are gitignored and deliberately excluded from M1 staging; seeding them into
+    roadmap scope produces Harvest→target/ tasks that cannot commit reviewable
+    code. General Maven/Gradle build outs — not specimen-specific.
+    """
+    p = (path or "").replace("\\", "/").lstrip("./")
+    if p.startswith("target/") or "/target/" in f"/{p}":
+        return True
+    if p.startswith("build/") or "/build/" in f"/{p}":
+        return True
+    if "/generated-sources/" in f"/{p}" and not p.startswith("src/"):
+        return True
+    return False
+
+
+def filter_scope_paths(scope: str) -> str:
+    """Drop generated build paths from a comma-separated scope field."""
+    parts = [p.strip() for p in (scope or "").split(",") if p.strip()]
+    kept = [p for p in parts if not is_generated_build_path(p)]
+    return ", ".join(kept)
+
+
+def list_staging_java(root: Path) -> list[str]:
+    """O-STAGESCOPE — relative src/... paths under migration/staging."""
+    staging = root / "migration" / "staging"
+    if not staging.is_dir():
+        return []
+    out: list[str] = []
+    for p in staging.rglob("*.java"):
+        rel = str(p.relative_to(staging)).replace("\\", "/")
+        if is_generated_build_path(rel):
+            continue
+        out.append(rel)
+    return sorted(out)
+
+
+def subject_under_test(rel: str) -> str | None:
+    """Derive class-under-test simple name from *Tests / *Test basename."""
+    stem = Path(rel).stem
+    for suffix in ("Tests", "Test"):
+        if not stem.endswith(suffix):
+            continue
+        base = stem[: -len(suffix)]
+        if base.startswith("Abstract"):
+            base = base[len("Abstract") :]
+        for mid in ("SpringDataJpa", "SpringData", "Jdbc", "Jpa"):
+            if base.endswith(mid):
+                base = base[: -len(mid)]
+                break
+        return base or None
+    return None
+
+
+def assign_staging_layer(rel: str, main_by_simple: dict[str, str]) -> str:
+    """Layer for a staging path; tests use ownership-by-subject (W4-172)."""
+    norm = f"/{rel.replace(chr(92), '/')}"
+    if "/src/test/" in norm or rel.startswith("src/test/"):
+        stem = Path(rel).stem
+        if stem in ("ApplicationTestConfig",) or (
+            stem.endswith("Config") and "Test" in rel
+        ):
+            return "service"  # test fixture → earliest consumer layer
+        if stem == "SpringConfigTests":
+            return "platform"
+        subj = subject_under_test(rel)
+        if subj and subj in main_by_simple:
+            return layer_for_path(main_by_simple[subj])
+        return layer_for_path(rel)
+    return layer_for_path(rel)
+
+
+def staging_layer_scopes(root: Path) -> dict[str, set[str]]:
+    """Partition staging java files into LAYER_ORDER buckets."""
+    paths = list_staging_java(root)
+    main_by_simple: dict[str, str] = {}
+    for rel in paths:
+        if "/src/main/" in f"/{rel}" or rel.startswith("src/main/"):
+            main_by_simple[Path(rel).stem] = rel
+    scopes: dict[str, set[str]] = defaultdict(set)
+    for rel in paths:
+        scopes[assign_staging_layer(rel, main_by_simple)].add(rel)
+    return scopes
+
+
+def story_layer_guess(st: dict) -> str:
+    """Map an existing story to a layer via title or scope majority."""
+    title = (st.get("title") or "").lower()
+    for lay, t in LAYER_TITLE.items():
+        if t.lower() in title or lay in title:
+            return lay
+    counts: dict[str, int] = defaultdict(int)
+    for p in (st.get("scope") or "").split(","):
+        p = p.strip()
+        if p and not p.startswith("<!--") and not is_generated_build_path(p):
+            counts[layer_for_path(p)] += 1
+    if counts:
+        return sorted(counts.items(), key=lambda x: (-x[1], x[0]))[0][0]
+    return "other"
+
+
+def apply_staging_scope(stories: list[dict], root: Path) -> int:
+    """O-STAGESCOPE — rewrite story scope from staging partition. Returns updates."""
+    layer_scopes = staging_layer_scopes(root)
+    if not any(layer_scopes.values()):
+        return 0
+    # Assign each layer's paths to at most one story (first match by layer guess)
+    claimed: set[str] = set()
+    n = 0
+    for st in stories:
+        lay = story_layer_guess(st)
+        paths = sorted(layer_scopes.get(lay) or [])
+        if not paths:
+            continue
+        new_scope = ", ".join(paths)
+        if (st.get("scope") or "") != new_scope:
+            st["scope"] = new_scope
+            n += 1
+        claimed.add(lay)
+    # Orphan layers (staging paths, no story) → fold into 'other' or last story
+    orphan: list[str] = []
+    for lay in LAYER_ORDER:
+        if lay in claimed:
+            continue
+        orphan.extend(sorted(layer_scopes.get(lay) or []))
+    if orphan and stories:
+        # Prefer an existing 'other' / remaining story; else last
+        dest = None
+        for st in stories:
+            if story_layer_guess(st) == "other" or "remain" in (
+                st.get("title") or ""
+            ).lower():
+                dest = st
+                break
+        if dest is None:
+            dest = stories[-1]
+        cur = [p.strip() for p in (dest.get("scope") or "").split(",") if p.strip()]
+        merged = sorted(set(cur) | set(orphan))
+        new_scope = ", ".join(merged)
+        if (dest.get("scope") or "") != new_scope:
+            dest["scope"] = new_scope
+            n += 1
+    return n
+
+
 def layer_for_path(path: str) -> str:
     p = path.replace("\\", "/").lower()
     if p.endswith("pom.xml") or "/pom.xml" in p or p == "pom.xml":
@@ -588,7 +735,11 @@ def render_roadmap(stories: list[dict], non_mandatory: set[str], prior_nm: str) 
 
 
 def apply_seat_budgets(stories: list[dict], inv_text: str) -> int:
-    """Write computed seat-budget when kind is set. Returns count updated."""
+    """Write computed seat-budget when kind is set. Returns count updated.
+
+    O-SEATSIZE: pass non-generated scope path count so budgets floor on work
+    size, not only owned-finding incidents.
+    """
     n_upd = 0
     for st in stories:
         kind = seat_budget.parse_kind(st.get("kind"))
@@ -596,7 +747,8 @@ def apply_seat_budgets(stories: list[dict], inv_text: str) -> int:
             continue
         fids = set(st["findings"])
         inc = seat_budget.story_incident_total(inv_text, fids)
-        expected = seat_budget.expected_budget(kind, inc)
+        scope_n = seat_budget.scope_path_count(st.get("scope") or "")
+        expected = seat_budget.expected_budget(kind, inc, scope_paths=scope_n)
         cur = seat_budget.parse_seat_budget_field(st.get("seat_budget"))
         if cur != expected:
             st["seat_budget"] = str(expected)
@@ -605,6 +757,18 @@ def apply_seat_budgets(stories: list[dict], inv_text: str) -> int:
             st["seat_budget"] = str(expected)
             n_upd += 1
     return n_upd
+
+
+def strip_generated_scope(stories: list[dict]) -> int:
+    """O-SCOPENOGEN — remove target/build paths from story scope fields."""
+    n = 0
+    for st in stories:
+        raw = st.get("scope") or ""
+        cleaned = filter_scope_paths(raw)
+        if cleaned != raw:
+            st["scope"] = cleaned or "<!-- JUDGMENT: target paths -->"
+            n += 1
+    return n
 
 
 def brief_path(root: Path, sid: str, title: str) -> Path:
@@ -722,10 +886,19 @@ def write_briefs(root: Path, stories: list[dict], *, force_skeleton: bool) -> tu
     return wrote, refreshed
 
 
-def skeleton_from_inventory(inv: dict, dep_text: str = "") -> list[dict]:
-    """Mechanical story cut: one story per non-empty path layer."""
+def skeleton_from_inventory(
+    inv: dict, dep_text: str = "", root: Path | None = None
+) -> list[dict]:
+    """Mechanical story cut: one story per non-empty path layer.
+
+    O-STAGESCOPE: when migration/staging exists, scope is the staging
+    partition (ownership-by-subject for tests). Findings still partition
+    from the inventory; model never authors paths.
+    """
     layer_findings: dict[str, list[str]] = defaultdict(list)
     layer_scopes: dict[str, set[str]] = defaultdict(set)
+    staging_scopes = staging_layer_scopes(root) if root is not None else {}
+    use_staging = bool(any(staging_scopes.values()))
 
     for fid in sorted(inv["must"]):
         paths = inv["sites"].get(fid) or []
@@ -735,15 +908,29 @@ def skeleton_from_inventory(inv: dict, dep_text: str = "") -> list[dict]:
         # majority layer
         counts: dict[str, int] = defaultdict(int)
         for p in paths:
+            if is_generated_build_path(p):
+                continue  # O-SCOPENOGEN — never seed build outs into scope
             counts[layer_for_path(p)] += 1
-            layer_scopes[layer_for_path(p)].add(p)
+            if not use_staging:
+                layer_scopes[layer_for_path(p)].add(p)
+        if not counts:
+            # All sites were build-generated — still own the finding via layer
+            # heuristic on the first site (platform/other), but no scope seed.
+            lay = layer_for_path(paths[0]) if paths else "other"
+            layer_findings[lay].append(fid)
+            continue
         lay = sorted(counts.items(), key=lambda x: (-x[1], LAYER_ORDER.index(x[0])))[0][0]
         layer_findings[lay].append(fid)
 
-    # Also pull scope hints from dependency-order paths when present
-    for m in re.finditer(r"\(([^)]+\.java)\)", dep_text):
-        p = m.group(1)
-        layer_scopes[layer_for_path(p)].add(p)
+    if use_staging:
+        layer_scopes = staging_scopes
+    else:
+        # Also pull scope hints from dependency-order paths when present
+        for m in re.finditer(r"\(([^)]+\.java)\)", dep_text):
+            p = m.group(1)
+            if is_generated_build_path(p):
+                continue
+            layer_scopes[layer_for_path(p)].add(p)
 
     stories: list[dict] = []
     idx = 1
@@ -754,9 +941,10 @@ def skeleton_from_inventory(inv: dict, dep_text: str = "") -> list[dict]:
             continue
         if lay == "platform" and not scopes:
             scopes = ["pom.xml"]
-        # Cap scope list for readability; model may refine
-        scope_s = ", ".join(scopes[:40]) if scopes else "<!-- JUDGMENT: paths -->"
+        # O-STAGESCOPE: no [:40] cap — dropped files were a measured defect
+        scope_s = ", ".join(scopes) if scopes else "<!-- JUDGMENT: paths -->"
         sid = f"S{idx:02d}"
+        src = "staging-partition" if use_staging else "findings-inventory"
         stories.append(
             {
                 "sid": sid,
@@ -767,7 +955,10 @@ def skeleton_from_inventory(inv: dict, dep_text: str = "") -> list[dict]:
                 "depends": "-" if idx == 1 else f"S{idx-1:02d}",
                 "deploy": False,
                 "done": "<!-- JUDGMENT: checkable done-criterion -->",
-                "rationale": f"O-M2COMPOSE layer={lay} unique-owner partition from findings-inventory",
+                "rationale": (
+                    f"O-M2COMPOSE layer={lay} unique-owner partition from {src}"
+                    + (" (O-STAGESCOPE)" if use_staging else "")
+                ),
                 "kind": None,
                 "seat_budget": None,
                 "body": "",
@@ -854,7 +1045,7 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                 mode = "fill"
             else:
                 prior_nm = extract_nm_section(text)
-                stories = skeleton_from_inventory(inv, dep_text)
+                stories = skeleton_from_inventory(inv, dep_text, root=root)
                 # Preserve kind/seat-budget if re-skeletonizing
                 old = parse_roadmap(text)
                 by_sid = {s["sid"]: s for s in old}
@@ -875,7 +1066,7 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                     f"kind-updates={n_kind} seat-budget-updates={n_budget}"
                 )
         if not roadmap_path.is_file() or force_skeleton:
-            stories = skeleton_from_inventory(inv, dep_text)
+            stories = skeleton_from_inventory(inv, dep_text, root=root)
             stories = unique_partition(stories, inv)
             n_kind = derive_kinds(stories, inv, redesign_cls)
             n_budget = apply_seat_budgets(stories, inv_text)
@@ -920,6 +1111,8 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             and not _scope_harvestish(st)
         )
         n_sfnd = max(0, before_sfnd - after_sfnd)
+        n_nogen = strip_generated_scope(stories)
+        n_stage = apply_staging_scope(stories, root)
         n_kind = derive_kinds(stories, inv, redesign_cls)
         n_budget = apply_seat_budgets(stories, inv_text)
         ensure_deploy_last(stories)
@@ -930,6 +1123,7 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         print(
             f"O-M2COMPOSE: fill stories={len(stories)} "
             f"kind-updates={n_kind} sfnd-repairs={n_sfnd} "
+            f"scope-nogen={n_nogen} staging-scope={n_stage} "
             f"seat-budget-updates={n_budget} must={len(inv['must'])}"
         )
 

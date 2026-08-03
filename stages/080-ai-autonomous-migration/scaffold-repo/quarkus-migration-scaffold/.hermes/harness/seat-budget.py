@@ -1,19 +1,28 @@
 #!/usr/bin/env python3
-"""O-SEATBUDGET / ARCH A5 — story seat budget from kind × incident count.
+"""O-SEATBUDGET / ARCH A5 — story seat budget from kind × size.
 
 Calibration (Wave4 A5): rename ≈ 1 seat/unit, reimplement ≈ 5, mixed ≈ 5.
 At M2, size is owned-finding incident count from the findings inventory.
 Units = ceil(incidents / SEAT_BUDGET_INCIDENTS_PER_UNIT) (default 10) so the
 product is an operator-useful seat count rather than rate×raw-incidents.
 
-  expected = rate(kind) * max(1, ceil(incidents / UNIT))
+O-SEATSIZE: also floor on non-generated scope path count — recipe-stripped
+stories can own near-zero findings while carrying dozens of harvest/reimplement
+files; incident-only arithmetic inverted S02 (budget 3 / 32 tasks) and left
+S05 (findings: -) at the bare rate minimum.
+
+  inc_budget   = rate * max(1, ceil(incidents / INC_UNIT))   if incidents else 0
+  scope_budget = max(rate, ceil(scope_paths * rate / SCOPE_UNIT))  if scope else 0
+  expected     = max(inc_budget, scope_budget, rate)
+
+SCOPE_UNIT default 2 (SEAT_BUDGET_SCOPE_PER_UNIT).
 
 Publish as roadmap `- seat-budget: N` + brief; O-LOGBRIEF banner; supervisor
 escalates (debt-freeze) when actual story seats exceed N × OVER_FACTOR
 (default 2).
 
 Usage:
-  seat-budget.py expected --kind reimplement --incidents 51
+  seat-budget.py expected --kind reimplement --incidents 51 [--scope-paths N]
   seat-budget.py from-story <roadmap.md> <findings-inventory.md> <S0N>
   seat-budget.py check-overrun --sid S03 [--budget N] [--factor F]
 """
@@ -32,12 +41,26 @@ RATES = {
     "mixed": 5,
 }
 
+# O-SCOPENOGEN / O-SEATSIZE — ignore Maven/Gradle build outs in scope counts
+_GENERATED_SCOPE_RE = re.compile(
+    r"(?:^|/)(?:target|build)(?:/|$)|(?:^|/)generated-sources/"
+)
+
 
 def unit_size() -> int:
     try:
         n = int(os.environ.get("SEAT_BUDGET_INCIDENTS_PER_UNIT", "10"))
     except ValueError:
         n = 10
+    return max(1, n)
+
+
+def scope_unit_size() -> int:
+    """Paths per scope-budget unit (O-SEATSIZE). Default 2."""
+    try:
+        n = int(os.environ.get("SEAT_BUDGET_SCOPE_PER_UNIT", "2"))
+    except ValueError:
+        n = 2
     return max(1, n)
 
 
@@ -48,14 +71,42 @@ def over_factor() -> float:
         return 2.0
 
 
-def expected_budget(kind: str, incidents: int) -> int:
-    """kind × incident-count → expected seats (unit-normalized)."""
+def is_generated_scope_path(path: str) -> bool:
+    """True for build-output paths that must not inflate seat budgets."""
+    p = (path or "").replace("\\", "/").lstrip("./")
+    return bool(_GENERATED_SCOPE_RE.search(p))
+
+
+def scope_path_count(scope: str) -> int:
+    """Count comma-separated scope paths excluding generated build outs."""
+    n = 0
+    for part in (scope or "").split(","):
+        p = part.strip()
+        if not p or p.startswith("<!--"):
+            continue
+        if is_generated_scope_path(p):
+            continue
+        n += 1
+    return n
+
+
+def expected_budget(kind: str, incidents: int, scope_paths: int = 0) -> int:
+    """kind × max(incident units, scope floor) → expected seats (O-SEATSIZE)."""
     rate = RATES.get((kind or "").lower().strip())
     if rate is None:
         raise ValueError(f"unknown kind '{kind}' (want rename|reimplement|mixed)")
     inc = max(0, int(incidents))
-    units = max(1, math.ceil(inc / unit_size())) if inc else 1
-    return rate * units
+    scope = max(0, int(scope_paths))
+    if inc:
+        inc_budget = rate * max(1, math.ceil(inc / unit_size()))
+    else:
+        inc_budget = 0
+    if scope:
+        # ceil(scope * rate / SCOPE_UNIT), but never below bare rate
+        scope_budget = max(rate, math.ceil(scope * rate / scope_unit_size()))
+    else:
+        scope_budget = 0
+    return max(inc_budget, scope_budget, rate)
 
 
 def incident_counts_from_inventory(inv: str) -> dict[str, int]:
@@ -153,7 +204,13 @@ def count_actual_seats(sid: str) -> int:
 
 
 def cmd_expected(args: argparse.Namespace) -> int:
-    print(expected_budget(args.kind, args.incidents))
+    print(
+        expected_budget(
+            args.kind,
+            args.incidents,
+            scope_paths=getattr(args, "scope_paths", 0) or 0,
+        )
+    )
     return 0
 
 
@@ -167,10 +224,12 @@ def cmd_from_story(args: argparse.Namespace) -> int:
         return 2
     fids = story_finding_ids(fields)
     inc = story_incident_total(inv, fids)
-    n = expected_budget(kind, inc)
+    scope_n = scope_path_count(fields.get("scope") or "")
+    n = expected_budget(kind, inc, scope_paths=scope_n)
     declared = parse_seat_budget_field(fields.get("seat-budget"))
     print(
-        f"{n}\tkind={kind}\tincidents={inc}\tdeclared={declared if declared is not None else '-'}"
+        f"{n}\tkind={kind}\tincidents={inc}\tscope_paths={scope_n}\t"
+        f"declared={declared if declared is not None else '-'}"
     )
     return 0
 
@@ -209,9 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="O-SEATBUDGET / ARCH A5")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    p1 = sub.add_parser("expected", help="print expected seats for kind×incidents")
+    p1 = sub.add_parser(
+        "expected", help="print expected seats for kind×incidents×scope (O-SEATSIZE)"
+    )
     p1.add_argument("--kind", required=True)
     p1.add_argument("--incidents", type=int, required=True)
+    p1.add_argument(
+        "--scope-paths",
+        type=int,
+        default=0,
+        help="non-generated scope path count (O-SEATSIZE floor)",
+    )
     p1.set_defaults(func=cmd_expected)
 
     p2 = sub.add_parser("from-story", help="derive budget from roadmap+inventory")

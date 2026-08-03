@@ -32,8 +32,11 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                kind: rename|reimplement|mixed. OPEN DESIGN forbids bare
                rename; mixed requires justification / split suggestion.
   O-SEATBUDGET — (ARCH A5) stories with kind must declare seat-budget: N
-               matching kind × incident count (unit-normalized; see
-               seat-budget.py). Brief must publish the same N.
+               matching kind × max(incident units, scope floor)
+               (see seat-budget.py / O-SEATSIZE). Brief must publish the same N.
+  O-SCOPECOVER — every migration/staging/**/*.java path is in exactly one
+               story scope; every src/**/*.java scope path is in staging
+               or migration/scope-exclusions.md (typed reason).
 """
 import glob
 import importlib.util
@@ -187,6 +190,25 @@ def main():
         scope = field(sid, "scope") or ""
         if not re.search(r"(src/|\.java|\.properties|pom\.xml|k8s/)", scope):
             lint("substance", f"{sid}: scope names no code/test path — ceremonial story")
+        # O-SCOPENOGEN — build outs (target/, build/) must not appear in scope
+        gen_hits = [
+            p.strip()
+            for p in scope.split(",")
+            if p.strip()
+            and re.search(
+                r"(?:^|/)(?:target|build)(?:/|$)|(?:^|/)generated-sources/",
+                p.strip().replace("\\", "/").lstrip("./"),
+            )
+        ]
+        if gen_hits:
+            lint(
+                "O-SCOPENOGEN",
+                f"{sid}: scope lists build-generated path(s) "
+                f"({gen_hits[0]}"
+                f"{' +' + str(len(gen_hits) - 1) + ' more' if len(gen_hits) > 1 else ''}"
+                f") — exclude target/build outs; harvest DTOs via staging/"
+                f"src paths (O-SCOPENOGEN)",
+            )
         # S-FND: blank findings are a footgun (M2 bounce). "-" is allowed only
         # for pure HARVEST/characterization stories (models/tests, no redesign).
         findings_raw = (field(sid, "findings") or "").strip()
@@ -254,6 +276,96 @@ def main():
             lint("coverage", f"mandatory finding {fid} owned by no story")
         for fid in sorted(set(owned) & exempt):
             lint("coverage", f"{fid} is {'recipe-executed' if fid not in must else 'exempt'} — no story should own it (owned by {owned[fid]})")
+
+    # O-SCOPECOVER — staging file coverage (mirror findings coverage)
+    base = os.path.dirname(os.path.abspath(sys.argv[1]))
+    staging_root = os.path.join(base, "staging")
+    if os.path.isdir(staging_root):
+        staging_files: set[str] = set()
+        for dirpath, _dns, fnames in os.walk(staging_root):
+            for fn in fnames:
+                if not fn.endswith(".java"):
+                    continue
+                full = os.path.join(dirpath, fn)
+                rel = os.path.relpath(full, staging_root).replace("\\", "/")
+                if rel.startswith("target/") or "/target/" in f"/{rel}":
+                    continue
+                staging_files.add(rel)
+        scope_owner: dict[str, str] = {}
+        for sid in ids:
+            scope = field(sid, "scope") or ""
+            for part in scope.split(","):
+                p = part.strip().lstrip("./")
+                if not p or p.startswith("<!--"):
+                    continue
+                if not p.endswith(".java"):
+                    continue
+                if p.startswith("target/") or "/target/" in f"/{p}":
+                    continue
+                if p in scope_owner and scope_owner[p] != sid:
+                    lint(
+                        "O-SCOPECOVER",
+                        f"path {p} owned by both {scope_owner[p]} and {sid}",
+                    )
+                scope_owner[p] = sid
+        excl: set[str] = set()
+        excl_path = os.path.join(base, "scope-exclusions.md")
+        if os.path.isfile(excl_path):
+            try:
+                for ln in open(excl_path, encoding="utf-8").read().splitlines():
+                    m = re.match(r"^-\s+`?([^`\s]+)`?", ln.strip())
+                    if m and m.group(1).endswith(".java"):
+                        excl.add(m.group(1).lstrip("./"))
+            except OSError:
+                pass
+        orphans = sorted(staging_files - set(scope_owner))
+        if orphans:
+            # O-SCOPECOVERMSG: full list to sidecar (no "+N more" truncation)
+            side = "/tmp/roadmap-scopecover.txt"
+            try:
+                with open(side, "w", encoding="utf-8") as sf:
+                    sf.write("# O-SCOPECOVER orphans (staging in no story scope)\n")
+                    for p in orphans:
+                        sf.write(p + "\n")
+            except OSError:
+                side = "(sidecar write failed)"
+            # Cap inline message but always point at full list
+            shown = orphans[:8]
+            more = (
+                f" … +{len(orphans) - len(shown)} more — full list {side}"
+                if len(orphans) > len(shown)
+                else f" — full list {side}"
+            )
+            lint(
+                "O-SCOPECOVER",
+                f"staging path in no story scope: {', '.join(shown)}{more} "
+                f"(O-SCOPECOVER; partition via O-STAGESCOPE)",
+            )
+        phantoms = sorted(
+            p
+            for p in scope_owner
+            if p.startswith("src/") and p not in staging_files and p not in excl
+        )
+        if phantoms:
+            side = "/tmp/roadmap-scopecover.txt"
+            try:
+                with open(side, "a", encoding="utf-8") as sf:
+                    sf.write("# O-SCOPECOVER phantoms (scope absent from staging)\n")
+                    for p in phantoms:
+                        sf.write(p + "\n")
+            except OSError:
+                side = "(sidecar write failed)"
+            shown = phantoms[:8]
+            more = (
+                f" … +{len(phantoms) - len(shown)} more — full list {side}"
+                if len(phantoms) > len(shown)
+                else f" — full list {side}"
+            )
+            lint(
+                "O-SCOPECOVER",
+                f"scope path absent from staging (and not in "
+                f"scope-exclusions.md): {', '.join(shown)}{more} (O-SCOPECOVER)",
+            )
 
     # briefs exist and are complete
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
@@ -375,12 +487,15 @@ def main():
                                 f"{sid}: kind: mixed requires justification / "
                                 f"split suggestion (O-STORYKIND / ARCH A3)",
                             )
-        # O-SEATBUDGET / ARCH A5 — kind × incidents → seat-budget on roadmap+brief
+        # O-SEATBUDGET / ARCH A5 + O-SEATSIZE — kind × max(incidents, scope) → budget
         kind_for_budget = seat_budget.parse_kind(kind_raw) if kind_raw else None
         if kind_for_budget:
             inc = seat_budget.story_incident_total(inv, story_fids)
+            scope_n = seat_budget.scope_path_count(scope)
             try:
-                expected = seat_budget.expected_budget(kind_for_budget, inc)
+                expected = seat_budget.expected_budget(
+                    kind_for_budget, inc, scope_paths=scope_n
+                )
             except ValueError as e:
                 lint("O-SEATBUDGET", f"{sid}: {e}")
                 expected = None
@@ -389,14 +504,16 @@ def main():
                 lint(
                     "O-SEATBUDGET",
                     f"{sid}: missing field 'seat-budget' — derive from "
-                    f"kind×incidents ({kind_for_budget}×{inc} → {expected}) "
-                    f"(O-SEATBUDGET / ARCH A5)",
+                    f"kind×incidents×scope ({kind_for_budget}×{inc}/"
+                    f"scope={scope_n} → {expected}) "
+                    f"(O-SEATBUDGET / O-SEATSIZE)",
                 )
             elif expected is not None and declared != expected:
                 lint(
                     "O-SEATBUDGET",
                     f"{sid}: seat-budget: {declared} != expected {expected} "
-                    f"(kind={kind_for_budget} × incidents={inc} / "
+                    f"(kind={kind_for_budget} × incidents={inc} "
+                    f"scope_paths={scope_n} / "
                     f"unit={seat_budget.unit_size()}) "
                     f"(O-SEATBUDGET / ARCH A5)",
                 )
