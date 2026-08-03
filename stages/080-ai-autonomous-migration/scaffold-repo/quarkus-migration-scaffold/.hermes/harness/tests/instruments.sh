@@ -2820,6 +2820,38 @@ EOF
 }
 check "plan-lint Shape missing is RED by default (O-M3SHAPEHARD)" 0 "shapehard-ok"
 
+# O-M3PIPEFIELD — strip leading |/> on field lines before Shape/Class parse
+run_case() {
+  grep -q 'normalize_m3_pipe_fields' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'O-M3PIPEFIELD' "$HARNESS_DIR/plan-lint.py" \
+    && echo m3pipefield-wire-ok
+}
+check "plan-lint wires O-M3PIPEFIELD pipe-field normalizer" 0 "m3pipefield-wire-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+#### T-001: Harvest Foo
+|**Class**: rewrite
+|**Shape**: create
+|**Owns**: src/main/java/com/demo/Foo.java
+|**Oracle**: absent
+|**Goal**: harvest
+|**Target design**:
+- → `src/main/java/com/demo/Foo.java`
+|**Acceptance**: Foo.java exists under com.demo
+EOF
+  out=$(python3 "$LINT" tasks.md 2>&1 || true)
+  ! grep -qE '^\|\*\*' tasks.md \
+    && grep -qE '^\*\*Shape\*\*' tasks.md \
+    && echo "$out" | grep -qi 'O-M3PIPEFIELD' \
+    && ! echo "$out" | grep -q 'O-SHAPEDECL' \
+    && echo m3pipefield-strip-ok
+}
+check "plan-lint strips leading pipe on field lines (O-M3PIPEFIELD)" 0 "m3pipefield-strip-ok"
+
 run_case() {
   grep -q 'O-M3QWENSTALL' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'M3_STALL_ABORT_SECS:-120' "$HARNESS_DIR/outer-loop.sh" \

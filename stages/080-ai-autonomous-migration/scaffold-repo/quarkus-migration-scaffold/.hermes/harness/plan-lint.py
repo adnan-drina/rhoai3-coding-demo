@@ -66,6 +66,48 @@ except ImportError:  # pragma: no cover
 
 problems = []
 
+# O-M3PIPEFIELD: MiniMax sometimes prefixes every structured field with `|`
+# (markdown-table habit). plan-lint field regexes are start-anchored, so the
+# Shape/Class/… lines become invisible → false "missing **Shape**" loops.
+# Normalize by stripping a leading `|` / `>` (+ spaces) from field lines and
+# rewriting the artifact so the on-disk plan stays canonical (ADR-4).
+_M3_PIPE_FIELD = re.compile(
+    r"^(?P<pre>[|>]\s*)(?P<body>\*\*(?:"
+    r"Class|Shape|Port|Owns|Oracle|Assumes|Findings|Goal|"
+    r"Target design|Acceptance"
+    r")\*\*.*)$",
+    re.I,
+)
+_M3_PIPE_FIELD_BARE = re.compile(
+    r"^(?P<pre>[|>]\s*)(?P<body>(?:"
+    r"Class|Shape|Port|Owns|Oracle|Assumes|Findings|Goal|"
+    r"Target design|Acceptance"
+    r")\s*:.*)$",
+    re.I,
+)
+
+
+def normalize_m3_pipe_fields(text: str) -> tuple[str, int]:
+    """Strip leading |/> from M3 task field lines. Returns (text, n_stripped)."""
+    n = 0
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        ending = ""
+        core = line
+        if core.endswith("\r\n"):
+            ending = "\r\n"
+            core = core[:-2]
+        elif core.endswith("\n"):
+            ending = "\n"
+            core = core[:-1]
+        m = _M3_PIPE_FIELD.match(core) or _M3_PIPE_FIELD_BARE.match(core)
+        if m:
+            n += 1
+            out.append(m.group("body") + ending)
+        else:
+            out.append(line)
+    return "".join(out), n
+
 
 def _incident_in_story_scope(legacy_rel: str, scopes: list[str]) -> bool:
     """True if incident path is inside roadmap story scope (or scope unset).
@@ -427,7 +469,25 @@ def main():
     # matched → every incident skipped (false PLAN OK on S01 fcc506c).
     story_scope = [s for s in re.split(r"[\s,]+", story_scope_raw) if s]
     tasks_path = args[0]
-    text = open(tasks_path).read()
+    text = open(tasks_path, encoding="utf-8", errors="replace").read()
+    # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
+    # so committed artifact matches TASKS-TEMPLATE (not a tolerate-malformed path).
+    text, _pipe_n = normalize_m3_pipe_fields(text)
+    if _pipe_n:
+        try:
+            Path(tasks_path).write_text(text, encoding="utf-8")
+        except OSError as e:
+            print(
+                f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
+                f"rewrite failed ({e})",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
+                f"line(s) → {tasks_path}",
+                file=sys.stderr,
+            )
 
     # forbidden->preserve inversion (V5 T-011: the plan read the forbidden
     # tripwire `getMockProducts` as a preserve contract — a fabrication
