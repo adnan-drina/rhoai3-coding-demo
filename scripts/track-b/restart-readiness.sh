@@ -18,6 +18,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
 
 PRED_DOC="${ROOT}/docs/M3-ALL-PREDICTIONS-FROZEN.md"
+CHANGE_MANIFEST="${ROOT}/docs/V10-CHANGE-MANIFEST.md"
 SCAFFOLD="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 FAILS=0
 PASSES=0
@@ -39,6 +40,26 @@ if [ -f "$PRED_DOC" ] && git -C "$ROOT" ls-files --error-unmatch "$PRED_DOC" >/d
   _pass "SC-0/SC-2a predictions committed: $PRED_DOC sha256=${pred_hash:0:12}…"
 else
   _fail "SC-0/SC-2a predictions file missing or untracked: $PRED_DOC"
+fi
+
+# R3 / SC-1 — change manifest (UNDER-TEST / NOT-UNDER-TEST); silence forbidden
+if [ -f "$CHANGE_MANIFEST" ] \
+  && git -C "$ROOT" ls-files --error-unmatch "$CHANGE_MANIFEST" >/dev/null 2>&1; then
+  if grep -qE '^## UNDER-TEST' "$CHANGE_MANIFEST" \
+    && grep -qE '^## NOT-UNDER-TEST' "$CHANGE_MANIFEST" \
+    && grep -qE 'R4|O-SFIX' "$CHANGE_MANIFEST" \
+    && grep -qE 'O-LOGPROG|R6' "$CHANGE_MANIFEST" \
+    && grep -qE 'A-1|R8' "$CHANGE_MANIFEST"; then
+    man_hash="$(
+      if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$CHANGE_MANIFEST" | awk '{print $1}'
+      else sha256sum "$CHANGE_MANIFEST" | awk '{print $1}'; fi
+    )"
+    _pass "R3/SC-1 change manifest committed: $CHANGE_MANIFEST sha256=${man_hash:0:12}…"
+  else
+    _fail "R3/SC-1 $CHANGE_MANIFEST missing UNDER-TEST / NOT-UNDER-TEST or R4/R6/R8 deferrals"
+  fi
+else
+  _fail "R3/SC-1 change manifest missing or untracked: $CHANGE_MANIFEST"
 fi
 
 if [ -d "${SCAFFOLD}/.hermes" ] \

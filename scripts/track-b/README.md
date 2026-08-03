@@ -23,7 +23,7 @@ Shared helpers: `lib-quality-gates.sh` (`qg_ws_pod`, `qg_story_complete_ok`,
 | Exec corpus | `v10-exec-corpus-gate.sh` | O-EXECCORPUS archived sfix/escalation honesty replay |
 | Hermes parity | `v10-hermes-parity.sh` | O-HERMESPREFLIGHT fail-closed golden↔pod `.hermes` digest; `--compare` for instruments; **O-HERMESPARITYSEM** shared semantic exclusions via `qg_hermes_list_semantic_files` |
 | Golden fresh | `v10-golden-fresh.sh` | O-GOLDENFRESH publish-fp + three-way repo/published/pod; `--stamp` / `--check-local` for instruments; same semantic digest as parity |
-| Restart readiness (R2) | `restart-readiness.sh` | LRR GO/NO-GO: SC-0..SC-3 checkable facts (predictions committed, clean `.hermes`, parity+golden, `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` off, corpus gates). Does **not** start outer |
+| Restart readiness (R2) | `restart-readiness.sh` | LRR GO/NO-GO: SC-0..SC-3 checkable facts (predictions committed, **R3** `docs/V10-CHANGE-MANIFEST.md` UNDER/NOT-UNDER committed with R4/R6/R8 lines, clean `.hermes`, parity+golden, `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` off, corpus gates). Does **not** start outer |
 | Driver uptime | `v9-ensure-driver.sh` + launchd plist example | external watchdog |
 
 ## O-FALSECOMPLETE — honest ship re-earn
