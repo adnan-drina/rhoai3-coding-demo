@@ -635,7 +635,11 @@ fi
 # ------------------------------------------------------------ M2 SEQUENCE
 # O-M2-429 / O-ORCH429BACKOFF: real backoff when MiniMax 429s mid-seat
 # (default 900s). Override M2_429_BACKOFF_SECS for instruments.
+# O-M2429CAP: NOT-spent 429 retries are capped (default 3 ≈ 45m) then
+# fail_run with a distinct quota cause — never silent livelock.
 M2_429_BACKOFF_SECS="${M2_429_BACKOFF_SECS:-900}"
+M2_429_MAX="${M2_429_MAX:-3}"
+M2_429_COUNT=0
 M2_COMPOSE="${M2_COMPOSE:-1}"
 roadmap_green() {
   # O-PORTDERIVE: pass architecture-profile.md so §7 REDESIGN ↔ brief contract is gated
@@ -699,6 +703,7 @@ ${_lint_inline}
     # O-M2COMPOSE fill after seat — kill coverage/briefs/deploy/seat-budget bookkeeping
     m2_compose_bookkeeping fill || true
     if roadmap_green; then
+      M2_429_COUNT=0  # O-M2429CAP: non-429 success resets quota counter
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "commit $(git rev-parse --short HEAD)"
       # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
@@ -721,13 +726,20 @@ ${_lint_inline}
       break
     fi
     # O-M2-429: hermes_rc=0 after rate-limit is NOT seat success — do not burn attempt
+    # O-M2429CAP: cap consecutive NOT-spent 429s then fail_run with distinct cause
     if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" \
         "/tmp/outer-m2-sequence-a${ATTEMPT}.log" 2>/dev/null; then
-      log "         O-M2-429: MiniMax rate-limited — attempt ${ATTEMPT} NOT spent; backoff ${M2_429_BACKOFF_SECS}s"
-      phase_retry "M2 SEQUENCE — quota; sleeping ${M2_429_BACKOFF_SECS}s (O-M2-429)"
+      M2_429_COUNT=$((M2_429_COUNT + 1))
+      if [ "$M2_429_COUNT" -ge "$M2_429_MAX" ]; then
+        log "         O-M2429CAP: ${M2_429_COUNT} consecutive rate-limited seats (max ${M2_429_MAX}) — failing run"
+        fail_run "quota exhausted after ${M2_429_COUNT} rate-limited seats (O-M2-429CAP)"
+      fi
+      log "         O-M2-429: MiniMax rate-limited — attempt ${ATTEMPT} NOT spent; backoff ${M2_429_BACKOFF_SECS}s (${M2_429_COUNT}/${M2_429_MAX})"
+      phase_retry "M2 SEQUENCE — quota; sleeping ${M2_429_BACKOFF_SECS}s (O-M2-429 ${M2_429_COUNT}/${M2_429_MAX})"
       sleep "${M2_429_BACKOFF_SECS}"
       continue
     fi
+    M2_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter (lint RED burns attempt below)
     phase_gate "M2 SEQUENCE roadmap-lint" RED "full findings /tmp/roadmap-lint.txt"
     [ "$ATTEMPT" -ge "$M2_MAX_ATTEMPTS" ] && fail_run "M2 SEQUENCE failed its lint twice"
     ATTEMPT=$((ATTEMPT + 1))
@@ -939,8 +951,13 @@ EOF
     # --- Phase B: MiniMax backstop (default 1) when worker path did not green ---
     if [ "$M3_DONE" != "1" ] && [ "${M3_ORCH_BACKSTOP:-1}" -ge 1 ]; then
       ATTEMPT=1
+      # O-M2429CAP / O-M3QUOTA: cap consecutive NOT-spent 429s (default 3)
+      M3_429_BACKOFF_SECS="${M3_429_BACKOFF_SECS:-${M2_429_BACKOFF_SECS:-900}}"
+      M3_429_MAX="${M3_429_MAX:-${M2_429_MAX:-3}}"
+      M3_429_COUNT=0
       while [ "$ATTEMPT" -le "${M3_ORCH_BACKSTOP:-1}" ]; do
         if m3_lint_green; then
+          M3_429_COUNT=0
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
           phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
@@ -969,6 +986,7 @@ EOF
           continue
         fi
         if m3_lint_green; then
+          M3_429_COUNT=0
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
           phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax; commit $(git rev-parse --short HEAD)"
@@ -976,11 +994,17 @@ EOF
           break
         fi
         if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-${seat_tag}.log" 2>/dev/null; then
-          log "         O-M3QUOTA: MiniMax rate-limited — NOT spent; backoff 15m"
-          phase_retry "M3 SPECIFY ${SID} — quota; sleeping 900s"
-          sleep 900
+          M3_429_COUNT=$((M3_429_COUNT + 1))
+          if [ "$M3_429_COUNT" -ge "$M3_429_MAX" ]; then
+            log "         O-M2429CAP: M3 ${SID} ${M3_429_COUNT} consecutive rate-limited seats (max ${M3_429_MAX}) — failing run"
+            fail_run "quota exhausted after ${M3_429_COUNT} rate-limited seats (O-M2-429CAP)"
+          fi
+          log "         O-M3QUOTA: MiniMax rate-limited — NOT spent; backoff ${M3_429_BACKOFF_SECS}s (${M3_429_COUNT}/${M3_429_MAX})"
+          phase_retry "M3 SPECIFY ${SID} — quota; sleeping ${M3_429_BACKOFF_SECS}s (O-M3QUOTA ${M3_429_COUNT}/${M3_429_MAX})"
+          sleep "${M3_429_BACKOFF_SECS}"
           continue
         fi
+        M3_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter
         m3_write_lint_evidence
         phase_gate "M3 SPECIFY ${SID} plan-lint" RED "MiniMax attempt ${ATTEMPT} — /tmp/plan-lint.txt"
         ATTEMPT=$((ATTEMPT + 1))

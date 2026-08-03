@@ -8639,6 +8639,20 @@ run_case() {
 }
 check "outer-loop M2 429 NOT-spent + real backoff wire (O-M2-429)" 0 "m2429-wire-ok"
 
+# O-M2429CAP — consecutive NOT-spent 429s capped; distinct fail_run cause; reset on non-429
+run_case() {
+  grep -q 'O-M2429CAP' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M2_429_MAX' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_429_MAX' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_429_BACKOFF_SECS' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'sleep "${M3_429_BACKOFF_SECS}"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'quota exhausted after .* rate-limited seats (O-M2-429CAP)' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M2_429_COUNT=0' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_429_COUNT=0' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m2429cap-wire-ok
+}
+check "outer-loop M2/M3 429 NOT-spent cap + distinct fail cause (O-M2429CAP)" 0 "m2429cap-wire-ok"
+
 # O-M2RETRYINLINE — attempt-2 prompt inlines bounded lint (not path-only)
 run_case() {
   grep -q 'O-M2RETRYINLINE' "$HARNESS_DIR/outer-loop.sh" \

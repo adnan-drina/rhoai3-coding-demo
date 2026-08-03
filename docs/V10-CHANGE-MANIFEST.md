@@ -1,4 +1,4 @@
-# Wave 4 → v4 change manifest (R3 / SC-1) — wave-2 freeze
+# Wave 4 → v4 change manifest (R3 / SC-1) — wave-2 ended / wave-3 pending
 
 **Purpose:** every readiness / architecture / review recommendation for the
 petclinic-rest-v4 wave is either **UNDER-TEST** (landed and judged this run)
@@ -10,17 +10,40 @@ Silence is forbidden (SC-1).
 - Polish bank: `docs/V10-FUTURE-IMPROVEMENTS.md` (`⬜` = open; `📋` = later wave)
 - LRR: `scripts/track-b/restart-readiness.sh` (asserts this file is committed)
 
-**Baseline commit for banked harness durableize:** `5fcab70`  
+**Baseline commit for banked harness durableize:** `5fcab70` + O-M2429CAP (wave-3 start)  
 **Prior wave-1 freeze baseline:** `d623641` / LRR harden `36ea5c9` (superseded — wave died at M2)  
 **Workspace under test:** `petclinic-rest-v4`  
-**Re-frozen:** 2026-08-03T11:28:30Z (TIDY-3 / W4-142) after M2 SEQUENCE lint×2 FAIL
+**Re-frozen:** 2026-08-03T11:28:30Z (TIDY-3 / W4-142) after M2 SEQUENCE lint×2 FAIL  
+**Wave-2 end:** 2026-08-03T12:35:34Z — clean SIGTERM after operator decision W4-146a (3 then 2)
 
-### Wave-1 → wave-2 delta (must attribute)
+### Wave-2 outcome (must attribute — platform, not plan-quality)
+
+Wave-2 on `petclinic-rest-v4` **ended on MaaS quota exhaustion after 3
+rate-limited M2 seats (71s / 838s / 30s)**; M2 attempt budget never spent;
+roadmap-lint residual reduced **15 → 5** by `m2-compose` fill with **no
+completing LLM seat**. Outer stopped via SIGTERM (O-TMPARCHIVE
+`20260803T123534Z-bcc4b1d`); host evidence
+`tmp/m2-wave2-quota-evidence-20260803T123437Z/` (roadmap + 6 briefs + seat
+logs). A fourth seat had started post-backoff and was terminated with the
+loop — not a lint failure.
+
+This is a **platform outcome**, not a plan-quality outcome. Wave-1's
+`M2 SEQUENCE failed its lint twice` and wave-2's quota stop must not be
+conflated in later baselines.
+
+| Gate | Live result on wave-2 |
+|---|---|
+| **O-M2-429** | ✅ proven 3×; attempt budget untouched after ~53m wall |
+| **O-M2COMPOSE** | ✅ lint residual 15 → 12 → 5 with zero completing model seats |
+| **O-MONSTART** | ✅ dual-monitor auto-started and stayed up |
+| **O-M2RETRYINLINE**, **O-M2CORPUS** | landed; not exercised (no retry reached the prompt; no second corpus case) |
+| **O-M2429CAP** | ✅ landed at wave-2 boundary (cap was the missing piece that livelocked) |
+| M3-ALL, PAUSE-3, O-TASKMUTATE | **not reached** — unchanged from wave-1 |
+
+### Wave-1 → wave-2 delta (historical)
 
 Wave-1 on `petclinic-rest-v4` stopped at **M2 SEQUENCE failed its lint twice**
-(app HEAD `10790d6`; M2 never committed). Downstream UNDER-TEST rows from the
-prior freeze were **unevaluated**. Harness gains since that failure (now under
-test on the next GO):
+(app HEAD `10790d6`; M2 never committed). Harness gains that flew on wave-2:
 
 | Gate | Commit / evidence |
 |---|---|
@@ -31,7 +54,8 @@ test on the next GO):
 | **O-MONSTART** | preflight `--start` wires dual-monitor; LRR SC-3 (`5fcab70`) |
 
 Prediction honesty: row 1 (time-to-first-plan-defect) **MET on substance** via
-M2-gate stop; rows 2+ **not reached** — see frozen prediction table.
+wave-1 M2-gate stop; rows 2+ **not reached** on wave-1 or wave-2 — see frozen
+prediction table.
 
 Operator veto surface: the **NOT-UNDER-TEST** list only. Approving GO means
 accepting those deferrals for this wave.
@@ -49,7 +73,7 @@ These are in the flying harness and will be judged on the **wave-2** v4 run
 | R2 LRR | `restart-readiness.sh` GO/NO-GO before start | this protocol |
 | R3 this manifest | Committed UNDER/NOT-UNDER lists (wave-2 re-freeze) | LRR asserts file |
 | R5 seat economics | O-SEATBUDGET + O-STORYKIND + O-SPECREIMPL | roadmap/plan lint + freeze |
-| **M2 path (new)** | O-M2COMPOSE + O-M2-429 + O-ORCH429BACKOFF + O-M2RETRYINLINE + O-M2CORPUS + O-MONSTART | instruments + LRR + m2-corpus-lint |
+| **M2 path (new)** | O-M2COMPOSE + O-M2-429 + O-M2429CAP + O-ORCH429BACKOFF + O-M2RETRYINLINE + O-M2CORPUS + O-MONSTART | instruments + LRR + m2-corpus-lint; wave-2 L3 quota proof |
 | M3-ALL path | Whole-set plan before any M4; operator gate; predictions_fp bind | `m3-all-lint.sh`, outer two-pass, `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` unset |
 | Port / Oracle honesty | O-PORTREIMPL, O-PORTDERIVE, O-ORACLEDERIVE, O-INFERABSENT, O-M3PRESERVEDAO, O-OWNSTAGE, O-SPRINGRESIDUE, O-SDJPA-SKIP | plan-lint + corpus |
 | Plan / exec / m2 corpus (seeded) | O-PLANCORPUS + O-EXECCORPUS + O-M2CORPUS (v4 lint×2 known-RED) | corpus gates + preflight |
