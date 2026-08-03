@@ -281,10 +281,17 @@ def main():
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
     staging_root = os.path.join(base, "staging")
     if os.path.isdir(staging_root):
+        # O-SCOPENONJAVA — same suffixes as m2-compose list_staging_java
+        _scope_suf = (".java", ".properties", ".yaml", ".yml", ".xml")
+
+        def _is_scope_path(path: str) -> bool:
+            low = path.lower()
+            return any(low.endswith(s) for s in _scope_suf)
+
         staging_files: set[str] = set()
         for dirpath, _dns, fnames in os.walk(staging_root):
             for fn in fnames:
-                if not fn.endswith(".java"):
+                if not _is_scope_path(fn):
                     continue
                 full = os.path.join(dirpath, fn)
                 rel = os.path.relpath(full, staging_root).replace("\\", "/")
@@ -298,7 +305,7 @@ def main():
                 p = part.strip().lstrip("./")
                 if not p or p.startswith("<!--"):
                     continue
-                if not p.endswith(".java"):
+                if not _is_scope_path(p):
                     continue
                 if p.startswith("target/") or "/target/" in f"/{p}":
                     continue
@@ -314,7 +321,7 @@ def main():
             try:
                 for ln in open(excl_path, encoding="utf-8").read().splitlines():
                     m = re.match(r"^-\s+`?([^`\s]+)`?", ln.strip())
-                    if m and m.group(1).endswith(".java"):
+                    if m and _is_scope_path(m.group(1)):
                         excl.add(m.group(1).lstrip("./"))
             except OSError:
                 pass
@@ -348,8 +355,10 @@ def main():
         )
         if phantoms:
             side = "/tmp/roadmap-scopecover.txt"
+            # write (not append) when no orphans so we do not keep a stale orphan list
+            mode = "a" if orphans else "w"
             try:
-                with open(side, "a", encoding="utf-8") as sf:
+                with open(side, mode, encoding="utf-8") as sf:
                     sf.write("# O-SCOPECOVER phantoms (scope absent from staging)\n")
                     for p in phantoms:
                         sf.write(p + "\n")
@@ -366,6 +375,14 @@ def main():
                 f"scope path absent from staging (and not in "
                 f"scope-exclusions.md): {', '.join(shown)}{more} (O-SCOPECOVER)",
             )
+        # O-SCOPECOVERCLEAR (W4-178 P3): remove stale sidecar on clean coverage
+        if not orphans and not phantoms:
+            try:
+                os.remove("/tmp/roadmap-scopecover.txt")
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
     # briefs exist and are complete
     base = os.path.dirname(os.path.abspath(sys.argv[1]))

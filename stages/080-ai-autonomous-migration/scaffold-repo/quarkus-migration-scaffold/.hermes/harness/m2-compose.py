@@ -96,15 +96,35 @@ def filter_scope_paths(scope: str) -> str:
     return ", ".join(kept)
 
 
+# O-SCOPENONJAVA (W4-179): staged config/resources must enter scope too.
+_STAGING_SCOPE_SUFFIXES = (
+    ".java",
+    ".properties",
+    ".yaml",
+    ".yml",
+    ".xml",
+)
+
+
 def list_staging_java(root: Path) -> list[str]:
-    """O-STAGESCOPE — relative src/... paths under migration/staging."""
+    """O-STAGESCOPE — relative src/... paths under migration/staging.
+
+    Includes Java plus config/resources (properties/yaml/xml). Java-only
+    listing made O-SCOPECOVER certify a false green while application*.properties
+    stayed unowned (W4-179).
+    """
     staging = root / "migration" / "staging"
     if not staging.is_dir():
         return []
     out: list[str] = []
-    for p in staging.rglob("*.java"):
+    for p in staging.rglob("*"):
+        if not p.is_file():
+            continue
         rel = str(p.relative_to(staging)).replace("\\", "/")
         if is_generated_build_path(rel):
+            continue
+        low = rel.lower()
+        if not any(low.endswith(suf) for suf in _STAGING_SCOPE_SUFFIXES):
             continue
         out.append(rel)
     return sorted(out)

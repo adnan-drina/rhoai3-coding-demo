@@ -9056,6 +9056,82 @@ EOF
 }
 check "roadmap-lint REDs staging file missing from scope (O-SCOPECOVER)" 0 "scopecover-orphan-red-ok"
 
+# O-SCOPENONJAVA — properties in staging must be scoped (or excluded)
+run_case() {
+  grep -q 'O-SCOPENONJAVA\|_STAGING_SCOPE_SUFFIXES\|_scope_suf' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q '\.properties' "$HARNESS_DIR/roadmap-lint.py" \
+    && echo scopenonjava-wire-ok
+}
+check "O-SCOPENONJAVA wired (staging suffixes include properties)" 0 "scopenonjava-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/resources
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'k=v\n' > migration/staging/src/main/resources/application.properties
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain model foundation
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model ready
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-SCOPECOVER' \
+    && echo "$out" | grep -q 'application.properties' \
+    && echo scopenonjava-orphan-red-ok
+}
+check "roadmap-lint REDs unowned staging .properties (O-SCOPENONJAVA)" 0 "scopenonjava-orphan-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/resources
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'k=v\n' > migration/staging/src/main/resources/application.properties
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Platform
+- scope: src/main/java/com/demo/model/Owner.java, src/main/resources/application.properties
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: platform ready
+- rationale: harvest
+- kind: mixed
+- seat-budget: 2
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true)
+  ! echo "$out" | grep -q 'LINT:O-SCOPECOVER' && echo scopenonjava-owned-ok
+}
+check "roadmap-lint no O-SCOPECOVER when staging .properties owned (O-SCOPENONJAVA)" 0 "scopenonjava-owned-ok"
+
 # O-STAGESCOPE — skeleton/fill scope from staging partition
 run_case() {
   grep -q 'O-STAGESCOPE\|apply_staging_scope\|staging_layer_scopes' "$HARNESS_DIR/m2-compose.py" \
