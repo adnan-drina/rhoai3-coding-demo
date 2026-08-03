@@ -96,11 +96,12 @@ if [ "$DO_START" = "1" ]; then
   fi
   # O-OUTERSTART: oc-exec bash -lc can reap the background job when the remote
   # shell exits unless we disown; plain nohup alone was returning a dead PID.
+  # v4 GO: M3_ALL=1 required; M3_ALL_OPERATOR_AUTO must stay unset (loud operator gate).
   oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized || exit 1
     : >> /tmp/outer-loop.log
-    nohup env -u RUN_BASE -u RESUME_RUN_BASE -u RESUME_STORY \
-      WORKER_FIRST=true OUTER_LOOP_PLAIN=1 \
+    nohup env -u RUN_BASE -u RESUME_RUN_BASE -u RESUME_STORY -u M3_ALL_OPERATOR_AUTO \
+      M3_ALL=1 WORKER_FIRST=true OUTER_LOOP_PLAIN=1 \
       stdbuf -oL -eL .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
     OPID=$!
     disown "$OPID" 2>/dev/null || true

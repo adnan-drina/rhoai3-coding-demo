@@ -20,4 +20,13 @@ Archived prior gates: `tmp/docs-archive/V9-QUALITY-GATE.md` (do not append for t
 - **Specimen tip at prep:** `009711a` initial commit
 - **LRR:** GO with R3 manifest asserted
 
+## GO — 2026-08-03T10:38Z (operator)
+
+- **Operator GO** for fresh Wave 4 run on **`petclinic-rest-v4`** only.
+- **v3 PVC scrapped** — not used for flight path; R4 remaining sfix corpus cases deferred by choice (manifest corrected).
+- **Start env:** `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` unset, no `V9_SKIP_*`.
+- **Preflight:** honesty bank (not `--restart` / not full ⬜).
+- **Predictions:** `docs/M3-ALL-PREDICTIONS-FROZEN.md`
+- **Manifest:** `docs/V10-CHANGE-MANIFEST.md`
+
 Append task / milestone sections below as the wave runs.

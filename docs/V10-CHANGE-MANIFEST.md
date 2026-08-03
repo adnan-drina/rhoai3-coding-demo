@@ -51,7 +51,7 @@ Deferred for this wave. Operator may veto any line before GO.
 
 | ID / theme | Reason | Parking target |
 |---|---|---|
-| **R4** exec-corpus per-sfix coverage (`O-SFIXNAMING`, `O-SFIXPATHS`, `O-SFIX-K7-vs-sonar` replay cases) | Seeded corpus is 2/N; PVC extraction window closed for remaining sfix families before GO. Gate GREEN on existing cases is under test; full per-item coverage is not. | Next boundary / when v3 archives re-available; keep `O-SFIX-K7-vs-sonar` ⬜ |
+| **R4** exec-corpus per-sfix coverage (`O-SFIXNAMING`, `O-SFIXPATHS`, `O-SFIX-K7-vs-sonar` replay cases) | Seeded corpus is 2/N (sfixnodelta + escalation-cause). **Deferred by operator choice at GO** — v3 PVC scrapped / not used for the v4 flight path; wave runs only on `petclinic-rest-v4`. Gate GREEN on the two seeded cases remains UNDER-TEST. | Next boundary from host archives or future specimens; keep `O-SFIX-K7-vs-sonar` ⬜ |
 | **R6** O-LOGPROG / O-LOGRUN | Banked `📋` follow-on; P1 log identity/brief/epilog already UNDER-TEST. Positional heartbeat + run line not required to start. | Next polish wave (`docs/V10-FUTURE-IMPROVEMENTS.md` 📋) |
 | **R7** full guard-manifest build / L2–L3 completeness program | Seed + `--check` UNDER-TEST; exhaustive Guard×Mechanism×Verification build may trail. | Predicate / guard program after v4 story-1 |
 | **R8** A-1 work-inventory union | Spine still findings-centric; schema/data-init/test-strategy partition not landed. Risk accepted: known v3 gap class may recur until inventory lands. | ADR-9 / post-v4 architecture land |
