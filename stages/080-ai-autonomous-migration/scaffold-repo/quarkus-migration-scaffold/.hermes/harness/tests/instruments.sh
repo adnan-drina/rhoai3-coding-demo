@@ -8505,6 +8505,174 @@ run_case() {
 }
 check "O-SPECREIMPL wired in plan-lint (O-SPECREIMPL)" 0 "specreimpl-wire-ok"
 
+# O-M2COMPOSE — skeleton-first partition + computed seat-budget + brief stubs
+run_case() {
+  test -f "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'm2-compose.py' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M2COMPOSE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M2_COMPOSE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm2_compose_bookkeeping' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qi 'O-M2COMPOSE\|m2-compose' "$HARNESS_DIR/../skills/migration-harness/SEQUENCING.md" \
+    && echo m2compose-wire-ok
+}
+check "m2-compose wired in outer-loop + SEQUENCING (O-M2COMPOSE)" 0 "m2compose-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-parent-pom-to-quarkus-00000 [rewrite]
+
+- Convert parent POM
+- Decided target: Quarkus BOM
+- /projects/legacy/pom.xml: line 1, 2
+
+## springboot-di-to-quarkus-00000 [rewrite]
+
+- CDI
+- Decided target: @ApplicationScoped
+- /projects/legacy/src/main/java/com/demo/service/FooService.java: line 10
+
+## javax-to-jakarta-import-00001 [recipe]
+
+- jakarta rename
+- Decided target: recipe
+- /projects/legacy/src/main/java/com/demo/model/Bar.java: line 3
+
+## springboot-devservices-to-quarkus-00000 [non-mandatory]
+
+- devservices
+- Decided target: optional
+
+## Summary by class
+
+- recipe: 1 — javax-to-jakarta-import-00001
+- rewrite: 2 — springboot-di-to-quarkus-00000, springboot-parent-pom-to-quarkus-00000
+- non-mandatory: 1 — springboot-devservices-to-quarkus-00000
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode skeleton 2>&1) || true
+  echo "$out" | grep -q 'wrote skeleton\|O-M2COMPOSE: done' \
+    && test -f "$FIX/migration/roadmap.md" \
+    && grep -q 'O-M2COMPOSE-SKELETON' "$FIX/migration/roadmap.md" \
+    && grep -q 'springboot-parent-pom-to-quarkus-00000' "$FIX/migration/roadmap.md" \
+    && grep -q 'springboot-di-to-quarkus-00000' "$FIX/migration/roadmap.md" \
+    && ! grep -q 'javax-to-jakarta-import-00001' "$FIX/migration/roadmap.md" \
+    && grep -q 'Non-mandatory decisions' "$FIX/migration/roadmap.md" \
+    && grep -q 'springboot-devservices-to-quarkus-00000' "$FIX/migration/roadmap.md" \
+    && grep -qE 'deploy: true' "$FIX/migration/roadmap.md" \
+    && ls "$FIX"/migration/briefs/S*.md >/dev/null 2>&1 \
+    && echo m2compose-skeleton-ok
+}
+check "m2-compose skeleton partitions + briefs + K3 + deploy-last (O-M2COMPOSE)" 0 "m2compose-skeleton-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-parent-pom-to-quarkus-00000 [rewrite]
+
+- parent
+- Decided target: BOM
+- /projects/legacy/pom.xml: line 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+
+## springboot-di-to-quarkus-00000 [OPEN DESIGN]
+
+- di
+- Decided target: decide
+- /projects/legacy/src/main/java/com/demo/service/FooService.java: line 1, 2
+
+## Summary by class
+
+- rewrite: 1 — springboot-parent-pom-to-quarkus-00000
+- OPEN DESIGN: 1 — springboot-di-to-quarkus-00000
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+
+## S01: Platform
+- scope: pom.xml
+- findings: springboot-parent-pom-to-quarkus-00000, springboot-di-to-quarkus-00000
+- depends: -
+- deploy: false
+- done: platform ready
+- rationale: BOM first
+- kind: mixed — split platform vs service later
+- seat-budget: 1
+
+## S02: Services
+- scope: src/main/java/com/demo/service/FooService.java
+- findings: springboot-di-to-quarkus-00000
+- depends: S01
+- deploy: false
+- done: services ready
+- rationale: after platform
+- kind: reimplement
+- seat-budget: 99
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill 2>&1) || true
+  # dual-owner DI kept on S01 only; S02 budget corrected; last deploy true; brief stubs
+  s01=$(awk '/^## S01:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
+  s02=$(awk '/^## S02:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
+  echo "$s01" | grep -q 'springboot-di-to-quarkus-00000' \
+    && ! echo "$s02" | grep -q 'springboot-di-to-quarkus-00000' \
+    && echo "$s02" | grep -qE '^- seat-budget: 5$' \
+    && echo "$s02" | grep -qE '^- deploy: true$' \
+    && ls migration/briefs/S01-*.md >/dev/null 2>&1 \
+    && ls migration/briefs/S02-*.md >/dev/null 2>&1 \
+    && echo "$out" | grep -q 'seat-budget-updates\|O-M2COMPOSE: done' \
+    && echo m2compose-fill-ok
+}
+check "m2-compose fill dedupes coverage + writes seat-budget + deploy-last (O-M2COMPOSE)" 0 "m2compose-fill-ok"
+
+# O-M2-429 — rate-limit does not burn M2 attempt; real backoff (not claimed-only)
+run_case() {
+  grep -q 'O-M2-429' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M2_429_BACKOFF_SECS' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'attempt .* NOT spent' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'caller must NOT-spend + backoff' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -q 'supervisor backs off 15m on orch 429s' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m2429-wire-ok
+}
+check "outer-loop M2 429 NOT-spent + real backoff wire (O-M2-429)" 0 "m2429-wire-ok"
+
+# O-M2RETRYINLINE — attempt-2 prompt inlines bounded lint (not path-only)
+run_case() {
+  grep -q 'O-M2RETRYINLINE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'BEGIN ROADMAP-LINT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M2_RETRY_LINT_LINES' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -qE 'findings are in /tmp/roadmap-lint\.txt \(read it with your file tools\)' \
+         "$HARNESS_DIR/outer-loop.sh" \
+    && echo m2retryinline-wire-ok
+}
+check "outer-loop M2 retry inlines lint (O-M2RETRYINLINE)" 0 "m2retryinline-wire-ok"
+
+# O-M2CORPUS — known-RED v4 M2 lint×2 fixture re-lints RED with live argv
+run_case() {
+  test -f "$HARNESS_DIR/m2-corpus-lint.sh" \
+    && test -d "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-lintx2-10790d6" \
+    && out=$(bash "$HARNESS_DIR/m2-corpus-lint.sh" --case v4-m2-lintx2-10790d6 2>&1) \
+    && echo "$out" | grep -q 'PASS v4-m2-lintx2-10790d6' \
+    && echo "$out" | grep -q 'O-M2CORPUS PASS' \
+    && echo m2corpus-red-ok
+}
+check "m2-corpus known-RED v4 lint×2 stays RED (O-M2CORPUS)" 0 "m2corpus-red-ok"
+
+# O-MONSTART — preflight --start wires dual-monitor start (host telemetry)
+run_case() {
+  local top preflight
+  top=$(git -C "$HARNESS_DIR/../../../../.." rev-parse --show-toplevel 2>/dev/null || true)
+  preflight="${top}/scripts/track-b/v9-preflight-outer-start.sh"
+  [ -n "$top" ] && [ -f "$preflight" ] \
+    && grep -q 'O-MONSTART' "$preflight" \
+    && grep -qE 'v10-v3-dual-monitor-start\.sh|dual-monitor-start' "$preflight" \
+    && echo monstart-wire-ok
+}
+check "preflight --start wires dual-monitor (O-MONSTART)" 0 "monstart-wire-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then

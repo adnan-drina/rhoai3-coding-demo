@@ -70,6 +70,25 @@ else
   _fail "SC-0 golden scaffold missing key M3-ALL modules"
 fi
 
+# Architect addition (W4-141): LRR asserts m2-compose exists and is wired
+# before the M2 seat (O-M2COMPOSE) — readiness grows with each boundary lesson.
+if [ -f "${SCAFFOLD}/.hermes/harness/m2-compose.py" ] \
+  && grep -q 'm2_compose_bookkeeping\|O-M2COMPOSE' \
+       "${SCAFFOLD}/.hermes/harness/outer-loop.sh" 2>/dev/null; then
+  _pass "SC-0 O-M2COMPOSE m2-compose.py present + outer-loop wired"
+else
+  _fail "SC-0 O-M2COMPOSE missing m2-compose.py or outer-loop wire"
+fi
+
+# O-MONSTART — preflight --start must start host dual-monitor (checklist)
+if grep -q 'O-MONSTART' "${ROOT}/scripts/track-b/v9-preflight-outer-start.sh" \
+  && grep -qE 'v10-v3-dual-monitor-start\.sh|dual-monitor-start' \
+       "${ROOT}/scripts/track-b/v9-preflight-outer-start.sh"; then
+  _pass "SC-3 O-MONSTART preflight --start wires dual-monitor"
+else
+  _fail "SC-3 O-MONSTART missing from v9-preflight-outer-start.sh --start path"
+fi
+
 # Dirty .hermes under scaffold = improvement wave not banked in git.
 # O-HERMESPARITYSEM: ignore .published-fp alone (stamp STAMPED_AT churn).
 hermes_dirty="$(
@@ -143,6 +162,12 @@ if bash "${ROOT}/scripts/track-b/v10-exec-corpus-gate.sh" >/tmp/lrr-exec-corpus.
   _pass "SC-2d exec-corpus gate GREEN"
 else
   _fail "SC-2d exec-corpus gate RED (see /tmp/lrr-exec-corpus.out) — R4 follow-ons may still be open"
+fi
+
+if bash "${ROOT}/scripts/track-b/v10-m2-corpus-gate.sh" >/tmp/lrr-m2-corpus.out 2>&1; then
+  _pass "SC-2d m2-corpus gate GREEN"
+else
+  _fail "SC-2d m2-corpus gate RED (see /tmp/lrr-m2-corpus.out)"
 fi
 
 # Seat budget + storykind wiring present

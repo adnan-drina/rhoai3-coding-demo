@@ -1,0 +1,15 @@
+LINT:stories: S05: findings: '-' is only for HARVEST/characterization stories — own the redesign findings or split the story (S-FND)
+LINT:coverage: finding spring-components-00001 owned by both S01 and S06
+LINT:coverage: finding spring-components-00002 owned by both S01 and S06
+LINT:coverage: mandatory finding springboot-di-to-quarkus-00002 owned by no story
+LINT:coverage: javax-to-jakarta-import-00001 is recipe-executed — no story should own it (owned by S02)
+LINT:O-PORTDERIVE: S01: brief missing REDESIGN target contract (owns OPEN DESIGN finding(s) localhost-jdbc-00002,springboot-cache-to-quarkus-00000) — name each REDESIGN class with a target shape from architecture-profile §7 (O-PORTDERIVE / ARCH A1)
+LINT:O-STORYKIND: S01: kind: mixed requires justification / split suggestion (O-STORYKIND / ARCH A3)
+LINT:O-SEATBUDGET: S01: seat-budget: 10 != expected 30 (kind=mixed × incidents=53 / unit=10) (O-SEATBUDGET / ARCH A5)
+LINT:fabrication: S02: brief cites @Transactional on JpaOwnerRepositoryImpl.java but it is absent from the legacy source (invented annotation)
+LINT:O-SEATBUDGET: S02: seat-budget: 1 != expected 14 (kind=rename × incidents=138 / unit=10) (O-SEATBUDGET / ARCH A5)
+LINT:O-SEATBUDGET: S03: brief must publish seat-budget: 1 (O-SEATBUDGET / ARCH A5)
+LINT:fabrication: S04: brief cites method 'findByName(' on SpringDataPetRepository.java but it is absent from the legacy source (invented method)
+LINT:O-STORYKIND: S04: missing field 'kind' (rename|reimplement|mixed) — required when story owns OPEN DESIGN or scopes §7 REDESIGN (O-STORYKIND / ARCH A3)
+LINT:O-SEATBUDGET: S05: brief must publish seat-budget: 5 (O-SEATBUDGET / ARCH A5)
+LINT:briefs: S06: no brief file migration/briefs/S06-*.md

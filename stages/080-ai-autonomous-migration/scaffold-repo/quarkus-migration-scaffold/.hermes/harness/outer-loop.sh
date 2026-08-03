@@ -413,7 +413,9 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   wait "$hb_pid" 2>/dev/null || true
   now=$(date +%s)
   if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$slog" 2>/dev/null; then
-    log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — supervisor backs off 15m on orch 429s"
+    # O-ORCH429BACKOFF / O-M2-429: do not claim a backoff here — callers
+    # (M2/M3) must NOT-spend + sleep themselves (session≠gate).
+    log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — caller must NOT-spend + backoff"
   fi
   log "·        ${title} session finished ($((now - t0))s, hermes_rc=${rc}) — checking gate next (session≠gate)"
   return $rc
@@ -631,18 +633,71 @@ else
 fi
 
 # ------------------------------------------------------------ M2 SEQUENCE
+# O-M2-429 / O-ORCH429BACKOFF: real backoff when MiniMax 429s mid-seat
+# (default 900s). Override M2_429_BACKOFF_SECS for instruments.
+M2_429_BACKOFF_SECS="${M2_429_BACKOFF_SECS:-900}"
+M2_COMPOSE="${M2_COMPOSE:-1}"
 roadmap_green() {
   # O-PORTDERIVE: pass architecture-profile.md so §7 REDESIGN ↔ brief contract is gated
   [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
 }
+m2_compose_bookkeeping() {
+  # O-M2COMPOSE: deterministic partition + seat-budget + brief stubs + K3 rows
+  [ "${M2_COMPOSE}" = "1" ] || return 0
+  [ -f "$HARNESS/m2-compose.py" ] || return 0
+  local mode="${1:-fill}"
+  if python3 "$HARNESS/m2-compose.py" --root . --mode "$mode" \
+      > /tmp/m2-compose.txt 2>&1; then
+    log "         O-M2COMPOSE ${mode}: $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+    return 0
+  fi
+  log "         O-M2COMPOSE ${mode} RED — see /tmp/m2-compose.txt"
+  return 1
+}
 if roadmap_green; then
   phase_ok "M2 SEQUENCE — roadmap already present and lint-green"
 else
-  for ATTEMPT in 1 2; do
-    phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/2]"
-    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). When kind is set, also declare seat-budget: N derived from kind × owned-finding incident count (O-SEATBUDGET / ARCH A5; rename=1 reimplement=5 mixed=5 seats per ceil(incidents/10) unit) and publish the same N in the brief. Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Each mandatory finding id in exactly ONE story (no LINT:coverage dual-owner); story scope must list real code/test paths (no ceremonial name-only scopes); last story deploy=true; do not claim recipe-executed findings. A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
-    [ "$ATTEMPT" = "2" ] && P="Use the migration-harness skill and read SEQUENCING.md in its directory. A previous M2 attempt failed its lint — the findings are in /tmp/roadmap-lint.txt (read it with your file tools). LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+  # O-M2COMPOSE skeleton-first: unique-owner partition + brief stubs before seat
+  if [ "${M2_COMPOSE}" = "1" ] && [ ! -f migration/roadmap.md ]; then
+    phase_start "M2 SEQUENCE — skeleton-first compose (O-M2COMPOSE)"
+    if m2_compose_bookkeeping skeleton; then
+      phase_gate "M2 SEQUENCE compose" GREEN "$(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+    else
+      phase_gate "M2 SEQUENCE compose" RED "see /tmp/m2-compose.txt"
+      fail_run "O-M2COMPOSE skeleton-first RED (see /tmp/m2-compose.txt)"
+    fi
+  elif [ "${M2_COMPOSE}" = "1" ] && [ -f migration/roadmap.md ]; then
+    # Refresh bookkeeping on a partial/prior RED roadmap before the seat
+    m2_compose_bookkeeping fill || true
+  fi
+  ATTEMPT=1
+  M2_MAX_ATTEMPTS=2
+  # O-M2RETRYINLINE: bound inlined lint so the retry prompt stays usable.
+  M2_RETRY_LINT_LINES="${M2_RETRY_LINT_LINES:-80}"
+  M2_RETRY_LINT_BYTES="${M2_RETRY_LINT_BYTES:-8000}"
+  while [ "$ATTEMPT" -le "$M2_MAX_ATTEMPTS" ]; do
+    phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/${M2_MAX_ATTEMPTS}]"
+    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    if [ "$ATTEMPT" -gt 1 ]; then
+      # O-M2RETRYINLINE: put bounded lint in the prompt — do not rely on the
+      # seat re-reading /tmp/roadmap-lint.txt (v3 death mode / path-only miss).
+      _lint_inline=""
+      if [ -f /tmp/roadmap-lint.txt ]; then
+        _lint_inline="$(
+          head -c "${M2_RETRY_LINT_BYTES}" /tmp/roadmap-lint.txt \
+            | head -n "${M2_RETRY_LINT_LINES}"
+        )"
+      fi
+      [ -n "${_lint_inline}" ] || _lint_inline="(roadmap-lint.txt empty or missing — re-run roadmap-lint.py locally)"
+      P="Use the migration-harness skill and read SEQUENCING.md in its directory. A previous M2 attempt failed its lint. O-M2RETRYINLINE — fix EVERY line below (inlined; do not skip by skipping a file read):
+---BEGIN ROADMAP-LINT---
+${_lint_inline}
+---END ROADMAP-LINT---
+(Full output also at /tmp/roadmap-lint.txt if truncated.) LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief; m2-compose fill will rewrite the arithmetic). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    fi
     mchat "m2-sequence-a${ATTEMPT}" "$P" "M2 SEQUENCE"
+    # O-M2COMPOSE fill after seat — kill coverage/briefs/deploy/seat-budget bookkeeping
+    m2_compose_bookkeeping fill || true
     if roadmap_green; then
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "commit $(git rev-parse --short HEAD)"
@@ -665,8 +720,17 @@ else
       phase_ok "M2 SEQUENCE — roadmap + briefs lint-green; commit $(git rev-parse --short HEAD)"
       break
     fi
+    # O-M2-429: hermes_rc=0 after rate-limit is NOT seat success — do not burn attempt
+    if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" \
+        "/tmp/outer-m2-sequence-a${ATTEMPT}.log" 2>/dev/null; then
+      log "         O-M2-429: MiniMax rate-limited — attempt ${ATTEMPT} NOT spent; backoff ${M2_429_BACKOFF_SECS}s"
+      phase_retry "M2 SEQUENCE — quota; sleeping ${M2_429_BACKOFF_SECS}s (O-M2-429)"
+      sleep "${M2_429_BACKOFF_SECS}"
+      continue
+    fi
     phase_gate "M2 SEQUENCE roadmap-lint" RED "full findings /tmp/roadmap-lint.txt"
-    [ "$ATTEMPT" = "2" ] && fail_run "M2 SEQUENCE failed its lint twice"
+    [ "$ATTEMPT" -ge "$M2_MAX_ATTEMPTS" ] && fail_run "M2 SEQUENCE failed its lint twice"
+    ATTEMPT=$((ATTEMPT + 1))
     phase_retry "M2 SEQUENCE — bouncing once"
   done
 fi

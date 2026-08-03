@@ -23,8 +23,9 @@ workspace `V10_WS_NAME=petclinic-rest-v4`.
 | Bank ⬜ | `v9-bank-gate.sh honesty\|all` (`BANK_DOC`=`docs/V10-FUTURE-IMPROVEMENTS.md`) | implement ⬜→✅; 📋 = later wave (ignored); preflight refuses start |
 | Coolstore hardcode | `v9-coolstore-lint.sh` | remove specimen hardcoding from harness |
 | O-FALSECOMPLETE | `v9-story-complete-lint.sh` | re-earn via ship-only path below |
-| Outer start | `v9-preflight-outer-start.sh` | bank + coolstore + plan-corpus/defaults (`v10-plan-corpus-gate.sh`) + exec-corpus (`v10-exec-corpus-gate.sh`) + story-complete lint + **O-HERMESPREFLIGHT** (`v10-hermes-parity.sh`) + **O-GOLDENFRESH** (`v10-golden-fresh.sh`) + no blocking pendings |
+| Outer start | `v9-preflight-outer-start.sh` | bank + coolstore + plan-corpus/defaults (`v10-plan-corpus-gate.sh`) + exec-corpus (`v10-exec-corpus-gate.sh`) + **O-M2CORPUS** (`v10-m2-corpus-gate.sh`) + story-complete lint + **O-HERMESPREFLIGHT** (`v10-hermes-parity.sh`) + **O-GOLDENFRESH** (`v10-golden-fresh.sh`) + no blocking pendings; **`--start`** also starts host dual-monitor (**O-MONSTART**) |
 | Plan corpus | `v10-plan-corpus-gate.sh` | O-PLANCORPUS live-flag re-lint + O-DEFAULTAUDIT seed check |
+| M2 corpus | `v10-m2-corpus-gate.sh` | O-M2CORPUS archived roadmap known-RED re-lint (live argv) |
 | Exec corpus | `v10-exec-corpus-gate.sh` | O-EXECCORPUS archived sfix/escalation honesty replay |
 | Hermes parity | `v10-hermes-parity.sh` | O-HERMESPREFLIGHT fail-closed golden↔pod `.hermes` digest; `--compare` for instruments; **O-HERMESPARITYSEM** shared semantic exclusions via `qg_hermes_list_semantic_files` |
 | Golden fresh | `v10-golden-fresh.sh` | O-GOLDENFRESH publish-fp + three-way repo/published/pod; `--stamp` / `--check-local` for instruments; same semantic digest as parity |

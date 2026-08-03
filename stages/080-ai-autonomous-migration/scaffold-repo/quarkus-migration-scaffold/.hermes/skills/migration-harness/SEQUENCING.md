@@ -22,6 +22,31 @@ leaves the repository buildable, sensor-green, and closer to done.
   the marks.
 - `migration.yaml` — preserve/forbidden/acceptance contracts
 
+## O-M2COMPOSE — skeleton-first bookkeeping (harness, not the model)
+
+Before and after the M2 seat, `m2-compose.py` deterministically:
+
+- partitions every mandatory finding to **exactly one** story (strips
+  recipe-executed claims; assigns orphans by path/layer)
+- emits brief section stubs for every story
+- seeds the `## Non-mandatory decisions` table (you still supply
+  adopt/defer **reasons**)
+- sets `deploy: true` on the last story
+- when `kind:` is set, writes computed `seat-budget: N` from
+  `seat-budget.py` (kind × incidents / unit) into roadmap + brief
+
+Do **not** re-derive that arithmetic. Spend judgment on story
+boundaries/rationale, `kind`, real legacy quotes, §7 REDESIGN target
+contracts, and adopt/defer decisions.
+
+## O-M2RETRYINLINE — retry seats see the lint
+
+On M2 attempt ≥2 the outer-loop prompt **inlines** a bounded copy of
+`/tmp/roadmap-lint.txt` between `---BEGIN ROADMAP-LINT---` fences.
+Fix every inlined `LINT:` line — do not rely on re-reading the temp
+path (path-only retries miss findings). Caps:
+`M2_RETRY_LINT_LINES` (default 80) / `M2_RETRY_LINT_BYTES` (default 8000).
+
 ## How to cut stories
 
 1. **Follow the graph, not the file tree.** Story order = dependency

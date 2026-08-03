@@ -84,6 +84,11 @@ if [ "${V9_SKIP_GOLDEN_FRESH:-0}" != "1" ]; then
   bash "${ROOT}/scripts/track-b/v10-golden-fresh.sh"
 fi
 
+# O-M2CORPUS — archived M2 known-RED roadmap re-lint (pair O-PLANCORPUS)
+if [ "${V9_SKIP_M2_CORPUS:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-m2-corpus-gate.sh"
+fi
+
 echo "PREFLIGHT GREEN"
 
 if [ "$DO_START" = "1" ]; then
@@ -92,6 +97,10 @@ if [ "$DO_START" = "1" ]; then
   CTR="$(qg_ws_ctr)"
   if qg_remote_pgrep_busy 'harness/outer-loop\.sh'; then
     echo already_running
+    # O-MONSTART: still ensure dual-monitor is up when outer already runs
+    if [ "${V9_SKIP_MONSTART:-0}" != "1" ]; then
+      bash "${ROOT}/tmp/v10-v3-dual-monitor-start.sh" || true
+    fi
     exit 0
   fi
   # O-OUTERSTART: oc-exec bash -lc can reap the background job when the remote
@@ -113,4 +122,14 @@ if [ "$DO_START" = "1" ]; then
       exit 1
     fi
   '
+  # O-MONSTART: host dual-monitor must start with outer so first M4 seats
+  # are telemetered (O-TASKMUTATE / ttfw). Invisible to pod fingerprints.
+  if [ "${V9_SKIP_MONSTART:-0}" != "1" ]; then
+    if [ -x "${ROOT}/tmp/v10-v3-dual-monitor-start.sh" ] \
+      || [ -f "${ROOT}/tmp/v10-v3-dual-monitor-start.sh" ]; then
+      bash "${ROOT}/tmp/v10-v3-dual-monitor-start.sh"
+    else
+      echo "O-MONSTART: WARN missing tmp/v10-v3-dual-monitor-start.sh" >&2
+    fi
+  fi
 fi
