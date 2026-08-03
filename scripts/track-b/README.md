@@ -8,7 +8,8 @@ Shared helpers: `lib-quality-gates.sh` (`qg_ws_pod`, `qg_story_complete_ok`,
 
 Active v4 wave docs (defaults): `GATE_DOC=docs/V10-QUALITY-GATE.md`,
 `BANK_DOC=docs/V10-FUTURE-IMPROVEMENTS.md`, `REVIEW_DOC=tmp/KAI-WAVE4-REVIEW.md`,
-change manifest `docs/V10-CHANGE-MANIFEST.md`, monitor `tmp/V10-V4-MONITOR.md`,
+change manifest `docs/V10-CHANGE-MANIFEST.md`, monitor `tmp/V10-V4-MONITOR.md`
+(via **dual-monitor only** — standalone Cursor Qwen / V3 MONITOR.md out of scope),
 workspace `V10_WS_NAME=petclinic-rest-v4`.
 
 | Gate | Script | Clears with |
