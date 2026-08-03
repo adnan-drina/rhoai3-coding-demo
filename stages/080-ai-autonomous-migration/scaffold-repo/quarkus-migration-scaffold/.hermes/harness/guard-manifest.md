@@ -150,4 +150,4 @@ Coverage math (rough): count seed rows with L2 or L3 vs L1-only. Gaps
 are the Wave4 ARCH verification asymmetry — not greppable from the bank
 alone.
 
-_Generated: 2026-08-03T11:23:46Z_
+_Generated: 2026-08-03T11:26:34Z_

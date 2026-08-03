@@ -110,4 +110,4 @@ Fail-open defaults remaining are the Wave4 §2 work list. §2.1/§2.2 closed:
 Oracle derived (O-ORACLEDERIVE); O-INFERABSENT LINT with O-NULLACTION-shaped
 proceed — prefer reshape over adding incident-named conditionals.
 
-_Generated: 2026-08-03T11:23:46Z_
+_Generated: 2026-08-03T11:26:08Z_
