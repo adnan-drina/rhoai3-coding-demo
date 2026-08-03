@@ -49,12 +49,16 @@ else
   _fail "SC-0 golden scaffold missing key M3-ALL modules"
 fi
 
-# Dirty .hermes under scaffold = improvement wave not banked in git
-hermes_dirty="$(git -C "$ROOT" status --porcelain -- \
-  'stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes' \
-  | wc -l | tr -d ' ')"
+# Dirty .hermes under scaffold = improvement wave not banked in git.
+# O-HERMESPARITYSEM: ignore .published-fp alone (stamp STAMPED_AT churn).
+hermes_dirty="$(
+  git -C "$ROOT" status --porcelain -- \
+    'stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes' \
+    | { grep -vE '\.published-fp$' || true; } \
+    | wc -l | tr -d ' '
+)"
 if [ "${hermes_dirty:-0}" -eq 0 ]; then
-  _pass "SC-0 golden .hermes clean in git (0 dirty paths)"
+  _pass "SC-0 golden .hermes clean in git (0 dirty paths; stamp-only ignored)"
 else
   _fail "SC-0 golden .hermes still dirty (${hermes_dirty} paths) — commit/push before GO"
 fi
@@ -93,14 +97,18 @@ case "${M3_ALL_OPERATOR_AUTO:-}" in
     ;;
 esac
 
-# Pin check: must not be forced on in tracked scripts/.env.example
-if git -C "$ROOT" grep -nE 'M3_ALL_OPERATOR_AUTO=1' -- \
-  'env.example' 'scripts' 'stages/080-ai-autonomous-migration' 2>/dev/null \
-  | grep -vE 'restart-readiness|M3_ALL_OPERATOR_AUTO unset|operator-auto|WARN' \
-  | grep -q .; then
-  _fail "SC-3 M3_ALL_OPERATOR_AUTO=1 appears pinned in tracked sources"
+# Pin check: refuse real assignments only (not docs/comments mentioning the hatch).
+pin_hits="$(
+  git -C "$ROOT" grep -nE \
+    '^[[:space:]]*(export[[:space:]]+)?M3_ALL_OPERATOR_AUTO=1([[:space:]]|$)' \
+    -- 'env.example' 'scripts' 'stages/080-ai-autonomous-migration' 2>/dev/null \
+    | grep -vE 'restart-readiness\.sh' || true
+)"
+if [ -n "${pin_hits}" ]; then
+  _fail "SC-3 M3_ALL_OPERATOR_AUTO=1 pinned in tracked sources"
+  printf '%s\n' "$pin_hits" | sed 's/^/        /' >&2
 else
-  _pass "SC-3 M3_ALL_OPERATOR_AUTO not pinned in tracked sources"
+  _pass "SC-3 M3_ALL_OPERATOR_AUTO not pinned as an assignment in tracked sources"
 fi
 
 # --- Corpus / defaults gates (no outer start) ---
