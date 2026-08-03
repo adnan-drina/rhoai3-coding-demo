@@ -134,9 +134,14 @@ def story_finding_ids(fields: dict[str, str]) -> set[str]:
 
 
 def brief_has_seat_budget(btext: str, n: int) -> bool:
+    """True when brief publishes seat-budget N (bare, bold, or `N` code span).
+
+    O-M2COMPOSEBOOK: compose emits `- **seat-budget**: \`N\``; the matcher must
+    accept that form so lint does not false-RED a correctly published budget.
+    """
     return bool(
         re.search(
-            rf"(?i)(?:seat-budget|\*\*seat budget\*\*|seat budget)\s*[:=]\s*{n}\b",
+            rf"(?i)(?:\*\*)?(?:seat-budget|seat budget)(?:\*\*)?\s*[:=]\s*`?{n}`?\b",
             btext,
         )
     )

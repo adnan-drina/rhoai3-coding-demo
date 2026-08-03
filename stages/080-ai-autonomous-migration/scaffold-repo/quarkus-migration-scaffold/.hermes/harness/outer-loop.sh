@@ -641,21 +641,47 @@ M2_429_BACKOFF_SECS="${M2_429_BACKOFF_SECS:-900}"
 M2_429_MAX="${M2_429_MAX:-3}"
 M2_429_COUNT=0
 M2_COMPOSE="${M2_COMPOSE:-1}"
+roadmap_lint_residual() {
+  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
+  if [ ! -f /tmp/roadmap-lint.txt ]; then
+    echo 0
+    return 0
+  fi
+  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
+    echo 0
+    return 0
+  fi
+  # Prefer LINT: lines; fall back to non-empty non-OK lines
+  local n
+  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
+  n=${n:-0}
+  if [ "$n" -eq 0 ]; then
+    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
+    n=${n:-0}
+  fi
+  echo "$n"
+}
 roadmap_green() {
   # O-PORTDERIVE: pass architecture-profile.md so §7 REDESIGN ↔ brief contract is gated
   [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
 }
 m2_compose_bookkeeping() {
-  # O-M2COMPOSE: deterministic partition + seat-budget + brief stubs + K3 rows
+  # O-M2COMPOSE: deterministic partition + kind/S-FND/seat-budget + brief stubs + K3
   [ "${M2_COMPOSE}" = "1" ] || return 0
   [ -f "$HARNESS/m2-compose.py" ] || return 0
   local mode="${1:-fill}"
+  local before after detail
+  before=$(roadmap_lint_residual)
   if python3 "$HARNESS/m2-compose.py" --root . --mode "$mode" \
       > /tmp/m2-compose.txt 2>&1; then
-    log "         O-M2COMPOSE ${mode}: $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+    # Re-run lint so residual reflects post-compose bookkeeping (O-LOGLINTRES)
+    roadmap_green || true
+    after=$(roadmap_lint_residual)
+    detail="$(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+    log "         O-M2COMPOSE ${mode}: ${detail} · lint ${before} → ${after}"
     return 0
   fi
-  log "         O-M2COMPOSE ${mode} RED — see /tmp/m2-compose.txt"
+  log "         O-M2COMPOSE ${mode} RED — see /tmp/m2-compose.txt · lint residual $(roadmap_lint_residual)"
   return 1
 }
 if roadmap_green; then
@@ -665,9 +691,9 @@ else
   if [ "${M2_COMPOSE}" = "1" ] && [ ! -f migration/roadmap.md ]; then
     phase_start "M2 SEQUENCE — skeleton-first compose (O-M2COMPOSE)"
     if m2_compose_bookkeeping skeleton; then
-      phase_gate "M2 SEQUENCE compose" GREEN "$(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+      phase_gate "M2 SEQUENCE compose" GREEN "lint residual $(roadmap_lint_residual) — $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
     else
-      phase_gate "M2 SEQUENCE compose" RED "see /tmp/m2-compose.txt"
+      phase_gate "M2 SEQUENCE compose" RED "lint residual $(roadmap_lint_residual) — see /tmp/m2-compose.txt"
       fail_run "O-M2COMPOSE skeleton-first RED (see /tmp/m2-compose.txt)"
     fi
   elif [ "${M2_COMPOSE}" = "1" ] && [ -f migration/roadmap.md ]; then
@@ -705,7 +731,8 @@ ${_lint_inline}
     if roadmap_green; then
       M2_429_COUNT=0  # O-M2429CAP: non-429 success resets quota counter
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
-      phase_gate "M2 SEQUENCE roadmap-lint" GREEN "commit $(git rev-parse --short HEAD)"
+      # O-LOGLINTRES: narrate residual (0) on GREEN so convergence is visible
+      phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
       # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
       if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
         _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt)' migration/roadmap.md 2>/dev/null || true)
@@ -740,7 +767,8 @@ ${_lint_inline}
       continue
     fi
     M2_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter (lint RED burns attempt below)
-    phase_gate "M2 SEQUENCE roadmap-lint" RED "full findings /tmp/roadmap-lint.txt"
+    # O-LOGLINTRES: residual count on RED — the number that shows M2 convergence
+    phase_gate "M2 SEQUENCE roadmap-lint" RED "$(roadmap_lint_residual) findings — /tmp/roadmap-lint.txt"
     [ "$ATTEMPT" -ge "$M2_MAX_ATTEMPTS" ] && fail_run "M2 SEQUENCE failed its lint twice"
     ATTEMPT=$((ATTEMPT + 1))
     phase_retry "M2 SEQUENCE — bouncing once"

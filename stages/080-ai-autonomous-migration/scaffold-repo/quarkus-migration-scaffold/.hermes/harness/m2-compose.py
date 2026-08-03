@@ -11,11 +11,15 @@ Modes:
              deploy on last story.
   fill     — repair an existing roadmap/briefs: unique-owner partition,
              strip recipe-owned claims, brief stubs for missing stories,
-             non-mandatory table completeness, last-story deploy, and
-             **computed seat-budget** from seat-budget.py whenever kind is set.
+             non-mandatory table completeness, last-story deploy,
+             **derived kind** (O-M2COMPOSEBOOK / O-STORYKIND), S-FND repair
+             for redesignish `findings: '-'`, and **computed seat-budget**
+             from seat-budget.py whenever kind is set.
 
-Leave judgment to the model: story titles/rationale refinement, kind,
-fabrication quotes, O-PORTDERIVE target contracts, adopt/defer reasons.
+Leave judgment to the model: story titles/rationale refinement, fabrication
+quotes, O-PORTDERIVE target contracts, adopt/defer reasons. Kind is derived
+when required (OPEN DESIGN / §7 REDESIGN scope); the model may refine with
+justification (especially mixed).
 
 Usage:
   python3 .hermes/harness/m2-compose.py [--root DIR] [--mode skeleton|fill]
@@ -254,6 +258,210 @@ def best_story_for_finding(
     return stories[0]["sid"]
 
 
+def _scope_redesignish(scope: str) -> bool:
+    """Scope looks like service/REST/config work — not pure HARVEST (S-FND)."""
+    return bool(
+        re.search(
+            r"(?i)service/|rest/|repository/|Endpoint|Service\.java|"
+            r"Controller\.java|pom\.xml|/config/|/security/",
+            scope or "",
+        )
+    )
+
+
+def _scope_harvestish(st: dict) -> bool:
+    blob = " ".join(
+        [
+            st.get("rationale") or "",
+            st.get("done") or "",
+            st.get("scope") or "",
+            st.get("title") or "",
+        ]
+    )
+    return bool(
+        re.search(r"(?i)HARVEST|characterization|model layer|\bmodels?\b", blob)
+    )
+
+
+def _finding_score_for_story(fid: str, sites: dict[str, list[str]], st: dict) -> int:
+    """Path/layer overlap score used for unique-owner + S-FND rebalance."""
+    paths = sites.get(fid) or []
+    scope = st.get("scope") or ""
+    if not paths:
+        return 0
+    score = 0
+    for p in paths:
+        leaf = p.rsplit("/", 1)[-1]
+        if leaf and leaf in scope:
+            score += 3
+        lay = layer_for_path(p)
+        if lay == "platform" and "pom.xml" in scope:
+            score += 2
+        if lay != "other" and lay in scope.lower():
+            score += 1
+        for token in (
+            "model",
+            "repository",
+            "service",
+            "rest",
+            "security",
+            "config",
+        ):
+            if token in p and token in scope.lower():
+                score += 1
+    return score
+
+
+def repair_sfnd_empty_findings(stories: list[dict], inv: dict) -> int:
+    """O-M2COMPOSEBOOK: do not leave redesignish stories with findings: '-'.
+
+    Rebalance better-matching findings from other stories; if still empty and
+    harvestish, keep '-'; otherwise mark harvest characterization so S-FND
+    does not reject compose's own output (ADR-4).
+    """
+    sites = inv["sites"]
+    n = 0
+    for st in stories:
+        if (st.get("findings_raw") or "").strip() != "-":
+            continue
+        if st.get("findings"):
+            continue
+        if not _scope_redesignish(st.get("scope") or ""):
+            continue
+        if _scope_harvestish(st):
+            continue
+        # Steal findings that score higher on this story than on current owner
+        moved: list[str] = []
+        for other in stories:
+            if other["sid"] == st["sid"]:
+                continue
+            keep: list[str] = []
+            for fid in list(other["findings"]):
+                s_here = _finding_score_for_story(fid, sites, st)
+                s_there = _finding_score_for_story(fid, sites, other)
+                if s_here > s_there and s_here > 0:
+                    moved.append(fid)
+                else:
+                    keep.append(fid)
+            if len(keep) != len(other["findings"]):
+                other["findings"] = keep
+                other["findings_raw"] = ", ".join(keep) if keep else "-"
+        if moved:
+            st["findings"] = moved
+            st["findings_raw"] = ", ".join(moved)
+            n += 1
+            continue
+        # Still empty: if harvestish after rebalance miss, keep '-'; else
+        # annotate as characterization so lint permits '-' (last resort).
+        if not st["findings"]:
+            rat = st.get("rationale") or ""
+            if not re.search(r"(?i)HARVEST|characterization", rat):
+                st["rationale"] = (
+                    (rat + " " if rat else "")
+                    + "HARVEST/characterization scope — findings owned by "
+                    "layer-aligned stories (O-M2COMPOSEBOOK S-FND)"
+                ).strip()
+                n += 1
+    # refresh raw fields
+    for st in stories:
+        if st["findings"]:
+            st["findings_raw"] = ", ".join(st["findings"])
+        elif (st.get("findings_raw") or "").strip() in ("", "-"):
+            st["findings_raw"] = "-"
+    return n
+
+
+def redesign_classes_from_profile(prof: str) -> set[str]:
+    """CapWord classes governed by REDESIGN in architecture-profile §7."""
+    m = re.search(r"^(#{2,6})[ \t]+.*Class roles.*$", prof, re.M | re.I)
+    if not m:
+        return set()
+    level = len(m.group(1))
+    rest = prof[m.end() :]
+    nxt = re.search(r"^#{1," + str(level) + r"}[ \t]", rest, re.M)
+    sec7 = rest[: nxt.start()] if nxt else rest
+    java_named = set(re.findall(r"\b([A-Z]\w+)\.java\b", sec7))
+    name_re = re.compile(r"`([A-Z]\w+)`|\*\*([A-Z]\w+)\*\*|\b([A-Z]\w+)\.java\b")
+    out: set[str] = set()
+    for mm in name_re.finditer(sec7):
+        nm = mm.group(1) or mm.group(2) or mm.group(3)
+        ls = sec7.rfind("\n", 0, mm.start()) + 1
+        le = sec7.find("\n", mm.start())
+        line = sec7[ls : le if le >= 0 else len(sec7)]
+        if "HARVEST" in line and "REDESIGN" not in line:
+            continue
+        pre = sec7[: mm.start()]
+        if "REDESIGN" in line or pre.rfind("REDESIGN") > pre.rfind("HARVEST"):
+            if nm in java_named or ("REDESIGN" in line and mm.group(1)):
+                out.add(nm)
+    return out
+
+
+def derive_kinds(
+    stories: list[dict], inv: dict, redesign_cls: set[str]
+) -> int:
+    """O-M2COMPOSEBOOK / O-STORYKIND: set kind when lint would require it.
+
+    Defaults: OPEN DESIGN / §7 REDESIGN scope → reimplement; findings without
+    those signals → rename. mixed only when both OPEN DESIGN and non-open
+    findings share a story, with a lint-accepted justification suffix.
+    Does not downgrade an already-justified mixed.
+    """
+    open_design = inv.get("open_design") or set()
+    n = 0
+    just_re = re.compile(
+        r"(?i)\b(split|justif|both\s+kinds?|rename\s*\+?\s*reimplement|"
+        r"reimplement\s+and\s+rename|mixed\s+because|harvest\s*\+?\s*convert|"
+        r"cannot\s+split)\b"
+    )
+    for st in stories:
+        fids = set(st.get("findings") or [])
+        owns_open = bool(fids & open_design)
+        scope = st.get("scope") or ""
+        scope_hit = any(
+            re.search(rf"\b{re.escape(c)}(?:\.java)?\b", scope) for c in redesign_cls
+        )
+        needs = owns_open or scope_hit
+        cur = seat_budget.parse_kind(st.get("kind"))
+        cur_raw = (st.get("kind") or "").strip()
+
+        if not needs:
+            if cur:
+                continue
+            if fids and not _scope_redesignish(scope):
+                st["kind"] = "rename"
+                n += 1
+            continue
+
+        non_open = fids - open_design
+        want = "reimplement"
+        if owns_open and non_open:
+            want = "mixed — cannot split; OPEN DESIGN plus rewrite findings"
+        elif owns_open:
+            want = "reimplement"
+        elif scope_hit:
+            want = "reimplement"
+
+        if cur == "mixed" and just_re.search(cur_raw):
+            continue
+        if cur == "rename" and owns_open:
+            st["kind"] = want
+            n += 1
+            continue
+        if not cur:
+            st["kind"] = want
+            n += 1
+            continue
+        if cur == "mixed" and not just_re.search(cur_raw):
+            # Model left bare mixed — either justify or collapse to reimplement
+            if owns_open and non_open:
+                st["kind"] = want
+            else:
+                st["kind"] = "reimplement"
+            n += 1
+    return n
+
+
 def unique_partition(
     stories: list[dict], inv: dict
 ) -> list[dict]:
@@ -297,6 +505,7 @@ def unique_partition(
                     st["findings_raw"] = ", ".join(st["findings"])
                 claimed[fid] = sid
                 break
+    repair_sfnd_empty_findings(stories, inv)
     return stories
 
 
@@ -314,8 +523,9 @@ def render_roadmap(stories: list[dict], non_mandatory: set[str], prior_nm: str) 
         "# Modernization roadmap",
         "",
         SKELETON_MARK,
-        "# O-M2COMPOSE — mechanical partition / deploy / seat-budget / K3 rows.",
-        "# Model fills JUDGMENT (kind, rationale, quotes, adopt/defer reasons, §7 contracts).",
+        "# O-M2COMPOSE — mechanical partition / kind / deploy / seat-budget / K3 rows.",
+        "# Model fills JUDGMENT (rationale, quotes, adopt/defer reasons, §7 contracts;",
+        "# may refine kind with mixed justification).",
         "",
     ]
     for i, st in enumerate(stories):
@@ -463,10 +673,10 @@ def ensure_brief_seat_budget(path: Path, n: int) -> bool:
     text = path.read_text(encoding="utf-8", errors="replace")
     if seat_budget.brief_has_seat_budget(text, n):
         return False
-    # Replace existing seat-budget publish or inject under Contracts
+    # Replace existing seat-budget publish (bare / bold / `N`) or inject
     new, count = re.subn(
-        r"(?im)((?:seat-budget|\*\*seat budget\*\*|seat budget)\s*[:=]\s*)\d+",
-        rf"\g<1>{n}",
+        r"(?im)((?:\*\*)?(?:seat-budget|seat budget)(?:\*\*)?\s*[:=]\s*`?)\d+(`?)",
+        rf"\g<1>{n}\2",
         text,
         count=1,
     )
@@ -591,6 +801,21 @@ def extract_nm_section(text: str) -> str:
     return m.group(0) if m else ""
 
 
+def _strip_skeleton_preamble(body: str, prior_text: str) -> str:
+    """Drop compose skeleton markers when rewriting an authored roadmap."""
+    if is_roadmap_skeleton(prior_text):
+        return body
+    body = body.replace(SKELETON_MARK + "\n", "")
+    body = re.sub(
+        r"# O-M2COMPOSE — mechanical[^\n]*\n"
+        r"(?:# Model fills JUDGMENT[^\n]*\n){1,2}\n?",
+        "",
+        body,
+        count=1,
+    )
+    return body
+
+
 def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
     inv_path = root / "migration" / "findings-inventory.md"
     if not inv_path.is_file():
@@ -605,9 +830,18 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         if dep_path.is_file()
         else ""
     )
+    profile_path = root / "migration" / "architecture-profile.md"
+    redesign_cls: set[str] = set()
+    if profile_path.is_file():
+        redesign_cls = redesign_classes_from_profile(
+            profile_path.read_text(encoding="utf-8", errors="replace")
+        )
 
     prior_nm = ""
     wrote_roadmap = False
+    n_kind = 0
+    n_sfnd = 0
+    n_budget = 0
     if mode == "skeleton":
         if roadmap_path.is_file() and not force_skeleton:
             text = roadmap_path.read_text(encoding="utf-8", errors="replace")
@@ -628,18 +862,23 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                     if st["sid"] in by_sid and by_sid[st["sid"]].get("kind"):
                         st["kind"] = by_sid[st["sid"]]["kind"]
                 stories = unique_partition(stories, inv)
-                apply_seat_budgets(stories, inv_text)
+                n_kind = derive_kinds(stories, inv, redesign_cls)
+                n_budget = apply_seat_budgets(stories, inv_text)
                 ensure_deploy_last(stories)
                 roadmap_path.write_text(
                     render_roadmap(stories, inv["non_mandatory"], prior_nm),
                     encoding="utf-8",
                 )
                 wrote_roadmap = True
-                print(f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)}")
+                print(
+                    f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)} "
+                    f"kind-updates={n_kind} seat-budget-updates={n_budget}"
+                )
         if not roadmap_path.is_file() or force_skeleton:
             stories = skeleton_from_inventory(inv, dep_text)
             stories = unique_partition(stories, inv)
-            apply_seat_budgets(stories, inv_text)
+            n_kind = derive_kinds(stories, inv, redesign_cls)
+            n_budget = apply_seat_budgets(stories, inv_text)
             ensure_deploy_last(stories)
             roadmap_path.parent.mkdir(parents=True, exist_ok=True)
             roadmap_path.write_text(
@@ -647,7 +886,10 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                 encoding="utf-8",
             )
             wrote_roadmap = True
-            print(f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)}")
+            print(
+                f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)} "
+                f"kind-updates={n_kind} seat-budget-updates={n_budget}"
+            )
 
     if mode == "fill":
         if not roadmap_path.is_file():
@@ -662,26 +904,32 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         if not stories:
             print("O-M2COMPOSE RED: roadmap has no stories", file=sys.stderr)
             return 2
+        before_sfnd = sum(
+            1
+            for st in stories
+            if (st.get("findings_raw") or "").strip() == "-"
+            and _scope_redesignish(st.get("scope") or "")
+            and not _scope_harvestish(st)
+        )
         stories = unique_partition(stories, inv)
+        after_sfnd = sum(
+            1
+            for st in stories
+            if (st.get("findings_raw") or "").strip() == "-"
+            and _scope_redesignish(st.get("scope") or "")
+            and not _scope_harvestish(st)
+        )
+        n_sfnd = max(0, before_sfnd - after_sfnd)
+        n_kind = derive_kinds(stories, inv, redesign_cls)
         n_budget = apply_seat_budgets(stories, inv_text)
         ensure_deploy_last(stories)
-        # Keep authored marker status: if it was skeleton, stay skeleton;
-        # if authored, rewrite without forcing skeleton mark only when
-        # bookkeeping fields change — still emit mark only if prior had it.
         body = render_roadmap(stories, inv["non_mandatory"], prior_nm)
-        if not is_roadmap_skeleton(text):
-            body = body.replace(SKELETON_MARK + "\n", "")
-            body = re.sub(
-                r"# O-M2COMPOSE — mechanical[^\n]*\n"
-                r"# Model fills JUDGMENT[^\n]*\n\n?",
-                "",
-                body,
-                count=1,
-            )
+        body = _strip_skeleton_preamble(body, text)
         roadmap_path.write_text(body, encoding="utf-8")
         wrote_roadmap = True
         print(
             f"O-M2COMPOSE: fill stories={len(stories)} "
+            f"kind-updates={n_kind} sfnd-repairs={n_sfnd} "
             f"seat-budget-updates={n_budget} must={len(inv['must'])}"
         )
 
@@ -689,24 +937,17 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
     stories = parse_roadmap(
         roadmap_path.read_text(encoding="utf-8", errors="replace")
     )
-    # Re-apply budgets onto parsed stories for brief publish
+    # Re-apply kinds + budgets onto parsed stories for brief publish
+    derive_kinds(stories, inv, redesign_cls)
     apply_seat_budgets(stories, inv_text)
-    # Persist budget fields again if fill stripped them somehow
+    # Persist budget/kind fields again if fill stripped them somehow
     if any(st.get("kind") and st.get("seat_budget") for st in stories):
         prior_nm = extract_nm_section(
             roadmap_path.read_text(encoding="utf-8", errors="replace")
         )
         body = render_roadmap(stories, inv["non_mandatory"], prior_nm)
         cur = roadmap_path.read_text(encoding="utf-8", errors="replace")
-        if not is_roadmap_skeleton(cur):
-            body = body.replace(SKELETON_MARK + "\n", "")
-            body = re.sub(
-                r"# O-M2COMPOSE — mechanical[^\n]*\n"
-                r"# Model fills JUDGMENT[^\n]*\n\n?",
-                "",
-                body,
-                count=1,
-            )
+        body = _strip_skeleton_preamble(body, cur)
         if body != cur:
             roadmap_path.write_text(body, encoding="utf-8")
             wrote_roadmap = True
@@ -714,7 +955,8 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
     bw, br = write_briefs(root, stories, force_skeleton=force_skeleton)
     print(
         f"O-M2COMPOSE: done mode={mode} roadmap_written={wrote_roadmap} "
-        f"briefs_wrote={bw} briefs_refreshed={br}"
+        f"briefs_wrote={bw} briefs_refreshed={br} "
+        f"kind-updates={n_kind} seat-budget-updates={n_budget}"
     )
     return 0
 

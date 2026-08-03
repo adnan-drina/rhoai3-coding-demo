@@ -28,6 +28,10 @@ Before and after the M2 seat, `m2-compose.py` deterministically:
 
 - partitions every mandatory finding to **exactly one** story (strips
   recipe-executed claims; assigns orphans by path/layer)
+- repairs redesignish `findings: '-'` (S-FND) by rebalancing path-aligned
+  findings or marking true HARVEST/characterization (O-M2COMPOSEBOOK)
+- derives `kind:` when OPEN DESIGN / §7 REDESIGN scope requires it
+  (`reimplement` default; `mixed` only with a lint-accepted justification)
 - emits brief section stubs for every story
 - seeds the `## Non-mandatory decisions` table (you still supply
   adopt/defer **reasons**)
@@ -35,9 +39,10 @@ Before and after the M2 seat, `m2-compose.py` deterministically:
 - when `kind:` is set, writes computed `seat-budget: N` from
   `seat-budget.py` (kind × incidents / unit) into roadmap + brief
 
-Do **not** re-derive that arithmetic. Spend judgment on story
-boundaries/rationale, `kind`, real legacy quotes, §7 REDESIGN target
-contracts, and adopt/defer decisions.
+Do **not** re-derive that arithmetic. Publish the compose/lint
+`seat-budget` value. Spend judgment on story boundaries/rationale,
+refining `kind` (especially justified `mixed`), real legacy quotes,
+§7 REDESIGN target contracts, and adopt/defer decisions.
 
 ## O-M2RETRYINLINE — retry seats see the lint
 

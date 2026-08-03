@@ -3009,13 +3009,15 @@ check "plan-lint rejects acceptance endpoint on non-deploy story (O-M3ACCEPT)" 1
 
 run_case() {
   # O-M3EVID / O-M3ACCEPT / O-M3QUOTA wiring in outer-loop
+  # O-M2429CAP: M3 backoff is sleep "${M3_429_BACKOFF_SECS}" (default 900), not bare sleep 900
   ! grep -nE 'plan-lint\.py.*"\$SPEC_TASKS".*\|\|.*tasks\.md missing' \
     "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3EVID' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'story-deploy' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3QUOTA' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3QUOTA-GATE' "$HARNESS_DIR/outer-loop.sh" \
-    && grep -q 'sleep 900' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_429_BACKOFF_SECS' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'sleep "${M3_429_BACKOFF_SECS}"' "$HARNESS_DIR/outer-loop.sh" \
     && echo om3evid-ok
 }
 check "outer-loop O-M3EVID + O-M3ACCEPT + O-M3QUOTA wiring" 0 "om3evid-ok"
@@ -8614,11 +8616,13 @@ EOF
 - seat-budget: 99
 EOF
   out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill 2>&1) || true
-  # dual-owner DI kept on S01 only; S02 budget corrected; last deploy true; brief stubs
+  # O-M2COMPOSEBOOK: dual-owner DI rebalanced to path-aligned S02 (not first-claim S01);
+  # S02 budget corrected; last deploy true; brief stubs
   s01=$(awk '/^## S01:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
   s02=$(awk '/^## S02:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
-  echo "$s01" | grep -q 'springboot-di-to-quarkus-00000' \
-    && ! echo "$s02" | grep -q 'springboot-di-to-quarkus-00000' \
+  echo "$s02" | grep -q 'springboot-di-to-quarkus-00000' \
+    && ! echo "$s01" | grep -q 'springboot-di-to-quarkus-00000' \
+    && echo "$s01" | grep -q 'springboot-parent-pom-to-quarkus-00000' \
     && echo "$s02" | grep -qE '^- seat-budget: 5$' \
     && echo "$s02" | grep -qE '^- deploy: true$' \
     && ls migration/briefs/S01-*.md >/dev/null 2>&1 \
@@ -8627,6 +8631,116 @@ EOF
     && echo m2compose-fill-ok
 }
 check "m2-compose fill dedupes coverage + writes seat-budget + deploy-last (O-M2COMPOSE)" 0 "m2compose-fill-ok"
+
+# O-M2COMPOSEBOOK — derive kind + reject redesignish findings: '-' + accept **seat-budget**: `N`
+run_case() {
+  grep -q 'derive_kinds' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'repair_sfnd_empty_findings' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'O-M2COMPOSEBOOK' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'O-M2COMPOSEBOOK' "$HARNESS_DIR/seat-budget.py" \
+    && echo m2composebook-wire-ok
+}
+check "m2-compose bookkeeping derives kind + S-FND repair wire (O-M2COMPOSEBOOK)" 0 "m2composebook-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/briefs
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-parent-pom-to-quarkus-00000 [rewrite]
+
+- parent
+- Decided target: BOM
+- /projects/legacy/pom.xml: line 1, 2, 3
+
+## springboot-di-to-quarkus-00000 [OPEN DESIGN]
+
+- di
+- Decided target: decide
+- /projects/legacy/src/main/java/com/demo/service/FooService.java: line 1, 2
+
+## springboot-webmvc-to-quarkus-00000 [OPEN DESIGN]
+
+- web
+- Decided target: decide
+- /projects/legacy/src/main/java/com/demo/rest/FooResource.java: line 1
+
+## Summary by class
+
+- rewrite: 1 — springboot-parent-pom-to-quarkus-00000
+- OPEN DESIGN: 2 — springboot-di-to-quarkus-00000, springboot-webmvc-to-quarkus-00000
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## Class roles
+
+### REDESIGN — service/endpoint
+
+- `FooService.java` — REDESIGN to @ApplicationScoped
+- `FooResource.java` — REDESIGN to JAX-RS resource
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+
+## S01: Platform
+- scope: pom.xml
+- findings: springboot-parent-pom-to-quarkus-00000
+- depends: -
+- deploy: false
+- done: platform ready
+- rationale: BOM first
+
+## S02: Services
+- scope: src/main/java/com/demo/service/FooService.java
+- findings: springboot-di-to-quarkus-00000
+- depends: S01
+- deploy: false
+- done: services ready
+- rationale: after platform
+
+## S03: REST surface
+- scope: src/main/java/com/demo/rest/FooResource.java
+- findings: -
+- depends: S02
+- deploy: false
+- done: rest ready
+- rationale: endpoints
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill 2>&1) || true
+  s02=$(awk '/^## S02:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
+  s03=$(awk '/^## S03:/{p=1;next}/^## /{p=0}p' migration/roadmap.md)
+  echo "$s02" | grep -qE '^- kind: reimplement' \
+    && echo "$s02" | grep -qE '^- seat-budget:' \
+    && ! echo "$s03" | grep -qE '^- findings: -$' \
+    && echo "$out" | grep -qE 'kind-updates=' \
+    && echo m2composebook-fill-ok
+}
+check "m2-compose fill derives kind + repairs redesignish findings:- (O-M2COMPOSEBOOK)" 0 "m2composebook-fill-ok"
+
+run_case() {
+  python3 - "$HARNESS_DIR/seat-budget.py" <<'PY'
+from importlib.util import spec_from_file_location, module_from_spec
+import sys
+spec = spec_from_file_location("sb", sys.argv[1])
+sb = module_from_spec(spec); spec.loader.exec_module(sb)
+assert sb.brief_has_seat_budget("- **seat-budget**: `30`", 30)
+assert sb.brief_has_seat_budget("seat-budget: 30", 30)
+assert not sb.brief_has_seat_budget("- **seat-budget**: `5`", 30)
+print("seatbudget-md-brief-ok")
+PY
+}
+check "seat-budget matcher accepts markdown bold seat-budget code-span N (O-M2COMPOSEBOOK)" 0 "seatbudget-md-brief-ok"
+
+# O-LOGLINTRES — residual narrated on compose + M2 roadmap-lint gates
+run_case() {
+  grep -q 'roadmap_lint_residual' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-LOGLINTRES' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'lint ${before} → ${after}' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'findings — /tmp/roadmap-lint.txt' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '0 findings; commit' "$HARNESS_DIR/outer-loop.sh" \
+    && echo loglintres-wire-ok
+}
+check "outer-loop narrates roadmap-lint residual on compose/gate (O-LOGLINTRES)" 0 "loglintres-wire-ok"
 
 # O-M2-429 — rate-limit does not burn M2 attempt; real backoff (not claimed-only)
 run_case() {
