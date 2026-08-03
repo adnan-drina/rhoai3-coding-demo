@@ -3,12 +3,16 @@ name: stage-080-track-b
 skill-group: Demo Environment
 applies-to:
   - stages/080-ai-autonomous-migration/**
-  - tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md
-  - tmp/docs-archive/V9-QUALITY-GATE.md
+  - docs/V10-FUTURE-IMPROVEMENTS.md
+  - docs/V10-QUALITY-GATE.md
+  - docs/V10-CHANGE-MANIFEST.md
+  - docs/M3-ALL-PREDICTIONS-FROZEN.md
   - tmp/docs-archive/V*-*.md
   - docs/V*-*.md
   - "**/quarkus-migration-scaffold/**"
   - tmp/v8-driver-loop.sh
+  - tmp/KAI-WAVE4-REVIEW.md
+  - tmp/V10-V4-MONITOR.md
   - tmp/V9-TASK-ANALYSIS*
   - scripts/track-b/**
   - AGENTS.md
@@ -83,11 +87,11 @@ sensors, scaffold skills, live migration workspace):
    gate — read the diff and the actor path; no assumptions.
 5. **Record** detailed task notes, escalation root causes, and M/story
    ADVANCE/HOLD/ABORT decisions in the active run gate file
-   (`tmp/docs-archive/V9-QUALITY-GATE.md` for completed V9; new runs use
-   `docs/V*-QUALITY-GATE.md`). No silent stage push.
+   (`docs/V10-QUALITY-GATE.md` for the v4 wave; archived V9 under
+   `tmp/docs-archive/`). No silent stage push.
 6. **Bank durable defects immediately** in the active polish bank
-   (`tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md` for V7–V9; new runs open a
-   fresh `docs/V*-FUTURE-IMPROVEMENTS.md`)
+   (`docs/V10-FUTURE-IMPROVEMENTS.md`; prior waves archived under
+   `tmp/docs-archive/`)
    when analysis finds a gap. Do **not** ask whether to bank. Then
    **implement** open bank rows that block honesty (or HOLD) — do not
    accumulate backlog while a broken run continues.
@@ -133,7 +137,7 @@ sensors, scaffold skills, live migration workspace):
 - Resuming straight into M5 ship / next story after polish without a gate entry.
 - Treating "already committed / skipped" as quality evidence.
 - Clearing O-DRV3 pending without a corresponding quality-gate entry
-  (`tmp/docs-archive/V9-QUALITY-GATE.md` for V9).
+  (`docs/V10-QUALITY-GATE.md`; archived V9 under `tmp/docs-archive/`).
 - Hand-fixing the live app to green and moving on without durableize + re-run.
 - Logging an escalation without reading Qwen/OpenCode logs for why the worker failed.
 - Closing an escalation because MiniMax committed GREEN, without durableize + retest.

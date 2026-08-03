@@ -49,7 +49,7 @@ case "$MODE" in
       echo "ADVANCE GATE GREEN for $STORY"
       exit 0
     fi
-    echo "ADVANCE GATE RED for $STORY — no **Verdict:** ADVANCE in tmp/docs-archive/V9-QUALITY-GATE.md" >&2
+    echo "ADVANCE GATE RED for $STORY — no **Verdict:** ADVANCE in ${GATE_DOC:-docs/V10-QUALITY-GATE.md}" >&2
     exit 1
     ;;
   pending)

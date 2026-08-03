@@ -41,7 +41,7 @@ if not bodies:
     sys.exit(2)
 print(bodies[-1])
 PY
-) || qg_die "no tmp/docs-archive/V9-QUALITY-GATE.md section mentions sha $SHA"
+) || qg_die "no ${GATE_DOC} section mentions sha $SHA"
 
 qg_validate_m_section "$BODY"
 if [ "$REQUIRE_ADVANCE" = "1" ]; then

@@ -305,7 +305,7 @@ refresh_task_analysis_pending() {
     echo
     echo '```bash'
     echo "bash scripts/track-b/v9-capture-diff.sh --oc ${head_sha:-HEAD}"
-    echo "# write detailed tmp/docs-archive/V9-QUALITY-GATE.md section (code + action quality)"
+    echo "# write detailed docs/V10-QUALITY-GATE.md section (code + action quality)"
     echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE4-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-task-analysis.sh ${head_sha:-SHA}"
     echo '```'
@@ -391,7 +391,7 @@ refresh_milestone_analysis_pending() {
     echo "## Clear path"
     echo
     echo '```bash'
-    echo "# write comprehensive tmp/docs-archive/V9-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
+    echo "# write comprehensive docs/V10-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
     echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE4-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-m-analysis.sh ${head_sha:-SHA}"
     echo '```'
@@ -636,7 +636,7 @@ tick() {
   elif [ -f "$ESC_PENDING" ]; then
     prompt="O-DRV4 pulse ${ts} FIRST; O-DRV7 ESCALATION — v9-clear-escalation.sh after Qwen RCA+bank+retest."
   elif [ -f "$ADV_PENDING" ]; then
-    prompt="O-DRV4 pulse ${ts} FIRST; O-ADV — write ADVANCE in V9-QUALITY-GATE then v9-advance-gate.sh clear."
+    prompt="O-DRV4 pulse ${ts} FIRST; O-ADV — write ADVANCE in docs/V10-QUALITY-GATE.md then v9-advance-gate.sh clear."
   elif [ -f "$M_PENDING_FILE" ]; then
     prompt="O-DRV4 pulse ${ts} FIRST; O-DRV5 — v9-clear-m-analysis.sh after comprehensive gate+Verdict."
   elif [ -f "$PENDING_FILE" ]; then

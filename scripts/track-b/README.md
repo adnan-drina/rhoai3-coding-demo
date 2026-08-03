@@ -6,6 +6,11 @@ Driver: `v8-driver-loop.sh` (wrapper: `tmp/v8-driver-loop.sh`).
 Shared helpers: `lib-quality-gates.sh` (`qg_ws_pod`, `qg_story_complete_ok`,
 `qg_remote_pgrep_busy`, gate validators, bank scanners).
 
+Active v4 wave docs (defaults): `GATE_DOC=docs/V10-QUALITY-GATE.md`,
+`BANK_DOC=docs/V10-FUTURE-IMPROVEMENTS.md`, `REVIEW_DOC=tmp/KAI-WAVE4-REVIEW.md`,
+change manifest `docs/V10-CHANGE-MANIFEST.md`, monitor `tmp/V10-V4-MONITOR.md`,
+workspace `V10_WS_NAME=petclinic-rest-v4`.
+
 | Gate | Script | Clears with |
 |------|--------|-------------|
 | O-DRV3 task analysis | driver → `V9-TASK-ANALYSIS-PENDING` | `v9-capture-diff.sh` + gate entry + `v9-clear-task-analysis.sh` |

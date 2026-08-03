@@ -13,7 +13,8 @@ qg_root() {
 ROOT="$(qg_root)"
 # V10 bank is the operational checklist (⬜ = due before next run; 📋 = later wave).
 # V9 gate doc remains archived until a V10 quality-gate file is opened.
-GATE_DOC="${GATE_DOC:-${ROOT}/tmp/docs-archive/V9-QUALITY-GATE.md}"
+# Active v4 wave gate log (archived V9 remains under tmp/docs-archive/).
+GATE_DOC="${GATE_DOC:-${ROOT}/docs/V10-QUALITY-GATE.md}"
 BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
 # Active Wave due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
 # clear scripts refuse unless a note cites the sha — gate log alone is not enough.

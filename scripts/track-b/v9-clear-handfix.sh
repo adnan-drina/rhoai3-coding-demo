@@ -31,7 +31,7 @@ git -C "$ROOT" cat-file -t "$HARNESS_SHA" 2>/dev/null | grep -qx commit \
 
 # Gate must mention handfix / durableize / bank id
 grep -qiE "hand.?fix|durableize|temporary|probe" "$GATE_DOC" \
-  || qg_die "V9-QUALITY-GATE.md lacks handfix/durableize notes"
+  || qg_die "${GATE_DOC:-docs/V10-QUALITY-GATE.md} lacks handfix/durableize notes"
 grep -q "$BANK_ID" "$GATE_DOC" || qg_die "gate lacks bank id $BANK_ID"
 
 {

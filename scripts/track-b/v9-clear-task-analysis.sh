@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # O-DRV3 — clear task analysis ONLY after:
-#   1) a real V9-QUALITY-GATE.md review (substance + diff evidence), AND
+#   1) a real GATE_DOC review (docs/V10-QUALITY-GATE.md; substance + diff), AND
 #   2) an Implementing note in tmp/KAI-WAVE4-REVIEW.md citing this sha
 #      (when that review doc exists — Wave-1 handshake).
 #
@@ -56,7 +56,7 @@ if not bodies:
     sys.exit(2)
 print(bodies[-1])  # most recent matching section
 PY
-) || qg_die "no tmp/docs-archive/V9-QUALITY-GATE.md section mentions sha $SHA — write the detailed gate entry first"
+) || qg_die "no ${GATE_DOC} section mentions sha $SHA — write the detailed gate entry first"
 
 qg_validate_task_section "$BODY"
 qg_validate_diff_evidence "$SHA" "$BODY"

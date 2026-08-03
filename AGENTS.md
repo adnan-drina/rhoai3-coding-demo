@@ -199,7 +199,7 @@ escalations that MiniMax owns), treat it as a first-class defect until
 closed:
 
 1. **Capture** — note task id, actor path, and commit(s) in
-   the active quality gate (V9: `tmp/docs-archive/V9-QUALITY-GATE.md`)
+   the active quality gate (V10: `docs/V10-QUALITY-GATE.md`)
    (do not bury under “escalation”).
 2. **Analyze Qwen** — read `/tmp/oc-T-NNN.err`, `/tmp/oc-T-NNN.json` (or
    equivalent OpenCode logs), supervisor lines for that task, and the
@@ -233,8 +233,9 @@ path.
 
 Canonical skill/rule: `.agents/skills/stage-080-quality-advance/SKILL.md`,
 `.agents/rules/stage-080-track-b.md`. Live wake loop: `tmp/v8-driver-loop.sh`
-(O-DRV2 / O-DRV3 / O-DRV4 / **O-DRV5**). Polish bank (V7–V9 archived):
-`tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md`.
+(O-DRV2 / O-DRV3 / O-DRV4 / **O-DRV5**). Active polish bank:
+`docs/V10-FUTURE-IMPROVEMENTS.md` (V7–V9 archived under
+`tmp/docs-archive/`).
 
 These gates are **script-enforced**, not memory. Clear helpers live in
 `scripts/track-b/` (see `scripts/track-b/README.md`). Bare SHA files without
@@ -282,8 +283,8 @@ compromised run.
    `v9-clear-m-analysis.sh` (requires `**Verdict:** ADVANCE|HOLD|ABORT`).
    Do not advance to the next story/M on GREEN alone.
 5. **Bank every durable gap** into the active polish bank (⬜) in the same
-   analysis pass — never ask whether to bank. (V9:
-   `tmp/docs-archive/V7-FUTURE-IMPROVEMENTS.md`.)
+   analysis pass — never ask whether to bank. (V10:
+   `docs/V10-FUTURE-IMPROVEMENTS.md`.)
 6. **Implement open bank rows that block honesty** as soon as they are
    found (or HOLD until they are) — do not accumulate a backlog while the
    broken run continues.

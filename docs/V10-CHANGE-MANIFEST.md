@@ -57,7 +57,7 @@ Deferred for this wave. Operator may veto any line before GO.
 | **R8** A-1 work-inventory union | Spine still findings-centric; schema/data-init/test-strategy partition not landed. Risk accepted: known v3 gap class may recur until inventory lands. | ADR-9 / post-v4 architecture land |
 | **R8** A-2 missing M1 gates (classification / staging / join completeness) | Not wired as fail-closed M1 exits this wave. PAUSE-3 (M3-ALL operator gate) remains. | Next harness wave; consider PAUSE-1 markers |
 | **R8** A-3 M2 computed-dependency graph check | Roadmap still uses declared depends; computed-graph lint not landed. | Next harness wave; PAUSE-2 |
-| **R9** roll to dedicated v4 review file | Architect seeds at GO; WAVE4 doc remains active audit trail until then. | At operator GO (Claude R9) |
+| **R9** roll to dedicated v4 review file | Architect seeds at GO; WAVE4 doc remains active Implementing-note trail. Gate log opened as `docs/V10-QUALITY-GATE.md`; monitor trail as `tmp/V10-V4-MONITOR.md`. | At operator GO (Claude R9) — optional rename/seed of review file |
 | **ARCH-C2** `time_to_first_write` in `.hermes/harness/` | Parser remains host-side (`v10-monitor-seat-enrich.py`); exec-corpus does not require in-harness promotion to start. | Pair with R4 corpus expansion |
 | **PAUSE-1 / PAUSE-2** (ADR-11) | Only PAUSE-3 (M3-ALL OPERATOR_GATE) is fail-closed this wave. | Land markers + review-doc entries next wave |
 | **O-UXLOG-*** 📋 set | UX polish; not honesty-blocking. | Later wave (📋) |
