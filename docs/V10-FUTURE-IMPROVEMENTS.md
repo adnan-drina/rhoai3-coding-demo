@@ -801,4 +801,4 @@ as a wipe blocker except where noted.
 | O-SCOPECOVERCLEAR | ✅ | Fixed 2026-08-03 (W4-178 P3): `roadmap-lint` removes `/tmp/roadmap-scopecover.txt` when orphans=phantoms=0; phantom-only rewrite uses `w` not append-to-stale. Host-landed; pod sync after current M3 seat (do not hot-swap mid-Qwen). |
 | O-M2CORPUSCOVER | ⬜ | W4-178 P2: add m2-corpus case from pre-fix `a7f5c83` roadmap (20 orphans + 1 phantom EXPECTED_LINT) so O-SCOPECOVER has L2 real-artifact coverage beyond L1 instruments. |
 | O-SEATBRAKE | ⬜ | W4-178 P2: post-recompose budgets total 256 / S03 freeze@210 — accept interim fail-open; recalibrate `SEAT_BUDGET_OVER_FACTOR` (or per-story ceiling) after first S03 M4 burn evidence. Not a restart blocker. |
-| O-SCOPENONJAVA | ✅ | Fixed 2026-08-03 (W4-180 halt): staging walk + O-SCOPECOVER suffixes  in m2-compose+roadmap-lint; instruments scopenonjava-*; halt mid-S02 → sync → M2 recompose → M3 restart from S01. |
+| O-SCOPENONJAVA | ✅ | Fixed 2026-08-03 (W4-180 halt): staging walk + O-SCOPECOVER suffixes java/properties/yaml/yml/xml in m2-compose+roadmap-lint; instruments scopenonjava-*; halt mid-S02, sync, M2 recompose, M3 restart from S01. |
