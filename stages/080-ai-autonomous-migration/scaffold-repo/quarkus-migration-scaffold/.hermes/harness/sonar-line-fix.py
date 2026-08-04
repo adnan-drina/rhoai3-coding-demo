@@ -101,17 +101,29 @@ def fix_s2925(path: Path, line_no: int) -> bool:
     if not m:
         return False
     indent, millis = m.group(1), m.group(2).replace("_", "")
-    # Infer service field name from nearby assignments (clinicService / sut / service).
+    # Infer service field + *ServiceImpl from nearby source — never fail-open
+    # to a specimen default (O-NOSPECIMEN / W4-249). Skip rewrite if unknown.
     blob = "".join(lines[max(0, i - 40) : i + 1])
-    svc = "clinicService"
-    for cand in ("clinicService", "sut", "service", "userService"):
+    svc = None
+    for cand in ("sut", "service", "underTest", "subject", "userService"):
         if re.search(rf"\b{cand}\b", blob):
             svc = cand
             break
-    cls = "ClinicServiceImpl"
+    if not svc:
+        sm = re.search(r"\b([a-z][a-zA-Z0-9]*Service)\b", blob)
+        if sm:
+            svc = sm.group(1)
+    cls = None
     cm = re.search(r"\bnew\s+([A-Za-z0-9_]+ServiceImpl)\s*\(", blob)
     if cm:
         cls = cm.group(1)
+    if not svc or not cls:
+        print(
+            f"O-SONARLINEFIX: skip S2925 {path}:{line_no} — cannot infer "
+            f"service field / *ServiceImpl (refuse specimen defaults)",
+            file=sys.stderr,
+        )
+        return False
     # Ensure imports once.
     text = "".join(lines)
     need_atomic = "java.util.concurrent.atomic.AtomicLong" not in text

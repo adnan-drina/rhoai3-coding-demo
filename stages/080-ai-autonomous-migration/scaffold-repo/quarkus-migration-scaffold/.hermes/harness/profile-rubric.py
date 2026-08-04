@@ -25,10 +25,19 @@ REQUIRED = [
 # a class carrying one of these is a REDESIGN class (owns runtime behavior).
 # O-MAPPINGS-PETCLINIC: @Aspect / AspectJ imports are hard REDESIGN (no Quarkus AOP).
 # Do NOT match bare @Before/@After — those collide with JUnit.
+# O-PROFILE7GAP: ControllerAdvice / ExceptionHandler own error-mapping runtime.
 REDESIGN_ANNO = re.compile(
-    r"@(Service|Component|RestController|Repository|Path|ApplicationScoped"
+    r"@(Service|Component|RestController|ControllerAdvice|ExceptionHandler|"
+    r"Repository|Path|ApplicationScoped"
     r"|Singleton|RequestScoped|RegisterRestClient|Aspect)\b"
     r"|org\.aspectj\.|org\.springframework\.aop\.")
+
+# O-PROFILE7GAP — main-src helpers that must be named in §7 even without
+# stereotype annotations (RowMapper/Extractor/custom Spring Data impls).
+SEC7_COVER_NAME = re.compile(
+    r"(RepositoryImpl|RowMapper|Extractor|ControllerAdvice|ExceptionMapper|"
+    r"RepositoryOverride)$"
+)
 
 # a citation is a source path with optional :line, a finding rule id, or
 # a test class reference
@@ -106,20 +115,42 @@ def main():
     # source marks CDI/JAX-RS/Spring-stereotype is a REDESIGN class and must
     # be marked REDESIGN in §7 — a service mislabeled HARVEST would be
     # re-pinned faithful, reintroducing the shipped-faithful bug.
+    # O-PROFILE7GAP: also require §7 to *name* RepositoryImpl/RowMapper/
+    # Extractor/Advice helpers (family lines OK) so BRIEFCONTRACT has a source.
     if len(sys.argv) > 2 and os.path.isdir(sys.argv[2]):
         for dp, _, fs in os.walk(sys.argv[2]):
-            if "/test" in dp:
+            if "/test" in dp or "/src/test" in dp:
                 continue
+            if "src/main" not in dp.replace("\\", "/"):
+                # Still walk when callers pass a flat legacy root without
+                # src/main in the path (coolstore fixtures).
+                pass
             for fn in fs:
                 if not fn.endswith(".java"):
                     continue
-                body = open(os.path.join(dp, fn), encoding="utf-8", errors="replace").read()
-                if not REDESIGN_ANNO.search(body):
+                path = os.path.join(dp, fn)
+                # Skip test trees even when legacy root is shallow
+                if "/src/test/" in path.replace("\\", "/"):
                     continue
+                body = open(path, encoding="utf-8", errors="replace").read()
                 cls = fn[:-5]
-                if governing_role(sec7, cls) != "REDESIGN":
-                    problems.append(f"RUBRIC:classroles: '{cls}' carries a CDI/JAX-RS/stereotype annotation "
-                                    f"but §7 does not classify it REDESIGN")
+                needs_redesign = bool(REDESIGN_ANNO.search(body))
+                needs_named = needs_redesign or bool(SEC7_COVER_NAME.search(cls))
+                if not needs_named:
+                    continue
+                role = governing_role(sec7, cls)
+                if needs_redesign and role != "REDESIGN":
+                    problems.append(
+                        f"RUBRIC:classroles: '{cls}' carries a "
+                        f"CDI/JAX-RS/stereotype annotation but §7 does not "
+                        f"classify it REDESIGN"
+                    )
+                elif role is None:
+                    problems.append(
+                        f"RUBRIC:sec7-cover: '{cls}' is a main-src migration "
+                        f"helper (O-PROFILE7GAP) but §7 does not name it — "
+                        f"add a per-class or family REDESIGN/HARVEST line"
+                    )
 
     # targetContract -> §7 hard-pin cross-check (V5: getIdempotent/
     # validateInput/mapErrors/cacheRefreshGuard were all true but §7 wrote

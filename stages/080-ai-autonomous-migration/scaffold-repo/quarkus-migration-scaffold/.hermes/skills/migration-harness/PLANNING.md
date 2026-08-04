@@ -383,12 +383,23 @@ mapping is `legacyPackage` → `targetPackage` from `migration.yaml`.
 
 ## O-M3FIRSTWRITE (mandatory — before any legacy deep-read)
 
-Within the **first tool batch**, create `specs/<slug>/tasks.md` (and
-`spec.md` / `plan.md` stubs if missing) using TASKS-TEMPLATE.md structure.
-Then run `.hermes/harness/plan-lint.py` and only then deepen reads to fix
-RED. Reading every legacy file before the first write is O-M3QWENSTALL and
-burns the O-M3EMPTY seat (~120s read-only abort via O-M3QWENSTALL, 360s
-missing tasks.md). Verify with plan-lint, then one commit `SNN spec:`.
+Within the **first tool batch**, mutate `specs/<slug>/tasks.md` — then run
+`.hermes/harness/plan-lint.py` and only then deepen reads to fix RED.
+
+**Skeleton-first (`M3_ALL=1` / preseed):** `tasks.md` already exists with
+`<!-- O-M3ALL-SKELETON -->` or `O-M3QWENSTALL preseed`. Your **first** tool
+must be an **edit/write on that file** (fill Goal / Target design / revise
+Class·Shape; drop the skeleton/preseed marker as you author). Do **not**
+create a second TASKS-TEMPLATE or deep-read legacy before that first edit —
+the header "Model fills JUDGMENT markers" is the work, not a license to
+explore first.
+
+**Empty-dir mode:** if `tasks.md` is missing, `mkdir -p` and WRITE a
+TASKS-TEMPLATE skeleton in the first batch, then refine.
+
+Reading every legacy file before the first write/edit is O-M3QWENSTALL and
+burns the seat (~120s read-only abort via O-M3QWENSTALL / O-M3ALLSTALL,
+360s O-M3EMPTY). Verify with plan-lint, then one commit `SNN spec:`.
 
 **S-CHAR (O-M3CHARSCOPE):** plan-lint requires `src/test/` only when a task
 **Owns** or **Target**-schedules `src/main/java/<targetPackage>/model/*.java`

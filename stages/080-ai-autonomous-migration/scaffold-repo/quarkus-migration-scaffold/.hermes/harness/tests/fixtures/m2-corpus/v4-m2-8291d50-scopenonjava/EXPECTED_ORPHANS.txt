@@ -1,0 +1,11 @@
+# O-SCOPECOVER orphans (staging in no story scope)
+src/main/resources/api-docs.yml
+src/main/resources/application-hsqldb.properties
+src/main/resources/application-mysql.properties
+src/main/resources/application-postgresql.properties
+src/main/resources/application.properties
+src/main/resources/logback.xml
+src/main/resources/messages/messages.properties
+src/main/resources/messages/messages_de.properties
+src/main/resources/messages/messages_en.properties
+src/test/resources/application.properties

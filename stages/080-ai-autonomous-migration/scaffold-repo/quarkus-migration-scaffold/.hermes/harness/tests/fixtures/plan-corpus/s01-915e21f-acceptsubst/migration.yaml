@@ -1,0 +1,30 @@
+migration:
+  legacyRepoUrl: https://github.com/adnan-drina/spring-petclinic-rest-legacy
+  target: quarkus
+  provisionedBy: app-migration golden-path template
+  legacyPackage: org.springframework.samples.petclinic
+  targetPackage: com.demo
+acceptance:
+  path: /petclinic/api/vets
+  collection: _array
+  getter: getAllVets
+  service: ClinicService
+  itemType: VetDto
+  needsDatabase: true
+  idFields: [id]
+analysis:
+  mode: source-only
+  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
+targetContract:
+  validateInput: true
+  mapErrors: true
+  getIdempotent: true
+  threadSafeState: false
+  cacheRefreshGuard: true
+  normalizeBeforeDerive: false
+preserve:
+  - petclinic.security.enable
+  - server.servlet.context-path
+forbidden: []
+contract:
+  status: decided

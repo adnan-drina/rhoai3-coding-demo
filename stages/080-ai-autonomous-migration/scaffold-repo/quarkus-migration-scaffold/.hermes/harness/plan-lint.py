@@ -669,6 +669,49 @@ def main():
                 f"{tid}: soft prepare/verification-only task (S-SOFT) — fold into a concrete file-changing task",
             )
 
+    # O-ACCEPTSUBST: Acceptance that only names harness gate vocabulary is
+    # ceremonial — M4 cannot check it. Require a task-specific predicate
+    # (file exists, endpoint returns, mvn test, property present, …).
+    _gate_vocab = re.compile(
+        r"(?i)\b(?:plan-lint|sensors?|build|ship(?:-gate)?|story-gate|"
+        r"outer-loop|harness)\s+green\b"
+        r"|(?:^|\b)(?:plan-lint|sensors?|build)\s+ok\b"
+    )
+    _gate_only_norm = re.compile(
+        r"(?i)^(?:\s*(?:plan-lint|sensors?|build|ship(?:-gate)?|story-gate)"
+        r"\s+green\s*[;,]?\s*)+$"
+    )
+    for _, tid, _ in heads:
+        body = bodies.get(tid, "")
+        for m in re.finditer(
+            r"^\*?\*?Acceptance\*?\*?\s*:\s*(.+)$", body, re.M | re.I
+        ):
+            acc = m.group(1).strip()
+            if not acc:
+                lint(
+                    "O-ACCEPTSUBST",
+                    f"{tid}: **Acceptance** empty — state a task-specific "
+                    f"predicate (not gate vocabulary)",
+                )
+                continue
+            # Strip trailing punctuation for gate-only match
+            norm = re.sub(r"[\s.;]+$", "", acc)
+            if _gate_only_norm.match(norm) or (
+                _gate_vocab.search(acc)
+                and not re.search(
+                    r"(?i)src/|pom\.xml|@Path|/api/|mvn\b|test(s)?\b|"
+                    r"\.properties|\.java\b|returns?\b|compiles?\b|"
+                    r"present|exists|wired|404|400|200",
+                    acc,
+                )
+            ):
+                lint(
+                    "O-ACCEPTSUBST",
+                    f"{tid}: **Acceptance** is gate vocabulary only "
+                    f"({acc[:60]}) — require a task-specific predicate "
+                    f"(file/endpoint/test/property), not plan-lint/sensors green",
+                )
+
     # N2: every preserve: item in migration.yaml must appear in the plan
     try:
         my = open("migration.yaml").read()
@@ -683,7 +726,13 @@ def main():
         pres = _re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", _psec.group(1), _re.M) if _psec else []
         for item in pres:
             if item not in text:
-                lint("preserve", f"preserved integration '{item}' mapped to no task")
+                lint(
+                    "preserve",
+                    f"preserved integration '{item}' mapped to no task — "
+                    f"put the verbatim token '{item}' in a covering task "
+                    f"Goal/Target design (synonyms do not satisfy; "
+                    f"declare the destination key/property that carries it)",
+                )
         # Ship acceptance is part of the contract (cart run #2: the stamped
         # acceptance.path had no endpoint anywhere in the plan, discovered
         # only at ship time). O-M3ACCEPT: only deploy stories must task it

@@ -46,12 +46,12 @@ or L3). Do not treat L1-only as full discharge for corpus/live classes.
 ### harness O-* / guard markers (plan-lint + supervisor + outer sample)
 ```
 47:# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
-1284:    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
-1294:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
-1448:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
-1466:                "O-INFERABSENT",
-1470:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
-1471:                f"O-ORACLEDERIVE)",
+1333:    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
+1343:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+1497:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
+1515:                "O-INFERABSENT",
+1519:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
+1520:                f"O-ORACLEDERIVE)",
 89:# O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
 97:  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved ## entries in migration/debt.md" >&2
 337:# O-SFIXNODELTA: True (exit 0) when HEAD tip has no meaningful content —
@@ -120,27 +120,31 @@ or L3). Do not treat L1-only as full discharge for corpus/live classes.
 4314:      if evidence_liveness_blocks_ship; then
 4405:      if evidence_liveness_blocks_ship; then
 5:#   M2 SEQUENCE (roadmap + briefs session, roadmap-lint-gated)
-647:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
-648:  if [ ! -f /tmp/roadmap-lint.txt ]; then
-652:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
-658:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
-661:    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
-668:  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
-712:    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
-715:      # seat re-reading /tmp/roadmap-lint.txt (v3 death mode / path-only miss).
-717:      if [ -f /tmp/roadmap-lint.txt ]; then
-719:          head -c "${M2_RETRY_LINT_BYTES}" /tmp/roadmap-lint.txt \
-723:      [ -n "${_lint_inline}" ] || _lint_inline="(roadmap-lint.txt empty or missing — re-run roadmap-lint.py locally)"
-728:(Full output also at /tmp/roadmap-lint.txt if truncated.) LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief; m2-compose fill will rewrite the arithmetic). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
-737:      phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
-738:      # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
-739:      if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
-744:            bash "$HARNESS/evidence-liveness.sh" record "$_sid" K3 "$_k3n" "roadmap-lint GREEN adopt/defer" \
-773:    phase_gate "M2 SEQUENCE roadmap-lint" RED "$(roadmap_lint_residual) findings — /tmp/roadmap-lint.txt"
-1251:      # O-DEBTFRZ: supervisor froze on unresolved task/milestone debt — do NOT
-1253:      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} debt-freeze (O-DEBTFRZ); HEAD $(git rev-parse --short HEAD)"
-1256:      git add "$STATE" && git commit -q -m "${SID} story HOLD: debt-freeze (O-DEBTFRZ)" 2>/dev/null || true
-1257:      fail_run "$SID debt-freeze (O-DEBTFRZ) — fix debt, durableize, re-run; do not advance"
+711:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
+712:  if [ ! -f /tmp/roadmap-lint.txt ]; then
+716:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
+722:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
+725:    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
+732:  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
+755:  BRIEF_QUALITY_ENFORCE=1 python3 "$HARNESS/roadmap-lint.py" \
+758:      > /tmp/roadmap-lint-m2exit.txt 2>&1
+763:    cp -f /tmp/roadmap-lint-m2exit.txt /tmp/roadmap-lint.txt 2>/dev/null || true
+765:      "already-green path below floor — /tmp/roadmap-lint-m2exit.txt"
+766:    fail_run "O-BRIEFQUALITY M2 exit floor (already-green path; see /tmp/roadmap-lint-m2exit.txt)"
+789:    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+792:      # seat re-reading /tmp/roadmap-lint.txt (v3 death mode / path-only miss).
+794:      if [ -f /tmp/roadmap-lint.txt ]; then
+796:          head -c "${M2_RETRY_LINT_BYTES}" /tmp/roadmap-lint.txt \
+800:      [ -n "${_lint_inline}" ] || _lint_inline="(roadmap-lint.txt empty or missing — re-run roadmap-lint.py locally)"
+805:(Full output also at /tmp/roadmap-lint.txt if truncated.) LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief; m2-compose fill will rewrite the arithmetic). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+814:        cp -f /tmp/roadmap-lint-m2exit.txt /tmp/roadmap-lint.txt 2>/dev/null || true
+816:          "$(grep -cE '^LINT:O-BRIEFQUALITY' /tmp/roadmap-lint-m2exit.txt 2>/dev/null || echo 0) below floor — /tmp/roadmap-lint-m2exit.txt"
+818:          && fail_run "O-BRIEFQUALITY M2 exit floor (see /tmp/roadmap-lint-m2exit.txt)"
+825:      phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
+826:      # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
+827:      if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
+832:            bash "$HARNESS/evidence-liveness.sh" record "$_sid" K3 "$_k3n" "roadmap-lint GREEN adopt/defer" \
+861:    phase_gate "M2 SEQUENCE roadmap-lint" RED "$(roadmap_lint_residual) findings — /tmp/roadmap-lint.txt"
 ```
 
 ## Classification guide
@@ -155,4 +159,4 @@ Coverage math (rough): count seed rows with L2 or L3 vs L1-only. Gaps
 are the Wave4 ARCH verification asymmetry — not greppable from the bank
 alone.
 
-_Generated: 2026-08-03T17:50:59Z_
+_Generated: 2026-08-04T06:00:10Z_

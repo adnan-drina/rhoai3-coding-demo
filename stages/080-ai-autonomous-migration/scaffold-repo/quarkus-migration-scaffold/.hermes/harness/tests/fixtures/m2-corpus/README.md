@@ -25,6 +25,8 @@ roadmap-lint.py migration/roadmap.md migration/findings-inventory.md \
 | id | source | expect | signals |
 |----|--------|--------|---------|
 | `v4-m2-lintx2-10790d6` | v4 M2 lint×2 FAIL @ `10790d6` / `20260803T110142Z` | RED | coverage, O-SEATBUDGET, O-STORYKIND, O-PORTDERIVE, fabrication, briefs, stories(S-FND) |
+| `v4-m2-a7f5c83-scopecover` | v4 M2 @ `a7f5c83` + tip staging (W4-175 orphan era / O-M2CORPUSCOVER) | RED | O-SCOPECOVER (25 orphans), O-SCOPENOGEN, O-SEATBUDGET |
+| `v4-m2-8291d50-scopenonjava` | v4 M2 @ `8291d50` java-only lint-green + tip staging (O-SCOPENONJAVA) | RED | O-SCOPECOVER on `.properties`/`.yml`/`.xml` only |
 
 Each case carries `SOURCE.txt`, `EXPECTED_LINT.txt` (live snapshot), M1
 inputs (`findings-inventory.md`, `architecture-profile.md`), briefs, and a

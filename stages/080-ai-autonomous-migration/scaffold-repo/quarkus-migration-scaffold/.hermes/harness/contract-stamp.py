@@ -474,11 +474,35 @@ def derive_stamp(root: Path, prefer_path: str | None = None) -> StampResult:
                 {"path": c.path, "method": c.method_name, "score": str(c.score)}
             )
 
+    # O-ACCEPTREAL — getter must exist on stamped service. Controllers often
+    # inject a facade (*Service) while the collection GET lives on the
+    # controller itself (petclinic: getAllVets on VetRestController, not
+    # ClinicService). Prefer the class that actually declares the method.
+    svc_name = top.service_type or ""
+    getter = top.method_name
+    if svc_name and getter:
+        svc_files = [jf for jf in _java_files(root) if jf.stem == svc_name]
+        on_svc = False
+        if svc_files:
+            on_svc = bool(
+                re.search(
+                    rf"\b{re.escape(getter)}\s*\(",
+                    _read_text(svc_files[0]),
+                )
+            )
+        if not on_svc:
+            ctrl = Path(top.controller_file).stem if top.controller_file else ""
+            if ctrl:
+                res.warnings.append(
+                    f"O-ACCEPTREAL: {getter} not on {svc_name or '(none)'}; "
+                    f"stamping service={ctrl} (controller owns the method)"
+                )
+                svc_name = ctrl
     acc: dict[str, Any] = {
         "path": top.path,
         "collection": top.collection,
-        "getter": top.method_name,
-        "service": top.service_type or UNDECIDED,
+        "getter": getter,
+        "service": svc_name or UNDECIDED,
         "itemType": top.item_type,
         "needsDatabase": _needs_database(root),
     }
@@ -750,6 +774,51 @@ def run_gate(root: Path, yaml_path: Path) -> int:
                 break
         if not found_leaf:
             errors.append(f"acceptance path leaf {leaf!r} not found in legacy controllers")
+
+    # O-ACCEPTREAL — getter exists on service; service not §7-removed without successor
+    getter = str(acc.get("getter") or "")
+    service = str(acc.get("service") or "")
+    if (
+        getter
+        and service
+        and getter != UNDECIDED
+        and service != UNDECIDED
+    ):
+        svc_files = [jf for jf in _java_files(root) if jf.stem == service]
+        if not svc_files:
+            errors.append(
+                f"O-ACCEPTREAL: acceptance.service {service!r} not found in legacy"
+            )
+        else:
+            if not re.search(
+                rf"\b{re.escape(getter)}\s*\(", _read_text(svc_files[0])
+            ):
+                errors.append(
+                    f"O-ACCEPTREAL: acceptance.getter {getter!r} not declared on "
+                    f"{service} — pair controller method with its declaring class "
+                    f"(or legacy service method that exists)"
+                )
+        for cand in (
+            yaml_path.parent / "architecture-profile.md",
+            yaml_path.parent / "migration" / "architecture-profile.md",
+            Path("migration/architecture-profile.md"),
+            Path("architecture-profile.md"),
+        ):
+            if not cand.is_file():
+                continue
+            try:
+                prof = cand.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                break
+            if re.search(
+                rf"(?i)\b{re.escape(service)}\b[^\n]*\bremoved\b",
+                prof,
+            ):
+                errors.append(
+                    f"O-ACCEPTREAL: acceptance.service {service!r} is marked "
+                    f"§7 removed in {cand.name} — stamp the successor class"
+                )
+            break
 
     def walk_undecided(obj: Any, prefix: str = "") -> None:
         if isinstance(obj, dict):

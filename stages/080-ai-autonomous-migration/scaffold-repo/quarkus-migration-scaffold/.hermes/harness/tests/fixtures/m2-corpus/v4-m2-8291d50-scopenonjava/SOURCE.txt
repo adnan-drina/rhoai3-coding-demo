@@ -1,0 +1,14 @@
+O-M2CORPUS / O-L2CORPUSWAVE4 — 8291d50 java-only roadmap → O-SCOPENONJAVA
+
+workspace: petclinic-rest-v4
+pod: workspaceb55c26a5b15f4f1c-86df979f95-pd2n9
+app commit: 8291d50 (M2 lint-green under java-only O-SCOPECOVER)
+extracted: 2026-08-03T21:39Z (wake #63 Grok lead)
+
+Why this case (distinct from a7f5c83):
+  a7f5c83 pins incomplete java partition + target/ + seat-budget.
+  8291d50 was lint-green when SCOPECOVER was java-only (all .java owned),
+  then RED under O-SCOPENONJAVA: only non-java staging orphans
+  (properties/yml/xml) — the seeder blind-spot regression Opus named.
+
+expect: RED with O-SCOPECOVER naming .properties/.yml/.xml orphans

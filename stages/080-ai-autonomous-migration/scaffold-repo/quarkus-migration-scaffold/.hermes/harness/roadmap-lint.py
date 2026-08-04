@@ -2,7 +2,11 @@
 """M2 gate: deterministic roadmap/brief check (redesign §2).
 
 Usage: roadmap-lint.py <roadmap.md> [findings-inventory.md] [legacy-dir]
-                       [architecture-profile.md]
+                       [architecture-profile.md] [--story SNN]
+
+  --story SNN  O-M3PREFLIGHT: only emit LINT lines for that story id
+               (brief-quality gate before first M3 seat; other stories
+               proceed independently).
 
 Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
   stories    — parseable S<NN> headings, unique, with required fields
@@ -37,14 +41,43 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
   O-SCOPECOVER — every migration/staging/**/*.java path is in exactly one
                story scope; every src/**/*.java scope path is in staging
                or migration/scope-exclusions.md (typed reason).
+  O-BRIEFCOVER — every path in a story's roadmap scope must be named
+               (basename or full path) in that story's brief — stops
+               layer-sample briefs that leave M3 with no per-class contracts.
+  O-BRIEFCONTRACT — every §7 REDESIGN class in story scope must have its
+               own contract line in the brief (class + target-shape token).
+               O-PORTDERIVE is story-level existence; this is per-class density.
+  O-BRIEFFRESH — brief carries <!-- O-BRIEFFRESH sha256=… --> matching a
+               content hash of current roadmap scope/findings/kind/budget
+               (mtime is not trusted; recompose without regen → RED).
+  O-BRIEFQUALITY — composite score (coverage, contracts, specificity,
+               oracle, freshness); floor BRIEF_QUALITY_FLOOR (default 80).
+               Enforced on --story (O-M3PREFLIGHT), BRIEF_QUALITY_ENFORCE=1,
+               and outer-loop M2 exit (m2_brief_quality_exit); full M2 without
+               ENFORCE prints SCORE lines without failing.
+  O-CYCLEPART — every class/path in dependency-order.md "## Circular group"
+               must be owned by one story, or roadmap must carry an explicit
+               cycle waiver (## Cycle partition waivers / O-CYCLEPART-WAIVE).
+  O-SEATBUDGETUNIQ — brief must not publish conflicting seat-budget: N
+               values (presence alone is not enough).
+  O-M3PREFLIGHT — outer-loop re-runs this lint per story (--story) against
+               the *current* roadmap before the first M3 seat; SID-scoped
+               RED refuses that story's seats without blocking others.
 """
 import glob
+import hashlib
 import importlib.util
 import os
 import re
 import sys
 
 problems = []
+STORY_FILTER = None  # set by --story SNN (O-M3PREFLIGHT)
+quality_reports = []  # (sid, score, dims)
+
+_FRESH_MARK = re.compile(
+    r"<!--\s*O-BRIEFFRESH\s+sha256=([0-9a-fA-F]+)\s*-->", re.I
+)
 
 _SB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seat-budget.py")
 _sb_spec = importlib.util.spec_from_file_location("seat_budget", _SB_PATH)
@@ -57,12 +90,25 @@ def lint(cls, detail):
     problems.append(f"LINT:{cls}: {detail}")
 
 
+# O-BRIEFCONTRACT substance: bare `target:` / JUDGMENT placeholders do NOT count.
+# Family §7 paste must carry a concrete shape token (or non-comment target text).
 _TARGET_SHAPE = re.compile(
-    r"(?i)(?:→|->|=>|target\s*:|target contract|JAX-RS|@ApplicationScoped|"
+    r"(?i)(?:→|->|=>|target contract|JAX-RS|@ApplicationScoped|"
     r"Panache|ConcurrentHashMap|ExceptionMapper|\b404\b|CDI|Agroal|"
-    r"@Path\b|PersistenceException|compute\()"
+    r"@Path\b|PersistenceException|compute\(|@Transactional|"
+    r"\bremoved\b|target\s*:\s*(?!<!--)\S)"
+)
+_JUDGMENT_TARGET = re.compile(
+    r"(?i)target\s*:\s*<!--\s*JUDGMENT"
 )
 _CLASS_TOKEN = re.compile(r"`([A-Z][A-Za-z0-9]+)`|\*\*([A-Z][A-Za-z0-9]+)\*\*")
+
+
+def line_has_contract_substance(ln: str) -> bool:
+    """True when a brief/profile line carries a real target shape (not a stub)."""
+    if _JUDGMENT_TARGET.search(ln):
+        return False
+    return bool(_TARGET_SHAPE.search(ln))
 
 
 def brief_has_redesign_contract(btext: str) -> bool:
@@ -71,11 +117,144 @@ def brief_has_redesign_contract(btext: str) -> bool:
         return False
     if not _CLASS_TOKEN.search(btext):
         return False
-    return bool(_TARGET_SHAPE.search(btext))
+    for ln in btext.splitlines():
+        if _CLASS_TOKEN.search(ln) and line_has_contract_substance(ln):
+            return True
+    return False
+
+
+def brief_classes_missing_contracts(btext: str, classes) -> list:
+    """O-BRIEFCONTRACT — each §7 REDESIGN class needs class+shape on one line."""
+    missing = []
+    for c in classes:
+        ok = False
+        for ln in btext.splitlines():
+            if not re.search(
+                rf"(?:`{re.escape(c)}`|\*\*{re.escape(c)}\*\*|\b{re.escape(c)}\b)",
+                ln,
+            ):
+                continue
+            if line_has_contract_substance(ln):
+                ok = True
+                break
+        if not ok:
+            missing.append(c)
+    return missing
+
+
+def story_fresh_hash(sid, scope, findings_raw, kind_raw, seat_budget_raw) -> str:
+    """O-BRIEFFRESH — content hash of roadmap fields that invalidate a brief."""
+    paths = sorted(p.strip() for p in (scope or "").split(",") if p.strip())
+    payload = "\n".join(
+        [
+            (sid or "").strip(),
+            ",".join(paths),
+            (findings_raw or "").strip(),
+            (kind_raw or "").strip(),
+            (seat_budget_raw or "").strip(),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def parse_circular_groups(dep_text: str) -> list:
+    """Paths (preferred) or ClassName.java from ## Circular group sections."""
+    groups = []
+    for m in re.finditer(
+        r"(?ims)^##\s+Circular group[^\n]*\n(.*?)(?=^##\s|\Z)",
+        dep_text,
+    ):
+        body = m.group(1)
+        paths = re.findall(r"\(([^)]+\.java)\)", body)
+        if not paths:
+            # FQCN bullets without path — use simple name
+            for fq in re.findall(
+                r"(?m)^-\s+([a-zA-Z0-9_.]+)\s*$", body
+            ):
+                simple = fq.rsplit(".", 1)[-1]
+                if simple and simple[0].isupper():
+                    paths.append(simple + ".java")
+        if paths:
+            groups.append(paths)
+    return groups
+
+
+def roadmap_has_cycle_waiver(roadmap_text: str) -> bool:
+    """Explicit architect waiver for multi-story circular groups."""
+    if re.search(r"(?i)O-CYCLEPART-WAIVE", roadmap_text):
+        return True
+    if re.search(
+        r"(?im)^##\s+Cycle partition waivers\b", roadmap_text
+    ) and re.search(
+        r"(?im)^-\s*.*\bwaive\b", roadmap_text
+    ):
+        return True
+    return False
+
+
+def brief_quality_score(
+    btext: str,
+    scope_paths,
+    scope_hit_classes,
+    *,
+    fresh_ok: bool,
+) -> tuple:
+    """O-BRIEFQUALITY — composite 0..100 across five dimensions."""
+    dims = {}
+    if scope_paths:
+        named = sum(
+            1
+            for p in scope_paths
+            if p in btext or os.path.basename(p) in btext
+        )
+        dims["coverage"] = int(round(100.0 * named / len(scope_paths)))
+    else:
+        dims["coverage"] = 100
+    if scope_hit_classes:
+        miss = brief_classes_missing_contracts(btext, scope_hit_classes)
+        ok_n = len(scope_hit_classes) - len(miss)
+        dims["contracts"] = int(round(100.0 * ok_n / len(scope_hit_classes)))
+    else:
+        dims["contracts"] = 100
+    spec = 0
+    if "```" in btext:
+        spec += 40
+    if len(_CLASS_TOKEN.findall(btext)) >= 2:
+        spec += 30
+    elif _CLASS_TOKEN.search(btext) or _TARGET_SHAPE.search(btext):
+        spec += 15
+    if re.search(
+        r"(?i)\b(preserve|behavioral|oracle|assert|pin|idempotent|"
+        r"characterization|acceptance)\b",
+        btext,
+    ):
+        spec += 30
+    dims["specificity"] = min(100, spec)
+    m_done = re.search(
+        r"(?is)^##\s+Done-criteria\s*(.*?)(?:^##\s|\Z)", btext, re.M
+    )
+    done = (m_done.group(1) if m_done else "").strip()
+    # Strip HTML comments for length
+    done_plain = re.sub(r"<!--.*?-->", "", done, flags=re.S).strip()
+    if len(done_plain) > 60:
+        dims["oracle"] = 100
+    elif len(done_plain) > 25:
+        dims["oracle"] = 70
+    elif len(done_plain) > 8:
+        dims["oracle"] = 40
+    else:
+        dims["oracle"] = 15
+    dims["freshness"] = 100 if fresh_ok else 0
+    score = int(round(sum(dims.values()) / len(dims)))
+    return score, dims
 
 
 def redesign_classes_from_profile(prof: str) -> set:
-    """CapWord classes governed by REDESIGN in architecture-profile §7."""
+    """CapWord classes governed by REDESIGN in architecture-profile §7.
+
+    Family lines (comma-lists / All ClassA, ClassB under a REDESIGN heading)
+    expand to every backtick/bold CapWord — not only .java-backed names.
+    """
     sec7 = ""
     m = re.search(r"^(#{2,6})[ \t]+.*Class roles.*$", prof, re.M | re.I)
     if not m:
@@ -89,17 +268,22 @@ def redesign_classes_from_profile(prof: str) -> set:
     out = set()
     for mm in name_re.finditer(sec7):
         nm = mm.group(1) or mm.group(2) or mm.group(3)
+        if not nm or nm in ("REDESIGN", "HARVEST", "All"):
+            continue
         ls = sec7.rfind("\n", 0, mm.start()) + 1
         le = sec7.find("\n", mm.start())
         line = sec7[ls: le if le >= 0 else len(sec7)]
         if "HARVEST" in line and "REDESIGN" not in line:
             continue
         pre = sec7[: mm.start()]
-        if "REDESIGN" in line or pre.rfind("REDESIGN") > pre.rfind("HARVEST"):
-            # Prefer .java-backed names; also accept backtick CapWords on a
-            # line that itself says REDESIGN (scope often uses bare names).
-            if nm in java_named or ("REDESIGN" in line and mm.group(1)):
-                out.add(nm)
+        under_redesign = (
+            "REDESIGN" in line or pre.rfind("REDESIGN") > pre.rfind("HARVEST")
+        )
+        if not under_redesign:
+            continue
+        # Backtick/bold CapWord OR .java mention — family lines expand here.
+        if nm in java_named or mm.group(1) or mm.group(2):
+            out.add(nm)
     return out
 
 
@@ -151,8 +335,43 @@ BRIEF_SECTIONS = ["Goal & position", "In scope", "Out of scope",
                   "Decided target shapes", "Contracts", "Done-criteria"]
 
 
+def _parse_argv(argv):
+    """Positional args + optional --story SNN / --story=SNN (O-M3PREFLIGHT)."""
+    global STORY_FILTER
+    pos = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--story" and i + 1 < len(argv):
+            STORY_FILTER = argv[i + 1].strip()
+            i += 2
+            continue
+        if a.startswith("--story="):
+            STORY_FILTER = a.split("=", 1)[1].strip()
+            i += 1
+            continue
+        if a.startswith("--"):
+            print(f"LINT:args: unknown flag {a}", file=sys.stderr)
+            i += 1
+            continue
+        pos.append(a)
+        i += 1
+    return pos
+
+
 def main():
-    text = open(sys.argv[1], encoding="utf-8").read()
+    global problems, quality_reports
+    problems = []
+    quality_reports = []
+    argv = _parse_argv(sys.argv[1:])
+    if not argv:
+        print("Usage: roadmap-lint.py <roadmap.md> [findings-inventory.md] "
+              "[legacy-dir] [architecture-profile.md] [--story SNN]",
+              file=sys.stderr)
+        return 2
+    text = open(argv[0], encoding="utf-8").read()
+    # Positionals only — --story already captured in STORY_FILTER.
+    sys.argv = [sys.argv[0]] + argv
     heads = re.findall(r"^##\s+(S\d{2,})\s*:\s*(.+)$", text, re.M)
     if not heads:
         lint("stories", "no parseable story headings (want '## S01: title')")
@@ -248,6 +467,38 @@ def main():
         lint("deploy", "no story is marked deploy: true")
     elif not deploy_flags[-1][1]:
         lint("deploy", f"last story {deploy_flags[-1][0]} must deploy")
+
+    # O-CYCLEPART — Circular group members must share one story (or waiver)
+    base_early = os.path.dirname(os.path.abspath(sys.argv[1]))
+    dep_path = os.path.join(base_early, "dependency-order.md")
+    if os.path.isfile(dep_path) and not roadmap_has_cycle_waiver(text):
+        try:
+            dep_text = open(dep_path, encoding="utf-8").read()
+        except OSError:
+            dep_text = ""
+        for gi, gpaths in enumerate(parse_circular_groups(dep_text), start=1):
+            owners = {}
+            for p in gpaths:
+                base_n = os.path.basename(p)
+                for sid in ids:
+                    scope = field(sid, "scope") or ""
+                    if p in scope or re.search(
+                        rf"(?:^|[,/\s]){re.escape(base_n)}(?:\s|,|$)", scope
+                    ):
+                        owners.setdefault(sid, []).append(base_n)
+                        break
+            story_set = sorted(owners)
+            if len(story_set) > 1:
+                counts = ", ".join(
+                    f"{s}:{len(owners[s])}" for s in story_set
+                )
+                lint(
+                    "O-CYCLEPART",
+                    f"circular group #{gi} spans {len(story_set)} stories "
+                    f"({counts}) — keep the cycle in one story or add "
+                    f"'## Cycle partition waivers' / O-CYCLEPART-WAIVE with "
+                    f"reason (O-CYCLEPART)",
+                )
 
     # coverage vs the inventory's mandatory (recipe/rewrite/infer/OPEN) sets;
     # recipe-executed and non-mandatory ids are exempt from story ownership
@@ -422,9 +673,62 @@ def main():
             lint("briefs", f"{sid}: brief has no code excerpt (In scope must quote legacy lines)")
         if legacy_dir:
             brief_fidelity(sid, btext, legacy_dir)
-        # O-PORTDERIVE / ARCH A1 — REDESIGN signal must survive M1→brief
+        # O-BRIEFCOVER — every roadmap scope path named in the owning brief
         scope = field(sid, "scope") or ""
+        scope_paths = [p.strip() for p in scope.split(",") if p.strip()]
+        missing_paths = [
+            p
+            for p in scope_paths
+            if p not in btext and os.path.basename(p) not in btext
+        ]
+        if missing_paths:
+            shown = missing_paths[:8]
+            more = (
+                f" … +{len(missing_paths) - 8} more"
+                if len(missing_paths) > 8
+                else ""
+            )
+            lint(
+                "O-BRIEFCOVER",
+                f"{sid}: brief omits {len(missing_paths)} in-scope path(s): "
+                f"{', '.join(shown)}{more} — name every roadmap scope path "
+                f"in the brief (O-BRIEFCOVER; pair O-SCOPECOVER)",
+            )
+        # O-SEATBUDGETUNIQ — conflicting seat-budget: N values in one brief
+        seat_vals = sorted(
+            {int(v) for v in re.findall(r"(?im)seat-budget:\s*(\d+)", btext)}
+        )
+        if len(seat_vals) > 1:
+            lint(
+                "O-SEATBUDGETUNIQ",
+                f"{sid}: brief publishes conflicting seat-budget values "
+                f"{seat_vals} — keep exactly one N matching the roadmap "
+                f"(O-SEATBUDGETUNIQ)",
+            )
+        # O-BRIEFFRESH — content hash vs current roadmap (not mtime)
         findings_raw = (field(sid, "findings") or "").strip()
+        kind_raw_early = field(sid, "kind")
+        seat_raw_early = field(sid, "seat-budget")
+        expect_h = story_fresh_hash(
+            sid, scope, findings_raw, kind_raw_early, seat_raw_early
+        )
+        m_fresh = _FRESH_MARK.search(btext)
+        fresh_ok = bool(m_fresh and m_fresh.group(1).lower() == expect_h)
+        if not m_fresh:
+            lint(
+                "O-BRIEFFRESH",
+                f"{sid}: brief missing <!-- O-BRIEFFRESH sha256={expect_h} --> "
+                f"— stamp via m2-compose fill/regen after roadmap changes "
+                f"(O-BRIEFFRESH; mtime is not trusted)",
+            )
+        elif not fresh_ok:
+            lint(
+                "O-BRIEFFRESH",
+                f"{sid}: brief freshness hash {m_fresh.group(1).lower()} != "
+                f"current roadmap {expect_h} — scope/findings/kind/budget "
+                f"changed without regenerating the brief (O-BRIEFFRESH)",
+            )
+        # O-PORTDERIVE / ARCH A1 — REDESIGN signal must survive M1→brief
         story_fids = {
             f for f in re.split(r"[,\s]+", findings_raw) if f and f != "-"
         }
@@ -433,6 +737,26 @@ def main():
             c for c in redesign_cls
             if re.search(rf"\b{re.escape(c)}(?:\.java)?\b", scope)
         )
+        # O-BRIEFQUALITY — gradient score (enforced on --story / ENFORCE=1)
+        q_score, q_dims = brief_quality_score(
+            btext, scope_paths, scope_hit, fresh_ok=fresh_ok
+        )
+        quality_reports.append((sid, q_score, q_dims))
+        try:
+            q_floor = int(os.environ.get("BRIEF_QUALITY_FLOOR", "80"))
+        except ValueError:
+            q_floor = 80
+        q_enforce = bool(STORY_FILTER) or os.environ.get(
+            "BRIEF_QUALITY_ENFORCE", ""
+        ) in ("1", "true", "yes")
+        if q_enforce and q_score < q_floor:
+            dim_s = " ".join(f"{k}={v}" for k, v in q_dims.items())
+            lint(
+                "O-BRIEFQUALITY",
+                f"{sid}: brief quality {q_score} < floor {q_floor} "
+                f"({dim_s}) — raise coverage/contracts/specificity/oracle/"
+                f"freshness before M3 (O-BRIEFQUALITY)",
+            )
         if owns_open or scope_hit:
             if not brief_has_redesign_contract(btext):
                 why = []
@@ -452,6 +776,23 @@ def main():
                     f"({'; '.join(why)}) — name each REDESIGN class with a "
                     f"target shape from architecture-profile §7 "
                     f"(O-PORTDERIVE / ARCH A1)",
+                )
+        # O-BRIEFCONTRACT — per-class density (not one layer line for N repos)
+        if scope_hit:
+            miss_cls = brief_classes_missing_contracts(btext, scope_hit)
+            if miss_cls:
+                shown = miss_cls[:8]
+                more = (
+                    f" … +{len(miss_cls) - 8} more"
+                    if len(miss_cls) > 8
+                    else ""
+                )
+                lint(
+                    "O-BRIEFCONTRACT",
+                    f"{sid}: brief missing per-class §7 contract for "
+                    f"{len(miss_cls)} REDESIGN class(es): "
+                    f"{', '.join(shown)}{more} — one class+target-shape line "
+                    f"each (O-BRIEFCONTRACT; pair O-PORTDERIVE)",
                 )
         # O-STORYKIND / ARCH A3 — transform kind is the story-level Port
         kind_raw = field(sid, "kind")
@@ -598,10 +939,32 @@ def main():
                         f"(or a non-empty reason column in the decision table)",
                     )
 
-    print("\n".join(problems) if problems else
+    # O-BRIEFQUALITY score lines (informational on full M2; gated on --story)
+    for sid, q_score, q_dims in quality_reports:
+        if STORY_FILTER and sid != STORY_FILTER:
+            continue
+        dim_s = " ".join(f"{k}={v}" for k, v in q_dims.items())
+        print(f"BRIEF-QUALITY {sid}: {q_score} ({dim_s})")
+
+    # O-M3PREFLIGHT — keep only SID-scoped findings when --story is set so a
+    # deficient S03 refuses S03 seats while S01 can still proceed.
+    emit = problems
+    if STORY_FILTER:
+        sid_re = re.compile(rf":\s*{re.escape(STORY_FILTER)}:")
+        emit = [p for p in problems if sid_re.search(p)]
+        if emit:
+            print("\n".join(emit))
+            return 1
+        print(
+            f"ROADMAP OK (story {STORY_FILTER}): brief-quality clear "
+            f"for M3 preflight (O-M3PREFLIGHT)"
+        )
+        return 0
+
+    print("\n".join(emit) if emit else
           f"ROADMAP OK: {len(ids)} stories, {len(owned)} findings owned, "
           f"deploy milestones: {[s for s, f in deploy_flags if f]}")
-    return 1 if problems else 0
+    return 1 if emit else 0
 
 
 if __name__ == "__main__":

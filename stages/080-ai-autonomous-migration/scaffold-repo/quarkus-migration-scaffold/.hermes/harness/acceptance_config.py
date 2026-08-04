@@ -19,7 +19,7 @@ returns a top-level JSON array, not ``{vetList:[…]}``) set:
     acceptance:
       collection: _array
       getter: getAllVets
-      service: ClinicService
+      service: VetResource   # declaring class (O-ACCEPTREAL); not ClinicService
       itemType: VetDto
 """
 from __future__ import annotations

@@ -42,6 +42,7 @@ confirmation**. The corpus gate must use the full flag set.
 | `s03-32812a6-final` | **32812a6** (final accepted) | RED | O-PORTREIMPL×2 + **O-INFERABSENT** (derived-absent; §2.2 corpus-fireable) |
 | `s03-post-port-good` | synthetic post-Port | GREEN | PLAN OK (`Shape=create` proceed path) |
 | `s01-f7c1329` | f7c1329 | GREEN | archival S01 tip under live flags |
+| `s01-915e21f-acceptsubst` | **915e21f** (MiniMax S01 draft) | RED | **O-ACCEPTSUBST**×10 — ceremonial Acceptance L2 (W4-191) |
 | `s02-ee834b1` | ee834b1 | GREEN | archival S02 tip under **live-v3** inputs (stand-in previously false-RED `incident-conflict`) |
 
 `s03-6348afe-class` previously held a **52-line reconstruction**. It now

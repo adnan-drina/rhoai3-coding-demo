@@ -499,6 +499,51 @@ check "harvest-fidelity allows Spring DAO/support drops (O-FIDELITYDAO)" 0 "GREE
 
 # --- roadmap-lint (M2) -----------------------------------------------------
 
+# O-BRIEFFRESH — stamp briefs from current roadmap fields (accept-path fixtures).
+# $1 = roadmap path (default roadmap.md). Briefs under briefs/ or migration/briefs/.
+stamp_brieffresh() {
+  local roadmap="${1:-roadmap.md}"
+  python3 - "$HARNESS_DIR/roadmap-lint.py" "$roadmap" <<'PY'
+import glob, os, re, sys
+from importlib.util import module_from_spec, spec_from_file_location
+
+rl_path, roadmap = sys.argv[1], sys.argv[2]
+spec = spec_from_file_location("rl", rl_path)
+rl = module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(rl)
+text = open(roadmap, encoding="utf-8").read()
+base = os.path.dirname(os.path.abspath(roadmap))
+parts = re.split(r"^##\s+(S\d{2,})\s*:.*$", text, flags=re.M)
+bodies = {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+
+def field(sid, name):
+    m = re.search(rf"^-\s*{name}:[ \t]*(.*)$", bodies.get(sid, ""), re.M)
+    return m.group(1).strip() if m else None
+
+for sid in bodies:
+    h = rl.story_fresh_hash(
+        sid,
+        field(sid, "scope") or "",
+        field(sid, "findings") or "",
+        field(sid, "kind"),
+        field(sid, "seat-budget"),
+    )
+    mark = f"<!-- O-BRIEFFRESH sha256={h} -->"
+    cands = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
+    cands += glob.glob(os.path.join(base, "migration", "briefs", f"{sid}-*.md"))
+    for path in cands:
+        t = open(path, encoding="utf-8").read()
+        if rl._FRESH_MARK.search(t):
+            t2 = rl._FRESH_MARK.sub(mark, t, count=1)
+        else:
+            t2 = re.sub(r"(^#[^\n]*\n)", rf"\1{mark}\n", t, count=1, flags=re.M)
+            if t2 == t:
+                t2 = mark + "\n" + t
+        open(path, "w", encoding="utf-8").write(t2)
+PY
+}
+
 roadmap_fixture() { # $1 = briefs? (yes|no)
   mkdir -p briefs
   cat > roadmap.md <<'EOF'
@@ -521,12 +566,14 @@ roadmap_fixture() { # $1 = briefs? (yes|no)
 - rationale: dependents after dependencies
 EOF
   if [ "$1" = "yes" ]; then
-    for s in S01-models S02-services; do
-      cat > "briefs/${s}.md" <<'EOF'
+    # O-BRIEFCOVER — each brief must name every path in its roadmap scope
+    cat > briefs/S01-models.md <<'EOF'
 # Story
 ## Goal & position
 x
 ## In scope
+- `src/main/java/com/demo/model/ShoppingCart.java`
+- `src/test/java/com/demo/ShoppingCartServiceTest.java`
 ```java
 import javax.ws.rs.Path;
 ```
@@ -539,7 +586,25 @@ x
 ## Done-criteria
 x
 EOF
-    done
+    cat > briefs/S02-services.md <<'EOF'
+# Story
+## Goal & position
+x
+## In scope
+- `src/main/java/com/demo/service/CartService.java`
+```java
+import javax.ws.rs.Path;
+```
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts owned by this story
+x
+## Done-criteria
+x
+EOF
+    stamp_brieffresh roadmap.md
   fi
   cat > inv.md <<'EOF'
 ## Summary by class
@@ -2902,6 +2967,108 @@ run_case() {
 check "M3 stall abort 120s + skip w2 on empty w1 (O-M3QWENSTALL)" 0 "m3stall-ok"
 
 run_case() {
+  # O-M3ALLSTALL (W4-186): M3-ALL skeleton must not disarm stall/empty —
+  # reject O-M3ALL-SKELETON marker and require pre-seat cksum mutate.
+  grep -q 'O-M3ALL-SKELETON' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_tasks_baseline' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3ALLSTALL' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'unchanged after' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3allstall-ok
+}
+check "M3-ALL skeleton does not disarm O-M3QWENSTALL/O-M3EMPTY (O-M3ALLSTALL)" 0 "m3allstall-ok"
+
+run_case() {
+  # O-M3FIRSTWRITE skeleton-first + O-M3TOOLHIST + O-PRESERVEMSG
+  grep -q 'skeleton-first' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'FIRST tool must EDIT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3TOOLHIST' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_tool_hist_line' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'verbatim token' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'Skeleton-first' "$HARNESS_DIR/../skills/migration-harness/PLANNING.md" \
+    && echo m3firstwrite-skel-ok
+}
+check "O-M3FIRSTWRITE skeleton-first + toolhist + preserve hint (W4-186)" 0 "m3firstwrite-skel-ok"
+
+run_case() {
+  # O-ACCEPTSUBST: gate-vocabulary Acceptance is RED; task-specific is OK
+  mkfix
+  plan_header > tasks.md
+  cat >> tasks.md <<'EOF'
+#### T-010: Ceremonial accept
+**Class**: rewrite
+**Shape**: modify
+**Owns**: src/main/resources/application.properties
+**Oracle**: absent
+**Acceptance**: plan-lint green; sensors green
+EOF
+  out=$(python3 "$LINT" tasks.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-ACCEPTSUBST' && echo acceptsubst-red-ok
+}
+check "plan-lint REDs gate-vocabulary Acceptance (O-ACCEPTSUBST)" 0 "acceptsubst-red-ok"
+
+run_case() {
+  mkfix
+  { plan_header
+    printf '\n**Acceptance**: application.properties has quarkus.http.root-path\n'
+  } > tasks.md
+  # mapped preserve if needed
+  printf 'preserve:\n  - CATALOG_ENDPOINT\n' > migration.yaml
+  # plan_header may already include enough; ensure CATALOG in body
+  grep -q CATALOG_ENDPOINT tasks.md || printf '\nPreserves CATALOG_ENDPOINT via REST client.\n' >> tasks.md
+  out=$(python3 "$LINT" tasks.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-ACCEPTSUBST' && echo acceptsubst-false-pos || echo acceptsubst-ok
+}
+check "plan-lint allows task-specific Acceptance (O-ACCEPTSUBST)" 0 "acceptsubst-ok"
+
+run_case() {
+  # O-M3WORKERREENTRY: Qwen edit after MiniMax 429/RED when plan populated
+  grep -q 'O-M3WORKERREENTRY' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_tasks_populated' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_WORKER_REENTRY' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'worker reentry' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3workerreentry-ok
+}
+check "O-M3WORKERREENTRY wiring (Qwen edit after MiniMax partial)" 0 "m3workerreentry-ok"
+
+run_case() {
+  # O-M3SEATCORPUS / O-M3TOOLHIST L2: rescued zero-write OpenCode JSONL must
+  # stay write=0 (the seat that proved O-M3ALLSTALL @18:57:10).
+  # Pin the *harness* histogram path (_m3_tool_hist_line), not a reimplemented
+  # Counter — else a regression in outer-loop.sh would still pass (W4-199).
+  local seat_log="$HARNESS_DIR/tests/fixtures/m3-seat-corpus/s01-w1-zerowrite-185509/outer-m3-S01-w1.log"
+  [ -f "$seat_log" ] || { echo "missing m3-seat-corpus fixture"; return 1; }
+  grep -q '_m3_tool_hist_line' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # shellcheck disable=SC1091
+  # Extract + run the harness helper in a subshell (outer-loop is not sourced whole).
+  local hist
+  hist=$(
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^_m3_tool_hist_line()/,/^}/p' "$HARNESS_DIR/outer-loop.sh")"
+    _m3_tool_hist_line "$seat_log"
+  )
+  echo "$hist" | grep -q 'writes=0' || { echo "hist=$hist"; return 1; }
+  echo "$hist" | grep -qE 'read=([5-9]|[1-9][0-9])' || { echo "hist=$hist"; return 1; }
+  # Cross-check fixture itself still has zero write/edit tool_use events.
+  python3 - "$seat_log" <<'PY' || return 1
+import json, collections, sys
+from pathlib import Path
+t = collections.Counter()
+for line in Path(sys.argv[1]).read_text(errors="replace").splitlines():
+    try:
+        o = json.loads(line)
+    except Exception:
+        continue
+    if o.get("type") != "tool_use":
+        continue
+    t[str((o.get("part") or {}).get("tool") or "?")] += 1
+writes = sum(t[k] for k in t if k.lower() in ("write", "edit"))
+assert t.get("read", 0) >= 5 and writes == 0, (dict(t), writes)
+PY
+  echo m3seatcorpus-zerowrite-ok
+}
+check "m3-seat-corpus zero-write S01 w1 pins O-M3TOOLHIST/ALLSTALL (L2)" 0 "m3seatcorpus-zerowrite-ok"
+
+run_case() {
   grep -q 'O-M3QWENSTALL: preseeded' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3QWENSTALL preseed' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q '_m3_tasks_real' "$HARNESS_DIR/outer-loop.sh" \
@@ -5250,11 +5417,46 @@ run_case() {
     | python3 -c "import json,sys; d=json.load(sys.stdin); a=d['acceptance']; m=d['migration']; \
 assert m['legacyPackage']=='org.springframework.samples.petclinic'; \
 assert a['path']=='/petclinic/api/vets'; assert a['collection']=='_array'; \
-assert a['getter']=='getAllVets'; assert a['service']=='ClinicService'; \
+assert a['getter']=='getAllVets'; assert a['service']=='VetResource'; \
 assert a['itemType']=='VetDto'; \
 assert 'endpointEnv' not in a; print('stamp-petclinic-ok')"
 }
 check "contract-stamp petclinic fixture matches F-2 acceptance (O-STAMP-AUTO)" 0 "stamp-petclinic-ok"
+
+run_case() {
+  # O-ACCEPTREAL — getter not on ClinicService → stamp controller (VetResource)
+  mkfix
+  legacy="$STAMP_FIX/stamp-petclinic"
+  out=$(python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write --json 2>/tmp/acceptreal-stamp.err)
+  echo "$out" | python3 -c "import json,sys; a=json.load(sys.stdin)['acceptance']; \
+assert a['getter']=='getAllVets' and a['service']=='VetResource'" \
+    && grep -q 'O-ACCEPTREAL' /tmp/acceptreal-stamp.err \
+    && echo acceptreal-derive-ok
+}
+check "contract-stamp O-ACCEPTREAL derives controller when getter∉service" 0 "acceptreal-derive-ok"
+
+run_case() {
+  # O-ACCEPTREAL gate — mismatched getter/service → RED
+  mkfix
+  legacy="$STAMP_FIX/stamp-petclinic"
+  cat > migration.yaml <<'EOF'
+migration:
+  legacyPackage: org.springframework.samples.petclinic
+  targetPackage: com.demo
+contract:
+  status: decided
+acceptance:
+  path: /petclinic/api/vets
+  collection: _array
+  getter: getAllVets
+  service: ClinicService
+  itemType: VetDto
+EOF
+  rc=0
+  err=$(python3 "$HARNESS_DIR/contract-stamp-gate.py" --legacy "$legacy" --yaml migration.yaml 2>&1) || rc=$?
+  [ "$rc" = "1" ] && echo "$err" | grep -q 'O-ACCEPTREAL' && echo acceptreal-gate-red-ok
+}
+check "contract-stamp-gate REDs getter∉service (O-ACCEPTREAL)" 0 "acceptreal-gate-red-ok"
 
 run_case() {
   mkfix
@@ -6124,7 +6326,7 @@ run_case() {
   grep -q 'O-TMPARCHIVE' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'run-archives' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'archive_tmp_forensics' "$HARNESS_DIR/outer-loop.sh" \
-    && grep -q "trap 'archive_tmp_forensics' EXIT" "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE "trap '(_kill_outer_heartbeats; )?archive_tmp_forensics' EXIT" "$HARNESS_DIR/outer-loop.sh" \
     && echo tmparchive-ok
 }
 check "outer-loop archives /tmp forensics on EXIT incl fail (O-TMPARCHIVE)" 0 "tmparchive-ok"
@@ -8018,7 +8220,7 @@ run_case() {
   grep -q 'O-LOGSTORY' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'STORY_TAG=' "$HARNESS_DIR/outer-loop.sh" \
     && grep -qE 'STORY_TAG:\+ \$STORY_TAG' "$HARNESS_DIR/outer-loop.sh" \
-    && grep -q 'STORY_TAG="\$SID"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qF 'STORY_TAG="$SLUG"' "$HARNESS_DIR/outer-loop.sh" \
     && echo logstory-wire-ok
 }
 check "outer-loop log() prefixes STORY_TAG (O-LOGSTORY wire)" 0 "logstory-wire-ok"
@@ -8031,23 +8233,31 @@ run_case() {
   log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
   log "▶ START  M1 ANALYZE — establish migration ground truth"
   log "         M2 SEQUENCE still working"
-  STORY_TAG=S02
-  log "▶ START  M3 SPECIFY — plan story S02-x (2/6)"
+  STORY_TAG=S02-domain-model-foundation
+  log "▶ START  M3 SPECIFY — plan story S02-domain-model-foundation (2/6)"
   log "         ✓ SENSE milestone sensor GREEN after T-001"
-  log "✓ END    M4/M5 EXECUTE — S02-x complete"
+  log "✓ END    M4/M5 EXECUTE — S02-domain-model-foundation complete"
   STORY_TAG=""
   log "▶ START  M3-ALL whole-set lint — K1 / Port / later-class"
-  # M1/M2 and post-story: no SID prefix
-  ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M1 ANALYZE' \
-    && ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M2 SEQUENCE' \
-    && ! grep -E '^\[[^]]+\] S0[0-9] ▸' "$LOG" | grep -q 'M3-ALL whole-set' \
-    && grep -qE '^\[[^]]+\] S02 ▸ ▶ START  M3 SPECIFY' "$LOG" \
-    && grep -qE '^\[[^]]+\] S02 ▸          ✓ SENSE' "$LOG" \
-    && grep -qE '^\[[^]]+\] S02 ▸ ✓ END    M4/M5' "$LOG" \
-    && ! grep -vE '^\[[^]]+\] S02 ▸' "$LOG" | grep -q 'M3 SPECIFY\|SENSE milestone\|M4/M5 EXECUTE' \
+  # M1/M2 and post-story: no story prefix
+  ! grep -E '^\[[^]]+\] S0[0-9]' "$LOG" | grep -q 'M1 ANALYZE' \
+    && ! grep -E '^\[[^]]+\] S0[0-9]' "$LOG" | grep -q 'M2 SEQUENCE' \
+    && ! grep -E '^\[[^]]+\] S0[0-9]' "$LOG" | grep -q 'M3-ALL whole-set' \
+    && grep -qE '^\[[^]]+\] S02-domain-model-foundation ▸ ▶ START  M3 SPECIFY' "$LOG" \
+    && grep -qE '^\[[^]]+\] S02-domain-model-foundation ▸          ✓ SENSE' "$LOG" \
+    && grep -qE '^\[[^]]+\] S02-domain-model-foundation ▸ ✓ END    M4/M5' "$LOG" \
+    && ! grep -vE '^\[[^]]+\] S02-domain-model-foundation ▸' "$LOG" | grep -q 'M3 SPECIFY\|SENSE milestone\|M4/M5 EXECUTE' \
     && echo logstory-emit-ok
 }
-check "log() emits S02 ▸ in-story and none for M1/M2 (O-LOGSTORY)" 0 "logstory-emit-ok"
+check "log() emits full-slug ▸ in-story and none for M1/M2 (O-LOGSTORY/O-LOGFULLSTORY)" 0 "logstory-emit-ok"
+
+run_case() {
+  grep -q 'O-LOGFULLSTORY' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qF 'M3 SPECIFY ${SLUG} (worker)' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qF 'STORY_TAG="$SLUG"' "$HARNESS_DIR/outer-loop.sh" \
+    && echo logfullstory-wire-ok
+}
+check "outer-loop M3 titles + STORY_TAG use full slug (O-LOGFULLSTORY)" 0 "logfullstory-wire-ok"
 
 # O-LOGBRIEF / O-LOGEPILOG — story-start banner + end-of-story summary (wake#376)
 run_case() {
@@ -8291,6 +8501,8 @@ EOF
 ## Goal & position
 x
 ## In scope
+- `src/main/java/com/demo/model/ShoppingCart.java`
+- `src/test/java/com/demo/ShoppingCartServiceTest.java`
 ```java
 import javax.ws.rs.Path;
 ```
@@ -8309,6 +8521,7 @@ EOF
 ## Goal & position
 x
 ## In scope
+- `src/main/java/com/demo/service/CartService.java`
 ```java
 import javax.ws.rs.Path;
 ```
@@ -8328,6 +8541,7 @@ EOF
 ## Goal & position
 x
 ## In scope
+- `src/main/java/com/demo/service/CartService.java`
 ```java
 import javax.ws.rs.Path;
 ```
@@ -8346,6 +8560,8 @@ EOF
 - rewrite: 1 — javaee-pom-to-quarkus-00010
 - OPEN DESIGN: 1 — springboot-web-to-quarkus-00000
 EOF
+  # O-BRIEFFRESH — accept-path / GREEN cases need a current hash stamp
+  [ "$1" = "yes" ] && stamp_brieffresh roadmap.md
 }
 
 run_case() {
@@ -8361,6 +8577,159 @@ run_case() {
   echo "$out" | grep -q 'ROADMAP OK' && echo portderive-brief-green-ok
 }
 check "roadmap-lint accepts OPEN DESIGN brief with REDESIGN contract (O-PORTDERIVE)" 0 "portderive-brief-green-ok"
+
+run_case() {
+  # O-BRIEFCONTRACT — one §7 class contracted, sibling in scope omitted → RED
+  grep -q 'O-BRIEFCONTRACT' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/service
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CartService.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CatalogService.java
+  cat > migration/architecture-profile.md <<'EOF'
+# Profile
+## 7. Class roles & target contract
+**CartService** — REDESIGN (src/.../CartService.java) — target: ConcurrentHashMap with compute().
+**CatalogService** — REDESIGN (src/.../CatalogService.java) — target: CDI @ApplicationScoped.
+EOF
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## springboot-web-to-quarkus-00000 [OPEN DESIGN]
+- ee
+- Decided target: redesign
+- /projects/legacy/src/main/java/com/demo/service/CartService.java: line 1
+## Summary by class
+- OPEN DESIGN: 1 — springboot-web-to-quarkus-00000
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Services
+- scope: src/main/java/com/demo/service/CartService.java, src/main/java/com/demo/service/CatalogService.java
+- findings: springboot-web-to-quarkus-00000
+- depends: -
+- deploy: true
+- done: services
+- rationale: redesign
+- kind: reimplement
+- seat-budget: 5
+EOF
+  cat > migration/briefs/S01-services.md <<'EOF'
+# S01 brief
+## Goal & position
+redesign
+## In scope
+### CartService.java
+```
+class CartService {}
+```
+### CatalogService.java
+```
+class CatalogService {}
+```
+## Out of scope
+none
+## Decided target shapes
+`CartService` — REDESIGN: target: ConcurrentHashMap with compute().
+## Contracts
+none
+## Done-criteria
+ok
+seat-budget: 5
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md /tmp migration/architecture-profile.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-BRIEFCONTRACT' \
+    && echo "$out" | grep -q 'CatalogService' \
+    && echo briefcontract-red-ok
+}
+check "roadmap-lint REDs missing per-class §7 contract (O-BRIEFCONTRACT)" 0 "briefcontract-red-ok"
+
+run_case() {
+  grep -q 'ensure_brief_class_contracts\|O-BRIEFCONTRACT' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'Per-class contracts' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q '_contract_bullet\|redesign_contract_hints_from_profile' "$HARNESS_DIR/m2-compose.py" \
+    && ! grep -q 'JUDGMENT from architecture-profile' "$HARNESS_DIR/m2-compose.py" \
+    && echo briefcontract-compose-ok
+}
+check "m2-compose pastes per-class §7 contracts (O-BRIEFCONTRACT)" 0 "briefcontract-compose-ok"
+
+run_case() {
+  # O-BRIEFCONTRACT paste — family §7 line expands to per-class; JUDGMENT stub RED
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/repository
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/repository/FooRepositoryImpl.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/repository/BarRepositoryImpl.java
+  cat > migration/architecture-profile.md <<'EOF'
+# Profile
+## 7. Class roles & target contract
+### REDESIGN
+- All `FooRepositoryImpl`, `BarRepositoryImpl` → **@ApplicationScoped** CDI beans with **@Transactional** methods
+EOF
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings
+## springboot-di-to-quarkus-00003 [OPEN DESIGN]
+- ee
+- Decided target: redesign
+- /projects/legacy/src/main/java/com/demo/repository/FooRepositoryImpl.java:1
+## Summary by class
+- OPEN DESIGN: 1 — springboot-di-to-quarkus-00003
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Repos
+- scope: src/main/java/com/demo/repository/FooRepositoryImpl.java, src/main/java/com/demo/repository/BarRepositoryImpl.java
+- findings: springboot-di-to-quarkus-00003
+- depends: -
+- deploy: true
+- done: repos converted with @ApplicationScoped and @Transactional on every repository impl
+- rationale: redesign
+- kind: reimplement
+- seat-budget: 5
+EOF
+  # Negative: JUDGMENT stub only — must RED (discriminates substance)
+  cat > migration/briefs/S01-repos.md <<'EOF'
+# S01 brief
+## Goal & position
+convert repos
+## In scope
+- `src/main/java/com/demo/repository/FooRepositoryImpl.java`
+```
+public class FooRepositoryImpl {}
+```
+- `src/main/java/com/demo/repository/BarRepositoryImpl.java`
+```
+public class BarRepositoryImpl {}
+```
+## Out of scope
+none
+## Decided target shapes
+- `FooRepositoryImpl` — REDESIGN: target: <!-- JUDGMENT from architecture-profile §7 -->
+- `BarRepositoryImpl` — REDESIGN: target: <!-- JUDGMENT from architecture-profile §7 -->
+## Contracts
+- **Preserve**: none
+- **Behavioral pins**: characterization pins repository CRUD
+## Done-criteria
+repos converted with @ApplicationScoped and @Transactional on every repository impl
+seat-budget: 5
+EOF
+  stamp_brieffresh migration/roadmap.md
+  out_neg=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md /tmp migration/architecture-profile.md 2>&1 || true)
+  # Positive: compose paste → GREEN contracts (substance, not ROADMAP-OK alone)
+  python3 "$HARNESS_DIR/m2-compose.py" --root . --mode fill >/tmp/m2-paste.txt 2>&1 || true
+  out_pos=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md /tmp migration/architecture-profile.md 2>&1 || true)
+  echo "$out_neg" | grep -q 'LINT:O-BRIEFCONTRACT' \
+    && ! echo "$out_pos" | grep -q 'LINT:O-BRIEFCONTRACT' \
+    && echo "$out_pos" | grep -qE 'BRIEF-QUALITY S01: (9[0-9]|100)' \
+    && grep -q '@ApplicationScoped' migration/briefs/S01-repos.md \
+    && grep -q 'FooRepositoryImpl' migration/briefs/S01-repos.md \
+    && grep -q 'BarRepositoryImpl' migration/briefs/S01-repos.md \
+    && ! grep -q 'JUDGMENT from architecture-profile' migration/briefs/S01-repos.md \
+    && echo briefcontract-paste-discriminate-ok
+}
+check "§7 family paste upgrades JUDGMENT stubs; gate discriminates (O-BRIEFCONTRACT)" 0 "briefcontract-paste-discriminate-ok"
 
 run_case() {
   grep -q 'O-PORTDERIVE' "$HARNESS_DIR/roadmap-lint.py" \
@@ -8473,6 +8842,7 @@ check "roadmap-lint REDs kind=mixed without justification (O-STORYKIND)" 0 "stor
 run_case() {
   mkfix; portderive_roadmap_fix yes
   sed -i.bak 's/^- kind: reimplement/- kind: mixed — harvest + convert; split deferred/' roadmap.md
+  stamp_brieffresh roadmap.md
   out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1) || true
   echo "$out" | grep -q 'ROADMAP OK' && echo storykind-mixed-green-ok
 }
@@ -8894,6 +9264,35 @@ run_case() {
 }
 check "m2-corpus known-RED v4 lint×2 stays RED (O-M2CORPUS)" 0 "m2corpus-red-ok"
 
+run_case() {
+  # O-M2CORPUSCOVER / O-L2CORPUSWAVE4 — real a7f5c83 roadmap must stay
+  # O-SCOPECOVER RED (25 staging orphans) under live M2 argv.
+  test -f "$HARNESS_DIR/m2-corpus-lint.sh" \
+    && test -d "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-a7f5c83-scopecover" \
+    && out=$(bash "$HARNESS_DIR/m2-corpus-lint.sh" --case v4-m2-a7f5c83-scopecover 2>&1) \
+    && echo "$out" | grep -q 'PASS v4-m2-a7f5c83-scopecover' \
+    && echo m2corpus-scopecover-ok
+}
+check "m2-corpus known-RED a7f5c83 stays O-SCOPECOVER RED (O-M2CORPUSCOVER)" 0 "m2corpus-scopecover-ok"
+
+run_case() {
+  # O-SCOPENONJAVA L2 — java-only complete roadmap must RED on non-java orphans.
+  test -f "$HARNESS_DIR/m2-corpus-lint.sh" \
+    && test -d "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-8291d50-scopenonjava" \
+    && out=$(bash "$HARNESS_DIR/m2-corpus-lint.sh" --case v4-m2-8291d50-scopenonjava 2>&1) \
+    && echo "$out" | grep -q 'PASS v4-m2-8291d50-scopenonjava' \
+    && echo "$out" | grep -q 'PASS' \
+    && lint=$(python3 "$HARNESS_DIR/roadmap-lint.py" \
+         "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-8291d50-scopenonjava/migration/roadmap.md" \
+         "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-8291d50-scopenonjava/migration/findings-inventory.md" \
+         "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-8291d50-scopenonjava/legacy" \
+         "$HARNESS_DIR/tests/fixtures/m2-corpus/v4-m2-8291d50-scopenonjava/migration/architecture-profile.md" 2>&1 || true) \
+    && echo "$lint" | grep -q 'application.properties' \
+    && echo "$lint" | grep -q 'LINT:O-SCOPECOVER' \
+    && echo m2corpus-scopenonjava-ok
+}
+check "m2-corpus known-RED 8291d50 stays non-java O-SCOPECOVER RED (O-SCOPENONJAVA)" 0 "m2corpus-scopenonjava-ok"
+
 # O-MONSTART — preflight --start wires dual-monitor start (host telemetry)
 run_case() {
   local top preflight
@@ -9132,6 +9531,541 @@ EOF
 }
 check "roadmap-lint no O-SCOPECOVER when staging .properties owned (O-SCOPENONJAVA)" 0 "scopenonjava-owned-ok"
 
+run_case() {
+  # O-BRIEFCOVER — scope path unnamed in brief → RED
+  grep -q 'O-BRIEFCOVER' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Pet.java
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain model foundation
+- scope: src/main/java/com/demo/model/Owner.java, src/main/java/com/demo/model/Pet.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model ready
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  cat > migration/briefs/S01-domain.md <<'EOF'
+# S01 brief
+## Goal & position
+harvest Owner only
+## In scope
+### Owner.java
+```
+class Owner {}
+```
+## Out of scope
+nothing
+## Decided target shapes
+Owner → jakarta entity
+## Contracts
+none
+## Done-criteria
+Owner compiles
+seat-budget: 1
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-BRIEFCOVER' \
+    && echo "$out" | grep -q 'Pet.java' \
+    && echo briefcover-orphan-red-ok
+}
+check "roadmap-lint REDs scope path unnamed in brief (O-BRIEFCOVER)" 0 "briefcover-orphan-red-ok"
+
+run_case() {
+  # O-SEATBUDGETUNIQ — conflicting seat-budget values in brief → RED
+  grep -q 'O-SEATBUDGETUNIQ' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain model foundation
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model ready
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  cat > migration/briefs/S01-domain.md <<'EOF'
+# S01 brief
+## Goal & position
+harvest
+## In scope
+### Owner.java
+```
+class Owner {}
+```
+## Out of scope
+none
+## Decided target shapes
+Owner → entity
+## Contracts
+none
+## Done-criteria
+ok
+seat-budget: 1
+seat-budget: 25
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-SEATBUDGETUNIQ' && echo seatbudgetuniq-red-ok
+}
+check "roadmap-lint REDs conflicting seat-budget values in brief (O-SEATBUDGETUNIQ)" 0 "seatbudgetuniq-red-ok"
+
+run_case() {
+  # O-M3PREFLIGHT — outer-loop re-runs per-story roadmap-lint before M3 seats
+  grep -q 'O-M3PREFLIGHT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm3-preflight-' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q -- '--story' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_PREFLIGHT_HELD' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'STORY_FILTER\|--story' "$HARNESS_DIR/roadmap-lint.py" \
+    && echo m3preflight-wire-ok
+}
+check "O-M3PREFLIGHT wired (outer-loop + roadmap-lint --story)" 0 "m3preflight-wire-ok"
+
+run_case() {
+  # O-M3PREFLIGHT --story filters: S01 COVER RED does not surface under --story S02
+  grep -q 'STORY_FILTER' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/java/com/demo/service
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CartService.java
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## removed-javaee-modules-00020 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/model/Owner.java: line 1
+## removed-javaee-modules-00021 [rewrite]
+- ee
+- Decided target: harvest
+- /projects/legacy/src/main/java/com/demo/service/CartService.java: line 1
+## Summary by class
+- rewrite: 2 — removed-javaee-modules-00020, removed-javaee-modules-00021
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: false
+- done: model
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+## S02: Service
+- scope: src/main/java/com/demo/service/CartService.java
+- findings: removed-javaee-modules-00021
+- depends: S01
+- deploy: true
+- done: service
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  # S01 brief omits Owner.java → BRIEFCOVER; S02 names its path
+  cat > migration/briefs/S01-domain.md <<'EOF'
+# S01 brief
+## Goal & position
+harvest
+## In scope
+nothing named
+## Out of scope
+none
+## Decided target shapes
+none
+## Contracts
+none
+## Done-criteria
+ok
+seat-budget: 1
+EOF
+  cat > migration/briefs/S02-service.md <<'EOF'
+# S02 brief
+## Goal & position
+harvest CartService with preserve pins for catalog lookups
+## In scope
+### CartService.java
+```
+class CartService {}
+```
+## Out of scope
+none
+## Decided target shapes
+`CartService` — REDESIGN: target: CDI `@ApplicationScoped`
+## Contracts
+- **Behavioral pins**: getCart returns 404 when missing
+## Done-criteria
+CartService compiles on Quarkus; characterization asserts preserve catalog lookup behaviour
+seat-budget: 1
+EOF
+  stamp_brieffresh migration/roadmap.md
+  out1=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md --story S01 2>&1 || true)
+  out2=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md --story S02 2>&1 || true)
+  echo "$out1" | grep -q 'LINT:O-BRIEFCOVER' \
+    && echo "$out1" | grep -q 'S01:' \
+    && ! echo "$out2" | grep -q 'LINT:O-BRIEFCOVER' \
+    && echo "$out2" | grep -q 'ROADMAP OK (story S02)' \
+    && echo m3preflight-story-filter-ok
+}
+check "roadmap-lint --story isolates brief-quality (O-M3PREFLIGHT)" 0 "m3preflight-story-filter-ok"
+
+run_case() {
+  # O-BRIEFQUALITY — --story enforces floor; thin brief REDs
+  grep -q 'O-BRIEFQUALITY' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  cat > migration/findings-inventory.md <<'EOF'
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model
+- rationale: harvest
+- kind: rename
+- seat-budget: 1
+EOF
+  cat > migration/briefs/S01-domain.md <<'EOF'
+# S01 brief
+## Goal & position
+x
+## In scope
+- `src/main/java/com/demo/model/Owner.java`
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts
+x
+## Done-criteria
+x
+seat-budget: 1
+EOF
+  stamp_brieffresh migration/roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md --story S01 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-BRIEFQUALITY' \
+    && echo "$out" | grep -q 'BRIEF-QUALITY S01:' \
+    && echo briefquality-red-ok
+}
+check "roadmap-lint --story REDs thin brief below quality floor (O-BRIEFQUALITY)" 0 "briefquality-red-ok"
+
+run_case() {
+  grep -q 'BRIEF-QUALITY' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'brief_quality_score\|O-BRIEFQUALITY' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'O-M3PREFLIGHT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm2_brief_quality_exit\|BRIEF_QUALITY_ENFORCE=1' "$HARNESS_DIR/outer-loop.sh" \
+    && echo briefquality-wire-ok
+}
+check "O-BRIEFQUALITY wired (score + --story + M2-exit floor)" 0 "briefquality-wire-ok"
+
+run_case() {
+  # O-PROFILE7GAP — RowMapper unnamed in §7 → RUBRIC:sec7-cover
+  grep -q 'O-PROFILE7GAP\|SEC7_COVER_NAME\|sec7-cover' "$HARNESS_DIR/profile-rubric.py" || return 1
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo/repository
+  cat > legacy/src/main/java/com/demo/repository/JdbcFooRowMapper.java <<'EOF'
+package com.demo.repository;
+public class JdbcFooRowMapper {}
+EOF
+  cat > profile.md <<'EOF'
+# Profile
+## 1. Purpose & domain
+Cart service with pricing pinned by ShoppingCartServiceTest at src/test/java/X.java:1 and enough words to clear the thin bar for purpose domain section here.
+## 2. Components & relationships
+REST CartEndpoint at src/main/java/com/demo/rest/CartEndpoint.java depends on the service layer with enough words here for the thin bar.
+## 3. Integration surfaces
+CATALOG_ENDPOINT preserve at src/main/resources/application.properties:1 with enough words here for the thin bar check to pass cleanly.
+## 4. Behavioral contract sources
+Legacy suite pins totals at src/test/java/com/demo/ShoppingCartServiceTest.java:40 with enough words here for thin bar.
+## 5. Modernization surface
+Pom moves to Quarkus per javaee-pom-to-quarkus-00010 with enough words here for the thin bar check.
+## 6. Domain boundaries
+Single bounded context around the cart model at src/main/java/com/demo with enough words here for thin bar.
+## 7. Class roles & target contract
+### REDESIGN
+- `CartService` — REDESIGN: target: ConcurrentHashMap with compute(); GET returns 404 on missing.
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1 || true)
+  echo "$out" | grep -q 'RUBRIC:sec7-cover' \
+    && echo "$out" | grep -q 'JdbcFooRowMapper' \
+    && echo profile7gap-red-ok
+}
+check "profile-rubric REDs unnamed RowMapper in §7 (O-PROFILE7GAP)" 0 "profile7gap-red-ok"
+
+run_case() {
+  # O-NOSPECIMEN / W4-249 — sonar-line-fix must not fail-open to petclinic defaults
+  grep -q 'refuse specimen defaults\|cannot infer' "$HARNESS_DIR/sonar-line-fix.py" \
+    && ! grep -qE 'svc = "clinicService"|cls = "ClinicServiceImpl"' "$HARNESS_DIR/sonar-line-fix.py" \
+    && echo sonarlinefix-nospecimen-ok
+}
+check "sonar-line-fix refuses specimen fail-open defaults (O-NOSPECIMEN)" 0 "sonarlinefix-nospecimen-ok"
+
+run_case() {
+  # O-NOSPECIMEN — specimen tokens only in comments/docstrings/FORBIDDEN allowlists
+  python3 - "$HARNESS_DIR" <<'PY' && echo nospecimen-scan-ok
+import ast, pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+bad = re.compile(
+    r"petclinic|springframework\.samples|getAllVets|VetRestController|"
+    r"ClinicServiceImpl|ShoppingCartService|OwnerRepository",
+    re.I,
+)
+allow_files = {"hint-inject.py", "write-hint.py", "coolstore-lint.py"}
+hits = []
+for path in sorted(root.glob("*.py")):
+    if path.name in allow_files:
+        continue
+    src = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        continue
+    # Docstrings may name specimens for humans — executable strings may not.
+    skip_ids = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
+                skip_ids.add(id(node.body[0].value))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in skip_ids:
+            continue
+        if bad.search(node.value):
+            hits.append(f"{path.name}:{getattr(node, 'lineno', '?')}")
+if hits:
+    print("O-NOSPECIMEN hits:", ", ".join(hits[:12]), file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+check "harness .py has no specimen string literals (O-NOSPECIMEN)" 0 "nospecimen-scan-ok"
+
+run_case() {
+  # O-CYCLEPART — circular group spanning two stories → RED
+  # dependency-order.md is a sibling of roadmap.md (migration/ on live tip)
+  grep -q 'O-CYCLEPART' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p briefs migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/java/com/demo/service
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CartService.java
+  cat > dependency-order.md <<'EOF'
+## Circular group (convert together in ONE task)
+- com.demo.model.Owner (src/main/java/com/demo/model/Owner.java)
+- com.demo.service.CartService (src/main/java/com/demo/service/CartService.java)
+EOF
+  cat > inv.md <<'EOF'
+## Summary by class
+- rewrite: 2 — removed-javaee-modules-00020, removed-javaee-modules-00021
+EOF
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: false
+- done: model
+- rationale: harvest
+## S02: Service
+- scope: src/main/java/com/demo/service/CartService.java
+- findings: removed-javaee-modules-00021
+- depends: S01
+- deploy: true
+- done: service
+- rationale: harvest
+EOF
+  for sid in S01 S02; do
+    cat > "briefs/${sid}-x.md" <<EOF
+# $sid
+## Goal & position
+x
+## In scope
+\`\`\`
+class X {}
+\`\`\`
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts
+x
+## Done-criteria
+x
+EOF
+  done
+  printf '\n- `src/main/java/com/demo/model/Owner.java`\n' >> briefs/S01-x.md
+  printf '\n- `src/main/java/com/demo/service/CartService.java`\n' >> briefs/S02-x.md
+  stamp_brieffresh roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-CYCLEPART' && echo cyclepart-red-ok
+}
+check "roadmap-lint REDs circular group spanning stories (O-CYCLEPART)" 0 "cyclepart-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p briefs migration/staging/src/main/java/com/demo/model \
+    migration/staging/src/main/java/com/demo/service
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CartService.java
+  cat > dependency-order.md <<'EOF'
+## Circular group (convert together in ONE task)
+- com.demo.model.Owner (src/main/java/com/demo/model/Owner.java)
+- com.demo.service.CartService (src/main/java/com/demo/service/CartService.java)
+EOF
+  cat > inv.md <<'EOF'
+## Summary by class
+- rewrite: 2 — removed-javaee-modules-00020, removed-javaee-modules-00021
+EOF
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: false
+- done: model
+- rationale: harvest
+## S02: Service
+- scope: src/main/java/com/demo/service/CartService.java
+- findings: removed-javaee-modules-00021
+- depends: S01
+- deploy: true
+- done: service
+- rationale: harvest
+
+## Cycle partition waivers
+- circular-group: waive (compile gated at story boundaries; layer partition retained)
+EOF
+  for sid in S01 S02; do
+    cat > "briefs/${sid}-x.md" <<EOF
+# $sid
+## Goal & position
+x
+## In scope
+\`\`\`
+class X {}
+\`\`\`
+## Out of scope
+x
+## Decided target shapes
+x
+## Contracts
+x
+## Done-criteria
+x
+EOF
+  done
+  printf '\n- `src/main/java/com/demo/model/Owner.java`\n' >> briefs/S01-x.md
+  printf '\n- `src/main/java/com/demo/service/CartService.java`\n' >> briefs/S02-x.md
+  stamp_brieffresh roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1 || true)
+  echo "$out" | grep -q 'ROADMAP OK' && ! echo "$out" | grep -q 'LINT:O-CYCLEPART' \
+    && echo cyclepart-waive-ok
+}
+check "roadmap-lint accepts explicit cycle partition waiver (O-CYCLEPART)" 0 "cyclepart-waive-ok"
+
+run_case() {
+  # O-BRIEFFRESH — stamped hash ≠ current roadmap → RED
+  # (self-contained: later instruments redefine roadmap_fixture)
+  grep -q 'O-BRIEFFRESH' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p briefs migration/staging/src/main/java/com/demo/model
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  cat > inv.md <<'EOF'
+## Summary by class
+- rewrite: 1 — removed-javaee-modules-00020
+EOF
+  cat > roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Domain
+- scope: src/main/java/com/demo/model/Owner.java
+- findings: removed-javaee-modules-00020
+- depends: -
+- deploy: true
+- done: model
+- rationale: harvest
+EOF
+  cat > briefs/S01-domain.md <<'EOF'
+# S01 brief
+<!-- O-BRIEFFRESH sha256=deadbeefdeadbeef -->
+## Goal & position
+harvest
+## In scope
+- `src/main/java/com/demo/model/Owner.java`
+```
+class Owner {}
+```
+## Out of scope
+none
+## Decided target shapes
+none
+## Contracts
+none
+## Done-criteria
+ok
+EOF
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md 2>&1 || true)
+  echo "$out" | grep -q 'LINT:O-BRIEFFRESH' \
+    && echo "$out" | grep -q 'S01:' \
+    && echo brieffresh-stale-red-ok
+}
+check "roadmap-lint REDs stale brief freshness hash (O-BRIEFFRESH)" 0 "brieffresh-stale-red-ok"
+
+run_case() {
+  grep -q 'ensure_brief_freshness\|O-BRIEFFRESH' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'fresh_marker_line\|story_fresh_hash' "$HARNESS_DIR/m2-compose.py" \
+    && echo brieffresh-compose-ok
+}
+check "m2-compose stamps O-BRIEFFRESH on fill/skeleton" 0 "brieffresh-compose-ok"
+
 # O-STAGESCOPE — skeleton/fill scope from staging partition
 run_case() {
   grep -q 'O-STAGESCOPE\|apply_staging_scope\|staging_layer_scopes' "$HARNESS_DIR/m2-compose.py" \
@@ -9189,6 +10123,16 @@ run_case() {
   grep -q '__pycache__/' "$gi" && grep -q '\*\.pyc' "$gi" && echo pycgitignore-wire-ok
 }
 check "scaffold .gitignore ignores __pycache__ and *.pyc (O-PYCGITIGNORE)" 0 "pycgitignore-wire-ok"
+
+
+# O-HBORPHAN — heartbeat dies with parent outer
+run_case() {
+  grep -q "O-HBORPHAN" "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q "_kill_outer_heartbeats" "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qF "PARENT=" "$HARNESS_DIR/outer-loop.sh" \
+    && echo hborphan-wire-ok
+}
+check "outer-loop heartbeat exits with parent + EXIT pkill (O-HBORPHAN)" 0 "hborphan-wire-ok"
 
 echo "----"
 echo "$PASS/$N passed"

@@ -117,7 +117,7 @@ _sym() { # $1=pretty $2=plain
   if [ "$PLAIN" = "1" ]; then echo "$2"; else echo "$1"; fi
 }
 
-# O-LOGSTORY: when inside a story loop, prefix every log() line with "SID ▸".
+# O-LOGSTORY / O-LOGFULLSTORY: in-story log() prefix is full slug (S01-platform-…) ▸.
 # STORY_TAG is empty for M1/M2 and between stories — do not set at call sites.
 STORY_TAG="${STORY_TAG:-}"
 log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
@@ -378,13 +378,21 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
 # reach execution ungated).
 # Logs Actor + sparse heartbeats; session rc ≠ gate success (V6 notes).
 _outer_heartbeat_start() { # $1=title $2=t0 $3=slog $4=kind → sets hb_pid
-  local title="$1" t0="$2" slog="$3" kind="${4:-orchestrator}"
+  local title="$1" t0="$2" slog="$3" kind="${4:-orchestrator}" parent=$$
   cat > /tmp/outer-loop-heartbeat.sh <<'HBEOF'
 #!/usr/bin/env bash
 # outer-loop-heartbeat — not the outer loop itself
-SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"; LOG="${5:-/tmp/outer-loop.log}"; KIND="${6:-orchestrator}"
+# O-HBORPHAN: exit when parent outer-loop dies (ppid=1 survivors polluted the log).
+SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"
+LOG="${5:-/tmp/outer-loop.log}"; KIND="${6:-orchestrator}"; PARENT="${7:-}"
 while true; do
+  if [ -n "$PARENT" ] && ! kill -0 "$PARENT" 2>/dev/null; then
+    exit 0
+  fi
   sleep "$SECS"
+  if [ -n "$PARENT" ] && ! kill -0 "$PARENT" 2>/dev/null; then
+    exit 0
+  fi
   now=$(date +%s); elapsed=$((now - T0))
   if [ "$KIND" = "orchestrator" ] && grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
     echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s) — details ${SLOG}" >> "$LOG"
@@ -394,7 +402,7 @@ while true; do
 done
 HBEOF
   chmod +x /tmp/outer-loop-heartbeat.sh
-  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" "$kind" &
+  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" "$kind" "$parent" &
   hb_pid=$!
 }
 
@@ -431,6 +439,29 @@ _m3_log_has_write() {
     || grep -qE '"name"\s*:\s*"(edit|write|Write|Edit)"' "$slog" 2>/dev/null
 }
 
+# O-M3TOOLHIST: one-line tool histogram at seat exit (no JSONL dig required).
+_m3_tool_hist_line() {
+  local slog="$1"
+  [ -f "$slog" ] || { echo "tools:none writes=0"; return; }
+  python3 - "$slog" <<'PY' 2>/dev/null || echo "tools:parse-fail writes=?"
+import json, collections, sys
+from pathlib import Path
+t = collections.Counter()
+for line in Path(sys.argv[1]).read_text(errors="replace").splitlines():
+    try:
+        o = json.loads(line)
+    except Exception:
+        continue
+    if o.get("type") != "tool_use":
+        continue
+    name = (o.get("part") or {}).get("tool") or (o.get("part") or {}).get("name") or "?"
+    t[str(name)] += 1
+writes = sum(t[k] for k in t if k.lower() in ("write", "edit"))
+parts = ",".join(f"{k}={t[k]}" for k in sorted(t)) or "none"
+print(f"tools:{parts} writes={writes}")
+PY
+}
+
 # O-M3WORKER: OpenCode/Qwen seat for M3 SPECIFY (plan-lint gated).
 # O-M3EMPTY: set M3_EXPECT_TASKS=specs/<slug>/tasks.md before wchat; if still
 # missing after M3_EMPTY_ABORT_SECS (default 360), abort the seat and return 1
@@ -458,16 +489,34 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
   watch_pid=""
   stall_pid=""
   if [ -n "${M3_EXPECT_TASKS:-}" ]; then
+    # O-M3ALLSTALL / W4-186: M3-ALL compose writes a full tasks.md *before* the
+    # worker seat (<!-- O-M3ALL-SKELETON -->). Existence without the QwenSTALL
+    # preseed marker must NOT count as worker progress — capture pre-seat
+    # cksum so both stall (120s) and empty (360s) watchers require a mutate
+    # or a write/edit tool in the session log.
+    _m3_tasks_baseline=""
+    if [ -f "$M3_EXPECT_TASKS" ]; then
+      _m3_tasks_baseline=$(cksum < "$M3_EXPECT_TASKS" | awk '{print $1" "$2}')
+    fi
     (
       # O-M3QWENSTALL: read-thrash with zero writes — abort at 120s default.
-      # Preseeded skeleton still counts as stalled until worker writes/edits
-      # (or replaces the O-M3QWENSTALL preseed marker).
+      # Preseed / M3-ALL skeleton / unchanged pre-seat cksum all count as
+      # stalled until worker writes/edits (or mutates tasks.md).
       stall_s="${M3_STALL_ABORT_SECS:-120}"
       step=15
       elapsed=0
       _m3_tasks_real() {
         [ -f "$M3_EXPECT_TASKS" ] || return 1
-        ! grep -q 'O-M3QWENSTALL preseed' "$M3_EXPECT_TASKS" 2>/dev/null
+        if grep -qE 'O-M3QWENSTALL preseed|O-M3ALL-SKELETON' "$M3_EXPECT_TASKS" 2>/dev/null; then
+          return 1
+        fi
+        if [ -n "${_m3_tasks_baseline}" ]; then
+          local cur
+          cur=$(cksum < "$M3_EXPECT_TASKS" | awk '{print $1" "$2}')
+          [ "$cur" != "${_m3_tasks_baseline}" ]
+        else
+          return 0
+        fi
       }
       while [ "$elapsed" -lt "$stall_s" ]; do
         sleep "$step"
@@ -483,12 +532,21 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
     ) &
     stall_pid=$!
     (
-      # O-M3EMPTY: final backstop when tasks.md never lands (or stays preseed)
+      # O-M3EMPTY: final backstop when tasks.md never lands, stays preseed /
+      # M3-ALL skeleton, or is unchanged from the pre-seat baseline with
+      # zero write/edit tools (O-M3ALLSTALL).
       abort_s="${M3_EMPTY_ABORT_SECS:-360}"
       sleep "$abort_s"
+      _empty_stale=0
       if [ ! -f "$M3_EXPECT_TASKS" ] \
-        || grep -q 'O-M3QWENSTALL preseed' "$M3_EXPECT_TASKS" 2>/dev/null; then
-        echo "[$(date -u +%F' '%T)]          O-M3EMPTY: abort — ${M3_EXPECT_TASKS} missing/preseed after ${abort_s}s" >> "$LOG"
+        || grep -qE 'O-M3QWENSTALL preseed|O-M3ALL-SKELETON' "$M3_EXPECT_TASKS" 2>/dev/null; then
+        _empty_stale=1
+      elif [ -n "${_m3_tasks_baseline}" ]; then
+        _cur=$(cksum < "$M3_EXPECT_TASKS" | awk '{print $1" "$2}')
+        [ "$_cur" = "${_m3_tasks_baseline}" ] && _empty_stale=1
+      fi
+      if [ "$_empty_stale" -eq 1 ] && ! _m3_log_has_write "$slog"; then
+        echo "[$(date -u +%F' '%T)]          O-M3EMPTY: abort — ${M3_EXPECT_TASKS} missing/preseed/unchanged after ${abort_s}s" >> "$LOG"
         touch "/tmp/m3-empty-abort-${tag}"
         kill "$tp" 2>/dev/null || true
       fi
@@ -512,6 +570,8 @@ wchat() { # $1=tag $2=prompt [$3=phase title] [$4=extra -f file ...]
   kill "$hb_pid" 2>/dev/null || true
   wait "$hb_pid" 2>/dev/null || true
   now=$(date +%s)
+  # O-M3TOOLHIST: surface read/bash/write counts without digging JSONL.
+  log "         O-M3TOOLHIST: $(_m3_tool_hist_line "$slog")"
   log "·        ${title} session finished ($((now - t0))s, worker_rc=${rc}) — checking gate next (session≠gate)"
   return $rc
 }
@@ -549,7 +609,11 @@ archive_tmp_forensics() {
     log "WARN: O-TMPARCHIVE — could not create ${_arch}"
   fi
 }
-trap 'archive_tmp_forensics' EXIT
+# O-HBORPHAN: kill stray heartbeats on EXIT (SIGTERM path used to leave ppid=1 ghosts).
+_kill_outer_heartbeats() {
+  pkill -TERM -f '/tmp/outer-loop-heartbeat\.sh' 2>/dev/null || true
+}
+trap '_kill_outer_heartbeats; archive_tmp_forensics' EXIT
 
 fail_run() { phase_fail "$1"; echo "outer-failed: $1" > /tmp/outer-loop-done; exit 1; }
 
@@ -686,8 +750,21 @@ m2_compose_bookkeeping() {
   log "         O-M2COMPOSE ${mode} RED — see /tmp/m2-compose.txt · lint residual $(roadmap_lint_residual)"
   return 1
 }
+m2_brief_quality_exit() {
+  # O-BRIEFQUALITY — floor at M2 exit (not only --story / O-M3PREFLIGHT).
+  BRIEF_QUALITY_ENFORCE=1 python3 "$HARNESS/roadmap-lint.py" \
+      migration/roadmap.md migration/findings-inventory.md /projects/legacy \
+      migration/architecture-profile.md \
+      > /tmp/roadmap-lint-m2exit.txt 2>&1
+}
 if roadmap_green; then
   phase_ok "M2 SEQUENCE — roadmap already present and lint-green"
+  if ! m2_brief_quality_exit; then
+    cp -f /tmp/roadmap-lint-m2exit.txt /tmp/roadmap-lint.txt 2>/dev/null || true
+    phase_gate "M2 SEQUENCE brief-quality" RED \
+      "already-green path below floor — /tmp/roadmap-lint-m2exit.txt"
+    fail_run "O-BRIEFQUALITY M2 exit floor (already-green path; see /tmp/roadmap-lint-m2exit.txt)"
+  fi
 else
   # O-M2COMPOSE skeleton-first: unique-owner partition + brief stubs before seat
   if [ "${M2_COMPOSE}" = "1" ] && [ ! -f migration/roadmap.md ]; then
@@ -732,6 +809,17 @@ ${_lint_inline}
     m2_compose_bookkeeping fill || true
     if roadmap_green; then
       M2_429_COUNT=0  # O-M2429CAP: non-429 success resets quota counter
+      # O-BRIEFQUALITY — enforce floor at M2 exit (cheaper than M3 preflight).
+      if ! m2_brief_quality_exit; then
+        cp -f /tmp/roadmap-lint-m2exit.txt /tmp/roadmap-lint.txt 2>/dev/null || true
+        phase_gate "M2 SEQUENCE brief-quality" RED \
+          "$(grep -cE '^LINT:O-BRIEFQUALITY' /tmp/roadmap-lint-m2exit.txt 2>/dev/null || echo 0) below floor — /tmp/roadmap-lint-m2exit.txt"
+        [ "$ATTEMPT" -ge "$M2_MAX_ATTEMPTS" ] \
+          && fail_run "O-BRIEFQUALITY M2 exit floor (see /tmp/roadmap-lint-m2exit.txt)"
+        ATTEMPT=$((ATTEMPT + 1))
+        phase_retry "M2 SEQUENCE — brief quality below floor; bouncing"
+        continue
+      fi
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       # O-LOGLINTRES: narrate residual (0) on GREEN so convergence is visible
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
@@ -795,8 +883,12 @@ fi
 # then (2) JIT re-lint + M4/M5. Waterfall antidotes stay mandatory.
 M3_ALL_PASSES="author execute"
 [ "${M3_ALL}" = "1" ] || M3_ALL_PASSES="execute"
+# O-M3PREFLIGHT: SIDs refused this pass (brief-quality RED); fail after loop
+# so other stories still get their preflight/seats attempted first.
+M3_PREFLIGHT_HELD=""
 
 for M3_ALL_PASS in $M3_ALL_PASSES; do
+M3_PREFLIGHT_HELD=""
 if [ "$M3_ALL_PASS" = "author" ]; then
   phase_start "M3-ALL author — ${STORY_COUNT} story plans before any M4 (O-M3ALL)" \
     "Whole-set lint after this pass; M4 refused until PLAN-SET OK"
@@ -823,8 +915,9 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   [ -n "$SID" ] || continue
   STORY_IDX=$((STORY_IDX + 1))
   # O-LOGSTORY: story identity on every log() line for this SID (cleared below).
-  STORY_TAG="$SID"
   SLUG_HINT=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1 | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' || echo "$SID")
+  # O-LOGFULLSTORY: STORY_TAG is full slug when brief exists; else SID
+  STORY_TAG="${SLUG_HINT:-$SID}"
   story_done "$SID" && { phase_ok "${SID} (${SLUG_HINT}) — already complete; skipping"; STORY_TAG=""; continue; }
 
   # -------------------------------------------------------- M3 SPECIFY
@@ -835,7 +928,32 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
   [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
   SLUG=$(basename "$BRIEF" .md)
+  # O-LOGFULLSTORY: prefix + phase titles use full slug (S01-platform-...), not bare S01
+  STORY_TAG="$SLUG"
   M3_DONE=0
+
+  # O-M3PREFLIGHT — brief-quality vs *current* roadmap before any M3 seat.
+  # M2-time GREEN is not enough: recompose can stale briefs between M2 and
+  # M3. Per-story --story so a deficient S03 holds S03 while S01 proceeds.
+  # Distinct cause; do not spend MiniMax/Qwen on a bad input.
+  _m3pf="/tmp/m3-preflight-${SID}.txt"
+  set +e
+  python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md /projects/legacy \
+    migration/architecture-profile.md --story "$SID" \
+    > "$_m3pf" 2>&1
+  _m3pf_rc=$?
+  set -e
+  if [ "$_m3pf_rc" != "0" ]; then
+    phase_gate "M3 PREFLIGHT ${SLUG} brief-quality" RED \
+      "O-M3PREFLIGHT — see ${_m3pf}"
+    log "         O-M3PREFLIGHT: ${SID} brief-quality RED vs current roadmap — refusing M3 seats (other stories proceed)"
+    M3_PREFLIGHT_HELD="${M3_PREFLIGHT_HELD:-}${M3_PREFLIGHT_HELD:+ }${SID}"
+    STORY_TAG=""
+    continue
+  fi
+  phase_gate "M3 PREFLIGHT ${SLUG} brief-quality" GREEN "O-M3PREFLIGHT"
+
   # O-M3ACCEPT: plan-lint must know deploy vs non-deploy (roadmap flag).
   # O-M3DTOSCOPE: pass roadmap scope so plan-lint ignores out-of-story files (dto/).
   M3_LINT_CMD="python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md --story-deploy ${DEPLOY} --story-scope '${SCOPE}'"
@@ -847,11 +965,11 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
     [ -n "$(git status --porcelain specs/)" ] \
       && git add specs/ \
       && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-    phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+    phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
     phase_ok "M3 SPECIFY — ${SLUG} spec already present and plan-lint-green ($SPEC_TASKS); commit $(git rev-parse --short HEAD)"
     M3_DONE=1
   elif [ -n "$SPEC_TASKS" ]; then
-    phase_gate "M3 SPECIFY ${SID} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
+    phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
     log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
   fi
   if [ "$M3_DONE" != "1" ]; then
@@ -865,9 +983,11 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ "$mode" = "fix" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
         mode=fresh
       fi
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it), migration/architecture-profile.md for context, and the legacy code it cites under /projects/legacy. O-M3FIRSTWRITE (mandatory): in the FIRST tool batch, mkdir -p specs/${SLUG}/ and WRITE specs/${SLUG}/tasks.md (TASKS-TEMPLATE skeleton) before any other reads beyond the brief — supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL). Then refine plan.md/spec.md and run plan-lint. O-SPECREIMPL: every REDESIGN/OPEN DESIGN class named in spec.md must appear in some task with **Port**: reimplement. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story (create the directory if missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      # O-M3FIRSTWRITE / O-M3ALLSTALL: skeleton-first — first tool must EDIT
+      # existing tasks.md (not create-from-scratch after deep-read).
+      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it) and migration/architecture-profile.md. O-M3FIRSTWRITE (mandatory, skeleton-first): if specs/${SLUG}/tasks.md already exists (M3-ALL skeleton / preseed), your FIRST tool must EDIT that file (fill Goal/Target design/revise Class·Shape; remove O-M3ALL-SKELETON or preseed markers) — do not deep-read legacy before that first edit. If tasks.md is missing, mkdir -p and WRITE a TASKS-TEMPLATE skeleton first. Supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL/O-M3ALLSTALL). Then refine plan.md/spec.md and run plan-lint. O-SPECREIMPL: every REDESIGN/OPEN DESIGN class named in spec.md must appear in some task with **Port**: reimplement. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
       if [ "$mode" = "fix" ]; then
-        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — the findings are in /tmp/plan-lint.txt (read it with your file tools). Fix every finding in specs/${SLUG}/ (create specs/${SLUG}/{spec,plan,tasks}.md from the brief if tasks.md is missing). Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. Drop O-PLANEXISTS-dead Spring→Quarkus converts already satisfied by the scaffold. Scope=${SCOPE}. Verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
+        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — findings in /tmp/plan-lint.txt. O-M3FIRSTWRITE (mandatory): your FIRST tool must EDIT specs/${SLUG}/tasks.md (fill Goal/Target design; put verbatim migration.yaml preserve: tokens in a covering task; remove O-M3ALL-SKELETON/preseed markers) — do not deep-read legacy before that first edit. Then fix every finding in specs/${SLUG}/. Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. Drop O-PLANEXISTS-dead Spring→Quarkus converts already satisfied by the scaffold. Scope=${SCOPE}. Verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
       fi
     }
     m3_lint_green() {
@@ -898,7 +1018,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       while [ "$ATTEMPT" -le "${M3_WORKER_ATTEMPTS:-2}" ]; do
         if m3_lint_green; then
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via worker path; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
@@ -934,15 +1054,15 @@ EOF
         if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
         M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
         export M3_EXPECT_TASKS
-        wchat "m3-${SID}-w${ATTEMPT}" "$P" "M3 SPECIFY ${SID} (worker)" \
+        wchat "m3-${SID}-w${ATTEMPT}" "$P" "M3 SPECIFY ${SLUG} (worker)" \
           -f "$BRIEF" -f migration/architecture-profile.md
         mchat_rc=$?
         unset M3_EXPECT_TASKS
         if [ -f "/tmp/m3-empty-abort-m3-${SID}-w${ATTEMPT}" ]; then
           log "         O-M3EMPTY/O-M3QWENSTALL: worker produced no tasks.md — attempt ${ATTEMPT} spent (early abort)"
           m3_write_lint_evidence
-          phase_gate "M3 SPECIFY ${SID} plan-lint" RED "O-M3EMPTY early abort — /tmp/plan-lint.txt"
-          phase_retry "M3 SPECIFY ${SID} — empty write; advancing"
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "O-M3EMPTY early abort — /tmp/plan-lint.txt"
+          phase_retry "M3 SPECIFY ${SLUG} — empty write; advancing"
           if [ "$ATTEMPT" -eq 1 ] && [ "${M3_SKIP_W2_ON_EMPTY:-true}" = "true" ]; then
             log "         O-M3QWENSTALL: w1 read-only/empty — skip w2, MiniMax backstop next"
             ATTEMPT="${M3_WORKER_ATTEMPTS:-2}"
@@ -955,25 +1075,25 @@ EOF
           # the seat was thrashing — check gate before infinite kill-retry.
           if m3_lint_green; then
             [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-            phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+            phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
             phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after O-M3KILL (tip already green); commit $(git rev-parse --short HEAD)"
             M3_DONE=1
             break
           fi
           log "         O-M3KILL: worker M3 killed (rc=${mchat_rc}) — attempt ${ATTEMPT} NOT spent"
-          phase_retry "M3 SPECIFY ${SID} — worker session killed; not counting as lint fail"
+          phase_retry "M3 SPECIFY ${SLUG} — worker session killed; not counting as lint fail"
           continue
         fi
         if m3_lint_green; then
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after Qwen; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
         fi
         m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "worker attempt ${ATTEMPT} — /tmp/plan-lint.txt"
-        phase_retry "M3 SPECIFY ${SID} — Qwen plan still RED"
+        phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker attempt ${ATTEMPT} — /tmp/plan-lint.txt"
+        phase_retry "M3 SPECIFY ${SLUG} — Qwen plan still RED"
         ATTEMPT=$((ATTEMPT + 1))
       done
     fi
@@ -985,11 +1105,20 @@ EOF
       M3_429_BACKOFF_SECS="${M3_429_BACKOFF_SECS:-${M2_429_BACKOFF_SECS:-900}}"
       M3_429_MAX="${M3_429_MAX:-${M2_429_MAX:-3}}"
       M3_429_COUNT=0
+      # O-M3WORKERREENTRY: at most one Qwen edit seat after MiniMax partial
+      # write / 429 when tasks.md is already authored (not skeleton).
+      _m3_reentry_done=0
+      _m3_tasks_populated() {
+        local f="specs/${SLUG}/tasks.md"
+        [ -f "$f" ] || return 1
+        grep -qE 'O-M3QWENSTALL preseed|O-M3ALL-SKELETON' "$f" 2>/dev/null && return 1
+        grep -qE '^#### T-[0-9]+' "$f" 2>/dev/null
+      }
       while [ "$ATTEMPT" -le "${M3_ORCH_BACKSTOP:-1}" ]; do
         if m3_lint_green; then
           M3_429_COUNT=0
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
@@ -998,13 +1127,13 @@ EOF
           phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax backstop ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
           log "         O-M3WORKER: MiniMax backstop after Qwen plan-lint RED"
           seat_tag="orch${ATTEMPT}"
-          seat_label="M3 SPECIFY ${SID} (orch backstop)"
+          seat_label="M3 SPECIFY ${SLUG} (orch backstop)"
         else
           # O-M3ROUTE: MiniMax drafts first (Qwen 0-for-N on open-ended M3).
           phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax draft ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
           log "         O-M3ROUTE: MiniMax draft (WORKER_M3_FIRST=false)"
           seat_tag="a${ATTEMPT}"
-          seat_label="M3 SPECIFY ${SID}"
+          seat_label="M3 SPECIFY ${SLUG}"
         fi
         SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
         if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
@@ -1012,13 +1141,13 @@ EOF
         mchat_rc=$?
         if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
           log "         O-M3KILL: orch M3 killed (rc=${mchat_rc}) — backstop NOT spent"
-          phase_retry "M3 SPECIFY ${SID} — orch session killed; not counting"
+          phase_retry "M3 SPECIFY ${SLUG} — orch session killed; not counting"
           continue
         fi
         if m3_lint_green; then
           M3_429_COUNT=0
           [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SID} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
@@ -1029,26 +1158,78 @@ EOF
             log "         O-M2429CAP: M3 ${SID} ${M3_429_COUNT} consecutive rate-limited seats (max ${M3_429_MAX}) — failing run"
             fail_run "quota exhausted after ${M3_429_COUNT} rate-limited seats (O-M2-429CAP)"
           fi
+          # O-M3WORKERREENTRY: MiniMax often lands a populated plan then 429s.
+          # Qwen edit-only (Acceptance / remaining lints) before burning more
+          # scarce orch seats — stall aborts read-only in ~120s if it fails.
+          if [ "${M3_WORKER_REENTRY:-true}" = "true" ] \
+            && [ "${_m3_reentry_done}" != "1" ] \
+            && [ "${WORKER_M3_FIRST:-true}" = "true" ] \
+            && _m3_tasks_populated; then
+            _m3_reentry_done=1
+            log "         O-M3WORKERREENTRY: populated tasks.md after MiniMax 429 — Qwen edit seat before backoff"
+            phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [worker reentry 1/1]"
+            m3_build_prompt fix
+            M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
+            export M3_EXPECT_TASKS
+            wchat "m3-${SID}-re1" "$P" "M3 SPECIFY ${SLUG} (worker reentry)" \
+              -f "$BRIEF" -f migration/architecture-profile.md || true
+            unset M3_EXPECT_TASKS
+            if m3_lint_green; then
+              M3_429_COUNT=0
+              [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+              phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+              phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via O-M3WORKERREENTRY; commit $(git rev-parse --short HEAD)"
+              M3_DONE=1
+              break
+            fi
+            m3_write_lint_evidence
+            phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker reentry — /tmp/plan-lint.txt"
+          fi
           log "         O-M3QUOTA: MiniMax rate-limited — NOT spent; backoff ${M3_429_BACKOFF_SECS}s (${M3_429_COUNT}/${M3_429_MAX})"
-          phase_retry "M3 SPECIFY ${SID} — quota; sleeping ${M3_429_BACKOFF_SECS}s (O-M3QUOTA ${M3_429_COUNT}/${M3_429_MAX})"
+          phase_retry "M3 SPECIFY ${SLUG} — quota; sleeping ${M3_429_BACKOFF_SECS}s (O-M3QUOTA ${M3_429_COUNT}/${M3_429_MAX})"
           sleep "${M3_429_BACKOFF_SECS}"
           continue
         fi
         M3_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter
+        # O-M3WORKERREENTRY: MiniMax wrote but lint still RED (no 429) — try
+        # Qwen edit once before another orch seat.
+        if [ "${M3_WORKER_REENTRY:-true}" = "true" ] \
+          && [ "${_m3_reentry_done}" != "1" ] \
+          && [ "${WORKER_M3_FIRST:-true}" = "true" ] \
+          && _m3_tasks_populated; then
+          _m3_reentry_done=1
+          log "         O-M3WORKERREENTRY: populated tasks.md after MiniMax RED — Qwen edit seat"
+          phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [worker reentry 1/1]"
+          m3_build_prompt fix
+          M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
+          export M3_EXPECT_TASKS
+          wchat "m3-${SID}-re1" "$P" "M3 SPECIFY ${SLUG} (worker reentry)" \
+            -f "$BRIEF" -f migration/architecture-profile.md || true
+          unset M3_EXPECT_TASKS
+          if m3_lint_green; then
+            [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+            phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+            phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via O-M3WORKERREENTRY; commit $(git rev-parse --short HEAD)"
+            M3_DONE=1
+            break
+          fi
+          m3_write_lint_evidence
+          phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker reentry — /tmp/plan-lint.txt"
+        fi
         m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SID} plan-lint" RED "MiniMax attempt ${ATTEMPT} — /tmp/plan-lint.txt"
+        phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "MiniMax attempt ${ATTEMPT} — /tmp/plan-lint.txt"
         ATTEMPT=$((ATTEMPT + 1))
       done
     fi
 
     if [ "$M3_DONE" != "1" ]; then
-      fail_run "M3 SPECIFY ${SID} failed plan-lint after M3 attempts (WORKER_M3_FIRST=${WORKER_M3_FIRST:-true})"
+      fail_run "M3 SPECIFY ${SLUG} failed plan-lint after M3 attempts (WORKER_M3_FIRST=${WORKER_M3_FIRST:-true})"
     fi
   fi
 
   # O-M3ALL author pass: no M4 until every story plan exists + whole-set GREEN.
   if [ "$M3_ALL_PASS" = "author" ]; then
-    phase_ok "M3-ALL author — ${SID} plan ready (defer M4 until whole-set lint)"
+    phase_ok "M3-ALL author — ${SLUG} plan ready (defer M4 until whole-set lint)"
     STORY_TAG=""
     continue
   fi
@@ -1056,7 +1237,7 @@ EOF
   # ----------------------------------------------------- M3-ALL JIT (waterfall)
   # Mandatory antidotes: JIT re-lint; Owns/Port/Shape amend → whole-set re-lint;
   # plan-vs-reality delta is first-class (never suppress).
-  phase_start "M3-ALL JIT — re-lint ${SID} before M4 (waterfall antidote)"
+  phase_start "M3-ALL JIT — re-lint ${SLUG} before M4 (waterfall antidote)"
   set +e
   bash "$HARNESS/m3-all-lint.sh" --mode=jit --story "$SID" --root . \
     > /tmp/m3-all-jit.txt 2>&1
@@ -1069,10 +1250,10 @@ EOF
       || fail_run "O-M3ALL whole-set RED after ${SID} amend (see /tmp/m3-all-whole.txt)"
     phase_gate "M3-ALL whole-set (post-amend)" GREEN "amend re-lint OK"
   elif [ "$_m3all_rc" != "0" ]; then
-    phase_gate "M3-ALL JIT ${SID}" RED "see /tmp/m3-all-jit.txt"
+    phase_gate "M3-ALL JIT ${SLUG}" RED "see /tmp/m3-all-jit.txt"
     fail_run "O-M3ALL JIT RED for ${SID} (see /tmp/m3-all-jit.txt)"
   else
-    phase_gate "M3-ALL JIT ${SID}" GREEN "waterfall antidote"
+    phase_gate "M3-ALL JIT ${SLUG}" GREEN "waterfall antidote"
   fi
 
   # ----------------------------------------------------- M4/M5 EXECUTE
@@ -1316,6 +1497,13 @@ EOF
   STORY_TAG=""
 done <<< "$STORIES"
 STORY_TAG=""
+
+# O-M3PREFLIGHT: after attempting every story, refuse the pass if any brief
+# failed vs current roadmap (distinct cause; seats were not spent on them).
+if [ -n "${M3_PREFLIGHT_HELD:-}" ]; then
+  phase_gate "M3 PREFLIGHT held stories" RED "${M3_PREFLIGHT_HELD}"
+  fail_run "O-M3PREFLIGHT: brief-quality RED for ${M3_PREFLIGHT_HELD} vs current roadmap (see /tmp/m3-preflight-*.txt) — fix/regen briefs before M3 seats"
+fi
 
 if [ "$M3_ALL_PASS" = "author" ]; then
   phase_start "M3-ALL whole-set lint — K1 / Port / later-class / Oracle / Assumes (O-M3ALL)"
