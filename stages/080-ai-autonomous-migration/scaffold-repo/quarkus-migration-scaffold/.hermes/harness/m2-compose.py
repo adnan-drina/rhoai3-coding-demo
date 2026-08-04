@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import os
 import re
 import sys
 from collections import defaultdict
@@ -776,6 +777,105 @@ def ensure_deploy_last(stories: list[dict]) -> None:
     stories[-1]["deploy"] = True
 
 
+def _load_dependency_order():
+    path = Path(__file__).resolve().parent / "dependency-order.py"
+    spec = importlib.util.spec_from_file_location("dependency_order", path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def resolve_legacy_root(root: Path) -> Path | None:
+    """Prefer /projects/legacy, then sibling legacy/, then LEGACY_ROOT."""
+    candidates = [
+        Path("/projects/legacy"),
+        root.parent / "legacy",
+        root / "legacy",
+    ]
+    env = os.environ.get("LEGACY_ROOT", "").strip()
+    if env:
+        candidates.insert(0, Path(env))
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return None
+
+
+def derive_story_depends(stories: list[dict], root: Path) -> int:
+    """O-DEPCHAIN — set depends from real inter-story import edges, not S_n-1.
+
+    Uses dependency-order.build_graph on the legacy tree. Stories with no
+    cross-story imports get depends: -. Returns count of stories updated.
+    """
+    legacy = resolve_legacy_root(root)
+    if legacy is None or len(stories) < 2:
+        return 0
+    try:
+        depmod = _load_dependency_order()
+        analysis = depmod.analyze(str(legacy))
+    except Exception as exc:  # noqa: BLE001 — bookkeeping must not abort fill
+        print(f"O-M2COMPOSE WARN: O-DEPCHAIN graph skip: {exc}", file=sys.stderr)
+        return 0
+    classes = analysis["classes"]  # fqn -> relpath
+    imports = analysis["imports"]
+    # path / basename / simple / fqn -> sid (scopes should be unique owners)
+    own: dict[str, str] = {}
+    for st in stories:
+        sid = st["sid"]
+        for p in _scope_path_list(st.get("scope") or ""):
+            own[p] = sid
+            own[Path(p).name] = sid
+            if p.endswith(".java"):
+                own[Path(p).stem] = sid
+    for fqn, rel in classes.items():
+        rel_n = rel.replace("\\", "/")
+        simple = fqn.rsplit(".", 1)[-1]
+        sid = own.get(rel_n) or own.get(Path(rel_n).name) or own.get(simple)
+        if sid:
+            own[fqn] = sid
+
+    def _sid_for(fqn: str) -> str | None:
+        if fqn in own:
+            return own[fqn]
+        rel = classes.get(fqn, "").replace("\\", "/")
+        return (
+            own.get(rel)
+            or own.get(Path(rel).name)
+            or own.get(fqn.rsplit(".", 1)[-1])
+        )
+
+    # story -> set of stories it depends on (earlier roadmap index only —
+    # outer-loop runs stories in file order; forward edges are reorder signals,
+    # not satisfiable depends under the sequential runner).
+    sid_idx = {st["sid"]: i for i, st in enumerate(stories)}
+    needs: dict[str, set[str]] = {st["sid"]: set() for st in stories}
+    for fqn, deps in imports.items():
+        sid = _sid_for(fqn)
+        if not sid:
+            continue
+        for d in deps:
+            dsid = _sid_for(d)
+            if not dsid or dsid == sid:
+                continue
+            if sid_idx.get(dsid, 999) < sid_idx.get(sid, -1):
+                needs[sid].add(dsid)
+
+    n = 0
+    for st in stories:
+        sid = st["sid"]
+        deps = sorted(needs.get(sid) or [])
+        new = ", ".join(deps) if deps else "-"
+        cur = (st.get("depends") or "-").strip()
+        # Normalize "S01, S02" vs "S01,S02"
+        cur_n = ", ".join(p.strip() for p in cur.split(",") if p.strip() and p != "-")
+        cur_n = cur_n or "-"
+        if cur_n != new:
+            st["depends"] = new
+            n += 1
+    return n
+
+
 def render_roadmap(stories: list[dict], non_mandatory: set[str], prior_nm: str) -> str:
     lines = [
         "# Modernization roadmap",
@@ -784,12 +884,11 @@ def render_roadmap(stories: list[dict], non_mandatory: set[str], prior_nm: str) 
         "# O-M2COMPOSE — mechanical partition / kind / deploy / seat-budget / K3 rows.",
         "# Model fills JUDGMENT (rationale, quotes, adopt/defer reasons, §7 contracts;",
         "# may refine kind with mixed justification).",
+        "# O-DEPCHAIN: depends are real inter-story edges (not forced S_n ← S_n-1).",
         "",
     ]
     for i, st in enumerate(stories):
-        dep = st["depends"]
-        if dep == "-" and i > 0:
-            dep = stories[i - 1]["sid"]
+        dep = (st.get("depends") or "-").strip() or "-"
         lines.append(f"## {st['sid']}: {st['title']}")
         lines.append(f"- scope: {st['scope'] or '<!-- JUDGMENT: target paths -->'}")
         lines.append(f"- findings: {st['findings_raw'] or '-'}")
@@ -1127,13 +1226,32 @@ def _brief_has_class_contract(text: str, cls: str) -> bool:
     return False
 
 
+def _brief_has_dedicated_contract(text: str, cls: str, peers: set[str]) -> bool:
+    """O-BRIEFQCONT — class alone on a substance line (not a family list)."""
+    shape = re.compile(
+        r"(?i)(?:→|->|=>|target contract|JAX-RS|@ApplicationScoped|"
+        r"Panache|ConcurrentHashMap|ExceptionMapper|\b404\b|CDI|Agroal|"
+        r"@Path\b|PersistenceException|compute\(|@Transactional|"
+        r"\bremoved\b|target\s*:\s*(?!<!--)\S)"
+    )
+    judgment = re.compile(r"(?i)target\s*:\s*<!--\s*JUDGMENT")
+    cls_tok = re.compile(r"`([A-Z][A-Za-z0-9]+)`|\*\*([A-Z][A-Za-z0-9]+)\*\*")
+    for ln in text.splitlines():
+        if judgment.search(ln) or not shape.search(ln):
+            continue
+        named = [a or b for a, b in cls_tok.findall(ln) if (a or b) in peers]
+        if named == [cls]:
+            return True
+    return False
+
+
 def ensure_brief_class_contracts(
     path: Path,
     scope: str,
     redesign_cls: set[str],
     contract_hints: dict[str, str] | None = None,
 ) -> bool:
-    """O-BRIEFCONTRACT: paste §7 targets per class; upgrade JUDGMENT stubs."""
+    """O-BRIEFCONTRACT + O-BRIEFQCONT: paste dedicated §7 targets per class."""
     if not path.is_file():
         return False
     hits = scope_redesign_classes(scope, redesign_cls)
@@ -1141,6 +1259,7 @@ def ensure_brief_class_contracts(
         return False
     text = path.read_text(encoding="utf-8", errors="replace")
     hints = contract_hints or {}
+    peer_set = set(hits)
     changed = False
     lines = text.splitlines(keepends=True)
     new_lines: list[str] = []
@@ -1168,15 +1287,16 @@ def ensure_brief_class_contracts(
                 upgraded = True
                 changed = True
                 break
-            if _brief_has_class_contract(ln, c):
+            if _brief_has_dedicated_contract(ln, c, peer_set):
                 seen_ok.add(c)
         if not upgraded:
             new_lines.append(ln)
     text2 = "".join(new_lines)
+    # Append dedicated lines for classes only covered by family lists.
     missing = [
         c
         for c in hits
-        if c not in seen_ok and not _brief_has_class_contract(text2, c)
+        if c not in seen_ok and not _brief_has_dedicated_contract(text2, c, peer_set)
     ]
     if missing:
         block = [
@@ -1387,7 +1507,8 @@ def skeleton_from_inventory(
                 "scope": scope_s,
                 "findings": list(fids),
                 "findings_raw": ", ".join(fids) if fids else "-",
-                "depends": "-" if idx == 1 else f"S{idx-1:02d}",
+                # O-DEPCHAIN: starts as -; derive_story_depends fills real edges
+                "depends": "-",
                 "deploy": False,
                 "done": "<!-- JUDGMENT: checkable done-criterion -->",
                 "rationale": (
@@ -1512,6 +1633,7 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                 stories = unique_partition(stories, inv)
                 n_kind = derive_kinds(stories, inv, redesign_cls)
                 n_budget = apply_seat_budgets(stories, inv_text)
+                derive_story_depends(stories, root)
                 ensure_deploy_last(stories)
                 roadmap_path.write_text(
                     render_roadmap(stories, inv["non_mandatory"], prior_nm),
@@ -1527,6 +1649,7 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             stories = unique_partition(stories, inv)
             n_kind = derive_kinds(stories, inv, redesign_cls)
             n_budget = apply_seat_budgets(stories, inv_text)
+            derive_story_depends(stories, root)
             ensure_deploy_last(stories)
             roadmap_path.parent.mkdir(parents=True, exist_ok=True)
             roadmap_path.write_text(
@@ -1572,11 +1695,14 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         n_stage = apply_staging_scope(stories, root)
         n_kind = derive_kinds(stories, inv, redesign_cls)
         n_budget = apply_seat_budgets(stories, inv_text)
+        n_deps = derive_story_depends(stories, root)
         ensure_deploy_last(stories)
         body = render_roadmap(stories, inv["non_mandatory"], prior_nm)
         body = _strip_skeleton_preamble(body, text)
         body = with_preserved_cycle_waiver(body, text)
         roadmap_path.write_text(body, encoding="utf-8")
+        if n_deps:
+            print(f"O-M2COMPOSE: O-DEPCHAIN depends-updates={n_deps}")
         wrote_roadmap = True
         print(
             f"O-M2COMPOSE: fill stories={len(stories)} "

@@ -1176,6 +1176,23 @@ run_case() {
 }
 check "dependency-order resolves same-package references (item before cart)" 0 "1. com.demo.model.ShoppingCartItem"
 
+run_case() {
+  # O-M1SCC — true SCC only; mutual pair must not dump unrelated leftovers
+  mkfix; mkdir -p src/main/java/com/demo
+  printf 'package com.demo;\npublic class A { B b; }\n' > src/main/java/com/demo/A.java
+  printf 'package com.demo;\npublic class B { A a; }\n' > src/main/java/com/demo/B.java
+  printf 'package com.demo;\npublic class C { }\n' > src/main/java/com/demo/C.java
+  printf 'package com.demo;\npublic class D { C c; }\n' > src/main/java/com/demo/D.java
+  out=$(python3 "$HARNESS_DIR/dependency-order.py" .)
+  echo "$out" | grep -q 'O-M1SCC' \
+    && echo "$out" | grep -A20 '^## Circular group' | grep -q 'com.demo.A' \
+    && echo "$out" | grep -A20 '^## Circular group' | grep -q 'com.demo.B' \
+    && ! echo "$out" | grep -A20 '^## Circular group' | grep -q 'com.demo.C' \
+    && ! echo "$out" | grep -A20 '^## Circular group' | grep -q 'com.demo.D' \
+    && echo m1scc-ok
+}
+check "dependency-order emits true SCC not Kahn leftover (O-M1SCC)" 0 "m1scc-ok"
+
 # 46-47. outer-loop and analyze scripts stay parseable (they gate runs)
 run_case() { bash -n "$HARNESS_DIR/outer-loop.sh" && echo syntax-ok; }
 check "outer-loop.sh parses" 0 "syntax-ok"
@@ -9796,6 +9813,84 @@ run_case() {
     && echo briefquality-wire-ok
 }
 check "O-BRIEFQUALITY wired (score + --story + M2-exit floor)" 0 "briefquality-wire-ok"
+
+run_case() {
+  # O-BRIEFQCONT — family line covers binary BRIEFCONTRACT but contracts dim < 100
+  grep -q 'brief_dedicated_contract_classes\|O-BRIEFQCONT' "$HARNESS_DIR/roadmap-lint.py" || return 1
+  mkfix
+  mkdir -p migration/briefs \
+    migration/staging/src/main/java/com/demo/service
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CartService.java
+  printf 'package x;\n' > migration/staging/src/main/java/com/demo/service/CatalogService.java
+  cat > migration/architecture-profile.md <<'EOF'
+# Profile
+## 7. Class roles & target contract
+### REDESIGN
+- All `CartService`, `CatalogService` → **@ApplicationScoped** CDI beans
+EOF
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings
+## springboot-di-to-quarkus-00003 [OPEN DESIGN]
+- ee
+- Decided target: redesign
+- /projects/legacy/src/main/java/com/demo/service/CartService.java:1
+## Summary by class
+- OPEN DESIGN: 1 — springboot-di-to-quarkus-00003
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Modernization roadmap
+## S01: Services
+- scope: src/main/java/com/demo/service/CartService.java, src/main/java/com/demo/service/CatalogService.java
+- findings: springboot-di-to-quarkus-00003
+- depends: -
+- deploy: true
+- done: services converted with @ApplicationScoped CDI on every service class listed
+- rationale: redesign
+- kind: reimplement
+- seat-budget: 5
+EOF
+  # Family line only (two classes on one line) — binary OK, continuous contracts=0
+  cat > migration/briefs/S01-services.md <<'EOF'
+# S01 brief
+## Goal & position
+convert services
+## In scope
+- `src/main/java/com/demo/service/CartService.java`
+```
+public class CartService {}
+```
+- `src/main/java/com/demo/service/CatalogService.java`
+```
+public class CatalogService {}
+```
+## Out of scope
+none
+## Decided target shapes
+- `CartService`, `CatalogService` — REDESIGN: target: **@ApplicationScoped** CDI beans
+## Contracts
+- **Preserve**: none
+- **Behavioral pins**: characterization pins
+## Done-criteria
+services converted with @ApplicationScoped CDI on every service class listed
+seat-budget: 5
+EOF
+  stamp_brieffresh migration/roadmap.md
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md \
+    migration/findings-inventory.md /tmp migration/architecture-profile.md 2>&1 || true)
+  # Binary green (no BRIEFCONTRACT lint) but contracts dim not maxed
+  ! echo "$out" | grep -q 'LINT:O-BRIEFCONTRACT' \
+    && echo "$out" | grep -qE 'BRIEF-QUALITY S01: .*contracts=(0|50)' \
+    && echo briefqcont-family-ok
+}
+check "BRIEF-QUALITY contracts dim is dedicated/required (O-BRIEFQCONT)" 0 "briefqcont-family-ok"
+
+run_case() {
+  grep -q 'derive_story_depends\|O-DEPCHAIN' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'O-M1SCC' "$HARNESS_DIR/dependency-order.py" \
+    && ! grep -q 'if dep == "-" and i > 0' "$HARNESS_DIR/m2-compose.py" \
+    && echo depchain-wire-ok
+}
+check "O-DEPCHAIN + O-M1SCC wired (no forced S_n-1 depends)" 0 "depchain-wire-ok"
 
 run_case() {
   # O-PROFILE7GAP — RowMapper unnamed in §7 → RUBRIC:sec7-cover

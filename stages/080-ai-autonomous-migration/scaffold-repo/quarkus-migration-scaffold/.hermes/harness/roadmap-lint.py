@@ -55,6 +55,8 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                Enforced on --story (O-M3PREFLIGHT), BRIEF_QUALITY_ENFORCE=1,
                and outer-loop M2 exit (m2_brief_quality_exit); full M2 without
                ENFORCE prints SCORE lines without failing.
+  O-BRIEFQCONT — contracts dimension = dedicated/required (family lines
+               that name multiple in-scope classes do not max the score).
   O-CYCLEPART — every class/path in dependency-order.md "## Circular group"
                must be owned by one story, or roadmap must carry an explicit
                cycle waiver (## Cycle partition waivers / O-CYCLEPART-WAIVE).
@@ -142,6 +144,28 @@ def brief_classes_missing_contracts(btext: str, classes) -> list:
     return missing
 
 
+def brief_dedicated_contract_classes(btext: str, classes) -> set:
+    """O-BRIEFQCONT — classes with a *dedicated* (single-class) contract line.
+
+    A family / comma-list line that names multiple in-scope REDESIGN classes
+    counts for O-BRIEFCONTRACT (binary) but not as dedicated for the quality
+    score — shared paste must not max the contracts dimension.
+    """
+    class_set = set(classes)
+    dedicated = set()
+    for ln in btext.splitlines():
+        if not line_has_contract_substance(ln):
+            continue
+        named = []
+        for m in _CLASS_TOKEN.finditer(ln):
+            nm = m.group(1) or m.group(2)
+            if nm in class_set:
+                named.append(nm)
+        if len(named) == 1:
+            dedicated.add(named[0])
+    return dedicated
+
+
 def story_fresh_hash(sid, scope, findings_raw, kind_raw, seat_budget_raw) -> str:
     """O-BRIEFFRESH — content hash of roadmap fields that invalidate a brief."""
     paths = sorted(p.strip() for p in (scope or "").split(",") if p.strip())
@@ -199,7 +223,10 @@ def brief_quality_score(
     *,
     fresh_ok: bool,
 ) -> tuple:
-    """O-BRIEFQUALITY — composite 0..100 across five dimensions."""
+    """O-BRIEFQUALITY — composite 0..100 across five dimensions.
+
+    O-BRIEFQCONT: contracts = dedicated/required (family lines do not max).
+    """
     dims = {}
     if scope_paths:
         named = sum(
@@ -211,24 +238,35 @@ def brief_quality_score(
     else:
         dims["coverage"] = 100
     if scope_hit_classes:
-        miss = brief_classes_missing_contracts(btext, scope_hit_classes)
-        ok_n = len(scope_hit_classes) - len(miss)
-        dims["contracts"] = int(round(100.0 * ok_n / len(scope_hit_classes)))
+        # Continuous: only dedicated per-class lines raise the score.
+        ded = brief_dedicated_contract_classes(btext, scope_hit_classes)
+        dims["contracts"] = int(
+            round(100.0 * len(ded) / len(scope_hit_classes))
+        )
     else:
         dims["contracts"] = 100
     spec = 0
     if "```" in btext:
         spec += 40
-    if len(_CLASS_TOKEN.findall(btext)) >= 2:
-        spec += 30
-    elif _CLASS_TOKEN.search(btext) or _TARGET_SHAPE.search(btext):
-        spec += 15
-    if re.search(
-        r"(?i)\b(preserve|behavioral|oracle|assert|pin|idempotent|"
-        r"characterization|acceptance)\b",
-        btext,
+    # O-BRIEFQCONT: specificity needs real class tokens + shape substance,
+    # not merely the word "acceptance" next to a fence.
+    n_cls = len(_CLASS_TOKEN.findall(btext))
+    if n_cls >= 4 and any(
+        line_has_contract_substance(ln) for ln in btext.splitlines()
     ):
         spec += 30
+    elif n_cls >= 2:
+        spec += 20
+    elif n_cls >= 1 or _TARGET_SHAPE.search(btext):
+        spec += 10
+    if re.search(
+        r"(?i)\b(preserve|behavioral|oracle|assert|pin|idempotent|"
+        r"characterization)\b",
+        btext,
+    ):
+        spec += 20
+    if re.search(r"(?i)\bacceptance\b", btext) and n_cls >= 2:
+        spec += 10
     dims["specificity"] = min(100, spec)
     m_done = re.search(
         r"(?is)^##\s+Done-criteria\s*(.*?)(?:^##\s|\Z)", btext, re.M
