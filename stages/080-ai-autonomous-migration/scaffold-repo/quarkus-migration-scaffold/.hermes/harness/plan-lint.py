@@ -469,25 +469,78 @@ def main():
     # matched → every incident skipped (false PLAN OK on S01 fcc506c).
     story_scope = [s for s in re.split(r"[\s,]+", story_scope_raw) if s]
     tasks_path = args[0]
-    text = open(tasks_path, encoding="utf-8", errors="replace").read()
-    # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
-    # so committed artifact matches TASKS-TEMPLATE (not a tolerate-malformed path).
-    text, _pipe_n = normalize_m3_pipe_fields(text)
-    if _pipe_n:
-        try:
-            Path(tasks_path).write_text(text, encoding="utf-8")
-        except OSError as e:
-            print(
-                f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
-                f"rewrite failed ({e})",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
-                f"line(s) → {tasks_path}",
-                file=sys.stderr,
-            )
+    root = Path(".")
+    sid_m = re.search(r"(S\d+)", str(tasks_path))
+    sid = sid_m.group(1) if sid_m else ""
+
+    # F-lint-reads-store (W4-557): when model.tasks[] is bound for this story,
+    # plan-lint reads the typed store — never tasks.md prose as SoT. tasks_path
+    # remains the story locator / VIEW path only.
+    typed_mode = False
+    typed_tasks: list = []
+    _typed_model = None
+    try:
+        _hp = str(Path(__file__).resolve().parent)
+        if _hp not in sys.path:
+            sys.path.insert(0, _hp)
+        from model import (  # type: ignore
+            load as _mload,
+            tasks_for_story as _tfs,
+            typed_task_body as _ttb,
+            lint_typed_task_store as _ltts,
+        )
+
+        if (root / "migration" / "model.json").is_file() and sid:
+            _typed_model = _mload(root)
+            typed_tasks = _tfs(_typed_model, sid)
+            typed_mode = bool(typed_tasks)
+    except Exception:
+        typed_mode = False
+        typed_tasks = []
+        _typed_model = None
+
+    heads: list = []
+    bodies: dict = {}
+    text = ""
+    if typed_mode:
+        for _r in _ltts(_typed_model, sid):
+            if _r.startswith("LINT:"):
+                problems.append(_r)
+            else:
+                problems.append(f"LINT:{_r}")
+        for t in sorted(typed_tasks, key=lambda x: int(x.get("seq") or 0)):
+            tid = str(t.get("id") or "")
+            title = str(t.get("title") or tid)
+            heads.append(("####", tid, title))
+            bodies[tid] = _ttb(t)
+        # Synthetic VIEW corpus for whole-doc checks (forbidden/ui-surface).
+        # Built from the store — not read from specs/**/tasks.md.
+        text = (
+            f"# {sid} Tasks\n\n"
+            "<!-- O-M3TYPED — F-lint-reads-store: lint input is model.tasks[] -->\n"
+            "UI surface: waived (API-only).\n\n"
+            + "\n".join(f"#### {tid}: {title}\n{bodies[tid]}" for _, tid, title in heads)
+        )
+    else:
+        text = open(tasks_path, encoding="utf-8", errors="replace").read()
+        # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
+        # so committed artifact matches TASKS-TEMPLATE (not a tolerate-malformed path).
+        text, _pipe_n = normalize_m3_pipe_fields(text)
+        if _pipe_n:
+            try:
+                Path(tasks_path).write_text(text, encoding="utf-8")
+            except OSError as e:
+                print(
+                    f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
+                    f"rewrite failed ({e})",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
+                    f"line(s) → {tasks_path}",
+                    file=sys.stderr,
+                )
 
     # forbidden->preserve inversion (V5 T-011: the plan read the forbidden
     # tripwire `getMockProducts` as a preserve contract — a fabrication
@@ -515,37 +568,42 @@ def main():
                                            f"contract — it is a fabrication guard, REMOVE it, never keep it")
                 break
 
-    heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    if not heads:
-        lint("ids", "no parseable task headings (want '#### T-001: title')")
+    if not typed_mode:
+        heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
+        if not heads:
+            lint("ids", "no parseable task headings (want '#### T-001: title')")
+            print("\n".join(problems))
+            return 1
+
+        # O-TASKIDSEEN — every #### T-* heading must parse. Suffix blindness
+        # (e.g. T-001A discarded because id must end in a digit) previously
+        # merged sibling bodies into T-000 and false-fired O-STRUCTJAVA.
+        marked = re.findall(r"^#{2,6}\s+(T\S+)\s*:", text, re.M)
+        parsed_ids = {tid for _, tid, _ in heads}
+        unseen = [t for t in marked if t not in parsed_ids]
+        if unseen:
+            lint(
+                "O-TASKIDSEEN",
+                f"unparsed task heading(s) {unseen} — id must match "
+                f"T-<digits>[optional letters] (e.g. T-001, T-001A)",
+            )
+
+        # id uniqueness — duplicate ids corrupt the supervisor's commit checks
+        seen = set()
+        for _, tid, _ in heads:
+            if tid in seen:
+                lint("dup-ids", f"{tid}: task id used more than once")
+            seen.add(tid)
+
+        # split body per task
+        bodies = {}
+        parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:.*$", text, flags=re.M)
+        for i in range(1, len(parts) - 1, 2):
+            bodies[parts[i]] = parts[i + 1]
+    elif not heads:
+        lint("ids", f"typed model for {sid} produced zero tasks (F-lint-reads-store)")
         print("\n".join(problems))
         return 1
-
-    # O-TASKIDSEEN — every #### T-* heading must parse. Suffix blindness
-    # (e.g. T-001A discarded because id must end in a digit) previously
-    # merged sibling bodies into T-000 and false-fired O-STRUCTJAVA.
-    marked = re.findall(r"^#{2,6}\s+(T\S+)\s*:", text, re.M)
-    parsed_ids = {tid for _, tid, _ in heads}
-    unseen = [t for t in marked if t not in parsed_ids]
-    if unseen:
-        lint(
-            "O-TASKIDSEEN",
-            f"unparsed task heading(s) {unseen} — id must match "
-            f"T-<digits>[optional letters] (e.g. T-001, T-001A)",
-        )
-
-    # id uniqueness — duplicate ids corrupt the supervisor's commit checks
-    seen = set()
-    for _, tid, _ in heads:
-        if tid in seen:
-            lint("dup-ids", f"{tid}: task id used more than once")
-        seen.add(tid)
-
-    # split body per task
-    bodies = {}
-    parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:.*$", text, flags=re.M)
-    for i in range(1, len(parts) - 1, 2):
-        bodies[parts[i]] = parts[i + 1]
 
     # O-SCOPENOGEN — Owns/Target/→ must not point at build outs (gitignored;
     # M1 staging excludes them). Pair roadmap-lint O-SCOPENOGEN.
@@ -2437,6 +2495,8 @@ def main():
                 )
 
     # ADR-24 / O-BATCHDEPORDER deleted: scc-atomic + finding-kind at authoring time.
+    # F-lint-reads-store: typed_mode already ran lint_typed_task_store (includes
+    # lint_scc_atomic). Still run finding-kind with sid so it uses the store.
     try:
         from pathlib import Path as _P
         from model import (
@@ -2447,13 +2507,12 @@ def main():
 
         _mp = _P("migration/model.json")
         if _mp.is_file():
-            _model = _mload(_P("."))
-            _sid_m = re.search(r"(S\d+)", str(tasks_path))
-            _sid = _sid_m.group(1) if _sid_m else ""
-            if _sid:
+            _model = _typed_model if typed_mode and _typed_model is not None else _mload(_P("."))
+            _sid = sid
+            if not typed_mode and _sid:
                 for _r in _scc_atomic(_model, text, _sid):
                     problems.append(_r)
-            for _r in _finding_kind(_model, text):
+            for _r in _finding_kind(_model, text, sid=_sid or ""):
                 problems.append(_r)
     except Exception as _e:
         pass

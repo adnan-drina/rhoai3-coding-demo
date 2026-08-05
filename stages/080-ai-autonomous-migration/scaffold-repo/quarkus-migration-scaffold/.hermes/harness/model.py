@@ -1294,6 +1294,82 @@ def render_all_tasks_md(root: Path, model: Optional[dict] = None) -> list[Path]:
     return paths
 
 
+def typed_task_body(task: dict) -> str:
+    """Markdown body for one typed task (VIEW shape for plan-lint checks).
+
+    F-lint-reads-store: plan-lint builds bodies from model.tasks[], never by
+    parsing specs/**/tasks.md as SoT.
+    """
+    owns = " ".join(task.get("owns") or [])
+    findings = task.get("findings") or []
+    acc = task.get("acceptance") or []
+    goal = (task.get("goal") or "").strip() or (
+        "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
+    )
+    plan = (task.get("plan") or "").strip()
+    lines = [
+        f"**Class**: {task.get('class') or 'rewrite'}",
+        f"**Shape**: {task.get('shape') or 'modify'}",
+        f"**Port**: {task.get('port')}" if task.get("port") else "**Port**:",
+        f"**Owns**: `{owns}`" if owns else "**Owns**:",
+        f"**Oracle**: {task.get('oracle') or 'absent'}",
+        "**Assumes**:",
+        f"**Findings**: {', '.join(findings) if findings else '(none)'}",
+        f"**Goal**: {goal}",
+        "**Target design**:",
+    ]
+    if owns:
+        for o in owns.split():
+            lines.append(f"- → `{o}`")
+    else:
+        lines.append("- <!-- JUDGMENT: legacy → dest mapping -->")
+    if plan:
+        lines.append(f"**Plan**: {plan}")
+    lines.append("**Acceptance**:")
+    for a in acc:
+        lines.append(f"- {a}")
+    if task.get("risk"):
+        lines.append(f"**Risk**: {task.get('risk')}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def lint_typed_task_store(model: dict, sid: str) -> list[str]:
+    """Structural lint on model.tasks[] (F-lint-reads-store).
+
+    RED names the task id when owns/goal/unit_keys are dishonest.
+    """
+    reds: list[str] = []
+    tasks = tasks_for_story(model, sid)
+    if not tasks:
+        reds.append(f"LINT:typed-store: no model.tasks[] for {sid}")
+        return reds
+    seen: set[str] = set()
+    for t in tasks:
+        tid = str(t.get("id") or "?")
+        if tid in seen:
+            reds.append(f"LINT:dup-ids: {tid}: task id used more than once")
+        seen.add(tid)
+        owns = list(t.get("owns") or [])
+        keys = list(t.get("unit_keys") or [])
+        goal = (t.get("goal") or "").strip()
+        if not keys:
+            reds.append(f"LINT:typed-keys: {tid}: missing unit_keys")
+        if not owns:
+            reds.append(f"LINT:typed-owns: {tid}: missing owns")
+        if "JUDGMENT" in goal or len(goal) < 20:
+            reds.append(
+                f"LINT:typed-goal: {tid}: goal unfilled/short "
+                f"(len={len(goal)}; seat judgment required)"
+            )
+        cls = (t.get("class") or "").lower()
+        if cls not in ("rewrite", "infer"):
+            reds.append(f"LINT:typed-class: {tid}: class must be rewrite|infer")
+    # SCC atomicity — typed path already in lint_scc_atomic
+    reds.extend(lint_scc_atomic(model, "", sid))
+    return reds
+
+
 def upsert_task_judgment(
     root: Path,
     *,
@@ -1594,8 +1670,12 @@ def _task_owned_kinds(model: dict, body: str) -> set[str]:
     return kinds
 
 
-def lint_finding_kind(model: dict, tasks_text: str) -> list[str]:
-    """F9: a finding on a java unit cannot be discharged by a non-java-only task."""
+def lint_finding_kind(model: dict, tasks_text: str, sid: str = "") -> list[str]:
+    """F9: a finding on a java unit cannot be discharged by a non-java-only task.
+
+    F-lint-reads-store: when typed tasks exist for sid (or any story), prefer
+    model.tasks[] — do not parse tasks.md prose into ownership state.
+    """
     reds: list[str] = []
     finding_kind = {
         f.get("id"): f.get("kind") or "java" for f in (model.get("findings") or [])
@@ -1606,6 +1686,39 @@ def lint_finding_kind(model: dict, tasks_text: str) -> list[str]:
         for uk in f.get("units") or []:
             if unit_kind.get(uk) == "java":
                 finding_kind[f["id"]] = "java"
+
+    typed: list[dict] = []
+    if sid:
+        typed = tasks_for_story(model, sid)
+    if not typed:
+        # Any typed tasks in the model → store path for all stories present
+        typed = list(model.get("tasks") or [])
+    if typed:
+        by_key = {u["key"]: u for u in model.get("units") or []}
+        for t in typed:
+            tid = str(t.get("id") or "?")
+            fids = [str(x) for x in (t.get("findings") or []) if x]
+            if not fids:
+                continue
+            owned_kinds: set[str] = set()
+            for k in t.get("unit_keys") or []:
+                u = by_key.get(k)
+                if u:
+                    owned_kinds.add(u.get("kind") or "java")
+            for o in t.get("owns") or []:
+                p = str(o)
+                if p.endswith(".java"):
+                    owned_kinds.add("java")
+            for fid in fids:
+                if finding_kind.get(fid) != "java":
+                    continue
+                if "java" not in owned_kinds:
+                    reds.append(
+                        f"LINT:finding-kind: {tid} lists java finding {fid} but owns "
+                        f"no java unit (kinds={sorted(owned_kinds) or ['none']}) (F9)"
+                    )
+        return reds
+
     for tid, body in _task_bodies(tasks_text):
         fm = re.search(r"(?im)^\s*\*?\*?Findings\*?\*?\s*:\s*(.+)$", body)
         if not fm:

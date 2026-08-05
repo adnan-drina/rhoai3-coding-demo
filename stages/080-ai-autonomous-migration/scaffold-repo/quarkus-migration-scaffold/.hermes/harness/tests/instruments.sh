@@ -14718,6 +14718,99 @@ run_case() {
 }
 check "W4-556 F-packet-by-value + EMPTY/REFUSED/MALFORMED + O-M3TYPEDSTOP" 0 "m3packet-byvalue-ok"
 
+# W4-557 — F-lint-reads-store: plan-lint reads model.tasks[], not tasks.md prose
+run_case() {
+  grep -q 'F-lint-reads-store' "$HARNESS_DIR/plan-lint.py" || return 1
+  grep -q 'lint_typed_task_store' "$HARNESS_DIR/plan-lint.py" || return 1
+  grep -q 'lint_typed_task_store' "$HARNESS_DIR/model.py" || return 1
+  grep -q 'typed_task_body' "$HARNESS_DIR/model.py" || return 1
+  # open(tasks_path) only on legacy (non-typed) path
+  grep -n 'open(tasks_path' "$HARNESS_DIR/plan-lint.py" | grep -q 'typed_mode' && return 1
+  awk '/else:/{e=1} e && /open\(tasks_path/{found=1} END{exit found?0:1}' \
+    "$HARNESS_DIR/plan-lint.py" || return 1
+  FIX=$(mktemp -d)
+  trap 'rm -rf "$FIX"' RETURN
+  mkdir -p "$FIX/migration/staging/src/main/java/com/demo/model" \
+           "$FIX/src/main/java/com/demo/model" \
+           "$FIX/src/test/java/com/demo/model"
+  cat >"$FIX/migration.yaml" <<'Y'
+legacyPackage: org.example.app
+targetPackage: com.demo
+artifactId: demo
+Y
+  # O-PKGORD / S-CHAR preconditions for a harvest model story
+  printf 'package com.demo.model;\npublic class Bar {}\n' \
+    >"$FIX/src/main/java/com/demo/model/Bar.java"
+  cp "$FIX/src/main/java/com/demo/model/Bar.java" \
+    "$FIX/migration/staging/src/main/java/com/demo/model/Bar.java"
+  printf 'package com.demo.model;\nclass BarTest {}\n' \
+    >"$FIX/src/test/java/com/demo/model/BarTest.java"
+  python3 - <<PY || return 1
+import json, subprocess, sys
+from pathlib import Path
+fix = Path("$FIX")
+H = Path("$HARNESS_DIR").resolve()
+model = {
+  "units": [{
+    "key": "org.example.app.model.Bar",
+    "kind": "java",
+    "legacy_fqn": "org.example.app.model.Bar",
+    "legacy_path": "src/main/java/org/example/app/model/Bar.java",
+    "target_path": "src/main/java/com/demo/model/Bar.java",
+    "findings": [],
+    "decision": {
+      "role": "HARVEST",
+      "rationale": "entity",
+      "evidence": {"path": "src/main/java/org/example/app/model/Bar.java", "line": 1, "token": "Bar"},
+      "target_contract": {"getIdempotent": True},
+    },
+  }],
+  "sccs": [],
+  "order": ["org.example.app.model.Bar"],
+  "findings": [],
+  "stories": [{"id": "S01", "slug": "domain", "units": ["org.example.app.model.Bar"],
+               "findings": [], "deploy": False, "layer": "model"}],
+  "tasks": [],
+  "provenance": {},
+}
+(fix / "migration/model.json").write_text(json.dumps(model, indent=2))
+subprocess.check_call([sys.executable, str(H / "model.py"), "assign-tasks", "--root", str(fix)])
+subprocess.check_call([
+  sys.executable, str(H / "m3_task_loop.py"), "upsert", "--root", str(fix),
+  "--unit-key", "org.example.app.model.Bar",
+  "--goal", "Harvest Bar entity into com.demo.model with package rename only.",
+  "--plan", "Copy from staging; pin via src/test/java/com/demo/model/BarTest.java",
+  "--risk", "low",
+])
+# Seam: composite S01-T-* VIEW headings must be accepted via store path
+subprocess.check_call([sys.executable, str(H / "model.py"), "render-tasks", "--root", str(fix), "--sid", "S01"])
+tp = next((fix / "specs").glob("*/tasks.md"))
+assert "S01-T-" in tp.read_text()
+out = subprocess.run(
+  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
+  cwd=str(fix), capture_output=True, text=True,
+)
+print(out.stdout)
+print(out.stderr, file=sys.stderr)
+assert out.returncode == 0, out.stdout + out.stderr
+assert "PLAN OK" in out.stdout
+m = json.loads((fix / "migration/model.json").read_text())
+tid = m["tasks"][0]["id"]
+m["tasks"][0]["owns"] = []
+(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+out2 = subprocess.run(
+  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
+  cwd=str(fix), capture_output=True, text=True,
+)
+print(out2.stdout)
+assert out2.returncode != 0
+assert "typed-owns" in out2.stdout and tid in out2.stdout
+print("lint-reads-store-ok")
+PY
+  echo lint-reads-store-ok
+}
+check "W4-557 F-lint-reads-store typed model GREEN + corrupt owns RED" 0 "lint-reads-store-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then
