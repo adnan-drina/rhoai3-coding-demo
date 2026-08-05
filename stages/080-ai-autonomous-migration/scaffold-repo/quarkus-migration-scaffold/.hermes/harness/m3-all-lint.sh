@@ -186,15 +186,18 @@ if [ "$MODE" = "operator-gate" ]; then
   fi
   PRED_FP="$(_m3all_sha256_file "$PRED_FILE")"
   AUTO="${M3_ALL_OPERATOR_AUTO:-0}"
-  if [ ! -f "$GATE_FILE" ] || ! grep -qE '^status:[[:space:]]*APPROVED\b' "$GATE_FILE"; then
-    if [ "$AUTO" = "1" ]; then
-      cat >"$GATE_FILE" <<EOF
+  _m3all_auto_approve() {
+    cat >"$GATE_FILE" <<EOF
 # O-M3ALL operator gate (auto-approved — M3_ALL_OPERATOR_AUTO=1)
 status: APPROVED
 predictions_fp: ${PRED_FP}
 approved_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
-      echo "O-M3ALL: OPERATOR_GATE auto-APPROVED → $GATE_FILE"
+    echo "O-M3ALL: OPERATOR_GATE auto-APPROVED → $GATE_FILE (predictions_fp=$PRED_FP)"
+  }
+  if [ ! -f "$GATE_FILE" ] || ! grep -qE '^status:[[:space:]]*APPROVED\b' "$GATE_FILE"; then
+    if [ "$AUTO" = "1" ]; then
+      _m3all_auto_approve
       exit 0
     fi
     echo "O-M3ALL OPERATOR_GATE RED: write $GATE_FILE with status: APPROVED after reviewing whole-set + predictions" >&2
@@ -204,6 +207,12 @@ EOF
   fi
   GATE_FP="$(sed -n 's/^predictions_fp:[[:space:]]*//p' "$GATE_FILE" | head -1)"
   if [ -z "$GATE_FP" ] || [ "$GATE_FP" != "$PRED_FP" ]; then
+    # freeze-predictions rewrites the file (timestamp) every outer pass — stale
+    # APPROVED + AUTO must re-bind, not hard-fail (O-M3ALLGATEAUTO).
+    if [ "$AUTO" = "1" ]; then
+      _m3all_auto_approve
+      exit 0
+    fi
     echo "O-M3ALL OPERATOR_GATE RED: predictions_fp mismatch (gate=$GATE_FP live=$PRED_FP) — re-approve after freeze" >&2
     exit 1
   fi
