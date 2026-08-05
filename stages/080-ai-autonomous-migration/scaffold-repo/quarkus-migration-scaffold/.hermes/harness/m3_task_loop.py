@@ -153,19 +153,14 @@ def _opencode_judgment(
     )
     slog = Path("/tmp") / f"m3-task-{sid}-{task.get('seq')}.log"
     slog.write_text(packet[:2000] + "\n…\n", encoding="utf-8")
-    # Prefer workspace opencode wrapper used by outer-loop
-    cmd = [
-        "bash",
-        "-lc",
-        (
-            f"cd {root!s} && "
-            f"timeout {int(timeout)} opencode run --model {worker_model!s} "
-            f"<<'EOF'\n{packet}\nEOF"
-        ),
-    ]
-    # Simpler: pipe packet via env file
-    pfile = Path("/tmp") / f"m3-task-prompt-{sid}-{task.get('seq')}.txt"
+    # Prompt MUST live under the workspace root — OpenCode auto-rejects
+    # Read of /tmp/* as external_directory (cold M3 W4-555 follow-on).
+    pdir = root / "migration" / ".m3-prompts"
+    pdir.mkdir(parents=True, exist_ok=True)
+    pfile = pdir / f"m3-task-prompt-{sid}-{task.get('seq')}.txt"
     pfile.write_text(packet, encoding="utf-8")
+    # Relative path so the seat stays inside project scope.
+    pref = str(pfile.relative_to(root))
     env = os.environ.copy()
     try:
         proc = subprocess.run(
@@ -176,7 +171,7 @@ def _opencode_judgment(
                 "run",
                 "--model",
                 worker_model,
-                str(pfile),
+                pref,
             ],
             cwd=str(root),
             capture_output=True,

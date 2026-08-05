@@ -26,6 +26,9 @@ __pycache__/
 # O-TMPARCHIVE forensic copies (PVC; do not git-add)
 migration/run-archives/
 
+# O-M3PROMPTPATH — typed M3 seat prompts (workspace-local; OpenCode rejects /tmp)
+migration/.m3-prompts/
+
 # O-STAMPGITIGN — runtime bookkeeping must not enter T-NNN tips
 migration/.m3-all-stamps/
 migration/run-log.md
