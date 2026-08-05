@@ -12629,6 +12629,44 @@ check "O-ANALYZEPRISTINE wire: pristine legacy rsync + input digest" 0 "analyzep
 
 run_case() {
   mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""uri_to_legacy_path must not double-src on kantra-legacy-src roots."""
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+import findings_ir
+u = "file:///tmp/kantra-legacy-src/src/main/java/org/demo/Pet.java"
+assert findings_ir.uri_to_legacy_path(u) == "src/main/java/org/demo/Pet.java"
+u2 = "file:///projects/legacy/src/main/java/org/demo/Pet.java"
+assert findings_ir.uri_to_legacy_path(u2) == "src/main/java/org/demo/Pet.java"
+print("adr25-uripath-ok")
+PY
+}
+check "ADR-25 uri_to_legacy_path: no src/src from kantra-legacy-src" 0 "adr25-uripath-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""F-partition-total: preserved stories missing a finding-bearing unit RED."""
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import lint_stories_partition
+model = {
+  "units": [
+    {"key": "p.A", "kind": "java", "findings": ["r1"]},
+    {"key": "coord:pom.xml", "kind": "pom", "findings": ["r2"]},
+  ],
+  "stories": [{"id": "S01", "units": ["p.A"], "findings": ["r1"]}],
+}
+reds = lint_stories_partition(model)
+assert reds and "O-ADR24PART" in reds[0] and "pom.xml" in reds[0], reds
+assert lint_stories_partition({"units": model["units"], "stories": []}) == []
+print("adr24part-ok")
+PY
+}
+check "O-ADR24PART F-partition-total: unassigned finding-bearing unit RED" 0 "adr24part-ok"
+
+run_case() {
+  mkfix
   grep -q '/.mvn' "$HARNESS_DIR/dependency-order.py" \
     && echo mvnunit-ok
 }

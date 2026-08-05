@@ -925,6 +925,45 @@ def render_dependency_order_md(model: dict) -> str:
     return "\n".join(lines)
 
 
+def lint_stories_partition(model: dict) -> list[str]:
+    """F-partition-total: if stories[] is non-empty, every demand-bearing unit
+    is in exactly one story (W5-009 / O-ADR24PART).
+
+    Demand-bearing = kind=java OR unit carries findings. Empty stories[] (M1
+    pre-assign) is OK.
+    """
+    stories = model.get("stories") or []
+    if not stories:
+        return []
+    reds: list[str] = []
+    claimed: dict[str, str] = {}
+    for s in stories:
+        sid = s.get("id") or "?"
+        for k in s.get("units") or []:
+            if k in claimed:
+                reds.append(
+                    f"O-ADR24PART RED: unit {k} dual-owned by {claimed[k]} and {sid}"
+                )
+            else:
+                claimed[k] = sid
+    unit_by_key = {u["key"]: u for u in model.get("units") or []}
+    for k in list(claimed):
+        if k not in unit_by_key:
+            reds.append(f"O-ADR24PART RED: ghost unit {k} in stories (not in units[])")
+    must = {
+        u["key"]
+        for u in model.get("units") or []
+        if u.get("kind") == "java" or (u.get("findings") or [])
+    }
+    missing = sorted(must - set(claimed))
+    if missing:
+        reds.append(
+            f"O-ADR24PART RED: {len(missing)} demand-bearing unit(s) unassigned: "
+            f"{missing[:8]}"
+        )
+    return reds
+
+
 def cmd_emit(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     legacy = Path(args.legacy).resolve()
@@ -937,12 +976,14 @@ def cmd_emit(args: argparse.Namespace) -> int:
             prev_stories = None
     model = build_model(root, legacy, preserve_stories=prev_stories)
     bind_reds = list(model.pop("_bind_reds", []) or [])
+    # W5-009: preserved partitions must still satisfy totality after unit-set change
+    part_reds = lint_stories_partition(model)
     save(root, model)
-    if bind_reds:
-        for r in bind_reds:
+    if bind_reds or part_reds:
+        for r in bind_reds + part_reds:
             print(r, file=sys.stderr)
         print(
-            "O-ADR24FINDBIND RED: refusing emit success with empty findings graph",
+            "O-ADR24 emit RED: bind/partition invariant failed",
             file=sys.stderr,
         )
         return 1

@@ -40,13 +40,20 @@ def sha256_bytes(data: bytes) -> str:
 
 
 def uri_to_legacy_path(uri: str) -> str:
-    """Normalize Kantra incident uri → repo-relative legacy path (no basename)."""
+    """Normalize Kantra incident uri → repo-relative legacy path (no basename).
+
+    Must not treat directory names containing the substring ``src`` (e.g.
+    ``/tmp/kantra-legacy-src/…``) as the source root — that produced
+    ``src/src/main/…`` paths and false unbound (ADR-25 re-scan).
+    """
     u = (uri or "").strip()
     if not u or u == "?":
         return ""
     u = u.replace("file://", "")
-    # file:///projects/legacy/src/... or /projects/legacy/src/...
+    # Absolute roots first (live workspace + O-ANALYZEPRISTINE materialisations).
     for marker in (
+        "/tmp/kantra-legacy-src/",
+        "/tmp/kantra-dest-src/",
         "/projects/legacy/",
         "/projects/modernized/",
         "projects/legacy/",
@@ -56,11 +63,15 @@ def uri_to_legacy_path(uri: str) -> str:
             u = u.split(marker, 1)[1]
             break
     u = u.lstrip("/")
-    if u.startswith("src/") or u in ("pom.xml",) or u.startswith("src/"):
+    # Prefer real Java/resource roots — never bare "/src/" (matches *-src/ dirs).
+    for marker in ("src/main/", "src/test/"):
+        idx = u.find(marker)
+        if idx >= 0:
+            return u[idx:]
+    if u == "pom.xml" or u.endswith("/pom.xml"):
+        return "pom.xml"
+    if u.startswith("src/"):
         return u
-    # already relative under legacy root
-    if "/src/" in u:
-        return u[u.index("src/") :]
     return u
 
 
