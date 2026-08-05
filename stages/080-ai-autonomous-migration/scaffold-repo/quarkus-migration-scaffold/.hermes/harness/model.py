@@ -1092,19 +1092,32 @@ def derive_acceptance(unit: dict) -> list[str]:
     if role == "REDESIGN":
         out = ["implements typed target_contract for this unit"]
         tc = (d or {}).get("target_contract")
-        if isinstance(tc, dict) and tc:
-            for k, v in sorted(tc.items()):
-                if v and k != "decisive":
-                    out.append(f"contract:{k}")
+        # Affirmative no-flags (O-TCABSENT): M1 may set target_contract={} or
+        # {"decisive": true/false} with no other truthy flags — distinct from
+        # tc key absent (genuine M1 omission → refuse ship / complete at M1).
+        if isinstance(tc, dict):
+            flags = [
+                f"contract:{k}"
+                for k, v in sorted(tc.items())
+                if v and k != "decisive"
+            ]
+            if flags:
+                out.extend(flags)
+            else:
+                out.append("REDESIGN no-flags-apply (M1 affirmative)")
         elif isinstance(tc, str) and tc.strip():
             out.append(tc.strip()[:120])
-        if len(out) == 1:
-            out.append("REDESIGN without target_contract flags — complete at M1")
+        else:
+            # tc missing / null — not the same as empty dict
+            out.append("REDESIGN without target_contract — complete at M1")
         return out
     return ["role undecided — refuse ship until M1 decision exists"]
 
 
-def _mechanical_class_shape(root: Path, owns: str) -> tuple[str, str]:
+def _mechanical_class_shape(root: Path, owns: str, *, role: str = "") -> tuple[str, str]:
+    # HARVEST is package-rename of an existing type — never "create" (W4-553).
+    if str(role or "").upper() == "HARVEST":
+        return "rewrite", "modify"
     if not owns.endswith(".java"):
         return "rewrite", "modify"
     try:
@@ -1155,7 +1168,13 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 port = None
             else:
                 one = owns[0] if owns else ""
-                cls, shape = _mechanical_class_shape(root, one) if one else ("rewrite", "modify")
+                cls, shape = (
+                    _mechanical_class_shape(root, one, role=role)
+                    if one
+                    else ("rewrite", "modify")
+                )
+                if str(role).upper() == "HARVEST":
+                    cls, shape = "rewrite", "modify"
                 oracle = "absent"
                 port = None
                 if one and re.search(
@@ -1291,20 +1310,23 @@ def upsert_task_judgment(
     if "acceptance" in payload and payload.get("acceptance") not in (None, "", [], {}):
         raise ValueError("F-acceptance-derived: seat must not author acceptance")
     model = load(root)
-    keys = sorted(unit_keys)
+    keys_sorted = sorted(unit_keys)
     found = None
     for t in model.get("tasks") or []:
-        if sorted(t.get("unit_keys") or []) == keys:
+        if sorted(t.get("unit_keys") or []) == keys_sorted:
             found = t
             break
     if found is None:
-        raise ValueError(f"no typed task for unit_keys={keys}")
+        raise ValueError(f"no typed task for unit_keys={keys_sorted}")
     found["goal"] = (goal or "").strip()
     found["plan"] = (plan or "").strip()
     found["risk"] = (risk or "").strip()
     found["filled"] = bool(found["goal"]) and len(found["goal"]) >= 20
-    # Re-derive acceptance from primary unit (never trust seat)
-    primary = unit_by_key(model, keys[0]) if keys else None
+    # Primary = condensation members[0] order stored on the task (W4-553),
+    # not sorted(unit_keys)[0] — assign_tasks and upsert must agree.
+    stored = list(found.get("unit_keys") or [])
+    primary_key = stored[0] if stored else (keys_sorted[0] if keys_sorted else "")
+    primary = unit_by_key(model, primary_key) if primary_key else None
     if primary:
         found["acceptance"] = derive_acceptance(primary)
         d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}

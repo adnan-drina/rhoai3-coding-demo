@@ -1352,7 +1352,7 @@ check "plan-lint does NOT flag a legitimate 'remove forbidden' task" 0 "remove-c
 # §7 hard-pin text alone must still soft-flag; typed target_contract satisfies.
 ts_yaml() { printf 'targetContract:\n  getIdempotent: true\n  threadSafeState: true\npreserve:\n  - X\n' > migration.yaml; }
 run_case() {
-  mkfixture; ts_yaml
+  mkfix; ts_yaml
   mkdir -p migration src/main/java/com/demo/rest
   printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
     > src/main/java/com/demo/rest/CartService.java
@@ -1372,7 +1372,7 @@ EOF
 }
 check "profile-rubric flags soft when §7 hard-pin lacks typed target_contract" 0 "soft-flagged"
 run_case() {
-  mkfixture; ts_yaml
+  mkfix; ts_yaml
   mkdir -p migration src/main/java/com/demo/rest
   printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
     > src/main/java/com/demo/rest/CartService.java
@@ -10953,7 +10953,8 @@ run_case() {
 package com.demo.repository;
 public class JdbcFooRowMapper {}
 EOF
-  cat > migration/architecture-profile.md <<'EOF'
+  # Rubric argv is profile.md (same as O-PROFDENSITY accept fixture).
+  cat > profile.md <<'EOF'
 # Profile
 ## 1. Purpose & domain
 Cart service with pricing pinned by ShoppingCartServiceTest at src/test/java/X.java:1 and enough words to clear the thin bar for purpose domain section here.
@@ -11835,7 +11836,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class BarService {}
 JAVA
-  cat > migration/architecture-profile.md <<'EOF'
+  cat > profile.md <<'EOF'
 # Architecture profile
 ## 1. Purpose & domain
 Demo app for rubricgensrc. Cite src/main/java/com/demo/BarService.java:1.
@@ -11881,7 +11882,7 @@ package com.demo;
 public class ${c} {}
 JAVA
   done
-  cat > migration/architecture-profile.md <<'EOF'
+  cat > profile.md <<'EOF'
 # Architecture profile
 ## 1. Purpose & domain
 Names Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
@@ -12036,7 +12037,7 @@ check "O-RUBRICGENASSERT refuses §7 HARVEST on MapperImpl/generated" 0 "genasse
 
 # O-RUBRICGENASSERTFP — rationale mentioning MapperImpl must not genassert hand-written *RepositoryImpl.
 run_case() {
-  mkfixture
+  mkfix
   profile_fixture > p.md
   python3 - <<'PY'
 from pathlib import Path
@@ -12142,7 +12143,7 @@ check "O-PROF7DENSITY ignores pre-metric sidecar ratchet (ADR-28)" 0 "adr28-orph
 
 # O-PROFSECTIONS — full dump helper still works; outer-loop uses --summary.
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration
   cat > migration/architecture-profile.md <<'EOF'
 ## 1. Purpose & domain
@@ -12177,7 +12178,7 @@ run_case() {
   grep -q -- '--summary' "$HARNESS_DIR/outer-loop.sh" || return 1
   grep -A20 'log_architecture_profile_sections()' "$HARNESS_DIR/outer-loop.sh" \
     | grep -q 'outer-m1-profile-sections-summary.log' || return 1
-  mkfixture
+  mkfix
   mkdir -p migration
   cat > migration/architecture-profile.md <<'EOF'
 ## 1. Purpose & domain
@@ -13523,7 +13524,7 @@ check "O-PROFCOVSTALE coverage gate uses evaluate_roles SoT" 0 "profcovstale-ok"
 
 # O-PROFCOVSTALE behavioural: model named wins over stale rubric COVERAGE text.
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo
   cat > src/main/java/com/demo/Alpha.java <<'JAVA'
 package com.demo;
@@ -13635,7 +13636,7 @@ check "O-PROFPROSENOOP prose seat refuses skeleton/writes=0" 0 "profprosenoop-ok
 
 # O-PROFPROSEDECOMP — per-section harness prose loop (dry-run backend).
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration
   out=$(python3 "$HARNESS_DIR/profile_prose_loop.py" run --root . --legacy . \
     --backend dry-run 2>&1) || return 1
@@ -13661,7 +13662,7 @@ check "O-PROFPROSEDECOMP harness §§1–6 prose loop dry-run fills sections" 0 
 
 # ADR-37 / O-PROFPROSEPROJ — per-section projected facts + no-discovery wire.
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo src/main/resources src/test/java/com/demo
   cat > src/main/java/com/demo/Alpha.java <<'JAVA'
 package com.demo;
@@ -13727,8 +13728,9 @@ EOF
   grep -q 'project_section' "$HARNESS_DIR/profile_prose_loop.py" || return 1
   ! grep -q 'files under the legacy root' "$HARNESS_DIR/profile_prose_loop.py" || return 1
   # W4-504: per-section write re-reads file (no stale whole-file snapshot)
-  grep -A6 'if not _body_ok(body)' "$HARNESS_DIR/profile_prose_loop.py" \
+  grep -A20 'if not _body_ok(body)' "$HARNESS_DIR/profile_prose_loop.py" \
     | grep -q 'path.read_text' || return 1
+  grep -q 'W4-504' "$HARNESS_DIR/profile_prose_loop.py" || return 1
   # Behavioural: discovery helper flags a legacy read tool_use
   python3 - "$HARNESS_DIR" <<'PY' || return 1
 import json, sys
@@ -13782,7 +13784,7 @@ check "O-PROFPROSECTX prose seat uses slim packet not decide projection" 0 "prof
 
 # O-PROFTCHARDPIN — §7 render emits decisive tokens from migration.yaml flags.
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo
   printf '%s\n' 'package com.demo;' '@Entity' 'public class Alpha {}' > src/main/java/com/demo/Alpha.java
   cat > migration.yaml <<'EOF'
@@ -13830,10 +13832,18 @@ check "O-PROFTCHARDPIN §7 render emits targetContract decisive tokens" 0 "proft
 
 # O-PROFDECPROJ / W4-489 — stamp must refresh wrapped profile-decisions.json projection
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/rest
-  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
-    > src/main/java/com/demo/rest/CartService.java
+  # Local shape evidence required (O-PROFTCCONSTANT) — bare @RestController alone
+  # skips stamp (skipped_no_local_evidence); GET+@Valid enable yaml flags.
+  cat > src/main/java/com/demo/rest/CartService.java <<'JAVA'
+package com.demo.rest;
+@RestController
+public class CartService {
+  @GetMapping("/cart")
+  public String get(@Valid Object o) { return "x"; }
+}
+JAVA
   cat > migration.yaml <<'EOF'
 targetContract:
   getIdempotent: true
@@ -13844,14 +13854,14 @@ EOF
   cat > migration/model.json <<'EOF'
 {"units":[{"key":"com.demo.rest.CartService","kind":"java","legacy_fqn":"com.demo.rest.CartService",
  "legacy_path":"src/main/java/com/demo/rest/CartService.java","findings":[],
- "decision":{"role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"}}}],
+ "decision":{"role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":2,"token":"@RestController"}}}],
  "stories":[],"sccs":[],"order":[],"findings":[]}
 EOF
   # Wrapped seat projection with null target_contract (live tip shape).
   cat > migration/profile-decisions.json <<'EOF'
 {"schema":"profile-decisions/v1","metric":"typed-decision","units":[
   {"legacy_fqn":"com.demo.rest.CartService","legacy_path":"src/main/java/com/demo/rest/CartService.java",
-   "role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"},
+   "role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":2,"token":"@RestController"},
    "target_contract":null}
 ]}
 EOF
@@ -13890,7 +13900,7 @@ run_case() {
   grep -q '_unpark_blocked' "$HARNESS_DIR/profile_decide_loop.py" || return 1
   grep -q '_reconcile_blocked' "$HARNESS_DIR/profile_decide_loop.py" || return 1
   grep -q 'O-PROFBLOCKUNPARK' "$HARNESS_DIR/profile_decide_loop.py" || return 1
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo
   cat > src/main/java/com/demo/Alpha.java <<'JAVA'
 package com.demo;
@@ -13922,7 +13932,7 @@ check "O-PROFBLOCKUNPARK unparks/reconciles FQN on classify OK" 0 "profblockunpa
 
 # ADR-32 G-3 / O-PROFREFUSEFIX — upsert refuses non-member evidence (decide path)
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo
   cat > src/main/java/com/demo/Alpha.java <<'JAVA'
 package com.demo;
@@ -13952,7 +13962,7 @@ check "ADR-32 G-3 upsert refuses non-member evidence" 0 "adr32g3-refuse-ok"
 
 # O-PROFPROSENOOP refuse fixture — skeleton / writes=0 predicates must fail closed
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration
   cat > migration/architecture-profile.md <<'EOF'
 ## 1. Purpose & domain
@@ -13974,7 +13984,7 @@ check "O-PROFPROSENOOP refuse predicates observed (skeleton+writes=0)" 0 "profpr
 
 # O-PROFCLASCESC refuse→escalate fixture — fail backend then dry-run escalate lands
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo
   cat > src/main/java/com/demo/Alpha.java <<'JAVA'
 package com.demo;
@@ -14002,7 +14012,7 @@ check "O-PROFCLASCESC escalate after primary fail backend" 0 "profclascesc-refus
 # ---------------------------------------------------------------------------
 run_case() {
   # F-story-source: rationale says HARVEST but typed role=REDESIGN → follow model.
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/rest src/main/java/com/demo/model
   cat > migration.yaml <<'EOF'
 targetContract:
@@ -14058,7 +14068,8 @@ JAVA
 EOF
   out=$(python3 "$HARNESS_DIR/m2-compose.py" --root . --mode skeleton --force-skeleton 2>&1) || true
   echo "$out" | grep -q 'source=model' || return 1
-  grep -q 'ADR-34 REV-2 model-partition' migration/roadmap.md || return 1
+  # Rendered rationale cites ADR-34 + F-story-rendered (not the REV-2 docstring).
+  grep -qE 'ADR-34.*F-story-rendered|F-story-rendered' migration/roadmap.md || return 1
   grep -q 'FooController.java' migration/roadmap.md || return 1
   python3 - <<PY
 import sys
@@ -14087,7 +14098,7 @@ check "ADR-34 F-story-source prefers typed role over HARVEST prose" 0 "adr34-sto
 
 run_case() {
   # F-scc-atomic: SCC members in different path layers stay one story.
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/model src/main/java/com/demo/repository
   cat > migration/findings-inventory.md <<'EOF'
 # Findings inventory
@@ -14160,7 +14171,7 @@ check "ADR-34 REV-2 model-partition wire in m2-compose" 0 "adr34-model-partition
 
 # ADR-34 F-story-rendered — assign_stories ignores poisoned roadmap when typed.
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/model src/main/java/com/demo/rest
   printf '%s\n' 'package com.demo.model;' '@Entity' 'public class Bar {}' \
     > src/main/java/com/demo/model/Bar.java
@@ -14223,7 +14234,7 @@ check "ADR-34 F-story-rendered assign ignores poisoned roadmap" 0 "adr34-story-r
 # O-M2SKELDRIFT / W4-540 — skeleton/fill must not invent a story absent from
 # model.stories[] (empty platform from pom finding sites with 0 java units).
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration/briefs \
     src/main/java/com/demo/model src/main/java/com/demo/rest
   printf '%s\n' 'package com.demo.model;' '@Entity' 'public class Bar {}' \
@@ -14319,8 +14330,8 @@ check "O-M2SKELDRIFT skeleton/fill == model.stories[] (no empty platform invent)
 # ADR-38 — context-for-m2 emits SNIPPET text for cite= (not pointers alone);
 # generated paths never appear as cite=.
 run_case() {
-  mkfixture
-  mkdir -p src/main/java/com/demo/model target/generated
+  mkfix
+  mkdir -p src/main/java/com/demo/model target/generated migration
   printf '%s\n' \
     'package com.demo.model;' \
     '' \
@@ -14370,7 +14381,7 @@ check "ADR-38 context-for-m2 projects SNIPPET text; refuses generated cites" 0 "
 # O-PROFTCCONSTANT — per-unit ∩ evidence (refuse global constant stamp)
 # ---------------------------------------------------------------------------
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/rest src/main/java/com/demo/service
   cat > migration.yaml <<'EOF'
 targetContract:
@@ -14442,7 +14453,7 @@ check "O-PROFTCCONSTANT stamps per-unit ∩ evidence (distinct contracts)" 0 "pr
 
 run_case() {
   # Refuse: surface unit with no local shape evidence must not get global blob
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/service
   cat > migration.yaml <<'EOF'
 targetContract:
@@ -14490,7 +14501,7 @@ check "O-PROFTCCONSTANT refuses global stamp without unit evidence" 0 "proftccon
 # W4-526 PART B — F-scope-width (constant claim across N>1 → RED)
 # ---------------------------------------------------------------------------
 run_case() {
-  mkfixture
+  mkfix
   mkdir -p migration src/main/java/com/demo/rest
   cat > src/main/java/com/demo/rest/A.java <<'JAVA'
 package com.demo.rest;
