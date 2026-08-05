@@ -12616,6 +12616,14 @@ PY
 }
 check "O-ADR24UNBOUNDWAIVER refuse real path; accept generated/dto" 0 "adr24-unboundwaiver-ok"
 
+run_case() {
+  mkfix
+  grep -q '/.mvn' "$HARNESS_DIR/dependency-order.py" \
+    && echo mvnunit-ok
+}
+check "O-MVNUNIT dependency-order skips .mvn wrapper paths" 0 "mvnunit-ok"
+
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then

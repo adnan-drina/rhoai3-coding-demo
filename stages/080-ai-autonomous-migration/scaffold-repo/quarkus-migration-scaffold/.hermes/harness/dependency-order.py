@@ -32,7 +32,12 @@ def build_graph(root: str):
     raw_imports = {}
     bodies = {}
     for dirpath, _, files in os.walk(root):
-        if any(part in dirpath for part in ("/target", "/.git", "/node_modules", "/src/test")):
+        # Skip build/VCS/test and Maven wrapper tooling (.mvn) — not migration units
+        # (O-MVNUNIT: MavenWrapperDownloader under .mvn/wrapper must not block assign_stories).
+        if any(
+            part in dirpath
+            for part in ("/target", "/.git", "/node_modules", "/src/test", "/.mvn")
+        ):
             continue
         for fn in files:
             if not fn.endswith(".java"):
