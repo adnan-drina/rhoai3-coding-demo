@@ -1749,11 +1749,19 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         >"/tmp/m3-task-loop-${SID}.log" 2>&1
       _m3tl_rc=$?
       set -e
-      if [ "$_m3tl_rc" = "0" ] \
-        && python3 "$HARNESS/plan-lint.py" "specs/${SLUG}/tasks.md" migration/mta-findings.json \
+      # O-M3TYPEDSTOP / W4-566: distinguish SEAT-FAILED vs LINT-RED — never
+      # collapse plan-lint RED into "typed write-inversion failed" when seats OK.
+      _m3_lint_rc=1
+      if [ "$_m3tl_rc" = "0" ]; then
+        set +e
+        python3 "$HARNESS/plan-lint.py" "specs/${SLUG}/tasks.md" migration/mta-findings.json \
              --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
              --story-deploy "$DEPLOY" --story-scope "$SCOPE" \
-             > /tmp/plan-lint.txt 2>&1; then
+             > /tmp/plan-lint.txt 2>&1
+        _m3_lint_rc=$?
+        set -e
+      fi
+      if [ "$_m3tl_rc" = "0" ] && [ "${_m3_lint_rc}" = "0" ]; then
         [ -n "$(git status --porcelain "specs/${SLUG}/" migration/model.json)" ] \
           && git add "specs/${SLUG}/" migration/model.json \
           && git commit -q -m "${SID} spec: typed M3 write-inversion (ADR-35/Qwen)" 2>/dev/null
@@ -1761,10 +1769,17 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
           "typed-loop commit $(git rev-parse --short HEAD)"
         phase_ok "M3 SPECIFY — ${SLUG} typed write-inversion GREEN; commit $(git rev-parse --short HEAD)"
         M3_DONE=1
-      else
+      elif [ "$_m3tl_rc" != "0" ]; then
+        _m3_fail_n=$(grep -c "^  FAIL " "/tmp/m3-task-loop-${SID}.log" 2>/dev/null || echo 0)
         m3_phase_gate "M3 SPECIFY ${SLUG} typed-loop" RED \
-          "typed loop rc=${_m3tl_rc:-?} or plan-lint RED — see /tmp/m3-task-loop-${SID}.log (O-M3TYPEDSTOP)"
-        fail_run "M3 SPECIFY ${SLUG} typed write-inversion failed (O-M3TYPEDSTOP; no legacy fallback). See /tmp/m3-task-loop-${SID}.log"
+          "SEAT-FAILED rc=${_m3tl_rc:-?} fail=${_m3_fail_n} — see /tmp/m3-task-loop-${SID}.log (O-M3TYPEDSTOP)"
+        fail_run "M3 SPECIFY ${SLUG} SEAT-FAILED (rc=${_m3tl_rc:-?}, fail=${_m3_fail_n}) (O-M3TYPEDSTOP; no legacy fallback). See /tmp/m3-task-loop-${SID}.log"
+      else
+        _m3_lint_n=$(grep -c '^LINT:' /tmp/plan-lint.txt 2>/dev/null || echo 0)
+        _m3_lint_first=$(grep '^LINT:' /tmp/plan-lint.txt 2>/dev/null | head -1 | cut -c1-120 || echo "(no LINT lines)")
+        m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+          "LINT-RED n=${_m3_lint_n} first: ${_m3_lint_first} (O-M3TYPEDSTOP; seats ok rc=0)"
+        fail_run "M3 SPECIFY ${SLUG} LINT-RED (n=${_m3_lint_n} lints, first: ${_m3_lint_first}) (O-M3TYPEDSTOP; no legacy fallback). Seats ok — see /tmp/plan-lint.txt"
       fi
     fi
   fi

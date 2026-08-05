@@ -1298,6 +1298,7 @@ def render_tasks_md(root: Path, sid: str, model: Optional[dict] = None) -> Path:
             lines.append("- <!-- JUDGMENT: legacy → dest mapping -->")
         if plan:
             lines.append(f"**Plan**: {plan}")
+        lines.extend(_derived_reimpl_create_lines(t))
         lines.append("**Acceptance**:")
         for a in acc:
             lines.append(f"- {a}")
@@ -1317,6 +1318,28 @@ def render_all_tasks_md(root: Path, model: Optional[dict] = None) -> list[Path]:
         if sid and tasks_for_story(model, sid):
             paths.append(render_tasks_md(root, sid, model))
     return paths
+
+
+def _derived_reimpl_create_lines(task: dict) -> list[str]:
+    """Harness-owned create-procedure + DAO map (W4-566 / O-REIMPLCREATE).
+
+    Port=reimplement Shape=create must declare create-procedure for plan-lint.
+    Seat judgment does not invent this form — same family as F-acceptance-derived.
+    """
+    port = str(task.get("port") or "").strip().lower()
+    shape = str(task.get("shape") or "").strip().lower()
+    if port != "reimplement" or shape != "create":
+        return []
+    owns = " ".join(task.get("owns") or [])
+    anchor = owns.split()[0] if owns.split() else "Target .java"
+    return [
+        "**Procedure**: harvest-from-staging → API mapping table → first-write "
+        f"anchor `{anchor}` (O-REIMPLCREATE / O-RESTCREATE) — harness-derived.",
+        "**API mapping**: DataAccessException→PersistenceException; "
+        "EmptyResultDataAccessException→NoResultException; "
+        "ObjectRetrievalFailureException→EntityNotFoundException "
+        "(O-DAOEXMAP / O-M3PRESERVEDAO; omit-throws-only is also OK).",
+    ]
 
 
 def typed_task_body(task: dict) -> str:
@@ -1350,6 +1373,8 @@ def typed_task_body(task: dict) -> str:
         lines.append("- <!-- JUDGMENT: legacy → dest mapping -->")
     if plan:
         lines.append(f"**Plan**: {plan}")
+    # W4-566: derive create-procedure so seats are not asked to invent form.
+    lines.extend(_derived_reimpl_create_lines(task))
     lines.append("**Acceptance**:")
     for a in acc:
         lines.append(f"- {a}")

@@ -14733,6 +14733,52 @@ run_case() {
 }
 check "W4-565 F-brief-projected + F-no-discovery refuse + brief in packet" 0 "m3brief-projected-ok"
 
+# W4-566 — O-M3TYPEDSTOP distinguishes SEAT-FAILED vs LINT-RED
+run_case() {
+  grep -q 'SEAT-FAILED' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'LINT-RED' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # Must not claim write-inversion failed when seats ok / lint red
+  awk '
+    /LINT-RED/ {lint=1}
+    lint && /typed write-inversion failed/ {bad=1}
+    END { exit bad ? 1 : 0 }
+  ' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q '_derived_reimpl_create_lines' "$HARNESS_DIR/model.py" || return 1
+  grep -q 'O-REIMPLCREATE / O-RESTCREATE' "$HARNESS_DIR/model.py" || return 1
+  python3 - <<'PY' || return 1
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path("$HARNESS_DIR").resolve()))
+import model
+body = model.typed_task_body({
+    "id": "S99-T-001-X",
+    "port": "reimplement",
+    "shape": "create",
+    "class": "infer",
+    "owns": ["src/main/java/com/demo/Foo.java"],
+    "goal": "Migrate Foo interface to Quarkus repository layer cleanly.",
+    "acceptance": ["compiles"],
+})
+assert "harvest-from-staging" in body, body
+assert "O-REIMPLCREATE" in body, body
+assert "DataAccessException→PersistenceException" in body, body
+# non-create must not inject
+body2 = model.typed_task_body({
+    "id": "S99-T-002-Y",
+    "port": "reimplement",
+    "shape": "modify",
+    "class": "rewrite",
+    "owns": ["src/main/java/com/demo/Bar.java"],
+    "goal": "Modify Bar in place after harvest.",
+    "acceptance": ["compiles"],
+})
+assert "O-REIMPLCREATE" not in body2, body2
+print("typed-reimplcreate-ok")
+PY
+  echo m3typedstop-split-ok
+}
+check "W4-566 O-M3TYPEDSTOP SEAT-FAILED vs LINT-RED + derived O-REIMPLCREATE" 0 "m3typedstop-split-ok"
+
 # W4-557 — F-lint-reads-store: plan-lint reads model.tasks[], not tasks.md prose
 run_case() {
   grep -q 'F-lint-reads-store' "$HARNESS_DIR/plan-lint.py" || return 1
