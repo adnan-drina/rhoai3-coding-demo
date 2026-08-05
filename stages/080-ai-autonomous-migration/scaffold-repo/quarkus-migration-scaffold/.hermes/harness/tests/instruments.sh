@@ -14805,6 +14805,28 @@ out2 = subprocess.run(
 print(out2.stdout)
 assert out2.returncode != 0
 assert "typed-owns" in out2.stdout and tid in out2.stdout
+# W4-561: batch:SCC-N is a legal typed Shape (restore after corrupt owns test)
+m = json.loads((fix / "migration/model.json").read_text())
+m["tasks"][0]["owns"] = ["src/main/java/com/demo/model/Bar.java"]
+m["tasks"][0]["shape"] = "batch:SCC-1"
+m["tasks"][0]["scc_id"] = "SCC-1"
+m["tasks"][0]["class"] = "rewrite"
+(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+out3 = subprocess.run(
+  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
+  cwd=str(fix), capture_output=True, text=True,
+)
+print(out3.stdout)
+assert out3.returncode == 0, out3.stdout + out3.stderr
+assert "O-SHAPEDECL" not in out3.stdout
+# unknown shape → RED naming task
+m["tasks"][0]["shape"] = "explode"
+(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+out4 = subprocess.run(
+  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
+  cwd=str(fix), capture_output=True, text=True,
+)
+assert out4.returncode != 0 and "O-SHAPEDECL" in out4.stdout and tid in out4.stdout
 print("lint-reads-store-ok")
 PY
   echo lint-reads-store-ok

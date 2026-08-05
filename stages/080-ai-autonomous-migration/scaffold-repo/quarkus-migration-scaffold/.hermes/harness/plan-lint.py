@@ -1550,18 +1550,19 @@ def main():
             )
 
     # O-SHAPEDECL / O-M3SHAPEHARD (F-28): every task declares Shape for M4.
-    # Default HARD (RED) so outer-loop M3_LINT_CMD and drafter self-verify
-    # share the same bar without env choreography. Grandfather soft via
-    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
-    # fixture modernization only.
+    # W4-561: vocabulary has ONE definition — what assign_tasks can emit,
+    # including batch:SCC-N. Typed mode reads t["shape"] from model.tasks[]
+    # (F-lint-reads-store); do not re-parse VIEW prose against a narrower set.
     import os as _os
 
+    _shape_atom = r"create|modify|remove|structure|verify|batch:SCC-\d+"
     _shape_re = re.compile(
-        r"^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*\s*$"
-        r"|^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\s*$"
-        r"|^Shape\s*:\s*(create|modify|remove|structure|verify)\s*$",
+        rf"^\*\*Shape\s*:\s*({_shape_atom})\*\*\s*$"
+        rf"|^\*\*Shape\*\*\s*:?\s*({_shape_atom})\s*$"
+        rf"|^Shape\s*:\s*({_shape_atom})\s*$",
         re.M | re.I,
     )
+    _shape_token_re = re.compile(rf"^({_shape_atom})$", re.I)
     _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
     _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
         "1",
@@ -1574,10 +1575,23 @@ def main():
         _require_shape = True
     else:
         _require_shape = True  # O-M3SHAPEHARD default
+    _typed_by_id = {str(t.get("id") or ""): t for t in (typed_tasks or [])}
     for _, tid, _ in heads:
-        body = bodies.get(tid, "")
-        if not _shape_re.search(body):
-            msg = f"{tid}: missing **Shape**: create|modify|remove|structure|verify"
+        if typed_mode and tid in _typed_by_id:
+            shape = str((_typed_by_id[tid].get("shape") or "")).strip()
+            ok_shape = bool(_shape_token_re.match(shape))
+            msg = (
+                f"{tid}: missing/invalid Shape {shape!r} — want "
+                f"create|modify|remove|structure|verify|batch:SCC-N"
+            )
+        else:
+            body = bodies.get(tid, "")
+            ok_shape = bool(_shape_re.search(body))
+            msg = (
+                f"{tid}: missing **Shape**: "
+                f"create|modify|remove|structure|verify|batch:SCC-N"
+            )
+        if not ok_shape:
             if _require_shape:
                 lint("O-SHAPEDECL", msg)
             else:
