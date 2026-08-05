@@ -291,6 +291,43 @@ def lint_bind_closed(ir: dict[str, Any], findings: list[dict]) -> list[str]:
     return []
 
 
+# O-ADR24UNBOUNDWAIVER — migration-general patterns for incidents that cannot
+# bind to graph units (build output / OpenAPI *Dto.java under a dto/ package).
+# Specimen-agnostic: path shape only, never app class names.
+_UNBOUND_WAIVER_RES = (
+    re.compile(r"(^|/)target/"),
+    re.compile(r"/generated-sources/"),
+    re.compile(r"/dto/[^/]+Dto\.java$"),
+)
+
+
+def unbound_path(entry: str) -> str:
+    """Strip 'ruleId:' prefix from bind_findings unbound entries."""
+    if ":" in (entry or ""):
+        return entry.split(":", 1)[1].strip()
+    return (entry or "").strip()
+
+
+def is_unbound_waived(legacy_path: str) -> bool:
+    p = (legacy_path or "").strip().lstrip("./")
+    if not p:
+        return False
+    return any(rx.search(p) for rx in _UNBOUND_WAIVER_RES)
+
+
+def lint_unbound_waived(unbound: list[str]) -> list[str]:
+    """O-ADR24UNBOUNDWAIVER: every unbound path must match an explicit waiver."""
+    reds: list[str] = []
+    for entry in unbound or []:
+        lp = unbound_path(entry)
+        if is_unbound_waived(lp):
+            continue
+        reds.append(
+            f"O-ADR24UNBOUNDWAIVER RED: unbound finding not waived: {entry}"
+        )
+    return reds
+
+
 def main() -> int:
     import argparse
 

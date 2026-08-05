@@ -12597,6 +12597,25 @@ PY
 }
 check "O-OPENJDK21REGRESS stamp unions openjdk21 into kept targets" 0 "openjdk21regress-ok"
 
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""O-ADR24UNBOUNDWAIVER: generated/dto waived; real source unbound RED."""
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+import findings_ir
+waived = [
+    "r1:target/generated-sources/annotations/x/MapperImpl.java",
+    "r1:src/main/java/org/demo/dto/OwnerDto.java",
+]
+assert findings_ir.lint_unbound_waived(waived) == [], findings_ir.lint_unbound_waived(waived)
+reds = findings_ir.lint_unbound_waived(["r1:src/main/java/org/demo/Pet.java"])
+assert reds and "O-ADR24UNBOUNDWAIVER" in reds[0], reds
+print("adr24-unboundwaiver-ok")
+PY
+}
+check "O-ADR24UNBOUNDWAIVER refuse real path; accept generated/dto" 0 "adr24-unboundwaiver-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then

@@ -284,6 +284,8 @@ def build_model(
 
     findings, units, unbound = findings_ir.bind_findings_to_units(ir, units)
     bind_reds = findings_ir.lint_bind_closed(ir, findings)
+    # O-ADR24UNBOUNDWAIVER: non-empty graph is not enough — unbound must be waived
+    bind_reds.extend(findings_ir.lint_unbound_waived(unbound))
 
     prov = ir.get("provenance") or {}
     model: dict[str, Any] = {
