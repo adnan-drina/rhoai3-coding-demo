@@ -1161,9 +1161,15 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}
                 role = str((d or {}).get("role") or "UNDECIDED").upper()
                 acceptance = derive_acceptance(primary)
-            # SCC: derive from first member; note batch
+            # SCC convert-together: keep scc_id for atomicity; Shape must be a
+            # plan-lint legal token (O-SHAPEDECL). Do NOT use shape=batch:SCC-*
+            # — that forced infer+absent (O-INFERABSENT) and rewrite-after-infer
+            # order RED on HARVEST stories (W4-557 follow-on / O-HARVESTSHAPE).
             if cu.get("kind") == "scc":
-                cls, shape = "infer", f"batch:{cu.get('id')}"
+                if str(role).upper() == "HARVEST":
+                    cls, shape = "rewrite", "modify"
+                else:
+                    cls, shape = "infer", "modify"
                 oracle = "absent"
                 port = None
             else:

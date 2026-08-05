@@ -494,7 +494,9 @@ def main():
             _typed_model = _mload(root)
             typed_tasks = _tfs(_typed_model, sid)
             typed_mode = bool(typed_tasks)
-    except Exception:
+    except Exception as _typed_exc:
+        # Do not silently mask import/load faults — they look like LINT:ids RED.
+        print(f"F-lint-reads-store: typed path unavailable ({_typed_exc!r})", file=sys.stderr)
         typed_mode = False
         typed_tasks = []
         _typed_model = None
@@ -515,10 +517,38 @@ def main():
             bodies[tid] = _ttb(t)
         # Synthetic VIEW corpus for whole-doc checks (forbidden/ui-surface).
         # Built from the store — not read from specs/**/tasks.md.
+        # S-CHAR: model harvest must name src/test — project any existing
+        # model-level tests from staging/legacy into the synthetic VIEW.
+        _char_lines: list[str] = []
+        for _root in (
+            root / "migration" / "staging" / "src" / "test" / "java",
+            root / "src" / "test" / "java",
+            Path("/projects/legacy/src/test/java"),
+        ):
+            if not _root.is_dir():
+                continue
+            for _p in sorted(_root.rglob("*Test*.java")):
+                try:
+                    rel = _p.relative_to(_root).as_posix()
+                except ValueError:
+                    continue
+                s = f"src/test/java/{rel}"
+                if "/model/" in s or _p.name == "ValidatorTests.java":
+                    _char_lines.append(f"- `{s}`")
+            if _char_lines:
+                break
+        _char_block = ""
+        if _char_lines:
+            _char_block = (
+                "Characterization (model-level):\n"
+                + "\n".join(_char_lines[:8])
+                + "\n\n"
+            )
         text = (
             f"# {sid} Tasks\n\n"
             "<!-- O-M3TYPED — F-lint-reads-store: lint input is model.tasks[] -->\n"
             "UI surface: waived (API-only).\n\n"
+            + _char_block
             + "\n".join(f"#### {tid}: {title}\n{bodies[tid]}" for _, tid, title in heads)
         )
     else:
@@ -900,7 +930,10 @@ def main():
                     f"(file/endpoint/test/property), not plan-lint/sensors green",
                 )
 
-    # N2: every preserve: item in migration.yaml must appear in the plan
+    # N2: every preserve: item in migration.yaml must appear in the plan.
+    # O-PRESERVEDEPLOY (W4-557 follow-on): per-story plan-lint on a non-deploy
+    # story must not demand config/security preserve tokens — those belong to
+    # the deploy/config story. Enforce preserve coverage when story_deploy.
     try:
         my = open("migration.yaml").read()
         import re as _re
@@ -912,15 +945,16 @@ def main():
         # forbidden: fix above).
         _psec = _re.search(r"^preserve:(.*?)(^\S|\Z)", my, _re.M | _re.S)
         pres = _re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", _psec.group(1), _re.M) if _psec else []
-        for item in pres:
-            if item not in text:
-                lint(
-                    "preserve",
-                    f"preserved integration '{item}' mapped to no task — "
-                    f"put the verbatim token '{item}' in a covering task "
-                    f"Goal/Target design (synonyms do not satisfy; "
-                    f"declare the destination key/property that carries it)",
-                )
+        if story_deploy:
+            for item in pres:
+                if item not in text:
+                    lint(
+                        "preserve",
+                        f"preserved integration '{item}' mapped to no task — "
+                        f"put the verbatim token '{item}' in a covering task "
+                        f"Goal/Target design (synonyms do not satisfy; "
+                        f"declare the destination key/property that carries it)",
+                    )
         # Ship acceptance is part of the contract (cart run #2: the stamped
         # acceptance.path had no endpoint anywhere in the plan, discovered
         # only at ship time). O-M3ACCEPT: only deploy stories must task it
