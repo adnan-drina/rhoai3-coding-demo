@@ -1,4 +1,4 @@
 # O-GOLDENFRESH publish fingerprint — written by v10-golden-fresh.sh / bootstrap-scaffold-repos.sh
 # Compare with live tree digest (stamp file excluded from hash).
-DIGEST=9272ece1f943571c997f95f1b4b3dcfc FILES=564
-STAMPED_AT=2026-08-05T23:35:33Z
+DIGEST=59470fea13e8a2ee3c9ea1b09e24cb46 FILES=564
+STAMPED_AT=2026-08-05T23:42:46Z
