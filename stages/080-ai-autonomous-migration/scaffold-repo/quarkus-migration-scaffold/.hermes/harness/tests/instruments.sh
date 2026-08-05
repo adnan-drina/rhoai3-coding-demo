@@ -14903,14 +14903,18 @@ out3 = subprocess.run(
 print(out3.stdout)
 assert out3.returncode == 0, out3.stdout + out3.stderr
 assert "O-SHAPEDECL" not in out3.stdout
-# unknown shape → RED naming task
+# unknown shape → RED naming task (suite defaults PLAN_LINT_SHAPE_WARN=1 —
+# force hard shape for this subprocess so explode is lint not WARN).
 bar["shape"] = "explode"
 (FIX / "migration/model.json").write_text(json.dumps(m, indent=2))
+_env = {**__import__("os").environ, "PLAN_LINT_SHAPE_WARN": "0", "PLAN_LINT_REQUIRE_SHAPE": "1"}
 out4 = subprocess.run(
   [sys.executable, str(H / "plan-lint.py"), str(tp.relative_to(FIX)), "--story-deploy", "false"],
-  cwd=str(FIX), capture_output=True, text=True,
+  cwd=str(FIX), capture_output=True, text=True, env=_env,
 )
-assert out4.returncode != 0 and "O-SHAPEDECL" in out4.stdout and tid in out4.stdout
+assert out4.returncode != 0 and "O-SHAPEDECL" in out4.stdout and tid in out4.stdout, (
+  out4.stdout + out4.stderr
+)
 print("lint-reads-store-ok")
 PY
   echo lint-reads-store-ok
@@ -14957,9 +14961,9 @@ model = {
   "tasks": [],
   "provenance": {},
 }
-(fix/"migration/model.json").write_text(json.dumps(model, indent=2))
-subprocess.check_call([sys.executable, str(H/"model.py"), "assign-tasks", "--root", str(fix)])
-m = json.loads((fix/"migration/model.json").read_text())
+(FIX/"migration/model.json").write_text(json.dumps(model, indent=2))
+subprocess.check_call([sys.executable, str(H/"model.py"), "assign-tasks", "--root", str(FIX)])
+m = json.loads((FIX/"migration/model.json").read_text())
 ts = sorted([t for t in m["tasks"] if t.get("sid")=="S01"], key=lambda t: int(t.get("seq") or 0))
 classes = [t.get("class") for t in ts]
 assert classes == ["rewrite", "infer"], classes
