@@ -17,13 +17,26 @@ import sys
 from pathlib import Path
 
 _GATE_SUBJ = re.compile(
-    r"^(T-\d+|S\d+\b|M[0-9] |Preflight fix|.*\bsensor fix:)",
+    # O-M1SENSORGATE: do NOT match bare M1/M2/M3 harness subjects — those
+    # fired sensors.sh task on a fresh wipe (no code yet) and refused the
+    # contract-stamp commit in a thrash loop. Gate T-NNN / Preflight /
+    # sensor-fix / M4–M5 execute tips only.
+    r"^(T-\d+|S\d+\b|M[45]\b|Preflight fix|.*\bsensor fix:)",
+    re.I,
+)
+
+# Explicit M1 bookkeeping subjects (defense in depth if regex drifts).
+_M1_HARNESS = re.compile(
+    r"^M1\s+(contract|analyze|profile)\b",
     re.I,
 )
 
 
 def needs_gate(subject: str) -> bool:
-    return bool(_GATE_SUBJ.search((subject or "").strip()))
+    subj = (subject or "").strip()
+    if _M1_HARNESS.search(subj):
+        return False
+    return bool(_GATE_SUBJ.search(subj))
 
 
 def decide(sensor_rc: int) -> int:

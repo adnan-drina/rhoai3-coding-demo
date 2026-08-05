@@ -87,14 +87,18 @@ FIX_TIMEOUT="${FIX_TIMEOUT:-900}"
 MAX_ATTEMPTS=2            # judgment attempts per stage (platform faults excluded)
 MAX_PLATFORM_RETRIES=4    # consecutive platform-fault retries per stage
 # O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
-# O-DEBTSHIPRACE: if the debt ledger still has unresolved `##` entries, KEEP
-# freeze across hotswap/re-enter — do not wipe and race into M5 ship.
+# O-DEBTSHIPRACE: if the debt ledger still has unresolved *sensor* RED headers
+# (`## <tag> — <kind> RED` from record_debt), KEEP freeze across hotswap —
+# do not wipe and race into M5 ship.
+# O-DEBTFRZM5STICKY: O-DEBTFRZLEDGER writes `## M5 residuals — S0N (…)`, which
+# is inventory for later stories — NOT freeze-worthy. Matching bare `^## `
+# falsely froze S01 resume after a GREEN pipeline (W4R7).
 if [ "${V9_KEEP_DEBT_FREEZE:-0}" = "1" ]; then
   :
-elif [ -f migration/debt.md ] && grep -qE '^## ' migration/debt.md 2>/dev/null; then
+elif [ -f migration/debt.md ] && grep -qE '^## .+ — .+ RED[[:space:]]*$' migration/debt.md 2>/dev/null; then
   touch /tmp/debt-freeze /tmp/supervisor-pause
   # log not yet open — outer/stderr only
-  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved ## entries in migration/debt.md" >&2
+  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved ## … RED entries in migration/debt.md" >&2
 else
   rm -f /tmp/debt-freeze /tmp/supervisor-pause
 fi
@@ -126,6 +130,36 @@ log()   { echo "[$(date -u +%F' '%T)] $*" >> "$LOG"; }
 # Mirror demo-facing lines into the outer-loop narrative (tail -f /tmp/outer-loop.log).
 # SHIP_ONLY must not emit M4 "Models:" lines that look like a live story run (L-SHIPLOG).
 outer_log() { echo "[$(date -u +%F' '%T)] $*" >> "$OUTER_LOG"; }
+
+# O-TASKHB: same demo cadence as outer-loop M3 heartbeats — long M4 worker /
+# MiniMax / sensor seats must not leave /tmp/outer-loop.log stationary.
+# Demo lines include full task title (not only T-NNN), matching log_task.
+TASK_HEARTBEAT_SECS="${TASK_HEARTBEAT_SECS:-${OUTER_LOOP_HEARTBEAT_SECS:-60}}"
+task_hb_pretty() { # $1=label-or-tag → "T-003 — <title>" when resolvable
+  local label="$1" tid="" title=""
+  if [[ "$label" =~ ^(T-[0-9]+[A-Za-z]*) ]]; then
+    tid="${BASH_REMATCH[1]}"
+    if declare -F task_title >/dev/null 2>&1; then
+      title=$(task_title "$tid" 2>/dev/null || true)
+    fi
+    if [ -n "$title" ] && [ "$title" != "$tid" ]; then
+      printf '%s — %s' "$tid" "$title"
+      return 0
+    fi
+    printf '%s' "$tid"
+    return 0
+  fi
+  printf '%s' "$label"
+}
+task_hb() { # $1=label $2=kind(worker|orchestrator|sensor:…) $3=elapsed_s [$4=detail]
+  local label="$1" kind="$2" elapsed="$3" detail="${4:-}" pretty
+  pretty=$(task_hb_pretty "$label")
+  if [ -n "$detail" ]; then
+    outer_log "         … ${pretty} still working on ${kind} (${elapsed}s) — ${detail}"
+  else
+    outer_log "         … ${pretty} still working on ${kind} (${elapsed}s)"
+  fi
+}
 
 log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST} ship_only=${SHIP_ONLY:-0}"
 # O-WEDGERESUME: a fresh supervisor must not inherit /tmp/worker-wedge-skip
@@ -160,7 +194,7 @@ record_rule_outcomes() { # $1=tid $2=outcome-token
 import re, sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 tid = sys.argv[2]
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -217,7 +251,7 @@ import re, sys
 from pathlib import Path as _P
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -386,13 +420,28 @@ committed() {
   # O-SHIPROUNDBASE: Preflight/Gate/Build fix round satisfaction uses
   # /tmp/ship-session-base (exclusive) when present — prior-session tips and
   # abandoned origin tips are not authority for a fresh ship round budget.
-  local _hit _range_log="" _base="${RUN_BASE:-}" _include_base=1 _ssb=""
+  local _hit _range_log="" _base="${RUN_BASE:-}" _include_base=1 _ssb="" _story_floor=""
   case "$1" in
     "Preflight fix"*|"Gate fix"*|"Build fix"*)
       if [ -f /tmp/ship-session-base ]; then
         _ssb=$(tr -d '[:space:]' </tmp/ship-session-base 2>/dev/null || true)
         if [ -n "$_ssb" ] && git rev-parse --verify "${_ssb}^{commit}" >/dev/null 2>&1; then
           _base="$_ssb"
+          _include_base=0
+        fi
+      fi
+      ;;
+    T-*|TC-*|S[0-9]*)
+      # O-COMMITSTORYFLOOR: T-NNN: ids restart every story. RUN_BASE for S02 is
+      # often the M3 spec tip *before* S01 execute, so S01's T-001:…T-011: sit
+      # inside RUN_BASE..HEAD and falsely skip S02's same ids (W4R7 S02: only
+      # Specialty untracked; NamedEntity "already committed" was S01 T-004).
+      # Floor at latest subject-leading "… story complete" tip when it is a
+      # descendant of RUN_BASE (or when RUN_BASE is unset).
+      _story_floor=$(git log -1 --format=%H --grep='story complete' HEAD 2>/dev/null || true)
+      if [ -n "$_story_floor" ] && git rev-parse --verify "${_story_floor}^{commit}" >/dev/null 2>&1; then
+        if [ -z "$_base" ] || git merge-base --is-ancestor "${_base}" "${_story_floor}" 2>/dev/null; then
+          _base="$_story_floor"
           _include_base=0
         fi
       fi
@@ -497,10 +546,62 @@ restore_frozen_specs() {
   done
 }
 
+# O-OWNSTAGEALL / O-PARTIALADV — declared Target paths present on disk but
+# missing from the index → refuse silent partial tip (W4-346/W4-288).
+ownstage_missing_declared() { # $1=tid → prints missing paths, rc=1 if any
+  local tid="${1:-}"
+  local _tf="${TASKS_FILE:-${STORY_TASKS:-}}"
+  local p
+  [ -n "$tid" ] && [ -f "$_tf" ] && [ -f .hermes/harness/task-stage-paths.py ] || return 0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    # Only care about files that exist (worker produced them).
+    if [ -e "$p" ] || [ -L "$p" ]; then
+      if ! git diff --cached --name-only 2>/dev/null | grep -Fxq -- "$p"; then
+        # Also treat untracked/modified working tree as missing if not staged.
+        if git status --porcelain -- "$p" 2>/dev/null | grep -q .; then
+          echo "$p"
+        elif ! git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then
+          echo "$p"
+        fi
+      fi
+    fi
+  done < <(python3 .hermes/harness/task-stage-paths.py "$_tf" "$tid" 2>/dev/null || true)
+}
+
+# O-PARTIALADV — claimed-complete tasks whose declared Targets are still
+# dirty/?? → refuse silent skip/advance (partial tip).
+# O-PARTIALADVCOLLAB: uncommitted later-task dirt (Pet/Owner co-harvest, or
+# T-008 still in BATCH while iterating T-009) must NOT HOLD — only flag when
+# committed(T) is true and Target dirt remains.
+partial_adv_blockers() { # optional $1=current tid; prints "T-NNN\tpath"; rc=1 if any
+  local cur="${1:-}"
+  local _tf="${TASKS_FILE:-${STORY_TASKS:-}}"
+  local t p
+  [ -f "$_tf" ] && [ -f .hermes/harness/task-stage-paths.py ] || return 0
+  for t in ${TASK_IDS:-}; do
+    if [ -n "$cur" ]; then
+      [ "$t" = "$cur" ] && break
+    fi
+    # Only claimed-complete + leftover dirt (false skip / partial tip).
+    committed "$t" 2>/dev/null || continue
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      if [ -e "$p" ] || [ -L "$p" ]; then
+        if git status --porcelain -- "$p" 2>/dev/null | grep -qE '^\?\?|^ M|^M |^A |^AM|^MM'; then
+          printf '%s\t%s\n' "$t" "$p"
+        fi
+      fi
+    done < <(python3 .hermes/harness/task-stage-paths.py "$_tf" "$t" 2>/dev/null || true)
+  done
+}
+
 stage_for_task_commit() {
   # Optional $1 = T-NNN (else CURRENT_TASK). O-OWNSTAGE: when the task
   # declares Owns/Target paths, stage only those — never git add -A scoop of
   # sibling entities (S02 T-009 Owner tip bundled Pet+Visit).
+  # O-OWNSTAGEALL: task-stage-paths.py must emit *all* multi-line Target src
+  # paths; we then refuse tip if any on-disk declared Target stays unstaged.
   restore_frozen_specs
   # O-POMDISCARD: refuse to stage pom-only orphan panache/spring-data deps
   # when src/ has no matching usage (burned-seat leftover).
@@ -508,12 +609,14 @@ stage_for_task_commit() {
   local tid="${1:-${CURRENT_TASK:-}}"
   local allow_n=0
   local p
+  local _ownstage_paths=""
   if [ -n "$tid" ] && [ -n "${TASKS_FILE:-${STORY_TASKS:-}}" ] \
     && [ -f "${TASKS_FILE:-${STORY_TASKS}}" ] \
     && [ -f .hermes/harness/task-stage-paths.py ]; then
     local _tf="${TASKS_FILE:-${STORY_TASKS}}"
     local _paths
     _paths=$(python3 .hermes/harness/task-stage-paths.py "$_tf" "$tid" 2>/dev/null || true)
+    _ownstage_paths="$_paths"
     if [ -n "$_paths" ]; then
       # Drop prior index so siblings staged earlier cannot ride along.
       git reset -q 2>/dev/null || true
@@ -536,18 +639,38 @@ EOF
     fi
   fi
   if [ "$allow_n" -eq 0 ]; then
-    # No declared Owns/Target (or no task context) — legacy full stage + reset.
-    git add -A
+    # O-ATTRSWEEP / O-VERIFYCREATE: empty allowlist for Shape=verify means
+    # do NOT fall back to git add -A (that scoops prior-task leftovers into
+    # the wrong tip). Leave index empty → caller must escalate/honest-fail.
+    if [ -n "$tid" ] && [ -n "${_ownstage_paths+x}" ] \
+      && [ -f .hermes/harness/task-stage-paths.py ]; then
+      # Distinguisher: python ran and returned empty vs paths missing entirely.
+      if python3 .hermes/harness/task-stage-paths.py \
+           "${TASKS_FILE:-${STORY_TASKS}}" "$tid" >/dev/null 2>&1 \
+        && [ -z "$_ownstage_paths" ]; then
+        log "stage: O-ATTRSWEEP — empty Ownstage allowlist for ${tid%% *} (no create Targets); refusing git add -A scoop"
+        git reset -q 2>/dev/null || true
+      else
+        git add -A
+      fi
+    else
+      # No declared Owns/Target (or no task context) — legacy full stage + reset.
+      git add -A
+    fi
   fi
   # O-STRUCTPRESAT: never sweep O-DESTBASE inventory into T-NNN tips
   # (false structure-non-gitkeep after valid .gitkeep — W4 T-003).
   # O-ARCHIVESTAGE: never scoop O-TMPARCHIVE forensic trees into T-NNN tips
   # (S03 T-001 d7bde2a bundled 47 run-archives files with spring-tx harvest).
+  # O-STAMPGITIGN: never scoop m3-all stamps / run-log / evidence bookkeeping.
   git reset -q -- .hermes migration/staging \
     migration/mta-findings-current.json \
     migration/scaffold-presatisfied.generated.txt \
     migration/scaffold-presatisfied.txt \
-    migration/run-archives run-archives 2>/dev/null || true
+    migration/run-archives run-archives \
+    migration/.m3-all-stamps migration/run-log.md \
+    migration/evidence-liveness.md migration/discovered.md \
+    migration/mta-findings-after.json 2>/dev/null || true
   # Belt: never stage frozen complete-story specs even if restore raced.
   for d in $(frozen_spec_paths); do
     git reset -q HEAD -- "$d" 2>/dev/null || true
@@ -565,6 +688,15 @@ EOF
         git reset -q HEAD -- pom.xml 2>/dev/null || true
         git checkout -q HEAD -- pom.xml 2>/dev/null || true
       fi
+    fi
+  fi
+  # O-OWNSTAGEALL: refuse partial stage — produced∩declared must be staged.
+  if [ -n "$tid" ] && [ -n "$_ownstage_paths" ]; then
+    local _miss
+    _miss=$(ownstage_missing_declared "$tid" | tr '\n' ' ')
+    if [ -n "${_miss// /}" ]; then
+      log "stage: O-OWNSTAGEALL REFUSE — declared Targets on disk but unstaged: ${_miss}"
+      git reset -q 2>/dev/null || true
     fi
   fi
 }
@@ -636,7 +768,7 @@ scrub_findings_from_tip() {
   echo "$files" | grep -qx 'migration/mta-findings-current.json' || return 0
   # Rewrite task + ship-correction tips — never chore/debt/run-report.
   # Note: ids are T-007 (hyphen), not T007 — do not use ^(T|S)[0-9]+.
-  git log -1 --format=%s | grep -qE '^(T-[0-9]+|S[0-9]+|Preflight fix|Gate fix|Build fix|Deploy fix):' || return 0
+  git log -1 --format=%s | grep -qE '^(T-[0-9]+[A-Za-z]*|S[0-9]+|Preflight fix|Gate fix|Build fix|Deploy fix):' || return 0
   msg=$(git log -1 --format=%B)
   log "O-T1FINDESC/O-SHIPFIXFINDINGS: tip includes mta-findings-current.json — rewriting commit without it"
   git reset --soft HEAD~1 >>"$LOG" 2>&1 || return 0
@@ -665,7 +797,7 @@ scrub_frozen_specs_from_tip() {
   local msg files d hit=0
   files=$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null || true)
   [ -n "$files" ] || return 0
-  git log -1 --format=%s | grep -qE '^(T-[0-9]+|S[0-9]+|M3 revision):' || return 0
+  git log -1 --format=%s | grep -qE '^(T-[0-9]+[A-Za-z]*|S[0-9]+|M3 revision):' || return 0
   for d in $(frozen_spec_paths); do
     d=${d%/}
     if echo "$files" | grep -q "^${d}/"; then
@@ -771,6 +903,8 @@ discard_staging_autofix() {
 # (W4-054a: stage_for_task_commit scooped dirty evaluate leftovers like
 # Set.copyOf / role.setUser into a "deterministic style-autofix" tip).
 style_autofix_stage() {
+  # Optional $1 = tip prefix (T-NNN / M5 evaluate) for O-CHARPIN / O-SFIXPATHS.
+  local prefix="${1:-${CURRENT_TASK:-}}"
   discard_staging_autofix
   restore_frozen_specs
   git reset -q 2>/dev/null || true
@@ -779,6 +913,27 @@ style_autofix_stage() {
     [ -n "$f" ] || continue
     case "$f" in
       migration/staging/*|.hermes/*) continue ;;
+      # O-CHARPIN / O-SFIXPATHS: characterization pins are style-exempt unless
+      # this tip owns the char task (prefix matches T-NNN that Targets the file).
+      *CharacterizationTest.java|*CharacterizationTests.java)
+        if ! echo "$prefix" | grep -qE '^T-[0-9]+'; then
+          log "style-autofix: O-CHARPIN — reverting ${f} (non-task autofix must not mutate char pins)"
+          git checkout -q -- "$f" 2>/dev/null || true
+          continue
+        fi
+        # Task tip: only stage if this task's Ownstage list includes the file.
+        if [ -f .hermes/harness/task-stage-paths.py ] \
+          && [ -n "${TASKS_FILE:-${STORY_TASKS:-}}" ]; then
+          if ! python3 .hermes/harness/task-stage-paths.py \
+               "${TASKS_FILE:-${STORY_TASKS}}" "$prefix" 2>/dev/null \
+               | grep -Fxq -- "$f"; then
+            log "style-autofix: O-SFIXPATHS — reverting ${f} (not in ${prefix} Targets)"
+            git checkout -q -- "$f" 2>/dev/null || true
+            continue
+          fi
+        fi
+        git add -- "$f" 2>/dev/null || true
+        ;;
       src/*) git add -- "$f" 2>/dev/null || true ;;
     esac
   done < <(git diff --name-only -- src/ 2>/dev/null; git ls-files --others --exclude-standard -- src/ 2>/dev/null)
@@ -957,7 +1112,7 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
   # O-ESCREOPENCODE-ENFORCE: when marker armed for this T-NNN, PATH-deny
   # opencode for the Hermes child and kill any absolute-path spawn.
   local esc_enforce=0 enforce_tid="" watch_pid="" save_path="$PATH"
-  if [[ "$tag" =~ ^(T-[0-9]+) ]]; then
+  if [[ "$tag" =~ ^(T-[0-9]+[A-Za-z]*) ]]; then
     enforce_tid="${BASH_REMATCH[1]}"
     if [ -f "/tmp/escalation-no-opencode-${enforce_tid}" ]; then
       esc_enforce=1
@@ -983,6 +1138,24 @@ orch() { # $1=tag $2=prompt ; logs to /tmp/sup-<tag>.log ; returns rc
     ) &
     watch_pid=$!
   fi
+  # O-TASKHB: pulse OUTER_LOG while MiniMax/Hermes seat runs (was silent for
+  # multi-minute escalations — demo looked stuck on ▶ TASK).
+  local _hb_elapsed=0 _hb_detail=""
+  while kill -0 "$wpid" 2>/dev/null; do
+    sleep "$TASK_HEARTBEAT_SECS"
+    if ! kill -0 "$wpid" 2>/dev/null; then
+      break
+    fi
+    _hb_elapsed=$(( $(date +%s) - t0 ))
+    _hb_detail="details /tmp/sup-${tag}.log"
+    if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" \
+         "/tmp/sup-${tag}.log" 2>/dev/null; then
+      task_hb "$tag" "orchestrator" "$_hb_elapsed" \
+        "waiting on MiniMax rate limit — ${_hb_detail}"
+    else
+      task_hb "$tag" "orchestrator" "$_hb_elapsed" "$_hb_detail"
+    fi
+  done
   wait "$wpid"
   rc=$?
   if [ -n "$watch_pid" ]; then
@@ -1031,6 +1204,11 @@ run_worker_prompt() { # $1=tag $2=prompt ; logs $(oc_seat_base <tag>).{json,err}
         else
           stale=0
           last_sz=$sz
+        fi
+        # O-TASKHB: every ~60s on the 30s sfix poll cadence.
+        if [ $((elapsed % 60)) -eq 0 ]; then
+          task_hb "$tag" "worker" "$elapsed" \
+            "sfix json=${sz}B — details $(oc_seat_base "$tag").json"
         fi
         # Tighter read-thrash + mutate deadline for sfix (O-SFIXMUTATE).
         if [ -f .hermes/harness/worker-read-watch.py ]; then
@@ -1259,9 +1437,146 @@ PY
       fi
     fi
   fi
+# (C) O-EXECSCOPE — also revert out-of-scope resources + unowned pom.xml
+  # (M4 used to only enforce src/main/java; T-003 edited S01 props + pom).
+  if [ -n "${STORY_SCOPE:-}" ] && [ -f .hermes/harness/exec-scope.py ] \
+    && [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ]; then
+    case "$prefix" in
+      T-*)
+        local esc_list="" f
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          esc_list="${esc_list}${f}"$'\n'
+        done < <(git diff --name-only HEAD~1..HEAD -- src/main/resources pom.xml 2>/dev/null || true)
+        if [ -n "$(echo "$esc_list" | tr -d '[:space:]')" ]; then
+          if ! printf '%s' "$esc_list" | STORY_SCOPE="$STORY_SCOPE" \
+               python3 .hermes/harness/exec-scope.py "$TASKS_FILE" "$prefix" \
+               > /tmp/exec-scope.out 2>&1; then
+            local esc_viol _raw _f
+            esc_viol=$(tr '\n' ' ' </tmp/exec-scope.out)
+            log "scope sensor: O-EXECSCOPE revert ${esc_viol}"
+            event "scope" 0 exec_scope "${esc_viol}"
+            {
+              echo "O-EXECSCOPE: tip touched non-test paths outside story scope / Owns"
+              echo "$esc_viol"
+              echo "Story scope: ${STORY_SCOPE}"
+              echo "Stay on Owns/Target or record debt — do not edit later-story props/pom."
+            } > /tmp/scope-violation.txt
+            _raw=$(grep -E '^O-EXECSCOPE:' /tmp/exec-scope.out | head -1 | sed 's/^O-EXECSCOPE://')
+            local _reverts=""
+            IFS=',' read -ra _vs <<< "${_raw}"
+            for _f in "${_vs[@]}"; do
+              _f="${_f// /}"
+              [ -n "$_f" ] || continue
+              _reverts="${_reverts} ${_f}"
+              if git diff --name-only --diff-filter=A HEAD~1..HEAD -- "$_f" 2>/dev/null | grep -q .; then
+                git rm -q "$_f" 2>/dev/null || rm -f "$_f"
+              else
+                git checkout HEAD~1 -- "$_f" 2>/dev/null || true
+              fi
+            done
+            stage_scope_revert_paths ${_reverts}
+            if ! git diff --cached --quiet 2>/dev/null; then
+              git commit -q -m "${prefix} scope revert: O-EXECSCOPE out-of-scope resources/pom" 2>/dev/null
+            fi
+          fi
+        fi
+        ;;
+    esac
+  fi
   # O-SCOPEBACKFILL / O-STRUCTREVERT: after any scope revert, restore missing
   # structure/.gitkeep Targets so the task is not marked ✓ with deliverable absent.
   scope_structure_backfill "$prefix"
+}
+
+# O-EXECSCOPE — pre-commit refuse for staged non-test paths outside STORY_SCOPE.
+exec_scope_refuse_staged() { # $1=tid → 0 ok, 1 reset index
+  local tid="$1"
+  [ -n "$tid" ] || return 0
+  [ -n "${STORY_SCOPE:-}" ] || return 0
+  [ -f .hermes/harness/exec-scope.py ] || return 0
+  [ -n "${TASKS_FILE:-}" ] && [ -f "$TASKS_FILE" ] || return 0
+  case "$tid" in T-*) ;; *) return 0 ;; esac
+  if git diff --cached --quiet 2>/dev/null; then
+    return 0
+  fi
+  if git diff --cached --name-only | STORY_SCOPE="$STORY_SCOPE" \
+       python3 .hermes/harness/exec-scope.py "$TASKS_FILE" "$tid" \
+       > /tmp/exec-scope.out 2>&1; then
+    return 0
+  fi
+  log "$tid: O-EXECSCOPE refuse staged tip — $(tr '\n' ' ' </tmp/exec-scope.out)"
+  event "$tid" 0 exec_scope_refuse "$(tr '\n' ' ' </tmp/exec-scope.out)"
+  {
+    echo "O-EXECSCOPE refused staged non-test paths outside story scope:"
+    cat /tmp/exec-scope.out
+    echo "Story scope: ${STORY_SCOPE}"
+  } > /tmp/scope-violation.txt
+  git reset -q
+  return 1
+}
+
+# O-CHARPROTECT — refuse char tips that only pin /projects/legacy source text.
+char_protect_refuse_tip() { # $1=tid → 0 ok, 1 reset HEAD tip
+  local tid="$1"
+  [ -f .hermes/harness/char-protect.py ] || return 0
+  case "$tid" in T-*) ;; *) return 0 ;; esac
+  git log -1 --format=%s | grep -qE "^${tid}:" || return 0
+  if git show --pretty= --name-only HEAD | python3 .hermes/harness/char-protect.py \
+       migration.yaml > /tmp/char-protect.out 2>&1; then
+    return 0
+  fi
+  log "$tid: O-CHARPROTECT — $(tr '\n' ' ' </tmp/char-protect.out) — resetting tip"
+  event "$tid" 0 char_protect_reset "$(tr '\n' ' ' </tmp/char-protect.out)"
+  git reset --hard HEAD~1 >> "$LOG" 2>&1 || true
+  return 1
+}
+
+# O-RUNLOGTERM — harness-authored terminal ledger (not model prose).
+append_harness_runlog() { # $1=tid $2=status $3=detail
+  local tid="$1" status="$2" detail="${3:-}" tip
+  mkdir -p migration
+  tip=$(git log -1 --oneline 2>/dev/null | head -1 || echo "(no tip)")
+  {
+    echo
+    echo "### Harness terminal — ${tid} — $(date -u +%Y-%m-%dT%H:%MZ)"
+    echo "- status: \`${status}\`"
+    echo "- tip: \`${tip}\`"
+    [ -n "$detail" ] && echo "- detail: ${detail}"
+    echo "- note: harness-authored (O-RUNLOGTERM); ignore model 'complete/ready for next' claims"
+  } >> migration/run-log.md
+  log "$tid: O-RUNLOGTERM append status=${status}"
+}
+
+# O-RUNLOGTERM + O-CHARPROTECT after a tip lands (before post_commit_verify).
+task_tip_landed() { # $1=tid $2=status $3=detail → 0 ok, 1 char_protect reset
+  local tid="$1" status="$2" detail="${3:-}"
+  if ! char_protect_refuse_tip "$tid"; then
+    append_harness_runlog "$tid" "TIP_RESET_CHARPROTECT" "$detail"
+    return 1
+  fi
+  append_harness_runlog "$tid" "$status" "$detail"
+  return 0
+}
+
+# O-CHARSONAR — true when task is characterization (force milestone Sonar).
+is_characterization_task() { # $1=tid
+  local tid="$1" tf="${TASKS_FILE:-${STORY_TASKS:-}}"
+  [ -n "$tid" ] && [ -n "$tf" ] && [ -f "$tf" ] || return 1
+  python3 - "$tf" "$tid" <<'PY' 2>/dev/null
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+tid = sys.argv[2]
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    title = m.group(2)
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    sys.exit(0 if re.search(r"characteri[sz]", title + "\n" + body, re.I) else 1)
+sys.exit(1)
+PY
 }
 
 # --- Debt ledger (V5 finding #4) --------------------------------------------
@@ -1664,7 +1979,12 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
   scrub_hermes_from_git
   TASKS_SINCE_MILESTONE=$((TASKS_SINCE_MILESTONE+1))
   local SENSOR_KIND=task
-  if git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then
+  # O-CHARSONAR: characterization tips must clear milestone Sonar before
+  # convert advances — task-only GREEN left 13 new issues for T-003 (W4-334).
+  if is_characterization_task "$prefix"; then
+    SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
+    log "$tag: O-CHARSONAR — forcing milestone sensor for characterization tip"
+  elif git show --stat HEAD | grep -qE "pom.xml|application.properties" || [ $TASKS_SINCE_MILESTONE -ge 3 ]; then
     SENSOR_KIND=milestone; TASKS_SINCE_MILESTONE=0
   fi
   log "$tag: post-commit verification (${SENSOR_KIND} sensor)"
@@ -1711,9 +2031,21 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
       fi
     fi
   fi
-  local _sense_t0 _sense_elapsed
+  local _sense_t0 _sense_elapsed _sense_pid _sense_rc=0
   _sense_t0=$(date +%s)
-  if ! .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
+  # O-TASKHB: milestone/sonar can take minutes — pulse OUTER_LOG while sensing.
+  outer_log "         … $(task_hb_pretty "$tag") sensing ${SENSOR_KIND} (started) — details ${LOG}"
+  .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1 &
+  _sense_pid=$!
+  while kill -0 "$_sense_pid" 2>/dev/null; do
+    sleep "$TASK_HEARTBEAT_SECS"
+    if kill -0 "$_sense_pid" 2>/dev/null; then
+      task_hb "$tag" "sensor:${SENSOR_KIND}" "$(( $(date +%s) - _sense_t0 ))" \
+        "details ${LOG}"
+    fi
+  done
+  wait "$_sense_pid" || _sense_rc=$?
+  if [ "$_sense_rc" -ne 0 ]; then
     event "$tag" 0 sensor_red_post_commit verify
     # O-SONARBLEED: in-loop Sonar RED only on prior-task files — do not burn
     # MiniMax sfix editing ShippingServiceTest etc. for an unrelated T-NNN.
@@ -1770,7 +2102,7 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         fi
       fi
       if .hermes/harness/sensors.sh "$SENSOR_KIND" >> "$LOG" 2>&1; then
-        style_autofix_stage
+        style_autofix_stage "$prefix"
         # O-SFIXCREDIT: autofix uses distinct prefix so sfix credit cannot
         # match an earlier autofix SHA (S04 T-003 false GREEN).
         git diff --cached --quiet || \
@@ -1789,7 +2121,7 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
         event "$tag" 0 style_autofix reverted_broke_build
         log "$tag: style-autofix broke compilation — reverted (never commit a non-compiling tree); sfix works from the original"
       else
-        style_autofix_stage
+        style_autofix_stage "$prefix"
         if ! git diff --cached --quiet; then
           # Final fidelity gate on what we are about to tip.
           if ! .hermes/harness/sensors.sh fidelity >/tmp/fidelity-pre-autofix-commit.log 2>&1 \
@@ -1798,7 +2130,7 @@ post_commit_verify() { # $1=commit-prefix $2=tag ; always returns 0
             event "$tag" 0 style_autofix_fidelity_refuse
             git reset -q 2>/dev/null || true
             git checkout -q -- src/main/ 2>/dev/null || true
-            style_autofix_stage
+            style_autofix_stage "$prefix"
           fi
           if ! git diff --cached --quiet; then
             git commit -q -m "${prefix} sensor autofix: partial deterministic style-autofix (remaining violations to sfix)" 2>/dev/null
@@ -2231,7 +2563,7 @@ refuse_unhygienic_commit() { # $1=prefix $2=tag -> 0 keep, 1 reset
     T-*|S*|Preflight*|Gate*|Build*|Deploy*|Tree\ fix*|Tree*) ;;
     *) return 0 ;;
   esac
-  git log -1 --format=%s | grep -qE "^(${prefix}|T-[0-9]+|S[0-9]+|Tree fix)" || return 0
+  git log -1 --format=%s | grep -qE "^(${prefix}|T-[0-9]+[A-Za-z]*|S[0-9]+|Tree fix)" || return 0
   if python3 .hermes/harness/commit-hygiene.py HEAD > /tmp/commit-hygiene.out 2>&1; then
     return 0
   fi
@@ -2412,13 +2744,28 @@ ${p}"
       # only keep would wipe Qwen package-info on a thin MiniMax commit (same
       # class as T-001). Keep on disk; archive other src/ strays; write
       # KEPT-SCAFFOLD.txt (+ KEPT-GITKEEP.txt compat) for audit/escalation.
+      # O-STRAYLATERTASK (W4R7 S02): also keep untracked Owns/Target paths of
+      # later incomplete story tasks. MiniMax left Role.java untracked to
+      # compile User (T-002) → stray sweep archived Role → post-commit sensor
+      # RED → sfix thrash. Pair O-BATCHDEPORDER (order) + this (don't erase).
       KEEP_SCAFFOLD=""
+      KEEP_LATER=""
       STRAYS=""
+      _later_targets=""
+      if [ -n "${TASKS_FILE:-}" ] && [ -n "${TASK_IDS:-}" ] && [ -f .hermes/harness/task-stage-paths.py ]; then
+        for _lt in $TASK_IDS; do
+          [ "$_lt" = "$prefix" ] && continue
+          committed "$_lt" && continue
+          _later_targets="${_later_targets}$(python3 .hermes/harness/task-stage-paths.py "$TASKS_FILE" "$_lt" 2>/dev/null || true)"$'\n'
+        done
+      fi
       while IFS= read -r f; do
         [ -n "$f" ] || continue
         if { [[ "$f" == src/main/java/* ]] || [[ "$f" == src/test/java/* ]]; } \
           && { [[ "$f" == *.gitkeep ]] || [[ "$f" == */package-info.java ]]; }; then
           KEEP_SCAFFOLD="${KEEP_SCAFFOLD}${f}"$'\n'
+        elif [ -n "$_later_targets" ] && printf '%s\n' "$_later_targets" | grep -qxF "$f"; then
+          KEEP_LATER="${KEEP_LATER}${f}"$'\n'
         else
           STRAYS="${STRAYS}${f}"$'\n'
         fi
@@ -2431,6 +2778,11 @@ ${p}"
           mkdir -p "/tmp/strays/${tag}/$(dirname "$f")"
           mv "$f" "/tmp/strays/${tag}/$f" 2>/dev/null || rm -f "$f"
         done
+      fi
+      if [ -n "$(echo "$KEEP_LATER" | tr -d '[:space:]')" ]; then
+        log "$tag: O-STRAYLATERTASK — keeping untracked later-task Targets: $(echo "$KEEP_LATER" | tr '\n' ' ')"
+        mkdir -p "/tmp/strays/${tag}"
+        printf '%s' "$KEEP_LATER" > "/tmp/strays/${tag}/KEPT-LATERTASK.txt"
       fi
       if [ -n "$(echo "$KEEP_SCAFFOLD" | tr -d '[:space:]')" ]; then
         log "$tag: O-STRAYSCAFFOLD — keeping untracked java-tree scaffold (.gitkeep|package-info.java): $(echo "$KEEP_SCAFFOLD" | tr '\n' ' ')"
@@ -2563,8 +2915,11 @@ Concrete edits for REMAINING story briefs only (not the story just finished). Fo
 (1) the three costliest failure patterns of THIS story/run, citing evidence; (2) for each pattern one CONCRETE proposed change to a specific skill or sensor — quote exact text and name file/section; (3) ARTIFACT review of this story's commits (harvest fidelity, story-scope, fabrication); (4) harness waste. PROPOSE ONLY. Prefer evidence-based attribution over repeating prior archived misdiagnoses.
 
 ## K10 hints (optional)
-For each Findings rule that this story solved cleanly, optionally run:
-`python3 .hermes/harness/write-hint.py <rule-id> '<≤5 lines: before→after shape, no specimen class/package names>'`
+For each Findings rule that this story solved cleanly, optionally run write-hint.py
+(O-RETROBTICK: do NOT wrap the example in shell backticks — this prompt is a
+double-quoted bash string and backticks + <rule-id> become command substitution
+plus stdin redirect). Example shape (copy, replace RULE_ID and the tip text):
+python3 .hermes/harness/write-hint.py RULE_ID 'before→after shape, no specimen names'
 Hints land in migration/hints/ and are injected into later task packets.
 
 Do NOT modify any skill, harness script, or brief in this session — proposals file only. Finish with ONE commit whose message STARTS with 'Retro:' and includes migration/retro-history/ if present.
@@ -2596,7 +2951,9 @@ write_run_report() { # $1 = outcome line
     echo "|---|---|---|"
     awk -F, 'NR>1 {printf "| %s | %s | %s |\n", $1, $4, $5}' "$METRICS"
     echo ""
-    echo "- Escalations (KPI, from supervisor events): $(awk -F, '\$4=="escalated"' "$EVENTS" | wc -l | tr -d ' ') (untested: $(awk -F, '\$4=="escalated_untested"' "$EVENTS" | wc -l | tr -d ' '))"
+    # O-RPTAWKESC: awk program must use '$4' in single quotes — '\$4' passes a
+    # literal backslash to awk and breaks the KPI line in write_run_report.
+    echo "- Escalations (KPI, from supervisor events): $(awk -F, '$4=="escalated"' "$EVENTS" | wc -l | tr -d ' ') (untested: $(awk -F, '$4=="escalated_untested"' "$EVENTS" | wc -l | tr -d ' '))"
     echo ""
     echo "## Classified events"
     echo ""
@@ -2629,9 +2986,28 @@ write_run_report() { # $1 = outcome line
 
 # ---------------------------------------------------------------- M1
 # SHIP_ONLY=1 — re-earn M5 ship/acceptance without replaying M1–M4 (O-FALSECOMPLETE).
-# Requires STORY_DEPLOY + a tree that already implements the story. Does not
-# mark story-state.csv; the caller (or outer-loop) records the supervisor-done
-# outcome. Never use this to skip unfinished coding work.
+# Requires STORY_DEPLOY + a tree that already implements the story.
+# O-SHIPONLYSTATE: on success, append S0N,complete to migration/story-state.csv
+# (committed) so a later outer-loop restart does not replay M4 for that story.
+# Never use this to skip unfinished coding work.
+# O-SHIPONLYSTATE: persist ledger so outer resume skips the shipped story.
+ship_only_record_complete() {
+  [ "${SHIP_ONLY:-}" = "1" ] || return 0
+  local sid="${STORY_ID:-}"
+  [ -z "$sid" ] && sid=$(printf '%s' "${STORY_SPEC_PREFIX:-}" | awk '{print $1}')
+  [ -n "$sid" ] || { log "O-SHIPONLYSTATE: no STORY_ID/STORY_SPEC_PREFIX — ledger not updated"; return 0; }
+  mkdir -p migration
+  [ -f migration/story-state.csv ] || echo "story,outcome,epoch" > migration/story-state.csv
+  if grep -q "^${sid},complete," migration/story-state.csv 2>/dev/null; then
+    log "O-SHIPONLYSTATE: ${sid} already complete in story-state.csv"
+    return 0
+  fi
+  echo "${sid},complete,$(date -u +%s)" >> migration/story-state.csv
+  git add migration/story-state.csv \
+    && git commit -q -m "${sid} story complete: story-gate-passed (SHIP_ONLY)" 2>/dev/null \
+    || true
+  log "O-SHIPONLYSTATE: recorded ${sid},complete in story-state.csv"
+}
 if [ "${SHIP_ONLY:-}" = "1" ]; then
   log "SHIP_ONLY=1 — skipping M1–M4 and M5 evaluate; jumping to M5 ship"
   outer_log "         SHIP_ONLY: jumping to M5 ship (O-FALSECOMPLETE re-earn)"
@@ -2723,9 +3099,11 @@ TASKS_FILE="${STORY_TASKS:-$(ls specs/*/tasks.md 2>/dev/null | head -1)}"
 # Depth 2-6, matching plan-lint exactly — a '## T-001:' plan used to pass
 # the lint and then FATAL here (audit finding: regex drift between the
 # two parsers).
-TASK_IDS=$(grep -E '^#{2,6} +T[-A-Za-z0-9]*[0-9]+:' "$TASKS_FILE" | sed -E 's/^#+ +(T[-A-Za-z0-9]*[0-9]+):.*/\1/')
+# O-TASKIDSUFFIX / R3: heading order = M4 execution order (not sort -u).
+# Letter-suffixed ids (T-001A) must parse — same regex family as plan-lint.
+TASK_IDS=$(grep -E '^#{2,6} +T[-A-Za-z0-9]*[0-9]+[A-Za-z]*:' "$TASKS_FILE" | sed -E 's/^#+ +(T[-A-Za-z0-9]*[0-9]+[A-Za-z]*):.*/\1/')
 [ -n "$TASK_IDS" ] || { log "FATAL: no task ids parsed from $TASKS_FILE"; echo no-tasks > /tmp/supervisor-done; exit 1; }
-log "task list: $(echo $TASK_IDS | tr '\n' ' ')"
+log "task list (file/M4 order): $(echo $TASK_IDS | tr '\n' ' ')"
 
 # Resume hygiene: a relaunch may inherit a red tree from work committed
 # before post-commit verification existed (or from a failed sensor-fix).
@@ -2776,7 +3154,7 @@ def field(body: str, *names: str) -> str:
     return ""
 
 text = open(sys.argv[1], encoding="utf-8").read()
-blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+):", text, flags=re.M)
+blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+[A-Za-z]*):", text, flags=re.M)
 for i in range(1, len(blocks) - 1, 2):
     tid, body = blocks[i], blocks[i + 1]
     cls = field(body, "Class", "Type") or "infer"
@@ -2794,7 +3172,7 @@ import importlib.util, re, sys
 from pathlib import Path
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -2818,7 +3196,7 @@ import importlib.util, re, sys
 from pathlib import Path
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -2891,6 +3269,38 @@ try_already_complete() { # $1=task-id → 0 if auto-committed
   kind=${reason%%:*}; detail=${reason#*:}
   case "$kind" in
     present)
+      # O-ACDIRTY: untracked/modified declared Targets must land in the AC tip —
+      # allow-empty while Target dirt remains left Pet/Owner ?? (W4R7 T-008/T-009)
+      # and tripped O-PARTIALADVCOLLAB (committed + leftover dirt).
+      local _ac_staged=0 _acp
+      if [ -f .hermes/harness/task-stage-paths.py ]; then
+        while IFS= read -r _acp; do
+          [ -n "$_acp" ] || continue
+          if [ -e "$_acp" ] || [ -L "$_acp" ]; then
+            if git status --porcelain -- "$_acp" 2>/dev/null | grep -q .; then
+              git add -- "$_acp" 2>/dev/null || true
+              _ac_staged=1
+            fi
+          fi
+        done < <(python3 .hermes/harness/task-stage-paths.py "$TASKS_FILE" "$T" 2>/dev/null || true)
+      fi
+      case "$detail" in
+        *:*/*)
+          _acp=${detail#*:}
+          if [ -e "$_acp" ] && git status --porcelain -- "$_acp" 2>/dev/null | grep -q .; then
+            git add -- "$_acp" 2>/dev/null || true
+            _ac_staged=1
+          fi
+          ;;
+      esac
+      if [ "$_ac_staged" = "1" ] && ! git diff --cached --quiet 2>/dev/null; then
+        git commit -q -m "${T}: ALREADY COMPLETE — ${detail} already present (O-ACDIRTY)" 2>/dev/null \
+          || git commit -m "${T}: ALREADY COMPLETE — ${detail} already present (O-ACDIRTY)" >/dev/null 2>&1 \
+          || return 1
+        event "$T" 0 already_complete "dirty:$detail"
+        log "$T: ALREADY COMPLETE — ${detail} present; committed Target dirt (O-ACDIRTY); skipped opencode"
+        return 0
+      fi
       git commit --allow-empty -q -m "${T}: ALREADY COMPLETE — ${detail} already present (V6 P2.4)" 2>/dev/null \
         || git commit --allow-empty -m "${T}: ALREADY COMPLETE — ${detail} already present (V6 P2.4)" >/dev/null 2>&1
       event "$T" 0 already_complete "$detail"
@@ -2984,6 +3394,12 @@ run_worker_task() { # $1=task-id → 0 if committed
   else
     unset WORKER_READ_GLOB_MAX 2>/dev/null || true
   fi
+  # O-CHARFIRSTMUT (W4-311 / O-M4CHARFAIL): characterization must land
+  # src/test/*.java — never claim success with a clean tree / empty commit.
+  if printf '%s\n' "$packet" | grep -qiE 'characteri[sz]|src/test/.*Test\.java'; then
+    packet=$(printf '%s\n\n%s\n' "$packet" \
+      "O-CHARFIRSTMUT: FIRST tool MUST edit/write a src/test/**/*Test.java Target (characterization pins). Clean-tree / 'no file modifications' / empty commit-gated is FAILURE — supervisor mutate-deadline kills 0-write seats. Do NOT only update run-log.md.")
+  fi
   log_task START "$T" "Actor: $(worker_label) — MiniMax not used for coding"
   # O-WORKERWEDGE-RCA / O-WEDGESKIP: after a wedge kill, skip further Qwen
   # seats until the next successful story task commit (mechan/worker/escalation)
@@ -3023,6 +3439,9 @@ run_worker_task() { # $1=task-id → 0 if committed
       stale=0
       last_sz=$sz
     fi
+    # O-TASKHB: demo outer-loop progress during long OpenCode seats.
+    task_hb "$T" "worker" "$elapsed" \
+      "json=${sz}B stale=${stale}s — details $(oc_seat_base "$T").json"
     # O-WORKERREAD / O-FIRSTMUT / O-FIRSTMUTBASH / O-TASKMUTATE (ARCH-C1):
     # kill early on read/glob thrash OR no first edit/write past mutate
     # deadline. Plain bash does NOT count (R-222 T-007). Successful
@@ -3162,9 +3581,15 @@ PY
         git reset -q
         return 1
       fi
+      if ! exec_scope_refuse_staged "$T"; then
+        return 1
+      fi
       git commit -q -m "${T}: $(task_title "$T") (worker $(worker_label))" 2>/dev/null \
         || git commit -m "${T}: $(task_title "$T") (worker $(worker_label))" >/dev/null 2>&1
-      committed "$T" && return 0
+      if committed "$T"; then
+        char_protect_refuse_tip "$T" || return 1
+        return 0
+      fi
       log "$T: O-T6e worker auto-commit failed — commit command did not produce '${T}:' prefix"
     else
       # O-STEPFINISHRED: OpenCode often exits rc=0 with prose "complete / ready
@@ -3221,9 +3646,16 @@ try_mechan_commit() { # $1=task-id → 0 if committed
       git reset -q
       return 1
     fi
+    # O-EXECSCOPE: refuse out-of-scope props/pom before attaching T-NNN title
+    if ! exec_scope_refuse_staged "$T"; then
+      return 1
+    fi
     git commit -q -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" 2>/dev/null \
       || git commit -m "${T}: $(task_title "$T") (mechanical verify-and-commit; O-T6)" >/dev/null 2>&1
     if committed "$T"; then
+      if ! char_protect_refuse_tip "$T"; then
+        return 1
+      fi
       log "$T: mechanical verify-and-commit (dirty+GREEN; O-T6)"
       clear_worker_wedge_skip
       return 0
@@ -3303,6 +3735,7 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   if try_already_complete "$T"; then
     log_task SKIP "$T" "already complete (fast path); skipped worker"
     record_rule_outcomes "$T" "already_complete"
+    task_tip_landed "$T" "ALREADY_COMPLETE" "fast path" || return 1
     scope_enforce "$T"
     post_commit_verify "$T" "$T"
     debt_frozen && return 1
@@ -3330,6 +3763,9 @@ run_task() { # $1=task id — worker-first, MiniMax escalation only if needed
   # O-T6: untracked/dirty target tree already green — don't burn a model seat
   if try_mechan_commit "$T"; then
     if refuse_unhygienic_commit "$T" "$T"; then
+      task_tip_landed "$T" "MECHAN_GREEN" "O-T6" || {
+        record_rule_outcomes "$T" "char_protect_reset"; return 1
+      }
       log_task END "$T" "mechanical commit (O-T6) — $(git log --oneline -1 | cut -c1-80)"
       record_rule_outcomes "$T" "mechan"
       scope_enforce "$T"
@@ -3350,7 +3786,7 @@ import importlib.util, re, sys
 from pathlib import Path
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -3371,7 +3807,7 @@ sys.exit(0 if mod.inferabsent_blocks(cls=cls, oracle=oracle, shape=shape, body=b
 PY
   then
     skip_worker=1
-    log "$T: O-INFERABSENT — skip worker (infer+derived-Oracle:absent wedge)"
+    log "$T: O-INFERABSENT — skip worker (infer + derived-Oracle:absent wedge)"
     {
       echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
       echo "reshape Shape=create|verify or Proceed: O-NULLACTION; do not re-dispatch opencode"
@@ -3379,11 +3815,53 @@ PY
     WORKER_LAST_RC=143
     arm_escreopencode "$T"
   fi
+  # O-SYNTHROUTE (W4-287): skip Qwen when output is undetermined — MiniMax-first.
+  # Determined = Shape=create|modify|structure with concrete src/ Target paths.
+  # Undetermined = Shape=verify, characterization synthesis, or doc/prose Goals
+  # with no create Target (T-000/T-002/T-005 class failures).
+  if [ "$skip_worker" -eq 0 ] && python3 - "$TASKS_FILE" "$T" <<'PY' 2>/dev/null
+import re, sys
+path, tid = sys.argv[1], sys.argv[2]
+text = open(path, encoding="utf-8", errors="replace").read()
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
+body = title = ""
+for i, m in enumerate(heads):
+    if m.group(1) != tid:
+        continue
+    title = m.group(2)
+    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+    body = text[m.end():end]
+    break
+sm = re.search(r"(?im)^\*?\*?Shape\*?\*?\s*:?\s*(\w+)", body)
+shape = (sm.group(1).lower() if sm else "")
+if shape in {"verify", "absent"}:
+    sys.exit(0)  # undetermined → skip worker
+if re.search(r"characteri[sz]", title + "\n" + body, re.I) and shape != "create":
+    sys.exit(0)
+# Doc / prose goals without a create .java/.gitkeep Target
+noc = "\n".join(ln for ln in body.splitlines() if not re.search(r"(?i)Verification\s+of\s*:", ln))
+create = re.findall(r"src/(?:main|test)/[\w./-]+(?:\.java|/\.gitkeep)", noc)
+if re.search(r"(?i)\b(documentation|document|README|verify all|validation and compilation)\b", title) and not create:
+    sys.exit(0)
+sys.exit(1)  # determined — keep worker-first
+PY
+  then
+    skip_worker=1
+    log "$T: O-SYNTHROUTE — skip Qwen (undetermined output); MiniMax-first"
+    {
+      echo "O-SYNTHROUTE — worker skipped (undetermined output; route MiniMax-first)"
+      echo "Qwen writes only when artifact+content are fully specified"
+    } > "$(oc_seat_base "$T").err"
+    WORKER_LAST_RC=143
+  fi
   if [ "$skip_worker" -eq 0 ] && [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
     # O-SFIXSCOPE: worker may commit then leave task RED — reset and escalate
     if refuse_red_task_commit "$T" "$T"; then
       # O-HYGIENEWORKER: refuse spring-tx/jdbc/orm re-add etc. before GREEN advance
       if refuse_unhygienic_commit "$T" "$T"; then
+        task_tip_landed "$T" "WORKER_GREEN" "$(worker_label)" || {
+          record_rule_outcomes "$T" "char_protect_reset"; return 1
+        }
         scope_enforce "$T"
         post_commit_verify "$T" "$T"
         log_task END "$T" "committed via $(worker_label) — $(git log --oneline -1 | cut -c1-80)"
@@ -3402,6 +3880,9 @@ PY
     # dirt / ESCW over MiniMax invent on a freshly reset tip.
     if post_reset_escalation_gate "$T"; then
       if refuse_unhygienic_commit "$T" "$T"; then
+        task_tip_landed "$T" "ESCAL_AFTER_RESET" "no MiniMax invent" || {
+          record_rule_outcomes "$T" "char_protect_reset"; return 1
+        }
         scope_enforce "$T"
         post_commit_verify "$T" "$T"
         log_task END "$T" "O-ESCALAFTERRESET — GREEN after reset (no MiniMax invent) — $(git log --oneline -1 | cut -c1-80)"
@@ -3418,6 +3899,9 @@ PY
   ensure_trackable_packages
   if try_mechan_commit "$T"; then
     if refuse_unhygienic_commit "$T" "$T"; then
+      task_tip_landed "$T" "MECHAN_GREEN" "O-T6e after worker" || {
+        record_rule_outcomes "$T" "char_protect_reset"; return 1
+      }
       log_task END "$T" "mechanical commit after worker (O-T6e) — $(git log --oneline -1 | cut -c1-80)"
       record_rule_outcomes "$T" "mechan"
       scope_enforce "$T"
@@ -3431,6 +3915,9 @@ PY
   # O-ESCW: worker verified, nothing to change — close without MiniMax
   if try_worker_verified_noop "$T"; then
     if refuse_unhygienic_commit "$T" "$T"; then
+      task_tip_landed "$T" "ESCW" "worker verified clean tree" || {
+        record_rule_outcomes "$T" "char_protect_reset"; return 1
+      }
       scope_enforce "$T"
       post_commit_verify "$T" "$T"
       log_task END "$T" "already satisfied (O-ESCW) — $(git log --oneline -1 | cut -c1-80)"
@@ -3552,6 +4039,7 @@ PY
 ${esc_routing}
 O-ESCWSCOPE / O-ESCWSCOPEUTIL: edit ONLY this task's Owns/Target paths from ${TASKS_FILE}. Do NOT create or mutate later-story classes (${LATER_CLASSES:-none}), src/main/**/util/* collaborators, or unrelated services. Untracked later-class dirt is removed (O-ESCWSCOPEUTIL) — tip REJECT if util lands with a convert tip.
 O-ESCALORACLE: Shape=${esc_shape:-unknown} Oracle=${esc_oracle:-unknown}. If Oracle=absent or Shape=remove: prove named targets are ABSENT — never create a file solely to delete it; never invent unlisted deletion targets.
+O-CHARFIRSTMUT: If this task is characterization / names src/test/*Test.java — empty tree + 'no file modifications' + empty commit-gated is FAILURE. Write the src/test Target(s) first, then commit-gated. Do NOT only append run-log.md.
 ${esc_worker_disc}
 O-ESCTERM60: land the tip with \`.hermes/harness/commit-gated.sh '${T}: …'\` (terminal timeout ≥300). Do NOT bare \`git commit\` — commit-msg sensor exceeds short tool timeouts.
 ${esc_evidence:+$esc_evidence
@@ -3568,7 +4056,17 @@ ${esc_evidence:+$esc_evidence
     # O-ESCNOCOMMIT: run_stage/Hermes exit 0 is not proof of a ${T}: tip.
     # Wave2 petclinic T-003: MiniMax findings-only tip → O-T1FINDESC undid it →
     # supervisor logged "committed via MiniMax" on prior T-002 SHA (false green).
-    if ! git log -1 --format=%s | grep -qE "^${T}:"; then
+    # O-HERMNESTTIP: accept ${T}: as an ancestor of HEAD when tip is an
+    # O-HERMNEST chore (gitignore/.hermes untrack) immediately after the task tip.
+    _esc_ok_tip=0
+    if git log -1 --format=%s | grep -qE "^${T}:"; then
+      _esc_ok_tip=1
+    elif git log -1 --format=%s | grep -qiE 'O-HERMNEST|gitignore \.hermes|untrack \.hermes' \
+      && git log -5 --format=%s | grep -qE "^${T}:"; then
+      _esc_ok_tip=1
+      log "$T: O-HERMNESTTIP — HEAD is HERMNEST chore; ${T}: found in last 5 commits — accept (not ESCNOCOMMIT)"
+    fi
+    if [ "$_esc_ok_tip" -eq 0 ]; then
       log "$T: O-ESCNOCOMMIT — escalation OK but HEAD is not ${T}: (got: $(git log -1 --format=%s | cut -c1-80))"
       # Shape=remove / already-absent often leaves a clean tree — prefer ESCW
       # allow-empty over MiniMax false credit on a prior task's SHA.
@@ -3588,6 +4086,7 @@ ${esc_evidence:+$esc_evidence
       debt_frozen && return 1
       return 1
     fi
+    unset _esc_ok_tip
     # O-DRV7DET: stamp subject so commit-grep detectors also fire (log remains primary).
     if git log -1 --format=%s | grep -qE "^${T}:" \
       && ! git log -1 --format=%s | grep -qiE 'via MiniMax escalation'; then
@@ -3601,16 +4100,35 @@ ${esc_evidence:+$esc_evidence
     if ! refute_high_stakes HEAD "$T-k12"; then
       log "$T: K12 refused escalation commit — resetting tip + debt freeze"
       git reset --hard HEAD~1 >>"$LOG" 2>&1 || true
+      append_harness_runlog "$T" "TIP_RESET_K12" "escalation REFUTED"
       record_debt "$T" k12 "escalation commit REFUTED (see migration/refute-log.md)"
       touch /tmp/debt-freeze
       touch /tmp/supervisor-pause
       debt_frozen && return 1
       return 1
     fi
+    task_tip_landed "$T" "ESCALATION_GREEN" "MiniMax ${esc_cause}" || {
+      record_rule_outcomes "$T" "char_protect_reset"
+      debt_frozen && return 1
+      return 1
+    }
   else
+    # O-ESCRATEZOMBIE: MiniMax may burn attempts on rate-limit while a parallel
+    # mechan-commit / other supervisor already landed ${T}: (W4R7 S02 T-004 —
+    # NamedEntity tip c1382c2 then false debt-freeze). Accept, do not freeze.
+    if committed "$T"; then
+      log "$T: O-ESCRATEZOMBIE — escalation exhausted but ${T}: tip already present — accept (no debt-freeze)"
+      log_task END "$T" "already committed during escalation wait (O-ESCRATEZOMBIE) — $(git log --oneline --grep="^${T}:" -1 | cut -c1-80)"
+      record_rule_outcomes "$T" "escalation_zombie_accept"
+      append_harness_runlog "$T" "ESCRATEZOMBIE" "accept existing tip; no debt-freeze"
+      clear_worker_wedge_skip
+      debt_frozen && return 1
+      return 0
+    fi
     log_task SKIP "$T" "exhausted — recorded in debt; O-DEBTFRZ freeze (not moving on)"
     log "$T: exhausted — recorded; freezing (O-DEBTFRZ)"
     record_rule_outcomes "$T" "exhausted"
+    append_harness_runlog "$T" "EXHAUSTED" "O-DEBTFRZ freeze — not complete"
     touch /tmp/debt-freeze
     touch /tmp/supervisor-pause
   fi
@@ -3680,6 +4198,15 @@ for T in $TASK_IDS; do
     echo "debt-freeze" > /tmp/supervisor-done
     exit 78
   }
+  # O-PARTIALADV / O-PARTIALADVCOLLAB: only earlier uncommitted dirty Targets
+  _padv=$(partial_adv_blockers "$T" 2>/dev/null | head -5 || true)
+  if [ -n "${_padv}" ]; then
+    log "O-PARTIALADV: refusing advance past unfinished Targets — $(echo "$_padv" | tr '\n' '; ')"
+    outer_log "         O-PARTIALADV: unfinished declared Targets still dirty — HOLD (not silent advance)"
+    echo "$_padv" > /tmp/partial-adv-blockers.txt
+    echo "debt-freeze" > /tmp/supervisor-done
+    exit 78
+  fi
   if committed "$T"; then
     log "$T: already committed"
     log_task SKIP "$T" "already committed — skipping"
@@ -3701,6 +4228,13 @@ flush_batch "$BATCH"; BATCH=""
 check_seat_budget_overrun "M4-end" || true
 if debt_frozen; then
   log "O-DEBTFRZ: M4 ended under debt freeze — not entering M5"
+  echo "debt-freeze" > /tmp/supervisor-done
+  exit 78
+fi
+# O-PARTIALADV belt before M5
+if _padv=$(partial_adv_blockers 2>/dev/null | head -5); [ -n "${_padv}" ]; then
+  log "O-PARTIALADV: blocking M5 — unfinished Targets: $(echo "$_padv" | tr '\n' '; ')"
+  echo "$_padv" > /tmp/partial-adv-blockers.txt
   echo "debt-freeze" > /tmp/supervisor-done
   exit 78
 fi
@@ -3782,6 +4316,32 @@ if ! committed "M5 evaluate"; then
     fi
     cp migration/findings-delta.txt /tmp/findings-delta.txt 2>/dev/null || true
     log "M5 evaluate: O-DELTABASE summary — $(grep -m1 '^SUMMARY' migration/findings-delta.txt 2>/dev/null || echo n/a)"
+    # O-DEBTFRZLEDGER (W4-289): M5 residual rules must land in debt.md, not
+    # only in findings-delta / commit-message prose.
+    if [ -f migration/findings-delta.txt ]; then
+      _rem=$(grep -m1 '^SUMMARY' migration/findings-delta.txt 2>/dev/null \
+        | sed -n 's/.*remaining=\([0-9][0-9]*\).*/\1/p' || true)
+      if [ -n "${_rem:-}" ] && [ "$_rem" -gt 0 ] 2>/dev/null; then
+        [ -f migration/debt.md ] || printf '# Migration debt\n\n' > migration/debt.md
+        if grep -qE '^\(none\)$|^- \(none\)$|^None\.$' migration/debt.md 2>/dev/null; then
+          sed -i.bak -E '/^\(none\)$/d; /^- \(none\)$/d; /^None\.$/d' migration/debt.md 2>/dev/null \
+            || sed -i '' -E '/^\(none\)$/d; /^- \(none\)$/d; /^None\.$/d' migration/debt.md
+          rm -f migration/debt.md.bak
+        fi
+        if ! grep -qE "^## M5 residuals — ${STORY_ID:-story}" migration/debt.md 2>/dev/null; then
+          {
+            printf '\n## M5 residuals — %s (%s remaining)\n' "${STORY_ID:-story}" "$_rem"
+            printf -- '- head: %s\n' "$(git rev-parse --short HEAD 2>/dev/null)"
+            printf -- '- source: migration/findings-delta.txt SUMMARY remaining=%s\n' "$_rem"
+            grep -E '^(REMAINING|NEW-AFTER)' migration/findings-delta.txt 2>/dev/null | head -40 \
+              | sed 's/^/- /' || true
+          } >> migration/debt.md
+          log "M5 evaluate: O-DEBTFRZLEDGER — wrote ${_rem} residual rules into migration/debt.md"
+          event "m5-evaluate" 0 debt_m5_residuals "remaining=${_rem}"
+        fi
+      fi
+      unset _rem
+    fi
   fi
   # O-M5EVALHARVEST: evaluate explains delta + optional in-story pom/props fixes.
   # Never harvest-from-staging / invent later-story packages to clear REMAINING
@@ -4318,6 +4878,7 @@ ${RUN_CONTRACT}" \
       clear_debt
       write_run_report "story gate passed (non-deploy story): pipeline + quality gate green"
       phase_f_retro
+      ship_only_record_complete
       git push origin main >> "$LOG" 2>&1 || true
       echo "story-gate-passed" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: story gate passed (non-deploy story)"
@@ -4409,6 +4970,7 @@ print((m.group(1).rstrip('/') if m else ''), end='')
       clear_debt
       write_run_report "success: shipped, route 200, ${PRODUCTS} ${ACC_COLLECTION}"
       phase_f_retro
+      ship_only_record_complete
       git push origin main >> "$LOG" 2>&1 || true
       echo "success route=${ROUTE} http=${CODE} ${ACC_COLLECTION}=${PRODUCTS}" > /tmp/supervisor-done
       log "SUPERVISOR COMPLETE: migration shipped and accepted"

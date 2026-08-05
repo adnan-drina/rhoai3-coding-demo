@@ -349,7 +349,7 @@ task_port_mode() {
 import re, sys
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
 body = ""
 for i, m in enumerate(heads):
     if m.group(1) != tid:
@@ -1059,7 +1059,7 @@ _redattrib_gcat() {
 import re, sys
 tasks, surf, tid = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(tasks, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M))
+heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
 owners = []
 for i, m in enumerate(heads):
     body = text[m.end(): heads[i+1].start() if i+1 < len(heads) else len(text)]

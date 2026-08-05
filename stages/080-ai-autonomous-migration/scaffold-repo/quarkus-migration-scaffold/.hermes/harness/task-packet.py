@@ -72,7 +72,7 @@ except ImportError:
 
 def task_block(text: str, tid: str) -> tuple[str, str]:
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
+        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:

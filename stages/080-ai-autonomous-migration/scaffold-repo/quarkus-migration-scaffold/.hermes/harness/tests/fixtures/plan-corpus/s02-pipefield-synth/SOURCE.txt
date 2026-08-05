@@ -1,0 +1,3 @@
+# Synthetic L2 corpus for O-M3PIPEFIELD (W4-254)
+# MiniMax-style leading-pipe field lines must normalize then PLAN OK.
+# extracted_at=2026-08-04T06:20:00Z

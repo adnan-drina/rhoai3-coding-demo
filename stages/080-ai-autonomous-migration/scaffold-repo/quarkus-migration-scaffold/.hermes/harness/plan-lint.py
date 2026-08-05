@@ -364,7 +364,7 @@ _CLAIM_LINE = re.compile(
 _OOS_LINE = re.compile(
     r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
     r"|(?:\bdo NOT touch\b)"
-    r"|(?:\bowned by T[-A-Za-z0-9]*\d+)"
+    r"|(?:\bowned by T[-A-Za-z0-9]*\d+[A-Za-z]*)"
 )
 
 
@@ -515,11 +515,24 @@ def main():
                                            f"contract — it is a fabrication guard, REMOVE it, never keep it")
                 break
 
-    heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
+    heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
     if not heads:
         lint("ids", "no parseable task headings (want '#### T-001: title')")
         print("\n".join(problems))
         return 1
+
+    # O-TASKIDSEEN — every #### T-* heading must parse. Suffix blindness
+    # (e.g. T-001A discarded because id must end in a digit) previously
+    # merged sibling bodies into T-000 and false-fired O-STRUCTJAVA.
+    marked = re.findall(r"^#{2,6}\s+(T\S+)\s*:", text, re.M)
+    parsed_ids = {tid for _, tid, _ in heads}
+    unseen = [t for t in marked if t not in parsed_ids]
+    if unseen:
+        lint(
+            "O-TASKIDSEEN",
+            f"unparsed task heading(s) {unseen} — id must match "
+            f"T-<digits>[optional letters] (e.g. T-001, T-001A)",
+        )
 
     # id uniqueness — duplicate ids corrupt the supervisor's commit checks
     seen = set()
@@ -530,7 +543,7 @@ def main():
 
     # split body per task
     bodies = {}
-    parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:.*$", text, flags=re.M)
+    parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:.*$", text, flags=re.M)
     for i in range(1, len(parts) - 1, 2):
         bodies[parts[i]] = parts[i + 1]
 
@@ -576,13 +589,130 @@ def main():
         if classes[tid] == "unknown":
             lint("ids", f"{tid}: no Class marker (rewrite|infer)")
 
-    # order: no rewrite after the first infer
+    def _is_characterization(title: str, body: str) -> bool:
+        # O-M3ORDERCHAR (Opus W4 R1): characterization is Class=infer but must
+        # precede convert (S-GODORDER). Do not let it arm the rewrite-before-
+        # infer file-order gate — that forced plans to lie about sequence.
+        if re.search(r"characteri[sz]", title or "", re.I):
+            return True
+        if re.search(r"characteri[sz]", body or "", re.I):
+            sm = re.search(
+                r"(?im)^\*\*Shape\*\*\s*:\s*(\S+)", body or ""
+            )
+            if sm and sm.group(1).lower() == "verify":
+                return True
+        return False
+
+    # order: no rewrite after the first *non-characterization* infer
     seen_infer = False
-    for _, tid, _ in heads:
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
         if classes.get(tid) == "infer":
-            seen_infer = True
+            if not _is_characterization(title, body):
+                seen_infer = True
         elif classes.get(tid) == "rewrite" and seen_infer:
             lint("order", f"{tid}: rewrite task after infer tasks began")
+
+    # O-ASSUMESORDER — Assumes: … (T-NNN) must resolve to an earlier heading.
+    # M4 executes in file/heading order (supervisor TASK_IDS = grep order).
+    pos = {tid: i for i, (_, tid, _) in enumerate(heads)}
+    for i, (_, tid, _) in enumerate(heads):
+        body = bodies.get(tid, "")
+        for am in re.finditer(
+            r"(?im)^\s*\*?\*?Assumes\*?\*?\s*:\s*(.+)$", body
+        ):
+            for ref in re.findall(
+                r"\b(T[-A-Za-z0-9]*\d+[A-Za-z]*)\b", am.group(1)
+            ):
+                if ref not in pos:
+                    lint(
+                        "O-ASSUMESORDER",
+                        f"{tid}: Assumes {ref} — unknown task id "
+                        f"(O-ASSUMESORDER)",
+                    )
+                elif pos[ref] >= i:
+                    lint(
+                        "O-ASSUMESORDER",
+                        f"{tid}: Assumes {ref} but {ref} does not precede "
+                        f"{tid} in file/M4 order (O-ASSUMESORDER)",
+                    )
+
+    # O-CHARTGT (W4-311): characterization / Class=infer char tasks must name
+    # at least one src/test/**/*.java Target — Shape=verify + .gitkeep-only
+    # Requires made MiniMax claim "no file mods" and burn seats (S02 T-002).
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        if not _is_characterization(title, body) and classes.get(tid) != "infer":
+            continue
+        if not _is_characterization(title, body):
+            continue
+        if re.search(r"(?i)characterization\s+deferred|verify absence|do NOT invent", body):
+            continue  # O-ESCWVERIFYABS deferrals — absence is the deliverable
+        if not re.search(r"src/test/[\w./-]+\.java", body):
+            lint(
+                "O-CHARTGT",
+                f"{tid}: characterization must Target at least one "
+                f"src/test/**/*.java (not prose 'Characterization of:' / "
+                f".gitkeep-only) — ESCW and workers treat zero-write as "
+                f"success otherwise (O-CHARTGT / O-M4CHARFAIL)",
+            )
+        # O-CHARPROTECT: char Goals must pin converted/target behaviour —
+        # forbidding legacy-FS-only contracts (W4 DomainModelCharacterizationTest).
+        if re.search(
+            r"(?i)/projects/legacy|legacy source text|readString.*legacy",
+            body,
+        ) and not re.search(
+            r"(?i)converted|targetPackage|com\.demo|pin (the )?migrated|"
+            r"assert.*src/main/java",
+            body,
+        ):
+            lint(
+                "O-CHARPROTECT",
+                f"{tid}: characterization must pin converted/target-package "
+                f"behaviour — not legacy /projects/legacy source text alone "
+                f"(O-CHARPROTECT)",
+            )
+
+    # O-VERIFYCREATE (W4-288/W4-352): Shape=verify tasks that only list
+    # "Verification of:" paths declare nothing to create — write-gated M4
+    # cannot tip honestly (empty stage + rc=0 worker-failed). Require a
+    # create Target, Oracle=absent remove, or explicit mechan-verify deferral.
+    for _, tid, title in heads:
+        body = bodies.get(tid, "")
+        sm = re.search(
+            r"(?im)^\*?\*?Shape\*?\*?\s*:?\s*(create|modify|remove|structure|verify)\b",
+            body,
+        )
+        if not sm or sm.group(1).lower() != "verify":
+            continue
+        if re.search(
+            r"(?i)characterization\s+deferred|verify absence|Oracle\s*:\s*absent|"
+            r"do NOT invent|mechan-verify|O-ESCWVERIFYABS",
+            body,
+        ):
+            continue
+        create_paths = re.findall(
+            r"(?<![^\s`])src/(?:main|test)/[\w./-]+\.(?:java|gitkeep)",
+            body,
+        )
+        # Strip Verification-of lines before counting create Targets.
+        body_noc = "\n".join(
+            ln
+            for ln in body.splitlines()
+            if not re.search(r"(?i)Verification\s+of\s*:", ln)
+        )
+        create_paths = re.findall(
+            r"src/(?:main|test)/[\w./-]+(?:\.java|/\.gitkeep)",
+            body_noc,
+        )
+        if not create_paths:
+            lint(
+                "O-VERIFYCREATE",
+                f"{tid}: Shape=verify lists only check-paths "
+                f"('Verification of:') with no create Target — M4 cannot "
+                f"tip (O-VERIFYCREATE / W4-288). Add a created artifact, "
+                f"Oracle=absent, or mechan-verify deferral.",
+            )
 
     # Characterization-scope (S01 T-008: a test task invented a src/main
     # class to have something to execute): test/characterization tasks
@@ -1544,8 +1674,14 @@ def main():
 
     task_fqns: dict[str, set[str]] = {tid: set() for _, tid, _ in heads}
     target_owners: dict[str, str] = {}
-    for _, tid, _ in heads:
+    for _, tid, title in heads:
         body = bodies.get(tid, "")
+        # O-PLANORDERCHAR: characterization / Shape=verify must not enter
+        # convert-rank or bean-uniqueness — their Claims name the same FQNs
+        # as later convert tasks and explode vs dependency-order (S03: ~108
+        # precedes). Convert/rewrite ownership still gated below.
+        if _is_characterization(title, body):
+            continue
         # Only Claim lines count as ownership (not "Out of scope: …Beta.java").
         claimed: list[str] = []
         for line in body.splitlines():
@@ -1597,8 +1733,15 @@ def main():
     # need the class on disk) — requiring char-before-harvest is unsatisfiable
     # and caused M3 thrash under 429 (W4-172). Complements S-CHAR.
     # O-GODORDERMID / W4-048a: mid-M4 skip when tip already in RUN_BASE..HEAD.
+    # O-GODORDERPOS (W4R7 W-3): "earlier" is *document position*, not the
+    # numeric suffix. TC-001 vs T-001 both yield _task_num=1, and TC-010 vs
+    # T-001 yields 10>=1 — so char that precedes convert in the file was
+    # never counted. That made 9 S-GODORDER findings unsatisfiable across
+    # six S03 seats even when TC-* char tasks were present.
     if god_nodes:
         import subprocess as _sp
+
+        _god_pos = {tid: i for i, (_, tid, _) in enumerate(heads)}
 
         def _is_char_task(title: str, body: str) -> bool:
             blob = f"{title}\n{body}"
@@ -1705,8 +1848,10 @@ def main():
                     continue
                 seen_simple.add(simple)
                 earlier = False
+                tid_pos = _god_pos.get(tid, 10**9)
                 for _, otid, otitle in heads:
-                    if _task_num(otid) >= _task_num(tid):
+                    # Document order — not numeric suffix (O-GODORDERPOS).
+                    if _god_pos.get(otid, 10**9) >= tid_pos:
                         continue
                     obody = bodies.get(otid, "")
                     if _is_char_task(otitle, obody) and _names_simple(
@@ -2290,6 +2435,28 @@ def main():
                     f"Owns/Absorbs or Out-of-scope/Deferred (O-COLLABOWN; "
                     f"pairs O-TREEFIXSTUB)",
                 )
+
+    # ADR-24 / O-BATCHDEPORDER deleted: scc-atomic + finding-kind at authoring time.
+    try:
+        from pathlib import Path as _P
+        from model import (
+            load as _mload,
+            lint_scc_atomic as _scc_atomic,
+            lint_finding_kind as _finding_kind,
+        )
+
+        _mp = _P("migration/model.json")
+        if _mp.is_file():
+            _model = _mload(_P("."))
+            _sid_m = re.search(r"(S\d+)", str(tasks_path))
+            _sid = _sid_m.group(1) if _sid_m else ""
+            if _sid:
+                for _r in _scc_atomic(_model, text, _sid):
+                    problems.append(_r)
+            for _r in _finding_kind(_model, text):
+                problems.append(_r)
+    except Exception as _e:
+        pass
 
     print("\n".join(problems) if problems else
           f"PLAN OK: {len(heads)} tasks, classes {dict((c, list(classes.values()).count(c)) for c in set(classes.values()))}")

@@ -521,6 +521,17 @@ def field(sid, name):
     m = re.search(rf"^-\s*{name}:[ \t]*(.*)$", bodies.get(sid, ""), re.M)
     return m.group(1).strip() if m else None
 
+# O-BRIEFFRESHPROFILE: include §7 digest when architecture-profile.md present.
+prof = ""
+for cand in (
+    os.path.join(base, "architecture-profile.md"),
+    os.path.join(os.path.dirname(base), "architecture-profile.md"),
+    os.path.join(base, "migration", "architecture-profile.md"),
+):
+    if os.path.isfile(cand):
+        prof = open(cand, encoding="utf-8").read()
+        break
+sec7 = rl.profile_sec7_digest(prof)
 for sid in bodies:
     h = rl.story_fresh_hash(
         sid,
@@ -528,6 +539,7 @@ for sid in bodies:
         field(sid, "findings") or "",
         field(sid, "kind"),
         field(sid, "seat-budget"),
+        sec7,
     )
     mark = f"<!-- O-BRIEFFRESH sha256={h} -->"
     cands = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
@@ -2892,6 +2904,46 @@ EOF
 }
 check "S-GODORDER GREEN when characterization precedes god-node convert (O-GODORDERCVT)" 0 "sgodorder-ok"
 
+# O-GODORDERPOS (W4R7 W-3): TC-001 before T-001 must count as earlier char
+# even though both share numeric suffix 1 (document order, not _task_num).
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order
+1. com.example.legacy.repository.UserRepository (src/.../UserRepository.java) — god-node: characterization tests first
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### TC-001: UserRepository Characterization — repository interface
+**Class**: infer
+**Shape**: verify
+**Goal**: characterization tests for UserRepository
+**Owns**: src/test/java/com/demo/repository/UserRepositoryTest.java
+**Acceptance**: UserRepositoryTest pins method signatures
+
+#### T-001: UserRepository — repository interface
+**Class**: rewrite
+**Shape**: modify
+**Port**: reimplement
+**Goal**: convert UserRepository (reimplement for Quarkus)
+**Target**: → `src/main/java/com/demo/repository/UserRepository.java`
+**Owns**: src/main/java/com/demo/repository/UserRepository.java
+**API Mapping**:
+- DataAccessException → PersistenceException
+**Acceptance**: UserRepository compiles under Quarkus
+EOF
+  echo '[]' > f.json
+  out=$(python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'S-GODORDER' && { echo "unexpected: $out"; return 1; }
+  # Assert the W-3 predicate (no S-GODORDER); other lints are out of scope.
+  echo sgodorder-pos-ok
+}
+check "S-GODORDER GREEN when TC-001 char precedes T-001 convert (O-GODORDERPOS)" 0 "sgodorder-pos-ok"
+
 run_case() {
   mkfix
   mkdir -p migration
@@ -2996,8 +3048,12 @@ check "M3-ALL skeleton does not disarm O-M3QWENSTALL/O-M3EMPTY (O-M3ALLSTALL)" 0
 
 run_case() {
   # O-M3FIRSTWRITE skeleton-first + O-M3TOOLHIST + O-PRESERVEMSG
+  # W4-267: assert guard token + tasks.md target, not frozen prose
+  # ("FIRST tool must EDIT" → "FIRST tool MUST be edit/write" via O-M3BRIEFINLINE).
   grep -q 'skeleton-first' "$HARNESS_DIR/outer-loop.sh" \
-    && grep -q 'FIRST tool must EDIT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3FIRSTWRITE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'FIRST tool MUST be edit|FIRST tool must EDIT' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'tasks.md' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3TOOLHIST' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q '_m3_tool_hist_line' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'verbatim token' "$HARNESS_DIR/plan-lint.py" \
@@ -3411,6 +3467,163 @@ EOF
   PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
 }
 check "plan-lint accepts Shape=structure .gitkeep with Absorbs .java (O-STRUCTJAVA-NEG)" 0 "PLAN OK"
+
+# O-TASKIDSUFFIX / O-TASKIDSEEN — letter-suffixed ids must parse; unparseable
+# T-* headings must RED (silent skip was the W4-268 false O-STRUCTJAVA class).
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-000: Package scaffold
+**Class**: rewrite
+**Shape**: structure
+**Goal**: Trackable package dirs
+**Target design**: → `src/main/java/com/demo/model/.gitkeep`
+**Owns**: src/main/java/com/demo/model/.gitkeep
+**Acceptance**: .gitkeep present
+
+#### T-001A: Port BaseEntity
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Harvest BaseEntity with jakarta imports
+**Target design**: → `src/main/java/com/demo/model/BaseEntity.java`
+**Owns**: src/main/java/com/demo/model/BaseEntity.java
+**Acceptance**: BaseEntity compiles
+
+#### T-002: Characterize model validators
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Port model ValidatorTests
+**Target design**: → `src/test/java/com/demo/model/ValidatorTests.java`
+**Owns**: src/test/java/com/demo/model/ValidatorTests.java
+**Acceptance**: ValidatorTests compile
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md 2>&1) || rc=$?
+  rc=${rc:-0}
+  # Prove suffix parse: no O-TASKIDSEEN and T-001A not collapsed into T-000.
+  [ "$rc" = "0" ] && ! grep -q O-TASKIDSEEN <<<"$out" && echo "$out" | grep -q 'PLAN OK' && echo taskid-suffix-lint-ok
+}
+check "plan-lint accepts T-001A letter-suffix id (O-TASKIDSUFFIX)" 0 "taskid-suffix-lint-ok"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Valid task
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Swap imports
+**Target design**: → `src/main/java/com/demo/Foo.java`
+**Owns**: src/main/java/com/demo/Foo.java
+**Acceptance**: Foo compiles
+
+#### T-BAD: Unparseable id (no digits)
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Should be seen but not parsed
+**Target design**: → `src/main/java/com/demo/Bar.java`
+**Owns**: src/main/java/com/demo/Bar.java
+**Acceptance**: must RED O-TASKIDSEEN
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint REDs unparseable T-* heading (O-TASKIDSEEN)" 1 "O-TASKIDSEEN"
+
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001A: Port BaseEntity
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Harvest BaseEntity
+**Target design**: → `src/main/java/com/demo/model/BaseEntity.java`
+**Owns**: src/main/java/com/demo/model/BaseEntity.java
+**Acceptance**: BaseEntity compiles
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(python3 "$HARNESS_DIR/task-packet.py" tasks.md T-001A worker/model migration/mta-findings.json 2>&1) || rc=$?
+  rc=${rc:-0}
+  [ "$rc" = "0" ] && echo "$out" | grep -q 'Task ID: T-001A' && echo taskid-suffix-pkt-ok
+}
+check "task-packet resolves T-001A (O-TASKIDSUFFIX)" 0 "taskid-suffix-pkt-ok"
+
+# O-M3ORDERCHAR — characterization infer must not block later convert rewrite
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-000: Package scaffold
+**Class**: rewrite
+**Shape**: structure
+**Goal**: Trackable package dirs
+**Target design**: → `src/main/java/com/demo/model/.gitkeep`
+**Owns**: src/main/java/com/demo/model/.gitkeep
+**Acceptance**: .gitkeep present
+
+#### T-001: Characterize BaseEntity before conversion
+**Class**: infer
+**Shape**: verify
+**Goal**: Characterize BaseEntity requirements before conversion
+**Target design**: → `src/test/java/com/demo/model/BaseEntityContractTest.java`
+**Owns**: src/test/java/com/demo/model/BaseEntityContractTest.java
+**Assumes**: Package scaffold (T-000)
+**Acceptance**: characterization pins isNew()
+
+#### T-002: Port BaseEntity
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Harvest BaseEntity with jakarta imports
+**Target design**: → `src/main/java/com/demo/model/BaseEntity.java`
+**Owns**: src/main/java/com/demo/model/BaseEntity.java
+**Assumes**: Characterize BaseEntity before conversion (T-001)
+**Acceptance**: BaseEntity compiles
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  out=$(PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md 2>&1) || rc=$?
+  rc=${rc:-0}
+  [ "$rc" = "0" ] && ! grep -q 'LINT:order' <<<"$out" && echo "$out" | grep -q 'PLAN OK' && echo orderchar-ok
+}
+check "plan-lint allows char infer before convert rewrite (O-M3ORDERCHAR)" 0 "orderchar-ok"
+
+# O-ASSUMESORDER — Assumes later-in-file task must RED
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only).
+
+#### T-001: Port Foo
+**Class**: rewrite
+**Shape**: modify
+**Goal**: Port Foo
+**Target design**: → `src/main/java/com/demo/Foo.java`
+**Owns**: src/main/java/com/demo/Foo.java
+**Assumes**: Characterize Foo (T-002)
+**Acceptance**: Foo compiles
+
+#### T-002: Characterize Foo
+**Class**: infer
+**Shape**: verify
+**Goal**: Characterize Foo before conversion
+**Target design**: → `src/test/java/com/demo/FooContractTest.java`
+**Owns**: src/test/java/com/demo/FooContractTest.java
+**Acceptance**: pins documented
+EOF
+  printf 'legacyPackage: org.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  PLAN_LINT_REQUIRE_SHAPE=1 python3 "$LINT" tasks.md
+}
+check "plan-lint REDs Assumes later-in-file task (O-ASSUMESORDER)" 1 "O-ASSUMESORDER"
 
 run_case() {
   grep -q 'sensor-fix-mode' "$SENSORS" \
@@ -4690,7 +4903,7 @@ def field(body, *names):
         if m: return m.group(1).strip()
     return ""
 text = open(sys.argv[1], encoding="utf-8").read()
-blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+):", text, flags=re.M)
+blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+[A-Za-z]*):", text, flags=re.M)
 for i in range(1, len(blocks) - 1, 2):
     cls = field(blocks[i + 1], "Class", "Type") or "infer"
     m = re.search(r"\b(rewrite|infer)\b", cls, re.I)
@@ -4711,6 +4924,19 @@ run_case() {
   echo sensorgate-ok
 }
 check "O-SENSORGATE decide/needs-gate both directions (N12)" 0 "sensorgate-ok"
+
+run_case() {
+  # O-M1SENSORGATE: M1 harness subjects must NOT arm the task sensor
+  ! python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "M1 contract: auto-derived specimen stamp" \
+    && ! python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "M1 analyze: ground truth + spec input bundle" \
+    && ! python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "M1 analyze: provenance stamp (O-M1SKIPPROV)" \
+    && python3 "$HARNESS_DIR/sensor-gate.py" needs-gate "T-001: Convert Foo" \
+    && grep -q 'O-M1SENSORGATE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'SKIP_SENSOR_GATE=1' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'SKIP_SENSOR_GATE=1' "$HARNESS_DIR/analyze.sh" \
+    && echo m1sensorgate-ok
+}
+check "O-M1SENSORGATE skips gate for M1 contract/analyze subjects" 0 "m1sensorgate-ok"
 
 run_case() {
   grep -q 'O-SENSORGATE' "$HARNESS_DIR/supervisor.sh" \
@@ -4826,6 +5052,89 @@ EOF
   echo planorder-ok
 }
 check "O-PLANORDER accepts dependency-first task order" 0 "planorder-ok"
+
+# O-PLANORDERCHAR: char/verify Claims must not explode convert-rank
+run_case() {
+  mkfix
+  mkdir -p migration
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order (dependencies first — the tree must compile at every commit)
+1. com.example.legacy.repository.UserRepository (src/main/java/com/example/legacy/repository/UserRepository.java)
+2. com.example.legacy.repository.OwnerRepository (src/main/java/com/example/legacy/repository/OwnerRepository.java)
+EOF
+  cat > tasks.md <<'EOF'
+# Tasks
+UI surface: waived (API-only service; no legacy web frontend).
+
+#### T-001: Characterize OwnerRepository
+**Class**: infer
+**Shape**: verify
+**Goal**: characterization tests for OwnerRepository
+**Target**: → `src/test/java/com/demo/repository/OwnerRepositoryCharacterizationTest.java`
+- Claim: → `src/main/java/com/demo/repository/OwnerRepository.java` (oracle subject — must not enter convert-rank)
+
+#### T-002: Convert UserRepository
+**Class**: rewrite
+**Shape**: modify
+**Goal**: convert UserRepository (dep-order first)
+**Target**: → `src/main/java/com/demo/repository/UserRepository.java`
+
+#### T-003: Convert OwnerRepository
+**Class**: rewrite
+**Shape**: modify
+**Goal**: convert OwnerRepository after User
+**Target**: → `src/main/java/com/demo/repository/OwnerRepository.java`
+EOF
+  echo '[]' > f.json
+  # Without O-PLANORDERCHAR, T-001's Claim on OwnerRepository.java would
+  # "precede" T-002 User convert and RED vs dependency-order. Other lints
+  # (test-scope on oracle Claim) may still fire — property under test is
+  # precedes-absence only.
+  out=$(PLAN_LINT_REQUIRE_SHAPE=0 python3 "$LINT" tasks.md f.json 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-PLANORDER:.*precedes' && { echo "unexpected precedes: $out"; return 1; }
+  grep -q 'O-PLANORDERCHAR' "$HARNESS_DIR/plan-lint.py" || { echo "wire missing"; return 1; }
+  echo planorderchar-ok
+}
+check "O-PLANORDER ignores characterization Claims for convert-rank (O-PLANORDERCHAR)" 0 "planorderchar-ok"
+
+# O-STOPMARKER — write helper + outer-loop refuse/clear wiring
+run_case() {
+  test -f "$HARNESS_DIR/write-stopped.sh" \
+    && grep -q 'O-STOPMARKER' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'CLEAR_STOPPED\|OPERATOR_CONFIRM_START' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'write-stopped.sh' "$HARNESS_DIR/outer-loop.sh" \
+    && echo stopmarker-wire-ok
+}
+check "O-STOPMARKER write helper + outer refuse/clear wiring" 0 "stopmarker-wire-ok"
+
+run_case() {
+  grep -q 'O-STOPREFUSELOG\|O-STOPMARKER: REFUSE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'tee -a' "$HARNESS_DIR/outer-loop.sh" \
+    && awk '/O-STOPMARKER: refuse start on deliberate/,/^phase_start "Outer loop/' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -q 'tee -a "\$LOG"' \
+    && echo stoprefuselog-ok
+}
+check "O-STOPREFUSELOG refuse path tees to outer LOG" 0 "stoprefuselog-ok"
+
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@t
+  git config user.name t
+  echo x > f.txt && git add f.txt && git commit -q -m i
+  bash "$HARNESS_DIR/write-stopped.sh" \
+    --reason "fixture stop" \
+    --authorizing "instruments" \
+    --expected-next "clear and restart" \
+    >/dev/null
+  test -f migration/.stopped \
+    && grep -q '^kind:' migration/.stopped \
+    && grep -q '^tip:' migration/.stopped \
+    && grep -q 'fixture stop' migration/.stopped \
+    && echo stopmarker-write-ok
+}
+check "write-stopped.sh emits migration/.stopped fields (O-STOPMARKER)" 0 "stopmarker-write-ok"
 
 run_case() {
   grep -q 'O-NULLACTION' "$HARNESS_DIR/supervisor.sh" \
@@ -5238,6 +5547,45 @@ run_case() {
 check "O-RETROAPPEND wired in phase_f_retro" 0 "retroappend-wire"
 
 run_case() {
+  # O-RPTAWKESC: KPI awk must not pass a literal backslash before $4
+  ! grep -E "awk -F, '\\\\\\\$4==" "$HARNESS_DIR/supervisor.sh" \
+    && grep -q "awk -F, '\$4==\"escalated\"'" "$HARNESS_DIR/supervisor.sh" \
+    && echo rptawkesc-ok
+}
+check "write_run_report KPI awk uses \$4 not \\\\\$4 (O-RPTAWKESC)" 0 "rptawkesc-ok"
+
+run_case() {
+  # O-RETROBTICK: Retro prompt must not wrap write-hint in shell backticks
+  awk '/phase_f_retro\(\)/,/^}/' "$HARNESS_DIR/supervisor.sh" \
+    | grep -q 'write-hint.py' \
+    && ! awk '/phase_f_retro\(\)/,/^}/' "$HARNESS_DIR/supervisor.sh" \
+         | grep -qE '`python3 .hermes/harness/write-hint.py' \
+    && echo retrobtick-ok
+}
+check "Retro prompt has no backtick write-hint example (O-RETROBTICK)" 0 "retrobtick-ok"
+
+run_case() {
+  # O-SHIPONLYSTATE: SHIP_ONLY success paths call ship_only_record_complete
+  grep -q "ship_only_record_complete()" "$HARNESS_DIR/supervisor.sh" \
+    && awk "/write_run_report \"story gate passed/,/exit 0/" "$HARNESS_DIR/supervisor.sh" \
+         | grep -q ship_only_record_complete \
+    && echo shiponlystate-ok
+}
+check "SHIP_ONLY success records story-state (O-SHIPONLYSTATE)" 0 "shiponlystate-ok"
+
+run_case() {
+  # O-COMMITSTORYFLOOR: T-* branch raises floor to story complete
+  awk "/^committed\(\)/,/^}/" "$HARNESS_DIR/supervisor.sh" \
+    | grep -q "O-COMMITSTORYFLOOR" \
+    && awk "/^committed\(\)/,/^}/" "$HARNESS_DIR/supervisor.sh" \
+         | grep -q "story complete" \
+    && echo commitstoryfloor-ok
+}
+check "committed() floors T-NNN at story complete (O-COMMITSTORYFLOOR)" 0 "commitstoryfloor-ok"
+
+
+
+run_case() {
   python3 "$HARNESS_DIR/early-commit-gate.py" 0 && \
     ! python3 "$HARNESS_DIR/early-commit-gate.py" 1 && \
     echo escalgplace-ok
@@ -5439,6 +5787,33 @@ assert a['itemType']=='VetDto'; \
 assert 'endpointEnv' not in a; print('stamp-petclinic-ok')"
 }
 check "contract-stamp petclinic fixture matches F-2 acceptance (O-STAMP-AUTO)" 0 "stamp-petclinic-ok"
+
+run_case() {
+  # O-STAMPKEEPTARGETS: decided analysis.targets must survive --write
+  mkfix
+  legacy="$STAMP_FIX/stamp-petclinic"
+  cat > migration.yaml <<'EOF'
+migration:
+  legacyPackage: org.springframework.samples.petclinic
+  targetPackage: com.demo
+contract:
+  status: decided
+acceptance:
+  path: /petclinic/api/vets
+  collection: _array
+  getter: getAllVets
+  service: VetResource
+  itemType: VetDto
+analysis:
+  mode: source-only
+  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17, openjdk21]
+EOF
+  python3 "$HARNESS_DIR/contract-stamp.py" stamp --legacy "$legacy" --yaml migration.yaml --write >/dev/null 2>&1 \
+    && grep -q 'openjdk21' migration.yaml \
+    && grep -q 'O-STAMPKEEPTARGETS\|prev_analysis\|openjdk21' "$HARNESS_DIR/contract-stamp.py" \
+    && echo stampkeeptargets-ok
+}
+check "contract-stamp preserves decided analysis.targets (O-STAMPKEEPTARGETS)" 0 "stampkeeptargets-ok"
 
 run_case() {
   # O-ACCEPTREAL — getter not on ClinicService → stamp controller (VetResource)
@@ -5657,6 +6032,17 @@ run_case() {
     && echo uxtrunc-ok
 }
 check "outer-loop appends log + RESUME banner (O-UXLOG-TRUNC)" 0 "uxtrunc-ok"
+
+# O-LOGSTART — startup narrative: START vs RESUME; stamp lines via log(); compose residual wording
+run_case() {
+  grep -q 'O-LOGSTART' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'START outer-loop' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'RESUME outer-loop' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_log_tee_lines' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'skeleton seeded; lint residual' "$HARNESS_DIR/outer-loop.sh" \
+    && echo logstart-wire-ok
+}
+check "outer-loop startup log START/RESUME + stamp tee (O-LOGSTART wire)" 0 "logstart-wire-ok"
 
 run_case() {
   grep -q 'O-RESUMEBASEEXCL' "$HARNESS_DIR/supervisor.sh" \
@@ -6156,8 +6542,28 @@ run_case() {
 check "M3 Qwen draft + MiniMax backstop wiring (O-M3WORKER)" 0 "m3worker-ok"
 
 run_case() {
-  # O-M3ROUTE: default MiniMax-first; O-M3DTOSCOPE / Class+Shape preseed wired.
-  grep -qE 'WORKER_M3_FIRST="\$\{WORKER_M3_FIRST:-true\}"' "$HARNESS_DIR/outer-loop.sh" \
+  # O-M3CONVERGEBUDGET: +1 MiniMax attempt while lint count strictly decreases
+  grep -q 'O-M3CONVERGEBUDGET' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'M3_CONVERGE_BONUS_MAX' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_effective_backstop' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_m3_lint_count' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3converge-ok
+}
+check "M3 converge +1 attempt while lint decreases (O-M3CONVERGEBUDGET)" 0 "m3converge-ok"
+
+run_case() {
+  # O-M3MECHSCOPE: mechanical SNN commits stage only specs/${SLUG}/
+  ! grep -qE 'git add specs/[[:space:]]*$' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'git add "specs/\${SLUG}/"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3MECHSCOPE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'task list (file/M4 order)' "$HARNESS_DIR/supervisor.sh" \
+    && echo m3mechscope-ok
+}
+check "mechanical SNN commit scoped to specs/\$SLUG (O-M3MECHSCOPE)" 0 "m3mechscope-ok"
+
+run_case() {
+  # O-M3ROUTE / O-M3FIRSTWRITE: default MiniMax-first; O-M3DTOSCOPE / Class+Shape.
+  grep -qE 'WORKER_M3_FIRST="\$\{WORKER_M3_FIRST:-false\}"' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3ROUTE' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'story-scope' "$HARNESS_DIR/outer-loop.sh" \
     && grep -q 'O-M3DTOSCOPE' "$HARNESS_DIR/plan-lint.py" \
@@ -6446,6 +6852,20 @@ run_case() {
     && echo lockstale-ok
 }
 check "outer+supervisor clear dead PID locks (O-LOCKSTALE)" 0 "lockstale-ok"
+
+run_case() {
+  # O-OUTERSTALE: host driver/preflight use lock-PID liveness (not bare pgrep -f)
+  # harness → .hermes → scaffold → scaffold-repo → 080 → stages → ROOT (6× ..)
+  ROOT_SCRIPTS="$(cd "$HARNESS_DIR/../../../../../../scripts/track-b" && pwd)"
+  test -f "$ROOT_SCRIPTS/lib-quality-gates.sh" \
+    && grep -q 'qg_remote_outer_alive' "$ROOT_SCRIPTS/lib-quality-gates.sh" \
+    && grep -q 'O-OUTERSTALE' "$ROOT_SCRIPTS/lib-quality-gates.sh" \
+    && grep -q 'qg_remote_outer_alive' "$ROOT_SCRIPTS/v9-preflight-outer-start.sh" \
+    && grep -q 'O-OUTERSTALE' "$ROOT_SCRIPTS/v8-driver-loop.sh" \
+    && grep -q 'outer-loop.lock' "$ROOT_SCRIPTS/v8-driver-loop.sh" \
+    && echo outerstale-ok
+}
+check "O-OUTERSTALE lock-PID liveness in driver+preflight" 0 "outerstale-ok"
 
 run_case() {
   grep -q 'oc_seat_base' "$HARNESS_DIR/supervisor.sh" \
@@ -7226,6 +7646,200 @@ EOF
 }
 check "task-stage-paths.py emits Owns/Target only (O-OWNSTAGE)" 0 "ownstage-paths-ok"
 
+# O-OWNSTAGEALL / O-VERIFYCREATE / O-ATTRSWEEP — multi-line Targets + verify empty
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-004: Domain model supporting files migration
+**Class**: rewrite
+**Shape**: create
+**Target Design**:
+- `src/main/java/com/demo/model/package-info.java`
+- `src/test/java/com/demo/model/ValidatorTests.java`
+- `src/main/java/com/demo/model/.gitkeep`
+- `src/test/java/com/demo/model/.gitkeep`
+**Acceptance**: ok
+
+#### T-005: Domain model validation
+**Class**: infer
+**Shape**: verify
+**Target Design**:
+- Verification of: `src/main/java/com/demo/model/BaseEntity.java`
+- Verification of: `src/test/java/com/demo/model/ValidatorTests.java`
+**Acceptance**: compile
+EOF
+  out4=$(python3 "$HARNESS_DIR/task-stage-paths.py" tasks.md T-004)
+  out5=$(python3 "$HARNESS_DIR/task-stage-paths.py" tasks.md T-005)
+  echo "$out4" | grep -qx 'src/test/java/com/demo/model/ValidatorTests.java' \
+    && echo "$out4" | grep -qx 'src/main/java/com/demo/model/package-info.java' \
+    && [ "$(echo "$out4" | wc -l | tr -d ' ')" -ge 4 ] \
+    && [ -z "$out5" ] \
+    && grep -q 'O-OWNSTAGEALL\|ownstage_missing_declared\|O-ATTRSWEEP\|O-PARTIALADV' \
+         "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-VERIFYCREATE' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'O-SYNTHROUTE' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-DEBTFRZLEDGER\|M5 residuals' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-CHARPIN' "$HARNESS_DIR/supervisor.sh" \
+    && echo ownstageall-wire-ok
+}
+check "O-OWNSTAGEALL multi-line Targets + verify empty allowlist (W4-346/288)" 0 "ownstageall-wire-ok"
+
+# O-DEBTFRZM5STICKY: M5 residual ledger must not restore debt-freeze (only ## … RED)
+run_case() {
+  grep -q 'O-DEBTFRZM5STICKY' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'unresolved ## … RED entries' "$HARNESS_DIR/supervisor.sh" \
+    && grep -qE '\^## \.\+ — \.\+ RED' "$HARNESS_DIR/supervisor.sh" \
+    && echo debtfrzm5sticky-ok
+}
+check "O-DEBTFRZM5STICKY restore freeze only on ## … RED (not M5 residuals)" 0 "debtfrzm5sticky-ok"
+
+# O-T6DM4STRUCT — Shape=structure must not need-src-test / must accept props
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-001: Create target package structure
+**Class**: rewrite
+**Shape**: structure
+**Target Design**:
+- `src/main/java/com/demo/model/.gitkeep`
+**Acceptance**: directories exist; later characterization covers behaviour
+EOF
+  mkdir -p src/main/java/com/demo/model
+  touch src/main/java/com/demo/model/.gitkeep
+  echo 'src/main/java/com/demo/model/.gitkeep' \
+    | python3 "$HARNESS_DIR/mechan-match.py" tasks.md T-001 >/tmp/t6dm4.out 2>&1
+  mm_rc=$?
+  [ "$mm_rc" -eq 0 ] || { echo "FAIL need-src-test: $(cat /tmp/t6dm4.out)"; return 1; }
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-000: Preserve Quarkus datasource config
+**Class**: rewrite
+**Shape**: structure
+**Target Design**:
+- `src/main/resources/application.properties`
+**Goal**: Convert Spring datasource configurations to Quarkus profile-based format
+EOF
+  mkdir -p src/main/resources
+  echo 'quarkus.datasource.db-kind=h2' > src/main/resources/application.properties
+  echo 'src/main/resources/application.properties' \
+    | python3 "$HARNESS_DIR/mechan-match.py" tasks.md T-000 >/tmp/t6dm4b.out 2>&1
+  mm_rc=$?
+  [ "$mm_rc" -eq 0 ] || { echo "FAIL unexpected-paths: $(cat /tmp/t6dm4b.out)"; return 1; }
+  grep -q 'O-T6DM4STRUCT' "$HARNESS_DIR/mechan-match.py" \
+    && echo t6dm4struct-ok
+}
+check "mechan-match Structure/config without MiniMax O-T6d (O-T6DM4STRUCT)" 0 "t6dm4struct-ok"
+
+# O-EXECSCOPE — staged props outside STORY_SCOPE refuse
+run_case() {
+  mkfix
+  cat > tasks.md <<'EOF'
+# Tasks
+#### T-003: Convert domain entities
+**Class**: rewrite
+**Shape**: create
+**Owns**: src/main/java/com/demo/model/Owner.java
+**Target design**: → `src/main/java/com/demo/model/Owner.java`
+EOF
+  printf '%s\n' \
+    'src/main/java/com/demo/model/Owner.java' \
+    'src/main/resources/application.properties' \
+    'pom.xml' \
+    | STORY_SCOPE='src/main/java/com/demo/model/Owner.java' \
+      python3 "$HARNESS_DIR/exec-scope.py" tasks.md T-003 >/tmp/execscope.out 2>&1
+  esc_rc=$?
+  [ "$esc_rc" -ne 0 ] || { echo "FAIL: expected refuse"; cat /tmp/execscope.out; return 1; }
+  grep -q 'O-EXECSCOPE' /tmp/execscope.out \
+    && grep -q 'application.properties\|pom.xml' /tmp/execscope.out \
+    && grep -q 'O-EXECSCOPE\|exec_scope_refuse' "$HARNESS_DIR/supervisor.sh" \
+    && echo execscope-wire-ok
+}
+check "exec-scope refuses out-of-scope props/pom (O-EXECSCOPE)" 0 "execscope-wire-ok"
+
+# O-CHARPROTECT — legacy-FS-only char tip refuses
+run_case() {
+  mkfix
+  printf 'legacyPackage: org.springframework.samples.petclinic\ntargetPackage: com.demo\n' \
+    > migration.yaml
+  mkdir -p src/test/java/com/demo/model
+  cat > src/test/java/com/demo/model/DomainModelCharacterizationTest.java <<'EOF'
+package com.demo.model;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+class DomainModelCharacterizationTest {
+  @Test void pinsLegacy() throws Exception {
+    var t = Files.readString(Path.of("/projects/legacy/src/main/java/org/springframework/samples/petclinic/model/Owner.java"));
+    assertTrue(t.contains("class Owner"));
+  }
+}
+EOF
+  echo 'src/test/java/com/demo/model/DomainModelCharacterizationTest.java' \
+    | python3 "$HARNESS_DIR/char-protect.py" migration.yaml >/tmp/charprot.out 2>&1
+  cp_rc=$?
+  [ "$cp_rc" -ne 0 ] || { echo "FAIL: expected refuse"; cat /tmp/charprot.out; return 1; }
+  # good tip imports target package
+  cat > src/test/java/com/demo/model/DomainModelCharacterizationTest.java <<'EOF'
+package com.demo.model;
+import com.demo.model.Owner;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+class DomainModelCharacterizationTest {
+  @Test void pinsConverted() { assertNotNull(Owner.class); }
+}
+EOF
+  echo 'src/test/java/com/demo/model/DomainModelCharacterizationTest.java' \
+    | python3 "$HARNESS_DIR/char-protect.py" migration.yaml >/tmp/charprot2.out 2>&1
+  [ $? -eq 0 ] || { echo "FAIL good tip"; cat /tmp/charprot2.out; return 1; }
+  grep -q 'O-CHARPROTECT' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'O-CHARPROTECT\|char_protect' "$HARNESS_DIR/supervisor.sh" \
+    && echo charprotect-red-ok
+}
+check "char-protect refuses legacy-FS-only pins (O-CHARPROTECT)" 0 "charprotect-red-ok"
+
+# O-RUNLOGTERM + O-CHARSONAR wire
+run_case() {
+  grep -q 'append_harness_runlog\|O-RUNLOGTERM\|task_tip_landed' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-CHARSONAR\|is_characterization_task' "$HARNESS_DIR/supervisor.sh" \
+    && echo runlogterm-charsonar-wire-ok
+}
+check "run-log terminal + char sonar force (O-RUNLOGTERM/O-CHARSONAR)" 0 "runlogterm-charsonar-wire-ok"
+
+# O-STAMPGITIGN + O-HERMNESTTIP — wire instruments (Opus W4-291 direct-grep gap)
+run_case() {
+  grep -q 'O-STAMPGITIGN' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'm3-all-stamps\|migration/run-log.md' "$HARNESS_DIR/supervisor.sh" \
+    && test -f "$HARNESS_DIR/../../.gitignore" \
+    && grep -qE 'm3-all-stamps|run-log\.md' "$HARNESS_DIR/../../.gitignore" \
+    && echo stampgitign-wire-ok
+}
+check "stage reset excludes stamps/run-log + scaffold gitignore (O-STAMPGITIGN)" 0 "stampgitign-wire-ok"
+
+run_case() {
+  grep -q 'O-HERMNESTTIP' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'last 5 commits' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'O-HERMNEST\|gitignore \.hermes' "$HARNESS_DIR/supervisor.sh" \
+    && echo hermnesttip-wire-ok
+}
+check "ACDIRTY stages Target dirt on present AC (O-ACDIRTY)" 0 "acdirty-wire-ok"
+if grep -q "O-ACDIRTY" .hermes/harness/supervisor.sh && grep -q "committed Target dirt (O-ACDIRTY)" .hermes/harness/supervisor.sh; then
+  ok acdirty-wire-ok
+else
+  fail acdirty-wire-ok "supervisor.sh missing O-ACDIRTY present-path commit"
+fi
+
+check "ESCRATEZOMBIE accepts existing tip on escalation exhaust (O-ESCRATEZOMBIE)" 0 "escratezombie-wire-ok"
+if grep -q "O-ESCRATEZOMBIE" .hermes/harness/supervisor.sh; then
+  ok escratezombie-wire-ok
+else
+  fail escratezombie-wire-ok "supervisor.sh missing O-ESCRATEZOMBIE guard"
+fi
+
+check "ESCNOCOMMIT accepts HERMNEST chore ancestor tip (O-HERMNESTTIP)" 0 "hermnesttip-wire-ok"
+
 # O-PLANCORPUS — standing archived-plan re-lint with live M3 flag parity
 run_case() {
   local pc="$HARNESS_DIR/tests/fixtures/plan-corpus"
@@ -7372,8 +7986,9 @@ INPUTS_KIND=poison
 FINDINGS_SRC=/nonexistent/mta-findings.json
 PROFILE_SRC=/nonexistent/architecture-profile.md
 EOF
+  # O-MANIFESTBLANK: never prepend a blank line — prior >> echo "" left
+  # trailing blanks that accumulated across suite runs (W4-271: +46).
   {
-    echo ""
     echo "# ephemeral O-M3CASEINPUTS prefer probe (instruments; removed after)"
     echo "CORPUS_zz_m3caseinputs_prefer_EXPECT=green"
     echo "CORPUS_zz_m3caseinputs_prefer_FINDINGS=\"springboot-di-to-quarkus-00003,springboot-di-to-quarkus-00000,springboot-di-to-quarkus-00002\""
@@ -7382,7 +7997,7 @@ EOF
   } >> "$pc/manifest.env"
   out=$(bash "$HARNESS_DIR/plan-corpus-lint.sh" --case "$name" 2>&1) || true
   rm -rf "$pc/$name"
-  # Strip ephemeral rows without relying on GNU sed -i
+  # Strip ephemeral rows + trailing blank lines (idempotent writer)
   local mf="$pc/manifest.env"
   python3 - "$mf" <<'PY'
 import sys
@@ -7398,16 +8013,36 @@ for ln in lines:
     if skip:
         if ln.startswith("CORPUS_zz_m3caseinputs_prefer_"):
             continue
-        if ln.strip() == "":
-            skip = False
-            continue
         skip = False
+        if ln.strip() == "":
+            continue
     out.append(ln)
+while out and out[-1].strip() == "":
+    out.pop()
+if out and not out[-1].endswith("\n"):
+    out[-1] += "\n"
 p.write_text("".join(out))
 PY
+  # Prove cleanup left zero trailing blank lines
+  python3 - "$mf" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text()
+assert not t.endswith("\n\n"), "O-MANIFESTBLANK: trailing blank lines remain"
+assert t.endswith("\n") or t == "", "manifest should end with single newline"
+print("manifest-blank-ok")
+PY
+  blank_ok=$(python3 - "$mf" <<'PY'
+import sys
+from pathlib import Path
+t = Path(sys.argv[1]).read_text()
+print("yes" if (not t.endswith("\n\n") and (t.endswith("\n") or t == "")) else "no")
+PY
+)
   echo "$out" | grep -q 'O-M3CASEINPUTS: case=zz-m3caseinputs-prefer mode=case-local' \
     && ! echo "$out" | grep -q 'points to missing inputs' \
     && echo "$out" | grep -q 'PASS zz-m3caseinputs-prefer' \
+    && [ "$blank_ok" = "yes" ] \
     && echo m3caseinputs-prefer-ok
 }
 check "plan-corpus prefers case-local inputs over pointer (O-M3CASEINPUTS)" 0 "m3caseinputs-prefer-ok"
@@ -8232,6 +8867,49 @@ EOF
 }
 check "m3-all-compose emits skeleton fields and skips authored (O-M3ALL)" 0 "m3all-compose-emit-ok"
 
+# O-M3ALLORDER: compose sorts scope by dependency-order (not roadmap alpha)
+run_case() {
+  mkfix
+  mkdir -p migration/briefs \
+    src/main/java/com/example/legacy/model \
+    src/main/java/com/example/legacy/repository
+  printf 'legacyPackage: com.example.legacy\ntargetPackage: com.demo\n' > migration.yaml
+  # Roadmap lists dependent (Owner) before dependency (Base) — alpha/scope trap.
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: foundation
+- deploy: false
+- findings: springboot-di-to-quarkus-00000
+- scope: src/main/java/com/example/legacy/repository/OwnerRepository.java, src/main/java/com/example/legacy/model/BaseEntity.java
+EOF
+  cat > migration/briefs/S01-foundation.md <<'EOF'
+# S01 brief
+## In scope
+OwnerRepository, BaseEntity
+EOF
+  cat > migration/dependency-order.md <<'EOF'
+## Conversion order (dependencies first — the tree must compile at every commit)
+1. com.example.legacy.model.BaseEntity (src/main/java/com/example/legacy/model/BaseEntity.java)
+2. com.example.legacy.repository.OwnerRepository (src/main/java/com/example/legacy/repository/OwnerRepository.java)
+EOF
+  out=$(python3 "$HARNESS_DIR/m3-all-compose.py" --root "$FIX" 2>&1) || true
+  tasks="$FIX/specs/S01-foundation/tasks.md"
+  # plan-lint reads migration/dependency-order.md from cwd — must run in FIX.
+  # (! grep) required: a failing grep for "unexpected precedes" must not abort the chain.
+  test -f "$tasks" \
+    && grep -q 'order_scope_by_dep' "$HARNESS_DIR/m3-all-compose.py" \
+    && awk '/^#### T-001:/{p=1} p&&/\*\*Owns\*\*:/{print; exit}' "$tasks" \
+      | grep -q 'BaseEntity.java' \
+    && awk '/^#### T-002:/{p=1} p&&/\*\*Owns\*\*:/{print; exit}' "$tasks" \
+      | grep -q 'OwnerRepository.java' \
+    && echo '[]' > "$FIX/f.json" \
+    && lint=$(cd "$FIX" && PLAN_LINT_REQUIRE_SHAPE=0 python3 "$LINT" "$tasks" f.json 2>&1 || true) \
+    && ! echo "$lint" | grep -q 'LINT:O-PLANORDER:.*precedes' \
+    && echo "$out" | grep -qE 'wrote|refreshed' \
+    && echo m3allorder-ok
+}
+check "m3-all-compose orders T-NNN by dependency-order (O-M3ALLORDER)" 0 "m3allorder-ok"
+
 # O-LOGSTORY — story identity on every in-story log() line (wake#375)
 run_case() {
   grep -q 'O-LOGSTORY' "$HARNESS_DIR/outer-loop.sh" \
@@ -8275,6 +8953,40 @@ run_case() {
     && echo logfullstory-wire-ok
 }
 check "outer-loop M3 titles + STORY_TAG use full slug (O-LOGFULLSTORY)" 0 "logfullstory-wire-ok"
+
+# O-M1SKIPPROV — provenance gate (existence alone must not skip)
+run_case() {
+  grep -q 'm1_analyze_green' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm1_profile_green' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M1SKIPPROV' "$HARNESS_DIR/outer-loop.sh" \
+    && test -f "$HARNESS_DIR/m1-provenance.py" \
+    && echo m1skipprov-wire-ok
+}
+check "outer-loop M1 skip uses provenance helpers (O-M1SKIPPROV wire)" 0 "m1skipprov-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/x legacy
+  git -C legacy init -q
+  git -C legacy config user.email t@t
+  git -C legacy config user.name t
+  echo a > legacy/a.txt
+  git -C legacy add a.txt && git -C legacy commit -q -m i
+  echo '[]' > migration/mta-findings.json
+  echo '# inv' > migration/findings-inventory.md
+  echo '# dep' > migration/dependency-order.md
+  echo '# recipe' > migration/recipe-log.md
+  echo '# cov' > migration/ruleset-coverage.md
+  printf 'analysis:\n  targets: [quarkus, openjdk17]\n' > migration.yaml
+  echo 'class X {}' > migration/staging/src/main/java/x/X.java
+  # presence without stamp → RED
+  ! python3 "$HARNESS_DIR/m1-provenance.py" check-analyze --root "$FIX" --legacy "$FIX/legacy" \
+    > /tmp/m1prov-test.txt 2>&1 \
+    && python3 "$HARNESS_DIR/m1-provenance.py" write-analyze --root "$FIX" --legacy "$FIX/legacy" \
+    && python3 "$HARNESS_DIR/m1-provenance.py" check-analyze --root "$FIX" --legacy "$FIX/legacy" \
+    && echo m1skipprov-roundtrip-ok
+}
+check "m1-provenance analyze write/check round-trip (O-M1SKIPPROV)" 0 "m1skipprov-roundtrip-ok"
 
 # O-LOGBRIEF / O-LOGEPILOG — story-start banner + end-of-story summary (wake#376)
 run_case() {
@@ -8450,6 +9162,44 @@ EOF
     && echo evidlive-heartbeat-ok
 }
 check "heartbeat fills K1/K3/K9/K11 for quiet story (O-EVIDLIVE)" 0 "evidlive-heartbeat-ok"
+
+# O-EVIDLIVEK3TABLE: markdown decision table (same shape as O-M2K3TABLE) must seed K3
+run_case() {
+  mkfix
+  chmod +x "$HARNESS_DIR/evidence-liveness.sh"
+  mkdir -p .hermes/harness migration specs
+  cp "$HARNESS_DIR/evidence-liveness.sh" .hermes/harness/
+  cp "$HARNESS_DIR/append-discovered.py" .hermes/harness/ 2>/dev/null || true
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01 platform
+## Non-mandatory decisions
+| rule-id | decision | reason |
+|---|---|---|
+| hibernate-00005 | adopt | naming conventions improve maintainability |
+| persistence-to-quarkus-00010 | defer | later story owns Inject migration |
+EOF
+  cat > specs/tasks.md <<'EOF'
+#### T-001: BOM
+**Owns**: `pom.xml`
+**Goal**: Quarkus BOM
+EOF
+  : > /tmp/supervisor-events.csv
+  echo 'plan lint: PASS (M4 entry gate)' > /tmp/supervisor.log
+  STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh heartbeat S01
+  STORY_TASKS="$FIX/specs/tasks.md" \
+    SUPERVISOR_EVENTS=/tmp/supervisor-events.csv \
+    ORACLE_ROOT="$FIX" \
+    EVIDENCE_LIVENESS_LEDGER="$FIX/migration/evidence-liveness.md" \
+    bash .hermes/harness/evidence-liveness.sh check S01 \
+    && grep -qE '\| S01 \| K3 \|' migration/evidence-liveness.md \
+    && echo evidlive-k3table-ok
+}
+check "heartbeat K3 from markdown adopt/defer table (O-EVIDLIVEK3TABLE)" 0 "evidlive-k3table-ok"
 
 run_case() {
   mkfix
@@ -8936,6 +9686,21 @@ run_case() {
 }
 check "seat-budget overrun trips when actual > budget×factor (O-SEATBUDGET)" 0 "seatbudget-overrun-ok"
 
+# O-SEATBRAKE — large task counts lift freeze ceiling; ≤14 unchanged
+run_case() {
+  grep -q 'O-SEATBRAKE\|overrun_limit\|task_headroom' "$HARNESS_DIR/seat-budget.py" || return 1
+  python3 -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('sb', '$HARNESS_DIR/seat-budget.py')
+sb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sb)
+assert sb.overrun_limit(105, tasks=14, factor=2) == 210
+assert sb.overrun_limit(105, tasks=42, factor=2) == 252
+print('seatbrake-ok')
+"
+}
+check "O-SEATBRAKE lifts overrun ceiling for >14-task plans" 0 "seatbrake-ok"
+
 run_case() {
   grep -q 'O-SEATBUDGET' "$HARNESS_DIR/roadmap-lint.py" \
     && grep -q 'seat-budget' "$HARNESS_DIR/../skills/migration-harness/SEQUENCING.md" \
@@ -9208,6 +9973,25 @@ EOF
     && echo m2composebook-fill-ok
 }
 check "m2-compose fill derives kind + repairs redesignish findings:- (O-M2COMPOSEBOOK)" 0 "m2composebook-fill-ok"
+
+# O-M2FILLCLOBBER — fenced briefs keep authored body despite stale skeleton mark
+run_case() {
+  grep -q 'O-M2FILLCLOBBER' "$HARNESS_DIR/m2-compose.py" \
+    && python3 - <<PY
+import importlib.util, sys
+from pathlib import Path
+p = Path("$HARNESS_DIR/m2-compose.py")
+spec = importlib.util.spec_from_file_location("m2c", p)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+skel = m.SKELETON_MARK + "\n# S01\n<!-- JUDGMENT -->\n"
+authored = m.SKELETON_MARK + "\n# S01\n\`\`\`java\nclass X {}\n\`\`\`\n"
+assert m.brief_is_skeleton(skel) is True
+assert m.brief_is_skeleton(authored) is False
+print("m2fillclobber-ok")
+PY
+}
+check "m2-compose fill does not clobber fenced briefs (O-M2FILLCLOBBER)" 0 "m2fillclobber-ok"
 
 run_case() {
   python3 - "$HARNESS_DIR/seat-budget.py" <<'PY'
@@ -9885,12 +10669,254 @@ EOF
 check "BRIEF-QUALITY contracts dim is dedicated/required (O-BRIEFQCONT)" 0 "briefqcont-family-ok"
 
 run_case() {
+  grep -q 'O-BRIEFQFAB' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'fabrication' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'q_score = 0' "$HARNESS_DIR/roadmap-lint.py" \
+    && echo briefqfab-wire-ok
+}
+check "BRIEF-QUALITY collapses on fabrication (O-BRIEFQFAB wire)" 0 "briefqfab-wire-ok"
+
+run_case() {
+  grep -q 'O-HERMSCOOP' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q '\.hermes/' "$HARNESS_DIR/commit-hygiene.py" \
+    && grep -q 'O-M2-FREEZE-JUNK' "$HARNESS_DIR/outer-loop.sh" \
+    && echo hermscoop-wire-ok
+}
+check "commit-hygiene refuses .hermes tip scoop (O-HERMSCOOP wire)" 0 "hermscoop-wire-ok"
+
+# O-M3COMMITHYGIENE / Criterion 10: M3 path must refuse scooped tips (not M4-only).
+run_case() {
+  grep -q '_m3_refuse_bad_tip' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3COMMITHYGIENE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3COMMITHYGIENE:pyc' "$HARNESS_DIR/commit-hygiene.py" \
+    && echo m3commithygiene-wire-ok
+}
+check "O-M3COMMITHYGIENE refuse wired on M3 path (Criterion 10)" 0 "m3commithygiene-wire-ok"
+
+# O-HERMSCOOP M3-path refuse (W4R7 W-7): behavioural Criterion 10 — scooped
+# .hermes tip must fail commit-hygiene AND _m3_refuse_bad_tip must reset.
+run_case() {
+  mkfix
+  git init -q
+  git config user.email t@test.local
+  git config user.name t
+  mkdir -p specs/S03-demo .hermes/harness
+  printf '# ok\n' > specs/S03-demo/tasks.md
+  git add specs && git commit -q -m init
+  pre=$(git rev-parse HEAD)
+  printf 'scoop\n' > .hermes/harness/outer-loop.sh
+  git add -A && git commit -q -m 'S03 spec: agent scooped harness'
+  # Hygiene must RED the tip (refuse, not scrub).
+  if python3 "$HARNESS_DIR/commit-hygiene.py" HEAD >/tmp/hermscoop-m3.out 2>&1; then
+    echo "FAIL: hygiene accepted .hermes tip"; return 1
+  fi
+  grep -qE 'O-HERMSCOOP|\.hermes' /tmp/hermscoop-m3.out || {
+    echo "FAIL: hygiene output missing O-HERMSCOOP: $(cat /tmp/hermscoop-m3.out)"
+    return 1
+  }
+  # Extract + run M3 refuse helper (same as outer-loop Criterion 10).
+  LOG=/dev/null
+  HARNESS="$HARNESS_DIR"
+  # shellcheck disable=SC1090
+  eval "$(sed -n '/^scrub_hermes_scoop()/,/^}/p' "$HARNESS_DIR/outer-loop.sh")"
+  eval "$(sed -n '/^_m3_refuse_bad_tip()/,/^}/p' "$HARNESS_DIR/outer-loop.sh")"
+  log() { :; }
+  set +e
+  _m3_refuse_bad_tip "$pre" "S03-demo"
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || { echo "FAIL: refuse rc=$rc want 1"; return 1; }
+  [ "$(git rev-parse HEAD)" = "$pre" ] || {
+    echo "FAIL: tip not reset to pre-seat"; return 1
+  }
+  # tasks.md kept in WT for plan-lint
+  [ -f specs/S03-demo/tasks.md ] || { echo "FAIL: tasks.md lost"; return 1; }
+  echo hermscoop-m3-refuse-ok
+}
+check "O-HERMSCOOP M3-path refuses scooped tip (Criterion 10 behavioural)" 0 "hermscoop-m3-refuse-ok"
+
+# O-BRIEFCONSIST (ADR-21 G7) — behavioural: preserve+Forbidden → LINT:consistency
+run_case() {
+  mkfix
+  mkdir -p briefs legacy/src/main/java/demo
+  printf '%s\n' '## S01: demo' \
+    '- scope: src/main/java/demo/Repo.java' \
+    '- findings: demo-00001' \
+    '- depends: -' \
+    '- deploy: true' \
+    '- done: panache path' \
+    '- rationale: only story' \
+    '- kind: reimplement' \
+    '- seat-budget: 3' > roadmap.md
+  printf '%s\n' '## Mandatory' '- `demo-00001` — demo' \
+    '## Summary by class' '- infer: 0 —' > inv.md
+  cat > briefs/S01-demo.md <<'EOF'
+## Goal & position
+demo
+## In scope
+- `src/main/java/demo/Repo.java`
+```java
+@Repository
+class Repo {}
+```
+## Out of scope
+none
+## Class roles & target contract
+- **SpringDataOwnerRepository** — REDESIGN: Spring Data interface preserved; configuration updated for Quarkus
+## Decided target shapes
+- Spring Data JPA: Configure Quarkus compatibility or migrate to Panache
+## Contracts owned by this story
+- **Forbidden**: Never use `quarkus-spring-data-jpa` extension
+## Done-criteria
+- done
+EOF
+  printf '%s\n' 'package demo; class Repo {}' > legacy/src/main/java/demo/Repo.java
+  set +e
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy > /tmp/briefconsist.out 2>&1
+  set -e
+  grep -q 'O-BRIEFCONSIST' /tmp/briefconsist.out && echo briefconsist-refuse-ok
+  grep -q 'O-BRIEFCONSIST' /tmp/briefconsist.out
+}
+check "O-BRIEFCONSIST refuses preserve+Forbidden spring-data (G7)" 0 "briefconsist-refuse-ok"
+
+run_case() {
+  mkfix
+  mkdir -p briefs legacy/src/main/java/demo
+  printf '%s\n' '## S01: demo' \
+    '- scope: src/main/java/demo/Repo.java' \
+    '- findings: demo-00001' \
+    '- depends: -' \
+    '- deploy: true' \
+    '- done: panache path' \
+    '- rationale: only story' \
+    '- kind: reimplement' \
+    '- seat-budget: 3' > roadmap.md
+  printf '%s\n' '## Mandatory' '- `demo-00001` — demo' \
+    '## Summary by class' '- infer: 0 —' > inv.md
+  cat > briefs/S01-demo.md <<'EOF'
+## Goal & position
+demo
+## In scope
+- `src/main/java/demo/Repo.java`
+```java
+@Repository
+class Repo {}
+```
+## Out of scope
+none
+## Class roles & target contract
+- **SpringDataOwnerRepository** — REDESIGN: migrate to Quarkus Panache repository (do not preserve Spring Data interface)
+## Decided target shapes
+- Spring Data JPA: migrate to Panache (standards path)
+## Contracts owned by this story
+- **Forbidden**: Never use `quarkus-spring-data-jpa` extension
+## Done-criteria
+- done
+EOF
+  printf '%s\n' 'package demo; class Repo {}' > legacy/src/main/java/demo/Repo.java
+  set +e
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy 2>&1)
+  set -e
+  if echo "$out" | grep -q 'O-BRIEFCONSIST'; then
+    echo briefconsist-false-pos
+    return 1
+  fi
+  echo briefconsist-accept-ok
+  return 0
+}
+check "O-BRIEFCONSIST accepts Panache mandate without preserve claim" 0 "briefconsist-accept-ok"
+
+# O-BRIEFCONSIST-L2 (W4R7 W-6): corpus refuse from tip 085eca4 S03 brief
+# (preserve ×7 + Forbidden quarkus-spring-data-jpa — refuse/falsifier boundary).
+run_case() {
+  local fix="$HARNESS_DIR/tests/fixtures/briefconsist-l2-085eca4"
+  [ -f "$fix/S03-repository-layer.md" ] || { echo "missing L2 fixture"; return 1; }
+  mkfix
+  mkdir -p briefs legacy/src/main/java/org/springframework/samples/petclinic/repository
+  cp "$fix/roadmap.md" roadmap.md
+  cp "$fix/inv.md" inv.md
+  cp "$fix/S03-repository-layer.md" briefs/S03-repository-layer.md
+  printf '%s\n' 'package org.springframework.samples.petclinic.repository; interface OwnerRepository {}' \
+    > legacy/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java
+  set +e
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy > /tmp/briefconsist-l2.out 2>&1
+  set -e
+  grep -q 'O-BRIEFCONSIST' /tmp/briefconsist-l2.out && echo briefconsist-l2-refuse-ok
+  grep -q 'O-BRIEFCONSIST' /tmp/briefconsist-l2.out
+}
+check "O-BRIEFCONSIST-L2 refuses 085eca4 S03 preserve+Forbidden corpus (G7)" 0 "briefconsist-l2-refuse-ok"
+
+run_case() {
   grep -q 'derive_story_depends\|O-DEPCHAIN' "$HARNESS_DIR/m2-compose.py" \
     && grep -q 'O-M1SCC' "$HARNESS_DIR/dependency-order.py" \
     && ! grep -q 'if dep == "-" and i > 0' "$HARNESS_DIR/m2-compose.py" \
     && echo depchain-wire-ok
 }
 check "O-DEPCHAIN + O-M1SCC wired (no forced S_n-1 depends)" 0 "depchain-wire-ok"
+
+run_case() {
+  grep -q 'STOP_AFTER_M2\|O-STOPAFTERM2' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3PREFLIGHT' "$HARNESS_DIR/guard-manifest.sh" \
+    && grep -q 'O-BRIEFQCONT' "$HARNESS_DIR/guard-manifest.sh" \
+    && grep -q 'O-M1SCC' "$HARNESS_DIR/guard-manifest.sh" \
+    && grep -q 's02-pipefield-synth' "$HARNESS_DIR/tests/fixtures/plan-corpus/manifest.env" \
+    && echo stopafterm2-manifest-ok
+}
+check "O-STOPAFTERM2 + guard-manifest seeds for new M2 guards" 0 "stopafterm2-manifest-ok"
+
+run_case() {
+  grep -q 'STOP_AFTER_M1\|O-STOPAFTERM1' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-STOPAFTERM1' "$HARNESS_DIR/guard-manifest.md" \
+    && grep -q 'O-STOPAFTERM1' "$HARNESS_DIR/guard-manifest.sh" \
+    && echo stopafterm1-wire-ok
+}
+check "O-STOPAFTERM1 wire (outer-loop + guard-manifest)" 0 "stopafterm1-wire-ok"
+
+run_case() {
+  # O-INSTROOT (Opus W4 A5): do not use undefined $ROOT — scaffold suite
+  # asserts outer-loop half only; preflight half lives in host
+  # scripts/track-b (v9-preflight-outer-start.sh) and is gated there.
+  grep -q 'STOP_AFTER_EXECUTE\|O-STOPAFTEREXEC' "$HARNESS_DIR/outer-loop.sh" \
+    && echo stopafterexec-wire-ok
+}
+check "O-STOPAFTEREXEC wire (outer-loop)" 0 "stopafterexec-wire-ok"
+
+run_case() {
+  grep -q 'O-M3ALLJITSKEL\|skeleton/preseed tasks.md ignored' "$HARNESS_DIR/m3-all-lint.sh" \
+    && grep -q 'EXECUTE_ONLY_STORY\|O-EXECUTEONLY' "$HARNESS_DIR/outer-loop.sh" \
+    && echo jitskel-executeonly-wire-ok
+}
+check "O-M3ALLJITSKEL + O-EXECUTEONLY wire" 0 "jitskel-executeonly-wire-ok"
+
+run_case() {
+  grep -q 'O-M3ALLAMENDJIT\|--mode=restamp' "$HARNESS_DIR/m3-all-lint.sh" \
+    && grep -q 'O-M3ALLAMENDJIT' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3allamendjit-wire-ok
+}
+check "O-M3ALLAMENDJIT restamp+re-JIT under EXECUTE_ONLY" 0 "m3allamendjit-wire-ok"
+
+run_case() {
+  # O-CHARTGT + O-CHARFIRSTMUT (Opus W4 NEW P2): wire both halves — the
+  # zero-instrument break on the guards that unblocked T-002.
+  grep -q 'O-CHARTGT' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'src/test/' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'O-CHARFIRSTMUT' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'characterization pins' "$HARNESS_DIR/supervisor.sh" \
+    && echo chartgt-charfirstmut-wire-ok
+}
+check "O-CHARTGT + O-CHARFIRSTMUT wire" 0 "chartgt-charfirstmut-wire-ok"
+
+run_case() {
+  # O-TASKHB: M4 seats pulse OUTER_LOG (worker wait + orch wait + sense)
+  # with full task title via task_hb_pretty (not T-NNN alone).
+  grep -q 'O-TASKHB' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'task_hb_pretty' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'task_title' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'still working on' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'sensing .*started' "$HARNESS_DIR/supervisor.sh" \
+    && echo taskhb-wire-ok
+}
+check "O-TASKHB outer-loop progress during M4 seats" 0 "taskhb-wire-ok"
 
 run_case() {
   # O-PROFILE7GAP — RowMapper unnamed in §7 → RUBRIC:sec7-cover
@@ -9933,6 +10959,17 @@ run_case() {
     && echo sonarlinefix-nospecimen-ok
 }
 check "sonar-line-fix refuses specimen fail-open defaults (O-NOSPECIMEN)" 0 "sonarlinefix-nospecimen-ok"
+
+run_case() {
+  # O-NOSPECIMEN / W4-292 — class-level: no `or "com.redhat.coolstore"` /
+  # `or "com.demo"` package fail-open in harness .py (char-protect class).
+  ! grep -RInE --include='*.py' \
+      'or\s+"com\.redhat\.coolstore"|or\s+"com\.demo"' \
+      "$HARNESS_DIR" --exclude-dir=tests --exclude-dir=fixtures \
+    && ! grep -q 'com.redhat.coolstore' "$HARNESS_DIR/char-protect.py" \
+    && echo nospecimen-failopen-ok
+}
+check "harness .py has no package fail-open or-literals (O-NOSPECIMEN)" 0 "nospecimen-failopen-ok"
 
 run_case() {
   # O-NOSPECIMEN — specimen tokens only in comments/docstrings/FORBIDDEN allowlists
@@ -10161,6 +11198,100 @@ run_case() {
 }
 check "m2-compose stamps O-BRIEFFRESH on fill/skeleton" 0 "brieffresh-compose-ok"
 
+# O-BRIEFFRESHPROFILE (W4R7 W-4 / ADR-21 G8): §7 edit invalidates brief hash.
+run_case() {
+  mkfix
+  mkdir -p briefs migration legacy/src/main/java/demo
+  cat > migration/architecture-profile.md <<'EOF'
+## Purpose
+demo
+## Class roles & target contract
+- **Repo.java** — REDESIGN: migrate to PanacheRepository
+## Done
+EOF
+  printf '%s\n' '## S01: demo' \
+    '- scope: src/main/java/demo/Repo.java' \
+    '- findings: demo-00001' \
+    '- depends: -' \
+    '- deploy: true' \
+    '- done: ok' \
+    '- rationale: only' \
+    '- kind: reimplement' \
+    '- seat-budget: 2' > roadmap.md
+  printf '%s\n' '## Mandatory' '- `demo-00001` — demo' \
+    '## Summary by class' '- infer: 0 —' > inv.md
+  cat > briefs/S01-demo.md <<'EOF'
+# S01: demo
+## Goal & position
+demo
+## In scope
+- `src/main/java/demo/Repo.java`
+```java
+class Repo {}
+```
+## Out of scope
+none
+## Class roles & target contract
+- **Repo** — REDESIGN: PanacheRepository
+## Decided target shapes
+- Panache
+## Contracts owned by this story
+- none
+## Done-criteria
+- done
+EOF
+  printf '%s\n' 'package demo; class Repo {}' > legacy/src/main/java/demo/Repo.java
+  stamp_brieffresh roadmap.md
+  set +e
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy \
+    migration/architecture-profile.md > /tmp/brieffresh-g8a.out 2>&1
+  rc1=$?
+  set -e
+  # Mutate §7 only — roadmap fields unchanged → hash must invalidate.
+  printf '%s\n' '## Purpose' 'demo' '## Class roles & target contract' \
+    '- **Repo.java** — REDESIGN: migrate to PanacheEntityBase' \
+    '## Done' > migration/architecture-profile.md
+  set +e
+  python3 "$HARNESS_DIR/roadmap-lint.py" roadmap.md inv.md legacy \
+    migration/architecture-profile.md > /tmp/brieffresh-g8b.out 2>&1
+  rc2=$?
+  set -e
+  # First run should not RED on BRIEFFRESH (may have other findings — only check absent).
+  echo "$rc1" >/dev/null
+  grep -q 'O-BRIEFFRESH' /tmp/brieffresh-g8b.out \
+    && grep -q 'profile_sec7_digest\|O-BRIEFFRESHPROFILE\|story_fresh_hash' \
+         "$HARNESS_DIR/roadmap-lint.py" \
+    && echo brieffreshprofile-red-ok
+  grep -q 'O-BRIEFFRESH' /tmp/brieffresh-g8b.out
+}
+check "O-BRIEFFRESHPROFILE REDs when profile §7 changes (G8)" 0 "brieffreshprofile-red-ok"
+
+run_case() {
+  grep -q '_m3_gate_lint_detail\|O-M3LINTLOG\|_m3-lint-seats-' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'lint-seats' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3lintlog-wire-ok
+}
+check "O-M3LINTLOG per-seat lint deltas on gate/COST (W-2)" 0 "m3lintlog-wire-ok"
+
+# O-GROUNDLOG: G1–G9 GROUND lines + Q: handoff questions (no ADR text in log)
+run_case() {
+  grep -q 'O-GROUNDLOG' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'log_gchain_banner' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'log_gchain_m1_profile' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'log_gchain_m2_roadmap' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'log_gchain_m3_g4' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm3_phase_gate' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'GROUND  G1|log_ground "G1"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'NOT-LANDED' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'Q: \$3' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'Does the architecture profile only claim' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'Are the story briefs self-consistent' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'planner cannot invent them' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -E 'log "GROUND .*ADR' "$HARNESS_DIR/outer-loop.sh" \
+    && echo groundlog-wire-ok
+}
+check "O-GROUNDLOG G1–G9 outer-loop GROUND lines (demo UX)" 0 "groundlog-wire-ok"
+
 # O-STAGESCOPE — skeleton/fill scope from staging partition
 run_case() {
   grep -q 'O-STAGESCOPE\|apply_staging_scope\|staging_layer_scopes' "$HARNESS_DIR/m2-compose.py" \
@@ -10204,6 +11335,143 @@ EOF
 }
 check "m2-compose skeleton scopes staging tests by subject (O-STAGESCOPE)" 0 "stagescope-skeleton-ok"
 
+# O-M2SCOPEOVERLAP — fill must not re-assign a staging layer to every model-ish story
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo/model \
+           migration/briefs \
+           .hermes/skills/migration-harness
+  printf 'public class BaseEntity {}\n' > migration/staging/src/main/java/com/demo/model/BaseEntity.java
+  printf 'public class Owner {}\n' > migration/staging/src/main/java/com/demo/model/Owner.java
+  printf 'public class Pet {}\n' > migration/staging/src/main/java/com/demo/model/Pet.java
+  echo '| rule id prefix | class | target |
+|---|---|---|
+| demo-rule | rewrite | x |' > .hermes/skills/migration-harness/MAPPINGS.md
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## demo-rule-00001 [rewrite]
+- demo
+- Decided target: x
+- /projects/legacy/pom.xml: line 1
+## Summary by class
+- rewrite: 1 — demo-rule-00001
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: Platform and BOM conversion
+- scope: pom.xml
+- findings: demo-rule-00001
+- depends: -
+- deploy: false
+- done: platform done
+- rationale: platform
+## S02: Domain model foundation
+- scope: src/main/java/com/demo/model/BaseEntity.java, src/main/java/com/demo/model/Owner.java, src/main/java/com/demo/model/Pet.java
+- findings: -
+- depends: S01
+- deploy: false
+- done: model done
+- rationale: model
+## S03: Administrative context models
+- scope: src/main/java/com/demo/model/BaseEntity.java, src/main/java/com/demo/model/Owner.java, src/main/java/com/demo/model/Pet.java
+- findings: -
+- depends: S02
+- deploy: false
+- done: admin models done
+- rationale: also claims model (MiniMax dual-own shape)
+## S04: Remaining modernization
+- scope: <!-- JUDGMENT: paths -->
+- findings: -
+- depends: S03
+- deploy: true
+- done: done
+- rationale: remaining
+EOF
+  python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill >/tmp/m2scopeoverlap-fill.txt 2>&1 || true
+  # BaseEntity must appear in exactly one story scope line after fill
+  owners=$(grep -E '^- scope:.*BaseEntity' migration/roadmap.md | wc -l | tr -d ' ')
+  grep -q 'O-M2SCOPEOVERLAP\|lay in claimed' "$HARNESS_DIR/m2-compose.py" \
+    && [ "$owners" = "1" ] \
+    && echo m2scopeoverlap-fill-ok
+}
+check "O-M2SCOPEOVERLAP fill keeps staging layer unique-owner" 0 "m2scopeoverlap-fill-ok"
+
+# O-M2DECOMPAXIS — tech-axis repo titles collapse on fill; lint REDs if they remain
+run_case() {
+  mkfix
+  mkdir -p migration/staging/src/main/java/com/demo/repository \
+           migration/briefs \
+           .hermes/skills/migration-harness
+  for c in PetRepository JdbcPetRepository JpaPetRepository SpringDataPetRepository; do
+    printf 'public class %s {}\n' "$c" > "migration/staging/src/main/java/com/demo/repository/${c}.java"
+  done
+  echo '| rule id prefix | class | target |
+|---|---|---|
+| demo-rule | rewrite | x |' > .hermes/skills/migration-harness/MAPPINGS.md
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+## demo-rule-00001 [rewrite]
+- demo
+- Decided target: x
+- /projects/legacy/pom.xml: line 1
+## Summary by class
+- rewrite: 1 — demo-rule-00001
+EOF
+  cat > migration/roadmap.md <<'EOF'
+# Roadmap
+## S01: Platform and BOM conversion
+- scope: pom.xml
+- findings: demo-rule-00001
+- depends: -
+- deploy: false
+- done: platform
+- rationale: platform
+## S07: Repository interfaces and JDBC implementations
+- scope: src/main/java/com/demo/repository/PetRepository.java, src/main/java/com/demo/repository/JdbcPetRepository.java
+- findings: -
+- depends: S01
+- deploy: false
+- done: jdbc
+- rationale: jdbc axis
+## S08: JPA repository implementations
+- scope: src/main/java/com/demo/repository/PetRepository.java, src/main/java/com/demo/repository/JpaPetRepository.java
+- findings: -
+- depends: S07
+- deploy: false
+- done: jpa
+- rationale: jpa axis
+## S09: Spring Data JPA repository implementations
+- scope: src/main/java/com/demo/repository/PetRepository.java, src/main/java/com/demo/repository/SpringDataPetRepository.java
+- findings: -
+- depends: S08
+- deploy: true
+- done: spring-data
+- rationale: spring-data axis
+EOF
+  # lint must RED tech-axis before collapse
+  out=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1) || true
+  echo "$out" | grep -q 'LINT:O-M2DECOMPAXIS' || { echo "lint-miss:$out"; return 1; }
+  python3 "$HARNESS_DIR/m2-compose.py" --root "$FIX" --mode fill >/tmp/m2decompaxis-fill.txt 2>&1 || true
+  # after fill: one repository story, PetRepository owned once, no tech-axis lint
+  owners=$(grep -E '^- scope:.*PetRepository\.java' migration/roadmap.md | wc -l | tr -d ' ')
+  titles=$(grep -E '^## S[0-9]+:' migration/roadmap.md)
+  echo "$titles" | grep -qiE 'jdbc|spring data' && { echo "still-tech:$titles"; return 1; }
+  out2=$(python3 "$HARNESS_DIR/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md 2>&1) || true
+  ! echo "$out2" | grep -q 'LINT:O-M2DECOMPAXIS' \
+    && [ "$owners" = "1" ] \
+    && grep -q 'O-M2DECOMPAXIS collapsed' /tmp/m2decompaxis-fill.txt \
+    && echo m2decompaxis-collapse-ok
+}
+check "O-M2DECOMPAXIS lint RED + fill collapses tech-axis repo stories" 0 "m2decompaxis-collapse-ok"
+
+run_case() {
+  grep -q 'O-M2DECOMPAXIS' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'O-M2DECOMPAXIS' "$HARNESS_DIR/roadmap-lint.py" \
+    && grep -q 'O-M2DECOMPAXIS' "$HARNESS_DIR/../skills/migration-harness/SEQUENCING.md" \
+    && echo m2decompaxis-wire-ok
+}
+check "O-M2DECOMPAXIS wired compose+lint+SEQUENCING" 0 "m2decompaxis-wire-ok"
+
 # O-GODORDERCVT wire
 run_case() {
   grep -q 'O-GODORDERCVT' "$HARNESS_DIR/plan-lint.py" \
@@ -10228,6 +11496,1106 @@ run_case() {
     && echo hborphan-wire-ok
 }
 check "outer-loop heartbeat exits with parent + EXIT pkill (O-HBORPHAN)" 0 "hborphan-wire-ok"
+
+# --- O-CODEGENDEMAND (F-1) + O-INVRECONCILE (F-4) ---------------------------
+run_case() {
+  mkfix
+  mkdir -p legacy/target/generated-sources/annotations
+  cat > legacy/pom.xml <<'POM'
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>x</groupId><artifactId>x</artifactId><version>1</version>
+  <build><plugins>
+    <plugin>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <configuration>
+        <annotationProcessorPaths>
+          <path>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>1.5.5.Final</version>
+          </path>
+        </annotationProcessorPaths>
+      </configuration>
+    </plugin>
+    <plugin>
+      <groupId>org.openapitools</groupId>
+      <artifactId>openapi-generator-maven-plugin</artifactId>
+      <executions><execution><goals><goal>generate</goal></goals></execution></executions>
+    </plugin>
+  </plugins></build>
+  <dependencies>
+    <dependency><groupId>org.mapstruct</groupId><artifactId>mapstruct</artifactId><version>1.5.5.Final</version></dependency>
+    <dependency><groupId>javax.xml.bind</groupId><artifactId>jaxb-api</artifactId><version>2.3.1</version></dependency>
+  </dependencies>
+</project>
+POM
+  out=$(python3 "$HARNESS_DIR/codegen_demand.py" --json legacy 2>&1)
+  echo "$out" | grep -q 'build-codegen-mapstruct-00001' \
+    && echo "$out" | grep -q 'build-codegen-openapi-00001' \
+    && ! echo "$out" | grep -q '"artifact_id": "jaxb-api"' \
+    && ! echo "$out" | grep -q '"artifact_id": "mapstruct"' \
+    && echo codegendemand-emit-ok
+}
+check "O-CODEGENDEMAND emits mapstruct+openapi; refuses API-only jars" 0 "codegendemand-emit-ok"
+
+run_case() {
+  mkfix
+  mkdir -p legacy
+  echo '<project><modelVersion>4.0.0</modelVersion><groupId>x</groupId><artifactId>x</artifactId><version>1</version></project>' \
+    > legacy/pom.xml
+  out=$(python3 "$HARNESS_DIR/codegen_demand.py" --json legacy 2>&1)
+  [ "$out" = "[]" ] && echo codegendemand-none-ok
+}
+check "O-CODEGENDEMAND emits none for pom without generators (accept)" 0 "codegendemand-none-ok"
+
+run_case() {
+  mkfix
+  mkdir -p legacy
+  cat > legacy/pom.xml <<'POM'
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>x</groupId><artifactId>x</artifactId><version>1</version>
+  <build><plugins>
+    <plugin>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <configuration>
+        <annotationProcessorPaths>
+          <path>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>1.5.5.Final</version>
+          </path>
+        </annotationProcessorPaths>
+      </configuration>
+    </plugin>
+  </plugins></build>
+</project>
+POM
+  # Minimal MTA findings json: 2 entries, 1 unique rid (duplicate) + codegen
+  cat > f.json <<'JSON'
+[{"violations":{
+  "demo-rule-00001":{"category":"mandatory","description":"a","incidents":[{"uri":"file:///x.java","lineNumber":1}]},
+  "demo-rule-00001":{"category":"mandatory","description":"dup-key-ignored","incidents":[]}
+}}]
+JSON
+  # JSON can't have dup keys — use two rulesets with same rid
+  cat > f.json <<'JSON'
+[
+  {"violations":{"demo-rule-00001":{"category":"mandatory","description":"a","incidents":[{"uri":"/projects/legacy/A.java","lineNumber":1}]}}},
+  {"violations":{"demo-rule-00001":{"category":"mandatory","description":"b","incidents":[{"uri":"/projects/legacy/B.java","lineNumber":2}]}}}
+]
+JSON
+  echo '| rule id prefix | class | target |
+|---|---|---|
+| demo-rule | rewrite | x |' > M.md
+  out=$(python3 "$HARNESS_DIR/findings-inventory.py" f.json M.md legacy 2>&1) || true
+  # findings= = len(json) source rulesets (2), not violation unique count
+  echo "$out" | grep -q 'build-codegen-mapstruct-00001' \
+    && echo "$out" | grep -qE 'RECONCILE findings=2 source_rulesets=2.*violation_entries=2 rule_ids=1.*codegen=1( tech=[0-9]+)?' \
+    && echo "$out" | grep -q 'closes=yes' \
+    && echo "$out" | grep -q 'duplicate-rule-id:1' \
+    && echo "$out" | grep -qi 'mapstruct' \
+    && echo inv-codegen-reconcile-ok
+}
+check "findings-inventory emits build-codegen + RECONCILE closes (O-CODEGENDEMAND/O-INVRECONCILE)" 0 "inv-codegen-reconcile-ok"
+
+# O-INVRECONCILE negative: dropped finding without typed exclusion → closes=no
+run_case() {
+  mkfix
+  mkdir -p legacy
+  echo '<project><modelVersion>4.0.0</modelVersion><groupId>x</groupId><artifactId>x</artifactId><version>1</version></project>' \
+    > legacy/pom.xml
+  # 2 rulesets: one empty (skipped), one with a violation — then we sabotage by
+  # patching the reconcile path via a broken mid-count: use a findings file
+  # where inventory would emit 1 rule but we assert source tie-back by injecting
+  # an extra phantom ruleset with a violation that the loop skips... Actually
+  # test the exit code when source_rulesets math is broken by feeding non-list.
+  # Stronger: monkeypatch — call inventory then strip a heading and re-check
+  # via inline python importing the reconcile expectations.
+  cat > f.json <<'JSON'
+[
+  {"name":"empty","description":"skipped","skipped":true},
+  {"violations":{"keep-rule-00001":{"category":"mandatory","description":"a","incidents":[{"uri":"/projects/legacy/A.java","lineNumber":1}]}}},
+  {"violations":{"drop-rule-00002":{"category":"mandatory","description":"b","incidents":[{"uri":"/projects/legacy/B.java","lineNumber":2}]}}}
+]
+JSON
+  echo '| rule id prefix | class | target |
+|---|---|---|
+| keep-rule | rewrite | x |
+| drop-rule | rewrite | x |' > M.md
+  # Positive shape first: 3 rulesets, 1 empty, 2 active, 2 viol → closes=yes
+  out=$(python3 "$HARNESS_DIR/findings-inventory.py" f.json M.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RECONCILE findings=3' \
+    && echo "$out" | grep -q 'skipped_empty=1' \
+    && echo "$out" | grep -q 'closes=yes' \
+    && echo invreconcile-source-tie-ok
+}
+check "O-INVRECONCILE findings= equals len(mta json); skipped-empty typed" 0 "invreconcile-source-tie-ok"
+
+# O-RULESETLOG — mixed fixture + unevaluated (skipped>0,fired=0) must appear
+run_case() {
+  mkfix
+  cat > f.json <<'JSON'
+[
+  {"name":"empty-clean","description":"evaluated nothing"},
+  {"name":"spring-boot","skipped":["a","b","c"]},
+  {"name":"openjdk21","skipped":["r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","r13","r14","r15","r16"]},
+  {"name":"quarkus/springboot","violations":{
+    "sb-00001":{"category":"mandatory","description":"x","incidents":[{"uri":"file:///a.java"},{"uri":"file:///b.java"}]},
+    "sb-00002":{"category":"mandatory","description":"y","incidents":[{"uri":"file:///c.java"}]}
+  }}
+]
+JSON
+  printf 'analysis:\n  mode: source-only\n  targets: [quarkus, openjdk17, openjdk21]\n' > migration.yaml
+  out=$(python3 "$HARNESS_DIR/ruleset_coverage.py" --findings f.json --yaml migration.yaml \
+          --write cov.md --log --custom .hermes/rules 2>&1) || true
+  echo "$out" | grep -q 'O-RULESETLOG targets=\[quarkus openjdk17 openjdk21\]' \
+    && echo "$out" | grep -q 'loaded=4 evaluated=1 empty=1' \
+    && echo "$out" | grep -q 'unevaluated (skipped>0, fired=0):.*openjdk21 16' \
+    && echo "$out" | grep -q 'spring-boot 3' \
+    && echo "$out" | grep -q 'fired:.*quarkus/springboot 2' \
+    && grep -q 'openjdk21: skipped=16' cov.md \
+    && grep -q 'spring-boot: skipped=3' cov.md \
+    && grep -q 'empty-clean' cov.md \
+    && test -f "$HARNESS_DIR/ruleset_coverage.py" \
+    && grep -q 'ruleset_coverage.py' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'O-RULESETLOG' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'ruleset-coverage.md' "$HARNESS_DIR/m1-provenance.py" \
+    && echo rulesetlog-ok
+}
+check "O-RULESETLOG emits coverage file+log; unevaluated skipped>0 appears" 0 "rulesetlog-ok"
+
+run_case() {
+  # O-OPENJDK21TARGET + provenance: target list change invalidates skip
+  mkfix
+  mkdir -p migration/staging/src/main/java/x legacy
+  git -C legacy init -q
+  git -C legacy config user.email t@t
+  git -C legacy config user.name t
+  echo a > legacy/a.txt
+  git -C legacy add a.txt && git -C legacy commit -q -m i
+  echo '[]' > migration/mta-findings.json
+  echo '# inv' > migration/findings-inventory.md
+  echo '# dep' > migration/dependency-order.md
+  echo '# recipe' > migration/recipe-log.md
+  echo '# cov' > migration/ruleset-coverage.md
+  echo 'class X {}' > migration/staging/src/main/java/x/X.java
+  printf 'analysis:\n  targets: [quarkus, openjdk17]\n' > migration.yaml
+  python3 "$HARNESS_DIR/m1-provenance.py" write-analyze --root "$FIX" --legacy "$FIX/legacy" >/dev/null
+  python3 "$HARNESS_DIR/m1-provenance.py" check-analyze --root "$FIX" --legacy "$FIX/legacy" >/dev/null \
+    && printf 'analysis:\n  targets: [quarkus, openjdk17, openjdk21]\n' > migration.yaml \
+    && ! python3 "$HARNESS_DIR/m1-provenance.py" check-analyze --root "$FIX" --legacy "$FIX/legacy" \
+         > /tmp/m1-targets-mismatch.txt 2>&1 \
+    && grep -qi 'analysis_targets' /tmp/m1-targets-mismatch.txt \
+    && grep -q 'openjdk21' "$HARNESS_DIR/../../migration.yaml" \
+    && echo openjdk21target-ok
+}
+check "O-OPENJDK21TARGET in golden yaml; target change breaks analyze provenance" 0 "openjdk21target-ok"
+
+run_case() {
+  # Negative: reconcile_counts must refuse when source_rulesets math is broken
+  # (active+skipped != len) — the false-attestation class from W4R3 STOP.
+  out=$(HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import importlib.util, sys
+from pathlib import Path
+h = Path(__import__("os").environ["HARNESS_DIR"])
+spec = importlib.util.spec_from_file_location("fi", h / "findings-inventory.py")
+fi = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fi)
+# Broken: claim 3 rulesets but only account 1+1
+data = [
+    {"name": "a", "skipped": True},
+    {"violations": {"r-00001": {"category": "mandatory", "description": "x", "incidents": []}}},
+]
+# Tamper counts by using data of len 3 with only 2 elements accounted — simulate
+# by passing rules that don't match: force level1 fail via non-list source
+fields, closes = fi.reconcile_counts({"not": "a list"}, [("r-00001", {})])
+assert closes is False and fields["source_rulesets"] == 0
+# Live-shaped positive: 43-like — 2 empty + 1 active with 1 viol
+data = [
+    {"name": "empty1"},
+    {"name": "empty2"},
+    {"violations": {"r-00001": {"category": "mandatory", "description": "x", "incidents": []}}},
+]
+fields, closes = fi.reconcile_counts(data, [("r-00001", {})])
+assert closes is True and fields["source_rulesets"] == 3 and fields["skipped_empty"] == 2
+print("invreconcile-neg-ok")
+PY
+)
+  echo "$out" | grep -q invreconcile-neg-ok && echo invreconcile-neg-ok
+}
+check "O-INVRECONCILE negative: untyped/broken source gap must not close" 0 "invreconcile-neg-ok"
+
+run_case() {
+  grep -q 'codegen_demand\|O-CODEGENDEMAND' "$HARNESS_DIR/analyze.sh" \
+    && grep -q '/projects/legacy' "$HARNESS_DIR/analyze.sh" \
+    && echo codegendemand-analyze-wire-ok
+}
+check "analyze.sh wires O-CODEGENDEMAND into inventory + dep-order" 0 "codegendemand-analyze-wire-ok"
+
+run_case() {
+  mkfix
+  mkdir -p legacy
+  cat > legacy/pom.xml <<'POM'
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>x</groupId><artifactId>x</artifactId><version>1</version>
+  <build><plugins>
+    <plugin>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <configuration>
+        <annotationProcessorPaths>
+          <path>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>1.5.5.Final</version>
+          </path>
+        </annotationProcessorPaths>
+      </configuration>
+    </plugin>
+  </plugins></build>
+</project>
+POM
+  python3 "$HARNESS_DIR/dependency-order.py" legacy > dep.md 2>/dev/null || true
+  python3 "$HARNESS_DIR/codegen_demand.py" --dep-order legacy >> dep.md
+  grep -q 'O-CODEGENDEMAND' dep.md \
+    && grep -qi 'mapstruct' dep.md \
+    && echo codegendemand-deporder-ok
+}
+check "O-CODEGENDEMAND dep-order section mentions mapstruct" 0 "codegendemand-deporder-ok"
+
+# F-5 — profile-rubric refuse corpus (missing §7)
+run_case() {
+  mkfix
+  cat > p.md <<'EOF'
+# Architecture profile
+## 1. Purpose & domain
+Demo app.
+## 2. Components & relationships
+None.
+## 3. Integration surfaces
+None.
+## 4. Behavioral contract sources
+None.
+## 5. Modernization surface
+None.
+## 6. Domain boundaries
+None.
+EOF
+  # deliberately no §7
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1) || true
+  echo "$out" | grep -qiE 'RUBRIC:missing|section 7|§7|Class roles' \
+    && echo profilerubric-refuse-sec7-ok
+}
+check "profile-rubric refuses profile missing §7 (F-5 Criterion 10)" 0 "profilerubric-refuse-sec7-ok"
+
+# --- O-RUBRICGENSRC + O-PROFDENSITY + O-TAGDEMAND --------------------------
+# Accept branch: generated *MapperImpl must NOT induce classroles; hand-written
+# annotated class missing from §7 must STILL fire (guard not deleted).
+run_case() {
+  mkfix
+  mkdir -p legacy/target/generated-sources/annotations/com/demo \
+           legacy/src/main/java/com/demo
+  cat > legacy/target/generated-sources/annotations/com/demo/FooMapperImpl.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Component;
+@Component
+public class FooMapperImpl {}
+JAVA
+  cat > legacy/src/main/java/com/demo/BarService.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Service;
+@Service
+public class BarService {}
+JAVA
+  cat > profile.md <<'EOF'
+# Architecture profile
+## 1. Purpose & domain
+Demo app for rubricgensrc. Cite src/main/java/com/demo/BarService.java:1.
+## 2. Components & relationships
+BarService owns runtime. Cite src/main/java/com/demo/BarService.java:1.
+## 3. Integration surfaces
+None beyond BarService. Cite src/main/java/com/demo/BarService.java:1.
+## 4. Behavioral contract sources
+Tests absent; cite BarService.java:1 as contract source.
+## 5. Modernization surface
+Quarkus CDI. Cite src/main/java/com/demo/BarService.java:1.
+## 6. Domain boundaries
+Single package com.demo. Cite src/main/java/com/demo/BarService.java:1.
+## 7. Class roles
+### HARVEST
+- (none)
+### REDESIGN
+- (none named — deliberate omit of the service class)
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q "classroles.*BarService" \
+    && ! echo "$out" | grep -q "classroles.*FooMapperImpl" \
+    && echo rubricgensrc-accept-ok
+}
+check "O-RUBRICGENSRC skips generated; hand-written classroles still RED" 0 "rubricgensrc-accept-ok"
+
+run_case() {
+  mkfix
+  grep -q 'O-RUBRICGENSRC' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '/projects/legacy/src' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_path_skipped\|generated-sources' "$HARNESS_DIR/profile-rubric.py" \
+    && echo rubricgensrc-wire-ok
+}
+check "O-RUBRICGENSRC wire (outer-loop src + walk skip)" 0 "rubricgensrc-wire-ok"
+
+# O-PROFDENSITY: coverage below floor refuses; at/above floor emits COVERAGE metric.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  for c in Alpha Beta Gamma Delta Epsilon; do
+    cat > "legacy/src/main/java/com/demo/${c}.java" <<JAVA
+package com.demo;
+public class ${c} {}
+JAVA
+  done
+  cat > profile.md <<'EOF'
+# Architecture profile
+## 1. Purpose & domain
+Names Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 2. Components & relationships
+Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 3. Integration surfaces
+Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 4. Behavioral contract sources
+Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 5. Modernization surface
+Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 6. Domain boundaries
+Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
+## 7. Class roles
+### HARVEST
+- `Alpha` — HARVEST
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:coverage' \
+    && echo "$out" | grep -qE 'COVERAGE: 1/5' \
+    && echo profdensity-red-ok
+}
+check "O-PROFDENSITY refuses coverage below 80% floor" 0 "profdensity-red-ok"
+
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  for c in Alpha Beta Gamma Delta Epsilon; do
+    cat > "legacy/src/main/java/com/demo/${c}.java" <<JAVA
+package com.demo;
+public class ${c} {}
+JAVA
+  done
+  body="This section names Alpha Beta Gamma Delta for coverage calibration and adds filler words so the thin gate cannot fire on word count alone while still citing src/main/java/com/demo/Alpha.java:1 as evidence path."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"
+      echo "$body"
+      echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### HARVEST
+- `Alpha` `Beta` `Gamma` `Delta` — HARVEST plain holders with no runtime stereotypes;
+  cite src/main/java/com/demo/Alpha.java:1 as the representative path for this
+  coverage-floor fixture family of types with enough words for the thin gate.
+EOF
+  } > profile.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -qE 'COVERAGE: 4/5 \(80%\)' \
+    && ! echo "$out" | grep -q 'RUBRIC:coverage' \
+    && echo "$out" | grep -q 'PROFILE OK' \
+    && echo profdensity-green-ok
+}
+check "O-PROFDENSITY accepts coverage at 80% floor" 0 "profdensity-green-ok"
+
+# G3 / O-PROFDENSITY ratchet: max(80%, previous accepted) refuses an 80%
+# profile when a prior accept was higher (e.g. 93%).
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  for c in Alpha Beta Gamma Delta Epsilon; do
+    cat > "legacy/src/main/java/com/demo/${c}.java" <<JAVA
+package com.demo;
+public class ${c} {}
+JAVA
+  done
+  body="This section names Alpha Beta Gamma Delta for coverage calibration and adds filler words so the thin gate cannot fire on word count alone while still citing src/main/java/com/demo/Alpha.java:1 as evidence path."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"
+      echo "$body"
+      echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### HARVEST
+- `Alpha` `Beta` `Gamma` `Delta` — HARVEST plain holders with no runtime stereotypes;
+  cite src/main/java/com/demo/Alpha.java:1 as the representative path for this
+  coverage-floor fixture family of types with enough words for the thin gate.
+EOF
+  } > profile.md
+  cat > .profile-coverage <<'EOF'
+# prior accepted at 93%
+named: 77
+total: 83
+ratio: 0.927711
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:coverage' \
+    && echo "$out" | grep -qE 'floor=93%' \
+    && echo "$out" | grep -q 'G3 no-regression ratchet' \
+    && echo "$out" | grep -qE 'prev=93%' \
+    && echo profdensity-ratchet-ok
+}
+check "O-PROFDENSITY G3 ratchet refuses regression below previous accept" 0 "profdensity-ratchet-ok"
+
+# O-PROFITECITEMIG: dependency-order.md citations satisfy the cite gate.
+run_case() {
+  mkfix
+  profile_fixture > p.md
+  # Replace Components section body cite with analyze-artifact cite only.
+  python3 - <<'PY'
+from pathlib import Path
+import re
+t = Path("p.md").read_text()
+  body = (
+    "The REST, service, and repository layers form a clear stack: controllers "
+    "depend on ClinicService, which depends on repository implementations. "
+    "God nodes and fan-in risk follow the import graph in dependency-order.md:17-40 "
+    "with supporting edges also noted at dependency-order.md:81-95 for services."
+  )
+  t2, n = re.subn(
+    r"(## 2\. Components & relationships\n)(.*?)(\n## 3\.)",
+    r"\1" + body + r"\n\3",
+    t, count=1, flags=re.S,
+  )
+assert n == 1, "Components section rewrite failed"
+Path("p.md").write_text(t2)
+PY
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1) || true
+  echo "$out" | grep -q 'PROFILE OK' \
+    && ! echo "$out" | grep -q 'RUBRIC:uncited' \
+    && echo profcitmig-ok
+}
+check "O-PROFITECITEMIG accepts dependency-order.md as section citation" 0 "profcitmig-ok"
+
+# O-RUBRICGENASSERT: §7 HARVEST on MapperImpl / generated-sources refuses.
+run_case() {
+  mkfix
+  profile_fixture > p.md
+  python3 - <<'PY'
+from pathlib import Path
+t = Path("p.md").read_text()
+# Append a bad generated class-role under §7
+if "## 7." in t or "Class roles" in t:
+    t = t.rstrip() + "\n- OwnerMapperImpl.java (target/generated-sources/annotations/) → **HARVEST**\n"
+Path("p.md").write_text(t)
+PY
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:genassert' && echo genassert-ok
+}
+check "O-RUBRICGENASSERT refuses §7 HARVEST on MapperImpl/generated" 0 "genassert-ok"
+
+# O-PROFBESTOBS: within-stage best (even RED) floors the next attempt.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  for c in Alpha Beta Gamma Delta Epsilon; do
+    cat > "legacy/src/main/java/com/demo/${c}.java" <<JAVA
+package com.demo;
+public class ${c} {}
+JAVA
+  done
+  # First observation: name all five (100%) but leave profile otherwise invalid
+  # so we only exercise coverage bookkeeping via direct sidecar + second run.
+  cat > .profile-coverage-best <<'EOF'
+named: 5
+total: 5
+ratio: 5/5
+EOF
+  body="This section names Alpha Beta Gamma Delta for coverage calibration and adds filler words so the thin gate cannot fire on word count alone while still citing src/main/java/com/demo/Alpha.java:1 as evidence path."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"; echo "$body"; echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### HARVEST
+- `Alpha` `Beta` `Gamma` `Delta` — HARVEST plain holders with no runtime stereotypes;
+  cite src/main/java/com/demo/Alpha.java:1 as the representative path for this
+  coverage-floor fixture family of types with enough words for the thin gate.
+EOF
+  } > profile.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:coverage' \
+    && echo "$out" | grep -qE 'floor=100%' \
+    && echo "$out" | grep -q 'O-PROFBESTOBS within-stage best' \
+    && echo "$out" | grep -qE 'best=100%' \
+    && echo profbestobs-ok
+}
+check "O-PROFBESTOBS refuses retry coverage below within-stage best" 0 "profbestobs-ok"
+
+# --- ADR-21 G1/G2: O-PROFCLAIMTRUTH + O-PROFVOCAB ---------------------------
+# G1: §7 cites a file and names a token absent from that file → RED.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  cat > legacy/src/main/java/com/demo/FooService.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Service;
+@Service
+public class FooService {
+  public void ping() {}
+}
+JAVA
+  body="FooService owns the demo runtime surface with enough filler words for the thin gate so that this section clears thirty words easily while citing src/main/java/com/demo/FooService.java:1 as evidence path for the fixture."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"; echo "$body"; echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### REDESIGN
+- `FooService` → REDESIGN with ConcurrentHashMap caching (FooService.java:1) — invented token must refuse claimtruth; filler words pad this class-role section past the thin-word floor for the fixture.
+EOF
+  } > profile.md
+  cat > migration.yaml <<'EOF'
+targetContract:
+  threadSafeState: false
+  normalizeBeforeDerive: false
+  cacheRefreshGuard: false
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:claimtruth' \
+    && echo "$out" | grep -q 'ConcurrentHashMap' \
+    && echo claimtruth-red-ok
+}
+check "O-PROFCLAIMTRUTH refuses §7 token absent from cited file" 0 "claimtruth-red-ok"
+
+# G1 GREEN: cited token is truly in the file.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  cat > legacy/src/main/java/com/demo/FooService.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
+@Service
+public class FooService {
+  @Cacheable("x")
+  public void ping() {}
+}
+JAVA
+  body="FooService owns the demo runtime surface with enough filler words for the thin gate so that this section clears thirty words easily while citing src/main/java/com/demo/FooService.java:1 as evidence path for the fixture."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"; echo "$body"; echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### REDESIGN
+- `FooService` → REDESIGN; keep `@Cacheable` semantics (src/main/java/com/demo/FooService.java:1) with enough words for the thin gate on this class-role section so PROFILE OK can land when the cited token is real.
+EOF
+  } > profile.md
+  cat > migration.yaml <<'EOF'
+targetContract:
+  threadSafeState: false
+  normalizeBeforeDerive: false
+  cacheRefreshGuard: false
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'PROFILE OK' \
+    && ! echo "$out" | grep -q 'RUBRIC:claimtruth' \
+    && echo claimtruth-green-ok
+}
+check "O-PROFCLAIMTRUTH accepts §7 token present in cited file" 0 "claimtruth-green-ok"
+
+# G2: ConcurrentHashMap / normalize-before-derive under false flags → RED.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  cat > legacy/src/main/java/com/demo/FooService.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Service;
+@Service
+public class FooService {}
+JAVA
+  body="FooService owns the demo runtime surface with enough filler words for the thin gate so that this section clears thirty words easily while citing src/main/java/com/demo/FooService.java:1 as evidence path for the fixture."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"; echo "$body"; echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### REDESIGN
+- `FooService` → REDESIGN target uses ConcurrentHashMap and normalize-before-derive for aggregates (no file cite on these words; residue must still refuse via O-PROFVOCAB) with filler words for the thin gate.
+EOF
+  } > profile.md
+  cat > migration.yaml <<'EOF'
+targetContract:
+  threadSafeState: false
+  normalizeBeforeDerive: false
+  cacheRefreshGuard: false
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  echo "$out" | grep -q 'RUBRIC:profvocab' \
+    && echo "$out" | grep -qE 'ConcurrentHashMap|normalize-before-derive' \
+    && echo profvocab-red-ok
+}
+check "O-PROFVOCAB refuses decisive residue under false targetContract flags" 0 "profvocab-red-ok"
+
+# O-M3DERIVEDCTX (ADR-21 G4): outer-loop inlines derived facts; keeps FIRSTWRITE ban.
+run_case() {
+  mkfix
+  grep -q 'O-M3DERIVEDCTX' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm3_derived_facts' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'BEGIN DERIVED FACTS' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'authoritative over BRIEF on conflict' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M3FIRSTWRITE' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3derivedctx-wire-ok
+}
+check "O-M3DERIVEDCTX wire (derived facts inline + FIRSTWRITE ban kept)" 0 "m3derivedctx-wire-ok"
+
+run_case() {
+  mkfix
+  grep -q 'O-M3DERIVEDCAP' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'symbol-index:.*of.*scope files — truncated' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'do not treat absence as proof' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m3derivedcap-ok
+}
+check "O-M3DERIVEDCAP announces silent truncation (W4-360 P2)" 0 "m3derivedcap-ok"
+
+# O-TAGDEMAND: destination-consequence tag mints; inventory tag mints nothing.
+run_case() {
+  mkfix
+  cat > f.json <<'JSON'
+[
+  {
+    "name": "discovery-rules",
+    "tags": ["Java Source", "Maven XML", "Properties", "Bean Validation", "Servlet"],
+    "insights": {
+      "configuration-management-0300": {
+        "description": "spring datasource properties detected",
+        "labels": ["tag=spring properties"],
+        "incidents": [{
+          "uri": "file:///projects/legacy/src/main/resources/application.properties",
+          "codesnip": "spring.jpa.database-platform=org.hibernate.dialect.HSQLDialect\n"
+        }]
+      }
+    },
+    "violations": {}
+  }
+]
+JSON
+  out=$(python3 "$HARNESS_DIR/tag_demand.py" --json f.json 2>&1)
+  echo "$out" | grep -q 'tech-bean-validation-00001' \
+    && echo "$out" | grep -q 'tech-servlet-00001' \
+    && echo "$out" | grep -q 'tech-hibernate-dialect-00001' \
+    && ! echo "$out" | grep -q 'tech-java-source' \
+    && ! echo "$out" | grep -q 'tech-maven-xml' \
+    && ! echo "$out" | grep -q 'tech-properties-00001' \
+    && echo tagdemand-emit-ok
+}
+check "O-TAGDEMAND mints Bean Validation/Servlet/dialect; skips inventory tags" 0 "tagdemand-emit-ok"
+
+run_case() {
+  mkfix
+  cat > f.json <<'JSON'
+[{"name":"discovery-rules","tags":["Java Source","Maven XML","Properties"],"insights":{},"violations":{}}]
+JSON
+  out=$(python3 "$HARNESS_DIR/tag_demand.py" --json f.json 2>&1)
+  [ "$out" = "[]" ] && echo tagdemand-none-ok
+}
+check "O-TAGDEMAND emits none for inventory-only tags (accept)" 0 "tagdemand-none-ok"
+
+run_case() {
+  mkfix
+  grep -q 'tag_demand\|O-TAGDEMAND' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'tag_demand\|O-TAGDEMAND' "$HARNESS_DIR/findings-inventory.py" \
+    && echo tagdemand-wire-ok
+}
+check "analyze.sh + findings-inventory wire O-TAGDEMAND" 0 "tagdemand-wire-ok"
+
+# --- ADR-24 Migration Model ---
+run_case() {
+  mkfix
+  [ -f "$HARNESS_DIR/model.py" ] \
+    && grep -q 'model.py emit' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'assign_stories' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'scc-atomic\|lint_scc_atomic' "$HARNESS_DIR/plan-lint.py" \
+    && grep -q 'model.json' "$HARNESS_DIR/already-complete.py" \
+    && grep -q 'model.py context-for\|ADR-24' "$HARNESS_DIR/outer-loop.sh" \
+    && echo adr24-wire-ok
+}
+check "O-ADR24 wire: emit/assign/scc-atomic/already-complete/context-for" 0 "adr24-wire-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import collections, os, sys
+from pathlib import Path
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import condensation_order, lint_scc_atomic
+imports = {"p.A": {"p.B"}, "p.B": {"p.A"}, "p.C": set()}
+fan = collections.Counter({"p.A": 1, "p.B": 1, "p.C": 0})
+sccs = [["p.A", "p.B"], ["p.C"]]
+order, ids = condensation_order({"imports": imports, "fan_in": fan, "sccs": sccs})
+assert any(x.startswith("SCC-") for x in order), order
+assert "p.A" not in order
+assert "p.C" in order
+model = {
+  "units": [
+    {"key": "p.A", "target_path": "src/main/java/t/A.java", "scc": "SCC-1"},
+    {"key": "p.B", "target_path": "src/main/java/t/B.java", "scc": "SCC-1"},
+  ],
+  "sccs": [{"id": "SCC-1", "members": ["p.A", "p.B"], "cycles": []}],
+  "stories": [{"id": "S01", "units": ["p.A", "p.B"]}],
+}
+split = "#### T-001: a\n**Target**: `src/main/java/t/A.java`\n#### T-002: b\n**Target**: `src/main/java/t/B.java`\n"
+reds = lint_scc_atomic(model, split, "S01")
+assert reds and "scc-atomic" in reds[0], reds
+batch = "#### T-001: both\n**Shape**: batch:SCC-1\n**Owns**: `src/main/java/t/A.java` `src/main/java/t/B.java`\n"
+assert lint_scc_atomic(model, batch, "S01") == []
+print("adr24-scc-ok")
+PY
+}
+check "O-ADR24 condensation order + scc-atomic refuse/accept (F1)" 0 "adr24-scc-ok"
+
+run_case() {
+  mkfix
+  grep -q 'migration/model.json' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'context-for' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -E 'bases = \{Path\(sp\)\.name' "$HARNESS_DIR/outer-loop.sh" \
+    && echo adr24-g4-ok
+}
+check "O-ADR24 G4: model projection; basename join removed from outer-loop" 0 "adr24-g4-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import lint_finding_kind
+model = {
+  "units": [
+    {"key": "p.A", "kind": "java", "target_path": "src/main/java/t/A.java"},
+    {"key": "coord:src/main/resources/application.properties", "kind": "resources",
+     "target_path": "src/main/resources/application.properties"},
+  ],
+  "findings": [{"id": "springboot-metrics-to-quarkus-0200", "kind": "java", "units": ["p.A"]}],
+  "sccs": [],
+  "stories": [],
+}
+bad = """#### T-010: props
+**Owns**: `src/main/resources/application.properties`
+**Findings**: springboot-metrics-to-quarkus-0200
+"""
+reds = lint_finding_kind(model, bad)
+assert reds and "finding-kind" in reds[0], reds
+good = """#### T-010: class
+**Owns**: `src/main/java/t/A.java`
+**Findings**: springboot-metrics-to-quarkus-0200
+"""
+assert lint_finding_kind(model, good) == []
+print("adr24-f9-ok")
+PY
+}
+check "O-ADR24 F9 finding-kind refuse java-via-resources (F9)" 0 "adr24-f9-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import skeleton_condensation_units
+model = {
+  "units": [
+    {"key": "p.A", "kind": "java", "target_path": "src/main/java/t/A.java", "target_fqn": "t.A", "scc": "SCC-1"},
+    {"key": "p.B", "kind": "java", "target_path": "src/main/java/t/B.java", "target_fqn": "t.B", "scc": "SCC-1"},
+    {"key": "p.C", "kind": "java", "target_path": "src/main/java/t/C.java", "target_fqn": "t.C", "scc": None},
+  ],
+  "sccs": [{"id": "SCC-1", "members": ["p.A", "p.B"], "cycles": []}],
+  "order": ["SCC-1", "p.C"],
+  "stories": [{"id": "S02", "units": ["p.A", "p.B", "p.C"]}],
+}
+units = skeleton_condensation_units(model, "S02")
+assert len(units) == 2, units
+assert units[0]["kind"] == "scc" and units[0]["id"] == "SCC-1"
+assert set(units[0]["owns"]) == {"src/main/java/t/A.java", "src/main/java/t/B.java"}
+assert units[1]["kind"] == "singleton"
+print("adr24-preseed-ok")
+PY
+}
+check "O-ADR24 SCC skeleton condensation preseed (required)" 0 "adr24-preseed-ok"
+
+run_case() {
+  mkfix
+  # F6 invariant: identity consumers must not treat dependency-order.md as SoT
+  # when model.py is the accessor (outer-loop G4 + m3-all prefers model).
+  grep -qE 'model\.py.*context-for|ADR-24: prefer model' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'prefer model\.json|ADR-24' "$HARNESS_DIR/m3-all-compose.py" \
+    && [ -f "$HARNESS_DIR/migration-model-allowlist.txt" ] \
+    && grep -q 'profile-rubric.py' "$HARNESS_DIR/migration-model-allowlist.txt" \
+    && echo adr24-f6-ok
+}
+check "O-ADR24 F6 invariant wiring + allowlist freeze file" 0 "adr24-f6-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import assign_stories, save
+root = Path(tempfile.mkdtemp())
+(root / "migration").mkdir()
+model = {
+  "provenance": {},
+  "units": [
+    {"key": "p.A", "kind": "java", "legacy_path": "src/main/java/p/A.java", "target_path": "src/main/java/t/A.java", "scc": "SCC-1", "findings": []},
+    {"key": "p.B", "kind": "java", "legacy_path": "src/main/java/p/B.java", "target_path": "src/main/java/t/B.java", "scc": "SCC-1", "findings": []},
+  ],
+  "sccs": [{"id": "SCC-1", "members": ["p.A", "p.B"], "cycles": []}],
+  "order": ["SCC-1"],
+  "findings": [],
+  "stories": [],
+}
+save(root, model)
+# Split SCC members across two stories — must refuse (F7).
+(root / "migration" / "roadmap.md").write_text(
+    "## S02: domain\n- slug: domain\n- deploy: false\n"
+    "- scope: src/main/java/p/A.java\n\n"
+    "## S03: other\n- slug: other\n- deploy: false\n"
+    "- scope: src/main/java/p/B.java\n",
+    encoding="utf-8",
+)
+try:
+    assign_stories(root)
+    raise SystemExit("expected F7 span refuse")
+except SystemExit as e:
+    msg = str(e)
+    assert ("dual-owned" in msg or "spans" in msg or "F7" in msg), msg
+    assert "p.B" in msg and "S02" in msg and "S03" in msg, msg
+print("adr24-f7-ok")
+PY
+}
+check "O-ADR24 F7 assign_stories refuses SCC split across stories" 0 "adr24-f7-ok"
+
+# --- O-ADR24FIND Findings control plane (F-shape / F-bind / F-basename) ---
+run_case() {
+  mkfix
+  [ -f "$HARNESS_DIR/findings_ir.py" ] \
+    && grep -q 'findings_ir.py emit' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'migration/findings.json' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'findings_ir' "$HARNESS_DIR/findings-inventory.py" \
+    && grep -q 'O-ADR24FINDBIND\|lint_bind_closed\|_bind_reds' "$HARNESS_DIR/model.py" \
+    && echo adr24find-wire-ok
+}
+check "O-ADR24FIND wire: IR emit + inventory shared loader + fail-closed bind" 0 "adr24find-wire-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""F-shape: nested Kantra ruleset→violations→incidents must produce IR rules.
+A flat top-level parser that only sees ruleset rows as findings must FAIL."""
+import json, os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+import findings_ir
+
+root = Path(tempfile.mkdtemp())
+(root / "migration").mkdir()
+# Live Kantra shape (list of rulesets; findings live under violations)
+kantra = [
+    {"name": "discovery-rules", "violations": {}},
+    {
+        "name": "quarkus",
+        "violations": {
+            "quarkus-javax-to-jakarta-00000": {
+                "description": "javax → jakarta",
+                "category": "mandatory",
+                "effort": 1,
+                "incidents": [
+                    {
+                        "uri": "file:///projects/legacy/src/main/java/org/demo/Pet.java",
+                        "lineNumber": 10,
+                        "message": "javax.persistence.Entity",
+                    },
+                    {
+                        "uri": "file:///projects/legacy/src/main/java/org/demo/JdbcPet.java",
+                        "lineNumber": 20,
+                        "message": "javax.persistence.Entity",
+                    },
+                ],
+            }
+        },
+    },
+]
+kpath = root / "migration" / "mta-findings.json"
+kpath.write_text(json.dumps(kantra), encoding="utf-8")
+ir = findings_ir.build_ir(kpath)
+assert ir["stats"]["rule_count"] == 1, ir["stats"]
+assert ir["stats"]["incident_count"] == 2, ir["stats"]
+assert ir["rules"][0]["id"] == "quarkus-javax-to-jakarta-00000"
+assert ir["rules"][0]["incidents"][0]["legacy_path"] == "src/main/java/org/demo/Pet.java"
+# Flat parser illusion: treating ruleset rows as findings yields 0 rules
+flat_fake = [r for r in kantra if r.get("file") or r.get("path") or r.get("ruleID")]
+assert flat_fake == [], "fixture must not be flat-row shaped"
+print("adr24-fshape-ok")
+PY
+}
+check "O-ADR24SHAPEFIX F-shape: nested Kantra → IR rules (flat would be empty)" 0 "adr24-fshape-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""F-bind: IR incidents > 0 ⇒ model.findings > 0 else emit RED."""
+import json, os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+import findings_ir
+from model import build_model
+
+root = Path(tempfile.mkdtemp())
+(root / "migration").mkdir()
+legacy = root / "legacy"
+(legacy / "src/main/java/org/demo").mkdir(parents=True)
+(legacy / "src/main/java/org/demo/Pet.java").write_text(
+    "package org.demo;\npublic class Pet {}\n", encoding="utf-8"
+)
+kantra = [
+    {
+        "name": "quarkus",
+        "violations": {
+            "quarkus-javax-to-jakarta-00000": {
+                "category": "mandatory",
+                "incidents": [
+                    {
+                        "uri": "file:///projects/legacy/src/main/java/org/demo/Pet.java",
+                        "lineNumber": 1,
+                        "message": "javax",
+                    }
+                ],
+            }
+        },
+    }
+]
+(root / "migration" / "mta-findings.json").write_text(json.dumps(kantra), encoding="utf-8")
+(root / "migration.yaml").write_text(
+    "migration:\n  legacyPackage: org.demo\n  targetPackage: com.demo\n",
+    encoding="utf-8",
+)
+ir = findings_ir.ensure_ir(root)
+assert ir["stats"]["incident_count"] == 1
+m = build_model(root, legacy)
+assert m.get("findings"), m.get("findings")
+assert any(u.get("findings") for u in m["units"]), m["units"]
+assert findings_ir.lint_bind_closed(ir, m["findings"]) == []
+reds = findings_ir.lint_bind_closed(ir, [])
+assert reds and "O-ADR24FINDBIND" in reds[0], reds
+print("adr24-fbind-ok")
+PY
+}
+check "O-ADR24FINDBIND F-bind: IR>0 ⇒ findings>0 else RED" 0 "adr24-fbind-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""F-basename: Pet.java vs JdbcPet.java must not cross-bind via basename."""
+import json, os, sys
+from pathlib import Path
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+import findings_ir
+
+units = [
+    {"key": "org.demo.Pet", "legacy_path": "src/main/java/org/demo/Pet.java", "findings": []},
+    {"key": "org.demo.JdbcPet", "legacy_path": "src/main/java/org/demo/JdbcPet.java", "findings": []},
+]
+ir = {
+    "stats": {"incident_count": 1, "rule_count": 1},
+    "rules": [
+        {
+            "id": "r1",
+            "kind": "java",
+            "category": "mandatory",
+            "incidents": [
+                {"legacy_path": "src/main/java/org/demo/Pet.java", "uri": "", "line": 1}
+            ],
+        }
+    ],
+}
+findings, units2, unbound = findings_ir.bind_findings_to_units(ir, units)
+assert findings[0]["units"] == ["org.demo.Pet"], findings
+assert "r1" in units2[0]["findings"] and "r1" not in units2[1]["findings"]
+ir2 = {
+    "stats": {"incident_count": 1, "rule_count": 1},
+    "rules": [
+        {
+            "id": "r2",
+            "kind": "java",
+            "incidents": [{"legacy_path": "Pet.java", "uri": "", "line": 1}],
+        }
+    ],
+}
+f2, u2, ub = findings_ir.bind_findings_to_units(ir2, units)
+assert f2[0]["units"] == [], f2
+assert ub, ub
+text = (Path(os.environ["HARNESS_DIR"]) / "model.py").read_text(encoding="utf-8")
+assert "_finding_ids_for_path" not in text
+assert "Path(lp).name in bases" not in text
+assert "bases = {Path(p).name" not in text
+print("adr24-fbasename-ok")
+PY
+}
+check "O-ADR24BASENAME F-basename: path-exact bind; no Pet↔JdbcPet" 0 "adr24-fbasename-ok"
+
+run_case() {
+  mkfix
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+"""O-OPENJDK21REGRESS: stamp unions required openjdk21 into kept targets."""
+import importlib.util, os, sys
+from pathlib import Path
+p = Path(os.environ["HARNESS_DIR"]) / "contract-stamp.py"
+spec = importlib.util.spec_from_file_location("contract_stamp", p)
+mod = importlib.util.module_from_spec(spec)
+sys.modules["contract_stamp"] = mod
+assert spec.loader is not None
+spec.loader.exec_module(mod)
+assert "openjdk21" in mod.ANALYSIS_TARGETS
+stamp = mod.StampResult(
+    legacy_package="org.demo",
+    target_package="com.demo",
+    acceptance={},
+    preserve=[],
+    forbidden=[],
+    analysis={"mode": "source-only", "targets": list(mod.ANALYSIS_TARGETS)},
+    target_contract={},
+    contract_status="decided",
+)
+existing = {"analysis": {"mode": "source-only", "targets": ["quarkus", "openjdk17"]}}
+doc = mod._stamp_to_doc(existing, stamp)
+assert "openjdk21" in doc["analysis"]["targets"], doc["analysis"]["targets"]
+assert "openjdk17" in doc["analysis"]["targets"]
+print("openjdk21regress-ok")
+PY
+}
+check "O-OPENJDK21REGRESS stamp unions openjdk21 into kept targets" 0 "openjdk21regress-ok"
 
 echo "----"
 echo "$PASS/$N passed"

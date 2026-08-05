@@ -40,6 +40,8 @@ relate — interpret `dependency-order.md` into an architecture
 statement: which classes form which component, who depends on whom,
 which are the god nodes and what that means for risk. A small ASCII
 diagram is welcome; every edge it shows must exist in the import graph.
+Cite `dependency-order.md:LINE` and/or at least one `src/main/java/...`
+path — bare prose with no citation fails the rubric (O-PROFITECITEMIG).
 
 ### 3. Integration surfaces
 Every boundary to the outside world: consumed services (with their
@@ -84,6 +86,11 @@ DROPS (e.g. a Jersey/JAX-RS `@Component` config class Quarkus replaces with
 auto-discovery, or a Spring boot bootstrap class) is still REDESIGN — give it
 the target `removed — <what subsumes it>`. Every annotated class must be
 accounted for; "it goes away" is a decision, stated, not an omission.
+
+**Generated build outputs are not class-roles (O-RUBRICGENASSERT).** Do not
+assign HARVEST/REDESIGN to `*MapperImpl`, OpenAPI generated types, or any
+path under `target/` / `generated-sources`. You may note MapStruct/codegen as
+a build concern owned by `build-codegen-*` findings — without a class-role.
 
 Do NOT write "preserve existing behavior" for a REDESIGN class whose contract
 CHANGES — state the target and the deliberate departure. "Preserve" language

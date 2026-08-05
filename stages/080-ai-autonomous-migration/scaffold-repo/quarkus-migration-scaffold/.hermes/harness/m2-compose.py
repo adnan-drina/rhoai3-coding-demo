@@ -187,7 +187,10 @@ def story_layer_guess(st: dict) -> str:
     """Map an existing story to a layer via title or scope majority."""
     title = (st.get("title") or "").lower()
     for lay, t in LAYER_TITLE.items():
-        if t.lower() in title or lay in title:
+        # Prefer canonical LAYER_TITLE phrase; else whole-word layer token
+        # (avoid "models" / "repository implementations" substring false matches
+        # that made every model-ish MiniMax story claim layer=model).
+        if t.lower() in title or re.search(rf"\b{re.escape(lay)}\b", title):
             return lay
     counts: dict[str, int] = defaultdict(int)
     for p in (st.get("scope") or "").split(","):
@@ -199,8 +202,102 @@ def story_layer_guess(st: dict) -> str:
     return "other"
 
 
+# O-M2DECOMPAXIS — MiniMax impl-flavour titles (JDBC vs JPA vs Spring Data).
+TECH_AXIS_REPO_RE = re.compile(
+    r"(?:jdbc|jpa|spring[\s-]*data|hibernate).{0,48}(?:repo|repository)"
+    r"|(?:repo|repository).{0,48}(?:jdbc|jpa|spring[\s-]*data|hibernate)",
+    re.I,
+)
+
+
+def _merge_findings_raw(a: str, b: str) -> str:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for raw in (a or "", b or ""):
+        for tok in re.split(r"[,\s]+", raw.strip()):
+            t = tok.strip().rstrip(",")
+            if not t or t == "-" or t.startswith("<!--"):
+                continue
+            if t not in seen:
+                seen.add(t)
+                ids.append(t)
+    return ", ".join(ids) if ids else "-"
+
+
+def collapse_to_layer_stories(stories: list[dict]) -> tuple[list[dict], int]:
+    """O-M2DECOMPAXIS — at most one story per staging layer.
+
+    Technology-axis splits (JDBC/JPA/Spring Data repository stories) and
+    model-part splits cannot unique-own shared interface/domain files.
+    Layer-based partition (≤6 stories) is the proven-clean shape (W4-338).
+    """
+    if len(stories) <= 1:
+        return stories, 0
+    keepers: dict[str, dict] = {}
+    dropped = 0
+    for st in stories:
+        lay = story_layer_guess(st)
+        title = st.get("title") or ""
+        if lay not in keepers:
+            keep = dict(st)
+            if TECH_AXIS_REPO_RE.search(title) or re.search(
+                r"\bpart\s*\d|\bmodels?\s*\(|circular group", title, re.I
+            ):
+                keep["title"] = LAYER_TITLE.get(lay, title)
+            keepers[lay] = keep
+            continue
+        k = keepers[lay]
+        k["findings_raw"] = _merge_findings_raw(
+            k.get("findings_raw") or "", st.get("findings_raw") or ""
+        )
+        if isinstance(k.get("findings"), list) or isinstance(st.get("findings"), list):
+            fa = list(k.get("findings") or [])
+            fb = list(st.get("findings") or [])
+            if not fa and k.get("findings_raw"):
+                fa = [
+                    x.strip()
+                    for x in (k.get("findings_raw") or "").split(",")
+                    if x.strip() and x.strip() != "-"
+                ]
+            if not fb and st.get("findings_raw"):
+                fb = [
+                    x.strip()
+                    for x in (st.get("findings_raw") or "").split(",")
+                    if x.strip() and x.strip() != "-"
+                ]
+            merged: list[str] = []
+            seen: set[str] = set()
+            for fid in fa + fb:
+                if fid not in seen:
+                    seen.add(fid)
+                    merged.append(fid)
+            k["findings"] = merged
+        # Prefer non-empty real scope until apply_staging_scope rewrites it
+        ks = (k.get("scope") or "").strip()
+        ss = (st.get("scope") or "").strip()
+        if (not ks or ks.startswith("<!--")) and ss and not ss.startswith("<!--"):
+            k["scope"] = st.get("scope") or ""
+        dropped += 1
+    out: list[dict] = []
+    for lay in LAYER_ORDER:
+        if lay in keepers:
+            out.append(keepers[lay])
+    for lay, st in keepers.items():
+        if lay not in LAYER_ORDER:
+            out.append(st)
+    for i, st in enumerate(out, 1):
+        st["sid"] = f"S{i:02d}"
+    return out, dropped
+
+
 def apply_staging_scope(stories: list[dict], root: Path) -> int:
-    """O-STAGESCOPE — rewrite story scope from staging partition. Returns updates."""
+    """O-STAGESCOPE — rewrite story scope from staging partition. Returns updates.
+
+    O-M2SCOPEOVERLAP: each staging layer is assigned to at most ONE story
+    (first match by layer guess). Later stories that also guess that layer
+    must have those paths stripped — re-writing the full layer onto every
+    model-ish title was the W4R4 M2 a1/a2 O-SCOPECOVER×135 dual-own defect.
+    """
     layer_scopes = staging_layer_scopes(root)
     if not any(layer_scopes.values()):
         return 0
@@ -211,6 +308,24 @@ def apply_staging_scope(stories: list[dict], root: Path) -> int:
         lay = story_layer_guess(st)
         paths = sorted(layer_scopes.get(lay) or [])
         if not paths:
+            continue
+        if lay in claimed:
+            # Layer already owned — strip overlap; do not re-assign full set.
+            layer_set = set(paths)
+            cur = [
+                p.strip()
+                for p in (st.get("scope") or "").split(",")
+                if p.strip() and not p.strip().startswith("<!--")
+            ]
+            kept = [
+                p
+                for p in cur
+                if p not in layer_set and not is_generated_build_path(p)
+            ]
+            new_scope = ", ".join(kept) if kept else "<!-- JUDGMENT: paths -->"
+            if (st.get("scope") or "") != new_scope:
+                st["scope"] = new_scope
+                n += 1
             continue
         new_scope = ", ".join(paths)
         if (st.get("scope") or "") != new_scope:
@@ -982,18 +1097,47 @@ def strip_generated_scope(stories: list[dict]) -> int:
 
 
 def brief_path(root: Path, sid: str, title: str) -> Path:
+    """Prefer canonical `{sid}-{slug(title)}.md` (O-M2DECOMPAXIS).
+
+    Legacy: if only an old title-slug exists for this SID, return it so fill
+    can refresh in place — write_briefs then purges non-canonical names.
+    """
+    canonical = root / "migration" / "briefs" / f"{sid}-{slugify(title)}.md"
+    if canonical.is_file():
+        return canonical
     briefs = sorted((root / "migration" / "briefs").glob(f"{sid}-*.md"))
     if briefs:
         return briefs[0]
-    return root / "migration" / "briefs" / f"{sid}-{slugify(title)}.md"
+    return canonical
 
 
 def brief_is_skeleton(text: str) -> bool:
-    return SKELETON_MARK in text
+    # O-M2FILLCLOBBER: seats often leave SKELETON_MARK in place while filling
+    # JUDGMENT with real fenced legacy quotes. A mark alone must not authorize
+    # stub rewrite — that wiped authored briefs and false-RED'd roadmap-lint.
+    if SKELETON_MARK not in text:
+        return False
+    if "```" in text:
+        return False
+    return True
 
 
 def _scope_path_list(scope: str) -> list[str]:
     return [p.strip() for p in (scope or "").split(",") if p.strip()]
+
+
+def profile_sec7_digest(profile_text: str) -> str:
+    """O-BRIEFFRESHPROFILE — must match roadmap-lint.profile_sec7_digest."""
+    if not profile_text:
+        return ""
+    m = re.search(
+        r"(?ims)^##\s+[^\n]*Class roles[^\n]*\n(.*?)(?=^##\s|\Z)",
+        profile_text,
+    )
+    body = (m.group(0) if m else "").strip()
+    if not body:
+        return ""
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
 def story_fresh_hash(st: dict) -> str:
@@ -1006,6 +1150,7 @@ def story_fresh_hash(st: dict) -> str:
             (st.get("findings_raw") or "").strip(),
             (st.get("kind") or "").strip(),
             (str(st.get("seat_budget") or "")).strip(),
+            (st.get("profile_sec7") or "").strip(),
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
@@ -1397,14 +1542,39 @@ def write_briefs(
     rcls = redesign_cls or set()
     hints = contract_hints or {}
     od = open_design or set()
+    # O-M2DECOMPAXIS / W4-336: canonical brief names only (`{sid}-{slug(title)}`).
+    live_names = {f"{st['sid']}-{slugify(st['title'])}.md" for st in stories}
     for st in stories:
+        canonical = bdir / f"{st['sid']}-{slugify(st['title'])}.md"
         path = brief_path(root, st["sid"], st["title"])
+        # Migrate authored content from an old title-slug onto the canonical name.
+        if path.is_file() and path.name != canonical.name:
+            if not canonical.is_file():
+                try:
+                    path.rename(canonical)
+                except OSError:
+                    canonical.write_text(
+                        path.read_text(encoding="utf-8", errors="replace"),
+                        encoding="utf-8",
+                    )
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+            path = canonical
         if path.is_file():
             text = path.read_text(encoding="utf-8", errors="replace")
             if not brief_is_skeleton(text) and not force_skeleton:
                 # authored — publish seat-budget + patch missing scope/contracts
                 # + refresh O-BRIEFFRESH hash (regen-on-recompose bookkeeping)
                 changed = False
+                # Drop stale skeleton mark so later fills do not re-classify.
+                if SKELETON_MARK in text:
+                    text = text.replace(SKELETON_MARK + "\n", "").replace(
+                        SKELETON_MARK, ""
+                    )
+                    path.write_text(text, encoding="utf-8")
+                    changed = True
                 if st.get("seat_budget"):
                     try:
                         n = int(str(st["seat_budget"]).split()[0])
@@ -1438,6 +1608,12 @@ def write_briefs(
                 encoding="utf-8",
             )
             wrote += 1
+    for old in list(bdir.glob("S*.md")):
+        if old.name not in live_names:
+            try:
+                old.unlink()
+            except OSError:
+                pass
     return wrote, refreshed
 
 
@@ -1601,10 +1777,12 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
     profile_path = root / "migration" / "architecture-profile.md"
     redesign_cls: set[str] = set()
     contract_hints: dict[str, str] = {}
+    profile_sec7 = ""
     if profile_path.is_file():
         _prof = profile_path.read_text(encoding="utf-8", errors="replace")
         redesign_cls = redesign_classes_from_profile(_prof)
         contract_hints = redesign_contract_hints_from_profile(_prof)
+        profile_sec7 = profile_sec7_digest(_prof)
 
     prior_nm = ""
     wrote_roadmap = False
@@ -1675,6 +1853,13 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         if not stories:
             print("O-M2COMPOSE RED: roadmap has no stories", file=sys.stderr)
             return 2
+        # O-M2DECOMPAXIS: collapse JDBC/JPA/Spring-Data (and model-part) over-splits
+        stories, n_collapse = collapse_to_layer_stories(stories)
+        if n_collapse:
+            print(
+                f"O-M2COMPOSE: O-M2DECOMPAXIS collapsed {n_collapse} "
+                f"same-layer over-split(s) → {len(stories)} layer stories"
+            )
         before_sfnd = sum(
             1
             for st in stories
@@ -1731,6 +1916,9 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             roadmap_path.write_text(body, encoding="utf-8")
             wrote_roadmap = True
 
+    # O-BRIEFFRESHPROFILE: stamp §7 digest onto every story before freshness.
+    for st in stories:
+        st["profile_sec7"] = profile_sec7
     bw, br = write_briefs(
         root,
         stories,
@@ -1744,6 +1932,19 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         f"briefs_wrote={bw} briefs_refreshed={br} "
         f"kind-updates={n_kind} seat-budget-updates={n_budget}"
     )
+    # ADR-24: bind stories[] into model.json (sole M2 mutation API).
+    model_json = root / "migration" / "model.json"
+    if model_json.is_file():
+        try:
+            from model import assign_stories as _adr24_assign
+
+            _adr24_assign(root)
+            print("O-ADR24: assign_stories OK")
+        except SystemExit as e:
+            print(f"O-ADR24 assign_stories RED: {e}", file=sys.stderr)
+            return 2
+        except Exception as e:
+            print(f"O-ADR24 assign_stories WARN: {e}", file=sys.stderr)
     return 0
 
 

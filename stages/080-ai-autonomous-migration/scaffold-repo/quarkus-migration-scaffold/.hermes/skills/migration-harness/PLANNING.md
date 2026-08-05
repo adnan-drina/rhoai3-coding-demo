@@ -1,16 +1,27 @@
 # M3 SPECIFY — plan (and findings access notes)
 
+**O-M3SKILLNAV — brief first, then edit `tasks.md`.** Before any other
+read, open `migration/briefs/<story>.md` (decided shapes + §7 contracts).
+Then **edit** the seeded `specs/<slug>/tasks.md` in the first tool batch
+(M3-ALL already created it — fill Goal / Target / Class·Shape; drop the
+skeleton marker). Do **not** probe `spec.md` or `plan.md` first: they are
+**outputs you write after** `tasks.md`, not inputs to discover. Under
+M3-ALL they often do not exist yet; those reads are guaranteed errors and
+burn the ~120s O-M3QWENSTALL budget (W4-259: Qwen read `plan.md`→`spec.md`
+error→… and never opened the brief).
+
 Plans map findings to the DECIDED targets in [MAPPINGS.md](MAPPINGS.md) —
 cite the catalog, do not re-derive architecture per run. `tasks.md` MUST
 follow [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) — the supervisor's plan
 lint bounces non-conforming plans.
 
-**O-M3EMPTY — write `tasks.md` first.** Do not spend the session only
-reading. Within the first tool batch: `mkdir -p specs/<slug>/` and
-**write `tasks.md` first** (plan-lint gate), then `plan.md` / `spec.md`
-(stubs OK, then refine). An empty `specs/<slug>/` directory or a session
-with zero writes is aborted after ~360s (`M3_EMPTY_ABORT_SECS`) and wastes
-the seat. Verify with plan-lint, then one commit `SNN spec:`.
+**O-M3EMPTY / O-M3FIRSTWRITE — mutate `tasks.md` in the first tool batch.**
+Do not spend the session only reading. Order: (1) read the brief,
+(2) edit/write `specs/<slug>/tasks.md` (plan-lint gate), (3) optionally
+create `plan.md` / `spec.md` stubs **after** tasks exist. An empty
+`specs/<slug>/` directory or a session with zero writes is aborted after
+~360s (`M3_EMPTY_ABORT_SECS`) and wastes the seat. Verify with plan-lint,
+then one commit `SNN spec:`.
 
 M1 ground truth and the architecture profile live in [ANALYSIS.md](ANALYSIS.md)
 (and `analyze.sh`). This file owns M3. The normalize snippet below is
@@ -20,7 +31,7 @@ M1 still have a fallback path.
 ## Contents
 - M1 fallback — normalize ground truth (prefer ANALYSIS.md / analyze.sh)
 - Working with the findings file
-- M3 — plan (spec handoff)
+- M3 — plan (brief → tasks → plan/spec outputs)
 
 ## M1 fallback — normalize ground truth
 
@@ -62,20 +73,25 @@ python3 .hermes/skills/migration-harness/scripts/extract_findings.py --rule <RUL
 Read individual incidents (file/line/message) the same way — filtered by
 rule id, never the full file.
 
-## M3 — plan (spec handoff)
+## M3 — plan (brief → tasks → plan/spec outputs)
 
-Read the legacy code and `migration/mta-findings.json`, then write the
-contract into the same layout stage 070 uses:
+**Authoritative brief (repeat):** `migration/briefs/<story>.md` is the work
+order — read it before legacy deep-reads or plan-lint loops
+(O-BRIEFCONTRACT / compose). In M3-ALL skeleton mode, **edit** the seeded
+`specs/<slug>/tasks.md` next; create `spec.md`/`plan.md` only as outputs.
 
-- `specs/<NNN-migration-slug>/spec.md` — observed legacy behavior + API
-  contract (endpoints, data shapes, side effects), with legacy file paths
-  as evidence.
-- `specs/<NNN-migration-slug>/plan.md` — Quarkus mapping. Tag every item
-  `rewrite` (mechanical: annotation/import/dependency swaps covered by
-  OpenRewrite recipes) or `infer` (judgment: design, API shape, tests).
-- `specs/<NNN-migration-slug>/tasks.md` — ordered checklist. Rewrite tasks
-  before infer tasks. Every mandatory finding maps to at least one task;
-  every task cites its finding rule ids.
+Then (after the first `tasks.md` mutate) deepen with legacy code and
+`migration/mta-findings.json` as needed, and write the contract into the
+same layout stage 070 uses:
+
+- `specs/<NNN-migration-slug>/tasks.md` — **gate artifact** (write/edit
+  first). Ordered checklist. Rewrite tasks before infer tasks. Every
+  mandatory finding maps to at least one task; every task cites its
+  finding rule ids.
+- `specs/<NNN-migration-slug>/plan.md` — **output** — Quarkus mapping.
+  Tag every item `rewrite` (mechanical) or `infer` (judgment).
+- `specs/<NNN-migration-slug>/spec.md` — **output** — observed legacy
+  behavior + API contract, with legacy file paths as evidence.
 
 **Shape (O-SHAPEDECL):** every task MUST declare
 `**Shape**: create|modify|remove|structure|verify` so M4 consumers
@@ -92,9 +108,17 @@ The plan lint (`.hermes/harness/plan-lint.py`) enforces, deterministically:
 task headings `#### T-NNN: title` (any heading depth 2–6; zero-padded
 numeric ids, each used once); a `Class: rewrite|infer` marker per task;
 a `**Shape**:` marker per task (O-SHAPEDECL);
-all rewrite tasks before the first infer task; **S-INFTEST** — after the
-first infer task, characterization / package-verify / follow-on work must
-also be Class infer (plan-lint forbids rewrite after infer began; V9 S03);
+all rewrite tasks before the first *non-characterization* infer task;
+**O-M3ORDERCHAR** — Class=infer characterization (`characteri[sz]` in title,
+or Shape=verify + characterization prose) may sit *before* convert rewrites
+(S-GODORDER); it does **not** arm the rewrite-after-infer gate;
+**S-INFAFTER** — after the first non-characterization infer, follow-on work
+must also be Class infer (plan-lint forbids rewrite after that infer began);
+**O-ASSUMESORDER** — every `Assumes: … (T-NNN)` must name a task that
+precedes the referrer in **file/heading order** (that is M4 execution order);
+**M4 task order** — supervisor walks `TASK_IDS` in heading order as written
+in `tasks.md` (not numeric sort, not Assumes-topo); write the plan in the
+order M4 must run;
 **S-PKGDIR** — package-structure / mkdir tasks must require `.gitkeep` or
 `package-info.java` (empty dirs are uncommittable; O-PKGDIR);
 **O-SHAPELINT** — `Shape: structure` requires a package-dir / `.gitkeep` /
@@ -165,10 +189,12 @@ model seat, `python3 .hermes/harness/m3-all-compose.py` generates (or
 refreshes) a mechanical `tasks.md` for every roadmap story — task IDs,
 Owns from scope, Class/Shape/Port/Oracle/Assumes field lines present,
 Oracle derived from the filesystem, Port seeded for repository paths,
-Assumes seeded from prior Owns. Models fill JUDGMENT markers only; the
-composer never overwrites a non-skeleton authored plan
-(`<!-- O-M3ALL-SKELETON -->`). Disable only via `M3_ALL_COMPOSE=0`
-(diagnostics).
+Assumes seeded from prior Owns. **O-M3ALLORDER:** scope paths are sorted
+by `migration/dependency-order.md` convert rank before T-NNN assignment
+(roadmap/alpha order alone caused O-PLANORDER storms on skeletons).
+Models fill JUDGMENT markers only; the composer never overwrites a
+non-skeleton authored plan (`<!-- O-M3ALL-SKELETON -->`). Disable only
+via `M3_ALL_COMPOSE=0` (diagnostics).
 And no legacy-package targets — the project root is `migration.yaml`
 `targetPackage` (never the `legacyPackage`).
 Package rename is a **full prefix replace**:

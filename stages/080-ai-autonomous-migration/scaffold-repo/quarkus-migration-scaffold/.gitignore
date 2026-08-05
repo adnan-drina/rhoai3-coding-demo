@@ -25,3 +25,11 @@ __pycache__/
 
 # O-TMPARCHIVE forensic copies (PVC; do not git-add)
 migration/run-archives/
+
+# O-STAMPGITIGN — runtime bookkeeping must not enter T-NNN tips
+migration/.m3-all-stamps/
+migration/run-log.md
+migration/evidence-liveness.md
+migration/discovered.md
+migration/mta-findings-after.json
+migration/findings-delta.STALE

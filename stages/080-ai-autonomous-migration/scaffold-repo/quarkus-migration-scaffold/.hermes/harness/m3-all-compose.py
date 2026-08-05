@@ -14,6 +14,11 @@ model seat fills judgment:
 Does **not** overwrite a non-skeleton authored plan. Skeletons carry
 `<!-- O-M3ALL-SKELETON -->` so re-compose can refresh them safely.
 
+O-M3ALLORDER / O-PLANORDER: scope paths are sorted by
+`migration/dependency-order.md` convert rank before T-NNN assignment so the
+skeleton cannot emit an unsatisfiable precedes storm (W4-320: 97× O-PLANORDER
+from alpha/scope order vs dep-order).
+
 Usage:
   python3 .hermes/harness/m3-all-compose.py [--root DIR] [--force-skeleton]
   Exit 0 on success; 2 on usage / missing roadmap.
@@ -87,10 +92,25 @@ def brief_slug(root: Path, sid: str, title: str) -> str:
 
 
 def is_skeleton(path: Path) -> bool:
+    """True only for real skeletons — not authored plans that left the mark.
+
+    O-M3ALLMARKERSTALE: MiniMax/green tips sometimes keep
+    `<!-- O-M3ALL-SKELETON -->` after fill; treating the mark alone as
+    skeleton caused compose to wipe S01 on every M3-ALL restart.
+    """
     if not path.is_file():
         return False
     text = path.read_text(encoding="utf-8", errors="replace")
-    return SKELETON_MARK in text or "O-M3QWENSTALL preseed" in text
+    if "O-M3QWENSTALL preseed" in text:
+        return True
+    if SKELETON_MARK not in text:
+        return False
+    # Marker present: only refresh if body still looks like a stub.
+    return bool(
+        re.search(r"skeleton \(fill from brief\)", text, re.I)
+        or re.search(r"TODO — replace from brief", text)
+        or re.search(r"O-M3ALL-SKELETON preseed", text, re.I)
+    )
 
 
 def class_simple(path: str) -> str:
@@ -100,6 +120,65 @@ def class_simple(path: str) -> str:
 
 def path_is_repo(path: str) -> bool:
     return bool(REPO_SIGNAL.search(path))
+
+
+def path_to_fqn(rel: str) -> str:
+    rel = (rel or "").lstrip("./")
+    for kind in ("main", "test"):
+        pref = f"src/{kind}/java/"
+        if rel.startswith(pref) and rel.endswith(".java"):
+            return rel[len(pref) : -5].replace("/", ".")
+    return ""
+
+
+def load_fqn_rank(root: Path) -> dict[str, int]:
+    """ADR-24: prefer model.json condensation order; md view is fallback only."""
+    ranks: dict[str, int] = {}
+    model_path = root / "migration" / "model.json"
+    if model_path.is_file():
+        try:
+            from model import load as _mload
+
+            model = _mload(root)
+            for i, item in enumerate(model.get("order") or [], start=1):
+                if item.startswith("SCC-"):
+                    scc = next(
+                        (s for s in model.get("sccs") or [] if s["id"] == item),
+                        None,
+                    )
+                    if scc:
+                        for m in scc.get("members") or []:
+                            ranks[m] = i
+                else:
+                    ranks[item] = i
+            if ranks:
+                return ranks
+        except Exception:
+            pass
+    dep = root / "migration" / "dependency-order.md"
+    if not dep.is_file():
+        return ranks
+    for line in dep.read_text(encoding="utf-8", errors="replace").splitlines():
+        dm = re.match(r"^\s*(\d+)\.\s+([\w.]+)\s+\(", line)
+        if dm:
+            ranks[dm.group(2)] = int(dm.group(1))
+    return ranks
+
+
+def order_scope_by_dep(scope: list[str], fqn_rank: dict[str, int]) -> list[str]:
+    """Stable sort: known dep-order ranks first (ascending), unknowns last."""
+    if not fqn_rank:
+        return list(scope)
+
+    def key(item: tuple[int, str]) -> tuple[int, int, str]:
+        idx, path = item
+        fqn = path_to_fqn(path)
+        rank = fqn_rank.get(fqn, 10**9)
+        return (rank, idx, path)
+
+    indexed = list(enumerate(scope))
+    indexed.sort(key=key)
+    return [p for _, p in indexed]
 
 
 def dest_exists(root: Path, rel: str) -> bool:
@@ -193,39 +272,95 @@ def compose_story(
     if out_path.is_file() and not is_skeleton(out_path) and not force:
         return out_path, "skipped", extract_owns(out_path, sid)
 
-    scope = list(story["scope"]) or [""]
+    # ADR-24: when model.json is bound, emit one skeleton task per condensation
+    # unit (SCC batch required; singletons seat-authored). Else legacy scope path.
     tasks: list[str] = []
     story_owns: list[tuple[str, str, str]] = []
-    for i, owns in enumerate(scope, start=1):
-        tid = f"T-{i:03d}"
-        leaf = class_simple(owns) if owns else "plan-stub"
-        title = f"{leaf} — skeleton (fill from brief)"
-        cls, shape = (
-            mechanical_class_shape(root, owns) if owns else ("rewrite", "modify")
-        )
-        oracle = oracle_for(root, owns) if owns else "absent"
-        port = "reimplement" if owns and path_is_repo(owns) else None
-        assumes = None
-        if prior_first and i == 1:
-            psid, ptid, ppath = prior_first[0]
-            pcls = class_simple(ppath) if ppath.endswith(".java") else ppath
-            assumes = f"{pcls} exists ({psid} {ptid})"
-        findings = story["findings"] if i == 1 else []
-        tasks.append(
-            render_task(
-                tid=tid,
-                title=title,
-                owns=owns,
-                findings=findings,
-                cls=cls,
-                shape=shape,
-                oracle=oracle,
-                port=port,
-                assumes=assumes,
+    model_units: list[dict] = []
+    model_path = root / "migration" / "model.json"
+    if model_path.is_file():
+        try:
+            from model import load as _mload, skeleton_condensation_units
+
+            model_units = skeleton_condensation_units(_mload(root), sid)
+        except Exception:
+            model_units = []
+
+    if model_units:
+        for i, cu in enumerate(model_units, start=1):
+            tid = f"T-{i:03d}"
+            owns_list = cu.get("owns") or []
+            # render_task wraps Owns in backticks once — pass bare joined paths
+            owns_field = " ".join(owns_list)
+            title = cu.get("title") or "skeleton (fill from brief)"
+            if cu.get("kind") == "scc":
+                shape = f"batch:{cu['id']}"
+                cls = "infer"
+                oracle = "absent"
+                port = None
+            else:
+                one = owns_list[0] if owns_list else ""
+                cls, shape = (
+                    mechanical_class_shape(root, one) if one else ("rewrite", "modify")
+                )
+                oracle = oracle_for(root, one) if one else "absent"
+                port = "reimplement" if one and path_is_repo(one) else None
+            assumes = None
+            if prior_first and i == 1:
+                psid, ptid, ppath = prior_first[0]
+                pcls = class_simple(ppath) if ppath.endswith(".java") else ppath
+                assumes = f"{pcls} exists ({psid} {ptid})"
+            findings = story["findings"] if i == 1 else []
+            tasks.append(
+                render_task(
+                    tid=tid,
+                    title=title,
+                    owns=owns_field,
+                    findings=findings,
+                    cls=cls,
+                    shape=shape,
+                    oracle=oracle,
+                    port=port,
+                    assumes=assumes,
+                )
             )
-        )
-        if owns:
-            story_owns.append((sid, tid, owns))
+            if owns_list:
+                story_owns.append((sid, tid, owns_list[0]))
+    else:
+        scope = list(story["scope"]) or [""]
+        # O-M3ALLORDER: T-NNN order must respect convert ranks
+        # (otherwise O-PLANORDER fires O(n²) precedes on the skeleton itself).
+        scope = order_scope_by_dep(scope, load_fqn_rank(root))
+        for i, owns in enumerate(scope, start=1):
+            tid = f"T-{i:03d}"
+            leaf = class_simple(owns) if owns else "plan-stub"
+            title = f"{leaf} — skeleton (fill from brief)"
+            cls, shape = (
+                mechanical_class_shape(root, owns) if owns else ("rewrite", "modify")
+            )
+            oracle = oracle_for(root, owns) if owns else "absent"
+            port = "reimplement" if owns and path_is_repo(owns) else None
+            assumes = None
+            if prior_first and i == 1:
+                psid, ptid, ppath = prior_first[0]
+                pcls = class_simple(ppath) if ppath.endswith(".java") else ppath
+                assumes = f"{pcls} exists ({psid} {ptid})"
+            findings = story["findings"] if i == 1 else []
+            tasks.append(
+                render_task(
+                    tid=tid,
+                    title=title,
+                    owns=owns,
+                    findings=findings,
+                    cls=cls,
+                    shape=shape,
+                    oracle=oracle,
+                    port=port,
+                    assumes=assumes,
+                )
+            )
+            if owns:
+                story_owns.append((sid, tid, owns))
 
     body = "\n".join(
         [

@@ -33,7 +33,7 @@ QUARKUS = re.compile(
 
 def task_findings(tasks: Path, tid: str) -> list[str]:
     text = tasks.read_text(encoding="utf-8", errors="replace")
-    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M))
+    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
     body = ""
     for i, m in enumerate(heads):
         if m.group(1) != tid:

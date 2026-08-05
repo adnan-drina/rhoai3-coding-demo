@@ -20,7 +20,7 @@ from pathlib import Path
 
 
 def task_findings(text: str, tid: str) -> list[str]:
-    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M))
+    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
     body = ""
     for i, m in enumerate(heads):
         if m.group(1) != tid:
@@ -65,7 +65,7 @@ def completed_task_ids(root: Path, run_base: str) -> list[str]:
     subjects = (out_exclusive + "\n" + out_base).splitlines()
     seen: list[str] = []
     for subj in subjects:
-        m = re.match(r"^(T[-A-Za-z0-9]*\d+)\s*:", subj.strip())
+        m = re.match(r"^(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", subj.strip())
         if m and m.group(1) not in seen:
             seen.append(m.group(1))
     return seen

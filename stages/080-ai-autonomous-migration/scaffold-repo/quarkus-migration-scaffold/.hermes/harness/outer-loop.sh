@@ -75,12 +75,12 @@ ORCH_MODEL="${ORCH_MODEL:-minimax-m2}"
 WORKER_MODEL="${WORKER_MODEL:-qwen27b/qwen3-6-27b}"
 SESSION_TIMEOUT="${SESSION_TIMEOUT:-2700}"
 HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
-# O-M3ROUTE / O-M3WORKER: M3 SPECIFY open-ended doc draft → MiniMax first
-# (Qwen is 0-for-3 on M3; file-level harvest remains worker-first in M4).
-# O-M3ROUTE / W4-172: default Qwen-draft + MiniMax backstop (sidesteps MiniMax
-# quota burn on M3 author). Set WORKER_M3_FIRST=false for MiniMax-first draft.
-# Inline defaults below MUST match this (were :-true while line defaulted false).
-WORKER_M3_FIRST="${WORKER_M3_FIRST:-true}"
+# O-M3ROUTE: M3 SPECIFY — MiniMax-first default (W4R7 operator 2026-08-05:
+# "keep running minimax"). Qwen fix-seat remains via O-M3WORKERREENTRY after
+# MiniMax RED/429 on populated tasks.md (ungated; does not require
+# WORKER_M3_FIRST=true). Set WORKER_M3_FIRST=true only for explicit Qwen-draft A/B.
+# Inline ${WORKER_M3_FIRST:-…} defaults below MUST match this line.
+WORKER_M3_FIRST="${WORKER_M3_FIRST:-false}"
 M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
 M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-2}"
 # O-M3ALL: after M2, author all story plans before any M4 (default on).
@@ -122,8 +122,13 @@ _sym() { # $1=pretty $2=plain
 STORY_TAG="${STORY_TAG:-}"
 log() { echo "[$(date -u +%F' '%T)]${STORY_TAG:+ $STORY_TAG}$([ -n "${STORY_TAG:-}" ] && echo ' ▸') $*" >> "$LOG"; }
 phase_start() { # $1=code+title  [$2=extra]
+  # O-PHASESTARTRC: must return 0 — `[ -n '' ] && log` returns 1 under set -e
+  # and aborted outer at one-arg phase_start (M3 worker START → TMPARCHIVE only).
   log "$(_sym '▶' '>') START  $1"
-  [ -n "${2:-}" ] && log "         $2"
+  if [ -n "${2:-}" ]; then
+    log "         $2"
+  fi
+  return 0
 }
 phase_ok() { log "$(_sym '✓' 'OK') END    $1"; }
 phase_fail() { log "$(_sym '✗' 'X') FAIL   $1"; }
@@ -132,6 +137,150 @@ phase_gate() { # $1=name $2=RED|GREEN $3=detail
   else log "$(_sym '✗' 'X') GATE   $1 — RED${3:+ — $3}"; fi
 }
 phase_retry() { log "$(_sym '↻' 'R') RETRY  $1"; }
+
+# O-GROUNDLOG: demo-facing G1–G9 lines in outer-loop.log (question + result only).
+# No ADR identifiers in user-visible log text. Honest NOT-LANDED for open guards.
+_count_re() { # $1=file $2=regex → count (0 if missing)
+  local f="$1" re="$2" n
+  [ -f "$f" ] || { echo 0; return 0; }
+  n=$(grep -cE "$re" "$f" 2>/dev/null || true)
+  echo "${n:-0}"
+}
+# $1=Gid $2=PASS|FAIL|SKIP|NOT-LANDED $3=question $4=evidence detail
+log_ground() {
+  log "GROUND  $1 — $2"
+  log "         Q: $3"
+  log "         $4"
+}
+log_gchain_banner() {
+  log "GROUND  G1–G9 — grounding checks"
+  log "         Each step sits at one pipeline handoff and answers: is what this"
+  log "         stage produced actually derived from what the previous stage gave it?"
+  log "         M1: G1/G2 · M2: G3/G6/G7/G8 · M3: G4 (inline) · M3 authoring: G5/G9"
+}
+# M1 PROFILE gate → G1 + G2 (from /tmp/profile-rubric.txt)
+log_gchain_m1_profile() { # $1=GREEN|RED (overall rubric; narrated separately)
+  local gate="${1:-}" ct pv cov
+  ct=$(_count_re /tmp/profile-rubric.txt 'RUBRIC:claimtruth')
+  pv=$(_count_re /tmp/profile-rubric.txt 'RUBRIC:profvocab')
+  cov=$(grep -E '^COVERAGE:' /tmp/profile-rubric.txt 2>/dev/null | tail -1 | sed 's/^COVERAGE:[[:space:]]*//' || true)
+  [ -n "$cov" ] || cov="(no COVERAGE line)"
+  if [ "${ct:-0}" -eq 0 ]; then
+    log_ground "G1" "PASS" \
+      "Does the architecture profile only claim things that exist in the legacy source?" \
+      "0 claimtruth findings — every §7 cited token resolves in the cited legacy file (rubric ${gate})"
+  else
+    log_ground "G1" "FAIL" \
+      "Does the architecture profile only claim things that exist in the legacy source?" \
+      "${ct} claimtruth findings — see /tmp/profile-rubric.txt (rubric ${gate})"
+  fi
+  if [ "${pv:-0}" -eq 0 ]; then
+    log_ground "G2" "PASS" \
+      "Is every architecture word in the profile native to this specimen (not leftover from a prior demo app)?" \
+      "0 vocab findings — no prior-specimen residue (rubric ${gate})"
+  else
+    log_ground "G2" "FAIL" \
+      "Is every architecture word in the profile native to this specimen (not leftover from a prior demo app)?" \
+      "${pv} vocab findings — see /tmp/profile-rubric.txt (rubric ${gate})"
+  fi
+  log "         coverage ${cov} · G3/G5/G6/G9 checked at later stages"
+}
+# M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
+log_gchain_m2_roadmap() { # $1=GREEN|RED
+  local gate="${1:-}" consist fresh fab lintf
+  lintf=/tmp/roadmap-lint.txt
+  [ -f /tmp/roadmap-lint-m2exit.txt ] && lintf=/tmp/roadmap-lint-m2exit.txt
+  [ -f /tmp/roadmap-lint.txt ] && lintf=/tmp/roadmap-lint.txt
+  consist=$(_count_re "$lintf" 'O-BRIEFCONSIST')
+  fresh=$(_count_re "$lintf" 'O-BRIEFFRESH')
+  fab=$(_count_re "$lintf" 'LINT:fabrication')
+  log_ground "G3" "NOT-LANDED" \
+    "Do fenced config quotes in the briefs match the legacy files byte-for-byte?" \
+    "not enforced yet — would catch invented jdbc/config literals attributed to legacy files"
+  if [ "${fab:-0}" -gt 0 ]; then
+    log_ground "G6" "FAIL" \
+      "Do brief claims about real symbols tell the truth (same bar as G1, at the M2 handoff)?" \
+      "${fab} fabrication findings on presence-only half-check — full brief claimtruth still NOT-LANDED"
+  else
+    log_ground "G6" "NOT-LANDED" \
+      "Do brief claims about real symbols tell the truth (same bar as G1, at the M2 handoff)?" \
+      "0 fabrication findings on presence-only half-check; full brief claimtruth still open"
+  fi
+  if [ "${consist:-0}" -eq 0 ]; then
+    log_ground "G7" "PASS" \
+      "Are the story briefs self-consistent (no preserve-X while forbidding X's only enabler)?" \
+      "0 consistency findings (roadmap ${gate})"
+  else
+    log_ground "G7" "FAIL" \
+      "Are the story briefs self-consistent (no preserve-X while forbidding X's only enabler)?" \
+      "${consist} consistency findings — ${lintf} (roadmap ${gate})"
+  fi
+  if [ "${fresh:-0}" -eq 0 ]; then
+    log_ground "G8" "PASS" \
+      "Are the briefs still derived from the current profile §7 (not a stale paste after M1 corrected)?" \
+      "0 freshness findings — brief hashes include profile §7 digest (roadmap ${gate})"
+  else
+    log_ground "G8" "FAIL" \
+      "Are the briefs still derived from the current profile §7 (not a stale paste after M1 corrected)?" \
+      "${fresh} freshness findings — ${lintf} (roadmap ${gate})"
+  fi
+}
+# M3 derived-facts inline → G4
+log_gchain_m3_g4() { # $1=derived-facts text  $2=story id
+  local block="${1:-}" sid="${2:-}" n_dep n_find n_sym n_hdr
+  n_dep=$(printf '%s\n' "$block" | awk '
+    /^dependency-order:/ {p=1; next}
+    /^[A-Za-z].*:/ && $0 !~ /^  / {p=0}
+    p && /^  - / {c++}
+    END {print c+0}')
+  n_find=$(printf '%s\n' "$block" | awk '
+    /^findings:/ {p=1; next}
+    /^[A-Za-z].*:/ && $0 !~ /^  / {p=0}
+    p && /^  - / {c++}
+    END {print c+0}')
+  n_sym=$(printf '%s\n' "$block" | awk '
+    /^symbol-index/ {p=1; next}
+    /^=====/ {p=0}
+    p && /^  - / {c++}
+    END {print c+0}')
+  n_hdr=$(printf '%s\n' "$block" | grep -cE 'Circular group' || true)
+  n_hdr=${n_hdr:-0}
+  if printf '%s\n' "$block" | grep -q 'BEGIN DERIVED FACTS'; then
+    log_ground "G4" "PASS" \
+      "Are derived facts (findings, dependency-order, symbol-index) inlined so the planner cannot invent them?" \
+      "${sid}: findings(${n_find}) · dependency-order(${n_dep}) · symbol-index(${n_sym}) · circular-group headers=${n_hdr}; derived facts win on conflict"
+  else
+    log_ground "G4" "FAIL" \
+      "Are derived facts (findings, dependency-order, symbol-index) inlined so the planner cannot invent them?" \
+      "${sid}: derived-facts block missing from seat prompt"
+  fi
+}
+# M3 plan-lint → G5 + G9 honesty (once per story)
+log_gchain_m3_plan() { # $1=GREEN|RED $2=story id
+  local gate="${1:-}" sid="${2:-}"
+  if [ "${_GCHAIN_M3PLAN_LOGGED:-}" = "$sid" ]; then
+    return 0
+  fi
+  _GCHAIN_M3PLAN_LOGGED="$sid"
+  log_ground "G5" "NOT-LANDED" \
+    "Do task Target/Shape/Acceptance tokens resolve in this story's scope (or Shape:create)?" \
+    "${sid}: plan-lint is form-only today — invented tokens not refused yet"
+  log_ground "G9" "NOT-LANDED" \
+    "Can this task's Acceptance be satisfied without doing what its Goal requires?" \
+    "${sid}: Goal↔Acceptance coherence not enforced at authoring yet"
+  if [ "$gate" = "GREEN" ]; then
+    log "GROUND  ${sid} plan-lint GREEN — form complete; G5/G9 still open (GREEN is not full grounding)"
+  else
+    log "GROUND  ${sid} plan-lint RED — see /tmp/plan-lint.txt; G5/G9 still open"
+  fi
+}
+# Wrap M3 plan-lint gates so GROUND lines always accompany GATE lines.
+m3_phase_gate() { # same args as phase_gate
+  phase_gate "$@"
+  case "${2:-}" in
+    GREEN|RED) log_gchain_m3_plan "$2" "${SID:-}" ;;
+  esac
+}
 
 # O-LOGBRIEF / O-LOGEPILOG — emission-only story banners (wake#376).
 # Pure log UX: no control-flow changes. Derive from brief/spec/tasks + git.
@@ -324,11 +473,11 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
   dur=$(_fmt_duration "$elapsed")
   head_s=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
   if [ -n "${SPEC_TASKS:-}" ] && [ -f "$SPEC_TASKS" ]; then
-    total=$(grep -cE '^#### T-[0-9]+' "$SPEC_TASKS" 2>/dev/null || echo 0)
+    total=$(grep -cE '^#### T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null || echo 0)
   fi
   if [ -n "$base" ]; then
     shipped=$(git log --oneline "${base}..HEAD" 2>/dev/null \
-      | grep -cE '^[0-9a-f]+ T-[0-9]+:' || true)
+      | grep -cE '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:' || true)
     shortstat=$(git diff --shortstat "${base}..HEAD" 2>/dev/null \
       | sed -E 's/^ *//' || true)
   fi
@@ -353,7 +502,7 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
   fi
   owned_n=$(printf '%s' "${FINDINGS:-}" | tr ', ' '\n' | grep -c . || true)
   if [ -f migration/debt.md ] && grep -qE "${SID}|T-[0-9]+" migration/debt.md 2>/dev/null; then
-    debt_note=$(grep -oE 'T-[0-9]+' migration/debt.md 2>/dev/null | head -1 || true)
+    debt_note=$(grep -oE 'T-[0-9]+[A-Za-z]*' migration/debt.md 2>/dev/null | head -1 || true)
     [ -n "$debt_note" ] && debt_note=" · ${debt_note} → migration/debt.md"
   fi
   find_line="${owned_n} owned"
@@ -367,7 +516,15 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
   log "${SID} CODE    ${shortstat} · src/main .java=${java_now}"
   log "${SID} TESTS   @Test ${tests_now} · asserts ${asserts_now}"
   log "${SID} FIND    ${find_line}"
-  log "${SID} COST    ${seats} seats (${seats_w} worker · ${seats_e} escalation) · ${sensor_red} sensor RED · ${sfix_n} sfix · ${m3_rev} M3 revisions"
+  # O-M3LINTLOG (W4R7 W-2): per-seat lint deltas from /tmp/m3-lint-seats-${SID}.tsv
+  local lint_seats="" lint_summary=""
+  if [ -f "/tmp/m3-lint-seats-${SID}.tsv" ]; then
+    lint_seats=$(wc -l <"/tmp/m3-lint-seats-${SID}.tsv" | tr -d ' ')
+    lint_summary=$(awk -F'\t' '{
+      if (NF>=4) printf "%s:%s→%s ", $1, $2, $3
+    }' "/tmp/m3-lint-seats-${SID}.tsv" | sed 's/ $//')
+  fi
+  log "${SID} COST    ${seats} seats (${seats_w} worker · ${seats_e} escalation) · ${sensor_red} sensor RED · ${sfix_n} sfix · ${m3_rev} M3 revisions${lint_seats:+ · lint-seats ${lint_seats}${lint_summary:+ (${lint_summary})}}"
   log "${SID} HEAD    ${head_s}"
 }
 
@@ -406,6 +563,56 @@ HBEOF
   hb_pid=$!
 }
 
+# O-HERMSCOOPPATH / O-M2-FREEZE-JUNK: MiniMax often git-adds golden .hermes/
+# into M2/M3 tips (543–547 paths). Untrack; keep WT. Stage-agnostic.
+scrub_hermes_scoop() {
+  local label="${1:-hygiene}"
+  if git ls-files .hermes 2>/dev/null | grep -q .; then
+    local n
+    n=$(git ls-files .hermes 2>/dev/null | wc -l | tr -d ' ')
+    log "         O-HERMSCOOPPATH: untracking ${n} .hermes paths from git index (${label}; keep WT)"
+    git rm -r --cached -q .hermes 2>/dev/null || true
+    if ! git diff --cached --quiet 2>/dev/null; then
+      git commit -q -m "${label}: drop harness scoop (O-HERMSCOOPPATH/O-M2-FREEZE-JUNK)" 2>/dev/null \
+        || log "         O-HERMSCOOPPATH: commit failed — review index before next gate"
+    fi
+  fi
+}
+
+# O-M3COMMITHYGIENE / Criterion 10: after an M3 seat, refuse agent tips that
+# scoop .hermes/ or *.pyc (commit-hygiene O-HERMSCOOP). Reset to pre-seat SHA
+# while keeping specs/${slug}/tasks.md in the working tree for plan-lint.
+_m3_refuse_bad_tip() {
+  local pre_sha="$1" slug="$2"
+  local head cur hyg tasks_save
+  head=$(git rev-parse HEAD 2>/dev/null) || return 0
+  [ -n "$pre_sha" ] || return 0
+  [ "$head" = "$pre_sha" ] && return 0
+  hyg=$(mktemp)
+  if python3 "$HARNESS/commit-hygiene.py" HEAD >"$hyg" 2>&1; then
+    rm -f "$hyg"
+    return 0
+  fi
+  log "         O-M3COMMITHYGIENE: refuse tip $(git rev-parse --short HEAD) — $(tr '\n' ' ' <"$hyg")"
+  tasks_save=$(mktemp)
+  if [ -f "specs/${slug}/tasks.md" ]; then
+    cp "specs/${slug}/tasks.md" "$tasks_save"
+  else
+    rm -f "$tasks_save"
+    tasks_save=""
+  fi
+  git reset --hard "$pre_sha" >/dev/null 2>&1 || true
+  # drop any re-tracked harness from the refused tip's index residue
+  scrub_hermes_scoop "M3-hygiene-refuse"
+  if [ -n "$tasks_save" ] && [ -f "$tasks_save" ]; then
+    mkdir -p "specs/${slug}"
+    cp "$tasks_save" "specs/${slug}/tasks.md"
+    rm -f "$tasks_save"
+  fi
+  rm -f "$hyg"
+  return 1
+}
+
 mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   local tag="$1" prompt="$2" title="${3:-$1}" t0 now rc hb_pid slog wpid
   t0=$(date +%s)
@@ -428,6 +635,9 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
     log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — caller must NOT-spend + backoff"
   fi
   log "·        ${title} session finished ($((now - t0))s, hermes_rc=${rc}) — checking gate next (session≠gate)"
+  # O-HERMSCOOPPATH: scrub after every MiniMax seat (M2/M3/M1-profile), not
+  # only the M2 call site — ff2664b proved M3 scoops too.
+  scrub_hermes_scoop "M-hygiene"
   return $rc
 }
 
@@ -615,10 +825,31 @@ _kill_outer_heartbeats() {
 }
 trap '_kill_outer_heartbeats; archive_tmp_forensics' EXIT
 
-fail_run() { phase_fail "$1"; echo "outer-failed: $1" > /tmp/outer-loop-done; exit 1; }
+fail_run() {
+  phase_fail "$1"
+  echo "outer-failed: $1" > /tmp/outer-loop-done
+  # O-STOPMARKER: durable terminal record (not only /tmp/outer-loop-done).
+  if [ -x "$HARNESS/write-stopped.sh" ] || [ -f "$HARNESS/write-stopped.sh" ]; then
+    bash "$HARNESS/write-stopped.sh" \
+      --kind "outer-failed" \
+      --authorizing "outer-loop fail_run" \
+      --reason "$1" \
+      --expected-next "fix root cause; durableize; clear migration/.stopped; restart outer" \
+      >>"$LOG" 2>&1 || true
+  fi
+  exit 1
+}
 
 # O-UXLOG-TRUNC (Poll 77 U1): never wipe the demo narrative on relaunch.
 # Append; rotate only when the file is huge (~5 MiB).
+# O-LOGSTART: banner says RESUME only when story-state has progress; otherwise
+# START (appending log) — wipe/fresh relaunch must not look like a story resume.
+_log_tee_lines() { # stdin → timestamped indented narrative lines
+  while IFS= read -r _line || [ -n "${_line:-}" ]; do
+    [ -z "${_line}" ] && continue
+    log "         ${_line}"
+  done
+}
 if [ -s "$LOG" ]; then
   _log_sz=$(wc -c <"$LOG" 2>/dev/null | tr -d ' ' || echo 0)
   if [ "${_log_sz:-0}" -gt 5000000 ]; then
@@ -626,76 +857,214 @@ if [ -s "$LOG" ]; then
   fi
   {
     echo ""
-    echo "[$(date -u +%F' '%T)] ——— RESUME outer-loop (append; prior narrative preserved) ———"
+    if [ -s "$STATE" ] && grep -qE ',(complete|running|in.progress|debt-freeze),' "$STATE" 2>/dev/null; then
+      echo "[$(date -u +%F' '%T)] ——— RESUME outer-loop (append; prior narrative preserved) ———"
+    else
+      echo "[$(date -u +%F' '%T)] ——— START outer-loop (appending log; prior narrative preserved) ———"
+    fi
   } >> "$LOG"
 else
   : > "$LOG"
+  echo "[$(date -u +%F' '%T)] ——— START outer-loop (fresh log) ———" >> "$LOG"
 fi
+# O-STOPMARKER: refuse start on deliberate/stale stop unless cleared.
+# tip may lag HEAD by the commit that *added* .stopped — treat as current when
+# tip..HEAD only touches migration/.stopped (not other work).
+if [ -f migration/.stopped ]; then
+  _stop_tip=$(grep -E '^tip:' migration/.stopped | head -1 | sed 's/^tip:[[:space:]]*//' | tr -d '[:space:]')
+  _head=$(git rev-parse HEAD 2>/dev/null || echo "")
+  _stop_stale=0
+  if [ -n "$_stop_tip" ] && [ -n "$_head" ] && [ "$_stop_tip" != "$_head" ]; then
+    _stop_delta=$(git diff --name-only "${_stop_tip}..${_head}" 2>/dev/null | grep -v '^migration/\.stopped$' || true)
+    if [ -n "$_stop_delta" ]; then
+      _stop_stale=1
+    fi
+  fi
+  if [ "$_stop_stale" = "1" ]; then
+    # O-STOPREFUSELOG: refuse must hit the outer log (not only stderr).
+    {
+      echo "[$(date -u +%F' '%T)] O-STOPMARKER: REFUSE start — stale marker tip=${_stop_tip} != HEAD=${_head} (tip..HEAD has non-marker changes)"
+      echo "[$(date -u +%F' '%T)] O-STOPMARKER: investigate before clearing; do not blind CLEAR_STOPPED"
+    } | tee -a "$LOG" >&2
+    exit 1
+  fi
+  if [ "${CLEAR_STOPPED:-0}" = "1" ] || [ "${OPERATOR_CONFIRM_START:-0}" = "1" ]; then
+    echo "[$(date -u +%F' '%T)] O-STOPMARKER: clearing migration/.stopped (CLEAR_STOPPED/OPERATOR_CONFIRM_START)" >> "$LOG"
+    rm -f migration/.stopped
+  else
+    _exp=$(grep -E '^expected_next:' migration/.stopped | head -1 | sed 's/^expected_next:[[:space:]]*//' || true)
+    {
+      echo "[$(date -u +%F' '%T)] O-STOPMARKER: REFUSE start — deliberate stop present (expected_next=${_exp:-unknown})"
+      echo "[$(date -u +%F' '%T)] O-STOPMARKER: to proceed: OPERATOR_CONFIRM_START=1 (or CLEAR_STOPPED=1) .hermes/harness/outer-loop.sh"
+    } | tee -a "$LOG" >&2
+    exit 1
+  fi
+fi
+
 phase_start "Outer loop — autonomous migration" \
   "Models: $(orch_label) · $(worker_label) | progress: $LOG | resume: $STATE"
+log_gchain_banner
 
 # O-STAMP-AUTO: derive migration.yaml from legacy tree before M1 ground truth.
 LEGACY_ROOT="${LEGACY_ROOT:-/projects/legacy}"
 if [ -d "$LEGACY_ROOT" ]; then
   phase_start "M1 contract stamp — auto-derived specimen contract (O-STAMP-AUTO)"
+  _stamp_out=$(mktemp)
   if python3 "$HARNESS/contract-stamp.py" stamp --legacy "$LEGACY_ROOT" --yaml migration.yaml --write \
-      >> "$LOG" 2>&1; then
+      >"$_stamp_out" 2>&1; then
+    _log_tee_lines < "$_stamp_out"
+    rm -f "$_stamp_out"
     if git diff --quiet migration.yaml 2>/dev/null; then
-      log "         contract-stamp: migration.yaml already current"
+      : # status already narrated by contract-stamp stdout via _log_tee_lines
     else
       git add migration.yaml
-      if git commit -m "M1 contract: auto-derived specimen stamp" >> "$LOG" 2>&1; then
+      # O-M1SENSORGATE: stamp commit must not run sensors.sh task (fresh tree RED).
+      log "         O-M1SENSORGATE: SKIP_SENSOR_GATE=1 for M1 contract stamp commit"
+      if SKIP_SENSOR_GATE=1 git commit -m "M1 contract: auto-derived specimen stamp" >> "$LOG" 2>&1; then
         log "         contract-stamp: committed migration.yaml"
       else
         log "         contract-stamp: migration.yaml updated (commit skipped — review tree)"
       fi
     fi
   else
+    _log_tee_lines < "$_stamp_out"
+    rm -f "$_stamp_out"
     fail_run "M1 contract stamp — contract-stamp.py failed (see $LOG)"
   fi
-  if ! python3 "$HARNESS/contract-stamp-gate.py" --legacy "$LEGACY_ROOT" --yaml migration.yaml >> "$LOG" 2>&1; then
+  _stamp_out=$(mktemp)
+  if ! python3 "$HARNESS/contract-stamp-gate.py" --legacy "$LEGACY_ROOT" --yaml migration.yaml \
+      >"$_stamp_out" 2>&1; then
+    _log_tee_lines < "$_stamp_out"
+    rm -f "$_stamp_out"
     fail_run "M1 contract stamp gate — O-STAMP-GATE RED (see $LOG)"
   fi
+  _log_tee_lines < "$_stamp_out"
+  rm -f "$_stamp_out"
   phase_ok "M1 contract stamp — O-STAMP-GATE GREEN"
 else
-  log "WARN: LEGACY_ROOT $LEGACY_ROOT missing — skipping O-STAMP-AUTO"
+  log "         WARN: LEGACY_ROOT $LEGACY_ROOT missing — skipping O-STAMP-AUTO"
 fi
 
 # ------------------------------------------------------------- M1 ANALYZE
+# O-M1SKIPPROV: skip only when artifacts + provenance stamp match current
+# legacy HEAD (existence alone is not enough after keep-M1 abort wipes).
+m1_analyze_green() {
+  python3 "$HARNESS/m1-provenance.py" check-analyze --root . --legacy /projects/legacy \
+    > /tmp/m1-analyze-provenance.txt 2>&1
+}
+m1_profile_green() {
+  # O-RUBRICGENSRC: grade source tree only — never /projects/legacy (includes
+  # target/generated-sources MapStruct *MapperImpl false classroles).
+  local _legacy_src="/projects/legacy/src"
+  [ -d "$_legacy_src" ] || _legacy_src="/projects/legacy"
+  [ -f migration/architecture-profile.md ] || return 1
+  python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md "$_legacy_src" \
+    > /tmp/profile-rubric.txt 2>&1 || return 1
+  python3 "$HARNESS/m1-provenance.py" check-profile --root . --legacy /projects/legacy \
+    > /tmp/m1-profile-provenance.txt 2>&1
+}
 phase_start "M1 ANALYZE — establish migration ground truth (MTA + recipes)" \
   "Actor: harness scripts (no LLM)"
-if [ -f migration/mta-findings.json ]; then
-  phase_ok "M1 ANALYZE — ground truth already present"
+if m1_analyze_green; then
+  phase_ok "M1 ANALYZE — ground truth present + provenance-matched (O-M1SKIPPROV)"
 else
+  if [ -f migration/mta-findings.json ]; then
+    log "         O-M1SKIPPROV: artifacts present but provenance RED — re-running ANALYZE ($(head -1 /tmp/m1-analyze-provenance.txt 2>/dev/null || echo no-detail))"
+  fi
   "$HARNESS/analyze.sh" > /tmp/outer-m1-analyze.log 2>&1 \
     || fail_run "M1 ANALYZE — ground truth unavailable (see /tmp/outer-m1-analyze.log)"
+  # O-RULESETLOG: surface coverage in the outer log (also written to file by analyze.sh)
+  if [ -f migration/ruleset-coverage.md ]; then
+    while IFS= read -r _rsl; do
+      [ -n "$_rsl" ] && log "         $_rsl"
+    done < <(grep '^O-RULESETLOG' /tmp/outer-m1-analyze.log 2>/dev/null || true)
+  fi
+  python3 "$HARNESS/m1-provenance.py" write-analyze --root . --legacy /projects/legacy \
+    > /tmp/m1-analyze-stamp-write.txt 2>&1 \
+    || fail_run "M1 ANALYZE — provenance stamp write failed (see /tmp/m1-analyze-stamp-write.txt)"
+  if [ -n "$(git status --porcelain migration/.m1-analyze.stamp.json migration/ 2>/dev/null || true)" ]; then
+    git add migration/.m1-analyze.stamp.json \
+      migration/mta-findings.json migration/findings-inventory.md \
+      migration/dependency-order.md migration/recipe-log.md \
+      migration/ruleset-coverage.md migration/staging \
+      2>/dev/null || true
+    SKIP_SENSOR_GATE=1 git commit -q -m "M1 analyze: provenance stamp (O-M1SKIPPROV)" 2>/dev/null || true
+  fi
   # L-D1: enumerate key M1 deliverables
-  log "         • migration/mta-findings.json (+ findings-inventory.md, dependency-order.md, recipe-log.md)"
+  log "         • migration/mta-findings.json (+ findings-inventory.md, dependency-order.md, recipe-log.md, ruleset-coverage.md)"
   [ -d migration/staging ] && log "         • migration/staging/ ($(find migration/staging -type f 2>/dev/null | wc -l | tr -d ' ') files)"
+  log "         • migration/.m1-analyze.stamp.json (O-M1SKIPPROV)"
   phase_ok "M1 ANALYZE — ground truth ready (details /tmp/outer-m1-analyze.log; HEAD $(git rev-parse --short HEAD 2>/dev/null || echo ?))"
 fi
 
-if [ -f migration/architecture-profile.md ]; then
-  phase_ok "M1 PROFILE — architecture-profile.md already present"
+if m1_profile_green; then
+  phase_ok "M1 PROFILE — architecture-profile.md rubric-green + provenance-matched (O-M1SKIPPROV)"
+  log_gchain_m1_profile GREEN
 else
+  if [ -f migration/architecture-profile.md ]; then
+    log "         O-M1SKIPPROV: profile present but rubric/provenance RED — re-running PROFILE"
+  fi
   for ATTEMPT in 1 2; do
     phase_start "M1 PROFILE — architecture profile (class roles & target contract) [attempt ${ATTEMPT}/2]"
+    # O-PROFBESTOBS: stage-local best starts empty; RED attempts raise it.
+    if [ "$ATTEMPT" = "1" ]; then
+      rm -f migration/.profile-coverage-best
+    fi
+    # O-M1PROFRETRYINLINE: attempt ≥2 inlines rubric RED (do not rely on file read).
+    _prof_retry_extra=""
+    if [ "$ATTEMPT" -ge 2 ] && [ -f /tmp/profile-rubric.txt ]; then
+      _prof_retry_extra="
+O-M1PROFRETRYINLINE — previous attempt failed the rubric. Fix EVERY line below (inlined):
+$(head -c 4000 /tmp/profile-rubric.txt | head -n 40)
+Also O-PROFBESTOBS: do not reduce class coverage below the best COVERAGE line already observed this stage.
+"
+    fi
     mchat "m1-profile-a${ATTEMPT}" \
-"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md). Execute the M1 profile step ONLY: read the legacy code under /projects/legacy and write migration/architecture-profile.md per ANALYSIS.md. A deterministic rubric gates it — verify yourself with: python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy (must exit 0 — it cross-checks that every CDI/JAX-RS class is classified REDESIGN in section 7) BEFORE committing. Finish with ONE commit whose message STARTS with 'M1 profile:'. DO NOT PUSH. Keep the session packet tight — cite legacy paths; do not paste whole files into the profile (O-CTX)." \
+"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md). Execute the M1 profile step ONLY: read the legacy code under /projects/legacy and write migration/architecture-profile.md per ANALYSIS.md. A deterministic rubric gates it — verify yourself with: python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy/src (must exit 0 — it cross-checks that every CDI/JAX-RS class is classified REDESIGN in section 7; O-RUBRICGENSRC excludes target/generated-sources from the walk; O-RUBRICGENASSERT refuses §7 HARVEST/REDESIGN on MapperImpl/generated-sources; O-PROFDENSITY requires ≥max(80%, previous accepted) class coverage; cite src/ paths, rule ids, *Test, or migration/dependency-order.md) BEFORE committing. Finish with ONE commit whose message STARTS with 'M1 profile:'. DO NOT PUSH. Keep the session packet tight; do not paste whole files into the profile (O-CTX).${_prof_retry_extra}" \
       "M1 PROFILE"
-    if [ -f migration/architecture-profile.md ] && python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md /projects/legacy > /tmp/profile-rubric.txt 2>&1; then
+    if [ -f migration/architecture-profile.md ] && python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md /projects/legacy/src > /tmp/profile-rubric.txt 2>&1; then
+      python3 "$HARNESS/m1-provenance.py" write-profile --root . --legacy /projects/legacy \
+        > /tmp/m1-profile-stamp-write.txt 2>&1 || true
       # Mechanical closure: commit if the session forgot.
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M1 profile: outer-loop mechanical commit of rubric-green profile" 2>/dev/null
       phase_gate "M1 PROFILE rubric" GREEN "architecture-profile.md; commit $(git rev-parse --short HEAD)"
+      log_gchain_m1_profile GREEN
       log "         • migration/architecture-profile.md (§7 class roles + target contract)"
+      log "         • migration/.m1-profile.stamp.json (O-M1SKIPPROV)"
       phase_ok "M1 PROFILE — architecture-profile.md rubric-green; commit $(git rev-parse --short HEAD)"
       break
     fi
     phase_gate "M1 PROFILE rubric" RED "see /tmp/profile-rubric.txt"
+    log_gchain_m1_profile RED
     [ "$ATTEMPT" = "2" ] && fail_run "M1 PROFILE failed the rubric twice"
     phase_retry "M1 PROFILE — bouncing once"
     git checkout -q -- migration/ 2>/dev/null || true
   done
+fi
+
+# O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
+# Used to prove ruleset coverage / openjdk21 / provenance before spending M2 seats.
+if [ "${STOP_AFTER_M1:-0}" = "1" ] || [ "${STOP_AFTER_M1:-}" = "true" ]; then
+  if m1_analyze_green && m1_profile_green; then
+    phase_gate "M1 stop-after" GREEN \
+      "STOP_AFTER_M1 — analyze+profile provenance-green; refusing M2 SEQUENCE"
+    log "         O-STOPAFTERM1: M1 validation complete — not starting M2"
+    if [ -x "$HARNESS/write-stopped.sh" ] || [ -f "$HARNESS/write-stopped.sh" ]; then
+      bash "$HARNESS/write-stopped.sh" \
+        --kind deliberate-stop \
+        --authorizing "STOP_AFTER_M1=1" \
+        --reason "M1 ANALYZE+PROFILE complete; validation hold before M2" \
+        --expected-next "review M1 artifacts (ruleset-coverage, openjdk21); clear STOP_AFTER_M1 + migration/.stopped; resume" \
+        || true
+      if [ -n "$(git status --porcelain migration/.stopped 2>/dev/null || true)" ]; then
+        git add migration/.stopped
+        SKIP_SENSOR_GATE=1 git commit -q -m "chore: STOP_AFTER_M1 hold (.stopped)" 2>/dev/null || true
+      fi
+    fi
+    echo "outer-complete: STOP_AFTER_M1 $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/outer-loop-done
+    exit 0
+  fi
+  fail_run "O-STOPAFTERM1 set but M1 ANALYZE/PROFILE not provenance-green"
 fi
 
 # ------------------------------------------------------------ M2 SEQUENCE
@@ -759,6 +1128,7 @@ m2_brief_quality_exit() {
 }
 if roadmap_green; then
   phase_ok "M2 SEQUENCE — roadmap already present and lint-green"
+  log_gchain_m2_roadmap GREEN
   if ! m2_brief_quality_exit; then
     cp -f /tmp/roadmap-lint-m2exit.txt /tmp/roadmap-lint.txt 2>/dev/null || true
     phase_gate "M2 SEQUENCE brief-quality" RED \
@@ -770,7 +1140,9 @@ else
   if [ "${M2_COMPOSE}" = "1" ] && [ ! -f migration/roadmap.md ]; then
     phase_start "M2 SEQUENCE — skeleton-first compose (O-M2COMPOSE)"
     if m2_compose_bookkeeping skeleton; then
-      phase_gate "M2 SEQUENCE compose" GREEN "lint residual $(roadmap_lint_residual) — $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+      # O-LOGSTART: residual after skeleton is expected — MiniMax seat closes it.
+      phase_gate "M2 SEQUENCE compose" GREEN \
+        "skeleton seeded; lint residual $(roadmap_lint_residual) left for MiniMax — $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
     else
       phase_gate "M2 SEQUENCE compose" RED "lint residual $(roadmap_lint_residual) — see /tmp/m2-compose.txt"
       fail_run "O-M2COMPOSE skeleton-first RED (see /tmp/m2-compose.txt)"
@@ -786,7 +1158,7 @@ else
   M2_RETRY_LINT_BYTES="${M2_RETRY_LINT_BYTES:-8000}"
   while [ "$ATTEMPT" -le "$M2_MAX_ATTEMPTS" ]; do
     phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/${M2_MAX_ATTEMPTS}]"
-    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). O-M2-FREEZE-JUNK / O-HERMSCOOP: stage ONLY migration/roadmap.md and migration/briefs/ — NEVER git add .hermes/ (or git add -A). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
     if [ "$ATTEMPT" -gt 1 ]; then
       # O-M2RETRYINLINE: put bounded lint in the prompt — do not rely on the
       # seat re-reading /tmp/roadmap-lint.txt (v3 death mode / path-only miss).
@@ -805,6 +1177,10 @@ ${_lint_inline}
 (Full output also at /tmp/roadmap-lint.txt if truncated.) LINT:fabrication = quote real legacy methods/annotations only. LINT:coverage dual-owner / orphan = each mandatory finding in exactly one story; remove duplicate claims and out-of-place scope paths. LINT:substance ceremonial = every story scope lists real code/test paths. LINT:deploy = last story deploy=true. LINT:O-PORTDERIVE = brief must name REDESIGN classes with target contracts from architecture-profile §7. LINT:O-STORYKIND = OPEN DESIGN / §7 REDESIGN stories must declare kind: rename|reimplement|mixed (mixed needs split/justification). LINT:O-SEATBUDGET = seat-budget must equal kind×incidents (publish same N in brief; m2-compose fill will rewrite the arithmetic). Fix every lint finding in migration/roadmap.md and the briefs, verify python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md exits 0, and commit with prefix 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
     fi
     mchat "m2-sequence-a${ATTEMPT}" "$P" "M2 SEQUENCE"
+    # O-M2-FREEZE-JUNK / O-HERMSCOOPPATH: scrub now lives in mchat() (stage-
+    # agnostic). Keep a no-op call here so older call-site greps still find the
+    # label; scrub_hermes_scoop is idempotent when index is clean.
+    scrub_hermes_scoop "M2 hygiene"
     # O-M2COMPOSE fill after seat — kill coverage/briefs/deploy/seat-budget bookkeeping
     m2_compose_bookkeeping fill || true
     if roadmap_green; then
@@ -823,9 +1199,11 @@ ${_lint_inline}
       [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
       # O-LOGLINTRES: narrate residual (0) on GREEN so convergence is visible
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
+      log_gchain_m2_roadmap GREEN
       # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
       if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
-        _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt)' migration/roadmap.md 2>/dev/null || true)
+        # O-EVIDLIVEK3TABLE: also count markdown table `| id | adopt|defer | reason |`
+        _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt|[[:space:]]\|[[:space:]]*(adopt|defer)[[:space:]]\|)' migration/roadmap.md 2>/dev/null || true)
         _k3n=${_k3n:-0}
         if [ "${_k3n:-0}" -gt 0 ] 2>/dev/null; then
           for _sid in $(grep -E '^## S[0-9]+' migration/roadmap.md | sed -E 's/^## (S[0-9]+).*/\1/'); do
@@ -859,10 +1237,29 @@ ${_lint_inline}
     M2_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter (lint RED burns attempt below)
     # O-LOGLINTRES: residual count on RED — the number that shows M2 convergence
     phase_gate "M2 SEQUENCE roadmap-lint" RED "$(roadmap_lint_residual) findings — /tmp/roadmap-lint.txt"
+    log_gchain_m2_roadmap RED
     [ "$ATTEMPT" -ge "$M2_MAX_ATTEMPTS" ] && fail_run "M2 SEQUENCE failed its lint twice"
     ATTEMPT=$((ATTEMPT + 1))
     phase_retry "M2 SEQUENCE — bouncing once"
   done
+fi
+
+# O-STOPAFTERM2 — validation runs: exit after M2 GREEN (no M3/M4/M5).
+# Used to prove brief-quality / PREFLIGHT / compose before spending M3 seats.
+if [ "${STOP_AFTER_M2:-0}" = "1" ] || [ "${STOP_AFTER_M2:-}" = "true" ]; then
+  if [ -f migration/roadmap.md ] && roadmap_green; then
+    if m2_brief_quality_exit; then
+      phase_gate "M2 SEQUENCE stop-after" GREEN \
+        "STOP_AFTER_M2 — brief-quality floor cleared; refusing story loop"
+      log "         O-STOPAFTERM2: M2 validation complete — not starting M3"
+      echo "outer-complete: STOP_AFTER_M2 $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/outer-loop-done
+      exit 0
+    fi
+    phase_gate "M2 SEQUENCE stop-after" RED \
+      "STOP_AFTER_M2 but brief-quality floor RED — /tmp/roadmap-lint-m2exit.txt"
+    fail_run "O-STOPAFTERM2: M2 present but O-BRIEFQUALITY floor RED"
+  fi
+  fail_run "O-STOPAFTERM2 set but M2 roadmap missing or lint-RED"
 fi
 
 # ---------------------------------------------------------- story loop
@@ -920,6 +1317,17 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   STORY_TAG="${SLUG_HINT:-$SID}"
   story_done "$SID" && { phase_ok "${SID} (${SLUG_HINT}) — already complete; skipping"; STORY_TAG=""; continue; }
 
+  # O-EXECUTEONLY — validation runs: execute-pass only for one story
+  # (e.g. EXECUTE_ONLY_STORY=S02 + M3_ALL=0 + STOP_AFTER_EXECUTE=S02 for
+  # first-M4 probe without burning S01 or later-story MiniMax author).
+  if [ "$M3_ALL_PASS" = "execute" ] \
+    && [ -n "${EXECUTE_ONLY_STORY:-}" ] \
+    && [ "${EXECUTE_ONLY_STORY}" != "$SID" ]; then
+    log "         O-EXECUTEONLY: skip ${SID} (EXECUTE_ONLY_STORY=${EXECUTE_ONLY_STORY})"
+    STORY_TAG=""
+    continue
+  fi
+
   # -------------------------------------------------------- M3 SPECIFY
   # O-M3SKIP: never treat "tasks.md exists" as GREEN. Untracked/half-written
   # specs after a failed M3 (or auto-restart) must re-lint; only skip mchat
@@ -962,32 +1370,261 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
          --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
          --story-deploy "$DEPLOY" --story-scope "$SCOPE" \
          > /tmp/plan-lint.txt 2>&1; then
-    [ -n "$(git status --porcelain specs/)" ] \
-      && git add specs/ \
+    # O-M3MECHSCOPE: only this story's specs/ — never sweep sibling dirty plans
+    [ -n "$(git status --porcelain "specs/${SLUG}/")" ] \
+      && git add "specs/${SLUG}/" \
       && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-    phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+    m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
     phase_ok "M3 SPECIFY — ${SLUG} spec already present and plan-lint-green ($SPEC_TASKS); commit $(git rev-parse --short HEAD)"
     M3_DONE=1
   elif [ -n "$SPEC_TASKS" ]; then
-    phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
+    m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
     log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
   fi
   if [ "$M3_DONE" != "1" ]; then
     # O-M3WORKER: Qwen drafts (≤M3_WORKER_ATTEMPTS), then MiniMax backstop
     # (≤M3_ORCH_BACKSTOP). plan-lint remains the gate — session≠success.
     # O-M3KILL: SIGKILL must NOT spend an attempt.
+    # O-M3DERIVEDCTX (ADR-21 G4): inline derived facts beside the brief at zero
+    # tool cost. Keep O-M3FIRSTWRITE read ban; on conflict DERIVED FACTS win.
+    m3_derived_facts() {
+      # ADR-24: prefer model.py projection (no basename scrape / silent cap).
+      if [ -f migration/model.json ] && [ -f "${HARNESS:-.hermes/harness}/model.py" ]; then
+        local _ctx=""
+        if [ -n "${SID:-}" ]; then
+          _ctx="$(python3 "${HARNESS:-.hermes/harness}/model.py" context-for "${SID}" --root . 2>/dev/null || true)"
+        fi
+        if [ -z "${_ctx}" ] || ! printf '%s' "$_ctx" | grep -q 'convert-together\|units ('; then
+          _ctx="$(python3 "${HARNESS:-.hermes/harness}/model.py" context-for --scope "${SCOPE}" --root . 2>/dev/null || true)"
+        fi
+        if [ -n "${_ctx}" ]; then
+          # Keep preserve tokens + symbol-index after the model block.
+          local _pres
+          _ctx="$(printf '%s\n' "$_ctx" | sed '/^===== END DERIVED FACTS =====$/d')"
+          _pres="$(python3 - <<'PY' 2>/dev/null || true
+import re
+from pathlib import Path
+y = Path("migration.yaml").read_text(encoding="utf-8", errors="replace") if Path("migration.yaml").is_file() else ""
+pres = re.findall(r"^\s*-\s+(\S+)\s*$", y.split("preserve:", 1)[-1].split("\nforbidden", 1)[0] if "preserve:" in y else "", re.M)
+if not pres:
+    m = re.search(r"^preserve:\s*\[(.*?)\]", y, re.M | re.S)
+    if m:
+        pres = [p.strip().strip("'\"") for p in m.group(1).split(",") if p.strip()]
+print("preserve: " + (", ".join(pres) if pres else "(none)"))
+PY
+)"
+          printf '%s\n%s\n' "$_ctx" "${_pres:-preserve: (none)}"
+          # symbol-index still from scope files (legacy paths)
+          python3 - "$SCOPE" <<'PY' 2>/dev/null || true
+import re, sys
+from pathlib import Path
+scope = [s.strip() for s in (sys.argv[1] or "").replace(",", " ").split() if s.strip()]
+SYM_CAP = 80
+print("symbol-index (from scope files — do not preserve types absent here):")
+roots = [Path("/projects/legacy"), Path("legacy"), Path(".")]
+shown = 0
+for sp in scope[:SYM_CAP]:
+    path = None
+    for root in roots:
+        for cand in (root / sp, root / "src/main/java" / sp, root / sp.lstrip("/")):
+            if cand.is_file():
+                path = cand
+                break
+        if path:
+            break
+    if not path:
+        continue
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        continue
+    annos = sorted(set(re.findall(r"@([A-Z][A-Za-z0-9]+)", text)))[:12]
+    types = sorted(set(re.findall(r"\b([A-Z][A-Za-z0-9]{2,})\b", text)))[:12]
+    print(f"  - {sp}: @{','.join(annos) or '-'} types={','.join(types) or '-'}")
+    shown += 1
+if not shown:
+    print("  - (no scope files readable)")
+print("===== END DERIVED FACTS =====")
+PY
+          return 0
+        fi
+      fi
+      python3 - "$SCOPE" <<'PY' 2>/dev/null || true
+import re, sys
+from pathlib import Path
+
+scope = [s.strip() for s in (sys.argv[1] or "").replace(",", " ").split() if s.strip()]
+lines = [
+    "===== BEGIN DERIVED FACTS (authoritative over BRIEF on conflict) =====",
+    "O-M3DERIVEDCTX: where BRIEF and DERIVED FACTS disagree, DERIVED FACTS win;",
+    "record the conflict in the task Goal/notes. Do not invent types absent below.",
+]
+
+# preserve tokens from migration.yaml
+try:
+    y = Path("migration.yaml").read_text(encoding="utf-8", errors="replace")
+except OSError:
+    y = ""
+pres = re.findall(r"^\s*-\s+(\S+)\s*$", y.split("preserve:", 1)[-1].split("\nforbidden", 1)[0] if "preserve:" in y else "", re.M)
+if not pres:
+    # also accept inline list form
+    m = re.search(r"^preserve:\s*\[(.*?)\]", y, re.M | re.S)
+    if m:
+        pres = [p.strip().strip("'\"") for p in m.group(1).split(",") if p.strip()]
+lines.append("preserve: " + (", ".join(pres) if pres else "(none)"))
+
+# findings rows for this story's scope (id + description).
+# O-M3DERIVEDCAP (W4-360 P2): never silent-truncate — raise notice if capped.
+FIND_SCOPE_CAP = 80
+FIND_ROW_CAP = 40
+fin_path = Path("migration/findings-inventory.md")
+find_bits = []
+scope_for_find = scope[:FIND_SCOPE_CAP]
+if fin_path.is_file() and scope:
+    body = fin_path.read_text(encoding="utf-8", errors="replace")
+    for sp in scope_for_find:
+        base = Path(sp).name
+        for ln in body.splitlines():
+            if base in ln or sp in ln:
+                find_bits.append(ln.strip()[:200])
+                if len(find_bits) >= FIND_ROW_CAP:
+                    break
+        if len(find_bits) >= FIND_ROW_CAP:
+            break
+lines.append("findings:")
+if len(scope) > FIND_SCOPE_CAP or len(find_bits) >= FIND_ROW_CAP:
+    lines.append(
+        f"  - (findings: scanned {min(len(scope), FIND_SCOPE_CAP)} of "
+        f"{len(scope)} scope paths; rows={len(find_bits)} — truncated; "
+        f"do not treat absence as proof)"
+    )
+if find_bits:
+    lines.extend("  - " + b for b in find_bits)
+else:
+    lines.append("  - (none matched for scope)")
+
+# ADR-24 fallback only: full-path join (never basename) when model missing
+dep_path = Path("migration/dependency-order.md")
+dep_bits = []
+if dep_path.is_file() and scope:
+    body = dep_path.read_text(encoding="utf-8", errors="replace")
+    for ln in body.splitlines():
+        if any(sp in ln for sp in scope):
+            dep_bits.append(ln.strip()[:200])
+            if len(dep_bits) >= 40:
+                break
+lines.append("dependency-order:")
+if dep_bits:
+    lines.extend("  - " + b for b in dep_bits)
+else:
+    lines.append("  - (none matched for scope)")
+
+# symbol-index: annotations/types actually present in scoped legacy files
+# O-M3DERIVEDCAP: cap raised; always declare N of M when truncated (W4-360 P2).
+SYM_CAP = 80
+lines.append("symbol-index (from scope files — do not preserve types absent here):")
+roots = [Path("/projects/legacy"), Path("legacy"), Path(".")]
+shown = 0
+skipped = max(0, len(scope) - SYM_CAP)
+for sp in scope[:SYM_CAP]:
+    path = None
+    for root in roots:
+        for cand in (root / sp, root / "src/main/java" / sp, root / sp.lstrip("/")):
+            if cand.is_file():
+                path = cand
+                break
+        if path:
+            break
+        # basename search under legacy/src
+        base = Path(sp).name
+        for root in roots:
+            src = root / "src/main/java"
+            if not src.is_dir():
+                continue
+            hits = list(src.rglob(base))
+            if hits:
+                path = hits[0]
+                break
+        if path:
+            break
+    if path is None:
+        continue
+    try:
+        src = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        continue
+    annos = sorted(set(re.findall(r"@([A-Z][A-Za-z0-9]+)", src)))[:12]
+    types = sorted(set(re.findall(r"\b([A-Z][a-zA-Z0-9]{6,})\b", src)))[:16]
+    # Drop the file's own simple name from noise
+    own = path.stem
+    types = [t for t in types if t != own][:12]
+    lines.append(f"  - {path.name}: annos=[{', '.join(annos) or '—'}] types=[{', '.join(types) or '—'}]")
+    shown += 1
+if shown == 0:
+    lines.append("  - (no scope files resolved under /projects/legacy)")
+elif skipped > 0:
+    lines.append(
+        f"  - (symbol-index: {shown} of {len(scope)} scope files — truncated; "
+        f"do not treat absence as proof for the {skipped} omitted paths)"
+    )
+
+lines.append("===== END DERIVED FACTS =====")
+text = "\n".join(lines)
+# Cap so prompt stays within seat budget; never silent (O-M3DERIVEDCAP).
+CHAR_CAP = 12000
+if len(text) > CHAR_CAP:
+    text = (
+        text[: CHAR_CAP - 120]
+        + "\n… (O-M3DERIVEDCAP: DERIVED FACTS truncated at "
+        + f"{CHAR_CAP} chars — do not treat omitted rows as absent from code)\n"
+        + "===== END DERIVED FACTS =====\n"
+    )
+print(text)
+PY
+    }
     m3_build_prompt() { # $1=fresh|fix — sets P from brief or plan-lint RED fix
       local mode="${1:-fresh}"
+      local BRIEF_INLINE=""
+      local DERIVED_INLINE=""
       # O-M3EMPTY: if tasks.md never landed, always use fresh create prompt —
       # "fix specs/<slug>/" misleads when the directory does not exist.
       if [ "$mode" = "fix" ] && [ ! -f "specs/${SLUG}/tasks.md" ]; then
         mode=fresh
       fi
-      # O-M3FIRSTWRITE / O-M3ALLSTALL: skeleton-first — first tool must EDIT
-      # existing tasks.md (not create-from-scratch after deep-read).
-      P="Use the migration-harness skill and read PLANNING.md in its directory. Execute M3 ONLY for story ${SID}: read the brief ${BRIEF} (it is authoritative — the decided shapes and contracts are IN it) and migration/architecture-profile.md. O-M3FIRSTWRITE (mandatory, skeleton-first): if specs/${SLUG}/tasks.md already exists (M3-ALL skeleton / preseed), your FIRST tool must EDIT that file (fill Goal/Target design/revise Class·Shape; remove O-M3ALL-SKELETON or preseed markers) — do not deep-read legacy before that first edit. If tasks.md is missing, mkdir -p and WRITE a TASKS-TEMPLATE skeleton first. Supervisor aborts read-only seats after ~${M3_STALL_ABORT_SECS:-120}s with zero writes (O-M3QWENSTALL/O-M3ALLSTALL). Then refine plan.md/spec.md and run plan-lint. O-SPECREIMPL: every REDESIGN/OPEN DESIGN class named in spec.md must appear in some task with **Port**: reimplement. Write specs/${SLUG}/spec.md, plan.md and tasks.md per PLANNING.md, scoped STRICTLY to this story. Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify (O-M3CLASSFMT). O-M3PLANEXISTS: do NOT schedule Spring Boot parent/BOM/actuator→Quarkus converts when pom.xml already has Quarkus BOM/quarkus-smallrye-health — omit dead tasks. Story file scope=${SCOPE} — do not harvest dto/entity classes outside that scope. A deterministic lint gates the plan — verify yourself with: ${M3_LINT_CMD} (must exit 0) BEFORE committing. Finish with ONE commit whose message STARTS with '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): story deploy=${DEPLOY}. If deploy=false, do NOT task migration.yaml acceptance.path with a Java @Path/endpoint — defer to the deploy story (S-AC1/G-OK); omitting the path from tasks is OK. If deploy=true, task the full literal acceptance.path with real @Path substance (no MinimalAcceptanceEndpoint / status-map placeholders)."
+      # O-M3BRIEFINLINE (R-Q3′): paste brief into the seat prompt — path/-f alone
+      # did not stop Qwen from reading M1 artifacts instead (S02 w1). Cap ~24k
+      # chars so large briefs still fit; S02 ~3k tokens.
+      if [ -n "${BRIEF:-}" ] && [ -f "$BRIEF" ]; then
+        BRIEF_INLINE="$(head -c 24000 "$BRIEF" 2>/dev/null || true)"
+      fi
+      # O-M3DERIVEDCTX (ADR-21 G4): derived facts beside brief; zero tool cost.
+      DERIVED_INLINE="$(m3_derived_facts)"
+      # O-GROUNDLOG: emit G4 once per story (first prompt build) for demo chain visibility.
+      if [ "${_GCHAIN_G4_LOGGED:-}" != "${SID:-}" ]; then
+        _GCHAIN_G4_LOGGED="${SID:-}"
+        log_gchain_m3_g4 "$DERIVED_INLINE" "${SID:-}"
+      fi
+      # O-M3FIRSTWRITE / O-M3SKILLNAV / O-M3BRIEFINLINE: lead with first-tool EDIT;
+      # forbid M1 explore before mutate; brief is inlined below (not a path to chase).
+      P="M3 ONLY for ${SID} (${SLUG}). O-M3FIRSTWRITE: your FIRST tool MUST be edit/write on specs/${SLUG}/tasks.md (fill Goal/Target/Class·Shape; remove O-M3ALL-SKELETON/preseed markers). Do NOT read migration.yaml, findings-inventory.md, dependency-order.md, specs/${SLUG}/spec.md, or plan.md before that first edit — those burn the ${M3_STALL_ABORT_SECS:-120}s stall budget. Brief + DERIVED FACTS are INLINED below; on conflict DERIVED FACTS win (O-M3DERIVEDCTX). After the first tasks.md mutate: fix plan-lint, optionally write plan.md/spec.md stubs, verify: ${M3_LINT_CMD} (exit 0). If you commit, ONE commit starting with '${SID} spec:' staging ONLY specs/${SLUG}/ (never git add -A / .hermes / __pycache__); prefer leaving uncommitted for outer-loop mechanical commit (O-M3COMMITHYGIENE/O-M3MECHSCOPE). DO NOT PUSH. Scope=${SCOPE}. ${PKG_RENAME_HINT} ACCEPTANCE deploy=${DEPLOY} (if false: no acceptance.path endpoint tasks). Every task needs **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. O-SPECREIMPL: REDESIGN classes in spec.md need **Port**: reimplement.
+
+===== BEGIN BRIEF ${BRIEF} =====
+${BRIEF_INLINE}
+===== END BRIEF =====
+
+${DERIVED_INLINE}"
       if [ "$mode" = "fix" ]; then
-        P="Use the migration-harness skill and read PLANNING.md in its directory. A previous M3 attempt for ${SID} left a plan that fails plan-lint — findings in /tmp/plan-lint.txt. O-M3FIRSTWRITE (mandatory): your FIRST tool must EDIT specs/${SLUG}/tasks.md (fill Goal/Target design; put verbatim migration.yaml preserve: tokens in a covering task; remove O-M3ALL-SKELETON/preseed markers) — do not deep-read legacy before that first edit. Then fix every finding in specs/${SLUG}/. Every task MUST have **Class**: rewrite|infer and **Shape**: create|modify|remove|structure|verify. Drop O-PLANEXISTS-dead Spring→Quarkus converts already satisfied by the scaffold. Scope=${SCOPE}. Verify ${M3_LINT_CMD} exits 0, and commit with prefix '${SID} spec:'. DO NOT PUSH. ${PKG_RENAME_HINT} ACCEPTANCE (O-M3ACCEPT): deploy=${DEPLOY} — if false, do not schedule endpoint substance for acceptance.path; if true, task the full literal path with real @Path (no status-map / MinimalAcceptanceEndpoint)."
+        ORDER_HINT=""
+        if grep -q "LINT:order" /tmp/plan-lint.txt 2>/dev/null; then
+          ORDER_HINT=" O-M3ORDER: LINT:order means EVERY Class=rewrite task MUST appear before ANY Class=infer — reorder #### headings (do not leave characterization/verify infer before migration rewrite)."
+        fi
+        P="M3 FIX for ${SID} (${SLUG}) — plan-lint RED (see /tmp/plan-lint.txt).${ORDER_HINT} O-M3FIRSTWRITE: your FIRST tool MUST be edit on specs/${SLUG}/tasks.md (fill Goal/Target; put verbatim migration.yaml preserve: tokens in a covering task; remove skeleton/preseed markers). Do NOT read migration.yaml, findings-inventory.md, dependency-order.md, spec.md, or plan.md before that first edit. Brief + DERIVED FACTS are INLINED below; on conflict DERIVED FACTS win (O-M3DERIVEDCTX). Then clear every lint finding. Verify ${M3_LINT_CMD} exits 0. If you commit, stage ONLY specs/${SLUG}/ (never git add -A / .hermes / __pycache__); prefer leaving uncommitted for outer-loop mechanical commit. DO NOT PUSH. Scope=${SCOPE}. ${PKG_RENAME_HINT} ACCEPTANCE deploy=${DEPLOY}.
+
+===== BEGIN BRIEF ${BRIEF} =====
+${BRIEF_INLINE}
+===== END BRIEF =====
+
+${DERIVED_INLINE}"
       fi
     }
     m3_lint_green() {
@@ -1010,15 +1647,56 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         fi
       } > /tmp/plan-lint.txt
     }
+    # O-M3LINTLOG (W4R7 W-2): attributable per-seat lint counts on every gate line.
+    _m3_lint_count() {
+      local c=0
+      if [ -f /tmp/plan-lint.txt ]; then
+        c=$(grep -cE '^LINT:' /tmp/plan-lint.txt 2>/dev/null || true)
+      fi
+      echo "${c:-0}"
+    }
+    _m3_seat_lint_prev=-1
+    : >"/tmp/m3-lint-seats-${SID}.tsv"
+    _m3_mark_lint_before_seat() {
+      _m3_seat_lint_prev="$(_m3_lint_count)"
+    }
+    _m3_record_lint_seat() { # $1=seat-tag  (after lint evidence refreshed)
+      local seat="$1" cur prev ts
+      cur="$(_m3_lint_count)"
+      prev="${_m3_seat_lint_prev:--1}"
+      ts=$(date -u +%Y-%m-%dT%H:%MZ)
+      printf '%s\t%s\t%s\t%s\n' "$seat" "$prev" "$cur" "$ts" \
+        >>"/tmp/m3-lint-seats-${SID}.tsv"
+      _m3_seat_lint_prev="$cur"
+    }
+    _m3_gate_lint_detail() { # $1=base label → "label — lint 18→14"
+      local base="$1" cur prev
+      cur="$(_m3_lint_count)"
+      prev="${_m3_seat_lint_prev:--1}"
+      # Prefer last recorded seat row when available (post-_m3_record_lint_seat).
+      if [ -f "/tmp/m3-lint-seats-${SID}.tsv" ]; then
+        local last
+        last=$(tail -1 "/tmp/m3-lint-seats-${SID}.tsv" 2>/dev/null || true)
+        if [ -n "$last" ]; then
+          prev=$(printf '%s' "$last" | cut -f2)
+          cur=$(printf '%s' "$last" | cut -f3)
+        fi
+      fi
+      if [ "$prev" -ge 0 ] 2>/dev/null; then
+        echo "${base} — lint ${prev}→${cur}"
+      else
+        echo "${base} — lint ${cur}"
+      fi
+    }
 
     # --- Phase A: Qwen worker attempts (default 2) ---
     # O-M3QUOTA-GATE: if a prior session left lint-green, advance before any seat.
-    if [ "${WORKER_M3_FIRST:-true}" = "true" ]; then
+    if [ "${WORKER_M3_FIRST:-false}" = "true" ]; then
       ATTEMPT=1
       while [ "$ATTEMPT" -le "${M3_WORKER_ATTEMPTS:-2}" ]; do
         if m3_lint_green; then
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via worker path; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
@@ -1054,14 +1732,21 @@ EOF
         if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
         M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
         export M3_EXPECT_TASKS
+        _m3_mark_lint_before_seat
+        # O-M3WCHATSETE: bare wchat under set -e aborts outer when worker_rc≠0
+        # (lost S01 A/B at first tool-round exit — no fail_run, only TMPARCHIVE).
+        set +e
         wchat "m3-${SID}-w${ATTEMPT}" "$P" "M3 SPECIFY ${SLUG} (worker)" \
           -f "$BRIEF" -f migration/architecture-profile.md
         mchat_rc=$?
+        set -e
         unset M3_EXPECT_TASKS
         if [ -f "/tmp/m3-empty-abort-m3-${SID}-w${ATTEMPT}" ]; then
           log "         O-M3EMPTY/O-M3QWENSTALL: worker produced no tasks.md — attempt ${ATTEMPT} spent (early abort)"
           m3_write_lint_evidence
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "O-M3EMPTY early abort — /tmp/plan-lint.txt"
+          _m3_record_lint_seat "w${ATTEMPT}"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+            "$(_m3_gate_lint_detail "O-M3EMPTY early abort")"
           phase_retry "M3 SPECIFY ${SLUG} — empty write; advancing"
           if [ "$ATTEMPT" -eq 1 ] && [ "${M3_SKIP_W2_ON_EMPTY:-true}" = "true" ]; then
             log "         O-M3QWENSTALL: w1 read-only/empty — skip w2, MiniMax backstop next"
@@ -1074,8 +1759,10 @@ EOF
           # O-M3KILLGREEN: tip/operator may have landed a lint-green tasks.md while
           # the seat was thrashing — check gate before infinite kill-retry.
           if m3_lint_green; then
-            [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-            phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+            [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+            _m3_record_lint_seat "w${ATTEMPT}"
+            m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+              "$(_m3_gate_lint_detail "commit $(git rev-parse --short HEAD)")"
             phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after O-M3KILL (tip already green); commit $(git rev-parse --short HEAD)"
             M3_DONE=1
             break
@@ -1085,14 +1772,18 @@ EOF
           continue
         fi
         if m3_lint_green; then
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          _m3_record_lint_seat "w${ATTEMPT}"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+            "$(_m3_gate_lint_detail "commit $(git rev-parse --short HEAD)")"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after Qwen; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
         fi
         m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker attempt ${ATTEMPT} — /tmp/plan-lint.txt"
+        _m3_record_lint_seat "w${ATTEMPT}"
+        m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+          "$(_m3_gate_lint_detail "worker attempt ${ATTEMPT}")"
         phase_retry "M3 SPECIFY ${SLUG} — Qwen plan still RED"
         ATTEMPT=$((ATTEMPT + 1))
       done
@@ -1105,6 +1796,13 @@ EOF
       M3_429_BACKOFF_SECS="${M3_429_BACKOFF_SECS:-${M2_429_BACKOFF_SECS:-900}}"
       M3_429_MAX="${M3_429_MAX:-${M2_429_MAX:-3}}"
       M3_429_COUNT=0
+      # O-M3CONVERGEBUDGET (W4-273): flat M3_ORCH_BACKSTOP starved converging
+      # S02 (34→2). While lint count strictly decreases after a spent seat,
+      # grant +1 effective attempt (default max 1 bonus), still capped by 429.
+      M3_CONVERGE_BONUS_MAX="${M3_CONVERGE_BONUS_MAX:-1}"
+      _m3_effective_backstop="${M3_ORCH_BACKSTOP:-1}"
+      _m3_converge_bonus_used=0
+      _m3_prev_lint=-1
       # O-M3WORKERREENTRY: at most one Qwen edit seat after MiniMax partial
       # write / 429 when tasks.md is already authored (not skeleton).
       _m3_reentry_done=0
@@ -1112,24 +1810,29 @@ EOF
         local f="specs/${SLUG}/tasks.md"
         [ -f "$f" ] || return 1
         grep -qE 'O-M3QWENSTALL preseed|O-M3ALL-SKELETON' "$f" 2>/dev/null && return 1
-        grep -qE '^#### T-[0-9]+' "$f" 2>/dev/null
+        grep -qE '^#### T-[0-9]+[A-Za-z]*' "$f" 2>/dev/null
       }
-      while [ "$ATTEMPT" -le "${M3_ORCH_BACKSTOP:-1}" ]; do
+      # Seed prev lint from current RED evidence (pre-loop) when present.
+      if [ -f /tmp/plan-lint.txt ]; then
+        _m3_prev_lint="$(_m3_lint_count)"
+      fi
+      while [ "$ATTEMPT" -le "${_m3_effective_backstop}" ]; do
         if m3_lint_green; then
           M3_429_COUNT=0
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+          [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+            "$(_m3_gate_lint_detail "commit $(git rev-parse --short HEAD)")"
           phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green; commit $(git rev-parse --short HEAD)"
           M3_DONE=1
           break
         fi
-        if [ "${WORKER_M3_FIRST:-true}" = "true" ]; then
+        if [ "${WORKER_M3_FIRST:-false}" = "true" ]; then
           phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax backstop ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
           log "         O-M3WORKER: MiniMax backstop after Qwen plan-lint RED"
           seat_tag="orch${ATTEMPT}"
           seat_label="M3 SPECIFY ${SLUG} (orch backstop)"
         else
-          # O-M3ROUTE: MiniMax drafts first (Qwen 0-for-N on open-ended M3).
+          # O-M3ROUTE: MiniMax drafts first (W4R7 operator MiniMax-first).
           phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [MiniMax draft ${ATTEMPT}/${M3_ORCH_BACKSTOP}]"
           log "         O-M3ROUTE: MiniMax draft (WORKER_M3_FIRST=false)"
           seat_tag="a${ATTEMPT}"
@@ -1137,8 +1840,16 @@ EOF
         fi
         SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
         if [ -n "$SPEC_TASKS" ]; then m3_build_prompt fix; else m3_build_prompt fresh; fi
+        # O-M3COMMITHYGIENE: capture tip before seat so scooped agent commits can be refused.
+        _m3_pre_sha=$(git rev-parse HEAD)
+        _m3_mark_lint_before_seat
+        # O-M3WCHATSETE: same set -e trap as wchat — capture orch rc.
+        set +e
         mchat "m3-${SID}-${seat_tag}" "$P" "$seat_label"
         mchat_rc=$?
+        set -e
+        # Criterion 10 refuse branch on M3 path (not M4-only commit-hygiene).
+        _m3_refuse_bad_tip "$_m3_pre_sha" "$SLUG" || true
         if [ "$mchat_rc" -eq 137 ] || [ "$mchat_rc" -eq 143 ]; then
           log "         O-M3KILL: orch M3 killed (rc=${mchat_rc}) — backstop NOT spent"
           phase_retry "M3 SPECIFY ${SLUG} — orch session killed; not counting"
@@ -1146,11 +1857,19 @@ EOF
         fi
         if m3_lint_green; then
           M3_429_COUNT=0
-          [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-          phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax; commit $(git rev-parse --short HEAD)"
-          M3_DONE=1
-          break
+          [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+          # Refuse mechanical tip too if somehow polluted (defense in depth).
+          if ! python3 "$HARNESS/commit-hygiene.py" HEAD >/tmp/m3-hygiene.out 2>&1; then
+            log "         O-M3COMMITHYGIENE: refuse tip $(git rev-parse --short HEAD) — $(tr '\n' ' ' </tmp/m3-hygiene.out)"
+            git reset --hard "$_m3_pre_sha" >/dev/null 2>&1 || true
+          else
+            _m3_record_lint_seat "${seat_tag}"
+            m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+              "$(_m3_gate_lint_detail "commit $(git rev-parse --short HEAD)")"
+            phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green after MiniMax; commit $(git rev-parse --short HEAD)"
+            M3_DONE=1
+            break
+          fi
         fi
         if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "/tmp/outer-m3-${SID}-${seat_tag}.log" 2>/dev/null; then
           M3_429_COUNT=$((M3_429_COUNT + 1))
@@ -1158,12 +1877,17 @@ EOF
             log "         O-M2429CAP: M3 ${SID} ${M3_429_COUNT} consecutive rate-limited seats (max ${M3_429_MAX}) — failing run"
             fail_run "quota exhausted after ${M3_429_COUNT} rate-limited seats (O-M2-429CAP)"
           fi
+          m3_write_lint_evidence
+          _m3_record_lint_seat "${seat_tag}"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+            "$(_m3_gate_lint_detail "MiniMax ${seat_tag} 429")"
           # O-M3WORKERREENTRY: MiniMax often lands a populated plan then 429s.
           # Qwen edit-only (Acceptance / remaining lints) before burning more
           # scarce orch seats — stall aborts read-only in ~120s if it fails.
+          # W4-366/P-2: must fire under MiniMax-first (WORKER_M3_FIRST=false) too;
+          # prior gate on =true left the happy-path route unable to reenter.
           if [ "${M3_WORKER_REENTRY:-true}" = "true" ] \
             && [ "${_m3_reentry_done}" != "1" ] \
-            && [ "${WORKER_M3_FIRST:-true}" = "true" ] \
             && _m3_tasks_populated; then
             _m3_reentry_done=1
             log "         O-M3WORKERREENTRY: populated tasks.md after MiniMax 429 — Qwen edit seat before backoff"
@@ -1171,19 +1895,24 @@ EOF
             m3_build_prompt fix
             M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
             export M3_EXPECT_TASKS
+            _m3_mark_lint_before_seat
             wchat "m3-${SID}-re1" "$P" "M3 SPECIFY ${SLUG} (worker reentry)" \
               -f "$BRIEF" -f migration/architecture-profile.md || true
             unset M3_EXPECT_TASKS
             if m3_lint_green; then
               M3_429_COUNT=0
-              [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-              phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+              [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+              _m3_record_lint_seat "re1"
+              m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+                "$(_m3_gate_lint_detail "worker reentry GREEN")"
               phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via O-M3WORKERREENTRY; commit $(git rev-parse --short HEAD)"
               M3_DONE=1
               break
             fi
             m3_write_lint_evidence
-            phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker reentry — /tmp/plan-lint.txt"
+            _m3_record_lint_seat "re1"
+            m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+              "$(_m3_gate_lint_detail "worker reentry")"
           fi
           log "         O-M3QUOTA: MiniMax rate-limited — NOT spent; backoff ${M3_429_BACKOFF_SECS}s (${M3_429_COUNT}/${M3_429_MAX})"
           phase_retry "M3 SPECIFY ${SLUG} — quota; sleeping ${M3_429_BACKOFF_SECS}s (O-M3QUOTA ${M3_429_COUNT}/${M3_429_MAX})"
@@ -1192,44 +1921,77 @@ EOF
         fi
         M3_429_COUNT=0  # O-M2429CAP: non-429 seat resets counter
         # O-M3WORKERREENTRY: MiniMax wrote but lint still RED (no 429) — try
-        # Qwen edit once before another orch seat.
+        # Qwen edit once before another orch seat. (Same W4-366 ungating as 429 path.)
         if [ "${M3_WORKER_REENTRY:-true}" = "true" ] \
           && [ "${_m3_reentry_done}" != "1" ] \
-          && [ "${WORKER_M3_FIRST:-true}" = "true" ] \
           && _m3_tasks_populated; then
+          # Record MiniMax RED delta before reentry so seats are attributable.
+          m3_write_lint_evidence
+          _m3_record_lint_seat "${seat_tag}"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+            "$(_m3_gate_lint_detail "MiniMax attempt ${ATTEMPT}")"
           _m3_reentry_done=1
           log "         O-M3WORKERREENTRY: populated tasks.md after MiniMax RED — Qwen edit seat"
           phase_start "M3 SPECIFY — plan story ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [worker reentry 1/1]"
           m3_build_prompt fix
           M3_EXPECT_TASKS="specs/${SLUG}/tasks.md"
           export M3_EXPECT_TASKS
+          _m3_mark_lint_before_seat
           wchat "m3-${SID}-re1" "$P" "M3 SPECIFY ${SLUG} (worker reentry)" \
             -f "$BRIEF" -f migration/architecture-profile.md || true
           unset M3_EXPECT_TASKS
           if m3_lint_green; then
-            [ -n "$(git status --porcelain specs/)" ] && git add specs/ && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-            phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+            [ -n "$(git status --porcelain "specs/${SLUG}/")" ] && git add "specs/${SLUG}/" && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+            _m3_record_lint_seat "re1"
+            m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+              "$(_m3_gate_lint_detail "worker reentry GREEN")"
             phase_ok "M3 SPECIFY — ${SLUG} plan-lint-green via O-M3WORKERREENTRY; commit $(git rev-parse --short HEAD)"
             M3_DONE=1
             break
           fi
           m3_write_lint_evidence
-          phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "worker reentry — /tmp/plan-lint.txt"
+          _m3_record_lint_seat "re1"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+            "$(_m3_gate_lint_detail "worker reentry")"
+        else
+          m3_write_lint_evidence
+          _m3_record_lint_seat "${seat_tag}"
+          m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED \
+            "$(_m3_gate_lint_detail "MiniMax attempt ${ATTEMPT}")"
         fi
-        m3_write_lint_evidence
-        phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "MiniMax attempt ${ATTEMPT} — /tmp/plan-lint.txt"
+        # O-M3CONVERGEBUDGET: spent RED seat with strictly fewer LINT: lines
+        # → extend effective backstop once (default).
+        _m3_cur_lint="$(_m3_lint_count)"
+        if [ "${_m3_prev_lint}" -ge 0 ] \
+          && [ "${_m3_cur_lint}" -lt "${_m3_prev_lint}" ] \
+          && [ "${_m3_converge_bonus_used}" -lt "${M3_CONVERGE_BONUS_MAX}" ]; then
+          _m3_converge_bonus_used=$((_m3_converge_bonus_used + 1))
+          _m3_effective_backstop=$((_m3_effective_backstop + 1))
+          log "         O-M3CONVERGEBUDGET: lint ${_m3_prev_lint}→${_m3_cur_lint} — +1 MiniMax attempt (bonus ${_m3_converge_bonus_used}/${M3_CONVERGE_BONUS_MAX}; effective=${_m3_effective_backstop})"
+        fi
+        _m3_prev_lint="${_m3_cur_lint}"
         ATTEMPT=$((ATTEMPT + 1))
       done
     fi
 
     if [ "$M3_DONE" != "1" ]; then
-      fail_run "M3 SPECIFY ${SLUG} failed plan-lint after M3 attempts (WORKER_M3_FIRST=${WORKER_M3_FIRST:-true})"
+      fail_run "M3 SPECIFY ${SLUG} failed plan-lint after M3 attempts (WORKER_M3_FIRST=${WORKER_M3_FIRST:-false})"
     fi
   fi
 
   # O-M3ALL author pass: no M4 until every story plan exists + whole-set GREEN.
   if [ "$M3_ALL_PASS" = "author" ]; then
     phase_ok "M3-ALL author — ${SLUG} plan ready (defer M4 until whole-set lint)"
+    # O-STOPAFTERSTORY — validation runs: exit after this story's M3 author
+    # (e.g. STOP_AFTER_STORY=S01 for a clean A/B before burning S02…).
+    if [ -n "${STOP_AFTER_STORY:-}" ] && [ "${STOP_AFTER_STORY}" = "$SID" ]; then
+      phase_gate "M3 SPECIFY stop-after-story" GREEN \
+        "STOP_AFTER_STORY=${SID} — refusing further stories / M4"
+      log "         O-STOPAFTERSTORY: ${SID} M3 author complete — not continuing"
+      echo "outer-complete: STOP_AFTER_STORY=${SID} $(date -u +%Y-%m-%dT%H:%MZ)" \
+        > /tmp/outer-loop-done
+      exit 0
+    fi
     STORY_TAG=""
     continue
   fi
@@ -1244,11 +2006,31 @@ EOF
   _m3all_rc=$?
   set -e
   if [ "$_m3all_rc" = "3" ]; then
-    log "         O-M3ALL-AMEND: Owns/Port/Shape changed — whole-set re-lint"
-    bash "$HARNESS/m3-all-lint.sh" --mode=whole-set --root . \
-      > /tmp/m3-all-whole.txt 2>&1 \
-      || fail_run "O-M3ALL whole-set RED after ${SID} amend (see /tmp/m3-all-whole.txt)"
-    phase_gate "M3-ALL whole-set (post-amend)" GREEN "amend re-lint OK"
+    # O-M3ALLAMENDJIT: EXECUTE_ONLY / M3_ALL=0 cannot satisfy whole-set
+    # (sibling skeletons → MISSING + Oracle/Assumes noise). Restamp focus
+    # story + re-JIT; full whole-set stays mandatory when M3_ALL authors all.
+    if [ -n "${EXECUTE_ONLY_STORY:-}" ] || [ "${M3_ALL:-1}" = "0" ]; then
+      log "         O-M3ALL-AMEND: restamp ${SID} + re-JIT (skip whole-set; O-M3ALLAMENDJIT)"
+      bash "$HARNESS/m3-all-lint.sh" --mode=restamp --story "$SID" --root . \
+        > /tmp/m3-all-restamp.txt 2>&1 \
+        || fail_run "O-M3ALL restamp failed for ${SID} (see /tmp/m3-all-restamp.txt)"
+      set +e
+      bash "$HARNESS/m3-all-lint.sh" --mode=jit --story "$SID" --root . \
+        > /tmp/m3-all-jit.txt 2>&1
+      _m3all_rc=$?
+      set -e
+      if [ "$_m3all_rc" != "0" ]; then
+        phase_gate "M3-ALL JIT ${SLUG}" RED "post-restamp see /tmp/m3-all-jit.txt"
+        fail_run "O-M3ALL JIT RED after restamp for ${SID} (see /tmp/m3-all-jit.txt)"
+      fi
+      phase_gate "M3-ALL JIT ${SLUG}" GREEN "amend restamped (O-M3ALLAMENDJIT)"
+    else
+      log "         O-M3ALL-AMEND: Owns/Port/Shape changed — whole-set re-lint"
+      bash "$HARNESS/m3-all-lint.sh" --mode=whole-set --root . \
+        > /tmp/m3-all-whole.txt 2>&1 \
+        || fail_run "O-M3ALL whole-set RED after ${SID} amend (see /tmp/m3-all-whole.txt)"
+      phase_gate "M3-ALL whole-set (post-amend)" GREEN "amend re-lint OK"
+    fi
   elif [ "$_m3all_rc" != "0" ]; then
     phase_gate "M3-ALL JIT ${SLUG}" RED "see /tmp/m3-all-jit.txt"
     fail_run "O-M3ALL JIT RED for ${SID} (see /tmp/m3-all-jit.txt)"
@@ -1310,7 +2092,7 @@ EOF
           STORY_RUN_BASE="$_cand"
           _hidden="${_hidden} ${_tid}"
         fi
-      done < <(grep -oE 'T-[0-9]+' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      done < <(grep -oE 'T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null | sort -u)
       if [ -n "$_hidden" ]; then
         log "         O-RESUMEHIDE: walked RESUME_RUN_BASE back to $(git rev-parse --short "$STORY_RUN_BASE") (hidden tips:${_hidden})"
       fi
@@ -1322,7 +2104,7 @@ EOF
     # from the spec's parent so those tasks stay "committed".
     SPEC_SHA=$(git log -1 --format=%H --grep="^${SID} spec:" 2>/dev/null || true)
     if [ -n "$SPEC_SHA" ] && [ -f "$SPEC_TASKS" ] \
-      && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE '^[0-9a-f]+ T-[0-9]+:'; then
+      && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:'; then
       STORY_RUN_BASE=$(git rev-parse "${SPEC_SHA}^" 2>/dev/null || git rev-parse "$SPEC_SHA")
       # O-SPECREBASE: a mid-story `S0N spec:` recommit (e.g. DTO-first plan
       # fix) can sit *after* earlier T-NNN. SPEC^ then hides those commits from
@@ -1339,7 +2121,7 @@ EOF
         _hn=${_ht#T-}; _hn=$((10#${_hn}))
         [ "$_hn" -gt "$_maxn" ] && _maxn=$_hn
       done < <(git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null \
-        | grep -E '^[0-9a-f]+ T-[0-9]+:' | grep -oE 'T-[0-9]+' | sort -u)
+        | grep -E '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:' | grep -oE 'T-[0-9]+[A-Za-z]*' | sort -u)
       # Floor: prior story-complete (or repo root) — never match T-NNN from older stories.
       _floor=$(git log -1 --format=%H --grep="story complete" "${SPEC_SHA}^" 2>/dev/null || true)
       [ -n "$_floor" ] || _floor=$(git rev-list --max-parents=0 HEAD | tail -1)
@@ -1358,7 +2140,7 @@ EOF
             _hidden="${_hidden} ${_tid}"
           fi
         fi
-      done < <(grep -oE 'T-[0-9]+' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      done < <(grep -oE 'T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null | sort -u)
       if [ -n "$_hidden" ]; then
         log "         O-SPECREBASE: walked run_base back to $(git rev-parse --short "$STORY_RUN_BASE") (pre-spec tasks:${_hidden})"
       fi
@@ -1370,7 +2152,7 @@ EOF
       _floor=$(git log -1 --format=%H --grep="story complete" 2>/dev/null || true)
       [ -n "$_floor" ] || _floor=$(git rev-list --max-parents=0 HEAD | tail -1)
       _t1=$(git log --reverse --format=%H --grep="^T-001:" "${_floor}..HEAD" 2>/dev/null | head -1 || true)
-      if [ -n "$_t1" ] && git log --oneline "${_floor}..HEAD" 2>/dev/null | grep -qE "^[0-9a-f]+ T-[0-9]+:"; then
+      if [ -n "$_t1" ] && git log --oneline "${_floor}..HEAD" 2>/dev/null | grep -qE "^[0-9a-f]+ T-[0-9]+[A-Za-z]*:"; then
         STORY_RUN_BASE=$(git rev-parse "${_t1}^")
         log "         O-M4REPLAYNOSPEC: no ${SID} spec: tip — resume base=$(git rev-parse --short "$STORY_RUN_BASE") from T-001^ (floor=$(git rev-parse --short "$_floor"))"
       else
@@ -1459,6 +2241,18 @@ EOF
       emit_story_epilog "complete"
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story complete: ${OUTCOME}" 2>/dev/null || true
+      # O-STOPAFTEREXEC — validation runs: exit after this story's M4/M5 ship
+      # (e.g. STOP_AFTER_EXECUTE=S02 + M3_ALL=0 for first-M4 probe before
+      # spending MiniMax on later-story M3 author). Distinct from
+      # STOP_AFTER_STORY (author-pass only; refuses M4).
+      if [ -n "${STOP_AFTER_EXECUTE:-}" ] && [ "${STOP_AFTER_EXECUTE}" = "$SID" ]; then
+        phase_gate "M4/M5 stop-after-execute" GREEN \
+          "STOP_AFTER_EXECUTE=${SID} — refusing further stories"
+        log "         O-STOPAFTEREXEC: ${SID} M4/M5 complete — not continuing"
+        echo "outer-complete: STOP_AFTER_EXECUTE=${SID} $(date -u +%Y-%m-%dT%H:%MZ)" \
+          > /tmp/outer-loop-done
+        exit 0
+      fi
       # Outer loop (automated): apply Retro's "Brief updates" section to
       # remaining incomplete briefs only. Skills/harness stay human-only.
       REMAINING_BRIEFS=""

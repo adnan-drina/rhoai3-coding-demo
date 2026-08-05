@@ -68,6 +68,13 @@ path (path-only retries miss findings). Caps:
    owned by a LATER story. Circular groups belong to one story.
    Within a story, prefer **extensions → models → resources → config →
    tests** (BOM/deps first, HTTP surface after its dependencies, tests last).
+   **O-M2DECOMPAXIS — do not split by implementation technology.** A
+   repository *interface* and its JDBC / JPA / Spring Data implementations
+   belong to **one** story. Splitting S0N-jdbc vs S0N-jpa vs S0N-spring-data
+   dual-owns the shared interface files and fails `O-SCOPECOVER` (W4-338).
+   Prefer the layer cut (platform → model → repository → service → surface).
+   `m2-compose` fill collapses same-layer over-splits; `roadmap-lint` REDs
+   remaining tech-axis repository titles.
 2. **Contracts and characterization tests come first.** The first
    story that touches a component with a behavioral contract
    (architecture-profile §4) pins that contract — port the legacy

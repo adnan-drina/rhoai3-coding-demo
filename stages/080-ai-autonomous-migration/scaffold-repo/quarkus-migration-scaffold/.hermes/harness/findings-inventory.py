@@ -2,7 +2,11 @@
 """M1 spec input bundle: findings inventory with the MAPPINGS join
 pre-computed (MTA→spec translation, docs/MTA-TO-SPEC-MAPPING.md R2).
 
-Usage: findings-inventory.py <findings.json> <MAPPINGS.md> [> inventory.md]
+Usage: findings-inventory.py <findings.json> <MAPPINGS.md> [legacy-root] [> inventory.md]
+
+Optional legacy-root enables O-CODEGENDEMAND (deterministic build-codegen-*
+findings) and O-INVRECONCILE (RECONCILE closure line). O-TAGDEMAND always
+runs from findings.json (tags/insights → tech-<slug> synthetics).
 
 Per mandatory rule: description, class from the MAPPINGS rule-join table
 (recipe / rewrite / infer / OPEN DESIGN), decided target, incident sites
@@ -38,8 +42,56 @@ def parse_joins(mappings_path):
     return joins
 
 
+def reconcile_counts(data, rules):
+    """O-INVRECONCILE arithmetic. Returns (fields_dict, closes: bool).
+
+    findings/source_rulesets = len(mta-findings.json) when it is a list.
+    Non-list source cannot close (no tie-back to a countable artifact).
+    """
+    if not isinstance(data, list):
+        return {
+            "source_rulesets": 0,
+            "skipped_empty": 0,
+            "active_rulesets": 0,
+            "violation_entries": len(rules),
+            "rule_ids": len({rid for rid, _ in rules}),
+            "excluded_dup": 0,
+            "excluded_total": 0,
+        }, False
+    source_rulesets = len(data)
+    skipped_empty = 0
+    active_rulesets = 0
+    for rs in data:
+        v = (rs.get("violations") or {}) if isinstance(rs, dict) else {}
+        if v:
+            active_rulesets += 1
+        else:
+            skipped_empty += 1
+    violation_entries = len(rules)
+    rule_ids_m = len({rid for rid, _ in rules})
+    excluded_dup = violation_entries - rule_ids_m
+    level1 = source_rulesets == skipped_empty + active_rulesets
+    level2 = excluded_dup >= 0 and (rule_ids_m + excluded_dup == violation_entries)
+    return {
+        "source_rulesets": source_rulesets,
+        "skipped_empty": skipped_empty,
+        "active_rulesets": active_rulesets,
+        "violation_entries": violation_entries,
+        "rule_ids": rule_ids_m,
+        "excluded_dup": excluded_dup,
+        "excluded_total": skipped_empty + max(excluded_dup, 0),
+    }, (level1 and level2)
+
+
 def main():
+    if len(sys.argv) < 3:
+        print(
+            "Usage: findings-inventory.py <findings.json> <MAPPINGS.md> [legacy-root]",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     findings_path, mappings_path = sys.argv[1], sys.argv[2]
+    legacy_root = sys.argv[3] if len(sys.argv) > 3 else None
     data = json.load(open(findings_path))
     joins = parse_joins(mappings_path)
     # Scaffold-baseline annotation (V3 S01 lesson: pom-convention rules
@@ -55,10 +107,11 @@ def main():
     except OSError:
         pass
 
-    rules = []  # (rid, violation)
-    for rs in data:
-        for rid, v in (rs.get("violations") or {}).items():
-            rules.append((rid, v))
+    # O-ADR24FIND: one shared Kantra walk (findings_ir) — inventory is a view.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import findings_ir  # noqa: E402
+
+    rules = list(findings_ir.iter_violation_rules(data))
     rules.sort(key=lambda r: (-len(r[1].get("incidents") or []), r[0]))
 
     classified = collections.defaultdict(list)
@@ -129,6 +182,43 @@ def main():
         print("- none")
     print()
 
+    # O-CODEGENDEMAND — append synthetic build-codegen-* findings (ANALYZE-side)
+    codegen_entries = []
+    codegen_ids = []
+    if legacy_root:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import codegen_demand  # noqa: WPS433 — sibling harness module
+
+            codegen_entries = codegen_demand.detect(legacy_root)
+            codegen_ids = codegen_demand.summary_ids(codegen_entries)
+            md = codegen_demand.render_markdown(codegen_entries)
+            if md:
+                print(md.rstrip())
+                print()
+            for e in codegen_entries:
+                classified["infer"].append(e["finding_id"])
+        except Exception as exc:  # noqa: BLE001 — never fail inventory on optional scan
+            print(f"WARN: O-CODEGENDEMAND skipped: {exc}", file=sys.stderr)
+
+    # O-TAGDEMAND — tech-<slug> from MTA tags/insights (destination consequence)
+    tag_entries = []
+    tag_ids = []
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import tag_demand  # noqa: WPS433 — sibling harness module
+
+        tag_entries = tag_demand.detect(findings_path)
+        tag_ids = tag_demand.summary_ids(tag_entries)
+        md = tag_demand.render_markdown(tag_entries)
+        if md:
+            print(md.rstrip())
+            print()
+        for e in tag_entries:
+            classified["infer"].append(e["finding_id"])
+    except Exception as exc:  # noqa: BLE001 — never fail inventory on optional scan
+        print(f"WARN: O-TAGDEMAND skipped: {exc}", file=sys.stderr)
+
     print("## Summary by class")
     print()
     for bucket in ("recipe", "rewrite", "infer", "OPEN DESIGN", "non-mandatory"):
@@ -143,6 +233,41 @@ def main():
             print(f"- {rid}: {desc[:100]}")
     else:
         print("- none detected")
+    print()
+
+    # O-INVRECONCILE — tie RECONCILE to the source artifact (mta-findings.json).
+    fields, closes = reconcile_counts(data, rules)
+    reasons = []
+    if fields["skipped_empty"]:
+        reasons.append(f"skipped-empty-ruleset:{fields['skipped_empty']}")
+    if fields["excluded_dup"] > 0:
+        reasons.append(f"duplicate-rule-id:{fields['excluded_dup']}")
+    elif fields["excluded_dup"] < 0:
+        reasons.append(f"NEGATIVE_DUP:{fields['excluded_dup']}")
+    if not reasons:
+        reasons.append("none:0")
+    reason_s = ",".join(reasons)
+    print(
+        f"RECONCILE findings={fields['source_rulesets']} "
+        f"source_rulesets={fields['source_rulesets']} "
+        f"skipped_empty={fields['skipped_empty']} "
+        f"active_rulesets={fields['active_rulesets']} "
+        f"violation_entries={fields['violation_entries']} "
+        f"rule_ids={fields['rule_ids']} "
+        f"codegen={len(codegen_ids)} tech={len(tag_ids)} "
+        f"excluded={fields['excluded_total']} "
+        f"reason={reason_s} closes={'yes' if closes else 'no'}"
+    )
+    if not closes:
+        print(
+            "RECONCILE-FAIL: source/violation arithmetic does not close "
+            f"(rulesets {fields['source_rulesets']}!= "
+            f"{fields['skipped_empty']}+{fields['active_rulesets']} "
+            f"or violations {fields['violation_entries']}!= "
+            f"{fields['rule_ids']}+{fields['excluded_dup']})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":

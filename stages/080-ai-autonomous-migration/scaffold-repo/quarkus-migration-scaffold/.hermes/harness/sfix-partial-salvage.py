@@ -32,7 +32,7 @@ _CLAIM = re.compile(
 
 def _task_body(tasks: Path, tid: str) -> str:
     text = tasks.read_text(encoding="utf-8", errors="replace")
-    blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+):", text, flags=re.M)
+    blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+[A-Za-z]*):", text, flags=re.M)
     for i in range(1, len(blocks) - 1, 2):
         if blocks[i] == tid or tid.startswith(blocks[i]):
             return blocks[i + 1]

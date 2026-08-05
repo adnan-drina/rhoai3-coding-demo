@@ -122,6 +122,28 @@ def _unmodifiable_drop(diff: str) -> bool:
     return dropped_uoe and renamed
 
 
+def _filter_forensic_diff(diff: str) -> str:
+    """O-K12ARCH: ignore migration/run-archives/** (and run-archives/**).
+
+    Forensic scoops re-introduce historical G-PLACE / assert smells into
+    `git show` and false-REFUTE honest already-complete tips (W4R7 S02 T-003:
+    MiniMax tip bundled run-archives → K12 REFUTED → debt-freeze).
+    """
+    out: list[str] = []
+    skip = False
+    for line in diff.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            skip = (
+                "migration/run-archives/" in line
+                or "/run-archives/" in line
+                or line.rstrip().endswith(" run-archives")
+                or " run-archives/" in line
+            )
+        if not skip:
+            out.append(line)
+    return "".join(out)
+
+
 def refute(diff: str) -> list[str]:
     hits: list[str] = []
     for sid, pat, note in SMELLS:
@@ -142,6 +164,7 @@ def main() -> int:
     ap.add_argument("--diff", type=Path, default=None)
     args = ap.parse_args()
     diff = load_diff(None if args.diff else args.sha, args.diff)
+    diff = _filter_forensic_diff(diff)
     if not diff.strip():
         print("PASS: empty diff")
         return 0

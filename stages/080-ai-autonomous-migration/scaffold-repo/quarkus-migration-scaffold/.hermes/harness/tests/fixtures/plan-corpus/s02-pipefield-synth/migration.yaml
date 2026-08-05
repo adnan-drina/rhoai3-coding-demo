@@ -1,0 +1,10 @@
+legacyPackage: com.example.legacy
+targetPackage: com.demo
+preserve: []
+acceptance:
+  path: /api/health
+  collection: _array
+  getter: getStatus
+  service: HealthResource
+  itemType: StatusDto
+  needsDatabase: false

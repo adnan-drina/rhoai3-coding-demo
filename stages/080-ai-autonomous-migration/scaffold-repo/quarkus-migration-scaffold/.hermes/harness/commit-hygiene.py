@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """O-GITBAK / O-SIMPLEDTO / O-POMUNC / O-JDBCREGRESS / O-CDIPARTIAL /
-O-TREEFIXSTUB — refuse dishonest commits.
+O-TREEFIXSTUB / O-HERMSCOOP — refuse dishonest commits.
 
 Exit 1 when HEAD (or given sha) commits:
   - src/**/*.bak, *~, *.orig (O-GITBAK)
   - both dto/*.java and dto/*.bak in the same commit (O-SIMPLEDTO)
   - Java importing org.mapstruct / @Mapper while tree pom at sha lacks
     a mapstruct dependency (O-POMUNC)
-  - pom.xml newly adds spring-jdbc / spring-tx / spring-orm vs parent
+    - pom.xml newly adds spring-jdbc / spring-tx / spring-orm vs parent
     while quarkus-maven-plugin is present (O-JDBCREGRESS). Pre-existing
     deps for honest Jdbc*RepositoryImpl CDI are allowed.
   - @ApplicationScoped (+siblings) still carrying @Autowired, or
@@ -15,6 +15,12 @@ Exit 1 when HEAD (or given sha) commits:
     Quarkus pom without spring-jdbc (O-CDIPARTIAL / O-JDBCHARVESTAPI).
   - comment-only / REMOVED stubs under src/main, or deleted owned Target
     .java paths (O-TREEFIXSTUB — tree-fix must not stub-nuke).
+  - any .hermes/ path (O-HERMSCOOP / O-M2-FREEZE-JUNK — golden harness
+    must stay untracked; never scoop into app tips).
+  - any migration/run-archives/** or run-archives/** (O-ARCHIVESCOOP /
+    O-K12ARCH — forensic dumps false-trip K12 when scooped into T-NNN).
+  - any __pycache__/ or *.pyc tip path (O-M3COMMITHYGIENE companion —
+    bytecode must never ship in app tips).
 
 Usage: commit-hygiene.py [sha]
 """
@@ -31,6 +37,25 @@ def _show_names(sha: str) -> list[str]:
         ["git", "show", "--name-only", "--format=", sha], text=True
     )
     return [ln.strip() for ln in out.splitlines() if ln.strip()]
+
+
+def _show_name_status(sha: str) -> list[tuple[str, str]]:
+    """Return (status, path) pairs — status is A/M/D/R… from name-status."""
+    out = subprocess.check_output(
+        ["git", "show", "--name-status", "--format=", sha], text=True
+    )
+    rows: list[tuple[str, str]] = []
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        parts = ln.split("\t")
+        if len(parts) < 2:
+            continue
+        # renames: R100\told\tnew — treat new path as the tip path
+        status, path = parts[0][0], parts[-1]
+        rows.append((status, path))
+    return rows
 
 
 def _show_file(sha: str, path: str) -> str:
@@ -52,6 +77,52 @@ def main() -> int:
     if not names:
         return 0
     problems: list[str] = []
+
+    # O-HERMSCOOP / O-M2-FREEZE-JUNK: refuse tips that ADD/MODIFY golden harness.
+    # Deletions (cleanup commits like 89bafd3) are allowed — they untrack scoop.
+    hermes = [
+        n
+        for st, n in _show_name_status(sha)
+        if (n == ".hermes" or n.startswith(".hermes/")) and st in ("A", "M", "R", "C")
+    ]
+    if hermes:
+        problems.append(
+            "O-HERMSCOOP:" + ",".join(hermes[:8])
+            + (f"…+{len(hermes) - 8}" if len(hermes) > 8 else "")
+        )
+
+    # O-ARCHIVESCOOP / O-K12ARCH: refuse forensic archive scoops in app tips.
+    archives = [
+        n
+        for st, n in _show_name_status(sha)
+        if st in ("A", "M", "R", "C")
+        and (
+            n == "migration/run-archives"
+            or n.startswith("migration/run-archives/")
+            or n == "run-archives"
+            or n.startswith("run-archives/")
+        )
+    ]
+    if archives:
+        problems.append(
+            "O-ARCHIVESCOOP:" + ",".join(archives[:8])
+            + (f"…+{len(archives) - 8}" if len(archives) > 8 else "")
+        )
+
+    # O-M3COMMITHYGIENE: refuse bytecode / cache artifacts in any tip.
+    pyc = [
+        n
+        for n in names
+        if n.endswith(".pyc")
+        or "/__pycache__/" in n
+        or n.endswith("/__pycache__")
+        or n.startswith("__pycache__/")
+    ]
+    if pyc:
+        problems.append(
+            "O-M3COMMITHYGIENE:pyc:" + ",".join(pyc[:8])
+            + (f"…+{len(pyc) - 8}" if len(pyc) > 8 else "")
+        )
 
     bak = [
         n

@@ -41,6 +41,15 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
   O-SCOPECOVER — every migration/staging/**/*.java path is in exactly one
                story scope; every src/**/*.java scope path is in staging
                or migration/scope-exclusions.md (typed reason).
+  O-M2DECOMPAXIS — refuse ≥2 stories titled as impl-flavour repository
+               splits (JDBC vs JPA vs Spring Data); shared interfaces cannot
+               unique-own across that axis (W4-338). Pair O-M2COMPOSE collapse.
+  O-BRIEFCONSIST — (ADR-21 G7) refuse a brief where a target-shape line
+               asserts preserving capability X while Forbidden bans the
+               only named enabler of X (e.g. "Spring Data interface
+               preserved" + Forbidden `quarkus-spring-data-jpa`). Both
+               sides read from the brief. Falsifier: no preserve claim
+               (alternative path named without asserting preserve) → accept.
   O-BRIEFCOVER — every path in a story's roadmap scope must be named
                (basename or full path) in that story's brief — stops
                layer-sample briefs that leave M3 with no per-class contracts.
@@ -49,6 +58,7 @@ Checks (exit 0 = accepted; findings printed as 'LINT:<class>: ...'):
                O-PORTDERIVE is story-level existence; this is per-class density.
   O-BRIEFFRESH — brief carries <!-- O-BRIEFFRESH sha256=… --> matching a
                content hash of current roadmap scope/findings/kind/budget
+               plus architecture-profile §7 (O-BRIEFFRESHPROFILE / G8)
                (mtime is not trusted; recompose without regen → RED).
   O-BRIEFQUALITY — composite score (coverage, contracts, specificity,
                oracle, freshness); floor BRIEF_QUALITY_FLOOR (default 80).
@@ -166,8 +176,32 @@ def brief_dedicated_contract_classes(btext: str, classes) -> set:
     return dedicated
 
 
-def story_fresh_hash(sid, scope, findings_raw, kind_raw, seat_budget_raw) -> str:
-    """O-BRIEFFRESH — content hash of roadmap fields that invalidate a brief."""
+def profile_sec7_digest(profile_text: str) -> str:
+    """O-BRIEFFRESHPROFILE (ADR-21 G8) — digest of architecture-profile §7.
+
+    Profile corrections to Class roles / target contracts must invalidate
+    derived briefs. Falsifier: edits outside §7 must not change this digest.
+    """
+    if not profile_text:
+        return ""
+    m = re.search(
+        r"(?ims)^##\s+[^\n]*Class roles[^\n]*\n(.*?)(?=^##\s|\Z)",
+        profile_text,
+    )
+    body = (m.group(0) if m else "").strip()
+    if not body:
+        return ""
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+def story_fresh_hash(
+    sid, scope, findings_raw, kind_raw, seat_budget_raw, profile_sec7=""
+) -> str:
+    """O-BRIEFFRESH — content hash of fields that invalidate a brief.
+
+    Includes profile §7 digest (O-BRIEFFRESHPROFILE) so a corrected upstream
+    contract cannot leave briefs validating as fresh.
+    """
     paths = sorted(p.strip() for p in (scope or "").split(",") if p.strip())
     payload = "\n".join(
         [
@@ -176,6 +210,7 @@ def story_fresh_hash(sid, scope, findings_raw, kind_raw, seat_budget_raw) -> str
             (findings_raw or "").strip(),
             (kind_raw or "").strip(),
             (seat_budget_raw or "").strip(),
+            (profile_sec7 or "").strip(),
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
@@ -329,6 +364,65 @@ _JKW = {"if", "for", "while", "switch", "catch", "return", "new", "throws",
         "throw", "public", "private", "protected", "class", "interface",
         "void", "import", "package", "extends", "implements", "super", "this",
         "instanceof", "else", "do", "try", "finally", "synchronized", "assert"}
+
+
+def brief_consistency(sid, btext):
+    """O-BRIEFCONSIST (ADR-21 G7): preserve-X + Forbidden bans only enabler of X.
+
+    Specimen-agnostic capability↔enabler pairs; both sides from the brief.
+    A brief that names an alternative *without* asserting preserve accepts.
+    """
+    # Target-shape / contract prose (not In-scope legacy quotes).
+    target_chunks = []
+    for pat in (
+        r"(?is)^##\s+Class roles.*?(?=^##\s|\Z)",
+        r"(?is)^##\s+Decided target shapes.*?(?=^##\s|\Z)",
+        r"(?is)^###\s+Per-class contracts.*?(?=^##\s|\Z)",
+        r"(?is)target runtime contract.*?(?=^##\s|\Z)",
+    ):
+        m = re.search(pat, btext, re.M)
+        if m:
+            target_chunks.append(m.group(0))
+    target_text = "\n".join(target_chunks) if target_chunks else btext
+    forb_lines = [
+        ln
+        for ln in btext.splitlines()
+        if re.search(r"Forbidden|never use\s+`", ln, re.I)
+    ]
+    forb_text = "\n".join(forb_lines)
+    if not forb_text:
+        return
+    # (preserve_regex, forbidden_enabler_regex, label)
+    # Use spring[\s-]+data (not spring\s*data) so CamelCase SpringData* names
+    # do not match. Skip negated prose ("do not preserve").
+    pairs = (
+        (
+            r"(?<![A-Za-z])spring[\s-]+data[^\n]{0,120}\bpreserv(?:e|ed|ing)\b|"
+            r"(?<![A-Za-z])preserv(?:e|ed|ing)\b[^\n]{0,80}(?<![A-Za-z])spring[\s-]+data|"
+            r"spring[\s-]+data\s+interface\s+preserved",
+            r"quarkus-spring-data-jpa",
+            "Spring Data interface preserved vs Forbidden quarkus-spring-data-jpa",
+        ),
+    )
+    for preg, freg, label in pairs:
+        if not re.search(freg, forb_text, re.I):
+            continue
+        for m in re.finditer(preg, target_text, re.I):
+            window = target_text[max(0, m.start() - 40) : m.end() + 40]
+            if re.search(
+                r"\bdo\s+not\s+preserv|\bnot\s+preserv|\bwithout\s+preserv|"
+                r"\bnever\s+preserv",
+                window,
+                re.I,
+            ):
+                continue
+            lint(
+                "consistency",
+                f"{sid}: O-BRIEFCONSIST: {label} "
+                f"(preserve claim requires the banned enabler; name a non-enabler "
+                f"path without asserting preserve, or drop the Forbidden ban)",
+            )
+            break
 
 
 def brief_fidelity(sid, btext, legacy_dir):
@@ -566,6 +660,30 @@ def main():
         for fid in sorted(set(owned) & exempt):
             lint("coverage", f"{fid} is {'recipe-executed' if fid not in must else 'exempt'} — no story should own it (owned by {owned[fid]})")
 
+    # O-M2DECOMPAXIS — technology-axis repository splits cannot unique-own
+    # shared interfaces (W4-338: S07 JDBC / S08 JPA / S09 Spring Data).
+    _tech_axis_re = re.compile(
+        r"(?:jdbc|jpa|spring[\s-]*data|hibernate).{0,48}(?:repo|repository)"
+        r"|(?:repo|repository).{0,48}(?:jdbc|jpa|spring[\s-]*data|hibernate)",
+        re.I,
+    )
+    tech_axis_sids = []
+    for sid in ids:
+        title_m = re.search(
+            rf"^##\s+{re.escape(sid)}\s*:\s*(.+)$", text, re.M
+        )
+        title = (title_m.group(1).strip() if title_m else "") or ""
+        if _tech_axis_re.search(title):
+            tech_axis_sids.append(f"{sid}:{title}")
+    if len(tech_axis_sids) >= 2:
+        lint(
+            "O-M2DECOMPAXIS",
+            "repository stories split by implementation technology "
+            f"({'; '.join(tech_axis_sids)}) — a shared repository interface "
+            "cannot have unique file ownership across JDBC/JPA/Spring Data "
+            "stories; keep one repository-layer story (O-M2DECOMPAXIS / W4-338)",
+        )
+
     # O-SCOPECOVER — staging file coverage (mirror findings coverage)
     base = os.path.dirname(os.path.abspath(sys.argv[1]))
     staging_root = os.path.join(base, "staging")
@@ -689,13 +807,16 @@ def main():
                 profile_path = cand
                 break
     redesign_cls = set()
+    profile_text = ""
     if profile_path:
         try:
-            redesign_cls = redesign_classes_from_profile(
-                open(profile_path, encoding="utf-8").read()
-            )
+            profile_text = open(profile_path, encoding="utf-8").read()
+            redesign_cls = redesign_classes_from_profile(profile_text)
         except OSError:
             redesign_cls = set()
+            profile_text = ""
+    # O-BRIEFFRESHPROFILE — §7 digest shared across all story fresh hashes
+    profile_sec7 = profile_sec7_digest(profile_text)
     brief_texts = []
     for sid in ids:
         matches = glob.glob(os.path.join(base, "briefs", f"{sid}-*.md"))
@@ -711,6 +832,8 @@ def main():
             lint("briefs", f"{sid}: brief has no code excerpt (In scope must quote legacy lines)")
         if legacy_dir:
             brief_fidelity(sid, btext, legacy_dir)
+        # O-BRIEFCONSIST (ADR-21 G7) — preserve vs Forbidden enabler
+        brief_consistency(sid, btext)
         # O-BRIEFCOVER — every roadmap scope path named in the owning brief
         scope = field(sid, "scope") or ""
         scope_paths = [p.strip() for p in scope.split(",") if p.strip()]
@@ -748,7 +871,12 @@ def main():
         kind_raw_early = field(sid, "kind")
         seat_raw_early = field(sid, "seat-budget")
         expect_h = story_fresh_hash(
-            sid, scope, findings_raw, kind_raw_early, seat_raw_early
+            sid,
+            scope,
+            findings_raw,
+            kind_raw_early,
+            seat_raw_early,
+            profile_sec7,
         )
         m_fresh = _FRESH_MARK.search(btext)
         fresh_ok = bool(m_fresh and m_fresh.group(1).lower() == expect_h)
@@ -756,15 +884,16 @@ def main():
             lint(
                 "O-BRIEFFRESH",
                 f"{sid}: brief missing <!-- O-BRIEFFRESH sha256={expect_h} --> "
-                f"— stamp via m2-compose fill/regen after roadmap changes "
-                f"(O-BRIEFFRESH; mtime is not trusted)",
+                f"— stamp via m2-compose fill/regen after roadmap/profile §7 "
+                f"changes (O-BRIEFFRESH / O-BRIEFFRESHPROFILE; mtime is not trusted)",
             )
         elif not fresh_ok:
             lint(
                 "O-BRIEFFRESH",
                 f"{sid}: brief freshness hash {m_fresh.group(1).lower()} != "
-                f"current roadmap {expect_h} — scope/findings/kind/budget "
-                f"changed without regenerating the brief (O-BRIEFFRESH)",
+                f"current roadmap+profile§7 {expect_h} — scope/findings/kind/"
+                f"budget/§7 changed without regenerating the brief "
+                f"(O-BRIEFFRESH / O-BRIEFFRESHPROFILE)",
             )
         # O-PORTDERIVE / ARCH A1 — REDESIGN signal must survive M1→brief
         story_fids = {
@@ -978,9 +1107,20 @@ def main():
                     )
 
     # O-BRIEFQUALITY score lines (informational on full M2; gated on --story)
+    # O-BRIEFQFAB: fabrication must collapse the score — a 98 next to
+    # LINT:fabrication is decorative and misleads M3 handoff.
     for sid, q_score, q_dims in quality_reports:
         if STORY_FILTER and sid != STORY_FILTER:
             continue
+        fab_n = sum(
+            1
+            for p in problems
+            if p.startswith("LINT:fabrication:") and f": {sid}:" in p
+        )
+        if fab_n:
+            q_dims = dict(q_dims)
+            q_dims["fabrication"] = 0
+            q_score = 0
         dim_s = " ".join(f"{k}={v}" for k, v in q_dims.items())
         print(f"BRIEF-QUALITY {sid}: {q_score} ({dim_s})")
 

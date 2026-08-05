@@ -16,10 +16,18 @@ source directly only through the escalation valve (see EXECUTION.md).
 |---|---|---|
 | **M1** | ANALYZE | Ground truth + architecture profile — [ANALYSIS.md](ANALYSIS.md); script bundle via `analyze.sh` |
 | **M2** | SEQUENCE | Roadmap + briefs — [SEQUENCING.md](SEQUENCING.md); outer loop only |
-| **M3** | SPECIFY | Spec / plan / tasks for one story — [PLANNING.md](PLANNING.md) |
+| **M3** | SPECIFY | Brief → `tasks.md` first (then `plan.md`/`spec.md` outputs) — [PLANNING.md](PLANNING.md) |
 | **M4** | IMPLEMENT | Task loop (rewrite / infer / sensors) — [EXECUTION.md](EXECUTION.md) |
 | **M5** | EVALUATE | Preflight, factory ship, findings delta — [SHIPPING.md](SHIPPING.md) |
 | **Retro** | Steering | Proposals after a story/run — briefs may be auto-applied; skills stay human |
+
+### M3 entry for workers (O-M3SKILLNAV)
+
+OpenCode / Qwen M3 seats: (1) read `migration/briefs/<Sxx-slug>.md`,
+(2) edit `specs/<slug>/tasks.md` in the first tool batch, (3) only then
+write `plan.md` / `spec.md` if needed. `spec.md` and `plan.md` are
+**outputs, not inputs** — do not `read` them before the brief / tasks
+mutate (they may be absent under M3-ALL).
 
 Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`,
 `M3 spec:` / `<Sxx> spec:`, `M3 revision:`, `T-NNN:`, `M5 evaluate:`, `Retro:`.

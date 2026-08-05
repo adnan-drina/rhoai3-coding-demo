@@ -33,7 +33,7 @@ ROOT = Path(os.environ.get("ALREADY_COMPLETE_ROOT", ".")).resolve()
 def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
+        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:
@@ -256,8 +256,16 @@ def missing_target_path(body: str) -> bool:
         if path.endswith("/.gitkeep"):
             return True
         leaf = Path(path).name
-        if path.endswith(".java") and src_root.is_dir() and list(src_root.rglob(leaf)):
-            continue
+        if path.endswith(".java") and src_root.is_dir():
+            # ADR-24: when model.json exists, require the exact target_path —
+            # basename rglob falsely AC-closes co-harvested siblings (Pet/Owner).
+            model_path = ROOT / "migration" / "model.json"
+            if model_path.is_file():
+                if p.is_file():
+                    continue
+                return True
+            if list(src_root.rglob(leaf)):
+                continue
         return True
     return False
 
@@ -777,6 +785,62 @@ def main() -> int:
             # Override-only / redesign-skip with JPA cover and no pending Impl
             if jpa_cdi >= 3 and override_focus and not pending_ov:
                 print(f"present:JpaRepositoryImpl-cdi-sdjpa-skip({jpa_cdi})")
+                return 0
+
+    # O-ACPRECLAIM (W4R7 S02 T-003): HARVEST/rewrite Target already on disk with
+    # Jakarta imports, but Findings are prose (javax.persistence.*) so
+    # findings-oracle returns no-findings (rc=3) and preserve-skip is blocked by
+    # target_java_blocks_preserve → false must-run → Qwen/MiniMax seat burn.
+    # When every Owns/Target .java exists and no longer carries javax.persistence
+    # (Acceptance/Goal cite Jakarta), treat as already-complete.
+    if (
+        not missing_target_path(body)
+        and not missing_structure_deliverable(title, body)
+        and _shape_of(body) in {"", "modify", "create", "structure"}
+        and not is_removal_task(title, body)
+        and not is_verify_task(title)
+    ):
+        java_paths = _owns_and_target_java(body)
+        focus = _focus_blob(title, body)
+        wants_jakarta = bool(re.search(r"(?i)jakarta", focus))
+        harvestish = bool(
+            re.search(r"(?i)\bharvest\b|\brewrite\b|\bmoderniz", f"{title}\n{body}")
+        )
+        if java_paths and (harvestish or wants_jakarta):
+            ok = True
+            for rel in java_paths:
+                fp = ROOT / rel
+                if not fp.is_file():
+                    ok = False
+                    break
+                try:
+                    txt = fp.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    ok = False
+                    break
+                if re.search(r"\bjavax\.persistence\b", txt):
+                    ok = False
+                    break
+                if wants_jakarta and not re.search(r"\bjakarta\.persistence\b", txt):
+                    # Entity harvest Acceptance usually requires jakarta imports.
+                    if re.search(r"(?i)@Entity|persistence", focus):
+                        ok = False
+                        break
+                # O-ACPRECLAIMVAL: jakarta.validation.* needs hibernate-validator
+                # on the Quarkus BOM path — presence alone is not compile-green
+                # (W4R7 S02 T-004 NamedEntity NotEmpty → sfix after false AC).
+                if re.search(r"\bjakarta\.validation\b", txt):
+                    pom = ROOT / "pom.xml"
+                    ptxt = pom.read_text(encoding="utf-8", errors="replace") if pom.is_file() else ""
+                    if not re.search(
+                        r"(?i)hibernate-validator|quarkus-hibernate-validator|"
+                        r"jakarta\.validation",
+                        ptxt,
+                    ):
+                        ok = False
+                        break
+            if ok:
+                print(f"present:target-jakarta:{java_paths[0]}")
                 return 0
 
     return 1

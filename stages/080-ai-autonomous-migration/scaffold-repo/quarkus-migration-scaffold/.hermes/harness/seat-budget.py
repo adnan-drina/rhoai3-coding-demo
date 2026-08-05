@@ -21,10 +21,16 @@ Publish as roadmap `- seat-budget: N` + brief; O-LOGBRIEF banner; supervisor
 escalates (debt-freeze) when actual story seats exceed N × OVER_FACTOR
 (default 2).
 
+O-SEATBRAKE: when the live plan has more than SEAT_BUDGET_BRAKE_TASKS tasks
+(default 14 — the pre-char/convert calibration band), the overrun ceiling is
+also floored at tasks × SEAT_BUDGET_TASK_HEADROOM (default 6). That lifts
+42-task repository stories (freeze was 210 under incident×2 alone) without
+loosening 6–14-task stories.
+
 Usage:
   seat-budget.py expected --kind reimplement --incidents 51 [--scope-paths N]
   seat-budget.py from-story <roadmap.md> <findings-inventory.md> <S0N>
-  seat-budget.py check-overrun --sid S03 [--budget N] [--factor F]
+  seat-budget.py check-overrun --sid S03 [--budget N] [--factor F] [--tasks N]
 """
 from __future__ import annotations
 
@@ -69,6 +75,52 @@ def over_factor() -> float:
         return float(os.environ.get("SEAT_BUDGET_OVER_FACTOR", "2"))
     except ValueError:
         return 2.0
+
+
+def brake_task_threshold() -> int:
+    """Task counts above this get the O-SEATBRAKE headroom floor (default 14)."""
+    try:
+        return int(os.environ.get("SEAT_BUDGET_BRAKE_TASKS", "14"))
+    except ValueError:
+        return 14
+
+
+def task_headroom() -> float:
+    """Min seats/task before overrun freeze on large plans (O-SEATBRAKE)."""
+    try:
+        return float(os.environ.get("SEAT_BUDGET_TASK_HEADROOM", "6"))
+    except ValueError:
+        return 6.0
+
+
+def count_plan_tasks(sid: str, root: str = ".") -> int:
+    """Count #### T-* headings in specs/<sid>-*/tasks.md (O-SEATBRAKE)."""
+    patterns = [
+        os.path.join(root, "specs", f"{sid}-*", "tasks.md"),
+        os.path.join(root, "specs", sid, "tasks.md"),
+    ]
+    paths: list[str] = []
+    for pat in patterns:
+        paths.extend(glob.glob(pat))
+    if not paths:
+        return 0
+    try:
+        text = open(paths[0], encoding="utf-8", errors="replace").read()
+    except OSError:
+        return 0
+    return len(re.findall(r"(?m)^#{2,6}\s+T[-A-Za-z0-9]*\d+", text))
+
+
+def overrun_limit(
+    budget: int, tasks: int = 0, factor: float | None = None
+) -> float:
+    """Effective seat ceiling: budget×factor, floored for large task counts."""
+    f = over_factor() if factor is None else float(factor)
+    limit = float(max(0, int(budget))) * f
+    t = max(0, int(tasks))
+    if t > brake_task_threshold():
+        limit = max(limit, float(t) * task_headroom())
+    return limit
 
 
 def is_generated_scope_path(path: str) -> bool:
@@ -248,16 +300,27 @@ def cmd_check_overrun(args: argparse.Namespace) -> int:
         print(f"O-SEATBUDGET: no budget for {sid} — skip overrun check")
         return 0
     factor = args.factor if args.factor is not None else over_factor()
+    tasks = (
+        args.tasks
+        if getattr(args, "tasks", None) is not None
+        else count_plan_tasks(sid)
+    )
     actual = count_actual_seats(sid)
-    limit = budget * factor
+    limit = overrun_limit(budget, tasks=tasks, factor=factor)
     print(
         f"O-SEATBUDGET: {sid} actual={actual} budget={budget} "
-        f"factor={factor} limit={limit:g}"
+        f"factor={factor} tasks={tasks} limit={limit:g}"
+        + (
+            " (O-SEATBRAKE task-headroom)"
+            if tasks > brake_task_threshold()
+            and limit > float(budget) * float(factor)
+            else ""
+        )
     )
     if actual > limit:
         print(
-            f"O-SEATBUDGET: OVERRUN {sid} actual={actual} > "
-            f"{budget}×{factor:g}={limit:g} — escalate",
+            f"O-SEATBUDGET: OVERRUN {sid} actual={actual} > limit={limit:g} "
+            f"(budget={budget}×{factor:g}, tasks={tasks}) — escalate",
             file=sys.stderr,
         )
         return 1
@@ -291,6 +354,12 @@ def main(argv: list[str] | None = None) -> int:
     p3.add_argument("--sid", required=True)
     p3.add_argument("--budget", type=int, default=None)
     p3.add_argument("--factor", type=float, default=None)
+    p3.add_argument(
+        "--tasks",
+        type=int,
+        default=None,
+        help="plan task count (default: count #### T-* in specs/<sid>-*/tasks.md)",
+    )
     p3.set_defaults(func=cmd_check_overrun)
 
     args = ap.parse_args(argv)

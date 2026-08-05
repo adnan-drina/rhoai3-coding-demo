@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""O-OWNSTAGE — emit stageable Owns/Target paths for a task (one per line).
+"""O-OWNSTAGE / O-OWNSTAGEALL — emit stageable Owns/Target paths for a task.
 
 Used by supervisor stage_for_task_commit to allowlist-stage instead of
 `git add -A`, so sibling entities stay untracked for their owning tip.
+
+O-OWNSTAGEALL: collect paths from the *whole* Owns/Target/Absorbs section
+(multi-line bullets), not only the text after `:` on the header line.
+Skips "Verification of:" / Shape=verify check-only cites (O-VERIFYCREATE /
+O-ATTRSWEEP — those are not create deliverables).
 
 Exit 0 always when the task is found (even with zero paths — caller falls
 back). Exit 1 if the task id is missing from tasks.md.
@@ -14,27 +19,33 @@ import sys
 from pathlib import Path
 
 _JAVA = re.compile(r"src/(?:main|test)/[A-Za-z0-9_./-]+\.java")
+_GITKEEP = re.compile(r"src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep")
 _SHARED = re.compile(
     r"(?<![\w./])(?:pom\.xml|"
     r"src/(?:main|test)/resources/[A-Za-z0-9_./-]+\.(?:properties|ya?ml|xml)|"
     r"k8s/[A-Za-z0-9_./-]+)"
 )
-_CLAIM = re.compile(
-    r"(?i)(?:^\s*\*?\*?(?:Owns|Target\s*design|Target|Design|Absorbs)\*?\*?\s*:)"
-    r"|(?:→|->)\s*`?(?:src/|pom\.xml|k8s/)"
+_SECTION_HEAD = re.compile(
+    r"(?i)^\s*\*?\*?(Owns|Target\s*design|Target|Design|Absorbs)\*?\*?\s*:?\s*(.*)$"
 )
+_STOP_HEAD = re.compile(
+    r"(?i)^\s*\*?\*?(?:Class|Shape|Oracle|Goal|Findings|Constraints|Acceptance|"
+    r"Out of scope|Assumes|Port|Inputs|Actor|ADDITIONAL-WORK)\*?\*?\s*:"
+)
+_VERIFY_OF = re.compile(r"(?i)\bVerification\s+of\s*:")
 _OOS = re.compile(
     r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
     r"|(?:\bdo NOT touch\b)"
-    r"|(?:\bowned by T[-A-Za-z0-9]*\d+)"
+    r"|(?:\bowned by T[-A-Za-z0-9]*\d+[A-Za-z]*)"
 )
 _STAGING = re.compile(r"(?:^|/)(?:migration/staging|legacy)(?:/|$)")
+_ARROW = re.compile(r"(?:→|->)\s*`?(?:src/|pom\.xml|k8s/)")
 
 
 def _task_body(tasks_file: Path, tid: str) -> str:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
+        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:
@@ -47,54 +58,124 @@ def _task_body(tasks_file: Path, tid: str) -> str:
     return ""
 
 
-def stage_paths(body: str) -> list[str]:
-    """Declared Owns/Target/Absorbs paths that may land in a T-NNN tip."""
+def _shape_is_verify(body: str) -> bool:
+    m = re.search(r"(?im)^\s*\*?\*?Shape\*?\*?\s*:\s*(\S+)", body)
+    if not m:
+        return False
+    return m.group(1).strip().lower() in {"verify", "absent", "remove"}
+
+
+def _extract_paths_from_text(text: str, *, skip_verify_of: bool) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
 
     def _add(p: str) -> None:
-        p = p.strip().strip("`").rstrip(",")
+        p = p.strip().strip("`").rstrip(",.;")
         if not p or _STAGING.search(p):
             return
-        if p in seen:
-            return
-        # Basenames alone are not stageable without a tree path.
         if "/" not in p and p != "pom.xml":
+            return
+        if p in seen:
             return
         seen.add(p)
         out.append(p)
 
-    for label in ("Owns", "Target design", "Target", "Design", "Absorbs"):
-        for m in re.finditer(
-            rf"^\*?\*?{re.escape(label)}\*?\*?\s*:?\s*(.+)$",
-            body,
-            re.M | re.I,
-        ):
-            line = m.group(1)
-            if _OOS.search(line):
-                continue
-            for tok in re.split(r"[,;\s]+", line.strip()):
-                tok = tok.strip().strip("`")
-                if tok.startswith("src/") or tok == "pom.xml" or tok.startswith("k8s/"):
-                    _add(tok)
-            for p in _JAVA.findall(line):
-                _add(p)
-            for p in _SHARED.findall(line):
-                _add(p)
-
-    for line in body.splitlines():
-        if _OOS.search(line):
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or _OOS.search(line):
             continue
-        if not _CLAIM.search(line):
+        if skip_verify_of and _VERIFY_OF.search(line):
             continue
+        for tok in re.split(r"[,;\s]+", line):
+            tok = tok.strip().strip("`")
+            if tok.startswith("src/") or tok == "pom.xml" or tok.startswith("k8s/"):
+                _add(tok)
         for p in _JAVA.findall(line):
+            _add(p)
+        for p in _GITKEEP.findall(line):
             _add(p)
         for p in _SHARED.findall(line):
             _add(p)
-        # structure: …/.gitkeep (may not match _JAVA if written without backslash)
-        for p in re.findall(r"src/(?:main|test)/[A-Za-z0-9_./-]+/\.gitkeep", line):
-            _add(p)
+    return out
 
+
+def stage_paths(body: str) -> list[str]:
+    """Declared Owns/Target/Absorbs paths that may land in a T-NNN tip."""
+    out: list[str] = []
+    seen: set[str] = set()
+    verify_shape = _shape_is_verify(body)
+
+    def _extend(paths: list[str]) -> None:
+        for p in paths:
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+
+    lines = body.splitlines()
+    i = 0
+    while i < len(lines):
+        m = _SECTION_HEAD.match(lines[i])
+        if not m:
+            # Arrow cites on any line still count (legacy → dest).
+            if _ARROW.search(lines[i]) and not _OOS.search(lines[i]):
+                _extend(
+                    _extract_paths_from_text(
+                        lines[i], skip_verify_of=True
+                    )
+                )
+            i += 1
+            continue
+        label = re.sub(r"\s+", " ", m.group(1).strip().lower())
+        rest = m.group(2) or ""
+        block = [rest] if rest.strip() else []
+        i += 1
+        while i < len(lines):
+            if _SECTION_HEAD.match(lines[i]) or _STOP_HEAD.match(lines[i]):
+                break
+            if lines[i].strip().startswith("#"):
+                break
+            block.append(lines[i])
+            i += 1
+        # Design-alone headers that are really "Target Design" already handled.
+        skip_verify = True
+        if label == "absorbs" and verify_shape:
+            # Absorbs under verify still may name create leftovers — keep.
+            skip_verify = True
+        _extend(_extract_paths_from_text("\n".join(block), skip_verify_of=skip_verify))
+
+    # Constraints often list MANDATORY destination paths (.gitkeep) outside
+    # the Target Design block — still create deliverables for structure/create.
+    if not verify_shape:
+        for ln in body.splitlines():
+            if re.search(r"(?i)MANDATORY|Target destination|package-structure", ln):
+                _extend(
+                    _extract_paths_from_text(ln, skip_verify_of=True)
+                )
+
+    # Shape=verify with only "Verification of:" paths → empty allowlist
+    # (caller must not tip-commit prior-task orphans as this task).
+    if verify_shape:
+        # Drop any path that only appears on Verification-of lines.
+        verify_only = set(
+            _extract_paths_from_text(
+                "\n".join(
+                    ln for ln in body.splitlines() if _VERIFY_OF.search(ln)
+                ),
+                skip_verify_of=False,
+            )
+        )
+        createish = [
+            p
+            for p in out
+            if p not in verify_only
+            or p.endswith(".gitkeep")
+            or "package-info.java" in p
+        ]
+        # If everything was verification-of, return empty (O-VERIFYCREATE).
+        if not createish and verify_only:
+            return []
+        if createish:
+            return createish
     return out
 
 
@@ -104,8 +185,7 @@ def main() -> int:
         return 2
     tasks = Path(sys.argv[1])
     tid = sys.argv[2].strip()
-    # Accept "T-004 sensor fix" / "T-004:" forms from callers.
-    m = re.match(r"(T[-A-Za-z0-9]*\d+)", tid)
+    m = re.match(r"(T[-A-Za-z0-9]*\d+[A-Za-z]*)", tid)
     if m:
         tid = m.group(1)
     if not tasks.is_file():

@@ -27,7 +27,14 @@ except ImportError:  # pragma: no cover
 
 TARGET_PACKAGE = "com.demo"
 ANALYSIS_MODE = "source-only"
-ANALYSIS_TARGETS = ["quarkus", "jakarta-ee9", "cloud-readiness", "openjdk17"]
+# O-OPENJDK21TARGET: default includes openjdk21 (JDK-21 destinations).
+ANALYSIS_TARGETS = [
+    "quarkus",
+    "jakarta-ee9",
+    "cloud-readiness",
+    "openjdk17",
+    "openjdk21",
+]
 BARE_ARRAY = "_array"
 UNDECIDED = "UNDECIDED"
 
@@ -626,7 +633,24 @@ def _stamp_to_doc(existing: dict, stamp: StampResult) -> dict:
     doc["acceptance"] = dict(stamp.acceptance)
     doc["preserve"] = list(stamp.preserve)
     doc["forbidden"] = list(stamp.forbidden)
-    doc["analysis"] = dict(stamp.analysis)
+    # O-STAMPKEEPTARGETS: never clobber a decided analysis.targets list with the
+    # hardcoded default (W4R4: stamp wipe dropped openjdk21 mid-GO start).
+    # O-OPENJDK21REGRESS: still union required ANALYSIS_TARGETS (openjdk21) so a
+    # stale tip that only listed openjdk17 cannot silently narrow M1 forever.
+    prev_analysis = existing.get("analysis") or {}
+    if prev_analysis.get("targets"):
+        kept = list(prev_analysis["targets"])
+        for req in ANALYSIS_TARGETS:
+            if req not in kept:
+                kept.append(req)
+        doc["analysis"] = {
+            "mode": prev_analysis.get("mode")
+            or (stamp.analysis or {}).get("mode")
+            or ANALYSIS_MODE,
+            "targets": kept,
+        }
+    else:
+        doc["analysis"] = dict(stamp.analysis)
     doc["targetContract"] = {k: bool(v) for k, v in stamp.target_contract.items()}
     doc["contract"] = {"status": stamp.contract_status}
     if stamp.alternatives:

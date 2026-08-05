@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("FGRETO_ROOT", ".")).resolve()
 SKIP_RE = re.compile(
-    r"^(T[-A-Za-z0-9]*\d+):\s*(ALREADY COMPLETE|Already satisfied)\b",
+    r"^(T[-A-Za-z0-9]*\d+[A-Za-z]*):\s*(ALREADY COMPLETE|Already satisfied)\b",
     re.I,
 )
 

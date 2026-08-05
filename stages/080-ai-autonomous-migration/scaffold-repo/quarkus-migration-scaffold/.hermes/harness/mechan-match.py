@@ -17,7 +17,7 @@ def _task_body_local(tasks_file: Path, tid: str) -> tuple[str, str]:
     """Task title/body with story-waiver appendices stripped (O-AC2)."""
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+)\s*:\s*(.+)$", text, re.M)
+        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:
@@ -119,6 +119,33 @@ def main() -> int:
         print("empty-stage")
         return 1
 
+    # O-T6DM4STRUCT: Shape=structure / config scaffold must mechan-commit
+    # without MiniMax. Detect Shape early so later wants_tests / soft-path
+    # gates cannot force need-src-test / unexpected-paths (W4 S02 T-000/T-001).
+    shape_m = re.search(r"(?im)^\*?\*?Shape\*?\*?\s*:?\s*(\w+)", body)
+    shape = (shape_m.group(1).lower() if shape_m else "")
+    package_info_task = bool(re.search(r"(?i)package-info", title))
+    structure_task = shape == "structure" or (
+        (not package_info_task)
+        and bool(
+            re.search(
+                r"(?i)directory structure|(?<![\w-])package structure|\.gitkeep|"
+                r"empty package|package director",
+                blob,
+            )
+        )
+    )
+    config_struct = structure_task or (
+        shape == "structure"
+        and bool(
+            re.search(
+                r"(?i)application\.properties|datasource|quarkus\.datasource|"
+                r"profile-based",
+                blob,
+            )
+        )
+    )
+
     # O-T6dPKGINFO / O-STRUCTINFO: package-info.java-only stages are valid for
     # build-verification / package-doc tasks even when the body mentions
     # "characterization tests" / src/test as a verify step (v2 S03 T-008:
@@ -142,7 +169,8 @@ def main() -> int:
             title,
         )
     )
-    if wants_tests and not verify_task:
+    # O-T6DM4STRUCT: structure/config tips never require src/test for mechan.
+    if wants_tests and not verify_task and not structure_task and not config_struct:
         if any(p.startswith("src/test/") for p in staged):
             return 0
         print("need-src-test")
@@ -209,20 +237,11 @@ def main() -> int:
         print("no-path-overlap")
         return 1
 
-    # O-SCAFFOLDDIR / O-STRUCTINFO: directory-scaffold tasks accept .gitkeep
-    # and package-info.java under src/{main,test}/java/ (T-001 allows either
-    # for commitability). Do NOT classify package-info *content* tasks as
-    # structure-only — "com.demo package structure" in T-003 Target design
-    # previously tripped structure-non-gitkeep on real package-info.java
-    # (Wave2 wake17) and forced MiniMax after a successful Qwen write.
-    package_info_task = bool(re.search(r"(?i)package-info", title))
-    structure_task = (not package_info_task) and bool(
-        re.search(
-            r"(?i)directory structure|(?<![\w-])package structure|\.gitkeep|empty package|package director",
-            blob,
-        )
-    )
-    if structure_task:
+    # O-SCAFFOLDDIR / O-STRUCTINFO / O-T6DM4STRUCT: directory-scaffold and
+    # Shape=structure config tasks accept .gitkeep, package-info.java, and
+    # application*.properties under resources. Do NOT classify package-info
+    # *content* tasks as structure-only via title alone (Wave2 wake17).
+    if structure_task or config_struct:
         def _scaffold_ok(p: str) -> bool:
             return (
                 p.endswith("/.gitkeep")
@@ -231,12 +250,22 @@ def main() -> int:
                 or p.endswith("package-info.java")
                 or p == "pom.xml"
                 or p.startswith("k8s/")
+                or (
+                    p.startswith("src/main/resources/")
+                    and (
+                        p.endswith(".properties")
+                        or p.endswith(".yaml")
+                        or p.endswith(".yml")
+                        or p.endswith(".xml")
+                    )
+                )
             )
 
         bad = [p for p in staged if not _scaffold_ok(p)]
         if not bad and all(
             p.startswith("src/main/java/")
             or p.startswith("src/test/java/")
+            or p.startswith("src/main/resources/")
             or p == "pom.xml"
             or p.startswith("k8s/")
             for p in staged
@@ -247,7 +276,9 @@ def main() -> int:
             return 1
 
     # Soft tasks (package dirs, pom, package-info): allow src/ or pom.xml only.
-    if all(p.startswith("src/") or p == "pom.xml" or p.startswith("k8s/") for p in staged):
+    if all(
+        p.startswith("src/") or p == "pom.xml" or p.startswith("k8s/") for p in staged
+    ):
         return 0
     print("unexpected-paths")
     return 1

@@ -104,7 +104,9 @@ heartbeat() { # story
     if [ -f "$roadmap" ]; then
       local k3n
       # Decision forms only — not prose that merely mentions adopt/defer.
-      k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt)' "$roadmap" 2>/dev/null || true); k3n=${k3n:-0}
+      # O-EVIDLIVEK3TABLE / O-M2K3TABLE: inventory-shaped markdown table
+      # `| rule-id | adopt|defer | reason |` must count (bullet forms already did).
+      k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt|[[:space:]]\|[[:space:]]*(adopt|defer)[[:space:]]\|)' "$roadmap" 2>/dev/null || true); k3n=${k3n:-0}
       if [ "${k3n:-0}" -gt 0 ] 2>/dev/null; then
         record "$story" K3 "$k3n" "roadmap adopt/defer present"
       else
