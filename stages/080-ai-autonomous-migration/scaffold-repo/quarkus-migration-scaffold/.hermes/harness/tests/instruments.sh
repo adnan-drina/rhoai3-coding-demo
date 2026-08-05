@@ -14824,7 +14824,7 @@ Y
   python3 - <<PY || return 1
 import json, subprocess, sys
 from pathlib import Path
-fix = Path("$FIX")
+FIX = Path("$FIX")
 H = Path("$HARNESS_DIR").resolve()
 model = {
   "units": [{
@@ -14931,7 +14931,7 @@ Y
   python3 - <<PY || return 1
 import json, subprocess, sys
 from pathlib import Path
-fix = Path("$FIX")
+FIX = Path("$FIX")
 H = Path("$HARNESS_DIR").resolve()
 # Two units: one REDESIGN (infer) first in condensation order, one HARVEST (rewrite)
 model = {
