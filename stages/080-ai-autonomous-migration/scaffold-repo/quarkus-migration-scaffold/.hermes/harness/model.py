@@ -9,6 +9,11 @@ CLI:
   model.py emit [--legacy DIR] [--root DIR]
   model.py assign-stories [--root DIR]
   model.py context-for <SID> [--root DIR]
+  model.py context-for-profile [--root DIR] [--undecided-only] [--limit N]  # ADR-26 / O-PROF1OF79STOP
+  model.py context-for-m2 [--root DIR]  # ADR-34 / F-no-discovery M2 projection
+  model.py assign-tasks [--root DIR]    # ADR-35 typed model.tasks[]
+  model.py render-tasks [--root DIR] [--sid SID]
+  model.py emit-profile-skeleton [--root DIR] # ADR-27 §7 scaffolds before LLM
   model.py lint-scc-atomic <tasks.md> <SID> [--root DIR]
   model.py lint-finding-kind <tasks.md> [--root DIR]   # F9
   model.py story-complete <SID> [--root DIR]
@@ -369,18 +374,45 @@ def order_for_story(model: dict, sid: str) -> list[str]:
     return out
 
 
-def context_for(model: dict, sid: str) -> str:
-    """Structured M3 projection — no markdown scrape, no silent cap (ADR-24 G4)."""
+def context_for(model: dict, sid: str, *, root: Optional[Path] = None) -> str:
+    """Structured M3 projection — no markdown scrape (ADR-24 G4) + ADR-38 snippets.
+
+    O-M3SNIPPET / ADR-40: every resolvable decision cite= carries SNIPPET text
+    (±2 lines) so the M3 seat must not fetch legacy files (same rule as
+    context_for_m2). Generated/unresolvable cites are omitted.
+    """
     units = units_for_story(model, sid)
     if not units and not (model.get("stories") or []):
         # Pre-assign_stories: project by matching nothing — caller may pass scope
         units = list(model.get("units") or [])
+    # Snippet resolver (optional — fixtures without legacy still project structure)
+    snip_fn = None
+    is_gen = None
+    lr = None
+    if root is not None:
+        try:
+            sys.path.insert(0, str(_HARNESS))
+            from profile_anchors import (  # type: ignore
+                is_generated_build_path,
+                resolve_legacy_root,
+                snippet_at_path_line,
+            )
+
+            snip_fn = snippet_at_path_line
+            is_gen = is_generated_build_path
+            legacy_env = os.environ.get("LEGACY_ROOT", "").strip() or None
+            lr = resolve_legacy_root(root, legacy_env)
+        except Exception:
+            snip_fn = None
     lines = [
-        "===== BEGIN DERIVED FACTS (authoritative — ADR-24 model projection) =====",
+        "===== BEGIN DERIVED FACTS (authoritative — migration model projection) =====",
         "O-M3DERIVEDCTX: where BRIEF and DERIVED FACTS disagree, DERIVED FACTS win.",
+        "O-M3SNIPPET / ADR-38: copy quotes from SNIPPET only — do NOT read /projects/legacy.",
         f"story: {sid}",
         f"units ({len(units)}):",
     ]
+    n_cite = 0
+    n_snip = 0
     for u in units:
         if u.get("kind") != "java":
             lines.append(
@@ -389,9 +421,35 @@ def context_for(model: dict, sid: str) -> str:
             continue
         scc = u.get("scc") or "-"
         fids = ",".join(u.get("findings") or []) or "-"
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else {}
+        role = (d.get("role") if d else None) or "UNDECIDED"
+        cite = ""
+        snip: Optional[str] = None
+        if snip_fn and isinstance(d, dict):
+            ev = d.get("evidence") if isinstance(d.get("evidence"), dict) else None
+            if ev and ev.get("path"):
+                ep = str(ev.get("path") or "").replace("\\", "/")
+                if not (is_gen and is_gen(ep)):
+                    snip = snip_fn(
+                        root,
+                        ep,
+                        ev.get("line") or 0,
+                        legacy_root=lr,
+                        before=2,
+                        after=2,
+                    )
+                    if snip:
+                        cite = f" cite={ep}:{ev.get('line')}:{ev.get('token')}"
+                        n_cite += 1
+                        n_snip += 1
         lines.append(
-            f"  - {u.get('target_fqn')} <- {u.get('legacy_fqn')}  scc={scc}  findings=[{fids}]"
+            f"  - {u.get('target_fqn')} <- {u.get('legacy_fqn')}  role={role} "
+            f"scc={scc}  findings=[{fids}]{cite}"
         )
+        if snip:
+            lines.append("    SNIPPET:")
+            for sl in snip.splitlines():
+                lines.append(f"    | {sl}")
     # convert-together batches intersecting this story
     unit_keys = {u["key"] for u in units}
     for scc in model.get("sccs") or []:
@@ -417,11 +475,23 @@ def context_for(model: dict, sid: str) -> str:
             else:
                 pretty.append(f"{i} {item.rsplit('.', 1)[-1]}")
         lines.append("order: " + " · ".join(pretty))
+    # Typed tasks already bound for this story (ADR-35 / ADR-40)
+    typed = [t for t in (model.get("tasks") or []) if t.get("sid") == sid]
+    if typed:
+        lines.append(f"typed_tasks ({len(typed)}): harness-generated IDs — seat fills JUDGMENT only")
+        for t in typed:
+            lines.append(
+                f"  - {t.get('id')} owns={','.join(t.get('unit_keys') or [])} "
+                f"filled={bool(t.get('filled'))} acceptance_derived=yes"
+            )
+    lines.append(f"provenance: m3snip_cites={n_cite} m3snip_snippets={n_snip}")
     lines.append("===== END DERIVED FACTS =====")
     return "\n".join(lines)
 
 
-def context_for_scope(model: dict, scope_paths: list[str]) -> str:
+def context_for_scope(
+    model: dict, scope_paths: list[str], *, root: Optional[Path] = None
+) -> str:
     """Projection before stories[] is bound — select units by exact legacy_path ∈ scope.
 
     O-ADR24BASENAME: no Path(...).name / suffix joins — scope must list full paths
@@ -453,11 +523,352 @@ def context_for_scope(model: dict, scope_paths: list[str]) -> str:
             "deploy": False,
         }
     ]
-    return context_for(tmp, "SCOPE").replace("story: SCOPE", "story: (scope projection)")
+    return context_for(tmp, "SCOPE", root=root).replace(
+        "story: SCOPE", "story: (scope projection)"
+    )
 
 
-def assign_stories(root: Path, model: Optional[dict] = None) -> dict:
-    """M2 sole mutation: fill stories[] from roadmap — total, disjoint, SCC-atomic."""
+def profile_units(model: dict) -> list[dict]:
+    """ADR-26 — architecture-bearing java units for M1 PROFILE coverage.
+
+    Single SoT for the PROFILE class universe (same model as M2/M3).
+    Excludes package-info.java — no architectural role to harvest/redesign.
+    Identity is legacy_fqn / legacy_path (never bare basename alone).
+    """
+    out: list[dict] = []
+    for u in model.get("units") or []:
+        if u.get("kind") != "java":
+            continue
+        lp = (u.get("legacy_path") or "").replace("\\", "/")
+        fqn = u.get("legacy_fqn") or ""
+        if lp.endswith("package-info.java") or fqn.endswith("package-info"):
+            continue
+        out.append(u)
+    return out
+
+
+def context_for_profile(
+    model: dict,
+    *,
+    root: Optional[Path] = None,
+    undecided_only: bool = False,
+    limit: int = 0,
+    legacy: Optional[str] = None,
+) -> str:
+    """ADR-26 + ADR-31 — M1 PROFILE projection: checklist, not recall.
+
+    Same DERIVED FACTS pattern as context_for (M3). PROFILE must classify
+    every listed unit; rubric grades against the full universe.
+
+    O-PROF1OF79STOP: `--undecided-only --limit N` projects a **batch** of
+    units still needing a credited typed decision (null or evidence_miss),
+    so seats are not asked to author 79 anchors in one overloaded prompt.
+
+    ADR-31: each unit carries a **pre-verified anchor set**. The seat
+    SELECTs evidence from that set — it does not search for line numbers.
+    Apply refuses evidence ∉ the set (F-anchor-membership).
+    """
+    units = profile_units(model)
+    batch_note = ""
+    if undecided_only and root is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from profile_roles import evaluate_roles  # type: ignore
+
+        ev = evaluate_roles(Path(root), legacy=legacy)
+        need = set(ev.get("undecided") or [])
+        units = [
+            u
+            for u in units
+            if (u.get("legacy_fqn") or u.get("key") or "?") in need
+        ]
+        batch_note = " (undecided-only batch — fill these before the rest)"
+    if limit and limit > 0:
+        units = units[:limit]
+        batch_note = (batch_note or "") + f" (limit={limit})"
+    # ADR-31 — precompute anchors once for the projected batch.
+    anchor_map: dict = {}
+    if root is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from profile_anchors import project_text_for_units  # type: ignore
+
+        anchor_map = project_text_for_units(Path(root), units, legacy=legacy)
+    lines = [
+        "===== BEGIN DERIVED FACTS (authoritative — PROFILE model projection) =====",
+        "EVERY unit below needs a typed decision in",
+        "migration/profile-decisions.json (or model.units[].decision):",
+        "role=HARVEST|REDESIGN, rationale, evidence={path,line,token}.",
+        "Evidence MUST be SELECTED from the unit's projected anchors",
+        "(pre-verified path:line:token). Do NOT invent line numbers. Apply",
+        "refuses evidence outside the projected set (F-anchor-membership).",
+        "§7 markdown is RENDERED from those decisions — do not author role bullets.",
+        "Where ANALYSIS prose and DERIVED FACTS disagree, DERIVED FACTS win.",
+        "O-ADR27: source *Mapper.java interfaces ARE classify (in this list).",
+        "Never class-role *MapperImpl or target/generated-sources — build-owned.",
+        # Wording avoids the literal "package-info" so instruments that assert
+        # the unit is absent from the projection body do not false-fail.
+        f"profile-units ({len(units)} java, pkg-info rows omitted){batch_note}:",
+    ]
+    for u in units:
+        fqn = u.get("legacy_fqn") or u.get("key") or "?"
+        lp = u.get("legacy_path") or "?"
+        scc = u.get("scc") or "-"
+        fids = ",".join(u.get("findings") or []) or "-"
+        simple = fqn.rsplit(".", 1)[-1]
+        hint = "classify"
+        if simple.endswith("Mapper") and "mapper" in lp.lower():
+            hint = "classify-source-mapper"
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else None
+        dstat = (
+            f"decision={d.get('role')}"
+            if d and d.get("role") in ("HARVEST", "REDESIGN")
+            else "decision=null"
+        )
+        lines.append(
+            f"  - {fqn}  path={lp}  simple={simple}  scc={scc}  "
+            f"findings=[{fids}]  hint={hint}  {dstat}"
+        )
+        if root is not None:
+            from profile_anchors import format_anchors_block  # type: ignore
+
+            lines.extend(format_anchors_block(anchor_map.get(fqn) or []))
+    # non-java demand still visible for modernization surface
+    other = [
+        u
+        for u in model.get("units") or []
+        if u.get("kind") != "java" and (u.get("findings") or [])
+    ]
+    if other:
+        lines.append(f"non-java demand units ({len(other)}) — cite in §5, not §7 class-roles:")
+        for u in other:
+            fids = ",".join(u.get("findings") or []) or "-"
+            lines.append(
+                f"  - [{u.get('kind')}] {u.get('legacy_path')}  findings=[{fids}]"
+            )
+    lines.append("===== END DERIVED FACTS =====")
+    return "\n".join(lines)
+
+
+def emit_profile_skeleton(root: Path) -> int:
+    """ADR-29 — PROFILE pre-seat projection (typed decisions, not prose roles).
+
+    Opens model.units[].decision = null and migration/profile-decisions.json.
+    §7 is a rendered view — do **not** author role bullets in markdown; fill
+    profile-decisions.json (role + rationale + evidence.path/line/token).
+    Closes W5-023 scaffold false-green and the §7 harvest round-trip.
+    """
+    from profile_close import _sec7_span  # type: ignore
+    from profile_roles import init_roles, render_sec7  # type: ignore
+
+    profile = root / "migration" / "architecture-profile.md"
+    if not profile.is_file():
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(
+            "# Architecture profile\n\n"
+            "## 1. Purpose & Domain\n\n"
+            "(LLM fills — evidence or silence.)\n\n"
+            "## 2. Components & Relationships\n\n"
+            "(LLM fills — cite dependency-order.md.)\n\n"
+            "## 3. Integration Surfaces\n\n"
+            "(LLM fills.)\n\n"
+            "## 4. Behavioral Contract Sources\n\n"
+            "(LLM fills.)\n\n"
+            "## 5. Modernization Surface\n\n"
+            "(LLM fills — findings-inventory.)\n\n"
+            "## 6. Domain Boundaries\n\n"
+            "(LLM fills.)\n\n"
+            "## 7. Class Roles & Target Contract\n\n"
+            "<!-- rendered from model.units[].decision after PROFILE close -->\n\n",
+            encoding="utf-8",
+        )
+    else:
+        text = profile.read_text(encoding="utf-8")
+        start, _end = _sec7_span(text)
+        if start < 0:
+            profile.write_text(
+                text.rstrip()
+                + "\n\n## 7. Class Roles & Target Contract\n\n"
+                + "<!-- rendered from model.units[].decision after PROFILE close -->\n\n",
+                encoding="utf-8",
+            )
+    rc = init_roles(root)
+    render_sec7(root, profile=str(profile))
+    n_units = len(profile_units(load(root)))
+    print(
+        f"O-ADR29 skeleton: model.units[].decision checklist ({n_units} units); "
+        f"fill migration/profile-decisions.json — §7 (Class Roles & Target Contract) "
+        f"is rendered → {profile}"
+    )
+    return rc
+
+
+def _decision_complete_local(d: Optional[dict]) -> bool:
+    if not isinstance(d, dict):
+        return False
+    role = str(d.get("role") or "").upper()
+    if role not in ("HARVEST", "REDESIGN"):
+        return False
+    ev = d.get("evidence") if isinstance(d.get("evidence"), dict) else None
+    if not ev:
+        return False
+    return bool(ev.get("path") and ev.get("line") is not None and ev.get("token"))
+
+
+def model_has_typed_decisions(model: dict) -> bool:
+    """ADR-34: typed profile decisions present → stories[] from model, not roadmap."""
+    for u in profile_units(model):
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else None
+        if _decision_complete_local(d):
+            return True
+    return False
+
+
+def _layer_for_legacy_path(path: str) -> str:
+    """Packaging label only (not membership SoT) — mirrors m2-compose.layer_for_path."""
+    p = (path or "").replace("\\", "/").lower()
+    if p.endswith("pom.xml") or "/pom.xml" in p or p.endswith(".xml") and "src/" not in p:
+        return "platform"
+    if "/model/" in p or "/domain/" in p:
+        return "model"
+    if "/repository/" in p or "/repo/" in p or "/dao/" in p:
+        return "repository"
+    if "/service/" in p:
+        return "service"
+    if "/rest/" in p or "/web/" in p or "/controller/" in p or "/security/" in p:
+        return "surface"
+    if "/config/" in p or "/configuration/" in p:
+        return "surface"
+    return "other"
+
+
+_LAYER_ORDER = (
+    "platform",
+    "model",
+    "repository",
+    "service",
+    "surface",
+    "other",
+)
+_LAYER_SLUG = {
+    "platform": "platform-bom",
+    "model": "domain-model",
+    "repository": "repository-layer",
+    "service": "service-layer",
+    "surface": "rest-surface",
+    "other": "remaining",
+}
+
+
+def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
+    """ADR-34 REV-2 / F-story-rendered — persist stories[] from typed partition.
+
+    Membership = model.order + SCC-atomic + decision.role packaging layers.
+    **Never reads roadmap.md** (roadmap is a rendered view only).
+    """
+    model = model or load(root)
+    units = {
+        u["key"]: u
+        for u in profile_units(model)
+        if u.get("key") and u.get("kind") == "java"
+    }
+    scc_members: dict[str, list[str]] = {}
+    for scc in model.get("sccs") or []:
+        sid = scc.get("id") or ""
+        mem = [m for m in (scc.get("members") or []) if m in units]
+        if sid and mem:
+            scc_members[sid] = mem
+
+    def _unit_layer(key: str) -> str:
+        u = units.get(key) or {}
+        return _layer_for_legacy_path(u.get("legacy_path") or "")
+
+    def _scc_layer(members: list[str]) -> str:
+        layers = [_unit_layer(m) for m in members]
+        if not layers:
+            return "other"
+        return sorted(layers, key=lambda lay: _LAYER_ORDER.index(lay))[0]
+
+    unit_to_layer: dict[str, str] = {}
+    for item in model.get("order") or []:
+        if item in scc_members:
+            lay = _scc_layer(scc_members[item])
+            for m in scc_members[item]:
+                unit_to_layer[m] = lay
+        elif item in units:
+            unit_to_layer[item] = _unit_layer(item)
+    for key in units:
+        unit_to_layer.setdefault(key, _unit_layer(key))
+
+    # F-scc-atomic: every SCC member shares one layer/story.
+    for sid, mem in scc_members.items():
+        lays = {unit_to_layer.get(m) for m in mem}
+        if len(lays) > 1:
+            raise SystemExit(
+                f"O-ADR34 assign_stories RED: {sid} split across layers {sorted(lays)} "
+                f"(F-scc-atomic)"
+            )
+
+    layer_units: dict[str, list[str]] = {lay: [] for lay in _LAYER_ORDER}
+    for key, lay in unit_to_layer.items():
+        layer_units.setdefault(lay, []).append(key)
+
+    stories: list[dict] = []
+    claimed: dict[str, str] = {}
+    idx = 1
+    for lay in _LAYER_ORDER:
+        keys = layer_units.get(lay) or []
+        if not keys:
+            continue
+        sid = f"S{idx:02d}"
+        for k in keys:
+            if k in claimed and claimed[k] != sid:
+                raise SystemExit(
+                    f"O-ADR34 assign_stories RED: unit {k} dual-owned by "
+                    f"{claimed[k]} and {sid}"
+                )
+            claimed[k] = sid
+        fids: list[str] = []
+        for k in keys:
+            fids.extend(units.get(k, {}).get("findings") or [])
+        stories.append(
+            {
+                "id": sid,
+                "slug": _LAYER_SLUG.get(lay, lay),
+                "units": list(keys),
+                "findings": sorted(set(fids)),
+                # F-deploy-derived: only last story is deployable by default.
+                "deploy": False,
+                "layer": lay,
+            }
+        )
+        idx += 1
+
+    if stories:
+        for st in stories[:-1]:
+            st["deploy"] = False
+        stories[-1]["deploy"] = True
+
+    all_java = set(units)
+    orphans = sorted(all_java - set(claimed))
+    if orphans:
+        raise SystemExit(
+            f"O-ADR34 assign_stories RED: {len(orphans)} unassigned java unit(s) "
+            f"(F-story-partition): {orphans[:8]}"
+        )
+
+    model["stories"] = stories
+    prov = model.setdefault("provenance", {})
+    prov["stories_assigned_at"] = _utc()
+    prov["stories_source"] = "model-partition"  # F-story-rendered witness
+    save(root, model)
+    print(
+        f"O-ADR34: assign_stories_from_model stories={len(stories)} "
+        f"units={len(claimed)} source=model-partition (F-story-rendered)"
+    )
+    return model
+
+
+def assign_stories_from_roadmap(root: Path, model: Optional[dict] = None) -> dict:
+    """Legacy / fixture path — parse roadmap.md when typed decisions are absent."""
     model = model or load(root)
     roadmap = root / "migration" / "roadmap.md"
     if not roadmap.is_file():
@@ -544,18 +955,399 @@ def assign_stories(root: Path, model: Optional[dict] = None) -> dict:
         )
 
     model["stories"] = stories
-    model.setdefault("provenance", {})["stories_assigned_at"] = _utc()
+    prov = model.setdefault("provenance", {})
+    prov["stories_assigned_at"] = _utc()
+    prov["stories_source"] = "roadmap-parse"
     save(root, model)
     return model
 
 
+def assign_stories(root: Path, model: Optional[dict] = None) -> dict:
+    """M2 sole mutation: fill stories[] — ADR-34 prefers typed model partition.
+
+    When typed decisions exist: **F-story-rendered** — never parse roadmap.md.
+    Fixture / pre-decision path may still parse roadmap.
+    """
+    model = model or load(root)
+    if model_has_typed_decisions(model):
+        return assign_stories_from_model(root, model)
+    return assign_stories_from_roadmap(root, model)
+
+
+def context_for_m2(root: Path, model: Optional[dict] = None) -> str:
+    """ADR-34 / ADR-37 / ADR-38 — projected M2 facts with anchored snippets.
+
+    Seat fills JUDGMENT (titles, rationale, quotes). Every ``cite=`` carries
+    the source text (±N lines) so the seat must not fetch legacy files
+    (F-no-discovery). Unresolvable/generated cites are omitted entirely —
+    never projected as a pointer that licenses a tree read.
+    """
+    sys.path.insert(0, str(_HARNESS))
+    from profile_anchors import (  # type: ignore
+        is_generated_build_path,
+        resolve_legacy_root,
+        snippet_at_path_line,
+    )
+
+    model = model or load(root)
+    if not (model.get("stories") or []):
+        model = assign_stories(root, model)
+    units_by_key = {u["key"]: u for u in model.get("units") or [] if u.get("key")}
+    legacy_env = os.environ.get("LEGACY_ROOT", "").strip() or None
+    lr = resolve_legacy_root(root, legacy_env)
+    lines = [
+        "O-ADR34 M2 PROJECTED FACTS (complete for this seat — do not rediscover)",
+        "O-ADR38: every cite= includes SNIPPET text — copy quotes from SNIPPET only",
+        f"stories_source={((model.get('provenance') or {}).get('stories_source') or '?')}",
+        "",
+    ]
+    n_cite = 0
+    n_snip = 0
+    for st in model.get("stories") or []:
+        sid = st.get("id") or "?"
+        lines.append(
+            f"## {sid} slug={st.get('slug') or sid} deploy={bool(st.get('deploy'))} "
+            f"layer={st.get('layer') or '?'}"
+        )
+        lines.append(f"units ({len(st.get('units') or [])}):")
+        for k in st.get("units") or []:
+            u = units_by_key.get(k) or {}
+            d = u.get("decision") if isinstance(u.get("decision"), dict) else {}
+            role = (d.get("role") if d else None) or "UNDECIDED"
+            lp = u.get("legacy_path") or ""
+            tc = d.get("target_contract") if d else None
+            tc_s = ""
+            if isinstance(tc, dict) and tc:
+                tc_s = " tc=" + ",".join(
+                    f"{kk}" for kk, vv in sorted(tc.items()) if vv and kk != "decisive"
+                )
+            elif isinstance(tc, str) and tc.strip():
+                tc_s = f" tc={tc.strip()[:80]}"
+            ev = d.get("evidence") if isinstance(d, dict) else None
+            cite = ""
+            snip: Optional[str] = None
+            if isinstance(ev, dict) and ev.get("path"):
+                ep = str(ev.get("path") or "").replace("\\", "/")
+                if is_generated_build_path(ep):
+                    # Refuse — do not emit a pointer the seat would chase.
+                    pass
+                else:
+                    snip = snippet_at_path_line(
+                        root,
+                        ep,
+                        ev.get("line") or 0,
+                        legacy_root=lr,
+                        before=2,
+                        after=2,
+                    )
+                    if snip:
+                        cite = (
+                            f" cite={ep}:{ev.get('line')}:{ev.get('token')}"
+                        )
+                        n_cite += 1
+                        n_snip += 1
+                    # else: unresolvable — omit cite (M1/SoT gap, not a read license)
+            lines.append(f"  - {k} role={role} path={lp}{tc_s}{cite}")
+            if snip:
+                lines.append("    SNIPPET:")
+                for sl in snip.splitlines():
+                    lines.append(f"    | {sl}")
+        fids = st.get("findings") or []
+        if fids:
+            lines.append("findings: " + ", ".join(fids[:20]))
+        lines.append("")
+    lines.append(
+        f"provenance: adr38_cites={n_cite} adr38_snippets={n_snip}"
+    )
+    lines.append(
+        "Rules: do NOT change unit membership/scope/deploy (harness SoT). "
+        "Fill JUDGMENT titles/rationale/quotes by copying SNIPPET lines above "
+        "(cite= is an id only). "
+        "Do NOT bash/read/glob /projects/legacy — facts+code text are in this packet "
+        "(F-no-discovery / ADR-38)."
+    )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# ADR-35 / ADR-40 — typed model.tasks[] (harness SoT; tasks.md is a VIEW)
+# ---------------------------------------------------------------------------
+
+
+def _unit_slug(key: str) -> str:
+    simple = (key or "unit").rsplit(".", 1)[-1]
+    slug = re.sub(r"[^A-Za-z0-9]+", "", simple)
+    return (slug or "unit")[:48]
+
+
+def derive_acceptance(unit: dict) -> list[str]:
+    """Acceptance is a function of role + target_contract — never seat prose (ADR-35)."""
+    d = unit.get("decision") if isinstance(unit.get("decision"), dict) else {}
+    role = str((d or {}).get("role") or "").upper()
+    if role == "HARVEST":
+        return [
+            "byte-fidelity vs migration/staging (LOC + serialVersionUID)",
+            "package rename only; no behavior change",
+        ]
+    if role == "REDESIGN":
+        out = ["implements typed target_contract for this unit"]
+        tc = (d or {}).get("target_contract")
+        if isinstance(tc, dict) and tc:
+            for k, v in sorted(tc.items()):
+                if v and k != "decisive":
+                    out.append(f"contract:{k}")
+        elif isinstance(tc, str) and tc.strip():
+            out.append(tc.strip()[:120])
+        if len(out) == 1:
+            out.append("REDESIGN without target_contract flags — complete at M1")
+        return out
+    return ["role undecided — refuse ship until M1 decision exists"]
+
+
+def _mechanical_class_shape(root: Path, owns: str) -> tuple[str, str]:
+    if not owns.endswith(".java"):
+        return "rewrite", "modify"
+    try:
+        exists = (root / owns.lstrip("./")).is_file()
+    except OSError:
+        exists = False
+    if exists:
+        return "rewrite", "modify"
+    return "infer", "create"
+
+
+def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
+    """Generate model.tasks[] from condensation units — IDs harness-owned (ADR-35).
+
+    Preserves seat JUDGMENT fields (goal/plan/risk/filled) when unit_keys match
+    an existing task. Acceptance is always re-derived.
+    """
+    model = model or load(root)
+    prev_by_keys: dict[tuple[str, ...], dict] = {}
+    for t in model.get("tasks") or []:
+        keys = tuple(sorted(t.get("unit_keys") or []))
+        if keys:
+            prev_by_keys[keys] = t
+    tasks: list[dict] = []
+    for st in model.get("stories") or []:
+        sid = st.get("id") or ""
+        if not sid:
+            continue
+        condensations = skeleton_condensation_units(model, sid)
+        for i, cu in enumerate(condensations, start=1):
+            members = list(cu.get("members") or [])
+            keys_t = tuple(sorted(members))
+            prev = prev_by_keys.get(keys_t) or {}
+            slug = _unit_slug(cu.get("id") or (members[0] if members else f"t{i}"))
+            tid = f"{sid}-T-{i:03d}-{slug}"
+            owns = list(cu.get("owns") or [])
+            primary = unit_by_key(model, members[0]) if members else None
+            role = "UNDECIDED"
+            acceptance: list[str] = ["role undecided — refuse ship until M1 decision exists"]
+            if primary:
+                d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}
+                role = str((d or {}).get("role") or "UNDECIDED").upper()
+                acceptance = derive_acceptance(primary)
+            # SCC: derive from first member; note batch
+            if cu.get("kind") == "scc":
+                cls, shape = "infer", f"batch:{cu.get('id')}"
+                oracle = "absent"
+                port = None
+            else:
+                one = owns[0] if owns else ""
+                cls, shape = _mechanical_class_shape(root, one) if one else ("rewrite", "modify")
+                oracle = "absent"
+                port = None
+                if one and re.search(
+                    r"(?i)\b(repository|spring\s*data|panache|jdbc)\b", one
+                ):
+                    port = "reimplement"
+            task = {
+                "id": tid,
+                "sid": sid,
+                "seq": i,
+                "unit_keys": members,
+                "kind": cu.get("kind") or "singleton",
+                "scc_id": cu.get("id") if cu.get("kind") == "scc" else None,
+                "owns": owns,
+                "title": cu.get("title") or f"{slug} — skeleton",
+                "class": cls,
+                "shape": shape,
+                "role": role,
+                "acceptance": acceptance,
+                "oracle": oracle,
+                "port": port,
+                "findings": list(st.get("findings") or []) if i == 1 else [],
+                # JUDGMENT — seat-filled via write inversion (never author id/acceptance)
+                "goal": prev.get("goal") or "",
+                "plan": prev.get("plan") or "",
+                "risk": prev.get("risk") or "",
+                "filled": bool(prev.get("filled")),
+            }
+            tasks.append(task)
+    model["tasks"] = tasks
+    prov = model.setdefault("provenance", {})
+    prov["tasks_source"] = "model-condensation"
+    prov["tasks_assigned_at"] = _utc()
+    save(root, model)
+    return model
+
+
+def tasks_for_story(model: dict, sid: str) -> list[dict]:
+    return [t for t in (model.get("tasks") or []) if t.get("sid") == sid]
+
+
+def brief_slug_for_story(root: Path, sid: str, model: Optional[dict] = None) -> str:
+    briefs = sorted((root / "migration" / "briefs").glob(f"{sid}-*.md"))
+    if briefs:
+        return briefs[0].stem
+    model = model or load(root)
+    for st in model.get("stories") or []:
+        if st.get("id") == sid:
+            slug = st.get("slug") or sid
+            return f"{sid}-{slug}" if not str(slug).startswith(sid) else str(slug)
+    return sid
+
+
+def render_tasks_md(root: Path, sid: str, model: Optional[dict] = None) -> Path:
+    """Render specs/<slug>/tasks.md from model.tasks[] — VIEW, not SoT (ADR-39/40)."""
+    model = model or load(root)
+    tasks = tasks_for_story(model, sid)
+    if not tasks:
+        raise ValueError(f"no typed tasks for {sid} — run assign-tasks first")
+    slug = brief_slug_for_story(root, sid, model)
+    out_dir = root / "specs" / slug
+    out_path = out_dir / "tasks.md"
+    lines = [
+        f"# {slug} Tasks",
+        "",
+        "<!-- O-M3TYPED — rendered from model.tasks[]; do not treat as SoT -->",
+        "# ADR-35/40: task IDs + acceptance are harness-derived. Seat fills JUDGMENT only.",
+        "",
+        "UI surface: waived (API-only).",
+        "",
+    ]
+    for t in sorted(tasks, key=lambda x: int(x.get("seq") or 0)):
+        owns = " ".join(t.get("owns") or [])
+        findings = t.get("findings") or []
+        acc = t.get("acceptance") or []
+        goal = (t.get("goal") or "").strip() or (
+            "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
+        )
+        plan = (t.get("plan") or "").strip()
+        lines += [
+            f"#### {t.get('id')}: {t.get('title') or t.get('id')}",
+            f"**Class**: {t.get('class') or 'rewrite'}",
+            f"**Shape**: {t.get('shape') or 'modify'}",
+            f"**Port**: {t.get('port')}" if t.get("port") else "**Port**:",
+            f"**Owns**: `{owns}`" if owns else "**Owns**:",
+            f"**Oracle**: {t.get('oracle') or 'absent'}",
+            "**Assumes**:",
+            f"**Findings**: {', '.join(findings) if findings else '(none)'}",
+            f"**Goal**: {goal}",
+            "**Target design**:",
+        ]
+        if owns:
+            for o in owns.split():
+                lines.append(f"- → `{o}`")
+        else:
+            lines.append("- <!-- JUDGMENT: legacy → dest mapping -->")
+        if plan:
+            lines.append(f"**Plan**: {plan}")
+        lines.append("**Acceptance**:")
+        for a in acc:
+            lines.append(f"- {a}")
+        if t.get("risk"):
+            lines.append(f"**Risk**: {t.get('risk')}")
+        lines.append("")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path
+
+
+def render_all_tasks_md(root: Path, model: Optional[dict] = None) -> list[Path]:
+    model = model or load(root)
+    paths: list[Path] = []
+    for st in model.get("stories") or []:
+        sid = st.get("id")
+        if sid and tasks_for_story(model, sid):
+            paths.append(render_tasks_md(root, sid, model))
+    return paths
+
+
+def upsert_task_judgment(
+    root: Path,
+    *,
+    unit_keys: list[str],
+    goal: str,
+    plan: str = "",
+    risk: str = "",
+    payload: Optional[dict] = None,
+) -> dict:
+    """Write-inversion upsert — refuses seat-authored id/acceptance (ADR-35 falsifiers)."""
+    payload = payload or {}
+    if "id" in payload and payload.get("id") not in (None, ""):
+        raise ValueError("F-taskid-generated: seat must not author task id")
+    if "acceptance" in payload and payload.get("acceptance") not in (None, "", [], {}):
+        raise ValueError("F-acceptance-derived: seat must not author acceptance")
+    model = load(root)
+    keys = sorted(unit_keys)
+    found = None
+    for t in model.get("tasks") or []:
+        if sorted(t.get("unit_keys") or []) == keys:
+            found = t
+            break
+    if found is None:
+        raise ValueError(f"no typed task for unit_keys={keys}")
+    found["goal"] = (goal or "").strip()
+    found["plan"] = (plan or "").strip()
+    found["risk"] = (risk or "").strip()
+    found["filled"] = bool(found["goal"]) and len(found["goal"]) >= 20
+    # Re-derive acceptance from primary unit (never trust seat)
+    primary = unit_by_key(model, keys[0]) if keys else None
+    if primary:
+        found["acceptance"] = derive_acceptance(primary)
+        d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}
+        found["role"] = str((d or {}).get("role") or found.get("role") or "UNDECIDED").upper()
+    save(root, model)
+    render_tasks_md(root, found["sid"], model)
+    return found
+
+
 def lint_scc_atomic(model: dict, tasks_text: str, sid: str) -> list[str]:
-    """M3: each intersecting SCC owned by exactly one task (ADR-24 §2.6)."""
+    """M3: each intersecting SCC owned by exactly one task (ADR-24 §2.6).
+
+    ADR-35: when model.tasks[] is bound for sid, prefer typed ownership
+    (F-prose-rendered — do not parse tasks.md into state).
+    """
     reds: list[str] = []
     story_units = {u["key"] for u in units_for_story(model, sid)}
     if not story_units:
         return reds
-    # parse tasks
+    typed = tasks_for_story(model, sid)
+    if typed:
+        for scc in model.get("sccs") or []:
+            members = set(scc.get("members") or [])
+            if not members <= story_units:
+                if members & story_units:
+                    reds.append(
+                        f"LINT:scc-atomic: {scc['id']} intersects {sid} but not fully "
+                        f"assigned to the story (M2 invariant broken)"
+                    )
+                continue
+            owners = [
+                t.get("id")
+                for t in typed
+                if members <= set(t.get("unit_keys") or [])
+                or t.get("scc_id") == scc["id"]
+            ]
+            if len(owners) != 1:
+                reds.append(
+                    f"LINT:scc-atomic: {scc['id']} must be owned by exactly one typed task; "
+                    f"found {len(owners)} ({', '.join(owners) or 'none'})"
+                )
+        return reds
+    # Legacy prose path (pre-ADR-35 tips)
     heads = list(
         re.finditer(
             r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$",
@@ -881,11 +1673,11 @@ def render_dependency_order_md(model: dict) -> str:
     """One-way human view from the model (condensation order)."""
     units = {u["key"]: u for u in model.get("units") or [] if u.get("kind") == "java"}
     lines = [
-        "# Legacy dependency analysis (scripted, M1 — ADR-24 view of model.json)",
+        "# Legacy dependency analysis (scripted, M1 — view of model.json)",
         "",
         f"- Classes: {len(units)}; model order entries: {len(model.get('order') or [])}",
         "- Conversion order lists condensation units (SCC id or singleton) — not flattened SCC members.",
-        "- O-M1SCC / ADR-24: circular groups are SCCs; convert together in ONE task.",
+        "- Circular groups are SCCs; convert together in ONE task.",
         "",
         "## God nodes (highest fan-in)",
         "",
@@ -1033,10 +1825,60 @@ def cmd_context(args: argparse.Namespace) -> int:
     model = load(root)
     if args.scope:
         scope = [p for p in re.split(r"[\s,]+", args.scope) if p]
-        print(context_for_scope(model, scope))
+        print(context_for_scope(model, scope, root=root))
     else:
-        print(context_for(model, args.sid))
+        print(context_for(model, args.sid, root=root))
     return 0
+
+
+def cmd_context_profile(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    print(
+        context_for_profile(
+            load(root),
+            root=root,
+            undecided_only=bool(getattr(args, "undecided_only", False)),
+            limit=int(getattr(args, "limit", 0) or 0),
+            legacy=getattr(args, "legacy", None),
+        )
+    )
+    return 0
+
+
+def cmd_context_m2(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    print(context_for_m2(root))
+    return 0
+
+
+def cmd_assign_tasks(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    model = assign_tasks(root)
+    n = len(model.get("tasks") or [])
+    sids = sorted({t.get("sid") for t in (model.get("tasks") or []) if t.get("sid")})
+    print(f"O-ADR35 assign-tasks: tasks={n} stories={len(sids)} ({','.join(sids)})")
+    return 0
+
+
+def cmd_render_tasks(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    model = load(root)
+    if not (model.get("tasks") or []):
+        model = assign_tasks(root, model)
+    sid = (getattr(args, "sid", None) or "").strip()
+    if sid:
+        p = render_tasks_md(root, sid, model)
+        print(f"O-ADR35 render-tasks: {p}")
+        return 0
+    paths = render_all_tasks_md(root, model)
+    for p in paths:
+        print(f"O-ADR35 render-tasks: {p}")
+    print(f"O-ADR35 render-tasks: done n={len(paths)}")
+    return 0
+
+
+def cmd_emit_profile_skeleton(args: argparse.Namespace) -> int:
+    return emit_profile_skeleton(Path(args.root).resolve())
 
 
 def cmd_lint_scc(args: argparse.Namespace) -> int:
@@ -1100,6 +1942,50 @@ def main() -> int:
     c.add_argument("sid", nargs="?", default="")
     c.add_argument("--scope", default="")
     c.set_defaults(func=cmd_context)
+
+    cp = sub.add_parser("context-for-profile", parents=[common])
+    cp.add_argument(
+        "--undecided-only",
+        action="store_true",
+        help="O-PROF1OF79STOP: project only units still needing a credited decision",
+    )
+    cp.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="O-PROF1OF79STOP: cap projected units (decision batch size)",
+    )
+    cp.add_argument(
+        "--legacy",
+        default=None,
+        help="Legacy root for undecided-only evidence resolve (default: sibling legacy/)",
+    )
+    cp.set_defaults(func=cmd_context_profile)
+
+    cm2 = sub.add_parser(
+        "context-for-m2",
+        parents=[common],
+        help="ADR-34 projected M2 facts (F-no-discovery)",
+    )
+    cm2.set_defaults(func=cmd_context_m2)
+
+    at = sub.add_parser(
+        "assign-tasks",
+        parents=[common],
+        help="ADR-35 generate model.tasks[] (harness IDs + derived acceptance)",
+    )
+    at.set_defaults(func=cmd_assign_tasks)
+
+    rt = sub.add_parser(
+        "render-tasks",
+        parents=[common],
+        help="ADR-35/39 render tasks.md VIEW from model.tasks[]",
+    )
+    rt.add_argument("--sid", default="", help="one story; default=all")
+    rt.set_defaults(func=cmd_render_tasks)
+
+    sk = sub.add_parser("emit-profile-skeleton", parents=[common])
+    sk.set_defaults(func=cmd_emit_profile_skeleton)
 
     l = sub.add_parser("lint-scc-atomic", parents=[common])
     l.add_argument("tasks")

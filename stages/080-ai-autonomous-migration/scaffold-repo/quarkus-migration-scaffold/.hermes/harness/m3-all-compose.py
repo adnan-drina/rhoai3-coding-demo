@@ -382,6 +382,47 @@ def compose_story(
     return out_path, ("refreshed" if existed else "wrote"), story_owns
 
 
+def compose_from_typed_model(root: Path, *, force: bool) -> int:
+    """ADR-35/40: assign model.tasks[] then render tasks.md VIEW for every story."""
+    try:
+        from model import assign_tasks, load, render_all_tasks_md, tasks_for_story
+    except Exception as e:
+        print(f"O-M3ALL typed compose RED: import model failed: {e}", file=sys.stderr)
+        return 2
+    model_path = root / "migration" / "model.json"
+    if not model_path.is_file():
+        return 2
+    model = load(root)
+    if not (model.get("stories") or []):
+        return 2
+    # Skip overwrite of authored non-skeleton plans unless force (legacy guard)
+    if not force:
+        for st in model.get("stories") or []:
+            sid = st.get("id") or ""
+            if not sid:
+                continue
+            try:
+                from model import brief_slug_for_story
+
+                slug = brief_slug_for_story(root, sid, model)
+            except Exception:
+                slug = sid
+            path = root / "specs" / slug / "tasks.md"
+            if path.is_file() and not is_skeleton(path):
+                # keep authored; still ensure typed store exists
+                pass
+    model = assign_tasks(root, model)
+    paths = render_all_tasks_md(root, model)
+    n = len(model.get("tasks") or [])
+    print(
+        f"O-M3ALL typed compose: tasks={n} rendered={len(paths)} "
+        f"stories={len(model.get('stories') or [])} (ADR-35/O-M3TYPED)"
+    )
+    for p in paths:
+        print(f"O-M3ALL compose: wrote {p}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="O-M3ALL skeleton-first compose")
     ap.add_argument("--root", default=".", help="migration workspace root")
@@ -395,8 +436,24 @@ def main() -> int:
         default="",
         help="override roadmap path (default: <root>/migration/roadmap.md)",
     )
+    ap.add_argument(
+        "--legacy-prose",
+        action="store_true",
+        help="force pre-ADR-35 roadmap-scope compose (tests / emergency)",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
+
+    # ADR-35 preferred path: typed model.tasks[] → render VIEW
+    if not args.legacy_prose:
+        rc = compose_from_typed_model(root, force=args.force_skeleton)
+        if rc == 0:
+            return 0
+        print(
+            "O-M3ALL: typed compose unavailable — falling back to roadmap skeleton",
+            file=sys.stderr,
+        )
+
     roadmap = Path(args.roadmap) if args.roadmap else root / "migration" / "roadmap.md"
     if not roadmap.is_file():
         print(f"O-M3ALL compose RED: missing roadmap {roadmap}", file=sys.stderr)

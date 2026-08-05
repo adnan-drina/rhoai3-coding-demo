@@ -1348,21 +1348,46 @@ run_case() {
 }
 check "plan-lint does NOT flag a legitimate 'remove forbidden' task" 0 "remove-clean"
 
-# 60-61. targetContract -> §7 hard-pin (V5: enabled flags written as soft
-# prose, e.g. 'GET idempotent' without 404). Decisive token required.
+# 60-61. O-PROFTCHARDPIN / W4-487 — target-soft checks TYPED decisions, not §7.
+# §7 hard-pin text alone must still soft-flag; typed target_contract satisfies.
 ts_yaml() { printf 'targetContract:\n  getIdempotent: true\n  threadSafeState: true\npreserve:\n  - X\n' > migration.yaml; }
 run_case() {
-  mkfix; ts_yaml
-  printf '## 7. Class roles & target contract\n**CartService** — REDESIGN (src/main/CartService.java) — target: ConcurrentHashMap with compute(); GET idempotent read-only.\n' > profile.md
-  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md 2>&1); echo "$out" | grep -q "target-soft.*getIdempotent" && echo "soft-flagged" || echo "MISS"
+  mkfixture; ts_yaml
+  mkdir -p migration src/main/java/com/demo/rest
+  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
+    > src/main/java/com/demo/rest/CartService.java
+  cat > migration/model.json <<'EOF'
+{"units":[{"key":"com.demo.rest.CartService","kind":"java","legacy_fqn":"com.demo.rest.CartService",
+ "legacy_path":"src/main/java/com/demo/rest/CartService.java","findings":[],
+ "decision":{"role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"}}}],
+ "stories":[],"sccs":[],"order":[],"findings":[]}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 7. Class roles & target contract
+- Target contract (`getIdempotent=true`): GET returns **404** on missing.
+- `com.demo.rest.CartService` — REDESIGN
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md src 2>&1)
+  echo "$out" | grep -q "target-soft.*getIdempotent" && echo "soft-flagged" || echo "MISS"
 }
-check "profile-rubric flags a soft §7 target (getIdempotent without 404)" 0 "soft-flagged"
+check "profile-rubric flags soft when §7 hard-pin lacks typed target_contract" 0 "soft-flagged"
 run_case() {
-  mkfix; ts_yaml
-  printf '## 7. Class roles & target contract\n**CartService** — REDESIGN (src/main/CartService.java) — target: ConcurrentHashMap with compute(); GET returns 404 on missing.\n' > profile.md
-  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md 2>&1); echo "$out" | grep -q "target-soft" && echo "STILL-SOFT" || echo "hard-pinned"
+  mkfixture; ts_yaml
+  mkdir -p migration src/main/java/com/demo/rest
+  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
+    > src/main/java/com/demo/rest/CartService.java
+  cat > migration/model.json <<'EOF'
+{"units":[{"key":"com.demo.rest.CartService","kind":"java","legacy_fqn":"com.demo.rest.CartService",
+ "legacy_path":"src/main/java/com/demo/rest/CartService.java","findings":[],
+ "decision":{"role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"},
+  "target_contract":{"getIdempotent":true,"threadSafeState":true,"decisive":["404-on-missing","ConcurrentHashMap/compute"]}}}],
+ "stories":[],"sccs":[],"order":[],"findings":[]}
+EOF
+  printf '## 7. Class roles & target contract\n- CartService REDESIGN\n' > migration/architecture-profile.md
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md src 2>&1)
+  echo "$out" | grep -q "target-soft" && echo "STILL-SOFT" || echo "hard-pinned"
 }
-check "profile-rubric passes a hard §7 target (404 decided)" 0 "hard-pinned"
+check "profile-rubric passes when typed target_contract decides flags" 0 "hard-pinned"
 
 # 62-63. later-story-class derivation (V5 T-004 guard): simple class names
 # of stories AFTER the current one, stripping FQN/path and .java.
@@ -7824,21 +7849,22 @@ run_case() {
     && grep -q 'O-HERMNEST\|gitignore \.hermes' "$HARNESS_DIR/supervisor.sh" \
     && echo hermnesttip-wire-ok
 }
-check "ACDIRTY stages Target dirt on present AC (O-ACDIRTY)" 0 "acdirty-wire-ok"
-if grep -q "O-ACDIRTY" .hermes/harness/supervisor.sh && grep -q "committed Target dirt (O-ACDIRTY)" .hermes/harness/supervisor.sh; then
-  ok acdirty-wire-ok
-else
-  fail acdirty-wire-ok "supervisor.sh missing O-ACDIRTY present-path commit"
-fi
-
-check "ESCRATEZOMBIE accepts existing tip on escalation exhaust (O-ESCRATEZOMBIE)" 0 "escratezombie-wire-ok"
-if grep -q "O-ESCRATEZOMBIE" .hermes/harness/supervisor.sh; then
-  ok escratezombie-wire-ok
-else
-  fail escratezombie-wire-ok "supervisor.sh missing O-ESCRATEZOMBIE guard"
-fi
-
 check "ESCNOCOMMIT accepts HERMNEST chore ancestor tip (O-HERMNESTTIP)" 0 "hermnesttip-wire-ok"
+
+# O-ACDIRTY / O-ESCRATEZOMBIE — wire greps must use $HARNESS_DIR (not CWD .hermes/).
+# Prior form reused the hermnesttip run_case + relative path → permanent Tier 0 RED.
+run_case() {
+  grep -q 'O-ACDIRTY' "$HARNESS_DIR/supervisor.sh" \
+    && grep -q 'committed Target dirt (O-ACDIRTY)' "$HARNESS_DIR/supervisor.sh" \
+    && echo acdirty-wire-ok
+}
+check "ACDIRTY stages Target dirt on present AC (O-ACDIRTY)" 0 "acdirty-wire-ok"
+
+run_case() {
+  grep -q 'O-ESCRATEZOMBIE' "$HARNESS_DIR/supervisor.sh" \
+    && echo escratezombie-wire-ok
+}
+check "ESCRATEZOMBIE accepts existing tip on escalation exhaust (O-ESCRATEZOMBIE)" 0 "escratezombie-wire-ok"
 
 # O-PLANCORPUS — standing archived-plan re-lint with live M3 flag parity
 run_case() {
@@ -10927,7 +10953,7 @@ run_case() {
 package com.demo.repository;
 public class JdbcFooRowMapper {}
 EOF
-  cat > profile.md <<'EOF'
+  cat > migration/architecture-profile.md <<'EOF'
 # Profile
 ## 1. Purpose & domain
 Cart service with pricing pinned by ShoppingCartServiceTest at src/test/java/X.java:1 and enough words to clear the thin bar for purpose domain section here.
@@ -11809,7 +11835,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class BarService {}
 JAVA
-  cat > profile.md <<'EOF'
+  cat > migration/architecture-profile.md <<'EOF'
 # Architecture profile
 ## 1. Purpose & domain
 Demo app for rubricgensrc. Cite src/main/java/com/demo/BarService.java:1.
@@ -11855,7 +11881,7 @@ package com.demo;
 public class ${c} {}
 JAVA
   done
-  cat > profile.md <<'EOF'
+  cat > migration/architecture-profile.md <<'EOF'
 # Architecture profile
 ## 1. Purpose & domain
 Names Alpha only. Cite src/main/java/com/demo/Alpha.java:1.
@@ -11942,11 +11968,15 @@ JAVA
   coverage-floor fixture family of types with enough words for the thin gate.
 EOF
   } > profile.md
+  # ADR-28: ratchet sidecars must declare metric=unit-claim (pre-metric rows
+  # are intentionally ignored so grouped-era 100% cannot freeze the floor).
   cat > .profile-coverage <<'EOF'
 # prior accepted at 93%
 named: 77
 total: 83
 ratio: 0.927711
+sot: filesystem
+metric: unit-claim
 EOF
   out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
   echo "$out" | grep -q 'RUBRIC:coverage' \
@@ -12004,6 +12034,28 @@ PY
 }
 check "O-RUBRICGENASSERT refuses §7 HARVEST on MapperImpl/generated" 0 "genassert-ok"
 
+# O-RUBRICGENASSERTFP — rationale mentioning MapperImpl must not genassert hand-written *RepositoryImpl.
+run_case() {
+  mkfixture
+  profile_fixture > p.md
+  python3 - <<'PY'
+from pathlib import Path
+t = Path("p.md").read_text()
+line = (
+    "- `com.demo.SpringDataPetRepositoryImpl` "
+    "(src/main/java/com/demo/SpringDataPetRepositoryImpl.java) — REDESIGN: "
+    "Not a MapStruct *MapperImpl — hand-written data-access. "
+    "(src/main/java/com/demo/SpringDataPetRepositoryImpl.java:31)\n"
+)
+if "## 7." in t or "Class roles" in t:
+    t = t.rstrip() + "\n" + line
+Path("p.md").write_text(t)
+PY
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" p.md 2>&1) || true
+  ! echo "$out" | grep -q 'RUBRIC:genassert' && echo genassertfp-ok
+}
+check "O-RUBRICGENASSERTFP rationale MapperImpl does not RED hand-written Impl" 0 "genassertfp-ok"
+
 # O-PROFBESTOBS: within-stage best (even RED) floors the next attempt.
 run_case() {
   mkfix
@@ -12016,10 +12068,13 @@ JAVA
   done
   # First observation: name all five (100%) but leave profile otherwise invalid
   # so we only exercise coverage bookkeeping via direct sidecar + second run.
+  # ADR-28: same-metric universe required for within-stage best to apply.
   cat > .profile-coverage-best <<'EOF'
 named: 5
 total: 5
 ratio: 5/5
+sot: filesystem
+metric: unit-claim
 EOF
   body="This section names Alpha Beta Gamma Delta for coverage calibration and adds filler words so the thin gate cannot fire on word count alone while still citing src/main/java/com/demo/Alpha.java:1 as evidence path."
   {
@@ -12044,6 +12099,344 @@ EOF
     && echo profbestobs-ok
 }
 check "O-PROFBESTOBS refuses retry coverage below within-stage best" 0 "profbestobs-ok"
+
+# ADR-28: pre-metric (grouped-era) sidecars must NOT apply as ratchet floor.
+run_case() {
+  mkfix
+  mkdir -p legacy/src/main/java/com/demo
+  for c in Alpha Beta Gamma Delta Epsilon; do
+    cat > "legacy/src/main/java/com/demo/${c}.java" <<JAVA
+package com.demo;
+public class ${c} {}
+JAVA
+  done
+  body="This section names Alpha Beta Gamma Delta for coverage calibration and adds filler words so the thin gate cannot fire on word count alone while still citing src/main/java/com/demo/Alpha.java:1 as evidence path."
+  {
+    echo "# Architecture profile"
+    for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
+             "Behavioral contract sources" "Modernization surface" "Domain boundaries"; do
+      echo "## $n"; echo "$body"; echo
+    done
+    cat <<'EOF'
+## 7. Class roles
+### HARVEST
+- `Alpha` `Beta` `Gamma` `Delta` — HARVEST plain holders with no runtime stereotypes;
+  cite src/main/java/com/demo/Alpha.java:1 as the representative path for this
+  coverage-floor fixture family of types with enough words for the thin gate.
+EOF
+  } > profile.md
+  # Deliberately omit metric: — simulates pre-ADR-28 accepted 100%.
+  cat > .profile-coverage <<'EOF'
+named: 5
+total: 5
+ratio: 5/5
+sot: filesystem
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" profile.md legacy 2>&1) || true
+  # Floor must stay at absolute 80%, not inherit orphaned 100%.
+  echo "$out" | grep -qE 'floor=80%' \
+    && ! echo "$out" | grep -qE 'prev=100%' \
+    && echo adr28-orphan-ratchet-ignored-ok
+}
+check "O-PROF7DENSITY ignores pre-metric sidecar ratchet (ADR-28)" 0 "adr28-orphan-ratchet-ignored-ok"
+
+# O-PROFSECTIONS — full dump helper still works; outer-loop uses --summary.
+run_case() {
+  mkfixture
+  mkdir -p migration
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+PetClinic purpose domain section with enough words for the thin bar and a cite at src/main/java/x.java:1.
+## 2. Components & relationships
+Components section body with cite src/main/java/x.java:1 and enough filler words for thin bar here.
+## 3. Integration surfaces
+Integration surfaces section with cite src/main/java/x.java:1 and enough filler words for thin bar.
+## 4. Behavioral contract sources
+Behavioral contract section with cite src/main/java/x.java:1 and enough filler words for thin bar.
+## 5. Modernization surface
+Modernization surface section with cite src/main/java/x.java:1 and enough filler words for thin bar.
+## 6. Domain boundaries
+Domain boundaries section with cite src/main/java/x.java:1 and enough filler words for thin bar here.
+## 7. Class roles & target contract
+- `com.demo.Alpha` — HARVEST: value type (src/main/java/com/demo/Alpha.java:1) with enough words.
+EOF
+  out=$(python3 "$HARNESS_DIR/profile_sections_log.py" migration/architecture-profile.md 2>&1)
+  echo "$out" | grep -q 'O-PROFSECTIONS: begin' \
+    && echo "$out" | grep -q '── 1. Purpose & Domain ──' \
+    && echo "$out" | grep -q '── 7. Class Roles & Target Contract ──' \
+    && echo "$out" | grep -q 'O-PROFSECTIONS: end' \
+    && grep -q 'log_architecture_profile_sections' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -c 'log_architecture_profile_sections' "$HARNESS_DIR/outer-loop.sh" | grep -qE '^[3-9]' \
+    && echo profsections-ok
+}
+check "O-PROFSECTIONS dumps §§1–7 after PROFILE GREEN" 0 "profsections-ok"
+
+# O-PROFSECTIONNOISE — outer-loop mirrors --summary, not every §7 bullet.
+run_case() {
+  grep -q 'O-PROFSECTIONNOISE' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q -- '--summary' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -A20 'log_architecture_profile_sections()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q 'outer-m1-profile-sections-summary.log' || return 1
+  mkfixture
+  mkdir -p migration
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Words about domain with cite src/main/java/x.java:1 and filler filler filler filler.
+## 2. Components & relationships
+Words about components with cite src/main/java/x.java:1 and filler filler filler.
+## 3. Integration surfaces
+Words about integration with cite src/main/java/x.java:1 and filler filler filler.
+## 4. Behavioral contract sources
+Words about contracts with cite src/main/java/x.java:1 and filler filler filler.
+## 5. Modernization surface
+Words about modernization with cite src/main/java/x.java:1 and filler filler.
+## 6. Domain boundaries
+Words about boundaries with cite src/main/java/x.java:1 and filler filler filler.
+## 7. Class roles & target contract
+- Target contract (`getIdempotent=true`): GET returns **404** on missing.
+- `com.demo.Alpha` — HARVEST: value
+- `com.demo.Svc` — REDESIGN: endpoint
+EOF
+  sum=$(python3 "$HARNESS_DIR/profile_sections_log.py" --summary migration/architecture-profile.md 2>&1)
+  echo "$sum" | grep -q 'O-PROFSECTIONS: summary' || return 1
+  echo "$sum" | grep -qE '^§7 \(Class Roles & Target Contract\).*H=1 R=1' || return 1
+  echo "$sum" | grep -qE '^§1 \(Purpose & Domain\)' || return 1
+  ! echo "$sum" | grep -q 'com.demo.Alpha' || return 1
+  echo profsectionnoise-ok
+}
+check "O-PROFSECTIONNOISE outer log uses section summary not full dump" 0 "profsectionnoise-ok"
+
+# O-PROFSEATNOISE — decide pass must not reprint every OK FQN into outer-loop.log.
+run_case() {
+  grep -q 'O-PROFSEATNOISE' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # Mirror filter: done/FAIL/RETRY/SKIP/escalate — not bare OK lines.
+  grep -qE "O-PROFSEATARCH: \\(done\\|FAIL\\|RETRY\\|SKIP\\|escalate\\|backend=" \
+    "$HARNESS_DIR/outer-loop.sh" || return 1
+  # Must not mirror every '^O-PROFSEATARCH' line (that was the 79-OK flood).
+  ! grep -A30 '_profile_harness_decide()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q "grep '^O-PROFSEATARCH'" || return 1
+  grep -q 'unit OK lines →' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo profseatnoise-ok
+}
+check "O-PROFSEATNOISE outer log omits per-unit OK FQN dump" 0 "profseatnoise-ok"
+
+# ADR-29 — markdown scaffolds do NOT grant coverage (F-render-oneway / no harvest)
+run_case() {
+  mkfix
+  mkdir -p migration
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": []},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": []},
+    {"key": "com.demo.Gamma", "kind": "java", "legacy_fqn": "com.demo.Gamma",
+     "legacy_path": "src/main/java/com/demo/Gamma.java", "findings": []},
+    {"key": "com.demo.Delta", "kind": "java", "legacy_fqn": "com.demo.Delta",
+     "legacy_path": "src/main/java/com/demo/Delta.java", "findings": []},
+    {"key": "com.demo.Epsilon", "kind": "java", "legacy_fqn": "com.demo.Epsilon",
+     "legacy_path": "src/main/java/com/demo/Epsilon.java", "findings": []}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  # W5-023 shape: HARVEST prose scaffolds — must NOT become typed decisions
+  {
+    echo "## 1. Purpose & domain"
+    echo "Demo purpose domain with enough words here for the thin bar check to pass cleanly on purpose."
+    for n in "Components & relationships" "Integration surfaces" "Behavioral contract sources" \
+             "Modernization surface" "Domain boundaries"; do
+      echo "## ${n}"
+      echo "Section body cites src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar."
+    done
+    echo "## 7. Class roles & target contract"
+    for n in Alpha Beta Gamma Delta Epsilon; do
+      echo "- \`com.demo.${n}\` (src/main/java/com/demo/${n}.java) — HARVEST: scaffold for \`${n}\`; confirm or upgrade to REDESIGN with evidence (src/main/java/com/demo/${n}.java:1)."
+    done
+  } > migration/architecture-profile.md
+  python3 "$HARNESS_DIR/model.py" emit-profile-skeleton --root . > /tmp/sk29.out
+  python3 "$HARNESS_DIR/profile_close.py" migration/architecture-profile.md --root . > /tmp/close29.out
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md 2>&1 || true)
+  echo "$out" | grep -qE 'COVERAGE: 0/5' \
+    && echo "$out" | grep -q 'sot=model-decision' \
+    && echo "$out" | grep -q 'metric=typed-decision' \
+    && echo "$out" | grep -q 'RUBRIC:unnamed' \
+    || { echo "adr29-stub-refuse failed: $out" >&2; return 1; }
+  grep -q 'CLOSE:adr29' /tmp/close29.out \
+    && test -f migration/profile-decisions.json \
+    && ! test -f migration/profile-roles.json
+  python3 "$HARNESS_DIR/profile_roles.py" harvest --root . > /tmp/harv29.out 2>&1 || true
+  lint_out=$(python3 "$HARNESS_DIR/profile_roles.py" lint --root . 2>&1 || true)
+  grep -q 'REMOVED' /tmp/harv29.out \
+    && echo "$lint_out" | grep -qE 'ROLES: 0/5' \
+    && echo adr29typed-stub-ok
+}
+check "O-ADR29TYPED markdown scaffolds do not become typed decisions" 0 "adr29typed-stub-ok"
+
+# ADR-29 — typed decisions with resolving path:line:token → GREEN
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+import javax.persistence.Entity;
+@Entity
+public class Alpha { private Long id; }
+JAVA
+  cat > src/main/java/com/demo/Beta.java <<'JAVA'
+package com.demo;
+import org.springframework.stereotype.Service;
+@Service
+public class Beta { public void run() {} }
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Demo purpose domain describes a small clinic registry with owners pets and visits for enough words so the thin bar check can pass cleanly on purpose domain text here.
+## 2. Components & relationships
+Alpha entity and Beta service relate at src/main/java/com/demo/Alpha.java:3 with enough words for the thin bar check to clear here.
+## 3. Integration surfaces
+None beyond typed model persistence at src/main/java/com/demo/Alpha.java:3 with filler words for the thin bar check.
+## 4. Behavioral contract sources
+Contract gap noted for future tests at src/main/java/com/demo/Alpha.java:3 with enough filler words for thin bar here.
+## 5. Modernization surface
+Findings deferred until redesign of Beta at src/main/java/com/demo/Alpha.java:3 with enough filler words for thin bar.
+## 6. Domain boundaries
+Single bounded context for the demo at src/main/java/com/demo/Alpha.java:3 with enough filler words for thin bar here.
+## 7. Class roles & target contract
+<!-- rendered -->
+EOF
+  cat > migration/profile-decisions.json <<'EOF'
+{
+  "schema": "profile-decisions/v1",
+  "metric": "typed-decision",
+  "units": [
+    {
+      "legacy_fqn": "com.demo.Alpha",
+      "role": "HARVEST",
+      "rationale": "JPA entity fields only; no runtime services",
+      "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 3, "token": "@Entity"}
+    },
+    {
+      "legacy_fqn": "com.demo.Beta",
+      "role": "REDESIGN",
+      "rationale": "Spring @Service becomes @ApplicationScoped bean",
+      "evidence": {"path": "src/main/java/com/demo/Beta.java", "line": 3, "token": "@Service"}
+    }
+  ]
+}
+EOF
+  python3 "$HARNESS_DIR/profile_close.py" migration/architecture-profile.md --root . > /tmp/cl29.out
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md . 2>&1 || true)
+  echo "$out" | grep -qE 'COVERAGE: 2/2 \(100%\)' \
+    && echo "$out" | grep -q 'sot=model-decision' \
+    && echo "$out" | grep -q 'metric=typed-decision' \
+    && echo "$out" | grep -q 'authored=2' \
+    && echo "$out" | grep -q 'evidence_miss=0' \
+    && ! echo "$out" | grep -q 'RUBRIC:roles' \
+    && ! echo "$out" | grep -q 'RUBRIC:evidence' \
+    && grep -q 'CLOSE:adr29' /tmp/cl29.out \
+    && grep -q 'HARVEST' migration/architecture-profile.md \
+    && grep -q 'REDESIGN' migration/architecture-profile.md \
+    && python3 -c 'import json; m=json.load(open("migration/model.json")); assert m["units"][0]["decision"]["role"]=="HARVEST"' \
+    && echo adr29typed-ok
+}
+check "O-ADR29TYPED typed-decision SoT GREEN on resolving anchors" 0 "adr29typed-ok"
+
+# ADR-29 — wrong line for token refuses (G1 line-level / F-evidence-resolves)
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+import javax.persistence.Entity;
+@Entity
+public class Alpha { private Long id; }
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [],
+     "decision": {
+       "role": "HARVEST",
+       "rationale": "entity",
+       "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 1, "token": "@Entity"}
+     }}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Demo purpose domain with enough words here for the thin bar check to pass cleanly on purpose domain.
+## 2. Components & relationships
+Alpha at src/main/java/com/demo/Alpha.java:1 with enough words for the thin bar check here.
+## 3. Integration surfaces
+None beyond typed model at src/main/java/com/demo/Alpha.java:1 with filler words for thin bar.
+## 4. Behavioral contract sources
+Contract gap at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 5. Modernization surface
+Findings deferred at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar.
+## 6. Domain boundaries
+Single context at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 7. Class roles & target contract
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md . 2>&1 || true)
+  echo "$out" | grep -q 'RUBRIC:evidence' \
+    && echo "$out" | grep -qE 'COVERAGE: 0/1' \
+    && echo "$out" | grep -q 'authored=1' \
+    && echo "$out" | grep -q 'evidence_miss=1' \
+    && echo adr29evidence-ok
+}
+check "O-ADR29TYPED refuses evidence that does not resolve at line" 0 "adr29evidence-ok"
+
+# O-PROF1OF79STOP — wire: batch projection + refuse a2 on rate-limit / low coverage
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": [], "decision": null},
+    {"key": "com.demo.Gamma", "kind": "java", "legacy_fqn": "com.demo.Gamma",
+     "legacy_path": "src/main/java/com/demo/Gamma.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/model.py" context-for-profile --root . --undecided-only --limit 2 --legacy . 2>&1)
+  echo "$out" | grep -q 'undecided-only batch' \
+    && echo "$out" | grep -q 'limit=2' \
+    && echo "$out" | grep -q 'com.demo.Alpha' \
+    && echo "$out" | grep -q 'com.demo.Beta' \
+    && ! echo "$out" | grep -q 'com.demo.Gamma' \
+    && grep -q 'O-PROF1OF79STOP' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'PROFILE_A2_MIN_RATIO' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'refuse MiniMax a2' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'outer-last-mchat-ratelimit' "$HARNESS_DIR/outer-loop.sh" \
+    && echo prof1of79stop-ok
+}
+check "O-PROF1OF79STOP batch projection + a2 refuse wire" 0 "prof1of79stop-ok"
 
 # --- ADR-21 G1/G2: O-PROFCLAIMTRUTH + O-PROFVOCAB ---------------------------
 # G1: §7 cites a file and names a token absent from that file → RED.
@@ -12084,7 +12477,9 @@ EOF
 }
 check "O-PROFCLAIMTRUTH refuses §7 token absent from cited file" 0 "claimtruth-red-ok"
 
-# G1 GREEN: cited token is truly in the file.
+# G1 GREEN: cited token is truly on the cited line (ADR-29 line-level).
+# Pre-ADR-29 fixture cited :1 while @Cacheable lived later — that correctly RED
+# under line-level G1 (W4-448 FAIL 647). Anchor must resolve, not merely exist in-file.
 run_case() {
   mkfix
   mkdir -p legacy/src/main/java/com/demo
@@ -12098,7 +12493,7 @@ public class FooService {
   public void ping() {}
 }
 JAVA
-  body="FooService owns the demo runtime surface with enough filler words for the thin gate so that this section clears thirty words easily while citing src/main/java/com/demo/FooService.java:1 as evidence path for the fixture."
+  body="FooService owns the demo runtime surface with enough filler words for the thin gate so that this section clears thirty words easily while citing src/main/java/com/demo/FooService.java:6 as evidence path for the fixture."
   {
     echo "# Architecture profile"
     for n in "Purpose & domain" "Components & relationships" "Integration surfaces" \
@@ -12108,7 +12503,7 @@ JAVA
     cat <<'EOF'
 ## 7. Class roles
 ### REDESIGN
-- `FooService` → REDESIGN; keep `@Cacheable` semantics (src/main/java/com/demo/FooService.java:1) with enough words for the thin gate on this class-role section so PROFILE OK can land when the cited token is real.
+- `FooService` → REDESIGN; keep `@Cacheable` semantics (src/main/java/com/demo/FooService.java:6) with enough words for the thin gate on this class-role section so PROFILE OK can land when the cited token is real at the cited line.
 EOF
   } > profile.md
   cat > migration.yaml <<'EOF'
@@ -12672,6 +13067,1627 @@ run_case() {
 }
 check "O-MVNUNIT dependency-order skips .mvn wrapper paths" 0 "mvnunit-ok"
 
+# ADR-26 / O-ADR26PROFMODEL — PROFILE universe from model; UNNAMED feedback
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": []},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": []},
+    {"key": "com.demo.pkginfo", "kind": "java", "legacy_fqn": "com.demo.package-info",
+     "legacy_path": "src/main/java/com/demo/package-info.java", "findings": []}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  mkdir -p src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha { }
+JAVA
+  HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["HARNESS_DIR"])
+from model import profile_units, context_for_profile
+import json
+m = json.load(open("migration/model.json"))
+u = profile_units(m)
+assert len(u) == 2, u
+assert all("package-info" not in (x.get("legacy_fqn") or "") for x in u)
+ctx = context_for_profile(m)
+assert "com.demo.Alpha" in ctx and "com.demo.Beta" in ctx
+# Projection body must not list the pkg-info unit (label may mention omission).
+body = ctx.split("profile-units", 1)[1].split("=====")[0]
+assert "com.demo.package-info" not in body
+print("adr26-profile-units-ok")
+PY
+  # ADR-29: coverage is typed-decision SoT — Alpha decided+resolving, Beta open.
+  cat > migration/profile-decisions.json <<'EOF'
+{
+  "schema": "profile-decisions/v1",
+  "metric": "typed-decision",
+  "units": [
+    {
+      "legacy_fqn": "com.demo.Alpha",
+      "legacy_path": "src/main/java/com/demo/Alpha.java",
+      "role": "HARVEST",
+      "rationale": "entity value type carried faithfully",
+      "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 2, "token": "@Entity"},
+      "target_contract": null
+    },
+    {
+      "legacy_fqn": "com.demo.Beta",
+      "legacy_path": "src/main/java/com/demo/Beta.java",
+      "role": null,
+      "rationale": "",
+      "evidence": null,
+      "target_contract": null
+    }
+  ]
+}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Demo app with enough words here for the thin bar check to pass cleanly on purpose.
+## 2. Components & relationships
+Alpha depends on Beta at src/main/java/com/demo/Alpha.java:2 with enough words for thin bar.
+## 3. Integration surfaces
+No external surfaces beyond the typed model at src/main/java/com/demo/Alpha.java:2 with filler.
+## 4. Behavioral contract sources
+Legacy suite absent; contract gap noted at src/main/java/com/demo/Alpha.java:2 with filler words.
+## 5. Modernization surface
+Pom and DI findings deferred; Alpha is in scope at src/main/java/com/demo/Alpha.java:2 filler.
+## 6. Domain boundaries
+Single bounded context around demo at src/main/java/com/demo/Alpha.java:2 with filler words here.
+## 7. Class roles & target contract
+EOF
+  python3 "$HARNESS_DIR/profile_close.py" migration/architecture-profile.md --root . >/tmp/adr26-close.out 2>&1 || true
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md . 2>&1 || true)
+  grep -q 'context-for-profile' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'context-for-profile' "$HARNESS_DIR/model.py" \
+    && echo "$out" | grep -q 'UNNAMED: com.demo.Beta' \
+    && echo "$out" | grep -q 'sot=model-decision' \
+    && echo "$out" | grep -q 'metric=typed-decision' \
+    && echo "$out" | grep -qE 'COVERAGE: 1/2' \
+    && echo "$out" | grep -q 'authored=1' \
+    && echo "$out" | grep -q 'RUBRIC:unnamed' \
+    && echo adr26profmodel-ok
+}
+
+check "O-ADR26PROFMODEL profile-units + UNNAMED + outer wire" 0 "adr26profmodel-ok"
+
+# O-ADR30ALIASDEL — ADR-30 sidecar refused; ADR-29 store only
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > migration/model.json <<'EOF'
+{"units": [{"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+ "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}],
+ "stories": [], "sccs": [], "order": [], "findings": []}
+EOF
+  echo '{"units":[]}' > migration/profile-roles.json
+  rc=0
+  out=$(python3 "$HARNESS_DIR/profile_roles.py" apply --root . 2>&1) || rc=$?
+  echo "$out" | grep -q 'REFUSE migration/profile-roles.json' \
+    && [ "$rc" = "2" ] \
+    && python3 "$HARNESS_DIR/profile_roles.py" init --root . >/tmp/adr30-init.out 2>&1 \
+    && ! test -f migration/profile-roles.json \
+    && test -f migration/profile-decisions.json \
+    && grep -q 'O-ADR30ALIASDEL' "$HARNESS_DIR/profile_roles.py" \
+    && echo adr30aliasdel-ok
+}
+check "O-ADR30ALIASDEL refuse ADR-30 sidecar; init deletes it" 0 "adr30aliasdel-ok"
+
+# ADR-27 — mechanical closer + no bounce wipe + skeleton
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": []},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": []}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Demo app with enough words here for the thin bar check to pass cleanly on purpose domain.
+## 2. Components & relationships
+Alpha at src/main/java/com/demo/Alpha.java:1 with enough words for the thin bar check here.
+## 3. Integration surfaces
+None beyond typed model at src/main/java/com/demo/Alpha.java:1 with filler words for thin bar.
+## 4. Behavioral contract sources
+Contract gap at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 5. Modernization surface
+Findings deferred at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar.
+## 6. Domain boundaries
+Single context at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 7. Class roles & target contract
+- `com.demo.Alpha` — HARVEST: value type (src/main/java/com/demo/Alpha.java:1) with enough words here.
+- FooMapperImpl.java (target/generated-sources/annotations/) → **HARVEST**
+EOF
+  python3 "$HARNESS_DIR/profile_close.py" migration/architecture-profile.md --root . > /tmp/close.out
+  # ADR-29 closer renders §7 from model — MapperImpl prose cannot survive render.
+  # O-ADR27PROFCLOSE wire: no bounce wipe (NEVER git checkout migration/) + closer + skeleton.
+  grep -q 'CLOSE:adr29' /tmp/close.out \
+    && ! grep -q 'MapperImpl' migration/architecture-profile.md \
+    && test -f migration/profile-decisions.json \
+    && grep -q 'emit-profile-skeleton' "$HARNESS_DIR/model.py" \
+    && grep -q 'ADR-27: NEVER git checkout' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'keep dirty profile; no git checkout wipe' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'profile_close.py' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -vE '^[[:space:]]*#' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -qE 'git[[:space:]]+checkout[[:space:]]+--[[:space:]]+migration/' \
+    && echo adr27profclose-ok
+}
+check "O-ADR27PROFCLOSE closer + skeleton wire + no bounce wipe" 0 "adr27profclose-ok"
+
+# ADR-28 / O-PROF7DENSITY — grouped §7 prose cannot create coverage when model exists.
+# ADR-29 typed-decision SoT owns grading; density is a consequence (group bullets
+# never become units[].decision). Wire keeps unit-claim helper for pre-model fixtures.
+run_case() {
+  mkfix
+  mkdir -p migration
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+Demo app with enough words here for the thin bar check to pass cleanly on purpose domain text.
+## 2. Components & relationships
+Alpha at src/main/java/com/demo/Alpha.java:1 with enough words for the thin bar check here now.
+## 3. Integration surfaces
+None beyond typed model at src/main/java/com/demo/Alpha.java:1 with filler words for thin bar.
+## 4. Behavioral contract sources
+Contract gap at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 5. Modernization surface
+Findings deferred at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar.
+## 6. Domain boundaries
+Single context at src/main/java/com/demo/Alpha.java:1 with enough filler words for thin bar here.
+## 7. Class roles & target contract
+- **Domain** (Alpha, Beta) — HARVEST: value types (src/main/java/com/demo/Alpha.java:1) shared claim.
+- `com.demo.Alpha` — HARVEST: sole-subject prose still does not invent a typed decision.
+- `com.demo.Beta` — HARVEST: sole-subject prose still does not invent a typed decision.
+EOF
+  out=$(python3 "$HARNESS_DIR/profile-rubric.py" migration/architecture-profile.md 2>&1 || true)
+  echo "$out" | grep -qE 'COVERAGE: 0/2' \
+    && echo "$out" | grep -q 'sot=model-decision' \
+    && echo "$out" | grep -q 'metric=typed-decision' \
+    && echo "$out" | grep -q 'RUBRIC:unnamed' \
+    && grep -q 'unit-claim' "$HARNESS_DIR/profile-rubric.py" \
+    && grep -q '_unit_covered_in_sec7' "$HARNESS_DIR/profile-rubric.py" \
+    && echo adr28prof7density-ok
+}
+check "O-PROF7DENSITY grouped/sole prose cannot satisfy typed-decision SoT" 0 "adr28prof7density-ok"
+
+# --- ADR-31: project pre-verified anchors; F-anchor-membership at apply -------
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+import javax.persistence.Entity;
+@Entity
+public class Alpha {
+  private Long id;
+}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": ["demo-rule-00001"],
+     "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  cat > migration/findings.json <<'EOF'
+{
+  "schema": "adr24-findings-ir/v1",
+  "rules": [
+    {"id": "demo-rule-00001", "kind": "java", "incidents": [
+      {"legacy_path": "src/main/java/com/demo/Alpha.java", "line": 3, "message": "@Entity"}
+    ]}
+  ],
+  "stats": {"rule_count": 1, "incident_count": 1}
+}
+EOF
+  test -f "$HARNESS_DIR/profile_anchors.py" \
+    && out=$(python3 "$HARNESS_DIR/model.py" context-for-profile --root . --legacy . 2>&1) \
+    && echo "$out" | grep -q 'pre-verified' \
+    && echo "$out" | grep -q 'anchors (pre-verified' \
+    && echo "$out" | grep -qE 'L[0-9]+ +Alpha +\[declaration\]' \
+    && echo "$out" | grep -qE 'L[0-9]+ +@Entity +\[(annotation|demo-rule)' \
+    && ! grep -qiE 'petclinic|coolstore|springframework\.samples' "$HARNESS_DIR/profile_anchors.py" \
+    && grep -q 'F-anchor-membership' "$HARNESS_DIR/profile_roles.py" \
+    && grep -qE 'projected anchors|ADR-31' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -qE 'projected evidence anchors|projected anchors|ADR-31' "$HARNESS_DIR/../skills/migration-harness/ANALYSIS.md" \
+    && echo adr31project-ok
+}
+check "O-ADR31ANCHORS projects pre-verified anchors (specimen-agnostic)" 0 "adr31project-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  # Invented line 99 — must be refused (not in projected set).
+  cat > migration/profile-decisions.json <<'EOF'
+{
+  "schema": "profile-decisions/v1",
+  "metric": "typed-decision",
+  "units": [
+    {"legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java",
+     "role": "HARVEST",
+     "rationale": "entity value type",
+     "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 99, "token": "Alpha"}}
+  ]
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" apply --root . --legacy . >/tmp/adr31-apply.out 2>/tmp/adr31-apply.err || true
+  grep -q 'O-ADR31: REFUSE' /tmp/adr31-apply.err \
+    && grep -q 'adr31_refused=1' /tmp/adr31-apply.out \
+    && python3 -c "import json; d=json.load(open('migration/model.json')); assert d['units'][0].get('decision') in (None, {})" \
+    && echo adr31member-ok
+}
+check "O-ADR31ANCHORS apply refuses evidence outside projected set" 0 "adr31member-ok"
+
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  # SELECT declaration anchor (line 3, token Alpha) — must apply cleanly.
+  cat > migration/profile-decisions.json <<'EOF'
+{
+  "schema": "profile-decisions/v1",
+  "metric": "typed-decision",
+  "units": [
+    {"legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java",
+     "role": "HARVEST",
+     "rationale": "JPA entity value type carried over",
+     "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 3, "token": "Alpha"}}
+  ]
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" apply --root . --legacy . >/tmp/adr31-ok.out 2>/tmp/adr31-ok.err
+  grep -q 'rows_from_file=1' /tmp/adr31-ok.out \
+    && grep -q 'adr31_refused=0' /tmp/adr31-ok.out \
+    && python3 -c "import json; d=json.load(open('migration/model.json')); assert d['units'][0]['decision']['role']=='HARVEST'" \
+    && out=$(python3 "$HARNESS_DIR/profile_roles.py" lint --root . --legacy . 2>&1) \
+    && echo "$out" | grep -qE 'ROLES: 1/1' \
+    && echo adr31select-ok
+}
+check "O-ADR31ANCHORS select-from-projection credits typed decision" 0 "adr31select-ok"
+
+# O-DECISIONWRITEDROP — small upsert CLI (seat never rewrites full decisions JSON).
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > src/main/java/com/demo/Beta.java <<'JAVA'
+package com.demo;
+@Entity
+public class Beta {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null},
+    {"key": "com.demo.Beta", "kind": "java", "legacy_fqn": "com.demo.Beta",
+     "legacy_path": "src/main/java/com/demo/Beta.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  out=$(python3 "$HARNESS_DIR/profile_roles.py" upsert --root . --legacy . \
+    --fqn com.demo.Alpha --role HARVEST --rationale 'entity value type' \
+    --path src/main/java/com/demo/Alpha.java --line 3 --token Alpha 2>&1) || return 1
+  echo "$out" | grep -q 'O-DECISIONWRITEDROP upsert' || return 1
+  python3 -c "import json; d=json.load(open('migration/model.json')); assert d['units'][0]['decision']['role']=='HARVEST'" || return 1
+  python3 -c "import json; d=json.load(open('migration/profile-decisions.json')); u=[x for x in d['units'] if x['legacy_fqn']=='com.demo.Alpha'][0]; assert u['role']=='HARVEST'" || return 1
+  if python3 "$HARNESS_DIR/profile_roles.py" upsert --root . --legacy . \
+       --fqn com.demo.Alpha --role HARVEST --rationale 'invented' \
+       --path src/main/java/com/demo/Alpha.java --line 99 --token Alpha \
+       >/tmp/dw-refuse.out 2>/tmp/dw-refuse.err; then
+    return 1
+  fi
+  grep -q 'O-ADR31: REFUSE' /tmp/dw-refuse.err || return 1
+  cat > /tmp/dw-batch.json <<'EOF'
+[
+  {"legacy_fqn": "com.demo.Beta", "role": "HARVEST", "rationale": "entity",
+   "evidence": {"path": "src/main/java/com/demo/Beta.java", "line": 3, "token": "Beta"}},
+  {"legacy_fqn": "com.demo.Alpha", "role": "REDESIGN", "rationale": "flip",
+   "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 3, "token": "Alpha"}},
+  {"legacy_fqn": "com.demo.Alpha", "role": "HARVEST", "rationale": "again",
+   "evidence": {"path": "src/main/java/com/demo/Alpha.java", "line": 3, "token": "Alpha"}},
+  {"legacy_fqn": "com.demo.Beta", "role": "REDESIGN", "rationale": "too many",
+   "evidence": {"path": "src/main/java/com/demo/Beta.java", "line": 3, "token": "Beta"}}
+]
+EOF
+  if python3 "$HARNESS_DIR/profile_roles.py" upsert --root . --legacy . \
+       --json-file /tmp/dw-batch.json >/tmp/dw-cap.out 2>/tmp/dw-cap.err; then
+    return 1
+  fi
+  grep -q 'O-DECISIONWRITEDROP: REFUSE' /tmp/dw-cap.err || return 1
+  grep -q 'max 3' /tmp/dw-cap.err || return 1
+  grep -q 'O-DECISIONWRITEDROP' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'O-DECISIONWRITEDROP' "$HARNESS_DIR/../skills/migration-harness/ANALYSIS.md" || return 1
+  grep -q 'UPSERT_MAX_ROWS' "$HARNESS_DIR/profile_roles.py" || return 1
+  echo decisionwritedrop-ok
+}
+check "O-DECISIONWRITEDROP upsert small writes + refuse oversized batch" 0 "decisionwritedrop-ok"
+
+# ADR-32 / O-PROFSEATARCH — harness decide loop (dry-run backend).
+run_case() {
+  mkfix
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > src/main/java/com/demo/BetaService.java <<'JAVA'
+package com.demo;
+@Service
+public class BetaService {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null},
+    {"key": "com.demo.BetaService", "kind": "java", "legacy_fqn": "com.demo.BetaService",
+     "legacy_path": "src/main/java/com/demo/BetaService.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  out=$(python3 "$HARNESS_DIR/profile_decide_loop.py" run --root . --legacy . \
+    --backend dry-run --max-units 0 2>&1) || return 1
+  echo "$out" | grep -q 'O-PROFSEATARCH: done' || return 1
+  python3 -c "import json; m=json.load(open('migration/model.json')); roles={u['legacy_fqn']:u['decision']['role'] for u in m['units']}; assert roles['com.demo.Alpha']=='HARVEST'; assert roles['com.demo.BetaService']=='REDESIGN'" || return 1
+  grep -q 'PROFILE_DECIDE_ENGINE' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'profile_decide_loop.py' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'harness-loop' "$HARNESS_DIR/outer-loop.sh" || return 1
+  test -f "$HARNESS_DIR/ADR-32-profile-decide-loop.md" || return 1
+  echo profseatarch-ok
+}
+check "O-PROFSEATARCH harness decide loop dry-run classifies units" 0 "profseatarch-ok"
+
+# O-PROFCOVSTALE — gates + gchain must call evaluate_roles SoT, not parse
+# stale rubric COVERAGE: lines (W4-475 published 41/79 from stale text).
+run_case() {
+  grep -q 'O-PROFCOVSTALE' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'evaluate_roles' "$HARNESS_DIR/outer-loop.sh" \
+    && ! grep -A20 '_profile_cov_fields()' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -q 'COVERAGE:' \
+    && grep -A40 'log_gchain_m1_profile()' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -q '_profile_cov_fields' \
+    && ! grep -A40 'log_gchain_m1_profile()' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -qE "grep.*COVERAGE:" \
+    && echo profcovstale-ok
+}
+check "O-PROFCOVSTALE coverage gate uses evaluate_roles SoT" 0 "profcovstale-ok"
+
+# O-PROFCOVSTALE behavioural: model named wins over stale rubric COVERAGE text.
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  python3 "$HARNESS_DIR/profile_decide_loop.py" run --root . --legacy . \
+    --backend dry-run --max-units 0 --escalate-backend none >/dev/null || return 1
+  # Stale rubric lies: 41/79 — evaluate_roles SoT must still report model 1/1.
+  echo 'COVERAGE: 41/79 (51%)' > /tmp/profile-rubric.txt
+  fields=$(PYTHONPATH="$HARNESS_DIR" python3 -c 'from pathlib import Path; from profile_roles import evaluate_roles; ev=evaluate_roles(Path(".").resolve(), legacy="."); print("%s %s" % (int(ev.get("named") or 0), int(ev.get("total") or 0)))')
+  echo "$fields" | grep -qE '^1 1' || { echo "fields=$fields"; return 1; }
+  ! grep -A40 'log_gchain_m1_profile()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -qE "grep.*COVERAGE:" || return 1
+  echo profcovstale-behave-ok
+}
+check "O-PROFCOVSTALE behavioural model N beats stale rubric M" 0 "profcovstale-behave-ok"
+
+# O-PROFDECIDEHB — ADR-32 decide loop has 60s outer heartbeat + progress file.
+run_case() {
+  grep -q 'O-PROFDECIDEHB' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_outer_heartbeat_start "M1 PROFILE decide"' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'outer-heartbeat-progress.txt' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'PYTHONUNBUFFERED=1' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q '_write_progress' "$HARNESS_DIR/profile_decide_loop.py" \
+    && grep -q 'outer-heartbeat-progress.txt' "$HARNESS_DIR/profile_decide_loop.py" \
+    && echo profdecidehb-ok
+}
+check "O-PROFDECIDEHB decide loop wires 60s heartbeat + progress file" 0 "profdecidehb-ok"
+
+# O-PROFLOOPRC — decide pass captures real python rc (not `|| true; $?`).
+run_case() {
+  local ln win
+  ln=$(grep -n 'PYTHONUNBUFFERED=1 python3 .*profile_decide_loop.py' \
+    "$HARNESS_DIR/outer-loop.sh" | head -1 | cut -d: -f1)
+  [ -n "$ln" ] || return 1
+  win=$(sed -n "$((ln - 3)),$((ln + 12))p" "$HARNESS_DIR/outer-loop.sh")
+  echo "$win" | grep -q 'set +e' || return 1
+  echo "$win" | grep -q '_rc=$?' || return 1
+  echo "$win" | grep -q 'loop_rc=${_rc}' || return 1
+  # Ignore the O-PROFLOOPRC comment that mentions the anti-pattern literally.
+  ! echo "$win" | grep -vE '^[[:space:]]*#' | grep -qE '\|\| true;[[:space:]]*_rc=' || return 1
+  grep -q 'O-PROFLOOPRC' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo proflooprc-ok
+}
+check "O-PROFLOOPRC decide pass captures real loop_rc" 0 "proflooprc-ok"
+
+# O-PROFCLASSIFYVAL — classify backends return judgment; harness upserts.
+run_case() {
+  grep -q 'O-PROFCLASSIFYVAL' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  grep -q 'harness will persist' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  ! grep -q 'Run THIS command' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  out=$(python3 - <<PY
+import sys
+sys.path.insert(0, "$HARNESS_DIR")
+from profile_decide_loop import _parse_classify_payload
+anchors = [{"path": "src/A.java", "line": 4, "token": "Alpha"}]
+# JSON judgment
+d = _parse_classify_payload(
+    '{"role":"HARVEST","rationale":"entity","path":"src/A.java","line":4,"token":"Alpha"}',
+    anchors,
+)
+assert d and d["role"] == "HARVEST" and d["token"] == "Alpha", d
+# Reject invented non-member evidence
+bad = _parse_classify_payload(
+    '{"role":"REDESIGN","rationale":"x","path":"nope.java","line":1,"token":"X"}',
+    anchors,
+)
+assert bad is None, bad
+# Prose fallback still yields a member anchor
+p = _parse_classify_payload("This unit is REDESIGN because @Service", anchors)
+assert p and p["role"] == "REDESIGN" and p["path"] == "src/A.java", p
+print("profclassifyval-ok")
+PY
+) || return 1
+  echo "$out" | grep -q 'profclassifyval-ok' || return 1
+  echo profclassifyval-ok
+}
+check "O-PROFCLASSIFYVAL classify returns JSON; harness upserts" 0 "profclassifyval-ok"
+
+# O-PROFPROSENOOP — prose seat gated on witnessed writes + no skeleton leftovers.
+run_case() {
+  grep -q 'O-PROFPROSENOOP' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q '_profile_prose_witnessed' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -A40 '_profile_prose_witnessed()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q 'LLM fills' || return 1
+  # Harness path witnesses O-PROFPROSEDECOMP: OK; legacy still has _m3_log_has_write.
+  grep -A40 '_profile_prose_witnessed()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q 'O-PROFPROSEDECOMP: OK' || return 1
+  grep -A40 '_profile_prose_witnessed()' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q '_m3_log_has_write' || return 1
+  grep -A20 '_profile_harness_prose' "$HARNESS_DIR/outer-loop.sh" \
+    | grep -q '_profile_prose_witnessed' \
+    || grep -A15 '_prose_rc=' "$HARNESS_DIR/outer-loop.sh" \
+         | grep -q '_profile_prose_witnessed' || return 1
+  echo profprosenoop-ok
+}
+check "O-PROFPROSENOOP prose seat refuses skeleton/writes=0" 0 "profprosenoop-ok"
+
+# O-PROFPROSEDECOMP — per-section harness prose loop (dry-run backend).
+run_case() {
+  mkfixture
+  mkdir -p migration
+  out=$(python3 "$HARNESS_DIR/profile_prose_loop.py" run --root . --legacy . \
+    --backend dry-run 2>&1) || return 1
+  echo "$out" | grep -q 'O-PROFPROSEDECOMP: done' || return 1
+  echo "$out" | grep -q 'leftover_sections=none' || return 1
+  # Demo UX: OK lines must carry titles, not bare §N.
+  echo "$out" | grep -qE 'O-PROFPROSEDECOMP: OK §1 \(Purpose & Domain\)' || return 1
+  echo "$out" | grep -qE 'O-PROFPROSEDECOMP: OK §5 \(Modernization Surface\)' || return 1
+  grep -q 'Sections: §1 (Purpose & Domain)' "$HARNESS_DIR/outer-loop.sh" || return 1
+  ! grep -qE 'LLM fills|^\(LLM fills' migration/architecture-profile.md || return 1
+  for n in 1 2 3 4 5 6; do
+    grep -qE "^## ${n}\\. " migration/architecture-profile.md || return 1
+  done
+  grep -q 'profile_prose_loop.py' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q '_profile_harness_prose' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'O-PROFPROSEDECOMP' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # Monolithic wchat §§1–6 seat must be gone from harness-loop path.
+  ! awk '/PROFILE_DECIDE_ENGINE.*=.*harness-loop/{f=1} f && /PROFILE_DECIDE_ENGINE.*=.*batch-mchat/{exit} f' \
+    "$HARNESS_DIR/outer-loop.sh" | grep -q 'wchat "m1-profile-prose"' || return 1
+  echo profprosecomp-ok
+}
+check "O-PROFPROSEDECOMP harness §§1–6 prose loop dry-run fills sections" 0 "profprosecomp-ok"
+
+# ADR-37 / O-PROFPROSEPROJ — per-section projected facts + no-discovery wire.
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo src/main/resources src/test/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > src/main/java/com/demo/AlphaRestController.java <<'JAVA'
+package com.demo;
+@RestController
+@RequestMapping("/api/alpha")
+public class AlphaRestController {}
+JAVA
+  cat > src/main/resources/application.properties <<'EOF'
+spring.datasource.url=jdbc:h2:mem:demo
+spring.jpa.hibernate.ddl-auto=none
+petclinic.security.enable=false
+EOF
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+preserve:
+  - X
+EOF
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "depends_on": [],
+     "fan_in": 2, "fan_out": 0, "findings": ["F1"], "decision": null},
+    {"key": "com.demo.AlphaRestController", "kind": "java",
+     "legacy_fqn": "com.demo.AlphaRestController",
+     "legacy_path": "src/main/java/com/demo/AlphaRestController.java",
+     "depends_on": ["com.demo.Alpha"], "fan_in": 0, "fan_out": 1,
+     "findings": [], "decision": null}
+  ],
+  "findings": [{"id": "F1", "rule": "spring-to-quarkus", "title": "demo"}],
+  "stories": [], "sccs": [], "order": ["com.demo.Alpha", "com.demo.AlphaRestController"]
+}
+EOF
+  for n in 1 2 3 4 5 6; do
+    out=$(python3 "$HARNESS_DIR/profile_prose_project.py" --root . --legacy . --section "$n") \
+      || return 1
+    echo "$out" | grep -q 'PROJECTED FACTS' || return 1
+  done
+  # §3 must surface controller + config keys without LLM
+  s3=$(python3 "$HARNESS_DIR/profile_prose_project.py" --root . --legacy . --section 3)
+  echo "$s3" | grep -q 'AlphaRestController' || return 1
+  echo "$s3" | grep -q 'spring.datasource.url' || return 1
+  # W4-503: never project credential RHS values
+  printf '%s\n' 'spring.datasource.password=petclinic' >> src/main/resources/application.properties
+  s3b=$(python3 "$HARNESS_DIR/profile_prose_project.py" --root . --legacy . --section 3)
+  echo "$s3b" | grep -q 'spring.datasource.password=<redacted>' || return 1
+  ! echo "$s3b" | grep -q 'password=petclinic' || return 1
+  # O-PROFPROSECITE / W4-512: §§1/2/6 project REQUIRED CITE with src/ paths
+  for n in 1 2 6; do
+    sn=$(python3 "$HARNESS_DIR/profile_prose_project.py" --root . --legacy . --section "$n")
+    echo "$sn" | grep -q 'REQUIRED CITE' || return 1
+    echo "$sn" | grep -qE 'src/main/|dependency-order\.md' || return 1
+  done
+  # Packet must not invite legacy rediscovery; discovery gate wired
+  grep -q 'ADR-37' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  grep -q 'F-prose-no-discovery' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  grep -q 'project_section' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  ! grep -q 'files under the legacy root' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  # W4-504: per-section write re-reads file (no stale whole-file snapshot)
+  grep -A6 'if not _body_ok(body)' "$HARNESS_DIR/profile_prose_loop.py" \
+    | grep -q 'path.read_text' || return 1
+  # Behavioural: discovery helper flags a legacy read tool_use
+  python3 - "$HARNESS_DIR" <<'PY' || return 1
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from profile_prose_loop import _legacy_discovery_reads
+line = json.dumps({
+  "type": "tool_use",
+  "part": {"tool": "read", "input": {"filePath": "/projects/legacy/src/main/java/X.java"}},
+})
+hits = _legacy_discovery_reads(line + "\n", "/projects/legacy")
+assert hits, hits
+print("discovery-helper-ok")
+PY
+  echo adr37proseproj-ok
+}
+check "ADR-37 prose projection + F-prose-no-discovery wire" 0 "adr37proseproj-ok"
+
+# O-PROFPROSECITE / W4-512 B2 — harness refuses uncited §§1–6 bodies (rubric parity).
+run_case() {
+  grep -q 'O-PROFPROSECITE' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  grep -q 'F-prose-uncited' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  grep -q '_body_has_cite' "$HARNESS_DIR/profile_prose_loop.py" || return 1
+  grep -q 'O-PROFPROSECITE' "$HARNESS_DIR/profile_prose_project.py" || return 1
+  python3 - "$HARNESS_DIR" <<'PY' || return 1
+import sys
+sys.path.insert(0, sys.argv[1])
+from profile_prose_loop import _body_ok, _body_has_cite, _dry_run_body, _needs_fill
+assert _body_has_cite("see src/main/java/com/demo/Alpha.java:1")
+assert not _body_has_cite("see `model/Alpha.java` only")
+assert not _body_ok("x" * 100)  # long but uncited
+assert _body_ok(_dry_run_body(1, "Purpose & domain", "hint"))
+# uncited filled body still needs rewrite
+assert _needs_fill("This domain is a clinic with many entities and services and layers.")
+print("profprosecite-ok")
+PY
+  echo profprosecite-ok
+}
+check "O-PROFPROSECITE refuse uncited prose bodies (B2)" 0 "profprosecite-ok"
+
+# O-PROFPROSECTX — §§1–6 prose must NOT get fat context-for-profile decide packet.
+run_case() {
+  grep -q 'O-PROFPROSECTX' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # Between prose phase_start and profile_prose_loop invocation, no decide projection.
+  ! awk '/M1 PROFILE — architecture prose §§1–6/{f=1} f{print; if(/profile_prose_loop\.py/){exit}}' \
+    "$HARNESS_DIR/outer-loop.sh" | grep -q 'context-for-profile' || return 1
+  awk '/M1 PROFILE — architecture prose §§1–6/{f=1} f{print; if(/profile_prose_loop\.py/){exit}}' \
+    "$HARNESS_DIR/outer-loop.sh" | grep -q 'O-PROFPROSECTX' || return 1
+  echo profprosecxt-ok
+}
+check "O-PROFPROSECTX prose seat uses slim packet not decide projection" 0 "profprosecxt-ok"
+
+# O-PROFTCHARDPIN — §7 render emits decisive tokens from migration.yaml flags.
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo
+  printf '%s\n' 'package com.demo;' '@Entity' 'public class Alpha {}' > src/main/java/com/demo/Alpha.java
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+  validateInput: true
+preserve:
+  - X
+EOF
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  python3 "$HARNESS_DIR/profile_decide_loop.py" run --root . --legacy .     --backend dry-run --escalate-backend none >/dev/null
+  mkdir -p migration
+  cat > migration/architecture-profile.md <<'EOF'
+# Architecture profile
+## 1. Purpose & domain
+x
+## 2. Components & relationships
+x
+## 3. Integration surfaces
+x
+## 4. Behavioral contract sources
+x
+## 5. Modernization surface
+x
+## 6. Domain boundaries
+x
+## 7. Class roles & target contract
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" render --root . >/dev/null
+  grep -q 'O-PROFTCHARDPIN' migration/architecture-profile.md || return 1
+  grep -qE '\b404\b' migration/architecture-profile.md || return 1
+  grep -qE '\b400\b|@Valid' migration/architecture-profile.md || return 1
+  echo proftchardpin-ok
+}
+check "O-PROFTCHARDPIN §7 render emits targetContract decisive tokens" 0 "proftchardpin-ok"
+
+# O-PROFDECPROJ / W4-489 — stamp must refresh wrapped profile-decisions.json projection
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/rest
+  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class CartService {}' \
+    > src/main/java/com/demo/rest/CartService.java
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+  validateInput: true
+preserve:
+  - X
+EOF
+  cat > migration/model.json <<'EOF'
+{"units":[{"key":"com.demo.rest.CartService","kind":"java","legacy_fqn":"com.demo.rest.CartService",
+ "legacy_path":"src/main/java/com/demo/rest/CartService.java","findings":[],
+ "decision":{"role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"}}}],
+ "stories":[],"sccs":[],"order":[],"findings":[]}
+EOF
+  # Wrapped seat projection with null target_contract (live tip shape).
+  cat > migration/profile-decisions.json <<'EOF'
+{"schema":"profile-decisions/v1","metric":"typed-decision","units":[
+  {"legacy_fqn":"com.demo.rest.CartService","legacy_path":"src/main/java/com/demo/rest/CartService.java",
+   "role":"REDESIGN","rationale":"endpoint","evidence":{"path":"src/main/java/com/demo/rest/CartService.java","line":3,"token":"CartService"},
+   "target_contract":null}
+]}
+EOF
+  python3 -c "
+import sys, json
+from pathlib import Path
+sys.path.insert(0, '$HARNESS_DIR')
+import profile_roles
+n = profile_roles.apply_declared_target_contracts(Path('.'))
+assert n >= 1, n
+d = json.loads(Path('migration/profile-decisions.json').read_text())
+assert isinstance(d, dict) and 'units' in d
+tc = d['units'][0].get('target_contract')
+assert isinstance(tc, dict) and tc.get('getIdempotent') is True, tc
+m = json.loads(Path('migration/model.json').read_text())
+mtc = m['units'][0]['decision'].get('target_contract')
+assert isinstance(mtc, dict) and mtc.get('getIdempotent') is True, mtc
+print('profdecproj-ok')
+" || return 1
+}
+check "O-PROFDECPROJ stamp syncs wrapped profile-decisions projection" 0 "profdecproj-ok"
+
+# O-PROFCLASCESC — per-unit hermes backstop after primary classify retries (W4-482).
+run_case() {
+  grep -q 'O-PROFCLASCESC' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  grep -q 'PROFILE_CLASSIFY_ESCALATE_BACKEND' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  grep -q 'escalate_backend' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  # Default for opencode is hermes-orch; dry-run default is none (no accidental hermes).
+  grep -q 'hermes-orch' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  echo profclascesc-ok
+}
+check "O-PROFCLASCESC per-unit escalate to hermes-orch" 0 "profclascesc-ok"
+
+# O-PROFBLOCKUNPARK — recovered / already-decided units leave profile-blocked.json
+run_case() {
+  grep -q '_unpark_blocked' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  grep -q '_reconcile_blocked' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  grep -q 'O-PROFBLOCKUNPARK' "$HARNESS_DIR/profile_decide_loop.py" || return 1
+  mkfixture
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key": "com.demo.Alpha", "kind": "java", "legacy_fqn": "com.demo.Alpha",
+     "legacy_path": "src/main/java/com/demo/Alpha.java", "findings": [], "decision": null}
+  ],
+  "stories": [], "sccs": [], "order": [], "findings": []
+}
+EOF
+  # Stale park for a unit that dry-run will decide — must be gone after loop.
+  cat > migration/profile-blocked.json <<'EOF'
+{"blocked":[{"fqn":"com.demo.Alpha","reason":"stale-park"}]}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  python3 "$HARNESS_DIR/profile_decide_loop.py" run --root . --legacy . \
+    --backend dry-run --escalate-backend none >/dev/null || return 1
+  if [ -f migration/profile-blocked.json ]; then
+    grep -q 'com.demo.Alpha' migration/profile-blocked.json && return 1
+  fi
+  echo profblockunpark-ok
+}
+check "O-PROFBLOCKUNPARK unparks/reconciles FQN on classify OK" 0 "profblockunpark-ok"
+
+# ADR-32 G-3 / O-PROFREFUSEFIX — upsert refuses non-member evidence (decide path)
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{"units":[{"key":"com.demo.Alpha","kind":"java","legacy_fqn":"com.demo.Alpha",
+ "legacy_path":"src/main/java/com/demo/Alpha.java","findings":[],"decision":null}],
+ "stories":[],"sccs":[],"order":[],"findings":[]}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  set +e
+  python3 "$HARNESS_DIR/profile_roles.py" upsert --root . --legacy . \
+    --fqn com.demo.Alpha --role HARVEST --rationale "invented anchor" \
+    --path src/main/java/com/demo/Alpha.java --line 99 --token Alpha \
+    >/tmp/adr32g3.out 2>/tmp/adr32g3.err
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || return 1
+  grep -qiE 'REFUSE|F-anchor-membership|not in' /tmp/adr32g3.err /tmp/adr32g3.out || return 1
+  python3 -c "import json; d=json.load(open('migration/model.json')); assert d['units'][0].get('decision') in (None, {})" \
+    || return 1
+  echo adr32g3-refuse-ok
+}
+check "ADR-32 G-3 upsert refuses non-member evidence" 0 "adr32g3-refuse-ok"
+
+# O-PROFPROSENOOP refuse fixture — skeleton / writes=0 predicates must fail closed
+run_case() {
+  mkfixture
+  mkdir -p migration
+  cat > migration/architecture-profile.md <<'EOF'
+## 1. Purpose & domain
+(LLM fills this)
+## 2. Components & relationships
+x
+EOF
+  : > /tmp/profprose-empty.log
+  # Predicate 1: skeleton leftover → refuse
+  grep -qE 'LLM fills|^\(LLM fills' migration/architecture-profile.md || return 1
+  # Predicate 2: empty slog has neither harness OK nor edit-tool witness
+  ! grep -qE 'O-PROFPROSEDECOMP: OK' /tmp/profprose-empty.log || return 1
+  ! grep -qiE 'Write|write_file|Edited|applied patch' /tmp/profprose-empty.log || return 1
+  grep -q 'fail_run "M1 PROFILE prose noop (O-PROFPROSENOOP)' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q '_profile_prose_witnessed' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo profprosenoop-refuse-ok
+}
+check "O-PROFPROSENOOP refuse predicates observed (skeleton+writes=0)" 0 "profprosenoop-refuse-ok"
+
+# O-PROFCLASCESC refuse→escalate fixture — fail backend then dry-run escalate lands
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo
+  cat > src/main/java/com/demo/Alpha.java <<'JAVA'
+package com.demo;
+@Entity
+public class Alpha {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{"units":[{"key":"com.demo.Alpha","kind":"java","legacy_fqn":"com.demo.Alpha",
+ "legacy_path":"src/main/java/com/demo/Alpha.java","findings":[],"decision":null}],
+ "stories":[],"sccs":[],"order":[],"findings":[]}
+EOF
+  python3 "$HARNESS_DIR/profile_roles.py" init --root . >/dev/null
+  out=$(python3 "$HARNESS_DIR/profile_decide_loop.py" run --root . --legacy . \
+    --backend fail --retries 1 --escalate-backend dry-run 2>&1) || true
+  echo "$out" | grep -q 'O-PROFCLASCESC: escalate' || return 1
+  echo "$out" | grep -q 'O-PROFSEATARCH: OK com.demo.Alpha' || return 1
+  python3 -c "import json; d=json.load(open('migration/model.json')); assert d['units'][0]['decision']['role'] in ('HARVEST','REDESIGN')" \
+    || return 1
+  echo profclascesc-refuse-ok
+}
+check "O-PROFCLASCESC escalate after primary fail backend" 0 "profclascesc-refuse-ok"
+
+# ---------------------------------------------------------------------------
+# ADR-34 REV-2 — model.order+SCC+role SoT; F-story-source / F-scc-atomic
+# ---------------------------------------------------------------------------
+run_case() {
+  # F-story-source: rationale says HARVEST but typed role=REDESIGN → follow model.
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/rest src/main/java/com/demo/model
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+  validateInput: true
+EOF
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-di-to-quarkus-00000 [rewrite]
+
+- di
+- Decided target: CDI
+- /projects/legacy/src/main/java/com/demo/rest/FooController.java: line 1
+
+## Summary by class
+
+- rewrite: 1 — springboot-di-to-quarkus-00000
+EOF
+  cat > src/main/java/com/demo/rest/FooController.java <<'JAVA'
+package com.demo.rest;
+@RestController
+public class FooController {
+  @GetMapping("/x")
+  public String get() { return "x"; }
+}
+JAVA
+  cat > src/main/java/com/demo/model/Bar.java <<'JAVA'
+package com.demo.model;
+@Entity
+public class Bar {}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.rest.FooController","kind":"java",
+     "legacy_fqn":"com.demo.rest.FooController",
+     "legacy_path":"src/main/java/com/demo/rest/FooController.java",
+     "findings":["springboot-di-to-quarkus-00000"],
+     "decision":{"role":"REDESIGN","rationale":"HARVEST-looking prose must not win",
+       "evidence":{"path":"src/main/java/com/demo/rest/FooController.java","line":2,"token":"@RestController"}}},
+    {"key":"com.demo.model.Bar","kind":"java",
+     "legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":2,"token":"@Entity"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar","com.demo.rest.FooController"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/m2-compose.py" --root . --mode skeleton --force-skeleton 2>&1) || true
+  echo "$out" | grep -q 'source=model' || return 1
+  grep -q 'ADR-34 REV-2 model-partition' migration/roadmap.md || return 1
+  grep -q 'FooController.java' migration/roadmap.md || return 1
+  python3 - <<PY
+import sys
+from pathlib import Path
+import importlib.util
+p = Path(r"$HARNESS_DIR") / "m2-compose.py"
+spec = importlib.util.spec_from_file_location("m2c", p)
+m2c = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m2c)
+stories = m2c.parse_roadmap(Path("migration/roadmap.md").read_text())
+hit = [s for s in stories if "FooController" in (s.get("scope") or "")]
+assert hit, "FooController missing from scope"
+# Plant HARVEST prose on the story — regex alone would say harvestish;
+# typed role=REDESIGN on FooController must win (F-story-source refuse).
+st = dict(hit[0])
+st["rationale"] = "HARVEST characterization model layer"
+st["title"] = "model layer"
+assert m2c._scope_harvestish(st), "fixture setup: prose path should look harvestish"
+assert not m2c._scope_harvestish(st, root=Path(".")), (
+    "F-story-source: typed REDESIGN lost to HARVEST prose"
+)
+print("adr34-story-source-ok")
+PY
+}
+check "ADR-34 F-story-source prefers typed role over HARVEST prose" 0 "adr34-story-source-ok"
+
+run_case() {
+  # F-scc-atomic: SCC members in different path layers stay one story.
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/model src/main/java/com/demo/repository
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-di-to-quarkus-00000 [rewrite]
+
+- di
+- Decided target: CDI
+- /projects/legacy/src/main/java/com/demo/model/Alpha.java: line 1
+
+## Summary by class
+
+- rewrite: 1 — springboot-di-to-quarkus-00000
+EOF
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Alpha","kind":"java","legacy_fqn":"com.demo.model.Alpha",
+     "legacy_path":"src/main/java/com/demo/model/Alpha.java","findings":["springboot-di-to-quarkus-00000"],
+     "scc":"SCC-1",
+     "decision":{"role":"HARVEST","rationale":"a",
+       "evidence":{"path":"src/main/java/com/demo/model/Alpha.java","line":1,"token":"Alpha"}}},
+    {"key":"com.demo.repository.Beta","kind":"java","legacy_fqn":"com.demo.repository.Beta",
+     "legacy_path":"src/main/java/com/demo/repository/Beta.java","findings":[],
+     "scc":"SCC-1",
+     "decision":{"role":"REDESIGN","rationale":"b",
+       "evidence":{"path":"src/main/java/com/demo/repository/Beta.java","line":1,"token":"Beta"}}}
+  ],
+  "sccs":[{"id":"SCC-1","members":["com.demo.model.Alpha","com.demo.repository.Beta"],"cycles":["a->b"]}],
+  "order": ["SCC-1"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  python3 "$HARNESS_DIR/m2-compose.py" --root . --mode skeleton --force-skeleton >/tmp/adr34-scc.out 2>&1 || true
+  grep -q 'source=model' /tmp/adr34-scc.out || return 1
+  python3 - <<PY
+import sys
+from pathlib import Path
+import importlib.util
+sys.path.insert(0, r"$HARNESS_DIR")
+p = Path(r"$HARNESS_DIR") / "m2-compose.py"
+spec = importlib.util.spec_from_file_location("m2c", p)
+m2c = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m2c)
+stories = m2c.parse_roadmap(Path("migration/roadmap.md").read_text())
+# Both paths must share one story (SCC-atomic)
+owners = []
+for s in stories:
+    sc = s.get("scope") or ""
+    has_a = "Alpha.java" in sc
+    has_b = "Beta.java" in sc
+    if has_a or has_b:
+        owners.append((s["sid"], has_a, has_b))
+assert any(a and b for _, a, b in owners), f"SCC split across stories: {owners}"
+print("adr34-scc-atomic-ok")
+PY
+}
+check "ADR-34 F-scc-atomic keeps cross-layer SCC in one story" 0 "adr34-scc-atomic-ok"
+
+run_case() {
+  # Wire: cut_skeleton_stories / skeleton_from_model present; inventory fallback when no decisions.
+  grep -q 'def skeleton_from_model' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'def cut_skeleton_stories' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'ADR-34 REV-2' "$HARNESS_DIR/m2-compose.py" \
+    && grep -q 'model_has_typed_profile_roles' "$HARNESS_DIR/m2-compose.py" \
+    && echo adr34-model-partition-ok
+}
+check "ADR-34 REV-2 model-partition wire in m2-compose" 0 "adr34-model-partition-ok"
+
+# ADR-34 F-story-rendered — assign_stories ignores poisoned roadmap when typed.
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/model src/main/java/com/demo/rest
+  printf '%s\n' 'package com.demo.model;' '@Entity' 'public class Bar {}' \
+    > src/main/java/com/demo/model/Bar.java
+  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class Foo {}' \
+    > src/main/java/com/demo/rest/Foo.java
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Bar","kind":"java","legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":2,"token":"@Entity"}}},
+    {"key":"com.demo.rest.Foo","kind":"java","legacy_fqn":"com.demo.rest.Foo",
+     "legacy_path":"src/main/java/com/demo/rest/Foo.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"endpoint",
+       "evidence":{"path":"src/main/java/com/demo/rest/Foo.java","line":2,"token":"@RestController"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar","com.demo.rest.Foo"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  # Poisoned roadmap: puts BOTH units in S01 only — model path must ignore this.
+  cat > migration/roadmap.md <<'EOF'
+## S01 Poison
+- slug: poison
+- scope: src/main/java/com/demo/model/Bar.java, src/main/java/com/demo/rest/Foo.java
+- deploy: true
+- findings: -
+EOF
+  python3 "$HARNESS_DIR/model.py" assign-stories --root . >/tmp/adr34-render.out 2>&1 || return 1
+  grep -q 'source=model-partition' /tmp/adr34-render.out \
+    || grep -q 'F-story-rendered' /tmp/adr34-render.out || return 1
+  python3 - <<'PY'
+import json
+m=json.load(open("migration/model.json"))
+assert (m.get("provenance") or {}).get("stories_source") == "model-partition"
+stories=m.get("stories") or []
+assert len(stories) >= 2, stories
+# Rest + model layers → separate stories; poison single-story must not win.
+claimed={}
+for s in stories:
+  for u in s.get("units") or []:
+    claimed[u]=s["id"]
+assert claimed.get("com.demo.model.Bar") != claimed.get("com.demo.rest.Foo"), claimed
+assert all(not s.get("deploy") for s in stories[:-1])
+assert stories[-1].get("deploy") is True
+print("adr34-story-rendered-ok")
+PY
+  grep -q 'context-for-m2' "$HARNESS_DIR/model.py" || return 1
+  grep -q 'context-for-m2' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'F-no-discovery' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'STOP_AFTER_M2=1' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'write-stopped.sh' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo adr34-story-rendered-ok
+}
+check "ADR-34 F-story-rendered assign ignores poisoned roadmap" 0 "adr34-story-rendered-ok"
+
+# O-M2SKELDRIFT / W4-540 — skeleton/fill must not invent a story absent from
+# model.stories[] (empty platform from pom finding sites with 0 java units).
+run_case() {
+  mkfixture
+  mkdir -p migration/briefs \
+    src/main/java/com/demo/model src/main/java/com/demo/rest
+  printf '%s\n' 'package com.demo.model;' '@Entity' 'public class Bar {}' \
+    > src/main/java/com/demo/model/Bar.java
+  printf '%s\n' 'package com.demo.rest;' '@RestController' 'public class Foo {}' \
+    > src/main/java/com/demo/rest/Foo.java
+  # Platform rewrite finding on pom.xml — old skeleton_from_model invented S01
+  # Platform with 0 java units while assign_stories_from_model kept 2 stories.
+  cat > migration/findings-inventory.md <<'EOF'
+# Findings inventory
+
+## springboot-parent-pom-to-quarkus-00000 [rewrite]
+
+- Convert parent POM
+- Decided target: Quarkus BOM
+- /projects/legacy/pom.xml: line 1
+
+## demo-entity-00001 [rewrite]
+
+- entity
+- Decided target: jakarta
+- /projects/legacy/src/main/java/com/demo/model/Bar.java: line 2
+
+## Summary by class
+
+- rewrite: 2 — springboot-parent-pom-to-quarkus-00000, demo-entity-00001
+EOF
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Bar","kind":"java","legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java","findings":["demo-entity-00001"],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":2,"token":"@Entity"}}},
+    {"key":"com.demo.rest.Foo","kind":"java","legacy_fqn":"com.demo.rest.Foo",
+     "legacy_path":"src/main/java/com/demo/rest/Foo.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"endpoint",
+       "evidence":{"path":"src/main/java/com/demo/rest/Foo.java","line":2,"token":"@RestController"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar","com.demo.rest.Foo"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  python3 "$HARNESS_DIR/m2-compose.py" --root . --mode skeleton --force-skeleton \
+    >/tmp/m2skeldrift.out 2>&1 || {
+    cat /tmp/m2skeldrift.out
+    return 1
+  }
+  python3 - <<'PY'
+import json, re
+from pathlib import Path
+m=json.load(open("migration/model.json"))
+typed=m.get("stories") or []
+assert typed, "assign_stories did not persist stories[]"
+text=Path("migration/roadmap.md").read_text(encoding="utf-8", errors="replace")
+heads=re.findall(r"(?m)^##\s+(S\d+)\b", text)
+assert len(heads)==len(typed), (heads, [(s.get("id"), s.get("layer")) for s in typed])
+assert not any(s.get("layer")=="platform" for s in typed)
+assert "Platform and BOM" not in text
+print("m2skeldrift-ok")
+PY
+  # Poisoned authored roadmap with extra S06 must be dropped on fill.
+  cat >> migration/roadmap.md <<'EOF'
+
+## S06 Invented leftover
+- scope: src/main/java/com/demo/model/Bar.java
+- deploy: true
+- findings: -
+EOF
+  python3 "$HARNESS_DIR/m2-compose.py" --root . --mode fill \
+    >/tmp/m2skeldrift-fill.out 2>&1 || {
+    cat /tmp/m2skeldrift-fill.out
+    return 1
+  }
+  python3 - <<'PY'
+import json, re
+from pathlib import Path
+m=json.load(open("migration/model.json"))
+typed=len(m.get("stories") or [])
+text=Path("migration/roadmap.md").read_text(encoding="utf-8", errors="replace")
+heads=re.findall(r"(?m)^##\s+(S\d+)\b", text)
+assert len(heads)==typed and "S06" not in heads, heads
+briefs=sorted(p.name for p in Path("migration/briefs").glob("S*.md"))
+assert all(not n.startswith("S06") for n in briefs), briefs
+print("m2skeldrift-ok")
+PY
+  echo m2skeldrift-ok
+}
+check "O-M2SKELDRIFT skeleton/fill == model.stories[] (no empty platform invent)" 0 "m2skeldrift-ok"
+
+# ADR-38 — context-for-m2 emits SNIPPET text for cite= (not pointers alone);
+# generated paths never appear as cite=.
+run_case() {
+  mkfixture
+  mkdir -p src/main/java/com/demo/model target/generated
+  printf '%s\n' \
+    'package com.demo.model;' \
+    '' \
+    'import jakarta.persistence.Entity;' \
+    '' \
+    '@Entity' \
+    'public class Bar {}' \
+    > src/main/java/com/demo/model/Bar.java
+  printf '%s\n' 'generated' > target/generated/X.java
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Bar","kind":"java","legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":5,"token":"@Entity"}}},
+    {"key":"com.demo.gen.X","kind":"java","legacy_fqn":"com.demo.gen.X",
+     "legacy_path":"target/generated/X.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"gen",
+       "evidence":{"path":"target/generated/X.java","line":1,"token":"generated"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar","com.demo.gen.X"],
+  "findings": [],
+  "stories": [
+    {"id":"S01","slug":"domain-model","units":["com.demo.model.Bar","com.demo.gen.X"],
+     "findings":[],"deploy":true,"layer":"model"}
+  ],
+  "provenance": {"stories_source":"model-partition"}
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/model.py" context-for-m2 --root . 2>/dev/null) || return 1
+  echo "$out" | grep -q 'O-ADR38' || return 1
+  echo "$out" | grep -q 'SNIPPET:' || return 1
+  echo "$out" | grep -q 'L5:@Entity' || return 1
+  echo "$out" | grep -q 'adr38_snippets=1' || return 1
+  # Generated cite must be omitted (refuse in projection).
+  echo "$out" | grep -q 'cite=target/generated' && return 1
+  echo "$out" | grep -q 'F-no-discovery / ADR-38' || return 1
+  grep -q 'snippet_at_path_line' "$HARNESS_DIR/profile_anchors.py" || return 1
+  grep -q 'ADR-38' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo adr38-snippet-ok
+}
+check "ADR-38 context-for-m2 projects SNIPPET text; refuses generated cites" 0 "adr38-snippet-ok"
+
+# ---------------------------------------------------------------------------
+# O-PROFTCCONSTANT — per-unit ∩ evidence (refuse global constant stamp)
+# ---------------------------------------------------------------------------
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/rest src/main/java/com/demo/service
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+  validateInput: true
+  cacheRefreshGuard: true
+  mapErrors: true
+EOF
+  # Rest: GET only — must NOT receive cacheRefreshGuard
+  cat > src/main/java/com/demo/rest/GetOnly.java <<'JAVA'
+package com.demo.rest;
+@RestController
+public class GetOnly {
+  @GetMapping("/a")
+  public String a() { return "a"; }
+}
+JAVA
+  # Service: @Valid only — must NOT receive getIdempotent
+  cat > src/main/java/com/demo/service/ValidOnly.java <<'JAVA'
+package com.demo.service;
+@Service
+public class ValidOnly {
+  public void save(@Valid Object o) {}
+}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.rest.GetOnly","kind":"java","legacy_fqn":"com.demo.rest.GetOnly",
+     "legacy_path":"src/main/java/com/demo/rest/GetOnly.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"rest",
+       "evidence":{"path":"src/main/java/com/demo/rest/GetOnly.java","line":2,"token":"@RestController"}}},
+    {"key":"com.demo.service.ValidOnly","kind":"java","legacy_fqn":"com.demo.service.ValidOnly",
+     "legacy_path":"src/main/java/com/demo/service/ValidOnly.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"svc",
+       "evidence":{"path":"src/main/java/com/demo/service/ValidOnly.java","line":2,"token":"@Service"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.rest.GetOnly","com.demo.service.ValidOnly"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  out=$(python3 - <<PY
+import sys
+from pathlib import Path
+sys.path.insert(0, r"$HARNESS_DIR")
+from profile_roles import apply_declared_target_contracts
+import json
+n = apply_declared_target_contracts(Path("."))
+m = json.loads(Path("migration/model.json").read_text())
+by = {u["key"]: (u.get("decision") or {}).get("target_contract") for u in m["units"]}
+g = by["com.demo.rest.GetOnly"] or {}
+v = by["com.demo.service.ValidOnly"] or {}
+assert g.get("getIdempotent") is True, g
+assert "cacheRefreshGuard" not in g, g
+assert v.get("validateInput") is True, v
+assert "getIdempotent" not in v, v
+# Distinct contents — the constant stamp is refused
+assert g != v, (g, v)
+print("proftcconstant-ok")
+print("stamped", n)
+PY
+) || return 1
+  echo "$out" | grep -q 'proftcconstant-ok' || return 1
+  echo proftcconstant-ok
+}
+check "O-PROFTCCONSTANT stamps per-unit ∩ evidence (distinct contracts)" 0 "proftcconstant-ok"
+
+run_case() {
+  # Refuse: surface unit with no local shape evidence must not get global blob
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/service
+  cat > migration.yaml <<'EOF'
+targetContract:
+  getIdempotent: true
+  validateInput: true
+  cacheRefreshGuard: true
+  mapErrors: true
+EOF
+  cat > src/main/java/com/demo/service/PlainService.java <<'JAVA'
+package com.demo.service;
+@Service
+public class PlainService {
+  public int n() { return 1; }
+}
+JAVA
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.service.PlainService","kind":"java","legacy_fqn":"com.demo.service.PlainService",
+     "legacy_path":"src/main/java/com/demo/service/PlainService.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"plain",
+       "evidence":{"path":"src/main/java/com/demo/service/PlainService.java","line":2,"token":"@Service"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.service.PlainService"],
+  "findings": [],
+  "stories": []
+}
+EOF
+  python3 - <<PY
+import sys, json
+from pathlib import Path
+sys.path.insert(0, r"$HARNESS_DIR")
+from profile_roles import apply_declared_target_contracts
+apply_declared_target_contracts(Path("."))
+m = json.loads(Path("migration/model.json").read_text())
+tc = (m["units"][0].get("decision") or {}).get("target_contract")
+assert not tc, f"refuse global constant stamp, got {tc}"
+print("proftcconstant-refuse-ok")
+PY
+}
+check "O-PROFTCCONSTANT refuses global stamp without unit evidence" 0 "proftcconstant-refuse-ok"
+
+# ---------------------------------------------------------------------------
+# W4-526 PART B — F-scope-width (constant claim across N>1 → RED)
+# ---------------------------------------------------------------------------
+run_case() {
+  mkfixture
+  mkdir -p migration src/main/java/com/demo/rest
+  cat > src/main/java/com/demo/rest/A.java <<'JAVA'
+package com.demo.rest;
+@RestController
+public class A { @GetMapping("/a") String a(){return "a";} }
+JAVA
+  cat > src/main/java/com/demo/rest/B.java <<'JAVA'
+package com.demo.rest;
+@RestController
+public class B { @GetMapping("/b") String b(){return "b";} }
+JAVA
+  # Same target_contract blob on both — distinct=1 → RED
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.rest.A","kind":"java","legacy_fqn":"com.demo.rest.A",
+     "legacy_path":"src/main/java/com/demo/rest/A.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"controller A unique text",
+       "evidence":{"path":"src/main/java/com/demo/rest/A.java","line":2,"token":"@RestController"},
+       "target_contract":{"getIdempotent":true,"validateInput":true,"decisive":["404-on-missing","400/@Valid"]}}},
+    {"key":"com.demo.rest.B","kind":"java","legacy_fqn":"com.demo.rest.B",
+     "legacy_path":"src/main/java/com/demo/rest/B.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"controller B different rationale",
+       "evidence":{"path":"src/main/java/com/demo/rest/B.java","line":2,"token":"@RestController"},
+       "target_contract":{"getIdempotent":true,"validateInput":true,"decisive":["404-on-missing","400/@Valid"]}}}
+  ],
+  "sccs": [], "order": ["com.demo.rest.A","com.demo.rest.B"], "findings": [], "stories": []
+}
+EOF
+  python3 - <<PY
+import sys
+from pathlib import Path
+sys.path.insert(0, r"$HARNESS_DIR")
+from profile_roles import evaluate_roles, _scope_width_problems
+ev = evaluate_roles(Path("."), legacy=".")
+probs = [p for p in ev["problems"] if "scope-width" in p]
+assert probs, f"expected F-scope-width RED, got {ev['problems']}"
+# Control: vary contracts → silent
+from copy import deepcopy
+import json
+m = json.loads(Path("migration/model.json").read_text())
+m["units"][1]["decision"]["target_contract"] = {"getIdempotent": True, "decisive": ["404-on-missing"]}
+Path("migration/model.json").write_text(json.dumps(m))
+ev2 = evaluate_roles(Path("."), legacy=".")
+probs2 = [p for p in ev2["problems"] if "scope-width" in p]
+assert not probs2, f"varying contracts must stay silent, got {probs2}"
+print("fscopewidth-ok")
+PY
+}
+check "F-scope-width REDs constant claim; silent when distinct>1" 0 "fscopewidth-ok"
+
+# ---------------------------------------------------------------------------
+# W4-526 PART C — archive_tmp_forensics includes M1 PROFILE globs
+# ---------------------------------------------------------------------------
+run_case() {
+  grep -q 'profile-rubric.txt' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'outer-m1-profile-\*.log' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'profile-prose-s\*.log' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'profile-classify-\*.log' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'W4-526 PART C' "$HARNESS_DIR/outer-loop.sh" \
+    && echo profarchive-globs-ok
+}
+check "O-TMPARCHIVE copies M1 PROFILE forensic globs (W4-526 PART C)" 0 "profarchive-globs-ok"
+
+# O-M2SEATARCH / W4-543 P2 — M2 seat + projection survive STOP/wipe
+run_case() {
+  grep -q 'outer-m2-sequence-\*.log' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm2-projected-facts.txt' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'm2-compose.txt' "$HARNESS_DIR/outer-loop.sh" \
+    && grep -q 'O-M2SEATARCH' "$HARNESS_DIR/outer-loop.sh" \
+    && echo m2seatarch-globs-ok
+}
+check "O-TMPARCHIVE copies M2 SEQUENCE forensic globs (O-M2SEATARCH)" 0 "m2seatarch-globs-ok"
+
+# ---------------------------------------------------------------------------
+# O-M3SNIPPET / ADR-40 — context-for projects SNIPPET like context-for-m2
+# ---------------------------------------------------------------------------
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model target/generated migration
+  printf '%s\n' \
+    'package com.demo.model;' \
+    '' \
+    'import jakarta.persistence.Entity;' \
+    '' \
+    '@Entity' \
+    'public class Bar {}' \
+    > src/main/java/com/demo/model/Bar.java
+  printf '%s\n' 'generated' > target/generated/X.java
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Bar","kind":"java","legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":5,"token":"@Entity"}}},
+    {"key":"com.demo.gen.X","kind":"java","legacy_fqn":"com.demo.gen.X",
+     "legacy_path":"target/generated/X.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"gen",
+       "evidence":{"path":"target/generated/X.java","line":1,"token":"generated"}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar","com.demo.gen.X"],
+  "findings": [],
+  "stories": [
+    {"id":"S01","slug":"domain-model","units":["com.demo.model.Bar","com.demo.gen.X"],
+     "findings":[],"deploy":true,"layer":"model"}
+  ],
+  "tasks": [],
+  "provenance": {"stories_source":"model-partition"}
+}
+EOF
+  out=$(python3 "$HARNESS_DIR/model.py" context-for S01 --root . 2>/dev/null) || return 1
+  echo "$out" | grep -q 'O-M3SNIPPET' || return 1
+  echo "$out" | grep -q 'SNIPPET:' || return 1
+  echo "$out" | grep -q 'L5:@Entity' || return 1
+  echo "$out" | grep -q 'm3snip_snippets=1' || return 1
+  echo "$out" | grep -q 'cite=target/generated' && return 1
+  echo m3snip-ok
+}
+check "O-M3SNIPPET context-for projects SNIPPET text; refuses generated cites" 0 "m3snip-ok"
+
+# ---------------------------------------------------------------------------
+# ADR-35 / ADR-40 — typed tasks + derived acceptance + write-inversion refuse
+# ---------------------------------------------------------------------------
+run_case() {
+  mkfix
+  mkdir -p src/main/java/com/demo/model migration/briefs
+  printf '%s\n' 'package com.demo.model; public class Bar {}' \
+    > src/main/java/com/demo/model/Bar.java
+  cat > migration/briefs/S01-domain-model.md <<'EOF'
+# S01
+EOF
+  cat > migration/model.json <<'EOF'
+{
+  "units": [
+    {"key":"com.demo.model.Bar","kind":"java","legacy_fqn":"com.demo.model.Bar",
+     "legacy_path":"src/main/java/com/demo/model/Bar.java",
+     "target_path":"src/main/java/com/demo/model/Bar.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"entity",
+       "evidence":{"path":"src/main/java/com/demo/model/Bar.java","line":1,"token":"Bar"},
+       "target_contract":{"getIdempotent":true}}}
+  ],
+  "sccs": [],
+  "order": ["com.demo.model.Bar"],
+  "findings": [],
+  "stories": [
+    {"id":"S01","slug":"domain-model","units":["com.demo.model.Bar"],
+     "findings":[],"deploy":false,"layer":"model"}
+  ],
+  "provenance": {}
+}
+EOF
+  python3 "$HARNESS_DIR/model.py" assign-tasks --root . >/tmp/adr35-assign.out 2>&1 || return 1
+  python3 "$HARNESS_DIR/model.py" render-tasks --root . --sid S01 >/tmp/adr35-render.out 2>&1 || return 1
+  python3 - <<'PY' || return 1
+import json
+from pathlib import Path
+m = json.loads(Path("migration/model.json").read_text())
+assert m.get("tasks"), "tasks missing"
+t = m["tasks"][0]
+assert t["id"].startswith("S01-T-"), t["id"]
+assert "byte-fidelity" in " ".join(t.get("acceptance") or [])
+assert Path("specs/S01-domain-model/tasks.md").is_file()
+text = Path("specs/S01-domain-model/tasks.md").read_text()
+assert t["id"] in text
+assert "O-M3TYPED" in text
+print("typed-ok")
+PY
+  # F-taskid-generated refuse
+  if python3 "$HARNESS_DIR/m3_task_loop.py" upsert --root . \
+      --unit-key com.demo.model.Bar \
+      --goal "Migrates Bar with harness acceptance applied here xx." \
+      --forbid-id "SEAT-ID" \
+      >/tmp/adr35-refuse-id.out 2>&1; then
+    echo "expected id refuse" >&2
+    return 1
+  fi
+  grep -q 'F-taskid-generated' /tmp/adr35-refuse-id.out || return 1
+  # F-acceptance-derived refuse
+  if python3 "$HARNESS_DIR/m3_task_loop.py" upsert --root . \
+      --unit-key com.demo.model.Bar \
+      --goal "Migrates Bar with harness acceptance applied here yy." \
+      --forbid-acceptance "seat-wrote-this" \
+      >/tmp/adr35-refuse-acc.out 2>&1; then
+    echo "expected acceptance refuse" >&2
+    return 1
+  fi
+  grep -q 'F-acceptance-derived' /tmp/adr35-refuse-acc.out || return 1
+  # dry-run fill + wiring
+  python3 "$HARNESS_DIR/m3_task_loop.py" run --root . --sid S01 --backend dry-run \
+    >/tmp/adr35-loop.out 2>&1 || return 1
+  grep -q 'M3_TYPED_LOOP' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'm3_task_loop.py' "$HARNESS_DIR/outer-loop.sh" || return 1
+  echo adr35-typed-ok
+}
+check "ADR-35 typed tasks + derived acceptance + write-inversion refuse + dry-run" 0 "adr35-typed-ok"
 
 echo "----"
 echo "$PASS/$N passed"

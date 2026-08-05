@@ -81,6 +81,9 @@ HEARTBEAT_SECS="${OUTER_LOOP_HEARTBEAT_SECS:-60}"
 # WORKER_M3_FIRST=true). Set WORKER_M3_FIRST=true only for explicit Qwen-draft A/B.
 # Inline ${WORKER_M3_FIRST:-…} defaults below MUST match this line.
 WORKER_M3_FIRST="${WORKER_M3_FIRST:-false}"
+# ADR-35/40 — typed model.tasks[] + write-inversion Qwen loop (default ON).
+# Set M3_TYPED_LOOP=0 to force legacy MiniMax edit-tasks.md path.
+M3_TYPED_LOOP="${M3_TYPED_LOOP:-1}"
 M3_WORKER_ATTEMPTS="${M3_WORKER_ATTEMPTS:-2}"
 M3_ORCH_BACKSTOP="${M3_ORCH_BACKSTOP:-2}"
 # O-M3ALL: after M2, author all story plans before any M4 (default on).
@@ -158,17 +161,26 @@ log_gchain_banner() {
   log "         stage produced actually derived from what the previous stage gave it?"
   log "         M1: G1/G2 · M2: G3/G6/G7/G8 · M3: G4 (inline) · M3 authoring: G5/G9"
 }
-# M1 PROFILE gate → G1 + G2 (from /tmp/profile-rubric.txt)
+# M1 PROFILE gate → G1 + G2 (problem lists from live rubric) + coverage from
+# evaluate_roles SoT (O-PROFCOVSTALE — never grep stale COVERAGE: from rubric).
 log_gchain_m1_profile() { # $1=GREEN|RED (overall rubric; narrated separately)
-  local gate="${1:-}" ct pv cov
+  local gate="${1:-}" ct pv cov named total authored emiss fields
   ct=$(_count_re /tmp/profile-rubric.txt 'RUBRIC:claimtruth')
   pv=$(_count_re /tmp/profile-rubric.txt 'RUBRIC:profvocab')
-  cov=$(grep -E '^COVERAGE:' /tmp/profile-rubric.txt 2>/dev/null | tail -1 | sed 's/^COVERAGE:[[:space:]]*//' || true)
-  [ -n "$cov" ] || cov="(no COVERAGE line)"
+  fields=$(_profile_cov_fields || true)
+  named=$(echo "$fields" | awk '{print $1}')
+  total=$(echo "$fields" | awk '{print $2}')
+  authored=$(echo "$fields" | awk '{print $3}')
+  emiss=$(echo "$fields" | awk '{print $4}')
+  if [ -n "${named:-}" ] && [ -n "${total:-}" ]; then
+    cov="${named}/${total} named (authored=${authored:-?} evidence_miss=${emiss:-?} · evaluate_roles SoT)"
+  else
+    cov="(evaluate_roles unavailable)"
+  fi
   if [ "${ct:-0}" -eq 0 ]; then
     log_ground "G1" "PASS" \
       "Does the architecture profile only claim things that exist in the legacy source?" \
-      "0 claimtruth findings — every §7 cited token resolves in the cited legacy file (rubric ${gate})"
+      "0 claimtruth findings — every §7 (Class Roles & Target Contract) cited token resolves in the cited legacy file (rubric ${gate})"
   else
     log_ground "G1" "FAIL" \
       "Does the architecture profile only claim things that exist in the legacy source?" \
@@ -184,6 +196,27 @@ log_gchain_m1_profile() { # $1=GREEN|RED (overall rubric; narrated separately)
       "${pv} vocab findings — see /tmp/profile-rubric.txt (rubric ${gate})"
   fi
   log "         coverage ${cov} · G3/G5/G6/G9 checked at later stages"
+}
+# O-PROFSECTIONS — after PROFILE GREEN, keep a full §§1–7 dump in a side file
+# and put only a compact summary in outer-loop.log (O-PROFSECTIONNOISE / W5-093:
+# reprinting every §7 role bullet polluted the live progress log).
+log_architecture_profile_sections() {
+  local p="${1:-migration/architecture-profile.md}"
+  if [ ! -f "$p" ]; then
+    log "         O-PROFSECTIONS: $p missing — cannot log §§1–7"
+    return 0
+  fi
+  log "PROFILE  architecture-profile.md — sections 1–7"
+  # Full forensic dump (not mirrored line-by-line into outer-loop.log).
+  python3 "$HARNESS/profile_sections_log.py" "$p" \
+    > /tmp/outer-m1-profile-sections.log 2>&1 || true
+  # Compact summary for the live progress sink.
+  python3 "$HARNESS/profile_sections_log.py" --summary "$p" \
+    > /tmp/outer-m1-profile-sections-summary.log 2>&1 || true
+  while IFS= read -r _ps; do
+    log "         ${_ps}"
+  done < /tmp/outer-m1-profile-sections-summary.log
+  return 0
 }
 # M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
 log_gchain_m2_roadmap() { # $1=GREEN|RED
@@ -217,11 +250,11 @@ log_gchain_m2_roadmap() { # $1=GREEN|RED
   fi
   if [ "${fresh:-0}" -eq 0 ]; then
     log_ground "G8" "PASS" \
-      "Are the briefs still derived from the current profile §7 (not a stale paste after M1 corrected)?" \
-      "0 freshness findings — brief hashes include profile §7 digest (roadmap ${gate})"
+      "Are the briefs still derived from the current profile §7 (Class Roles & Target Contract) (not a stale paste after M1 corrected)?" \
+      "0 freshness findings — brief hashes include profile §7 (Class Roles & Target Contract) digest (roadmap ${gate})"
   else
     log_ground "G8" "FAIL" \
-      "Are the briefs still derived from the current profile §7 (not a stale paste after M1 corrected)?" \
+      "Are the briefs still derived from the current profile §7 (Class Roles & Target Contract) (not a stale paste after M1 corrected)?" \
       "${fresh} freshness findings — ${lintf} (roadmap ${gate})"
   fi
 }
@@ -540,8 +573,11 @@ _outer_heartbeat_start() { # $1=title $2=t0 $3=slog $4=kind → sets hb_pid
 #!/usr/bin/env bash
 # outer-loop-heartbeat — not the outer loop itself
 # O-HBORPHAN: exit when parent outer-loop dies (ppid=1 survivors polluted the log).
+# O-PROFDECIDEHB: optional /tmp/outer-heartbeat-progress.txt (one line) is appended
+# so long harness loops (ADR-32 Qwen classify) show typed=N/M like MiniMax seats.
 SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"
 LOG="${5:-/tmp/outer-loop.log}"; KIND="${6:-orchestrator}"; PARENT="${7:-}"
+PROG="${8:-/tmp/outer-heartbeat-progress.txt}"
 while true; do
   if [ -n "$PARENT" ] && ! kill -0 "$PARENT" 2>/dev/null; then
     exit 0
@@ -551,15 +587,20 @@ while true; do
     exit 0
   fi
   now=$(date +%s); elapsed=$((now - T0))
+  extra=""
+  if [ -f "$PROG" ]; then
+    extra=" — $(tr -d '\n' <"$PROG" | head -c 200)"
+  fi
   if [ "$KIND" = "orchestrator" ] && grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
-    echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s) — details ${SLOG}" >> "$LOG"
+    echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s)${extra} — details ${SLOG}" >> "$LOG"
   else
-    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on ${KIND} (${elapsed}s) — details ${SLOG}" >> "$LOG"
+    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on ${KIND} (${elapsed}s)${extra} — details ${SLOG}" >> "$LOG"
   fi
 done
 HBEOF
   chmod +x /tmp/outer-loop-heartbeat.sh
-  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" "$kind" "$parent" &
+  /tmp/outer-loop-heartbeat.sh "$HEARTBEAT_SECS" "$title" "$t0" "$slog" "$LOG" "$kind" "$parent" \
+    /tmp/outer-heartbeat-progress.txt &
   hb_pid=$!
 }
 
@@ -629,9 +670,11 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   kill "$hb_pid" 2>/dev/null || true
   wait "$hb_pid" 2>/dev/null || true
   now=$(date +%s)
+  rm -f /tmp/outer-last-mchat-ratelimit
   if grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$slog" 2>/dev/null; then
-    # O-ORCH429BACKOFF / O-M2-429: do not claim a backoff here — callers
-    # (M2/M3) must NOT-spend + sleep themselves (session≠gate).
+    # O-ORCH429BACKOFF / O-M2-429 / O-PROF1OF79STOP: do not claim a backoff
+    # here — callers must NOT-spend + sleep / stop themselves (session≠gate).
+    echo 1 > /tmp/outer-last-mchat-ratelimit
     log "         ${title}: MiniMax rate limit seen in session log (hermes_rc=${rc}) — caller must NOT-spend + backoff"
   fi
   log "·        ${title} session finished ($((now - t0))s, hermes_rc=${rc}) — checking gate next (session≠gate)"
@@ -639,6 +682,31 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   # only the M2 call site — ff2664b proved M3 scoops too.
   scrub_hermes_scoop "M-hygiene"
   return $rc
+}
+
+# O-PROFCOVSTALE / O-PROF1OF79STOP — coverage for gates comes from evaluate_roles
+# SoT (model.units[].decision), never from a stale /tmp/profile-rubric.txt parse.
+# Rubric text remains a human-facing side effect only.
+# Prints: named total authored evidence_miss  (space-separated); empty on fail.
+_profile_cov_fields() {
+  local _legacy="${PROFILE_LEGACY_ROOT:-/projects/legacy}"
+  python3 - "$_legacy" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(".hermes/harness").resolve()))
+try:
+    from profile_roles import evaluate_roles
+except Exception:
+    sys.exit(0)
+root = Path(".").resolve()
+if not (root / "migration" / "model.json").is_file():
+    sys.exit(0)
+ev = evaluate_roles(root, legacy=sys.argv[1] if len(sys.argv) > 1 else "/projects/legacy")
+print(
+    f"{int(ev.get('named') or 0)} {int(ev.get('total') or 0)} "
+    f"{int(ev.get('authored') or 0)} {int(ev.get('evidence_miss') or 0)}"
+)
+PY
 }
 
 # O-M3QWENSTALL: OpenCode JSON log has write/edit tools (not bash/read-only).
@@ -798,11 +866,26 @@ archive_tmp_forensics() {
   mkdir -p "$_arch" 2>/dev/null || true
   if [ -d "$_arch" ]; then
     shopt -s nullglob
+    # W4-526 PART C — M1 PROFILE forensics (profile-rubric + prose/decide logs).
+    # O-M2SEATARCH / W4-543 P2 — M2 SEQUENCE seat + projection forensics
+    # (hermes transcript is not OpenCode JSONL; without these globs C5 probes
+    # lose their known-positive control across STOP/wipe).
+    # Durable form remains ADR-36 scoped artifacts; these globs are the minimum
+    # so a RED (e.g. genassert) survives the next wipe.
     for p in \
       /tmp/supervisor.log /tmp/outer-loop.log /tmp/kill-ledger.log \
       /tmp/findings-delta.txt /tmp/outer-git-push.log \
       /tmp/escalation-cause-*.txt /tmp/oc-*.json /tmp/oc-*.err \
-      /tmp/sensor-*.log /tmp/sonar-violations.txt
+      /tmp/sensor-*.log /tmp/sonar-violations.txt \
+      /tmp/profile-rubric.txt \
+      /tmp/outer-m1-profile-*.log \
+      /tmp/profile-prose-s*.log \
+      /tmp/profile-classify-*.log \
+      /tmp/outer-m2-sequence-*.log \
+      /tmp/m2-projected-facts.txt \
+      /tmp/m2-compose.txt \
+      /tmp/roadmap-lint.txt \
+      /tmp/roadmap-lint-m2exit.txt
     do
       cp -a "$p" "$_arch/" 2>/dev/null || true
     done
@@ -1000,46 +1083,278 @@ fi
 if m1_profile_green; then
   phase_ok "M1 PROFILE — architecture-profile.md rubric-green + provenance-matched (O-M1SKIPPROV)"
   log_gchain_m1_profile GREEN
+  log_architecture_profile_sections migration/architecture-profile.md
 else
   if [ -f migration/architecture-profile.md ]; then
     log "         O-M1SKIPPROV: profile present but rubric/provenance RED — re-running PROFILE"
   fi
-  for ATTEMPT in 1 2; do
-    phase_start "M1 PROFILE — architecture profile (class roles & target contract) [attempt ${ATTEMPT}/2]"
-    # O-PROFBESTOBS: stage-local best starts empty; RED attempts raise it.
-    if [ "$ATTEMPT" = "1" ]; then
-      rm -f migration/.profile-coverage-best
+  # O-PROFRUBRICWIPE / W4-495 / W4-496 — drop stale rubric text before PROFILE.
+  # Otherwise log_gchain_m1_profile greps claimtruth/profvocab from a prior run's
+  # /tmp/profile-rubric.txt (live cold wipe left COVERAGE 79/79 with decided=0).
+  rm -f /tmp/profile-rubric.txt
+  # ADR-27: model-projected §7 skeleton BEFORE any MiniMax seat (checklist, not blank page).
+  if [ -f migration/model.json ]; then
+    python3 "$HARNESS/model.py" emit-profile-skeleton --root . \
+      > /tmp/outer-m1-profile-skeleton.log 2>&1 \
+      || log "         WARN: profile skeleton emit failed (see /tmp/outer-m1-profile-skeleton.log)"
+    while IFS= read -r _sk; do
+      [ -n "$_sk" ] && log "         $_sk"
+    done < <(grep '^O-ADR27' /tmp/outer-m1-profile-skeleton.log 2>/dev/null || true)
+  fi
+  # ADR-27: NEVER git checkout -- migration/ on PROFILE bounce (keep dirty profile).
+  # ADR-32 / O-PROFSEATARCH — harness decide loop (default). Legacy MiniMax
+  # N=20 mchat batches: PROFILE_DECIDE_ENGINE=batch-mchat (containment only).
+  # Hourly MiniMax quota is NOT helped by more seats — prefer Qwen classify.
+  PROFILE_DECIDE_ENGINE="${PROFILE_DECIDE_ENGINE:-harness-loop}"
+  PROFILE_CLASSIFY_BACKEND="${PROFILE_CLASSIFY_BACKEND:-opencode-qwen}"
+  PROFILE_PROSE_BACKEND="${PROFILE_PROSE_BACKEND:-opencode-qwen}"
+  PROFILE_DECISION_BATCH="${PROFILE_DECISION_BATCH:-20}"
+  PROFILE_A2_MIN_RATIO="${PROFILE_A2_MIN_RATIO:-0.50}"
+  PROFILE_MAX_DECISION_BATCHES="${PROFILE_MAX_DECISION_BATCHES:-6}"
+  PROFILE_CLASSIFY_TIMEOUT="${PROFILE_CLASSIFY_TIMEOUT:-180}"
+  PROFILE_DECIDE_PASSES="${PROFILE_DECIDE_PASSES:-2}"
+  rm -f migration/.profile-coverage-best
+
+  _profile_close_and_grade() {
+    python3 "$HARNESS/profile_close.py" migration/architecture-profile.md --root . \
+      > /tmp/outer-m1-profile-close.log 2>&1 || true
+    while IFS= read -r _cl; do
+      [ -n "$_cl" ] && log "         $_cl"
+    done < <(grep '^CLOSE:' /tmp/outer-m1-profile-close.log 2>/dev/null || true)
+    if [ -f migration/architecture-profile.md ] && \
+       python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md /projects/legacy/src \
+         > /tmp/profile-rubric.txt 2>&1; then
+      return 0
     fi
-    # O-M1PROFRETRYINLINE: attempt ≥2 inlines rubric RED (do not rely on file read).
-    _prof_retry_extra=""
-    if [ "$ATTEMPT" -ge 2 ] && [ -f /tmp/profile-rubric.txt ]; then
-      _prof_retry_extra="
-O-M1PROFRETRYINLINE — previous attempt failed the rubric. Fix EVERY line below (inlined):
-$(head -c 4000 /tmp/profile-rubric.txt | head -n 40)
-Also O-PROFBESTOBS: do not reduce class coverage below the best COVERAGE line already observed this stage.
-"
+    return 1
+  }
+  _profile_commit_green() {
+    local msg="$1"
+    python3 "$HARNESS/m1-provenance.py" write-profile --root . --legacy /projects/legacy \
+      > /tmp/m1-profile-stamp-write.txt 2>&1 || true
+    [ -n "$(git status --porcelain migration/)" ] && git add migration/ && \
+      git commit -q -m "$msg" 2>/dev/null || true
+    phase_gate "M1 PROFILE rubric" GREEN "architecture-profile.md; commit $(git rev-parse --short HEAD)"
+    log_gchain_m1_profile GREEN
+    log "         • migration/architecture-profile.md (§7 Class Roles & Target Contract — rendered from model decisions)"
+    log "         • migration/.m1-profile.stamp.json (O-M1SKIPPROV)"
+    log_architecture_profile_sections migration/architecture-profile.md
+    phase_ok "M1 PROFILE — architecture-profile.md rubric-green; commit $(git rev-parse --short HEAD)"
+  }
+  _profile_batch_derived() {
+    if [ ! -f migration/model.json ]; then
+      echo ""
+      return 0
     fi
-    mchat "m1-profile-a${ATTEMPT}" \
-"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md). Execute the M1 profile step ONLY: read the legacy code under /projects/legacy and write migration/architecture-profile.md per ANALYSIS.md. A deterministic rubric gates it — verify yourself with: python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy/src (must exit 0 — it cross-checks that every CDI/JAX-RS class is classified REDESIGN in section 7; O-RUBRICGENSRC excludes target/generated-sources from the walk; O-RUBRICGENASSERT refuses §7 HARVEST/REDESIGN on MapperImpl/generated-sources; O-PROFDENSITY requires ≥max(80%, previous accepted) class coverage; cite src/ paths, rule ids, *Test, or migration/dependency-order.md) BEFORE committing. Finish with ONE commit whose message STARTS with 'M1 profile:'. DO NOT PUSH. Keep the session packet tight; do not paste whole files into the profile (O-CTX).${_prof_retry_extra}" \
+    python3 "$HARNESS/model.py" context-for-profile --root . \
+      --undecided-only --limit "$PROFILE_DECISION_BATCH" \
+      --legacy /projects/legacy 2>/dev/null | head -c 32000 || true
+  }
+  _profile_harness_decide() {
+    # O-PROFDECIDEHB — same 60s outer-loop cadence as mchat/wchat. The decide
+    # loop is a long synchronous python process (not a wchat seat), so without
+    # an explicit heartbeat the log goes silent for tens of minutes while Qwen
+    # classifies units — looks stuck to operators/demo viewers.
+    local pass_i="$1" t0 hb_pid slog _dl _rc
+    t0=$(date +%s)
+    slog="/tmp/outer-m1-profile-decide-${pass_i}.log"
+    phase_start "M1 PROFILE — class-role decide loop [${pass_i}/${PROFILE_DECIDE_PASSES}] (${PROFILE_CLASSIFY_BACKEND})"
+    log "         Actor: harness profile_decide_loop + $(worker_label) classify — session decide-${pass_i} → ${slog}"
+    : > /tmp/outer-heartbeat-progress.txt
+    printf 'typed=0/? active=starting pass=%s\n' "$pass_i" > /tmp/outer-heartbeat-progress.txt
+    _outer_heartbeat_start "M1 PROFILE decide" "$t0" "$slog" worker
+    # PYTHONUNBUFFERED: OK/FAIL lines must hit slog in real time (else heartbeat
+    # and operators only see retries after the whole pass ends).
+    # O-PROFLOOPRC (W4-478): never `cmd || true; _rc=$?` — that captures `true`'s
+    # rc and fabricates loop_rc=0. Match mchat: run, then read the real status.
+    set +e
+    PYTHONUNBUFFERED=1 python3 "$HARNESS/profile_decide_loop.py" run --root . --legacy /projects/legacy \
+      --backend "$PROFILE_CLASSIFY_BACKEND" \
+      --worker-model "$WORKER_MODEL" \
+      --unit-timeout "$PROFILE_CLASSIFY_TIMEOUT" \
+      > "$slog" 2>&1
+    _rc=$?
+    set -e
+    kill "$hb_pid" 2>/dev/null || true
+    wait "$hb_pid" 2>/dev/null || true
+    rm -f /tmp/outer-heartbeat-progress.txt
+    log "·        M1 PROFILE decide pass ${pass_i} finished ($(( $(date +%s) - t0 ))s, loop_rc=${_rc}) — checking gate next (session≠gate)"
+    # O-PROFSEATNOISE / W5-105: per-unit OK FQNs stay in ${slog}; outer-loop.log
+    # only mirrors the done summary + FAIL/RETRY/SKIP/escalate (demo-facing).
+    _ok_n=$(grep -cE '^O-PROFSEATARCH: OK ' "$slog" 2>/dev/null || true)
+    log "         O-PROFSEATARCH: ${_ok_n:-0} unit OK lines → ${slog} (not reprinted here)"
+    while IFS= read -r _dl; do
+      [ -n "$_dl" ] && log "         $_dl"
+    done < <(
+      grep -E '^O-PROFSEATARCH: (done|FAIL|RETRY|SKIP|escalate|backend=)' "$slog" 2>/dev/null \
+        | tail -n 40 || true
+    )
+  }
+
+  # O-PROFPROSENOOP — §§1–6 prose must leave witnessed substance, not ADR-27
+  # skeleton + noop. Gate before burning the decide loop.
+  # O-PROFPROSEDECOMP: harness writes the file; witness = no skeleton leftovers
+  # + at least one O-PROFPROSEDECOMP: OK (or legacy wchat edit tools).
+  _profile_prose_witnessed() {
+    local slog="${1:-/tmp/outer-m1-profile-prose.log}"
+    local profile="${2:-migration/architecture-profile.md}"
+    if [ ! -f "$profile" ]; then
+      log "         O-PROFPROSENOOP: $profile missing"
+      return 1
+    fi
+    if grep -qE 'LLM fills|^\(LLM fills' "$profile" 2>/dev/null; then
+      log "         O-PROFPROSENOOP: skeleton leftovers still in §§1–6 (Purpose & Domain … Domain Boundaries)"
+      return 1
+    fi
+    if grep -q 'O-PROFPROSEDECOMP' "$slog" 2>/dev/null; then
+      if ! grep -qE 'O-PROFPROSEDECOMP: OK' "$slog" 2>/dev/null; then
+        log "         O-PROFPROSENOOP: harness prose wrote 0 sections (see $slog)"
+        return 1
+      fi
+      return 0
+    fi
+    # Legacy containment: monolithic wchat must show edit/write tools.
+    if ! _m3_log_has_write "$slog"; then
+      log "         O-PROFPROSENOOP: prose seat writes=0 (see $slog)"
+      return 1
+    fi
+    return 0
+  }
+
+  # O-PROFPROSEDECOMP — per-section §§1–6 loop (same shape as ADR-32 decide).
+  _profile_harness_prose() {
+    local t0 hb_pid slog _rc _dl
+    t0=$(date +%s)
+    slog="/tmp/outer-m1-profile-prose.log"
+    phase_start "M1 PROFILE — architecture prose §§1–6 ($(worker_label))"
+    # O-PROFPROSECTX: never inject the decide-projection / ADR-26|31 anchor
+    # packet into the §§1–6 prose path. Harness asks per-section JSON only;
+    # model does not edit files (harness writes).
+    log "         Actor: harness profile_prose_loop + $(worker_label) — session prose → ${slog}"
+    log "         Profile prose: per-section projected facts (not decide anchors); model returns JSON; harness writes"
+    # Demo-facing catalog — bare §N alone is opaque to workshop viewers.
+    log "         Sections: §1 (Purpose & Domain) · §2 (Components & Relationships) · §3 (Integration Surfaces) · §4 (Behavioral Contract Sources) · §5 (Modernization Surface) · §6 (Domain Boundaries)"
+    rm -f /tmp/outer-heartbeat-progress.txt
+    printf 'prose_ok=0/6 fail=0 active=starting\n' > /tmp/outer-heartbeat-progress.txt
+    _outer_heartbeat_start "M1 PROFILE prose" "$t0" "$slog" worker
+    set +e
+    PYTHONUNBUFFERED=1 python3 "$HARNESS/profile_prose_loop.py" run --root . --legacy /projects/legacy \
+      --backend "$PROFILE_PROSE_BACKEND" \
+      --worker-model "$WORKER_MODEL" \
+      --section-timeout "${PROFILE_PROSE_TIMEOUT:-180}" \
+      > "$slog" 2>&1
+    _rc=$?
+    set -e
+    kill "$hb_pid" 2>/dev/null || true
+    wait "$hb_pid" 2>/dev/null || true
+    rm -f /tmp/outer-heartbeat-progress.txt
+    log "·        M1 PROFILE prose finished ($(( $(date +%s) - t0 ))s, loop_rc=${_rc}) — checking O-PROFPROSENOOP next"
+    while IFS= read -r _dl; do
+      [ -n "$_dl" ] && log "         $_dl"
+    done < <(grep '^O-PROFPROSEDECOMP' "$slog" 2>/dev/null | tail -n 40 || true)
+    return "${_rc}"
+  }
+
+  if [ "$PROFILE_DECIDE_ENGINE" = "harness-loop" ]; then
+    # --- ADR-32 happy path: harness prose §§1–6, then harness+Qwen classify ---
+    set +e
+    _profile_harness_prose
+    _prose_rc=$?
+    set -e
+    if [ "${_prose_rc:-1}" -ne 0 ] || ! _profile_prose_witnessed /tmp/outer-m1-profile-prose.log; then
+      phase_gate "M1 PROFILE prose" RED "O-PROFPROSENOOP worker_rc=${_prose_rc:-?} — skeleton or writes=0"
+      fail_run "M1 PROFILE prose noop (O-PROFPROSENOOP) — refuse decide loop on thin skeleton; do not MiniMax a2"
+    fi
+    # Decide loop (may take multiple passes over remaining undecided)
+    _prof_pass=0
+    while [ "$_prof_pass" -lt "$PROFILE_DECIDE_PASSES" ]; do
+      _prof_pass=$((_prof_pass + 1))
+      _profile_harness_decide "$_prof_pass"
+      if _profile_close_and_grade; then
+        _profile_commit_green "M1 profile: harness decide-loop rubric-green (Qwen classify)"
+        break
+      fi
+      phase_gate "M1 PROFILE rubric" RED "decide pass ${_prof_pass} — see /tmp/profile-rubric.txt"
+      log_gchain_m1_profile RED
+    done
+    if ! m1_profile_green; then
+      phase_start "M1 PROFILE — mechanical close after harness-loop"
+      if _profile_close_and_grade; then
+        _profile_commit_green "M1 profile: mechanical close after harness-loop"
+      else
+        phase_gate "M1 PROFILE rubric" RED "see /tmp/profile-rubric.txt"
+        log_gchain_m1_profile RED
+        fail_run "M1 PROFILE harness decide-loop did not reach rubric GREEN (backend=${PROFILE_CLASSIFY_BACKEND}) — refuse MiniMax a2"
+      fi
+    fi
+  else
+    # --- legacy containment: MiniMax N=20 mchat batches (PROFILE_DECIDE_ENGINE=batch-mchat) ---
+    log "         WARN: PROFILE_DECIDE_ENGINE=batch-mchat — MiniMax hourly quota containment path"
+    phase_start "M1 PROFILE — architecture profile (class roles & target contract) [attempt 1/2]"
+    _prof_derived=$(_profile_batch_derived)
+    mchat "m1-profile-a1" \
+"Use the migration-harness skill and read ANALYSIS.md in its directory. The analysis bundle is committed (migration/mta-findings.json, findings-inventory.md, dependency-order.md, recipe-log.md, migration/model.json). Execute the M1 profile step ONLY (typed decisions; one-unit upsert; no wholesale rewrite): fill sections 1–6 in architecture-profile.md; for EVERY unit listed in DERIVED FACTS below persist a typed decision via harness upsert ONE UNIT AT A TIME — python3 ${HARNESS}/profile_roles.py upsert --root . --legacy /projects/legacy --fqn <FQN> --role HARVEST|REDESIGN --rationale '…' --path <path> --line <N> --token <token> (evidence SELECTED from that unit's projected anchors — do NOT invent path:line:token). Do NOT rewrite migration/profile-decisions.json wholesale (Hermes drops large patches). Optional: upsert --json-file with ≤3 rows. Do NOT author §7 role bullets — the harness renders §7 from model.units[].decision. This seat is a BATCH — do not attempt all profile-units; only the listed undecided batch. No deferral/scaffold roles. Read legacy under /projects/legacy. Source *Mapper.java = classify; *MapperImpl/generated-sources = never class-role (O-RUBRICGENASSERT). Verify: python3 ${HARNESS}/profile_close.py migration/architecture-profile.md --root . && python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy/src (exit 0). Commit message STARTS with 'M1 profile:'. DO NOT PUSH. O-CTX: keep packet tight.
+${_prof_derived}" \
       "M1 PROFILE"
-    if [ -f migration/architecture-profile.md ] && python3 "$HARNESS/profile-rubric.py" migration/architecture-profile.md /projects/legacy/src > /tmp/profile-rubric.txt 2>&1; then
-      python3 "$HARNESS/m1-provenance.py" write-profile --root . --legacy /projects/legacy \
-        > /tmp/m1-profile-stamp-write.txt 2>&1 || true
-      # Mechanical closure: commit if the session forgot.
-      [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M1 profile: outer-loop mechanical commit of rubric-green profile" 2>/dev/null
-      phase_gate "M1 PROFILE rubric" GREEN "architecture-profile.md; commit $(git rev-parse --short HEAD)"
-      log_gchain_m1_profile GREEN
-      log "         • migration/architecture-profile.md (§7 class roles + target contract)"
-      log "         • migration/.m1-profile.stamp.json (O-M1SKIPPROV)"
-      phase_ok "M1 PROFILE — architecture-profile.md rubric-green; commit $(git rev-parse --short HEAD)"
-      break
+    if [ -f /tmp/outer-last-mchat-ratelimit ]; then
+      phase_gate "M1 PROFILE rubric" RED "a1 rate-limited — see /tmp/outer-m1-profile-a1.log"
+      log_gchain_m1_profile RED
+      fail_run "M1 PROFILE a1 MiniMax rate-limited (O-PROF1OF79STOP) — NOT-spend; refusing a2; backoff before restart"
     fi
-    phase_gate "M1 PROFILE rubric" RED "see /tmp/profile-rubric.txt"
-    log_gchain_m1_profile RED
-    [ "$ATTEMPT" = "2" ] && fail_run "M1 PROFILE failed the rubric twice"
-    phase_retry "M1 PROFILE — bouncing once"
-    git checkout -q -- migration/ 2>/dev/null || true
-  done
+    if _profile_close_and_grade; then
+      _profile_commit_green "M1 profile: outer-loop mechanical commit of rubric-green profile"
+    else
+      phase_gate "M1 PROFILE rubric" RED "see /tmp/profile-rubric.txt"
+      log_gchain_m1_profile RED
+      _prof_batch_i=0
+      while [ "$_prof_batch_i" -lt "$PROFILE_MAX_DECISION_BATCHES" ]; do
+        _prof_batch_i=$((_prof_batch_i + 1))
+        _prof_derived=$(_profile_batch_derived)
+        if echo "$_prof_derived" | grep -qE 'profile-units \(0 java' \
+          || ! echo "$_prof_derived" | grep -q 'decision=null'; then
+          log "         O-PROF1OF79STOP: no undecided batch projected — stopping decision seats"
+          break
+        fi
+        phase_start "M1 PROFILE — typed-decision batch ${_prof_batch_i}/${PROFILE_MAX_DECISION_BATCHES}"
+        mchat "m1-profile-batch-${_prof_batch_i}" \
+"Use the migration-harness skill. Typed decision BATCH ONLY: for EVERY unit in DERIVED FACTS below, persist via python3 ${HARNESS}/profile_roles.py upsert --root . --legacy /projects/legacy --fqn … --role … --rationale … --path … --line … --token … (ONE unit per call, or --json-file ≤3 rows). Evidence SELECTED from projected anchors — do NOT invent path:line:token. Do NOT rewrite migration/profile-decisions.json wholesale. Do NOT rewrite sections 1–6 unless broken. Do NOT author §7 role bullets — harness renders §7. Fix evidence_miss / non-member anchors as well as null roles. Verify: python3 ${HARNESS}/profile_close.py migration/architecture-profile.md --root . && python3 ${HARNESS}/profile-rubric.py migration/architecture-profile.md /projects/legacy/src (exit 0). Commit message STARTS with 'M1 profile:'. DO NOT PUSH.
+${_prof_derived}" \
+          "M1 PROFILE"
+        if [ -f /tmp/outer-last-mchat-ratelimit ]; then
+          phase_gate "M1 PROFILE rubric" RED "batch ${_prof_batch_i} rate-limited"
+          log_gchain_m1_profile RED
+          fail_run "M1 PROFILE decision-batch MiniMax rate-limited (O-PROF1OF79STOP) — NOT-spend; refusing a2"
+        fi
+        if _profile_close_and_grade; then
+          _profile_commit_green "M1 profile: decision batch ${_prof_batch_i} rubric-green"
+          break
+        fi
+        phase_gate "M1 PROFILE rubric" RED "batch ${_prof_batch_i} — see /tmp/profile-rubric.txt"
+        log_gchain_m1_profile RED
+      done
+    fi
+    if ! m1_profile_green; then
+      phase_start "M1 PROFILE — architecture profile (class roles & target contract) [attempt 2/2]"
+      phase_retry "M1 PROFILE — bouncing once (keep dirty profile; no git checkout wipe)"
+      if _profile_close_and_grade; then
+        _profile_commit_green "M1 profile: mechanical close (no LLM a2)"
+      else
+        _pc_fields=$(_profile_cov_fields /tmp/profile-rubric.txt || true)
+        _pc_named=$(echo "$_pc_fields" | awk '{print $1}')
+        _pc_total=$(echo "$_pc_fields" | awk '{print $2}')
+        _pc_authored=$(echo "$_pc_fields" | awk '{print $3}')
+        _pc_emiss=$(echo "$_pc_fields" | awk '{print $4}')
+        _pc_ratio="0"
+        if [ -n "${_pc_total:-}" ] && [ "${_pc_total:-0}" -gt 0 ] 2>/dev/null; then
+          _pc_ratio=$(python3 -c "print(float(${_pc_named:-0})/float(${_pc_total}))")
+        fi
+        log "         O-PROF1OF79STOP: pre-a2 coverage credited=${_pc_named:-?}/${_pc_total:-?} authored=${_pc_authored:-?} evidence_miss=${_pc_emiss:-?} ratio=${_pc_ratio}"
+        phase_gate "M1 PROFILE rubric" RED "refuse MiniMax a2 — harness-loop is default; batch-mchat will not burn a2"
+        log_gchain_m1_profile RED
+        fail_run "M1 PROFILE batch-mchat incomplete (ratio=${_pc_ratio}); use PROFILE_DECIDE_ENGINE=harness-loop — refuse MiniMax a2"
+      fi
+    fi
+  fi
 fi
 
 # O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
@@ -1158,7 +1473,17 @@ else
   M2_RETRY_LINT_BYTES="${M2_RETRY_LINT_BYTES:-8000}"
   while [ "$ATTEMPT" -le "$M2_MAX_ATTEMPTS" ]; do
     phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/${M2_MAX_ATTEMPTS}]"
-    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: read migration/architecture-profile.md, migration/dependency-order.md, migration/findings-inventory.md and migration.yaml, then write migration/roadmap.md plus one brief per story under migration/briefs/ exactly per SEQUENCING.md. A deterministic m2-compose.py pass already seeded unique-owner findings partition, brief section stubs, non-mandatory decision rows, last-story deploy, and computed seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget (publish the compose/lint value) and do NOT dual-own or claim recipe-executed findings. Each brief carries its classes' roles and, for REDESIGN classes, their target contract from architecture-profile section 7 (SEQUENCING.md 'One quality model'). Declare story kind: rename|reimplement|mixed when findings include OPEN DESIGN or scope names a §7 REDESIGN class (O-STORYKIND). Every 'In scope' code quote is the REAL legacy code — quote it from /projects/legacy, never invent methods or annotations the class does not have (the lint cross-checks each quoted method/annotation against the legacy source). Story scope must list real code/test paths (no ceremonial name-only scopes). O-M2-FREEZE-JUNK / O-HERMSCOOP: stage ONLY migration/roadmap.md and migration/briefs/ — NEVER git add .hermes/ (or git add -A). A deterministic lint gates the result — verify yourself with: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (must exit 0; LINT:O-PORTDERIVE = brief must carry REDESIGN target contract from profile §7; LINT:O-SEATBUDGET = seat-budget must match kind×incidents) BEFORE committing. Finish with ONE commit whose message STARTS with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}"
+    # ADR-34 / ADR-38 / O-M2PROJ / F-no-discovery: projected facts + SNIPPET text
+    # (not cite= pointers alone). Cap raised for anchored snippets (was 48K).
+    python3 "$HARNESS/model.py" context-for-m2 --root . \
+      > /tmp/m2-projected-facts.txt 2>/tmp/m2-projected-facts.err || true
+    _m2_proj="$(head -c "${M2_PROJ_BYTES:-120000}" /tmp/m2-projected-facts.txt 2>/dev/null || true)"
+    [ -n "${_m2_proj}" ] || _m2_proj="(m2 projection empty — run model.py context-for-m2)"
+    P="Use the migration-harness skill and read SEQUENCING.md and BRIEF-TEMPLATE.md in its directory. M1 is committed. Execute M2 ONLY: fill JUDGMENT on the harness-seeded roadmap + briefs (titles, rationale, adopt/defer, cite snippets). ADR-34: story membership/scope/deploy are harness SoT from typed model.order+SCC+decision.role — do NOT rewrite unit ownership or rediscover via /projects/legacy tree reads (F-no-discovery). PROJECTED FACTS below are complete (ADR-38: every cite= includes SNIPPET source lines — copy quotes from SNIPPET only). A deterministic m2-compose.py pass already seeded partition, brief stubs, non-mandatory rows, last-story deploy, seat-budget when kind is set (O-M2COMPOSE) — do NOT re-arithmetic seat-budget and do NOT dual-own findings. Each brief carries classes' roles and, for REDESIGN, per-unit target_contract from typed decisions / §7 (Class Roles & Target Contract). Declare story kind: rename|reimplement|mixed when OPEN DESIGN or REDESIGN scope (O-STORYKIND). Quotes must copy SNIPPET lines from PROJECTED FACTS verbatim; never invent methods; never read /projects/legacy. O-M2-FREEZE-JUNK / O-HERMSCOOP: stage ONLY migration/roadmap.md and migration/briefs/ — NEVER git add .hermes/. Verify: python3 ${HARNESS}/roadmap-lint.py migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md (exit 0) BEFORE committing. ONE commit starting with 'M2 sequence:'. DO NOT PUSH. ${PKG_RENAME_HINT}
+
+---BEGIN M2 PROJECTED FACTS---
+${_m2_proj}
+---END M2 PROJECTED FACTS---"
     if [ "$ATTEMPT" -gt 1 ]; then
       # O-M2RETRYINLINE: put bounded lint in the prompt — do not rely on the
       # seat re-reading /tmp/roadmap-lint.txt (v3 death mode / path-only miss).
@@ -1201,15 +1526,21 @@ ${_lint_inline}
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
       log_gchain_m2_roadmap GREEN
       # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
+      # Ledger writes stay; do not dump bare `evidlive:S0N:K3:N` into the demo
+      # outer-loop log (O-EVIDLIVELOG — align with timestamped `log` lines).
       if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
         # O-EVIDLIVEK3TABLE: also count markdown table `| id | adopt|defer | reason |`
         _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt|[[:space:]]\|[[:space:]]*(adopt|defer)[[:space:]]\|)' migration/roadmap.md 2>/dev/null || true)
         _k3n=${_k3n:-0}
         if [ "${_k3n:-0}" -gt 0 ] 2>/dev/null; then
+          _k3_sids=()
           for _sid in $(grep -E '^## S[0-9]+' migration/roadmap.md | sed -E 's/^## (S[0-9]+).*/\1/'); do
+            _k3_sids+=("$_sid")
+            # stdout is machine-token for instruments/supervisor — not demo narration
             bash "$HARNESS/evidence-liveness.sh" record "$_sid" K3 "$_k3n" "roadmap-lint GREEN adopt/defer" \
-              >> "$LOG" 2>&1 || true
+              >/dev/null 2>&1 || true
           done
+          log "         O-EVIDLIVE: K3 seeded · stories=${#_k3_sids[@]} · adopt/defer-marks=${_k3n}"
         fi
       fi
       # Name concrete briefs for the demo log.
@@ -1252,6 +1583,18 @@ if [ "${STOP_AFTER_M2:-0}" = "1" ] || [ "${STOP_AFTER_M2:-}" = "true" ]; then
       phase_gate "M2 SEQUENCE stop-after" GREEN \
         "STOP_AFTER_M2 — brief-quality floor cleared; refusing story loop"
       log "         O-STOPAFTERM2: M2 validation complete — not starting M3"
+      if [ -x "$HARNESS/write-stopped.sh" ] || [ -f "$HARNESS/write-stopped.sh" ]; then
+        bash "$HARNESS/write-stopped.sh" \
+          --kind deliberate-stop \
+          --authorizing "STOP_AFTER_M2=1" \
+          --reason "M2 SEQUENCE complete; validation hold before M3" \
+          --expected-next "review M2 roadmap/briefs; clear STOP_AFTER_M2 + migration/.stopped; resume M3" \
+          || true
+        if [ -n "$(git status --porcelain migration/.stopped 2>/dev/null || true)" ]; then
+          git add migration/.stopped
+          SKIP_SENSOR_GATE=1 git commit -q -m "chore: STOP_AFTER_M2 hold (.stopped)" 2>/dev/null || true
+        fi
+      fi
       echo "outer-complete: STOP_AFTER_M2 $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/outer-loop-done
       exit 0
     fi
@@ -1380,6 +1723,41 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   elif [ -n "$SPEC_TASKS" ]; then
     m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
     log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
+  fi
+  if [ "$M3_DONE" != "1" ]; then
+    # ADR-35/40 typed path — harness SoT + Qwen write-inversion (default ON).
+    # Seat returns judgment JSON; harness upserts model.tasks[] + renders tasks.md.
+    if [ "${M3_TYPED_LOOP:-1}" = "1" ] && [ -f "$HARNESS/m3_task_loop.py" ]; then
+      phase_start "M3 SPECIFY — typed write-inversion ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [ADR-35/Qwen]"
+      log "         Actor: m3_task_loop + $(worker_label) — session → /tmp/m3-task-${SID}-*.log"
+      python3 "$HARNESS/model.py" assign-tasks --root . >/tmp/m3-assign-tasks.txt 2>&1 || true
+      python3 "$HARNESS/model.py" render-tasks --root . --sid "$SID" \
+        >/tmp/m3-render-tasks-${SID}.txt 2>&1 || true
+      set +e
+      python3 "$HARNESS/m3_task_loop.py" run --root . --sid "$SID" \
+        --backend opencode-qwen \
+        --worker-model "${WORKER_MODEL}" \
+        --legacy /projects/legacy \
+        >"/tmp/m3-task-loop-${SID}.log" 2>&1
+      _m3tl_rc=$?
+      set -e
+      if [ "$_m3tl_rc" = "0" ] \
+        && python3 "$HARNESS/plan-lint.py" "specs/${SLUG}/tasks.md" migration/mta-findings.json \
+             --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
+             --story-deploy "$DEPLOY" --story-scope "$SCOPE" \
+             > /tmp/plan-lint.txt 2>&1; then
+        [ -n "$(git status --porcelain "specs/${SLUG}/" migration/model.json)" ] \
+          && git add "specs/${SLUG}/" migration/model.json \
+          && git commit -q -m "${SID} spec: typed M3 write-inversion (ADR-35/Qwen)" 2>/dev/null
+        m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
+          "typed-loop commit $(git rev-parse --short HEAD)"
+        phase_ok "M3 SPECIFY — ${SLUG} typed write-inversion GREEN; commit $(git rev-parse --short HEAD)"
+        M3_DONE=1
+      else
+        log "         O-M3TYPED: typed loop rc=${_m3tl_rc:-?} or plan-lint RED — falling back to legacy edit path (see /tmp/m3-task-loop-${SID}.log)"
+        phase_retry "M3 SPECIFY ${SLUG} — typed loop incomplete; legacy MiniMax/Qwen edit path"
+      fi
+    fi
   fi
   if [ "$M3_DONE" != "1" ]; then
     # O-M3WORKER: Qwen drafts (≤M3_WORKER_ATTEMPTS), then MiniMax backstop
