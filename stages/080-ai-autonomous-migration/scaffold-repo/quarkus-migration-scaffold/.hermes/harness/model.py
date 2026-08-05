@@ -1315,9 +1315,12 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                     cls, shape = "rewrite", "modify"
                 oracle = "absent"
                 port = None
-                # W4-566: Port=reimplement is REDESIGN API-swap only — never
-                # on HARVEST (that made S-GODORDER treat harvest as convert).
-                if str(role).upper() != "HARVEST" and one and re.search(
+                # W4-566: HARVEST → Port=rename (transliteration). Never
+                # Port=reimplement on HARVEST — that made S-GODORDER treat
+                # harvest as convert. REDESIGN repository paths → reimplement.
+                if str(role).upper() == "HARVEST":
+                    port = "rename"
+                elif one and re.search(
                     r"(?i)\b(repository|spring\s*data|panache|jdbc)\b", one
                 ):
                     port = "reimplement"
