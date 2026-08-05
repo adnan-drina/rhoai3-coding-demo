@@ -74,8 +74,46 @@ if [ "$_SKIP_KANTRA" = "0" ]; then
   # under the pod default (17) JDTLS never starts and the provider waits
   # forever (the root cause of every observed kantra wedge). source-only:
   # our rule set needs no dependency analysis and keeps the run minutes-scale.
+  # O-ANALYZEPRISTINE / ADR-25: scan a materialised source tree, not the dirty
+  # working copy. Same excludes as K6 dest baseline for target/build/.git so
+  # findings-delta compares like with like (O-DELTABASE was inflated by target/).
+  LEGACY_SRC=/tmp/kantra-legacy-src
+  rm -rf "$LEGACY_SRC" /tmp/kantra-baseline
+  mkdir -p "$LEGACY_SRC"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude 'target/' --exclude 'build/' --exclude '.git/' \
+      /projects/legacy/ "$LEGACY_SRC/" 2>/dev/null \
+      || { echo "FATAL: O-ANALYZEPRISTINE rsync legacy failed"; exit 1; }
+  else
+    cp -a /projects/legacy/. "$LEGACY_SRC/" 2>/dev/null \
+      || { echo "FATAL: O-ANALYZEPRISTINE copy legacy failed"; exit 1; }
+    rm -rf "$LEGACY_SRC/target" "$LEGACY_SRC/build" "$LEGACY_SRC/.git" 2>/dev/null || true
+  fi
+  # Refuse dirty input (F-pristine)
+  if find "$LEGACY_SRC" \( -path '*/target/*' -o -path '*/build/*' -o -path '*/generated-sources/*' \) \
+      -type f 2>/dev/null | head -1 | grep -q .; then
+    echo "FATAL: O-ANALYZEPRISTINE F-pristine — materialised input still contains build output" >&2
+    exit 1
+  fi
+  ANALYSIS_INPUT_SHA256=$(python3 - <<'PY'
+import hashlib, os
+from pathlib import Path
+root = Path("/tmp/kantra-legacy-src")
+h = hashlib.sha256()
+for p in sorted(root.rglob("*")):
+    if not p.is_file():
+        continue
+    rel = p.relative_to(root).as_posix().encode()
+    h.update(rel + b"\0")
+    h.update(p.read_bytes())
+print(h.hexdigest())
+PY
+)
+  export ANALYSIS_INPUT_SHA256
+  echo "analyze: O-ANALYZEPRISTINE input=$LEGACY_SRC sha256=${ANALYSIS_INPUT_SHA256:0:16}…"
   (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
-    "$KBIN" analyze -i /projects/legacy -o /tmp/kantra-baseline \
+    "$KBIN" analyze -i "$LEGACY_SRC" -o /tmp/kantra-baseline \
     $K_ARGS --mode "$A_MODE" --json-output --overwrite) || true
   mkdir -p migration
   cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
@@ -87,13 +125,13 @@ if [ "$_SKIP_KANTRA" = "0" ]; then
   mkdir -p "$DEST_SRC"
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --delete \
-      --exclude 'migration/staging/' --exclude '.hermes/' --exclude 'target/' \
-      --exclude '.git/' \
+      --exclude 'migration/staging/' --exclude '.hermes/' \
+      --exclude 'target/' --exclude 'build/' --exclude '.git/' \
       /projects/modernized/ "$DEST_SRC/" 2>/dev/null || true
   else
     cp -a /projects/modernized/. "$DEST_SRC/" 2>/dev/null || true
     rm -rf "$DEST_SRC/migration/staging" "$DEST_SRC/.hermes" "$DEST_SRC/target" \
-      "$DEST_SRC/.git" 2>/dev/null || true
+      "$DEST_SRC/build" "$DEST_SRC/.git" 2>/dev/null || true
   fi
   (cd /tmp && JAVA_HOME="${JAVA_HOME_21:-$JAVA_HOME}" PATH="${JAVA_HOME_21:-$JAVA_HOME}/bin:$PATH" \
     "$KBIN" analyze -i "$DEST_SRC" -o /tmp/kantra-dest \

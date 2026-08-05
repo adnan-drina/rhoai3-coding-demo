@@ -12600,21 +12600,32 @@ check "O-OPENJDK21REGRESS stamp unions openjdk21 into kept targets" 0 "openjdk21
 run_case() {
   mkfix
   HARNESS_DIR="$HARNESS_DIR" python3 - <<'PY'
-"""O-ADR24UNBOUNDWAIVER: generated/dto waived; real source unbound RED."""
+"""F-unbound-zero / ADR-25: any unbound is RED; no waiver API remains."""
 import os, sys
 sys.path.insert(0, os.environ["HARNESS_DIR"])
 import findings_ir
-waived = [
-    "r1:target/generated-sources/annotations/x/MapperImpl.java",
-    "r1:src/main/java/org/demo/dto/OwnerDto.java",
-]
-assert findings_ir.lint_unbound_waived(waived) == [], findings_ir.lint_unbound_waived(waived)
-reds = findings_ir.lint_unbound_waived(["r1:src/main/java/org/demo/Pet.java"])
-assert reds and "O-ADR24UNBOUNDWAIVER" in reds[0], reds
-print("adr24-unboundwaiver-ok")
+assert findings_ir.lint_unbound_zero([]) == []
+reds = findings_ir.lint_unbound_zero(["r1:src/main/java/org/demo/Pet.java"])
+assert reds and "O-ANALYZEPRISTINE" in reds[0], reds
+# waiver compensation must be gone
+src = open(os.path.join(os.environ["HARNESS_DIR"], "findings_ir.py"), encoding="utf-8").read()
+assert "_UNBOUND_WAIVER_RES" not in src
+assert "lint_unbound_waived" not in src
+assert "/dto/" not in src or "Dto.java" not in src
+print("adr25-unboundzero-ok")
 PY
 }
-check "O-ADR24UNBOUNDWAIVER refuse real path; accept generated/dto" 0 "adr24-unboundwaiver-ok"
+check "ADR-25 F-unbound-zero: any unbound RED; waiver list deleted" 0 "adr25-unboundzero-ok"
+
+run_case() {
+  mkfix
+  grep -q 'kantra-legacy-src\|O-ANALYZEPRISTINE' "$HARNESS_DIR/analyze.sh" \
+    && grep -q "exclude 'target/'" "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'ANALYSIS_INPUT_SHA256\|analysis_input_sha256' "$HARNESS_DIR/analyze.sh" \
+    && grep -q 'ANALYSIS_INPUT_SHA256\|analysis_input_sha256' "$HARNESS_DIR/findings_ir.py" \
+    && echo analyzepristine-wire-ok
+}
+check "O-ANALYZEPRISTINE wire: pristine legacy rsync + input digest" 0 "analyzepristine-wire-ok"
 
 run_case() {
   mkfix

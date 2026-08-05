@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -150,6 +151,8 @@ def build_ir(
         "provenance": {
             "source_path": str(KANTRA_REL),
             "source_sha256": source_sha,
+            # O-ANALYZEPRISTINE: digest of materialised scan input (not dirty tree)
+            "analysis_input_sha256": os.environ.get("ANALYSIS_INPUT_SHA256") or "",
             "producer": "findings_ir",
             "generated_at": _utc(),
             "ruleset_rows": len(data) if isinstance(data, list) else 1,
@@ -291,41 +294,20 @@ def lint_bind_closed(ir: dict[str, Any], findings: list[dict]) -> list[str]:
     return []
 
 
-# O-ADR24UNBOUNDWAIVER — migration-general patterns for incidents that cannot
-# bind to graph units (build output / OpenAPI *Dto.java under a dto/ package).
-# Specimen-agnostic: path shape only, never app class names.
-_UNBOUND_WAIVER_RES = (
-    re.compile(r"(^|/)target/"),
-    re.compile(r"/generated-sources/"),
-    re.compile(r"/dto/[^/]+Dto\.java$"),
-)
+def lint_unbound_zero(unbound: list[str]) -> list[str]:
+    """F-unbound-zero / ADR-25: any unbound incident is RED (no waiver list).
 
-
-def unbound_path(entry: str) -> str:
-    """Strip 'ruleId:' prefix from bind_findings unbound entries."""
-    if ":" in (entry or ""):
-        return entry.split(":", 1)[1].strip()
-    return (entry or "").strip()
-
-
-def is_unbound_waived(legacy_path: str) -> bool:
-    p = (legacy_path or "").strip().lstrip("./")
-    if not p:
-        return False
-    return any(rx.search(p) for rx in _UNBOUND_WAIVER_RES)
-
-
-def lint_unbound_waived(unbound: list[str]) -> list[str]:
-    """O-ADR24UNBOUNDWAIVER: every unbound path must match an explicit waiver."""
-    reds: list[str] = []
-    for entry in unbound or []:
-        lp = unbound_path(entry)
-        if is_unbound_waived(lp):
-            continue
-        reds.append(
-            f"O-ADR24UNBOUNDWAIVER RED: unbound finding not waived: {entry}"
-        )
-    return reds
+    Pristine analysis input (O-ANALYZEPRISTINE) makes unbound structurally
+    impossible; a non-empty list means the scan input or bind is wrong.
+    """
+    if not unbound:
+        return []
+    sample = ", ".join(unbound[:5])
+    more = f" (+{len(unbound) - 5} more)" if len(unbound) > 5 else ""
+    return [
+        f"O-ANALYZEPRISTINE RED: findings_unbound={len(unbound)} "
+        f"(want 0; no waiver path): {sample}{more}"
+    ]
 
 
 def main() -> int:
