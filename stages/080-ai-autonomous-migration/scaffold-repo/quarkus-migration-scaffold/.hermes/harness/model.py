@@ -1129,6 +1129,140 @@ def _mechanical_class_shape(root: Path, owns: str, *, role: str = "") -> tuple[s
     return "infer", "create"
 
 
+def _load_god_nodes(root: Path) -> set[str]:
+    """FQNs marked god-node in dependency-order.md (S-GODORDER / O-GODORDEREMIT)."""
+    dep = root / "migration" / "dependency-order.md"
+    gods: set[str] = set()
+    if not dep.is_file():
+        return gods
+    for line in dep.read_text(encoding="utf-8", errors="replace").splitlines():
+        dm = re.match(r"^\s*(\d+)\.\s+([\w.]+)\s+\(", line)
+        if dm and re.search(r"(?i)god-node", line):
+            gods.add(dm.group(2))
+    return gods
+
+
+def _ensure_god_characterization_tasks(
+    root: Path, model: dict, tasks: list[dict]
+) -> list[dict]:
+    """Emit characterization tasks before god-node convert (W4-566 / O-GODORDEREMIT).
+
+    Same class as O-TASKCLASSORDER: assign_tasks owns the ordering fact that
+    plan-lint S-GODORDER checks. HARVEST convert is exempt (O-GODORDERCVT).
+    """
+    gods = _load_god_nodes(root)
+    if not gods:
+        return tasks
+    god_simple = {g.rsplit(".", 1)[-1]: g for g in gods}
+    out = list(tasks)
+    # Index existing char coverage by simple name
+    char_covered: set[str] = set()
+    for t in out:
+        blob = f"{t.get('goal') or ''} {t.get('title') or ''} {' '.join(t.get('owns') or [])}"
+        if t.get("kind") == "characterize" or re.search(
+            r"(?i)\bcharacterization\b", blob
+        ):
+            for simple in god_simple:
+                if re.search(rf"\b{re.escape(simple)}\b", blob):
+                    char_covered.add(simple)
+    # Per story: for each REDESIGN convert owning a god-node, ensure char.
+    by_sid: dict[str, list[dict]] = {}
+    for t in out:
+        by_sid.setdefault(str(t.get("sid") or ""), []).append(t)
+    emitted: list[dict] = []
+    for sid, story in by_sid.items():
+        if not sid:
+            continue
+        # target package for test path
+        try:
+            cfg = yaml_legacy_target(root)  # may not exist — fallback
+        except Exception:
+            cfg = ("", "com.demo")
+        target_pkg = cfg[1] if isinstance(cfg, tuple) else "com.demo"
+        for t in story:
+            if str(t.get("role") or "").upper() == "HARVEST":
+                continue
+            if str(t.get("port") or "").lower() != "reimplement" and not re.search(
+                r"(?i)\bconvert\b|\breimplement\b",
+                f"{t.get('goal') or ''} {t.get('plan') or ''}",
+            ):
+                continue
+            for key in t.get("unit_keys") or []:
+                simple = str(key).rsplit(".", 1)[-1]
+                if simple not in god_simple or simple in char_covered:
+                    continue
+                # Derive test owns from unit target_path when possible
+                primary = unit_by_key(model, key)
+                main_owns = ""
+                if primary and primary.get("target_path"):
+                    main_owns = str(primary.get("target_path"))
+                elif t.get("owns"):
+                    main_owns = str(t.get("owns")[0])
+                if main_owns.startswith("src/main/java/") and main_owns.endswith(
+                    ".java"
+                ):
+                    test_owns = "src/test/java/" + main_owns[len("src/main/java/") : -5] + "Test.java"
+                else:
+                    test_owns = (
+                        f"src/test/java/{target_pkg.replace('.', '/')}/{simple}Test.java"
+                    )
+                char_id = f"{sid}-TC-{simple}Char"
+                # Avoid dup ids
+                if any(x.get("id") == char_id for x in out + emitted):
+                    char_covered.add(simple)
+                    continue
+                emitted.append(
+                    {
+                        "id": char_id,
+                        "sid": sid,
+                        "seq": 0,
+                        "unit_keys": [key],
+                        "kind": "characterize",
+                        "scc_id": None,
+                        "owns": [test_owns],
+                        "title": f"Characterize {simple} (god-node)",
+                        "class": "infer",
+                        "shape": "create",
+                        "role": "REDESIGN",
+                        "acceptance": [
+                            f"{simple}Test pins legacy contract before convert "
+                            f"(O-GODORDEREMIT / S-GODORDER)"
+                        ],
+                        "oracle": "absent",
+                        "port": None,
+                        "findings": [],
+                        "goal": (
+                            f"Add characterization tests for god-node {simple} "
+                            f"before convert (O-GODORDEREMIT)."
+                        ),
+                        "plan": (
+                            f"Write {test_owns} pinning public behaviour named "
+                            f"in dependency-order / brief SNIPPET; no main-src edits."
+                        ),
+                        "risk": "low",
+                        "filled": True,
+                    }
+                )
+                char_covered.add(simple)
+    return out + emitted
+
+
+def yaml_legacy_target(root: Path) -> tuple[str, str]:
+    """Return (legacyPackage, targetPackage) from migration.yaml — best effort."""
+    p = root / "migration.yaml"
+    leg, tgt = "", "com.demo"
+    if not p.is_file():
+        return leg, tgt
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^\s*legacyPackage:\s*(\S+)", line)
+        if m:
+            leg = m.group(1).strip()
+        m = re.match(r"^\s*targetPackage:\s*(\S+)", line)
+        if m:
+            tgt = m.group(1).strip()
+    return leg, tgt
+
+
 def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
     """Generate model.tasks[] from condensation units — IDs harness-owned (ADR-35).
 
@@ -1181,7 +1315,9 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                     cls, shape = "rewrite", "modify"
                 oracle = "absent"
                 port = None
-                if one and re.search(
+                # W4-566: Port=reimplement is REDESIGN API-swap only — never
+                # on HARVEST (that made S-GODORDER treat harvest as convert).
+                if str(role).upper() != "HARVEST" and one and re.search(
                     r"(?i)\b(repository|spring\s*data|panache|jdbc)\b", one
                 ):
                     port = "reimplement"
@@ -1208,10 +1344,13 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 "filled": bool(prev.get("filled")),
             }
             tasks.append(task)
+    # O-GODORDEREMIT (W4-566): characterization task before god-node convert.
+    tasks = _ensure_god_characterization_tasks(root, model, tasks)
     # O-TASKCLASSORDER (W4-562): one owner for rewrite-before-infer.
     # assign_tasks emits satisfying order; plan-lint checks the same rule.
     # Stable partition per story — preserve relative condensation order
     # within each class; then renumber seq (ids stay stable for judgments).
+    # Within infer: characterization before convert (O-GODORDEREMIT).
     ordered: list[dict] = []
     for st in model.get("stories") or []:
         sid = st.get("id") or ""
@@ -1224,7 +1363,14 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
         rest = [
             t for t in story if str(t.get("class") or "").lower() != "rewrite"
         ]
-        for i, t in enumerate(rewrites + rest, start=1):
+        chars = [
+            t
+            for t in rest
+            if t.get("kind") == "characterize"
+            or re.search(r"(?i)\bcharacterization\b", str(t.get("goal") or ""))
+        ]
+        converts = [t for t in rest if t not in chars]
+        for i, t in enumerate(rewrites + chars + converts, start=1):
             t["seq"] = i
             ordered.append(t)
     # Any tasks without a story id (should not happen) keep prior order.
@@ -1279,11 +1425,13 @@ def render_tasks_md(root: Path, sid: str, model: Optional[dict] = None) -> Path:
             "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
         )
         plan = (t.get("plan") or "").strip()
+        role = str(t.get("role") or "").strip().upper()
         lines += [
             f"#### {t.get('id')}: {t.get('title') or t.get('id')}",
             f"**Class**: {t.get('class') or 'rewrite'}",
             f"**Shape**: {t.get('shape') or 'modify'}",
             f"**Port**: {t.get('port')}" if t.get("port") else "**Port**:",
+            f"**Role**: {role}" if role else "**Role**:",
             f"**Owns**: `{owns}`" if owns else "**Owns**:",
             f"**Oracle**: {t.get('oracle') or 'absent'}",
             "**Assumes**:",
@@ -1320,26 +1468,44 @@ def render_all_tasks_md(root: Path, model: Optional[dict] = None) -> list[Path]:
     return paths
 
 
+_DAO_FAMILY_RE = re.compile(
+    r"(?i)\b(?:DataAccessException|EmptyResultDataAccessException|"
+    r"DataRetrievalFailureException|ObjectRetrievalFailureException|"
+    r"org\.springframework\.dao)\b"
+)
+
+_DAO_EXACT_MAP = (
+    "**API mapping**: DataAccessException→PersistenceException; "
+    "EmptyResultDataAccessException→NoResultException; "
+    "ObjectRetrievalFailureException→EntityNotFoundException "
+    "(O-DAOEXMAP / O-M3PRESERVEDAO; omit-throws-only is also OK)."
+)
+
+
 def _derived_reimpl_create_lines(task: dict) -> list[str]:
     """Harness-owned create-procedure + DAO map (W4-566 / O-REIMPLCREATE).
 
     Port=reimplement Shape=create must declare create-procedure for plan-lint.
     Seat judgment does not invent this form — same family as F-acceptance-derived.
+    Also inject the exact DAO map when seat prose mentions Spring DAO types
+    (O-M3PRESERVEDAO) without a table — harvest remap goals included.
     """
     port = str(task.get("port") or "").strip().lower()
     shape = str(task.get("shape") or "").strip().lower()
-    if port != "reimplement" or shape != "create":
-        return []
-    owns = " ".join(task.get("owns") or [])
-    anchor = owns.split()[0] if owns.split() else "Target .java"
-    return [
-        "**Procedure**: harvest-from-staging → API mapping table → first-write "
-        f"anchor `{anchor}` (O-REIMPLCREATE / O-RESTCREATE) — harness-derived.",
-        "**API mapping**: DataAccessException→PersistenceException; "
-        "EmptyResultDataAccessException→NoResultException; "
-        "ObjectRetrievalFailureException→EntityNotFoundException "
-        "(O-DAOEXMAP / O-M3PRESERVEDAO; omit-throws-only is also OK).",
-    ]
+    blob = f"{task.get('goal') or ''} {task.get('plan') or ''}"
+    lines: list[str] = []
+    if port == "reimplement" and shape == "create":
+        owns = " ".join(task.get("owns") or [])
+        anchor = owns.split()[0] if owns.split() else "Target .java"
+        lines.append(
+            "**Procedure**: harvest-from-staging → API mapping table → first-write "
+            f"anchor `{anchor}` (O-REIMPLCREATE / O-RESTCREATE) — harness-derived."
+        )
+        lines.append(_DAO_EXACT_MAP)
+    elif _DAO_FAMILY_RE.search(blob) and "DataAccessException→PersistenceException" not in blob:
+        # Seat mentioned Spring DAO remap without exact symbols — harness fills.
+        lines.append(_DAO_EXACT_MAP)
+    return lines
 
 
 def typed_task_body(task: dict) -> str:
@@ -1355,10 +1521,12 @@ def typed_task_body(task: dict) -> str:
         "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
     )
     plan = (task.get("plan") or "").strip()
+    role = str(task.get("role") or "").strip().upper()
     lines = [
         f"**Class**: {task.get('class') or 'rewrite'}",
         f"**Shape**: {task.get('shape') or 'modify'}",
         f"**Port**: {task.get('port')}" if task.get("port") else "**Port**:",
+        f"**Role**: {role}" if role else "**Role**:",
         f"**Owns**: `{owns}`" if owns else "**Owns**:",
         f"**Oracle**: {task.get('oracle') or 'absent'}",
         "**Assumes**:",

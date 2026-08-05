@@ -14779,6 +14779,18 @@ PY
 }
 check "W4-566 O-M3TYPEDSTOP SEAT-FAILED vs LINT-RED + derived O-REIMPLCREATE" 0 "m3typedstop-split-ok"
 
+# W4-566 — target-trace entry boundary + O-GODORDEREMIT
+run_case() {
+  grep -q 'all_class_firsts' "$HARNESS_DIR/plan-lint.py" || return 1
+  grep -q 'W4-566: ending only at the next REDESIGN' "$HARNESS_DIR/plan-lint.py" || return 1
+  grep -q '_ensure_god_characterization_tasks' "$HARNESS_DIR/model.py" || return 1
+  grep -q 'O-GODORDEREMIT' "$HARNESS_DIR/model.py" || return 1
+  grep -q 'Role=HARVEST is never a convert' "$HARNESS_DIR/plan-lint.py" \
+    || grep -q 'typed Role=HARVEST is harvest' "$HARNESS_DIR/plan-lint.py" || return 1
+  echo m3-target-godorder-ok
+}
+check "W4-566 target-trace entry_of + O-GODORDEREMIT + HARVEST≠convert" 0 "m3-target-godorder-ok"
+
 # W4-557 — F-lint-reads-store: plan-lint reads model.tasks[], not tasks.md prose
 run_case() {
   grep -q 'F-lint-reads-store' "$HARNESS_DIR/plan-lint.py" || return 1

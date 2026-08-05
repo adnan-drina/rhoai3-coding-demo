@@ -1156,14 +1156,24 @@ def main():
             r"ConcurrentHashMap|compute\(|thread-safe|refresh|cache|"
             r"404|idempoten|valid|@Min|ExceptionMapper|400|503|dedupe|"
             r"normalize|additive|qty\s*4|quantity\s*4|\badd\(", re.I)
-        # per-class §7 entry: from the class's FIRST mention to the first
-        # mention of a DIFFERENT redesign class (or end of §7) — require only
-        # the shapes §7 DECIDED for THIS class.
+        # per-class §7 entry: from the class's FIRST mention to the next
+        # CLASS mention (HARVEST or REDESIGN) — require only shapes §7
+        # DECIDED for THIS class. W4-566: ending only at the next REDESIGN
+        # let HARVEST prose leak in (e.g. "validation" → false `valid`
+        # target-trace on VisitRepositoryOverride).
+        all_class_firsts: dict[str, int] = {}
+        for mm in NAME.finditer(sec7):
+            nm = mm.group(1) or mm.group(2) or mm.group(3)
+            if nm in java_named or targeted(nm):
+                all_class_firsts.setdefault(nm, mm.start())
+
         def entry_of(cls):
             start = firsts.get(cls)
             if start is None:
                 return ""
-            later = [o for c, o in firsts.items() if c != cls and o > start]
+            later = [
+                o for c, o in all_class_firsts.items() if c != cls and o > start
+            ]
             return sec7[start: min(later) if later else len(sec7)]
         # A class is THIS plan's responsibility only if a task TARGETS its
         # src/main file — a LATER story owns the rest (V5: the platform story
@@ -1859,6 +1869,10 @@ def main():
         def _is_harvest_only(title: str, body: str) -> bool:
             """True when task is harvest/create-from-staging without convert."""
             blob = f"{title}\n{body}"
+            # W4-566: typed Role=HARVEST is harvest even when Port=reimplement
+            # or harness-derived O-REIMPLCREATE prose mentions reimplement.
+            if re.search(r"(?im)^\*\*Role\*\*\s*:?\s*HARVEST\b", body):
+                return True
             if not re.search(r"(?i)\bharvest\b|harvest-from-staging", blob):
                 return False
             if re.search(
@@ -1870,6 +1884,9 @@ def main():
 
         def _is_convert_task(title: str, body: str) -> bool:
             blob = f"{title}\n{body}"
+            # Role=HARVEST is never a convert gate for S-GODORDER.
+            if re.search(r"(?im)^\*\*Role\*\*\s*:?\s*HARVEST\b", body):
+                return False
             return bool(
                 re.search(
                     r"(?i)\bconvert\b|\breimplement\b|\*\*Port\*\*:\s*reimplement",
