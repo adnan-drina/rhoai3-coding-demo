@@ -1729,7 +1729,13 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   if [ "$M3_DONE" != "1" ]; then
     # ADR-35/40 typed path — harness SoT + Qwen write-inversion (default ON).
     # Seat returns judgment JSON; harness upserts model.tasks[] + renders tasks.md.
-    if [ "${M3_TYPED_LOOP:-1}" = "1" ] && [ -f "$HARNESS/m3_task_loop.py" ]; then
+    # W4-556: when M3_TYPED_LOOP=1, failure is terminal (O-M3TYPEDSTOP) — no
+    # automatic legacy MiniMax fallback. Operator sets M3_TYPED_LOOP=0 to use
+    # the edit-tasks.md path deliberately.
+    if [ "${M3_TYPED_LOOP:-1}" = "1" ]; then
+      if [ ! -f "$HARNESS/m3_task_loop.py" ]; then
+        fail_run "M3 SPECIFY ${SLUG}: M3_TYPED_LOOP=1 but m3_task_loop.py missing (O-M3TYPEDSTOP)"
+      fi
       phase_start "M3 SPECIFY — typed write-inversion ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [ADR-35/Qwen]"
       log "         Actor: m3_task_loop + $(worker_label) — session → /tmp/m3-task-${SID}-*.log"
       python3 "$HARNESS/model.py" assign-tasks --root . >/tmp/m3-assign-tasks.txt 2>&1 || true
@@ -1756,12 +1762,14 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
         phase_ok "M3 SPECIFY — ${SLUG} typed write-inversion GREEN; commit $(git rev-parse --short HEAD)"
         M3_DONE=1
       else
-        log "         O-M3TYPED: typed loop rc=${_m3tl_rc:-?} or plan-lint RED — falling back to legacy edit path (see /tmp/m3-task-loop-${SID}.log)"
-        phase_retry "M3 SPECIFY ${SLUG} — typed loop incomplete; legacy MiniMax/Qwen edit path"
+        m3_phase_gate "M3 SPECIFY ${SLUG} typed-loop" RED \
+          "typed loop rc=${_m3tl_rc:-?} or plan-lint RED — see /tmp/m3-task-loop-${SID}.log (O-M3TYPEDSTOP)"
+        fail_run "M3 SPECIFY ${SLUG} typed write-inversion failed (O-M3TYPEDSTOP; no legacy fallback). See /tmp/m3-task-loop-${SID}.log"
       fi
     fi
   fi
-  if [ "$M3_DONE" != "1" ]; then
+  if [ "$M3_DONE" != "1" ] && [ "${M3_TYPED_LOOP:-1}" != "1" ]; then
+    # Legacy MiniMax/Qwen edit path — only when operator set M3_TYPED_LOOP=0.
     # O-M3WORKER: Qwen drafts (≤M3_WORKER_ATTEMPTS), then MiniMax backstop
     # (≤M3_ORCH_BACKSTOP). plan-lint remains the gate — session≠success.
     # O-M3KILL: SIGKILL must NOT spend an attempt.

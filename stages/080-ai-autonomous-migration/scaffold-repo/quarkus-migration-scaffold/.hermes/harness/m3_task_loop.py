@@ -7,6 +7,10 @@ Same shape as profile_prose_loop / ADR-32 decide:
 Seat MUST NOT author task id or acceptance (F-taskid-generated /
 F-acceptance-derived). Packet includes context_for SNIPPETs (O-M3SNIPPET).
 
+Delivery (W4-556 / F-packet-by-value): pass packet TEXT as opencode argv
+positional (by value), matching profile_prose_loop — never a path the seat
+must Read. Disk write under migration/.m3-prompts/ is forensics only.
+
 Backends:
   dry-run       — deterministic fixture judgment (instruments)
   opencode-qwen — OpenCode returns JSON; harness upserts + re-renders tasks.md
@@ -27,6 +31,15 @@ from pathlib import Path
 from typing import Any, Optional
 
 HERE = Path(__file__).resolve().parent
+
+
+class JudgmentError(RuntimeError):
+    """Typed seat failure: EMPTY | REFUSED:<falsifier> | MALFORMED."""
+
+    def __init__(self, kind: str, detail: str = "") -> None:
+        self.kind = kind
+        msg = kind if not detail else f"{kind}: {detail}"
+        super().__init__(msg)
 
 
 def _log(msg: str, *, err: bool = False) -> None:
@@ -66,37 +79,50 @@ def _dry_run_judgment(task: dict) -> dict:
     }
 
 
-def _parse_judgment(blob: str, expect_keys: list[str]) -> Optional[dict]:
-    """Extract {unit_keys|unit_key, goal, plan?, risk?} — reject id/acceptance."""
+def _parse_judgment(blob: str, expect_keys: list[str]) -> dict:
+    """Extract judgment or raise JudgmentError with EMPTY/REFUSED/MALFORMED."""
+    text = (blob or "").strip()
+    if not text:
+        raise JudgmentError("EMPTY", "no seat response")
+
     candidates: list[dict] = []
-    for m in re.finditer(r"\{.*?\}", blob, re.S):
+    for m in re.finditer(r"\{.*?\}", text, re.S):
         try:
             o = json.loads(m.group(0))
         except json.JSONDecodeError:
             continue
         if isinstance(o, dict):
             candidates.append(o)
-    # also try last balanced object
-    start, end = blob.rfind("{"), blob.rfind("}")
+    start, end = text.rfind("{"), text.rfind("}")
     if start >= 0 and end > start:
         try:
-            o = json.loads(blob[start : end + 1])
+            o = json.loads(text[start : end + 1])
             if isinstance(o, dict):
                 candidates.append(o)
         except json.JSONDecodeError:
             pass
+
+    if not candidates:
+        raise JudgmentError("MALFORMED", "no JSON object in seat response")
+
     expect = sorted(expect_keys)
+    refused: list[str] = []
+    malformed_keys = 0
     for o in candidates:
         if o.get("id") not in (None, ""):
-            continue  # F-taskid-generated — ignore / refuse later on upsert
+            refused.append("REFUSED:F-taskid-generated")
+            continue
         if o.get("acceptance") not in (None, "", [], {}):
+            refused.append("REFUSED:F-acceptance-derived")
             continue
         keys = o.get("unit_keys")
         if not keys and o.get("unit_key"):
             keys = [o["unit_key"]]
         if not isinstance(keys, list):
+            malformed_keys += 1
             continue
         if sorted(str(k) for k in keys) != expect:
+            malformed_keys += 1
             continue
         goal = o.get("goal")
         if isinstance(goal, str) and len(goal.strip()) >= 20:
@@ -106,7 +132,28 @@ def _parse_judgment(blob: str, expect_keys: list[str]) -> Optional[dict]:
                 "plan": str(o.get("plan") or "").strip(),
                 "risk": str(o.get("risk") or "").strip(),
             }
-    return None
+        malformed_keys += 1
+
+    if refused:
+        # Prefer first distinct refusal class
+        raise JudgmentError(refused[0], "seat authored forbidden field")
+    raise JudgmentError(
+        "MALFORMED",
+        f"candidates={len(candidates)} key_mismatch_or_short_goal={malformed_keys}",
+    )
+
+
+def _packet_fetch_reads(blob: str, prompt_rel: str) -> list[str]:
+    """Detect seat tool Reads targeting the forensics prompt path (F-packet-by-value)."""
+    hits: list[str] = []
+    needle = prompt_rel.replace("\\", "/")
+    for line in (blob or "").splitlines():
+        if "m3-task-prompt" not in line and ".m3-prompts" not in line:
+            continue
+        if needle in line.replace("\\", "/") or "m3-task-prompt-" in line:
+            if re.search(r"(?i)\b(read|Read|tool_use|filePath)\b", line):
+                hits.append(line.strip()[:200])
+    return hits
 
 
 def _opencode_judgment(
@@ -118,6 +165,7 @@ def _opencode_judgment(
     timeout: int,
     legacy: str,
 ) -> dict:
+    del legacy  # packet already inlines SNIPPETs; legacy path not passed to seat
     m = _load_model_api()
     model = m.load(root)
     projected = m.context_for(model, sid, root=root)
@@ -148,48 +196,77 @@ def _opencode_judgment(
             "- do NOT include id or acceptance fields (refused)",
             "- do NOT edit specs/**/tasks.md (harness writes)",
             "- do NOT git commit",
+            "- do NOT Read any prompt file — the full packet is already above",
             "- goal ≥ 20 chars",
         ]
     )
     slog = Path("/tmp") / f"m3-task-{sid}-{task.get('seq')}.log"
-    slog.write_text(packet[:2000] + "\n…\n", encoding="utf-8")
-    # Prompt MUST live under the workspace root — OpenCode auto-rejects
-    # Read of /tmp/* as external_directory (cold M3 W4-555 follow-on).
+    # Forensics only — never the delivery channel (W4-556 / F-packet-by-value).
     pdir = root / "migration" / ".m3-prompts"
     pdir.mkdir(parents=True, exist_ok=True)
     pfile = pdir / f"m3-task-prompt-{sid}-{task.get('seq')}.txt"
     pfile.write_text(packet, encoding="utf-8")
-    # Relative path so the seat stays inside project scope.
     pref = str(pfile.relative_to(root))
-    env = os.environ.copy()
+
+    skilldir = HERE.parent / "skills" / "migration-harness"
+    skill = skilldir / "PLANNING.md"
+    if not skill.is_file():
+        skill = skilldir / "ANALYSIS.md"
+    cmd = [
+        "timeout",
+        str(int(timeout)),
+        "opencode",
+        "run",
+        packet,  # by value — F-packet-by-value
+        "-m",
+        worker_model,
+        "--auto",
+        "--format",
+        "json",
+        "-f",
+        str(skill),
+    ]
     try:
         proc = subprocess.run(
-            [
-                "timeout",
-                str(int(timeout)),
-                "opencode",
-                "run",
-                "--model",
-                worker_model,
-                pref,
-            ],
+            cmd,
             cwd=str(root),
             capture_output=True,
             text=True,
-            env=env,
+            env=os.environ.copy(),
+            stdin=subprocess.DEVNULL,
             check=False,
+            timeout=int(timeout) + 30,
         )
-    except FileNotFoundError:
-        # Fallback: hermes-style not available — raise for outer retry
-        raise RuntimeError("opencode binary not found for m3_task_loop")
+    except FileNotFoundError as e:
+        raise RuntimeError("opencode binary not found for m3_task_loop") from e
+    except subprocess.TimeoutExpired as e:
+        raise JudgmentError("EMPTY", f"opencode timeout after {timeout}s") from e
+
     blob = (proc.stdout or "") + "\n" + (proc.stderr or "")
     slog.write_text(blob, encoding="utf-8")
-    parsed = _parse_judgment(blob, keys)
-    if not parsed:
-        raise RuntimeError(
-            f"m3_task_loop: no valid judgment JSON for {keys} (see {slog})"
+
+    fetches = _packet_fetch_reads(blob, pref)
+    if fetches:
+        raise JudgmentError(
+            "REFUSED:F-packet-by-value",
+            f"seat Read of own prompt ({len(fetches)} hit(s)); see {slog}",
         )
-    return parsed
+
+    # Prefer JSON-format text parts when present (same as prose loop).
+    texts: list[str] = []
+    for line in (proc.stdout or "").splitlines():
+        try:
+            o = json.loads(line)
+        except json.JSONDecodeError:
+            texts.append(line)
+            continue
+        part = o.get("part") if isinstance(o, dict) else None
+        if isinstance(part, dict) and part.get("type") == "text":
+            texts.append(str(part.get("text") or ""))
+        elif isinstance(o, dict) and "text" in o:
+            texts.append(str(o.get("text") or ""))
+    parse_blob = "\n".join(texts) if texts else blob
+    return _parse_judgment(parse_blob, keys)
 
 
 def run_loop(
@@ -244,10 +321,12 @@ def run_loop(
                 )
                 ok += 1
                 _log(f"  OK {t.get('id')} keys={keys}")
+            except JudgmentError as e:
+                fail += 1
+                _log(f"  FAIL {t.get('id')}: {e.kind} — {e}", err=True)
             except Exception as e:
                 fail += 1
                 _log(f"  FAIL {t.get('id')}: {e}", err=True)
-        # refresh model after story
         model = m.load(root)
         m.render_tasks_md(root, s, model)
     _log(f"m3_task_loop: done ok={ok} fail={fail}")
@@ -317,13 +396,67 @@ def main() -> int:
     u.add_argument("--risk", default="")
     u.add_argument("--forbid-id", default="", help="instruments: inject id to refuse")
     u.add_argument(
-        "--forbid-acceptance", default="", help="instruments: inject acceptance to refuse"
+        "--forbid-acceptance",
+        default="",
+        help="instruments: inject acceptance to refuse",
     )
     u.set_defaults(func=cmd_upsert)
 
+    # instruments helpers
+    p = sub.add_parser("parse-selftest")
+    p.set_defaults(func=lambda _a: _selftest_parse())
+
     args = ap.parse_args()
-    return int(args.func(args) or 0)
+    return int(args.func(args))
+
+
+def _selftest_parse() -> int:
+    """Instrument helper: EMPTY / REFUSED / MALFORMED distinct messages."""
+    try:
+        _parse_judgment("", ["a.b.C"])
+        print("expected EMPTY", file=sys.stderr)
+        return 1
+    except JudgmentError as e:
+        assert e.kind == "EMPTY", e.kind
+    try:
+        _parse_judgment(
+            '{"id":"S01-T-001","unit_keys":["a.b.C"],"goal":"' + ("x" * 25) + '"}',
+            ["a.b.C"],
+        )
+        print("expected REFUSED id", file=sys.stderr)
+        return 1
+    except JudgmentError as e:
+        assert e.kind == "REFUSED:F-taskid-generated", e.kind
+    try:
+        _parse_judgment(
+            '{"unit_keys":["a.b.C"],"acceptance":["x"],"goal":"' + ("y" * 25) + '"}',
+            ["a.b.C"],
+        )
+        print("expected REFUSED acceptance", file=sys.stderr)
+        return 1
+    except JudgmentError as e:
+        assert e.kind == "REFUSED:F-acceptance-derived", e.kind
+    try:
+        _parse_judgment("not json at all", ["a.b.C"])
+        print("expected MALFORMED", file=sys.stderr)
+        return 1
+    except JudgmentError as e:
+        assert e.kind == "MALFORMED", e.kind
+    ok = _parse_judgment(
+        '{"unit_keys":["a.b.C"],"goal":"Migrate C with enough characters here."}',
+        ["a.b.C"],
+    )
+    assert ok["goal"].startswith("Migrate")
+    # F-packet-by-value detector
+    hits = _packet_fetch_reads(
+        'Read migration/.m3-prompts/m3-task-prompt-S01-1.txt',
+        "migration/.m3-prompts/m3-task-prompt-S01-1.txt",
+    )
+    assert hits, hits
+    assert not _packet_fetch_reads("goal ok no tools", "migration/.m3-prompts/x.txt")
+    print("m3-parse-selftest-ok")
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

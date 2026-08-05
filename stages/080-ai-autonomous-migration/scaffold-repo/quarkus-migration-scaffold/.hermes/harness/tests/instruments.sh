@@ -14700,6 +14700,24 @@ PY
 }
 check "ADR-35 typed tasks + derived acceptance + write-inversion refuse + dry-run" 0 "adr35-typed-ok"
 
+# W4-556 — F-packet-by-value + outcome typing + typed-loop terminal stop
+run_case() {
+  grep -q 'F-packet-by-value' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'packet,  # by value' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q '"--format"' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q '"--auto"' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'O-M3TYPEDSTOP' "$HARNESS_DIR/outer-loop.sh" || return 1
+  # No automatic legacy fallback after typed failure
+  awk '
+    /typed write-inversion failed|O-M3TYPEDSTOP/ {f=1}
+    f && /falling back to legacy/ {found=1}
+    END { exit found ? 1 : 0 }
+  ' "$HARNESS_DIR/outer-loop.sh" || return 1
+  python3 "$HARNESS_DIR/m3_task_loop.py" parse-selftest || return 1
+  echo m3packet-byvalue-ok
+}
+check "W4-556 F-packet-by-value + EMPTY/REFUSED/MALFORMED + O-M3TYPEDSTOP" 0 "m3packet-byvalue-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then
