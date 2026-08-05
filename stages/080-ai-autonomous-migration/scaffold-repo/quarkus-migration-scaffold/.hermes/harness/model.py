@@ -1208,7 +1208,28 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 "filled": bool(prev.get("filled")),
             }
             tasks.append(task)
-    model["tasks"] = tasks
+    # O-TASKCLASSORDER (W4-562): one owner for rewrite-before-infer.
+    # assign_tasks emits satisfying order; plan-lint checks the same rule.
+    # Stable partition per story — preserve relative condensation order
+    # within each class; then renumber seq (ids stay stable for judgments).
+    ordered: list[dict] = []
+    for st in model.get("stories") or []:
+        sid = st.get("id") or ""
+        if not sid:
+            continue
+        story = [t for t in tasks if t.get("sid") == sid]
+        rewrites = [
+            t for t in story if str(t.get("class") or "").lower() == "rewrite"
+        ]
+        rest = [
+            t for t in story if str(t.get("class") or "").lower() != "rewrite"
+        ]
+        for i, t in enumerate(rewrites + rest, start=1):
+            t["seq"] = i
+            ordered.append(t)
+    # Any tasks without a story id (should not happen) keep prior order.
+    orphan = [t for t in tasks if t not in ordered]
+    model["tasks"] = ordered + orphan
     prov = model.setdefault("provenance", {})
     prov["tasks_source"] = "model-condensation"
     prov["tasks_assigned_at"] = _utc()

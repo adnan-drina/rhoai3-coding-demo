@@ -14833,6 +14833,65 @@ PY
 }
 check "W4-557 F-lint-reads-store typed model GREEN + corrupt owns RED" 0 "lint-reads-store-ok"
 
+# W4-562 — O-TASKCLASSORDER: assign_tasks emits rewrite-before-infer
+run_case() {
+  grep -q 'O-TASKCLASSORDER' "$HARNESS_DIR/model.py" || return 1
+  FIX=$(mktemp -d)
+  trap 'rm -rf "$FIX"' RETURN
+  mkdir -p "$FIX/migration"
+  cat >"$FIX/migration.yaml" <<'Y'
+legacyPackage: org.example.app
+targetPackage: com.demo
+artifactId: demo
+Y
+  python3 - <<PY || return 1
+import json, subprocess, sys
+from pathlib import Path
+fix = Path("$FIX")
+H = Path("$HARNESS_DIR").resolve()
+# Two units: one REDESIGN (infer) first in condensation order, one HARVEST (rewrite)
+model = {
+  "units": [
+    {"key":"org.example.app.A","kind":"java","legacy_fqn":"org.example.app.A",
+     "legacy_path":"src/main/java/org/example/app/A.java",
+     "target_path":"src/main/java/com/demo/A.java","findings":[],
+     "decision":{"role":"REDESIGN","rationale":"x",
+       "evidence":{"path":"src/main/java/org/example/app/A.java","line":1,"token":"A"},
+       "target_contract":{}}},
+    {"key":"org.example.app.B","kind":"java","legacy_fqn":"org.example.app.B",
+     "legacy_path":"src/main/java/org/example/app/B.java",
+     "target_path":"src/main/java/com/demo/B.java","findings":[],
+     "decision":{"role":"HARVEST","rationale":"y",
+       "evidence":{"path":"src/main/java/org/example/app/B.java","line":1,"token":"B"},
+       "target_contract":{"getIdempotent":True}}},
+  ],
+  "sccs": [],
+  "order": ["org.example.app.A", "org.example.app.B"],
+  "findings": [],
+  "stories": [{"id":"S01","slug":"mixed","units":["org.example.app.A","org.example.app.B"],
+               "findings":[],"deploy":False,"layer":"model"}],
+  "tasks": [],
+  "provenance": {},
+}
+(fix/"migration/model.json").write_text(json.dumps(model, indent=2))
+subprocess.check_call([sys.executable, str(H/"model.py"), "assign-tasks", "--root", str(fix)])
+m = json.loads((fix/"migration/model.json").read_text())
+ts = sorted([t for t in m["tasks"] if t.get("sid")=="S01"], key=lambda t: int(t.get("seq") or 0))
+classes = [t.get("class") for t in ts]
+assert classes == ["rewrite", "infer"], classes
+# seq rewrite before infer
+seen_i = False
+for c in classes:
+    if c == "infer":
+        seen_i = True
+    elif c == "rewrite" and seen_i:
+        raise AssertionError("rewrite after infer")
+print("task-class-order-ok")
+PY
+  echo task-class-order-ok
+}
+check "W4-562 O-TASKCLASSORDER rewrite before infer" 0 "task-class-order-ok"
+
 echo "----"
 echo "$PASS/$N passed"
 if [ "$FAIL" -ne 0 ]; then
