@@ -14737,18 +14737,21 @@ check "W4-565 F-brief-projected + F-no-discovery refuse + brief in packet" 0 "m3
 run_case() {
   grep -q 'SEAT-FAILED' "$HARNESS_DIR/outer-loop.sh" || return 1
   grep -q 'LINT-RED' "$HARNESS_DIR/outer-loop.sh" || return 1
-  # Must not claim write-inversion failed when seats ok / lint red
+  # Must not claim write-inversion failed when seats ok / lint red.
+  # Match fail_run lines only — comments mention the old phrase (W4-566).
   awk '
-    /LINT-RED/ {lint=1}
-    lint && /typed write-inversion failed/ {bad=1}
+    /fail_run.*typed write-inversion failed/ {bad=1}
     END { exit bad ? 1 : 0 }
   ' "$HARNESS_DIR/outer-loop.sh" || return 1
+  grep -q 'fail_run.*LINT-RED' "$HARNESS_DIR/outer-loop.sh" \
+    || grep -q 'LINT-RED (n=' "$HARNESS_DIR/outer-loop.sh" || return 1
   grep -q '_derived_reimpl_create_lines' "$HARNESS_DIR/model.py" || return 1
   grep -q 'O-REIMPLCREATE / O-RESTCREATE' "$HARNESS_DIR/model.py" || return 1
-  python3 - <<'PY' || return 1
+  # Unquoted heredoc so $HARNESS_DIR expands (quoted <<'PY' broke import path).
+  python3 - <<PY || return 1
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path("$HARNESS_DIR").resolve()))
+sys.path.insert(0, str(Path(r"$HARNESS_DIR").resolve()))
 import model
 body = model.typed_task_body({
     "id": "S99-T-001-X",
@@ -14846,58 +14849,66 @@ model = {
   "tasks": [],
   "provenance": {},
 }
-(fix / "migration/model.json").write_text(json.dumps(model, indent=2))
-subprocess.check_call([sys.executable, str(H / "model.py"), "assign-tasks", "--root", str(fix)])
+(FIX / "migration/model.json").write_text(json.dumps(model, indent=2))
+# Always cwd=FIX so plan-lint/model never see repo-root migration/specs residue.
+_cwd = dict(cwd=str(FIX))
+subprocess.check_call(
+  [sys.executable, str(H / "model.py"), "assign-tasks", "--root", str(FIX)], **_cwd)
 subprocess.check_call([
-  sys.executable, str(H / "m3_task_loop.py"), "upsert", "--root", str(fix),
+  sys.executable, str(H / "m3_task_loop.py"), "upsert", "--root", str(FIX),
   "--unit-key", "org.example.app.model.Bar",
   "--goal", "Harvest Bar entity into com.demo.model with package rename only.",
   "--plan", "Copy from staging; pin via src/test/java/com/demo/model/BarTest.java",
   "--risk", "low",
-])
+], **_cwd)
 # Seam: composite S01-T-* VIEW headings must be accepted via store path
-subprocess.check_call([sys.executable, str(H / "model.py"), "render-tasks", "--root", str(fix), "--sid", "S01"])
-tp = next((fix / "specs").glob("*/tasks.md"))
+subprocess.check_call(
+  [sys.executable, str(H / "model.py"), "render-tasks", "--root", str(FIX), "--sid", "S01"],
+  **_cwd)
+tp = next((FIX / "specs").glob("*/tasks.md"))
 assert "S01-T-" in tp.read_text()
 out = subprocess.run(
-  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
-  cwd=str(fix), capture_output=True, text=True,
+  [sys.executable, str(H / "plan-lint.py"), str(tp.relative_to(FIX)), "--story-deploy", "false"],
+  cwd=str(FIX), capture_output=True, text=True,
 )
 print(out.stdout)
 print(out.stderr, file=sys.stderr)
 assert out.returncode == 0, out.stdout + out.stderr
 assert "PLAN OK" in out.stdout
-m = json.loads((fix / "migration/model.json").read_text())
-tid = m["tasks"][0]["id"]
-m["tasks"][0]["owns"] = []
-(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+m = json.loads((FIX / "migration/model.json").read_text())
+bar = next(t for t in m["tasks"] if "Bar" in str(t.get("id")) and t.get("kind") != "characterize")
+tid = bar["id"]
+bar["owns"] = []
+(FIX / "migration/model.json").write_text(json.dumps(m, indent=2))
 out2 = subprocess.run(
-  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
-  cwd=str(fix), capture_output=True, text=True,
+  [sys.executable, str(H / "plan-lint.py"), str(tp.relative_to(FIX)), "--story-deploy", "false"],
+  cwd=str(FIX), capture_output=True, text=True,
 )
 print(out2.stdout)
-assert out2.returncode != 0
+assert out2.returncode != 0, out2.stdout
 assert "typed-owns" in out2.stdout and tid in out2.stdout
+assert "PLAN OK" not in out2.stdout
 # W4-561: batch:SCC-N is a legal typed Shape (restore after corrupt owns test)
-m = json.loads((fix / "migration/model.json").read_text())
-m["tasks"][0]["owns"] = ["src/main/java/com/demo/model/Bar.java"]
-m["tasks"][0]["shape"] = "batch:SCC-1"
-m["tasks"][0]["scc_id"] = "SCC-1"
-m["tasks"][0]["class"] = "rewrite"
-(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+m = json.loads((FIX / "migration/model.json").read_text())
+bar = next(t for t in m["tasks"] if t.get("id") == tid)
+bar["owns"] = ["src/main/java/com/demo/model/Bar.java"]
+bar["shape"] = "batch:SCC-1"
+bar["scc_id"] = "SCC-1"
+bar["class"] = "rewrite"
+(FIX / "migration/model.json").write_text(json.dumps(m, indent=2))
 out3 = subprocess.run(
-  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
-  cwd=str(fix), capture_output=True, text=True,
+  [sys.executable, str(H / "plan-lint.py"), str(tp.relative_to(FIX)), "--story-deploy", "false"],
+  cwd=str(FIX), capture_output=True, text=True,
 )
 print(out3.stdout)
 assert out3.returncode == 0, out3.stdout + out3.stderr
 assert "O-SHAPEDECL" not in out3.stdout
 # unknown shape → RED naming task
-m["tasks"][0]["shape"] = "explode"
-(fix / "migration/model.json").write_text(json.dumps(m, indent=2))
+bar["shape"] = "explode"
+(FIX / "migration/model.json").write_text(json.dumps(m, indent=2))
 out4 = subprocess.run(
-  [sys.executable, str(H / "plan-lint.py"), str(tp), "--story-deploy", "false"],
-  cwd=str(fix), capture_output=True, text=True,
+  [sys.executable, str(H / "plan-lint.py"), str(tp.relative_to(FIX)), "--story-deploy", "false"],
+  cwd=str(FIX), capture_output=True, text=True,
 )
 assert out4.returncode != 0 and "O-SHAPEDECL" in out4.stdout and tid in out4.stdout
 print("lint-reads-store-ok")

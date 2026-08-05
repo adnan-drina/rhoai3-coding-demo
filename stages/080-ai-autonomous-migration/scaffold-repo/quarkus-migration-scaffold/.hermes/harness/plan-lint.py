@@ -438,6 +438,9 @@ def _task_owns_incident(body: str, legacy_rel: str, target_rel: str) -> bool:
 
 
 def main():
+    # Fresh problem list per invocation (module-level list used to leak across
+    # in-process re-entry and confuse instruments / dual calls).
+    problems.clear()
     args = sys.argv[1:]
     scope = None
     if "--findings-scope" in args:
