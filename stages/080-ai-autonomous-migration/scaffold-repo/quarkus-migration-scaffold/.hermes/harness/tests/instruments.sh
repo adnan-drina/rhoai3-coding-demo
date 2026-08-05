@@ -14718,6 +14718,21 @@ run_case() {
 }
 check "W4-556 F-packet-by-value + EMPTY/REFUSED/MALFORMED + O-M3TYPEDSTOP" 0 "m3packet-byvalue-ok"
 
+# W4-565 — F-brief-projected + F-no-discovery (M3 packet inline + refuse)
+run_case() {
+  grep -q 'F-brief-projected' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'F-no-discovery' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q '_story_brief_text' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'BEGIN STORY BRIEF' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'REFUSED:F-brief-projected' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'REFUSED:F-no-discovery' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'do NOT Read migration/briefs' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  grep -q 'do NOT Read /projects/legacy' "$HARNESS_DIR/m3_task_loop.py" || return 1
+  python3 "$HARNESS_DIR/m3_task_loop.py" parse-selftest || return 1
+  echo m3brief-projected-ok
+}
+check "W4-565 F-brief-projected + F-no-discovery refuse + brief in packet" 0 "m3brief-projected-ok"
+
 # W4-557 — F-lint-reads-store: plan-lint reads model.tasks[], not tasks.md prose
 run_case() {
   grep -q 'F-lint-reads-store' "$HARNESS_DIR/plan-lint.py" || return 1

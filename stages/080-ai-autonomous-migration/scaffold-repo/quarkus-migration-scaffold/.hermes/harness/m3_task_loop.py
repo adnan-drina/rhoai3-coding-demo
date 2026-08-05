@@ -156,6 +156,62 @@ def _packet_fetch_reads(blob: str, prompt_rel: str) -> list[str]:
     return hits
 
 
+def _legacy_discovery_reads(blob: str) -> list[str]:
+    """Detect seat Reads of /projects/legacy (F-no-discovery / ADR-38)."""
+    hits: list[str] = []
+    for line in (blob or "").splitlines():
+        low = line.replace("\\", "/")
+        if "/projects/legacy" not in low and "projects/legacy/" not in low:
+            continue
+        if re.search(r"(?i)\b(read|Read|tool_use|filePath|bash)\b", line):
+            hits.append(line.strip()[:200])
+    return hits
+
+
+def _brief_fetch_reads(blob: str) -> list[str]:
+    """Detect seat Reads of migration/briefs/** (F-brief-projected)."""
+    hits: list[str] = []
+    for line in (blob or "").splitlines():
+        low = line.replace("\\", "/")
+        if "migration/briefs" not in low and "/briefs/" not in low:
+            continue
+        if re.search(r"(?i)\b(read|Read|tool_use|filePath|glob|bash)\b", line):
+            hits.append(line.strip()[:200])
+    return hits
+
+
+def _story_brief_text(root: Path, sid: str, model: dict) -> str:
+    """Inline story brief into the packet (F-brief-projected) — no seat Read."""
+    m = _load_model_api()
+    slug = m.brief_slug_for_story(root, sid, model)
+    candidates = [
+        root / "migration" / "briefs" / f"{slug}.md",
+        root / "migration" / "briefs" / f"{sid}.md",
+    ]
+    # Also match sid-*.md if slug path missing
+    if not any(p.is_file() for p in candidates):
+        found = sorted((root / "migration" / "briefs").glob(f"{sid}-*.md"))
+        candidates = found[:1] + candidates
+    for p in candidates:
+        if p.is_file():
+            body = p.read_text(encoding="utf-8", errors="replace")
+            # Cap to keep argv/packet bounded; full brief usually fits.
+            if len(body) > 24000:
+                body = body[:24000] + "\n…[brief truncated for packet]\n"
+            return (
+                f"===== BEGIN STORY BRIEF (authoritative — already inlined; "
+                f"do NOT Read migration/briefs/) =====\n"
+                f"brief_path: {p.relative_to(root)}\n\n"
+                f"{body}\n"
+                f"===== END STORY BRIEF ====="
+            )
+    return (
+        f"===== BEGIN STORY BRIEF =====\n"
+        f"(no migration/briefs/{sid}-*.md present — plan from DERIVED FACTS only)\n"
+        f"===== END STORY BRIEF ====="
+    )
+
+
 def _opencode_judgment(
     root: Path,
     *,
@@ -169,6 +225,7 @@ def _opencode_judgment(
     m = _load_model_api()
     model = m.load(root)
     projected = m.context_for(model, sid, root=root)
+    brief = _story_brief_text(root, sid, model)
     keys = list(task.get("unit_keys") or [])
     packet = "\n".join(
         [
@@ -180,6 +237,9 @@ def _opencode_judgment(
             f"owns: {task.get('owns')}",
             "Acceptance is ALREADY DERIVED — do NOT invent acceptance or task id.",
             "ALL code quotes are in SNIPPET lines in DERIVED FACTS — do NOT read legacy.",
+            "STORY BRIEF is inlined below — do NOT Read migration/briefs/**.",
+            "",
+            brief,
             "",
             projected,
             "",
@@ -197,6 +257,8 @@ def _opencode_judgment(
             "- do NOT edit specs/**/tasks.md (harness writes)",
             "- do NOT git commit",
             "- do NOT Read any prompt file — the full packet is already above",
+            "- do NOT Read migration/briefs/** (brief already inlined)",
+            "- do NOT Read /projects/legacy (SNIPPET only — F-no-discovery)",
             "- goal ≥ 20 chars",
         ]
     )
@@ -250,6 +312,20 @@ def _opencode_judgment(
         raise JudgmentError(
             "REFUSED:F-packet-by-value",
             f"seat Read of own prompt ({len(fetches)} hit(s)); see {slog}",
+        )
+    # F-no-discovery (W4-565): legacy reads are refuse, not observation.
+    legacy_hits = _legacy_discovery_reads(blob)
+    if legacy_hits:
+        raise JudgmentError(
+            "REFUSED:F-no-discovery",
+            f"seat Read of /projects/legacy ({len(legacy_hits)} hit(s)); see {slog}",
+        )
+    # F-brief-projected (W4-565): brief is in the packet — seat must not fetch it.
+    brief_hits = _brief_fetch_reads(blob)
+    if brief_hits:
+        raise JudgmentError(
+            "REFUSED:F-brief-projected",
+            f"seat Read of migration/briefs ({len(brief_hits)} hit(s)); see {slog}",
         )
 
     # Prefer JSON-format text parts when present (same as prose loop).
@@ -454,6 +530,13 @@ def _selftest_parse() -> int:
     )
     assert hits, hits
     assert not _packet_fetch_reads("goal ok no tools", "migration/.m3-prompts/x.txt")
+    # F-no-discovery / F-brief-projected detectors (W4-565)
+    assert _legacy_discovery_reads(
+        'Read /projects/legacy/src/main/java/org/example/Foo.java'
+    )
+    assert not _legacy_discovery_reads("goal ok no tools")
+    assert _brief_fetch_reads('Read migration/briefs/S02-repository-layer.md')
+    assert not _brief_fetch_reads("goal ok no tools")
     print("m3-parse-selftest-ok")
     return 0
 
