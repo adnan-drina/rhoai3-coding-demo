@@ -76,6 +76,7 @@ v4 run (L3 live) against the re-frozen prediction table and honesty gates.
 | R5 seat economics | O-SEATBUDGET + O-STORYKIND + O-SPECREIMPL | roadmap/plan lint + freeze |
 | **M2 path (new)** | O-M2COMPOSE + **O-M2COMPOSEBOOK** + O-M2-429 + O-M2429CAP + O-ORCH429BACKOFF + O-M2RETRYINLINE + O-M2CORPUS + O-MONSTART | instruments 515/515; offline probe residual **8→0**; L3 on resume |
 | M3-ALL path | Whole-set plan before any M4; operator gate; predictions_fp bind | `m3-all-lint.sh`, outer two-pass, `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` unset |
+| **O-M3ALLSHA** (W4R7 mid-run) | `freeze-predictions` / operator-gate must not call bare `shasum` (absent on UBI) — portable `sha256sum`/`shasum`/python | `m3-all-lint.sh` `_m3all_sha256_*`; live fail `/tmp/m3-all-predictions.txt` |
 | Port / Oracle honesty | O-PORTREIMPL, O-PORTDERIVE, O-ORACLEDERIVE, O-INFERABSENT, O-M3PRESERVEDAO, O-OWNSTAGE, O-SPRINGRESIDUE, O-SDJPA-SKIP | plan-lint + corpus |
 | Plan / exec / m2 corpus (seeded) | O-PLANCORPUS + O-EXECCORPUS + O-M2CORPUS (v4 lint×2 known-RED) | corpus gates + preflight |
 | Watchability P1 | O-LOGSTORY, O-LOGBRIEF, O-LOGEPILOG, O-EVIDLIVE, **O-LOGLINTRES** | instruments + live window (residual on compose/gate) |

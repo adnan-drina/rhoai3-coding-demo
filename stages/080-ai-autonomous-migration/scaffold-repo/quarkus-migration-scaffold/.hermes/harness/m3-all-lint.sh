@@ -62,6 +62,40 @@ SPECS_ROOT="${SPECS_ROOT:-$ROOT/specs}"
 ROADMAP="${ROADMAP:-$ROOT/migration/roadmap.md}"
 OUTER="${HARNESS_DIR}/outer-loop.sh"
 
+# O-M3ALLAMENDJIT: restamp one story's Owns/Port/Shape/Oracle/Assumes fingerprint
+# so EXECUTE_ONLY / partial-plan M4 can amend without whole-set (skeletons RED).
+if [ "$MODE" = "restamp" ]; then
+  if [ -z "$STORY" ]; then
+    echo "O-M3ALL: --mode=restamp requires --story SNN" >&2
+    exit 2
+  fi
+  python3 - "$ROOT" "$STORY" <<'PY'
+import re, sys
+from pathlib import Path
+root, story = Path(sys.argv[1]), sys.argv[2]
+specs = root / "specs"
+cands = sorted(specs.glob(f"{story}-*/tasks.md")) + sorted(specs.glob(f"{story}/tasks.md"))
+if not cands:
+    print(f"O-M3ALL: restamp — no tasks.md for {story}", file=sys.stderr)
+    sys.exit(2)
+text = cands[0].read_text(encoding="utf-8")
+fields = []
+for line in text.splitlines():
+    if re.match(
+        r"(?i)^\s*\*?\*?(Owns|Absorbs|Port|Shape|Oracle|Assumes|"
+        r"Target(?:\s*design)?)\*?\*?\s*:",
+        line,
+    ):
+        fields.append(line.strip())
+stamp_dir = root / "migration" / ".m3-all-stamps"
+stamp_dir.mkdir(parents=True, exist_ok=True)
+(stamp_dir / f"{story}.fields").write_text("\n".join(fields) + "\n", encoding="utf-8")
+print(f"O-M3ALL: restamped {story} ({len(fields)} field lines) → {stamp_dir / (story + '.fields')}")
+sys.exit(0)
+PY
+  exit $?
+fi
+
 if [ "$MODE" = "wire-check" ]; then
   missing=0
   for needle in 'O-M3ALL' 'm3-all-lint.sh' 'M3_ALL_PASS' 'waterfall' \
@@ -90,6 +124,26 @@ if [ "$MODE" = "wire-check" ]; then
   exit 0
 fi
 
+# Portable SHA-256 (UBI/RHEL images often lack `shasum`; prefer sha256sum).
+_m3all_sha256_stream() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  else
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
+  fi
+}
+_m3all_sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+  fi
+}
+
 # Prediction freeze — durable copy of the merged prediction table (HANDOFF).
 if [ "$MODE" = "freeze-predictions" ]; then
   PRED_DIR="$ROOT/migration"
@@ -98,7 +152,7 @@ if [ "$MODE" = "freeze-predictions" ]; then
   TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   STAMP_FP=""
   if [ -d "$PRED_DIR/.m3-all-stamps" ]; then
-    STAMP_FP="$(cat "$PRED_DIR/.m3-all-stamps"/*.fields 2>/dev/null | shasum -a 256 | awk '{print $1}')"
+    STAMP_FP="$(cat "$PRED_DIR/.m3-all-stamps"/*.fields 2>/dev/null | _m3all_sha256_stream)"
   fi
   cat >"$PRED_FILE" <<EOF
 # O-M3ALL prediction table — FROZEN
@@ -130,7 +184,7 @@ if [ "$MODE" = "operator-gate" ]; then
     echo "O-M3ALL OPERATOR_GATE RED: missing $PRED_FILE — run --mode=freeze-predictions first" >&2
     exit 1
   fi
-  PRED_FP="$(shasum -a 256 "$PRED_FILE" | awk '{print $1}')"
+  PRED_FP="$(_m3all_sha256_file "$PRED_FILE")"
   AUTO="${M3_ALL_OPERATOR_AUTO:-0}"
   if [ ! -f "$GATE_FILE" ] || ! grep -qE '^status:[[:space:]]*APPROVED\b' "$GATE_FILE"; then
     if [ "$AUTO" = "1" ]; then
@@ -325,11 +379,27 @@ if not roadmap_stories:
     print(f"O-M3ALL: {lint_n} LINT(s) — RED")
     sys.exit(1)
 
+SKELETON_MARK = "<!-- O-M3ALL-SKELETON -->"
+
+def is_skeleton(path: Path) -> bool:
+    # O-M3ALLJITSKEL — skeleton/preseed plans are not authored; treat as
+    # missing for cross-story lint (whole-set → MISSING; jit → ignore noise).
+    if path is None or not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return SKELETON_MARK in text or "O-M3QWENSTALL preseed" in text
+
 # Attach plans
 for s in roadmap_stories:
     tp = tasks_for(s["sid"])
     s["tasks_path"] = tp
-    s["plan"] = parse_tasks(tp) if tp else None
+    if tp and is_skeleton(tp):
+        s["plan"] = None
+        s["skeleton"] = True
+        ok(f"{s['sid']}: skeleton/preseed tasks.md ignored for {mode} lint")
+    else:
+        s["plan"] = parse_tasks(tp) if tp else None
+        s["skeleton"] = False
 
 missing = [s["sid"] for s in roadmap_stories if s["plan"] is None]
 if mode == "whole-set" and missing:
@@ -424,9 +494,11 @@ for fid, sids in sorted(owners.items()):
             f"(K1 partition — exactly one story)",
         )
 
-# Roadmap-mandatory findings must appear in some plan when plans exist
+# Roadmap-mandatory findings must appear in some plan when plans exist.
+# O-M3ALLJITSKEL / O-M3ALLPLANPARITY: JIT trusts per-story plan-lint GREEN for
+# the focus story; K1 closure / Port / Oracle / Assumes prose are whole-set.
 planned_any = any(s["plan"] for s in roadmap_stories)
-if planned_any:
+if planned_any and mode != "jit":
     for s in roadmap_stories:
         if not s["findings"]:
             continue
@@ -445,7 +517,8 @@ if planned_any:
                 )
 
 # --- Port coverage --------------------------------------------------------
-for s in roadmap_stories:
+if mode != "jit":
+  for s in roadmap_stories:
     plan = s["plan"]
     if not plan:
         continue
@@ -492,7 +565,9 @@ for s in roadmap_stories:
 
 # --- Oracle completeness (whole-set) --------------------------------------
 # Every task must declare Oracle: present|absent (skeleton field; not silent default).
-for s in roadmap_stories:
+# Skipped in jit — per-story plan-lint already gated the focus story (O-M3ALLPLANPARITY).
+if mode != "jit":
+  for s in roadmap_stories:
     plan = s["plan"]
     if not plan:
         continue
@@ -507,20 +582,22 @@ for s in roadmap_stories:
 # --- Assumes closure (A6) -------------------------------------------------
 # Declared Assumes must be satisfied by dest ∪ earlier stories' Owns/output.
 # Format: Assumes: ClassOrPath … (SNN T-NNN) — citation optional but preferred.
-sid_order = [s["sid"] for s in roadmap_stories]
-# Build cumulative prior symbols after each story (for same-story earlier tasks
-# we also allow earlier task Owns within the story).
-prior_by_sid = {}
-running = set(dest_java)
-for s in roadmap_stories:
+# Skipped in jit — prose Assumes false-RED under token scrape (O-M3ALLPLANPARITY).
+if mode != "jit":
+  sid_order = [s["sid"] for s in roadmap_stories]
+  # Build cumulative prior symbols after each story (for same-story earlier tasks
+  # we also allow earlier task Owns within the story).
+  prior_by_sid = {}
+  running = set(dest_java)
+  for s in roadmap_stories:
     prior_by_sid[s["sid"]] = set(running)
     plan = s["plan"]
     if plan:
         running.update(plan["owns_paths"])
         running.update(plan["classes"])
 
-# Per-task Owns within a story for same-story Assumes.
-for s in roadmap_stories:
+  # Per-task Owns within a story for same-story Assumes.
+  for s in roadmap_stories:
     plan = s["plan"]
     if not plan:
         continue
