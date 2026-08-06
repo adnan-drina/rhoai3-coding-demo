@@ -14,10 +14,22 @@ this file is where that intent is captured.
    (`.hermes/harness/profile-rubric.py`) rejects uncited sections.
 2. **Read the inputs first — do not re-derive them.** The deterministic
    artifacts already exist; your job is interpretation, not extraction:
+   - `migration/model.json` + `migration/profile-decisions.json` (ADR-26/29) —
+     authoritative class universe and **typed decision SoT**
+     (`model.units[].decision`). Before your seat the harness opens
+     `profile-decisions.json` with `role=null` for every unit. You fill
+     §§1–6 in the profile **and** persist typed decisions via
+     `profile_roles.py upsert` (O-DECISIONWRITEDROP — one unit per call;
+     do not rewrite the decisions JSON wholesale). The closer **applies**
+     / refreshes the model and **renders** §7 — never harvest role from
+     markdown. Coverage = typed decisions whose evidence resolves at the
+     cited line. Source `*Mapper.java` interfaces **are** classify;
+     `*MapperImpl` / `generated-sources` are build-owned — never decide them
+     (O-RUBRICGENASSERT).
    - `migration/mta-findings.json` / `migration/findings-inventory.md`
      — what must change, already classified against MAPPINGS
    - `migration/dependency-order.md` — the import graph: fan-in/out,
-     god nodes, conversion order, circular groups
+     god nodes, conversion order, circular groups (a view of the model)
    - the legacy source under `/projects/legacy` (read-only)
    - the legacy test suite — the behavioral contract lives here
 3. **Intent over mechanism.** "PromoService applies a −10.99 shipping
@@ -73,6 +85,62 @@ candidate bounded context with its classes. State it descriptively —
 M2 decides the actual story cuts.
 
 ### 7. Class roles & target contract
+Classify EVERY unit from the DERIVED FACTS / `model.json` profile-units list
+(package-info excluded by the model). **Do not author §7 role bullets** —
+persist typed decisions via harness **upsert** (O-DECISIONWRITEDROP).
+The harness renders §7 from `model.units[].decision` after close.
+
+**/ O-PROFSEATARCH — harness decide loop (default).** Outer-loop
+classifies undecided units via `profile_decide_loop.py` (Qwen/OpenCode
+per-unit upsert), not MiniMax N=20 mchat batches. Prose seats fill §§1–6
+only; the harness owns the decide happy path. `PROFILE_DECIDE_ENGINE=batch-mchat`
+is legacy containment only (does not fix hourly MiniMax quota).
+
+**O-DECISIONWRITEDROP — small writes only.** Do **not** rewrite
+`migration/profile-decisions.json` wholesale in one patch (Hermes drops large
+tool-calls). Persist **one unit per call** (or ≤3 via `--json-file`):
+
+```bash
+python3 .hermes/harness/profile_roles.py upsert --root . --legacy /projects/legacy \
+  --fqn 'com.example.Foo' --role HARVEST --rationale 'unit-specific why' \
+  --path 'src/…/Foo.java' --line 47 --token '@Entity'
+```
+
+The harness updates `model.units[].decision` and refreshes
+`profile-decisions.json`. Then run `profile_close.py` + `profile-rubric.py`.
+
+**One typed decision per profile-unit .** Fields:
+
+```json
+{
+  "legacy_fqn": "…",
+  "role": "HARVEST" | "REDESIGN",
+  "rationale": "unit-specific why",
+  "evidence": { "path": "src/…/X.java", "line": 47, "token": "@Entity" }
+}
+```
+
+Evidence must **resolve**: `token` occurs on that `path:line` in legacy
+(G1 line-level). Grouped bullets, deferral scaffolds, and identical templates
+are unrepresentable. PROFILE GREEN = every unit decided with a resolving
+anchor. `role=null` means undecided. Coverage reports `authored=` vs
+`evidence_miss=` so a filled JSON row that cites the wrong line does **not**
+count as credited.
+
+**SELECT projected evidence anchors; do not search.** DERIVED FACTS project a
+pre-verified `anchors` list per unit (declaration / annotation / import /
+finding lines the harness already verified). Copy `path`+`line`+`token`
+from one of those anchors into upsert `--path/--line/--token`. **Do not
+invent line numbers.** Upsert/apply refuse evidence outside the projected set
+(`F-anchor-membership`). Your job is HARVEST vs REDESIGN +
+rationale — not hunting for resolving lines.
+
+**O-PROF1OF79STOP — batch seats.** Outer-loop projects DERIVED FACTS with
+`--undecided-only --limit N` (default 20). Fill **only the listed batch** per
+seat; do not attempt all profile-units in one prompt. Rate-limit → stop (no
+MiniMax a2). Low credited coverage also refuses a2 — fix evidence / continue
+batches instead of burning quota.
+
 Classify EVERY source class as one of:
 - **HARVEST** — data/DTO/value-object/pure-utility carried over faithfully.
 - **REDESIGN** — service, endpoint, REST client, or config that owns

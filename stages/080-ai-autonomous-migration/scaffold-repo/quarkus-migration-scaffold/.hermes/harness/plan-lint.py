@@ -44,6 +44,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+# ADR-41 Move 1 — single task-contract schema (do not re-literalize).
+_HARNESS_DIR = Path(__file__).resolve().parent
+if str(_HARNESS_DIR) not in sys.path:
+    sys.path.insert(0, str(_HARNESS_DIR))
+from task_contract import (  # type: ignore  # noqa: E402
+    HEDGE_RE,
+    LEGACY_TASK_ID_ATOM,
+    SHAPE_DISPLAY,
+    SHAPE_LINE_ATOM,
+    task_num as _contract_task_num,
+)
+
 # O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
@@ -214,9 +226,14 @@ def _target_work_paths(body: str) -> list[str]:
                 "class",
                 "shape",
                 "goal",
+                "plan",  # O-PLANTARGETLEAK: Plan prose must not count as Target
+                "risk",
+                "procedure",
+                "api mapping",
                 "findings",
                 "acceptance",
                 "oracle",
+                "assumes",
                 "out of scope",
             ):
                 in_target = False
@@ -364,7 +381,7 @@ _CLAIM_LINE = re.compile(
 _OOS_LINE = re.compile(
     r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
     r"|(?:\bdo NOT touch\b)"
-    r"|(?:\bowned by T[-A-Za-z0-9]*\d+[A-Za-z]*)"
+    rf"|(?:\bowned by {LEGACY_TASK_ID_ATOM})"
 )
 
 
@@ -602,7 +619,10 @@ def main():
                 break
 
     if not typed_mode:
-        heads = re.findall(r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
+        # Brace-escape #{2,6}: rf-strings interpolate {2,6} as an f-expr.
+        heads = re.findall(
+            rf"^(#{{2,6}})\s+({LEGACY_TASK_ID_ATOM})\s*:\s*(.+)$", text, re.M
+        )
         if not heads:
             lint("ids", "no parseable task headings (want '#### T-001: title')")
             print("\n".join(problems))
@@ -630,7 +650,9 @@ def main():
 
         # split body per task
         bodies = {}
-        parts = re.split(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:.*$", text, flags=re.M)
+        parts = re.split(
+            rf"^#{{2,6}}\s+({LEGACY_TASK_ID_ATOM})\s*:.*$", text, flags=re.M
+        )
         for i in range(1, len(parts) - 1, 2):
             bodies[parts[i]] = parts[i + 1]
     elif not heads:
@@ -713,7 +735,7 @@ def main():
             r"(?im)^\s*\*?\*?Assumes\*?\*?\s*:\s*(.+)$", body
         ):
             for ref in re.findall(
-                r"\b(T[-A-Za-z0-9]*\d+[A-Za-z]*)\b", am.group(1)
+                rf"\b({LEGACY_TASK_ID_ATOM})\b", am.group(1)
             ):
                 if ref not in pos:
                     lint(
@@ -771,7 +793,7 @@ def main():
     for _, tid, title in heads:
         body = bodies.get(tid, "")
         sm = re.search(
-            r"(?im)^\*?\*?Shape\*?\*?\s*:?\s*(create|modify|remove|structure|verify)\b",
+            rf"(?im)^\*?\*?Shape\*?\*?\s*:?\s*({SHAPE_LINE_ATOM})\b",
             body,
         )
         if not sm or sm.group(1).lower() != "verify":
@@ -818,7 +840,7 @@ def main():
     # Hedge-word lint (V3 S02: "convert to a Quarkus main class if
     # needed" contradicted the decided mapping and two sessions took the
     # escape hatch): designs state decisions, never options.
-    HEDGE = re.compile(r"\b(if needed|if necessary|as appropriate|as needed|consider (?:using|adding)|optionally)\b", re.I)
+    HEDGE = HEDGE_RE  # task_contract — ADR-41 Move 1
     for _, tid, _ in heads:
         m = HEDGE.search(bodies.get(tid, ""))
         if m:
@@ -1472,9 +1494,9 @@ def main():
 
     # O-DTOFIRST: DTO (type-dependency) harvest must precede MapStruct/mapper
     # harvest in the same story — otherwise mapper compile RED → MiniMax.
+    # Ordering number owned by task_contract.task_num (ADR-41 / O-DTOFIRST-TYPEDNUM).
     def _task_num(tid: str) -> int:
-        m = re.search(r"(\d+)$", tid)
-        return int(m.group(1)) if m else 0
+        return _contract_task_num(tid)
 
     _dto_re = re.compile(
         r"(?i)\b(harvest\s+dto|dto[s]?\s+with\s+jakarta|jakarta\s+validation\s+imports|"
@@ -1488,12 +1510,16 @@ def main():
         blob = f"{title}\n{bodies.get(tid, '')}"
         # Prefer Target path signals; title/goal fallback.
         is_dto = bool(_dto_re.search(blob)) and not re.search(
-            r"(?i)mapstruct|/mapper/", blob
+            r"(?i)/mapper/|\.mapper\.", blob
         )
         # Ignore package-structure / verify tasks that only mention /mapper/
         # paths or summarize MapStruct in acceptance text (S03 T-001/T-008).
-        is_mapper = bool(_mapper_re.search(blob)) and not re.search(
-            r"(?i)\*\*Shape\*\*:\s*(structure|verify)\b", blob
+        # O-DTOFIRST-ASSIGN: harness DTO harvest tasks mention MapStruct in the
+        # goal but own /dto/ — they are type-deps, not mapper harvests.
+        is_mapper = (
+            bool(_mapper_re.search(blob))
+            and not re.search(r"(?i)\*\*Shape\*\*:\s*(structure|verify)\b", blob)
+            and not re.search(r"(?i)/dto/|\.dto\.", blob)
         )
         if is_dto:
             dto_tasks.append(tid)
@@ -1568,7 +1594,7 @@ def main():
     # (F-lint-reads-store); do not re-parse VIEW prose against a narrower set.
     import os as _os
 
-    _shape_atom = r"create|modify|remove|structure|verify|batch:SCC-\d+"
+    _shape_atom = SHAPE_LINE_ATOM  # task_contract — ADR-41 Move 1
     _shape_re = re.compile(
         rf"^\*\*Shape\s*:\s*({_shape_atom})\*\*\s*$"
         rf"|^\*\*Shape\*\*\s*:?\s*({_shape_atom})\s*$"
@@ -1595,14 +1621,14 @@ def main():
             ok_shape = bool(_shape_token_re.match(shape))
             msg = (
                 f"{tid}: missing/invalid Shape {shape!r} — want "
-                f"create|modify|remove|structure|verify|batch:SCC-N"
+                f"{SHAPE_DISPLAY}"
             )
         else:
             body = bodies.get(tid, "")
             ok_shape = bool(_shape_re.search(body))
             msg = (
                 f"{tid}: missing **Shape**: "
-                f"create|modify|remove|structure|verify|batch:SCC-N"
+                f"{SHAPE_DISPLAY}"
             )
         if not ok_shape:
             if _require_shape:
@@ -1616,8 +1642,8 @@ def main():
     for _, tid, title in heads:
         body = bodies.get(tid, "")
         sm = re.search(
-            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
-            r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+            rf"(?im)^\*\*Shape\*\*\s*:?\s*({SHAPE_LINE_ATOM})\b"
+            rf"|^\*\*Shape\s*:\s*({SHAPE_LINE_ATOM})\*\*",
             body,
         )
         if not sm:
@@ -1650,8 +1676,8 @@ def main():
     for _, tid, title in heads:
         body = bodies.get(tid, "")
         sm = re.search(
-            r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
-            r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+            rf"(?im)^\*\*Shape\*\*\s*:?\s*({SHAPE_LINE_ATOM})\b"
+            rf"|^\*\*Shape\s*:\s*({SHAPE_LINE_ATOM})\*\*",
             body,
         )
         if not sm:
@@ -1729,12 +1755,19 @@ def main():
     # Targets. Characterization src/test/ and Out-of-scope/Absorbs deferrals
     # are allowed.
     if story_scope:
+        # Type-dep closure: mapper stories may Target **/dto/** even when the
+        # roadmap scope list omitted generated DTO paths (O-DTOFIRST-ASSIGN).
+        _scope_has_mapper = any(
+            re.search(r"(?i)/mapper/", s) for s in story_scope
+        )
         for _, tid, _title in heads:
             body = bodies.get(tid, "")
             for dest in _target_work_paths(body):
                 if _work_path_in_story_scope(
                     dest, story_scope, legacy_pkg, target_pkg
                 ):
+                    continue
+                if _scope_has_mapper and re.search(r"(?i)/dto/", dest):
                     continue
                 lint(
                     "O-M3TASKSCOPE",

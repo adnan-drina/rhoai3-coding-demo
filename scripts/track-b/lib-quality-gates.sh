@@ -18,7 +18,7 @@ GATE_DOC="${GATE_DOC:-${ROOT}/docs/V10-QUALITY-GATE.md}"
 BANK_DOC="${BANK_DOC:-${ROOT}/docs/V10-FUTURE-IMPROVEMENTS.md}"
 # Active Wave due-diligence review doc (Implementing notes). When present, O-DRV3/O-DRV5
 # clear scripts refuse unless a note cites the sha — gate log alone is not enough.
-REVIEW_DOC="${REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE4-REVIEW.md}"
+REVIEW_DOC="${REVIEW_DOC:-${V10_REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE5-REVIEW.md}}"
 TRANSCRIPT_DIR="${V9_TRANSCRIPT_DIR:-${HOME}/.cursor/projects/Users-adrina-Sandbox-rhoai3-coding-demo/agent-transcripts}"
 
 # DevWorkspace targeting (O-HERMESWSRESOLVE) — never default to a named workspace
@@ -31,15 +31,13 @@ QG_STORY_COMPLETE_RE='^S0[0-9] story complete: (success .+|story-gate-passed)$'
 qg_die() { echo "quality-gate: $*" >&2; exit 1; }
 
 # Resolve target DevWorkspace name (O-HERMESWSRESOLVE).
-# Order: explicit V10_WS_NAME → single Running DevWorkspace in ns → REFUSE.
+# Order: explicit V10_WS_NAME (if Running) → single Running DevWorkspace → REFUSE.
+# Wave cutover hazard: a stale exported V10_WS_NAME (Stopped) must not win over
+# the one Running DW — prefer Running with a WARN (O-WSSTALEPIN).
 # Instruments: set QG_WS_RUNNING_LIST (newline-separated names, may be empty)
 # to exercise resolution without oc. Multi/zero Running → refuse.
 qg_ws_name() {
-  local ns names count
-  if [[ -n "${V10_WS_NAME:-}" ]]; then
-    printf '%s\n' "$V10_WS_NAME"
-    return 0
-  fi
+  local ns names count explicit phase
   ns="$(qg_ws_ns)"
   if [[ -n "${QG_WS_RUNNING_LIST+x}" ]]; then
     names="$(printf '%s\n' "$QG_WS_RUNNING_LIST" | sed '/^$/d')"
@@ -51,10 +49,41 @@ qg_ws_name() {
     )"
     names="$(printf '%s\n' "$names" | sed '/^$/d')"
   else
+    names=""
+  fi
+  count="$(printf '%s\n' "$names" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+  if [[ -n "${V10_WS_NAME:-}" ]]; then
+    explicit="$V10_WS_NAME"
+    # Instrument / offline injection: honour explicit (do not rewrite).
+    if [[ -n "${QG_WS_RUNNING_LIST+x}" ]]; then
+      printf '%s\n' "$explicit"
+      return 0
+    fi
+    # Live: if the pin is Running, honour it.
+    if printf '%s\n' "$names" | sed '/^$/d' | grep -Fxq -- "$explicit"; then
+      printf '%s\n' "$explicit"
+      return 0
+    fi
+    # Stale pin: Stopped/missing while exactly one DW is Running → use Running.
+    if [[ "${count:-0}" -eq 1 ]]; then
+      local running
+      running="$(printf '%s\n' "$names" | sed '/^$/d' | head -1)"
+      if [[ "$running" != "$explicit" ]]; then
+        echo "quality-gate: WARN O-WSSTALEPIN V10_WS_NAME=${explicit} is not Running; using ${running}" >&2
+        printf '%s\n' "$running"
+        return 0
+      fi
+    fi
+    # Honour explicit when offline or multi-Running (caller must be intentional).
+    printf '%s\n' "$explicit"
+    return 0
+  fi
+
+  if [[ -z "${QG_WS_RUNNING_LIST+x}" ]] && ! command -v oc >/dev/null 2>&1; then
     echo "quality-gate: V10_WS_NAME unset and oc unavailable — refuse stale workspace default (O-HERMESWSRESOLVE)" >&2
     return 1
   fi
-  count="$(printf '%s\n' "$names" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [[ "${count:-0}" -eq 1 ]]; then
     printf '%s\n' "$(printf '%s\n' "$names" | sed '/^$/d' | head -1)"
     return 0
@@ -124,6 +153,27 @@ qg_remote_pgrep_busy() {
   oc exec -n "$ns" "$pod" -c "$ctr" -- bash -lc \
     "pgrep -af '${pat}' 2>/dev/null | grep -vE 'bash -lc|pgrep' | grep -q ." \
     >/dev/null 2>&1
+}
+
+# O-OUTERSTALE: outer liveness via lock PID (kill -0), not pgrep -f.
+# pgrep -f matches oc-exec wrappers and can false-UP or no-op restarts.
+# Also clears a dead PID from /tmp/outer-loop.lock (pairs O-LOCKSTALE).
+# Exit 0 = outer alive; 1 = down (after optional stale clear).
+qg_remote_outer_alive() {
+  local pod ns ctr
+  pod="$(qg_ws_pod)"; ns="$(qg_ws_ns)"; ctr="$(qg_ws_ctr)"
+  oc exec -n "$ns" "$pod" -c "$ctr" -- bash -lc '
+    lock=/tmp/outer-loop.lock
+    [ -f "$lock" ] || exit 1
+    pid=$(tr -dc "0-9" <"$lock" 2>/dev/null || true)
+    [ -n "$pid" ] || exit 1
+    if kill -0 "$pid" 2>/dev/null; then
+      exit 0
+    fi
+    rm -f "$lock"
+    echo "O-OUTERSTALE cleared dead pid=${pid} ($lock)" >&2
+    exit 1
+  ' >/dev/null 2>&1
 }
 
 # Strip OSC-633 / ANSI noise from `oc exec` output (O-HANDNOISE).

@@ -301,10 +301,18 @@ def format_md(role: str, task: str, budget_s: int | None, data: dict[str, Any]) 
         + (f" bash_mutate={bm}" if bm else ""),
     ]
     if ttfw is None:
+        # O-MONSEATRESOLVE: do not scream "wedged" on a quiet/incomplete
+        # artifact — that false-negative poisoned green M2/M3 runs (W4-258).
+        if int(data.get("events") or 0) == 0:
+            hint = " — no tool events in artifact yet (unresolved or not started)"
+        elif r + g + b > 0 and w + e + bm == 0:
+            hint = " — reads only so far (may still be exploring; not proven wedged)"
+        else:
+            hint = " — no mutate yet"
         lines.append(
             "**time_to_first_write:** none yet"
             + (f" / budget={budget}s" if budget else "")
-            + " — still exploring or wedged"
+            + hint
         )
     else:
         pct = f" ({ttfw_pct:.0f}% of budget)" if ttfw_pct is not None else ""

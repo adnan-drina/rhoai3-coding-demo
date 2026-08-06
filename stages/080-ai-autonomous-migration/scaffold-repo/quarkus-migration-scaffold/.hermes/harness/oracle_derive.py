@@ -13,6 +13,7 @@ Used by plan-lint.py, task-packet.py, and supervisor.sh task_oracle.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 _JAVA_PATH = re.compile(r"src/(?:main|test)/java/[A-Za-z0-9_./-]+\.java")
@@ -24,10 +25,15 @@ _PROCEED_RE = re.compile(
     r"|^\s*O-INFERABSENT-PROCEED\b"
     r"|\bProceed\s*:\s*O-NULLACTION\b"
 )
+_HARNESS_DIR = Path(__file__).resolve().parent
+if str(_HARNESS_DIR) not in sys.path:
+    sys.path.insert(0, str(_HARNESS_DIR))
+from task_contract import SHAPE_LINE_ATOM_ORACLE  # type: ignore  # noqa: E402
+
 _SHAPE_RE = re.compile(
-    r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify|harvest)\b"
-    r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify|harvest)\*\*"
-    r"|^Shape\s*:\s*(create|modify|remove|structure|verify|harvest)\b"
+    rf"(?im)^\*\*Shape\*\*\s*:?\s*({SHAPE_LINE_ATOM_ORACLE})\b"
+    rf"|^\*\*Shape\s*:\s*({SHAPE_LINE_ATOM_ORACLE})\*\*"
+    rf"|^Shape\s*:\s*({SHAPE_LINE_ATOM_ORACLE})\b"
 )
 
 

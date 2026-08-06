@@ -69,17 +69,16 @@ or L3). Do not treat L1-only as full discharge for corpus/live classes.
 
 ### harness O-* / guard markers (plan-lint + supervisor + outer sample)
 ```
-47:# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
-69:# O-M3PIPEFIELD: MiniMax sometimes prefixes every structured field with `|`
-473:    # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
-481:                f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
-487:                f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
-1463:    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
-1473:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
-1627:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
-1645:                "O-INFERABSENT",
-1649:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
-1650:                f"O-ORACLEDERIVE)",
+59:# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
+81:# O-M3PIPEFIELD: MiniMax sometimes prefixes every structured field with `|`
+576:        # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
+584:                    f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
+590:                    f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
+1605:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+1779:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
+1797:                "O-INFERABSENT",
+1801:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
+1802:                f"O-ORACLEDERIVE)",
 89:# O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
 91:# (`## <tag> — <kind> RED` from record_debt), KEEP freeze across hotswap —
 93:# O-DEBTFRZM5STICKY: O-DEBTFRZLEDGER writes `## M5 residuals — S0N (…)`, which
@@ -175,20 +174,21 @@ or L3). Do not treat L1-only as full discharge for corpus/live classes.
 4874:      if evidence_liveness_blocks_ship; then
 4966:      if evidence_liveness_blocks_ship; then
 5:#   M2 SEQUENCE (roadmap + briefs session, roadmap-lint-gated)
-188:# M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
-191:  lintf=/tmp/roadmap-lint.txt
-192:  [ -f /tmp/roadmap-lint-m2exit.txt ] && lintf=/tmp/roadmap-lint-m2exit.txt
-193:  [ -f /tmp/roadmap-lint.txt ] && lintf=/tmp/roadmap-lint.txt
-1045:# O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
-1051:    log "         O-STOPAFTERM1: M1 validation complete — not starting M2"
-1067:  fail_run "O-STOPAFTERM1 set but M1 ANALYZE/PROFILE not provenance-green"
-1080:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
-1081:  if [ ! -f /tmp/roadmap-lint.txt ]; then
-1085:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
-1091:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
-1094:    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
-1101:  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
-1122:m2_brief_quality_exit() {
+221:# M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
+224:  lintf=/tmp/roadmap-lint.txt
+225:  [ -f /tmp/roadmap-lint-m2exit.txt ] && lintf=/tmp/roadmap-lint-m2exit.txt
+226:  [ -f /tmp/roadmap-lint.txt ] && lintf=/tmp/roadmap-lint.txt
+982:      /tmp/roadmap-lint.txt \
+983:      /tmp/roadmap-lint-m2exit.txt \
+1470:# O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
+1476:    log "         O-STOPAFTERM1: M1 validation complete — not starting M2"
+1492:  fail_run "O-STOPAFTERM1 set but M1 ANALYZE/PROFILE not provenance-green"
+1505:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
+1506:  if [ ! -f /tmp/roadmap-lint.txt ]; then
+1510:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
+1516:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
+1519:    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
+1526:  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
 ```
 
 ## Classification guide
@@ -203,7 +203,7 @@ Coverage math (rough): count seed rows with L2 or L3 vs L1-only. Gaps
 are the Wave4 ARCH verification asymmetry — not greppable from the bank
 alone.
 
-_Generated: 2026-08-05T10:18:25Z_
+_Generated: 2026-08-06T08:43:18Z_
 
 ### Auto-discovered instrumented guards (O-GUARDDISC / R3)
 
@@ -218,6 +218,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-ACVERIFY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ADDLINFO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ADR24 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ADR27 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-AGROALHELPERSIG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ANTISCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ARCHIVESTAGE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -241,6 +242,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-DEBTFRZRACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTNONE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTSHIPRACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-DECISIONWRITEDROP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DELTABASE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DELTASTAGING | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DESTBASE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -297,6 +299,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-LOGEPILOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGFULLSTORY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGLINTRES | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LOGNOADR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGSTART | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGSTORY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M1SENSORGATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -308,6 +311,8 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-M2FILLCLOBBER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2RETRYINLINE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2SCOPEOVERLAP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M2SEATARCH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M2SKELDRIFT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ACCEPT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ALL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ALLAMENDJIT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -316,6 +321,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-M3CHARSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3COMMITHYGIENE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3CONVERGEBUDGET | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3DELIVERLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DERIVEDCAP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DERIVEDCTX | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DTOSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -327,6 +333,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-M3KILL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3LINTLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3LINTPROCEED | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3LOGSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3MECHSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ORDERCHAR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -334,9 +341,13 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-M3QUOTA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3QWENSTALL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ROUTE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3SKIP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3SUPSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3TASKSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3TOOLHIST | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3TYPED | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3TYPEDHB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3TYPEDSTOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3WORKER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3WORKERREENTRY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M4REPLAY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -359,6 +370,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-PLANHEALTH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANORDERCHAR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PLANTARGETLEAK | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-POMDISCARD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-POMUNC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PORTREIMPL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -366,14 +378,28 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-PREFCONTUT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PREFDIMTHRASH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PREFLIGHTDIM | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROF1OF79STOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROF7DENSITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFBESTOBS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFCLAIMTRUTH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFCOVSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFDECIDEHB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFDENSITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFITECITEMIG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFLOOPRC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFPROSECTX | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFPROSEDECOMP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFPROSENOOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFSEATARCH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFSEATNOISE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFSECTIONNOISE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFSECTIONS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFTCHARDPIN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFVOCAB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-QJACOCO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-REDATTRIB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-REIMPLCREATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-RESTCREATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RESTJSON | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RESUME | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RESUMEBASEEXCL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -384,6 +410,7 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-REVHOLD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RPTAWKESC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RUBRICGENASSERT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-RUBRICGENASSERTFP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RUBRICGENSRC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RULESETLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCAFFOLDDIR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -453,4 +480,4 @@ _Generated: 2026-08-05T10:18:25Z_
 | O-WEDGERESUME | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-WEDGESKIP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 
-_O-GUARDDISC auto-rows appended: 243_
+_O-GUARDDISC auto-rows appended: 270_

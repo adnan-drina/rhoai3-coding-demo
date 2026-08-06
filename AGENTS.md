@@ -261,14 +261,19 @@ compromised run.
    (`tmp/v8-driver-loop.sh` with agent wake on `AGENT_LOOP_TICK_v8driver`);
    if it is DOWN, start it — do not rely on memory. Silence / fake ack is
    a P0 process failure.
-   **O-REVIEWDOC (Wave-4 lead = Grok)** — every wake and every material
+   **O-REVIEWDOC (Wave-5 lead = Grok)** — every wake and every material
    action must also append a `### Implementing note` in
-   `tmp/KAI-WAVE4-REVIEW.md` with `**Agent:** Grok (lead)`,
-   `**Reviewed:**` / `ACK:W4-|R-|F-|O-` for other agents' entries acted on,
+   `tmp/KAI-WAVE5-REVIEW.md` with `**Agent:** Grok (lead)`,
+   `**Reviewed:**` / `ACK:W5-|W4-|R-|F-|O-` for other agents' entries acted on,
    live action taken, and closing `— Grok (lead)`. Chat pulses are not the
    audit trail. Enforced by `scripts/track-b/v10-review-catchup.sh ack`
-   (see `.agents/rules/stage-080-track-b.md`). Wave 1–3 review docs are
-   frozen archives.
+   (see `.agents/rules/stage-080-track-b.md`). Wave 1–4 review docs are
+   frozen archives. Active workspace: `petclinic-rest-v5`.
+   **Wake pulse must include review-doc check:** on every
+   `AGENT_LOOP_WAKE_v10` tick, run
+   `bash scripts/track-b/v10-review-catchup.sh pulse-line` and put that
+   `review-doc: catchup=…` line in the chat pulse before
+   `v9-chat-pulse.sh`.
 2. **O-DRV2 — harness self-heal** — if outer-loop is DOWN and the story
    ledger is incomplete, auto-restart it (no sticky bare `RUN_BASE`). Treat
    unexpected downtime as P0.

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # R2 / B3 — Last Restart Readiness (LRR). Prints GO/NO-GO with evidence.
 # Does NOT start outer-loop. Asserts SC-0..SC-4 checkable facts from
-# tmp/KAI-WAVE4-REVIEW.md V4 START CONDITIONS.
+# tmp/KAI-WAVE5-REVIEW.md V4 START CONDITIONS.
 #
 # Usage:
 #   bash scripts/track-b/restart-readiness.sh
-#   V10_WS_NAME=petclinic-rest-v4 bash scripts/track-b/restart-readiness.sh
+#   V10_WS_NAME=petclinic-rest-v5 bash scripts/track-b/restart-readiness.sh
 #
 # Env:
 #   V10_WS_NAME — target DevWorkspace (required when multiple Running)
@@ -196,7 +196,7 @@ fi
 echo "=== summary passes=${PASSES} fails=${FAILS} ==="
 if [ "$FAILS" -eq 0 ]; then
   echo "LRR_VERDICT=GO"
-  echo "Next: Grok certifies in WAVE4 → Opus verifies → operator triggers wave start."
+  echo "Next: Grok certifies in WAVE5 → Opus verifies → operator triggers wave start."
   exit 0
 fi
 echo "LRR_VERDICT=NO-GO"

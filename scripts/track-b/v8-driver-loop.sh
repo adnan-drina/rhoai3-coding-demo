@@ -96,6 +96,15 @@ restart_outer_if_needed() {
   if echo "$snap" | grep -q 'S05,complete'; then
     return 0
   fi
+  # O-DRV2-DONE: intentional outer-complete / abort markers must not be
+  # overwritten by blind auto-restart (operator pivot, STOP_AFTER_*, FAIL).
+  if ensure_oc_session >/dev/null 2>&1; then
+    if oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc \
+      'test -s /tmp/outer-loop-done' 2>/dev/null; then
+      echo "O-DRV2: outer=DOWN but /tmp/outer-loop-done present — NOT auto-restarting"
+      return 0
+    fi
+  fi
   # Refuse auto-restart while honesty gates are open
   if [ -f "$DEBT_PENDING" ] || [ -f "$ESC_PENDING" ] || [ -f "$ADV_PENDING" ] || [ -f "$HAND_PENDING" ]; then
     echo "O-DRV2: outer=DOWN but debt/escalation/advance/handfix pending — NOT auto-restarting"
@@ -123,10 +132,20 @@ restart_outer_if_needed() {
   fi
   echo "O-DRV2: outer=DOWN — auto-restarting outer-loop on $POD"
   ensure_oc_session || { echo "O-DRV2: oc login failed — cannot restart"; return 0; }
+  # O-OUTERSTALE: use lock PID (kill -0), never pgrep -f (oc-exec false match).
   oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized || exit 1
     test -x .hermes/harness/outer-loop.sh || exit 1
-    pgrep -f "harness/outer-loop\.sh" >/dev/null && exit 0
+    lock=/tmp/outer-loop.lock
+    if [ -f "$lock" ]; then
+      pid=$(tr -dc "0-9" <"$lock" 2>/dev/null || true)
+      if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "O-OUTERSTALE: outer already alive pid=$pid — skip restart"
+        exit 0
+      fi
+      rm -f "$lock"
+      echo "O-OUTERSTALE cleared dead pid=${pid:-empty} ($lock)"
+    fi
     : >> /tmp/outer-loop.log
     nohup env -u RUN_BASE -u RESUME_RUN_BASE -u RESUME_STORY \
       WORKER_FIRST=true OUTER_LOOP_PLAIN=1 \
@@ -306,13 +325,13 @@ refresh_task_analysis_pending() {
     echo '```bash'
     echo "bash scripts/track-b/v9-capture-diff.sh --oc ${head_sha:-HEAD}"
     echo "# write detailed docs/V10-QUALITY-GATE.md section (code + action quality)"
-    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE4-REVIEW.md"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE5-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-task-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare \`echo SHA > tmp/V9-TASK-ANALYSIS.sha\` does **not** clear —"
     echo "sha file must contain \`# validated:\` from the clear script."
-    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE4-REVIEW.md\`"
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE5-REVIEW.md\`"
     echo "that cites the sha (Wave-1 handshake — gate log alone fails)."
     echo
     echo "## Mandatory checklist"
@@ -392,12 +411,12 @@ refresh_milestone_analysis_pending() {
     echo
     echo '```bash'
     echo "# write comprehensive docs/V10-QUALITY-GATE.md with **Verdict:** ADVANCE|HOLD|ABORT"
-    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE4-REVIEW.md"
+    echo "# ALSO append Implementing note citing this sha in tmp/KAI-WAVE5-REVIEW.md"
     echo "bash scripts/track-b/v9-clear-m-analysis.sh ${head_sha:-SHA}"
     echo '```'
     echo
     echo "Bare sha write does **not** clear — needs \`# validated:\` from clear script."
-    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE4-REVIEW.md\`"
+    echo "Clear also requires an Implementing note in \`tmp/KAI-WAVE5-REVIEW.md\`"
     echo "that cites the sha (Wave-1 handshake)."
   } >"$M_PENDING_FILE"
 }
@@ -544,7 +563,13 @@ tick() {
   }
   snap=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
     cd /projects/modernized
-    OL=$(pgrep -f "harness/outer-loop\.sh" >/dev/null && echo UP || echo DOWN)
+    # O-OUTERSTALE: lock-PID liveness (pgrep -f false-matches oc-exec)
+    OL=DOWN
+    if [ -f /tmp/outer-loop.lock ]; then
+      _opid=$(tr -dc "0-9" </tmp/outer-loop.lock 2>/dev/null || true)
+      if [ -n "$_opid" ] && kill -0 "$_opid" 2>/dev/null; then OL=UP
+      else rm -f /tmp/outer-loop.lock; fi
+    fi
     SUP=$(pgrep -f "harness/supervisor\.sh" >/dev/null && echo UP || echo DOWN)
     H=$(pgrep -f "venv/bin/python.*hermes chat" >/dev/null && echo UP || echo DOWN)
     OC=$(pgrep -f "[o]pencode (run|serve)" >/dev/null && echo UP || echo DOWN)

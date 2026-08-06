@@ -17,6 +17,7 @@ workspace `V10_WS_NAME=petclinic-rest-v4`.
 | O-DRV3 task analysis | driver → `V9-TASK-ANALYSIS-PENDING` | `v9-capture-diff.sh` + gate entry + `v9-clear-task-analysis.sh` |
 | O-DRV5 milestone | driver → `V9-M-ANALYSIS-PENDING` | gate + `**Verdict:**` + `v9-clear-m-analysis.sh` |
 | O-DRV4 chat pulse | driver every tick | post in chat then `tmp/v9-chat-pulse.sh` → `v9-chat-pulse.sh` |
+| O-WAKE-CATCHUP review-doc | every `AGENT_LOOP_WAKE_v10` | include `v10-review-catchup.sh pulse-line` (`review-doc: catchup=…`) in the wake chat pulse; absorb via Implementing note + `ack` |
 | O-DRV6 debt HOLD | driver + ledger | fix debt; harness freezes via **O-DEBTFRZ** |
 | O-DRV7 escalation | `V9-ESCALATION-PENDING` | `v9-clear-escalation.sh` (Qwen RCA + bank + retest) |
 | O-HAND hand fix | `v9-handfix-detect.sh` | `v9-clear-handfix.sh` |
@@ -24,7 +25,8 @@ workspace `V10_WS_NAME=petclinic-rest-v4`.
 | Bank ⬜ | `v9-bank-gate.sh honesty\|all` (`BANK_DOC`=`docs/V10-FUTURE-IMPROVEMENTS.md`) | implement ⬜→✅; 📋 = later wave (ignored); preflight refuses start |
 | Coolstore hardcode | `v9-coolstore-lint.sh` | remove specimen hardcoding from harness |
 | O-FALSECOMPLETE | `v9-story-complete-lint.sh` | re-earn via ship-only path below |
-| Outer start | `v9-preflight-outer-start.sh` | bank + coolstore + plan-corpus/defaults (`v10-plan-corpus-gate.sh`) + exec-corpus (`v10-exec-corpus-gate.sh`) + **O-M2CORPUS** (`v10-m2-corpus-gate.sh`) + story-complete lint + **O-HERMESPREFLIGHT** (`v10-hermes-parity.sh`) + **O-GOLDENFRESH** (`v10-golden-fresh.sh`) + no blocking pendings; **`--start`** also starts host dual-monitor (**O-MONSTART**) |
+| Outer start | `v9-preflight-outer-start.sh` | bank + coolstore + plan-corpus/defaults (`v10-plan-corpus-gate.sh`) + exec-corpus (`v10-exec-corpus-gate.sh`) + **O-M2CORPUS** (`v10-m2-corpus-gate.sh`) + story-complete lint + **O-HERMESPREFLIGHT** (`v10-hermes-parity.sh`, auto-sync via `V9_AUTO_HERMES_SYNC=1`) + **O-GOLDENFRESH** (`v10-golden-fresh.sh`) + no blocking pendings; **`--start`** also starts host dual-monitor (**O-MONSTART**) |
+| Hermes sync | `v10-sync-hermes.sh` | Tar-sync golden `.hermes` → Running DW; clear start markers; kantra-ensure; used by prep + preflight auto-sync |
 | Plan corpus | `v10-plan-corpus-gate.sh` | O-PLANCORPUS live-flag re-lint + O-DEFAULTAUDIT seed check |
 | M2 corpus | `v10-m2-corpus-gate.sh` | O-M2CORPUS archived roadmap known-RED re-lint (live argv) |
 | Exec corpus | `v10-exec-corpus-gate.sh` | O-EXECCORPUS archived sfix/escalation honesty replay |

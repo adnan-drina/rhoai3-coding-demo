@@ -46,6 +46,36 @@ def _log(msg: str, *, err: bool = False) -> None:
     print(msg, file=sys.stderr if err else sys.stdout, flush=True)
 
 
+def _write_progress(
+    *,
+    sid: str,
+    active: str,
+    ok: int,
+    fail: int,
+    total: int,
+) -> None:
+    """O-M3TYPEDHB — one-line status for outer-loop 60s heartbeat (demo UX).
+
+    Same contract as O-PROFDECIDEHB /tmp/outer-heartbeat-progress.txt so the
+    shared heartbeat appends ``m3=S04 seats=3/13 active=…`` instead of silence
+    while OpenCode judges one typed task.
+    """
+    try:
+        done = ok + fail
+        simple = str(active or "?")
+        if "/" in simple:
+            simple = simple.rsplit("/", 1)[-1]
+        line = (
+            f"m3={sid} seats={done}/{total} active={simple} "
+            f"ok={ok} fail={fail}"
+        )
+        Path("/tmp/outer-heartbeat-progress.txt").write_text(
+            line + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
 def _load_model_api():
     sys.path.insert(0, str(HERE))
     import model as m  # type: ignore
@@ -108,6 +138,12 @@ def _parse_judgment(blob: str, expect_keys: list[str]) -> dict:
     expect = sorted(expect_keys)
     refused: list[str] = []
     malformed_keys = 0
+    # O-JUDGEHEDGE / plan-lint LINT:hedge — decided shapes, never options.
+    _hedge = re.compile(
+        r"\b(if needed|if necessary|as appropriate|as needed|"
+        r"consider (?:using|adding)|optionally)\b",
+        re.I,
+    )
     for o in candidates:
         if o.get("id") not in (None, ""):
             refused.append("REFUSED:F-taskid-generated")
@@ -125,11 +161,17 @@ def _parse_judgment(blob: str, expect_keys: list[str]) -> dict:
             malformed_keys += 1
             continue
         goal = o.get("goal")
+        plan = str(o.get("plan") or "").strip()
         if isinstance(goal, str) and len(goal.strip()) >= 20:
+            blob = f"{goal}\n{plan}"
+            hm = _hedge.search(blob)
+            if hm:
+                refused.append("REFUSED:F-hedge")
+                continue
             return {
                 "unit_keys": [str(k) for k in keys],
                 "goal": goal.strip(),
-                "plan": str(o.get("plan") or "").strip(),
+                "plan": plan,
                 "risk": str(o.get("risk") or "").strip(),
             }
         malformed_keys += 1
@@ -180,6 +222,116 @@ def _brief_fetch_reads(blob: str) -> list[str]:
     return hits
 
 
+def _staging_reads(blob: str) -> list[str]:
+    """Detect seat Reads of migration/staging/** (O-NOSTAGINGREAD / F-staging-projected).
+
+    When STAGING FACTS are harness-projected, reading staging is conduct — same
+    class as F-no-discovery (legacy) and F-brief-projected.
+    """
+    hits: list[str] = []
+    for line in (blob or "").splitlines():
+        low = line.replace("\\", "/")
+        if "migration/staging" not in low and "/staging/" not in low:
+            continue
+        # Avoid matching unrelated "staging" words without a path-ish hit.
+        if "migration/staging" not in low and not re.search(
+            r"(?:^|[\s\"'])(?:\.?/)?(?:migration/)?staging/", low
+        ):
+            continue
+        if re.search(r"(?i)\b(read|Read|tool_use|filePath|glob|bash|ls)\b", line):
+            hits.append(line.strip()[:200])
+    return hits
+
+
+def _path_is_spec_or_migration(path: str) -> bool:
+    """True when a tool path targets rendered specs or migration SoT (F-no-spec-edit)."""
+    p = (path or "").replace("\\", "/")
+    if not p:
+        return False
+    # Absolute or relative forms seen in OpenCode tool logs.
+    if "/specs/" in p or p.startswith("specs/") or p == "specs":
+        return True
+    if "/migration/" in p or p.startswith("migration/") or p == "migration":
+        return True
+    return False
+
+
+def _tool_and_path_from_line(line: str) -> tuple[str, str]:
+    """Extract mutating/read tool name + path from an OpenCode JSON/tool line."""
+    low = (line or "").replace("\\", "/")
+    tool = ""
+    path = ""
+    try:
+        o = json.loads(line)
+    except json.JSONDecodeError:
+        o = None
+    if isinstance(o, dict):
+        part = o.get("part") if isinstance(o.get("part"), dict) else o
+        if isinstance(part, dict):
+            tool = str(part.get("tool") or part.get("name") or "").lower()
+            inp = part.get("input") if isinstance(part.get("input"), dict) else {}
+            path = str(
+                inp.get("filePath")
+                or inp.get("path")
+                or inp.get("file")
+                or part.get("filePath")
+                or ""
+            )
+    if not tool:
+        m = re.search(
+            r'"tool"\s*:\s*"(edit|write|apply_patch|create|read)"', low, re.I
+        )
+        if m:
+            tool = m.group(1).lower()
+    return tool, path
+
+
+def _workspace_writes(blob: str) -> list[str]:
+    """F-no-workspace-write (W4-592): refuse ANY mutating tool call.
+
+    M3 seats return JSON only — permitted write surface is empty. Directory
+    denylists (specs/migration) left a src/** hole that becomes real at M4.
+    """
+    hits: list[str] = []
+    for line in (blob or "").splitlines():
+        tool, _path = _tool_and_path_from_line(line)
+        if not tool:
+            low = line.replace("\\", "/")
+            m = re.search(r'"tool"\s*:\s*"(edit|write|apply_patch|create)"', low, re.I)
+            if m:
+                tool = m.group(1).lower()
+        if tool in ("edit", "write", "apply_patch", "create"):
+            hits.append(line.strip()[:240])
+    return hits
+
+
+def _spec_or_migration_edits(blob: str) -> list[str]:
+    """Detect seat edit/write of specs/** or migration/** (F-no-spec-edit / W4-576).
+
+    Superseded at the loop gate by F-no-workspace-write (any mutate). Kept for
+    path-specific selftests and instruments that still name this detector.
+    """
+    hits: list[str] = []
+    for line in (blob or "").splitlines():
+        low = line.replace("\\", "/")
+        tool, path = _tool_and_path_from_line(line)
+        if tool not in ("edit", "write", "apply_patch", "create"):
+            continue
+        if not path:
+            m = re.search(
+                r"(/projects/[^\"'\s]+/(?:specs|migration)/[^\"'\s]+|"
+                r"(?:specs|migration)/[^\"'\s]+)",
+                low,
+            )
+            path = m.group(1) if m else ""
+        if _path_is_spec_or_migration(path) or (
+            not path
+            and re.search(r"(?:/specs/|/migration/|^specs/|^migration/)", low)
+        ):
+            hits.append(line.strip()[:240])
+    return hits
+
+
 def _story_brief_text(root: Path, sid: str, model: dict) -> str:
     """Inline story brief into the packet (F-brief-projected) — no seat Read."""
     m = _load_model_api()
@@ -212,6 +364,20 @@ def _story_brief_text(root: Path, sid: str, model: dict) -> str:
     )
 
 
+def _seat_transcript_path(sid: str, seq: Any, attempt: int) -> Path:
+    """ADR-43 — append-only journal path (never overwrite attempt N with N+1)."""
+    unit = f"{sid}-{seq}"
+    try:
+        from run_journal import seat_log  # type: ignore
+
+        return seat_log("m3", unit, attempt=attempt)
+    except Exception:
+        # Fallback keeps attempt in the name so retries cannot clobber failures.
+        p = Path("/tmp/hj") / "fallback" / "m3"
+        p.mkdir(parents=True, exist_ok=True)
+        return p / f"{unit}.attempt{max(1, int(attempt))}.log"
+
+
 def _opencode_judgment(
     root: Path,
     *,
@@ -220,11 +386,14 @@ def _opencode_judgment(
     worker_model: str,
     timeout: int,
     legacy: str,
+    attempt: int = 1,
 ) -> dict:
     del legacy  # packet already inlines SNIPPETs; legacy path not passed to seat
     m = _load_model_api()
     model = m.load(root)
-    projected = m.context_for(model, sid, root=root)
+    # O-STAGINGOWNUNIT: per-seat projection so own unit staging is never
+    # truncated by story-wide HARVEST neighbours filling the cap first.
+    projected = m.context_for(model, sid, root=root, focus_task=task)
     brief = _story_brief_text(root, sid, model)
     keys = list(task.get("unit_keys") or [])
     packet = "\n".join(
@@ -254,15 +423,19 @@ def _opencode_judgment(
             ),
             "Rules:",
             "- do NOT include id or acceptance fields (refused)",
-            "- do NOT edit specs/**/tasks.md (harness writes)",
+            "- do NOT edit/write ANY workspace path — JSON judgment only "
+            "(F-no-workspace-write; subsumes F-no-spec-edit)",
             "- do NOT git commit",
             "- do NOT Read any prompt file — the full packet is already above",
             "- do NOT Read migration/briefs/** (brief already inlined)",
+            "- do NOT Read migration/staging/** (STAGING FACTS projected — "
+            "F-staging-projected / O-NOSTAGINGREAD)",
             "- do NOT Read /projects/legacy (SNIPPET only — F-no-discovery)",
+            "- do NOT Read TASKS-TEMPLATE.md — typed seats return JSON only",
             "- goal ≥ 20 chars",
         ]
     )
-    slog = Path("/tmp") / f"m3-task-{sid}-{task.get('seq')}.log"
+    slog = _seat_transcript_path(sid, task.get("seq"), attempt)
     # Forensics only — never the delivery channel (W4-556 / F-packet-by-value).
     pdir = root / "migration" / ".m3-prompts"
     pdir.mkdir(parents=True, exist_ok=True)
@@ -271,7 +444,12 @@ def _opencode_judgment(
     pref = str(pfile.relative_to(root))
 
     skilldir = HERE.parent / "skills" / "migration-harness"
-    skill = skilldir / "PLANNING.md"
+    # O-M3JUDGMENTSKILL / W4-576: typed seats must NOT load PLANNING.md —
+    # that file teaches legacy "edit specs/<NNN-slug>/tasks.md first" and
+    # caused write-inversion bypass attempts (004- vs S04- path typo).
+    skill = skilldir / "JUDGMENT.md"
+    if not skill.is_file():
+        skill = skilldir / "TASKS-TEMPLATE.md"
     if not skill.is_file():
         skill = skilldir / "ANALYSIS.md"
     cmd = [
@@ -327,6 +505,28 @@ def _opencode_judgment(
             "REFUSED:F-brief-projected",
             f"seat Read of migration/briefs ({len(brief_hits)} hit(s)); see {slog}",
         )
+    # O-NOSTAGINGREAD / F-staging-projected: staging facts are projected.
+    staging_hits = _staging_reads(blob)
+    if staging_hits:
+        raise JudgmentError(
+            "REFUSED:F-staging-projected",
+            f"seat Read of migration/staging ({len(staging_hits)} hit(s)); see {slog}",
+        )
+    # F-no-workspace-write (W4-592): any mutating tool — allowlist is empty.
+    # Supersedes path-denylist F-no-spec-edit (specs/migration/src holes).
+    ws_writes = _workspace_writes(blob)
+    if ws_writes:
+        raise JudgmentError(
+            "REFUSED:F-no-workspace-write",
+            f"seat mutating tool call ({len(ws_writes)} hit(s)); see {slog}",
+        )
+    # Defense-in-depth: path-specific F-no-spec-edit still named for instruments.
+    spec_edits = _spec_or_migration_edits(blob)
+    if spec_edits:
+        raise JudgmentError(
+            "REFUSED:F-no-spec-edit",
+            f"seat edit/write of specs/** or migration/** ({len(spec_edits)} hit(s)); see {slog}",
+        )
 
     # Prefer JSON-format text parts when present (same as prose loop).
     texts: list[str] = []
@@ -370,41 +570,72 @@ def run_loop(
         tasks = _unfilled(m.tasks_for_story(model, s))
         if limit > 0:
             tasks = tasks[:limit]
-        _log(f"m3_task_loop: {s} unfilled={len(tasks)} backend={backend}")
+        total = len(tasks)
+        _log(f"m3_task_loop: {s} unfilled={total} backend={backend}")
+        _write_progress(sid=s, active="starting", ok=ok, fail=fail, total=total)
+        # O-M3EMPTYRETRY: EMPTY/transient no-response gets N retries before
+        # story fail (MALFORMED/REFUSED stay single-shot).
+        empty_retries = int(os.environ.get("M3_EMPTY_RETRIES", "2"))
         for t in tasks:
+            tid = str(t.get("id") or "?")
             keys = list(t.get("unit_keys") or [])
-            try:
-                if backend == "dry-run":
-                    j = _dry_run_judgment(t)
-                elif backend in ("opencode-qwen", "opencode", "qwen"):
-                    j = _opencode_judgment(
+            _write_progress(sid=s, active=tid, ok=ok, fail=fail, total=total)
+            attempts = 1 + max(0, empty_retries)
+            for attempt in range(1, attempts + 1):
+                try:
+                    if backend == "dry-run":
+                        j = _dry_run_judgment(t)
+                    elif backend in ("opencode-qwen", "opencode", "qwen"):
+                        j = _opencode_judgment(
+                            root,
+                            task=t,
+                            sid=s,
+                            worker_model=worker_model,
+                            timeout=timeout,
+                            legacy=legacy,
+                            attempt=attempt,
+                        )
+                    else:
+                        raise ValueError(f"unknown backend {backend}")
+                    m.upsert_task_judgment(
                         root,
-                        task=t,
-                        sid=s,
-                        worker_model=worker_model,
-                        timeout=timeout,
-                        legacy=legacy,
+                        task_id=tid,
+                        unit_keys=j["unit_keys"],
+                        goal=j["goal"],
+                        plan=j.get("plan") or "",
+                        risk=j.get("risk") or "",
+                        payload=j,
                     )
-                else:
-                    raise ValueError(f"unknown backend {backend}")
-                m.upsert_task_judgment(
-                    root,
-                    unit_keys=j["unit_keys"],
-                    goal=j["goal"],
-                    plan=j.get("plan") or "",
-                    risk=j.get("risk") or "",
-                    payload=j,
-                )
-                ok += 1
-                _log(f"  OK {t.get('id')} keys={keys}")
-            except JudgmentError as e:
-                fail += 1
-                _log(f"  FAIL {t.get('id')}: {e.kind} — {e}", err=True)
-            except Exception as e:
-                fail += 1
-                _log(f"  FAIL {t.get('id')}: {e}", err=True)
+                    ok += 1
+                    if attempt > 1:
+                        _log(f"  OK {tid} keys={keys} (after EMPTY retry {attempt})")
+                    else:
+                        _log(f"  OK {tid} keys={keys}")
+                    break
+                except JudgmentError as e:
+                    if e.kind == "EMPTY" and attempt < attempts:
+                        _log(
+                            f"  RETRY {tid}: EMPTY attempt {attempt}/{attempts} — {e}",
+                            err=True,
+                        )
+                        continue
+                    fail += 1
+                    _log(f"  FAIL {tid}: {e.kind} — {e}", err=True)
+                    break
+                except Exception as e:
+                    fail += 1
+                    _log(f"  FAIL {tid}: {e}", err=True)
+                    break
+            _write_progress(sid=s, active=tid, ok=ok, fail=fail, total=total)
         model = m.load(root)
         m.render_tasks_md(root, s, model)
+    _write_progress(
+        sid=sids[-1] if sids else "?",
+        active="done",
+        ok=ok,
+        fail=fail,
+        total=ok + fail,
+    )
     _log(f"m3_task_loop: done ok={ok} fail={fail}")
     return 1 if fail else 0
 
@@ -417,6 +648,7 @@ def cmd_upsert(args: argparse.Namespace) -> int:
     try:
         t = m.upsert_task_judgment(
             Path(args.root).resolve(),
+            task_id=getattr(args, "task_id", "") or "",
             unit_keys=keys,
             goal=args.goal,
             plan=args.plan or "",
@@ -435,7 +667,16 @@ def cmd_upsert(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
-    print(json.dumps({"id": t.get("id"), "filled": t.get("filled")}, indent=2))
+    print(
+        json.dumps(
+            {
+                "id": t.get("id"),
+                "filled": t.get("filled"),
+                "goal_source": t.get("goal_source"),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -465,6 +706,11 @@ def main() -> int:
 
     u = sub.add_parser("upsert")
     u.add_argument("--root", default=".")
+    u.add_argument(
+        "--task-id",
+        default="",
+        help="harness-owned task id (required when unit_keys are shared; O-UPSERTID)",
+    )
     u.add_argument("--unit-key", action="append", default=[])
     u.add_argument("--unit-keys-json", default="")
     u.add_argument("--goal", required=True)
@@ -537,6 +783,82 @@ def _selftest_parse() -> int:
     assert not _legacy_discovery_reads("goal ok no tools")
     assert _brief_fetch_reads('Read migration/briefs/S02-repository-layer.md')
     assert not _brief_fetch_reads("goal ok no tools")
+    # F-no-spec-edit (W4-576): edit/write of specs/** or migration/** refuse.
+    edit_line = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {
+                "tool": "edit",
+                "input": {
+                    "filePath": "/projects/modernized/specs/S04-rest/tasks.md",
+                    "oldString": "x",
+                    "newString": "y",
+                },
+            },
+        }
+    )
+    assert _spec_or_migration_edits(edit_line), edit_line
+    write_mig = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {
+                "tool": "write",
+                "input": {"filePath": "migration/model.json", "content": "{}"},
+            },
+        }
+    )
+    assert _spec_or_migration_edits(write_mig), write_mig
+    # Reads of specs are not F-no-spec-edit (separate residual).
+    read_spec = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {
+                "tool": "read",
+                "input": {"filePath": "/projects/modernized/specs/S04/tasks.md"},
+            },
+        }
+    )
+    assert not _spec_or_migration_edits(read_spec), read_spec
+    assert not _spec_or_migration_edits("goal ok no tools")
+    # F-no-workspace-write (W4-592): any mutate, including src/**.
+    src_edit = json.dumps(
+        {
+            "type": "tool_use",
+            "part": {
+                "tool": "edit",
+                "input": {
+                    "filePath": "/projects/modernized/src/main/java/com/demo/model/PetType.java",
+                    "oldString": "x",
+                    "newString": "y",
+                },
+            },
+        }
+    )
+    assert _workspace_writes(src_edit), src_edit
+    assert _workspace_writes(edit_line), edit_line
+    assert not _workspace_writes(read_spec), read_spec
+    assert not _workspace_writes("goal ok no tools")
+    # O-NOSTAGINGREAD / F-staging-projected
+    assert _staging_reads(
+        "Read migration/staging/src/main/java/org/example/Foo.java"
+    )
+    assert _staging_reads(
+        'Read /projects/modernized/migration/staging/src/main/java/Foo.java'
+    )
+    assert not _staging_reads("goal ok no tools")
+    assert not _staging_reads("STAGING FACTS projected — do NOT Read")
+    # O-JUDGEHEDGE
+    try:
+        _parse_judgment(
+            '{"unit_keys":["a.b.C"],"goal":"'
+            + ("Migrate C with enough characters here.")
+            + '","plan":"add extension if needed"}',
+            ["a.b.C"],
+        )
+        print("expected REFUSED hedge", file=sys.stderr)
+        return 1
+    except JudgmentError as e:
+        assert e.kind == "REFUSED:F-hedge", e.kind
     print("m3-parse-selftest-ok")
     return 0
 

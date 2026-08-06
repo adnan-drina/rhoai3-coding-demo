@@ -32,6 +32,40 @@ POD="$(qg_ws_pod)" || {
   exit 1
 }
 
+# ADR-27 / O-ADR27HOTFIX: never tar-replace .hermes while an LLM seat is
+# mid-tool-call. Between typed seats (no live opencode/hermes *binary*),
+# sync is allowed so a durable fix for an already-observed refuse/FAIL
+# class can land without burning the rest of the story.
+# Do NOT use `pgrep -f hermes|opencode` — that false-matches
+# `.hermes/harness/outer-loop.sh` / `m3_task_loop.py` and blocked hot-fixes.
+# Override mid-call only with V10_SYNC_FORCE=1 (documented emergency).
+if [ "${V10_SYNC_FORCE:-0}" != "1" ]; then
+  _seat=$(oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
+    # Exact binary names only (O-ADR27HOTFIX).
+    if pgrep -x opencode >/dev/null 2>&1 || pgrep -x hermes >/dev/null 2>&1; then
+      echo BUSY; exit 0
+    fi
+    echo OK
+  ' 2>/dev/null || echo OK)
+  if [ "$_seat" = "BUSY" ]; then
+    echo "v10-sync-hermes: REFUSE — LLM seat in flight (ADR-27). Wait between seats or use v10-m1-arch-revalidate.sh" >&2
+    echo "  Emergency only: V10_SYNC_FORCE=1" >&2
+    exit 2
+  fi
+fi
+
+# O-FREEZEGOLDEN: refuse sync while a harness freeze lock is held (cold-run
+# discipline). Lift explicitly: V10_FREEZE_LIFT=1 (or V10_SYNC_FORCE=1).
+_FREEZE_LOCK="${ROOT}/tmp/M3-HARNESS-FREEZE.lock"
+if [ -f "$_FREEZE_LOCK" ] \
+  && [ "${V10_FREEZE_LIFT:-0}" != "1" ] \
+  && [ "${V10_SYNC_FORCE:-0}" != "1" ]; then
+  echo "v10-sync-hermes: REFUSE — O-FREEZEGOLDEN lock present (${_FREEZE_LOCK})" >&2
+  echo "  Cold-run freeze: do not sync golden→pod until lift. Set V10_FREEZE_LIFT=1." >&2
+  head -5 "$_FREEZE_LOCK" >&2 || true
+  exit 3
+fi
+
 n_files="$(find "$HARNESS_SRC" -type f ! -name '._*' ! -name '.DS_Store' | wc -l | tr -d ' ')"
 echo "v10-sync-hermes: ${WS_NAME} → ${NS}/${POD} (${n_files} golden files)"
 
@@ -41,13 +75,21 @@ oc exec -n "$NS" "$POD" -c "$CTR" -- \
 ( cd "$SCAFFOLD" && COPYFILE_DISABLE=1 tar cf - .hermes ) | oc exec -i -n "$NS" "$POD" -c "$CTR" -- \
   bash -lc 'cd /projects/modernized && tar xf - && find .hermes -name "._*" -delete 2>/dev/null || true'
 
-# Clear start-blocking markers (fresh wave — never resume a prior outer).
+# Clear start-blocking *runtime* markers. Do NOT remove migration/.stopped by
+# default — a deliberate STOP_AFTER_M1 hold must survive harness sync
+# (O-STOPMARKER / ADR-34 land during M1 hold). Opt-in wipe only:
+#   V10_SYNC_CLEAR_STOP=1
 oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
   rm -f /tmp/outer-loop-done /tmp/debt-freeze /tmp/supervisor-pause \
         /tmp/outer-loop.lock /tmp/supervisor.lock /tmp/worker-wedge-skip \
         /projects/modernized/migration/findings-delta.STALE \
-        /projects/modernized/migration/.stopped \
         /projects/modernized/migration/.supervisor-pause 2>/dev/null || true
+  if [ "${V10_SYNC_CLEAR_STOP:-0}" = "1" ]; then
+    rm -f /projects/modernized/migration/.stopped 2>/dev/null || true
+    echo "v10-sync-hermes: cleared migration/.stopped (V10_SYNC_CLEAR_STOP=1)"
+  elif [ -f /projects/modernized/migration/.stopped ]; then
+    echo "v10-sync-hermes: keeping migration/.stopped (deliberate hold)"
+  fi
   # Prefer KANTRA_HOME layout when helper exists.
   export KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
   if command -v kantra-ensure >/dev/null 2>&1; then

@@ -141,7 +141,7 @@ phase_gate() { # $1=name $2=RED|GREEN $3=detail
 }
 phase_retry() { log "$(_sym '↻' 'R') RETRY  $1"; }
 
-# O-GROUNDLOG: demo-facing G1–G9 lines in outer-loop.log (question + result only).
+# O-GROUNDLOG: demo-facing G1–G10 lines in outer-loop.log (question + result only).
 # No ADR identifiers in user-visible log text. Honest NOT-LANDED for open guards.
 _count_re() { # $1=file $2=regex → count (0 if missing)
   local f="$1" re="$2" n
@@ -156,10 +156,10 @@ log_ground() {
   log "         $4"
 }
 log_gchain_banner() {
-  log "GROUND  G1–G9 — grounding checks"
+  log "GROUND  G1–G10 — grounding checks"
   log "         Each step sits at one pipeline handoff and answers: is what this"
   log "         stage produced actually derived from what the previous stage gave it?"
-  log "         M1: G1/G2 · M2: G3/G6/G7/G8 · M3: G4 (inline) · M3 authoring: G5/G9"
+  log "         M1: G1/G2 · M2: G3/G6/G7/G8 · M3: G4 (inline) · M3 authoring: G5/G9 · M4: G10"
 }
 # M1 PROFILE gate → G1 + G2 (problem lists from live rubric) + coverage from
 # evaluate_roles SoT (O-PROFCOVSTALE — never grep stale COVERAGE: from rubric).
@@ -258,54 +258,80 @@ log_gchain_m2_roadmap() { # $1=GREEN|RED
       "${fresh} freshness findings — ${lintf} (roadmap ${gate})"
   fi
 }
-# M3 derived-facts inline → G4
+# M3 derived-facts inline → G4 (population from evidence_kinds_for_acceptance)
 log_gchain_m3_g4() { # $1=derived-facts text  $2=story id
-  local block="${1:-}" sid="${2:-}" n_dep n_find n_sym n_hdr
-  n_dep=$(printf '%s\n' "$block" | awk '
-    /^dependency-order:/ {p=1; next}
-    /^[A-Za-z].*:/ && $0 !~ /^  / {p=0}
-    p && /^  - / {c++}
-    END {print c+0}')
-  n_find=$(printf '%s\n' "$block" | awk '
-    /^findings:/ {p=1; next}
-    /^[A-Za-z].*:/ && $0 !~ /^  / {p=0}
-    p && /^  - / {c++}
-    END {print c+0}')
-  n_sym=$(printf '%s\n' "$block" | awk '
-    /^symbol-index/ {p=1; next}
-    /^=====/ {p=0}
-    p && /^  - / {c++}
-    END {print c+0}')
-  n_hdr=$(printf '%s\n' "$block" | grep -cE 'Circular group' || true)
-  n_hdr=${n_hdr:-0}
-  if printf '%s\n' "$block" | grep -q 'BEGIN DERIVED FACTS'; then
-    log_ground "G4" "PASS" \
-      "Are derived facts (findings, dependency-order, symbol-index) inlined so the planner cannot invent them?" \
-      "${sid}: findings(${n_find}) · dependency-order(${n_dep}) · symbol-index(${n_sym}) · circular-group headers=${n_hdr}; derived facts win on conflict"
-  else
-    log_ground "G4" "FAIL" \
-      "Are derived facts (findings, dependency-order, symbol-index) inlined so the planner cannot invent them?" \
-      "${sid}: derived-facts block missing from seat prompt"
+  local block="${1:-}" sid="${2:-}" status detail
+  status="FAIL"; detail="${sid}: ground_chain unavailable"
+  if [ -f "${HARNESS:-.hermes/harness}/ground_chain.py" ]; then
+    # stdin = block; kinds derived from typed acceptance when model present
+    out=$(printf '%s\n' "$block" | python3 "${HARNESS:-.hermes/harness}/ground_chain.py" g4 \
+      --root . --sid "${sid}" 2>/dev/null || true)
+    status=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $1}')
+    detail=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $2}')
+    [ -n "$status" ] || status="FAIL"
+    [ -n "$detail" ] || detail="${sid}: empty g4 verdict"
+  elif printf '%s\n' "$block" | grep -q 'BEGIN DERIVED FACTS'; then
+    status="PASS"; detail="${sid}: header present (legacy fallback — ground_chain.py missing)"
   fi
+  log_ground "G4" "$status" \
+    "Are acceptance-declared evidence facts inlined so the planner cannot invent them?" \
+    "${detail}"
 }
-# M3 plan-lint → G5 + G9 honesty (once per story)
-log_gchain_m3_plan() { # $1=GREEN|RED $2=story id
-  local gate="${1:-}" sid="${2:-}"
-  if [ "${_GCHAIN_M3PLAN_LOGGED:-}" = "$sid" ]; then
+# M3 plan-lint → G5 + G9 (after SPECIFIED only; real verdicts via ground_chain)
+log_gchain_m3_plan() { # $1=GREEN|RED|UNSPECIFIED $2=story id
+  # ADR-42 Move 4: G5/G9 only meaningful after SPECIFIED (authored goals exist).
+  local gate="${1:-}" sid="${2:-}" g5s g5d g9s g9d out
+  if [ "${_GCHAIN_M3PLAN_LOGGED:-}" = "$sid:$gate" ]; then
     return 0
   fi
-  _GCHAIN_M3PLAN_LOGGED="$sid"
-  log_ground "G5" "NOT-LANDED" \
-    "Do task Target/Shape/Acceptance tokens resolve in this story's scope (or Shape:create)?" \
-    "${sid}: plan-lint is form-only today — invented tokens not refused yet"
-  log_ground "G9" "NOT-LANDED" \
-    "Can this task's Acceptance be satisfied without doing what its Goal requires?" \
-    "${sid}: Goal↔Acceptance coherence not enforced at authoring yet"
-  if [ "$gate" = "GREEN" ]; then
-    log "GROUND  ${sid} plan-lint GREEN — form complete; G5/G9 still open (GREEN is not full grounding)"
-  else
-    log "GROUND  ${sid} plan-lint RED — see /tmp/plan-lint.txt; G5/G9 still open"
+  _GCHAIN_M3PLAN_LOGGED="$sid:$gate"
+  if [ "$gate" = "UNSPECIFIED" ]; then
+    # O-GROUNDLOG / O-LOGNOADR: no ADR-* tokens in demo-facing GROUND lines.
+    log "GROUND  ${sid} — UNSPECIFIED (expected; running M3) — G5/G9 deferred until SPECIFIED"
+    return 0
   fi
+  g5s="NOT-LANDED"; g5d="${sid}: ground_chain unavailable"
+  g9s="NOT-LANDED"; g9d="${sid}: ground_chain unavailable"
+  if [ -f "${HARNESS:-.hermes/harness}/ground_chain.py" ]; then
+    out=$(python3 "${HARNESS:-.hermes/harness}/ground_chain.py" g5 --root . --sid "$sid" 2>/dev/null || true)
+    g5s=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $1}')
+    g5d=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $2}')
+    out=$(python3 "${HARNESS:-.hermes/harness}/ground_chain.py" g9 --root . --sid "$sid" 2>/dev/null || true)
+    g9s=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $1}')
+    g9d=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $2}')
+    [ -n "$g5s" ] || g5s="NOT-LANDED"
+    [ -n "$g9s" ] || g9s="NOT-LANDED"
+  fi
+  log_ground "G5" "$g5s" \
+    "Do harness-derived Shape/Acceptance/owns hold, and do goal/plan type tokens resolve in story scope?" \
+    "${g5d}"
+  log_ground "G9" "$g9s" \
+    "Can this task's Acceptance be satisfied without doing what its Goal requires?" \
+    "${g9d}"
+  if [ "$gate" = "GREEN" ]; then
+    log "GROUND  ${sid} plan-lint GREEN — form complete; G5=${g5s} G9=${g9s}"
+  else
+    log "GROUND  ${sid} plan-lint RED — see /tmp/plan-lint.txt; G5=${g5s} G9=${g9s}"
+  fi
+}
+# M4 handoff → G10 (code derived from typed M3 acceptance)
+log_gchain_m4_g10() { # $1=story id
+  local sid="${1:-}" status detail out
+  if [ "${_GCHAIN_G10_LOGGED:-}" = "$sid" ]; then
+    return 0
+  fi
+  _GCHAIN_G10_LOGGED="$sid"
+  status="NOT-LANDED"; detail="${sid}: ground_chain unavailable"
+  if [ -f "${HARNESS:-.hermes/harness}/ground_chain.py" ]; then
+    out=$(python3 "${HARNESS:-.hermes/harness}/ground_chain.py" g10 --root . --sid "$sid" 2>/dev/null || true)
+    status=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $1}')
+    detail=$(printf '%s\n' "$out" | awk -F'\t' 'NR==1{print $2}')
+    [ -n "$status" ] || status="NOT-LANDED"
+    [ -n "$detail" ] || detail="${sid}: empty g10 verdict"
+  fi
+  log_ground "G10" "$status" \
+    "Is the code this story produced actually derived from the task specs M3 authored?" \
+    "${detail}"
 }
 # Wrap M3 plan-lint gates so GROUND lines always accompany GATE lines.
 m3_phase_gate() { # same args as phase_gate
@@ -559,6 +585,70 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
   fi
   log "${SID} COST    ${seats} seats (${seats_w} worker · ${seats_e} escalation) · ${sensor_red} sensor RED · ${sfix_n} sfix · ${m3_rev} M3 revisions${lint_seats:+ · lint-seats ${lint_seats}${lint_summary:+ (${lint_summary})}}"
   log "${SID} HEAD    ${head_s}"
+}
+
+emit_m3_deliverables() {
+  # O-M3DELIVERLOG: demo-visible M3 author artifacts after plan-lint GREEN.
+  # Emission-only — no control-flow. Lists specs/<slug>/{tasks,plan,spec}.md,
+  # brief path, HEAD, and a short task-id roster (truncate when long).
+  local sid="${SID:-}" slug="${SLUG:-}" head_s="" tasks_f="" brief_f=""
+  local plan_st="absent" spec_st="absent" n_tasks=0 task_ids="" more=0
+  local deliver_extra=""
+  [ -n "$sid" ] && [ -n "$slug" ] || return 0
+  head_s=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  tasks_f="specs/${slug}/tasks.md"
+  brief_f="${BRIEF:-}"
+  [ -n "$brief_f" ] || brief_f=$(ls migration/briefs/${sid}-*.md 2>/dev/null | head -1 || true)
+  [ -f "specs/${slug}/plan.md" ] && plan_st="present"
+  [ -f "specs/${slug}/spec.md" ] && spec_st="present"
+  if [ -f "$tasks_f" ]; then
+    eval "$(python3 - "$tasks_f" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+heads = re.findall(r"(?m)^####\s+(\S+):\s*(.+)$", text)
+ids = []
+for hid, title in heads:
+    ids.append(hid)
+print(f"n_tasks={len(ids)}")
+# Cap roster length for outer-loop readability (S02 can be 40+).
+cap = 12
+shown = ids[:cap]
+more = max(0, len(ids) - cap)
+print(f"task_ids={repr(' · '.join(shown))}")
+print(f"more={more}")
+PY
+)"
+  else
+    n_tasks=0
+    task_ids=""
+    more=0
+  fi
+  # Optional extras in the story specs dir (beyond the three named files).
+  if [ -d "specs/${slug}" ]; then
+    deliver_extra=$(find "specs/${slug}" -maxdepth 1 -type f ! -name 'tasks.md' \
+      ! -name 'plan.md' ! -name 'spec.md' -exec basename {} \; 2>/dev/null \
+      | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  fi
+  _log_rule "══ ${sid} M3 deliverables "
+  if [ -f "$tasks_f" ]; then
+    log "${sid} DELIVER  ${tasks_f} (${n_tasks} tasks) · plan.md ${plan_st} · spec.md ${spec_st} · brief=${brief_f:-missing} · HEAD ${head_s}"
+  else
+    log "${sid} DELIVER  tasks.md missing · plan.md ${plan_st} · spec.md ${spec_st} · brief=${brief_f:-missing} · HEAD ${head_s}"
+  fi
+  if [ -n "${task_ids:-}" ]; then
+    if [ "${more:-0}" -gt 0 ]; then
+      log "${sid} TASKS    ${task_ids} · +${more} more"
+    else
+      log "${sid} TASKS    ${task_ids}"
+    fi
+  else
+    log "${sid} TASKS    (none parsed)"
+  fi
+  if [ -n "$deliver_extra" ]; then
+    log "${sid} EXTRA    specs/${slug}/: ${deliver_extra}"
+  fi
+  return 0
 }
 
 # Bounded session runner for the M1/M2/M3 authoring gates. Simpler than
@@ -860,18 +950,23 @@ _TMPARCHIVE_DONE=0
 archive_tmp_forensics() {
   [ "${_TMPARCHIVE_DONE:-0}" = "1" ] && return 0
   _TMPARCHIVE_DONE=1
-  local _arch_root _arch
+  local _arch_root _arch _jn
   _arch_root="${RUN_ARCHIVE_ROOT:-/projects/modernized/migration/run-archives}"
   _arch="${_arch_root}/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
   mkdir -p "$_arch" 2>/dev/null || true
   if [ -d "$_arch" ]; then
+    # ADR-43: run journal is copied wholesale (no M3-missing glob list).
+    _jn=0
+    if [ -f "${HARNESS:-.hermes/harness}/run_journal.py" ]; then
+      _jn=$(python3 "${HARNESS:-.hermes/harness}/run_journal.py" archive-to "$_arch" 2>/dev/null \
+        | sed -n 's/^archived_journal_files=//p' | tail -1)
+      _jn=${_jn:-0}
+    fi
     shopt -s nullglob
     # W4-526 PART C — M1 PROFILE forensics (profile-rubric + prose/decide logs).
-    # O-M2SEATARCH / W4-543 P2 — M2 SEQUENCE seat + projection forensics
-    # (hermes transcript is not OpenCode JSONL; without these globs C5 probes
-    # lose their known-positive control across STOP/wipe).
-    # Durable form remains ADR-36 scoped artifacts; these globs are the minimum
-    # so a RED (e.g. genassert) survives the next wipe.
+    # O-M2SEATARCH / W4-543 P2 — M2 SEQUENCE seat + projection forensics.
+    # Phase-2 backlog: supervisor/sensors still write fixed /tmp paths until
+    # migrated into run_journal. Keep those globs; journal covers m3 seats.
     for p in \
       /tmp/supervisor.log /tmp/outer-loop.log /tmp/kill-ledger.log \
       /tmp/findings-delta.txt /tmp/outer-git-push.log \
@@ -885,18 +980,22 @@ archive_tmp_forensics() {
       /tmp/m2-projected-facts.txt \
       /tmp/m2-compose.txt \
       /tmp/roadmap-lint.txt \
-      /tmp/roadmap-lint-m2exit.txt
+      /tmp/roadmap-lint-m2exit.txt \
+      /tmp/plan-lint.txt \
+      /tmp/plan-lint-*-entry.txt
     do
       cp -a "$p" "$_arch/" 2>/dev/null || true
     done
     shopt -u nullglob
-    printf 'head=%s\narchived_at=%s\n' \
+    printf 'head=%s\narchived_at=%s\nrun_id=%s\njournal_files=%s\n' \
       "$(git rev-parse HEAD 2>/dev/null || true)" \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_arch/ARCHIVE.txt" 2>/dev/null || true
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      "${HARNESS_RUN_ID:-}" \
+      "${_jn}" > "$_arch/ARCHIVE.txt" 2>/dev/null || true
     if declare -F log >/dev/null 2>&1; then
-      log "O-TMPARCHIVE — forensic /tmp → ${_arch}"
+      log "O-TMPARCHIVE — forensic /tmp + journal(${_jn}) → ${_arch}"
     else
-      echo "[$(date -u +%F' '%T)] O-TMPARCHIVE — forensic /tmp → ${_arch}" >> /tmp/outer-loop.log 2>/dev/null || true
+      echo "[$(date -u +%F' '%T)] O-TMPARCHIVE — forensic /tmp + journal(${_jn}) → ${_arch}" >> /tmp/outer-loop.log 2>/dev/null || true
     fi
   elif declare -F log >/dev/null 2>&1; then
     log "WARN: O-TMPARCHIVE — could not create ${_arch}"
@@ -950,6 +1049,15 @@ else
   : > "$LOG"
   echo "[$(date -u +%F' '%T)] ——— START outer-loop (fresh log) ———" >> "$LOG"
 fi
+# ADR-43: run journal namespaced by HARNESS_RUN_ID — no O-M3LOGSTALE wipe.
+# Stale mixing is impossible across runs (different journal directories).
+if [ -z "${HARNESS_RUN_ID:-}" ]; then
+  export HARNESS_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+fi
+if [ -f "$HARNESS/run_journal.py" ]; then
+  python3 "$HARNESS/run_journal.py" ensure >>"$LOG" 2>&1 || true
+fi
+echo "[$(date -u +%F' '%T)] run-journal: HARNESS_RUN_ID=${HARNESS_RUN_ID}" >> "$LOG"
 # O-STOPMARKER: refuse start on deliberate/stale stop unless cleared.
 # tip may lag HEAD by the commit that *added* .stopped — treat as current when
 # tip..HEAD only touches migration/.stopped (not other work).
@@ -1707,50 +1815,70 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   fi
   phase_gate "M3 PREFLIGHT ${SLUG} brief-quality" GREEN "O-M3PREFLIGHT"
 
-  # O-M3ACCEPT: plan-lint must know deploy vs non-deploy (roadmap flag).
-  # O-M3DTOSCOPE: pass roadmap scope so plan-lint ignores out-of-story files (dto/).
+  # O-M3ACCEPT / O-M3DTOSCOPE — lint args (quality gate only; see ADR-42).
   M3_LINT_CMD="python3 ${HARNESS}/plan-lint.py specs/${SLUG}/tasks.md migration/mta-findings.json --findings-scope ${FINDINGS} --profile migration/architecture-profile.md --story-deploy ${DEPLOY} --story-scope '${SCOPE}'"
-  if [ -n "$SPEC_TASKS" ] \
-    && python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
+  # ADR-42: readiness from typed store — never discover work by plan-lint RED.
+  # assign/render first so story_state sees current tasks[]; plan-lint runs
+  # only when SPECIFIED (all filled).
+  if [ "${M3_TYPED_LOOP:-1}" = "1" ] && [ -f "$HARNESS/model.py" ]; then
+    python3 "$HARNESS/model.py" assign-tasks --root . >/tmp/m3-assign-tasks.txt 2>&1 || true
+    python3 "$HARNESS/model.py" render-tasks --root . --sid "$SID" \
+      >/tmp/m3-render-tasks-${SID}.txt 2>&1 || true
+    _story_state=$(python3 "$HARNESS/model.py" story-state --root . --sid "$SID" 2>/dev/null || echo UNSPECIFIED)
+  else
+    _story_state="UNSPECIFIED"
+  fi
+  if [ "$_story_state" = "SPECIFIED" ] && [ -n "$SPEC_TASKS" ]; then
+    # Quality gate — story is specified; RED means incorrect, not "not done".
+    if python3 "$HARNESS/plan-lint.py" "$SPEC_TASKS" migration/mta-findings.json \
          --findings-scope "$FINDINGS" --profile migration/architecture-profile.md \
          --story-deploy "$DEPLOY" --story-scope "$SCOPE" \
          > /tmp/plan-lint.txt 2>&1; then
-    # O-M3MECHSCOPE: only this story's specs/ — never sweep sibling dirty plans
-    [ -n "$(git status --porcelain "specs/${SLUG}/")" ] \
-      && git add "specs/${SLUG}/" \
-      && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
-    m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
-    phase_ok "M3 SPECIFY — ${SLUG} spec already present and plan-lint-green ($SPEC_TASKS); commit $(git rev-parse --short HEAD)"
-    M3_DONE=1
-  elif [ -n "$SPEC_TASKS" ]; then
-    m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "present spec failed lint — /tmp/plan-lint.txt (O-M3SKIP will re-run M3)"
-    log "         O-M3SKIP: ${SPEC_TASKS} present but plan-lint RED — entering M3 fix attempts (not skipping to M4)"
+      [ -n "$(git status --porcelain "specs/${SLUG}/")" ] \
+        && git add "specs/${SLUG}/" \
+        && git commit -q -m "${SID} spec: outer-loop mechanical commit of lint-green spec" 2>/dev/null
+      m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN "commit $(git rev-parse --short HEAD)"
+      phase_ok "M3 SPECIFY — ${SLUG} SPECIFIED + plan-lint GREEN ($SPEC_TASKS); commit $(git rev-parse --short HEAD)"
+      M3_DONE=1
+    else
+      m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" RED "SPECIFIED story failed quality lint — /tmp/plan-lint.txt"
+      log "         story_state=SPECIFIED but plan-lint RED — quality defect (not scheduler)"
+      # Fall through to typed re-seat / legacy path when M3_DONE still 0.
+    fi
+  elif [ "$_story_state" = "UNSPECIFIED" ]; then
+    log "·        M3 SPECIFY ${SLUG} — story_state=UNSPECIFIED (expected; running M3)"
+    log_gchain_m3_plan UNSPECIFIED "${SID}"
   fi
   if [ "$M3_DONE" != "1" ]; then
     # ADR-35/40 typed path — harness SoT + Qwen write-inversion (default ON).
-    # Seat returns judgment JSON; harness upserts model.tasks[] + renders tasks.md.
-    # W4-556: when M3_TYPED_LOOP=1, failure is terminal (O-M3TYPEDSTOP) — no
-    # automatic legacy MiniMax fallback. Operator sets M3_TYPED_LOOP=0 to use
-    # the edit-tasks.md path deliberately.
+    # W4-556: M3_TYPED_LOOP=1 failure is terminal (O-M3TYPEDSTOP).
     if [ "${M3_TYPED_LOOP:-1}" = "1" ]; then
       if [ ! -f "$HARNESS/m3_task_loop.py" ]; then
         fail_run "M3 SPECIFY ${SLUG}: M3_TYPED_LOOP=1 but m3_task_loop.py missing (O-M3TYPEDSTOP)"
       fi
-      phase_start "M3 SPECIFY — typed write-inversion ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [ADR-35/Qwen]"
-      log "         Actor: m3_task_loop + $(worker_label) — session → /tmp/m3-task-${SID}-*.log"
-      python3 "$HARNESS/model.py" assign-tasks --root . >/tmp/m3-assign-tasks.txt 2>&1 || true
-      python3 "$HARNESS/model.py" render-tasks --root . --sid "$SID" \
-        >/tmp/m3-render-tasks-${SID}.txt 2>&1 || true
+      phase_start "M3 SPECIFY — typed write-inversion ${SLUG} (${STORY_IDX}/${STORY_COUNT}) [typed/Qwen]"
+      _m3_journal_hint="/tmp/hj/${HARNESS_RUN_ID:-run}/m3/"
+      log "         Actor: m3_task_loop + $(worker_label) — journal → ${_m3_journal_hint}"
+      # O-M3TYPEDHB: typed loop heartbeat (same class as O-PROFDECIDEHB).
+      _m3tl_t0=$(date +%s)
+      _m3tl_slog=$(python3 "$HARNESS/run_journal.py" seat-log m3 "loop-${SID}" --attempt 1 2>/dev/null \
+        || echo "/tmp/m3-task-loop-${SID}.log")
+      : > /tmp/outer-heartbeat-progress.txt
+      printf 'm3=%s seats=0/? active=starting\n' "$SID" > /tmp/outer-heartbeat-progress.txt
+      _outer_heartbeat_start "M3 SPECIFY ${SLUG}" "$_m3tl_t0" "$_m3tl_slog" worker
       set +e
-      python3 "$HARNESS/m3_task_loop.py" run --root . --sid "$SID" \
+      PYTHONUNBUFFERED=1 python3 "$HARNESS/m3_task_loop.py" run --root . --sid "$SID" \
         --backend opencode-qwen \
         --worker-model "${WORKER_MODEL}" \
         --legacy /projects/legacy \
-        >"/tmp/m3-task-loop-${SID}.log" 2>&1
+        >"$_m3tl_slog" 2>&1
       _m3tl_rc=$?
       set -e
-      # O-M3TYPEDSTOP / W4-566: distinguish SEAT-FAILED vs LINT-RED — never
-      # collapse plan-lint RED into "typed write-inversion failed" when seats OK.
+      kill "$hb_pid" 2>/dev/null || true
+      wait "$hb_pid" 2>/dev/null || true
+      rm -f /tmp/outer-heartbeat-progress.txt
+      log "·        M3 SPECIFY ${SLUG} typed-loop finished ($(( $(date +%s) - _m3tl_t0 ))s, loop_rc=${_m3tl_rc}) — checking plan-lint next"
+      # ADR-42 Move 3: plan-lint once when seats claim SPECIFIED (or after fill).
       _m3_lint_rc=1
       if [ "$_m3tl_rc" = "0" ]; then
         set +e
@@ -1764,16 +1892,16 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       if [ "$_m3tl_rc" = "0" ] && [ "${_m3_lint_rc}" = "0" ]; then
         [ -n "$(git status --porcelain "specs/${SLUG}/" migration/model.json)" ] \
           && git add "specs/${SLUG}/" migration/model.json \
-          && git commit -q -m "${SID} spec: typed M3 write-inversion (ADR-35/Qwen)" 2>/dev/null
+          && git commit -q -m "${SID} spec: typed M3 write-inversion (typed/Qwen)" 2>/dev/null
         m3_phase_gate "M3 SPECIFY ${SLUG} plan-lint" GREEN \
           "typed-loop commit $(git rev-parse --short HEAD)"
         phase_ok "M3 SPECIFY — ${SLUG} typed write-inversion GREEN; commit $(git rev-parse --short HEAD)"
         M3_DONE=1
       elif [ "$_m3tl_rc" != "0" ]; then
-        _m3_fail_n=$(grep -c "^  FAIL " "/tmp/m3-task-loop-${SID}.log" 2>/dev/null || echo 0)
+        _m3_fail_n=$(grep -c "^  FAIL " "$_m3tl_slog" 2>/dev/null || echo 0)
         m3_phase_gate "M3 SPECIFY ${SLUG} typed-loop" RED \
-          "SEAT-FAILED rc=${_m3tl_rc:-?} fail=${_m3_fail_n} — see /tmp/m3-task-loop-${SID}.log (O-M3TYPEDSTOP)"
-        fail_run "M3 SPECIFY ${SLUG} SEAT-FAILED (rc=${_m3tl_rc:-?}, fail=${_m3_fail_n}) (O-M3TYPEDSTOP; no legacy fallback). See /tmp/m3-task-loop-${SID}.log"
+          "SEAT-FAILED rc=${_m3tl_rc:-?} fail=${_m3_fail_n} — see ${_m3tl_slog} (O-M3TYPEDSTOP)"
+        fail_run "M3 SPECIFY ${SLUG} SEAT-FAILED (rc=${_m3tl_rc:-?}, fail=${_m3_fail_n}) (O-M3TYPEDSTOP; no legacy fallback). See ${_m3tl_slog}"
       else
         _m3_lint_n=$(grep -c '^LINT:' /tmp/plan-lint.txt 2>/dev/null || echo 0)
         _m3_lint_first=$(grep '^LINT:' /tmp/plan-lint.txt 2>/dev/null | head -1 | cut -c1-120 || echo "(no LINT lines)")
@@ -2382,6 +2510,9 @@ EOF
     fi
   fi
 
+  # O-M3DELIVERLOG: list demo-visible M3 artifacts now that this story is GREEN.
+  emit_m3_deliverables
+
   # O-M3ALL author pass: no M4 until every story plan exists + whole-set GREEN.
   if [ "$M3_ALL_PASS" = "author" ]; then
     phase_ok "M3-ALL author — ${SLUG} plan ready (defer M4 until whole-set lint)"
@@ -2641,6 +2772,8 @@ EOF
         fail_run "$SID review-hold (O-REVHOLD) — clear migration/HOLD after durableize; do not advance"
       fi
       phase_ok "M4/M5 EXECUTE — ${SLUG_HINT} complete (${OUTCOME}); HEAD $(git rev-parse --short HEAD)"
+      # W4-609 #3 — G10 at M3→M4 handoff (code vs typed acceptance)
+      log_gchain_m4_g10 "${SID}"
       emit_story_epilog "complete"
       echo "${SID},complete,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story complete: ${OUTCOME}" 2>/dev/null || true

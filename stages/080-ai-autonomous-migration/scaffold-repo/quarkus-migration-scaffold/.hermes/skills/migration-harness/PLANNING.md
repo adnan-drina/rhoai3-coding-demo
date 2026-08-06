@@ -1,14 +1,21 @@
 # M3 SPECIFY — plan (and findings access notes)
 
-**O-M3SKILLNAV — brief first, then edit `tasks.md`.** Before any other
-read, open `migration/briefs/<story>.md` (decided shapes + §7 contracts).
-Then **edit** the seeded `specs/<slug>/tasks.md` in the first tool batch
-(M3-ALL already created it — fill Goal / Target / Class·Shape; drop the
-skeleton marker). Do **not** probe `spec.md` or `plan.md` first: they are
-**outputs you write after** `tasks.md`, not inputs to discover. Under
-M3-ALL they often do not exist yet; those reads are guaranteed errors and
-burn the ~120s O-M3QWENSTALL budget (W4-259: Qwen read `plan.md`→`spec.md`
-error→… and never opened the brief).
+> **Typed default (`M3_TYPED_LOOP=1`): do not use this file.**
+> Qwen typed judgment seats load [JUDGMENT.md](JUDGMENT.md) only — JSON
+> judgment, harness-owned `specs/<S0N-slug>/tasks.md`, no edits.
+> Everything below is the **legacy** MiniMax/wchat authoring path
+> (`M3_TYPED_LOOP=0`). Keeping both definitions in one file without this
+> banner caused write-inversion bypass (W4-576).
+
+**O-M3SKILLNAV (legacy only) — brief first, then edit `tasks.md`.** Before
+any other read, open `migration/briefs/<story>.md` (decided shapes + §7
+contracts). Then **edit** the seeded `specs/<S0N-slug>/tasks.md` in the
+first tool batch (M3-ALL already created it — fill Goal / Target /
+Class·Shape; drop the skeleton marker). Do **not** probe `spec.md` or
+`plan.md` first: they are **outputs you write after** `tasks.md`, not
+inputs to discover. Under M3-ALL they often do not exist yet; those reads
+are guaranteed errors and burn the ~120s O-M3QWENSTALL budget (W4-259:
+Qwen read `plan.md`→`spec.md` error→… and never opened the brief).
 
 Plans map findings to the DECIDED targets in [MAPPINGS.md](MAPPINGS.md) —
 cite the catalog, do not re-derive architecture per run. `tasks.md` MUST
@@ -84,13 +91,14 @@ Then (after the first `tasks.md` mutate) deepen with legacy code and
 `migration/mta-findings.json` as needed, and write the contract into the
 same layout stage 070 uses:
 
-- `specs/<NNN-migration-slug>/tasks.md` — **gate artifact** (write/edit
-  first). Ordered checklist. Rewrite tasks before infer tasks. Every
-  mandatory finding maps to at least one task; every task cites its
+- `specs/<S0N-migration-slug>/tasks.md` — **gate artifact** (legacy path
+  write/edit first; typed path = harness render only). Ordered checklist.
+  Example: `S04-rest-surface-and-configuration` — **never** `004-…`.
+  Every mandatory finding maps to at least one task; every task cites its
   finding rule ids.
-- `specs/<NNN-migration-slug>/plan.md` — **output** — Quarkus mapping.
+- `specs/<S0N-migration-slug>/plan.md` — **output** — Quarkus mapping.
   Tag every item `rewrite` (mechanical) or `infer` (judgment).
-- `specs/<NNN-migration-slug>/spec.md` — **output** — observed legacy
+- `specs/<S0N-migration-slug>/spec.md` — **output** — observed legacy
   behavior + API contract, with legacy file paths as evidence.
 
 **Shape (O-SHAPEDECL):** every task MUST declare

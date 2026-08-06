@@ -17,6 +17,14 @@ WS_NAME="$(qg_ws_name)" || {
 }
 NS="${V10_NS:-$(qg_ws_ns)}"
 
+echo "=== 0) O-PREPARCHEXIT — host scoop BEFORE any wipe/sync that clears /tmp ==="
+# Skip only when explicitly opted out (e.g. dry prep with no live pod).
+if [ "${V10_SKIP_PREPARCHEXIT:-0}" != "1" ]; then
+  bash "${ROOT}/scripts/track-b/v10-archive-before-wipe.sh" --label "${V10_ARCHIVE_LABEL:-prep-fresh}"
+else
+  echo "  skipped (V10_SKIP_PREPARCHEXIT=1)"
+fi
+
 echo "=== 1) Honesty + Wave3 retro bank rows (must be ✅) ==="
 HONESTY="O-ALREADYPROP O-ALREADYFINDING O-T6EEMPTYESC O-RESUMEBASEEXCL O-KANTRAMISS O-CREATEFIRSTMUT O-M3EMPTY O-DUPPROP O-WIREUP O-ALREADYREPL O-ESCALCAUSE O-M5STALE O-KANTRAPATH O-SECAUTHTEST O-PRODSCHEMA"
 bank="$ROOT/docs/V10-FUTURE-IMPROVEMENTS.md"
@@ -79,70 +87,24 @@ print("static-probes-ok")
 PY
 )
 
-echo "=== 3) Sync golden .hermes → live workspace (if oc available) ==="
-SCAFFOLD="$ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+echo "=== 3) Sync golden .hermes → live workspace (v10-sync-hermes) ==="
 if command -v oc >/dev/null 2>&1 && oc whoami >/dev/null 2>&1; then
-  load_env >/dev/null 2>&1 || true
-  check_oc_logged_in >/dev/null 2>&1 || true
-  POD=$(oc get pod -n "$NS" -l "controller.devfile.io/devworkspace_name=${WS_NAME}" \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-  if [ -n "${POD:-}" ]; then
-    echo "Tar-sync entire golden .hermes → ${NS}/${POD}:/projects/modernized/.hermes ..."
-    # Wipe first: tar xf does not delete leftovers. macOS tar can also emit
-    # AppleDouble `._*` sidecars that poison O-HERMESPREFLIGHT digests.
-    oc exec -n "$NS" "$POD" -c development-tooling -- \
-      bash -lc 'cd /projects/modernized && rm -rf .hermes && mkdir -p .hermes'
-    ( cd "$SCAFFOLD" && COPYFILE_DISABLE=1 tar cf - .hermes ) | oc exec -i -n "$NS" "$POD" -c development-tooling -- \
-      bash -lc 'cd /projects/modernized && tar xf - && find .hermes -name "._*" -delete 2>/dev/null || true'
-    echo "  synced .hermes/ ($(find "$HARNESS_SRC" -type f ! -name '._*' ! -name '.DS_Store' | wc -l | tr -d " ") files in golden tree)"
-    export V10_WS_NAME="$WS_NAME" V8_WS_NS="$NS"
-    qg_remote_orchestrator_preflight || {
-      echo "WARN: orchestrator preflight RED after sync — run workspace init (ensure_hermes) on pod" >&2
-      exit 1
-    }
-    oc exec -n "$NS" "$POD" -c development-tooling -- bash -lc '
-      export KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
-      command -v kantra-ensure >/dev/null && kantra-ensure || echo "WARN: kantra-ensure not in PATH"
-      if [ -x "${KANTRA_HOME}/kantra" ] || [ -f "${KANTRA_HOME}/kantra" ]; then
-        echo "kantra-ok:${KANTRA_HOME}/kantra"
-      elif [ -x /tmp/kantra/kantra ]; then
-        echo "kantra-ok:/tmp/kantra/kantra (fallback — migrate to KANTRA_HOME)"
-      else
-        echo "WARN: kantra binary still missing"
-      fi
-      test -f /tmp/outer-loop-done && echo outer-done-present || echo outer-done-absent
-    '
-  else
-    echo "WARN: no DevWorkspace pod for $WS_NAME — skip live sync"
-  fi
+  export V10_WS_NAME="$WS_NAME" V8_WS_NS="$NS"
+  bash "${ROOT}/scripts/track-b/v10-sync-hermes.sh"
 else
   echo "WARN: oc not logged in — skip live sync"
 fi
 
-echo "=== 4) Re-run recipe (manual next steps) ==="
+echo "=== 4) Next: host preflight (no pod hand steps) ==="
 cat <<EOF
 
-Fresh re-run (wipe specimen or new branch) — only after human confirms:
+Harness synced + start markers cleared on the workspace.
 
-  1. In the modernized workspace, reset app to pristine scaffold + legacy stamp
-     (or provision a new specimen). Do NOT resume the completed S07 tip.
-  2. Clear markers:
-       rm -f /tmp/outer-loop-done /tmp/debt-freeze /tmp/supervisor-pause \\
-             /tmp/outer-loop.lock /tmp/supervisor.lock /tmp/worker-wedge-skip \\
-             migration/findings-delta.STALE
-  3. export KANTRA_HOME=/projects/.tools/kantra; kantra-ensure && test -x "\$KANTRA_HOME/kantra"
-  4. From modernized:
-       WORKER_FIRST=true nohup bash .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
-  5. Optional: restart tmp/v10-smart-wake-loop.sh for O-DRV4
+  bash scripts/track-b/v9-preflight-outer-start.sh          # gate only
+  bash scripts/track-b/v9-preflight-outer-start.sh --start # gate + start outer
 
-Wave3 / honesty KPIs on the proving re-run:
-  - MiniMax coding escalations ≈ 0 (pause-kills must NOT escalate)
-  - Lead tip commits = 0
-  - False already-complete = 0
-  - No hollow aspect/empty @ApplicationScoped (O-WIREUP)
-  - No STALE-AFTER M5 score inflation
-  - Security story ships 401/403 TestProfile coverage
-  - Watch kill-ledger for rc=130 SIGINT source (O-SIGINT)
+Auto-sync on mismatch is on by default (V9_AUTO_HERMES_SYNC=1).
+Do not hand-edit the pod .hermes tree.
 
 EOF
 echo "prep-fresh-rerun: OK"

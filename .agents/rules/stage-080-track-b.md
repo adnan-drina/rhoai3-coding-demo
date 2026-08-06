@@ -11,6 +11,8 @@ applies-to:
   - docs/V*-*.md
   - "**/quarkus-migration-scaffold/**"
   - tmp/v8-driver-loop.sh
+  - tmp/KAI-WAVE5-REVIEW.md
+  - tmp/V10-V5-MONITOR.md
   - tmp/KAI-WAVE4-REVIEW.md
   - tmp/V10-V4-MONITOR.md
   - tmp/V9-TASK-ANALYSIS*
@@ -51,9 +53,15 @@ sensors, scaffold skills, live migration workspace):
    (body + transcript fidelity). Ack-only is invalid. Driver must be
    running (`tmp/v8-driver-loop.sh` / `v9-ensure-driver.sh`); if DOWN,
    start it. Silence / fake ack is P0.
+   **Wake ticks — review-doc line required in the pulse:** on every
+   `AGENT_LOOP_WAKE_v10` tick, run
+   `bash scripts/track-b/v10-review-catchup.sh pulse-line` and include that
+   exact `review-doc: catchup=…` line in the chat pulse (then record via
+   `v9-chat-pulse.sh`). Skipping the review-doc check on a wake is a process
+   miss — same class as a silent tick.
    **O-WAKE-CATCHUP / O-REVIEWDOC (script-proofed)** — every wake tick and
-   every material lead action must update `tmp/KAI-WAVE4-REVIEW.md` (active
-   Wave 4 shared review with Opus; Wave 1–3 docs are frozen archives). Absorb
+   every material lead action must update `tmp/KAI-WAVE5-REVIEW.md` (active
+   Wave 5 shared review with Opus; Wave 1–4 docs are frozen archives). Absorb
    *all* review-doc sections after **your** last `### Implementing note`
    (not only the final heading). Wake refreshes
    `tmp/V10-REVIEW-SINCE-LAST.md` and opens
@@ -61,13 +69,13 @@ sensors, scaffold skills, live migration workspace):
    only via `bash scripts/track-b/v10-review-catchup.sh ack` after a newer
    Implementing note that passes the lead-note contract (below). Memory /
    operator reminders are not the control.
-   **Lead agent = Grok** for Wave-4 petclinic Track B. Every Implementing
-   note MUST:
+   **Lead agent = Grok** for Wave-5 petclinic Track B (`petclinic-rest-v5`).
+   Every Implementing note MUST:
    1. Identify the writer: `**Agent:** Grok (lead)` in the body (and prefer
       heading suffix `— Grok (lead)`).
    2. List what was reviewed/acted on from other agents:
-      `**Reviewed:**` bullets and/or stable `ACK:W4-NNN` / `ACK:R-NNN` /
-      `ACK:F-NN` / `ACK:O-*` tokens.
+      `**Reviewed:**` bullets and/or stable `ACK:W5-NNN` / `ACK:W4-NNN` /
+      `ACK:R-NNN` / `ACK:F-NN` / `ACK:O-*` tokens.
    3. State live run action taken (or "watching only") so the doc is the
       audit trail — chat pulses alone are insufficient.
    4. Close with `— Grok (lead)`.
@@ -125,8 +133,37 @@ sensors, scaffold skills, live migration workspace):
     `hash(host_fp|pod_fp)` so pod harness sync is visible agent activity and
     refreshes poll `last_activity` without touching `idle_note_level`.
 
+## Architectural completeness (operator — no partial solutions)
+
+Applies to **every agent** in the shared review (`tmp/KAI-WAVE5-REVIEW.md`),
+including Claude/Opus as reviewer and Grok as lead implementer.
+
+When a defect is filed at P1 / HOLD / “land before next story”:
+
+1. **Propose the full architecture**, not a single detector, prompt patch,
+   or “land X before Y; defer Z.” Name every load-bearing surface
+   (harness refuse, skill attachment, SoT vs VIEW, slug grammar, legacy
+   vs typed path split) and how they compose.
+2. **Do not recommend sequenced half-fixes** that leave a second definition
+   of the contract teaching the forbidden behavior (W4-576: refuse-only
+   while `PLANNING.md` still said `edit specs/<NNN-slug>/tasks.md`).
+3. **Defense in depth is required, not optional.** A refuse detector without
+   removing the skill that instructs the bypass is incomplete. A skill
+   rewrite without a harness refuse is incomplete. Landing one and
+   deferring the other is a **partial solution** — forbidden.
+4. Review **Verdict: HOLD** until the architecture is specified end-to-end;
+   implementers must HOLD the run (or story advance) until that package
+   is landed + instrumented + re-run proven — not “sync refuse and continue.”
+5. Precedent: ADR-25 / operator “no partial solutions” (Wave5) — same bar.
+
+“Multiple partial **runs**” (re-run after a durable land) remains required.
+Partial **designs** that leave known teaching paths or dual definitions
+live are not.
+
 ## Anti-patterns (forbidden)
 
+- Filing or landing a P1 as a single refuse/prompt patch while a second
+  contract definition still teaches the bypass (partial architecture).
 - Going silent between driver ticks / leaving `tmp/V9-CHAT-PULSE.ack` stale.
 - Skipping detailed task analysis because the tick log says GREEN (or RED
   with only a label and no root cause).

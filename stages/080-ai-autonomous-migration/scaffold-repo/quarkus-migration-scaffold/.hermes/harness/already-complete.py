@@ -27,6 +27,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# ADR-41 — sibling task_contract must resolve when this script is copied or
+# invoked outside PYTHONPATH (instruments / pod sync).
+_HARNESS_DIR = Path(__file__).resolve().parent
+if str(_HARNESS_DIR) not in sys.path:
+    sys.path.insert(0, str(_HARNESS_DIR))
+
 ROOT = Path(os.environ.get("ALREADY_COMPLETE_ROOT", ".")).resolve()
 
 
@@ -341,9 +347,12 @@ def is_convert_task(title: str) -> bool:
 
 
 def _shape_of(body: str) -> str:
+    # ADR-41 Move 1 — shape vocab from task_contract (includes batch:SCC-N).
+    from task_contract import SHAPE_LINE_ATOM  # type: ignore
+
     m = re.search(
-        r"(?im)^\*\*Shape\*\*\s*:?\s*(create|modify|remove|structure|verify)\b"
-        r"|^\*\*Shape\s*:\s*(create|modify|remove|structure|verify)\*\*",
+        rf"(?im)^\*\*Shape\*\*\s*:?\s*({SHAPE_LINE_ATOM})\b"
+        rf"|^\*\*Shape\s*:\s*({SHAPE_LINE_ATOM})\*\*",
         body or "",
     )
     if not m:

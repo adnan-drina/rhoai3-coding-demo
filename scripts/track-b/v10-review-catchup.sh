@@ -6,6 +6,7 @@
 #
 #   refresh  — write tmp/V10-REVIEW-SINCE-LAST.md; open PENDING if unabsorbed
 #   status   — print catchup state (ok|pending)
+#   pulse-line — refresh + one-line status for O-DRV4 wake pulses (required)
 #   ack      — clear PENDING only when a newer Implementing note exists
 #              AND that note passes the O-REVIEWDOC lead contract
 #              (Agent: Grok + Reviewed:/ACK: + — Grok signature).
@@ -13,11 +14,12 @@
 #
 # Usage (from wake emit / agent turn):
 #   bash scripts/track-b/v10-review-catchup.sh refresh
+#   bash scripts/track-b/v10-review-catchup.sh pulse-line   # include in wake chat pulse
 #   bash scripts/track-b/v10-review-catchup.sh ack
 #   bash scripts/track-b/v10-review-catchup.sh check
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-REVIEW_DOC="${V10_REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE4-REVIEW.md}"
+REVIEW_DOC="${V10_REVIEW_DOC:-${ROOT}/tmp/KAI-WAVE5-REVIEW.md}"
 SINCE_FILE="${V10_REVIEW_SINCE_LAST:-${ROOT}/tmp/V10-REVIEW-SINCE-LAST.md}"
 PENDING="${V10_REVIEW_CATCHUP_PENDING:-${ROOT}/tmp/V10-REVIEW-CATCHUP-PENDING.md}"
 ACK_SHA="${V10_REVIEW_CATCHUP_SHA:-${ROOT}/tmp/V10-REVIEW-CATCHUP.sha}"
@@ -99,12 +101,13 @@ def reviewer_signal(after: str) -> bool:
         )
     ) or bool(re.search(r"(?m)^## ", after))
 
-def refresh():
+def refresh(*, quiet=False):
     if not review.is_file():
         since.write_text("# no review doc\n", encoding="utf-8")
         if pending.exists():
             pending.unlink()
-        print("ok empty (no review doc)")
+        if not quiet:
+            print("ok empty (no review doc)")
         return 0
     text = review.read_text(encoding="utf-8", errors="replace")
     last_start, after_start, after = extract(text)
@@ -153,13 +156,15 @@ def refresh():
             ),
             encoding="utf-8",
         )
-        print(f"pending slice_fp={fp} bytes={len(after.encode('utf-8'))}")
+        if not quiet:
+            print(f"pending slice_fp={fp} bytes={len(after.encode('utf-8'))}")
         return 2
     # caught up
     if pending.exists():
         pending.unlink()
     ack.write_text(f"{fp}\n", encoding="utf-8")
-    print(f"ok empty slice_fp={fp}")
+    if not quiet:
+        print(f"ok empty slice_fp={fp}")
     return 0
 
 def note_body(text: str, start: int) -> str:
@@ -219,6 +224,24 @@ def status():
     print("ok")
     return 0
 
+def pulse_line():
+    """One line for every smart-wake O-DRV4 pulse (O-WAKE-CATCHUP proof)."""
+    # Always refresh so the line reflects current review-doc slice.
+    refresh(quiet=True)
+    text = ""
+    if review.is_file():
+        text = review.read_text(encoding="utf-8", errors="replace")
+    last_start, after_start, after = extract(text) if text else (0, 0, "")
+    fp = hashlib.sha256(after.encode("utf-8")).hexdigest()[:16]
+    nbytes = len(after.encode("utf-8"))
+    state = "PENDING" if pending.is_file() else "ok"
+    # Keep prefix stable — wake pulses must contain "review-doc:"
+    print(
+        f"review-doc: catchup={state} slice_bytes={nbytes} "
+        f"slice_fp={fp} last_note_start={last_start}"
+    )
+    return 2 if state == "PENDING" else 0
+
 def ack_clear():
     if not pending.is_file():
         print("ok (no pending)")
@@ -276,10 +299,12 @@ if cmd == "refresh":
     sys.exit(refresh())
 if cmd == "status":
     sys.exit(status())
+if cmd == "pulse-line":
+    sys.exit(pulse_line())
 if cmd == "check":
     sys.exit(check_newest())
 if cmd == "ack":
     sys.exit(ack_clear())
-print(f"usage: {sys.argv[0]} refresh|status|ack|check", file=sys.stderr)
+print(f"usage: {sys.argv[0]} refresh|status|pulse-line|ack|check", file=sys.stderr)
 sys.exit(2)
 PY

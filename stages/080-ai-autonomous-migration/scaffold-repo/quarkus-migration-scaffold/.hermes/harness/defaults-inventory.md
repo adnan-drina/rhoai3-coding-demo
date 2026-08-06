@@ -25,16 +25,15 @@ patterns for review.
 
 ### plan-lint.py env / default markers
 ```
-452:    # O-M3ACCEPT: default True preserves pre-flag instrument behaviour.
-453:    story_deploy = True
-457:        story_deploy = raw in ("1", "true", "yes", "on")
-1092:        # tasks that target a REDESIGN class default to Port: reimplement.
-1136:                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} default to "
-1463:    # PLAN_LINT_SHAPE_WARN=1 (or legacy PLAN_LINT_REQUIRE_SHAPE=0) for
-1473:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
-1474:    _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
-1781:            if _os.environ.get("PLAN_LINT_GODORDER_STRICT", "").lower() in (
-1787:            run_base = _os.environ.get("RUN_BASE", "").strip()
+472:    # O-M3ACCEPT: default True preserves pre-flag instrument behaviour.
+473:    story_deploy = True
+477:        story_deploy = raw in ("1", "true", "yes", "on")
+1219:        # tasks that target a REDESIGN class default to Port: reimplement.
+1263:                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} default to "
+1605:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+1606:    _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
+1940:            if _os.environ.get("PLAN_LINT_GODORDER_STRICT", "").lower() in (
+1946:            run_base = _os.environ.get("RUN_BASE", "").strip()
 ```
 
 ### supervisor.sh ${VAR:-default} (guard-adjacent sample)
@@ -117,4 +116,4 @@ Fail-open defaults remaining are the Wave4 §2 work list. §2.1/§2.2 closed:
 Oracle derived (O-ORACLEDERIVE); O-INFERABSENT LINT with O-NULLACTION-shaped
 proceed — prefer reshape over adding incident-named conditionals.
 
-_Generated: 2026-08-05T10:17:38Z_
+_Generated: 2026-08-06T08:42:29Z_

@@ -1,3 +1,12 @@
+# Wave 5 active — petclinic-rest-v5 (2026-08-05)
+
+**Workspace under test:** `petclinic-rest-v5`  
+**Review:** `tmp/KAI-WAVE5-REVIEW.md` · **Monitor:** `tmp/V10-V5-MONITOR.md`  
+**Blocking before outer GO:** `O-ADR24` (ADR-24 REV-1 ACCEPTED).  
+Wave 4 content below is historical (petclinic-rest-v4 / W4R7 STOP `baf6a04`).
+
+---
+
 # Wave 4 → v4 change manifest (R3 / SC-1) — wave-3 paused / resume pending
 
 **Purpose:** every readiness / architecture / review recommendation for the
@@ -78,6 +87,14 @@ v4 run (L3 live) against the re-frozen prediction table and honesty gates.
 | M3-ALL path | Whole-set plan before any M4; operator gate; predictions_fp bind | `m3-all-lint.sh`, outer two-pass, `M3_ALL=1`, `M3_ALL_OPERATOR_AUTO` unset |
 | **O-M3ALLSHA** (W4R7 mid-run) | `freeze-predictions` / operator-gate must not call bare `shasum` (absent on UBI) — portable `sha256sum`/`shasum`/python | `m3-all-lint.sh` `_m3all_sha256_*`; live fail `/tmp/m3-all-predictions.txt` |
 | **O-M3ALLGATEAUTO** (W4R7 mid-run) | `M3_ALL_OPERATOR_AUTO=1` must re-bind gate when freeze rewrites predictions_fp (stale APPROVED must not hard-fail) | `m3-all-lint.sh` operator-gate; W4R7 live mismatch loop |
+| **O-EVIDLIVEK3TABLE** (W4R7 mid-run) | O-EVIDLIVE K3 counter + M2 seed must accept inventory markdown table `\| id \| adopt\|defer \|` (not only bullet forms) — else ship-blocked silent K3 after GREEN pipeline | `evidence-liveness.sh` + `outer-loop.sh`; instrument `evidlive-k3table-ok`; S01 resume |
+| **O-DEBTFRZM5STICKY** (W4R7 mid-run) | O-DEBTSHIPRACE must not treat O-DEBTFRZLEDGER `## M5 residuals` as freeze-worthy — only `## … RED` from `record_debt` | `supervisor.sh` start restore; S01 resume after evidlive fix |
+| **O-GATEFIXARCH** / **O-SHIPRPTPUSH** (W4R7 mid-run) | Gatefix must not scoop run-archives; ship tip must not be run-report-only after evidlive re-enter (PAC/O-NOPUSHPR) | banked ⬜; live SHIP_ONLY recover from `024b62d` |
+| **O-RPTAWKESC** / **O-RETROBTICK** (W4R7 S01 close) | Run-report KPI awk escaped `\$4`; Retro prompt backticks expanded `<rule-id>` as redirect | `supervisor.sh` write_run_report + phase_f_retro; bank ✅ |
+| **O-COMMITSTORYFLOOR** (W4R7 S02) | `committed(T-NNN)` must floor at prior story-complete — S01 T-ids must not skip S02 | `supervisor.sh` committed(); bank ✅ |
+| **O-K12ARCH** / **O-ARCHIVESCOOP** (W4R7 S02) | K12 must ignore run-archives hunks; commit-hygiene refuses archive scoops | refute-diff + commit-hygiene; bank ✅ |
+| **O-STRAYLATERTASK** (W4R7 S02) | Post-commit stray sweep must not archive later incomplete task Targets | `supervisor.sh` keep via task-stage-paths; bank ✅ |
+| **O-SHIPONLYSTATE** (W4R7 S01) | SHIP_ONLY success must write `story-state.csv` complete or outer replays M4 | `ship_only_record_complete` in supervisor.sh; bank ✅ |
 | Port / Oracle honesty | O-PORTREIMPL, O-PORTDERIVE, O-ORACLEDERIVE, O-INFERABSENT, O-M3PRESERVEDAO, O-OWNSTAGE, O-SPRINGRESIDUE, O-SDJPA-SKIP | plan-lint + corpus |
 | Plan / exec / m2 corpus (seeded) | O-PLANCORPUS + O-EXECCORPUS + O-M2CORPUS (v4 lint×2 known-RED) | corpus gates + preflight |
 | Watchability P1 | O-LOGSTORY, O-LOGBRIEF, O-LOGEPILOG, O-EVIDLIVE, **O-LOGLINTRES** | instruments + live window (residual on compose/gate) |

@@ -33,6 +33,10 @@ Thumbs.db
 # Build outputs
 /output/
 
+# Instrument / local fixture pollution must never land at demo-repo root.
+# Scaffold sources live under stages/*/scaffold-repo/; a root /src/ is never legitimate.
+/src/
+
 # Repo-root tmp/: local runtime only. Version the Stage 080 docs archive.
 /tmp/*
 !/tmp/docs-archive/

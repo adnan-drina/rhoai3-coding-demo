@@ -115,7 +115,7 @@ it explicitly as owed if deferred past HOLD.
 **Record** a detailed bullet block under the current story in
 `docs/V10-QUALITY-GATE.md` (not just a table one-liner). Escalations and
 sensor-fix paths get an explicit “why” paragraph. Also append an
-Implementing note in `tmp/KAI-WAVE4-REVIEW.md` citing the sha.
+Implementing note in `tmp/KAI-WAVE5-REVIEW.md` citing the sha.
 
 **Clear O-DRV3 pending** only via the clear script (bare SHA write is invalid):
 

@@ -16,18 +16,22 @@ source directly only through the escalation valve (see EXECUTION.md).
 |---|---|---|
 | **M1** | ANALYZE | Ground truth + architecture profile — [ANALYSIS.md](ANALYSIS.md); script bundle via `analyze.sh` |
 | **M2** | SEQUENCE | Roadmap + briefs — [SEQUENCING.md](SEQUENCING.md); outer loop only |
-| **M3** | SPECIFY | Brief → `tasks.md` first (then `plan.md`/`spec.md` outputs) — [PLANNING.md](PLANNING.md) |
+| **M3** | SPECIFY | **Typed (default):** judgment JSON only — [JUDGMENT.md](JUDGMENT.md). **Legacy** (`M3_TYPED_LOOP=0`): brief → edit `tasks.md` — [PLANNING.md](PLANNING.md) |
 | **M4** | IMPLEMENT | Task loop (rewrite / infer / sensors) — [EXECUTION.md](EXECUTION.md) |
 | **M5** | EVALUATE | Preflight, factory ship, findings delta — [SHIPPING.md](SHIPPING.md) |
 | **Retro** | Steering | Proposals after a story/run — briefs may be auto-applied; skills stay human |
 
-### M3 entry for workers (O-M3SKILLNAV)
+### M3 entry for workers
 
-OpenCode / Qwen M3 seats: (1) read `migration/briefs/<Sxx-slug>.md`,
-(2) edit `specs/<slug>/tasks.md` in the first tool batch, (3) only then
-write `plan.md` / `spec.md` if needed. `spec.md` and `plan.md` are
-**outputs, not inputs** — do not `read` them before the brief / tasks
-mutate (they may be absent under M3-ALL).
+**Typed write-inversion (default, `M3_TYPED_LOOP=1`):** OpenCode / Qwen
+loads [JUDGMENT.md](JUDGMENT.md) only. Return JSON judgment; do **not**
+edit `specs/**` or `migration/**` (refused: `F-no-spec-edit`). Spec dirs
+are `S0N-<slug>` (never `NNN-` / `004-…`).
+
+**Legacy authoring (`M3_TYPED_LOOP=0`, O-M3SKILLNAV):** (1) read
+`migration/briefs/<S0N-slug>.md`, (2) edit `specs/<S0N-slug>/tasks.md` in
+the first tool batch, (3) only then write `plan.md` / `spec.md` if needed.
+`spec.md` and `plan.md` are **outputs, not inputs**.
 
 Commit message prefixes (load-bearing for resume): `M1 analyze:`, `M2 sequence:`,
 `M3 spec:` / `<Sxx> spec:`, `M3 revision:`, `T-NNN:`, `M5 evaluate:`, `Retro:`.
@@ -115,7 +119,8 @@ python3 .hermes/skills/migration-harness/scripts/summarize_worker.py /tmp/oc-tas
 |---|---|
 | M1 architecture profile | [ANALYSIS.md](ANALYSIS.md) |
 | M2 roadmap + briefs | [SEQUENCING.md](SEQUENCING.md), [BRIEF-TEMPLATE.md](BRIEF-TEMPLATE.md) |
-| M3 spec / plan / tasks | [PLANNING.md](PLANNING.md), [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) |
+| M3 typed judgment (default) | [JUDGMENT.md](JUDGMENT.md), [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) |
+| M3 legacy author (`M3_TYPED_LOOP=0`) | [PLANNING.md](PLANNING.md), [TASKS-TEMPLATE.md](TASKS-TEMPLATE.md) |
 | M4 task execution | [EXECUTION.md](EXECUTION.md) |
 | M5 evaluate + factory | [SHIPPING.md](SHIPPING.md) |
 | Jakarta→Quarkus mapping catalog | [MAPPINGS.md](MAPPINGS.md) |

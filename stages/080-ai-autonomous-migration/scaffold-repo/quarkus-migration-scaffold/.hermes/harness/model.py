@@ -43,6 +43,25 @@ dependency_order = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(dependency_order)
 
+# ADR-41 Move 1 — single task-contract schema (import, do not re-literalize).
+from task_contract import (  # type: ignore  # noqa: E402
+    DERIVED_FIELDS,
+    SEAT_FIELDS,
+    class_for_role,
+    evidence_kinds_for_acceptance,
+    find_hedge,
+    SHAPE_DISPLAY,
+    is_valid_class,
+    is_valid_shape,
+    make_task_id,
+    port_for_role,
+    staging_fact_lines,
+    story_state,
+)
+
+# C1 / ADR-41: fingerprint helpers re-export the sole field sets.
+assert "id" in DERIVED_FIELDS and "goal" in SEAT_FIELDS
+
 
 MODEL_REL = Path("migration/model.json")
 ALLOWLIST_REL = Path(".hermes/harness/migration-model-allowlist.txt")
@@ -374,12 +393,23 @@ def order_for_story(model: dict, sid: str) -> list[str]:
     return out
 
 
-def context_for(model: dict, sid: str, *, root: Optional[Path] = None) -> str:
+def context_for(
+    model: dict,
+    sid: str,
+    *,
+    root: Optional[Path] = None,
+    focus_task: Optional[dict] = None,
+) -> str:
     """Structured M3 projection — no markdown scrape (ADR-24 G4) + ADR-38 snippets.
 
     O-M3SNIPPET / ADR-40: every resolvable decision cite= carries SNIPPET text
     (±2 lines) so the M3 seat must not fetch legacy files (same rule as
     context_for_m2). Generated/unresolvable cites are omitted.
+
+    O-STAGINGOWNUNIT: when ``focus_task`` is set and its acceptance requires
+    ``staging_fact``, that task's own ``unit_keys[0]`` staging path is projected
+    first, then neighbours up to cap — truncation must never drop the
+    acceptance target.
     """
     units = units_for_story(model, sid)
     if not units and not (model.get("stories") or []):
@@ -484,6 +514,56 @@ def context_for(model: dict, sid: str, *, root: Optional[Path] = None) -> str:
                 f"  - {t.get('id')} owns={','.join(t.get('unit_keys') or [])} "
                 f"filled={bool(t.get('filled'))} acceptance_derived=yes"
             )
+    # ADR-41 Move 2 / F-staging-projected: bounded staging facts for HARVEST
+    # acceptance (byte-fidelity vs migration/staging) — selective, not a dump.
+    harvest_paths: list[str] = []
+    for u in units:
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else {}
+        if str((d or {}).get("role") or "").upper() != "HARVEST":
+            continue
+        lp = str(u.get("legacy_path") or "")
+        if lp:
+            harvest_paths.append(lp)
+    # Also cover typed owns that declare staging acceptance.
+    for t in typed:
+        kinds = evidence_kinds_for_acceptance(t.get("acceptance") or [])
+        if "staging_fact" not in kinds:
+            continue
+        for o in t.get("owns") or []:
+            # Prefer unit legacy_path when owns is target path.
+            uk = (t.get("unit_keys") or [None])[0]
+            uu = unit_by_key(model, uk) if uk else None
+            if uu and uu.get("legacy_path"):
+                harvest_paths.append(str(uu["legacy_path"]))
+            elif isinstance(o, str) and o.endswith(".java"):
+                harvest_paths.append(o)
+    if root is not None and harvest_paths:
+        # Dedupe preserving order
+        seen_lp: set[str] = set()
+        uniq: list[str] = []
+        for p in harvest_paths:
+            if p in seen_lp:
+                continue
+            seen_lp.add(p)
+            uniq.append(p)
+        # O-STAGINGOWNUNIT: own unit first when projecting for a focused seat.
+        if focus_task is not None:
+            kinds = evidence_kinds_for_acceptance(focus_task.get("acceptance") or [])
+            if "staging_fact" in kinds:
+                own: list[str] = []
+                uk = (focus_task.get("unit_keys") or [None])[0]
+                uu = unit_by_key(model, uk) if uk else None
+                if uu and uu.get("legacy_path"):
+                    own.append(str(uu["legacy_path"]))
+                for o in focus_task.get("owns") or []:
+                    if isinstance(o, str) and o.endswith(".java") and o not in own:
+                        # Only use owns when we lack a legacy_path; otherwise
+                        # owns are destination paths and do not resolve under staging.
+                        if not own:
+                            own.append(o)
+                if own:
+                    uniq = own + [p for p in uniq if p not in own]
+        lines.extend(staging_fact_lines(root, uniq))
     lines.append(f"provenance: m3snip_cites={n_cite} m3snip_snippets={n_snip}")
     lines.append("===== END DERIVED FACTS =====")
     return "\n".join(lines)
@@ -758,10 +838,175 @@ _LAYER_SLUG = {
 }
 
 
-def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
-    """ADR-34 REV-2 / F-story-rendered — persist stories[] from typed partition.
+def _story_index_map(stories: list[dict]) -> dict[str, int]:
+    return {str(s.get("id") or ""): i for i, s in enumerate(stories) if s.get("id")}
 
-    Membership = model.order + SCC-atomic + decision.role packaging layers.
+
+def _unit_story_map(stories: list[dict]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for st in stories:
+        sid = str(st.get("id") or "")
+        for k in st.get("units") or []:
+            if k and sid:
+                out[str(k)] = sid
+    return out
+
+
+def _scc_cohort(key: str, scc_members: dict[str, list[str]]) -> list[str]:
+    for mem in scc_members.values():
+        if key in mem:
+            return list(mem)
+    return [key]
+
+
+def forward_edges(model: dict) -> list[tuple[str, str, str, str]]:
+    """F-story-order / O-STORYORDER — (A, B, story_A, story_B) where A→B and B after A.
+
+    Criterion (W4-547): if unit A depends on unit B, B's story must not come
+    after A's. ``forward_edges == 0``.
+    """
+    stories = list(model.get("stories") or [])
+    idx = _story_index_map(stories)
+    claimed = _unit_story_map(stories)
+    units = {
+        u["key"]: u
+        for u in (model.get("units") or [])
+        if u.get("key") and u.get("kind") == "java"
+    }
+    edges: list[tuple[str, str, str, str]] = []
+    for a_key, a_u in units.items():
+        sa = claimed.get(a_key)
+        if not sa or sa not in idx:
+            continue
+        for b_key in a_u.get("depends_on") or []:
+            if b_key not in units:
+                continue
+            sb = claimed.get(b_key)
+            if not sb or sb not in idx:
+                continue
+            if idx[sb] > idx[sa]:
+                edges.append((a_key, b_key, sa, sb))
+    return edges
+
+
+def lint_story_order(model: dict) -> list[str]:
+    """Refuse when forward_edges > 0 (F-story-order)."""
+    edges = forward_edges(model)
+    if not edges:
+        return []
+    sample = ", ".join(
+        f"{sa}:{a.split('.')[-1]}→{sb}:{b.split('.')[-1]}"
+        for a, b, sa, sb in edges[:6]
+    )
+    return [
+        f"F-story-order RED: forward_edges={len(edges)} "
+        f"(dep scheduled after dependent): {sample}"
+    ]
+
+
+def schedule_ranks(
+    units: dict[str, dict],
+    unit_to_layer: dict[str, str],
+    scc_members: dict[str, list[str]],
+) -> dict[str, int]:
+    """O-STORYORDER / graph-derived ranks — F-story-order by construction.
+
+    ``desired_rank`` comes from packaging layer (label, not membership SoT).
+    Dependency closure then pulls every dep to ``min(rank(dep), rank(dependent))``
+    (SCC-atomic) so ``forward_edges == 0`` before stories are materialised.
+    No post-hoc move across an already-wrong partition.
+    """
+    layer_rank = {lay: i for i, lay in enumerate(_LAYER_ORDER)}
+    rank: dict[str, int] = {
+        k: layer_rank.get(unit_to_layer.get(k, "other"), len(_LAYER_ORDER) - 1)
+        for k in units
+    }
+    # SCC-atomic: whole cohort shares min desired rank.
+    for mem in scc_members.values():
+        if not mem:
+            continue
+        r = min(rank[m] for m in mem if m in rank)
+        for m in mem:
+            if m in rank:
+                rank[m] = r
+    # Pull deps earlier until stable (by-construction schedule).
+    for _ in range(max(8, len(units) + 2)):
+        changed = False
+        for a_key, a_u in units.items():
+            ra = rank.get(a_key)
+            if ra is None:
+                continue
+            for b_key in a_u.get("depends_on") or []:
+                if b_key not in rank:
+                    continue
+                cohort = _scc_cohort(b_key, scc_members)
+                rb = min(rank[m] for m in cohort if m in rank)
+                if rb > ra:
+                    for m in cohort:
+                        if m in rank and rank[m] > ra:
+                            rank[m] = ra
+                            changed = True
+        if not changed:
+            break
+    return rank
+
+
+def stories_from_ranks(
+    units: dict[str, dict],
+    unit_to_layer: dict[str, str],
+    ranks: dict[str, int],
+) -> list[dict]:
+    """Materialise S01..Sn from schedule ranks; slug/layer are labels only."""
+    by_rank: dict[int, list[str]] = {}
+    for k, r in ranks.items():
+        by_rank.setdefault(r, []).append(k)
+    stories: list[dict] = []
+    for i, r in enumerate(sorted(by_rank)):
+        keys = sorted(by_rank[r])
+        # Dominant layer among members — packaging label, not SoT.
+        lay_counts: dict[str, int] = {}
+        for k in keys:
+            lay = unit_to_layer.get(k, "other")
+            lay_counts[lay] = lay_counts.get(lay, 0) + 1
+        lay = sorted(
+            lay_counts,
+            key=lambda L: (-lay_counts[L], _LAYER_ORDER.index(L) if L in _LAYER_ORDER else 99),
+        )[0]
+        stories.append(
+            {
+                "id": f"S{i + 1:02d}",
+                "slug": _LAYER_SLUG.get(lay, lay),
+                "units": keys,
+                "findings": [],  # filled below — K1 partition (earliest story wins)
+                "deploy": False,
+                "layer": lay,
+                "schedule_rank": r,
+            }
+        )
+    if stories:
+        for st in stories[:-1]:
+            st["deploy"] = False
+        stories[-1]["deploy"] = True
+        # F-story-order companion: a finding id owned by multiple units across
+        # stories must land in exactly one story (earliest schedule_rank).
+        claimed: set[str] = set()
+        for st in stories:
+            fids: list[str] = []
+            for k in st.get("units") or []:
+                for fid in (units.get(k) or {}).get("findings") or []:
+                    if fid in claimed:
+                        continue
+                    claimed.add(fid)
+                    fids.append(fid)
+            st["findings"] = sorted(set(fids))
+    return stories
+
+
+def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
+    """ADR-34 + O-STORYORDER — graph-derived schedule from deps + layer labels.
+
+    Membership SoT: depends_on closure over desired layer ranks (SCC-atomic).
+    Layers/slugs are packaging labels only — not a catch-all decided by exclusion.
     **Never reads roadmap.md** (roadmap is a rendered view only).
     """
     model = model or load(root)
@@ -798,7 +1043,7 @@ def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
     for key in units:
         unit_to_layer.setdefault(key, _unit_layer(key))
 
-    # F-scc-atomic: every SCC member shares one layer/story.
+    # F-scc-atomic: every SCC member shares one packaging layer label.
     for sid, mem in scc_members.items():
         lays = {unit_to_layer.get(m) for m in mem}
         if len(lays) > 1:
@@ -807,45 +1052,9 @@ def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
                 f"(F-scc-atomic)"
             )
 
-    layer_units: dict[str, list[str]] = {lay: [] for lay in _LAYER_ORDER}
-    for key, lay in unit_to_layer.items():
-        layer_units.setdefault(lay, []).append(key)
-
-    stories: list[dict] = []
-    claimed: dict[str, str] = {}
-    idx = 1
-    for lay in _LAYER_ORDER:
-        keys = layer_units.get(lay) or []
-        if not keys:
-            continue
-        sid = f"S{idx:02d}"
-        for k in keys:
-            if k in claimed and claimed[k] != sid:
-                raise SystemExit(
-                    f"O-ADR34 assign_stories RED: unit {k} dual-owned by "
-                    f"{claimed[k]} and {sid}"
-                )
-            claimed[k] = sid
-        fids: list[str] = []
-        for k in keys:
-            fids.extend(units.get(k, {}).get("findings") or [])
-        stories.append(
-            {
-                "id": sid,
-                "slug": _LAYER_SLUG.get(lay, lay),
-                "units": list(keys),
-                "findings": sorted(set(fids)),
-                # F-deploy-derived: only last story is deployable by default.
-                "deploy": False,
-                "layer": lay,
-            }
-        )
-        idx += 1
-
-    if stories:
-        for st in stories[:-1]:
-            st["deploy"] = False
-        stories[-1]["deploy"] = True
+    ranks = schedule_ranks(units, unit_to_layer, scc_members)
+    stories = stories_from_ranks(units, unit_to_layer, ranks)
+    claimed = _unit_story_map(stories)
 
     all_java = set(units)
     orphans = sorted(all_java - set(claimed))
@@ -856,13 +1065,18 @@ def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
         )
 
     model["stories"] = stories
+    bad = lint_story_order(model)
+    if bad:
+        raise SystemExit(f"O-STORYORDER assign_stories RED: {bad[0]}")
     prov = model.setdefault("provenance", {})
     prov["stories_assigned_at"] = _utc()
     prov["stories_source"] = "model-partition"  # F-story-rendered witness
+    prov["stories_schedule"] = "graph-derived-ranks"  # O-STORYORDER architecture
     save(root, model)
     print(
         f"O-ADR34: assign_stories_from_model stories={len(stories)} "
-        f"units={len(claimed)} source=model-partition (F-story-rendered)"
+        f"units={len(claimed)} source=model-partition schedule=graph-derived "
+        f"forward_edges=0 (F-story-order)"
     )
     return model
 
@@ -954,7 +1168,14 @@ def assign_stories_from_roadmap(root: Path, model: Optional[dict] = None) -> dic
             f"(total invariant): {orphans[:8]}"
         )
 
+    # O-STORYORDER: no post-hoc repair. Roadmap partition must already satisfy
+    # F-story-order; typed path uses schedule_ranks (by construction).
     model["stories"] = stories
+    bad = lint_story_order(model)
+    if bad:
+        raise SystemExit(
+            f"O-STORYORDER assign_stories RED (roadmap path refuses repair): {bad[0]}"
+        )
     prov = model.setdefault("provenance", {})
     prov["stories_assigned_at"] = _utc()
     prov["stories_source"] = "roadmap-parse"
@@ -1241,6 +1462,8 @@ def _ensure_god_characterization_tasks(
                         ),
                         "risk": "low",
                         "filled": True,
+                        # W4-568 / O-GOALSOURCE — harness-templated, not seat-judged
+                        "goal_source": "derived",
                     }
                 )
                 char_covered.add(simple)
@@ -1266,12 +1489,17 @@ def yaml_legacy_target(root: Path) -> tuple[str, str]:
 def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
     """Generate model.tasks[] from condensation units — IDs harness-owned (ADR-35).
 
-    Preserves seat JUDGMENT fields (goal/plan/risk/filled) when unit_keys match
-    an existing task. Acceptance is always re-derived.
+    Preserves seat JUDGMENT fields (goal/plan/risk/filled/goal_source) when
+    unit_keys match an existing *non-characterize* task. Characterization
+    tasks share unit_keys with convert (O-GODORDEREMIT) — excluded from the
+    key index so seat judgments cannot land on the wrong sibling (W4-568).
+    Acceptance is always re-derived.
     """
     model = model or load(root)
     prev_by_keys: dict[tuple[str, ...], dict] = {}
     for t in model.get("tasks") or []:
+        if t.get("kind") == "characterize" or t.get("goal_source") == "derived":
+            continue
         keys = tuple(sorted(t.get("unit_keys") or []))
         if keys:
             prev_by_keys[keys] = t
@@ -1286,7 +1514,7 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
             keys_t = tuple(sorted(members))
             prev = prev_by_keys.get(keys_t) or {}
             slug = _unit_slug(cu.get("id") or (members[0] if members else f"t{i}"))
-            tid = f"{sid}-T-{i:03d}-{slug}"
+            tid = make_task_id(sid, i, slug)
             owns = list(cu.get("owns") or [])
             primary = unit_by_key(model, members[0]) if members else None
             role = "UNDECIDED"
@@ -1299,11 +1527,12 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
             # (W4-561 — one vocabulary; plan-lint typed mode must accept it).
             # HARVEST SCCs are class=rewrite so rewrite/infer order holds;
             # scc_id + unit_keys remain the atomicity SoT (O-HARVESTSHAPE).
+            # ADR-41: class/port from task_contract (sole vocabulary).
             if cu.get("kind") == "scc":
                 shape = f"batch:{cu.get('id')}"
-                cls = "rewrite" if str(role).upper() == "HARVEST" else "infer"
+                cls = class_for_role(role)
                 oracle = "absent"
-                port = None
+                port = port_for_role(role)
             else:
                 one = owns[0] if owns else ""
                 cls, shape = (
@@ -1314,16 +1543,10 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 if str(role).upper() == "HARVEST":
                     cls, shape = "rewrite", "modify"
                 oracle = "absent"
-                port = None
-                # W4-566: HARVEST → Port=rename (transliteration). Never
-                # Port=reimplement on HARVEST — that made S-GODORDER treat
-                # harvest as convert. REDESIGN repository paths → reimplement.
+                # W4-566 / O-PORTDERIVE via task_contract.port_for_role.
+                port = port_for_role(role)
                 if str(role).upper() == "HARVEST":
-                    port = "rename"
-                elif one and re.search(
-                    r"(?i)\b(repository|spring\s*data|panache|jdbc)\b", one
-                ):
-                    port = "reimplement"
+                    cls = class_for_role(role)
             task = {
                 "id": tid,
                 "sid": sid,
@@ -1345,10 +1568,38 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 "plan": prev.get("plan") or "",
                 "risk": prev.get("risk") or "",
                 "filled": bool(prev.get("filled")),
+                "goal_source": prev.get("goal_source")
+                or ("seat" if prev.get("filled") else ""),
             }
             tasks.append(task)
     # O-GODORDEREMIT (W4-566): characterization task before god-node convert.
     tasks = _ensure_god_characterization_tasks(root, model, tasks)
+    # O-PLANEXISTS: Spring Boot main already absent → verify-absent (derived).
+    _apply_springboot_app_verify(root, model, tasks)
+    # O-DTOFIRST: emit DTO HARVEST before mapper stories when DTOs are
+    # generated-sources (not in unit universe).
+    legacy_root = Path(
+        os.environ.get("LEGACY_ROOT")
+        or (
+            root.parent / "legacy"
+            if (root.parent / "legacy").is_dir()
+            else Path("/projects/legacy")
+        )
+    )
+    tasks = _ensure_dto_harvest_tasks(root, model, tasks, legacy_root)
+    # O-JUDGEHEDGE: clear seat judgments that already contain hedge phrases so
+    # the next typed loop re-authors under F-hedge refuse (no prose patch).
+    # Vocabulary owned by task_contract (ADR-41 Move 1).
+    for t in tasks:
+        if str(t.get("goal_source") or "") != "seat":
+            continue
+        blob = f"{t.get('goal') or ''}\n{t.get('plan') or ''}"
+        if find_hedge(blob):
+            t["goal"] = ""
+            t["plan"] = ""
+            t["risk"] = ""
+            t["filled"] = False
+            t["goal_source"] = ""
     # O-TASKCLASSORDER (W4-562): one owner for rewrite-before-infer.
     # assign_tasks emits satisfying order; plan-lint checks the same rule.
     # Stable partition per story — preserve relative condensation order
@@ -1376,6 +1627,10 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
         for i, t in enumerate(rewrites + chars + converts, start=1):
             t["seq"] = i
             ordered.append(t)
+        # O-DEPLOYCONTRACT: last task of deploy story carries preserve/acceptance.
+        if st.get("deploy") and story:
+            last = [t for t in ordered if t.get("sid") == sid][-1]
+            last["deploy_contract_lines"] = _deploy_contract_lines(root, model, sid)
     # Any tasks without a story id (should not happen) keep prior order.
     orphan = [t for t in tasks if t not in ordered]
     model["tasks"] = ordered + orphan
@@ -1450,6 +1705,8 @@ def render_tasks_md(root: Path, sid: str, model: Optional[dict] = None) -> Path:
         if plan:
             lines.append(f"**Plan**: {plan}")
         lines.extend(_derived_reimpl_create_lines(t))
+        for extra in t.get("deploy_contract_lines") or []:
+            lines.append(extra)
         lines.append("**Acceptance**:")
         for a in acc:
             lines.append(f"- {a}")
@@ -1511,6 +1768,259 @@ def _derived_reimpl_create_lines(task: dict) -> list[str]:
     return lines
 
 
+def _read_migration_yaml(root: Path) -> str:
+    try:
+        return (root / "migration.yaml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _deploy_contract_lines(root: Path, model: dict, sid: str) -> list[str]:
+    """Harness-owned preserve + acceptance.path coverage for deploy stories.
+
+    O-DEPLOYCONTRACT / ADR-41 Move 1 fragment: plan-lint N2 requires verbatim
+    preserve tokens and acceptance.path on the deploy story. Seats must not
+    invent them — inject into the rendered VIEW (and typed_task_body) so the
+    contract is one harness definition.
+    """
+    st = next((s for s in (model.get("stories") or []) if s.get("id") == sid), None)
+    if not st or not st.get("deploy"):
+        return []
+    my = _read_migration_yaml(root)
+    lines = [
+        "**Deploy contract** (harness-derived O-DEPLOYCONTRACT — do not edit):",
+    ]
+    psec = re.search(r"^preserve:(.*?)(^\S|\Z)", my, re.M | re.S)
+    pres = (
+        re.findall(r"^\s*-\s*([A-Za-z0-9_./:-]+)", psec.group(1), re.M) if psec else []
+    )
+    for item in pres:
+        lines.append(
+            f"- preserve `{item}` → `src/main/resources/application.properties` "
+            f"(destination key/property that carries the token)"
+        )
+    m = re.search(
+        r"^acceptance:\s*\n(?:[ \t]*#.*\n|[ \t]*\n)*[ \t]*path:\s*(\S+)",
+        my,
+        re.M,
+    )
+    if m:
+        path = m.group(1)
+        # Endpoint substance for O-M3ACCEPT — cite a Java @Path resource without
+        # claiming it as this story's Target work (often owned by an earlier story).
+        svc = ""
+        sm = re.search(
+            r"^acceptance:.*?(?:^[ \t]*service:\s*(\S+))",
+            my,
+            re.M | re.S,
+        )
+        if sm:
+            svc = sm.group(1).strip()
+        tgt_pkg = "com.demo"
+        tpm = re.search(r"^targetPackage:\s*(\S+)", my, re.M)
+        if tpm:
+            tgt_pkg = tpm.group(1).strip()
+        # Do not name out-of-story REDESIGN classes here — LINT:target-trace
+        # treats simple-name cites as requiring an in-story task. Path + @Path
+        # is enough for O-M3ACCEPT substance.
+        rest_dir = f"src/main/java/{tgt_pkg.replace('.', '/')}/rest"
+        lines.append(
+            f"- acceptance path `{path}` served by a JAX-RS `@Path` resource under "
+            f"`{rest_dir}/` (deploy story must keep the path live"
+            + (f"; legacy service token {svc}" if svc else "")
+            + ")"
+        )
+    if len(lines) == 1:
+        return []
+    return lines
+
+
+def _src_has_annotation(root: Path, pattern: str) -> bool:
+    rx = re.compile(pattern)
+    for base in (root / "src/main/java", root / "src/test/java"):
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.java"):
+            try:
+                if rx.search(p.read_text(encoding="utf-8", errors="replace")):
+                    return True
+            except OSError:
+                continue
+    return False
+
+
+def _legacy_has_spring_boot_app(root: Path, legacy_key: str, legacy_root: Path) -> bool:
+    """True when the legacy unit source declares @SpringBootApplication."""
+    # Prefer staging mirror then legacy tree by simple name.
+    simple = legacy_key.rsplit(".", 1)[-1]
+    candidates = list((root / "migration" / "staging").rglob(f"{simple}.java"))
+    if not candidates and legacy_root.is_dir():
+        candidates = list(legacy_root.rglob(f"{simple}.java"))
+    for p in candidates[:3]:
+        try:
+            if "@SpringBootApplication" in p.read_text(
+                encoding="utf-8", errors="replace"
+            ):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _find_dto_sources(root: Path, legacy_root: Path) -> list[Path]:
+    """Locate *Dto.java under staging or legacy (incl. generated-sources)."""
+    found: list[Path] = []
+    seen: set[str] = set()
+    for base in (root / "migration" / "staging", legacy_root):
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*Dto.java"):
+            # Skip build noise except openapi generated-sources (specimen DTOs).
+            parts = set(p.parts)
+            if "target" in parts and "generated-sources" not in parts:
+                continue
+            key = p.name
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(p)
+    return sorted(found, key=lambda p: p.name)
+
+
+def _ensure_dto_harvest_tasks(
+    root: Path, model: dict, tasks: list[dict], legacy_root: Path
+) -> list[dict]:
+    """O-DTOFIRST durable: emit DTO HARVEST tasks before mapper tasks in-story.
+
+    When MapStruct mappers reference ``.dto`` / ``/dto/`` but analysis did not
+    emit DTO units (common for OpenAPI generated-sources), schedule harness
+    HARVEST tasks from discovered *Dto.java so plan-lint O-DTOFIRST can pass
+    without seat invention.
+    """
+    dto_paths = _find_dto_sources(root, legacy_root)
+    if not dto_paths:
+        return tasks
+    my = _read_migration_yaml(root)
+    tgt_pkg = "com.demo"
+    tpm = re.search(r"^targetPackage:\s*(\S+)", my, re.M)
+    if tpm:
+        tgt_pkg = tpm.group(1).strip()
+    out: list[dict] = []
+    by_sid: dict[str, list[dict]] = {}
+    for t in tasks:
+        by_sid.setdefault(str(t.get("sid") or ""), []).append(t)
+    for sid, story_tasks in by_sid.items():
+        if not sid:
+            out.extend(story_tasks)
+            continue
+        needs = False
+        for t in story_tasks:
+            blob = f"{t.get('goal') or ''} {t.get('plan') or ''} {' '.join(t.get('owns') or [])}"
+            owns = " ".join(t.get("owns") or [])
+            if re.search(r"(?i)/mapper/|\.mapper\.", owns) and re.search(
+                r"(?i)(/dto/|\.dto\.|Dto\b)", blob + owns
+            ):
+                needs = True
+                break
+            # Unfilled mapper harvest still needs DTO deps (owns path alone).
+            if re.search(r"(?i)/mapper/", owns):
+                needs = True
+                break
+        has_dto_task = any(
+            re.search(r"(?i)/dto/|\.dto\.", " ".join(t.get("owns") or []))
+            for t in story_tasks
+        )
+        if not needs or has_dto_task:
+            out.extend(story_tasks)
+            continue
+        # Cap — one task covering the dto package harvest (not one per file).
+        owns_dto = [
+            f"src/main/java/{tgt_pkg.replace('.', '/')}/dto/{p.name}"
+            for p in dto_paths[:24]
+        ]
+        dto_task = {
+            "id": f"{sid}-T-000-DtoHarvest",
+            "sid": sid,
+            "seq": 0,
+            "unit_keys": [
+                f"{tgt_pkg}.dto.{p.name[:-5]}" for p in dto_paths[:24]
+            ],
+            "kind": "singleton",
+            "scc_id": None,
+            "owns": owns_dto,
+            "title": "DTO harvest (openapi/generated) — type deps before mappers",
+            "class": "rewrite",
+            "shape": "modify",
+            "role": "HARVEST",
+            "acceptance": [
+                "byte-fidelity vs migration/staging or generated-sources (DTO types)",
+                "package rename only; no behavior change",
+            ],
+            "oracle": "absent",
+            "port": "rename",
+            "findings": [],
+            "goal": (
+                "Harvest DTO types required by mapper interfaces into "
+                f"{tgt_pkg}.dto (O-DTOFIRST) from staging or OpenAPI "
+                "generated-sources — package rename only."
+            ),
+            "plan": (
+                "Copy *Dto.java from migration/staging or legacy "
+                "generated-sources/openapi into "
+                f"src/main/java/{tgt_pkg.replace('.', '/')}/dto/, "
+                "update package declarations, no behavior change."
+            ),
+            "risk": "low",
+            "filled": True,
+            "goal_source": "derived",
+        }
+        out.append(dto_task)
+        out.extend(story_tasks)
+    return out
+
+
+def _apply_springboot_app_verify(root: Path, model: dict, tasks: list[dict]) -> None:
+    """O-PLANEXISTS durable: Spring main already absent → Shape=verify Oracle=absent.
+
+    Seat plans that say "remove @SpringBootApplication" are dead when the
+    destination has no such annotation. Harness flips those REDESIGN tasks to
+    verify-absent with a derived goal (ADR-41 / no seat prose patch).
+    """
+    legacy_root = Path(
+        os.environ.get("LEGACY_ROOT")
+        or (root.parent / "legacy" if (root.parent / "legacy").is_dir() else Path("/projects/legacy"))
+    )
+    already_absent = not _src_has_annotation(root, r"@SpringBootApplication")
+    if not already_absent:
+        return
+    for t in tasks:
+        keys = list(t.get("unit_keys") or [])
+        if not keys:
+            continue
+        if str(t.get("role") or "").upper() != "REDESIGN":
+            continue
+        if not _legacy_has_spring_boot_app(root, keys[0], legacy_root):
+            continue
+        t["shape"] = "verify"
+        t["oracle"] = "absent"
+        t["port"] = "reimplement"
+        t["goal"] = (
+            "Verify @SpringBootApplication main class is absent in the destination; "
+            "Quarkus uses auto-discovery — do not add a Spring Boot main class."
+        )
+        t["plan"] = (
+            "Confirm src/main/java has no @SpringBootApplication; leave Quarkus "
+            "bootstrap to auto-discovery (O-PLANEXISTS / Shape=verify)."
+        )
+        t["risk"] = "low"
+        t["filled"] = True
+        t["goal_source"] = "derived"
+        t["acceptance"] = [
+            "no @SpringBootApplication in src/main/java",
+            "Quarkus application starts without a Spring Boot main class",
+        ]
+
+
 def typed_task_body(task: dict) -> str:
     """Markdown body for one typed task (VIEW shape for plan-lint checks).
 
@@ -1546,6 +2056,8 @@ def typed_task_body(task: dict) -> str:
         lines.append(f"**Plan**: {plan}")
     # W4-566: derive create-procedure so seats are not asked to invent form.
     lines.extend(_derived_reimpl_create_lines(task))
+    for extra in task.get("deploy_contract_lines") or []:
+        lines.append(extra)
     lines.append("**Acceptance**:")
     for a in acc:
         lines.append(f"- {a}")
@@ -1584,8 +2096,13 @@ def lint_typed_task_store(model: dict, sid: str) -> list[str]:
                 f"(len={len(goal)}; seat judgment required)"
             )
         cls = (t.get("class") or "").lower()
-        if cls not in ("rewrite", "infer"):
+        if not is_valid_class(cls):
             reds.append(f"LINT:typed-class: {tid}: class must be rewrite|infer")
+        shape = str(t.get("shape") or "")
+        if shape and not is_valid_shape(shape):
+            reds.append(
+                f"LINT:typed-shape: {tid}: shape must be {SHAPE_DISPLAY}"
+            )
     # SCC atomicity — typed path already in lint_scc_atomic
     reds.extend(lint_scc_atomic(model, "", sid))
     return reds
@@ -1594,31 +2111,71 @@ def lint_typed_task_store(model: dict, sid: str) -> list[str]:
 def upsert_task_judgment(
     root: Path,
     *,
-    unit_keys: list[str],
+    task_id: str = "",
+    unit_keys: Optional[list[str]] = None,
     goal: str,
     plan: str = "",
     risk: str = "",
     payload: Optional[dict] = None,
 ) -> dict:
-    """Write-inversion upsert — refuses seat-authored id/acceptance (ADR-35 falsifiers)."""
+    """Write-inversion upsert — refuses seat-authored id/acceptance (ADR-35 falsifiers).
+
+    W4-568 / O-UPSERTID: address by harness-owned task ``id`` (unique). Looking
+    up by ``unit_keys`` alone is ambiguous once O-GODORDEREMIT pairs a
+    characterize task with its convert on the same keys — first-match-wins was
+    ordering luck, not a contract. ``task_id`` is harness-supplied (loop /
+    CLI); seat payload must still omit ``id``.
+    """
     payload = payload or {}
     if "id" in payload and payload.get("id") not in (None, ""):
         raise ValueError("F-taskid-generated: seat must not author task id")
     if "acceptance" in payload and payload.get("acceptance") not in (None, "", [], {}):
         raise ValueError("F-acceptance-derived: seat must not author acceptance")
+    # O-JUDGEHEDGE: vocabulary from task_contract (ADR-41 Move 1).
+    _hb = f"{goal or ''}\n{plan or ''}"
+    _hm = find_hedge(_hb)
+    if _hm:
+        raise ValueError(
+            f"F-hedge: judgment contains hedge phrase '{_hm.group(0)}' — "
+            f"state the decided shape, not options"
+        )
     model = load(root)
-    keys_sorted = sorted(unit_keys)
+    keys_sorted = sorted(unit_keys or [])
     found = None
-    for t in model.get("tasks") or []:
-        if sorted(t.get("unit_keys") or []) == keys_sorted:
-            found = t
-            break
-    if found is None:
-        raise ValueError(f"no typed task for unit_keys={keys_sorted}")
+    tid = (task_id or "").strip()
+    if tid:
+        for t in model.get("tasks") or []:
+            if t.get("id") == tid:
+                found = t
+                break
+        if found is None:
+            raise ValueError(f"no typed task for id={tid}")
+        if keys_sorted and sorted(found.get("unit_keys") or []) != keys_sorted:
+            raise ValueError(
+                f"unit_keys mismatch for id={tid}: "
+                f"task={sorted(found.get('unit_keys') or [])} got={keys_sorted}"
+            )
+    else:
+        matches = [
+            t
+            for t in (model.get("tasks") or [])
+            if sorted(t.get("unit_keys") or []) == keys_sorted
+        ]
+        if not matches:
+            raise ValueError(f"no typed task for unit_keys={keys_sorted}")
+        if len(matches) > 1:
+            ids = ", ".join(str(t.get("id")) for t in matches)
+            raise ValueError(
+                f"ambiguous unit_keys={keys_sorted}; pass task_id "
+                f"(O-UPSERTID; candidates: {ids})"
+            )
+        found = matches[0]
     found["goal"] = (goal or "").strip()
     found["plan"] = (plan or "").strip()
     found["risk"] = (risk or "").strip()
     found["filled"] = bool(found["goal"]) and len(found["goal"]) >= 20
+    # Seat-authored judgment — never collapse into harness-derived goals (W4-568).
+    found["goal_source"] = "seat"
     # Primary = condensation members[0] order stored on the task (W4-553),
     # not sorted(unit_keys)[0] — assign_tasks and upsert must agree.
     stored = list(found.get("unit_keys") or [])
@@ -2212,7 +2769,7 @@ def cmd_assign_tasks(args: argparse.Namespace) -> int:
     model = assign_tasks(root)
     n = len(model.get("tasks") or [])
     sids = sorted({t.get("sid") for t in (model.get("tasks") or []) if t.get("sid")})
-    print(f"O-ADR35 assign-tasks: tasks={n} stories={len(sids)} ({','.join(sids)})")
+    print(f"O-M3TYPED assign-tasks: tasks={n} stories={len(sids)} ({','.join(sids)})")
     return 0
 
 
@@ -2224,12 +2781,12 @@ def cmd_render_tasks(args: argparse.Namespace) -> int:
     sid = (getattr(args, "sid", None) or "").strip()
     if sid:
         p = render_tasks_md(root, sid, model)
-        print(f"O-ADR35 render-tasks: {p}")
+        print(f"O-M3TYPED render-tasks: {p}")
         return 0
     paths = render_all_tasks_md(root, model)
     for p in paths:
-        print(f"O-ADR35 render-tasks: {p}")
-    print(f"O-ADR35 render-tasks: done n={len(paths)}")
+        print(f"O-M3TYPED render-tasks: {p}")
+    print(f"O-M3TYPED render-tasks: done n={len(paths)}")
     return 0
 
 
@@ -2277,6 +2834,30 @@ def cmd_cover(args: argparse.Namespace) -> int:
     for e in errs:
         print(e)
     return 1 if errs else 0
+
+
+def cmd_lint_story_order(args: argparse.Namespace) -> int:
+    """O-STORYORDER — print MARK OK forward_edges=0 or RED with count."""
+    root = Path(args.root).resolve()
+    model = load(root)
+    edges = forward_edges(model)
+    if edges:
+        for e in lint_story_order(model):
+            print(e)
+        print(f"MARK RED forward_edges={len(edges)}")
+        return 1
+    print("MARK OK forward_edges=0")
+    return 0
+
+
+def cmd_story_state(args: argparse.Namespace) -> int:
+    """ADR-42 — print UNSPECIFIED|SPECIFIED for one story (typed store)."""
+    root = Path(args.root).resolve()
+    model = load(root)
+    sid = str(args.sid or "").strip()
+    st = story_state(model, sid)
+    print(st)
+    return 0
 
 
 def main() -> int:
@@ -2358,6 +2939,21 @@ def main() -> int:
 
     k = sub.add_parser("cover-check", parents=[common])
     k.set_defaults(func=cmd_cover)
+
+    lso = sub.add_parser(
+        "lint-story-order",
+        parents=[common],
+        help="O-STORYORDER / F-story-order: refuse forward_edges > 0",
+    )
+    lso.set_defaults(func=cmd_lint_story_order)
+
+    ss = sub.add_parser(
+        "story-state",
+        parents=[common],
+        help="ADR-42: UNSPECIFIED|SPECIFIED from model.tasks[] (not plan-lint)",
+    )
+    ss.add_argument("--sid", required=True)
+    ss.set_defaults(func=cmd_story_state)
 
     args = ap.parse_args()
     return args.func(args)

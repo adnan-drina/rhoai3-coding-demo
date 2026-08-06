@@ -307,7 +307,15 @@ def tasks_for(sid: str):
 
 def parse_tasks(path: Path):
     text = path.read_text(encoding="utf-8", errors="replace")
-    findings = sorted(set(FINDING_RE.findall(text)))
+    # K1 ownership = structured **Findings** fields only (not Goal/Plan prose
+    # that mentions a finding id while discussing collaborators).
+    findings: list[str] = []
+    for m in re.finditer(r"(?im)^\*\*Findings\*\*\s*:?\s*(.+)$", text):
+        raw = (m.group(1) or "").strip()
+        if not raw or raw.lower() in ("(none)", "-", "none"):
+            continue
+        findings.extend(FINDING_RE.findall(raw))
+    findings = sorted(set(findings))
     ports = PORT_RE.findall(text)
     owns_paths = []
     for m in OWNS_RE.finditer(text):

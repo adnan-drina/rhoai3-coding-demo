@@ -6,8 +6,11 @@ derive must not be re-asked of the model.
 
 Modes:
   skeleton — if roadmap missing (or marked skeleton), cut a unique-owner
-             partition from findings-inventory (+ optional dependency-order
-             path hints), emit brief stubs, non-mandatory decision rows,
+             partition. **ADR-34 REV-2:** when model.json has typed
+             decisions, membership SoT is model.order + SCC + decision.role
+             (layer is a derived packaging label only). Findings-inventory
+             remains context for finding ownership / fixtures without a
+             typed model. Emit brief stubs, non-mandatory decision rows,
              deploy on last story.
   fill     — repair an existing roadmap/briefs: unique-owner partition,
              strip recipe-owned claims, brief stubs for missing stories,
@@ -35,6 +38,7 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 SKELETON_MARK = "<!-- O-M2COMPOSE-SKELETON -->"
 _FRESH_MARK = re.compile(
@@ -556,7 +560,20 @@ def _scope_redesignish(scope: str) -> bool:
     )
 
 
-def _scope_harvestish(st: dict) -> bool:
+def _scope_harvestish(st: dict, *, root: Optional[Path] = None) -> bool:
+    """HARVEST-ish story — ADR-34 F-story-source: prefer typed roles over prose.
+
+    When model.units[].decision.role is available for classes in scope, the
+    majority typed role wins. Regex over rationale/title is legacy fallback
+    only (fixtures without typed decisions).
+    """
+    if root is not None:
+        roles = _typed_roles_for_scope(root, st.get("scope") or "")
+        if roles:
+            harvest_n = sum(1 for r in roles if r == "HARVEST")
+            redesign_n = sum(1 for r in roles if r == "REDESIGN")
+            if harvest_n or redesign_n:
+                return harvest_n > redesign_n
     blob = " ".join(
         [
             st.get("rationale") or "",
@@ -568,6 +585,52 @@ def _scope_harvestish(st: dict) -> bool:
     return bool(
         re.search(r"(?i)HARVEST|characterization|model layer|\bmodels?\b", blob)
     )
+
+
+def _typed_roles_for_scope(root: Path, scope: str) -> list[str]:
+    """CapWord / path → decision.role for units mentioned in scope (ADR-34)."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from model import load as model_load, profile_units  # type: ignore
+    except ImportError:
+        return []
+    try:
+        model = model_load(root)
+    except (OSError, ValueError, FileNotFoundError):
+        return []
+    out: list[str] = []
+    for u in profile_units(model):
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else None
+        if not d or not d.get("role"):
+            continue
+        fqn = u.get("legacy_fqn") or u.get("key") or ""
+        simple = fqn.rsplit(".", 1)[-1] if fqn else ""
+        lp = (u.get("legacy_path") or "").replace("\\", "/")
+        if simple and re.search(rf"\b{re.escape(simple)}(?:\.java)?\b", scope):
+            out.append(str(d["role"]).upper())
+        elif lp and lp in scope.replace("\\", "/"):
+            out.append(str(d["role"]).upper())
+    return out
+
+
+def model_has_typed_profile_roles(root: Path) -> bool:
+    """True when model.json has ≥1 complete decision — ADR-34 SoT ready."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from model import load as model_load, profile_units  # type: ignore
+        from profile_roles import _decision_complete  # type: ignore
+    except ImportError:
+        return False
+    try:
+        model = model_load(root)
+    except (OSError, ValueError, FileNotFoundError):
+        return False
+    n = 0
+    for u in profile_units(model):
+        d = u.get("decision") if isinstance(u.get("decision"), dict) else None
+        if _decision_complete(d):
+            n += 1
+    return n > 0
 
 
 def _finding_score_for_story(fid: str, sites: dict[str, list[str]], st: dict) -> int:
@@ -599,7 +662,9 @@ def _finding_score_for_story(fid: str, sites: dict[str, list[str]], st: dict) ->
     return score
 
 
-def repair_sfnd_empty_findings(stories: list[dict], inv: dict) -> int:
+def repair_sfnd_empty_findings(
+    stories: list[dict], inv: dict, *, root: Optional[Path] = None
+) -> int:
     """O-M2COMPOSEBOOK: do not leave redesignish stories with findings: '-'.
 
     Rebalance better-matching findings from other stories; if still empty and
@@ -615,7 +680,7 @@ def repair_sfnd_empty_findings(stories: list[dict], inv: dict) -> int:
             continue
         if not _scope_redesignish(st.get("scope") or ""):
             continue
-        if _scope_harvestish(st):
+        if _scope_harvestish(st, root=root):
             continue
         # Steal findings that score higher on this story than on current owner
         moved: list[str] = []
@@ -668,11 +733,28 @@ def _profile_sec7(prof: str) -> str:
     return rest[: nxt.start()] if nxt else rest
 
 
-def redesign_classes_from_profile(prof: str) -> set[str]:
-    """CapWord classes governed by REDESIGN in architecture-profile §7.
+def redesign_classes_from_model(root: Path) -> set[str]:
+    """ADR-29 — CapWord classes with role=REDESIGN on model.units[].decision.
 
-    Family lines under a REDESIGN heading expand every backtick/bold CapWord.
+    F-render-oneway: do not parse §7 markdown for roles.
     """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from profile_roles import redesign_fqns  # type: ignore
+    except ImportError:
+        return set()
+    names = redesign_fqns(root)
+    # Prefer CapWord simple names for brief bullets.
+    return {n for n in names if "." not in n}
+
+
+def redesign_classes_from_profile(prof: str, root: Optional[Path] = None) -> set[str]:
+    """REDESIGN class set — model decisions first (ADR-29); §7 only as legacy fallback."""
+    if root is not None:
+        from_model = redesign_classes_from_model(root)
+        if from_model:
+            return from_model
+    # Legacy fallback for fixtures without model decisions (pre-ADR-29).
     sec7 = _profile_sec7(prof)
     if not sec7:
         return set()
@@ -715,12 +797,24 @@ def _extract_sec7_target(ln: str) -> str:
     return s[:220]
 
 
-def redesign_contract_hints_from_profile(prof: str) -> dict[str, str]:
-    """O-BRIEFCONTRACT — class → §7 target text (family lines expanded per class)."""
+def redesign_contract_hints_from_profile(
+    prof: str, root: Optional[Path] = None
+) -> dict[str, str]:
+    """O-BRIEFCONTRACT — class → target text from model decisions (ADR-29) or §7."""
+    if root is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        try:
+            from profile_roles import redesign_contract_hints  # type: ignore
+
+            hints = redesign_contract_hints(root)
+            if hints:
+                return hints
+        except ImportError:
+            pass
     sec7 = _profile_sec7(prof)
     if not sec7:
         return {}
-    redesign_cls = redesign_classes_from_profile(prof)
+    redesign_cls = redesign_classes_from_profile(prof, root=root)
     hints: dict[str, str] = {}
     for ln in sec7.splitlines():
         if "HARVEST" in ln and "REDESIGN" not in ln:
@@ -837,7 +931,7 @@ def derive_kinds(
 
 
 def unique_partition(
-    stories: list[dict], inv: dict
+    stories: list[dict], inv: dict, *, root: Optional[Path] = None
 ) -> list[dict]:
     """Each mandatory finding owned exactly once; strip recipe claims."""
     must = inv["must"]
@@ -879,16 +973,16 @@ def unique_partition(
                     st["findings_raw"] = ", ".join(st["findings"])
                 claimed[fid] = sid
                 break
-    repair_sfnd_empty_findings(stories, inv)
+    repair_sfnd_empty_findings(stories, inv, root=root)
     return stories
 
 
 def ensure_deploy_last(stories: list[dict]) -> None:
+    """F-deploy-derived — only the last story is deployable; clear earlier flags."""
     if not stories:
         return
     for st in stories[:-1]:
-        # leave earlier deploy flags; only enforce last
-        pass
+        st["deploy"] = False
     stories[-1]["deploy"] = True
 
 
@@ -1719,6 +1813,118 @@ def skeleton_from_inventory(
     return stories
 
 
+def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
+    """ADR-34 / F-story-rendered (out-half) — render FROM model.stories[] only.
+
+    Membership SoT is ``assign_stories_from_model`` (order+SCC+decision.role).
+    Layer is a packaging label on each typed story — never invent a story from
+    staging scopes / inventory findings alone (W4-540 / W5-108: empty
+    ``platform`` story with staging properties while model.stories[] has 5).
+
+    Staging paths may *supplement scope* of an existing typed story whose
+    ``layer`` matches; they must not create a sixth heading.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from model import (  # type: ignore
+        assign_stories_from_model,
+        profile_units,
+    )
+    from profile_roles import _decision_complete  # type: ignore
+
+    # Persist typed partition first — roadmap must project this list, not a
+    # parallel LAYER_ORDER walk that can disagree (O-M2SKELDRIFT).
+    model = assign_stories_from_model(root)
+    typed = list(model.get("stories") or [])
+    if not typed:
+        return skeleton_from_inventory(inv, "", root=root)
+
+    units = {
+        (u.get("key") or u.get("legacy_fqn") or ""): u
+        for u in profile_units(model)
+        if (u.get("key") or u.get("legacy_fqn"))
+    }
+    staging_scopes = staging_layer_scopes(root)
+
+    stories: list[dict] = []
+    for st in typed:
+        keys = [k for k in (st.get("units") or []) if k in units]
+        if not keys:
+            # Typed store never emits empty-unit stories; refuse inventing one.
+            continue
+        lay = (st.get("layer") or "other").strip() or "other"
+        scopes: set[str] = set()
+        fids: list[str] = []
+        roles: list[str] = []
+        for k in keys:
+            u = units[k]
+            lp = (u.get("legacy_path") or "").replace("\\", "/")
+            if lp and not is_generated_build_path(lp):
+                scopes.add(lp)
+            for fid in u.get("findings") or []:
+                if fid and fid not in fids:
+                    fids.append(fid)
+            d = u.get("decision") if isinstance(u.get("decision"), dict) else None
+            if _decision_complete(d):
+                roles.append(str(d.get("role") or "").upper())
+        # Scope supplement only — never a membership source.
+        for p in staging_scopes.get(lay) or []:
+            if p and not is_generated_build_path(p):
+                scopes.add(p)
+        harvest_n = sum(1 for r in roles if r == "HARVEST")
+        redesign_n = sum(1 for r in roles if r == "REDESIGN")
+        role_note = (
+            f"roles HARVEST={harvest_n} REDESIGN={redesign_n}"
+            if roles
+            else "roles pending"
+        )
+        scope_s = ", ".join(sorted(scopes)) if scopes else "<!-- JUDGMENT: paths -->"
+        sid = st.get("id") or f"S{len(stories) + 1:02d}"
+        title = LAYER_TITLE.get(lay, lay.replace("-", " ").title())
+        stories.append(
+            {
+                "sid": sid,
+                "title": title,
+                "scope": scope_s,
+                "findings": list(fids),
+                "findings_raw": ", ".join(fids) if fids else "-",
+                "depends": "-",
+                "deploy": bool(st.get("deploy")),
+                "done": "<!-- JUDGMENT: checkable done-criterion -->",
+                "rationale": (
+                    f"ADR-34 model.stories[] id={sid} slug={st.get('slug') or lay} "
+                    f"layer={lay} units={len(keys)} {role_note} "
+                    f"(F-story-rendered out-half; staging scope supplement only)"
+                ),
+                "kind": None,
+                "seat_budget": None,
+                "body": "",
+                "_unit_keys": list(keys),
+                "_slug": st.get("slug") or lay,
+            }
+        )
+
+    if not stories:
+        return skeleton_from_inventory(inv, "", root=root)
+
+    # Refuse silent drift: rendered count must equal typed store.
+    if len(stories) != len(typed):
+        raise SystemExit(
+            f"O-M2SKELDRIFT RED: skeleton stories={len(stories)} != "
+            f"model.stories[]={len(typed)} (F-story-rendered out-half)"
+        )
+    ensure_deploy_last(stories)
+    return stories
+
+
+def cut_skeleton_stories(
+    root: Path, inv: dict, dep_text: str = ""
+) -> tuple[list[dict], str]:
+    """Choose SoT for skeleton cut. Returns (stories, source_tag)."""
+    if model_has_typed_profile_roles(root):
+        return skeleton_from_model(root, inv), "model"
+    return skeleton_from_inventory(inv, dep_text, root=root), "inventory"
+
+
 def extract_nm_section(text: str) -> str:
     m = re.search(r"(?im)^##\s+Non-mandatory decisions\b.*", text, re.S)
     return m.group(0) if m else ""
@@ -1778,10 +1984,22 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
     redesign_cls: set[str] = set()
     contract_hints: dict[str, str] = {}
     profile_sec7 = ""
+    # ADR-29 — prefer typed decisions on the model (F-render-oneway).
+    # Missing model.json is OK for fixtures / pre-model compose — fall back to §7.
+    redesign_cls = redesign_classes_from_model(root)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from profile_roles import redesign_contract_hints  # type: ignore
+
+        contract_hints = redesign_contract_hints(root)
+    except (ImportError, FileNotFoundError, OSError):
+        contract_hints = {}
     if profile_path.is_file():
         _prof = profile_path.read_text(encoding="utf-8", errors="replace")
-        redesign_cls = redesign_classes_from_profile(_prof)
-        contract_hints = redesign_contract_hints_from_profile(_prof)
+        if not redesign_cls:
+            redesign_cls = redesign_classes_from_profile(_prof, root=None)
+        if not contract_hints:
+            contract_hints = redesign_contract_hints_from_profile(_prof, root=None)
         profile_sec7 = profile_sec7_digest(_prof)
 
     prior_nm = ""
@@ -1801,14 +2019,14 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                 mode = "fill"
             else:
                 prior_nm = extract_nm_section(text)
-                stories = skeleton_from_inventory(inv, dep_text, root=root)
+                stories, skel_src = cut_skeleton_stories(root, inv, dep_text)
                 # Preserve kind/seat-budget if re-skeletonizing
                 old = parse_roadmap(text)
                 by_sid = {s["sid"]: s for s in old}
                 for st in stories:
                     if st["sid"] in by_sid and by_sid[st["sid"]].get("kind"):
                         st["kind"] = by_sid[st["sid"]]["kind"]
-                stories = unique_partition(stories, inv)
+                stories = unique_partition(stories, inv, root=root)
                 n_kind = derive_kinds(stories, inv, redesign_cls)
                 n_budget = apply_seat_budgets(stories, inv_text)
                 derive_story_depends(stories, root)
@@ -1820,11 +2038,12 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
                 wrote_roadmap = True
                 print(
                     f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)} "
-                    f"kind-updates={n_kind} seat-budget-updates={n_budget}"
+                    f"source={skel_src} kind-updates={n_kind} "
+                    f"seat-budget-updates={n_budget}"
                 )
         if not roadmap_path.is_file() or force_skeleton:
-            stories = skeleton_from_inventory(inv, dep_text, root=root)
-            stories = unique_partition(stories, inv)
+            stories, skel_src = cut_skeleton_stories(root, inv, dep_text)
+            stories = unique_partition(stories, inv, root=root)
             n_kind = derive_kinds(stories, inv, redesign_cls)
             n_budget = apply_seat_budgets(stories, inv_text)
             derive_story_depends(stories, root)
@@ -1837,7 +2056,8 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             wrote_roadmap = True
             print(
                 f"O-M2COMPOSE: wrote skeleton roadmap stories={len(stories)} "
-                f"kind-updates={n_kind} seat-budget-updates={n_budget}"
+                f"source={skel_src} kind-updates={n_kind} "
+                f"seat-budget-updates={n_budget}"
             )
 
     if mode == "fill":
@@ -1849,12 +2069,49 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             return compose(root, "skeleton", force_skeleton=True)
         text = roadmap_path.read_text(encoding="utf-8", errors="replace")
         prior_nm = extract_nm_section(text)
-        stories = parse_roadmap(text)
+        # ADR-34 REV-2 / F-story-rendered: when typed decisions exist, membership
+        # SoT is the model partition — merge JUDGMENT fields from authored roadmap.
+        if model_has_typed_profile_roles(root):
+            stories, skel_src = cut_skeleton_stories(root, inv, dep_text)
+            authored = parse_roadmap(text)
+            by_sid = {s["sid"]: s for s in authored}
+            for st in stories:
+                old = by_sid.get(st["sid"])
+                if not old:
+                    continue
+                # JUDGMENT only — never take membership/scope/deploy from roadmap.
+                for k in ("title", "rationale", "kind", "done", "body", "seat_budget"):
+                    if old.get(k):
+                        st[k] = old[k]
+            # O-M2SKELDRIFT / W4-540: refuse when rendered count ≠ typed store
+            # (extra ## S0N from staging-empty platform invent or seat rewrite).
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from model import load as _model_load  # type: ignore
+
+            typed_n = len((_model_load(root).get("stories") or []))
+            if typed_n and len(stories) != typed_n:
+                print(
+                    f"O-M2SKELDRIFT RED: fill stories={len(stories)} != "
+                    f"model.stories[]={typed_n} (F-story-rendered out-half)",
+                    file=sys.stderr,
+                )
+                return 2
+            print(
+                f"O-M2COMPOSE: fill membership source={skel_src} "
+                f"stories={len(stories)} typed={typed_n} "
+                f"(F-story-rendered; JUDGMENT merged from roadmap)"
+            )
+        else:
+            stories = parse_roadmap(text)
         if not stories:
             print("O-M2COMPOSE RED: roadmap has no stories", file=sys.stderr)
             return 2
         # O-M2DECOMPAXIS: collapse JDBC/JPA/Spring-Data (and model-part) over-splits
-        stories, n_collapse = collapse_to_layer_stories(stories)
+        # Skip when ADR-34 model partition already owns membership.
+        if not model_has_typed_profile_roles(root):
+            stories, n_collapse = collapse_to_layer_stories(stories)
+        else:
+            n_collapse = 0
         if n_collapse:
             print(
                 f"O-M2COMPOSE: O-M2DECOMPAXIS collapsed {n_collapse} "
@@ -1865,15 +2122,15 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             for st in stories
             if (st.get("findings_raw") or "").strip() == "-"
             and _scope_redesignish(st.get("scope") or "")
-            and not _scope_harvestish(st)
+            and not _scope_harvestish(st, root=root)
         )
-        stories = unique_partition(stories, inv)
+        stories = unique_partition(stories, inv, root=root)
         after_sfnd = sum(
             1
             for st in stories
             if (st.get("findings_raw") or "").strip() == "-"
             and _scope_redesignish(st.get("scope") or "")
-            and not _scope_harvestish(st)
+            and not _scope_harvestish(st, root=root)
         )
         n_sfnd = max(0, before_sfnd - after_sfnd)
         n_nogen = strip_generated_scope(stories)

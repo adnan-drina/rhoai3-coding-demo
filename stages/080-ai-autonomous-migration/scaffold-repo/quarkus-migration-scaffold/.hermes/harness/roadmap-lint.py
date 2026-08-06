@@ -82,6 +82,7 @@ import importlib.util
 import os
 import re
 import sys
+from pathlib import Path
 
 problems = []
 STORY_FILTER = None  # set by --story SNN (O-M3PREFLIGHT)
@@ -322,12 +323,21 @@ def brief_quality_score(
     return score, dims
 
 
-def redesign_classes_from_profile(prof: str) -> set:
-    """CapWord classes governed by REDESIGN in architecture-profile §7.
+def redesign_classes_from_profile(prof: str, root=None):
+    """CapWord classes with REDESIGN — model.units[].decision first (ADR-29).
 
-    Family lines (comma-lists / All ClassA, ClassB under a REDESIGN heading)
-    expand to every backtick/bold CapWord — not only .java-backed names.
+    §7 markdown parse is legacy fallback only (F-render-oneway).
     """
+    if root is not None:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from profile_roles import redesign_fqns  # type: ignore
+
+            names = {n for n in redesign_fqns(root) if "." not in n}
+            if names:
+                return names
+        except Exception:
+            pass
     sec7 = ""
     m = re.search(r"^(#{2,6})[ \t]+.*Class roles.*$", prof, re.M | re.I)
     if not m:
@@ -811,7 +821,9 @@ def main():
     if profile_path:
         try:
             profile_text = open(profile_path, encoding="utf-8").read()
-            redesign_cls = redesign_classes_from_profile(profile_text)
+            # root = parent of migration/ when profile is migration/architecture-profile.md
+            _root = Path(profile_path).resolve().parent.parent
+            redesign_cls = redesign_classes_from_profile(profile_text, root=_root)
         except OSError:
             redesign_cls = set()
             profile_text = ""

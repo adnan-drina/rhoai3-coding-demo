@@ -122,9 +122,23 @@ The harness runs a staged process (the "M-process"). Every stage has explicit in
 │  ANALYZE  │───▶│ SEQUENCE  │───▶│  SPECIFY  │───▶│ IMPLEMENT │───▶│ EVALUATE  │──┘
 │           │    │           │    │ per story │    │ per story │    │ per story │
 └───────────┘    └───────────┘    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
- [analysis         [roadmap        ▲    │ lint      ▲    │ sensors        │
-  pipeline]         lint]          └────┘ red →     └────┘ red → fix      │
-                                   revision loop    session (inner loop)  │
+ [analysis         [roadmap        ▲    │ story     ▲    │ sensors        │
+  pipeline]         lint]          └────┘ state:    └────┘ red → fix      │
+                                   unfilled→seats;  session (inner loop)  │
+                                   filled→plan-lint                       │
+                                                                          │
+ ── grounding: is each stage's output derived from what it was given?     │
+ G1 · G2         G3 G6 G7 G8      G4 G5 G9         build · tests          │
+                                                                          │
+┌──────────────────────────────────────────────────────────────────────┐  │
+│ migration/model.json — the typed source of truth                     │  │
+│   units + decisions      ·      stories      ·      tasks            │  │
+│   id · class · shape · port · acceptance ......  harness-derived     │  │
+│   goal · plan · risk .........................  seat judgement only  │  │
+└──────────────────────────────────────────────────────────────────────┘  │
+      │ rendered, never hand-authored                                     │
+      ▼                                                                   │
+ architecture-profile.md · roadmap.md · briefs/S*.md · specs/S*/tasks.md  │
                                                                           │
               next story from the roadmap  ◀──────────────────────────────┘
               (failed story stops the run; resume via story-state.csv)
@@ -134,11 +148,23 @@ The harness runs a staged process (the "M-process"). Every stage has explicit in
 |---|---|---|---|---|
 | 1 | **M1 ANALYZE** | MTA/kantra (Windup rules incl. platform contract rules), OpenRewrite recipes, dependency-graph script, one Hermes analyst session | Rule-based analysis of the legacy app (migration path + jakarta + cloud-readiness + JDK targets); classify every finding against the MAPPINGS rule-joins; compute the conversion order and god nodes; pre-execute mechanical recipes (jakarta) into a staging tree; write the architecture profile: components, integration surfaces, behavioral contract sources, domain seams | `mta-findings.json`, `findings-inventory.md`, `dependency-order.md`, `recipe-log.md` + staged sources, `architecture-profile.md` |
 | 2 | **M2 SEQUENCE** | Hermes planner session guided by the SEQUENCING skill; `roadmap-lint` gate | Cut the modernization into dependency-ordered stories (models before services before surfaces; domain seams for monoliths); mark deploy milestones; write one self-contained brief per story with real legacy code excerpts and the contracts that story owns | `roadmap.md`, `briefs/S*.md` |
-| 3 | **M3 SPECIFY** | spec-kit workflow (Hermes session per story); story-scoped `plan-lint` gate | Turn one brief into spec / plan / tasks: behavioral contract from legacy tests, decided target shapes from MAPPINGS, rewrite-before-infer ordering, characterization tests early, recipe-executed rules excluded | `specs/S<NN>/{spec,plan,tasks}.md` |
+| 3 | **M3 SPECIFY** | Typed task loop (`m3_task_loop.py`) dispatching one bounded judgement per task to an OpenCode worker; story-scoped `plan-lint` gate | Generate the story's typed tasks from the migration model (ids, ownership, class/shape/port and acceptance all derived); ask the worker for one judgement per task — goal, plan, risk — and merge it into the model; render `tasks.md` from the model | `migration/model.json` (`tasks[]`), rendered `specs/S<NN>/tasks.md` |
 | 4 | **M4 IMPLEMENT** | Supervisor task loop; Hermes orchestrator + OpenCode worker (packets); skills + AGENTS.md rules; task/milestone sensors (isolated Maven repo, in-loop SonarQube) | Execute the story's tasks one commit each; harvest from the recipe-staged sources; port/pin contract tests; every commit sensor-verified; red commits get autonomous fix sessions; mechanical commit closure for green-but-uncommitted work | code + tests, one `T-NNN:` commit per task, `run-log.md` rows |
 | 5 | **M5 EVALUATE** | Pre-push preflight (full quality gate + boot check); Tekton factory pipeline + SonarQube gate; kantra after-analysis (script step); Hermes retro session | Gate the story locally, ship through the factory; deploy stories must serve their acceptance endpoints live; measure the findings delta (before vs destination); write retro proposals | pipeline + gate results, deployed increment, `findings-delta`, `retro-proposals.md` |
 
 The **inner loop** (sensors → fix sessions, lint → revision) corrects the *work* within minutes. The **outer loop** (automated) applies Retro's brief updates to **remaining** stories so the next brief starts smarter — it does not rewrite the roadmap mid-run, and a failed story stops the run (resume from `migration/story-state.csv`). The **steering loop** (human) takes Retro's skill/sensor/runbook proposals into a follow-up PR; the agent never auto-edits `.hermes/skills/**`.
+
+### One typed model, and prose rendered from it
+
+The process above is driven by a single typed artifact, `migration/model.json`: units and their decisions from M1, the story partition from M2, and the task list for M3. Everything a reader sees — `architecture-profile.md`, `roadmap.md`, `briefs/S*.md`, `specs/S<NN>/tasks.md` — is **rendered from that model**, and each rendered file says so in its own header. The rule is simple and it is what keeps a long autonomous run honest: **if the harness can derive a fact, nothing else may author it, and nothing is stored that can be computed.**
+
+Two consequences shape how the agent works.
+
+**The harness owns identity and acceptance; the agent owns judgement.** Task ids, ownership, class, shape, port and acceptance criteria are all derived — acceptance, for instance, follows from the unit's role plus its `targetContract` flags, so a HARVEST task is always held to byte-fidelity against the staged sources and a REDESIGN task is always held to the contract it was assigned. The coding seat is asked for exactly one thing per task: a judgement — goal, plan, risk — returned as JSON. The harness merges it into the model and re-renders the markdown. The seat never edits `specs/**` or `migration/**`; attempts to author an id or an acceptance are refused rather than silently accepted.
+
+**Facts travel to the agent, not references to facts.** Each task's packet carries what that task asserts over: anchored code snippets at the cited lines, the story brief inlined, and — where the acceptance is stated against the staged tree — the staging facts (path, LOC) the acceptance will be checked against. A seat that has been given the fact has no reason to go looking for it, and the loop is measurably quieter for it: in the reference run, **92% of task seats completed with no tool calls at all**, and none read the legacy tree.
+
+This is the same idea as the guides/sensors split, applied one level down. A guide that *names* a source makes the agent go and fetch it; a guide that *contains* the source lets the agent spend its budget on the judgement you actually wanted.
 
 ### Quality model: HARVEST vs REDESIGN and the deterministic gates
 
@@ -155,11 +181,50 @@ Named deterministic gates enforce each hand-off:
 |---|---|---|
 | `profile-rubric` | End of M1 | Architecture profile completeness: components, integration surfaces, contract sources, domain seams all present |
 | `roadmap-lint` | End of M2 | Story dependency order is valid, every story has a brief, deploy milestones are marked |
-| `plan-lint --profile` | End of M3 (per story) | Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings — plus the semantic checks: every task's target must still **exist in the tree** (no dead tasks), task order must respect the M1 dependency graph (dependencies convert before dependents, no two tasks may produce competing beans for one interface), and every task declares its `Class`, `Shape`, and `Oracle` so downstream guards read declared fields instead of guessing from titles |
+| `plan-lint --profile` | End of M3 (per story) | Reads the typed store (`model.tasks[]`), not the rendered markdown. Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings — plus the semantic checks: every task's target must still **exist in the tree** (no dead tasks), task order must respect the M1 dependency graph (dependencies convert before dependents, no two tasks may produce competing beans for one interface), and every task declares its `Class`, `Shape`, and `Oracle` so downstream guards read declared fields instead of guessing from titles |
 | `wiring-check` | Mid-M4 (per milestone) | Integration surfaces actually wire (imports resolve, endpoints register, dependency injection connects) |
 | Preflight (build + boot + quality gate) | End of M5 (per story) | Full Maven build, SonarQube gate, application boots, deploy stories serve acceptance endpoints |
 
 If a gate fires red, the loop revises (M3) or enters a fix session (M4) automatically. A gate never passes on model confidence alone.
+
+### Staying true to the source: the grounding chain
+
+Gates answer *"is this output correct?"*. A long autonomous run needs a second, different question at every hand-off: **is what this stage produced actually derived from what the previous stage gave it?** That is what the grounding chain checks, and the run log opens with the question rather than a list of check names:
+
+```text
+GROUND  G1–G9 — grounding checks
+         Each step sits at one pipeline handoff and answers: is what this
+         stage produced actually derived from what the previous stage gave it?
+         M1: G1/G2 · M2: G3/G6/G7/G8 · M3: G4 (inline) · M3 authoring: G5/G9
+```
+
+Each check then prints its verdict, its question in plain English, and the evidence behind the verdict — so the log is readable without knowing the codebase:
+
+```text
+GROUND  G1 — PASS
+         Q: Does the architecture profile only claim things that exist in the legacy source?
+         0 claimtruth findings — every §7 cited token resolves in the cited legacy file (rubric GREEN)
+```
+
+| Check | Hand-off | What it defends against |
+|---|---|---|
+| G1 | M1 | The profile claiming a class, method or annotation that does not exist in the legacy source |
+| G2 | M1 | Vocabulary from a previous demo application leaking into this specimen's profile |
+| G3 · G6 | M2 | Brief quotes drifting from the legacy files; brief claims about real symbols that are not true |
+| G7 | M2 | A brief that contradicts itself — preserving X while forbidding X's only enabler |
+| G8 | M2 | Briefs still quoting a profile section that M1 has since corrected |
+| G4 | M3 | The planner inventing derived facts instead of using the ones inlined in its packet |
+| G5 · G9 | M3 authoring | Task tokens that resolve nowhere; acceptance that can be satisfied without doing what the goal requires |
+
+Together with the typed model, this gives the migration several independent reasons to stay factual rather than one:
+
+- **Claims are checked against the source.** G1 resolves every cited token in the file it was cited from; G2 keeps the vocabulary native to this specimen.
+- **Derived facts are derived, not recalled.** Ids, class, shape, port and acceptance come from the model; the coding seat is refused if it tries to author them.
+- **Evidence is anchored.** Code quotes carry `path:line` cites that the harness resolves; a cite that will not resolve is dropped from the packet rather than passed through for the agent to reconstruct.
+- **The agent is given the facts instead of sent to find them.** In the reference run **92% of task seats made no tool calls at all, and none read the legacy tree** — an agent that never reaches the source cannot misremember it.
+- **The whole derivation is reproducible.** Clearing the task layer and re-deriving it from M1/M2 reproduces every harness-owned field bit-for-bit; a field that had been invented rather than derived would differ.
+
+**The chain reports its own gaps.** `G5` and `G9` currently print `NOT-LANDED` with the reason (`Goal↔Acceptance coherence not enforced at authoring yet`), and the log states plainly that `GREEN is not full grounding`. That is deliberate: a check that quietly passes when it has not really run is worse than no check, and the honest verdict is what tells the steering loop where to invest next.
 
 ### Two demo tracks
 
