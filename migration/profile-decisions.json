@@ -1,0 +1,18 @@
+{
+  "schema": "profile-decisions/v1",
+  "metric": "typed-decision",
+  "units": [
+    {
+      "legacy_fqn": "com.demo.service.PlainService",
+      "legacy_path": "src/main/java/com/demo/service/PlainService.java",
+      "role": "REDESIGN",
+      "rationale": "plain",
+      "evidence": {
+        "path": "src/main/java/com/demo/service/PlainService.java",
+        "line": 2,
+        "token": "@Service"
+      },
+      "target_contract": null
+    }
+  ]
+}

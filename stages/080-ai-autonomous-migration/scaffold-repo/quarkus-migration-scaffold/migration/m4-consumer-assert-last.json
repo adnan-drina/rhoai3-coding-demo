@@ -1,0 +1,20 @@
+{
+  "mode": "observe",
+  "fire_count": 2,
+  "by_assert": {
+    "staging_hash": 1,
+    "edge_order": 1
+  },
+  "fires": [
+    {
+      "assert": "staging_hash",
+      "task": "*",
+      "detail": "STAGING_IMMUTABLE:RED tree hash drift captured=x\u2026 now=476dfc694c4d\u2026 files=3 (O-ADR46-S1) \u2014 baseline rewritten without re-record"
+    },
+    {
+      "assert": "edge_order",
+      "task": "S02-T-002-B",
+      "detail": "requires-type: S02-T-001-A must precede S02-T-002-B (O-EDGEASSERT / INVALID_INPUT\u2192M3)"
+    }
+  ]
+}

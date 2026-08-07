@@ -1,0 +1,37 @@
+{
+  "ts": "2026-08-07T07:01:55Z",
+  "mode": "log-only",
+  "edge_count": 2,
+  "requires_type": 1,
+  "characterizes": 1,
+  "requires_type_order_violations": 1,
+  "characterizes_order_violations": 1,
+  "dispatch_from_edges": false,
+  "note": "O-ADR46-S3 / step 2b \u2014 edges derived for sizing; supervisor MUST NOT reorder from this log yet",
+  "violation_samples": [
+    {
+      "type": "requires-type",
+      "before": "S02-T-006-Pet",
+      "after": "S02-T-010-Mapper",
+      "from_unit": "demo.JdbcPetRowMapper",
+      "depends_on": "demo.JdbcPet",
+      "order_index_before": 1,
+      "order_index_after": 0
+    }
+  ],
+  "edges": [
+    {
+      "type": "characterizes",
+      "before": "S02-TC-PetChar",
+      "after": "S02-T-006-Pet",
+      "unit_key": "demo.JdbcPet"
+    },
+    {
+      "type": "requires-type",
+      "before": "S02-T-006-Pet",
+      "after": "S02-T-010-Mapper",
+      "from_unit": "demo.JdbcPetRowMapper",
+      "depends_on": "demo.JdbcPet"
+    }
+  ]
+}

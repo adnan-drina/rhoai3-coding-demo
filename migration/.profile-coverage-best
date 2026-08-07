@@ -1,0 +1,6 @@
+# O-PROFBESTOBS best-observed this PROFILE stage (even if RED)
+named: 1
+total: 1
+ratio: 1/1
+sot: model-decision
+metric: typed-decision

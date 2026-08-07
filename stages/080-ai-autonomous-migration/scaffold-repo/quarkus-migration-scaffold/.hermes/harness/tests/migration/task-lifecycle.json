@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "tasks": {
+    "S99-T-050": {
+      "state": "ADVANCE",
+      "history": [
+        {
+          "ts": "2026-08-07T07:02:00Z",
+          "from": "READY",
+          "to": "RUNNING",
+          "reason": "",
+          "tip_sha": "",
+          "blocked_on": "",
+          "force": false,
+          "reopen": false,
+          "reopen_gen": 0
+        },
+        {
+          "ts": "2026-08-07T07:02:00Z",
+          "from": "RUNNING",
+          "to": "TIPPED",
+          "reason": "tip-commit",
+          "tip_sha": "aaaaaaaaaaaa1111",
+          "blocked_on": "",
+          "force": false,
+          "reopen": false,
+          "reopen_gen": 0
+        },
+        {
+          "ts": "2026-08-07T07:02:00Z",
+          "from": "TIPPED",
+          "to": "VERIFY",
+          "reason": "verify-dims",
+          "tip_sha": "aaaaaaaaaaaa1111",
+          "blocked_on": "",
+          "force": false,
+          "reopen": false,
+          "reopen_gen": 0
+        },
+        {
+          "ts": "2026-08-07T07:02:00Z",
+          "from": "VERIFY",
+          "to": "ADVANCE",
+          "reason": "verify-dims-recorded",
+          "tip_sha": "aaaaaaaaaaaa1111",
+          "blocked_on": "",
+          "force": false,
+          "reopen": false,
+          "reopen_gen": 0
+        }
+      ],
+      "reopen_gen": 0,
+      "tip_sha": "bbbbbbbbbbbb2222",
+      "dims": [
+        "fidelity",
+        "spring-residue"
+      ],
+      "completed_gen": 0
+    }
+  }
+}
