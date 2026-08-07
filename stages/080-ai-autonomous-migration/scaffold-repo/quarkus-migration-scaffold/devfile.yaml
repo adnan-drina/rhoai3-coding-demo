@@ -66,6 +66,14 @@ components:
           value: "false"
         - name: HUB_PROFILE_SYNC_ENABLED
           value: "false"
+        # AD-003: containerless mta-cli requires JVM_MAX_MEM or analysis can
+        # hang. Derived from memoryLimit (12Gi) with headroom for the IDE /
+        # OpenCode / Hermes — not equal to the container ceiling. Official
+        # MTA guidance recommends ~8G host RAM for large Java analyses
+        # (CLI optimize-performance); value format matches provider
+        # jvmMaxMem examples ("2G").
+        - name: JVM_MAX_MEM
+          value: "8G"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
