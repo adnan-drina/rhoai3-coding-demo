@@ -41,12 +41,18 @@ bash scripts/check-legacy-at-3-manifest.sh
 - Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
   before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a later
   failure can attribute the bundled upgrades without splitting the frozen stage.
-- Override the upgrade command with `DERIVE_UPGRADE_CMD` when needed.
+- **Upgrade command is required:** set `DERIVE_UPGRADE_CMD` to the approved
+  Boot 2→3 path. Operator declined Moderne-licensed OpenRewrite recipes as
+  policy (`E-20260807T184100Z`); the script will not fall through to
+  `UpgradeSpringBoot_3_0`. Directed trial path is Spring Boot Migrator (SBM);
+  free-primitives composite is the durable fallback if SBM fails trial.
 
 ## Pitfalls
 
 - Never edit `/projects/legacy` or a frozen derived tree to "fix" Boot-3.
 - Never tell harvest or MTA to use the 2.x mount when the manifest points at a
   derived referent.
+- Do not invoke Moderne `rewrite-spring` / `UpgradeSpringBoot_3_0` as the
+  default — operator-declined even where the Agreement reading is permissive.
 - Do not leave this procedure in `AGENTS.md` — it is phase-scoped; conventions
   stay always-on.

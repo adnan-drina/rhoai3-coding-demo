@@ -194,20 +194,13 @@ run_upgrade() {
     ( cd "${DERIVED_ROOT}" && bash -c "${DERIVE_UPGRADE_CMD}" )
     return
   fi
-  # Default: OpenRewrite Boot 2→3 recipe (AD-005). Pins must resolve on Maven
-  # Central unauthenticated (E-20260807T181530Z / E-20260807T182240Z): the prior
-  # rewrite-spring:2.14.0 coordinate never existed (2.3.1 → 3.0.0). 6.9.0 is on
-  # Central and contains UpgradeSpringBoot_3_0 (verified). Override with
-  # DERIVE_UPGRADE_CMD when needed.
-  echo "Running default OpenRewrite UpgradeSpringBoot_3_0 in ${DERIVED_ROOT}"
-  (
-    cd "${DERIVED_ROOT}"
-    export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
-    export PATH="${JAVA_HOME}/bin:${PATH}"
-    mvn -q org.openrewrite.maven:rewrite-maven-plugin:6.9.0:run \
-      -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-spring:6.9.0 \
-      -Drewrite.activeRecipes=org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_0
-  )
+  # Operator E-20260807T184100Z: Moderne-licensed recipes are declined as
+  # policy regardless of the permissive Agreement reading. Do not silently
+  # fall through to UpgradeSpringBoot_3_0 / rewrite-spring. Set
+  # DERIVE_UPGRADE_CMD to the trial path (SBM directed; free-primitives
+  # composite if trial fails — Lead/Architect pick). The old 6.9.0 pin was
+  # resolve-correct but is not an allowed default.
+  die "no DERIVE_UPGRADE_CMD — Moderne OpenRewrite Boot-3 recipes are operator-declined (E-20260807T184100Z); set DERIVE_UPGRADE_CMD to the approved upgrade (SBM trial or free-primitives composite)"
 }
 
 if ! run_upgrade; then
