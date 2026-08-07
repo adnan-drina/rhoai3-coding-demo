@@ -76,7 +76,7 @@ PY
     printf '%s' "${ver}"
     return 0
   fi
-  # Parent-BOM specimens (e.g. petclinic) often omit java.version in the POM.
+  # Parent-BOM specimens often omit java.version in the POM.
   if command -v mvn >/dev/null 2>&1; then
     ver="$(
       cd "${pom_dir}" \
