@@ -71,16 +71,26 @@ technologies, custom rules, and label selectors.
 
 ### Single Application Analysis
 
+Prefer `--target` only when unlabeled custom rules must participate (MTA 7.1
+documents that `--source`/`--target` exclude unlabeled rules; 8.2 docs omit
+that note but 8.2 runs still show the behavior — see
+`references/official-doc-extraction.md`):
+
 ```shell
 mta-cli analyze --input <path_to_input> \
   --output <path_to_output> \
-  --source <source_name> \
   --target <target_name>
 ```
 
+Add `--source` only when every needed rule carries a matching source label.
+
 ### List Available Targets
 
+8.2 docs lead with the rules subcommand; the analyze flag form may still work
+— confirm on the installed binary:
+
 ```shell
+mta-cli rules list-targets
 mta-cli analyze --list-targets
 ```
 
@@ -126,7 +136,7 @@ mta-cli generate helm --chart-dir <chart> --input <discovery.yaml> \
 |--------|-------------|
 | `--input` | Path to application source or binary |
 | `--output` | Output directory for reports |
-| `--source` / `--target` | Source and target technologies |
+| `--source` / `--target` | Source and target technologies (label filters; unlabeled rules excluded) |
 | `--rules` | Custom rule files or directory |
 | `--label-selector` | Filter rules by label expression |
 | `--provider` | Language provider for non-Java analysis |
@@ -162,6 +172,7 @@ mta-cli generate helm --chart-dir <chart> --input <discovery.yaml> \
 ## Validation
 
 ```shell
+mta-cli rules list-targets
 mta-cli analyze --list-targets
 mta-cli analyze --list-providers
 mta-cli analyze --list-sources
@@ -174,6 +185,8 @@ mta-cli analyze --list-sources
 - `--provider` must be specified for non-Java analysis or the analysis may fail
   if unsupported providers are discovered.
 - Bulk analysis (`--bulk`) is Developer Preview; not production-ready.
+- `--source` / `--target` exclude rules without matching labels (documented in
+  MTA 7.1; omitted from 8.1/8.2 Rule metadata docs; confirmed on 8.2 runs).
 
 ## Related Skills
 

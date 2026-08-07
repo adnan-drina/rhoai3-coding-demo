@@ -2,7 +2,31 @@
 
 Use this extraction to keep MTA CLI content grounded in official Red Hat
 sources. When implementation needs exact command syntax, verify against
-`mta-cli --help` and `mta-cli analyze --help` on the installed version.
+`mta-cli --help` and `mta-cli analyze --help` on the installed version
+(product baseline: MTA 8.2).
+
+Live 8.2 CLI guide: analyzing Java applications is **Chapter 4** (was
+Chapter 3 in 8.1). Nested grounding for this bump:
+`harness-refactoring/source-analysis/mta-kantra/mta-8.2-recapture.md`
+(Research, 2026-08-07).
+
+## `--source` / `--target` and unlabeled rules (important)
+
+Passing `--source` or `--target` restricts the engine to rules that carry a
+matching source/target label. Rules **without** those labels are excluded.
+
+- **Documented (MTA 7.1 Rules Development Guide)** — verbatim note that if you
+  use `--target` or `--source`, the engine only selects rules matching that
+  label; add source/target labels on custom rules accordingly.
+- **Silent in MTA 8.1 and 8.2** docs (Rule metadata chapter) — the caveat was
+  dropped between 7.1 and 8.1; surrounding reserved-label / `--label-selector`
+  material is otherwise unchanged.
+- **Confirmed on MTA 8.2 runs** (Track B, 2026-07-27): `--source` excluded
+  source-labelless rules (including custom contract rules) and narrowed the set.
+
+**Demo / harness practice:** prefer `--target` only (from
+`migration.yaml` `analysis.targets`) and **never** pass `--source` when the
+ruleset includes unlabeled custom rules. See AD-003 amendment A.
 
 ## Supported Migration Paths (Java)
 
@@ -18,6 +42,18 @@ sources. When implementation needs exact command syntax, verify against
 | Any Java app | - | Yes | Yes | - | - | - | - | - |
 
 ## Analyzing a Single Application
+
+Preferred when custom or unlabeled rules must apply (see caveat above):
+
+```shell
+mta-cli analyze \
+  --input <path_to_input> \
+  --output <path_to_output> \
+  --target <target_name>
+```
+
+Official docs also show `--source` with `--target`. Only add `--source` when
+every needed rule carries a matching `konveyor.io/source=…` label:
 
 ```shell
 mta-cli analyze \
@@ -36,12 +72,13 @@ Access report: `file:///<output_dir>/static-report/index.html`.
 
 ```shell
 mta-cli analyze --bulk --input <path_A> --output <shared_output> \
-  --source <src_A> --target <tgt_A>
+  --target <tgt_A>
 mta-cli analyze --bulk --input <path_B> --output <shared_output> \
-  --source <src_B> --target <tgt_B>
+  --target <tgt_B>
 ```
 
 One `--input` per command; same `--output` directory for all inputs.
+Add `--source` only when label coverage is complete (see caveat).
 
 ## Containerless Mode
 
@@ -62,12 +99,17 @@ mta-cli analyze --overwrite \
 
 ## analyze Command Options
 
+Table grounded in the 8.2 CLI guide Ch. 4.4 plus flags confirmed by surrounding
+8.2 prose / prior verified help (`--provider`, `--bulk` may be truncated in
+some rendered doc tables — do not treat absence in a partial fetch as removal).
+Confirm listing flags against `mta-cli analyze --help` on a real 8.2 binary.
+
 | Option | Type | Description |
 |--------|------|-------------|
 | `--input` | string | Path to source code or binary |
 | `--output` | string | Output directory for reports |
-| `--source` | string | Source technology (repeatable) |
-| `--target` | string | Target technology (repeatable) |
+| `--source` | string | Source technology (repeatable); excludes unlabeled rules — see caveat |
+| `--target` | string | Target technology (repeatable); same label-filter behavior |
 | `--rules` | stringArray | Rule files or directory |
 | `--label-selector` | string | Filter rules by label expression |
 | `--mode` | string | `full` (default) or `source-only` |
@@ -83,12 +125,29 @@ mta-cli analyze --overwrite \
 | `--dependency-folders` | stringArray | Dependency directories |
 | `--incident-selector` | string | Filter incidents by custom variables |
 | `--maven-settings` | string | Custom Maven settings file |
-| `--list-targets` | - | List available targets |
-| `--list-sources` | - | List available sources |
+| `--list-targets` | - | List available targets (analyze flag; see also `rules list-targets`) |
+| `--list-sources` | - | List available sources (analyze flag; see also `rules list-sources`) |
 | `--list-providers` | - | List available language providers |
 | `--list-languages` | - | List languages in source (not binary) |
 | `--disable-maven-search` | bool | Skip Maven index lookups |
 | `--log-level` | uint32 | Log verbosity (default: 4) |
+| `--http-proxy` / `--https-proxy` / `--no-proxy` | string | Proxy configuration |
+| `--jaeger-endpoint` | string | Jaeger tracing endpoint |
+| `--no-cleanup` | bool | Do not clean up temporary resources |
+
+### Listing sources and targets (8.2)
+
+8.2 worked examples prefer the subcommand form:
+
+```shell
+mta-cli rules list-targets
+mta-cli rules list-sources
+```
+
+The analyze flags (`mta-cli analyze --list-targets` / `--list-sources`) remain
+documented in upstream kantra help and prior 8.1 examples. Treat both as
+likely current until confirmed on a provisioned 8.2 `mta-cli` binary; do not
+silently drop the flag form.
 
 ## Non-Java Analysis
 

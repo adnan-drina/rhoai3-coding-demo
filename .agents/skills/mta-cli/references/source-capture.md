@@ -10,39 +10,25 @@
 | Chapter or page title | Using the migration toolkit for applications command-line interface |
 | Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index |
 | Documentation category | Using the Tools |
-| Capture date | 2026-07-06 |
+| Capture date | 2026-08-07 |
+| Recapture note | Chapter numbers refreshed from live 8.2 CLI guide (analyzing Java apps is Ch. 4, was Ch. 3 in 8.1). Cross-checked with nested `harness-refactoring/source-analysis/mta-kantra/mta-8.2-recapture.md`. |
 
 ## Captured Sections
 
-From "Using the migration toolkit for applications command-line interface":
+From "Using the migration toolkit for applications command-line interface" (MTA 8.2 TOC):
 
 - Chapter 1: Introduction to the MTA command-line interface
 - Chapter 2: Supported migration paths
-- Chapter 3: Analyzing Java applications with MTA CLI
-  - 3.1 Analyzing a single application
-  - 3.2 Analyzing multiple applications (Developer Preview)
-  - 3.3 Analyzing an application in containerless mode
-  - 3.4 The analyze command options
-- Chapter 4: Analyzing applications written in languages other than Java
-  - 4.1 Analyzing for a supported language provider
-  - 4.2 Analyzing for an unsupported language provider
-- Chapter 5: Analyzing applications by using profiles from the MTA Hub
-  - 5.1 Analyzing by using a profile (Technology Preview)
-  - 5.2 The config command options
-  - 5.3 A sample profile configuration
-- Chapter 6: Reviewing an analysis report
-  - 6.1 Accessing an analysis report
-  - 6.2 Analysis report sections
-  - 6.3 Reviewing issues and incidents
-- Chapter 7: Performing a transformation with the MTA CLI
-  - 7.1 Transforming applications source code
-  - 7.2 Available OpenRewrite recipes
-  - 7.3 The openrewrite command options
-- Chapter 8: Generating platform assets for application deployment
-  - 8.1–8.8 Discovery and generation workflows (Developer Preview)
-- Chapter 9: Known issues
-- Appendix A: Supported technology tags
-- Appendix B: Rule story points
+- Chapter 3: *(renumbered in 8.2 — see Ch. 4 for Java analysis)*
+- Chapter 4: Analyzing Java applications with MTA CLI
+  - 4.1 Analyzing a single application
+  - 4.2 Analyzing multiple applications (Developer Preview)
+  - 4.3 Analyzing an application in containerless mode
+  - 4.4 The analyze command options
+- Subsequent chapters (non-Java analysis, Hub profiles, reports, transform,
+  platform assets, known issues, appendices) — content largely unchanged from
+  the prior 8.1 grounding; re-verify chapter numbers against the live 8.2 TOC
+  before citing a chapter number in prose.
 
 ## Source Boundaries
 
