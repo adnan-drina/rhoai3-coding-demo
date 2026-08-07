@@ -11,16 +11,19 @@
 #   bash "${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh"
 #
 # Optional:
-#   DERIVE_UPGRADE_CMD='…'   command run inside the copy when upgrade needed
-#                            (default attempts OpenRewrite UpgradeSpringBoot_3_0)
+#   DERIVE_UPGRADE_CMD='…'   override upgrade command inside the copy
+#                            (default: free-primitives-boot3 composite, W2 §12)
 set -euo pipefail
 
 LEGACY_SRC="${LEGACY_SRC:-/projects/legacy}"
 DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
 # Skill layout: .hermes/skills/derive-legacy-boot3/scripts/ → project root is ../../../..
-MODERNIZED_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MODERNIZED_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 MANIFEST_DIR="${MODERNIZED_ROOT}/migration/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
+COMPOSITE_SCRIPT="${SCRIPT_DIR}/free-primitives-boot3/run-composite.sh"
+APPLY_LOG_DEFAULT="${MANIFEST_DIR}/free-primitives-apply-log.json"
 
 die() { echo "derive-legacy-boot3: $*" >&2; exit 1; }
 
@@ -194,17 +197,20 @@ run_upgrade() {
     ( cd "${DERIVED_ROOT}" && bash -c "${DERIVE_UPGRADE_CMD}" )
     return
   fi
-  # Operator E-20260807T184100Z: Moderne-licensed recipes are declined as
-  # policy regardless of the permissive Agreement reading. Do not silently
-  # fall through to UpgradeSpringBoot_3_0 / rewrite-spring. Set
-  # DERIVE_UPGRADE_CMD to the trial path (SBM directed; free-primitives
-  # composite if trial fails — Lead/Architect pick). The old 6.9.0 pin was
-  # resolve-correct but is not an allowed default.
-  die "no DERIVE_UPGRADE_CMD — Moderne OpenRewrite Boot-3 recipes are operator-declined (E-20260807T184100Z); set DERIVE_UPGRADE_CMD to the approved upgrade (SBM trial or free-primitives composite)"
+  # Default: free-primitives composite (W2 §12 SETTLED). Moderne
+  # UpgradeSpringBoot_3_0 remains never-automatic (E-20260807T184100Z).
+  [ -x "${COMPOSITE_SCRIPT}" ] || [ -f "${COMPOSITE_SCRIPT}" ] \
+    || die "missing free-primitives composite at ${COMPOSITE_SCRIPT}"
+  echo "Running free-primitives-boot3 composite in ${DERIVED_ROOT}"
+  (
+    cd "${DERIVED_ROOT}"
+    APPLY_LOG_PATH="${APPLY_LOG_DEFAULT}" COMPOSITE_ROOT="${DERIVED_ROOT}" \
+      bash "${COMPOSITE_SCRIPT}"
+  )
 }
 
 if ! run_upgrade; then
-  die "upgrade failed — set DERIVE_UPGRADE_CMD or ensure OpenRewrite Boot-3 recipes resolve (AD-005). RO mount left untouched."
+  die "upgrade failed — free-primitives composite or DERIVE_UPGRADE_CMD. RO mount left untouched."
 fi
 
 DER_VER="$(detect_boot_version "${DERIVED_ROOT}/pom.xml")"
