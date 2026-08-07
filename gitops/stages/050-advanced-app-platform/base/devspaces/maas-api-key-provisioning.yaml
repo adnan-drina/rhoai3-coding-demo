@@ -789,8 +789,9 @@ SOULSMOKE
       fi
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; ~/.hermes/config.yaml absent."
 
-      # AD-H §13 — the ONLY cron job: no_agent stuck-task watchdog, alert-only
-      # (--deliver local). A second job requires an Architect decision.
+      # AD-H §13 / §15.2 — the ONLY cron job: observation watchdog for what
+      # survives native max_runtime_seconds recovery (--deliver local).
+      # A second job requires an Architect decision.
       mkdir -p "${hermes_home}/scripts" "${hermes_home}/cron/output"
       local watchdog_src="${PROJECT_DIR}/.hermes/home/scripts/kanban-stuck-watchdog.py"
       local watchdog_dst="${hermes_home}/scripts/kanban-stuck-watchdog.py"

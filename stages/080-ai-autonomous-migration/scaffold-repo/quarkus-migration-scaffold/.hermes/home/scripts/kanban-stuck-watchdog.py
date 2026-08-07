@@ -1,17 +1,20 @@
-"""Kanban stuck-task watchdog (AD-H §13) — the ONLY Hermes cron job.
+"""Kanban stuck-task watchdog (AD-H §13/§15.2) — the ONLY Hermes cron job.
 
 no_agent cron script: exit 0 + empty stdout = silent tick; exit 0 + stdout =
 local alert; non-zero exit = error alert (broken watchdog cannot be silent).
 
-Detects one thing: a Kanban task in status `running` longer than
-STUCK_SECONDS (default 1800). Does not restart, kill, or mutate state —
-observer only. A second cron job requires an Architect decision stating why
-this one is insufficient.
+Observation layer only: alerts when a task stays `running` past STUCK_SECONDS
+*after* native `max_runtime_seconds` recovery should have fired. Does not
+restart, kill, or mutate state. Default stuck budget comes from
+`.hermes/phase-dispatch.yaml` (must exceed max phase max_runtime_seconds).
+A second cron job requires an Architect decision stating why this one is
+insufficient.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -25,11 +28,50 @@ def hermes_home() -> Path:
     return Path.home() / ".hermes"
 
 
-def stuck_seconds() -> int:
+def phase_dispatch_path() -> Path | None:
+    """Scaffold-authored budgets live beside HERMES_HOME (…/.hermes/phase-dispatch.yaml)."""
+    home = hermes_home()
+    candidate = home.parent / "phase-dispatch.yaml"
+    if candidate.is_file():
+        return candidate
+    env = os.environ.get("PHASE_DISPATCH_YAML", "").strip()
+    if env:
+        p = Path(env).expanduser()
+        if p.is_file():
+            return p
+    return None
+
+
+def stuck_seconds_from_yaml(path: Path) -> int | None:
+    """Minimal parse — avoid PyYAML dependency in the cron sandbox."""
     try:
-        return max(60, int(os.environ.get("STUCK_SECONDS", "1800")))
-    except ValueError as exc:
-        raise SystemExit(f"kanban-stuck-watchdog: bad STUCK_SECONDS: {exc}") from exc
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(
+        r"(?m)^watchdog:\s*\n(?:[ \t]+.+\n)*?[ \t]+stuck_seconds:\s*(\d+)\s*$",
+        text,
+    )
+    if not m:
+        return None
+    return max(60, int(m.group(1)))
+
+
+def stuck_seconds() -> int:
+    # Precedence: env override → phase-dispatch.yaml → §15 default ( > max budget 3600 ).
+    if "STUCK_SECONDS" in os.environ:
+        try:
+            return max(60, int(os.environ["STUCK_SECONDS"]))
+        except ValueError as exc:
+            raise SystemExit(
+                f"kanban-stuck-watchdog: bad STUCK_SECONDS: {exc}"
+            ) from exc
+    path = phase_dispatch_path()
+    if path is not None:
+        parsed = stuck_seconds_from_yaml(path)
+        if parsed is not None:
+            return parsed
+    return 4200
 
 
 def find_running_table(conn: sqlite3.Connection) -> tuple[str, str, str] | None:

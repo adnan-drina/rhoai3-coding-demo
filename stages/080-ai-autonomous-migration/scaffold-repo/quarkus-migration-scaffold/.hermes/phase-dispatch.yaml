@@ -1,0 +1,33 @@
+# AD-H §15 — seed of per-phase kanban_create dispatch parameters.
+# Every M-phase task must set max_runtime_seconds from this file (native
+# recovery: SIGTERM + re-queue, outcome=timed_out). Do not omit.
+#
+# workspace_kind / workspace_path / skills / body / parents / idempotency_key
+# land with the full phase schema (§15.3). Until then:
+#   - workspace_kind defaults to scratch (disposable tmp) — NEVER rely on it
+#   - every phase must eventually set workspace_kind: dir|worktree + absolute
+#     workspace_path to the migration repo
+#
+# Watchdog STUCK_SECONDS (observation, §15.2) must exceed max(budgets) so
+# native timeout fires first; the cron job reports what survives recovery.
+
+phases:
+  M1:
+    # ANALYZE — MTA/kantra + profile authoring
+    max_runtime_seconds: 3600
+  M2:
+    # PLAN — story partition / briefs
+    max_runtime_seconds: 2400
+  M3:
+    # IMPLEMENT — per-unit transform
+    max_runtime_seconds: 2700
+  M4:
+    # VERIFY — compile/test/sonar sensors
+    max_runtime_seconds: 1800
+  M5:
+    # CLOSE — findings refresh / story close
+    max_runtime_seconds: 2400
+
+watchdog:
+  # max(phases)=3600 + 600s grace for "still running after native recovery"
+  stuck_seconds: 4200
