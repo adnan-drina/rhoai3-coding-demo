@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """O-GITBAK / O-SIMPLEDTO / O-POMUNC / O-JDBCREGRESS / O-CDIPARTIAL /
-O-TREEFIXSTUB / O-HERMSCOOP — refuse dishonest commits.
+O-TREEFIXSTUB / O-HERMSCOOP / O-DEBTTREE — refuse dishonest commits.
 
 Exit 1 when HEAD (or given sha) commits:
+  - debt: subject that also mutates src/ or pom.xml (O-DEBTTREE / ADR-48)
   - src/**/*.bak, *~, *.orig (O-GITBAK)
   - both dto/*.java and dto/*.bak in the same commit (O-SIMPLEDTO)
   - Java importing org.mapstruct / @Mapper while tree pom at sha lacks
@@ -71,12 +72,39 @@ def _pom_has_mapstruct(pom: str) -> bool:
     return bool(re.search(r"<artifactId>\s*mapstruct", pom, re.I))
 
 
+def _subject(sha: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "log", "-1", "--format=%s", sha],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return ""
+
+
 def main() -> int:
     sha = sys.argv[1] if len(sys.argv) > 1 else "HEAD"
     names = _show_names(sha)
     if not names:
         return 0
     problems: list[str] = []
+
+    # O-DEBTTREE / ADR-48: incident journal commits must not mutate app tree.
+    subj = _subject(sha)
+    if re.match(r"^debt:\s*", subj, re.I):
+        app_touch = [
+            n
+            for n in names
+            if n == "pom.xml"
+            or n.startswith("src/")
+            or "/src/" in n
+        ]
+        if app_touch:
+            problems.append(
+                "O-DEBTTREE:" + ",".join(app_touch[:8])
+                + (f"…+{len(app_touch) - 8}" if len(app_touch) > 8 else "")
+            )
 
     # O-HERMSCOOP / O-M2-FREEZE-JUNK: refuse tips that ADD/MODIFY golden harness.
     # Deletions (cleanup commits like 89bafd3) are allowed — they untrack scoop.

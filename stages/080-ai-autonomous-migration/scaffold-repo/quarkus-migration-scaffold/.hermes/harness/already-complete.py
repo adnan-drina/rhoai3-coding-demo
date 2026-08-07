@@ -16,8 +16,11 @@ Allowed skip paths (only):
    prose must not trigger this path. O-AC3: blocked when Target design
    names a destination path that is still missing (class/config conversion).
    O-AC-NONJAVA: non-.java Targets (properties/yaml/k8s) never preserve-skip.
-2. Explicit removal task (title or body) naming a concrete src/.../*.java
-   path whose basename is absent under src/main/java and src/test/java.
+2. Explicit removal task (title or body) naming concrete src/.../*.java
+   path(s) / Remove ClassName leaves — *all* named leaves absent under
+   src/, and annotation/replacement work complete (O-ACREMULTI). Never
+   skip on the first absent leaf while Roles→CDI (or named quarkus-*)
+   work remains.
 """
 from __future__ import annotations
 
@@ -36,28 +39,28 @@ if str(_HARNESS_DIR) not in sys.path:
 ROOT = Path(os.environ.get("ALREADY_COMPLETE_ROOT", ".")).resolve()
 
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
+
 def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        title = m.group(2).strip()
-        start = m.end()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[start:end]
-        # O-AC2: last-task bodies used to swallow story-level waiver appendices
-        # (e.g. "<endpointEnv> … waived"), falsely triggering preserve skip.
-        body = re.split(
-            r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
-            body,
-            maxsplit=1,
-            flags=re.M | re.I,
-        )[0]
-        return title, body
-    return "", ""
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    title, body = task_heading_parts(text, tid)
+    if not title and not body:
+        return "", ""
+    # O-AC2: last-task bodies used to swallow story-level waiver appendices
+    # (e.g. "<endpointEnv> … waived"), falsely triggering preserve skip.
+    body = re.split(
+        r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
+        body,
+        maxsplit=1,
+        flags=re.M | re.I,
+    )[0]
+    return title, body
 
 
 def preserve_is_task_subject(title: str, body: str, item: str) -> bool:
@@ -291,21 +294,84 @@ def nonjava_target_blocks_preserve(body: str) -> bool:
     return False
 
 
-def java_basenames_absent(body: str) -> Optional[str]:
-    """Return basename if an explicit java path is named and absent in tree."""
-    # Prefer TARGET-side paths (after → / -> / Target).
-    targetish = _target_java_paths(body)
-    paths = targetish or re.findall(
-        r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", body
+def _removal_java_paths(title: str, body: str) -> list[str]:
+    """O-ACREMULTI: every named java deliverable on a removal task.
+
+    Prefer Target/Owns paths; also collect all src/.../*.java mentions and
+    `Remove/Delete ClassName(.java)` leaves so multi-leaf Remove tasks cannot
+    skip on the first absent class alone.
+    """
+    paths: list[str] = []
+    paths.extend(_owns_and_target_java(body))
+    paths.extend(_target_java_paths(body))
+    paths.extend(
+        re.findall(r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", body)
     )
-    # Ignore staging/legacy sources — absence there is meaningless.
-    paths = [p for p in paths if "migration/staging" not in p and "/legacy/" not in p]
+    # Title/body: Remove Foo / Delete Foo.java / Remove Foo and Bar (O-ACREMULTI)
+    _verb_leaves = {
+        "convert",
+        "port",
+        "ensure",
+        "preserve",
+        "create",
+        "update",
+        "implement",
+        "migrate",
+        "replace",
+        "verify",
+        "and",
+        "the",
+        "all",
+        "remaining",
+        "legacy",
+        "spring",
+        "quarkus",
+    }
+    for m in re.finditer(
+        r"\b(?:Remove|Delete|Drop|Eliminate)\s+([^\n]+)",
+        f"{title}\n{body}",
+        re.I,
+    ):
+        clause = m.group(1)
+        # Stop at sentence / bullet / arrow noise.
+        clause = re.split(r"[.;:—]|→|->", clause, maxsplit=1)[0]
+        for cm in re.finditer(r"\b([A-Z][A-Za-z0-9_]{2,})(?:\.java)?\b", clause):
+            name = cm.group(1)
+            if name.lower() in _verb_leaves:
+                continue
+            paths.append(name + ".java")
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in paths:
+        if "migration/staging" in p or "/legacy/" in p:
+            continue
+        key = Path(p).name
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def java_basenames_absent(body: str, title: str = "") -> Optional[str]:
+    """Return first stem iff *every* named removal leaf is absent (O-ACREMULTI)."""
+    paths = _removal_java_paths(title, body)
+    if not paths:
+        # Back-compat: body-only path scrape when title omitted (instruments).
+        paths = [
+            p
+            for p in re.findall(
+                r"src/(?:main|test)/java/[A-Za-z0-9_./]+\.java", body
+            )
+            if "migration/staging" not in p and "/legacy/" not in p
+        ]
     if not paths:
         return None
+    src = ROOT / "src"
     for path in paths:
         leaf = Path(path).name
-        if list((ROOT / "src").rglob(leaf) if (ROOT / "src").is_dir() else []):
-            return None  # still present somewhere under src/
+        if src.is_dir() and list(src.rglob(leaf)):
+            return None  # still present — removal not complete
     return Path(paths[0]).stem
 
 
@@ -488,21 +554,27 @@ def replacement_constructs_missing(title: str, body: str) -> Optional[str]:
 
 
 def annotation_work_incomplete(title: str, body: str) -> Optional[str]:
-    """O-ALREADYFINDING: RolesAllowed / PreAuthorize work not done on Targets.
+    """O-ALREADYFINDING / O-ACREMULTI: annotation conversion not done on Targets.
 
-    Finding-absent must not skip Shape=modify annotation harvest when Owns/
-    Target REST classes still lack @RolesAllowed.
+    Finding-absent / removal-absent must not skip when Owns/Target classes
+    still lack @RolesAllowed / @PreAuthorize / @ApplicationScoped named in
+    the task (Wave2 T-014: Remove leaf gone while Roles→@ApplicationScoped
+    remains).
     """
     blob = f"{title}\n{body}"
-    if not re.search(
-        r"(?i)@?RolesAllowed|@?PreAuthorize|role.?based|security annotation",
-        blob,
-    ):
+    want_roles = bool(
+        re.search(
+            r"(?i)@?RolesAllowed|@?PreAuthorize|role.?based|security annotation",
+            blob,
+        )
+    )
+    want_app = bool(re.search(r"(?i)@?ApplicationScoped", blob))
+    if not want_roles and not want_app:
         return None
     paths = _owns_and_target_java(body)
     if not paths:
-        # Title asks for RolesAllowed but no paths — do not oracle-skip.
-        return "rolesallowed-no-paths"
+        # Title asks for annotation work but no paths — do not oracle-skip.
+        return "rolesallowed-no-paths" if want_roles else "applicationscoped-no-paths"
     missing: list[str] = []
     for want in paths:
         p = ROOT / want
@@ -519,13 +591,20 @@ def annotation_work_incomplete(title: str, body: str) -> Optional[str]:
         except OSError:
             missing.append(want)
             continue
-        if "@RolesAllowed" not in text and "RolesAllowed" not in text:
+        ok = True
+        if want_roles and "@RolesAllowed" not in text and "RolesAllowed" not in text:
+            if "@PreAuthorize" not in text and "PreAuthorize" not in text:
+                ok = False
+        if want_app and "@ApplicationScoped" not in text and "ApplicationScoped" not in text:
+            ok = False
+        if not ok:
             try:
                 missing.append(str(p.relative_to(ROOT)))
             except ValueError:
                 missing.append(want)
     if missing:
-        return "need-RolesAllowed:" + ",".join(missing[:6])
+        tag = "need-RolesAllowed" if want_roles else "need-ApplicationScoped"
+        return f"{tag}:" + ",".join(missing[:6])
     return None
 
 
@@ -617,7 +696,14 @@ def main() -> int:
             return 0
 
     if is_removal_task(title, body):
-        leaf = java_basenames_absent(body)
+        # O-ACREMULTI: never absent-skip on one gone leaf while annotation /
+        # replacement work (Roles→@RolesAllowed/@ApplicationScoped, quarkus-*)
+        # remains incomplete — same gates as findings-oracle path.
+        if annotation_work_incomplete(title, body) is not None:
+            return 1
+        if repl_gap is not None:
+            return 1
+        leaf = java_basenames_absent(body, title)
         if leaf:
             # Refuse verb-looking "leaves" even if somehow extracted.
             if leaf.lower() in {

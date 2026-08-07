@@ -132,10 +132,17 @@ def _approved_spring_support_drop(line: str) -> bool:
     O-FIDELITYDAO (S02 T-004): PropertyComparator/MutableSortDefinition →
     Comparator.comparing; ToStringCreator → ordinary toString. Re-harvesting
     Spring support to green-wash fidelity trips O-SFIXNOSPRING.
+
+    O-FIDELITYORM: ObjectRetrievalFailureException (spring-orm) is not on the
+    Quarkus classpath — O-SPRINGRESIDUE forbids tipping it. Dest may map to
+    jakarta.persistence.EntityNotFoundException (exact DAO/ORM exception map);
+    staged spring-orm lines must not RED harvest fidelity (S02 EntityUtils).
     """
     if "PropertyComparator" in line or "MutableSortDefinition" in line:
         return True
     if "ToStringCreator" in line:
+        return True
+    if "ObjectRetrievalFailureException" in line or "org.springframework.orm" in line:
         return True
     return False
 

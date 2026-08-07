@@ -61,6 +61,17 @@ config property, or client URL). An erased integration is a silent functional
 regression. Check migration.yaml preserve: and PLANNING.md preserve coverage.
 EOF
       ;;
+    # O-CONFIGFIXMODE / W4-677 §3.3: mode-2 drift must NEVER get mode-1
+    # "restore into src/main" guidance (that produced MiniMax e0c82e9).
+    configderived)
+      cat <<'EOF'
+FIX: Declare the transform in migration.yaml configTransforms: (from / to /
+optional valueMap + reason). Do NOT re-introduce spring.* or server.* keys
+into Quarkus application.properties, and do NOT invent valueTransforms: or
+preserve: arrow strings — the gate only reads configTransforms:. See
+.hermes/skills/migration-harness/SHIPPING.md (O-CONFIGDERIVED / O-CONFIGNOSPRING).
+EOF
+      ;;
     hygiene)
       cat <<'EOF'
 FIX: Remove or rename illegal paths under src/ (literal glob chars, spaces,
@@ -195,6 +206,18 @@ tree_hygiene() {
   local bad
   bad=$(find src -name '*\**' -o -name '*"*"*' -o -name '* *' 2>/dev/null | head -5)
   [ -z "$bad" ] || fail hygiene "illegal filenames in tree: $bad"
+}
+
+# O-ADR46-S1: migration/staging must match capture-time tree hash (W4-709).
+staging_immutable_check() {
+  [ -f "$SELF_DIR/staging_immutable.py" ] || return 0
+  [ -d migration/staging ] || return 0
+  local out
+  out=$(python3 "$SELF_DIR/staging_immutable.py" check 2>&1) || {
+    echo "$out"
+    fail hygiene "O-ADR46-S1 staging immutable RED — fidelity baseline moved (see STAGING_IMMUTABLE:)"
+  }
+  echo "$out"
 }
 
 package_scope() {
@@ -345,19 +368,12 @@ task_port_mode() {
     tasks=$(ls specs/*/tasks.md 2>/dev/null | head -1)
   fi
   [ -n "$tid" ] && [ -n "$tasks" ] && [ -f "$tasks" ] || { echo ""; return 0; }
-  python3 - "$tasks" "$tid" <<'PY'
+  PYTHONPATH="$SELF_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$tasks" "$tid" <<'PY'
 import re, sys
+from task_contract import task_heading_parts  # O-T6dTCHEADING / step 1 SoT
 path, tid = sys.argv[1], sys.argv[2]
 text = open(path, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", text, re.M))
-body = ""
-for i, m in enumerate(heads):
-    if m.group(1) != tid:
-        continue
-    start = m.end()
-    end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-    body = text[start:end]
-    break
+_title, body = task_heading_parts(text, tid)
 pm = re.search(
     r"(?im)^\*\*Port\*\*\s*:?\s*(rename|reimplement)\b"
     r"|^\*\*Port\s*:\s*(rename|reimplement)\*\*"
@@ -442,6 +458,7 @@ security_auth_test_contract() {
 
 task_sensor() {
   tree_hygiene
+  staging_immutable_check
   package_scope
   wiring_invariants
   forbidden_patterns
@@ -577,6 +594,7 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
   # CANNOT set the supervisor subprocess's env, so it cannot self-waive.
   # (The old /tmp/fidelity-off file bridge was removed: a session touched
   # it to escape a real fidelity RED — V5 T-004 fabricated client.)  # ALLOWED: coolstore-default-fallback (historical note)
+  staging_immutable_check
   placeholder_tests
   ship_assert_weaken
   # G-AC3 (V9 S01): catch ceremonial acceptance surfaces in-loop, not only
@@ -646,7 +664,13 @@ milestone_sensor() { # $1 = inloop|full (default inloop)
         >> /tmp/outer-loop.log 2>/dev/null || true
     fi
   fi
-  echo "milestone sensor GREEN (clean verify + sonar[${1:-inloop}] + findings, isolated repo)"
+  # O-K5GREENSUM (W4-650): do not name findings as a passed check when K5 was
+  # waived (O-K5WAIVELEAK / FINDINGS_CHECK=off) — operator-facing honesty.
+  local _findings_sum=findings
+  if [ "${FINDINGS_K5_WAIVED:-}" = "1" ] || [ "${FINDINGS_CHECK:-on}" = "off" ]; then
+    _findings_sum="findings[waived]"
+  fi
+  echo "milestone sensor GREEN (clean verify + sonar[${1:-inloop}] + ${_findings_sum}, isolated repo)"
 }
 
 # K5 — native findings sensor (milestone + preflight/M5). Kantra source-only
@@ -1055,11 +1079,12 @@ _redattrib_gcat() {
   rm -f /tmp/red-attrib.txt
   [ -f "$tasks" ] || return 0
   local owner
-  owner=$(python3 - "$tasks" "$surf" "$tid" <<'PY'
+  owner=$(PYTHONPATH="$SELF_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$tasks" "$surf" "$tid" <<'PY'
 import re, sys
+from task_contract import iter_task_headings  # O-T6dTCHEADING / step 1 SoT
 tasks, surf, tid = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(tasks, encoding="utf-8", errors="replace").read()
-heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
+heads = list(iter_task_headings(text))
 owners = []
 for i, m in enumerate(heads):
     body = text[m.end(): heads[i+1].start() if i+1 < len(heads) else len(text)]
@@ -1259,6 +1284,19 @@ preflight() {
   fi
   wiring_invariants
   preserved_integrations
+  # O-CONFIGDERIVED / F-config-derived: migrated properties must match legacy
+  # or a declared configTransforms: rename (architecture gate, not ship hack).
+  if [ "${CONFIG_DERIVED_CHECK:-on}" != "off" ] \
+    && [ -f .hermes/harness/config_derived.py ]; then
+    if ! python3 .hermes/harness/config_derived.py \
+      --root . --legacy "${LEGACY_ROOT:-/projects/legacy}" \
+      --yaml migration.yaml > /tmp/config-derived.txt 2>&1; then
+      cat /tmp/config-derived.txt
+      fail configderived "O-CONFIGDERIVED undeclared config drift (see CONFIGDERIVED: lines / /tmp/config-derived.txt)"
+    fi
+    cat /tmp/config-derived.txt
+    echo "config-derived check GREEN"
+  fi
   acceptance_ship_contract
   acceptance_path_handler
   root_index_present

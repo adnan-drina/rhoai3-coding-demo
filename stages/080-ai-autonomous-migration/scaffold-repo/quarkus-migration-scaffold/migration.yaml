@@ -44,6 +44,8 @@ analysis:
   # NO source filter — it only narrows (excludes source-labelless rules
   # incl. custom ones). Applies to IDE analysis AND the harness run.
   # Poll 81 E2 / petclinic PROBE: materialize mode (PROBE: source-only ≡ full).
+  # O-ANALYZERPIN: engine identity for before/after findings-delta refuse.
+  engine: kantra
   mode: source-only
   targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17, openjdk21]
 targetContract:
@@ -62,6 +64,24 @@ targetContract:
   threadSafeState: true     # ConcurrentHashMap + compute() on singleton state
   cacheRefreshGuard: true   # no clear-on-miss; bounded refresh
   normalizeBeforeDerive: true  # dedupe/normalize before computing totals (consistent line items vs totals)
+# O-CONFIGDERIVED — declared Spring→Quarkus renames + optional valueMap.
+# Schema (only this shape is parsed — not valueTransforms: / preserve arrows):
+# configTransforms:
+#   - from: server.port
+#     to: quarkus.http.port
+#     valueMap:
+#       "9966": "8080"
+configTransforms:
+  - from: server.port
+    to: quarkus.http.port
+    reason: "Service/Deployment containerPort=8080 (petclinic-rest-v5); Quarkus default replaces legacy 9966"
+    valueMap:
+      "9966": "8080"
+  - from: server.servlet.context-path
+    to: quarkus.http.root-path
+    reason: "Quarkus root-path has no trailing slash; legacy context-path used /petclinic/"
+    valueMap:
+      "/petclinic/": "/petclinic"
 preserve:
   # Enforced: plan-lint maps each item to a task; the preflight sensor
   # greps them in src/main|pom|k8s. Populate from the analysis's

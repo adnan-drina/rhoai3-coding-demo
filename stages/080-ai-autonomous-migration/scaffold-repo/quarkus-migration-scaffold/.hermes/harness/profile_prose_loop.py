@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -200,7 +201,7 @@ def _write_progress(*, active: str, ok: int, fail: int) -> None:
     """O-PROFDECIDEHB sibling — section cadence for outer 60s heartbeat."""
     try:
         Path("/tmp/outer-heartbeat-progress.txt").write_text(
-            f"prose_ok={ok}/6 fail={fail} active={active}\n",
+            f"ts={int(time.time())} prose_ok={ok}/6 fail={fail} active={active}\n",
             encoding="utf-8",
         )
     except OSError:

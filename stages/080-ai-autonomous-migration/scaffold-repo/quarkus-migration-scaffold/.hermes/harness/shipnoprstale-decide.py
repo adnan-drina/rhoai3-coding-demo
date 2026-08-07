@@ -11,11 +11,10 @@ Fresh means:
   2. when both revision and HEAD are supplied, they share the same commit
      (prefix match OK for short SHAs).
 
-Usage:
-  shipnoprstale-decide.py <pr_created_rfc3339_or_empty> \\
-                          <session_started_epoch_or_rfc3339_or_empty> \\
-                          [<pr_revision>] [<head_sha>]
-Prints one of: fresh | stale | no-pr
+O-SHIPPREPUSHSESSION (W4-670): if revision and HEAD match (same tip already
+on remote before SHIP_ONLY), accept as fresh even when the PipelineRun was
+created slightly before ship-session-started — the pre-push trap. Mismatched
+revision stays stale.
 """
 from __future__ import annotations
 
@@ -62,6 +61,16 @@ def decide(
     if pr_ts is None or sess_ts is None:
         # Missing/unparseable session stamp → refuse to judge prior runs
         return "stale"
+    # O-SHIPPREPUSHSESSION: same-revision tip already built before session
+    # (credential/resume pre-push) is honest evidence — not an abandoned round.
+    # Require both SHAs present so unknown-revision pre-session stays stale.
+    same_tip = (
+        bool((pr_revision or "").strip())
+        and bool((head_sha or "").strip())
+        and _sha_match(pr_revision, head_sha)
+    )
+    if same_tip:
+        return "fresh"
     if pr_ts + 0.5 < sess_ts:  # small skew tolerance
         return "stale"
     if not _sha_match(pr_revision, head_sha):

@@ -25,84 +25,86 @@ patterns for review.
 
 ### plan-lint.py env / default markers
 ```
-472:    # O-M3ACCEPT: default True preserves pre-flag instrument behaviour.
-473:    story_deploy = True
-477:        story_deploy = raw in ("1", "true", "yes", "on")
-1219:        # tasks that target a REDESIGN class default to Port: reimplement.
-1263:                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} default to "
-1605:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
-1606:    _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
-1940:            if _os.environ.get("PLAN_LINT_GODORDER_STRICT", "").lower() in (
-1946:            run_base = _os.environ.get("RUN_BASE", "").strip()
+473:    # O-M3ACCEPT: default True preserves pre-flag instrument behaviour.
+474:    story_deploy = True
+478:        story_deploy = raw in ("1", "true", "yes", "on")
+1253:        # tasks that target a REDESIGN class default to Port: reimplement.
+1297:                    f"{tid}: §7 REDESIGN class(es) {', '.join(hit)} default to "
+1734:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+1735:    _shape_warn = _os.environ.get("PLAN_LINT_SHAPE_WARN", "").lower() in (
+2080:            if _os.environ.get("PLAN_LINT_GODORDER_STRICT", "").lower() in (
+2086:            run_base = _os.environ.get("RUN_BASE", "").strip()
 ```
 
 ### supervisor.sh ${VAR:-default} (guard-adjacent sample)
 ```
-81:WORKER_FIRST="${WORKER_FIRST:-true}"
-82:WORKER_SFIX_FIRST="${WORKER_SFIX_FIRST:-${WORKER_FIRST}}"
-84:SFIX_MINIMAX_RESCUE_MAX="${SFIX_MINIMAX_RESCUE_MAX:-1}"
-96:if [ "${V9_KEEP_DEBT_FREEZE:-0}" = "1" ]; then
-164:log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST} ship_only=${SHIP_ONLY:-0}"
-388:  [ "${add:-0}" -eq 0 ] && [ "${del:-0}" -eq 0 ] && return 0
-972:# STORY_DEPLOY       "false" → M5 stops at factory quality-gate success
-974:# STORY_SCOPE        space-separated src/main files this story may MODIFY
-982:STORY_DEPLOY="${STORY_DEPLOY:-true}"
-1017:# after wedge/thrash/INFERABSENT/CHARORACLE OR sensor-red / O-STEPFINISHRED
-1026:    && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE|O-CHARORACLE|O-STEPFINISHRED' \
-1196:      local mutate_deadline="${SFIX_MUTATE_DEADLINE_SECS:-120}"
-1197:      local stale_limit="${SFIX_JSON_STALE_SECS:-180}"
-1271:# STORY_SCOPE (space-separated project-relative files, set by the outer
-1320:        if [ -n "${STORY_SCOPE:-}" ] && [ -f "$f" ] && \
-1321:           python3 - "$f" ${STORY_SCOPE} <<'PY' 2>/dev/null
-1346:          log "scope sensor: O-LATERCDI keep ${bn} — STORY_SCOPE injects an interface it implements"
-1380:  if [ -n "${STORY_SCOPE:-}" ]; then
-1386:    for e in ${STORY_SCOPE}; do case "$e" in src/*) pathscope="$pathscope $e";; esac; done
-1392:      # when those paths are outside STORY_SCOPE. Reverting them after a Gate
-1423:          echo "This story's src/main scope: ${STORY_SCOPE}"
-1442:  if [ -n "${STORY_SCOPE:-}" ] && [ -f .hermes/harness/exec-scope.py ] \
-1452:          if ! printf '%s' "$esc_list" | STORY_SCOPE="$STORY_SCOPE" \
-1462:              echo "Story scope: ${STORY_SCOPE}"
-1492:# O-EXECSCOPE — pre-commit refuse for staged non-test paths outside STORY_SCOPE.
-1496:  [ -n "${STORY_SCOPE:-}" ] || return 0
-1503:  if git diff --cached --name-only | STORY_SCOPE="$STORY_SCOPE" \
-1513:    echo "Story scope: ${STORY_SCOPE}"
-1734:    if [ "${_floor:-0}" -gt 0 ] && [ "${_now:-0}" -lt "$_floor" ]; then
-2277:    if [ "${WORKER_SFIX_FIRST:-true}" = "true" ]; then
-2278:      log "$tag: O-SFIXWORKER — sensor-fix via $(worker_label) first (MiniMax rescue≤${SFIX_MINIMAX_RESCUE_MAX:-1} if ${SENSOR_KIND} still RED)"
-2279:      outer_log "         O-SFIXWORKER: sensor-fix → $(worker_label); MiniMax rescue≤${SFIX_MINIMAX_RESCUE_MAX:-1}"
-2301:        while [ "$_sfix_rescue" -lt "${SFIX_MINIMAX_RESCUE_MAX:-1}" ]; do
-2504:  if [ "${REFUTE_LLM:-0}" = "1" ]; then
-2989:# Requires STORY_DEPLOY + a tree that already implements the story.
-3050:DEPLOY_ARGS="--story-deploy ${STORY_DEPLOY:-true}"
-3054:STORY_SCOPE_ARGS=()
-3055:[ -n "${STORY_SCOPE:-}" ] && STORY_SCOPE_ARGS=(--story-scope "$STORY_SCOPE")
-3057:export PLAN_LINT_REQUIRE_SHAPE="${PLAN_LINT_REQUIRE_SHAPE:-1}"
-3058:LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1)
-3076:LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1) || {
-3167:# Oracle derived from filesystem (O-ORACLEDERIVE / O-INFERABSENT) —
-3192:# Shape from tasks.md (for O-INFERABSENT proceed: create|verify).
-3266:  reason=$(STORY_DEPLOY="${STORY_DEPLOY:-false}" ALREADY_COMPLETE_ROOT="$PWD" \
-3391:    export WORKER_READ_GLOB_MAX="${CREATE_READ_GLOB_MAX:-10}"
-3431:  local mutate_deadline="${WORKER_MUTATE_DEADLINE_SECS:-120}"
-3601:      if [ "${WORKER_LAST_RC:-1}" = "0" ]; then
-3616:    if [ "${WORKER_LAST_RC:-1}" = "0" ] \
-3680:  [ "${WORKER_LAST_RC:-1}" = "0" ] || {
-3722:  # O-PAUSEWORKER / O-HOTSWAPRELOAD: gate worker tasks (WORKER_FIRST never
-3779:  # O-INFERABSENT (R-231 / Wave4 §2.2): infer + *derived* Oracle:absent is
-3810:    log "$T: O-INFERABSENT — skip worker (infer + derived-Oracle:absent wedge)"
-3812:      echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
-3857:  if [ "$skip_worker" -eq 0 ] && [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
-4019:  # O-ESCALORACLE: surface Shape/Oracle from the worker packet on the
-4023:  esc_oracle=$(printf '%s\n' "$esc_packet" | sed -n 's/^Oracle:[[:space:]]*//p' | head -1)
-4024:  # O-ESCREOPENCODE (+ ENFORCE / SENSORRED): after wedge/thrash/INFERABSENT/
-4041:O-ESCALORACLE: Shape=${esc_shape:-unknown} Oracle=${esc_oracle:-unknown}. If Oracle=absent or Shape=remove: prove named targets are ABSENT — never create a file solely to delete it; never invent unlisted deletion targets.
-4353:O-M5EVALHARVEST: Do NOT run harvest-from-staging or create/copy src/main/java packages for later stories. ABSENT-NOT-LANDED means explain in run-log (owned by later story / not landed yet) — never materialize those classes here. REMAINING pom/plugin rules (e.g. javaee-pom-to-quarkus-00030/00050): edit pom.xml only, or document as residual debt if out of this story's Owns. Story scope paths: ${STORY_SCOPE:-see roadmap}. Later classes (${LATER_CLASSES:-none}) are forbidden.
-4399:      && [ "${STORY_DEPLOY:-}" = "false" ] \
-4400:      && ! echo "${STORY_SCOPE:-}" | grep -qE 'model/|repository/|rest/|service/'; then
-4498:  local prev="$1" push_uptodate="${2:-0}" name="" i decision freshness
-4750:O-M5SHIPHARVEST: Do NOT harvest-from-staging or create later-story packages (model/repository/rest/service/…) to clear preflight. If O-QJACOCO / coverage RED and this story has no @QuarkusTest yet (platform/POM story), do not invent app code — fix pom/wiring only or stop with /tmp/escalation-noaction-preflightfix.txt. Story scope: ${STORY_SCOPE:-roadmap}. Later classes forbidden: ${LATER_CLASSES:-none}.
-4870:    if [ "$STORY_DEPLOY" != "true" ]; then
-4962:    elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
+85:WORKER_FIRST="${WORKER_FIRST:-true}"
+86:WORKER_SFIX_FIRST="${WORKER_SFIX_FIRST:-${WORKER_FIRST}}"
+88:SFIX_MINIMAX_RESCUE_MAX="${SFIX_MINIMAX_RESCUE_MAX:-1}"
+102:if [ "${V9_KEEP_DEBT_FREEZE:-0}" = "1" ]; then
+211:log "supervisor start: version=${SUPERVISOR_VERSION} run_base=${RUN_BASE} orch=${ORCH_PROVIDER}/${ORCH_MODEL} worker=${WORKER_MODEL} worker_first=${WORKER_FIRST} ship_only=${SHIP_ONLY:-0}"
+456:  [ "${add:-0}" -eq 0 ] && [ "${del:-0}" -eq 0 ] && return 0
+1160:# STORY_DEPLOY       "false" → M5 stops at factory quality-gate success
+1162:# STORY_SCOPE        space-separated src/main files this story may MODIFY
+1170:STORY_DEPLOY="${STORY_DEPLOY:-true}"
+1205:# after wedge/thrash/INFERABSENT/CHARORACLE OR sensor-red / O-STEPFINISHRED
+1214:    && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE|O-CHARORACLE|O-STEPFINISHRED' \
+1384:      local mutate_deadline="${SFIX_MUTATE_DEADLINE_SECS:-120}"
+1385:      local stale_limit="${SFIX_JSON_STALE_SECS:-180}"
+1459:# STORY_SCOPE (space-separated project-relative files, set by the outer
+1508:        if [ -n "${STORY_SCOPE:-}" ] && [ -f "$f" ] && \
+1509:           python3 - "$f" ${STORY_SCOPE} <<'PY' 2>/dev/null
+1534:          log "scope sensor: O-LATERCDI keep ${bn} — STORY_SCOPE injects an interface it implements"
+1568:  if [ -n "${STORY_SCOPE:-}" ]; then
+1574:    for e in ${STORY_SCOPE}; do case "$e" in src/*) pathscope="$pathscope $e";; esac; done
+1580:      # when those paths are outside STORY_SCOPE. Reverting them after a Gate
+1611:          echo "This story's src/main scope: ${STORY_SCOPE}"
+1630:  if [ -n "${STORY_SCOPE:-}" ] && [ -f .hermes/harness/exec-scope.py ] \
+1640:          if ! printf '%s' "$esc_list" | STORY_SCOPE="$STORY_SCOPE" \
+1650:              echo "Story scope: ${STORY_SCOPE}"
+1680:# O-EXECSCOPE — pre-commit refuse for staged non-test paths outside STORY_SCOPE.
+1684:  [ -n "${STORY_SCOPE:-}" ] || return 0
+1691:  if git diff --cached --name-only | STORY_SCOPE="$STORY_SCOPE" \
+1701:    echo "Story scope: ${STORY_SCOPE}"
+1922:    if [ "${_floor:-0}" -gt 0 ] && [ "${_now:-0}" -lt "$_floor" ]; then
+2552:    if [ "${WORKER_SFIX_FIRST:-true}" = "true" ]; then
+2553:      log "$tag: O-SFIXWORKER — sensor-fix via $(worker_label) first (MiniMax rescue≤${SFIX_MINIMAX_RESCUE_MAX:-1} if ${SENSOR_KIND} still RED)"
+2554:      outer_log "         O-SFIXWORKER: sensor-fix → $(worker_label); MiniMax rescue≤${SFIX_MINIMAX_RESCUE_MAX:-1}"
+2578:        while [ "$_sfix_rescue" -lt "${SFIX_MINIMAX_RESCUE_MAX:-1}" ]; do
+2763:  if [ "${CHAR_MILE_NOFIDELITY:-0}" = "1" ]; then
+2796:  if [ "${REFUTE_LLM:-0}" = "1" ]; then
+3299:# Requires STORY_DEPLOY + a tree that already implements the story.
+3360:DEPLOY_ARGS="--story-deploy ${STORY_DEPLOY:-true}"
+3364:STORY_SCOPE_ARGS=()
+3365:[ -n "${STORY_SCOPE:-}" ] && STORY_SCOPE_ARGS=(--story-scope "$STORY_SCOPE")
+3367:export PLAN_LINT_REQUIRE_SHAPE="${PLAN_LINT_REQUIRE_SHAPE:-1}"
+3368:LINT_OUT=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1)
+3386:LINT2=$(python3 .hermes/harness/plan-lint.py "$TASKS_FILE" migration/mta-findings.json $SCOPE_ARGS $DEPLOY_ARGS "${STORY_SCOPE_ARGS[@]}" 2>&1) || {
+3572:# Oracle derived from filesystem (O-ORACLEDERIVE / O-INFERABSENT) —
+3597:# Shape from tasks.md (for O-INFERABSENT proceed: create|verify).
+3675:  reason=$(STORY_DEPLOY="${STORY_DEPLOY:-false}" ALREADY_COMPLETE_ROOT="$PWD" \
+3800:    export WORKER_READ_GLOB_MAX="${CREATE_READ_GLOB_MAX:-10}"
+3841:  local mutate_deadline="${WORKER_MUTATE_DEADLINE_SECS:-120}"
+4011:      if [ "${WORKER_LAST_RC:-1}" = "0" ]; then
+4026:    if [ "${WORKER_LAST_RC:-1}" = "0" ] \
+4130:  [ "${WORKER_LAST_RC:-1}" = "0" ] || {
+4172:  # O-PAUSEWORKER / O-HOTSWAPRELOAD: gate worker tasks (WORKER_FIRST never
+4217:  # package-info.java / .gitkeep are mechanical (Oracle:absent, often no
+4247:  # O-INFERABSENT (R-231 / Wave4 §2.2): infer + *derived* Oracle:absent is
+4278:    log "$T: O-INFERABSENT — skip worker (infer + derived-Oracle:absent wedge)"
+4280:      echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
+4325:  if [ "$skip_worker" -eq 0 ] && [ "${WORKER_FIRST}" = "true" ] && run_worker_task "$T"; then
+4525:  # O-ESCALORACLE: surface Shape/Oracle from the worker packet on the
+4529:  esc_oracle=$(printf '%s\n' "$esc_packet" | sed -n 's/^Oracle:[[:space:]]*//p' | head -1)
+4530:  # O-ESCREOPENCODE (+ ENFORCE / SENSORRED): after wedge/thrash/INFERABSENT/
+4547:O-ESCALORACLE: Shape=${esc_shape:-unknown} Oracle=${esc_oracle:-unknown}. If Oracle=absent or Shape=remove: prove named targets are ABSENT — never create a file solely to delete it; never invent unlisted deletion targets.
+4922:O-M5EVALHARVEST: Do NOT run harvest-from-staging or create/copy src/main/java packages for later stories. ABSENT-NOT-LANDED means explain in run-log (owned by later story / not landed yet) — never materialize those classes here. REMAINING pom/plugin rules (e.g. javaee-pom-to-quarkus-00030/00050): edit pom.xml only, or document as residual debt if out of this story's Owns. Story scope paths: ${STORY_SCOPE:-see roadmap}. Later classes (${LATER_CLASSES:-none}) are forbidden.
+4969:      && [ "${STORY_DEPLOY:-}" = "false" ] \
+4970:      && ! echo "${STORY_SCOPE:-}" | grep -qE 'model/|repository/|rest/|service/'; then
+5123:  local prev="$1" push_uptodate="${2:-0}" name="" i decision freshness
+5448:O-M5SHIPHARVEST: Do NOT harvest-from-staging or create later-story packages (model/repository/rest/service/…) to clear preflight. If O-QJACOCO / coverage RED and this story has no @QuarkusTest yet (platform/POM story), do not invent app code — fix pom/wiring only or stop with /tmp/escalation-noaction-preflightfix.txt. Story scope: ${STORY_SCOPE:-roadmap}. Later classes forbidden: ${LATER_CLASSES:-none}.
+5625:    if [ "$STORY_DEPLOY" != "true" ]; then
+5717:    elif [ "$CODE" = "200" ] && [ "$ACC" = "200" ] && [ "${PRODUCTS:-0}" -gt 0 ]; then
 ```
 
 ## Classification guide
@@ -116,4 +118,4 @@ Fail-open defaults remaining are the Wave4 §2 work list. §2.1/§2.2 closed:
 Oracle derived (O-ORACLEDERIVE); O-INFERABSENT LINT with O-NULLACTION-shaped
 proceed — prefer reshape over adding incident-named conditionals.
 
-_Generated: 2026-08-06T08:42:29Z_
+_Generated: 2026-08-07T07:00:25Z_

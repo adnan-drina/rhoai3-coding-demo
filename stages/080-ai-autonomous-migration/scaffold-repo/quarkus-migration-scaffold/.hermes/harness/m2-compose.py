@@ -294,6 +294,46 @@ def collapse_to_layer_stories(stories: list[dict]) -> tuple[list[dict], int]:
     return out, dropped
 
 
+def fold_staging_orphans(stories: list[dict], root: Path) -> int:
+    """O-SCOPECOVER — fold staging paths owned by no story onto last/deploy.
+
+    Used under typed membership (ADR-39): unit paths come from
+    ``model.stories[].units``; non-unit staging resources (messages, api-docs,
+    etc.) still need exactly one VIEW owner. Never dual-owns a path already
+    listed on any story. Returns number of paths folded.
+    """
+    if not stories:
+        return 0
+    owned: set[str] = set()
+    for st in stories:
+        for part in (st.get("scope") or "").split(","):
+            p = part.strip().replace("\\", "/")
+            if p and not p.startswith("<!--"):
+                owned.add(p)
+    orphans = [
+        p
+        for p in list_staging_java(root)
+        if p not in owned and not is_generated_build_path(p)
+    ]
+    if not orphans:
+        return 0
+    dest = None
+    for st in stories:
+        if st.get("deploy") or "remain" in (st.get("title") or "").lower():
+            dest = st
+            break
+    if dest is None:
+        dest = stories[-1]
+    cur = [
+        p.strip()
+        for p in (dest.get("scope") or "").split(",")
+        if p.strip() and not p.strip().startswith("<!--")
+    ]
+    merged = sorted(set(cur) | set(orphans))
+    dest["scope"] = ", ".join(merged)
+    return len(orphans)
+
+
 def apply_staging_scope(stories: list[dict], root: Path) -> int:
     """O-STAGESCOPE — rewrite story scope from staging partition. Returns updates.
 
@@ -366,14 +406,17 @@ def layer_for_path(path: str) -> str:
     p = path.replace("\\", "/").lower()
     if p.endswith("pom.xml") or "/pom.xml" in p or p == "pom.xml":
         return "platform"
-    if re.search(r"/model/|/dto/|/domain/", p):
+    if re.search(r"/model/|/domain/", p):
         return "model"
     if re.search(r"/repository/|/repo/|/persistence/", p):
         return "repository"
     if re.search(r"/service/|/services/", p):
         return "service"
+    # O-M2DTOSURFACE: /dto/ + /mapper/ with REST surface (parity model._layer_for_legacy_path)
     if re.search(
-        r"/rest/|/web/|/api/|/controller/|/resource/|/security/|/config/", p
+        r"/rest/|/web/|/api/|/controller/|/resource/|/security/|/config/"
+        r"|/dto/|/mapper/",
+        p,
     ):
         return "surface"
     if p.endswith(".properties") or p.endswith(".yaml") or p.endswith(".yml"):
@@ -1838,12 +1881,31 @@ def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
     if not typed:
         return skeleton_from_inventory(inv, "", root=root)
 
+    # W4-623 §4 / O-SCOPEVIEWRENDER: unit paths come from task_contract.story_scope
+    # (ADR-39 SoT) — do not reimplement membership resolution beside it.
+    from task_contract import story_scope as _story_scope  # type: ignore
+
     units = {
         (u.get("key") or u.get("legacy_fqn") or ""): u
+        for u in (model.get("units") or [])
+        if isinstance(u, dict) and (u.get("key") or u.get("legacy_fqn"))
+    }
+    profile_keys = {
+        (u.get("key") or u.get("legacy_fqn") or "")
         for u in profile_units(model)
         if (u.get("key") or u.get("legacy_fqn"))
     }
     staging_scopes = staging_layer_scopes(root)
+    # O-M2FILLSCOPECLUBBER: unit legacy_paths are exclusive membership. Staging
+    # layer supplement may add orphan resources (properties/yml), never a path
+    # that is another story's typed unit (EntityUtils∈S02 must not reappear on
+    # S05 "other" via util/* layer fold).
+    all_unit_paths: set[str] = set()
+    for st0 in typed:
+        sid0 = str(st0.get("id") or "")
+        for lp0 in _story_scope(model, sid0):
+            if lp0 and not is_generated_build_path(lp0):
+                all_unit_paths.add(lp0)
 
     stories: list[dict] = []
     for st in typed:
@@ -1852,24 +1914,28 @@ def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
             # Typed store never emits empty-unit stories; refuse inventing one.
             continue
         lay = (st.get("layer") or "other").strip() or "other"
-        scopes: set[str] = set()
+        sid = st.get("id") or f"S{len(stories) + 1:02d}"
+        # Membership VIEW = story_scope SoT (companions included via attach).
+        scopes: set[str] = {
+            p for p in _story_scope(model, sid) if p and not is_generated_build_path(p)
+        }
         fids: list[str] = []
         roles: list[str] = []
         for k in keys:
             u = units[k]
-            lp = (u.get("legacy_path") or "").replace("\\", "/")
-            if lp and not is_generated_build_path(lp):
-                scopes.add(lp)
             for fid in u.get("findings") or []:
                 if fid and fid not in fids:
                     fids.append(fid)
             d = u.get("decision") if isinstance(u.get("decision"), dict) else None
-            if _decision_complete(d):
+            if k in profile_keys and _decision_complete(d):
                 roles.append(str(d.get("role") or "").upper())
-        # Scope supplement only — never a membership source.
+        # Scope supplement only — never a membership source; never dual-own units.
         for p in staging_scopes.get(lay) or []:
-            if p and not is_generated_build_path(p):
-                scopes.add(p)
+            if not p or is_generated_build_path(p):
+                continue
+            if p in all_unit_paths and p not in scopes:
+                continue
+            scopes.add(p)
         harvest_n = sum(1 for r in roles if r == "HARVEST")
         redesign_n = sum(1 for r in roles if r == "REDESIGN")
         role_note = (
@@ -1878,7 +1944,6 @@ def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
             else "roles pending"
         )
         scope_s = ", ".join(sorted(scopes)) if scopes else "<!-- JUDGMENT: paths -->"
-        sid = st.get("id") or f"S{len(stories) + 1:02d}"
         title = LAYER_TITLE.get(lay, lay.replace("-", " ").title())
         stories.append(
             {
@@ -1893,7 +1958,7 @@ def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
                 "rationale": (
                     f"ADR-34 model.stories[] id={sid} slug={st.get('slug') or lay} "
                     f"layer={lay} units={len(keys)} {role_note} "
-                    f"(F-story-rendered out-half; staging scope supplement only)"
+                    f"(F-story-rendered; scope via task_contract.story_scope)"
                 ),
                 "kind": None,
                 "seat_budget": None,
@@ -1912,6 +1977,8 @@ def skeleton_from_model(root: Path, inv: dict) -> list[dict]:
             f"O-M2SKELDRIFT RED: skeleton stories={len(stories)} != "
             f"model.stories[]={len(typed)} (F-story-rendered out-half)"
         )
+    # Non-unit staging orphans (messages/api-docs) → last/deploy VIEW owner.
+    fold_staging_orphans(stories, root)
     ensure_deploy_last(stories)
     return stories
 
@@ -2134,7 +2201,14 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
         )
         n_sfnd = max(0, before_sfnd - after_sfnd)
         n_nogen = strip_generated_scope(stories)
-        n_stage = apply_staging_scope(stories, root)
+        # O-M2FILLSCOPECLUBBER: when typed model.stories[] owns membership,
+        # skeleton_from_model already set per-unit scope (+ staging supplement).
+        # apply_staging_scope layer-folds util/* into "remaining" and undoes
+        # graph partition (EntityUtils∈S02 → S05) → O-M3TASKSCOPE RED.
+        if model_has_typed_profile_roles(root):
+            n_stage = 0
+        else:
+            n_stage = apply_staging_scope(stories, root)
         n_kind = derive_kinds(stories, inv, redesign_cls)
         n_budget = apply_seat_budgets(stories, inv_text)
         n_deps = derive_story_depends(stories, root)
@@ -2196,11 +2270,15 @@ def compose(root: Path, mode: str, *, force_skeleton: bool = False) -> int:
             from model import assign_stories as _adr24_assign
 
             _adr24_assign(root)
-            print("O-ADR24: assign_stories OK")
+            # O-LOGNOBANK: forensic token stays on stderr; stdout stays operator-safe.
+            print("story assignment OK")
+            print("O-ADR24: assign_stories OK", file=sys.stderr)
         except SystemExit as e:
+            print(f"story assignment RED: {e}", file=sys.stderr)
             print(f"O-ADR24 assign_stories RED: {e}", file=sys.stderr)
             return 2
         except Exception as e:
+            print(f"story assignment WARN: {e}", file=sys.stderr)
             print(f"O-ADR24 assign_stories WARN: {e}", file=sys.stderr)
     return 0
 

@@ -145,6 +145,9 @@ _m3all_sha256_file() {
 }
 
 # Prediction freeze — durable copy of the merged prediction table (HANDOFF).
+# O-M3ALLPREDIDEMP: do not rewrite when whole-set_fields_fp is unchanged.
+# Rewriting only frozen_at churns predictions_fp and forces OPERATOR_GATE
+# re-approve on every outer pass (freeze-race loop).
 if [ "$MODE" = "freeze-predictions" ]; then
   PRED_DIR="$ROOT/migration"
   mkdir -p "$PRED_DIR"
@@ -154,10 +157,18 @@ if [ "$MODE" = "freeze-predictions" ]; then
   if [ -d "$PRED_DIR/.m3-all-stamps" ]; then
     STAMP_FP="$(cat "$PRED_DIR/.m3-all-stamps"/*.fields 2>/dev/null | _m3all_sha256_stream)"
   fi
+  STAMP_FP="${STAMP_FP:-none}"
+  if [ -f "$PRED_FILE" ]; then
+    OLD_FP="$(sed -n 's/^# whole-set_fields_fp:[[:space:]]*//p' "$PRED_FILE" | head -1)"
+    if [ -n "$OLD_FP" ] && [ "$OLD_FP" = "$STAMP_FP" ]; then
+      echo "O-M3ALL: prediction table already frozen (whole-set_fields_fp=$STAMP_FP) — leave in place (O-M3ALLPREDIDEMP)"
+      exit 0
+    fi
+  fi
   cat >"$PRED_FILE" <<EOF
 # O-M3ALL prediction table — FROZEN
 # frozen_at: ${TS}
-# whole-set_fields_fp: ${STAMP_FP:-none}
+# whole-set_fields_fp: ${STAMP_FP}
 # Judge restart on row 1 (time to first plan defect). Rename-class is the control.
 
 | Metric | This wave (measured) | Predicted next wave |
@@ -238,8 +249,10 @@ def lint(klass: str, msg: str) -> None:
 def ok(msg: str) -> None:
     print(f"OK: {msg}")
 
+# O-FINDINGID: allow rule-id-\d+ with zero mid segments (hibernate-00005),
+# not only multi-hyphen tech-spring-data-jpa-00001 shapes.
 FINDING_RE = re.compile(
-    r"\b([a-z][a-z0-9]*(?:-[a-z0-9]+)+-\d+)\b"
+    r"\b([a-z][a-z0-9]*(?:-[a-z0-9]+)*-\d+)\b"
 )
 PORT_RE = re.compile(
     r"(?im)^\*\*Port\*\*\s*:?\s*(rename|reimplement)\b"
@@ -279,16 +292,35 @@ def parse_roadmap(text: str):
     heads = re.findall(r"^##\s+(S\d{2,})\s*:", text, re.M)
     parts = re.split(r"^##\s+(S\d{2,})\s*:.*$", text, flags=re.M)
     bodies = {parts[i]: parts[i + 1] for i in range(1, len(parts) - 1, 2)}
+    # O-FINDINGSOT / ADR-39: K1 mandatory set from model.stories[] when present.
+    typed_findings = {}
+    model_p = root / "migration" / "model.json"
+    if model_p.is_file():
+        try:
+            sys.path.insert(0, str(root / ".hermes" / "harness"))
+            from model import load as _mload  # type: ignore
+            from task_contract import story_findings as _story_findings  # type: ignore
+            _model = _mload(root)
+            if _model.get("stories"):
+                for _st in _model["stories"]:
+                    _sid = str((_st or {}).get("id") or "")
+                    if _sid:
+                        typed_findings[_sid] = _story_findings(_model, _sid)
+        except Exception:
+            typed_findings = {}
     stories = []
     for sid in heads:
         body = bodies.get(sid, "")
         def field(name: str) -> str:
             m = re.search(rf"^-\s*{name}:\s*(.+)$", body, re.M)
             return m.group(1).strip() if m else ""
-        findings = [
-            f for f in re.split(r"[,\s]+", field("findings"))
-            if f and f != "-" and FINDING_RE.fullmatch(f)
-        ]
+        if sid in typed_findings:
+            findings = list(typed_findings[sid])
+        else:
+            findings = [
+                f for f in re.split(r"[,\s]+", field("findings"))
+                if f and f != "-" and FINDING_RE.fullmatch(f)
+            ]
         scope = [s.strip().rstrip(",") for s in field("scope").split(",") if s.strip()]
         stories.append({"sid": sid, "findings": findings, "scope": scope})
     return stories
@@ -529,8 +561,8 @@ if planned_any and mode != "jit":
             if fid not in plan_f and owners.get(fid, [s["sid"]]) == [s["sid"]]:
                 lint(
                     "O-M3ALL-K1",
-                    f"{s['sid']}: roadmap finding {fid} not cited in {s['tasks_path'].name} "
-                    f"(K1 closure)",
+                    f"{s['sid']}: typed finding {fid} not cited in {s['tasks_path'].name} "
+                    f"(K1 closure; O-FINDINGSOT)",
                 )
 
 # --- Port coverage --------------------------------------------------------
@@ -551,6 +583,19 @@ if mode != "jit":
 # --- Later-class leakage --------------------------------------------------
 # Class simple-names appearing in later stories' roadmap scope must not be
 # Owned/Targeted by an earlier story.
+# O-M3DTOGENSKIP / O-M3ALL-LATEREXCL: scope-exclusions.md classes (e.g. OpenAPI
+# *Dto owned by build-codegen) are not "later story work" — ignore them.
+excl_classes = set()
+excl_path = Path(root) / "migration" / "scope-exclusions.md"
+if excl_path.is_file():
+    for ln in excl_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^-\s+`?([^`\s]+)`?", ln.strip())
+        if not m:
+            continue
+        base = re.sub(r"\.java$", "", m.group(1).rstrip("/").split("/")[-1])
+        if re.fullmatch(r"[A-Z][A-Za-z0-9]*", base):
+            excl_classes.add(base)
+
 later_classes_by_sid = {}
 all_scope_classes = {}
 for idx, s in enumerate(roadmap_stories):
@@ -565,14 +610,17 @@ for idx, s in enumerate(roadmap_stories):
     for later in roadmap_stories[idx + 1 :]:
         for path in later["scope"]:
             base = re.sub(r"\.java$", "", path.rstrip("/").split("/")[-1])
-            if re.fullmatch(r"[A-Z][A-Za-z0-9]*", base):
+            if re.fullmatch(r"[A-Z][A-Za-z0-9]*", base) and base not in excl_classes:
                 later_classes_by_sid[s["sid"]].add(base)
 
 for s in roadmap_stories:
     plan = s["plan"]
     if not plan:
         continue
-    leaked = sorted(set(plan["classes"]) & later_classes_by_sid.get(s["sid"], set()))
+    leaked = sorted(
+        (set(plan["classes"]) & later_classes_by_sid.get(s["sid"], set()))
+        - excl_classes
+    )
     for cls in leaked:
         lint(
             "O-M3ALL-LATER",

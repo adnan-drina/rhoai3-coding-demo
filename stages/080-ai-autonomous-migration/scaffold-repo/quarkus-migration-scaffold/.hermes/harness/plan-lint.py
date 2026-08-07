@@ -25,7 +25,8 @@ Targets).
 Checks (exit 0 = plan accepted, 1 = revision required; findings printed
 one per line as 'LINT:<class>: <detail>'):
   ids        — every task heading parseable (any #-depth, T-style id)
-  order      — rewrite-class tasks precede infer-class tasks
+  order      — (retired hard rewrite-before-infer) O-COLLABSEQ / O-PLANORDER
+              enforce condensation/dependency-order in file/M4 heading order
   design     — every infer task carries design content (a target/file
                mapping or signature line), per the design-in-packet rule
   ui-surface — the plan covers or explicitly waives the legacy UI
@@ -537,38 +538,16 @@ def main():
             bodies[tid] = _ttb(t)
         # Synthetic VIEW corpus for whole-doc checks (forbidden/ui-surface).
         # Built from the store — not read from specs/**/tasks.md.
-        # S-CHAR: model harvest must name src/test — project any existing
-        # model-level tests from staging/legacy into the synthetic VIEW.
-        _char_lines: list[str] = []
-        for _root in (
-            root / "migration" / "staging" / "src" / "test" / "java",
-            root / "src" / "test" / "java",
-            Path("/projects/legacy/src/test/java"),
-        ):
-            if not _root.is_dir():
-                continue
-            for _p in sorted(_root.rglob("*Test*.java")):
-                try:
-                    rel = _p.relative_to(_root).as_posix()
-                except ValueError:
-                    continue
-                s = f"src/test/java/{rel}"
-                if "/model/" in s or _p.name == "ValidatorTests.java":
-                    _char_lines.append(f"- `{s}`")
-            if _char_lines:
-                break
-        _char_block = ""
-        if _char_lines:
-            _char_block = (
-                "Characterization (model-level):\n"
-                + "\n".join(_char_lines[:8])
-                + "\n\n"
-            )
+        #
+        # O-PLANCOVERGATE / O-SCHAROWN (W4-651): do NOT inject staging
+        # ValidatorTests / model *Test*.java into this VIEW. That made S-CHAR
+        # see `src/test/` and PASS while model.tasks[] owned zero test paths
+        # → M3/M4 GREEN, M5 ship coverage 0% vs 80% (S01 Wave5). Staging
+        # presence is not plan ownership; F-plan-covers-gate requires Owns.
         text = (
             f"# {sid} Tasks\n\n"
             "<!-- O-M3TYPED — F-lint-reads-store: lint input is model.tasks[] -->\n"
             "UI surface: waived (API-only).\n\n"
-            + _char_block
             + "\n".join(f"#### {tid}: {title}\n{bodies[tid]}" for _, tid, title in heads)
         )
     else:
@@ -660,6 +639,64 @@ def main():
         print("\n".join(problems))
         return 1
 
+    # O-UNDECIDEDLINT / F-undecided-refuses (W4-624): role=UNDECIDED means
+    # "refuse ship until M1 decision exists" — honour it at plan-lint so those
+    # tasks cannot reach M4 and burn seats (S01-T-008 specimen). Defense-in-depth
+    # beside O-ADR45-S1 typed preconditions[] (architectural SoT).
+    if typed_mode:
+        try:
+            from task_contract import is_precondition_shaped_acceptance
+        except ImportError:
+            is_precondition_shaped_acceptance = lambda _c: False  # noqa: E731
+        for t in typed_tasks:
+            tid = str(t.get("id") or "")
+            role = str(t.get("role") or "").strip().upper()
+            if role == "UNDECIDED":
+                lint(
+                    "undecided",
+                    f"{tid}: role=UNDECIDED — refuse ship until M1 decision exists "
+                    f"(O-UNDECIDEDLINT / F-undecided-refuses)",
+                )
+            # O-ADR45-S1 / F-acceptance-is-verifiable — precondition prose must
+            # not live in acceptance[] (belongs in preconditions[] / owning_phase).
+            for a in t.get("acceptance") or []:
+                if is_precondition_shaped_acceptance(str(a)):
+                    lint(
+                        "adr45-acceptance",
+                        f"{tid}: acceptance holds precondition-shaped clause "
+                        f"{a!r} — use preconditions[] / owning_phase "
+                        f"(O-ADR45-S1 / F-acceptance-is-verifiable)",
+                    )
+            # F-phase-field-present — convert tasks must carry owning_phase.
+            kind = str(t.get("kind") or "")
+            if kind not in ("characterize",) and not str(t.get("owning_phase") or "").strip():
+                # Only RED when preconditions/acceptance already show ADR-45 emit
+                # (avoid mass-RED on pre-S1 model.json until re-assign).
+                if t.get("preconditions") is not None or any(
+                    is_precondition_shaped_acceptance(str(a))
+                    for a in (t.get("acceptance") or [])
+                ):
+                    lint(
+                        "adr45-phase",
+                        f"{tid}: missing owning_phase "
+                        f"(O-ADR45-S1 / F-phase-field-present)",
+                    )
+    else:
+        for _, tid, _ in heads:
+            body = bodies.get(tid, "")
+            if re.search(
+                r"(?im)^\s*\*?\*?Role\*?\*?\s*:\s*`?UNDECIDED`?\b",
+                body,
+            ) or re.search(
+                r"(?im)^\s*role\s*:\s*UNDECIDED\b",
+                body,
+            ):
+                lint(
+                    "undecided",
+                    f"{tid}: role=UNDECIDED — refuse ship until M1 decision exists "
+                    f"(O-UNDECIDEDLINT / F-undecided-refuses)",
+                )
+
     # O-SCOPENOGEN — Owns/Target/→ must not point at build outs (gitignored;
     # M1 staging excludes them). Pair roadmap-lint O-SCOPENOGEN.
     _gen_path_re = re.compile(
@@ -716,15 +753,12 @@ def main():
                 return True
         return False
 
-    # order: no rewrite after the first *non-characterization* infer
-    seen_infer = False
-    for _, tid, title in heads:
-        body = bodies.get(tid, "")
-        if classes.get(tid) == "infer":
-            if not _is_characterization(title, body):
-                seen_infer = True
-        elif classes.get(tid) == "rewrite" and seen_infer:
-            lint("order", f"{tid}: rewrite task after infer tasks began")
+    # O-COLLABSEQ / O-TASKCLASSORDER: rewrite-before-infer is a *soft* seat
+    # preference. Condensation / dependency-order is the hard M4 file-order
+    # SoT — HARVEST rewrites may follow REDESIGN infers when they depend on
+    # earlier units (JdbcPet → JdbcPetRowMapper). Do NOT RED rewrite-after-
+    # infer here; O-PLANORDER (document position) enforces conversion order.
+    # Characterization remains Class=infer and may precede convert (O-M3ORDERCHAR).
 
     # O-ASSUMESORDER — Assumes: … (T-NNN) must resolve to an earlier heading.
     # M4 executes in file/heading order (supervisor TASK_IDS = grep order).
@@ -1360,16 +1394,22 @@ def main():
                         f"(O-SPECREIMPL / ARCH A2)",
                     )
 
-    # S-CHAR (V8 S02 HOLD; O-M3CHARSCOPE): target-side model *.java harvest
-    # must name src/test — legacy **Absorbs** cites and Shape=structure prep
-    # (.gitkeep) must not false-RED platform stories (petclinic S01).
+    # S-CHAR (V8 S02 HOLD; O-M3CHARSCOPE; O-SCHAROWN / O-PLANCOVERGATE):
+    # target-side model *.java harvest must be owned alongside at least one
+    # task Owns/Target `src/test/**/*.java`. Whole-doc `src/test/` prose (or
+    # synthetic staging injection — removed W4-651) must not satisfy this.
+    # Shape=structure/verify prep and Absorbs-only legacy cites still skip.
     target_slash = target_pkg.replace(".", "/")
     _tgt_model_java = re.compile(
         rf"src/main/java/{re.escape(target_slash)}/model/[A-Za-z0-9_./-]+\.java"
     )
+    _owns_test_java = re.compile(r"src/test/[\w./-]+\.java")
     _absorbs_line = re.compile(r"(?i)^\s*\*?\*?Absorbs\*?\*?\s*:")
     _structure_shape = re.compile(
         r"(?i)\*\*Shape\*\*:\s*(structure|verify)\b"
+    )
+    _owns_section = re.compile(
+        r"(?i)^\s*\*?\*?(Owns|Target\s*design|Target)\*?\*?\s*:?"
     )
 
     def _schar_claim_text(body: str) -> str:
@@ -1377,6 +1417,26 @@ def main():
             ln
             for ln in body.splitlines()
             if not _absorbs_line.match(ln.strip())
+        )
+
+    def _task_owns_src_test(body: str) -> bool:
+        """True when Owns/Target (not Absorbs) names a src/test .java path."""
+        for ln in body.splitlines():
+            if _absorbs_line.match(ln.strip()):
+                continue
+            if _owns_section.match(ln) or ln.strip().startswith("-"):
+                if _owns_test_java.search(ln):
+                    return True
+            # typed_task_body often inlines Owns: `path`
+            if re.search(r"(?i)\bOwns\b.*src/test/", ln) and _owns_test_java.search(
+                ln
+            ):
+                return True
+        return bool(
+            re.search(
+                r"(?im)^\s*\*?\*?Owns\*?\*?\s*:.*src/test/[\w./-]+\.java",
+                body,
+            )
         )
 
     _schar_needs_tests = False
@@ -1387,11 +1447,80 @@ def main():
         if _tgt_model_java.search(_schar_claim_text(body)):
             _schar_needs_tests = True
             break
-    if _schar_needs_tests and not re.search(r"src/test/", text):
+    _schar_has_test_owns = any(
+        _task_owns_src_test(bodies.get(tid, "")) for _, tid, _ in heads
+    )
+    # Typed store: also read owns[] directly (authoritative).
+    if typed_mode and typed_tasks and not _schar_has_test_owns:
+        for t in typed_tasks:
+            for o in t.get("owns") or []:
+                if isinstance(o, str) and o.startswith("src/test/") and o.endswith(
+                    ".java"
+                ):
+                    _schar_has_test_owns = True
+                    break
+            if _schar_has_test_owns:
+                break
+    if _schar_needs_tests and not _schar_has_test_owns:
         lint(
             "S-CHAR",
-            "plan targets src/main/.../model/*.java but names no src/test/ path — "
-            "add model-level characterization tests (deferring service tests ≠ empty tests; V8 S02)",
+            "plan targets src/main/.../model/*.java but no task Owns a "
+            "src/test/**/*.java path — add model-level characterization "
+            "(e.g. ValidatorTests harvest); staging presence alone does not "
+            "satisfy S-CHAR / F-plan-covers-gate (O-SCHAROWN / W4-651)",
+        )
+
+    # O-PLANCOVERGATE / F-plan-covers-gate (W4-651/652): general ship-acceptance
+    # lint — any story landing production src/main Java (not structure/verify,
+    # not package-info-only) must Own ≥1 src/test/**/*.java. Distinct from
+    # S-CHAR (model specialization). Staging presence alone never satisfies.
+    _prod_main_java = re.compile(r"src/main/java/[\w./-]+\.java")
+    _skip_shape = re.compile(
+        r"(?i)\*\*Shape\*\*:\s*(structure|verify|absent|remove)\b"
+    )
+
+    def _is_prod_main(path: str) -> bool:
+        return bool(
+            path.startswith("src/main/java/")
+            and path.endswith(".java")
+            and not path.endswith("package-info.java")
+            and not path.endswith(".gitkeep")
+        )
+
+    _needs_cover = False
+    if typed_mode and typed_tasks:
+        for t in typed_tasks:
+            if str(t.get("shape") or "").lower() in {
+                "structure",
+                "verify",
+                "absent",
+                "remove",
+            }:
+                continue
+            for o in t.get("owns") or []:
+                if isinstance(o, str) and _is_prod_main(o):
+                    _needs_cover = True
+                    break
+            if _needs_cover:
+                break
+    else:
+        for _, tid, _ in heads:
+            body = bodies.get(tid, "")
+            if _structure_shape.search(body) or _skip_shape.search(body):
+                continue
+            for m in _prod_main_java.finditer(_schar_claim_text(body)):
+                if _is_prod_main(m.group(0)):
+                    _needs_cover = True
+                    break
+            if _needs_cover:
+                break
+    if _needs_cover and not _schar_has_test_owns:
+        lint(
+            "O-PLANCOVERGATE",
+            "story Owns production src/main/**/*.java but no task Owns "
+            "src/test/**/*.java — ship coverage gate (≥80% new_code) cannot "
+            "be satisfied; emit layer-affine characterization via "
+            "O-M3COVEREMIT (F-plan-covers-gate / W4-651)",
         )
 
     # K2-LABEL (V10 Poll 13): task-packet reads **Findings**: — a **Finds**:
@@ -1865,19 +1994,30 @@ def main():
             for f in fqns:
                 # Prefer exact dep-order keys; keep first owner
                 task_for_fqn.setdefault(f, tid)
-        # If A converts before B in dependency-order (rank A < rank B),
-        # A's task number must be ≤ B's task number.
+        # O-COLLABSEQ / O-GODORDERPOS: M4 executes in *document/heading*
+        # order (supervisor TASK_IDS = grep order), not T-NNN numeric
+        # suffix. O-TASKCLASSORDER used to emit HARVEST rewrites before
+        # REDESIGN infers while keeping T-006 < T-010 numerically — so
+        # _task_num checks greenwashed file-order violations (S02
+        # JdbcPetRowMapper before JdbcPet). Compare heading positions.
+        _doc_pos = {tid: i for i, (_, tid, _) in enumerate(heads)}
         owned = [(f, r) for f, r in fqn_rank.items() if f in task_for_fqn]
         for i, (f1, r1) in enumerate(owned):
             for f2, r2 in owned[i + 1 :]:
                 if r1 >= r2:
                     continue
                 t1, t2 = task_for_fqn[f1], task_for_fqn[f2]
-                if t1 != t2 and _task_num(t1) > _task_num(t2):
+                if t1 == t2:
+                    continue
+                p1, p2 = _doc_pos.get(t1), _doc_pos.get(t2)
+                if p1 is None or p2 is None:
+                    continue
+                if p1 > p2:
                     lint(
                         "O-PLANORDER",
-                        f"{t2} ({f2}) precedes {t1} ({f1}) but "
-                        f"dependency-order converts {f1} before {f2}",
+                        f"{t2} ({f2}) precedes {t1} ({f1}) in file/M4 order "
+                        f"but dependency-order converts {f1} before {f2} "
+                        f"(O-COLLABSEQ / O-PLANORDER)",
                     )
 
     # S-GODORDER / O-GODORDERCVT: god-node *convert* must follow an earlier
@@ -2059,8 +2199,15 @@ def main():
         if tid in delivered:
             continue
         blob = f"{title}\n{bodies.get(tid, '')}"
-        # Spring Boot parent / platform BOM → Quarkus
-        if re.search(r"(?i)spring\s*boot\s*parent|platform\s*bom|quarkus\s*platform\s*bom", blob):
+        # Spring Boot parent / BOM → Quarkus convert (O-PLANEXISTS).
+        # O-PLANEXISTSAUDIT: do NOT match destination phrasing alone
+        # ("Quarkus platform BOM", "finalize pom") — that false-REDs S05
+        # audit/finalize tasks when the tree is already on Quarkus.
+        if re.search(
+            r"(?i)spring\s*boot\s*parent|spring-boot-starter-parent|"
+            r"replace\s+.*\bbom\b|convert\s+.*\bbom\b|migrate\s+.*\bbom\b",
+            blob,
+        ) and re.search(r"(?i)\b(replace|convert|migrate|swap|remove)\b", blob):
             if has_quarkus_bom and not has_spring_parent:
                 lint(
                     "O-PLANEXISTS",
@@ -2127,6 +2274,81 @@ def main():
                         f"(O-PLANEXISTS)",
                     )
 
+        # O-PLANPROP (R-226): property conversion naming a package/class with
+        # zero occurrences in the target tree is dead/mis-scoped (T-009
+        # logging.level.org.springframework on a Quarkus-only app).
+        if re.search(
+            r"(?i)\bpropert(?:y|ies)\b|application\.properties|"
+            r"logging\.level|quarkus\.log\.category",
+            blob,
+        ) and re.search(
+            r"(?i)\b(convert|migrate|replace|rename|update|map)\b", blob
+        ):
+            prop_tokens: set[str] = set()
+            for m in re.finditer(
+                r"(?:logging\.level\.|quarkus\.log\.category\.)"
+                r"([a-z][a-z0-9_.]+)",
+                blob,
+                re.I,
+            ):
+                prop_tokens.add(m.group(1).rstrip("."))
+            for m in re.finditer(
+                r"\b(org\.springframework(?:\.[A-Za-z0-9_]+)*)\b", blob
+            ):
+                prop_tokens.add(m.group(1))
+            for m in re.finditer(
+                r"(?i)(?:package|category|logger)\s+[`'\"]?"
+                r"([a-z][a-z0-9]+(?:\.[a-z][a-z0-9]+){1,})",
+                blob,
+            ):
+                prop_tokens.add(m.group(1))
+
+            def _tree_mentions(token: str) -> bool:
+                if not token or token.count(".") < 1:
+                    return True  # too coarse — skip
+                # Properties files + java sources
+                for base in (
+                    root / "src/main/resources",
+                    root / "src/test/resources",
+                    root / "src/main/java",
+                    root / "src/test/java",
+                ):
+                    if not base.is_dir():
+                        continue
+                    for p in base.rglob("*"):
+                        if not p.is_file():
+                            continue
+                        if p.suffix not in {
+                            ".java",
+                            ".properties",
+                            ".yaml",
+                            ".yml",
+                            ".xml",
+                        }:
+                            continue
+                        try:
+                            if token in p.read_text(
+                                encoding="utf-8", errors="replace"
+                            ):
+                                return True
+                        except OSError:
+                            continue
+                return False
+
+            for tok in sorted(prop_tokens):
+                if not _tree_mentions(tok):
+                    # WARN surface + LINT so M3 revision must drop/re-scope
+                    print(
+                        f"WARN:O-PLANPROP: {tid}: property conversion names "
+                        f"{tok} with zero occurrences in target tree",
+                        file=sys.stderr,
+                    )
+                    lint(
+                        "O-PLANPROP",
+                        f"{tid}: property conversion names `{tok}` with zero "
+                        f"occurrences in target tree (O-PLANPROP)",
+                    )
+
     # O-PORTREIMPL: API-swap convert tasks must declare Port: rename|reimplement.
     # S03 evidence (W4-101 / clean-stop): harness vocabulary had Class+Shape but
     # no axis for "target API ≠ source API". T-003 (EntityManager unchanged =
@@ -2174,6 +2396,37 @@ def main():
         # Skip pure package/structure harvest titles without API swap verbs
         if re.search(r"(?i)\b(package\s+rename|package-info|\.gitkeep)\b", blob) and not re.search(
             r"(?i)\b(panache|agroal|jdbctemplate|spring\s*data|@query)\b", blob
+        ):
+            continue
+        # O-PORTPKGINFO / O-PORTNONJAVA: Owns/Target solely package-info.java,
+        # config resources (.properties/.yml), or pom.xml — not an API-swap
+        # convert. Plan prose may mention Panache/JDBC/datasource without
+        # making the task a Spring Data→Panache port (S05-T-006 properties;
+        # S05-T-004 pom.xml / O-COORDROLE).
+        _owns_paths = re.findall(
+            r"(?im)^\*\*Owns\*\*\s*:?\s*`([^`]+)`|"
+            r"^\*\*Target(?:\s*design)?\*\*[^\n]*`([^`]+)`|"
+            r"→\s*`([^`]+)`",
+            body,
+        )
+        _owns_flat = [
+            x.replace("\\", "/") for trip in _owns_paths for x in trip if x
+        ]
+        if _owns_flat and all(
+            p.endswith("package-info.java")
+            or p.endswith(".properties")
+            or p.endswith(".yml")
+            or p.endswith(".yaml")
+            or p.endswith("pom.xml")
+            or p == "pom.xml"
+            for p in _owns_flat
+        ):
+            continue
+        if re.search(r"(?i)package-info", title) and re.search(
+            r"(?i)package-info\.java", body
+        ) and not re.search(
+            r"(?i)\b(jdbctemplate|namedparameter|simplejdbc|@query|agroal)\b",
+            body,
         ):
             continue
         pm = _port_re.search(body)

@@ -35,5 +35,10 @@ mvn -q -Dmaven.repo.local="$M2_RUN" \
 python3 "$(dirname "$0")/s1066-collapse.py" . >> /tmp/style-autofix.log 2>&1 || true
 # O-SONARLINEFIX: S112 NOSONAR / S1130 redundant throws / S2925 sleep→cache backdate
 python3 "$(dirname "$0")/sonar-line-fix.py" /tmp/sonar-violations.txt >> /tmp/style-autofix.log 2>&1 || true
+# O-STY / W4-709: OpenRewrite may mutate migration/staging (diamond/imports) even
+# when CHANGED counts only src/. Fidelity baseline must not drift — discard here
+# so supervisor O-STY is not the only backstop (live: 16-file dirty @ 16:31Z).
+git checkout -q -- migration/staging 2>/dev/null || true
+git reset -q -- migration/staging 2>/dev/null || true
 CHANGED=$(git diff --name-only -- src/ | wc -l | tr -d ' ')
 echo "style-autofix: recipes complete, $CHANGED files changed"

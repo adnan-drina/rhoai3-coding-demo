@@ -33,10 +33,17 @@ _STOP_HEAD = re.compile(
     r"Out of scope|Assumes|Port|Inputs|Actor|ADDITIONAL-WORK)\*?\*?\s*:"
 )
 _VERIFY_OF = re.compile(r"(?i)\bVerification\s+of\s*:")
+try:
+    from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+except ImportError:
+    HEADING_TASK_ID_ATOM = (
+        r"(?:S\d+-TC-[A-Za-z0-9]+|S\d+-T-\d{3}(?:-[A-Za-z0-9]+)?|T[-A-Za-z0-9]*\d+[A-Za-z]*)"
+    )
+
 _OOS = re.compile(
     r"(?i)(?:^\s*\*?\*?Out of scope\*?\*?\s*:)"
     r"|(?:\bdo NOT touch\b)"
-    r"|(?:\bowned by T[-A-Za-z0-9]*\d+[A-Za-z]*)"
+    rf"|(?:\bowned by {HEADING_TASK_ID_ATOM})"
 )
 _STAGING = re.compile(r"(?:^|/)(?:migration/staging|legacy)(?:/|$)")
 _ARROW = re.compile(r"(?:→|->)\s*`?(?:src/|pom\.xml|k8s/)")
@@ -45,7 +52,9 @@ _ARROW = re.compile(r"(?:→|->)\s*`?(?:src/|pom\.xml|k8s/)")
 def _task_body(tasks_file: Path, tid: str) -> str:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
+        re.finditer(
+            rf"^#{{2,6}}\s+({HEADING_TASK_ID_ATOM})\s*:\s*(.+)$", text, re.M
+        )
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:
@@ -75,6 +84,19 @@ def _extract_paths_from_text(text: str, *, skip_verify_of: bool) -> list[str]:
             return
         if "/" not in p and p != "pom.xml":
             return
+        # O-OWNSTAGEDIR: bare package dirs (…/model/) are not tip deliverables.
+        # Emitting them made O-OWNSTAGEALL REFUSE after staging the real .java
+        # files (S01-T-002 Role/User preseed → empty stage → MiniMax).
+        # Structure work must declare …/.gitkeep (or a suffixed file).
+        p_norm = p.rstrip("/")
+        if p.endswith("/") or (
+            p_norm.startswith("src/")
+            and "/java/" in p_norm
+            and "." not in Path(p_norm).name
+        ):
+            if not p_norm.endswith(".gitkeep"):
+                return
+            p = p_norm if p_norm.endswith(".gitkeep") else p
         if p in seen:
             return
         seen.add(p)
@@ -179,13 +201,30 @@ def stage_paths(body: str) -> list[str]:
     return out
 
 
+def _maybe_add_harvest_pom(paths: list[str], root: Path) -> list[str]:
+    """O-HARVESTREADY: stage pom.xml when owned Targets imply an ensurer.
+
+    Shared policy in harvest_ready.needs_pom_stage (validation|mapstruct|jpa).
+    """
+    if "pom.xml" in paths:
+        return paths
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from harvest_ready import needs_pom_stage  # type: ignore
+    except ImportError:
+        return paths
+    if needs_pom_stage(root, paths):
+        return paths + ["pom.xml"]
+    return paths
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("usage: task-stage-paths.py <tasks.md> <T-NNN>", file=sys.stderr)
         return 2
     tasks = Path(sys.argv[1])
     tid = sys.argv[2].strip()
-    m = re.match(r"(T[-A-Za-z0-9]*\d+[A-Za-z]*)", tid)
+    m = re.match(rf"({HEADING_TASK_ID_ATOM})", tid)
     if m:
         tid = m.group(1)
     if not tasks.is_file():
@@ -195,7 +234,7 @@ def main() -> int:
     if not body:
         print("no-task", file=sys.stderr)
         return 1
-    for p in stage_paths(body):
+    for p in _maybe_add_harvest_pom(stage_paths(body), Path.cwd()):
         print(p)
     return 0
 

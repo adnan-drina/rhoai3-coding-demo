@@ -38,6 +38,32 @@ session_reap_group() { # tag pid cause
   session_unregister "$tag"
 }
 
+# O-ORPHANOC: after ESCW / tip seal, reap registered sessions for this task
+# tag family (T-NNN, T-NNN-sfix-w, …) so orphan opencode cannot keep writing.
+# Unregistered opencode stays a finding (session_log_unregistered_opencode).
+orphan_oc_reap_after_tip() { # tid [cause]
+  local tid=$1 cause=${2:-orphan-oc-after-tip}
+  local f pid tag
+  [ -n "$tid" ] || return 0
+  mkdir -p "$SESSIONS_DIR"
+  shopt -s nullglob
+  for f in "$SESSIONS_DIR"/${tid}.pid "$SESSIONS_DIR"/${tid}-*.pid; do
+    [ -f "$f" ] || continue
+    tag=$(basename "$f" .pid)
+    pid=$(tr -d '[:space:]' <"$f" || true)
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      printf '%s O-ORPHANOC: reaping session %s after tip seal (%s)\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$tag" "$cause" \
+        >>"${SUPERVISOR_LOG:-/tmp/supervisor.log}" 2>/dev/null || true
+      session_reap_group "$tag" "$pid" "$cause"
+    else
+      rm -f "$f"
+    fi
+  done
+  shopt -u nullglob
+  session_log_unregistered_opencode
+}
+
 # Log unregistered opencode PIDs; never kill them (F-74).
 session_log_unregistered_opencode() {
   local opid rpid reg pgid rpgid

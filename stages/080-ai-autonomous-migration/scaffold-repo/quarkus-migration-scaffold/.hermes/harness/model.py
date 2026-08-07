@@ -46,6 +46,7 @@ _spec.loader.exec_module(dependency_order)
 # ADR-41 Move 1 — single task-contract schema (import, do not re-literalize).
 from task_contract import (  # type: ignore  # noqa: E402
     DERIVED_FIELDS,
+    HEADING_TASK_ID_ATOM,
     SEAT_FIELDS,
     class_for_role,
     evidence_kinds_for_acceptance,
@@ -57,6 +58,7 @@ from task_contract import (  # type: ignore  # noqa: E402
     port_for_role,
     staging_fact_lines,
     story_state,
+    unmatched_acceptance_clauses,
 )
 
 # C1 / ADR-41: fingerprint helpers re-export the sole field sets.
@@ -526,7 +528,9 @@ def context_for(
             harvest_paths.append(lp)
     # Also cover typed owns that declare staging acceptance.
     for t in typed:
-        kinds = evidence_kinds_for_acceptance(t.get("acceptance") or [])
+        kinds = evidence_kinds_for_acceptance(
+            t.get("acceptance") or [], task_kind=str(t.get("kind") or "")
+        )
         if "staging_fact" not in kinds:
             continue
         for o in t.get("owns") or []:
@@ -548,7 +552,10 @@ def context_for(
             uniq.append(p)
         # O-STAGINGOWNUNIT: own unit first when projecting for a focused seat.
         if focus_task is not None:
-            kinds = evidence_kinds_for_acceptance(focus_task.get("acceptance") or [])
+            kinds = evidence_kinds_for_acceptance(
+                focus_task.get("acceptance") or [],
+                task_kind=str(focus_task.get("kind") or ""),
+            )
             if "staging_fact" in kinds:
                 own: list[str] = []
                 uk = (focus_task.get("unit_keys") or [None])[0]
@@ -803,7 +810,12 @@ def model_has_typed_decisions(model: dict) -> bool:
 
 
 def _layer_for_legacy_path(path: str) -> str:
-    """Packaging label only (not membership SoT) — mirrors m2-compose.layer_for_path."""
+    """Packaging label only (not membership SoT) — mirrors m2-compose.layer_for_path.
+
+    O-M2DTOSURFACE (W4-759): OpenAPI/transfer ``/dto/`` and MapStruct ``/mapper/``
+    package with the REST surface story (not remaining/other) so stories[] matches
+    DtoHarvest / mapper ownership under ADR-34.
+    """
     p = (path or "").replace("\\", "/").lower()
     if p.endswith("pom.xml") or "/pom.xml" in p or p.endswith(".xml") and "src/" not in p:
         return "platform"
@@ -813,7 +825,14 @@ def _layer_for_legacy_path(path: str) -> str:
         return "repository"
     if "/service/" in p:
         return "service"
-    if "/rest/" in p or "/web/" in p or "/controller/" in p or "/security/" in p:
+    if (
+        "/rest/" in p
+        or "/web/" in p
+        or "/controller/" in p
+        or "/security/" in p
+        or "/dto/" in p
+        or "/mapper/" in p
+    ):
         return "surface"
     if "/config/" in p or "/configuration/" in p:
         return "surface"
@@ -1002,6 +1021,87 @@ def stories_from_ranks(
     return stories
 
 
+def attach_companion_units(model: dict, stories: list[dict]) -> int:
+    """ADR-39 — attach package-info + coord units to stories (membership SoT).
+
+    ``profile_units`` deliberately excludes package-info (no PROFILE harvest
+    role). Those units — and pom/resources coords — still need a story owner
+    so ``story_scope`` / O-SCOPEVIEW / O-SCOPECOVER stay honest. Attachment
+    rules (migration-general):
+
+    - ``package-info.java`` → story owning the most units in the same package
+      directory (parent path majority); else last/deploy story.
+    - ``kind in {pom, resources}`` / ``coord:*`` → story whose ``layer`` label
+      matches ``_layer_for_legacy_path``; else last/deploy story.
+
+    Never reassigns a key already in ``stories[].units``. Returns attach count.
+    """
+    if not stories:
+        return 0
+    units_by_key: dict[str, dict] = {}
+    for u in model.get("units") or []:
+        if not isinstance(u, dict):
+            continue
+        key = str(u.get("key") or "").strip()
+        if key:
+            units_by_key[key] = u
+    claimed = set(_unit_story_map(stories))
+    story_by_id = {str(st.get("id") or ""): st for st in stories if st.get("id")}
+    dir_scores: dict[str, dict[str, int]] = {}
+    for st in stories:
+        sid = str(st.get("id") or "")
+        if not sid:
+            continue
+        for k in st.get("units") or []:
+            u = units_by_key.get(k) or {}
+            lp = str(u.get("legacy_path") or "").replace("\\", "/").strip()
+            if not lp:
+                continue
+            d = str(Path(lp).parent).replace("\\", "/")
+            bucket = dir_scores.setdefault(d, {})
+            bucket[sid] = bucket.get(sid, 0) + 1
+    last = stories[-1]
+    last_id = str(last.get("id") or "")
+    n = 0
+
+    def _append(sid: str, key: str) -> None:
+        nonlocal n
+        st = story_by_id.get(sid)
+        if st is None or key in claimed:
+            return
+        units_list = st.setdefault("units", [])
+        if key not in units_list:
+            units_list.append(key)
+        claimed.add(key)
+        n += 1
+
+    for key, u in units_by_key.items():
+        if key in claimed:
+            continue
+        lp = str(u.get("legacy_path") or "").replace("\\", "/").strip()
+        fqn = str(u.get("legacy_fqn") or "")
+        kind = str(u.get("kind") or "")
+        is_pkginfo = lp.endswith("package-info.java") or fqn.endswith("package-info")
+        if is_pkginfo:
+            d = str(Path(lp).parent).replace("\\", "/") if lp else ""
+            scores = dir_scores.get(d) or {}
+            if scores:
+                sid = sorted(scores, key=lambda s: (-scores[s], s))[0]
+            else:
+                sid = last_id
+            _append(sid, key)
+            continue
+        if kind in ("pom", "resources") or key.startswith("coord:"):
+            lay = _layer_for_legacy_path(lp)
+            dest = next(
+                (st for st in stories if (st.get("layer") or "") == lay),
+                None,
+            )
+            sid = str((dest or last).get("id") or "")
+            _append(sid, key)
+    return n
+
+
 def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
     """ADR-34 + O-STORYORDER — graph-derived schedule from deps + layer labels.
 
@@ -1064,6 +1164,9 @@ def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
             f"(F-story-partition): {orphans[:8]}"
         )
 
+    # ADR-39 companions — package-info + coords enter membership after partition.
+    n_comp = attach_companion_units(model, stories)
+
     model["stories"] = stories
     bad = lint_story_order(model)
     if bad:
@@ -1072,11 +1175,21 @@ def assign_stories_from_model(root: Path, model: Optional[dict] = None) -> dict:
     prov["stories_assigned_at"] = _utc()
     prov["stories_source"] = "model-partition"  # F-story-rendered witness
     prov["stories_schedule"] = "graph-derived-ranks"  # O-STORYORDER architecture
+    if n_comp:
+        prov["companion_units_attached"] = n_comp
     save(root, model)
+    claimed_n = len(_unit_story_map(stories))
+    # O-LOGNOBANK: human summary on stdout; bank token on stderr only.
+    print(
+        f"story assignment: stories={len(stories)} units={claimed_n} "
+        f"companions={n_comp} source=model-partition schedule=graph-derived "
+        f"forward_edges=0"
+    )
     print(
         f"O-ADR34: assign_stories_from_model stories={len(stories)} "
-        f"units={len(claimed)} source=model-partition schedule=graph-derived "
-        f"forward_edges=0 (F-story-order)"
+        f"units={claimed_n} companions={n_comp} source=model-partition "
+        f"schedule=graph-derived forward_edges=0 (F-story-order)",
+        file=sys.stderr,
     )
     return model
 
@@ -1301,38 +1414,66 @@ def _unit_slug(key: str) -> str:
     return (slug or "unit")[:48]
 
 
-def derive_acceptance(unit: dict) -> list[str]:
-    """Acceptance is a function of role + target_contract — never seat prose (ADR-35)."""
+def derive_task_contract_fields(unit: dict) -> tuple[list[str], list[str], str]:
+    """ADR-45 Part 2 Step 1 — split overloaded acceptance into typed fields.
+
+    Returns ``(preconditions, acceptance, owning_phase)``:
+    - ``preconditions`` — upstream decisions/inputs (future BLOCKED)
+    - ``acceptance`` — verifiable artifact properties only
+    - ``owning_phase`` — milestone that owns the work (``M1``…``M5``)
+
+    Step 1 is schema/render only — dispatch still uses today's proxies.
+    """
     d = unit.get("decision") if isinstance(unit.get("decision"), dict) else {}
     role = str((d or {}).get("role") or "").upper()
     if role == "HARVEST":
-        return [
-            "byte-fidelity vs migration/staging (LOC + serialVersionUID)",
-            "package rename only; no behavior change",
-        ]
+        return (
+            [],
+            [
+                "byte-fidelity vs migration/staging (LOC + serialVersionUID)",
+                "package rename only; no behavior change",
+            ],
+            "M4",
+        )
     if role == "REDESIGN":
-        out = ["implements typed target_contract for this unit"]
         tc = (d or {}).get("target_contract")
         # Affirmative no-flags (O-TCABSENT): M1 may set target_contract={} or
         # {"decisive": true/false} with no other truthy flags — distinct from
-        # tc key absent (genuine M1 omission → refuse ship / complete at M1).
+        # tc key absent (genuine M1 omission → owning_phase M1, not acceptance).
         if isinstance(tc, dict):
             flags = [
                 f"contract:{k}"
                 for k, v in sorted(tc.items())
                 if v and k != "decisive"
             ]
+            acceptance = ["implements typed target_contract for this unit"]
             if flags:
-                out.extend(flags)
+                acceptance.extend(flags)
             else:
-                out.append("REDESIGN no-flags-apply (M1 affirmative)")
-        elif isinstance(tc, str) and tc.strip():
-            out.append(tc.strip()[:120])
-        else:
-            # tc missing / null — not the same as empty dict
-            out.append("REDESIGN without target_contract — complete at M1")
-        return out
-    return ["role undecided — refuse ship until M1 decision exists"]
+                acceptance.append("REDESIGN no-flags-apply (M1 affirmative)")
+            return ([], acceptance, "M4")
+        if isinstance(tc, str) and tc.strip():
+            return (
+                [],
+                [
+                    "implements typed target_contract for this unit",
+                    tc.strip()[:120],
+                ],
+                "M4",
+            )
+        # tc missing / null — routing, not a verifiable M4 property (ADR-45 §2).
+        return (["m1_target_contract"], [], "M1")
+    # UNDECIDED / unknown — precondition, not acceptance prose in acceptance[].
+    return (["m1_role_decision"], [], "M4")
+
+
+def derive_acceptance(unit: dict) -> list[str]:
+    """Acceptance is a function of role + target_contract — never seat prose (ADR-35).
+
+    ADR-45 S1: returns the verifiable ``acceptance[]`` slice only. Callers that
+    need preconditions / owning_phase must use ``derive_task_contract_fields``.
+    """
+    return derive_task_contract_fields(unit)[1]
 
 
 def _mechanical_class_shape(root: Path, owns: str, *, role: str = "") -> tuple[str, str]:
@@ -1361,6 +1502,34 @@ def _load_god_nodes(root: Path) -> set[str]:
         if dm and re.search(r"(?i)god-node", line):
             gods.add(dm.group(2))
     return gods
+
+
+def _char_acceptance_for(root: Path, tid: str, test_basename: str) -> list[str]:
+    """Characterize acceptance — O-M3REWINDRSN consumes durable rewind fires.
+
+    Default W4-708 clause; after M4 refuse-char rewind, stamp named surface
+    members so M3 cannot re-emit a byte-identical failing acceptance (W4-773).
+    """
+    fires_path = Path(root) / "migration" / "m4-rewind-fires.json"
+    members: list[str] = []
+    if fires_path.is_file():
+        try:
+            by = json.loads(fires_path.read_text(encoding="utf-8")).get("by_task") or {}
+            members = list(by.get(tid) or [])
+        except (OSError, json.JSONDecodeError, TypeError):
+            members = []
+    if members:
+        return [
+            f"Owns {test_basename} invokes ≥1 of unit_keys public surface "
+            f"({', '.join(members)}) — O-M3REWINDRSN / W4-708"
+        ]
+    return [
+        # W4-708 — verifiable vs unit_keys public surface
+        # (m4_consumer_assert._char_surface_fires).
+        f"Owns {test_basename} exercises ≥1 public member "
+        f"of unit_keys before convert "
+        f"(O-GODORDEREMIT / W4-708)"
+    ]
 
 
 def _ensure_god_characterization_tasks(
@@ -1445,10 +1614,9 @@ def _ensure_god_characterization_tasks(
                         "class": "infer",
                         "shape": "create",
                         "role": "REDESIGN",
-                        "acceptance": [
-                            f"{simple}Test pins legacy contract before convert "
-                            f"(O-GODORDEREMIT / S-GODORDER)"
-                        ],
+                        "acceptance": _char_acceptance_for(
+                            root, char_id, f"{simple}Test.java"
+                        ),
                         "oracle": "absent",
                         "port": None,
                         "findings": [],
@@ -1470,6 +1638,424 @@ def _ensure_god_characterization_tasks(
     return out + emitted
 
 
+def _layer_from_main_owns(owns: list[str]) -> set[str]:
+    """Package-segment layers under src/main/java (model|repository|…)."""
+    layers: set[str] = set()
+    for o in owns:
+        if not isinstance(o, str):
+            continue
+        if not o.startswith("src/main/java/") or not o.endswith(".java"):
+            continue
+        if o.endswith("package-info.java"):
+            continue
+        parts = o.split("/")
+        try:
+            ji = parts.index("java")
+        except ValueError:
+            continue
+        pkg = parts[ji + 1 : -1]
+        if pkg:
+            layers.add(pkg[-1])
+    return layers
+
+
+def _staging_test_rels(root: Path) -> list[str]:
+    """src/test/java/... paths present under migration/staging."""
+    base = root / "migration" / "staging" / "src" / "test" / "java"
+    if not base.is_dir():
+        return []
+    out: list[str] = []
+    for p in sorted(base.rglob("*Test*.java")):
+        try:
+            rel = p.relative_to(base).as_posix()
+        except ValueError:
+            continue
+        out.append(f"src/test/java/{rel}")
+    return out
+
+
+def _project_test_owns(staging_test: str, legacy_pkg: str, target_pkg: str) -> str:
+    """Map staging test path from legacyPackage → targetPackage."""
+    leg = f"src/test/java/{legacy_pkg.replace('.', '/')}/"
+    tgt = f"src/test/java/{target_pkg.replace('.', '/')}/"
+    if staging_test.startswith(leg):
+        return tgt + staging_test[len(leg) :]
+    return staging_test
+
+
+def _staging_matches_layers(staging_test: str, layers: set[str]) -> bool:
+    """True when staging test path is layer-affine to production Owns layers."""
+    low = staging_test.lower()
+    # …/model/ValidatorTests.java ↔ model; …/rest/FooTests ↔ rest; etc.
+    for layer in layers:
+        if f"/{layer.lower()}/" in low or low.endswith(f"/{layer.lower()}tests.java"):
+            return True
+        # service often nests clinicService/ — segment match
+        if f"/{layer.lower()}" in low:
+            return True
+    if "model" in layers and "validatortests.java" in low:
+        return True
+    return False
+
+
+def _ensure_coverage_test_tasks(
+    root: Path, model: dict, tasks: list[dict]
+) -> list[dict]:
+    """O-M3COVEREMIT — emit staging-backed test Owns for ship coverage (W4-651).
+
+    Generalizes O-GODORDEREMIT beyond god-nodes: every story that lands
+    production ``src/main/**/*.java`` must Own ≥1 layer-affine ``src/test``
+    path before plan-lint (O-PLANCOVERGATE). Prefer harvest-from-staging
+    paths; never invent MiniMax coverage at M5 ship.
+    """
+    legacy_pkg, target_pkg = yaml_legacy_target(root)
+    staging = _staging_test_rels(root)
+    if not staging:
+        return tasks
+    out = list(tasks)
+    by_sid: dict[str, list[dict]] = {}
+    for t in out:
+        by_sid.setdefault(str(t.get("sid") or ""), []).append(t)
+    emitted: list[dict] = []
+    existing_ids = {str(t.get("id") or "") for t in out}
+
+    def _dedicated_test_owns(main_rel: str) -> list[str]:
+        """Foo.java → FooTest.java / FooTests.java under src/test/java."""
+        if not (
+            isinstance(main_rel, str)
+            and main_rel.startswith("src/main/java/")
+            and main_rel.endswith(".java")
+            and not main_rel.endswith("package-info.java")
+        ):
+            return []
+        stem = main_rel[len("src/main/java/") : -5]
+        return [
+            f"src/test/java/{stem}Test.java",
+            f"src/test/java/{stem}Tests.java",
+        ]
+
+    def _story_test_owns(story_tasks: list[dict]) -> set[str]:
+        owns: set[str] = set()
+        for t in story_tasks:
+            for o in t.get("owns") or []:
+                if (
+                    isinstance(o, str)
+                    and o.startswith("src/test/")
+                    and o.endswith(".java")
+                ):
+                    owns.add(o)
+        return owns
+
+    def _unit_keys_for_cover_emit(
+        story_tasks: list[dict], *, owns_path: str, layer_hint: set[str]
+    ) -> list[str]:
+        """Bind characterize harvest emits to production unit_keys (O-COVEREMITKEYS).
+
+        ``lint_typed_task_store`` REDs empty unit_keys. Staging-harvest chars
+        historically set ``unit_keys: []`` and failed S04 M3 (OwnerRestControllerTests…).
+        Prefer a production unit whose simple name matches the *Test(s) stem;
+        else any unit_keys from layer-affine story tasks.
+        """
+        stem = Path(owns_path).stem
+        base = re.sub(r"Tests?$", "", stem)
+        preferred: list[str] = []
+        layer_keys: list[str] = []
+        for t in story_tasks:
+            if str(t.get("kind") or "") == "characterize":
+                continue
+            uks = [str(k) for k in (t.get("unit_keys") or []) if k]
+            if not uks:
+                continue
+            t_layers = _layer_from_main_owns(list(t.get("owns") or []))
+            if layer_hint and t_layers and not (t_layers & layer_hint):
+                continue
+            for k in uks:
+                simple = k.rsplit(".", 1)[-1]
+                if base and (simple == base or base.startswith(simple) or simple.startswith(base)):
+                    if k not in preferred:
+                        preferred.append(k)
+                if k not in layer_keys:
+                    layer_keys.append(k)
+        if preferred:
+            return preferred[:1]
+        if layer_keys:
+            return layer_keys[:1]
+        # Last resort: any non-characterize unit_keys on the story
+        for t in story_tasks:
+            if str(t.get("kind") or "") == "characterize":
+                continue
+            for k in t.get("unit_keys") or []:
+                if k:
+                    return [str(k)]
+        return []
+
+    for sid, story in by_sid.items():
+        if not sid:
+            continue
+        layers: set[str] = set()
+        for t in story:
+            shape = str(t.get("shape") or "").lower()
+            if shape in {"structure", "verify", "absent", "remove"}:
+                continue
+            layers |= _layer_from_main_owns(list(t.get("owns") or []))
+        if not layers:
+            continue
+        story_plus = story + [t for t in emitted if t.get("sid") == sid]
+        has_test_owns = bool(_story_test_owns(story_plus))
+        # Staging harvest only when the story still has zero test Owns
+        # (F-plan-covers-gate floor). Do not early-return — O-COVERDEPTH may
+        # still need per-class characterize creates after a thin harvest.
+        if not has_test_owns:
+            matches = [s for s in staging if _staging_matches_layers(s, layers)]
+            # One emit per matched staging file (layer-affine); cap to avoid blow-up.
+            # O-EMITCAPLOG (W4-655 §4): never silently drop planned coverage work.
+            if len(matches) > 12:
+                omitted = matches[12:]
+                print(
+                    f"O-M3COVEREMIT: {sid} matched {len(matches)} staging tests; "
+                    f"emitting 12; omitted={omitted}",
+                    file=sys.stderr,
+                )
+                matches = matches[:12]
+            for staging_path in matches:
+                owns_path = _project_test_owns(staging_path, legacy_pkg, target_pkg)
+                simple = Path(owns_path).stem
+                char_id = f"{sid}-TC-{simple}"
+                if char_id in existing_ids:
+                    continue
+                if any(
+                    owns_path in (t.get("owns") or []) for t in story_plus
+                ):
+                    continue
+                ukeys = _unit_keys_for_cover_emit(
+                    story_plus, owns_path=owns_path, layer_hint=layers
+                )
+                if not ukeys:
+                    print(
+                        f"O-COVEREMITKEYS: {char_id} skipped — no production "
+                        f"unit_keys to bind (O-M3COVEREMIT)",
+                        file=sys.stderr,
+                    )
+                    continue
+                existing_ids.add(char_id)
+                emitted.append(
+                    {
+                        "id": char_id,
+                        "sid": sid,
+                        "seq": 0,
+                        "unit_keys": ukeys,
+                        "kind": "characterize",
+                        "scc_id": None,
+                        "owns": [owns_path],
+                        "title": f"Harvest {simple} (coverage / O-M3COVEREMIT)",
+                        "class": "rewrite",
+                        "shape": "modify",
+                        "role": "HARVEST",
+                        "acceptance": [
+                            f"{simple} harvested from staging; pins layer contract "
+                            f"for ship coverage (O-M3COVEREMIT / F-plan-covers-gate)"
+                        ],
+                        "oracle": "absent",
+                        "port": "rename",
+                        "findings": [],
+                        "goal": (
+                            f"Harvest {staging_path} → {owns_path} so story {sid} "
+                            f"Owns tests before ship (O-M3COVEREMIT)."
+                        ),
+                        "plan": (
+                            f"harvest-from-staging the test; package-rename "
+                            f"{legacy_pkg} → {target_pkg}; no production src edits."
+                        ),
+                        "risk": "low",
+                        "filled": True,
+                        "goal_source": "derived",
+                    }
+                )
+                story_plus.append(emitted[-1])
+        story_plus = story + [t for t in emitted if t.get("sid") == sid]
+        test_owns_now = _story_test_owns(story_plus)
+        # O-COVERSTFALL (W4-655 §3): no layer-affine staging test — still plan
+        # a characterize *create* (M4 work), never leave PLANCOVERGATE unsatisfiable
+        # and never invent coverage at M5 ship.
+        if not test_owns_now:
+            for t in story:
+                shape = str(t.get("shape") or "").lower()
+                if shape in {"structure", "verify", "absent", "remove"}:
+                    continue
+                for o in t.get("owns") or []:
+                    if not isinstance(o, str) or not o.startswith("src/main/java/"):
+                        continue
+                    if not o.endswith(".java") or o.endswith("package-info.java"):
+                        continue
+                    # O-M3DTOGENSKIP: no characterize seats for scope-excluded DTO Owns
+                    if unit_is_scope_excluded(
+                        root,
+                        {"target_path": o, "legacy_path": o},
+                        load_scope_exclusions(root),
+                    ):
+                        continue
+                    layer_set = _layer_from_main_owns([o])
+                    if not layer_set:
+                        continue
+                    simple = Path(o).stem
+                    test_owns = (
+                        "src/test/java/"
+                        + o[len("src/main/java/") : -5]
+                        + "Test.java"
+                    )
+                    char_id = f"{sid}-TC-{simple}Char"
+                    if char_id in existing_ids:
+                        continue
+                    if any(
+                        test_owns in (x.get("owns") or []) for x in story_plus
+                    ):
+                        continue
+                    existing_ids.add(char_id)
+                    emitted.append(
+                        {
+                            "id": char_id,
+                            "sid": sid,
+                            "seq": 0,
+                            "unit_keys": list(t.get("unit_keys") or []),
+                            "kind": "characterize",
+                            "scc_id": None,
+                            "owns": [test_owns],
+                            "title": (
+                                f"Characterize {simple} "
+                                f"(no staging test / O-COVERSTFALL)"
+                            ),
+                            "class": "infer",
+                            "shape": "create",
+                            "role": "REDESIGN",
+                            "acceptance": [
+                                f"{simple}Test pins contract for ship coverage; "
+                                f"no layer-affine staging *Test* matched "
+                                f"(O-COVERSTFALL / O-M3COVEREMIT)"
+                            ],
+                            "oracle": "absent",
+                            "port": None,
+                            "findings": [],
+                            "goal": (
+                                f"Create {test_owns} — staging had no layer-affine "
+                                f"test for {sorted(layer_set)} (O-COVERSTFALL)."
+                            ),
+                            "plan": (
+                                f"Write characterization tests for {simple}; "
+                                f"do not edit production Owns; not an M5 invention."
+                            ),
+                            "risk": "medium",
+                            "filled": True,
+                            "goal_source": "derived",
+                        }
+                    )
+                    story_plus.append(emitted[-1])
+                    break  # one fallback char per production task
+            continue
+        # O-COVERDEPTH (W4-651 live): a thin staging harvest (e.g. only
+        # ValidatorTests) satisfies F-plan-covers-gate but leaves ship
+        # new_coverage ~0–5%. Emit dedicated FooTest creates for production
+        # classes that still lack FooTest/FooTests Owns — M4 work, not M5 invent.
+        # Only landed mains (file exists): do not schedule tests for unharvested
+        # Owns still pending on later stories (S02 jdbc/jpa plan explosion).
+        depth_candidates: list[tuple[dict, str]] = []
+        for t in story:
+            shape = str(t.get("shape") or "").lower()
+            if shape in {"structure", "verify", "absent", "remove"}:
+                continue
+            for o in t.get("owns") or []:
+                dedicated = _dedicated_test_owns(o)
+                if not dedicated:
+                    continue
+                if not (root / o).is_file():
+                    continue
+                if any(d in test_owns_now for d in dedicated):
+                    continue
+                # Skip if already emitted for this class this pass.
+                if any(d in _story_test_owns(story_plus) for d in dedicated):
+                    continue
+                depth_candidates.append((t, o))
+        if len(depth_candidates) > 12:
+            omitted = [c[1] for c in depth_candidates[12:]]
+            print(
+                f"O-COVERDEPTH: {sid} needs {len(depth_candidates)} class tests; "
+                f"emitting 12; omitted={omitted}",
+                file=sys.stderr,
+            )
+            depth_candidates = depth_candidates[:12]
+        for t, o in depth_candidates:
+            simple = Path(o).stem
+            test_owns = _dedicated_test_owns(o)[0]
+            char_id = f"{sid}-TC-{simple}Char"
+            if char_id in existing_ids:
+                continue
+            if any(test_owns in (x.get("owns") or []) for x in story_plus):
+                continue
+            existing_ids.add(char_id)
+            emitted.append(
+                {
+                    "id": char_id,
+                    "sid": sid,
+                    "seq": 0,
+                    "unit_keys": list(t.get("unit_keys") or []),
+                    "kind": "characterize",
+                    "scc_id": None,
+                    "owns": [test_owns],
+                    "title": (
+                        f"Characterize {simple} "
+                        f"(depth after thin harvest / O-COVERDEPTH)"
+                    ),
+                    "class": "infer",
+                    "shape": "create",
+                    "role": "REDESIGN",
+                    "acceptance": [
+                        f"{simple}Test pins class contract for ship coverage; "
+                        f"staging harvest alone is insufficient "
+                        f"(O-COVERDEPTH / O-M3COVEREMIT)"
+                    ],
+                    "oracle": "absent",
+                    "port": None,
+                    "findings": [],
+                    "goal": (
+                        f"Create {test_owns} — story {sid} had test Owns but no "
+                        f"dedicated test for {simple} (O-COVERDEPTH)."
+                    ),
+                    "plan": (
+                        f"Write characterization tests for {simple}; "
+                        f"do not edit production Owns; not an M5 invention."
+                    ),
+                    "risk": "medium",
+                    "filled": True,
+                    "goal_source": "derived",
+                }
+            )
+            story_plus.append(emitted[-1])
+            test_owns_now.add(test_owns)
+        # O-COVEREMITKEYS backfill: existing empty-key characterize harvests
+        story_all = [
+            t
+            for t in (out + emitted)
+            if str(t.get("sid") or "") == sid
+        ]
+        for t in story_all:
+            if str(t.get("kind") or "") != "characterize":
+                continue
+            if t.get("unit_keys"):
+                continue
+            owns_path = ""
+            for o in t.get("owns") or []:
+                if isinstance(o, str) and o.startswith("src/test/"):
+                    owns_path = o
+                    break
+            if not owns_path:
+                continue
+            uk = _unit_keys_for_cover_emit(
+                story_all, owns_path=owns_path, layer_hint=layers
+            )
+            if uk:
+                t["unit_keys"] = uk
+    return out + emitted
+
+
 def yaml_legacy_target(root: Path) -> tuple[str, str]:
     """Return (legacyPackage, targetPackage) from migration.yaml — best effort."""
     p = root / "migration.yaml"
@@ -1484,6 +2070,79 @@ def yaml_legacy_target(root: Path) -> tuple[str, str]:
         if m:
             tgt = m.group(1).strip()
     return leg, tgt
+
+
+def _task_is_characterize(t: dict) -> bool:
+    if t.get("kind") == "characterize":
+        return True
+    return bool(
+        re.search(
+            r"(?i)\bcharacterization\b",
+            f"{t.get('goal') or ''} {t.get('title') or ''}",
+        )
+    )
+
+
+def _order_rank_index(model: dict, sid: str) -> dict[str, int]:
+    """Map unit key / SCC id → condensation rank (lower = earlier convert)."""
+    rank: dict[str, int] = {}
+    for i, item in enumerate(order_for_story(model, sid)):
+        rank[item] = i
+        if item.startswith("SCC-"):
+            scc = next((s for s in model.get("sccs") or [] if s.get("id") == item), None)
+            for m in (scc or {}).get("members") or []:
+                rank.setdefault(str(m), i)
+    # Global model.order fallback for keys missing from story slice
+    for i, item in enumerate(model.get("order") or []):
+        rank.setdefault(str(item), i)
+        if str(item).startswith("SCC-"):
+            scc = next(
+                (s for s in model.get("sccs") or [] if s.get("id") == item), None
+            )
+            for m in (scc or {}).get("members") or []:
+                rank.setdefault(str(m), i)
+    return rank
+
+
+def _task_condensation_rank(t: dict, rank: dict[str, int]) -> int:
+    keys = [str(k) for k in (t.get("unit_keys") or []) if k]
+    if t.get("scc_id"):
+        keys.append(str(t.get("scc_id")))
+    hits = [rank[k] for k in keys if k in rank]
+    return min(hits) if hits else 10_000
+
+
+def _order_story_tasks_collabseq(
+    model: dict, sid: str, story: list[dict]
+) -> list[dict]:
+    """Order story tasks for M4 file/heading order (O-COLLABSEQ / O-TASKCLASSORDER).
+
+    Hard constraint: condensation ``model.order`` (dependency-order SoT) —
+    a task owning an earlier condensation unit precedes a task owning a later
+    one. Soft: characterization before same-key convert; rewrite before infer
+    only as a tie-break when ranks are equal (never override dep-order).
+    """
+    if not story:
+        return []
+    rank = _order_rank_index(model, sid)
+    decorated: list[tuple[tuple, dict]] = []
+    for orig_i, t in enumerate(story):
+        r = _task_condensation_rank(t, rank)
+        is_char = _task_is_characterize(t)
+        cls = str(t.get("class") or "").lower()
+        # At equal condensation rank: char (0) → rewrite (1) → infer (2).
+        # Across ranks, condensation wins — HARVEST rewrite may follow
+        # REDESIGN infer when the infer unit converts earlier (JdbcPet →
+        # JdbcPetRowMapper).
+        if is_char:
+            phase = 0
+        elif cls == "rewrite":
+            phase = 1
+        else:
+            phase = 2
+        decorated.append(((r, phase, orig_i), t))
+    decorated.sort(key=lambda x: x[0])
+    return [t for _, t in decorated]
 
 
 def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
@@ -1508,7 +2167,7 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
         sid = st.get("id") or ""
         if not sid:
             continue
-        condensations = skeleton_condensation_units(model, sid)
+        condensations = skeleton_condensation_units(model, sid, root=root)
         for i, cu in enumerate(condensations, start=1):
             members = list(cu.get("members") or [])
             keys_t = tuple(sorted(members))
@@ -1518,11 +2177,62 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
             owns = list(cu.get("owns") or [])
             primary = unit_by_key(model, members[0]) if members else None
             role = "UNDECIDED"
-            acceptance: list[str] = ["role undecided — refuse ship until M1 decision exists"]
+            preconditions: list[str] = ["m1_role_decision"]
+            acceptance: list[str] = []
+            owning_phase = "M4"
             if primary:
                 d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}
                 role = str((d or {}).get("role") or "UNDECIDED").upper()
-                acceptance = derive_acceptance(primary)
+                # O-PKGINFOHARVEST / W4-684: package-info.java is rename-only
+                # packaging metadata — never leave role=UNDECIDED to burn M3
+                # seats (S02-T-024/032 specimen). Migration-general: any unit
+                # whose owns/target are solely package-info.java defaults HARVEST.
+                if role in ("", "UNDECIDED", "NONE") and _owns_package_info_only(
+                    owns, primary
+                ):
+                    role = "HARVEST"
+                    if not isinstance(primary.get("decision"), dict):
+                        primary["decision"] = {}
+                    primary["decision"]["role"] = "HARVEST"
+                    primary["decision"].setdefault(
+                        "rationale",
+                        "package-info.java — rename-only packaging metadata "
+                        "(O-PKGINFOHARVEST)",
+                    )
+                # O-COORDROLE / W4-689: undecided coord:/non-java units get a
+                # *path-class* decision (not blanket HARVEST) so S05 properties/xml
+                # clear O-UNDECIDEDLINT with verifiable target_contract.
+                if role in ("", "UNDECIDED", "NONE"):
+                    key = str(primary.get("key") or "")
+                    kind = str(primary.get("kind") or "")
+                    if key.startswith("coord:") or kind in ("pom", "resources"):
+                        derived = default_coord_decision(primary)
+                        if derived:
+                            primary["decision"] = {
+                                **(primary.get("decision") or {}),
+                                **derived,
+                            }
+                            role = str(derived.get("role") or role).upper()
+                preconditions, acceptance, owning_phase = derive_task_contract_fields(
+                    primary
+                )
+                # Seat skeletons often say create/implement; HARVEST+byte-fidelity
+                # then fails G9. Force derived harvest prose for package-info.
+                if role == "HARVEST" and _owns_package_info_only(owns, primary):
+                    prev = {
+                        **prev,
+                        "goal": (
+                            f"Harvest {owns[0] if owns else 'package-info.java'} "
+                            f"with package rename only (byte-fidelity; O-PKGINFOHARVEST)."
+                        ),
+                        "plan": (
+                            "Copy package-info from staging; rename package "
+                            "declaration; no behaviour changes."
+                        ),
+                        "risk": "low",
+                        "filled": True,
+                        "goal_source": "derived",
+                    }
             # SCC convert-together: shape=batch:SCC-N carries batch semantics
             # (W4-561 — one vocabulary; plan-lint typed mode must accept it).
             # HARVEST SCCs are class=rewrite so rewrite/infer order holds;
@@ -1547,6 +2257,17 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 port = port_for_role(role)
                 if str(role).upper() == "HARVEST":
                     cls = class_for_role(role)
+            # O-COORDROLE / O-PORTNONJAVA: coord/pom/resources are file-level
+            # redesigns — Port=reimplement triggers API-mapping O-PORTREIMPL
+            # (S05-T-004 pom.xml). Force rename + modify.
+            if primary and (
+                str(primary.get("key") or "").startswith("coord:")
+                or str(primary.get("kind") or "") in ("pom", "resources")
+            ):
+                port = "rename"
+                if not str(shape).startswith("batch:"):
+                    shape = "modify"
+                    cls = "rewrite"
             task = {
                 "id": tid,
                 "sid": sid,
@@ -1559,7 +2280,9 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
                 "class": cls,
                 "shape": shape,
                 "role": role,
+                "preconditions": preconditions,
                 "acceptance": acceptance,
+                "owning_phase": owning_phase,
                 "oracle": oracle,
                 "port": port,
                 "findings": list(st.get("findings") or []) if i == 1 else [],
@@ -1574,8 +2297,13 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
             tasks.append(task)
     # O-GODORDEREMIT (W4-566): characterization task before god-node convert.
     tasks = _ensure_god_characterization_tasks(root, model, tasks)
+    # O-M3COVEREMIT (W4-651/652): staging-backed test Owns for ship coverage
+    # on every story landing production src/main (not god-nodes / S01 only).
+    tasks = _ensure_coverage_test_tasks(root, model, tasks)
     # O-PLANEXISTS: Spring Boot main already absent → verify-absent (derived).
     _apply_springboot_app_verify(root, model, tasks)
+    # O-ADR45-S1 amendment (W4-677): kind-keyed fields on every emit path.
+    _finalize_adr45_task_fields(tasks)
     # O-DTOFIRST: emit DTO HARVEST before mapper stories when DTOs are
     # generated-sources (not in unit universe).
     legacy_root = Path(
@@ -1600,36 +2328,25 @@ def assign_tasks(root: Path, model: Optional[dict] = None) -> dict:
             t["risk"] = ""
             t["filled"] = False
             t["goal_source"] = ""
-    # O-TASKCLASSORDER (W4-562): one owner for rewrite-before-infer.
-    # assign_tasks emits satisfying order; plan-lint checks the same rule.
-    # Stable partition per story — preserve relative condensation order
-    # within each class; then renumber seq (ids stay stable for judgments).
-    # Within infer: characterization before convert (O-GODORDEREMIT).
+    # O-TASKCLASSORDER (W4-562) + O-COLLABSEQ (W5):
+    # Condensation / dependency-order is the hard M4 sequence SoT (compile
+    # graph). rewrite-before-infer is a soft preference only when it does not
+    # violate that order — blanket rewrite-first put HARVEST RowMappers before
+    # REDESIGN Jdbc* types they reference (S02-T-010 before T-006) → false
+    # MiniMax. assign_tasks emits; plan-lint checks document position.
     ordered: list[dict] = []
     for st in model.get("stories") or []:
         sid = st.get("id") or ""
         if not sid:
             continue
         story = [t for t in tasks if t.get("sid") == sid]
-        rewrites = [
-            t for t in story if str(t.get("class") or "").lower() == "rewrite"
-        ]
-        rest = [
-            t for t in story if str(t.get("class") or "").lower() != "rewrite"
-        ]
-        chars = [
-            t
-            for t in rest
-            if t.get("kind") == "characterize"
-            or re.search(r"(?i)\bcharacterization\b", str(t.get("goal") or ""))
-        ]
-        converts = [t for t in rest if t not in chars]
-        for i, t in enumerate(rewrites + chars + converts, start=1):
+        story_ordered = _order_story_tasks_collabseq(model, sid, story)
+        for i, t in enumerate(story_ordered, start=1):
             t["seq"] = i
             ordered.append(t)
         # O-DEPLOYCONTRACT: last task of deploy story carries preserve/acceptance.
-        if st.get("deploy") and story:
-            last = [t for t in ordered if t.get("sid") == sid][-1]
+        if st.get("deploy") and story_ordered:
+            last = story_ordered[-1]
             last["deploy_contract_lines"] = _deploy_contract_lines(root, model, sid)
     # Any tasks without a story id (should not happen) keep prior order.
     orphan = [t for t in tasks if t not in ordered]
@@ -1679,20 +2396,25 @@ def render_tasks_md(root: Path, sid: str, model: Optional[dict] = None) -> Path:
         owns = " ".join(t.get("owns") or [])
         findings = t.get("findings") or []
         acc = t.get("acceptance") or []
+        pre = t.get("preconditions") or []
+        phase = str(t.get("owning_phase") or "").strip() or "M4"
         goal = (t.get("goal") or "").strip() or (
             "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
         )
         plan = (t.get("plan") or "").strip()
         role = str(t.get("role") or "").strip().upper()
+        assumes = ", ".join(str(p) for p in pre) if pre else ""
         lines += [
             f"#### {t.get('id')}: {t.get('title') or t.get('id')}",
             f"**Class**: {t.get('class') or 'rewrite'}",
             f"**Shape**: {t.get('shape') or 'modify'}",
             f"**Port**: {t.get('port')}" if t.get("port") else "**Port**:",
             f"**Role**: {role}" if role else "**Role**:",
+            f"**Phase**: {phase}",
             f"**Owns**: `{owns}`" if owns else "**Owns**:",
             f"**Oracle**: {t.get('oracle') or 'absent'}",
-            "**Assumes**:",
+            # O-ADR45-S1: Assumes is a VIEW of typed preconditions[] (not empty stub).
+            f"**Assumes**: {assumes}" if assumes else "**Assumes**:",
             f"**Findings**: {', '.join(findings) if findings else '(none)'}",
             f"**Goal**: {goal}",
             "**Target design**:",
@@ -1835,6 +2557,119 @@ def _deploy_contract_lines(root: Path, model: dict, sid: str) -> list[str]:
     return lines
 
 
+def _coord_rel(unit: dict) -> str:
+    """Relative path for a coord:/non-java unit."""
+    for k in ("target_path", "legacy_path", "staging_path"):
+        v = unit.get(k)
+        if isinstance(v, str) and v.strip():
+            s = v.strip()
+            if s.startswith("migration/staging/"):
+                s = s[len("migration/staging/") :]
+            return s
+    key = str(unit.get("key") or "")
+    if key.startswith("coord:"):
+        return key[len("coord:") :]
+    return ""
+
+
+def default_coord_decision(unit: dict) -> Optional[dict]:
+    """Per-path M1 role for undecided non-java units (O-COORDROLE / W4-689).
+
+    Not a blanket HARVEST (Opus W4-689 §3). Each path class gets an explicit
+    disposition via ``target_contract`` so acceptance is verifiable and
+    ``O-UNDECIDEDLINT`` is not silenced by a single compromise role.
+    """
+    rel = _coord_rel(unit).replace("\\", "/")
+    if not rel:
+        return None
+    name = Path(rel).name
+    if name == "pom.xml" or str(unit.get("kind") or "") == "pom":
+        return {
+            "role": "REDESIGN",
+            "rationale": "Build descriptor → Quarkus BOM/plugins (O-COORDROLE)",
+            "target_contract": {"kind": "pom-quarkus"},
+        }
+    if not (
+        name.endswith(".properties")
+        or name.endswith(".yml")
+        or name.endswith(".yaml")
+        or name.endswith(".xml")
+    ):
+        return None
+    # Spring Boot profile property files are not Quarkus %profile files.
+    if re.search(r"application-(mysql|hsqldb)\.(properties|ya?ml)$", name):
+        return {
+            "role": "REDESIGN",
+            "rationale": (
+                "Spring Boot profile properties — drop; Quarkus uses "
+                "%dev/%prod in application.properties (O-COORDROLE)"
+            ),
+            "target_contract": {"disposition": "drop"},
+        }
+    if re.search(r"application-postgresql\.(properties|ya?ml)$", name):
+        return {
+            "role": "REDESIGN",
+            "rationale": (
+                "Fold datasource settings into %prod application.properties "
+                "(O-COORDROLE)"
+            ),
+            "target_contract": {"disposition": "fold-prod"},
+        }
+    if "/test/" in f"/{rel}/" or rel.startswith("src/test/"):
+        return {
+            "role": "HARVEST",
+            "rationale": (
+                "Test resources — adapt under Quarkus %test / test profile "
+                "(O-COORDROLE)"
+            ),
+        }
+    if name.startswith("application") and (
+        name.endswith(".properties") or name.endswith((".yml", ".yaml"))
+    ):
+        return {
+            "role": "REDESIGN",
+            "rationale": (
+                "App config → Quarkus properties via configTransforms: "
+                "(O-COORDROLE / O-CONFIGDERIVED)"
+            ),
+            "target_contract": {"kind": "app-config"},
+        }
+    if name.endswith(".xml") and name != "pom.xml":
+        return {
+            "role": "REDESIGN",
+            "rationale": "Non-pom XML resource — redesign or drop under Quarkus (O-COORDROLE)",
+            "target_contract": {"kind": "xml-resource"},
+        }
+    return None
+
+
+def _owns_package_info_only(owns: list, unit: Optional[dict] = None) -> bool:
+    """True when task owns / unit target is solely package-info.java (O-PKGINFOHARVEST)."""
+    paths: list[str] = []
+    for o in owns or []:
+        if isinstance(o, str) and o.strip():
+            paths.append(o.strip())
+    if unit:
+        for k in ("target_path", "legacy_path", "staging_path"):
+            v = unit.get(k)
+            if isinstance(v, str) and v.strip():
+                paths.append(v.strip())
+        key = str(unit.get("key") or "")
+        if key.endswith(".package-info") or key.endswith("package-info"):
+            paths.append(key.replace(".", "/") + ".java")
+    srcish = [
+        p
+        for p in paths
+        if p.endswith(".java") or p.endswith(".gitkeep") or "/java/" in p
+    ]
+    if not srcish:
+        return False
+    return all(
+        p.endswith("package-info.java") or p.endswith(".gitkeep") or p.endswith("package-info")
+        for p in srcish
+    )
+
+
 def _src_has_annotation(root: Path, pattern: str) -> bool:
     rx = re.compile(pattern)
     for base in (root / "src/main/java", root / "src/test/java"):
@@ -1885,6 +2720,90 @@ def _find_dto_sources(root: Path, legacy_root: Path) -> list[Path]:
             seen.add(key)
             found.append(p)
     return sorted(found, key=lambda p: p.name)
+
+
+def _fqcn_from_java_file(path: Path) -> str | None:
+    """Parse ``package …;`` + filename stem → FQCN (O-UNITKEYLEGACY)."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    m = re.search(r"(?m)^\s*package\s+([\w.]+)\s*;", text)
+    if not m:
+        return None
+    return f"{m.group(1)}.{path.stem}"
+
+
+def _dto_resolvable_unit_key(
+    root: Path, model: dict, path: Path, tgt_pkg: str
+) -> str:
+    """O-UNITKEYLEGACY / W4-733: unit_keys must resolve in model.units[].
+
+    Prefer an existing unit (legacy key / path match). Else register a minimal
+    unit keyed by the **source** FQCN (staging/legacy package), never by the
+    future destination ``tgt_pkg.dto.*`` that does not exist pre-dispatch.
+    """
+    units = model.setdefault("units", [])
+    by_key = {str(u.get("key") or ""): u for u in units if u.get("key")}
+    # Match existing unit by legacy/target basename.
+    for u in units:
+        for field in ("legacy_path", "staging_path", "target_path"):
+            fp = str(u.get(field) or "")
+            if fp.endswith(path.name) and u.get("key"):
+                return str(u["key"])
+    src_fqcn = _fqcn_from_java_file(path)
+    if src_fqcn and src_fqcn in by_key:
+        return src_fqcn
+    # Path-derived fallback under staging/legacy src trees.
+    if src_fqcn is None:
+        for marker in ("/src/main/java/", "/src/test/java/"):
+            s = str(path)
+            if marker in s:
+                rel = s.split(marker, 1)[1]
+                src_fqcn = rel[:-5].replace("/", ".") if rel.endswith(".java") else None
+                break
+    if not src_fqcn:
+        src_fqcn = f"unknown.dto.{path.stem}"
+    # Register missing unit so assert-2 / plan-lint resolve.
+    if src_fqcn not in by_key:
+        rel = None
+        staging = root / "migration" / "staging"
+        try:
+            rel = str(path.relative_to(staging))
+            staging_path = f"migration/staging/{rel}"
+            legacy_path = rel
+        except ValueError:
+            try:
+                # legacy_root absolute — keep filename-only legacy_path
+                legacy_path = f"src/main/java/{src_fqcn.replace('.', '/')}.java"
+            except Exception:
+                legacy_path = path.name
+            staging_path = f"migration/staging/{legacy_path}"
+            # prefer real staging mirror if present
+            cand = staging / legacy_path
+            if not cand.is_file():
+                staging_path = ""
+        units.append(
+            {
+                "key": src_fqcn,
+                "kind": "java",
+                "legacy_fqn": src_fqcn,
+                "legacy_path": legacy_path,
+                "staging_path": staging_path or None,
+                "target_fqn": f"{tgt_pkg}.dto.{path.stem}",
+                "target_path": (
+                    f"src/main/java/{tgt_pkg.replace('.', '/')}/dto/{path.name}"
+                ),
+                "decision": {
+                    "role": "HARVEST",
+                    "rationale": (
+                        "O-UNITKEYLEGACY / O-DTOFIRST — DTO unit registered "
+                        "from discovered source so unit_keys resolve pre-dispatch"
+                    ),
+                },
+            }
+        )
+    return src_fqcn
 
 
 def _ensure_dto_harvest_tasks(
@@ -1938,13 +2857,16 @@ def _ensure_dto_harvest_tasks(
             f"src/main/java/{tgt_pkg.replace('.', '/')}/dto/{p.name}"
             for p in dto_paths[:24]
         ]
+        # O-UNITKEYLEGACY: resolvable source/legacy keys — not dest FQCNs.
+        unit_keys = [
+            _dto_resolvable_unit_key(root, model, p, tgt_pkg)
+            for p in dto_paths[:24]
+        ]
         dto_task = {
             "id": f"{sid}-T-000-DtoHarvest",
             "sid": sid,
             "seq": 0,
-            "unit_keys": [
-                f"{tgt_pkg}.dto.{p.name[:-5]}" for p in dto_paths[:24]
-            ],
+            "unit_keys": unit_keys,
             "kind": "singleton",
             "scc_id": None,
             "owns": owns_dto,
@@ -1976,7 +2898,59 @@ def _ensure_dto_harvest_tasks(
         }
         out.append(dto_task)
         out.extend(story_tasks)
+    # O-UNITKEYLEGACY: repair already-emitted DtoHarvest tasks that still
+    # carry destination-package unit_keys (pre-dispatch unresolvable).
+    by_name = {p.name: p for p in dto_paths}
+    units_keys = {str(u.get("key") or "") for u in model.get("units") or []}
+    for t in out:
+        tid = str(t.get("id") or "")
+        if not tid.endswith("-DtoHarvest"):
+            continue
+        keys = list(t.get("unit_keys") or [])
+        if keys and all(k in units_keys for k in keys):
+            continue
+        new_keys: list[str] = []
+        for own in t.get("owns") or []:
+            base = Path(str(own)).name
+            src = by_name.get(base)
+            if src is None:
+                continue
+            new_keys.append(_dto_resolvable_unit_key(root, model, src, tgt_pkg))
+        if new_keys:
+            t["unit_keys"] = new_keys
     return out
+
+
+def _finalize_adr45_task_fields(tasks: list[dict]) -> None:
+    """O-ADR45-S1 amendment (W4-677): stamp phase/preconditions from typed kind.
+
+    Characterization and verify-absent emits historically set acceptance prose
+    without ``preconditions[]`` / ``owning_phase``. Classification of acceptance
+    evidence for ``kind=characterize`` is kind-keyed in ``task_contract`` —
+    never prose-keyed — so god-order / cover emits stay characterization even
+    when the clause never says the word.
+    """
+    for t in tasks:
+        kind = str(t.get("kind") or "").strip().lower()
+        if "preconditions" not in t or t.get("preconditions") is None:
+            t["preconditions"] = []
+        if not str(t.get("owning_phase") or "").strip():
+            t["owning_phase"] = "M4"
+        if kind == "characterize":
+            t["owning_phase"] = "M4"
+            # Ensure corpus instrument can classify without prose match alone.
+            _ = evidence_kinds_for_acceptance(
+                t.get("acceptance") or [], task_kind=kind
+            )
+    # Fail-closed diagnostic for operators (assign_tasks path); instruments assert.
+    bad = unmatched_acceptance_clauses(tasks)
+    if bad:
+        sample = "; ".join(f"{tid}:{c[:60]}" for tid, c in bad[:5])
+        print(
+            f"O-ADR45-S1 WARN: {len(bad)} acceptance clause(s) lack evidence kind "
+            f"(W4-677 corpus) — e.g. {sample}",
+            file=sys.stderr,
+        )
 
 
 def _apply_springboot_app_verify(root: Path, model: dict, tasks: list[dict]) -> None:
@@ -2004,6 +2978,8 @@ def _apply_springboot_app_verify(root: Path, model: dict, tasks: list[dict]) -> 
         t["shape"] = "verify"
         t["oracle"] = "absent"
         t["port"] = "reimplement"
+        t["owning_phase"] = "M4"
+        t["preconditions"] = []
         t["goal"] = (
             "Verify @SpringBootApplication main class is absent in the destination; "
             "Quarkus uses auto-discovery — do not add a Spring Boot main class."
@@ -2030,19 +3006,24 @@ def typed_task_body(task: dict) -> str:
     owns = " ".join(task.get("owns") or [])
     findings = task.get("findings") or []
     acc = task.get("acceptance") or []
+    pre = task.get("preconditions") or []
+    phase = str(task.get("owning_phase") or "").strip() or "M4"
     goal = (task.get("goal") or "").strip() or (
         "<!-- JUDGMENT: one sentence from brief + SNIPPET — replace -->"
     )
     plan = (task.get("plan") or "").strip()
     role = str(task.get("role") or "").strip().upper()
+    assumes = ", ".join(str(p) for p in pre) if pre else ""
     lines = [
         f"**Class**: {task.get('class') or 'rewrite'}",
         f"**Shape**: {task.get('shape') or 'modify'}",
         f"**Port**: {task.get('port')}" if task.get("port") else "**Port**:",
         f"**Role**: {role}" if role else "**Role**:",
+        f"**Phase**: {phase}",
         f"**Owns**: `{owns}`" if owns else "**Owns**:",
         f"**Oracle**: {task.get('oracle') or 'absent'}",
-        "**Assumes**:",
+        # O-ADR45-S1: Assumes is a VIEW of typed preconditions[] (not empty stub).
+        f"**Assumes**: {assumes}" if assumes else "**Assumes**:",
         f"**Findings**: {', '.join(findings) if findings else '(none)'}",
         f"**Goal**: {goal}",
         "**Target design**:",
@@ -2182,7 +3163,10 @@ def upsert_task_judgment(
     primary_key = stored[0] if stored else (keys_sorted[0] if keys_sorted else "")
     primary = unit_by_key(model, primary_key) if primary_key else None
     if primary:
-        found["acceptance"] = derive_acceptance(primary)
+        preconditions, acceptance, owning_phase = derive_task_contract_fields(primary)
+        found["preconditions"] = preconditions
+        found["acceptance"] = acceptance
+        found["owning_phase"] = owning_phase
         d = primary.get("decision") if isinstance(primary.get("decision"), dict) else {}
         found["role"] = str((d or {}).get("role") or found.get("role") or "UNDECIDED").upper()
     save(root, model)
@@ -2223,10 +3207,10 @@ def lint_scc_atomic(model: dict, tasks_text: str, sid: str) -> list[str]:
                     f"found {len(owners)} ({', '.join(owners) or 'none'})"
                 )
         return reds
-    # Legacy prose path (pre-ADR-35 tips)
+    # Legacy prose path (pre-ADR-35 tips). O-T6dTCHEADING: include S0N-TC-*.
     heads = list(
         re.finditer(
-            r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$",
+            rf"^(#{{2,6}})\s+({HEADING_TASK_ID_ATOM})\s*:\s*(.+)$",
             tasks_text,
             re.M,
         )
@@ -2379,9 +3363,10 @@ def cover_check(root: Path, model: dict) -> list[str]:
 
 
 def _task_bodies(tasks_text: str) -> list[tuple[str, str]]:
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
     heads = list(
         re.finditer(
-            r"^(#{2,6})\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$",
+            rf"^(#{{2,6}})\s+({HEADING_TASK_ID_ATOM})\s*:\s*(.+)$",
             tasks_text,
             re.M,
         )
@@ -2521,12 +3506,57 @@ def lint_finding_kind(model: dict, tasks_text: str, sid: str = "") -> list[str]:
     return reds
 
 
-def skeleton_condensation_units(model: dict, sid: str) -> list[dict]:
+
+def load_scope_exclusions(root: Path) -> set[str]:
+    """Paths listed in migration/scope-exclusions.md (O-SCOPECOVER / O-M3DTOGENSKIP)."""
+    excl: set[str] = set()
+    path = root / "migration" / "scope-exclusions.md"
+    if not path.is_file():
+        return excl
+    try:
+        for ln in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = re.match(r"^-\s+`?([^`\s]+)`?", ln.strip())
+            if m:
+                excl.add(m.group(1).lstrip("./"))
+    except OSError:
+        pass
+    return excl
+
+
+def unit_is_scope_excluded(root: Path, u: dict, excl: Optional[set[str]] = None) -> bool:
+    """O-M3DTOGENSKIP — true when unit path is in scope-exclusions (e.g. OpenAPI *Dto)."""
+    if excl is None:
+        excl = load_scope_exclusions(root)
+    if not excl:
+        return False
+    names = {Path(x).name for x in excl}
+    paths = {x.replace("\\", "/").lstrip("./") for x in excl}
+    for key in ("legacy_path", "target_path"):
+        raw = (u.get(key) or "").replace("\\", "/").lstrip("./")
+        if not raw:
+            continue
+        if raw in paths or Path(raw).name in names:
+            return True
+    return False
+
+
+def skeleton_condensation_units(model: dict, sid: str, root: Optional[Path] = None) -> list[dict]:
     """Required SCC skeleton preseed — one entry per condensation unit in story order.
 
     Each entry: {kind: scc|singleton, id, owns: [target_path...], members: [keys]}
+    O-M3DTOGENSKIP: omit scope-excluded OpenAPI *Dto units (build-codegen owns them).
     """
     units = {u["key"]: u for u in units_for_story(model, sid)}
+    if not units:
+        return []
+    root = root or Path(".")
+    excl = load_scope_exclusions(root)
+    if excl:
+        units = {
+            k: u
+            for k, u in units.items()
+            if not unit_is_scope_excluded(root, u, excl)
+        }
     if not units:
         return []
     out: list[dict] = []

@@ -20,28 +20,28 @@ ROOT = Path(os.environ.get("PRESEED_ROOT", ".")).resolve()
 HARVEST = ROOT / ".hermes/skills/migration-harness/scripts/harvest-from-staging.sh"
 
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
+
 def task_body(tasks_file: Path, tid: str) -> tuple[str, str, str]:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        title = m.group(2).strip()
-        start = m.end()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[start:end]
-        body = re.split(
-            r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
-            body,
-            maxsplit=1,
-            flags=re.M | re.I,
-        )[0]
-        cls_m = re.search(r"(?im)^\*?\*?Class\*?\*?\s*:\s*(\w+)", body)
-        cls = (cls_m.group(1) if cls_m else "").lower()
-        return title, body, cls
-    return "", "", ""
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    title, body = task_heading_parts(text, tid)
+    if not title and not body:
+        return "", "", ""
+    body = re.split(
+        r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
+        body,
+        maxsplit=1,
+        flags=re.M | re.I,
+    )[0]
+    cls_m = re.search(r"(?im)^\*?\*?Class\*?\*?\s*:\s*(\w+)", body)
+    cls = (cls_m.group(1) if cls_m else "").lower()
+    return title, body, cls
 
 
 def target_java_paths(body: str) -> list[str]:

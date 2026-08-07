@@ -34,9 +34,18 @@
     "read": "allow",
     "grep": "allow",
     "glob": "allow",
-    "edit": "ask",
-    "write": "ask",
-    "bash": "allow",
+    "edit": {
+      "*": "ask",
+      "specs/**": "deny",
+      "migration/**": "deny",
+      "**/specs/**": "deny",
+      "**/migration/**": "deny"
+    },
+    "bash": {
+      "*": "allow",
+      "*specs*": "deny",
+      "*migration*": "deny"
+    },
     "webfetch": "ask",
     "*_mcp_*": "ask"
   }

@@ -350,3 +350,11 @@ and readiness stays 503.
 **Rule:** default (and prod) `quarkus.datasource.db-kind=postgresql` with a
 placeholder JDBC URL; confine H2 to `%dev` / `%test` only. Never clear
 deploy readiness with Flyway scaffolding or index.html theater.
+
+## O-CONFIGDERIVED / O-CONFIGNOSPRING (config fidelity)
+
+When preflight REDs `CONFIGDERIVED:`:
+- Declare transforms only under `migration.yaml` **`configTransforms:`** (`from` / `to` / optional `valueMap`).
+- Do **not** invent `valueTransforms:` or `preserve: spring.x -> quarkus.y` arrows — the gate does not read them.
+- Do **not** re-introduce `spring.*` keys into Quarkus `application.properties` to silence the gate.
+- `%dev`/`%test` H2 overrides are WARN-only; `%prod` / unprofiled fabrication is RED.

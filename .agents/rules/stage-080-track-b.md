@@ -136,25 +136,32 @@ sensors, scaffold skills, live migration workspace):
 ## Architectural completeness (operator — no partial solutions)
 
 Applies to **every agent** in the shared review (`tmp/KAI-WAVE5-REVIEW.md`),
-including Claude/Opus as reviewer and Grok as lead implementer.
+including **Claude/Opus as reviewer** and Grok as lead implementer.
 
 When a defect is filed at P1 / HOLD / “land before next story”:
 
 1. **Propose the full architecture**, not a single detector, prompt patch,
-   or “land X before Y; defer Z.” Name every load-bearing surface
+   denylist, or “land X before Y; defer Z.” Name every load-bearing surface
    (harness refuse, skill attachment, SoT vs VIEW, slug grammar, legacy
    vs typed path split) and how they compose.
 2. **Do not recommend sequenced half-fixes** that leave a second definition
    of the contract teaching the forbidden behavior (W4-576: refuse-only
-   while `PLANNING.md` still said `edit specs/<NNN-slug>/tasks.md`).
+   while `PLANNING.md` still said `edit specs/<NNN-slug>/tasks.md`;
+   W4-617: re-sync roadmap scope while `--story-scope` still reads prose).
 3. **Defense in depth is required, not optional.** A refuse detector without
    removing the skill that instructs the bypass is incomplete. A skill
-   rewrite without a harness refuse is incomplete. Landing one and
+   rewrite without a harness refuse is incomplete. A VIEW re-render without
+   moving enforcement to the typed SoT is incomplete. Landing one and
    deferring the other is a **partial solution** — forbidden.
 4. Review **Verdict: HOLD** until the architecture is specified end-to-end;
    implementers must HOLD the run (or story advance) until that package
    is landed + instrumented + re-run proven — not “sync refuse and continue.”
-5. Precedent: ADR-25 / operator “no partial solutions” (Wave5) — same bar.
+5. **Claude/Opus must not file polls that endorse partial packages.** If the
+   only concrete recommendation is a detector / sync / prompt tweak while a
+   dual definition remains, the poll Verdict is **HOLD** with the missing
+   surfaces named — not ADVANCE on the half-fix.
+6. Precedent: ADR-25 / ADR-39 scope-SoT / operator “no partial solutions”
+   (Wave5) — same bar.
 
 “Multiple partial **runs**” (re-run after a durable land) remains required.
 Partial **designs** that leave known teaching paths or dual definitions

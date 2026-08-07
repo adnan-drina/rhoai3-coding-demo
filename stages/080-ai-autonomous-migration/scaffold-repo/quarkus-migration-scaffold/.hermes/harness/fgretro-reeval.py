@@ -19,8 +19,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(os.environ.get("FGRETO_ROOT", ".")).resolve()
+try:
+    from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+
+# O-T6dTCHEADING: include S0N-TC-* already-complete / Already satisfied subjects.
 SKIP_RE = re.compile(
-    r"^(T[-A-Za-z0-9]*\d+[A-Za-z]*):\s*(ALREADY COMPLETE|Already satisfied)\b",
+    rf"^({HEADING_TASK_ID_ATOM}):\s*(ALREADY COMPLETE|Already satisfied)\b",
     re.I,
 )
 

@@ -12,3 +12,12 @@ UI surface: waived (API-only).
 |**Target design**:
 - → `src/main/java/com/demo/Foo.java`
 |**Acceptance**: Foo.java exists under com.demo
+
+#### T-002: Characterize Foo (O-PLANCOVERGATE)
+|**Class**: infer
+|**Shape**: create
+|**Port**: rename
+|**Owns**: src/test/java/com/demo/FooTest.java
+|**Oracle**: absent
+|**Goal**: characterization so ship coverage gate can pass
+|**Acceptance**: FooTest pins layer contract for ship coverage

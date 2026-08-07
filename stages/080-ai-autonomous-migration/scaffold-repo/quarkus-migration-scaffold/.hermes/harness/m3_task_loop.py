@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -66,8 +67,8 @@ def _write_progress(
         if "/" in simple:
             simple = simple.rsplit("/", 1)[-1]
         line = (
-            f"m3={sid} seats={done}/{total} active={simple} "
-            f"ok={ok} fail={fail}"
+            f"ts={int(time.time())} m3={sid} seats={done}/{total} "
+            f"active={simple} ok={ok} fail={fail}"
         )
         Path("/tmp/outer-heartbeat-progress.txt").write_text(
             line + "\n", encoding="utf-8"
@@ -430,7 +431,11 @@ def _opencode_judgment(
             "- do NOT Read migration/briefs/** (brief already inlined)",
             "- do NOT Read migration/staging/** (STAGING FACTS projected — "
             "F-staging-projected / O-NOSTAGINGREAD)",
-            "- do NOT Read /projects/legacy (SNIPPET only — F-no-discovery)",
+            # O-M3PKTSTAGING (W4-759): never name the legacy mount path in the
+            # packet — F-no-discovery refuses that string; seats with sparse
+            # staging refs then have nowhere lawful to look.
+            "- do NOT Read the legacy workspace tree (SNIPPET only — "
+            "F-no-discovery; use migration/staging via projected STAGING FACTS)",
             "- do NOT Read TASKS-TEMPLATE.md — typed seats return JSON only",
             "- goal ≥ 20 chars",
         ]

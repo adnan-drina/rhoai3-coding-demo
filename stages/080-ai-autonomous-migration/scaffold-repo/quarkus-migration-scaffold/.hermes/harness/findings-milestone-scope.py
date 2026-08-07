@@ -19,15 +19,16 @@ import sys
 from pathlib import Path
 
 
+try:
+    from task_contract import HEADING_SUBJECT_RE, task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import HEADING_SUBJECT_RE, task_heading_parts  # type: ignore
+
+
 def task_findings(text: str, tid: str) -> list[str]:
-    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
-    body = ""
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[m.end() : end]
-        break
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    _title, body = task_heading_parts(text, tid)
     if not body:
         return []
     ids: list[str] = []
@@ -65,7 +66,7 @@ def completed_task_ids(root: Path, run_base: str) -> list[str]:
     subjects = (out_exclusive + "\n" + out_base).splitlines()
     seen: list[str] = []
     for subj in subjects:
-        m = re.match(r"^(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:", subj.strip())
+        m = HEADING_SUBJECT_RE.match(subj.strip())
         if m and m.group(1) not in seen:
             seen.append(m.group(1))
     return seen

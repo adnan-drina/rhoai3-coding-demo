@@ -282,7 +282,7 @@ def compose_story(
         try:
             from model import load as _mload, skeleton_condensation_units
 
-            model_units = skeleton_condensation_units(_mload(root), sid)
+            model_units = skeleton_condensation_units(_mload(root), sid, root=root)
         except Exception:
             model_units = []
 
@@ -382,6 +382,82 @@ def compose_story(
     return out_path, ("refreshed" if existed else "wrote"), story_owns
 
 
+def sync_k1_findings(root: Path) -> int:
+    """O-FINDINGSOT / O-K1SYNC — align tasks.md Findings with typed story set.
+
+    1. First ``**Findings**`` line = exactly ``story_findings(sid)`` (K1 SoT).
+    2. Later Findings lines: drop ids not in that set (and drop duplicates of
+       the first-line set) so write-inversion residue cannot dual-own.
+    """
+    try:
+        from model import load as model_load  # type: ignore
+        from task_contract import story_findings  # type: ignore
+    except Exception as e:
+        print(f"O-K1SYNC RED: import failed: {e}", file=sys.stderr)
+        return 2
+    model_path = root / "migration" / "model.json"
+    if not model_path.is_file():
+        print("O-K1SYNC: no model.json — skip")
+        return 0
+    model = model_load(root)
+    if not (model.get("stories") or []):
+        return 0
+    specs = root / "specs"
+    touched = 0
+    for st in model.get("stories") or []:
+        sid = str((st or {}).get("id") or "")
+        if not sid:
+            continue
+        want = story_findings(model, sid)
+        matches = sorted(specs.glob(f"{sid}-*/tasks.md")) if specs.is_dir() else []
+        if not matches:
+            continue
+        path = matches[0]
+        text = path.read_text(encoding="utf-8", errors="replace")
+        want_set = set(want)
+        first_line = (
+            f"**Findings**: {', '.join(want)}" if want else "**Findings**: (none)"
+        )
+        lines = text.splitlines(keepends=True)
+        out: list[str] = []
+        findings_i = 0
+        changed = False
+        for line in lines:
+            if re.match(r"(?im)^\*\*Findings\*\*\s*:", line):
+                findings_i += 1
+                if findings_i == 1:
+                    nl = first_line + ("\n" if line.endswith("\n") else "")
+                    if line.strip() != first_line.strip():
+                        changed = True
+                    out.append(nl)
+                else:
+                    # Sole K1 cite on first task — clear residue on later tasks.
+                    nl = "**Findings**: (none)" + ("\n" if line.endswith("\n") else "")
+                    if line.strip() != "**Findings**: (none)":
+                        changed = True
+                    out.append(nl)
+            else:
+                out.append(line)
+        text2 = "".join(out)
+        if findings_i == 0 and want:
+            text2, n = re.subn(
+                r"(?m)^(####\s+(?:S\d+-)?T-\d+[A-Za-z0-9_-]*[^\n]*\n)",
+                r"\1" + first_line + "\n",
+                text2,
+                count=1,
+            )
+            if n:
+                changed = True
+        if changed:
+            path.write_text(text2, encoding="utf-8")
+            touched += 1
+            print(
+                f"O-K1SYNC: {sid} findings={len(want)} → {path.relative_to(root)}"
+            )
+    print(f"O-K1SYNC: done stories_touched={touched}")
+    return 0
+
+
 def compose_from_typed_model(root: Path, *, force: bool) -> int:
     """ADR-35/40: assign model.tasks[] then render tasks.md VIEW for every story."""
     try:
@@ -441,8 +517,16 @@ def main() -> int:
         action="store_true",
         help="force pre-ADR-35 roadmap-scope compose (tests / emergency)",
     )
+    ap.add_argument(
+        "--sync-k1-findings",
+        action="store_true",
+        help="O-K1SYNC: merge typed story findings into tasks.md Findings fields",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
+
+    if args.sync_k1_findings:
+        return sync_k1_findings(root)
 
     # ADR-35 preferred path: typed model.tasks[] → render VIEW
     if not args.legacy_prose:

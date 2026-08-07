@@ -79,11 +79,28 @@ oc exec -n "$NS" "$POD" -c "$CTR" -- \
 # default — a deliberate STOP_AFTER_M1 hold must survive harness sync
 # (O-STOPMARKER / ADR-34 land during M1 hold). Opt-in wipe only:
 #   V10_SYNC_CLEAR_STOP=1
+# O-SYNCLOCKRM / W4-777: never unlink live flock paths. `rm` of
+# /tmp/outer-loop.lock while an outer holds flock on the inode lets a second
+# outer create a *new* lock file and start (dual-writer). Only clear stale PID
+# locks (dead PID); leave held locks alone. debt-freeze/pause/done are OK.
 oc exec -n "$NS" "$POD" -c "$CTR" -- bash -lc '
+  clear_stale_pid_lock() {
+    local lock="$1" pid=""
+    [ -f "$lock" ] || return 0
+    pid=$(tr -dc "0-9" <"$lock" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      echo "v10-sync-hermes: keeping live lock $lock pid=$pid (O-SYNCLOCKRM)"
+      return 0
+    fi
+    rm -f "$lock"
+    echo "v10-sync-hermes: cleared stale lock $lock pid=${pid:-empty}"
+  }
   rm -f /tmp/outer-loop-done /tmp/debt-freeze /tmp/supervisor-pause \
-        /tmp/outer-loop.lock /tmp/supervisor.lock /tmp/worker-wedge-skip \
+        /tmp/worker-wedge-skip \
         /projects/modernized/migration/findings-delta.STALE \
         /projects/modernized/migration/.supervisor-pause 2>/dev/null || true
+  clear_stale_pid_lock /tmp/outer-loop.lock
+  clear_stale_pid_lock /tmp/supervisor.lock
   if [ "${V10_SYNC_CLEAR_STOP:-0}" = "1" ]; then
     rm -f /projects/modernized/migration/.stopped 2>/dev/null || true
     echo "v10-sync-hermes: cleared migration/.stopped (V10_SYNC_CLEAR_STOP=1)"

@@ -71,8 +71,17 @@ except ImportError:
 
 
 def task_block(text: str, tid: str) -> tuple[str, str]:
+    # O-M4COMPOSITE: typed VIEW headings are S0N-T-NNN-Name (not bare T-NNN).
+    try:
+        from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+    except ImportError:
+        HEADING_TASK_ID_ATOM = (
+            r"(?:S\d+-TC-[A-Za-z0-9]+|S\d+-T-\d{3}(?:-[A-Za-z0-9]+)?|T[-A-Za-z0-9]*\d+[A-Za-z]*)"
+        )
     heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
+        re.finditer(
+            rf"^#{{2,6}}\s+({HEADING_TASK_ID_ATOM})\s*:\s*(.+)$", text, re.M
+        )
     )
     for i, m in enumerate(heads):
         if m.group(1) != tid:

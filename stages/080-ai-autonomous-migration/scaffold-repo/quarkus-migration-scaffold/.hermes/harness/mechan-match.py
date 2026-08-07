@@ -12,33 +12,32 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
 
 def _task_body_local(tasks_file: Path, tid: str) -> tuple[str, str]:
     """Task title/body with story-waiver appendices stripped (O-AC2)."""
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        title = m.group(2).strip()
-        start = m.end()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[start:end]
-        # O-T6dCHARSEC: intermediate ## section titles between T-NNN blocks
-        # (e.g. "## Model Characterization Tests" before T-009) must not leak
-        # into the prior task body — they falsely trip wants_tests →
-        # need-src-test and MiniMax-escalate an already-good main harvest.
-        body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
-        body = re.split(
-            r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
-            body,
-            maxsplit=1,
-            flags=re.M | re.I,
-        )[0]
-        return title, body
-    return "", ""
+    # O-T6dTCHEADING: HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    title, body = task_heading_parts(text, tid)
+    if not title and not body:
+        return "", ""
+    # O-T6dCHARSEC: intermediate ## section titles between T-NNN blocks
+    # (e.g. "## Model Characterization Tests" before T-009) must not leak
+    # into the prior task body — they falsely trip wants_tests →
+    # need-src-test and MiniMax-escalate an already-good main harvest.
+    body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
+    body = re.split(
+        r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
+        body,
+        maxsplit=1,
+        flags=re.M | re.I,
+    )[0]
+    return title, body
 
 
 def main() -> int:
@@ -124,6 +123,72 @@ def main() -> int:
     # gates cannot force need-src-test / unexpected-paths (W4 S02 T-000/T-001).
     shape_m = re.search(r"(?im)^\*?\*?Shape\*?\*?\s*:?\s*(\w+)", body)
     shape = (shape_m.group(1).lower() if shape_m else "")
+
+    # O-INFERDOCEREM: documentation / platform-verify *create* tips must touch a
+    # real doc/verify Target — refuse comment-only application.properties churn
+    # (v3 S01 T-004 b2a97e1).
+    doc_task = bool(
+        re.search(
+            r"(?i)\b(documentation|documents?|README|"
+            r"compatib(?:ility)?\s+docs?|platform verification|"
+            r"legacy compatibility)\b",
+            title,
+        )
+    )
+    if doc_task and create_task:
+        doc_targets = re.findall(
+            r"(?:Target|→|->|Owns)[^\n]*?"
+            r"("
+            r"README(?:\.md)?"
+            r"|docs/[A-Za-z0-9_./-]+\.md"
+            r"|(?:scripts/)?verify[A-Za-z0-9_./-]*"
+            r"|src/main/resources/[A-Za-z0-9_./-]*README[A-Za-z0-9_./-]*"
+            r")",
+            blob,
+            re.I,
+        )
+        doc_targets += re.findall(
+            r"\b(README\.md|docs/[A-Za-z0-9_./-]+\.md)\b", blob
+        )
+        seen_d: set[str] = set()
+        uniq_docs: list[str] = []
+        for d in doc_targets:
+            if d not in seen_d:
+                seen_d.add(d)
+                uniq_docs.append(d)
+        doc_targets = uniq_docs
+
+        def _doc_staged(want: str) -> bool:
+            leaf = Path(want).name
+            return any(
+                got == want or got.endswith("/" + leaf) or Path(got).name == leaf
+                for got in staged
+            )
+
+        props_only = bool(staged) and all(
+            p.endswith("application.properties")
+            or p.endswith("application.yaml")
+            or p.endswith("application.yml")
+            or p.startswith("migration/")
+            for p in staged
+        )
+        if props_only:
+            print("doc-target-missing")
+            return 1
+        if doc_targets and not any(_doc_staged(w) for w in doc_targets):
+            print(
+                "missing-doc-targets:"
+                + ",".join(Path(w).name for w in doc_targets[:6])
+            )
+            return 1
+        # Doc tip with README/docs/verify staged is OK even without .java Targets.
+        if any(
+            Path(p).name == "README.md"
+            or p.startswith("docs/")
+            or "verify" in Path(p).name.lower()
+            for p in staged
+        ):
+            return 0
     package_info_task = bool(re.search(r"(?i)package-info", title))
     structure_task = shape == "structure" or (
         (not package_info_task)

@@ -122,7 +122,54 @@ def snippet_at_path_line(
     return "\n".join(out)
 
 
-def _resolve_unit_file(legacy_root: Path, legacy_path: str) -> Optional[Path]:
+def _looks_like_openapi_dto(legacy_path: str, fqn: str = "") -> bool:
+    """OpenAPI *Dto types often exist only under target/generated-sources/openapi."""
+    lp = (legacy_path or "").replace("\\", "/")
+    base = Path(lp).name
+    blob = f"{lp} {fqn}".lower()
+    if not base.endswith("Dto.java"):
+        return False
+    return "/dto/" in f"/{lp.lower()}" or ".dto." in blob
+
+
+def _openapi_dto_search_roots(legacy_root: Path) -> list[Path]:
+    """Roots that may hold target/generated-sources/openapi.
+
+    Outer-loop often passes ``…/legacy/src`` into profile-rubric while OpenAPI
+    codegen writes under ``…/legacy/target/generated-sources/…`` (sibling of
+    ``src``). Search the given root and its parent when the root is named
+    ``src`` (O-PROFDTOANCHOR / O-PROFDTOLEGACYSRC).
+    """
+    roots: list[Path] = []
+    if legacy_root.is_dir():
+        roots.append(legacy_root)
+    if legacy_root.name == "src":
+        parent = legacy_root.parent
+        if parent.is_dir() and parent not in roots:
+            roots.append(parent)
+    return roots
+
+
+def _resolve_openapi_dto_file(legacy_root: Path, legacy_path: str) -> Optional[Path]:
+    """O-PROFDTOANCHOR — resolve *Dto.java under generated-sources/openapi|swagger."""
+    base = Path((legacy_path or "").replace("\\", "/")).name
+    if not base.lower().endswith("dto.java"):
+        return None
+    for root in _openapi_dto_search_roots(legacy_root):
+        for p in root.rglob(base):
+            if not p.is_file():
+                continue
+            parts_l = [x.lower() for x in p.parts]
+            if "generated-sources" not in parts_l:
+                continue
+            if "openapi" in parts_l or "swagger" in parts_l:
+                return p
+    return None
+
+
+def _resolve_unit_file(
+    legacy_root: Path, legacy_path: str, *, fqn: str = ""
+) -> Optional[Path]:
     lp = (legacy_path or "").replace("\\", "/").lstrip("./")
     if not lp:
         return None
@@ -140,6 +187,9 @@ def _resolve_unit_file(legacy_root: Path, legacy_path: str) -> Optional[Path]:
                 continue
             if p.is_file():
                 return p
+    # O-PROFDTOANCHOR: OpenAPI DTOs are build outputs but still profile units.
+    if _looks_like_openapi_dto(lp, fqn):
+        return _resolve_openapi_dto_file(legacy_root, lp)
     return None
 
 
@@ -223,9 +273,13 @@ def _verified(
 
 
 def _structural_anchors(
-    legacy_root: Path, legacy_path: str, simple_name: str
+    legacy_root: Path,
+    legacy_path: str,
+    simple_name: str,
+    *,
+    fqn: str = "",
 ) -> list[dict[str, Any]]:
-    fp = _resolve_unit_file(legacy_root, legacy_path)
+    fp = _resolve_unit_file(legacy_root, legacy_path, fqn=fqn)
     if fp is None:
         return []
     lines = _read_lines(fp)
@@ -253,6 +307,8 @@ def _structural_anchors(
         m = _TYPE_DECL.match(body)
         token = (m.group("name") if m else _token_on_line(body)) or simple_name
         if token:
+            # Cite logical legacy_path (not target/…); O-PROFDTOANCHOR lets
+            # evidence_resolves open generated-sources/openapi for *Dto.java.
             a = _verified(legacy_root, path, decl_idx + 1, token, "declaration")
             if a:
                 out.append(a)
@@ -367,7 +423,7 @@ def anchors_for_unit(
     simple = fqn.rsplit(".", 1)[-1] if fqn else Path(lp).stem
     if not lp.endswith(".java"):
         return []
-    structural = _structural_anchors(lr, lp, simple)
+    structural = _structural_anchors(lr, lp, simple, fqn=fqn)
     findings = _finding_anchors(root, lr, lp, list(unit.get("findings") or []))
     # Prefer declaration + findings + annotations; cap total.
     merged: list[dict[str, Any]] = []

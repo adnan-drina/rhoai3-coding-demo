@@ -174,6 +174,29 @@ def evidence_resolves(legacy_root: Path, evidence: dict[str, Any]) -> tuple[bool
                 if p.is_file():
                     fp = p
                     break
+    # O-PROFDTOANCHOR / O-PROFDTOLEGACYSRC: OpenAPI *Dto.java often lives only
+    # under target/generated-sources/openapi. When callers pass …/legacy/src
+    # (profile-rubric argv), codegen output is under the parent …/legacy/target.
+    if fp is None:
+        base = Path(path).name
+        if base.lower().endswith("dto.java"):
+            search_roots = [legacy_root] if legacy_root.is_dir() else []
+            if legacy_root.name == "src" and legacy_root.parent.is_dir():
+                search_roots.append(legacy_root.parent)
+            for root in search_roots:
+                if not root.is_dir():
+                    continue
+                for p in root.rglob(base):
+                    if not p.is_file():
+                        continue
+                    parts_l = [x.lower() for x in p.parts]
+                    if "generated-sources" in parts_l and (
+                        "openapi" in parts_l or "swagger" in parts_l
+                    ):
+                        fp = p
+                        break
+                if fp is not None:
+                    break
     if fp is None:
         return False, f"file not found for path={path}"
     try:

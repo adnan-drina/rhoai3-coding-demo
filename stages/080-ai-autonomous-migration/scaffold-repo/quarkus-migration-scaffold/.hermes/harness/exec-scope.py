@@ -20,19 +20,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
 
 def _task_body(tasks: Path, tid: str) -> tuple[str, str]:
     text = tasks.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        title = m.group(2).strip()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        return title, text[m.end() : end]
-    return "", ""
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    return task_heading_parts(text, tid)
 
 
 def _ownstage(tasks: Path, tid: str) -> set[str]:
@@ -83,10 +81,21 @@ def main() -> int:
     pom_ok = bool(
         re.search(
             r"(?i)\bpom\.xml\b|quarkus-jdbc|datasource|hibernate-orm|O-DSKIND|"
-            r"Findings:.*pom|javaee-pom|springboot-.*pom",
+            r"hibernate-validator|jakarta\.validation|O-VALDEPADD|O-HARVESTREADY|"
+            r"O-MAPPRESEED|Findings:.*pom|javaee-pom|springboot-.*pom",
             blob,
         )
     )
+    # O-HARVESTREADY: owned Targets that imply ensurers authorize pom.xml
+    # even when task prose never mentions the dependency.
+    if not pom_ok:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from harvest_ready import needs_pom_stage  # type: ignore
+
+            pom_ok = needs_pom_stage(Path.cwd(), own)
+        except ImportError:
+            pass
     struct = shape == "structure" or bool(
         re.search(r"(?i)\.gitkeep|package structure|directory structure", blob)
     )

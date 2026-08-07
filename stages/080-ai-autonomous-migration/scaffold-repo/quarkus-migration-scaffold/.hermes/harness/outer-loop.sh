@@ -116,6 +116,28 @@ worker_label() {
   esac
 }
 
+# O-M4COMPOSITE / O-M4TCHEADING / O-M4REPLAYCOMP: typed S0N-TC-Name |
+# S0N-T-NNN-Name + legacy T-NNN* (ERE). Keep aligned with task_contract.
+# TC before T- (prefix overlap).
+TASK_ID_ERE='(S[0-9]+-TC-[A-Za-z0-9]+|S[0-9]+-T-[0-9]{3}(-[A-Za-z0-9]+)?|T-[0-9]+[A-Za-z]*)'
+TASK_SUBJECT_LINE_ERE="^[0-9a-f]+ ${TASK_ID_ERE}:"
+# Emit task ids from a tasks.md (heading order).
+task_ids_from_spec() { # $1=tasks.md
+  local f="$1"
+  [ -f "$f" ] || return 0
+  grep -oE "^#{2,6} +${TASK_ID_ERE}:" "$f" 2>/dev/null \
+    | sed -E "s/^#+ +(${TASK_ID_ERE}):.*/\1/" || true
+}
+# Numeric T-NNN for ordering (typed or legacy).
+task_id_num() { # $1=tid
+  local t="$1"
+  if [[ "$t" =~ T-([0-9]+) ]]; then
+    echo $((10#${BASH_REMATCH[1]}))
+  else
+    echo 0
+  fi
+}
+
 _sym() { # $1=pretty $2=plain
   if [ "$PLAIN" = "1" ]; then echo "$2"; else echo "$1"; fi
 }
@@ -532,11 +554,11 @@ emit_story_epilog() { # $1=outcome label (complete|debt-freeze|failed|…)
   dur=$(_fmt_duration "$elapsed")
   head_s=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
   if [ -n "${SPEC_TASKS:-}" ] && [ -f "$SPEC_TASKS" ]; then
-    total=$(grep -cE '^#### T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null || echo 0)
+    total=$(grep -cE "^#{2,6} +${TASK_ID_ERE}:" "$SPEC_TASKS" 2>/dev/null || echo 0)
   fi
   if [ -n "$base" ]; then
     shipped=$(git log --oneline "${base}..HEAD" 2>/dev/null \
-      | grep -cE '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:' || true)
+      | grep -cE "$TASK_SUBJECT_LINE_ERE" || true)
     shortstat=$(git diff --shortstat "${base}..HEAD" 2>/dev/null \
       | sed -E 's/^ *//' || true)
   fi
@@ -664,7 +686,9 @@ _outer_heartbeat_start() { # $1=title $2=t0 $3=slog $4=kind → sets hb_pid
 # outer-loop-heartbeat — not the outer loop itself
 # O-HBORPHAN: exit when parent outer-loop dies (ppid=1 survivors polluted the log).
 # O-PROFDECIDEHB: optional /tmp/outer-heartbeat-progress.txt (one line) is appended
-# so long harness loops (ADR-32 Qwen classify) show typed=N/M like MiniMax seats.
+# for worker harness loops (decide / prose / typed M3). O-HBPROGSTALE / O-LOGNOBANK:
+# never append progress for orchestrator (MiniMax) seats — a leftover m3=… file
+# was gluing prior-run telemetry onto M2 SEQUENCE heartbeats.
 SECS="${1:-60}"; TITLE="${2:-session}"; T0="${3:-0}"; SLOG="${4:-/tmp/outer.log}"
 LOG="${5:-/tmp/outer-loop.log}"; KIND="${6:-orchestrator}"; PARENT="${7:-}"
 PROG="${8:-/tmp/outer-heartbeat-progress.txt}"
@@ -678,14 +702,40 @@ while true; do
   fi
   now=$(date +%s); elapsed=$((now - T0))
   extra=""
-  if [ -f "$PROG" ]; then
-    extra=" — $(tr -d '\n' <"$PROG" | head -c 200)"
+  # O-HBPROGSTALE (W4-669 CHANGE): render progress only when fresh (ts= age
+  # ≤ HB_PROGRESS_MAX_AGE, default 180s). Stale/missing-ts → "progress stale (Ns)"
+  # rather than a confident dead phase name (F-metric-fresh for a log line).
+  if [ "$KIND" = "worker" ] && [ -f "$PROG" ]; then
+    _pline=$(tr -d '\n' <"$PROG" | head -c 200)
+    _pts=""
+    if [[ "$_pline" =~ ts=([0-9]+) ]]; then
+      _pts="${BASH_REMATCH[1]}"
+    fi
+    _max_age="${HB_PROGRESS_MAX_AGE:-180}"
+    if [ -z "$_pts" ]; then
+      extra=" — progress stale (no-ts)"
+    else
+      _age=$((now - _pts))
+      if [ "$_age" -gt "$_max_age" ]; then
+        extra=" — progress stale (${_age}s)"
+      else
+        extra=" — ${_pline}"
+      fi
+    fi
   fi
-  if [ "$KIND" = "orchestrator" ] && grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
-    echo "[$(date -u +%F' '%T)] …        ${TITLE} waiting on MiniMax rate limit (${elapsed}s)${extra} — details ${SLOG}" >> "$LOG"
+  # O-HBTRUTH / F-heartbeat-truthful (W4-654): never claim a worker when
+  # supervisor is paused, story is .stopped, or progress already phase=done.
+  verb=""
+  if [ -f /tmp/supervisor-pause ] || [ -f migration/.stopped ]; then
+    verb="HELD/paused"
+  elif [ "$KIND" = "worker" ] && [ -f "$PROG" ] && grep -qE '(^|[[:space:]])phase=done([[:space:]]|$)' "$PROG"; then
+    verb="phase-done idle"
+  elif [ "$KIND" = "orchestrator" ] && grep -qE "429|Too Many Requests|Rate limit|rate.?limit" "$SLOG" 2>/dev/null; then
+    verb="waiting on MiniMax rate limit"
   else
-    echo "[$(date -u +%F' '%T)] …        ${TITLE} still working on ${KIND} (${elapsed}s)${extra} — details ${SLOG}" >> "$LOG"
+    verb="still working on ${KIND}"
   fi
+  echo "[$(date -u +%F' '%T)] …        ${TITLE} ${verb} (${elapsed}s)${extra} — details ${SLOG}" >> "$LOG"
 done
 HBEOF
   chmod +x /tmp/outer-loop-heartbeat.sh
@@ -749,6 +799,9 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
   t0=$(date +%s)
   slog="/tmp/outer-${tag}.log"
   log "         Actor: $(orch_label) — session ${tag} → ${slog}"
+  # O-HBPROGSTALE: MiniMax seats do not own the progress file — drop leftovers
+  # so a prior typed-M3 line cannot appear on M2 SEQUENCE heartbeats.
+  rm -f /tmp/outer-heartbeat-progress.txt
   _outer_heartbeat_start "$title" "$t0" "$slog" orchestrator
   setsid timeout "$SESSION_TIMEOUT" hermes chat --provider "$ORCH_PROVIDER" --model "$ORCH_MODEL" -q "$prompt" \
     < /dev/null > "$slog" 2>&1 &
@@ -777,9 +830,17 @@ mchat() { # $1=tag $2=prompt [$3=phase title for heartbeats]
 # O-PROFCOVSTALE / O-PROF1OF79STOP — coverage for gates comes from evaluate_roles
 # SoT (model.units[].decision), never from a stale /tmp/profile-rubric.txt parse.
 # Rubric text remains a human-facing side effect only.
+# O-PROFCOVPARITY (W4-749 §2 / W4-751 §3): use the SAME legacy root as
+# m1_profile_green / profile-rubric argv (prefer …/legacy/src) so the run-log
+# `coverage … evidence_miss=` line cannot diverge from COVERAGE: in
+# /tmp/profile-rubric.txt when misses are non-zero.
 # Prints: named total authored evidence_miss  (space-separated); empty on fail.
 _profile_cov_fields() {
-  local _legacy="${PROFILE_LEGACY_ROOT:-/projects/legacy}"
+  local _legacy="${PROFILE_LEGACY_ROOT:-}"
+  if [ -z "$_legacy" ]; then
+    _legacy="/projects/legacy/src"
+    [ -d "$_legacy" ] || _legacy="/projects/legacy"
+  fi
   python3 - "$_legacy" <<'PY'
 import sys
 from pathlib import Path
@@ -791,7 +852,8 @@ except Exception:
 root = Path(".").resolve()
 if not (root / "migration" / "model.json").is_file():
     sys.exit(0)
-ev = evaluate_roles(root, legacy=sys.argv[1] if len(sys.argv) > 1 else "/projects/legacy")
+legacy = sys.argv[1] if len(sys.argv) > 1 else "/projects/legacy/src"
+ev = evaluate_roles(root, legacy=legacy)
 print(
     f"{int(ev.get('named') or 0)} {int(ev.get('total') or 0)} "
     f"{int(ev.get('authored') or 0)} {int(ev.get('evidence_miss') or 0)}"
@@ -1005,7 +1067,27 @@ archive_tmp_forensics() {
 _kill_outer_heartbeats() {
   pkill -TERM -f '/tmp/outer-loop-heartbeat\.sh' 2>/dev/null || true
 }
-trap '_kill_outer_heartbeats; archive_tmp_forensics' EXIT
+# ADR-48 (d) / O-BLOCKSCHED: silence without a terminal marker is a defect.
+# Every exit path (signal, set -e crash, intentional) must leave /tmp/outer-loop-done
+# with a typed reason distinct from a clean success.
+_ensure_outer_terminal_marker() {
+  local _rc="${1:-$?}"
+  if [ -s /tmp/outer-loop-done ]; then
+    return 0
+  fi
+  echo "outer-crashed: unexpected-exit rc=${_rc} $(date -u +%Y-%m-%dT%H:%MZ)" \
+    > /tmp/outer-loop-done
+  if [ -x "$HARNESS/write-stopped.sh" ] || [ -f "$HARNESS/write-stopped.sh" ]; then
+    bash "$HARNESS/write-stopped.sh" \
+      --kind "outer-crashed" \
+      --authorizing "outer-loop EXIT trap (ADR-48d / O-BLOCKSCHED)" \
+      --reason "unexpected exit rc=${_rc} without /tmp/outer-loop-done" \
+      --expected-next "forensics in /tmp + migration/.stopped; fix root cause; clear .stopped; restart" \
+      --related "O-BLOCKSCHED O-STOPMARKER ADR-48" \
+      >>"${LOG:-/tmp/outer-loop.log}" 2>&1 || true
+  fi
+}
+trap '_rc=$?; _ensure_outer_terminal_marker "$_rc"; _kill_outer_heartbeats; archive_tmp_forensics' EXIT
 
 fail_run() {
   phase_fail "$1"
@@ -1054,8 +1136,11 @@ fi
 if [ -z "${HARNESS_RUN_ID:-}" ]; then
   export HARNESS_RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 fi
+# O-HBPROGSTALE: prior-run typed progress must not outlive the outer process.
+rm -f /tmp/outer-heartbeat-progress.txt
 if [ -f "$HARNESS/run_journal.py" ]; then
-  python3 "$HARNESS/run_journal.py" ensure >>"$LOG" 2>&1 || true
+  # O-LOGNOBANK: journal ensure forensics stay out of the demo narrative sink.
+  python3 "$HARNESS/run_journal.py" ensure >>/tmp/run-journal-ensure.log 2>&1 || true
 fi
 echo "[$(date -u +%F' '%T)] run-journal: HARNESS_RUN_ID=${HARNESS_RUN_ID}" >> "$LOG"
 # O-STOPMARKER: refuse start on deliberate/stale stop unless cleared.
@@ -1193,7 +1278,7 @@ if m1_profile_green; then
   log_gchain_m1_profile GREEN
   log_architecture_profile_sections migration/architecture-profile.md
 else
-  if [ -f migration/architecture-profile.md ]; then
+if [ -f migration/architecture-profile.md ]; then
     log "         O-M1SKIPPROV: profile present but rubric/provenance RED — re-running PROFILE"
   fi
   # O-PROFRUBRICWIPE / W4-495 / W4-496 — drop stale rubric text before PROFILE.
@@ -1269,7 +1354,7 @@ else
     phase_start "M1 PROFILE — class-role decide loop [${pass_i}/${PROFILE_DECIDE_PASSES}] (${PROFILE_CLASSIFY_BACKEND})"
     log "         Actor: harness profile_decide_loop + $(worker_label) classify — session decide-${pass_i} → ${slog}"
     : > /tmp/outer-heartbeat-progress.txt
-    printf 'typed=0/? active=starting pass=%s\n' "$pass_i" > /tmp/outer-heartbeat-progress.txt
+    printf 'ts=%s typed=0/? active=starting pass=%s\n' "$(date +%s)" "$pass_i" > /tmp/outer-heartbeat-progress.txt
     _outer_heartbeat_start "M1 PROFILE decide" "$t0" "$slog" worker
     # PYTHONUNBUFFERED: OK/FAIL lines must hit slog in real time (else heartbeat
     # and operators only see retries after the whole pass ends).
@@ -1315,11 +1400,18 @@ else
       return 1
     fi
     if grep -q 'O-PROFPROSEDECOMP' "$slog" 2>/dev/null; then
-      if ! grep -qE 'O-PROFPROSEDECOMP: OK' "$slog" 2>/dev/null; then
-        log "         O-PROFPROSENOOP: harness prose wrote 0 sections (see $slog)"
-        return 1
+      if grep -qE 'O-PROFPROSEDECOMP: OK' "$slog" 2>/dev/null; then
+        return 0
       fi
-      return 0
+      # O-PROFPROSERESUME: O-M1SKIPPROV re-entry when §§1–6 are already filled
+      # yields SKIP×N + leftover_sections=none (no new OK lines). That is not a
+      # thin-skeleton noop — proceed to decide for UNNAMED / coverage RED.
+      if grep -qE 'O-PROFPROSEDECOMP: done ok=[1-9][0-9]* fail=0 leftover_sections=none' "$slog" 2>/dev/null; then
+        log "         O-PROFPROSERESUME: §§1–6 already filled (SKIP path) — prose witness OK; continue to decide"
+        return 0
+      fi
+      log "         O-PROFPROSENOOP: harness prose wrote 0 sections (see $slog)"
+      return 1
     fi
     # Legacy containment: monolithic wchat must show edit/write tools.
     if ! _m3_log_has_write "$slog"; then
@@ -1343,7 +1435,7 @@ else
     # Demo-facing catalog — bare §N alone is opaque to workshop viewers.
     log "         Sections: §1 (Purpose & Domain) · §2 (Components & Relationships) · §3 (Integration Surfaces) · §4 (Behavioral Contract Sources) · §5 (Modernization Surface) · §6 (Domain Boundaries)"
     rm -f /tmp/outer-heartbeat-progress.txt
-    printf 'prose_ok=0/6 fail=0 active=starting\n' > /tmp/outer-heartbeat-progress.txt
+    printf 'ts=%s prose_ok=0/6 fail=0 active=starting\n' "$(date +%s)" > /tmp/outer-heartbeat-progress.txt
     _outer_heartbeat_start "M1 PROFILE prose" "$t0" "$slog" worker
     set +e
     PYTHONUNBUFFERED=1 python3 "$HARNESS/profile_prose_loop.py" run --root . --legacy /projects/legacy \
@@ -1527,21 +1619,21 @@ roadmap_green() {
 }
 m2_compose_bookkeeping() {
   # O-M2COMPOSE: deterministic partition + kind/S-FND/seat-budget + brief stubs + K3
+  # O-LOGNOBANK: keep bank/ADR tokens in /tmp/m2-compose.txt — not outer-loop.log.
   [ "${M2_COMPOSE}" = "1" ] || return 0
   [ -f "$HARNESS/m2-compose.py" ] || return 0
   local mode="${1:-fill}"
-  local before after detail
+  local before after
   before=$(roadmap_lint_residual)
   if python3 "$HARNESS/m2-compose.py" --root . --mode "$mode" \
       > /tmp/m2-compose.txt 2>&1; then
     # Re-run lint so residual reflects post-compose bookkeeping (O-LOGLINTRES)
     roadmap_green || true
     after=$(roadmap_lint_residual)
-    detail="$(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
-    log "         O-M2COMPOSE ${mode}: ${detail} · lint ${before} → ${after}"
+    log "         M2 compose ${mode}: bookkeeping OK · lint ${before} → ${after}"
     return 0
   fi
-  log "         O-M2COMPOSE ${mode} RED — see /tmp/m2-compose.txt · lint residual $(roadmap_lint_residual)"
+  log "         M2 compose ${mode} RED — see /tmp/m2-compose.txt · lint residual $(roadmap_lint_residual)"
   return 1
 }
 m2_brief_quality_exit() {
@@ -1563,25 +1655,47 @@ if roadmap_green; then
 else
   # O-M2COMPOSE skeleton-first: unique-owner partition + brief stubs before seat
   if [ "${M2_COMPOSE}" = "1" ] && [ ! -f migration/roadmap.md ]; then
-    phase_start "M2 SEQUENCE — skeleton-first compose (O-M2COMPOSE)"
+    phase_start "M2 SEQUENCE — skeleton-first compose"
     if m2_compose_bookkeeping skeleton; then
       # O-LOGSTART: residual after skeleton is expected — MiniMax seat closes it.
       phase_gate "M2 SEQUENCE compose" GREEN \
-        "skeleton seeded; lint residual $(roadmap_lint_residual) left for MiniMax — $(tail -1 /tmp/m2-compose.txt 2>/dev/null || true)"
+        "skeleton seeded; lint residual $(roadmap_lint_residual) left for MiniMax (forensics: /tmp/m2-compose.txt)"
     else
       phase_gate "M2 SEQUENCE compose" RED "lint residual $(roadmap_lint_residual) — see /tmp/m2-compose.txt"
-      fail_run "O-M2COMPOSE skeleton-first RED (see /tmp/m2-compose.txt)"
+      fail_run "M2 SEQUENCE skeleton-first compose RED (see /tmp/m2-compose.txt)"
     fi
   elif [ "${M2_COMPOSE}" = "1" ] && [ -f migration/roadmap.md ]; then
     # Refresh bookkeeping on a partial/prior RED roadmap before the seat
     m2_compose_bookkeeping fill || true
+  fi
+  # O-M2SEATAFTERFILL: when compose fill already clears roadmap-lint + brief
+  # quality, do not burn a MiniMax M2 SEQUENCE seat on residual bookkeeping.
+  M2_SKIP_SEAT=0
+  if roadmap_green && m2_brief_quality_exit; then
+    M2_SKIP_SEAT=1
+    M2_429_COUNT=0
+    [ -n "$(git status --porcelain migration/)" ] && git add migration/ && git commit -q -m "M2 sequence: outer-loop mechanical commit of lint-green roadmap" 2>/dev/null
+    phase_gate "M2 SEQUENCE roadmap-lint" GREEN \
+      "O-M2SEATAFTERFILL · 0 findings after compose fill; commit $(git rev-parse --short HEAD) · skip MiniMax seat"
+    log_gchain_m2_roadmap GREEN
+    # O-K3TYPED / F-k3-typed: per-story counts from model.nm_decisions — never
+    # replicate a global roadmap grep across every SID (W4-623).
+    if [ -f "$HARNESS/k3_evidence.py" ]; then
+      python3 "$HARNESS/k3_evidence.py" --root . seed >/tmp/k3-seed.txt 2>&1 || true
+      log "         O-EVIDLIVE: K3 seeded typed (O-K3TYPED) — $(tr '\n' ' ' </tmp/k3-seed.txt | head -c 120)"
+    fi
+    log "         • migration/roadmap.md ($(grep -cE '^## S[0-9]' migration/roadmap.md 2>/dev/null || echo 0) stories)"
+    for b in migration/briefs/S*.md; do
+      [ -f "$b" ] && log "         • $(basename "$b" .md) brief generated"
+    done
+    phase_ok "M2 SEQUENCE — roadmap + briefs lint-green after compose fill (O-M2SEATAFTERFILL); commit $(git rev-parse --short HEAD)"
   fi
   ATTEMPT=1
   M2_MAX_ATTEMPTS=2
   # O-M2RETRYINLINE: bound inlined lint so the retry prompt stays usable.
   M2_RETRY_LINT_LINES="${M2_RETRY_LINT_LINES:-80}"
   M2_RETRY_LINT_BYTES="${M2_RETRY_LINT_BYTES:-8000}"
-  while [ "$ATTEMPT" -le "$M2_MAX_ATTEMPTS" ]; do
+  while [ "$M2_SKIP_SEAT" != "1" ] && [ "$ATTEMPT" -le "$M2_MAX_ATTEMPTS" ]; do
     phase_start "M2 SEQUENCE — cut migration into dependency-ordered stories [attempt ${ATTEMPT}/${M2_MAX_ATTEMPTS}]"
     # ADR-34 / ADR-38 / O-M2PROJ / F-no-discovery: projected facts + SNIPPET text
     # (not cite= pointers alone). Cap raised for anchored snippets (was 48K).
@@ -1635,23 +1749,10 @@ ${_lint_inline}
       # O-LOGLINTRES: narrate residual (0) on GREEN so convergence is visible
       phase_gate "M2 SEQUENCE roadmap-lint" GREEN "0 findings; commit $(git rev-parse --short HEAD)"
       log_gchain_m2_roadmap GREEN
-      # O-EVIDLIVE / K3: roadmap adopt/defer exercised — seed per-story ledger rows.
-      # Ledger writes stay; do not dump bare `evidlive:S0N:K3:N` into the demo
-      # outer-loop log (O-EVIDLIVELOG — align with timestamped `log` lines).
-      if [ -f "$HARNESS/evidence-liveness.sh" ] && [ -f migration/roadmap.md ]; then
-        # O-EVIDLIVEK3TABLE: also count markdown table `| id | adopt|defer | reason |`
-        _k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt|[[:space:]]\|[[:space:]]*(adopt|defer)[[:space:]]\|)' migration/roadmap.md 2>/dev/null || true)
-        _k3n=${_k3n:-0}
-        if [ "${_k3n:-0}" -gt 0 ] 2>/dev/null; then
-          _k3_sids=()
-          for _sid in $(grep -E '^## S[0-9]+' migration/roadmap.md | sed -E 's/^## (S[0-9]+).*/\1/'); do
-            _k3_sids+=("$_sid")
-            # stdout is machine-token for instruments/supervisor — not demo narration
-            bash "$HARNESS/evidence-liveness.sh" record "$_sid" K3 "$_k3n" "roadmap-lint GREEN adopt/defer" \
-              >/dev/null 2>&1 || true
-          done
-          log "         O-EVIDLIVE: K3 seeded · stories=${#_k3_sids[@]} · adopt/defer-marks=${_k3n}"
-        fi
+      # O-K3TYPED / F-k3-typed (W4-623): typed per-story seed — not global grep -c.
+      if [ -f "$HARNESS/k3_evidence.py" ]; then
+        python3 "$HARNESS/k3_evidence.py" --root . seed >/tmp/k3-seed.txt 2>&1 || true
+        log "         O-EVIDLIVE: K3 seeded typed (O-K3TYPED) — $(tr '\n' ' ' </tmp/k3-seed.txt | head -c 120)"
       fi
       # Name concrete briefs for the demo log.
       log "         • migration/roadmap.md ($(grep -cE '^## S[0-9]' migration/roadmap.md 2>/dev/null || echo 0) stories)"
@@ -1716,6 +1817,7 @@ if [ "${STOP_AFTER_M2:-0}" = "1" ] || [ "${STOP_AFTER_M2:-}" = "true" ]; then
 fi
 
 # ---------------------------------------------------------- story loop
+rm -f /tmp/outer-tasks-blocked-stories
 [ -f "$STATE" ] || { echo "story,outcome,epoch" > "$STATE"; git add "$STATE"; git commit -q -m "Outer loop: story state ledger" 2>/dev/null || true; }
 story_done() { grep -q "^$1,complete" "$STATE" 2>/dev/null; }
 
@@ -1762,6 +1864,21 @@ fi
 
 STORY_IDX=0
 while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
+  # O-SCOPESOT / ADR-39 (W4-617): enforcement scope is typed model.stories[]
+  # units — never roadmap `- scope:` prose. Roadmap remains a human VIEW;
+  # parse-roadmap still supplies DEPLOY/FINDINGS + story order for the loop.
+  if [ -f "$HARNESS/task_contract.py" ] && [ -f migration/model.json ]; then
+    _typed_scope="$(
+      python3 "$HARNESS/task_contract.py" story-scope --root . --sid "$SID" \
+        2>/tmp/story-scope-${SID}.err || true
+    )"
+    if [ -n "${_typed_scope}" ]; then
+      SCOPE="${_typed_scope}"
+    else
+      log "         O-SCOPESOT: typed story-scope empty for ${SID} — refusing prose fallback (see /tmp/story-scope-${SID}.err)"
+      fail_run "O-SCOPESOT: no typed scope for ${SID} (model.stories[] SoT; roadmap is VIEW only)"
+    fi
+  fi
   [ -n "$SID" ] || continue
   STORY_IDX=$((STORY_IDX + 1))
   # O-LOGSTORY: story identity on every log() line for this SID (cleared below).
@@ -1786,9 +1903,9 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
   # specs after a failed M3 (or auto-restart) must re-lint; only skip mchat
   # when plan-lint is already green.
   SPEC_TASKS=$(ls specs/${SID}-*/tasks.md 2>/dev/null | head -1)
-  BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
-  [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
-  SLUG=$(basename "$BRIEF" .md)
+    BRIEF=$(ls migration/briefs/${SID}-*.md 2>/dev/null | head -1)
+    [ -n "$BRIEF" ] || fail_run "$SID has no brief under migration/briefs/"
+    SLUG=$(basename "$BRIEF" .md)
   # O-LOGFULLSTORY: prefix + phase titles use full slug (S01-platform-...), not bare S01
   STORY_TAG="$SLUG"
   M3_DONE=0
@@ -1864,7 +1981,7 @@ while IFS='|' read -r SID DEPLOY FINDINGS SCOPE; do
       _m3tl_slog=$(python3 "$HARNESS/run_journal.py" seat-log m3 "loop-${SID}" --attempt 1 2>/dev/null \
         || echo "/tmp/m3-task-loop-${SID}.log")
       : > /tmp/outer-heartbeat-progress.txt
-      printf 'm3=%s seats=0/? active=starting\n' "$SID" > /tmp/outer-heartbeat-progress.txt
+      printf 'ts=%s m3=%s seats=0/? active=starting\n' "$(date +%s)" "$SID" > /tmp/outer-heartbeat-progress.txt
       _outer_heartbeat_start "M3 SPECIFY ${SLUG}" "$_m3tl_t0" "$_m3tl_slog" worker
       set +e
       PYTHONUNBUFFERED=1 python3 "$HARNESS/m3_task_loop.py" run --root . --sid "$SID" \
@@ -2147,7 +2264,7 @@ ${DERIVED_INLINE}"
       if [ "$mode" = "fix" ]; then
         ORDER_HINT=""
         if grep -q "LINT:order" /tmp/plan-lint.txt 2>/dev/null; then
-          ORDER_HINT=" O-M3ORDER: LINT:order means EVERY Class=rewrite task MUST appear before ANY Class=infer — reorder #### headings (do not leave characterization/verify infer before migration rewrite)."
+          ORDER_HINT=" O-M3ORDER/O-COLLABSEQ: LINT:O-PLANORDER means file/M4 heading order must follow migration/dependency-order (earlier condensation units before dependents) — numeric T-NNN alone is not enough; HARVEST rewrite may follow REDESIGN infer when deps require it."
         fi
         P="M3 FIX for ${SID} (${SLUG}) — plan-lint RED (see /tmp/plan-lint.txt).${ORDER_HINT} O-M3FIRSTWRITE: your FIRST tool MUST be edit on specs/${SLUG}/tasks.md (fill Goal/Target; put verbatim migration.yaml preserve: tokens in a covering task; remove skeleton/preseed markers). Do NOT read migration.yaml, findings-inventory.md, dependency-order.md, spec.md, or plan.md before that first edit. Brief + DERIVED FACTS are INLINED below; on conflict DERIVED FACTS win (O-M3DERIVEDCTX). Then clear every lint finding. Verify ${M3_LINT_CMD} exits 0. If you commit, stage ONLY specs/${SLUG}/ (never git add -A / .hermes / __pycache__); prefer leaving uncommitted for outer-loop mechanical commit. DO NOT PUSH. Scope=${SCOPE}. ${PKG_RENAME_HINT} ACCEPTANCE deploy=${DEPLOY}.
 
@@ -2626,7 +2743,7 @@ EOF
           STORY_RUN_BASE="$_cand"
           _hidden="${_hidden} ${_tid}"
         fi
-      done < <(grep -oE 'T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      done < <(task_ids_from_spec "$SPEC_TASKS" | sort -u)
       if [ -n "$_hidden" ]; then
         log "         O-RESUMEHIDE: walked RESUME_RUN_BASE back to $(git rev-parse --short "$STORY_RUN_BASE") (hidden tips:${_hidden})"
       fi
@@ -2636,9 +2753,10 @@ EOF
     # committed T-NNN (empty RUN_BASE..HEAD → committed() always false).
     # If this story's spec exists and T-NNN commits already follow it, resume
     # from the spec's parent so those tasks stay "committed".
+    # O-M4REPLAYCOMP: also match typed S0N-T-NNN-Name subjects (ADR-35/40).
     SPEC_SHA=$(git log -1 --format=%H --grep="^${SID} spec:" 2>/dev/null || true)
     if [ -n "$SPEC_SHA" ] && [ -f "$SPEC_TASKS" ] \
-      && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:'; then
+      && git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null | grep -qE "$TASK_SUBJECT_LINE_ERE"; then
       STORY_RUN_BASE=$(git rev-parse "${SPEC_SHA}^" 2>/dev/null || git rev-parse "$SPEC_SHA")
       # O-SPECREBASE: a mid-story `S0N spec:` recommit (e.g. DTO-first plan
       # fix) can sit *after* earlier T-NNN. SPEC^ then hides those commits from
@@ -2648,21 +2766,21 @@ EOF
       # O-SPECREBASE: only rewrite tasks already progressed in SPEC..HEAD
       # (max T-NNN). Ignoring higher ids avoids walking into prior stories'
       # reused T-00N subjects (Wave2 false base → old T-007/T-008).
-      # O-COMMITID/O-SPECREBASE: only subject-leading `T-NNN:` — never bare
+      # O-COMMITID/O-SPECREBASE: only subject-leading task ids — never bare
       # `(T-005)` inside plan commit subjects (v2 false walk to prior-story T-005).
       _maxn=0
       while read -r _ht; do
-        _hn=${_ht#T-}; _hn=$((10#${_hn}))
+        _hn=$(task_id_num "$_ht")
         [ "$_hn" -gt "$_maxn" ] && _maxn=$_hn
       done < <(git log --oneline "${SPEC_SHA}..HEAD" 2>/dev/null \
-        | grep -E '^[0-9a-f]+ T-[0-9]+[A-Za-z]*:' | grep -oE 'T-[0-9]+[A-Za-z]*' | sort -u)
+        | grep -E "$TASK_SUBJECT_LINE_ERE" | grep -oE "$TASK_ID_ERE" | sort -u)
       # Floor: prior story-complete (or repo root) — never match T-NNN from older stories.
       _floor=$(git log -1 --format=%H --grep="story complete" "${SPEC_SHA}^" 2>/dev/null || true)
       [ -n "$_floor" ] || _floor=$(git rev-list --max-parents=0 HEAD | tail -1)
       _hidden=""
       while read -r _tid; do
         [ -n "$_tid" ] || continue
-        _tn=${_tid#T-}; _tn=$((10#${_tn}))
+        _tn=$(task_id_num "$_tid")
         [ "$_tn" -le "$_maxn" ] || continue
         _tsha=$(git log -1 --format=%H --grep="^${_tid}:" "${_floor}..HEAD" 2>/dev/null || true)
         [ -n "$_tsha" ] || continue
@@ -2674,7 +2792,7 @@ EOF
             _hidden="${_hidden} ${_tid}"
           fi
         fi
-      done < <(grep -oE 'T-[0-9]+[A-Za-z]*' "$SPEC_TASKS" 2>/dev/null | sort -u)
+      done < <(task_ids_from_spec "$SPEC_TASKS" | sort -u)
       if [ -n "$_hidden" ]; then
         log "         O-SPECREBASE: walked run_base back to $(git rev-parse --short "$STORY_RUN_BASE") (pre-spec tasks:${_hidden})"
       fi
@@ -2685,10 +2803,11 @@ EOF
       # when T-NNN tips already exist, else HEAD false-replays the whole story.
       _floor=$(git log -1 --format=%H --grep="story complete" 2>/dev/null || true)
       [ -n "$_floor" ] || _floor=$(git rev-list --max-parents=0 HEAD | tail -1)
-      _t1=$(git log --reverse --format=%H --grep="^T-001:" "${_floor}..HEAD" 2>/dev/null | head -1 || true)
-      if [ -n "$_t1" ] && git log --oneline "${_floor}..HEAD" 2>/dev/null | grep -qE "^[0-9a-f]+ T-[0-9]+[A-Za-z]*:"; then
+      _t1=$(git log --reverse --format=%H --grep="^${SID}-T-001" "${_floor}..HEAD" 2>/dev/null | head -1 || true)
+      [ -n "$_t1" ] || _t1=$(git log --reverse --format=%H --grep="^T-001:" "${_floor}..HEAD" 2>/dev/null | head -1 || true)
+      if [ -n "$_t1" ] && git log --oneline "${_floor}..HEAD" 2>/dev/null | grep -qE "$TASK_SUBJECT_LINE_ERE"; then
         STORY_RUN_BASE=$(git rev-parse "${_t1}^")
-        log "         O-M4REPLAYNOSPEC: no ${SID} spec: tip — resume base=$(git rev-parse --short "$STORY_RUN_BASE") from T-001^ (floor=$(git rev-parse --short "$_floor"))"
+        log "         O-M4REPLAYNOSPEC: no ${SID} spec: tip — resume base=$(git rev-parse --short "$STORY_RUN_BASE") from first task tip^ (floor=$(git rev-parse --short "$_floor"))"
       else
         STORY_RUN_BASE="$(git rev-parse HEAD)"
       fi
@@ -2704,6 +2823,13 @@ EOF
   else
     log "         O-HOTSWAP: re-entering M4/M5 for ${SID} (attempt $((HOTSWAP_TRIES+1)); run_base=$(git rev-parse --short "$STORY_RUN_BASE"))"
   fi
+  # O-M4EXECHB / O-LOGPROG: outer heartbeat while supervisor runs (seed + seats).
+  # Kind=worker so /tmp/outer-heartbeat-progress.txt (m4_progress) is appended.
+  _m4_hb_t0=$(date +%s)
+  rm -f /tmp/outer-heartbeat-progress.txt
+  printf 'ts=%s m4=%s phase=execute\n' "$(date +%s)" "$SID" > /tmp/outer-heartbeat-progress.txt
+  _outer_heartbeat_start "M4/M5 EXECUTE — ${SLUG_HINT}" "$_m4_hb_t0" /tmp/supervisor.log worker
+  _m4_hb_pid=$hb_pid
   env RUN_BASE="$STORY_RUN_BASE" \
       STORY_ID="$SID" \
       STORY_SPEC_PREFIX="${SID} spec" \
@@ -2714,6 +2840,9 @@ EOF
       LATER_CLASSES="$LATER_CLASSES" \
       PRESERVE_CHECK="$PC" \
       "$HARNESS/supervisor.sh" < /dev/null >> /tmp/supervisor-nohup.log 2>&1
+  kill "$_m4_hb_pid" 2>/dev/null || true
+  wait "$_m4_hb_pid" 2>/dev/null || true
+  rm -f /tmp/outer-heartbeat-progress.txt
   OUTCOME=$(cat /tmp/supervisor-done 2>/dev/null || echo "no-done-marker")
   # O-HOTSWAP-INFLIGHT: keep a sticky marker across re-enter attempts. Clearing
   # harness-update-ack before a successful supervisor start used to turn a
@@ -2753,6 +2882,18 @@ EOF
       git add "$STATE" && git commit -q -m "${SID} story HOLD: debt-freeze (O-DEBTFRZ)" 2>/dev/null || true
       fail_run "$SID debt-freeze (O-DEBTFRZ) — fix debt, durableize, re-run; do not advance"
       ;;
+    tasks-blocked*)
+      # ADR-48 (d) / O-BLOCKSCHED: unresolvable task(s) reported BLOCKED after the
+      # supervisor continued past them. Story is partial HOLD — scheduler continues
+      # to the next story (gate ≠ kill-loop). Distinct from debt-freeze + crash.
+      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} tasks-blocked (O-BLOCKSCHED); HEAD $(git rev-parse --short HEAD)"
+      emit_story_epilog "tasks-blocked"
+      echo "${SID},tasks-blocked,$(date -u +%s)" >> "$STATE"
+      git add "$STATE" && git commit -q -m "${SID} story HOLD: tasks-blocked (O-BLOCKSCHED)" 2>/dev/null || true
+      echo "$SID" >> /tmp/outer-tasks-blocked-stories
+      log "         O-BLOCKSCHED: ${SID} BLOCKED tasks recorded — continuing story loop"
+      continue
+      ;;
     m3-lint-hold*|plan-lint-hold*)
       # O-M3LINTPROCEED: exhausted m3-lint with plan still RED — HOLD/re-M3,
       # never treat as execute success or silent M4 advance.
@@ -2761,6 +2902,26 @@ EOF
       echo "${SID},m3-lint-hold,$(date -u +%s)" >> "$STATE"
       git add "$STATE" && git commit -q -m "${SID} story HOLD: m3-lint-hold (O-M3LINTPROCEED)" 2>/dev/null || true
       fail_run "$SID m3-lint-hold (O-M3LINTPROCEED) — plan-lint RED after revision; re-M3, do not advance to M4"
+      ;;
+    phase-rewind-exhausted*)
+      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} phase-rewind exhausted (O-ADR47-1c / ADR-46 §7.3)"
+      emit_story_epilog "phase-rewind-exhausted"
+      echo "${SID},phase-rewind-exhausted,$(date -u +%s)" >> "$STATE"
+      fail_run "$SID phase-rewind exhausted — same INVALID_INPUT after PHASE_REWIND_MAX; fix owning phase manually"
+      ;;
+    phase-rewind*)
+      # O-ADR47-1c: next_stage=owning_phase (M3). Apply clears filled → UNSPECIFIED.
+      # In-process same-story re-loop is lifecycle (step B); primitive stops + relaunch.
+      phase_fail "M4/M5 EXECUTE — ${SLUG_HINT} phase-rewind→M3 (O-ADR47-1c INVALID_INPUT)"
+      if [ -f "$HARNESS/phase_rewind.py" ]; then
+        python3 "$HARNESS/phase_rewind.py" apply >> /tmp/outer-loop.log 2>&1 \
+          || fail_run "$SID phase-rewind apply failed"
+      fi
+      emit_story_epilog "phase-rewind"
+      echo "${SID},phase-rewind,$(date -u +%s)" >> "$STATE"
+      git add migration/model.json migration/phase-rewind.json "$STATE" 2>/dev/null || true
+      git commit -q -m "${SID} phase-rewind: M4→M3 (O-ADR47-1c INVALID_INPUT)" 2>/dev/null || true
+      fail_run "$SID phase-rewind M4→M3 applied (O-ADR47-1c) — relaunch outer-loop to re-enter M3 (story UNSPECIFIED; attempt in migration/phase-rewind.json)"
       ;;
     success*|story-gate-passed*)
       # O-REVHOLD: review HOLD must not become story-complete in the ledger
@@ -2836,6 +2997,16 @@ if [ -n "${M3_PREFLIGHT_HELD:-}" ]; then
 fi
 
 if [ "$M3_ALL_PASS" = "author" ]; then
+  # O-K1SYNC / O-FINDINGSOT: merge typed model findings into tasks.md before
+  # whole-set K1 (typed write-inversion often leaves Findings empty).
+  if [ -f "$HARNESS/m3-all-compose.py" ]; then
+    python3 "$HARNESS/m3-all-compose.py" --root . --sync-k1-findings \
+      > /tmp/k1-sync.txt 2>&1 || true
+    if [ -n "$(git status --porcelain specs/ 2>/dev/null || true)" ]; then
+      git add specs/ && git commit -q -m "M3-ALL: sync typed K1 findings into tasks (O-K1SYNC)" 2>/dev/null || true
+    fi
+    log "         O-K1SYNC: $(tr '\n' ' ' </tmp/k1-sync.txt | head -c 160)"
+  fi
   phase_start "M3-ALL whole-set lint — K1 / Port / later-class / Oracle / Assumes (O-M3ALL)"
   if bash "$HARNESS/m3-all-lint.sh" --mode=whole-set --root . \
       > /tmp/m3-all-whole.txt 2>&1; then
@@ -2869,6 +3040,23 @@ else
 fi
 # O-TMPARCHIVE — archive via EXIT trap (success path); explicit call keeps log order.
 archive_tmp_forensics
+# ADR-48 (d): if any story ended tasks-blocked, typed partial terminal (≠ crash).
+if [ -s /tmp/outer-tasks-blocked-stories ]; then
+  _blk_stories=$(tr '\n' ',' </tmp/outer-tasks-blocked-stories | sed 's/,$//')
+  echo "outer-partial: tasks-blocked=${_blk_stories} $(date -u +%Y-%m-%dT%H:%MZ)" \
+    > /tmp/outer-loop-done
+  if [ -x "$HARNESS/write-stopped.sh" ] || [ -f "$HARNESS/write-stopped.sh" ]; then
+    bash "$HARNESS/write-stopped.sh" \
+      --kind "outer-partial" \
+      --authorizing "outer-loop O-BLOCKSCHED / ADR-48d" \
+      --reason "stories with BLOCKED tasks: ${_blk_stories}" \
+      --expected-next "reopen BLOCKED via typed lifecycle reopen; durableize; clear .stopped; resume" \
+      --related "O-BLOCKSCHED O-STOPMARKER ADR-48" \
+      >>"$LOG" 2>&1 || true
+  fi
+  log "========== RUN PARTIAL — tasks-blocked=${_blk_stories}; marker /tmp/outer-loop-done =========="
+  exit 78
+fi
 echo "outer-complete" > /tmp/outer-loop-done
 log "========== RUN COMPLETE — outer-loop exited; marker /tmp/outer-loop-done =========="
 log "         Further supervisor activity (e.g. SHIP_ONLY) is NOT a new outer-loop run."

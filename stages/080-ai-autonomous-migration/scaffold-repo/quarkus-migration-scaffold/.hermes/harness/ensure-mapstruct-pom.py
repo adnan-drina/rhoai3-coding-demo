@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""O-MAPPRESEED: ensure MapStruct deps + jakarta-cdi when @Mapper Java exists.
+"""O-MAPPRESEED plugin: MapStruct deps + jakarta-cdi when @Mapper exists.
 
-Called after O-HARVESTSTALL preseed (or standalone). Migration-general: any
-Spring Boot → Quarkus app harvesting MapStruct interfaces.
+Invoked by ``ensure-harvest-ready.py`` (O-HARVESTREADY). Migration-general.
+Do not add a parallel supervisor wire — register on the orchestrator.
 """
 from __future__ import annotations
 

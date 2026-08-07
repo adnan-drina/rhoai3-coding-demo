@@ -106,10 +106,62 @@ def after_sites(after: dict[str, dict]) -> dict[str, int]:
     return buckets
 
 
+def _read_engine_pin(path: Path) -> str:
+    """O-ANALYZERPIN — engine= from sidecar; empty if missing (legacy ok)."""
+    if not path.is_file():
+        return ""
+    try:
+        for ln in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if ln.startswith("engine="):
+                return ln.split("=", 1)[1].strip()
+    except OSError:
+        return ""
+    return ""
+
+
 def main() -> int:
     root = Path(os.environ.get("FINDINGS_DELTA_ROOT", ".")).resolve()
     before_p = Path(sys.argv[1]) if len(sys.argv) > 1 else root / "migration/mta-findings.json"
     after_p = Path(sys.argv[2]) if len(sys.argv) > 2 else root / "migration/mta-findings-after.json"
+    # O-ANALYZERPIN: refuse cross-engine before/after compares (same class as STALE).
+    pin_before = root / "migration/mta-findings.engine"
+    pin_after = root / "migration/mta-findings-after.engine"
+    # When after.json is named oddly, still prefer sibling of after_p.
+    if after_p.name.endswith("-after.json"):
+        pin_after = after_p.with_name(after_p.name.replace(".json", ".engine"))
+    elif after_p.name == "mta-findings-after.json":
+        pin_after = after_p.with_name("mta-findings-after.engine")
+    if before_p.name == "mta-findings.json":
+        pin_before = before_p.with_name("mta-findings.engine")
+    eng_b = _read_engine_pin(pin_before)
+    eng_a = _read_engine_pin(pin_after)
+    if eng_b and eng_a and eng_b != eng_a:
+        java_main = count_java(root, "src/main/java")
+        java_test = count_java(root, "src/test/java")
+        print("# Findings delta — ENGINE-MISMATCH (O-ANALYZERPIN)")
+        print()
+        print(
+            f"ENGINE-MISMATCH: before engine={eng_b} after engine={eng_a} — NOT SCORED"
+        )
+        print(f"METRIC src_main_java={java_main} src_test_java={java_test}")
+        print(
+            "SUMMARY resolved=0 absent_not_landed=0 deferred_by_decision=0 "
+            "scaffold_presatisfied=0 remaining=0 new_after=0 "
+            "stale_resolve_pct=UNSCORED"
+        )
+        print()
+        print("## RESOLVED (landed evidence + rule absent after)")
+        print("- (none — ENGINE-MISMATCH; refusing credit)")
+        print()
+        print("## ABSENT-NOT-LANDED (do NOT credit as resolved — nothing in src/)")
+        print("- (none — ENGINE-MISMATCH)")
+        print()
+        print(
+            f"DELTABASE:resolved=0:absent=0:deferred=0:presat=0:remaining=0:"
+            f"stale=1:engine_mismatch=1:before={eng_b}:after={eng_a}"
+        )
+        return 0
+
     # O-M5STALE (W3-146): refuse to score when after-scan failed / was
     # substituted. No rule may move into RESOLVED; drop the word "honest".
     # Check BEFORE empty-before skip so a failed delta still stamps STALE.

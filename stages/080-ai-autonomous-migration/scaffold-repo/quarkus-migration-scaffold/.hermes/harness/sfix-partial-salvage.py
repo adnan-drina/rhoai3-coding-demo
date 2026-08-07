@@ -30,13 +30,24 @@ _CLAIM = re.compile(
 )
 
 
+try:
+    from task_contract import HEADING_TASK_ID_ATOM, task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import HEADING_TASK_ID_ATOM, task_heading_parts  # type: ignore
+
+
 def _task_body(tasks: Path, tid: str) -> str:
     text = tasks.read_text(encoding="utf-8", errors="replace")
-    blocks = re.split(r"^#{2,6} +(T[-A-Za-z0-9]*\d+[A-Za-z]*):", text, flags=re.M)
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    _title, body = task_heading_parts(text, tid)
+    if body:
+        return body
+    # Prefix match for "T-011 sensor fix" / composite suffixes.
+    blocks = re.split(
+        rf"^#{{2,6}} +({HEADING_TASK_ID_ATOM}):", text, flags=re.M
+    )
     for i in range(1, len(blocks) - 1, 2):
-        if blocks[i] == tid or tid.startswith(blocks[i]):
-            return blocks[i + 1]
-        # prefix like "T-011 sensor fix" → T-011
         if tid.startswith(blocks[i]):
             return blocks[i + 1]
     m = re.match(r"(T-\d+)", tid)

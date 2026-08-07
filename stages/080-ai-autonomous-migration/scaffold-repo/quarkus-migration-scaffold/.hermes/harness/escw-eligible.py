@@ -18,31 +18,30 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("ALREADY_COMPLETE_ROOT", ".")).resolve()
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
 
 def task_body(tasks_file: Path, tid: str) -> tuple[str, str]:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        title = m.group(2).strip()
-        start = m.end()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[start:end]
-        # O-T6dCHARSEC: same as mechan-match — strip ## section titles between
-        # T-NNN blocks so "Characterization Tests" headings do not mark the
-        # prior harvest task as wants_tests.
-        body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
-        body = re.split(
-            r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
-            body,
-            maxsplit=1,
-            flags=re.M | re.I,
-        )[0]
-        return title, body
-    return "", ""
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (S0N-TC-* + S0N-T-* + legacy).
+    title, body = task_heading_parts(text, tid)
+    if not title and not body:
+        return "", ""
+    # O-T6dCHARSEC: same as mechan-match — strip ## section titles between
+    # T-NNN blocks so "Characterization Tests" headings do not mark the
+    # prior harvest task as wants_tests.
+    body = re.split(r"^##\s+", body, maxsplit=1, flags=re.M)[0]
+    body = re.split(
+        r"^##\s+(Story Scope Waivers|Waivers|Notes|Appendix)\b",
+        body,
+        maxsplit=1,
+        flags=re.M | re.I,
+    )[0]
+    return title, body
 
 
 def main() -> int:
@@ -354,6 +353,65 @@ def main() -> int:
             ):
                 print("pom-deps-present:" + ",".join(arts[:6]))
                 return 0
+
+    # O-INFERDOCEREM: documentation create Goals must not allow-empty while
+    # declared README/docs/verify Targets are still absent on disk.
+    if re.search(
+        r"(?i)\b(documentation|documents?|README|"
+        r"compatib(?:ility)?\s+docs?|platform verification|"
+        r"legacy compatibility)\b",
+        title,
+    ) and re.search(
+        r"(?i)^\s*(Create|Add|Implement|Write|Author|Introduce|Build)\b",
+        title,
+    ):
+        doc_tgts = re.findall(
+            r"\b(README\.md|docs/[A-Za-z0-9_./-]+\.md|"
+            r"(?:scripts/)?verify[A-Za-z0-9_./-]*)\b",
+            blob,
+        )
+        for want in doc_tgts:
+            if not (ROOT / want).is_file() and not any(
+                (ROOT / "docs").rglob(Path(want).name)
+                if (ROOT / "docs").is_dir() and want.endswith(".md")
+                else []
+            ):
+                # basename search for README.md at repo root is enough
+                if want == "README.md" and (ROOT / "README.md").is_file():
+                    continue
+                if Path(want).name == "README.md" and (ROOT / "README.md").is_file():
+                    continue
+                print(f"missing-doc-target:{want}")
+                return 1
+
+    # O-ESCWCLAIM: Goal "claim … incidents/findings" must not allow-empty
+    # while findings-delta.txt still lists rows under ## REMAINING (W4-014 /
+    # v3 S01 T-009). Oracle-absent alone is not enough — residual pom rules
+    # stay REMAINING until edited or debt-recorded.
+    if re.search(
+        r"(?i)\bclaim\b.{0,60}\b(incident|finding|rule)s?\b|"
+        r"\b(incident|finding)s?\b.{0,60}\bclaim\b",
+        blob,
+    ):
+        delta = ROOT / "migration" / "findings-delta.txt"
+        if delta.is_file():
+            try:
+                dtxt = delta.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                dtxt = ""
+            m = re.search(
+                r"(?ms)^##\s*REMAINING\b[^\n]*\n(.*?)(?=^##\s|\Z)",
+                dtxt,
+            )
+            if m:
+                remain_lines = [
+                    ln
+                    for ln in m.group(1).splitlines()
+                    if ln.strip() and not ln.strip().startswith("#")
+                ]
+                if remain_lines:
+                    print("claim-remaining-findings")
+                    return 1
 
     # K6: Findings still present in oracle → never allow-empty ESCW.
     oracle = ROOT / ".hermes/harness/findings-oracle.py"

@@ -69,126 +69,126 @@ or L3). Do not treat L1-only as full discharge for corpus/live classes.
 
 ### harness O-* / guard markers (plan-lint + supervisor + outer sample)
 ```
-59:# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
-81:# O-M3PIPEFIELD: MiniMax sometimes prefixes every structured field with `|`
-576:        # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
-584:                    f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
-590:                    f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
-1605:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
-1779:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
-1797:                "O-INFERABSENT",
-1801:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
-1802:                f"O-ORACLEDERIVE)",
-89:# O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
-91:# (`## <tag> — <kind> RED` from record_debt), KEEP freeze across hotswap —
-93:# O-DEBTFRZM5STICKY: O-DEBTFRZLEDGER writes `## M5 residuals — S0N (…)`, which
-101:  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved ## … RED entries in migration/debt.md" >&2
-371:# O-SFIXNODELTA: True (exit 0) when HEAD tip has no meaningful content —
-549:# O-OWNSTAGEALL / O-PARTIALADV — declared Target paths present on disk but
-603:  # O-OWNSTAGEALL: task-stage-paths.py must emit *all* multi-line Target src
-693:  # O-OWNSTAGEALL: refuse partial stage — produced∩declared must be staged.
-698:      log "stage: O-OWNSTAGEALL REFUSE — declared Targets on disk but unstaged: ${_miss}"
-1026:    && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE|O-CHARORACLE|O-STEPFINISHRED' \
-1394:      # reverted → BV tests RED → O-DEBTFRZ). Story tasks still cannot widen
-1440:# (C) O-EXECSCOPE — also revert out-of-scope resources + unowned pom.xml
-1457:            log "scope sensor: O-EXECSCOPE revert ${esc_viol}"
-1460:              echo "O-EXECSCOPE: tip touched non-test paths outside story scope / Owns"
-1465:            _raw=$(grep -E '^O-EXECSCOPE:' /tmp/exec-scope.out | head -1 | sed 's/^O-EXECSCOPE://')
-1480:              git commit -q -m "${prefix} scope revert: O-EXECSCOPE out-of-scope resources/pom" 2>/dev/null
-1492:# O-EXECSCOPE — pre-commit refuse for staged non-test paths outside STORY_SCOPE.
-1508:  log "$tid: O-EXECSCOPE refuse staged tip — $(tr '\n' ' ' </tmp/exec-scope.out)"
-1511:    echo "O-EXECSCOPE refused staged non-test paths outside story scope:"
-1519:# O-CHARPROTECT — refuse char tips that only pin /projects/legacy source text.
-1529:  log "$tid: O-CHARPROTECT — $(tr '\n' ' ' </tmp/char-protect.out) — resetting tip"
-1535:# O-RUNLOGTERM — harness-authored terminal ledger (not model prose).
-1546:    echo "- note: harness-authored (O-RUNLOGTERM); ignore model 'complete/ready for next' claims"
-1548:  log "$tid: O-RUNLOGTERM append status=${status}"
-1551:# O-RUNLOGTERM + O-CHARPROTECT after a tip lands (before post_commit_verify).
-1562:# O-CHARSONAR — true when task is characterization (force milestone Sonar).
-1589:# O-DEBTFRZRACE / O-SFIXDIRTY: orphan untracked or uncommitted poison under
-1776:record_debt() { # $1=tag $2=sensor-kind $3=short-reason
-1778:  # O-DEBTFRZRACE: before writing debt/freeze for sensor kinds, discard
-1785:        log "$tag: O-DEBTFRZRACE false-red averted — ${kind} GREEN after clean-tree recheck (not recording debt/freeze)"
-1806:  # O-DEBTFRZ: unresolved task/milestone debt must FREEZE — not continue to the
-1813:      log "$tag: ${kind} RED recorded in migration/debt.md — O-DEBTFRZ FREEZE (do not continue to next task)"
-1838:  record_debt "$tag" "seat-budget" \
-1858:# O-EVIDLIVE: each active K-system ≥1 ledger row per story or story-gate RED.
-1861:evidence_liveness_blocks_ship() {
-1868:    log "WARN:O-EVIDLIVE: evidence-liveness.sh missing — refusing silent skip"
-1880:    log "O-EVIDLIVE: refusing story close — silent K-system(s) (see migration/evidence-liveness.md)"
-1886:  log "O-EVIDLIVE: PASS (${sid})"
-1982:  # O-CHARSONAR: characterization tips must clear milestone Sonar before
-1986:    log "$tag: O-CHARSONAR — forcing milestone sensor for characterization tip"
-2149:        record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
-2177:    # O-SFIXNODELTA: after failure-delta, before O-SFIXWORKER — do not dispatch
-2188:          log "$tag: O-SFIXNODELTA — K7 new=0 gone=0 and tip empty/structure-only — skip task-attributed sfix (no seat burn)"
-2189:          outer_log "         O-SFIXNODELTA: skip ${prefix} sfix (K7 delta 0/0 + empty/structure tip); RED not this tip's debt"
-2190:          event "$tag" 0 sfix_nodelta_skip "$SENSOR_KIND"
-2240:      # not violations. Refuse the seat (same shape as O-SFIXNODELTA).
-2263:            record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
-2265:            record_debt "$prefix" "O-SFIXDIMNONE sensor unavailable (no violation dims) — inspect sensor logs" || true
-2298:          record_debt "$prefix" "O-SONAR401 Sonar auth/unavailable — refresh SONAR_TOKEN; sfix/rescue skipped" || true
-2344:        record_debt "$tag" "$SENSOR_KIND" "O-SFIXNOSPRING: sfix reintroduced Spring (commit reset)"
-2359:          record_debt "$tag" "$SENSOR_KIND" "K7 refute: sfix claimed pre-existing despite NEW failure-delta"
-2370:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix tip kept (cited dims GREEN) but full ${SENSOR_KIND} still RED"
-2412:        # O-DEBTFRZRACE: after O-SFIXSCOPE reset, discard orphan src/ poison and
-2421:          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard+recheck (post sfix reset)"
-2424:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
-2437:          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (no new sfix commit)"
-2440:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
-2457:      # O-SFIXDIRTY + O-DEBTFRZRACE: only discard after commit-green attempt failed
-2460:        log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (sfix else-path)"
-2463:        record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
-2672:      record_debt "$tag" null_action "O-NULLACTION: $(head -1 "$naf")"
-3086:# O-EVIDLIVE: K1 exercised this story (ownership lint ran green).
-3167:# Oracle derived from filesystem (O-ORACLEDERIVE / O-INFERABSENT) —
-3192:# Shape from tasks.md (for O-INFERABSENT proceed: create|verify).
-3382:  # O-EVIDLIVE / K2: mark Analysis evidence presence for story-gate liveness.
-3649:    # O-EXECSCOPE: refuse out-of-scope props/pom before attaching T-NNN title
-3732:    log "$T: O-DEBTFRZ — skip (debt freeze active)"
-3779:  # O-INFERABSENT (R-231 / Wave4 §2.2): infer + *derived* Oracle:absent is
-3810:    log "$T: O-INFERABSENT — skip worker (infer + derived-Oracle:absent wedge)"
-3812:      echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
-4083:      record_debt "$T" escnocommit "escalation without ${T}: tip (see O-ESCNOCOMMIT)"
-4104:      record_debt "$T" k12 "escalation commit REFUTED (see migration/refute-log.md)"
-4128:    log_task SKIP "$T" "exhausted — recorded in debt; O-DEBTFRZ freeze (not moving on)"
-4129:    log "$T: exhausted — recorded; freezing (O-DEBTFRZ)"
-4131:    append_harness_runlog "$T" "EXHAUSTED" "O-DEBTFRZ freeze — not complete"
-4154:    debt_frozen && { log "batch: O-DEBTFRZ — aborting remaining rewrite batch"; return 1; }
-4192:    log "O-DEBTFRZ: stopping M4 task loop — unresolved debt RED (no silent advance)"
-4230:  log "O-DEBTFRZ: M4 ended under debt freeze — not entering M5"
-4319:    # O-DEBTFRZLEDGER (W4-289): M5 residual rules must land in debt.md, not
-4339:          log "M5 evaluate: O-DEBTFRZLEDGER — wrote ${_rem} residual rules into migration/debt.md"
-4388:    record_debt "m5-evaluate" "milestone" "O-M5EVALDELETE: evaluate deleted src/main/java or pom.xml"
-4448:        record_debt "m5-evaluate" "milestone" \
-4580:# record_debt may land in the same second as evaluate→ship fallthrough;
-4719:        record_debt "M5 ship" coverage \
-4733:      record_debt "M5 ship" sonar \
-4761:      record_debt "M5 ship" fidelity "harvest fidelity RED at ship — factory cannot arbitrate (see /tmp/ship-fidelity.txt)"
-4767:      record_debt "M5 ship" package "legacy package under src/main at ship — factory cannot arbitrate (see /tmp/ship-package.txt)"
-4786:        record_debt "M5 ship" boot \
-4791:        record_debt "M5 ship" preflight \
-4804:    record_debt "M5 ship" k12 "pre-push REFUTED (see migration/refute-log.md)"
-4816:      record_debt "M5 ship" remote \
-4843:    record_debt "M5 ship" pipeline \
-4874:      if evidence_liveness_blocks_ship; then
-4966:      if evidence_liveness_blocks_ship; then
+60:# O-ORACLEDERIVE / O-INFERABSENT — shared derive + block predicate
+82:# O-M3PIPEFIELD: MiniMax sometimes prefixes every structured field with `|`
+555:        # O-M3PIPEFIELD: strip leading |/> on field lines before any check; rewrite
+563:                    f"O-M3PIPEFIELD: stripped {_pipe_n} field line(s) in memory; "
+569:                    f"O-M3PIPEFIELD: stripped leading |/> from {_pipe_n} field "
+1734:    _shape_env = _os.environ.get("PLAN_LINT_REQUIRE_SHAPE", "").lower()
+1908:    # G5 / O-INFERABSENT (Wave4 §2.1/§2.2): derive Oracle from filesystem
+1926:                "O-INFERABSENT",
+1930:                f"or one-line Proceed: O-NULLACTION (O-INFERABSENT / "
+1931:                f"O-ORACLEDERIVE)",
+93:# O-DEBTFRZ: clear stale freeze from a prior supervisor death unless kept.
+95:# RED headers from record_debt (task|milestone|sonar|seat-budget), KEEP freeze
+97:# O-DEBTFRZM5STICKY: O-DEBTFRZLEDGER writes `## M5 residuals — S0N (…)`, which
+108:  echo "[supervisor] O-DEBTFRZ: keeping freeze — unresolved freeze-worthy ## … RED in migration/debt.md" >&2
+439:# O-SFIXNODELTA: True (exit 0) when HEAD tip has no meaningful content —
+679:# O-OWNSTAGEALL / O-PARTIALADV — declared Target paths present on disk but
+735:  # O-OWNSTAGEALL: task-stage-paths.py must emit *all* multi-line Target src
+825:  # O-OWNSTAGEALL: refuse partial stage — produced∩declared must be staged.
+830:      log "stage: O-OWNSTAGEALL REFUSE — declared Targets on disk but unstaged: ${_miss}"
+1214:    && grep -qiE 'O-INFERABSENT|JSON_STALE|READ_THRASH|TRUNCATION|O-WORKERREAD|O-WORKERWEDGE|O-CHARORACLE|O-STEPFINISHRED' \
+1582:      # reverted → BV tests RED → O-DEBTFRZ). Story tasks still cannot widen
+1628:# (C) O-EXECSCOPE — also revert out-of-scope resources + unowned pom.xml
+1645:            log "scope sensor: O-EXECSCOPE revert ${esc_viol}"
+1648:              echo "O-EXECSCOPE: tip touched non-test paths outside story scope / Owns"
+1653:            _raw=$(grep -E '^O-EXECSCOPE:' /tmp/exec-scope.out | head -1 | sed 's/^O-EXECSCOPE://')
+1668:              git commit -q -m "${prefix} scope revert: O-EXECSCOPE out-of-scope resources/pom" 2>/dev/null
+1680:# O-EXECSCOPE — pre-commit refuse for staged non-test paths outside STORY_SCOPE.
+1696:  log "$tid: O-EXECSCOPE refuse staged tip — $(tr '\n' ' ' </tmp/exec-scope.out)"
+1699:    echo "O-EXECSCOPE refused staged non-test paths outside story scope:"
+1707:# O-CHARPROTECT — refuse char tips that only pin /projects/legacy source text.
+1717:  log "$tid: O-CHARPROTECT — $(tr '\n' ' ' </tmp/char-protect.out) — resetting tip"
+1723:# O-RUNLOGTERM — harness-authored terminal ledger (not model prose).
+1734:    echo "- note: harness-authored (O-RUNLOGTERM); ignore model 'complete/ready for next' claims"
+1736:  log "$tid: O-RUNLOGTERM append status=${status}"
+1739:# O-RUNLOGTERM + O-CHARPROTECT after a tip lands (before post_commit_verify).
+1750:# O-CHARSONAR — true when task is characterization (force milestone Sonar).
+1777:# O-DEBTFRZRACE / O-SFIXDIRTY: orphan untracked or uncommitted poison under
+1964:record_debt() { # $1=tag $2=sensor-kind $3=short-reason
+1966:  # O-DEBTFRZRACE: before writing debt/freeze for sensor kinds, discard
+1973:        log "$tag: O-DEBTFRZRACE false-red averted — ${kind} GREEN after clean-tree recheck (not recording debt/freeze)"
+2009:  # O-DEBTFRZ: unresolved task/milestone debt must FREEZE — not continue to the
+2019:      log "$tag: ${kind} RED recorded in migration/debt.md — O-DEBTFRZ FREEZE (do not continue to next task)"
+2044:  record_debt "$tag" "seat-budget" \
+2064:# O-EVIDLIVE: each active K-system ≥1 ledger row per story or story-gate RED.
+2067:evidence_liveness_blocks_ship() {
+2074:    log "WARN:O-EVIDLIVE: evidence-liveness.sh missing — refusing silent skip"
+2087:    log "O-EVIDLIVE: refusing story close — silent K-system(s) (see migration/evidence-liveness.md)"
+2093:  log "O-EVIDLIVE: PASS (${sid})"
+2207:  # O-CHARSONAR: characterization tips must clear milestone Sonar before
+2217:    log "$tag: O-CHARSONAR — forcing milestone sensor for characterization tip"
+2395:        record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+2423:    # O-SFIXNODELTA: after failure-delta, before O-SFIXWORKER — do not dispatch
+2434:          log "$tag: O-SFIXNODELTA — K7 new=0 gone=0 and tip empty/structure-only — skip task-attributed sfix (no seat burn)"
+2435:          outer_log "         O-SFIXNODELTA: skip ${prefix} sfix (K7 delta 0/0 + empty/structure tip); RED not this tip's debt"
+2436:          event "$tag" 0 sfix_nodelta_skip "$SENSOR_KIND"
+2456:        record_debt "$tag" "$SENSOR_KIND" \
+2515:      # not violations. Refuse the seat (same shape as O-SFIXNODELTA).
+2538:            record_debt "$prefix" "O-SONAR401 Sonar auth 401 — refresh SONAR_TOKEN before sfix" || true
+2540:            record_debt "$prefix" "O-SFIXDIMNONE sensor unavailable (no violation dims) — inspect sensor logs" || true
+2575:          record_debt "$prefix" "O-SONAR401 Sonar auth/unavailable — refresh SONAR_TOKEN; sfix/rescue skipped" || true
+2632:        record_debt "$tag" "$SENSOR_KIND" "O-SFIXNOSPRING: sfix reintroduced Spring (commit reset)"
+2647:          record_debt "$tag" "$SENSOR_KIND" "K7 refute: sfix claimed pre-existing despite NEW failure-delta"
+2658:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix tip kept (cited dims GREEN) but full ${SENSOR_KIND} still RED"
+2700:        # O-DEBTFRZRACE: after O-SFIXSCOPE reset, discard orphan src/ poison and
+2709:          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard+recheck (post sfix reset)"
+2712:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix committed but ${SENSOR_KIND} still RED (commit reset)"
+2725:          log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (no new sfix commit)"
+2728:          record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND} (no new commit)"
+2746:      # O-SFIXDIRTY + O-DEBTFRZRACE: only discard after commit-green attempt failed
+2749:        log "$tag: O-DEBTFRZRACE false-red averted — ${SENSOR_KIND} GREEN after discard (sfix else-path)"
+2752:        record_debt "$tag" "$SENSOR_KIND" "sensor-fix did not clear ${SENSOR_KIND}"
+2982:      record_debt "$tag" null_action "O-NULLACTION: $(head -1 "$naf")"
+3464:# O-EVIDLIVE: K1 exercised this story (ownership lint ran green).
+3572:# Oracle derived from filesystem (O-ORACLEDERIVE / O-INFERABSENT) —
+3597:# Shape from tasks.md (for O-INFERABSENT proceed: create|verify).
+3791:  # O-EVIDLIVE / K2: mark Analysis evidence presence for story-gate liveness.
+4099:    # O-EXECSCOPE: refuse out-of-scope props/pom before attaching T-NNN title
+4182:    log "$T: O-DEBTFRZ — skip (debt freeze active)"
+4247:  # O-INFERABSENT (R-231 / Wave4 §2.2): infer + *derived* Oracle:absent is
+4278:    log "$T: O-INFERABSENT — skip worker (infer + derived-Oracle:absent wedge)"
+4280:      echo "O-INFERABSENT — worker skipped (infer + derived Oracle:absent)"
+4432:      record_debt "$T" "O-SFIXGREENNOCOMMIT Targets present + GREEN but tip staging failed — fix Ownstage/paths (no MiniMax)" || true
+4589:      # Sensor RED (task|milestone|sonar) still freezes via record_debt — this path
+4592:      record_debt "$T" escnocommit "escalation without ${T}: tip (see O-ESCNOCOMMIT)"
+4615:      record_debt "$T" k12 "escalation commit REFUTED (see migration/refute-log.md)"
+4665:    debt_frozen && { log "batch: O-DEBTFRZ — aborting remaining rewrite batch"; return 1; }
+4703:    log "O-DEBTFRZ: stopping M4 task loop — unresolved debt RED (no silent advance)"
+4772:  log "O-DEBTFRZ: M4 ended under debt freeze — not entering M5"
+4888:    # O-DEBTFRZLEDGER (W4-289): M5 residual rules must land in debt.md, not
+4908:          log "M5 evaluate: O-DEBTFRZLEDGER — wrote ${_rem} residual rules into migration/debt.md"
+4958:    record_debt "m5-evaluate" "milestone" "O-M5EVALDELETE: evaluate deleted src/main/java or pom.xml"
+5015:        record_debt "m5-evaluate" "milestone" \
+5220:# record_debt may land in the same second as evaluate→ship fallthrough;
+5360:        record_debt "M5 ship" coverage \
+5374:      record_debt "M5 ship" sonar \
+5489:      record_debt "M5 ship" fidelity "harvest fidelity RED at ship — factory cannot arbitrate (see /tmp/ship-fidelity.txt)"
+5495:      record_debt "M5 ship" package "legacy package under src/main at ship — factory cannot arbitrate (see /tmp/ship-package.txt)"
+5514:        record_debt "M5 ship" boot \
+5519:        record_debt "M5 ship" preflight \
+5534:    record_debt "M5 ship" preflight \
+5545:    record_debt "M5 ship" preflight \
+5559:    record_debt "M5 ship" k12 "pre-push REFUTED (see migration/refute-log.md)"
+5571:      record_debt "M5 ship" remote \
+5598:    record_debt "M5 ship" pipeline \
+5629:      if evidence_liveness_blocks_ship; then
+5721:      if evidence_liveness_blocks_ship; then
 5:#   M2 SEQUENCE (roadmap + briefs session, roadmap-lint-gated)
-221:# M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
-224:  lintf=/tmp/roadmap-lint.txt
-225:  [ -f /tmp/roadmap-lint-m2exit.txt ] && lintf=/tmp/roadmap-lint-m2exit.txt
-226:  [ -f /tmp/roadmap-lint.txt ] && lintf=/tmp/roadmap-lint.txt
-982:      /tmp/roadmap-lint.txt \
-983:      /tmp/roadmap-lint-m2exit.txt \
-1470:# O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
-1476:    log "         O-STOPAFTERM1: M1 validation complete — not starting M2"
-1492:  fail_run "O-STOPAFTERM1 set but M1 ANALYZE/PROFILE not provenance-green"
-1505:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
-1506:  if [ ! -f /tmp/roadmap-lint.txt ]; then
-1510:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
-1516:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
-1519:    n=$(grep -cE '.' /tmp/roadmap-lint.txt 2>/dev/null || true)
-1526:  [ -f migration/roadmap.md ] && python3 "$HARNESS/roadmap-lint.py" migration/roadmap.md migration/findings-inventory.md /projects/legacy migration/architecture-profile.md > /tmp/roadmap-lint.txt 2>&1
+243:# M2 roadmap-lint gate → G7 + G8; G3/G6 honesty
+246:  lintf=/tmp/roadmap-lint.txt
+247:  [ -f /tmp/roadmap-lint-m2exit.txt ] && lintf=/tmp/roadmap-lint-m2exit.txt
+248:  [ -f /tmp/roadmap-lint.txt ] && lintf=/tmp/roadmap-lint.txt
+1044:      /tmp/roadmap-lint.txt \
+1045:      /tmp/roadmap-lint-m2exit.txt \
+1562:# O-STOPAFTERM1 — validation runs: exit after M1 ANALYZE+PROFILE GREEN (no M2/M3).
+1568:    log "         O-STOPAFTERM1: M1 validation complete — not starting M2"
+1584:  fail_run "O-STOPAFTERM1 set but M1 ANALYZE/PROFILE not provenance-green"
+1597:  # O-LOGLINTRES: count findings lines in /tmp/roadmap-lint.txt (0 if missing/OK)
+1598:  if [ ! -f /tmp/roadmap-lint.txt ]; then
+1602:  if grep -qE '^ROADMAP OK' /tmp/roadmap-lint.txt 2>/dev/null; then
+1608:  n=$(grep -cE '^LINT:' /tmp/roadmap-lint.txt 2>/dev/null || true)
 ```
 
 ## Classification guide
@@ -203,7 +203,7 @@ Coverage math (rough): count seed rows with L2 or L3 vs L1-only. Gaps
 are the Wave4 ARCH verification asymmetry — not greppable from the bank
 alone.
 
-_Generated: 2026-08-06T08:43:18Z_
+_Generated: 2026-08-07T07:01:18Z_
 
 ### Auto-discovered instrumented guards (O-GUARDDISC / R3)
 
@@ -219,10 +219,17 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-ADDLINFO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ADR24 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ADR27 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ADR45 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ADR46 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ADR47 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ADVANCETIPSHA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-AGROALHELPERSIG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ANALYZERPIN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ANTISCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ARCHIVESTAGE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ASSUMESORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-AUTOFIXJSON | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-BLOCKSCHED | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-BRIEFCONSIST | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-BRIEFCOVER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-BRIEFFRESH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -230,18 +237,24 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-BRIEFQFAB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CDIORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CHARFIRSTMUT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-CHARMILEORPHAN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CHARPIN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CHARTGT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CLASSPROMPT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-COLLABOWN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-COLLABSEQ | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-COMMITHYGIENE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-COMMITSTORYFLOOR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-COORDROLE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CREATEFIRSTMUT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-CYCLEPART | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-DEBTADVANCE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTFRZM5STICKY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTFRZRACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTNONE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-DEBTSHIPPROCESS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DEBTSHIPRACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-DEBTTREE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DECISIONWRITEDROP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DELTABASE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-DELTASTAGING | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -254,6 +267,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-ESCALGPLACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCALORACLE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCALPAUSE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ESCNOCOMMIT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCRATEZOMBIE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCREOPENCODE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCW3 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -262,7 +276,6 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-ESCWSCOPEUTIL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCWSTRUCTTGT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-ESCWVERIFYABS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
-| O-EVIDLIVEK3TABLE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-EXECUTEONLY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-FGRETRO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-FIDELITYDAO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -274,10 +287,14 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-GITBAK | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-GODORDERCVT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-GODORDERPOS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-GOVROLECOMMENT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-GROUNDLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-HARVESTREADY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HARVESTREPO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HARVESTSTALL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HBORPHAN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-HBPROGSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-HBTRUTH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HERMNEST | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HERMSCOOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HOTSWAP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -286,13 +303,18 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-HOTSWAPSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HTTPPORT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-HYGIENEWORKER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-INFERDOCEREM | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-JDBCHARVESTAPI | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-JDBCREGRESS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-JDBCSKIP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-K3TYPED | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-K5MILESCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-KANTRAMISS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-KANTRAPATH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-KILLLEDGER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LIFECYCLEFORCE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LIFECYCLEREOPEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LIFECYCLESM | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOCKSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGBRIEF | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGCOLLIDE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -300,6 +322,8 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-LOGFULLSTORY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGLINTRES | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGNOADR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LOGNOBANK | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-LOGPROG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGSTART | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-LOGSTORY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M1SENSORGATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -308,9 +332,12 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-M2COMPOSE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2COMPOSEBOOK | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2DECOMPAXIS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M2DTOSURFACE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2FILLCLOBBER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M2FILLSCOPECLUBBER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2RETRYINLINE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2SCOPEOVERLAP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M2SEATAFTERFILL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2SEATARCH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M2SKELDRIFT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3ACCEPT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -321,6 +348,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-M3CHARSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3COMMITHYGIENE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3CONVERGEBUDGET | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M3COVEREMIT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DELIVERLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DERIVEDCAP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3DERIVEDCTX | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -350,26 +378,39 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-M3TYPEDSTOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3WORKER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M3WORKERREENTRY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M4COMPOSITE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M4EXECHB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M4REPLAY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M4REPLAYCOMP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M4REPLAYNOSPEC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M4TCHEADING | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M4WAVE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M5EVALBURN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M5EVALTESTMAIN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M5LIFECYCLE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-M5OBSERVEFIRE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M5PRECLAIM | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-M5STALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-MAPPINGS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-MSGCLAIM | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-NOAMEND | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-NOPUSHPR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-NULLACTION | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-NULLACTIONREOPEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-OCERR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-OCGROUP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-ORPHANOC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-OWNSTAGE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-OWNSTAGEDIR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PIDREG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PKGORD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PLANCOVERGATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANEXISTS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANEXISTSSKIP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANHEALTH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANORDERCHAR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PLANPROP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PLANTARGETLEAK | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-POMDISCARD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-POMUNC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -382,6 +423,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-PROF7DENSITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFBESTOBS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFCLAIMTRUTH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFCOVPARITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFCOVSTALE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFDECIDEHB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFDENSITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -390,6 +432,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-PROFPROSECTX | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFPROSEDECOMP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFPROSENOOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-PROFPROSERESUME | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFSEATARCH | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFSEATNOISE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-PROFSECTIONNOISE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -414,23 +457,33 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-RUBRICGENSRC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-RULESETLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCAFFOLDDIR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SCAFFOLDREADY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SCHAROWN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCOPEBACKFILL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCOPECOVER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCOPENOGEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SCOPENONJAVA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SCOPESOT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SCOPEVIEW | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SDJPA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SDJPAHARVEST | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SDJPAHARVESTONLY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SEATBUDGETUNIQ | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SEATSIZE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SENSORGATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXALREADYGREEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXATTR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXCREDIT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXDIMCHAR | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXDIMNONE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXDIRTY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXFALSEGREEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXFINDINGS | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXGREENNOCOMMIT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXHINTFIDELITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXLOOP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXMUTATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SFIXOOSREVERT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXPARTIAL | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXRESCUEDISCARD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SFIXSCOPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -449,6 +502,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-SHIPONLYSTATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SHIPREMOTE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SHIPROUNDBASE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-SHIPWAITPULSE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SIMPLEDTO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SONAR401 | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-SPECFROZEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -463,6 +517,7 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-STRUCTJAVA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-STRUCTPKGINFO | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-STRUCTPRESAT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-STRUCTSHAPE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-STRUCTTGT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-STYLEFIDELITY | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-T1FINDESC | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
@@ -470,14 +525,17 @@ _Generated: 2026-08-06T08:43:18Z_
 | O-T4SPRINGDATA | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-T6COMPLETE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-T6WRONGTITLE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-TASKCLASSORDER | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TASKHB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TASKIDSEEN | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TASKIDSUFFIX | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TASKMUTATE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TMPARCHIVE | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-TREEFIXSTUB | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-UNDECIDEDLINT | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-UXLOG | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
+| O-VALDEPADD | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-WEDGERESUME | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 | O-WEDGESKIP | auto | discovered | L1 | auto-row core+instruments (O-GUARDDISC) |
 
-_O-GUARDDISC auto-rows appended: 270_
+_O-GUARDDISC auto-rows appended: 328_

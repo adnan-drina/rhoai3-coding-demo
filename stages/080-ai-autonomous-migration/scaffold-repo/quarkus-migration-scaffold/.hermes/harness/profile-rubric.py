@@ -629,19 +629,37 @@ def section_body(text, needle):
 def governing_role(sec7, cls):
     """REDESIGN/HARVEST governing a class mention in §7 — handles BOTH the
     inline form (`Cls` — REDESIGN) and the subheading form (### REDESIGN /
-    - `Cls`). Returns 'REDESIGN', 'HARVEST', or None (not found)."""
-    m = re.search(r"\b" + re.escape(cls) + r"\b", sec7)
-    if not m:
+    - `Cls`). Returns 'REDESIGN', 'HARVEST', or None (not found).
+
+    O-GOVROLECOMMENT: do not let the first bare-name hit win when it sits in
+    an HTML comment (e.g. ``Class Roles`` in the ADR-29 render banner) or on
+    a non-claim line — prefer any explicit REDESIGN/HARVEST line for ``cls``.
+    """
+    pat = re.compile(r"\b" + re.escape(cls) + r"\b")
+    # Strip HTML comments so "Class Roles" in the ADR-29 banner cannot bind.
+    sec7_plain = re.sub(r"<!--.*?-->", "", sec7, flags=re.S)
+    matches = list(pat.finditer(sec7_plain))
+    if not matches:
         return None
-    ls = sec7.rfind("\n", 0, m.start()) + 1
-    le = sec7.find("\n", m.end())
-    line = sec7[ls: le if le >= 0 else len(sec7)]
-    if "REDESIGN" in line:
-        return "REDESIGN"
-    if "HARVEST" in line:
-        return "HARVEST"
-    pre = sec7[:m.start()]  # nearest preceding subheading wins
-    return "REDESIGN" if pre.rfind("REDESIGN") > pre.rfind("HARVEST") else "HARVEST"
+    explicit = None  # first explicit role on a claim line
+    for m in matches:
+        ls = sec7_plain.rfind("\n", 0, m.start()) + 1
+        le = sec7_plain.find("\n", m.end())
+        line = sec7_plain[ls: le if le >= 0 else len(sec7_plain)]
+        if "REDESIGN" in line:
+            return "REDESIGN"
+        if "HARVEST" in line and explicit is None:
+            explicit = "HARVEST"
+    if explicit is not None:
+        return explicit
+    # Subheading form: nearest preceding REDESIGN/HARVEST token wins.
+    m0 = matches[0]
+    pre = sec7_plain[: m0.start()]
+    pre_r = pre.rfind("REDESIGN")
+    pre_h = pre.rfind("HARVEST")
+    if pre_r < 0 and pre_h < 0:
+        return None
+    return "REDESIGN" if pre_r > pre_h else "HARVEST"
 
 
 def _unit_keys(u: dict) -> list[str]:

@@ -40,6 +40,7 @@ import math
 import os
 import re
 import sys
+from pathlib import Path
 
 RATES = {
     "rename": 1,
@@ -108,7 +109,18 @@ def count_plan_tasks(sid: str, root: str = ".") -> int:
         text = open(paths[0], encoding="utf-8", errors="replace").read()
     except OSError:
         return 0
-    return len(re.findall(r"(?m)^#{2,6}\s+T[-A-Za-z0-9]*\d+", text))
+    # O-M4COMPOSITE / O-T6dTCHEADING: count TC-* + T-NNN + legacy headings.
+    try:
+        from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from task_contract import HEADING_TASK_ID_ATOM  # type: ignore
+    return len(
+        re.findall(
+            rf"(?m)^#{{2,6}}\s+(?:{HEADING_TASK_ID_ATOM})",
+            text,
+        )
+    )
 
 
 def overrun_limit(

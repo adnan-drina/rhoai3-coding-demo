@@ -31,16 +31,17 @@ QUARKUS = re.compile(
 )
 
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
+
 def task_findings(tasks: Path, tid: str) -> list[str]:
     text = tasks.read_text(encoding="utf-8", errors="replace")
-    heads = list(re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M))
-    body = ""
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        body = text[m.end() : end]
-        break
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    _title, body = task_heading_parts(text, tid)
     if not body:
         return []
     ids: list[str] = []

@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -438,8 +439,8 @@ def _write_progress(root: Path, *, legacy: str, active: str, ok: int, fail: int)
         total = int(ev.get("total") or 0)
         simple = active.rsplit(".", 1)[-1] if active else "?"
         line = (
-            f"credited={named}/{total} active={simple} ok={ok} fail={fail} "
-            f"undecided={len(ev.get('undecided') or [])}"
+            f"ts={int(time.time())} credited={named}/{total} active={simple} "
+            f"ok={ok} fail={fail} undecided={len(ev.get('undecided') or [])}"
         )
         Path("/tmp/outer-heartbeat-progress.txt").write_text(line + "\n", encoding="utf-8")
     except OSError:

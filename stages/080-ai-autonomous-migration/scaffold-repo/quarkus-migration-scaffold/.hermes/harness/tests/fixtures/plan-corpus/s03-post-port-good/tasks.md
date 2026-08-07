@@ -26,3 +26,11 @@ UI surface: waived (API-only service; no legacy web frontend).
 | ObjectRetrievalFailureException | EntityNotFoundException |
 **Findings**: springboot-di-to-quarkus-00003, springboot-di-to-quarkus-00000, springboot-di-to-quarkus-00002
 **Acceptance**: convert-after-harvest (O-SDJPAHARVESTONLY); no org.springframework.jdbc|dao under src/main; omit throws or remap per table (O-M3PRESERVEDAO / O-DAOEXMAP); repository package compiles under Quarkus
+
+#### T-002: Characterize OwnerRepository contract (O-PLANCOVERGATE / O-M3COVEREMIT)
+**Class**: infer
+**Shape**: create
+**Goal**: Add characterization so ship new_coverage can pass (F-plan-covers-gate)
+**Owns**: src/test/java/com/demo/repository/OwnerRepositoryTest.java
+**Oracle**: absent
+**Acceptance**: characterization pins layer contract for ship coverage (O-M3COVEREMIT / F-plan-covers-gate)

@@ -1118,6 +1118,58 @@ def main():
                         f"(or a non-empty reason column in the decision table)",
                     )
 
+    # O-SCOPEVIEW / ADR-39 (W4-617): roadmap `- scope:` is a VIEW of
+    # model.stories[].units. Unit-path sets must match story_scope() — drift
+    # is a view bug, not a second membership store.
+    roadmap_path = Path(argv[0]).resolve()
+    _root = (
+        roadmap_path.parent.parent
+        if roadmap_path.parent.name == "migration"
+        else roadmap_path.parent
+    )
+    if (_root / "migration" / "model.json").is_file():
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from model import load as _model_load  # type: ignore
+            from task_contract import story_scope as _story_scope  # type: ignore
+
+            _model = _model_load(_root)
+            if _model.get("stories"):
+                _all_unit_paths = {
+                    str(u.get("legacy_path") or "").replace("\\", "/").strip()
+                    for u in (_model.get("units") or [])
+                    if isinstance(u, dict) and u.get("legacy_path")
+                }
+                for sid in ids:
+                    if STORY_FILTER and sid != STORY_FILTER:
+                        continue
+                    typed = set(_story_scope(_model, sid))
+                    if not typed:
+                        continue
+                    prose_raw = [
+                        p.strip().replace("\\", "/")
+                        for p in (field(sid, "scope") or "").split(",")
+                        if p.strip()
+                    ]
+                    prose_units = {p for p in prose_raw if p in _all_unit_paths}
+                    if prose_units != typed:
+                        missing = sorted(typed - prose_units)
+                        extra = sorted(prose_units - typed)
+                        detail = []
+                        if missing:
+                            detail.append(f"missing_from_view={missing[:3]}")
+                        if extra:
+                            detail.append(f"extra_in_view={extra[:3]}")
+                        lint(
+                            "O-SCOPEVIEW",
+                            f"{sid}: roadmap scope VIEW ≠ model.stories[] units "
+                            f"({'; '.join(detail) or 'set mismatch'}) — "
+                            f"re-render from task_contract.story_scope (ADR-39)",
+                        )
+        except Exception:
+            # Soft: missing helpers must not mask other roadmap lints.
+            pass
+
     # O-BRIEFQUALITY score lines (informational on full M2; gated on --story)
     # O-BRIEFQFAB: fabrication must collapse the score — a 98 next to
     # LINT:fabrication is decorative and misleads M3 handoff.

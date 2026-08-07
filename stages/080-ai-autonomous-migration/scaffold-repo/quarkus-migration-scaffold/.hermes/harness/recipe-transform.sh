@@ -62,4 +62,7 @@ CHANGED=$(diff -rq "$LEGACY/src" "$WORK/src" 2>/dev/null | grep -c "^Files" || t
   echo "Recipes run: $SPECS"
   echo "Files changed: $CHANGED"
 } > migration/recipe-log.md
+# O-ADR46-S1: freeze staging baseline hash at capture time (immutable thereafter).
+python3 "$(dirname "$0")/staging_immutable.py" record --source=recipe-transform \
+  || echo "WARN: staging capture record failed — O-ADR46-S1 sensor will RED until recorded"
 echo "recipe transform complete: $CHANGED files changed, log in migration/recipe-log.md"

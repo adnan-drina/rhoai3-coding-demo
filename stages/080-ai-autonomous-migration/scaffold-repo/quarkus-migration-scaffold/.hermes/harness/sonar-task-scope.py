@@ -13,19 +13,18 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from task_contract import task_heading_parts  # type: ignore
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from task_contract import task_heading_parts  # type: ignore
+
 
 def task_body(tasks_file: Path, tid: str) -> str:
     text = tasks_file.read_text(encoding="utf-8", errors="replace")
-    heads = list(
-        re.finditer(r"^#{2,6}\s+(T[-A-Za-z0-9]*\d+[A-Za-z]*)\s*:\s*(.+)$", text, re.M)
-    )
-    for i, m in enumerate(heads):
-        if m.group(1) != tid:
-            continue
-        start = m.end()
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        return text[start:end]
-    return ""
+    # O-T6dTCHEADING: shared HEADING_TASK_ID_ATOM (includes S0N-TC-*).
+    _title, body = task_heading_parts(text, tid)
+    return body
 
 
 def owned_paths(body: str) -> set[str]:

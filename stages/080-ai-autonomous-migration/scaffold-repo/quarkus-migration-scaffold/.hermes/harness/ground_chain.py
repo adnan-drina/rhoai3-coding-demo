@@ -65,7 +65,9 @@ def story_evidence_kinds(model: dict, sid: str) -> list[str]:
     """Union of evidence kinds declared by the story's typed acceptance."""
     out: list[str] = []
     for t in _tasks_for(model, sid):
-        for k in evidence_kinds_for_acceptance(t.get("acceptance") or []):
+        for k in evidence_kinds_for_acceptance(
+            t.get("acceptance") or [], task_kind=str(t.get("kind") or "")
+        ):
             if k not in out:
                 out.append(k)
     # Baseline packet always projects these structural facts (ADR-21 / ADR-24).
@@ -218,7 +220,9 @@ def g9_verdict(model: dict, sid: str) -> tuple[str, str]:
         if len(goal) < 8:
             bad.append(f"{t.get('id')}: empty/short goal")
             continue
-        kinds = evidence_kinds_for_acceptance(t.get("acceptance") or [])
+        kinds = evidence_kinds_for_acceptance(
+            t.get("acceptance") or [], task_kind=str(t.get("kind") or "")
+        )
         role = str(t.get("role") or "").upper()
         if "staging_fact" in kinds or role == "HARVEST":
             if _HARVEST_BAD_GOAL.search(goal) and not _HARVEST_GOOD_GOAL.search(goal):
@@ -275,7 +279,9 @@ def g10_verdict(root: Path, model: dict, sid: str) -> tuple[str, str]:
             not_landed += 1
             continue
         body = _read(tgt_path) or ""
-        kinds = evidence_kinds_for_acceptance(t.get("acceptance") or [])
+        kinds = evidence_kinds_for_acceptance(
+            t.get("acceptance") or [], task_kind=str(t.get("kind") or "")
+        )
         role = str(t.get("role") or "").upper()
         if "staging_fact" in kinds or role == "HARVEST":
             stg_path = root / staging if staging else None

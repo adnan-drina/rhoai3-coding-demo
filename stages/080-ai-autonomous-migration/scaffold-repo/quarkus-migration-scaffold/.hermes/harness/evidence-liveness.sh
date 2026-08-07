@@ -86,35 +86,77 @@ heartbeat() { # story
   if [ "$(row_count "$story" K2 | tr -d '[:space:]')" = "0" ]; then
     local findings_n=0 evid_n=0
     if [ -n "$tasks" ] && [ -f "$tasks" ]; then
-      findings_n=$(grep -ciE '\*\*Findings\*\*:' "$tasks" 2>/dev/null || true); findings_n=${findings_n:-0}
+      # O-EVIDLIVEK2NONE (W4-664): **Findings**: (none) is not a Findings-bearing
+      # task — counting every Findings header false-silenced S01 (9 headers, 1 real).
+      findings_n=$(
+        grep -E '\*\*Findings\*\*:' "$tasks" 2>/dev/null \
+          | grep -civE '\*\*Findings\*\*:[[:space:]]*(\(none\)|-)?[[:space:]]*$' \
+          || true
+      )
+      findings_n=${findings_n:-0}
     fi
     if [ -f "$EVENTS" ]; then
       evid_n=$(grep -cE ',k2:evidence,' "$EVENTS" 2>/dev/null || true); evid_n=${evid_n:-0}
+    fi
+    # Reconstruct from live task-packet Analysis evidence when the events CSV
+    # was rotated/lost after M4 (ship gate must not RED on missing CSV alone).
+    if [ "${evid_n:-0}" -eq 0 ] 2>/dev/null \
+      && [ "${findings_n:-0}" -gt 0 ] 2>/dev/null \
+      && [ -n "$tasks" ] && [ -f "$tasks" ] \
+      && [ -f "$ROOT/.hermes/harness/task-packet.py" ]; then
+      local tid pkt
+      while IFS= read -r tid; do
+        [ -n "$tid" ] || continue
+        pkt=$(python3 "$ROOT/.hermes/harness/task-packet.py" "$tasks" "$tid" worker 2>/dev/null || true)
+        if printf '%s\n' "$pkt" | grep -q '^Analysis evidence'; then
+          evid_n=$((evid_n + 1))
+        fi
+      done < <(
+        # Task ids whose Findings line names at least one rule id.
+        # Headings are #### T-ID: title (O-M3TYPED); tolerate ### too.
+        awk '
+          /^#{3,4} / {
+            tid=$0
+            sub(/^#{3,4}[[:space:]]*/, "", tid)
+            sub(/:.*$/, "", tid)
+            sub(/[[:space:]].*/, "", tid)
+          }
+          /\*\*Findings\*\*:/ && $0 !~ /\(none\)/ && $0 !~ /\*\*Findings\*\*:[[:space:]]*$/ {
+            if (tid != "") print tid
+          }
+        ' "$tasks"
+      )
     fi
     if [ "${evid_n:-0}" -gt 0 ] 2>/dev/null; then
       record "$story" K2 "$evid_n" "k2:evidence events"
     elif [ "${findings_n:-0}" -eq 0 ] 2>/dev/null; then
       record "$story" K2 1 "none-applicable (no Findings tasks)"
     fi
-    # If Findings exist but no k2 events → leave silent for check RED
+    # If Findings exist but no k2 events/packets → leave silent for check RED
   fi
 
-  # ---- K3: adopt/defer decisions in roadmap ----
+  # ---- K3: adopt/defer — typed per-story (O-K3TYPED / F-k3-typed / W4-623) ----
+  # Never grep -c roadmap prose. Counts = model.nm_decisions ∩ story findings.
   if [ "$(row_count "$story" K3 | tr -d '[:space:]')" = "0" ]; then
-    if [ -f "$roadmap" ]; then
-      local k3n
-      # Decision forms only — not prose that merely mentions adopt/defer.
-      # O-EVIDLIVEK3TABLE / O-M2K3TABLE: inventory-shaped markdown table
-      # `| rule-id | adopt|defer | reason |` must count (bullet forms already did).
-      k3n=$(grep -cE '(: defer|: adopt|defer \([^\)]+\)|: *defer|: *adopt|[[:space:]]\|[[:space:]]*(adopt|defer)[[:space:]]\|)' "$roadmap" 2>/dev/null || true); k3n=${k3n:-0}
-      if [ "${k3n:-0}" -gt 0 ] 2>/dev/null; then
-        record "$story" K3 "$k3n" "roadmap adopt/defer present"
+    local _k3py="${ROOT}/.hermes/harness/k3_evidence.py"
+    [ -f "$_k3py" ] || _k3py="$(dirname "$0")/k3_evidence.py"
+    if [ -f "$_k3py" ]; then
+      local _k3line _k3n _k3note
+      _k3line=$(python3 "$_k3py" --root "$ROOT" count --sid "$story" 2>/dev/null || true)
+      _k3n=$(printf '%s\n' "$_k3line" | awk -F'\t' '{print $2}')
+      _k3note=$(printf '%s\n' "$_k3line" | awk -F'\t' '{print $3}')
+      _k3n=${_k3n:-0}
+      if [ "${_k3n:-0}" -gt 0 ] 2>/dev/null; then
+        record "$story" K3 "$_k3n" "${_k3note:-typed nm_decisions}"
+      elif printf '%s\n' "$_k3note" | grep -q 'none-applicable'; then
+        record "$story" K3 1 "none-applicable (no story-owned findings)"
       else
-        # Roadmap exists but no decisions — still record that K3 ran empty?
-        # Charter: ≥1 row OR RED. Empty decisions on a roadmap that claims
-        # inventory is a real defect → leave silent → RED.
+        # Findings owned but undecided — leave silent → check RED.
         :
       fi
+    elif [ -f "$roadmap" ]; then
+      # Pre-O-K3TYPED harness without k3_evidence.py — refuse false greens.
+      echo "O-K3TYPED: missing k3_evidence.py — K3 heartbeat skipped (no roadmap grep)" >&2
     fi
   fi
 

@@ -118,6 +118,12 @@ PY
   mkdir -p migration
   cp /tmp/kantra-baseline/output.json migration/mta-findings.json 2>/dev/null \
     || { echo "FATAL: M1 ground truth unavailable (bin=$KBIN)"; exit 1; }
+  # O-ANALYZERPIN: stamp engine sidecar next to baseline findings.
+  _KVER=$("$KBIN" version 2>/dev/null | head -1 || echo unknown)
+  python3 .hermes/harness/analysis_engine_pin.py stamp --kind before \
+    --bin "$KBIN" --version "$_KVER" --mode "$A_MODE" \
+    --input-sha256 "${ANALYSIS_INPUT_SHA256:-}" \
+    || echo "WARN: O-ANALYZERPIN stamp failed"
   # K6: kantra on pristine destination (exclude staging/.hermes) → dest-baseline
   # for scaffold-presatisfied.generated.txt (pom/config pre-satisfied only).
   DEST_SRC=/tmp/kantra-dest-src
@@ -150,6 +156,12 @@ fi
 # O-CODEGENDEMAND synthetics. Kantra may have been skipped above.
 [ -f migration/mta-findings.json ] \
   || { echo "FATAL: migration/mta-findings.json missing — cannot build bundle"; exit 1; }
+# O-ANALYZERPIN: ensure before-pin exists even on kantra-skip refresh path.
+if [ ! -f migration/mta-findings.engine ]; then
+  python3 .hermes/harness/analysis_engine_pin.py stamp --kind before \
+    --mode "$(grep -A12 "^analysis:" migration.yaml 2>/dev/null | grep -m1 -E "^[[:space:]]*mode:" | awk '{print $2}' | tr -d '"' || true)" \
+    || echo "WARN: O-ANALYZERPIN backfill stamp failed"
+fi
 # O-ADR24FIND: Findings IR before model emit (single Kantra→IR loader)
 python3 .hermes/harness/findings_ir.py emit --root . \
   || { echo "FATAL: findings_ir emit failed — cannot bind model findings"; exit 1; }
@@ -183,7 +195,8 @@ python3 .hermes/harness/ruleset_coverage.py \
     --log \
   || echo "WARN: O-RULESETLOG coverage failed"
 SUMMARY=$(python3 .hermes/skills/migration-harness/scripts/extract_findings.py migration/mta-findings.json | head -3)
-git add migration/mta-findings.json migration/mta-findings-dest-baseline.json \
+git add migration/mta-findings.json migration/mta-findings.engine \
+        migration/mta-findings-dest-baseline.json \
         migration/scaffold-presatisfied.generated.txt \
         migration/findings.json \
         migration/model.json \
