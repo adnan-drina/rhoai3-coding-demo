@@ -126,6 +126,14 @@ check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
 check "harness tooling is gated on the modernized profile" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \
   "1"
+# AD-H §14 — SOUL.md is the sole judgement-doctrine carrier; init must
+# abort on missing/empty/hash mismatch and smoke-test Hermes load+scan.
+check "init script hash-verifies SOUL.md and aborts (AD-H §14)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'SOUL.md hash mismatch after placement' || echo 0" \
+  "1"
+check "init script load-time SOUL smoke via load_soul_md (AD-H §14)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'from agent.prompt_builder import load_soul_md' || echo 0" \
+  "1"
 
 log_step "Modernization Workspaces (mta component)"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do

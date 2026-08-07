@@ -678,12 +678,85 @@ data:
       # Platform must not own the developer-writable user config path.
       rm -f "${HOME}/.hermes/config.yaml"
 
-      # AD-H §7.4 — SOUL.md authored in scaffold, placed under HERMES_HOME.
-      if [ -f "${PROJECT_DIR}/.hermes/SOUL.md" ]; then
-        cp -f "${PROJECT_DIR}/.hermes/SOUL.md" "${hermes_home}/SOUL.md"
-        echo "Hermes AD-H: placed SOUL.md at ${hermes_home}/SOUL.md."
-      else
-        echo "WARN: ${PROJECT_DIR}/.hermes/SOUL.md absent — identity slot empty until scaffold authors it (AD-H §8)."
+      # AD-H §14 — SOUL.md authored in scaffold, placed under HERMES_HOME.
+      # Hash-verify + abort (parity with auth.json): missing/empty/corrupt
+      # placement must not silently fall back to a generic identity — the
+      # entire judgement doctrine lives only here (AGENTS.md is convention).
+      local soul_src="${PROJECT_DIR}/.hermes/SOUL.md"
+      local soul_dst="${hermes_home}/SOUL.md"
+      if [ ! -f "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} absent — identity slot required (AD-H §14)." >&2
+        return
+      fi
+      if [ ! -s "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} empty — Hermes would silently fall back (AD-H §14)." >&2
+        return
+      fi
+      # Reject whitespace-only (Hermes strip() → empty → silent fallback).
+      if ! grep -q '[^[:space:]]' "${soul_src}"; then
+        echo "ERROR: ${soul_src} whitespace-only — Hermes would silently fall back (AD-H §14)." >&2
+        return
+      fi
+      cp -f "${soul_src}" "${soul_dst}"
+      local soul_src_hash soul_dst_hash
+      soul_src_hash="$(sha256sum "${soul_src}" | awk '{print $1}')"
+      soul_dst_hash="$(sha256sum "${soul_dst}" | awk '{print $1}')"
+      if [ -z "${soul_src_hash}" ] || [ "${soul_src_hash}" != "${soul_dst_hash}" ]; then
+        echo "ERROR: SOUL.md hash mismatch after placement (src=${soul_src_hash:-none} dst=${soul_dst_hash:-none})." >&2
+        return
+      fi
+      echo "Hermes AD-H §14: placed SOUL.md at ${soul_dst} (sha256=${soul_src_hash:0:12})."
+
+      # AD-H §14 — load-time smoke (not standing machinery): exercise Hermes
+      # scan+load. Placement hashing cannot catch scanner alteration at load.
+      local hermes_agent_root="${HOME}/.hermes/hermes-agent"
+      if [ ! -d "${hermes_agent_root}" ]; then
+        echo "ERROR: Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
+        return
+      fi
+      if ! (
+        cd "${hermes_agent_root}"
+        HERMES_HOME="${hermes_home}" "${venv_py}" - <<'SOULSMOKE'
+import os
+import sys
+
+expected_path = os.path.join(os.environ["HERMES_HOME"], "SOUL.md")
+with open(expected_path, encoding="utf-8") as fh:
+    expected = fh.read().strip()
+if not expected:
+    print("ERROR: SOUL.md empty at load-time smoke", file=sys.stderr)
+    sys.exit(1)
+
+try:
+    from agent.prompt_builder import load_soul_md
+except Exception as exc:
+    print(f"ERROR: cannot import load_soul_md: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+loaded = load_soul_md()
+if not loaded:
+    print("ERROR: load_soul_md returned None/empty — silent identity fallback", file=sys.stderr)
+    sys.exit(1)
+if loaded.lstrip().startswith("[BLOCKED:"):
+    print(f"ERROR: SOUL.md blocked by injection scanner: {loaded[:240]}", file=sys.stderr)
+    sys.exit(1)
+for marker in (
+    "faithful",
+    "read-only and they are the truth",
+    "they are right",
+    "blockage is a correct outcome",
+):
+    if marker not in loaded:
+        print(f"ERROR: doctrine marker missing after load: {marker!r}", file=sys.stderr)
+        sys.exit(1)
+if loaded.strip() != expected:
+    print("ERROR: loaded SOUL.md differs from on-disk content after scan/truncate", file=sys.stderr)
+    sys.exit(1)
+print("Hermes AD-H §14: SOUL.md load-time smoke OK (identity intact).")
+SOULSMOKE
+      ); then
+        echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
+        return
       fi
 
       # Secrets must stay in Managed Scope — never under HERMES_HOME.
