@@ -52,6 +52,47 @@ PY
   printf '%s' "${ver}"
 }
 
+# JDK / language level (W2 §3.1) — property first, then Maven effective value.
+detect_jdk_version() {
+  local pom_dir="$1"
+  local pom="${pom_dir}/pom.xml"
+  local ver
+  ver="$(python3 - "$pom" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+for pat in (
+    r"<java\.version>\s*([^<]+)\s*</java\.version>",
+    r"<maven\.compiler\.release>\s*([^<]+)\s*</maven\.compiler\.release>",
+    r"<maven\.compiler\.source>\s*([^<]+)\s*</maven\.compiler\.source>",
+    r"<maven\.compiler\.target>\s*([^<]+)\s*</maven\.compiler\.target>",
+):
+    m = re.search(pat, text)
+    if m:
+        print(m.group(1).strip()); raise SystemExit
+print("")
+PY
+)"
+  if [ -n "${ver}" ]; then
+    printf '%s' "${ver}"
+    return 0
+  fi
+  # Parent-BOM specimens (e.g. petclinic) often omit java.version in the POM.
+  if command -v mvn >/dev/null 2>&1; then
+    ver="$(
+      cd "${pom_dir}" \
+        && mvn -q -DforceStdout help:evaluate -Dexpression=java.version 2>/dev/null \
+        | tail -n 1 \
+        | tr -d '[:space:]'
+    )" || ver=""
+    # help:evaluate can echo literal ${java.version} when unresolved
+    if [[ -n "${ver}" && "${ver}" != \$\{*\} && "${ver}" != "null" ]]; then
+      printf '%s' "${ver}"
+      return 0
+    fi
+  fi
+  printf ''
+}
+
 version_ge_3() {
   local v="$1"
   [[ -n "${v}" ]] || return 1
@@ -86,22 +127,28 @@ freeze_tree() {
 }
 
 write_manifest() {
-  local mode="$1" src_ver="$2" der_ver="$3" sha="$4" referent="$5"
-  python3 - "$MANIFEST" "$mode" "$src_ver" "$der_ver" "$sha" "$referent" \
+  # mode src_boot der_boot src_jdk der_jdk sha referent
+  local mode="$1" src_boot="$2" der_boot="$3" src_jdk="$4" der_jdk="$5" sha="$6" referent="$7"
+  python3 - "$MANIFEST" "$mode" "$src_boot" "$der_boot" "$src_jdk" "$der_jdk" "$sha" "$referent" \
     "${LEGACY_SRC}" "${DERIVED_ROOT}" <<'PY'
 import json, sys, datetime
-path, mode, src_ver, der_ver, sha, referent, legacy, derived = sys.argv[1:9]
+(path, mode, src_boot, der_boot, src_jdk, der_jdk, sha, referent,
+ legacy, derived) = sys.argv[1:11]
 doc = {
-    "schema": "legacy-at-3/v1",
+    "schema": "legacy-at-3/v2",
     "mode": mode,
     "legacy_src": legacy,
     "derived_root": derived,
     "harvest_referent": referent,
-    "spring_boot_version_source": src_ver,
-    "spring_boot_version_derived": der_ver,
+    # W2 §3.1 — record both bundled upgrades so a later parity/derivation
+    # failure can attribute JDK vs Spring Boot (or the chained 2.7 step).
+    "jdk_version_source": src_jdk,
+    "jdk_version_derived": der_jdk,
+    "spring_boot_version_source": src_boot,
+    "spring_boot_version_derived": der_boot,
     "sha256": sha,
     "frozen_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "note": "Harvest faithfulness compares destination to harvest_referent (legacy@3.x), never to legacy@2.x alone.",
+    "note": "Harvest faithfulness compares destination to harvest_referent (legacy@3.x), never to legacy@2.x alone. JDK + Boot versions are recorded for diagnosability; derivation is still one frozen stage.",
 }
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(doc, fh, indent=2)
@@ -112,11 +159,14 @@ PY
 
 SRC_VER="$(detect_boot_version "${LEGACY_SRC}/pom.xml")"
 [ -n "${SRC_VER}" ] || die "could not detect spring-boot version in ${LEGACY_SRC}/pom.xml"
-echo "legacy@2.x mount: ${LEGACY_SRC} (spring-boot ${SRC_VER})"
+SRC_JDK="$(detect_jdk_version "${LEGACY_SRC}")"
+[ -n "${SRC_JDK}" ] || die "could not detect JDK/language level in ${LEGACY_SRC}/pom.xml (java.version / compiler.* / mvn evaluate)"
+echo "legacy@2.x mount: ${LEGACY_SRC} (spring-boot ${SRC_VER}, jdk ${SRC_JDK})"
 
 if version_ge_3 "${SRC_VER}"; then
   echo "mode=identity — already Boot 3.x; derivation is the RO mount"
-  write_manifest "identity" "${SRC_VER}" "${SRC_VER}" "$(tree_sha256 "${LEGACY_SRC}")" "${LEGACY_SRC}"
+  write_manifest "identity" "${SRC_VER}" "${SRC_VER}" "${SRC_JDK}" "${SRC_JDK}" \
+    "$(tree_sha256 "${LEGACY_SRC}")" "${LEGACY_SRC}"
   echo "OK: harvest_referent=${LEGACY_SRC}"
   exit 0
 fi
@@ -162,9 +212,13 @@ fi
 
 DER_VER="$(detect_boot_version "${DERIVED_ROOT}/pom.xml")"
 version_ge_3 "${DER_VER}" || die "after upgrade spring-boot.version is '${DER_VER}' (want >= 3)"
+DER_JDK="$(detect_jdk_version "${DERIVED_ROOT}")"
+[ -n "${DER_JDK}" ] || die "could not detect JDK/language level after upgrade in ${DERIVED_ROOT}"
 
 SHA="$(tree_sha256 "${DERIVED_ROOT}")"
 freeze_tree "${DERIVED_ROOT}"
-write_manifest "derived" "${SRC_VER}" "${DER_VER}" "${SHA}" "${DERIVED_ROOT}"
+write_manifest "derived" "${SRC_VER}" "${DER_VER}" "${SRC_JDK}" "${DER_JDK}" \
+  "${SHA}" "${DERIVED_ROOT}"
 echo "OK: frozen legacy@3.x at ${DERIVED_ROOT} sha256=${SHA}"
 echo "    harvest_referent=${DERIVED_ROOT} (do not compare harvest to ${LEGACY_SRC})"
+echo "    versions: jdk ${SRC_JDK}→${DER_JDK}; spring-boot ${SRC_VER}→${DER_VER}"

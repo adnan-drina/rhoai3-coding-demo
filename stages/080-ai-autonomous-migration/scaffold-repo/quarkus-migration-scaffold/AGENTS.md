@@ -28,6 +28,10 @@ bash scripts/derive-legacy-boot3.sh
 - Otherwise: copy → Boot 2→3 upgrade → freeze under
   `/projects/.derived/legacy-at-3`; manifest at
   `migration/derived/legacy-at-3.json`.
+- Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
+  before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a
+  later failure can attribute the bundled upgrades without splitting the
+  frozen stage yet.
 - **Harvest faithfulness** compares the destination to
   `harvest_referent` from that manifest (**legacy@3.x**). Comparing to 2.x
   alone is wrong — Boot-3 API changes would look like infidelity.
