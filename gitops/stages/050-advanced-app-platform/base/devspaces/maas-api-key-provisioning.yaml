@@ -715,6 +715,43 @@ data:
         rm -f "${HOME}/.bashrc.bak"
       fi
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; ~/.hermes/config.yaml absent."
+
+      # AD-H §13 — the ONLY cron job: no_agent stuck-task watchdog, alert-only
+      # (--deliver local). A second job requires an Architect decision.
+      mkdir -p "${hermes_home}/scripts" "${hermes_home}/cron/output"
+      local watchdog_src="${PROJECT_DIR}/.hermes/home/scripts/kanban-stuck-watchdog.py"
+      local watchdog_dst="${hermes_home}/scripts/kanban-stuck-watchdog.py"
+      if [ -f "${watchdog_src}" ]; then
+        # Ensure the cron sandbox path has the script (scaffolds commit it here).
+        if [ "${watchdog_src}" != "${watchdog_dst}" ]; then
+          cp -f "${watchdog_src}" "${watchdog_dst}"
+        fi
+        chmod 755 "${watchdog_dst}" 2>/dev/null || true
+        if command -v hermes >/dev/null 2>&1 || [ -x "${HOME}/.local/bin/hermes" ]; then
+          local hermes_bin
+          hermes_bin="$(command -v hermes 2>/dev/null || echo "${HOME}/.local/bin/hermes")"
+          # Idempotent: remove prior job by name if list/remove available, then create.
+          if "${hermes_bin}" cron list 2>/dev/null | grep -q 'kanban-stuck-watchdog'; then
+            job_id="$("${hermes_bin}" cron list 2>/dev/null | awk '/kanban-stuck-watchdog/{print $1; exit}')"
+            if [ -n "${job_id:-}" ]; then
+              "${hermes_bin}" cron remove "${job_id}" >/dev/null 2>&1 || true
+            fi
+          fi
+          if "${hermes_bin}" cron create "every 15m" \
+            --no-agent \
+            --script kanban-stuck-watchdog.py \
+            --deliver local \
+            --name "kanban-stuck-watchdog" >/tmp/hermes-cron-watchdog.log 2>&1; then
+            echo "Hermes AD-H §13: registered kanban-stuck-watchdog (every 15m, deliver=local)."
+          else
+            echo "WARN: hermes cron create failed for kanban-stuck-watchdog (see /tmp/hermes-cron-watchdog.log); script is in place for manual register."
+          fi
+        else
+          echo "WARN: hermes CLI absent; kanban-stuck-watchdog.py installed under ${hermes_home}/scripts (register with hermes cron create)."
+        fi
+      else
+        echo "WARN: ${watchdog_src} missing — AD-H §13 watchdog not installed."
+      fi
     }
 
     write_kantra_helper() {

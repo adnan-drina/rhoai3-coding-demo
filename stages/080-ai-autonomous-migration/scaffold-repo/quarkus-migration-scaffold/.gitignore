@@ -25,9 +25,10 @@ migration/derived/tree/
 migration/derived/legacy-at-3/
 
 # Hermes runtime under relocated HERMES_HOME (AD-H §1c). Agent-authored
-# skills under .hermes/home/skills/ stay versioned; sessions/logs do not.
-# Secrets must never land here — Managed Scope owns .env / API keys.
+# skills under .hermes/home/skills/ stay versioned; sessions/logs/cron
+# output do not. Secrets must never land here — Managed Scope owns .env.
 .hermes/home/sessions/
 .hermes/home/logs/
+.hermes/home/cron/output/
 .hermes/home/auth.json
 .hermes/home/.env
