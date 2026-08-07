@@ -6,23 +6,19 @@ attributes:
   # when a second workspace starts while another is running (observed
   # live on round3's first start; run #2's workspace was patched by hand).
   controller.devfile.io/storage-type: per-workspace
-# Migration workspace layout — two projects, fixed order:
+# This golden copy defines a SINGLE-project workspace (itself). The real
+# migration workspace layout — two projects, fixed order — exists only in
+# per-run repositories, stamped by the app-migration template's skeleton
+# devfile (the authoritative workspace shape):
 #   /projects/legacy      the application being migrated (workspace-only
-#                         clone of the legacy repository; never registered
-#                         in the catalog, no write credentials)
-#   /projects/modernized  this repository — the Quarkus destination that is
-#                         catalog-registered and CI/CD-wired
-# `legacy` is FIRST on purpose: the MTA VS Code extension analyzes the
-# first workspace folder in multi-root mode.
-# In per-run repositories both URLs below are stamped by the app-migration
-# template (this golden copy carries demo defaults).
+#                         clone of ${{ values.legacyRepoUrl }}; never
+#                         registered in the catalog, no write credentials;
+#                         FIRST because the MTA VS Code extension analyzes
+#                         the first workspace folder in multi-root mode)
+#   /projects/modernized  the per-run Quarkus destination repository
+# No specimen/legacy URL belongs in this golden copy — specimen data enters
+# only via the template form at provisioning time.
 projects:
-  - name: legacy
-    git:
-      remotes:
-        origin: https://github.com/rhpds/mca-coolstore.git
-      checkoutFrom:
-        revision: main
   - name: modernized
     git:
       remotes:
