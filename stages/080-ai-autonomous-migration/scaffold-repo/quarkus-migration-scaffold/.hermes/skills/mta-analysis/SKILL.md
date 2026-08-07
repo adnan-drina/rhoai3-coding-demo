@@ -23,7 +23,8 @@ Input is `harvest_referent` from `migration/derived/legacy-at-3.json`
 (**legacy@3.x**), never the read-only 2.x mount alone. Comparing findings or
 harvest fidelity to 2.x while the contract is Boot-3 is wrong.
 
-Prerequisites (deterministic gates — still scripts):
+Prerequisites: derivation manifest present (load `derive-legacy-boot3` if
+missing), then the deterministic gate:
 
 ```bash
 bash scripts/check-legacy-at-3-manifest.sh

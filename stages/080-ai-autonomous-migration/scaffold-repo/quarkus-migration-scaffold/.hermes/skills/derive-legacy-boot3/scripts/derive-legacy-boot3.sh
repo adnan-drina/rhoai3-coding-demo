@@ -8,7 +8,7 @@
 # harvest referent is the RO mount itself.
 #
 # Usage (from /projects/modernized, before M1):
-#   bash scripts/derive-legacy-boot3.sh
+#   bash "${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh"
 #
 # Optional:
 #   DERIVE_UPGRADE_CMD='…'   command run inside the copy when upgrade needed
@@ -17,7 +17,8 @@ set -euo pipefail
 
 LEGACY_SRC="${LEGACY_SRC:-/projects/legacy}"
 DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
-MODERNIZED_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Skill layout: .hermes/skills/derive-legacy-boot3/scripts/ → project root is ../../../..
+MODERNIZED_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 MANIFEST_DIR="${MODERNIZED_ROOT}/migration/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
 

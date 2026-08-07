@@ -14,29 +14,6 @@ repository (`/projects/modernized`).
 - `/projects/modernized` — this repository. All new code, tests, and commits
   happen here, and only here.
 
-### Boot 2→3 derivation (before M1)
-
-The Quarkus migration analyzes and harvests against **legacy@3.x**, not the
-2.x mount. Run once before M1:
-
-```bash
-bash scripts/derive-legacy-boot3.sh
-```
-
-- If `spring-boot.version >= 3` already: mode=`identity` — harvest referent is
-  `/projects/legacy`.
-- Otherwise: copy → Boot 2→3 upgrade → freeze under
-  `/projects/.derived/legacy-at-3`; manifest at
-  `migration/derived/legacy-at-3.json`.
-- Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
-  before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a
-  later failure can attribute the bundled upgrades without splitting the
-  frozen stage yet.
-- **Harvest faithfulness** compares the destination to
-  `harvest_referent` from that manifest (**legacy@3.x**). Comparing to 2.x
-  alone is wrong — Boot-3 API changes would look like infidelity.
-- Override the upgrade command with `DERIVE_UPGRADE_CMD` when needed.
-
 ## Project identity
 
 - Quarkus application on the Red Hat build (`com.redhat.quarkus.platform` BOM

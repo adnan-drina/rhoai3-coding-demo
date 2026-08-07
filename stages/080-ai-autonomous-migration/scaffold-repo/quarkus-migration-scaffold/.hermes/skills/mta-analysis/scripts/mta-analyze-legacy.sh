@@ -22,7 +22,7 @@ command -v mta-cli >/dev/null 2>&1 || command -v kantra >/dev/null 2>&1 \
   || die "mta-cli (or kantra) not on PATH — install via kantra-ensure / platform tooling"
 CLI="$(command -v mta-cli 2>/dev/null || command -v kantra)"
 
-[ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run: bash scripts/derive-legacy-boot3.sh (or load the Boot derivation skill when converted)"
+[ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run derive-legacy-boot3 skill: bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\""
 [ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"
 
 # Java 21 required (kantra analyzer bundles osgi.ee=JavaSE-21; Java 17 wedges).
