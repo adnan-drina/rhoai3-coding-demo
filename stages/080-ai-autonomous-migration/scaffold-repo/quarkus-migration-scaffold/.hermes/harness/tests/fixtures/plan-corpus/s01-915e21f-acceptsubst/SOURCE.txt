@@ -1,0 +1,5 @@
+# Extracted from petclinic-rest-v4 /projects/modernized
+# sha=915e21f
+# story=S01-platform-and-bom-conversion
+# extracted_at=2026-08-03T19:49:35Z
+# note=MiniMax M3 draft with 10/10 ceremonial Acceptance (O-ACCEPTSUBST L2)

@@ -1,0 +1,3 @@
+sensor-red
+/tmp/oc-S03-T-004.err:O-STEPFINISHRED: worker exited 0 with uncommitted app dirt but task sensor RED — incomplete (not success);/tmp/oc-S03-T-004.err:refuse tip-accept / Already-satisfied / step_finish under SENSOR RED; fix signature then c
+worker_rc=42

@@ -1,0 +1,12 @@
+name: demo-contract-rules
+description: >
+  Project-contract rules for the stage 080 migrations (MTA 8.2 custom-rules
+  guide): surfaces the analysis cannot know from stock rules — env-driven
+  external integrations (the preserve: contract), user-facing surfaces
+  (the ui-surface plan requirement), and in-memory state (cloud
+  readiness). K4 also emits generated-contract-rules.yaml from
+  migration.yaml (preserve/forbidden/acceptance) at M1 analyze time.
+  Labeled target=quarkus so they fire whenever our analyses select that
+  target (reserved-label requirement, ch. 8.1).
+labels:
+  - konveyor.io/target=quarkus

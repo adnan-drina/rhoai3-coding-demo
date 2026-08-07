@@ -1,0 +1,9 @@
+# Case: s03-t004-escalation-cause (O-ESCALCAUSE honesty)
+# story=S03 task=T-004
+# Archived gold: escalation-cause-T-004.txt first line = sensor-red
+# Trigger: O-STEPFINISHRED in seat .err (supervisor @ 2026-08-03 04:53:07)
+#
+# Extract:
+#   …/escalation-cause-T-004.txt
+#   supervisor.log O-ESCALCAUSE sensor-red / O-STEPFINISHRED lines
+# Full oc-S03-T-004.json (~216KB NDJSON) retained in host tarball only.

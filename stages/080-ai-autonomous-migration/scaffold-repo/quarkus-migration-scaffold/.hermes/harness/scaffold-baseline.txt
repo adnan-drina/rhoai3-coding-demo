@@ -1,0 +1,5 @@
+# Rules that fire on the PRISTINE scaffold (generated 2026-07-27, kantra
+# java provider, decided targets). Inventory annotates these as
+# residual-expected; they are NEVER exempt from story ownership (the
+# demo-env rule is the preserve contract on the legacy side).
+demo-env-integration-00001

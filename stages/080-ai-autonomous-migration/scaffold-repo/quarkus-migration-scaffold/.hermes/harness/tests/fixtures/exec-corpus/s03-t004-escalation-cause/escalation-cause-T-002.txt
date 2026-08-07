@@ -1,0 +1,2 @@
+worker-failed
+worker_rc=0

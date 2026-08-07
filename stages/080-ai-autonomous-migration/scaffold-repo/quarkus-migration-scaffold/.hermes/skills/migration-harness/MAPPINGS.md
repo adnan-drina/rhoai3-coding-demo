@@ -1,0 +1,251 @@
+# Jakarta EE → Quarkus mapping catalog
+
+Decided defaults for this migration class. Plans cite these instead of
+re-deriving them; packets copy the target shape from here.
+
+## Contents
+- Deterministic (OpenRewrite) transforms
+- Decided manual mappings
+- Discovering further recipes
+
+## Deterministic (OpenRewrite) transforms
+
+Applied by M1 (`recipe-transform.sh`) into `migration/staging`; rewrite
+tasks harvest the transformed file from there (never re-run these):
+
+| Legacy | Recipe |
+|---|---|
+| `javax.*` imports/deps → `jakarta.*` | `org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta` (artifact `org.openrewrite.recipe:rewrite-migrate-java`) |
+
+## Decided manual mappings (infer tasks — copy these shapes into packets)
+
+| Legacy pattern | Target (decided) |
+|---|---|
+| `@Stateless` session bean | `@ApplicationScoped` CDI bean |
+| `@Stateful` session bean | Redesign: `@ApplicationScoped` + per-key `ConcurrentHashMap` state (no server sessions) |
+| `@Remote` interface / remote EJB | Drop the interface; direct `@Inject` of the implementation |
+| JNDI `InitialContext.lookup(...)` | `@Inject` the service |
+| JMS MDB / Topic within the app | **CDI events** (`Event<T>.fire` / `@Observes`) — in-process pub/sub needs no broker. Use SmallRye Reactive Messaging ONLY when messaging is genuinely out-of-process |
+| `persistence.xml` + `@PersistenceContext` | `application.properties` datasource + **constructor-injected** `EntityManager` (not field `@Inject` — Sonar S6813); mutating methods (`save`/`delete`/persist/merge/remove) need `@Transactional`; schema via Flyway (see the worker's `quarkus-persistence-conventions` skill) |
+| Startup servlets / init `@PostConstruct` | `void onStart(@Observes StartupEvent ev)` |
+| `javax.json` (JSON-P) | Jackson (`ObjectMapper`) |
+| JAX-RS resources | `quarkus-rest` + Jackson under `/api/` (worker's `quarkus-rest-conventions` skill) |
+| Vendored/enterprise jars unavailable in Central | Vendor in-repo (`lib/` + file-based `<repository>` in `pom.xml`) — the repository must build self-contained |
+
+## Production-grade defaults — a CATALOG, gated by `targetContract`
+
+The V3 post-ship review found six semantic defect classes that a legacy-
+faithful conversion carries and the rule-based gate cannot see. This table
+is the CATALOG of target shapes a REDESIGN class MAY adopt — NOT
+unconditional law. Which apply to a given app is decided in
+architecture-profile §7 and gated by `migration.yaml` `targetContract:`
+(the rubric enforces only the flags set true). A read-only service, a batch
+job, or an API that must preserve create-on-GET will leave some of these
+FALSE. Where §7 does adopt a shape, the story converts the component to it
+directly — harvest-fidelity exempts redesign classes (`@ApplicationScoped/
+@Inject/@Path/@RegisterRestClient`), so there is no gate to fight:
+
+| Legacy defect class | Default target shape |
+|---|---|
+| Mutable collections on an `@ApplicationScoped` bean | `ConcurrentHashMap`; multi-step per-key mutations via `map.compute(key, ...)` (no `synchronized` blocks) |
+| Cache cleared/refetched on every unknown-key probe | Refresh-guard: refresh only when the key is absent AND no refresh ran in the last 60s (timestamp guard); an id still absent after refresh is simply unknown — never `clear()` on miss |
+| GET that creates state (create-on-GET) | GET is read-only: absent resource → 404; creation only on mutating verbs. Legacy tests asserting create-on-GET are updated citing the brief (deliberate, documented API change) |
+| No input validation on REST params | Invalid input (e.g. `quantity <= 0`) → 400 with a problem-detail body |
+| Downstream failures surface as raw 500 stack traces | Dedicated JAX-RS `ExceptionMapper`: `ProcessingException` → 503; failure semantics stay honest (never a fabricated fallback) |
+| Order-dependent aggregate math (e.g. dedupe after pricing) | Normalize BEFORE computing derived values, plus a characterization test pinning the semantics |
+
+Test authority follows class role: **REDESIGN-class tests pin the §7
+target; HARVEST-class tests pin legacy values.** A redesign test never pins
+a behavior the target contract removes (e.g. never pins create-on-GET when
+§7 targets GET→404). Behavior-preserving shapes (thread-safety, cache
+policy, error mapping) keep the same observable results, so existing
+value-pinning assertions stay green; behavior-changing shapes (404/400) are
+pinned to the target from the first test, citing the brief.
+
+## Spring Boot → Quarkus (decided manual mappings)
+
+For Spring-Boot-class legacy inputs (e.g. the Coolstore cart service):
+
+| Legacy pattern | Target (decided) |
+|---|---|
+| `@SpringBootApplication` / `SpringApplication.run` | Delete — Quarkus has no main class by default |
+| `@Service` / `@Component` + `@Autowired` | `@ApplicationScoped` + constructor injection |
+| `@FeignClient(url = "${VAR}")` interface | MicroProfile REST client: `@RegisterRestClient(configKey=...)` + `@Path`; URL via `quarkus.rest-client.<key>.url=${VAR}`. **Import (O-RESTCLIENTDEP):** `org.eclipse.microprofile.rest.client.inject.RegisterRestClient` — never `...annotation.RegisterRestClient` (will not compile). After wiring: `mvn -q compile` before exit. |
+| `spring-boot-starter-jersey` + `ResourceConfig` | Drop — `quarkus-rest` serves JAX-RS resources directly; keep the `javax→jakarta` rewrite on the resources |
+| Spring `@GetMapping` etc. on client interfaces | JAX-RS `@GET`/`@Path` equivalents |
+| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (`/q/health`) |
+| `application.properties` (Spring keys) | Quarkus keys; plain `KEY=value` pass-throughs keep working |
+| `spring-boot-maven-plugin` | `quarkus-maven-plugin` |
+| `@PostConstruct` (javax.annotation) | `jakarta.annotation.PostConstruct` (rewrite covers it) |
+| `@RestControllerAdvice` / `@ExceptionHandler` | Dedicated class with `@ServerExceptionMapper` methods (global mapper — see `quarkus-rest-conventions`) |
+| `ResponseEntity<T>` / `HttpEntity<T>` | JAX-RS `Response` (status + entity) |
+| `org.springframework.transaction.annotation.Transactional` | `jakarta.transaction.Transactional` (same name, Jakarta package) |
+| `CommandLineRunner` / `ApplicationRunner` | `void onStart(@Observes StartupEvent ev)` |
+| `@EventListener` | `@Observes` on the event type |
+| `@Primary` | `@DefaultBean` or `@Alternative` + `@Priority` |
+| `@ConditionalOnProperty` / `@ConditionalOnClass` | `@LookupIfProperty` / `@IfBuildProfile` (no Spring `@Conditional*` in destination) |
+| `@Value("${prop}")` with SpEL (`#{...}`) | Not supported — replace with `@ConfigProperty` or explicit CDI wiring |
+| `@CrossOrigin` | `quarkus.http.cors.*` in `application.properties` |
+| `@Cacheable` / `@CacheEvict` / `@CachePut` | `@CacheResult` / `@CacheInvalidate` / `@CacheInvalidateAll` (`quarkus-cache`) |
+| `@FormParam` / `@CookieParam` / `@MatrixParam` / `@Context` | Same JAX-RS names (Spring `@RequestParam` form, `@CookieValue`, `@MatrixVariable`, injected types) |
+
+**Spring DAO exceptions → Jakarta Persistence (O-M3PRESERVEDAO / plan-lint):**
+remap **per exact symbol**, never substring-replace `DataAccessException`
+inside names like `EmptyResultDataAccessException` (that invents
+`EmptyResultPersistenceException` under `org.springframework.dao` — does
+not exist; will not compile). Cross-ref EXECUTION.md O-M3PRESERVEDAO /
+O-DAOEXMAP and plan-lint `O-M3PRESERVEDAO`.
+
+| legacy | target |
+|---|---|
+| `DataAccessException` | `jakarta.persistence.PersistenceException` |
+| `EmptyResultDataAccessException` | `jakarta.persistence.NoResultException` |
+| `DataRetrievalFailureException` | `jakarta.persistence.PersistenceException` |
+| `ObjectRetrievalFailureException` | `jakarta.persistence.EntityNotFoundException` |
+
+Extended Spring catalog (harvested from the upstream
+[quarkusio/quarkus-skills](https://github.com/quarkusio/quarkus-skills)
+`migrate-spring-to-quarkus` annotation map, 2026-07 — decided for this
+harness: NATIVE Quarkus targets, never `quarkus-spring-*` compat
+extensions; compat mode hides the migration instead of doing it):
+
+| Legacy pattern | Target (decided) |
+|---|---|
+| `@Value("${prop}")` | `@ConfigProperty(name = "prop")` |
+| `@Configuration` + `@Bean` | `@ApplicationScoped` bean with `@Produces` methods |
+| `@Qualifier("name")` | `@Named` or a custom CDI qualifier |
+| `@PathVariable` / `@RequestParam` / `@RequestHeader` | `@PathParam` / `@QueryParam` / `@HeaderParam` |
+| `@RequestBody` | no annotation — JAX-RS body param |
+| `@ConfigurationProperties(prefix="app")` | `@ConfigMapping(prefix = "app")` |
+| `@Scheduled(cron=...)` / `(fixedRate=1000)` | `@io.quarkus.scheduler.Scheduled(cron=...)` / `(every = "1s")` |
+| `@Secured` / `@PreAuthorize("hasRole('X')")` | `@RolesAllowed("X")` — SpEL beyond `hasRole`/`hasAuthority` is REDESIGN, not string rewrite |
+| JDBC-backed Spring Security users | `quarkus-elytron-security-jdbc` + `quarkus.security.jdbc.*` properties (REST specimens with JDBC auth) |
+| `CrudRepository`/`JpaRepository<T,ID>` | `PanacheRepository<T>` (Long ids) or `PanacheRepositoryBase<T,ID>` (non-Long); `@Query` JPQL → Panache `find()` |
+| Spring Data derived `findByX…` | **No Panache equivalent** — explicit `@Query` / `find("…", params)`; infer-class — briefs carry decided query text |
+| `@Aspect` / `@Around` / AspectJ | **Hard REDESIGN** (Quarkus has no AOP) — §7 decides per-method metric annotations *or* Hibernate metrics property; never harvest Aspect classes as-is |
+| `@SpringBootTest` / `@MockBean` | `@QuarkusTest` / `@InjectMock` (+ `@RestClient` qualifier when mocking a REST client) |
+| `@InjectMock` (Quarkus 3.2+) | `io.quarkus.test.InjectMock` (not the older package) |
+| `@TestPropertySource` / `@ActiveProfiles` | `@QuarkusTestProfile` with `getConfigOverrides()` |
+| MockMvc + `@WithMockUser` | Full rewrite to RestAssured `@QuarkusTest`; **no `@WithMockUser`** — create real users per role. Budget in M2/M3 test briefs (largest effort class on REST specimens) |
+
+**DI scope default:** prefer `@ApplicationScoped` over `@Singleton` — proxied,
+mockable, live-reload friendly (`@Singleton` is eager, not mockable; use only
+with a reason). **Injection visibility (O-MAPPINGS-PETCLINIC):** no `private`
+`@Inject` / `@Autowired` members — package-private or constructor injection;
+`@Autowired`→`@Inject`, `@Component`→`@ApplicationScoped`.
+
+**Panache vs Spring Data:** prefer `PanacheRepository<T>` / 
+`PanacheRepositoryBase<T,ID>` (service-layer separation) over Panache active
+record (`extends PanacheEntity`); both are valid when a DB story chooses
+Panache. SpEL in Spring `@Query` is not supported — rewrite to Panache
+`find()` / explicit JPQL. Derived query methods have no 1:1 Panache map —
+always decide the JPQL in the brief. **O-SDJPAHARVEST / O-SDJPAHARVESTONLY:** when staging
+`SpringData*Repository` `extends DomainRepository, Repository<…>`,
+harvest-from-staging alone is incomplete — convert to Panache and drop
+`org.springframework.data` before tip-accept (`O-SDJPAHARVESTONLY`). The
+Panache convert must keep the domain-repo contract (not drop it for bare
+`PanacheRepository`), turn `@Query` into real Panache method bodies (never
+orphan `@NamedQuery` on the repo iface / hollow finder declarations), and
+harvest Override `*RepositoryImpl` delete bodies with the Override
+interfaces.
+
+**Accepted deviations (do not "fix" into Coolstore-shaped work):**
+
+| Pattern | Stance |
+|---|---|
+| CORS | Global `quarkus.http.cors.*` only — no per-controller `@CrossOrigin` equivalent |
+| OpenAPI | No path-scanning filter equivalent — document if the legacy used one |
+| JMX | Unsupported under native — waive when the profile is native-capable |
+
+**Metrics naming (preserve-token class):** Micrometer vs MicroProfile Metrics
+names can break Grafana. **When MTA `springboot-metrics-to-quarkus-*` is in
+FINDINGS scope**, replace `quarkus-micrometer*` / Micrometer registry deps with
+`quarkus-smallrye-metrics` (MAPPINGS rule + K5). Otherwise on Quarkus 3 prefer
+Micrometer only if those rules are waived/out of scope — verify before keeping
+`quarkus-micrometer-registry-prometheus`. If dashboards exist, put metric name
+tokens in `migration.yaml` `preserve:`.
+
+**Spring Boot starters → Quarkus extensions (Full path, RH BOM 3.27.3.SP1):**
+
+| Spring starter | Quarkus extension (decided) |
+|---|---|
+| `spring-boot-starter-web` / `webflux` | `quarkus-rest-jackson` |
+| `spring-boot-starter-data-jpa` | `quarkus-hibernate-orm-panache` (or `quarkus-hibernate-orm` + `EntityManager`) |
+| `spring-boot-starter-validation` | `quarkus-hibernate-validator` |
+| `spring-boot-starter-actuator` | `quarkus-smallrye-health` (+ Micrometer or smallrye-metrics per metrics-naming tip above) |
+| `spring-boot-starter-security` (JDBC) | `quarkus-elytron-security-jdbc` (or OIDC/JWT when that is the decided contract) |
+| `spring-boot-starter-aop` | **Drop** — redesign call sites; no AspectJ runtime |
+| `spring-cloud-starter-openfeign` | `quarkus-rest-client-jackson` + `@RegisterRestClient` |
+
+**REJECT for destination:** any `quarkus-spring-*` extension (MTA and
+upstream skills may suggest them — native Quarkus only). This harness takes
+the **standards path** (full rename → JAX-RS / Panache / CDI), not Spring
+compat extensions — see SKILL.md.
+
+**Config property map (Spring → Quarkus):**
+
+| Spring | Quarkus |
+|---|---|
+| `spring.datasource.url` | `quarkus.datasource.jdbc.url` (+ `quarkus.datasource.db-kind`) |
+| `spring.datasource.username` / `password` | `quarkus.datasource.username` / `password` |
+| `spring.flyway.*` | `quarkus.flyway.*` (e.g. `migrate-at-start=true`) |
+| `spring.jpa.hibernate.naming.physical-strategy` (snake_case) | **Warning:** Quarkus preserves Java field names by default — align entity `@Column` or set `quarkus.hibernate-orm.physical-naming-strategy` explicitly |
+| `spring.jpa.hibernate.ddl-auto=update` | **Do not adopt** — harness law is Flyway + `hibernate-orm.database.generation=validate` |
+| `spring.profiles.active` | `quarkus.profile` / `QUARKUS_PROFILE`; profile keys use `%dev.`, `%test.`, `%prod.` prefix |
+| Prod datasource URLs | Prefer `%prod.quarkus.datasource.jdbc.url=...` so dev/test can use Dev Services |
+
+**Rule-card shape (Snowdrop):** when writing brief "Decided target shapes",
+include Goal, BEFORE/AFTER snippet, and effort hint — not annotation pairs
+alone.
+
+**Future OpenRewrite `recipe:` candidates (NOT wired — catalog only):**
+`StereotypeAnnotationsToCDI`, `WebToJaxRs`, `ValueToCdiConfigProperty`,
+`MigrateConfigurationProperties`, `MigrateSpringTransactional`,
+`MigrateSpringEvents`, `ResponseEntityToJaxRsResponse`, `MigrateSpringValidation`,
+`MigrateSpringTesting`, `MigrateSpringActuator`, `Replace Spring Boot Web with
+Quarkus REST`. Exclude: `AddSpringCompatibilityExtensions`, full
+`SpringBootToQuarkus` composite, BOM/main-run recipes.
+
+## Windup rule joins (machine-readable)
+
+`findings-inventory.py` parses THIS table to classify every mandatory
+finding at M1. `class` semantics: `recipe:<plugin-version>:<recipe-artifact>:<recipe-name>`
+= executed by the supervisor as a scripted OpenRewrite step (validated
+2026-07-27 against the real cart legacy tree); `rewrite` = mechanical,
+executed in a task packet; `infer` = judgment — the decided shape is in
+the tables above. NOTE: several Windup rules SUGGEST `quarkus-spring-*`
+compat extensions; the join records OUR decision (native Quarkus,
+compat rejected — it hides the migration instead of doing it). Only
+rule ids observed in real analyses are listed; unmatched mandatory
+rules are flagged OPEN DESIGN by the inventory.
+
+| rule id prefix | class | decided target |
+|---|---|---|
+| javax-to-jakarta- | recipe:5.46.1:org.openrewrite.recipe:rewrite-migrate-java:2.30.1:org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta | jakarta.* imports |
+| javaee-pom-to-quarkus- | rewrite | scaffold pom conventions: platform BOM, pinned quarkus/compiler/surefire/failsafe plugins, native profile, quarkus junit |
+| springboot-parent-pom-to-quarkus- | rewrite | Quarkus platform BOM replaces the Spring parent |
+| springboot-plugins-to-quarkus- | rewrite | `quarkus-maven-plugin` (pinned, `${quarkus.platform.group-id}`) |
+| jakarta-jaxrs-to-quarkus- | rewrite | `quarkus-rest` dependency |
+| springboot-actuator-to-quarkus- | rewrite | `quarkus-smallrye-health` (`/q/health`) |
+| springboot-metrics-to-quarkus-01 | rewrite | Micrometer dependency → `quarkus-smallrye-metrics` |
+| springboot-metrics-to-quarkus-02 | infer | metrics call sites → MP Metrics annotations (design per site) |
+| springboot-annotations-to-quarkus- | rewrite | delete `@SpringBootApplication` + main class |
+| springboot-di-to-quarkus- | infer | native CDI constructor injection (NOT the spring-di extension) |
+| springboot-web-to-quarkus- | infer | native JAX-RS resources (NOT the spring-web extension) |
+| springboot-properties-to-quarkus- | rewrite | Quarkus keys in application.properties (plain pass-throughs keep working; NOT the spring-boot-properties extension) |
+| spring-components- | infer | umbrella version-incompatibility rules — resolved by the conversion tasks as a whole; map to the service/endpoint conversion tasks |
+| demo-env-integration- | infer | the surface IS the preserve contract: record under migration.yaml `preserve:`; target keeps env-driven config (`${VAR:default}` / `quarkus.rest-client.<key>.url`) |
+| localhost-http- | infer | cloud-readiness: hardcoded/localhost service URLs → env-driven config (`${VAR:default}`), tied to the `preserve:` contract |
+| removed-javaee- | rewrite | JEE modules removed from the JDK → provided by Quarkus platform dependencies (BOM) — resolved with the pom conversion |
+
+## Discovering further recipes
+
+Enumerate what the classpath offers before hand-coding a mechanical
+transform:
+
+```bash
+mvn -q org.openrewrite.maven:rewrite-maven-plugin:6.12.0:discover \
+  -Drewrite.recipeArtifactCoordinates=org.openrewrite.recipe:rewrite-migrate-java:3.12.0
+```
+
+Only cite recipes the discover output actually lists.

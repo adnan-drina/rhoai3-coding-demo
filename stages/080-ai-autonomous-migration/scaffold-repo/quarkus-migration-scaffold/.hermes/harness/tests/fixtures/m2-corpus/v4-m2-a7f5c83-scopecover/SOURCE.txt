@@ -1,0 +1,21 @@
+O-M2CORPUS / O-M2CORPUSCOVER / O-L2CORPUSWAVE4 — a7f5c83 SCOPECOVER known-RED
+
+workspace: petclinic-rest-v4
+pod: workspaceb55c26a5b15f4f1c-86df979f95-pd2n9
+app commit: a7f5c83 (M2 sequence: modernization roadmap + briefs)
+extracted: 2026-08-03T21:26Z (wake #61 Grok lead)
+
+Why tip staging works (correcting earlier note):
+  Prior replay omitted briefs / used incomplete argv → only O-SCOPENOGEN.
+  Full outer-loop argv (roadmap + inventory + legacy + architecture-profile)
+  with a7f5c83 roadmap/briefs vs tip staging (d1eb9c0 / 119 scoped files)
+  emits LINT:O-SCOPECOVER (25 orphans in /tmp/roadmap-scopecover.txt)
+  plus O-SCOPENOGEN + O-SEATBUDGET.
+
+contents:
+  migration/roadmap.md + briefs/S01..S06 — a7f5c83
+  migration/findings-inventory.md + architecture-profile.md — tip M1 inputs
+  migration/staging/** — tip staging (111 scoped-suffix files; SCOPECOVER orphans)
+  EXPECTED_LINT.txt — live lint snapshot at extract
+
+expect: RED with O-SCOPECOVER (+ O-SCOPENOGEN + O-SEATBUDGET)

@@ -1,0 +1,83 @@
+# S<NN>: <story title>
+
+<!-- The brief is the self-contained work order for one modernization
+     story. Bar: a competent developer or a fresh session starts the
+     story from THIS FILE ALONE. Fill every section; delete none. -->
+
+## Goal & position
+
+What this story achieves and why it is next: its place in the roadmap,
+what it unblocks, which stories it depends on (cite
+dependency-order.md / architecture-profile.md).
+
+## In scope
+
+The exact legacy classes/files this story modernizes. For each, quote
+the load-bearing legacy code (the lines being transformed — imports,
+annotations, key methods), so the story never starts from a blank
+read:
+
+- `src/main/java/...` — role in the story
+  ```java
+  // the actual legacy lines that matter
+  ```
+
+## Out of scope
+
+What neighboring code this story must NOT touch, and which story owns
+it. (The tree must stay buildable: name any temporary seams — e.g. a
+dependent class that keeps compiling against the old shape until its
+own story.)
+
+## Class roles & target contract (from architecture-profile §7)
+
+For each in-scope class, its role and — for REDESIGN classes — the target
+contract carried forward from profile §7, so M3 writes tasks and tests to
+the target (not the legacy):
+
+- `<class>` — HARVEST | REDESIGN
+  - (REDESIGN only) target: concurrency shape, cache/resource policy, and
+    API contract (GET-idempotency, validation, error-mapping), marking each
+    behavior-CHANGING item as a deliberate departure from legacy.
+
+## Decided target shapes
+
+The MAPPINGS.md rows that apply (quote the decided target, don't
+re-decide). Recipe-executed rules already handled: reference
+`migration/recipe-log.md` and `migration/staging/` where applicable.
+
+**Story ordering:** extensions and BOM first, then models, then resources,
+then config keys, then tests (`extensions → models → resources → config →
+tests`).
+
+## Contracts owned by this story
+
+- **Findings**: the mandatory rule ids this story resolves (from the
+  roadmap entry).
+- **seat-budget**: `<N>` — expected OpenCode seats from roadmap
+  `kind × incident count` (O-SEATBUDGET / ARCH A5). Same integer as
+  roadmap `- seat-budget: N`. Supervisor escalates on overrun.
+- **Preserve**: the `preserve:` items whose surfaces live in scope —
+  spell out the env var names/values mechanism to keep.
+- **Behavioral pins**: the assertion values that must hold after this
+  story (quote numbers/strings and their test source). Harvest classes
+  and behavior-preserving redesign pin LEGACY values; behavior-changing
+  redesign pins the §7 TARGET (e.g. 404, not create-on-GET). Name the
+  contract GAPS this story closes with characterization tests.
+  - **Cart `add()` oracle (additive):** two `add(cartId, itemId, 2)` calls
+    → quantity **4** after dedupe (not 2).
+  - **Oracle placement:** service stories own service-level oracles; endpoint
+    stories own JAX-RS/RestAssured oracles. `STORY_SCOPE` may allowlist
+    `*ExceptionMapper` / `@IfExists` types when the contract requires them
+    in an earlier story.
+- **Forbidden**: the fabrication tripwires relevant here.
+
+## Done-criteria
+
+Checkable, story-scoped:
+- builds + `sensors.sh task` green at every commit; milestone green at
+  story end
+- <story-specific criteria: which tests exist and pass, which endpoint
+  serves, which findings ids no longer fire on re-analysis>
+- deploy story only: factory pipeline green, deployed, acceptance path
+  serving

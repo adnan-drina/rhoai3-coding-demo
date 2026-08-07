@@ -1,0 +1,5 @@
+# Extracted from petclinic-rest-v3 /projects/modernized (PVC RO mount)
+# sha=c9be4b0
+# story=S03-data-access-layer
+# extracted_at=2026-08-03T06:56:53Z
+# subject=M3 revision: T-000 god-node char defer + keep T-004 Panache Shape=create (O-SDJPAHARVEST)

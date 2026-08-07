@@ -1,0 +1,4 @@
+# Extracted from petclinic-rest-v3 /projects/modernized
+# sha=f7c1329
+# story=S01-platform-foundation
+# extracted_at=2026-08-03T06:41:57Z

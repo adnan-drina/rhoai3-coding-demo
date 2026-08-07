@@ -1,0 +1,1 @@
+worker read-thrash — read-thrash:reads=25:globs=0:mutates=0 (O-WORKERREAD/O-FIRSTMUT)
