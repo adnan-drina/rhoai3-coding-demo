@@ -657,6 +657,11 @@ data:
             "inline_shell": False,
             "external_dirs": [skills_dir, global_skills],
         },
+        # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
+        # subtasks outside our per-phase schema (AD-H §3).
+        "kanban": {
+            "auto_decompose": False,
+        },
     }
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
