@@ -47,3 +47,13 @@ The repository must **build self-contained**: the pipeline resolves from
 Maven Central and in-repo sources only — it cannot see your workspace. Your
 local green is not the factory's green until the build passes without
 workspace state.
+
+## Hermes project-context invariant (AD-001)
+
+Do **not** add `.hermes.md` or `HERMES.md` to this repository. Hermes loads
+project context first-match-wins (`.hermes.md` → `AGENTS.md` → …); either
+file would silently stop this `AGENTS.md` from loading. Enforce with:
+
+```bash
+bash scripts/check-no-hermes-context-override.sh
+```
