@@ -115,17 +115,3 @@ Every Kanban task, commit-message prefix, Hermes session/log reference,
 domain-gate result, and run-report line must carry the **same task id**.
 This is a phase-schema requirement (not a logging feature): a reviewer who
 starts on any surface must reach the others for that task.
-
-### Coolstore catalog stub (runtime-gate prerequisite)
-
-`coolstore-cart-legacy` Feign-calls `GET ${CATALOG_ENDPOINT}/api/products`
-(default `http://localhost:8081`). That microservice is **not** in the
-specimen — the harness supplies a stub so health / runtime-parity gates can
-run without changing the legacy repo:
-
-```bash
-bash scripts/coolstore-catalog-stub.sh
-# other terminal: export CATALOG_ENDPOINT=http://localhost:8081
-```
-
-Payload matches specimen `ProductsObjectMother` (ids `1111` / `2222`).
