@@ -10,9 +10,9 @@ metadata:
     app.kubernetes.io/part-of: ${{ values.name }}
 type: Opaque
 stringData:
-  # Demo creds stay coolstore; DATABASE matches app name (R-83 P2 / O-DEVDBURL).
-  POSTGRESQL_USER: coolstore
-  POSTGRESQL_PASSWORD: coolstore
+  # Dev-grade demo credentials; DATABASE matches the app name.
+  POSTGRESQL_USER: appuser
+  POSTGRESQL_PASSWORD: apppass
   POSTGRESQL_DATABASE: ${{ values.name }}
 ---
 apiVersion: apps/v1

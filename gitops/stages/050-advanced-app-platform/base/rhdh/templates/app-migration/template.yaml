@@ -7,10 +7,10 @@
 # it exists only inside the workspace as read-only migration input;
 # migration.yaml in the destination repo records the provenance.
 #
-# Form fields are minimal (name, legacy URL, optional DB). Cart-demo
-# acceptance / preserve / forbidden / targetContract defaults live in the
-# skeleton migration.yaml — edit that file in the destination repo for
-# non-cart apps.
+# Form fields are minimal (name, legacy URL, optional DB). The skeleton
+# stamps only per-run files: devfile (workspace), catalog-info (entity),
+# migration.yaml (provenance), k8s runtime; everything else comes from the
+# golden repository.
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
@@ -19,7 +19,7 @@ metadata:
   description: |
     Provisions a migration working set for a legacy application: a Quarkus
     destination repository carrying corporate migration standards
-    (AGENTS.md + OpenCode skills + spec-kit) and a Dev Spaces workspace
+    (AGENTS.md) and a Dev Spaces workspace
     that clones the legacy code next to it (/projects/legacy, read-only,
     workspace-only) with the MTA analysis extension preconfigured. The
     destination repository is registered in the catalog and provisioned
@@ -148,7 +148,7 @@ spec:
           workspace-only) next to `/projects/modernized` (this repository),
           with the MTA analysis extension preconfigured against the
           platform hub. Run the MTA analysis of the legacy project first —
-          its findings are the migration's ground truth — then start the
-          autonomous harness in `/projects/modernized`. Every push to
+          its findings are the migration's ground truth — then build the
+          modernized service in `/projects/modernized`. Every push to
           `main` runs the project's own pipeline in `<name>-dev` with the
           SonarQube quality gate.

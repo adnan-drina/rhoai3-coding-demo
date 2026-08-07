@@ -1,50 +1,8 @@
 # Migration provenance record — stamped by the app-migration template.
 # The legacy application is intentionally NOT registered in the catalog;
 # this file is the durable record of where the migration started.
-#
-# Harness contract defaults below are the Coolstore cart demo values.
-# For a non-cart legacy app, edit this file in the destination repo after
-# create (acceptance.path, preserve, forbidden, targetContract).
 migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
-  # Package identity (single source of the rename). A non-cart app sets its own.
-  legacyPackage: com.redhat.coolstore
-  targetPackage: com.demo
-acceptance:
-  # The harness supervisor asserts this after deploy (M5 ship success).
-  path: /api/cart/acceptance-check
   needsDatabase: ${{ values.needsDatabase }}
-  # R-83 P2 / O-DEVDBURL: sensors/boot DEV_DB_URL uses dbService/dbName when
-  # set; omit → ${PROJECT_KEY}-postgres / ${PROJECT_KEY}. Skeleton k8s
-  # postgres Secret DATABASE + JDBC path use values.name (same identity).
-  # dbService:   # omit → ${PROJECT_KEY}-postgres
-  # dbName:      # omit → ${PROJECT_KEY}; set if DB name differs from app name
-analysis:
-  # MTA rule selection is LABEL FILTERING (targets pick only matching
-  # rules; everything else is silently excluded). Decided set (validated
-  # 2026-07-27 A/B on the cart legacy): the migration path, the jakarta
-  # namespace jump, cloud-readiness (OpenShift deploy), the JDK jump.
-  # NO source filter — it only narrows (excludes source-labelless rules
-  # incl. custom ones). Applies to IDE analysis AND the harness run.
-  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
-targetContract:
-  # Decided modern contract for REDESIGN classes (M1 §7 reads this as
-  # authoritative). EVERY shape is gated by its flag — the rubric enforces
-  # only the true ones; MAPPINGS is the catalog. Behavior-changing items
-  # (getIdempotent/validateInput/mapErrors) are this demo's decision to
-  # modernize the cart API; an app with external consumers would set them
-  # false. Behavior-preserving items (thread-safety, cache) are safe to
-  # enable but still gated — a stateless service leaves them false.
-  getIdempotent: true
-  validateInput: true
-  mapErrors: true
-  threadSafeState: true
-  cacheRefreshGuard: true
-  normalizeBeforeDerive: true
-preserve:
-  - CATALOG_ENDPOINT
-forbidden:
-  - getMockProducts
-  - "Fallback to mock"
