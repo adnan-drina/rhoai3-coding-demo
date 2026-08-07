@@ -48,11 +48,12 @@ Maven Central and in-repo sources only — it cannot see your workspace. Your
 local green is not the factory's green until the build passes without
 workspace state.
 
-## Hermes project-context invariant (AD-001)
+## Hermes project-context invariant (AD-001 / AD-002)
 
-Do **not** add `.hermes.md` or `HERMES.md` to this repository. Hermes loads
-project context first-match-wins (`.hermes.md` → `AGENTS.md` → …); either
-file would silently stop this `AGENTS.md` from loading. Enforce with:
+Do **not** add `.hermes.md` or `HERMES.md` anywhere in this repository.
+Hermes loads project context first-match-wins (`.hermes.md` → `AGENTS.md` →
+…); either file would silently stop this `AGENTS.md` from loading. Enforce
+with:
 
 ```bash
 bash scripts/check-no-hermes-context-override.sh

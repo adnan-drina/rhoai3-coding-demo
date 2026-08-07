@@ -576,44 +576,87 @@ data:
         } >> "${HOME}/.bashrc"
       fi
 
-      # AD-001 (2026-08-07): factory Hermes config — official defaults +
-      # platform facts only. Rewritten on every init so key rotation
-      # propagates. PyYAML comes from Hermes' own venv.
-      # Verified 2026-08-07 on cluster: LLMInferenceService
-      # models-as-a-service/qwen3-6-27b has --max-model-len=131072 and
-      # spec.model.name=qwen3-6-27b (gateway /models returned 401 with
-      # available keys — serving CR args are the measured source).
+      # AD-001 + AD-002 (2026-08-07): factory config via Managed Scope.
+      # Platform facts live under HERMES_MANAGED_DIR (/etc/hermes when
+      # writable; otherwise a workspace-local managed dir + env export).
+      # ~/.hermes/config.yaml stays ABSENT — developer-writable if they
+      # choose, never platform-written. Secrets go in managed .env.
+      # Verified model facts: qwen3-6-27b, --max-model-len=131072.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
       if [ ! -x "${venv_py}" ]; then
         echo "Hermes venv python not found; skipping Hermes MaaS config."
         return
       fi
+
+      local managed_dir="/etc/hermes"
+      local managed_mode="etc"
+      if ! mkdir -p "${managed_dir}" 2>/dev/null \
+        || ! touch "${managed_dir}/.rhoai3-write-test" 2>/dev/null; then
+        # postStart runs as the workspace user — /etc is often not writable.
+        # Relocate via HERMES_MANAGED_DIR (official) until the image bakes
+        # root-owned /etc/hermes. Permission guarantee is weaker than AD-002
+        # ideal; NetworkPolicy still required for egress.
+        managed_dir="/projects/.platform/hermes"
+        managed_mode="relocated"
+        mkdir -p "${managed_dir}"
+      fi
+      rm -f "${managed_dir}/.rhoai3-write-test" 2>/dev/null || true
+
       export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
+      export HERMES_MANAGED_DIR="${managed_dir}"
+      export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
+      # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
+      # CLI default cwd is correct; do not set terminal.cwd.
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
-    path = os.path.expanduser("~/.hermes/config.yaml")
+    managed = os.environ["HERMES_MANAGED_DIR"]
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
+    model_base = base + "/models-as-a-service/qwen3-6-27b/v1"
     cfg = {
         "model": {
             "provider": "custom",
             "default": "qwen3-6-27b",
-            "base_url": base + "/models-as-a-service/qwen3-6-27b/v1",
-            "api_key": os.environ["MAAS_API_KEY_QWEN27B"],
+            "base_url": "${MAAS_API_BASE_URL}",
+            "api_key": "${MAAS_API_KEY}",
             "context_length": 131072,
         },
         "tool_loop_guardrails": {
             "hard_stop_enabled": True,
         },
     }
-    with open(path, "w") as fh:
+    cfg_path = os.path.join(managed, "config.yaml")
+    with open(cfg_path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: AD-001 factory baseline written (qwen3-6-27b, context_length=131072, hard_stop_enabled=true).")
+    env_path = os.path.join(managed, ".env")
+    with open(env_path, "w") as fh:
+        fh.write(f"MAAS_API_BASE_URL={model_base}\n")
+        fh.write(f"MAAS_API_KEY={os.environ['MAAS_API_KEY_QWEN27B']}\n")
+    os.chmod(cfg_path, 0o644)
+    os.chmod(env_path, 0o600)
+    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-001 content).")
     HERMESEOF
-      chmod 600 "${HOME}/.hermes/config.yaml"
+
+      # Platform must not own the developer-writable user config path.
+      rm -f "${HOME}/.hermes/config.yaml"
+
+      if ! grep -q "rhoai3-coding-demo: hermes managed scope" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes managed scope (AD-002)\n'
+          printf 'export HERMES_MANAGED_DIR=%q\n' "${managed_dir}"
+          printf 'export HERMES_WRITE_SAFE_ROOT=%q\n' "${PROJECT_DIR}"
+        } >> "${HOME}/.bashrc"
+      else
+        # Refresh paths on every init (key/profile may change).
+        sed -i.bak \
+          -e "s|^export HERMES_MANAGED_DIR=.*|export HERMES_MANAGED_DIR=$(printf %q "${managed_dir}")|" \
+          -e "s|^export HERMES_WRITE_SAFE_ROOT=.*|export HERMES_WRITE_SAFE_ROOT=$(printf %q "${PROJECT_DIR}")|" \
+          "${HOME}/.bashrc" 2>/dev/null || true
+        rm -f "${HOME}/.bashrc.bak"
+      fi
+      echo "Hermes AD-002: managed_mode=${managed_mode} dir=${managed_dir}; WRITE_SAFE_ROOT=${PROJECT_DIR}; ~/.hermes/config.yaml absent."
 
       # Repo-versioned Hermes skills (e.g. the migration-harness runbook):
-      # platform-seeded and versioned with the repo, not agent-invented.
-      # Symlinked so a repo pull updates the skill without re-running init.
+      # runtime symlink under ~/.hermes/skills — not baked config.
       if [ -d "${PROJECT_DIR}/.hermes/skills" ]; then
         mkdir -p "${HOME}/.hermes/skills"
         for d in "${PROJECT_DIR}"/.hermes/skills/*/; do
