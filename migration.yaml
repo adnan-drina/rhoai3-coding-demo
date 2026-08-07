@@ -1,5 +1,0 @@
-targetContract:
-  getIdempotent: true
-  validateInput: true
-  cacheRefreshGuard: true
-  mapErrors: true
