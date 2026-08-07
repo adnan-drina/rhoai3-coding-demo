@@ -1,38 +1,20 @@
 # Maven / Quarkus build output
 target/
 
-# O-PYCGITIGNORE — harness Python bytecode must never enter tips
-# (repo root already ignores these; scaffold lacked them → a7f5c83 swept
-# seat-budget.cpython-39.pyc + 18× cpython-314 .pyc into the worktree).
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 
 # OpenCode plugin-API scaffolding — generated at runtime whenever a project
-# has a .opencode/ directory (OpenCode installs @opencode-ai/plugin to expose
-# its plugin API). This project uses only markdown skills and speckit
-# commands, so none of it is used here, and it must never be committed.
+# has a .opencode/ directory; never committed.
 .opencode/node_modules/
 .opencode/package.json
 .opencode/package-lock.json
 .opencode/bun.lock
 .opencode/.gitignore
 
-# JDTLS/kantra workspace droppings
+# IDE / language-server droppings
 .project
 .settings/
 .classpath
-
-# O-TMPARCHIVE forensic copies (PVC; do not git-add)
-migration/run-archives/
-
-# O-M3PROMPTPATH — typed M3 seat prompts (workspace-local; OpenCode rejects /tmp)
-migration/.m3-prompts/
-
-# O-STAMPGITIGN — runtime bookkeeping must not enter T-NNN tips
-migration/.m3-all-stamps/
-migration/run-log.md
-migration/evidence-liveness.md
-migration/discovered.md
-migration/mta-findings-after.json
-migration/findings-delta.STALE

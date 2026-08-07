@@ -1,5 +1,0 @@
-# Extracted from petclinic-rest-v3 /projects/modernized
-# sha=6348afe
-# story=S03-data-access-layer
-# extracted_at=2026-08-03T06:41:57Z
-# note=REAL tip text; W4-108b closes reconstruction gap

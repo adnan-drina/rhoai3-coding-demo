@@ -1,5 +1,0 @@
-# Rescued from petclinic-rest-v4 /tmp before prune
-# session=m3-S01-w1 (post-GO O-M3ALLSTALL retest)
-# ts≈2026-08-03T18:55:09Z → abort 18:57:10
-# tools:read=5 writes=0 — proves O-M3TOOLHIST + O-M3ALLSTALL armed
-# extracted_at=2026-08-03T20:36:12Z
