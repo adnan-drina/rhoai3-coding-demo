@@ -44,8 +44,10 @@ bash scripts/check-legacy-at-3-manifest.sh
 - **Upgrade command is required:** set `DERIVE_UPGRADE_CMD` to the approved
   Boot 2→3 path. Operator declined Moderne-licensed OpenRewrite recipes as
   policy (`E-20260807T184100Z`); the script will not fall through to
-  `UpgradeSpringBoot_3_0`. Directed trial path is Spring Boot Migrator (SBM);
-  free-primitives composite is the durable fallback if SBM fails trial.
+  `UpgradeSpringBoot_3_0`. **Directed path (Operator via Architect
+  `E-20260807T202040Z`): free-primitives composite** — MTA/Windup covers the
+  javax→jakarta slice stack-native; composite owns Boot-specific remainder.
+  `DERIVE_UPGRADE_CMD` stays unset (script `die`) until that composite exists.
 
 ## Pitfalls
 
