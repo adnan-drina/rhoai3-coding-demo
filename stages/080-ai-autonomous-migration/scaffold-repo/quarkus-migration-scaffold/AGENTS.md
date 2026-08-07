@@ -99,6 +99,7 @@ bash scripts/check-no-hermes-context-override.sh
 | `$HERMES_MANAGED_DIR` (`/etc/hermes` or `/projects/.platform/hermes`) | Platform config + secrets (`.env`) — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime tree (sessions/logs gitignored; agent-created skills versioned) |
 | `.hermes/skills/` | Scaffold procedures via `skills.external_dirs` (no symlink loop) |
+| `~/.hermes/skills/` | Also on `external_dirs` — spec-kit installs here (`Path.home()`, ignores `$HERMES_HOME`) |
 | `.hermes/SOUL.md` | Identity source; provisioning places a copy at `$HERMES_HOME/SOUL.md` |
 
 `auth.json` must **not** exist anywhere under Hermes homes — its presence

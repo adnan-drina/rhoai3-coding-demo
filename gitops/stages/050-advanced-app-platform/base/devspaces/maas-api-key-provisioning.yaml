@@ -620,12 +620,19 @@ data:
       export HERMES_HOME="${hermes_home}"
       export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
       export HERMES_SKILLS_DIR="${hermes_skills_dir}"
+      # Spec-kit Hermes integration hardcodes Path.home()/.hermes/skills
+      # (ignores $HERMES_HOME — Research E-20260807T174318Z / upstream
+      # spec-kit#3334 closed unmerged). Keep that path on external_dirs so
+      # /speckit.* skills remain visible after HERMES_HOME relocation.
+      export HERMES_GLOBAL_SKILLS_DIR="${HOME}/.hermes/skills"
+      mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
       # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
       # CLI default cwd is correct; do not set terminal.cwd.
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
+    global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
     model_base = base + "/models-as-a-service/qwen3-6-27b/v1"
     cfg = {
@@ -644,11 +651,11 @@ data:
             "memory_enabled": False,
         },
         # AD-H §1 / §7.3 — gated skill writes (post-run batch approve);
-        # no inline shell; scaffold procedures via external_dirs.
+        # no inline shell; scaffold + global (spec-kit) via external_dirs.
         "skills": {
             "write_approval": True,
             "inline_shell": False,
-            "external_dirs": [skills_dir],
+            "external_dirs": [skills_dir, global_skills],
         },
     }
     cfg_path = os.path.join(managed, "config.yaml")
