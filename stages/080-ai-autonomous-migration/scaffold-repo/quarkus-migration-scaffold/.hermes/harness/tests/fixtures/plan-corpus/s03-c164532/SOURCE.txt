@@ -1,4 +1,0 @@
-# Extracted from petclinic-rest-v3 /projects/modernized
-# sha=c164532
-# story=S03-data-access-layer
-# extracted_at=2026-08-03T06:41:57Z

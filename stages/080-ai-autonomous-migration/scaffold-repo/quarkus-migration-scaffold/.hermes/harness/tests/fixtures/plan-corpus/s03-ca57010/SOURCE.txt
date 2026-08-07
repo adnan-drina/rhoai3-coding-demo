@@ -1,5 +1,0 @@
-# Extracted from petclinic-rest-v3 /projects/modernized (PVC RO mount)
-# sha=ca57010
-# story=S03-data-access-layer
-# extracted_at=2026-08-03T06:56:53Z
-# subject=M3 revision: reshape T-001/T-004 Shape create for .java (O-STRUCTJAVA/O-SDJPAHARVEST)

@@ -1,4 +1,0 @@
-# Extracted from petclinic-rest-v3 /projects/modernized
-# sha=ee834b1
-# story=S02-domain-models
-# extracted_at=2026-08-03T06:41:57Z

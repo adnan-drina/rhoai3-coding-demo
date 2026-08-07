@@ -1,1 +1,0 @@
-{"units": [{"key": "demo.A", "depends_on": []}, {"key": "demo.B", "depends_on": ["demo.A"]}], "tasks": [{"id": "S02-T-002-B", "kind": "convert", "unit_keys": ["demo.B"]}, {"id": "S02-T-001-A", "kind": "convert", "unit_keys": ["demo.A"]}]}

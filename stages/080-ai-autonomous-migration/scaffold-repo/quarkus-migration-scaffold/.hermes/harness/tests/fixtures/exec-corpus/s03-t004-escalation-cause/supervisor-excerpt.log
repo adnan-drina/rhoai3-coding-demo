@@ -1,1 +1,0 @@
-1535:[2026-08-03 04:53:07] T-004: O-ESCALCAUSE sensor-red — /tmp/oc-S03-T-004.err:O-STEPFINISHRED: worker exited 0 with uncommitted app dirt but task sensor RED — incomplete (not success);/tmp/oc-S03-T-004.err:refuse tip-accept / Already-satisfied / step_finish under SENSOR RED; fix signature then c (rc=42) → /tmp/escalation-cause-T-004.txt
