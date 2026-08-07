@@ -1,19 +1,106 @@
-# Migration provenance record — stamped by the app-migration template.
-# The legacy application is intentionally NOT registered in the catalog;
-# this file is the durable record of where the migration started.
+# Migration provenance + harness contract — stamped by the app-migration
+# template. Specimen-layering: the golden scaffold stays specimen-free; this
+# skeleton is the only place demo-specimen contracts are written.
+#
+# Profile selection is by legacyRepoUrl (known demo freeze-forks). Unknown
+# URLs get provenance + analysis only and contract.status: undecided — never
+# Coolstore cart literals. Do not "edit after create" for the two demo
+# specimens; recreate from the template if the stamp is wrong.
+{%- set url = (values.legacyRepoUrl | default('', true) | lower) -%}
+{%- set is_petclinic = ('spring-petclinic-rest-legacy' in url) or ('petclinic-rest-legacy' in url) -%}
+{%- set is_cart = ('coolstore-cart-legacy' in url) -%}
 migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
   needsDatabase: ${{ values.needsDatabase }}
+{%- if is_petclinic %}
+  legacyPackage: org.springframework.samples.petclinic
+  targetPackage: com.demo
+{%- elif is_cart %}
+  legacyPackage: com.redhat.coolstore
+  targetPackage: com.demo
+{%- else %}
+  # Unknown specimen — set legacyPackage/targetPackage before M1.
+  legacyPackage: ""
+  targetPackage: com.demo
+{%- endif %}
 
-# AD-003 amendment A: harness analysis contract (not .konveyor/profiles).
-# Rule selection is via --target only — NEVER --source (Track B run evidence
-# 2026-07-27: --source drops source-labelless rules and narrows the set).
-# Targets match the Track B / coolstore-shaped defaults; adjust deliberately.
+{%- if is_petclinic %}
+acceptance:
+  # Validated showcase stamp (petclinic-rest-v5 / O-ACCEPTREAL).
+  path: /petclinic/api/vets
+  collection: _array
+  getter: getAllVets
+  service: VetRestController
+  itemType: VetDto
+  needsDatabase: ${{ values.needsDatabase }}
+  idFields: [id]
+{%- elif is_cart %}
+acceptance:
+  path: /api/cart/acceptance-check
+  collection: products
+  service: CatalogService
+  endpointEnv: CATALOG_ENDPOINT
+  itemType: Product
+  needsDatabase: ${{ values.needsDatabase }}
+{%- else %}
+acceptance:
+  path: ""
+  needsDatabase: ${{ values.needsDatabase }}
+{%- endif %}
+
 analysis:
+  # AD-003A: --target only, never --source. openjdk21 kept (O-OPENJDK21TARGET).
+  mode: source-only
   targets:
     - quarkus
     - jakarta-ee9
     - cloud-readiness
+    - openjdk17
     - openjdk21
+
+{%- if is_petclinic %}
+targetContract:
+  validateInput: true
+  mapErrors: true
+  getIdempotent: true
+  threadSafeState: false
+  cacheRefreshGuard: true
+  normalizeBeforeDerive: false
+configTransforms:
+  - from: server.port
+    to: quarkus.http.port
+    valueMap:
+      "9966": "8080"
+preserve:
+  - petclinic.security.enable
+  - server.servlet.context-path
+forbidden: []
+contract:
+  status: decided
+  profile: spring-petclinic-rest-legacy
+{%- elif is_cart %}
+targetContract:
+  getIdempotent: true
+  validateInput: true
+  mapErrors: true
+  threadSafeState: true
+  cacheRefreshGuard: true
+  normalizeBeforeDerive: true
+preserve:
+  - CATALOG_ENDPOINT
+forbidden:
+  - getMockProducts
+  - "Fallback to mock"
+contract:
+  status: decided
+  profile: coolstore-cart-legacy
+{%- else %}
+targetContract: {}
+preserve: []
+forbidden: []
+contract:
+  status: undecided
+  profile: unknown
+{%- endif %}

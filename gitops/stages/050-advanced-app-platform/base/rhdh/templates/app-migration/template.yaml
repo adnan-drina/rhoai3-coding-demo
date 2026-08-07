@@ -9,8 +9,10 @@
 #
 # Form fields are minimal (name, legacy URL, optional DB). The skeleton
 # stamps only per-run files: devfile (workspace), catalog-info (entity),
-# migration.yaml (provenance), k8s runtime; everything else comes from the
-# golden repository.
+# migration.yaml (provenance + specimen harness contract), k8s runtime;
+# everything else comes from the golden repository. migration.yaml contracts
+# for the two demo freeze-forks are selected from legacyRepoUrl (petclinic /
+# coolstore-cart); unknown URLs stay undecided — never cart literals.
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
@@ -55,11 +57,12 @@ spec:
           default: https://github.com/adnan-drina/coolstore-cart-legacy.git
           description: |
             HTTPS Git URL of the application to migrate (must be clonable
-            without credentials). Defaults to the Coolstore cart service
-            (Spring Boot); the monolith round used
-            https://github.com/rhpds/mca-coolstore.git.
-            It is cloned into the workspace only — never published to the
-            platform org and never registered in the catalog.
+            without credentials). Known demo freeze-forks auto-stamp the
+            harness contract in migration.yaml:
+              • coolstore-cart-legacy (default) — cart acceptance path
+              • spring-petclinic-rest-legacy — /petclinic/api/vets + packages
+            Any other URL leaves contract.status: undecided (no cart defaults).
+            Cloned into the workspace only — never published or cataloged.
           pattern: "^https://.+"
         needsDatabase:
           title: Provision a dev PostgreSQL with the runtime
@@ -68,7 +71,8 @@ spec:
           description: |
             Enable when the legacy app persists to a relational database
             (the runtime then ships a dev PostgreSQL and datasource env).
-            The cart service is stateless — leave off.
+            Coolstore cart is stateless — leave off. PetClinic REST needs
+            this on.
 
   steps:
     - id: fetch-golden
