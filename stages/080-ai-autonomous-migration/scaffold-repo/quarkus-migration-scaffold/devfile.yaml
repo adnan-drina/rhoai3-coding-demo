@@ -28,9 +28,9 @@ projects:
 components:
   - name: development-tooling
     container:
-      # Standard workspace base: the same Red Hat UDI every coolstore
-      # workspace uses, so the Java/Maven foundation is uniform across
-      # stages. The workspace is OpenCode-only by design (the modernized
+      # Standard workspace base: the same Red Hat UDI used by every
+      # workspace on this platform, so the Java/Maven foundation is
+      # uniform across stages. The workspace is OpenCode-only by design (the modernized
       # project's .opencode/ directory is the tool-selector signal) and
       # carries the MTA VS Code extension pack for analyzing the legacy
       # project against the platform MTA hub.
