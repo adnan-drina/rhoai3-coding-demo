@@ -576,12 +576,11 @@ data:
         } >> "${HOME}/.bashrc"
       fi
 
-      # AD-001 + AD-002 (2026-08-07): factory config via Managed Scope.
-      # Platform facts live under HERMES_MANAGED_DIR (/etc/hermes when
-      # writable; otherwise a workspace-local managed dir + env export).
-      # ~/.hermes/config.yaml stays ABSENT — developer-writable if they
-      # choose, never platform-written. Secrets go in managed .env.
-      # Verified model facts: qwen3-6-27b, --max-model-len=131072.
+      # AD-H (2026-08-07) consolidates AD-001/002/004/006 Hermes setup:
+      # factory config via Managed Scope; runtime tree via HERMES_HOME in
+      # the git-tracked project; scaffold skills via skills.external_dirs
+      # (no symlink loop). Secrets stay in managed .env — never under
+      # HERMES_HOME. Verified model facts: qwen3-6-27b, context 131072.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
       if [ ! -x "${venv_py}" ]; then
         echo "Hermes venv python not found; skipping Hermes MaaS config."
@@ -602,14 +601,31 @@ data:
       fi
       rm -f "${managed_dir}/.rhoai3-write-test" 2>/dev/null || true
 
+      # AD-H §1c / Lead:relocate-hermes-home — profile runtime tree lives in
+      # the repo so skill_manage creates are versioned. sessions/ + logs/
+      # are gitignored in the scaffold (.gitignore). Distinct from
+      # scaffold skills at $PROJECT_DIR/.hermes/skills (external_dirs).
+      local hermes_home="${PROJECT_DIR}/.hermes/home"
+      local hermes_skills_dir="${PROJECT_DIR}/.hermes/skills"
+      mkdir -p "${hermes_home}"
+
+      # auth.json = Portal onboarding path; incompatible with Managed Scope.
+      if [ -e "${hermes_home}/auth.json" ] || [ -e "${HOME}/.hermes/auth.json" ]; then
+        echo "ERROR: auth.json present under Hermes home — Portal onboarding detected; remove it and use Managed Scope (AD-H §7)." >&2
+        return
+      fi
+
       export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
       export HERMES_MANAGED_DIR="${managed_dir}"
+      export HERMES_HOME="${hermes_home}"
       export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
+      export HERMES_SKILLS_DIR="${hermes_skills_dir}"
       # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
       # CLI default cwd is correct; do not set terminal.cwd.
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
+    skills_dir = os.environ["HERMES_SKILLS_DIR"]
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
     model_base = base + "/models-as-a-service/qwen3-6-27b/v1"
     cfg = {
@@ -623,6 +639,17 @@ data:
         "tool_loop_guardrails": {
             "hard_stop_enabled": True,
         },
+        # AD-H §2.2 / §4 — typed Kanban metadata is the handoff channel.
+        "memory": {
+            "memory_enabled": False,
+        },
+        # AD-H §1 / §7.3 — gated skill writes (post-run batch approve);
+        # no inline shell; scaffold procedures via external_dirs.
+        "skills": {
+            "write_approval": True,
+            "inline_shell": False,
+            "external_dirs": [skills_dir],
+        },
     }
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
@@ -633,16 +660,31 @@ data:
         fh.write(f"MAAS_API_KEY={os.environ['MAAS_API_KEY_QWEN27B']}\n")
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
-    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-001 content).")
+    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-H factory).")
     HERMESEOF
 
       # Platform must not own the developer-writable user config path.
       rm -f "${HOME}/.hermes/config.yaml"
 
+      # AD-H §7.4 — SOUL.md authored in scaffold, placed under HERMES_HOME.
+      if [ -f "${PROJECT_DIR}/.hermes/SOUL.md" ]; then
+        cp -f "${PROJECT_DIR}/.hermes/SOUL.md" "${hermes_home}/SOUL.md"
+        echo "Hermes AD-H: placed SOUL.md at ${hermes_home}/SOUL.md."
+      else
+        echo "WARN: ${PROJECT_DIR}/.hermes/SOUL.md absent — identity slot empty until scaffold authors it (AD-H §8)."
+      fi
+
+      # Secrets must stay in Managed Scope — never under HERMES_HOME.
+      if [ -e "${hermes_home}/.env" ] || [ -e "${hermes_home}/auth.json" ]; then
+        echo "ERROR: secret-bearing file under HERMES_HOME=${hermes_home}; refuse to continue." >&2
+        return
+      fi
+
       if ! grep -q "rhoai3-coding-demo: hermes managed scope" "${HOME}/.bashrc" 2>/dev/null; then
         {
-          printf '\n# rhoai3-coding-demo: hermes managed scope (AD-002)\n'
+          printf '\n# rhoai3-coding-demo: hermes managed scope (AD-H)\n'
           printf 'export HERMES_MANAGED_DIR=%q\n' "${managed_dir}"
+          printf 'export HERMES_HOME=%q\n' "${hermes_home}"
           printf 'export HERMES_WRITE_SAFE_ROOT=%q\n' "${PROJECT_DIR}"
         } >> "${HOME}/.bashrc"
       else
@@ -651,20 +693,16 @@ data:
           -e "s|^export HERMES_MANAGED_DIR=.*|export HERMES_MANAGED_DIR=$(printf %q "${managed_dir}")|" \
           -e "s|^export HERMES_WRITE_SAFE_ROOT=.*|export HERMES_WRITE_SAFE_ROOT=$(printf %q "${PROJECT_DIR}")|" \
           "${HOME}/.bashrc" 2>/dev/null || true
+        if grep -q '^export HERMES_HOME=' "${HOME}/.bashrc" 2>/dev/null; then
+          sed -i.bak \
+            -e "s|^export HERMES_HOME=.*|export HERMES_HOME=$(printf %q "${hermes_home}")|" \
+            "${HOME}/.bashrc" 2>/dev/null || true
+        else
+          printf 'export HERMES_HOME=%q\n' "${hermes_home}" >> "${HOME}/.bashrc"
+        fi
         rm -f "${HOME}/.bashrc.bak"
       fi
-      echo "Hermes AD-002: managed_mode=${managed_mode} dir=${managed_dir}; WRITE_SAFE_ROOT=${PROJECT_DIR}; ~/.hermes/config.yaml absent."
-
-      # Repo-versioned Hermes skills (e.g. the migration-harness runbook):
-      # runtime symlink under ~/.hermes/skills — not baked config.
-      if [ -d "${PROJECT_DIR}/.hermes/skills" ]; then
-        mkdir -p "${HOME}/.hermes/skills"
-        for d in "${PROJECT_DIR}"/.hermes/skills/*/; do
-          [ -d "${d}" ] || continue
-          ln -sfn "${d%/}" "${HOME}/.hermes/skills/$(basename "${d}")"
-        done
-        echo "Linked repo Hermes skills into ~/.hermes/skills."
-      fi
+      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; ~/.hermes/config.yaml absent."
     }
 
     write_kantra_helper() {
