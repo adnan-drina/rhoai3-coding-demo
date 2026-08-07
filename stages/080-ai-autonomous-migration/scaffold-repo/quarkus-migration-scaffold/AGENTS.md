@@ -6,11 +6,32 @@ repository (`/projects/modernized`).
 
 ## Workspace rules
 
-- `/projects/legacy` — the application being migrated. **READ-ONLY**: read it
-  for behavior, structure, and business rules; never modify, commit, or push
-  it. It is not registered anywhere and has no write credentials.
+- `/projects/legacy` — the application being migrated (**legacy@2.x**
+  provenance). **READ-ONLY**: never modify, commit, or push it. It is not
+  registered anywhere and has no write credentials.
+- `/projects/.derived/legacy-at-3` — **legacy@3.x**, a pure derivation of the
+  RO mount (W2 §3 amendment). Produced once, hashed, and frozen. Never edit.
 - `/projects/modernized` — this repository. All new code, tests, and commits
   happen here, and only here.
+
+### Boot 2→3 derivation (before M1)
+
+The Quarkus migration analyzes and harvests against **legacy@3.x**, not the
+2.x mount. Run once before M1:
+
+```bash
+bash scripts/derive-legacy-boot3.sh
+```
+
+- If `spring-boot.version >= 3` already: mode=`identity` — harvest referent is
+  `/projects/legacy`.
+- Otherwise: copy → Boot 2→3 upgrade → freeze under
+  `/projects/.derived/legacy-at-3`; manifest at
+  `migration/derived/legacy-at-3.json`.
+- **Harvest faithfulness** compares the destination to
+  `harvest_referent` from that manifest (**legacy@3.x**). Comparing to 2.x
+  alone is wrong — Boot-3 API changes would look like infidelity.
+- Override the upgrade command with `DERIVE_UPGRADE_CMD` when needed.
 
 ## Project identity
 

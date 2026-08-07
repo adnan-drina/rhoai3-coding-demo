@@ -18,3 +18,8 @@ __pycache__/
 .project
 .settings/
 .classpath
+
+# Derived legacy@3.x trees must never be committed (workspace path is
+# /projects/.derived/; guard against accidental copies under modernized).
+migration/derived/tree/
+migration/derived/legacy-at-3/
