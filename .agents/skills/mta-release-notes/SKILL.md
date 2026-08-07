@@ -8,7 +8,7 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when checking MTA 8.1 release notes, new features, bug fixes, known
+  Use when checking MTA 8.2 release notes, new features, bug fixes, known
   issues, and deprecated features. Do NOT use for installing (use mta-install),
   using tools (use mta-cli/mta-ui), or AI features (use mta-lightspeed).
 ---
@@ -16,7 +16,7 @@ description: >
 # MTA Release Notes
 
 Use this skill to ground Migration Toolkit for Applications release information
-in the official Red Hat MTA 8.1 release notes.
+in the official Red Hat MTA 8.2 release notes.
 
 ## Source Grounding
 
@@ -25,7 +25,7 @@ Hat documentation is product authority.
 
 ## Release Summary
 
-Migration Toolkit for Applications (MTA) 8.1 accelerates large-scale
+Migration Toolkit for Applications (MTA) 8.2 accelerates large-scale
 application modernization across hybrid cloud environments on Red Hat OpenShift.
 The 8.1 release builds on MTA 8.0 with centralized configuration management,
 LLM proxy service support, new Developer Preview features, and multiple bug
@@ -33,7 +33,7 @@ fixes.
 
 Key releases covered:
 
-- **MTA 8.1.0** — centralized configuration, LLM proxy, C# provider, VS Code
+- **MTA 8.2.0** — centralized configuration, LLM proxy, C# provider, VS Code
   extension pack
 - **MTA 8.0.1** — pre-generated Maven index, Cloud Foundry fixes, FQN matching
 - **MTA 8.0.0** — Developer Lightspeed, platform awareness, asset generation,
@@ -56,10 +56,10 @@ Key releases covered:
 1. Confirm the active baseline in `docs/PLATFORM_BASELINE.md`.
 2. Read `references/official-doc-extraction.md`.
 3. Identify whether the question concerns:
-   - new features in MTA 8.1.0 or 8.0.x
+   - new features in MTA 8.2.0 or 8.0.x
    - Developer Preview or Technology Preview features
    - known issues and workarounds
-   - fixed issues across 8.0.0, 8.0.1, and 8.1.0
+   - fixed issues across 8.0.0, 8.0.1, and 8.2.0
    - removed or deprecated functionality
 4. Use exact feature names and issue IDs from the extraction.
 5. When advising on MTA 8.x features, distinguish between GA features,

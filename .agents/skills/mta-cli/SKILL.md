@@ -17,7 +17,7 @@ description: >
 # MTA CLI
 
 Use this skill for command-line application analysis, transformation, and
-platform asset generation with Migration Toolkit for Applications (MTA) 8.1.
+platform asset generation with Migration Toolkit for Applications (MTA) 8.2.
 
 ## Source Grounding
 

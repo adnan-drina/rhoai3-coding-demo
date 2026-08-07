@@ -5,10 +5,10 @@
 | Field | Value |
 |-------|-------|
 | Product | Migration Toolkit for Applications |
-| Product version | 8.1 |
+| Product version | 8.2 |
 | Baseline source | `docs/PLATFORM_BASELINE.md` |
 | Chapter or page title | Using the migration toolkit for applications command-line interface |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index |
 | Documentation category | Using the Tools |
 | Capture date | 2026-07-06 |
 
@@ -81,8 +81,8 @@ No CRDs are directly used by the CLI. The CLI interacts with:
 
 ## Related Official Sources To Add Later
 
-- Migration Toolkit for Applications 8.1 Installation Guide
-- Migration Toolkit for Applications 8.1 Configuring and Using Red Hat Developer Lightspeed for MTA
-- Migration Toolkit for Applications 8.1 Using the Web Console
-- Migration Toolkit for Applications 8.1 VS Code Extension Guide
-- Migration Toolkit for Applications 8.1 Configuring and Using Rules
+- Migration Toolkit for Applications 8.2 Installation Guide
+- Migration Toolkit for Applications 8.2 Configuring and Using Red Hat Developer Lightspeed for MTA
+- Migration Toolkit for Applications 8.2 Using the Web Console
+- Migration Toolkit for Applications 8.2 VS Code Extension Guide
+- Migration Toolkit for Applications 8.2 Configuring and Using Rules

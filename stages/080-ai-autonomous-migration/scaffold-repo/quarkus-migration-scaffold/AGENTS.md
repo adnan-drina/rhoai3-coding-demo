@@ -33,6 +33,18 @@ bash scripts/derive-legacy-boot3.sh
   alone is wrong — Boot-3 API changes would look like infidelity.
 - Override the upgrade command with `DERIVE_UPGRADE_CMD` when needed.
 
+### Harness MTA analysis (AD-003 amendment A)
+
+```bash
+bash scripts/check-legacy-at-3-manifest.sh
+bash scripts/mta-analyze-legacy.sh
+```
+
+Uses `migration.yaml` `analysis.targets` as repeated `--target` flags.
+**Never pass `--source`** (excludes source-labelless rules — Track B
+2026-07-27). Input is `harvest_referent` (legacy@3.x), not the RO 2.x mount.
+Requires Java 21 and `JVM_MAX_MEM`.
+
 ## Project identity
 
 - Quarkus application on the Red Hat build (`com.redhat.quarkus.platform` BOM

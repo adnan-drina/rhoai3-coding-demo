@@ -18,7 +18,7 @@ This file is the canonical platform target for the demo and shared skills. Updat
 | Red Hat OpenShift Dev Spaces | 3.28 | https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28 |
 | Red Hat Developer Hub | 1.10 | https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10 |
 | Red Hat Trusted Profile Analyzer | 2.2 | https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2 |
-| Migration Toolkit for Applications | 8.1 | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1 |
+| Migration Toolkit for Applications | 8.2 | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2 |
 | Red Hat Advanced Developer Suite - software supply chain | 1.9 | https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9 |
 
 ## Version Match Rule
@@ -88,7 +88,7 @@ https://docs.redhat.com/en/documentation/red_hat_trusted_profile_analyzer/2.2/
 For the current baseline, Migration Toolkit for Applications documentation links should use:
 
 ```text
-https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/
+https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/
 ```
 
 For the current baseline, Red Hat Advanced Developer Suite - software supply chain documentation links should use:
@@ -188,15 +188,15 @@ Use the official RHADS-SSC 1.9 landing page as the entry point: https://docs.red
 - **CI/CD**: [Azure Pipelines](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_azure_pipelines/index), [GitHub Actions](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_github_actions/index), [GitLab CI](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_gitlab_ci/index), [Jenkins](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/integrating_jenkins/index), [Tekton](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/defining_pipelines_with_tekton/index)
 - **Secure Your Software Supply Chain**: [Customizing](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/customizing_red_hat_advanced_developer_suite_-_software_supply_chain/index), [Inspecting SBOMs](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/inspecting_sboms/index), [Managing compliance](https://docs.redhat.com/en/documentation/red_hat_advanced_developer_suite_-_software_supply_chain/1.9/html/managing_compliance/index)
 
-## Migration Toolkit for Applications 8.1 Documentation Index
+## Migration Toolkit for Applications 8.2 Documentation Index
 
-Use the official MTA 8.1 landing page as the entry point: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
+Use the official MTA 8.2 landing page as the entry point: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2
 
-- **What's New**: [Release Notes](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/release_notes/index)
-- **Install**: [Installing MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/installing_the_migration_toolkit_for_applications/index)
-- **AI**: [Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
-- **Using the Tools**: [CLI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/using_the_migration_toolkit_for_applications_command-line_interface/index), [UI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index), [VS Code Extension](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index), [IntelliJ IDEA plugin](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/intellij_idea_plugin_guide/index)
-- **Rules Development**: [Custom rules](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_rules_for_an_mta_analysis/index)
+- **What's New**: [Release Notes](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/release_notes/index)
+- **Install**: [Installing MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/installing_the_migration_toolkit_for_applications/index)
+- **AI**: [Developer Lightspeed for MTA](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_red_hat_developer_lightspeed_for_mta/index)
+- **Using the Tools**: [CLI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/using_the_migration_toolkit_for_applications_command-line_interface/index), [UI](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_managing_the_migration_toolkit_for_applications_user_interface/index), [VS Code Extension](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index), [IntelliJ IDEA plugin](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/intellij_idea_plugin_guide/index)
+- **Rules Development**: [Custom rules](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_rules_for_an_mta_analysis/index)
 
 ## Red Hat Trusted Profile Analyzer 2.2 Documentation Index
 

@@ -8,7 +8,7 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when creating custom rules for MTA 8.1 analysis, including YAML rule
+  Use when creating custom rules for MTA 8.2 analysis, including YAML rule
   syntax, rule metadata (labels, categories, effort), provider conditions
   (java, builtin, go, csharp, python, nodejs), logical conditions, condition
   chaining, custom variables, rule actions, and rulesets. Do NOT use for CLI
@@ -18,7 +18,7 @@ description: >
 
 # MTA Rules Development
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.1 custom
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.2 custom
 rule authoring in the official Configuring and Using Rules guide. MTA rules
 instruct the analyzer to detect problematic patterns in application source
 code before migration to target technologies.

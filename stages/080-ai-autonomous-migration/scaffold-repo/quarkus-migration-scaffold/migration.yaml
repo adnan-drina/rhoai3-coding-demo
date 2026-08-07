@@ -1,0 +1,15 @@
+# Golden scaffold defaults — per-run repos overwrite provenance via the
+# app-migration template stamp. analysis.targets is the harness contract
+# (AD-003 amendment A): --target only, never --source.
+migration:
+  legacyRepoUrl: ""
+  target: quarkus
+  provisionedBy: quarkus-migration-scaffold
+  needsDatabase: false
+
+analysis:
+  targets:
+    - quarkus
+    - jakarta-ee9
+    - cloud-readiness
+    - openjdk21

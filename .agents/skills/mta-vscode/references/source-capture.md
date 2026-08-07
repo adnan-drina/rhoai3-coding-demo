@@ -5,11 +5,11 @@
 | Field | Value |
 |-------|-------|
 | Product | Migration Toolkit for Applications |
-| Version | 8.1 |
+| Version | 8.2 |
 | Documentation category | Using the Tools |
 | Official guide | Configuring and using the Visual Studio Code Extension for MTA |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/configuring_and_using_the_visual_studio_code_extension_for_mta/index |
+| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_the_visual_studio_code_extension_for_mta/index |
 | Capture date | 2026-07-06 |
 
 ## Captured Sections

@@ -5,11 +5,11 @@
 | Field | Value |
 |-------|-------|
 | Product | Migration Toolkit for Applications |
-| Version | 8.1 |
+| Version | 8.2 |
 | Documentation category | Using the Tools |
 | Official guide | IntelliJ IDEA Plugin Guide |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/intellij_idea_plugin_guide/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/intellij_idea_plugin_guide/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/intellij_idea_plugin_guide/index |
+| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/intellij_idea_plugin_guide/index |
 | Capture date | 2026-07-06 |
 
 ## Captured Sections
