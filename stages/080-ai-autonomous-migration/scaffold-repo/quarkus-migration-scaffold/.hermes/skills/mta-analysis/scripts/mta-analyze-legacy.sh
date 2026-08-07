@@ -9,7 +9,8 @@
 # not the RO 2.x mount working copy.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Skill layout: .hermes/skills/mta-analysis/scripts/ → project root is ../../../..
+ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 MANIFEST="${ROOT}/migration/derived/legacy-at-3.json"
 MIGRATION_YAML="${ROOT}/migration.yaml"
 OUT_DIR="${MTA_OUT_DIR:-${ROOT}/migration/mta-analyze-out}"
@@ -21,7 +22,7 @@ command -v mta-cli >/dev/null 2>&1 || command -v kantra >/dev/null 2>&1 \
   || die "mta-cli (or kantra) not on PATH — install via kantra-ensure / platform tooling"
 CLI="$(command -v mta-cli 2>/dev/null || command -v kantra)"
 
-[ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run: bash scripts/derive-legacy-boot3.sh"
+[ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run: bash scripts/derive-legacy-boot3.sh (or load the Boot derivation skill when converted)"
 [ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"
 
 # Java 21 required (kantra analyzer bundles osgi.ee=JavaSE-21; Java 17 wedges).
