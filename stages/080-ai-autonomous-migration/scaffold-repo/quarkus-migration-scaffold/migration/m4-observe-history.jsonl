@@ -1,6 +1,0 @@
-{"by_assert": {"char_surface": 1, "staging_hash": 1}, "explain_drop": "instrument fixture", "fire_count": 2, "mode": "observe", "prev_fire_count": null, "ts": "2026-08-07T06:18:51Z"}
-{"by_assert": {"staging_hash": 1}, "explain_drop": "lifecycle fixture", "fire_count": 1, "mode": "observe", "prev_fire_count": 2, "ts": "2026-08-07T06:18:51Z"}
-{"by_assert": {"edge_order": 1, "staging_hash": 1}, "explain_drop": "instrument", "fire_count": 2, "mode": "observe", "prev_fire_count": 1, "ts": "2026-08-07T06:18:52Z"}
-{"by_assert": {"char_surface": 1, "staging_hash": 1}, "explain_drop": "instrument fixture", "fire_count": 2, "mode": "observe", "prev_fire_count": 2, "ts": "2026-08-07T06:22:50Z"}
-{"by_assert": {"staging_hash": 1}, "explain_drop": "lifecycle fixture", "fire_count": 1, "mode": "observe", "prev_fire_count": 2, "ts": "2026-08-07T06:22:50Z"}
-{"by_assert": {"edge_order": 1, "staging_hash": 1}, "explain_drop": "instrument", "fire_count": 2, "mode": "observe", "prev_fire_count": 1, "ts": "2026-08-07T06:22:51Z"}
