@@ -657,6 +657,14 @@ data:
             "inline_shell": False,
             "external_dirs": [skills_dir, global_skills],
         },
+        # AD-H §7 / E-20260808T110515Z — pin documented default in Managed
+        # Scope so mid-flight mode=off cannot silently reappear on reprovision
+        # (user ~/.hermes/config.yaml is removed below).
+        "approvals": {
+            "mode": "smart",
+            "timeout": 300,
+            "cron_mode": "deny",
+        },
         # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
         # subtasks outside our per-phase schema (AD-H §3).
         "kanban": {
