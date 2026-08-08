@@ -104,12 +104,29 @@ echo "Analyzing INPUT=${INPUT} (legacy@3.x referent)"
 echo "Targets:${TARGET_LIST}"
 echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
 
+# --json-output can fail after a successful analysis (kantra marshal of
+# dependencies.yaml: map[interface{}]interface{}). Treat tool exit as soft if
+# OUT_DIR still has output.json / output.yaml (AD-003 / live P10 retry path).
+set +e
 "${CLI}" analyze \
   --input "${INPUT}" \
   --output "${OUT_DIR}" \
   "${TARGET_FLAGS[@]}" \
   --json-output "${JSON_OUT}" \
   --overwrite
+analyze_rc=$?
+set -e
+
+if [[ ! -s "${JSON_OUT}" ]]; then
+  if [[ -s "${OUT_DIR}/output.json" ]]; then
+    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json"
+    cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
+  elif [[ -s "${OUT_DIR}/output.yaml" ]]; then
+    die "analyze wrote output.yaml but not output.json — convert YAML offline (analyze_rc=${analyze_rc})"
+  else
+    die "mta-cli analyze failed (rc=${analyze_rc}) with no ${OUT_DIR}/output.json|output.yaml"
+  fi
+fi
 
 INPUT_DIGEST="$(python3 - "${MANIFEST}" <<'PY'
 import json, sys
@@ -117,8 +134,9 @@ print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha256", ""))
 PY
 )"
 # Preserve model: envelope + codeSnip required (provisional schema lock).
+# Digest form matches live P10: legacy-at-3:<sha256>
 python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
-  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "${INPUT_DIGEST}"
+  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}"
 python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
   || die "findings failed provisional schema validation (migration/schemas/mta-findings.md; skill mta-analysis)"
 

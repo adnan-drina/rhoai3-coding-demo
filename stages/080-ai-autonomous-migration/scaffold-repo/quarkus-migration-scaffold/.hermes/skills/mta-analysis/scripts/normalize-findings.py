@@ -32,9 +32,23 @@ def main() -> int:
     if isinstance(raw, dict) and isinstance(raw.get("violations"), dict):
         violations = raw["violations"]
     elif isinstance(raw, list):
-        # unlikely list-of-rules shape
+        # kantra output.json: list of rulesets, each with nested violations{}
+        # (also accepts a flat list of {ruleID:…} items).
         for item in raw:
-            if isinstance(item, dict) and item.get("ruleID"):
+            if not isinstance(item, dict):
+                continue
+            nested = item.get("violations")
+            if isinstance(nested, dict) and nested:
+                for rid, v in nested.items():
+                    if not isinstance(v, dict):
+                        continue
+                    if rid in violations and isinstance(violations[rid].get("incidents"), list):
+                        extras = v.get("incidents") or []
+                        if isinstance(extras, list):
+                            violations[rid]["incidents"].extend(extras)
+                    else:
+                        violations[rid] = v
+            elif item.get("ruleID"):
                 violations[item["ruleID"]] = item
     elif isinstance(raw, dict):
         # some exports nest under analysis/output
