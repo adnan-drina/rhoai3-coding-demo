@@ -823,14 +823,14 @@ data:
       fi
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
-      # Demo surface (Architect E-20260808T145020Z): pre-warm Hermes dashboard
-      # UI so the first `hermes dashboard` does not npm-install/build live in
-      # front of an audience. Hermes serves packaged UI from
-      # hermes_cli/web_dist (vite outDir) — NOT web/dist. --skip-build looks
-      # there. Build needs workspace/devDeps (tsc -b pulls vitest types);
-      # --omit=dev fails the pre-warm. Endpoint 9119 is on the migration
-      # skeleton; petclinic-rest-v7-refac uses its own repo devfile and must
-      # declare hermes-dashboard separately.
+      # Demo surface (Architect E-20260808T154612Z exposure A): pre-warm
+      # Hermes dashboard UI so the first `hermes dashboard` does not
+      # npm-install/build live in front of an audience. Hermes serves
+      # packaged UI from hermes_cli/web_dist (vite outDir) — NOT web/dist.
+      # --skip-build looks there. Build needs workspace/devDeps (tsc -b
+      # pulls vitest types); --omit=dev fails the pre-warm. Viewer path is
+      # loopback 127.0.0.1:9119 via Che/VS Code port-forward — not a public
+      # Dev Spaces route (Host-header rejects public bind).
       local hermes_agent="${HOME}/.hermes/hermes-agent"
       local hermes_web="${hermes_agent}/web"
       local hermes_dist="${hermes_agent}/hermes_cli/web_dist/index.html"
@@ -844,7 +844,7 @@ data:
               || npm install >/tmp/hermes-web-npm.log 2>&1
             (cd "${hermes_web}" && npm run build >>/tmp/hermes-web-npm.log 2>&1)
           ) && [ -f "${hermes_dist}" ] \
-            && echo "Hermes dashboard: web dist ready at hermes_cli/web_dist (use: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open)." \
+            && echo "Hermes dashboard: web dist ready at hermes_cli/web_dist (use: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open; IDE port-forward)." \
             || echo "WARN: Hermes dashboard web build failed — see /tmp/hermes-web-npm.log (demo first-run download risk remains)."
         else
           echo "WARN: npm absent — cannot pre-warm Hermes dashboard UI."
