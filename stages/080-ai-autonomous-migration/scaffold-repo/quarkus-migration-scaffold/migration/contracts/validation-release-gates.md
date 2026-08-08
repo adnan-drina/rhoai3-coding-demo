@@ -13,9 +13,14 @@ inventoried data endpoints — not a DB snapshot gate.
 
 ## Composition vs phase matrix (AD-H §18.0)
 
-M4 story ACCEPT is **PROVISIONAL** (G-1 volume+substance; kill-ratio not PASS
-until threshold pinned). **G-4 at M5** closes G-1 residue for **full ACCEPT**.
-If M5 G-4 REFUSE/INCONCLUSIVE → **re-open that story** (not wave wipe).
+M4 verdict token is **`PROVISIONAL_ACCEPT`** (literal — not `ACCEPT` + footnote).
+G-1 volume+substance; kill-ratio not PASS until threshold pinned. **G-4 at M5**
+closes G-1 residue for full **`ACCEPT`**.
+
+Re-open: the failing story **and** every other non-full-ACCEPT story whose
+§11.3 slice closure intersects implicated shared substrate — **not** wave wipe,
+**not** only the failing story id. Missing closure map → INCONCLUSIVE/`blocked`.
+
 `harness-validate` fixture green ≠ live specimen prove.
 
 ## Gates after each stage
@@ -25,8 +30,8 @@ If M5 G-4 REFUSE/INCONCLUSIVE → **re-open that story** (not wave wipe).
 | M1 ANALYZE | derive compile optional | — | — | **Initial** analyze | — | — | profile completeness |
 | M2 PLAN/SPEC | — | — | SDD readiness / §S.6 | — | — | — | — |
 | M3 IMPLEMENT | **Yes** (sensor / verify_on_stop) | Task-scoped in `files_in_scope` | In-loop Sonar if available; else M4 | — | — | — | G-2 when HARVEST packet claims it |
-| M4 VERIFY | **Yes** `mvn clean verify` | Full unit + IT + contract/characterization | **Sonar** | — | Sonar security rules | **Boot** `/q/health` | **G-1 volume+substance** (**provisional** ACCEPT) + G-2 if harvest |
-| M5 CLOSE | Preflight | Regression suite green | Sonar | **Re-scan → G-3** | Pipeline security | Acceptance endpoints live | **G-4** (both-modes) — **full ACCEPT** |
+| M4 VERIFY | **Yes** `mvn clean verify` | Full unit + IT + contract/characterization | **Sonar** | — | Sonar security rules | **Boot** `/q/health` | **G-1 volume+substance** → **`PROVISIONAL_ACCEPT`** + G-2 if harvest |
+| M5 CLOSE | Preflight | Regression suite green | Sonar | **Re-scan → G-3** | Pipeline security | Acceptance endpoints live | **G-4** (both-modes) → **`ACCEPT`** (full) |
 | Factory (`main`) | Yes | Yes | Yes | Optional refresh | Yes | Yes | **Must not contradict M5 ACCEPT** — **required oracle** |
 
 ## Behavioural regression (Spring → Quarkus)
@@ -50,10 +55,11 @@ never ships.
 | **Auto fix / retry** | REFUSE (typed fixable) on M3–M4 | Fix session / re-queue; prior green stories untouched |
 | **Human review queue** | INCONCLUSIVE; open `Q-*`; identity break; repeated `timed_out`; human waiver; Reviewer block | Kanban `blocked`; no story advance |
 | **Automatic rollback** | Failed task's last bad tip | Revert to last green task commit on that story line only |
-| **Story re-open** | M5 G-4 REFUSE/INCONCLUSIVE after M4 provisional | Re-open **that** story; clear provisional ACCEPT |
+| **Story re-open** | M5 G-4 REFUSE/INCONCLUSIVE after `PROVISIONAL_ACCEPT` | Re-open that story |
+| **Shared-substrate re-open** | Fail in overlapping §11.3 closure | Re-open closure-intersection set |
 | **Block migration wave** | Missing acks; wave-level G-3 reopen; `main`/factory red with no fix; critical Sonar/security; Operator stop | Stop **new** stories; in-flight finish or park |
 
-**Full** completion requires **M5 ACCEPT** (incl. G-4), not M4 provisional.
+**Full** completion requires M5 **`ACCEPT`**, not `PROVISIONAL_ACCEPT`.
 
 ## Enforcement (Lead)
 

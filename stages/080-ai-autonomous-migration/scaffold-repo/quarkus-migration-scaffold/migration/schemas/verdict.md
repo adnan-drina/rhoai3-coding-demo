@@ -8,8 +8,10 @@
 | Field | Rule |
 |-------|------|
 | `phase` | `M3`…`M5` / `factory` |
-| `verdict` | `ACCEPT` \| `REFUSE` \| `INCONCLUSIVE` |
-| `accept_kind` | Required on ACCEPT: M4 → `provisional`; M5 → `full` |
+| `verdict` | `PROVISIONAL_ACCEPT` \| `ACCEPT` \| `REFUSE` \| `INCONCLUSIVE` — M4 uses **`PROVISIONAL_ACCEPT`** (literal); M5 full ship uses **`ACCEPT`** only |
+| `accept_kind` | Optional mirror: `provisional` / `full` — **must not** be the sole signal; run reports must show the verdict token |
+| `implicated_substrate` | On shared-substrate G-4 fail: list of path/FQN; re-open = stories whose §11.3 closure intersects |
+| `reopen_story_ids` | Derived re-open set (closure intersection); required when substrate shared |
 | `g1_kill_ratio` | Interim: `pending_threshold` only. `PASS` forbidden until threshold pinned (`g1_kill_ratio_threshold_pinned: true`) |
 | `g1_kill_ratio_waiver` | Typed Operator waiver — required for M5 `full` ACCEPT while ratio is `pending_threshold` |
 | `ship` | Never for `provisional` or `INCONCLUSIVE`. Full M5 ACCEPT only |
