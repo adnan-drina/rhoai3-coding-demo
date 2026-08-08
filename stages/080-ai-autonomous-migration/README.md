@@ -92,7 +92,7 @@ Architect demo-surface decide; Deputy docs-only Stage-1 exception
 | **A** Arrive | Self-service workspace | RHDH → Dev Spaces; `/projects/legacy` (RO) beside `/projects/modernized` |
 | **B** Ground truth | MTA checklist | Prefer `migration/mta-findings.json` (harness authority); IDE panel optional *human* exploration |
 | **C** Plan without implementing | Spec Kit → Kanban | `/speckit.specify` → plan → tasks → `kanban_create` — **never** `/speckit.implement` |
-| **D** Watch the migration | Hermes Kanban | Pane A: `hermes kanban watch` **before** dispatch · Pane B: `dispatch` · optional dashboard via IDE port-forward to `127.0.0.1:9119` |
+| **D** Watch the migration | Hermes Kanban | Pane A: `hermes kanban watch` **before** dispatch · Pane B: `dispatch` |
 | **E** Audit close | Snapshots + verdicts | `list` / `show` / `runs <task_id>` + `migration/verdicts/*.json` — not more watching |
 
 **Forbidden:** `outer-loop.sh`, `supervisor.sh`, `tail -f outer-loop.log`, starting
@@ -120,10 +120,11 @@ hermes kanban watch --interval 1
 hermes kanban dispatch --max 1
 ```
 
-Optional projector: Hermes dashboard on **127.0.0.1:9119** via Che/VS Code
-**port-forward** (Architect exposure A — no public Dev Spaces route). Never live
-`npm`/build in front of an audience. Dashboard stays **DEFINED** until
-non-author browser half via port-forward.
+**Dashboard is not part of Acts A–E.** Hermes dashboard (loopback `:9119`) is
+an **operator convenience** via a real client tunnel (`oc port-forward` so
+browser `Host` stays `127.0.0.1`) — not Che Ports / Simple Browser, and not an
+audience projector. See `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md`
+(Architect `E-20260808T160412Z`).
 
 Drill-down:
 
@@ -152,7 +153,7 @@ unless observed in *this* environment.
 |---|---|
 | `hermes kanban list` / `show` / `runs` / `log` | **DEMONSTRATED** |
 | `hermes kanban watch` / `dispatch` | **DEMONSTRATED** (Owner/Pet) |
-| `hermes dashboard` loopback `:9119` + IDE port-forward | **IMPLEMENTED** — browser non-author rehearsal **not** DEMONSTRATED |
+| `hermes dashboard` loopback `:9119` | **IMPLEMENTED** (operator-only via `oc port-forward`) — **not** a demo surface; not required for DEFINED→DEMONSTRATED |
 | Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
 | Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
 
