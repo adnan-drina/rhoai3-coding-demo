@@ -54,6 +54,11 @@ phases:
       - grounded-generation
       - spring-to-quarkus-patterns
       - domain-gates
+    # AD-H §18 required_checks (validator/sensor matrix)
+    required_checks:
+      - compile
+      - task_scoped_tests
+      - g2_if_harvest
     max_runtime_seconds: 2700
     requires_acks:
       - m1-findings
@@ -63,8 +68,16 @@ phases:
     role: validator
     skills:
       - domain-gates
+      - validation-release-gates
       - harness-validate
       - role-authority
+    required_checks:
+      - mvn_clean_verify
+      - unit_it_contract
+      - sonar
+      - boot_health
+      - g1_characterization
+      - g2_if_harvest
     max_runtime_seconds: 1800
     requires_acks:
       - m1-findings
@@ -75,12 +88,31 @@ phases:
     skills:
       - mta-analysis
       - domain-gates
+      - validation-release-gates
       - harness-validate
       - role-authority
+    required_checks:
+      - preflight
+      - regression_suite
+      - sonar
+      - mta_rescan
+      - g3_findings_delta
+      - acceptance_live
+      - g4_runtime_parity
     max_runtime_seconds: 2400
     requires_acks:
       - m1-findings
       - brief-identity
+  factory:
+    # Push main — must not contradict M5 ACCEPT (AD-H §18)
+    role: validator
+    required_checks:
+      - compile
+      - unit_it_contract
+      - sonar
+      - security
+      - deploy_smoke
+      - must_not_contradict_m5_accept
 
 # Reviewer is not an M-phase seed — used between phases / on blocked.
 roles:

@@ -49,5 +49,17 @@ Completion requires **ACCEPT**, not "not REFUSE."
 
 ## Enforcement (Lead)
 
-Wire matrix into M4/M5 validator skills / preflight checklist where cheap.
-Non-blocking vs open Review / deferred items.
+| Piece | Path |
+|-------|------|
+| Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
+| Matrix lint + checklist print | `.hermes/skills/validation-release-gates/scripts/check-phase-matrix.py` |
+| Verdict routing (INCONCLUSIVE never ships) | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
+| Wired into | `harness-validate`; M4/M5 `skills[]` |
+
+```bash
+python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
+python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M5
+python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
+```
+
+Non-blocking vs open Review / deferred items. Does not replace G-1…G-4 oracles.

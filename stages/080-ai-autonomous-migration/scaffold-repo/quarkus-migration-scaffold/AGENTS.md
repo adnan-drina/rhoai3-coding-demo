@@ -164,5 +164,12 @@ See `migration/contracts/grounded-generation.md`.
 M3: compile + task-scoped tests. M4: full verify, Sonar, boot, G-1 (G-2 if
 harvest). M5: MTA re-scan → G-3, G-4 parity, preflight + deploy smoke. Factory
 must not contradict M5 ACCEPT. REFUSE → fix/retry; INCONCLUSIVE → human queue;
-rollback = last bad task tip only; wave block stops new stories. See
-`migration/contracts/validation-release-gates.md`.
+rollback = last bad task tip only; wave block stops new stories.
+
+```bash
+python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
+python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M4
+python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
+```
+
+See `migration/contracts/validation-release-gates.md`.

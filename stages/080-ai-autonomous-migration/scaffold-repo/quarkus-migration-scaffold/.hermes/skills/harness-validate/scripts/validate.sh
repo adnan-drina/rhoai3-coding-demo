@@ -112,6 +112,24 @@ else
 fi
 rm -rf "${gg_tmp}"
 
+echo "== validation-release-gates (AD-H §18) =="
+python3 "${SKILLS}/validation-release-gates/scripts/check-phase-matrix.py" "${ROOT}" || rc=1
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${ROOT}" || rc=1
+vr_tmp="$(mktemp -d)"
+mkdir -p "${vr_tmp}/migration/verdicts"
+printf '%s\n' '{"phase":"M5","verdict":"INCONCLUSIVE","ship":true}' > "${vr_tmp}/migration/verdicts/bad.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: INCONCLUSIVE ship should refuse" >&2
+  rc=1
+else
+  echo "OK: INCONCLUSIVE ship refused"
+fi
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","ship":true,"routing":"close"}' > "${vr_tmp}/migration/verdicts/bad.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/migration/verdicts/bad.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+rm -rf "${vr_tmp}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1

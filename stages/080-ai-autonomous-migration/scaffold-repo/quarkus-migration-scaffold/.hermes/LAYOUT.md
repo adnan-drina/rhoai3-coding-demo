@@ -18,6 +18,7 @@ for new procedures.
 | Role authority contract | `migration/contracts/role-authority.md` | AD-H §16 — roles, privilege, human checkpoints |
 | Grounded generation contract | `migration/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `migration/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
+| Validation / release skill | `.hermes/skills/validation-release-gates/` | matrix lint + verdict routing |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 
@@ -62,3 +63,4 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
 | `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |
+| `validation-release-gates` | AD-H §18 phase matrix + INCONCLUSIVE-never-ship routing |
