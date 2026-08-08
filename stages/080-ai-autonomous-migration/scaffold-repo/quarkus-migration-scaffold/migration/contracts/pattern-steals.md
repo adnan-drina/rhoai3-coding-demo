@@ -8,16 +8,19 @@ Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 AD-S / Hermes / Kanban / `github/spec-kit` stand. These are **fail-closed
 shapes** we absorb; enforcement scripts live under `scripts/`.
 
+**Companion:** brief identity carry-forward, graph layering, and re-plan
+authority live in `migration/contracts/sdd-ordering.md` (**AD-S §S.6**).
+
 ## Sequencing (Lead)
 
 | Pri | Steal | Land |
 |-----|--------|------|
 | P0 | No-invention + open-question exit; Non-Goals | **Now** — `scripts/check-sdd-readiness.sh` (+ AD-S Non-Goals override already ships) |
 | P0 | Task packet shape (`AC-IDs`, `files_in_scope`, deps) | **Now** — schema below + lint when task JSON present; Kanban body fill rides phase schema |
-| P0 | Waiver re-open triggers | **Now** — schema stub; **bind** when mta-cli / findings schema locks (cut-order) |
-| P1 | Baseline-aware brownfield | **After** cut-order 2–4 (inventory → fixtures → mta-cli) — `_baseline`-shaped artifact under `migration/` |
+| P0 | Waiver re-open triggers | **Landed** — `migration/schemas/mta-exception.md` + readiness lint |
+| P1 | Baseline-aware brownfield | **After** first specimen runs — `_baseline`-shaped artifact under `migration/` |
 | P1 | EARS-lite / AC traceability | **After** M3 SPECIFY path produces stable AC IDs — evaluate companion |
-| P1 | Single validate entrypoint | **With** domain-gate suite (fixtures cut) — one script wrapping G-1…G-4 |
+| P1 | Single validate entrypoint | **Landed** — `scripts/validate-harness.sh` |
 | P2 | Confirmed-red (assertion-red only) | **After** fixtures; optional pre-IMPLEMENT; does not replace G-1 |
 | P2 | Forbid skip / silent threshold drop | **With** CI/factory preflight |
 

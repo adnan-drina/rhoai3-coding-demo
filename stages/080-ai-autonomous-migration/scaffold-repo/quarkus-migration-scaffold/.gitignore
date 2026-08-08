@@ -2,6 +2,14 @@
 # scripts/specify-init-workspace.sh; never commit into the golden scaffold.
 .specify/
 
+# Admission fixture run output
+migration/fixtures/admission/out/
+
+# Live analysis / inventory outputs (regenerated in workspace)
+migration/entry-point-inventory.json
+migration/mta-findings.json
+migration/mta-analyze-out/
+
 # Maven / Quarkus build output
 target/
 

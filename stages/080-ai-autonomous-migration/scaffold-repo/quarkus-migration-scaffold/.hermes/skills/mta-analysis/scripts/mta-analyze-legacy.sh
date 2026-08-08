@@ -18,9 +18,36 @@ JSON_OUT="${MTA_JSON_OUT:-${ROOT}/migration/mta-findings.json}"
 
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
 
-command -v mta-cli >/dev/null 2>&1 || command -v kantra >/dev/null 2>&1 \
-  || die "mta-cli (or kantra) not on PATH — install via kantra-ensure / platform tooling"
-CLI="$(command -v mta-cli 2>/dev/null || command -v kantra)"
+ensure_cli() {
+  export PATH="${HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
+  if command -v mta-cli >/dev/null 2>&1; then
+    command -v mta-cli
+    return 0
+  fi
+  if command -v kantra >/dev/null 2>&1; then
+    command -v kantra
+    return 0
+  fi
+  if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
+    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…"
+    "${HOME}/.local/bin/kantra-ensure"
+    export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
+    if [ -x /projects/.tools/kantra/kantra ] && [ ! -e /projects/.tools/kantra/mta-cli ]; then
+      ln -sf kantra /projects/.tools/kantra/mta-cli
+    fi
+  fi
+  if command -v mta-cli >/dev/null 2>&1; then
+    command -v mta-cli
+    return 0
+  fi
+  if command -v kantra >/dev/null 2>&1; then
+    command -v kantra
+    return 0
+  fi
+  return 1
+}
+
+CLI="$(ensure_cli)" || die "mta-cli (or kantra) not on PATH — run kantra-ensure / platform tooling"
 
 [ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run derive-legacy-boot3 skill: bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\""
 [ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"
@@ -83,5 +110,16 @@ echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
   "${TARGET_FLAGS[@]}" \
   --json-output "${JSON_OUT}" \
   --overwrite
+
+INPUT_DIGEST="$(python3 - "${MANIFEST}" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha256", ""))
+PY
+)"
+# Preserve model: envelope + codeSnip required (provisional schema lock).
+python3 "${ROOT}/scripts/normalize-mta-findings.py" \
+  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "${INPUT_DIGEST}"
+python3 "${ROOT}/scripts/validate-mta-findings-schema.py" "${JSON_OUT}" \
+  || die "findings failed provisional schema validation (migration/schemas/mta-findings.md)"
 
 echo "OK: findings → ${JSON_OUT}  report → ${OUT_DIR}"

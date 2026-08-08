@@ -1,0 +1,8 @@
+{
+  "ran": true,
+  "tool": "pitest-summary",
+  "mutation_score": 1.0,
+  "mutations_total": 4,
+  "mutations_killed": 4,
+  "char_surface_stub": false
+}

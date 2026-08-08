@@ -108,3 +108,39 @@ readiness; task packets need `ac_ids` / `files_in_scope` / `deps`; every
 ```bash
 bash scripts/check-sdd-readiness.sh
 ```
+
+### SDD ordering (AD-S §S.6)
+
+Brief **identity** fields carry unchanged into spec / stories / tasks; the
+implementation graph follows build → security → schema → contracts → test
+infra → feature → surfaces; IMPLEMENT workers **must not** re-plan (block +
+escalate). See `migration/contracts/sdd-ordering.md`.
+
+### Harness validate (local, specimen-free)
+
+```bash
+bash scripts/validate-harness.sh
+```
+
+Runs SDD readiness, W2 §10 admission fixtures (G-1…G-4 tri-state), provisional
+`mta-findings` schema check, and an inventory-scanner smoke.
+
+### Entry-point inventory (W2 §11.3)
+
+Scan `legacy@3.x` (or any Java tree) before plan/Kanban populate:
+
+```bash
+python3 scripts/inventory-entry-points.py /projects/.derived/legacy-at-3 \
+  -o migration/entry-point-inventory.json
+```
+
+HTTP and non-HTTP (`@PostConstruct`, `@Scheduled`, listeners, CLI runners).
+Ship even when near-empty — zero files without a scan is not the same as a
+ran scan with zero entry points.
+
+### MTA findings (provisional schema)
+
+After `mta-analyze-legacy.sh`, findings are normalized to
+`rhoai3.mta-findings/v1-provisional` (`codeSnip` required). See
+`migration/schemas/mta-findings.md`. CLI: prefer `kantra-ensure` then
+`mta-cli`/`kantra` on PATH.

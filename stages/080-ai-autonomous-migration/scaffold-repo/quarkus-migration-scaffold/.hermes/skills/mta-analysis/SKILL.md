@@ -41,6 +41,11 @@ bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"
 Requires `JVM_MAX_MEM` and Java 21 on `PATH` (`JAVA_HOME_21` preferred).
 Optional overrides: `MTA_OUT_DIR`, `MTA_JSON_OUT`.
 
+If `mta-cli`/`kantra` are missing, the script runs `kantra-ensure` (lazy PVC
+install under `/projects/.tools/kantra`). Findings are normalized to
+`rhoai3.mta-findings/v1-provisional` (`codeSnip` required) and schema-checked
+— see `migration/schemas/mta-findings.md`.
+
 The script expands `migration.yaml` `analysis.targets` into repeated
 `--target` flags, writes JSON findings, and overwrites the output dir.
 

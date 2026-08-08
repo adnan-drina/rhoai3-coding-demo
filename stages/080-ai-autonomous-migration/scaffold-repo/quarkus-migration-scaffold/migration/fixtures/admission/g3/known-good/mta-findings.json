@@ -1,0 +1,5 @@
+{
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "execution_evidence": {"analyzer_ran": true, "cli": "fixture", "rule_set": ["quarkus"]},
+  "violations": {}
+}

@@ -67,6 +67,9 @@ log_step "Dev Spaces (devspaces component)"
 check "CheCluster phase Active" \
   "oc get checluster devspaces -n openshift-devspaces -o jsonpath='{.status.chePhase}'" \
   "Active"
+check "migration workspace MaaS egress NetworkPolicy" \
+  "oc get networkpolicy migration-workspace-maas-egress -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
+  "migration-workspace-maas-egress"
 
 log_step "Identity (identity component)"
 check_csv_succeeded "rhbk" "rhbk-operator"
