@@ -8,13 +8,14 @@ M5 kill-ratio PASS requires all of:
   1. generated > 0 (W2 §5 volume)
   2. coverage floor: attempted/generated >= coverage_min
   3. kill strength: killed/attempted >= kill_attempted_min
+  4. optional stringency: killed/generated >= kill_generated_min (when set)
 Always report killed/generated. Bar source must be declared_engineering_target
 (not measured_from_this_run at equality).
 
 Usage:
   pin-kill-ratio-from-pit.py <mutations.xml> -o migration/contracts/g1-kill-ratio-pin.json \\
-    --coverage-min 0.25 --kill-attempted-min 0.60 \\
-    --rationale "Architect decide E-… margins under live pack"
+    --coverage-min 0.45 --kill-attempted-min 0.60 --kill-generated-min 0.35 \\
+    --rationale "Architect stringency E-… margins under live pack"
 """
 from __future__ import annotations
 
@@ -40,7 +41,6 @@ def count_mutations(path: Path) -> dict:
     no_cov = by_status.get("NO_COVERAGE", 0)
     not_started = by_status.get("NOT_STARTED", 0)
     generated = len(mutants)
-    # attempted = killing population (excludes NO_COVERAGE / NOT_STARTED)
     attempted = killed + survived + timed_out
     kill_attempted = (killed / attempted) if attempted > 0 else None
     coverage = (attempted / generated) if generated > 0 else None
@@ -58,18 +58,23 @@ def count_mutations(path: Path) -> dict:
         "coverage_ratio": coverage,
         "kill_attempted_ratio": kill_attempted,
         "kill_generated_ratio": kill_generated,
-        # legacy field retained for readers; NOT a PASS predicate alone
         "kill_ratio": kill_attempted,
         "source": str(path),
     }
 
 
-def evaluate(stats: dict, coverage_min: float, kill_attempted_min: float) -> dict:
+def evaluate(
+    stats: dict,
+    coverage_min: float,
+    kill_attempted_min: float,
+    kill_generated_min: float | None,
+) -> dict:
     generated = int(stats["generated"])
     attempted = int(stats["attempted"])
     killed = int(stats["killed"])
     coverage = stats["coverage_ratio"]
     kill_att = stats["kill_attempted_ratio"]
+    kill_gen = stats["kill_generated_ratio"]
     reasons: list[str] = []
     if generated <= 0:
         reasons.append("generated==0 (W2 §5 vacuity)")
@@ -83,11 +88,16 @@ def evaluate(stats: dict, coverage_min: float, kill_attempted_min: float) -> dic
         reasons.append(
             f"kill_strength FAIL: killed/attempted={kill_att} < kill_attempted_min={kill_attempted_min}"
         )
+    if kill_generated_min is not None:
+        if kill_gen is None or kill_gen < kill_generated_min:
+            reasons.append(
+                f"kill_generated FAIL: killed/generated={kill_gen} < kill_generated_min={kill_generated_min}"
+            )
     return {
         "pass": not reasons,
         "coverage_ratio": coverage,
         "kill_attempted_ratio": kill_att,
-        "kill_generated_ratio": stats["kill_generated_ratio"],
+        "kill_generated_ratio": kill_gen,
         "killed": killed,
         "attempted": attempted,
         "generated": generated,
@@ -104,27 +114,18 @@ def main() -> int:
         "--scope",
         default="Owner/Pet slice (measured live PIT)",
     )
+    ap.add_argument("--coverage-min", type=float, required=True)
+    ap.add_argument("--kill-attempted-min", type=float, required=True)
     ap.add_argument(
-        "--coverage-min",
+        "--kill-generated-min",
         type=float,
-        required=True,
-        help="declared coverage floor attempted/generated (not measured-at-equality)",
+        default=None,
+        help="optional stringency floor killed/generated (Architect before first M5 ACCEPT)",
     )
-    ap.add_argument(
-        "--kill-attempted-min",
-        type=float,
-        required=True,
-        help="declared kill strength killed/attempted (not measured-at-equality)",
-    )
-    ap.add_argument(
-        "--rationale",
-        required=True,
-        help="why these bars (Architect/Operator declare; cite entry id)",
-    )
+    ap.add_argument("--rationale", required=True)
     ap.add_argument(
         "--invalidate-prior",
-        default="sole attempted pin v1 (kill_ratio_min measured_from_this_run)",
-        help="note for prior pin invalidation",
+        default="prior dual pin coverage_min=0.25 without kill_generated_min (stringency raise)",
     )
     args = ap.parse_args()
     if not args.mutations_xml.is_file():
@@ -135,6 +136,11 @@ def main() -> int:
         return 1
     if args.kill_attempted_min <= 0 or args.kill_attempted_min > 1:
         print("FAIL: kill-attempted-min must be in (0,1]", file=sys.stderr)
+        return 1
+    if args.kill_generated_min is not None and (
+        args.kill_generated_min <= 0 or args.kill_generated_min > 1
+    ):
+        print("FAIL: kill-generated-min must be in (0,1]", file=sys.stderr)
         return 1
 
     stats = count_mutations(args.mutations_xml)
@@ -148,9 +154,9 @@ def main() -> int:
         )
         return 1
 
-    # Refuse circular equality: bars must not equal this tree's current ratios.
     cov = stats["coverage_ratio"]
     katt = stats["kill_attempted_ratio"]
+    kgen = stats["kill_generated_ratio"]
     if cov is not None and abs(cov - args.coverage_min) < 1e-9:
         print(
             "FAIL: coverage_min equals measured coverage (circular measured_from_this_run)",
@@ -163,12 +169,47 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    if (
+        args.kill_generated_min is not None
+        and kgen is not None
+        and abs(kgen - args.kill_generated_min) < 1e-9
+    ):
+        print(
+            "FAIL: kill_generated_min equals measured kill_generated (circular)",
+            file=sys.stderr,
+        )
+        return 1
 
-    ev = evaluate(stats, args.coverage_min, args.kill_attempted_min)
+    ev = evaluate(
+        stats, args.coverage_min, args.kill_attempted_min, args.kill_generated_min
+    )
+    threshold = {
+        "coverage_min": args.coverage_min,
+        "kill_attempted_min": args.kill_attempted_min,
+        "rule": (
+            "PASS iff generated>0 AND attempted>0 AND "
+            "attempted/generated >= coverage_min AND "
+            "killed/attempted >= kill_attempted_min"
+            + (
+                " AND killed/generated >= kill_generated_min"
+                if args.kill_generated_min is not None
+                else ""
+            )
+            + "; always report killed/generated; "
+            "sole killed/attempted PASS predicate FORBIDDEN"
+        ),
+        "source": "declared_engineering_target",
+        "rationale": args.rationale,
+        "folklore": False,
+    }
+    if args.kill_generated_min is not None:
+        threshold["kill_generated_min"] = args.kill_generated_min
+
     pin = {
         "schema": "migration/g1-kill-ratio-pin/v2-dual-denominator",
         "authority": "EXECUTION-LIVE-VALIDATION-PLAN #8; W2 §5/§9; AD-H §18.0¶5; "
-        "Architect decide E-20260808T115649Z",
+        "Architect decide E-20260808T115649Z; stringency E-20260808T120152Z/"
+        "E-20260808T121549Z/E-20260808T123742Z",
         "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "story_id": args.story_id,
         "scope": args.scope,
@@ -176,26 +217,13 @@ def main() -> int:
         "pinned_version": "1.25.5",
         "mode": "live_mutationCoverage",
         "prior_pin": {
-            "status": "INVALIDATED",
+            "status": "SUPERSEDED",
             "reason": args.invalidate_prior,
-            "defect": "sole attempted denominator worker-controlled via NO_COVERAGE; "
-            "bar measured_from_this_run at equality was circular",
+            "defect": "coverage_min=0.25 admitted ~75% NO_COVERAGE; stringency "
+            "required before first M5 ACCEPT",
         },
         "measurement": stats,
-        "threshold": {
-            "coverage_min": args.coverage_min,
-            "kill_attempted_min": args.kill_attempted_min,
-            "rule": (
-                "PASS iff generated>0 AND attempted>0 AND "
-                "attempted/generated >= coverage_min AND "
-                "killed/attempted >= kill_attempted_min; "
-                "always report killed/generated; "
-                "sole killed/attempted PASS predicate FORBIDDEN"
-            ),
-            "source": "declared_engineering_target",
-            "rationale": args.rationale,
-            "folklore": False,
-        },
+        "threshold": threshold,
         "evaluation_against_measurement": ev,
         "waiver_path": {
             "token": "g1_kill_ratio_waiver",
@@ -211,11 +239,11 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(pin, indent=2) + "\n", encoding="utf-8")
     print(
-        f"OK: dual-denominator pin coverage_min={args.coverage_min} "
+        f"OK: pin coverage_min={args.coverage_min} "
         f"kill_attempted_min={args.kill_attempted_min} "
+        f"kill_generated_min={args.kill_generated_min} "
         f"(measured coverage={cov} kill_attempted={katt} "
-        f"kill_generated={stats['kill_generated_ratio']}) "
-        f"eval_pass={ev['pass']}",
+        f"kill_generated={kgen}) eval_pass={ev['pass']}",
         file=sys.stderr,
     )
     return 0

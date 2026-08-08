@@ -68,8 +68,8 @@ Dry-run volume is **not** a kill-ratio pin. After live
 python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
   -o migration/contracts/g1-kill-ratio-pin.json \
-  --coverage-min 0.25 --kill-attempted-min 0.60 \
-  --rationale "Architect decide <entry>: declared margins, not measured-at-equality"
+  --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \
+  --rationale "Architect stringency <entry>: declared margins, not measured-at-equality"
 ```
 
 Dual-denominator (AD-H §18.0¶5): coverage floor `attempted/generated` **and**
