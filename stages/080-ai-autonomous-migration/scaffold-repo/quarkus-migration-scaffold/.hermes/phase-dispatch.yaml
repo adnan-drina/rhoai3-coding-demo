@@ -105,8 +105,9 @@ phases:
       - m1-findings
       - brief-identity
   factory:
-    # Push main — must_not_contradict_m5_accept is aspirational checklist label
-    # until Lead ships an oracle (AD-H §18; Research E-20260808T074430Z).
+    # Push main — must_not_contradict_m5_accept is a REQUIRED oracle (AD-H §18;
+    # Operator no-compromise E-20260808T075048Z). Checklist name alone is insufficient;
+    # Lead:implement real check. Steerer preflight = stopgap only.
     role: validator
     required_checks:
       - compile

@@ -20,7 +20,7 @@ endpoints — not a DB snapshot gate.
 | M3 IMPLEMENT | **Yes** (sensor / verify_on_stop) | Task-scoped in `files_in_scope` | In-loop Sonar if available; else M4 | — | — | — | G-2 when HARVEST packet claims it |
 | M4 VERIFY | **Yes** `mvn clean verify` | Full unit + IT + contract/characterization | **Sonar** | — | Sonar security rules | **Boot** `/q/health` | **G-1** (+ G-2 if harvest in story) |
 | M5 CLOSE | Preflight | Regression suite green | Sonar | **Re-scan → G-3** | Pipeline security | Acceptance endpoints live | **G-4** (both-modes) |
-| Factory (`main`) | Yes | Yes | Yes | Optional refresh | Yes | Yes | Must not contradict M5 ACCEPT (**aspirational** until oracle exists — human/steerer preflight; Research `E-20260808T074430Z`) |
+| Factory (`main`) | Yes | Yes | Yes | Optional refresh | Yes | Yes | **Must not contradict M5 ACCEPT** — **required oracle** (Lead:implement). Steerer preflight is stopgap only until the check refuses factory without coherent M5 ACCEPT |
 
 ## Behavioural regression (Spring → Quarkus)
 
