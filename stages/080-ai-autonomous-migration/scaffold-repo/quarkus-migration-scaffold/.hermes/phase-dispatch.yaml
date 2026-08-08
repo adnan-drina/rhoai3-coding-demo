@@ -53,6 +53,7 @@ phases:
       - sdd-readiness
       - role-authority
       - grounded-generation
+      - auditability-repeatability
       - spring-to-quarkus-patterns
       - domain-gates
     # AD-H §18 required_checks (validator/sensor matrix)

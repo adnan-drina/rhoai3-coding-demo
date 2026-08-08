@@ -51,7 +51,12 @@ Secondary: failed validation, rework, task-order reversals, human overrides.
 | Piece | Path |
 |-------|------|
 | Provenance schema | `migration/schemas/generation-provenance.md` |
-| Cheap lint (mandatory fields / session id) | `.hermes/skills/auditability-repeatability/` (Lead) |
-| Wired into | `harness-validate`; M3 complete path when skill lands |
+| Cheap lint | `.hermes/skills/auditability-repeatability/scripts/check-provenance.py` |
+| Wired into | `harness-validate`; M3 `skills[]` |
 
-Derive apply log must appear in `artifacts[]` or provenance metadata (W2 §12.3).
+```bash
+python3 .hermes/skills/auditability-repeatability/scripts/check-provenance.py .
+```
+
+Derive apply log must appear in `artifacts[]` when `derive-legacy-boot3` /
+`derive_apply_log` is in play (W2 §12.3).

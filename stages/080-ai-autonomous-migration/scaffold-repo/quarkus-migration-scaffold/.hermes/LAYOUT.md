@@ -21,6 +21,7 @@ for new procedures.
 | Validation / release skill | `.hermes/skills/validation-release-gates/` | matrix lint + verdict routing |
 | Auditability contract | `migration/contracts/auditability-repeatability.md` | AD-H §19 — provenance, digests, early metric |
 | Provenance schema | `migration/schemas/generation-provenance.md` | Kanban metadata fields |
+| Kanban body schema | `migration/schemas/kanban-body.md` | W2 §6.1 typed refs + failure codes |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 
@@ -66,3 +67,4 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
 | `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |
 | `validation-release-gates` | AD-H §18 phase matrix + INCONCLUSIVE-never-ship routing |
+| `auditability-repeatability` | AD-H §19 provenance lint (fail closed on session id) |

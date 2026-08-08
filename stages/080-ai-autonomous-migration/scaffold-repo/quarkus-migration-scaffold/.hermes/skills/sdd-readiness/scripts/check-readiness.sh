@@ -136,6 +136,12 @@ fi
 # Count §S.6 toward "checked" only when it examined artifacts (script always runs).
 checked=$((checked + 1))
 
+# --- W2 §6.1 Kanban body vocabulary ---
+if ! python3 "$(cd "$(dirname "$0")" && pwd)/check-kanban-body.py" "${root}"; then
+  bad=1
+fi
+checked=$((checked + 1))
+
 if [ "${checked}" -eq 0 ]; then
   note "OK: no SDD specs/tasks/waivers yet — readiness lint idle (P0 shapes documented under migration/contracts/)."
   exit 0

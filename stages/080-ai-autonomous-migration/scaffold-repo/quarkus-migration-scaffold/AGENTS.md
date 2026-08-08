@@ -62,7 +62,7 @@ from a pointer README).
 
 | Kind | Home |
 |------|------|
-| Standing conventions | this `AGENTS.md` |
+| Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | `.hermes/SOUL.md` |
 | Procedures / tool invocations | `.hermes/skills/<name>/` |
 | Domain gates G-1..G-4 | skill `domain-gates` (vocabulary names below) |
@@ -176,6 +176,21 @@ python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py
 
 See `migration/contracts/validation-release-gates.md`.
 
+### Standing conventions home
+
+`AGENTS.md` (plus Spec Kit constitution sync into this file) is the **sole**
+standing-convention surface. Leave `agent.coding_instructions` empty/omitted in
+Managed Scope / factory writers — do not recreate a second home.
+
+### Kanban body (W2 §6.1)
+
+Typed `body` only — digest refs, not inlined blobs. See
+`migration/schemas/kanban-body.md`.
+
+```bash
+python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py .
+```
+
 ### Auditability and repeatability (AD-H §19)
 
 Task id joins Kanban, git subject, sessions/logs, gates, and run report.
@@ -183,4 +198,10 @@ Non-trivial IMPLEMENT must leave Kanban completion metadata with
 `worker_session_id`, `soul_sha`, `skill_tips`, `model_id` (or `unknown`), plus
 §17 citations. Kanban metadata is authoritative; do not dual-write full
 provenance into commit trailers. Early bad-agent signal = unsupported claims
-(§17). See `migration/contracts/auditability-repeatability.md`.
+(§17).
+
+```bash
+python3 .hermes/skills/auditability-repeatability/scripts/check-provenance.py .
+```
+
+See `migration/contracts/auditability-repeatability.md`.

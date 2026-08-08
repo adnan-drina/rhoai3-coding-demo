@@ -130,6 +130,40 @@ printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_t
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"
 
+echo "== kanban-body (W2 §6.1) =="
+python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" || rc=1
+kb_tmp="$(mktemp -d)"
+mkdir -p "${kb_tmp}/migration/bodies"
+printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","refs":[],"files_in_scope":["src/"]}' \
+  > "${kb_tmp}/migration/bodies/bad.json"
+if python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: M3 body missing required refs should refuse" >&2
+  rc=1
+else
+  echo "OK: BODY_REF_MISSING refused"
+fi
+printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","files_in_scope":["src/Foo.java"],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"abc"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"def"}]}' \
+  > "${kb_tmp}/migration/bodies/bad.json"
+python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" || rc=1
+rm -rf "${kb_tmp}"
+
+echo "== auditability-repeatability (AD-H §19) =="
+python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ROOT}" || rc=1
+ap_tmp="$(mktemp -d)"
+mkdir -p "${ap_tmp}/migration/tasks"
+printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[]}' \
+  > "${ap_tmp}/migration/tasks/bad.json"
+if python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: complete IMPLEMENT without worker_session_id should refuse" >&2
+  rc=1
+else
+  echo "OK: missing worker_session_id refused"
+fi
+printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","worker_session_id":"sess1","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
+  > "${ap_tmp}/migration/tasks/bad.json"
+python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" || rc=1
+rm -rf "${ap_tmp}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1
