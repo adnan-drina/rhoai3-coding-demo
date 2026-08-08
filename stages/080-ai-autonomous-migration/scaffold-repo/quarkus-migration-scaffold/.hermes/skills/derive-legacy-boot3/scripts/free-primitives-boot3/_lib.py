@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-COMPOSITE_VERSION = "1.1.0"
+COMPOSITE_VERSION = "1.2.0"
 SKIP_DIRS = {".git", "target", ".idea", ".derived", "node_modules"}
 
 

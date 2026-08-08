@@ -27,13 +27,15 @@ run_rule() {
   python3 "$script"
 }
 
-# Order: jakarta slice → parent bump → Boot-specific POM → Security → generator
+# Order: jakarta → Boot bump → POM → Security (WSCA then matchers) → generator → thymeleaf
 run_rule "${HERE}/rules/r00_javax_to_jakarta.py"
 run_rule "${HERE}/rules/r10_bump_boot_parent.py"
 run_rule "${HERE}/rules/r20_mysql_connector.py"
 run_rule "${HERE}/rules/r30_jaxb_api.py"
 run_rule "${HERE}/rules/r40_security6_wsca.py"
+run_rule "${HERE}/rules/r45_security6_matchers.py"
 run_rule "${HERE}/rules/r50_openapi_jakarta.py"
 run_rule "${HERE}/rules/r60_springfox_to_springdoc.py"
+run_rule "${HERE}/rules/r70_thymeleaf_spring6.py"
 
 echo "free-primitives-boot3: OK"
