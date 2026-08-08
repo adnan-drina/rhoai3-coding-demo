@@ -128,7 +128,37 @@ printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","ship":true,"routing":"close"}' 
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# factory M5 oracle
+python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${ROOT}" || rc=1
+mkdir -p "${vr_tmp}/migration/preflight" "${vr_tmp}/migration/verdicts"
+printf '%s\n' '{"phase":"factory","status":"factory_ready"}' > "${vr_tmp}/migration/preflight/factory.json"
+rm -f "${vr_tmp}/migration/verdicts/"*.json
+if python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: factory without M5 ACCEPT should refuse" >&2
+  rc=1
+else
+  echo "OK: factory without M5 ACCEPT refused"
+fi
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT"}' > "${vr_tmp}/migration/verdicts/m5.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"
+
+echo "== external_dirs (AD-S relocate) =="
+python3 "${SKILLS}/specify-workspace-init/scripts/check-external-dirs.py" "${ROOT}" || rc=1
+ed_tmp="$(mktemp -d)"
+mkdir -p "${ed_tmp}/.hermes/skills" "${ed_tmp}/cfg"
+printf '%s\n' 'skills:' '  external_dirs:' '    - '"${ed_tmp}/.hermes/skills" > "${ed_tmp}/cfg/config.yaml"
+if HERMES_HOME="${ed_tmp}/relocated" HERMES_CONFIG="${ed_tmp}/cfg/config.yaml" \
+  python3 "${SKILLS}/specify-workspace-init/scripts/check-external-dirs.py" "${ed_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: relocated HERMES_HOME missing home skills should refuse" >&2
+  rc=1
+else
+  echo "OK: external_dirs missing home skills refused"
+fi
+printf '%s\n' 'skills:' '  external_dirs:' '    - '"${ed_tmp}/.hermes/skills" '    - '"${HOME}/.hermes/skills" > "${ed_tmp}/cfg/config.yaml"
+HERMES_HOME="${ed_tmp}/relocated" HERMES_CONFIG="${ed_tmp}/cfg/config.yaml" \
+  python3 "${SKILLS}/specify-workspace-init/scripts/check-external-dirs.py" "${ed_tmp}" || rc=1
+rm -rf "${ed_tmp}"
 
 echo "== kanban-body (W2 §6.1) =="
 python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" || rc=1

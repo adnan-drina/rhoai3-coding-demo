@@ -54,12 +54,15 @@ Completion requires **ACCEPT**, not "not REFUSE."
 | Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
 | Matrix lint + checklist print | `.hermes/skills/validation-release-gates/scripts/check-phase-matrix.py` |
 | Verdict routing (INCONCLUSIVE never ships) | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
+| Factory ↔ M5 ACCEPT oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
 | Wired into | `harness-validate`; M4/M5 `skills[]` |
 
 ```bash
 python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
 python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M5
 python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
+python3 .hermes/skills/validation-release-gates/scripts/check-factory-m5.py .
 ```
 
-Non-blocking vs open Review / deferred items. Does not replace G-1…G-4 oracles.
+`must_not_contradict_m5_accept` is a **required oracle**, not an aspirational
+label. Does not replace G-1…G-4 oracles.

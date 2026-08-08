@@ -103,6 +103,16 @@ EOF
 }
 note_external_dirs
 
+# Enforce (not merely remind) when HERMES_HOME is relocated — Operator
+# no-compromise E-20260808T075048Z / AD-S.
+if [ -n "${HERMES_HOME:-}" ]; then
+  default_hh="${HOME}/.hermes"
+  if [ "$(cd "${HERMES_HOME}" 2>/dev/null && pwd -P)" != "$(cd "${default_hh}" 2>/dev/null && pwd -P)" ]; then
+    python3 "$(cd "$(dirname "$0")" && pwd)/check-external-dirs.py" "${ROOT}" \
+      || die "external_dirs assert failed (HERMES_HOME relocated)"
+  fi
+fi
+
 # Stop rule stamp (also in AGENTS.md / skill)
 cat > "${ROOT}/.specify/AD-S-STOP-RULE.md" <<'EOF'
 # AD-S stop rule

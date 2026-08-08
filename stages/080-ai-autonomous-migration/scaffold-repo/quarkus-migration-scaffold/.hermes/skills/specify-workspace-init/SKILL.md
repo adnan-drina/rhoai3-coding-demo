@@ -41,5 +41,7 @@ After `/speckit.tasks` (optional `/speckit.analyze`) → `kanban_create()`.
 
 - Hermes binary may be absent at postStart — `--ignore-agent-tools` is required;
   skills still land under `~/.hermes/skills/`.
-- Keep `$HOME/.hermes/skills` on `skills.external_dirs` when `HERMES_HOME` is
-  relocated (spec-kit ignores `$HERMES_HOME` for skill install path).
+- When `HERMES_HOME` is relocated, **assert** (not merely remind) that
+  `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
+  `$HOME/.hermes/skills` — `scripts/check-external-dirs.py` (also in
+  `harness-validate`).

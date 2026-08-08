@@ -24,6 +24,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized
 
 # Verdict routing: refuse INCONCLUSIVE-as-ship / wrong routing class
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
+
+# Factory must not contradict M5 ACCEPT (required oracle)
+python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 ```
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
