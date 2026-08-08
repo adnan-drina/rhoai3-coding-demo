@@ -27,7 +27,8 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # DNS
+    # DNS — Service dns-default maps 53→pod 5353; NetworkPolicy matches the
+    # backend pod port, so 5353 must be allowed (53 alone is a silent DNS blackhole).
     - to:
         - namespaceSelector:
             matchLabels:
@@ -37,6 +38,10 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
     # Kubernetes API (service network — cover common defaults)
     - to:
         - namespaceSelector:
