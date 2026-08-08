@@ -24,7 +24,7 @@ tests/gates.
 | `soul_sha` | sha256 of `.hermes/SOUL.md` at commit |
 | `skill_tips` | name→git sha for phase `skills[]` preload |
 | §17 citations | brief/story + legacy locus |
-| `model_id` | config / `model_override` when known; else `unknown` |
+| `model_id` | config / `model_override` when present; `unknown` + `model_id_gap: true` only if neither readable — gap ≠ full reconstruction |
 
 **Deferred:** `maas_endpoint_fingerprint`, `prompt_bundle_id`.
 

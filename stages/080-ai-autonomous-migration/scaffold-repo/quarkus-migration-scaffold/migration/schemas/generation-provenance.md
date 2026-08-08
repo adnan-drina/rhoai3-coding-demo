@@ -13,7 +13,8 @@ metadata (AD-H §19.3).
 | `worker_session_id` | string | Hermes-stamped; fail closed if absent |
 | `soul_sha` | string | sha256 of `.hermes/SOUL.md` |
 | `skill_tips` | object | map skill name → git tree sha (phase preload) |
-| `model_id` | string | config / override, or `unknown` |
+| `model_id` | string | config / override when present; else `unknown` |
+| `model_id_gap` | bool | required `true` when `model_id` is `unknown` |
 | `citations` | object | §17: `brief_or_story_id`, `legacy_locus` |
 
 ## Optional / deferred

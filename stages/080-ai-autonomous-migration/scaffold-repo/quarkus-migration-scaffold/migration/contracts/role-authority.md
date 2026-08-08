@@ -29,6 +29,9 @@ for the same fact.
 
 ## Least privilege (summary)
 
+**Obligations, not Hermes RBAC.** Mechanical fence = `HERMES_WRITE_SAFE_ROOT` +
+acks/lints — not this table alone.
+
 | Surface | Who writes |
 |---------|------------|
 | `/projects/legacy`, frozen `legacy-at-3` | **nobody** (derive once then freeze) |
