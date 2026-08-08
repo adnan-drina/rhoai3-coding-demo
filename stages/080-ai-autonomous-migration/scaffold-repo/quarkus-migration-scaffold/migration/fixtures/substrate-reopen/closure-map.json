@@ -1,0 +1,12 @@
+{
+  "stories": {
+    "S-1": {"closure": ["com.example.shared.Entity", "src/S1Resource.java"]},
+    "S-2": {"closure": ["com.example.shared.Entity", "src/S2Resource.java"]},
+    "S-3": {"closure": ["com.example.other.Thing", "src/S3Resource.java"]}
+  },
+  "accept_state": {
+    "S-1": "PROVISIONAL_ACCEPT",
+    "S-2": "PROVISIONAL_ACCEPT",
+    "S-3": "ACCEPT"
+  }
+}

@@ -14,8 +14,9 @@ description: >
 - `migration/schemas/verdict.md`
 - Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
 
-**§18.0:** M4 ACCEPT = provisional (never ship); M5 = full (G-4); kill-ratio
-`PASS` forbidden until threshold pinned — use `pending_threshold` or typed waiver.
+**§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
+(G-4); shared-substrate reopen = closure ∩ implicated; kill-ratio `PASS`
+forbidden until threshold pinned — use `pending_threshold` or typed waiver.
 
 ## Checks
 
@@ -29,7 +30,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
 
-# Factory must not contradict M5 full ACCEPT (required oracle)
+# Shared-substrate reopen set (§18.0 ¶4 / §11.3)
+python3 "${HERMES_SKILL_DIR}/scripts/compute-substrate-reopen.py" /projects/modernized \
+  --implicated com.example.shared.Entity --print
+
+# Factory must not contradict M5 ACCEPT (required oracle)
 python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 ```
 

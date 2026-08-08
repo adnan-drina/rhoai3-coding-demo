@@ -136,17 +136,26 @@ if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py"
 else
   echo "OK: INCONCLUSIVE ship refused"
 fi
-# §18.0 — provisional M4 must not ship
-printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":true}' \
+# §18.0 — ACCEPT+provisional footnote refused at M4
+printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":false}' \
   > "${vr_tmp}/migration/verdicts/bad.json"
 if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
-  echo "FAIL: provisional M4 ship should refuse" >&2
+  echo "FAIL: M4 ACCEPT+provisional footnote should refuse" >&2
   rc=1
 else
-  echo "OK: provisional M4 ship refused"
+  echo "OK: M4 ACCEPT+provisional footnote refused"
+fi
+# §18.0 — PROVISIONAL_ACCEPT must not ship
+printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold","ship":true}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: PROVISIONAL_ACCEPT ship should refuse" >&2
+  rc=1
+else
+  echo "OK: PROVISIONAL_ACCEPT ship refused"
 fi
 # §18.0 — kill-ratio PASS without pin refused
-printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"PASS","ship":false}' \
+printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"PASS","ship":false}' \
   > "${vr_tmp}/migration/verdicts/bad.json"
 if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: g1_kill_ratio=PASS without pin should refuse" >&2
@@ -154,18 +163,34 @@ if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py"
 else
   echo "OK: unpinned kill-ratio PASS refused"
 fi
-# good M4 provisional
-printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":false}' \
+# good M4 PROVISIONAL_ACCEPT
+printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold","ship":false}' \
   > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # good M5 full with waiver (threshold not yet pinned)
-printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true,"ship":true,"routing":"close"}' \
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true,"ship":true,"routing":"close"}' \
   > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
-# composition reopen
-printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prior_accept_kind":"provisional","routing":"reopen_story"}' \
+# single-unit composition reopen
+printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prior_verdict":"PROVISIONAL_ACCEPT","routing":"reopen_story"}' \
   > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# shared-substrate reopen (fixture closure map)
+mkdir -p "${vr_tmp}/migration/slices"
+cp "${ROOT}/migration/fixtures/substrate-reopen/closure-map.json" \
+  "${vr_tmp}/migration/slices/closure-map.json"
+printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","story_id":"S-1","prior_verdict":"PROVISIONAL_ACCEPT","implicated_substrate":["com.example.shared.Entity"],"reopen_story_ids":["S-1","S-2"],"routing":"reopen_story"}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# wrong reopen set refused
+printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","story_id":"S-1","implicated_substrate":["com.example.shared.Entity"],"reopen_story_ids":["S-1"],"routing":"reopen_story"}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: under-sized reopen set should refuse" >&2
+  rc=1
+else
+  echo "OK: under-sized substrate reopen set refused"
+fi
 printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # factory M5 oracle
@@ -179,16 +204,15 @@ if python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${v
 else
   echo "OK: factory without M5 ACCEPT refused"
 fi
-# provisional M5 must not satisfy factory
-printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold"}' \
+printf '%s\n' '{"phase":"M5","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold"}' \
   > "${vr_tmp}/migration/verdicts/m5.json"
 if python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
-  echo "FAIL: factory with provisional M5 should refuse" >&2
+  echo "FAIL: factory with PROVISIONAL_ACCEPT should refuse" >&2
   rc=1
 else
-  echo "OK: factory provisional M5 refused"
+  echo "OK: factory PROVISIONAL_ACCEPT refused"
 fi
-printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
   > "${vr_tmp}/migration/verdicts/m5.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"

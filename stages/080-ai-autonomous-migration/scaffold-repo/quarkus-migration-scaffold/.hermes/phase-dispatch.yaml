@@ -66,9 +66,10 @@ phases:
       - m1-findings
       - brief-identity
   M4:
-    # VERIFY — provisional ACCEPT only (AD-H §18.0). G-1 = volume+substance;
+    # VERIFY — verdict token PROVISIONAL_ACCEPT (AD-H §18.0). G-1 = volume+substance;
     # g1_kill_ratio must be pending_threshold until threshold pinned (option A).
     role: validator
+    verdict_token: PROVISIONAL_ACCEPT
     accept_kind: provisional
     skills:
       - domain-gates

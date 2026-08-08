@@ -114,13 +114,16 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
 
 def full_accept_ok(obj: dict) -> str | None:
     """Return error string if M5 ACCEPT is not composition-complete, else None."""
+    verdict = str(obj.get("verdict") or obj.get("gate_verdict") or "").upper().replace(
+        "-", "_"
+    )
+    if verdict == "PROVISIONAL_ACCEPT":
+        return "factory needs M5 ACCEPT, not PROVISIONAL_ACCEPT (AD-H §18.0)"
     kind = str(obj.get("accept_kind") or obj.get("acceptKind") or "").lower()
     if kind == "provisional":
         return "M5 ACCEPT is provisional — factory needs full ACCEPT (AD-H §18.0)"
-    if kind and kind != "full":
+    if kind and kind not in {"full", ""}:
         return f"M5 ACCEPT accept_kind={kind!r} — need full"
-    if not kind:
-        return "M5 ACCEPT missing accept_kind=full (AD-H §18.0)"
     kill = str(obj.get("g1_kill_ratio") or obj.get("g1KillRatio") or "").lower()
     pinned = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
     waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (

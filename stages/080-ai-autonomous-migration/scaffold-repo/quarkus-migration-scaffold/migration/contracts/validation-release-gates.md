@@ -68,14 +68,17 @@ never ships.
 | Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
 | Matrix lint + checklist print | `.hermes/skills/validation-release-gates/scripts/check-phase-matrix.py` |
 | Verdict routing + §18.0 composition | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
-| Factory ↔ M5 **full** ACCEPT oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
+| Shared-substrate reopen set | `.hermes/skills/validation-release-gates/scripts/compute-substrate-reopen.py` |
+| Factory ↔ M5 **ACCEPT** oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
 | Verdict field schema | `migration/schemas/verdict.md` |
+| Closure map (§11.3 operand) | `migration/slices/closure-map.json` |
 | Wired into | `harness-validate`; M4/M5 `skills[]` |
 
 ```bash
 python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
 python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M5
 python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
+python3 .hermes/skills/validation-release-gates/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
 python3 .hermes/skills/validation-release-gates/scripts/check-factory-m5.py .
 ```
 
