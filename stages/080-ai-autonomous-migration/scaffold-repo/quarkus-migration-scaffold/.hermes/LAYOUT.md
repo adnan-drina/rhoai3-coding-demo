@@ -60,7 +60,7 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `specify-workspace-init` | AD-S Spec Kit provision |
 | `inventory-entry-points` | Entry-point scanner |
 | `sdd-readiness` | Pattern-steals + §S.6 lints |
-| `domain-gates` | G-1..G-4 + admission fixtures |
+| `domain-gates` | G-1..G-4 + admission fixtures (parser/fixture only until live prove) |
 | `scaffold-invariants` | Load-order / taxonomy lints |
 | `harness-validate` | One entrypoint for the above |
 | `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |

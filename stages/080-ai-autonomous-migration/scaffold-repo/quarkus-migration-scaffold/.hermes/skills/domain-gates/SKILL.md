@@ -22,6 +22,11 @@ Hermes owns orchestration. **We** own these deterministic fidelity checks
 
 Specimen-free pairs under `migration/fixtures/admission/gN-<name>/`.
 
+**Honesty bound:** green fixtures prove **parser + fixture shape**, not
+toolchain-faithful admission. Live sensors (PIT dry-run on a specimen, running
+apps for G-4) are a separate prove step — see
+`migration/fixtures/admission/README.md`. Do not treat 12/12 as admission.
+
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-admission.sh"
 ```

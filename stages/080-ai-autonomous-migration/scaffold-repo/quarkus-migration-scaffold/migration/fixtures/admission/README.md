@@ -1,18 +1,11 @@
 # Admission fixtures (W2 §10)
 
-Specimen-free synthetic pairs that prove each **domain gate** can emit
-**ACCEPT**, **REFUSE**, and **INCONCLUSIVE**.
+Specimen-free ACCEPT / REFUSE / INCONCLUSIVE pairs for G-1..G-4.
 
-| Gate | Directory | known-bad proves |
-|------|-----------|------------------|
-| G-1 characterization | `g1-characterization/` | char_surface stub |
-| G-2 harvest-fidelity | `g2-harvest-fidelity/` | silently dropped field |
-| G-3 findings-delta | `g3-findings-delta/` | finding marked resolved while present |
-| G-4 runtime-parity | `g4-runtime-parity/` | status/body mismatch; identical 5xx = vacuous |
+**Not admission yet.** `harness-validate` and `run-admission.sh` exercise
+**parser + fixture** paths only. They do **not** prove toolchain-faithful
+admission (W2 §10 condition 2 / Criterion 10) — that requires live sensors on a
+specimen (e.g. `count-pit-dry-run.sh` for G-1 volume; running apps for G-4).
 
-```bash
-bash .hermes/skills/domain-gates/scripts/run-admission.sh
-# or: bash "${HERMES_SKILL_DIR}/scripts/run-admission.sh"  # skill domain-gates loaded
-```
-
-Home: skill `domain-gates` (AD-H §7). See `.hermes/LAYOUT.md`.
+Do not read 12/12 green as gate admission. See Research
+`E-20260808T075955Z` and Architect review `E-20260808T080815Z` finding 3.

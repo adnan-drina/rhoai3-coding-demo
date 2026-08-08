@@ -31,7 +31,8 @@ rm -rf "${sdd_tmp}"
 echo "== domain-gates admission (W2 §10) =="
 bash "${SKILLS}/domain-gates/scripts/run-admission.sh" "${ROOT}" || rc=1
 
-echo "== G-1 PIT dry-run parse (R1 pin) =="
+# Parser/fixture only — not live specimen admission (Architect E-20260808T080815Z #3).
+echo "== G-1 PIT dry-run parse (R1 pin; not live admission) =="
 python3 "${SKILLS}/domain-gates/scripts/parse-pit-mutations.py" \
   "${ROOT}/migration/fixtures/pit-dry-run/mutations.xml" || rc=1
 if python3 "${SKILLS}/domain-gates/scripts/parse-pit-mutations.py" \
