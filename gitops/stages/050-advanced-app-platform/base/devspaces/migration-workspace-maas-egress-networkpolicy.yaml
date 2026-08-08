@@ -47,6 +47,15 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # Dev Spaces control plane — REQUIRED for the workspace to start.
+    # The per-workspace che-gateway sidecar calls
+    # che-gateway.openshift-devspaces:8089 to obtain the IDE URL. Without this
+    # rule the pod runs, the IDE serves 200 on :3100, and the browser still gets
+    # 504 "workspace has not received an IDE URL" (2026-08-08 outage).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-devspaces
     # MaaS API + model routes (in-cluster)
     - to:
         - namespaceSelector:
