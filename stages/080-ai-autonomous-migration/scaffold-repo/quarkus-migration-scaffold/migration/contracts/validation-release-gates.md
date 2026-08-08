@@ -61,8 +61,9 @@ never ships.
 |-------|------|
 | Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
 | Matrix lint + checklist print | `.hermes/skills/validation-release-gates/scripts/check-phase-matrix.py` |
-| Verdict routing (INCONCLUSIVE never ships) | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
-| Factory ↔ M5 ACCEPT oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
+| Verdict routing + §18.0 composition | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
+| Factory ↔ M5 **full** ACCEPT oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
+| Verdict field schema | `migration/schemas/verdict.md` |
 | Wired into | `harness-validate`; M4/M5 `skills[]` |
 
 ```bash

@@ -136,7 +136,35 @@ if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py"
 else
   echo "OK: INCONCLUSIVE ship refused"
 fi
-printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","ship":true,"routing":"close"}' > "${vr_tmp}/migration/verdicts/bad.json"
+# §18.0 — provisional M4 must not ship
+printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":true}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: provisional M4 ship should refuse" >&2
+  rc=1
+else
+  echo "OK: provisional M4 ship refused"
+fi
+# §18.0 — kill-ratio PASS without pin refused
+printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"PASS","ship":false}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: g1_kill_ratio=PASS without pin should refuse" >&2
+  rc=1
+else
+  echo "OK: unpinned kill-ratio PASS refused"
+fi
+# good M4 provisional
+printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":false}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# good M5 full with waiver (threshold not yet pinned)
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true,"ship":true,"routing":"close"}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# composition reopen
+printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prior_accept_kind":"provisional","routing":"reopen_story"}' \
+  > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/migration/verdicts/bad.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
@@ -151,7 +179,17 @@ if python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${v
 else
   echo "OK: factory without M5 ACCEPT refused"
 fi
-printf '%s\n' '{"phase":"M5","verdict":"ACCEPT"}' > "${vr_tmp}/migration/verdicts/m5.json"
+# provisional M5 must not satisfy factory
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold"}' \
+  > "${vr_tmp}/migration/verdicts/m5.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: factory with provisional M5 should refuse" >&2
+  rc=1
+else
+  echo "OK: factory provisional M5 refused"
+fi
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
+  > "${vr_tmp}/migration/verdicts/m5.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"
 
@@ -202,6 +240,14 @@ else
   echo "OK: missing worker_session_id refused"
 fi
 printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","worker_session_id":"sess1","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
+  > "${ap_tmp}/migration/tasks/bad.json"
+if python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: model_id=unknown without model_id_gap should refuse" >&2
+  rc=1
+else
+  echo "OK: unknown model_id without gap refused"
+fi
+printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","worker_session_id":"sess1","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","model_id_gap":true,"citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
   > "${ap_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" || rc=1
 rm -rf "${ap_tmp}"

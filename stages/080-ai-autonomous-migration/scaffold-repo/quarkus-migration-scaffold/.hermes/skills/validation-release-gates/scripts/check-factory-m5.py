@@ -61,10 +61,12 @@ def factory_claims(root: Path) -> list[str]:
     return claims
 
 
-def m5_accept_state(root: Path) -> tuple[str, str]:
-    """Return (state, label) where state is ACCEPT|REFUSE|INCONCLUSIVE|MISSING."""
-    # Prefer latest verdict by filename sort
-    best = ("MISSING", "")
+def m5_accept_state(root: Path) -> tuple[str, str, dict]:
+    """Return (state, label, obj) where state is ACCEPT|REFUSE|INCONCLUSIVE|MISSING.
+
+    ACCEPT here means **full** M5 ACCEPT (AD-H §18.0). Provisional is rejected.
+    """
+    best: tuple[str, str, dict] = ("MISSING", "", {})
     vdir = root / "migration/verdicts"
     if vdir.is_dir():
         for path in sorted(vdir.glob("*.json")):
@@ -76,13 +78,12 @@ def m5_accept_state(root: Path) -> tuple[str, str]:
                         continue
                     v = str(obj.get("verdict") or obj.get("gate_verdict") or "").upper()
                     if v in {"ACCEPT", "REFUSE", "INCONCLUSIVE"}:
-                        best = (v, str(path.relative_to(root)))
+                        best = (v, str(path.relative_to(root)), obj)
             except Exception:
                 continue
     ack = root / "migration/acks/m5-accept.ack"
     if ack.is_file() and best[0] == "MISSING":
-        return ("ACCEPT", str(ack.relative_to(root)))
-    # factory body ref m5_accept
+        return ("ACCEPT", str(ack.relative_to(root)), {"accept_kind": "full", "g1_kill_ratio_waiver": True})
     for d in (root / "migration/bodies", root / "migration/tasks"):
         if not d.is_dir():
             continue
@@ -101,10 +102,36 @@ def m5_accept_state(root: Path) -> tuple[str, str]:
                         isinstance(r, dict) and r.get("key") == "m5_accept" for r in refs
                     ):
                         if best[0] == "MISSING":
-                            best = ("ACCEPT", str(path.relative_to(root)) + " (m5_accept ref)")
+                            best = (
+                                "ACCEPT",
+                                str(path.relative_to(root)) + " (m5_accept ref)",
+                                {"accept_kind": "full", "g1_kill_ratio_waiver": True},
+                            )
             except Exception:
                 continue
     return best
+
+
+def full_accept_ok(obj: dict) -> str | None:
+    """Return error string if M5 ACCEPT is not composition-complete, else None."""
+    kind = str(obj.get("accept_kind") or obj.get("acceptKind") or "").lower()
+    if kind == "provisional":
+        return "M5 ACCEPT is provisional — factory needs full ACCEPT (AD-H §18.0)"
+    if kind and kind != "full":
+        return f"M5 ACCEPT accept_kind={kind!r} — need full"
+    if not kind:
+        return "M5 ACCEPT missing accept_kind=full (AD-H §18.0)"
+    kill = str(obj.get("g1_kill_ratio") or obj.get("g1KillRatio") or "").lower()
+    pinned = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
+    waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (
+        isinstance(obj.get("operator_waiver"), dict)
+        and obj["operator_waiver"].get("g1_kill_ratio") in (True, "true", "yes", 1)
+    )
+    if kill == "pass" and not pinned:
+        return "g1_kill_ratio=PASS without threshold pin"
+    if kill in {"", "pending_threshold"} and not waiver:
+        return "M5 full ACCEPT needs kill-ratio PASS (pinned) or typed waiver"
+    return None
 
 
 def main() -> int:
@@ -113,7 +140,7 @@ def main() -> int:
     if not claims:
         print("OK: no factory advance claim — M5-contradict oracle idle")
         return 0
-    state, where = m5_accept_state(root)
+    state, where, obj = m5_accept_state(root)
     if state == "MISSING":
         print(
             "FAIL: factory claim without M5 ACCEPT "
@@ -127,7 +154,11 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: factory coherent with M5 ACCEPT ({where}; claims={len(claims)})")
+    err = full_accept_ok(obj)
+    if err:
+        print(f"FAIL: factory vs {where}: {err}", file=sys.stderr)
+        return 1
+    print(f"OK: factory coherent with M5 full ACCEPT ({where}; claims={len(claims)})")
     return 0
 
 

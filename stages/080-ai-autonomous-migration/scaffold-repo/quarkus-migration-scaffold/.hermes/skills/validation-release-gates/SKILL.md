@@ -1,17 +1,21 @@
 ---
 name: validation-release-gates
 description: >
-  AD-H §18 validation and release gates — phase required_checks matrix,
-  cheap verdict routing (INCONCLUSIVE never ships), preflight checklist print.
-  Use for M4/M5 validator seats and harness-validate.
+  AD-H §18 / §18.0 validation and release gates — phase required_checks matrix,
+  provisional vs full ACCEPT, kill-ratio pending_threshold, verdict routing,
+  factory↔M5 full ACCEPT oracle. Use for M4/M5 validator seats and harness-validate.
 ---
 
-# Validation and release gates (AD-H §18)
+# Validation and release gates (AD-H §18 / §18.0)
 
 ## Contracts
 
 - `migration/contracts/validation-release-gates.md`
-- Phase `required_checks`: `.hermes/phase-dispatch.yaml`
+- `migration/schemas/verdict.md`
+- Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
+
+**§18.0:** M4 ACCEPT = provisional (never ship); M5 = full (G-4); kill-ratio
+`PASS` forbidden until threshold pinned — use `pending_threshold` or typed waiver.
 
 ## Checks
 
@@ -22,10 +26,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized
 # Print checklist for a phase
 python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized --print M4
 
-# Verdict routing: refuse INCONCLUSIVE-as-ship / wrong routing class
+# Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
 
-# Factory must not contradict M5 ACCEPT (required oracle)
+# Factory must not contradict M5 full ACCEPT (required oracle)
 python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 ```
 

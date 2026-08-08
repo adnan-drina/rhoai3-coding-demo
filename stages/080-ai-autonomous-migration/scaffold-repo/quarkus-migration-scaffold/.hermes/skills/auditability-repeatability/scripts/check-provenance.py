@@ -101,6 +101,18 @@ def check_prov(label: str, prov: dict, *, require_apply_log: bool) -> int:
         if prov.get(field) in (None, "") and prov.get(key_alt) in (None, ""):
             print(f"FAIL: {label}: missing {field} (AD-H §19)", file=sys.stderr)
             bad = 1
+    model = str(prov.get("model_id") or prov.get("modelId") or "")
+    gap = prov.get("model_id_gap")
+    if gap is None:
+        gap = prov.get("modelIdGap")
+    if model.lower() == "unknown":
+        if gap not in (True, "true", "yes", 1):
+            print(
+                f"FAIL: {label}: model_id=unknown requires model_id_gap=true "
+                f"(named reproducibility gap; AD-H §19 / Architect E-20260808T081557Z)",
+                file=sys.stderr,
+            )
+            bad = 1
     cites = prov.get("citations") or prov.get("citation") or {}
     if not isinstance(cites, dict):
         print(f"FAIL: {label}: citations must be object (AD-H §19 / §17)", file=sys.stderr)

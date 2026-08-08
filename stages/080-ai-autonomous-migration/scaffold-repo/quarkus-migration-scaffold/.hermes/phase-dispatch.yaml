@@ -66,8 +66,10 @@ phases:
       - m1-findings
       - brief-identity
   M4:
-    # VERIFY — compile/test/sonar sensors + domain gates
+    # VERIFY — provisional ACCEPT only (AD-H §18.0). G-1 = volume+substance;
+    # g1_kill_ratio must be pending_threshold until threshold pinned (option A).
     role: validator
+    accept_kind: provisional
     skills:
       - domain-gates
       - validation-release-gates
@@ -85,8 +87,10 @@ phases:
       - m1-findings
       - brief-identity
   M5:
-    # CLOSE — findings refresh / story close
+    # CLOSE — full ACCEPT (G-4 closes G-1 residue). Kill-ratio PASS+pin or
+    # typed Operator waiver. G-4 fail after provisional → reopen that story.
     role: validator
+    accept_kind: full
     skills:
       - mta-analysis
       - domain-gates
@@ -106,9 +110,8 @@ phases:
       - m1-findings
       - brief-identity
   factory:
-    # Push main — must_not_contradict_m5_accept is a REQUIRED oracle (AD-H §18;
-    # Operator no-compromise E-20260808T075048Z). Checklist name alone is insufficient;
-    # Lead:implement real check. Steerer preflight = stopgap only.
+    # Push main — must_not_contradict_m5_accept = full M5 ACCEPT only (§18.0).
+    # Provisional M4 / provisional-labeled M5 must refuse.
     role: validator
     required_checks:
       - compile

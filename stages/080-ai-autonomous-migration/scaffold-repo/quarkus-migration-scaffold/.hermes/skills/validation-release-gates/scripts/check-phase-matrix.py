@@ -116,6 +116,15 @@ def main() -> int:
             print(f"- [ ] {c}")
         print("- [ ] failure routing: INCONCLUSIVE → human queue (never ship)")
         print("- [ ] completion requires ACCEPT (not merely not-REFUSE)")
+        if phase == "M4":
+            print("- [ ] ACCEPT is provisional only; g1_kill_ratio=pending_threshold (not PASS)")
+            print("- [ ] provisional ACCEPT must not ship")
+        if phase == "M5":
+            print("- [ ] ACCEPT is full (G-4); closes G-1 residue")
+            print("- [ ] kill-ratio PASS (threshold pinned) or typed Operator waiver")
+            print("- [ ] G-4 fail after provisional → reopen that story (not wave wipe)")
+        if phase == "factory":
+            print("- [ ] must_not_contradict_m5_accept = full M5 ACCEPT only")
         return 0
 
     try:
