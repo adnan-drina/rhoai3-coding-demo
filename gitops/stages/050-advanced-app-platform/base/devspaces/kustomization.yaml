@@ -17,6 +17,7 @@ resources:
   - repair-devworkspace-sync-options.yaml
   - maas-api-key-provisioning.yaml
   - migration-workspace-maas-egress-networkpolicy.yaml
+  - workspace-api-egress-adminnetworkpolicy.yaml
   - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
   - vscode-editor-configurations.yaml

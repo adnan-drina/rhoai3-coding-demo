@@ -34,7 +34,11 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-dns
-    # Kubernetes API (service network — cover common defaults)
+    # Kubernetes API — `to: default` 443/6443 DISPROVED for R3 ACCEPT
+    # (Research E-20260808T150809Z): ClusterIP is in default, but
+    # kube-apiserver is hostNetwork on control-plane nodes. Real allow is
+    # AdminNetworkPolicy workspace-allow-kapi-egress (nodes :6443). Keep this
+    # rule only as a no-harm legacy peer; do not treat it as R3 ACCEPT.
     - to:
         - namespaceSelector:
             matchLabels:
