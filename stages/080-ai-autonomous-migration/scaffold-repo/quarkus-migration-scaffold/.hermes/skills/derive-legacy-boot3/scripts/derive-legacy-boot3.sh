@@ -186,10 +186,25 @@ if [ -e "${DERIVED_ROOT}" ]; then
 fi
 mkdir -p "${DERIVED_ROOT}"
 # Copy without .git (provenance stays on the RO mount).
-rsync -a --delete \
-  --exclude '.git/' \
-  --exclude 'target/' \
-  "${LEGACY_SRC}/" "${DERIVED_ROOT}/"
+# Dev Spaces tooling images often lack rsync — tar fallback keeps derive e2e
+# runnable without mutating the RO mount or requiring package installs.
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude '.git/' \
+    --exclude 'target/' \
+    "${LEGACY_SRC}/" "${DERIVED_ROOT}/"
+else
+  echo "rsync unavailable — copying via tar (exclude .git/ and target/)"
+  (
+    cd "${LEGACY_SRC}"
+    tar -cf - \
+      --exclude='.git' \
+      --exclude='./.git' \
+      --exclude='target' \
+      --exclude='./target' \
+      .
+  ) | ( cd "${DERIVED_ROOT}" && tar -xf - )
+fi
 
 run_upgrade() {
   if [ -n "${DERIVE_UPGRADE_CMD:-}" ]; then
