@@ -126,3 +126,11 @@ run-report line must carry the **same task id**.
 Brief identity carries unchanged; graph order build → security → schema →
 API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
 See `migration/contracts/sdd-ordering.md`.
+
+### Role authority (AD-H §16)
+
+Hermes orchestrates tightly bounded roles (evidence analyst, planner, spec
+author, implementer, reviewer, validator). One Kanban task ⇒ one role;
+`skills[]` is the allowlist. Human checkpoints are ack artifacts (findings,
+brief/spec identity) — not mid-run approval prompts. See
+`migration/contracts/role-authority.md`.

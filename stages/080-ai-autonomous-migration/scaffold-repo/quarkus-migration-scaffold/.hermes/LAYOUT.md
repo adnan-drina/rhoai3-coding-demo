@@ -14,7 +14,8 @@ for new procedures.
 | Entry-point inventory | `.hermes/skills/inventory-entry-points/` | W2 §11.3 scanner |
 | Harness meta-validate | `.hermes/skills/harness-validate/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
-| Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas |
+| Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
+| Role authority contract | `migration/contracts/role-authority.md` | AD-H §16 — roles, privilege, human checkpoints |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 
