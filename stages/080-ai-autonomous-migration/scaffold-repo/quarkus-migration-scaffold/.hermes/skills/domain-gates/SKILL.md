@@ -37,6 +37,22 @@ python3 "${HERMES_SKILL_DIR}/scripts/g3-findings-delta.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/g4-runtime-parity.py" /projects/modernized
 ```
 
+## G-1 volume floor — PIT dry-run (Research R1 / Architect ACCEPT)
+
+Pin **`pitest-maven` 1.25.5**; use **`-Dpit.dryRun=true`** (not `+dryRun`
+feature). Referent needs **≥1 compilable test**; refuse zero-test skip and
+`-DskipTests`. **No static-metric floor.**
+
+```bash
+# Live count (writes evidence JSON optional)
+bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh" /path/to/module \
+  migration/evidence/pit-dry-run.json
+
+# Parse an existing mutations.xml (fail closed if missing/empty)
+python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \
+  migration/fixtures/pit-dry-run/mutations.xml
+```
+
 ## Home rule
 
 Do **not** add gate logic under top-level `scripts/` or invent parallel names

@@ -31,6 +31,17 @@ rm -rf "${sdd_tmp}"
 echo "== domain-gates admission (W2 §10) =="
 bash "${SKILLS}/domain-gates/scripts/run-admission.sh" "${ROOT}" || rc=1
 
+echo "== G-1 PIT dry-run parse (R1 pin) =="
+python3 "${SKILLS}/domain-gates/scripts/parse-pit-mutations.py" \
+  "${ROOT}/migration/fixtures/pit-dry-run/mutations.xml" || rc=1
+if python3 "${SKILLS}/domain-gates/scripts/parse-pit-mutations.py" \
+  "${ROOT}/migration/fixtures/pit-dry-run/missing.xml" >/dev/null 2>&1; then
+  echo "FAIL: missing mutations.xml should refuse" >&2
+  rc=1
+else
+  echo "OK: missing mutations.xml refused"
+fi
+
 echo "== mta-analysis findings schema (fixture known-good) =="
 python3 "${SKILLS}/mta-analysis/scripts/validate-findings-schema.py" \
   migration/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1

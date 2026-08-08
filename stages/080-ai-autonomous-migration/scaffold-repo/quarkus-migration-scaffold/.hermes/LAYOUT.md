@@ -29,7 +29,7 @@ for new procedures.
 
 | ID | Directory / script stem | Meaning |
 |----|-------------------------|---------|
-| G-1 | `g1-characterization` | characterization substance / mutation |
+| G-1 | `g1-characterization` | characterization substance / mutation (volume via PIT 1.25.5 dry-run) |
 | G-2 | `g2-harvest-fidelity` | obligation conservation vs harvest |
 | G-3 | `g3-findings-delta` | MTA findings closure |
 | G-4 | `g4-runtime-parity` | observed runtime parity |

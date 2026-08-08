@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal PIT dry-run shape for parse smoke (NOT_STARTED = countable). -->
+<mutations partial="true">
+  <mutation detected="false" status="NOT_STARTED" numberOfTestsRun="0">
+    <sourceFile>Adder.java</sourceFile>
+    <mutatedClass>com.demo.Adder</mutatedClass>
+    <mutatedMethod>add</mutatedMethod>
+    <methodDescription>(II)I</methodDescription>
+    <mutator>org.pitest.mutationtest.engine.gregor.mutators.MathMutator</mutator>
+    <lineNumber>5</lineNumber>
+  </mutation>
+  <mutation detected="false" status="NOT_STARTED" numberOfTestsRun="0">
+    <sourceFile>Adder.java</sourceFile>
+    <mutatedClass>com.demo.Adder</mutatedClass>
+    <mutatedMethod>add</mutatedMethod>
+    <methodDescription>(II)I</methodDescription>
+    <mutator>org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator</mutator>
+    <lineNumber>5</lineNumber>
+  </mutation>
+</mutations>
