@@ -83,6 +83,35 @@ else
 fi
 rm -rf "${rw_tmp}"
 
+echo "== grounded-generation (AD-H §17) =="
+python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${ROOT}" || rc=1
+gg_tmp="$(mktemp -d)"
+mkdir -p "${gg_tmp}/migration/tasks"
+# invent-without-locus: writes without legacy_locus
+printf '%s\n' '{"id":"T-bad","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"writes":["src/X.java"]}' \
+  > "${gg_tmp}/migration/tasks/bad.json"
+if python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${gg_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: invent-without-locus should refuse" >&2
+  rc=1
+else
+  echo "OK: invent-without-locus refused"
+fi
+# good non-trivial packet
+printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"legacy_locus":"projects/legacy/Foo.java:10-40","writes":["src/Foo.java"]}' \
+  > "${gg_tmp}/migration/tasks/bad.json"
+python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${gg_tmp}" || rc=1
+# commit message lint
+printf '%s\n' 'T-1: port Foo (brief B-1; legacy projects/legacy/Foo.java:10-40)' > "${gg_tmp}/msg.txt"
+python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${gg_tmp}" --commit-msg "${gg_tmp}/msg.txt" || rc=1
+printf '%s\n' 'fix formatting' > "${gg_tmp}/msg-bad.txt"
+if python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${gg_tmp}" --commit-msg "${gg_tmp}/msg-bad.txt" >/dev/null 2>&1; then
+  echo "FAIL: commit without task id should refuse" >&2
+  rc=1
+else
+  echo "OK: commit without task id refused"
+fi
+rm -rf "${gg_tmp}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1

@@ -56,5 +56,15 @@ Citation lints do **not** replace domain-gate oracles.
 
 ## Enforcement (Lead)
 
-Commit/packet citation lint; refuse invent-without-locus where cheap. Non-blocking
-vs open Review / deferred items.
+| Piece | Path |
+|-------|------|
+| Citation + invent-without-locus | `.hermes/skills/grounded-generation/scripts/check-citation.py` |
+| Wired into | `harness-validate`; M3 `skills[]` in `phase-dispatch.yaml` |
+
+```bash
+python3 .hermes/skills/grounded-generation/scripts/check-citation.py .
+python3 .hermes/skills/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
+```
+
+Non-blocking vs open Review / deferred items. Citation lints do **not** replace
+domain-gate oracles.

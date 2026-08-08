@@ -146,5 +146,11 @@ See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
 Implementers consult, in order: task packet → approved brief/spec → legacy RO
 → destination reference/`AGENTS.md` → approved Quarkus docs (how only).
 Non-trivial changes cite task id, brief/story id, and legacy locus. Invention
-outside evidence is a `blocked` outcome, not improvisation. See
-`migration/contracts/grounded-generation.md`.
+outside evidence is a `blocked` outcome, not improvisation.
+
+```bash
+python3 .hermes/skills/grounded-generation/scripts/check-citation.py .
+python3 .hermes/skills/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
+```
+
+See `migration/contracts/grounded-generation.md`.
