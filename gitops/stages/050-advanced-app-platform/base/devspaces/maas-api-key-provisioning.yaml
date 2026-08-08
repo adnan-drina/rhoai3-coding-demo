@@ -610,10 +610,14 @@ data:
       mkdir -p "${hermes_home}"
 
       # auth.json = Portal onboarding path; incompatible with Managed Scope.
-      if [ -e "${hermes_home}/auth.json" ] || [ -e "${HOME}/.hermes/auth.json" ]; then
-        echo "ERROR: auth.json present under Hermes home — Portal onboarding detected; remove it and use Managed Scope (AD-H §7)." >&2
-        return
-      fi
+      # Lead:pin-model-binding-managed-scope — wipe residue so Managed Scope
+      # can enforce; hard-refuse left workspaces stuck on Portal leftover.
+      for _auth in "${hermes_home}/auth.json" "${HOME}/.hermes/auth.json"; do
+        if [ -e "${_auth}" ]; then
+          echo "WARN: removing ${_auth} — Portal onboarding incompatible with Managed Scope (AD-H §7)."
+          rm -f "${_auth}"
+        fi
+      done
 
       export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
       export HERMES_MANAGED_DIR="${managed_dir}"
@@ -628,6 +632,8 @@ data:
       mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
       # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
       # CLI default cwd is correct; do not set terminal.cwd.
+      # Dashboard exposure = Architect E-20260808T154612Z option A (loopback
+      # + IDE port-forward) — no public-bind auth provider in Managed Scope.
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
@@ -680,11 +686,27 @@ data:
         fh.write(f"MAAS_API_KEY={os.environ['MAAS_API_KEY_QWEN27B']}\n")
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
-    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-H factory).")
+    # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
+    # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
+    pin = yaml.safe_load(open(cfg_path))
+    m = pin.get("model") or {}
+    if m.get("default") != "qwen3-6-27b" or "qwen3-6-27b" not in model_base:
+        raise SystemExit(
+            f"ERROR: model pin failed after Managed Scope write "
+            f"(default={m.get('default')!r} model_base={model_base!r})"
+        )
+    with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
+        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=platform-maas-qwen27b\n")
+    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-H factory; model pin qwen3-6-27b).")
     HERMESEOF
 
-      # Platform must not own the developer-writable user config path.
+      # Architect E-20260808T151907Z / Deputy E-20260808T153444Z —
+      # Model binding belongs in Managed Scope, not a human checklist.
+      # Wipe every PVC-writable overlay that can silently repoint
+      # default/provider/base_url after interactive Hermes setup.
       rm -f "${HOME}/.hermes/config.yaml"
+      rm -f "${hermes_home}/config.yaml"
+      # Platform must not own the developer-writable user config path.
 
       # AD-H §14 — SOUL.md authored in scaffold, placed under HERMES_HOME.
       # Hash-verify + abort (parity with auth.json): missing/empty/corrupt
@@ -795,7 +817,11 @@ data:
         fi
         rm -f "${HOME}/.bashrc.bak"
       fi
-      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; ~/.hermes/config.yaml absent."
+      if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
+        echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
+        return
+      fi
+      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
       # Demo surface (Architect E-20260808T145020Z): pre-warm Hermes dashboard
       # UI so the first `hermes dashboard` does not npm-install/build live in

@@ -10,7 +10,9 @@ Application domain experts remain essential. Agents handle the volume (hundreds 
 
 ## What You'll Do
 
-You will **provision** a migration workspace through a golden-path template that, unlike stage 070's greenfield scaffold, takes the **Git repository of the legacy application you want to migrate** as input and delivers a Dev Spaces workspace with the MTA tools, the harness runbook, and migration standards preconfigured, **analyze** the legacy code with MTA so the findings become the migration's ground truth, **understand the harness** that will govern the agents (guides that steer, sensors that catch, humans that improve the harness itself), **let the orchestrator plan** by reading the findings and the legacy code and writing the migration spec, plan, and task list in the spec-kit layout, **watch the harness migrate** the service as it dispatches OpenRewrite for the mechanical transforms and OpenCode for the judgment work, one bounded task at a time, with sensors after every task and correction packets on failure, and finally **ship through the factory**: the project's delivery pipeline with its SonarQube quality gate is the merge authority, with the full token cost of autonomy visible on the platform's usage dashboard.
+**Demo spine (Acts A–E):** provision a governed migration workspace → establish MTA ground truth → plan with Spec Kit (never `/speckit.implement`) → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. That is what you observe in the room.
+
+The longer M-process / harness-concept material is an **architecture appendix** — useful for teaching, not the live walkthrough. Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
 
 ---
 
@@ -78,7 +80,93 @@ Before any agent writes a line, the supported product establishes the facts.
 
 ---
 
-## Step 4: The concept, an AI Agent Harness
+## Demo walkthrough (Acts A–E)
+
+**Authority:** Research journey `source-analysis/demo-ux/20260808-e2e-demo-user-journey.md`;
+Architect demo-surface decide; Deputy docs-only Stage-1 exception
+`E-20260808T153444Z`. **Specimen for the prove path:** PetClinic Owner/Pet
+(`petclinic-rest-v7-refac`) — pick one and stick to it.
+
+| Act | Job | What you look at |
+|-----|-----|------------------|
+| **A** Arrive | Self-service workspace | RHDH → Dev Spaces; `/projects/legacy` (RO) beside `/projects/modernized` |
+| **B** Ground truth | MTA checklist | Prefer `migration/mta-findings.json` (harness authority); IDE panel optional *human* exploration |
+| **C** Plan without implementing | Spec Kit → Kanban | `/speckit.specify` → plan → tasks → `kanban_create` — **never** `/speckit.implement` |
+| **D** Watch the migration | Hermes Kanban | Pane A: `hermes kanban watch` **before** dispatch · Pane B: `dispatch` · optional dashboard via IDE port-forward to `127.0.0.1:9119` |
+| **E** Audit close | Snapshots + verdicts | `list` / `show` / `runs <task_id>` + `migration/verdicts/*.json` — not more watching |
+
+**Forbidden:** `outer-loop.sh`, `supervisor.sh`, `tail -f outer-loop.log`, starting
+`watch` only after the run, inventing a sixth log surface.
+
+### Act C — Plan (brief → Spec Kit → Kanban)
+
+```bash
+cd /projects/modernized
+hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /speckit.plan then /speckit.tasks. Stop. Never /speckit.implement. Create Kanban cards from tasks.md with workspace dir:/projects/modernized."
+```
+
+**What you should see:** `specs/.../{spec,plan,tasks}.md` and ready/todo cards on
+`hermes kanban list`.
+
+### Act D — Watch (Track B replacement)
+
+**Critical ordering** (Architect binding — empty watch after the run is not a defect):
+
+```bash
+cd /projects/modernized
+# terminal A — start BEFORE any dispatch
+hermes kanban watch --interval 1
+# terminal B — spawn ready work
+hermes kanban dispatch --max 1
+```
+
+Optional projector: Hermes dashboard on **127.0.0.1:9119** via Che/VS Code
+**port-forward** (Architect exposure A — no public Dev Spaces route). Never live
+`npm`/build in front of an audience. Dashboard stays **DEFINED** until
+non-author browser half via port-forward.
+
+Drill-down:
+
+```bash
+hermes kanban show <task_id>
+hermes kanban runs <task_id>   # task_id required
+hermes kanban log <task_id>
+```
+
+**Honest exit of this act:** M4 **`PROVISIONAL_ACCEPT`** for Owner/Pet
+(`ship=false`, kill-ratio `pending_threshold`) — not “migration finished and shipped.”
+
+### Act E — Audit close
+
+```bash
+hermes kanban list
+hermes kanban runs <task_id>
+# open migration/verdicts/… — ship=false honesty
+```
+
+Optional: Stage 040 MaaS usage dashboard for the **metering** beat — not the
+progress UI. Skip or label as future: factory push / Sonar green / M5 `ACCEPT`
+unless observed in *this* environment.
+
+| Surface | Maturity (live `petclinic-rest-v7-refac`, 2026-08-08) |
+|---|---|
+| `hermes kanban list` / `show` / `runs` / `log` | **DEMONSTRATED** |
+| `hermes kanban watch` / `dispatch` | **DEMONSTRATED** (Owner/Pet) |
+| `hermes dashboard` loopback `:9119` + IDE port-forward | **IMPLEMENTED** — browser non-author rehearsal **not** DEMONSTRATED |
+| Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
+| Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
+
+Evidence: `harness-refactoring/measurements/hermes-native-tracking/VERIFY.md`;
+runbook: `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md`.
+
+---
+
+## Appendix A: Harness concept and M-process (not the live demo spine)
+
+> **Maturity label:** architecture / teaching material. The live demo follows
+> **Acts A–E** above. Do not read this appendix as “what you will watch in this room.”
+
+### The concept, an AI Agent Harness
 
 Stage 070 introduced two kinds of agent context: the memory bank and specs. This stage adds the third idea, from Birgitta Böckeler's [Harness Engineering for Coding Agents](https://martinfowler.com/articles/harness-engineering.html): **Agent = Model + Harness**. The model is fixed; the harness is everything the platform engineers around it, and it comes in two kinds:
 
@@ -106,9 +194,15 @@ Everything this platform already operates maps onto that picture:
 
 Two things follow. First, the loop inverts: in stage 060 *you* read the SonarQube report and prompted the fix; here the harness feeds sensor output back to the agent, which iterates until the checks pass. Quality shifts from inspection to regulation. Second, humans move up a level: nothing merges on agent authority because the **factory** won't let it, so instead of reviewing every intermediate diff, you observe where the loop struggled and **improve the harness**. Böckeler calls this the steering loop, and it is the stage 070 "skills retro" practice graduated into a system.
 
-### The migration process: five stages, two feedback loops
+### The migration process: five stages, two feedback loops (appendix)
 
-The harness runs a staged process (the "M-process"). Every stage has explicit input and output artifacts committed to the repository (`git log --oneline` reads as the process narrative) and a deterministic gate guards each hand-off. Modernization is incremental by design: M2 cuts the work into dependency-ordered **stories**, and M3→M5 cycle per story. No big bang.
+The harness runs a staged process (the "M-process"). **Maturity:** conceptual /
+roadmap — Owner/Pet prove path stops at M4 `PROVISIONAL_ACCEPT`; full M5 factory
+ship is not the demo spine. Every stage has explicit input and output artifacts
+committed to the repository (`git log --oneline` reads as the process narrative)
+and a deterministic gate guards each hand-off. Modernization is incremental by
+design: M2 cuts the work into dependency-ordered **stories**, and M3→M5 cycle
+per story. No big bang.
 
 ```text
       ┌──── outer loop (automated): Retro → remaining briefs only ──────────────┐
@@ -227,102 +321,26 @@ Together with the typed model, this gives the migration several independent reas
 
 **The chain reports its own gaps.** `G5` and `G9` currently print `NOT-LANDED` with the reason (`Goal↔Acceptance coherence not enforced at authoring yet`), and the log states plainly that `GREEN is not full grounding`. That is deliberate: a check that quietly passes when it has not really run is worse than no check, and the honest verdict is what tells the steering loop where to invest next.
 
-### Demo track (Hermes-native)
-
-The execution surface is **Hermes Kanban** — not a custom outer-loop script.
-Deleted Track B machinery (`outer-loop.sh`, `supervisor.sh`,
-`.hermes/harness/…`) must not be run; those paths are gone from the golden
-scaffold.
-
-| Surface | Role | Maturity (live `petclinic-rest-v7-refac`, 2026-08-08) |
-|---|---|---|
-| `hermes kanban list` / `show` / `runs` / `log` | Snapshots / worker log | **DEMONSTRATED** |
-| `hermes kanban watch` (`--interval` ok) | Live `task_events` stream | **DEMONSTRATED** (idle banner + poll) |
-| `hermes kanban dispatch` | Spawn workers for ready cards | **DEMONSTRATED** (Owner/Pet M3 card) |
-| `hermes dashboard` (default `:9119`) | Web UI / Kanban tab | CLI exists; Dev Spaces reachability **not** yet DEMONSTRATED |
-| Owner/Pet → M4 `PROVISIONAL_ACCEPT` | Slice verify (not ship) | **DEMONSTRATED** (`measurements/live-1d-slice/`; `ship=false`; kill-ratio `pending_threshold`) |
-| Owner/Pet → M5 full `ACCEPT` | Composition-complete | **Not** DEMONSTRATED — needs kill-ratio pin (#8) + G-4 |
-
-Evidence: `harness-refactoring/measurements/hermes-native-tracking/VERIFY.md`.
-
-### The harness implementation: Hermes Agent
+### The harness implementation: Hermes Agent (appendix)
 
 Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (Nous Research): a CLI-first agent that consumes the project's guides (AGENTS.md, skills, SOUL), runs sensors as tools, and drives work through **Kanban tasks** with native recovery (`max_runtime_seconds`) rather than a repo-owned supervisor.
 
-- **CLI-native, headless-capable**: `hermes chat -q "..."` runs a one-shot turn; Kanban workers are spawned by `hermes kanban dispatch`.
-- **Governed models, first-class**: `~/.hermes/config.yaml` points at the MaaS gateway with a platform-issued key, so every iteration is metered.
-- **Continuity with stage 070**: Hermes speaks AGENTS.md and [agentskills.io](https://agentskills.io/home). Spec Kit is provisioned **in the workspace** (AD-S): `/speckit.specify` → plan → tasks → `kanban_create` — **never** `/speckit.implement`.
-- **Kanban is the engine**: create phase cards with `workspace_kind=dir` + absolute `workspace_path`, skill preload, and runtime caps from `.hermes/phase-dispatch.yaml`. Follow progress with `hermes kanban watch` / `tail`.
+- **CLI-native, headless-capable**: `hermes chat -q "..."`; Kanban via `dispatch`.
+- **Governed models:** Managed Scope (`$HERMES_MANAGED_DIR/config.yaml`) pins
+  platform `qwen3-6-27b` / MaaS — not a PVC checklist overlay.
+- **Continuity with stage 070**: Spec Kit in-workspace (AD-S); stop before
+  `/speckit.implement`.
+- **Kanban is the engine**: see **Acts C–E** above for the human walkthrough.
 
-> **Why Hermes?** CLI-native and headless-first, speaks the AGENTS.md +
-> agentskills.io conventions this project already uses, points at any
-> OpenAI-compatible endpoint (our MaaS gateway), and ships a durable Kanban
-> board for multi-phase migration work. Alternatives like
-> [OpenClaw](https://docs.openclaw.ai/) center on gateway/session management
-> rather than this terminal-driven shape.
+> **Why Hermes?** CLI-native and headless-first, speaks AGENTS.md +
+> agentskills.io, points at our MaaS gateway, durable Kanban board.
 
 ---
 
-## Step 5: Plan the migration (brief → spec-kit → Kanban)
+## Step 7: The factory ships it (future / not demo spine)
 
-The MTA findings say what must change; the **migration brief** + Spec Kit say
-what the migrated service must be. Hermes writes the SDD artifacts; you review.
-
-1. Ensure Spec Kit is provisioned in `/projects/modernized` (AD-S skill
-   `specify-workspace-init` — idempotent stamp `.specify/.rhoai3-ads-provisioned`).
-2. Feed a brief that reuses the **§17.2 citation triple** (task · brief · legacy
-   locus / finding id). Open `Q-*` block plan advance.
-3. In a workspace terminal:
-   ```bash
-   cd /projects/modernized
-   hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /speckit.plan then /speckit.tasks. Stop. Never /speckit.implement. Create Kanban cards from tasks.md with workspace dir:/projects/modernized."
-   ```
-4. Skim `specs/.../spec.md`, `plan.md`, `tasks.md`. Confirm Non-Goals survived
-   and §17.2 citations are present.
-
-**What you should see:** SDD artifacts under `specs/`, and ready/todo cards on
-`hermes kanban list` — not `/speckit.implement` output.
-
-> **Maturity:** provision + `/speckit.specify`→tasks→`kanban_create` and M4
-> literal `PROVISIONAL_ACCEPT` are **DEMONSTRATED** on Owner/Pet. Full M5
-> `ACCEPT` / gate-admission depth (#3) are **not** — do not describe them as
-> observed-complete.
-
----
-
-## Step 6: Watch Hermes migrate (Kanban)
-
-Follow the board — do **not** start deleted `outer-loop.sh` / `supervisor.sh`.
-
-```bash
-cd /projects/modernized
-# terminal A — live events
-hermes kanban watch --interval 1
-# terminal B — spawn ready work (caps from phase-dispatch.yaml)
-hermes kanban dispatch --max 1
-# inspect a card
-hermes kanban show <task_id>
-hermes kanban log <task_id>
-```
-
-Per IMPLEMENT card the worker should:
-
-- **HARVEST** from `/projects/.derived/legacy-at-3` (or typed redesign) into
-  `/projects/modernized` with grounded-generation / spring-to-quarkus patterns
-- Carry **provenance** (AD-H §19) on commits; task id prefixes the commit message
-- Stop at story verify with literal **`PROVISIONAL_ACCEPT`** (M4) — kill-ratio
-  stays `pending_threshold` until pinned; full M5 `ACCEPT` is a later step
-
-**What you should see:** cards moving ready→running→done; worker logs via
-`hermes kanban log`; no custom supervisor process.
-
-> **Honesty beat:** autonomy is token-hungry and metered through MaaS (Step 8).
-> Dashboard Kanban-tab reachability from Dev Spaces is **not** claimed until
-> verified separately.
-
----
-
-## Step 7: The factory ships it
+> **Maturity:** **Not DEMONSTRATED** for the Owner/Pet slice in the live prove
+> path. Label clearly if shown; do not imply the room will see this today.
 
 Nothing merges on agent authority, and no human approval substitutes for the factory either.
 
@@ -341,7 +359,7 @@ actually shipped.
 
 ---
 
-## Step 8: The bill and the retro
+## Step 8: The bill and the retro (optional beat)
 
 1. Open the Stage 040 MaaS usage dashboard: token consumption for Hermes
    sessions / Kanban workers on the developer key, next to earlier stages.

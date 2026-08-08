@@ -85,14 +85,9 @@ components:
           exposure: public
           secure: false
           protocol: https
-        # Hermes Agent web dashboard (Architect demo-surface E-20260808T145020Z).
-        # Start before dispatch: hermes dashboard --skip-build --host 0.0.0.0
-        # --port 9119 --no-open (public bind requires Hermes auth provider).
-        - name: hermes-dashboard
-          targetPort: 9119
-          exposure: public
-          secure: false
-          protocol: https
+        # Hermes dashboard: Architect E-20260808T154612Z option A —
+        # loopback-only (127.0.0.1:9119) + Che/VS Code port-forward.
+        # Do NOT declare a public Dev Spaces route (Host-header rejects it).
         - name: debug
           targetPort: 5005
           exposure: none
@@ -188,6 +183,36 @@ commands:
           bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
             || echo "WARN: specify-workspace-init failed (AD-S) — re-run: bash ${SPECIFY_INIT} ${PROJECT_DIR}"
         fi
+  - id: start-hermes-dashboard
+    exec:
+      component: development-tooling
+      # Architect E-20260808T154612Z option A — loopback bind + IDE port-forward.
+      # Fail-soft: missing Hermes / pre-warm must not block the IDE.
+      commandLine: |
+        set +e
+        export PATH="${HOME}/.local/bin:${PATH}"
+        PROJECT_DIR="/projects/modernized"
+        if [ -f "${HOME}/.bashrc" ]; then
+          # shellcheck disable=SC1090
+          . "${HOME}/.bashrc" 2>/dev/null || true
+        fi
+        if ! command -v hermes >/dev/null 2>&1; then
+          echo "WARN: hermes absent — dashboard not started (recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open)"
+          exit 0
+        fi
+        UI="${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"
+        if [ ! -f "${UI}" ]; then
+          echo "WARN: Hermes dashboard UI pre-warm missing at ${UI} — skip auto-start"
+          exit 0
+        fi
+        if python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null; then
+          echo "Hermes dashboard already listening on 127.0.0.1:9119"
+          exit 0
+        fi
+        cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
+        nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
+          >/tmp/hermes-dashboard.log 2>&1 &
+        echo "Hermes dashboard postStart: started pid=$! loopback 127.0.0.1:9119 (IDE port-forward; log=/tmp/hermes-dashboard.log)"
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom
   # targets 21). Each Maven command selects Java 21 through that contract.
@@ -212,3 +237,4 @@ commands:
 events:
   postStart:
     - init-migration-tools
+    - start-hermes-dashboard
