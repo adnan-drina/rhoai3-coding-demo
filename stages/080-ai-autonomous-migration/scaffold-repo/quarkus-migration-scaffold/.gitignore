@@ -1,3 +1,7 @@
+# Spec Kit workspace tree (AD-S) — created at provision by
+# scripts/specify-init-workspace.sh; never commit into the golden scaffold.
+.specify/
+
 # Maven / Quarkus build output
 target/
 

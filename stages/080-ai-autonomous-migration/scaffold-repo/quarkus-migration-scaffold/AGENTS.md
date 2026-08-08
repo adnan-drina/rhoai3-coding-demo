@@ -70,9 +70,25 @@ bash scripts/check-no-hermes-context-override.sh
 | `.hermes/skills/` | Scaffold procedures via `skills.external_dirs` (no symlink loop) |
 | `~/.hermes/skills/` | Also on `external_dirs` — spec-kit installs here (`Path.home()`, ignores `$HERMES_HOME`) |
 | `.hermes/SOUL.md` | Identity source; provisioning places a copy at `$HERMES_HOME/SOUL.md` |
+| `.specify/` | SDD stack (**AD-S**) — created at workspace provision, not in the golden scaffold |
+| `~/.hermes/skills/` (spec-kit) | `/speckit.*` Hermes skills from `specify init --integration hermes` |
 
 `auth.json` must **not** exist anywhere under Hermes homes — its presence
 means Portal onboarding was used instead of Managed Scope.
+
+### Spec Kit (AD-S) — provision and stop rule
+
+Workspace postStart runs `scripts/specify-init-workspace.sh` (or run it by
+hand once). That installs Hermes-integrated Spec Kit **in this workspace
+only** and the Non-Goals template override.
+
+**Stop rule:** after `/speckit.tasks` (optional `/speckit.analyze`), convert
+`tasks.md` into Hermes `kanban_create()` calls. **Never run
+`/speckit.implement`** — Kanban is the only executor (AD-006 / AD-H).
+
+When `HERMES_HOME` is relocated, keep **both**
+`<modernized>/.hermes/skills` and `$HOME/.hermes/skills` on
+`skills.external_dirs` (spec-kit writes to `Path.home()`, not `$HERMES_HOME`).
 
 ### Task-id correlation (AD-H §7.5)
 
