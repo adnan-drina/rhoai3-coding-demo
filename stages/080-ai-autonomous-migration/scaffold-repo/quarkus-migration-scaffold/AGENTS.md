@@ -96,3 +96,15 @@ Every Kanban task, commit-message prefix, Hermes session/log reference,
 domain-gate result, and run-report line must carry the **same task id**.
 This is a phase-schema requirement (not a logging feature): a reviewer who
 starts on any surface must reach the others for that task.
+
+### Pattern-steals (Loiane → scaffold gates)
+
+Binding shapes (not a toolkit copy): open `Q-*` + missing Non-Goals block
+readiness; task packets need `ac_ids` / `files_in_scope` / `deps`; every
+`mta-exception` needs a checkable `re_open_trigger`. See
+`migration/contracts/pattern-steals.md` and
+`migration/schemas/mta-exception.md`. Enforce with:
+
+```bash
+bash scripts/check-sdd-readiness.sh
+```
