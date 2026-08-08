@@ -240,7 +240,8 @@ scaffold.
 | `hermes kanban watch` (`--interval` ok) | Live `task_events` stream | **DEMONSTRATED** (idle banner + poll) |
 | `hermes kanban dispatch` | Spawn workers for ready cards | **DEMONSTRATED** (Owner/Pet M3 card) |
 | `hermes dashboard` (default `:9119`) | Web UI / Kanban tab | CLI exists; Dev Spaces reachability **not** yet DEMONSTRATED |
-| Full M1→M5 Owner/Pet → `PROVISIONAL_ACCEPT` | End-to-end slice | **In progress** — do not describe as observed-complete |
+| Owner/Pet → M4 `PROVISIONAL_ACCEPT` | Slice verify (not ship) | **DEMONSTRATED** (`measurements/live-1d-slice/`; `ship=false`; kill-ratio `pending_threshold`) |
+| Owner/Pet → M5 full `ACCEPT` | Composition-complete | **Not** DEMONSTRATED — needs kill-ratio pin (#8) + G-4 |
 
 Evidence: `harness-refactoring/measurements/hermes-native-tracking/VERIFY.md`.
 
@@ -282,9 +283,10 @@ what the migrated service must be. Hermes writes the SDD artifacts; you review.
 **What you should see:** SDD artifacts under `specs/`, and ready/todo cards on
 `hermes kanban list` — not `/speckit.implement` output.
 
-> **Maturity:** provision + `/speckit.specify`→tasks→`kanban_create` has been
-> exercised live on Owner/Pet. Treat full slice-green (`PROVISIONAL_ACCEPT`) as
-> **not yet DEMONSTRATED** until the verdict artifact exists.
+> **Maturity:** provision + `/speckit.specify`→tasks→`kanban_create` and M4
+> literal `PROVISIONAL_ACCEPT` are **DEMONSTRATED** on Owner/Pet. Full M5
+> `ACCEPT` / gate-admission depth (#3) are **not** — do not describe them as
+> observed-complete.
 
 ---
 
