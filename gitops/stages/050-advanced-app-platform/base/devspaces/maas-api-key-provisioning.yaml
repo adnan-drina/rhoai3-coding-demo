@@ -725,43 +725,43 @@ data:
       if ! (
         cd "${hermes_agent_root}"
         HERMES_HOME="${hermes_home}" "${venv_py}" - <<'SOULSMOKE'
-import os
-import sys
+    import os
+    import sys
 
-expected_path = os.path.join(os.environ["HERMES_HOME"], "SOUL.md")
-with open(expected_path, encoding="utf-8") as fh:
-    expected = fh.read().strip()
-if not expected:
-    print("ERROR: SOUL.md empty at load-time smoke", file=sys.stderr)
-    sys.exit(1)
-
-try:
-    from agent.prompt_builder import load_soul_md
-except Exception as exc:
-    print(f"ERROR: cannot import load_soul_md: {exc}", file=sys.stderr)
-    sys.exit(1)
-
-loaded = load_soul_md()
-if not loaded:
-    print("ERROR: load_soul_md returned None/empty — silent identity fallback", file=sys.stderr)
-    sys.exit(1)
-if loaded.lstrip().startswith("[BLOCKED:"):
-    print(f"ERROR: SOUL.md blocked by injection scanner: {loaded[:240]}", file=sys.stderr)
-    sys.exit(1)
-for marker in (
-    "faithful",
-    "read-only and they are the truth",
-    "they are right",
-    "blockage is a correct outcome",
-):
-    if marker not in loaded:
-        print(f"ERROR: doctrine marker missing after load: {marker!r}", file=sys.stderr)
+    expected_path = os.path.join(os.environ["HERMES_HOME"], "SOUL.md")
+    with open(expected_path, encoding="utf-8") as fh:
+        expected = fh.read().strip()
+    if not expected:
+        print("ERROR: SOUL.md empty at load-time smoke", file=sys.stderr)
         sys.exit(1)
-if loaded.strip() != expected:
-    print("ERROR: loaded SOUL.md differs from on-disk content after scan/truncate", file=sys.stderr)
-    sys.exit(1)
-print("Hermes AD-H §14: SOUL.md load-time smoke OK (identity intact).")
-SOULSMOKE
+
+    try:
+        from agent.prompt_builder import load_soul_md
+    except Exception as exc:
+        print(f"ERROR: cannot import load_soul_md: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    loaded = load_soul_md()
+    if not loaded:
+        print("ERROR: load_soul_md returned None/empty — silent identity fallback", file=sys.stderr)
+        sys.exit(1)
+    if loaded.lstrip().startswith("[BLOCKED:"):
+        print(f"ERROR: SOUL.md blocked by injection scanner: {loaded[:240]}", file=sys.stderr)
+        sys.exit(1)
+    for marker in (
+        "faithful",
+        "read-only and they are the truth",
+        "they are right",
+        "blockage is a correct outcome",
+    ):
+        if marker not in loaded:
+            print(f"ERROR: doctrine marker missing after load: {marker!r}", file=sys.stderr)
+            sys.exit(1)
+    if loaded.strip() != expected:
+        print("ERROR: loaded SOUL.md differs from on-disk content after scan/truncate", file=sys.stderr)
+        sys.exit(1)
+    print("Hermes AD-H §14: SOUL.md load-time smoke OK (identity intact).")
+    SOULSMOKE
       ); then
         echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
         return
