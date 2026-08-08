@@ -68,11 +68,15 @@ Dry-run volume is **not** a kill-ratio pin. After live
 python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
   -o migration/contracts/g1-kill-ratio-pin.json \
-  --story-id B-OWNER-PET-1
+  --coverage-min 0.25 --kill-attempted-min 0.60 \
+  --rationale "Architect decide <entry>: declared margins, not measured-at-equality"
 ```
 
-Typed Operator/deputy waiver path (sole alternate M5 path):
-`migration/schemas/g1-kill-ratio-waiver.md`. Pinning ≠ M5 `ACCEPT` (#1e).
+Dual-denominator (AD-H §18.0¶5): coverage floor `attempted/generated` **and**
+kill strength `killed/attempted`; sole attempted PASS predicate forbidden.
+`source` must be `declared_engineering_target`. Typed Operator/deputy waiver
+(sole alternate M5 path): `migration/schemas/g1-kill-ratio-waiver.md`.
+Pinning ≠ M5 `ACCEPT` (#1e).
 
 ## Home rule
 

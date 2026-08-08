@@ -73,6 +73,7 @@ never ships.
 | Verdict field schema | `migration/schemas/verdict.md` |
 | Closure map (§11.3 operand) | `migration/slices/closure-map.json` |
 | Wired into | `harness-validate`; M4/M5 `skills[]` |
+| Chaos matrix (plan #7) | `.hermes/skills/validation-release-gates/scripts/run-chaos-matrix.py` |
 
 ```bash
 python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
@@ -80,6 +81,10 @@ python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . 
 python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
 python3 .hermes/skills/validation-release-gates/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
 python3 .hermes/skills/validation-release-gates/scripts/check-factory-m5.py .
+# Live chaos (Hermes venv; isolated board; no LLM spawn):
+# HERMES_AGENT_ROOT=$HOME/.hermes/hermes-agent \
+#   $HERMES_AGENT_ROOT/venv/bin/python \
+#   .hermes/skills/validation-release-gates/scripts/run-chaos-matrix.py .
 ```
 
 `must_not_contradict_m5_accept` is a **required oracle**, not an aspirational

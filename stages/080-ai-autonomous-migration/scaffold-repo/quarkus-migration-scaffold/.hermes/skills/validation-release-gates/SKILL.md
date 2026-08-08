@@ -39,3 +39,17 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 ```
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
+
+## Chaos matrix (plan #7)
+
+Timeout, process death, dup dispatch, digest mismatch, and gate refusal —
+exercised together; each must leave a named Kanban/verdict terminal. Uses
+Hermes-native `enforce_max_runtime` / `detect_crashed_workers` / idempotency
+(no LLM spawn; AD-004).
+
+```bash
+HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
+"${HERMES_AGENT_ROOT}/venv/bin/python" \
+  "${HERMES_SKILL_DIR}/scripts/run-chaos-matrix.py" /projects/modernized \
+  --out /tmp/chaos-7-out --board chaos-matrix-7
+```
