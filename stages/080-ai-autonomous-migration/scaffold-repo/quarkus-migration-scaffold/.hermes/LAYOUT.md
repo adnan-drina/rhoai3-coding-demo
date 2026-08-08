@@ -17,6 +17,7 @@ for new procedures.
 | Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
 | Role authority contract | `migration/contracts/role-authority.md` | AD-H §16 — roles, privilege, human checkpoints |
 | Grounded generation contract | `migration/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
+| Validation / release contract | `migration/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 

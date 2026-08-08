@@ -158,3 +158,11 @@ python3 .hermes/skills/grounded-generation/scripts/check-citation.py . --commit-
 ```
 
 See `migration/contracts/grounded-generation.md`.
+
+### Validation and release (AD-H §18)
+
+M3: compile + task-scoped tests. M4: full verify, Sonar, boot, G-1 (G-2 if
+harvest). M5: MTA re-scan → G-3, G-4 parity, preflight + deploy smoke. Factory
+must not contradict M5 ACCEPT. REFUSE → fix/retry; INCONCLUSIVE → human queue;
+rollback = last bad task tip only; wave block stops new stories. See
+`migration/contracts/validation-release-gates.md`.
