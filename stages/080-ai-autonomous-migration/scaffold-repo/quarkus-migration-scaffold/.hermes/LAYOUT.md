@@ -67,4 +67,4 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
 | `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |
 | `validation-release-gates` | AD-H §18 phase matrix + INCONCLUSIVE-never-ship routing |
-| `auditability-repeatability` | AD-H §19 provenance lint (fail closed on session id) |
+| `auditability-repeatability` | AD-H §19 provenance lint + `reconstruct-from-commit` (fail closed) |

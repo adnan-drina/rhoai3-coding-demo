@@ -202,6 +202,7 @@ provenance into commit trailers. Early bad-agent signal = unsupported claims
 
 ```bash
 python3 .hermes/skills/auditability-repeatability/scripts/check-provenance.py .
+python3 .hermes/skills/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>]
 ```
 
 See `migration/contracts/auditability-repeatability.md`.

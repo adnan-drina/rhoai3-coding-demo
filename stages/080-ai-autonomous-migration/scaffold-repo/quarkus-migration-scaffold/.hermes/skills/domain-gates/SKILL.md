@@ -59,6 +59,21 @@ python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \
   migration/fixtures/pit-dry-run/mutations.xml
 ```
 
+## G-1 kill-ratio pin (plan #8) — live PIT only
+
+Dry-run volume is **not** a kill-ratio pin. After live
+`mutationCoverage` on slice classes, pin from measured evidence (no folklore %):
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
+  target/pit-reports/mutations.xml \
+  -o migration/contracts/g1-kill-ratio-pin.json \
+  --story-id B-OWNER-PET-1
+```
+
+Typed Operator/deputy waiver path (sole alternate M5 path):
+`migration/schemas/g1-kill-ratio-waiver.md`. Pinning ≠ M5 `ACCEPT` (#1e).
+
 ## Home rule
 
 Do **not** add gate logic under top-level `scripts/` or invent parallel names

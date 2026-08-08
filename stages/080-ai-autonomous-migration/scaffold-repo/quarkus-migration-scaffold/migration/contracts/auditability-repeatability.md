@@ -52,11 +52,17 @@ Secondary: failed validation, rework, task-order reversals, human overrides.
 |-------|------|
 | Provenance schema | `migration/schemas/generation-provenance.md` |
 | Cheap lint | `.hermes/skills/auditability-repeatability/scripts/check-provenance.py` |
+| Reconstruct | `.hermes/skills/auditability-repeatability/scripts/reconstruct-from-commit.py` |
 | Wired into | `harness-validate`; M3 `skills[]` |
 
 ```bash
 python3 .hermes/skills/auditability-repeatability/scripts/check-provenance.py .
+python3 .hermes/skills/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>] -o /tmp/reconstruct.json
 ```
 
 Derive apply log must appear in `artifacts[]` when `derive-legacy-boot3` /
 `derive_apply_log` is in play (W2 §12.3).
+
+**Fail closed:** unlinkable IMPLEMENT commit, missing `worker_session_id`,
+unresolved session store, narrative `skill_tips` without git sha, missing
+gate verdict, or missing required acks → reconstruction `REFUSE` (exit 1).
