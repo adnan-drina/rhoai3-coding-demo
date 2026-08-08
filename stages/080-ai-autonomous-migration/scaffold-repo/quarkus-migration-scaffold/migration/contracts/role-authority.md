@@ -53,6 +53,17 @@ Record under `migration/acks/` (or Kanban metadata):
 
 ## Enforcement (Lead)
 
-Phase `skills[]` map; ack presence before phase advance; cheap refuse of
-cross-role writes when detectable. Full wiring rides phase schema — non-blocking
-vs Review §11 / deferred items.
+| Piece | Home |
+|-------|------|
+| Phase `role` + `skills[]` + `requires_acks` | `.hermes/phase-dispatch.yaml` |
+| Ack schema | `migration/schemas/ack.md` + `migration/acks/` |
+| Ack presence before phase advance | skill `role-authority` → `check-acks.sh` |
+| Cross-role write refuse | skill `role-authority` → `check-role-writes.py` |
+
+```bash
+bash .hermes/skills/role-authority/scripts/check-acks.sh M2
+python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
+```
+
+Full Kanban dispatch wiring rides phase schema. Non-blocking vs Operator ACK
+on §16.

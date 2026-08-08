@@ -60,6 +60,29 @@ print("OK: inventory smoke", d["counts"])
 PY
 rm -rf "${tmp}"
 
+echo "== role-authority (AD-H §16) =="
+bash "${SKILLS}/role-authority/scripts/check-acks.sh" M1 "${ROOT}" || rc=1
+# M2 without ack must fail
+if bash "${SKILLS}/role-authority/scripts/check-acks.sh" M2 "${ROOT}" >/dev/null 2>&1; then
+  echo "FAIL: M2 should require m1-findings ack when absent" >&2
+  rc=1
+else
+  echo "OK: M2 refuses without m1-findings ack"
+fi
+python3 "${SKILLS}/role-authority/scripts/check-role-writes.py" "${ROOT}" || rc=1
+# cross-role write smoke
+rw_tmp="$(mktemp -d)"
+mkdir -p "${rw_tmp}/migration/tasks"
+printf '%s\n' '{"role":"planner","writes":["src/main/java/X.java"],"ac_ids":["AC-1"],"files_in_scope":[],"deps":[],"brief_id":"B-1"}' \
+  > "${rw_tmp}/migration/tasks/bad.json"
+if python3 "${SKILLS}/role-authority/scripts/check-role-writes.py" "${rw_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: planner write to src/ should refuse" >&2
+  rc=1
+else
+  echo "OK: planner→src write refused"
+fi
+rm -rf "${rw_tmp}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1

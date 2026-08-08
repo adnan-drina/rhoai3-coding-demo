@@ -57,3 +57,4 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `domain-gates` | G-1..G-4 + admission fixtures |
 | `scaffold-invariants` | Load-order / taxonomy lints |
 | `harness-validate` | One entrypoint for the above |
+| `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |

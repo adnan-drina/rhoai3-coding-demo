@@ -3,7 +3,8 @@ name: harness-validate
 description: >
   Specimen-free harness validation entrypoint: scaffold invariants, SDD
   readiness, domain-gate admission fixtures, mta-findings schema, inventory
-  smoke. Use before trusting a workspace or after gate/toolchain changes.
+  smoke, role-authority acks/writes. Use before trusting a workspace or after
+  gate/toolchain changes.
 ---
 
 # Harness validate

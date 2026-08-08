@@ -130,7 +130,13 @@ See `migration/contracts/sdd-ordering.md`.
 ### Role authority (AD-H §16)
 
 Hermes orchestrates tightly bounded roles (evidence analyst, planner, spec
-author, implementer, reviewer, validator). One Kanban task ⇒ one role;
-`skills[]` is the allowlist. Human checkpoints are ack artifacts (findings,
-brief/spec identity) — not mid-run approval prompts. See
-`migration/contracts/role-authority.md`.
+author, implementer, reviewer, validator). One Kanban task ⇒ one role; phase
+`skills[]` lives in `.hermes/phase-dispatch.yaml`. Human checkpoints are ack
+artifacts under `migration/acks/` — not mid-run approval prompts.
+
+```bash
+bash .hermes/skills/role-authority/scripts/check-acks.sh M2
+python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
+```
+
+See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
