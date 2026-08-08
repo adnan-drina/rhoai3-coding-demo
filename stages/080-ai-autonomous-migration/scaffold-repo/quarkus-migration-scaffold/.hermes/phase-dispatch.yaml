@@ -2,7 +2,8 @@
 # Every M-phase task must set max_runtime_seconds from this file (native
 # recovery: SIGTERM + re-queue, outcome=timed_out). Do not omit.
 #
-# skills[] is the role tool allowlist (AD-H §16). One Kanban task ⇒ one role.
+# skills[] = declared preload / intended skill set (AD-H §16) — not Hermes RBAC.
+# One Kanban task ⇒ one role. Enforcement: SOUL + write-safe-root + acks + lints.
 # Spec-kit /speckit.* skills live under ~/.hermes/skills (Path.home()); keep
 # that path on skills.external_dirs. Never include /speckit.implement.
 #
@@ -104,7 +105,8 @@ phases:
       - m1-findings
       - brief-identity
   factory:
-    # Push main — must not contradict M5 ACCEPT (AD-H §18)
+    # Push main — must_not_contradict_m5_accept is aspirational checklist label
+    # until Lead ships an oracle (AD-H §18; Research E-20260808T074430Z).
     role: validator
     required_checks:
       - compile

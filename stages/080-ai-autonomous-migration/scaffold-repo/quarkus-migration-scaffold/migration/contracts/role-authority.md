@@ -7,7 +7,10 @@
 AD-H / AD-S / SOUL stand. Human checkpoints are **ack artifacts** or Kanban
 `blocked` — never mid-run Hermes interactive approval prompts (AD-H §6.1).
 
-**Rule:** one Kanban task ⇒ one role; dispatch `skills[]` is the tool allowlist.
+**Rule:** one Kanban task ⇒ one role. Dispatch `skills[]` is the **declared
+preload / intended skill set** (Hermes ordered multi-skill load) — **not**
+Hermes hard RBAC. **Enforcement:** SOUL + `HERMES_WRITE_SAFE_ROOT` + ack gates
++ Lead refuse lints (Research `E-20260808T074430Z`).
 
 ## Roles and prohibitions
 

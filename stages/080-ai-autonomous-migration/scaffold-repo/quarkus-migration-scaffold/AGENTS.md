@@ -135,8 +135,9 @@ See `migration/contracts/sdd-ordering.md`.
 
 Hermes orchestrates tightly bounded roles (evidence analyst, planner, spec
 author, implementer, reviewer, validator). One Kanban task ⇒ one role; phase
-`skills[]` lives in `.hermes/phase-dispatch.yaml`. Human checkpoints are ack
-artifacts under `migration/acks/` — not mid-run approval prompts.
+`skills[]` is declared preload (not Hermes RBAC) in
+`.hermes/phase-dispatch.yaml`. Human checkpoints are ack artifacts under
+`migration/acks/` — not mid-run approval prompts.
 
 ```bash
 bash .hermes/skills/role-authority/scripts/check-acks.sh M2
@@ -148,7 +149,8 @@ See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
 ### Grounded generation (AD-H §17)
 
 Implementers consult, in order: task packet → approved brief/spec → legacy RO
-→ destination reference/`AGENTS.md` → approved Quarkus docs (how only).
+→ destination reference/`AGENTS.md` → approved Quarkus docs (BOM-matched
+version + scaffold skills/`RULES.md` only — how only).
 Non-trivial changes cite task id, brief/story id, and legacy locus. Invention
 outside evidence is a `blocked` outcome, not improvisation.
 

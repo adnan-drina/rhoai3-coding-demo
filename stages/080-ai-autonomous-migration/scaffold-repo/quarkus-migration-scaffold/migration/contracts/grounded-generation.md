@@ -16,12 +16,17 @@ sources may only supply *expression*, never new *behaviour*.
 | **2** | **Approved brief/spec identity** (acked per AD-H §16) | What/why, Non-Goals, ACs | Invent features; drop Non-Goals |
 | **3** | **Current legacy code** (RO; prefer packet-anchored excerpts; `legacy-at-3` / staged harvest when packet says so) | Behavioural truth (SOUL) | Edit; invent absent behaviour |
 | **4** | **Target reference implementation** | Accepted destination code + `AGENTS.md` / constitution | Copy unrelated modules; override legacy |
-| **5** | **Approved Quarkus documentation** (+ Quarkus skill / free-primitives `RULES.md` when HARVEST/derive-shaped) | Framework *how* | New business rules, DB shape, integration behaviour |
+| **5** | **Approved Quarkus documentation** (allowlist below) | Framework *how* | New business rules, DB shape, integration behaviour |
+
+**Pri-5 allowlist** (Research AMEND `E-20260808T074430Z`): (1) Quarkus docs
+matching RH BOM / destination version (demo default **3.27**); (2) scaffold
+skills / free-primitives `RULES.md` / related skill refs; (3) optional
+quarkusio Full-path materials already cited by those skills. **Out:** unlisted
+blogs, unmatched quarkus.io pages, arbitrary web hits.
 
 **Conflict rule:** legacy behaviour + brief identity beat docs and destination
 patterns. MTA findings are evidence of work, not authority to invent APIs.
-Open `Q-*` → stop; do not guess. Arbitrary Quarkus blogs / unapproved web
-sources are **out of consult set**.
+Open `Q-*` → stop; do not guess.
 
 ## Citation required
 
