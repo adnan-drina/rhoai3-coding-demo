@@ -9,13 +9,18 @@ M5 kill-ratio PASS requires all of:
   2. coverage floor: attempted/generated >= coverage_min
   3. kill strength: killed/attempted >= kill_attempted_min
   4. optional stringency: killed/generated >= kill_generated_min (when set)
-Always report killed/generated. Bar source must be declared_engineering_target
-(not measured_from_this_run at equality).
+Always report killed/generated. Bar source (AD-H §18.0¶5 / Architect
+E-20260808T125536Z):
+  - ratchet_from_measured — floors as margin under this tree's score (record
+    measured_* + margin_*); prevents regression; not an engineering target
+  - declared_engineering_target — bars sourced outside this subject's score
+  - measured_from_this_run at equality — forbidden (script refuses)
 
 Usage:
   pin-kill-ratio-from-pit.py <mutations.xml> -o migration/contracts/g1-kill-ratio-pin.json \\
-    --coverage-min 0.45 --kill-attempted-min 0.60 --kill-generated-min 0.35 \\
-    --rationale "Architect stringency E-… margins under live pack"
+    --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \\
+    --source ratchet_from_measured \\
+    --rationale "Architect E-… ratchet margins under live pack"
 """
 from __future__ import annotations
 
@@ -124,6 +129,12 @@ def main() -> int:
     )
     ap.add_argument("--rationale", required=True)
     ap.add_argument(
+        "--source",
+        choices=("ratchet_from_measured", "declared_engineering_target"),
+        required=True,
+        help="AD-H §18.0¶5 bar source (Architect E-20260808T125536Z)",
+    )
+    ap.add_argument(
         "--invalidate-prior",
         default="prior dual pin coverage_min=0.25 without kill_generated_min (stringency raise)",
     )
@@ -198,18 +209,34 @@ def main() -> int:
             + "; always report killed/generated; "
             "sole killed/attempted PASS predicate FORBIDDEN"
         ),
-        "source": "declared_engineering_target",
+        "source": args.source,
         "rationale": args.rationale,
         "folklore": False,
     }
     if args.kill_generated_min is not None:
         threshold["kill_generated_min"] = args.kill_generated_min
+    if args.source == "ratchet_from_measured":
+        threshold["measured_coverage"] = cov
+        threshold["measured_kill_attempted"] = katt
+        threshold["measured_kill_generated"] = kgen
+        if cov is not None:
+            threshold["margin_coverage"] = cov - args.coverage_min
+        if katt is not None:
+            threshold["margin_kill_attempted"] = katt - args.kill_attempted_min
+        if args.kill_generated_min is not None and kgen is not None:
+            threshold["margin_kill_generated"] = kgen - args.kill_generated_min
+    pin_authority_extra = (
+        "; pin-source E-20260808T125536Z"
+        if args.source == "ratchet_from_measured"
+        else ""
+    )
 
     pin = {
         "schema": "migration/g1-kill-ratio-pin/v2-dual-denominator",
         "authority": "EXECUTION-LIVE-VALIDATION-PLAN #8; W2 §5/§9; AD-H §18.0¶5; "
         "Architect decide E-20260808T115649Z; stringency E-20260808T120152Z/"
-        "E-20260808T121549Z/E-20260808T123742Z",
+        "E-20260808T121549Z/E-20260808T123742Z"
+        + pin_authority_extra,
         "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "story_id": args.story_id,
         "scope": args.scope,
