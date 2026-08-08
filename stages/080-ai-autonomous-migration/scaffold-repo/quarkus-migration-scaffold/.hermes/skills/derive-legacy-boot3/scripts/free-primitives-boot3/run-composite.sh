@@ -34,5 +34,6 @@ run_rule "${HERE}/rules/r20_mysql_connector.py"
 run_rule "${HERE}/rules/r30_jaxb_api.py"
 run_rule "${HERE}/rules/r40_security6_wsca.py"
 run_rule "${HERE}/rules/r50_openapi_jakarta.py"
+run_rule "${HERE}/rules/r60_springfox_to_springdoc.py"
 
 echo "free-primitives-boot3: OK"

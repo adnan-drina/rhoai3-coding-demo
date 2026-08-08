@@ -1,6 +1,6 @@
 # Free-primitives Boot 2→3 composite — admit table
 
-**Version:** `1.0.1` · **Path:** W2 §12 SETTLED · Operator free-primitives
+**Version:** `1.1.0` · **Path:** W2 §12 SETTLED · Operator free-primitives
 **Invocation:** `run-composite.sh` (default `DERIVE_UPGRADE_CMD`)
 
 Specimen-agnostic: no coolstore/petclinic literals. Behavioral rules require
@@ -14,6 +14,12 @@ G-4 dual-mode later — compile success is not behavioral proof.
 | `jaxb-api-jakarta` | Boot 3.0 Migration Guide — Jakarta EE APIs (JAXB no longer on default classpath) | pom has `javax.xml.bind:jaxb-api`, stale `${jaxb-api.version}` on jakarta artifact, **or** JAXB types without jakarta dep | `jakarta.xml.bind:jakarta.xml.bind-api` present; javax jaxb-api / stale pin gone | Y — skip when already clean | fires only when pre true | pom | N |
 | `security6-wsca` | [Spring Security 6.0 migration](https://docs.spring.io/spring-security/reference/migration/index.html) — `WebSecurityConfigurerAdapter` removed | `.java` contains `WebSecurityConfigurerAdapter` | class no longer extends adapter; `SecurityFilterChain` `@Bean` present; Sec6 request/csrf APIs | Y — skip when adapter absent | fires only when pre true | java | **Y** — G-4 security-off + security-on |
 | `openapi-jakarta-ee` | OpenAPI Generator `configOptions.useJakartaEe` (generator ≥6) | pom configures `openapi-generator-maven-plugin` without jakarta EE | plugin ≥6.6.0; `configOptions.useJakartaEe=true`; `swagger-annotations` ≥2.2 when generator emits `requiredMode` | Y — skip when already configured | fires only when plugin present and incomplete | pom / generator-config | N |
+| `springfox-to-springdoc` | [springdoc migrating-from-springfox](https://springdoc.org/#migrating-from-springfox) + Boot 3.0 Migration Guide (Jakarta / no javax.servlet) | pom or sources reference `io.springfox` / `springfox.*` | springfox deps and springfox-importing `.java` gone; `org.springdoc:springdoc-openapi-starter-webmvc-ui` present | Y — skip when springfox absent | fires only when pre true | pom, java | **Y** — G-4 OpenAPI path subset (`/v3/api-docs` and/or swagger-ui) before DEMONSTRATED |
+
+**Owner/Pet slice note (Architect E-20260808T095454Z):** first prove may use
+typed **OpenAPI descope** (remove springfox without springdoc) instead of this
+rule — declare descope; G-4 OpenAPI N/A for that slice. This rule is the
+admitted general composite path for later specimens / full migration.
 
 **Never-automatic (not in this composite):** Moderne `UpgradeSpringBoot_3_0`,
 specimen-literal patches, Security rewrites without later G-4, LLM free edits.
