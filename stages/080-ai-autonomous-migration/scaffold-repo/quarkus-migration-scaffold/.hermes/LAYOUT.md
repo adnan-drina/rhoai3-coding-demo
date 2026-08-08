@@ -19,6 +19,8 @@ for new procedures.
 | Grounded generation contract | `migration/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `migration/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
 | Validation / release skill | `.hermes/skills/validation-release-gates/` | matrix lint + verdict routing |
+| Auditability contract | `migration/contracts/auditability-repeatability.md` | AD-H §19 — provenance, digests, early metric |
+| Provenance schema | `migration/schemas/generation-provenance.md` | Kanban metadata fields |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 

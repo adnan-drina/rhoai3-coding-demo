@@ -175,3 +175,12 @@ python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py
 ```
 
 See `migration/contracts/validation-release-gates.md`.
+
+### Auditability and repeatability (AD-H §19)
+
+Task id joins Kanban, git subject, sessions/logs, gates, and run report.
+Non-trivial IMPLEMENT must leave Kanban completion metadata with
+`worker_session_id`, `soul_sha`, `skill_tips`, `model_id` (or `unknown`), plus
+§17 citations. Kanban metadata is authoritative; do not dual-write full
+provenance into commit trailers. Early bad-agent signal = unsupported claims
+(§17). See `migration/contracts/auditability-repeatability.md`.
