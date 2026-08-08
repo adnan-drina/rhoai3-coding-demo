@@ -60,3 +60,4 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `harness-validate` | One entrypoint for the above |
 | `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
+| `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |

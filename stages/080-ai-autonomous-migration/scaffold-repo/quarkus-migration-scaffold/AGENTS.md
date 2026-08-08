@@ -22,8 +22,12 @@ repository (`/projects/modernized`).
 - **Native Quarkus only** — never add `quarkus-spring-*` compatibility
   extensions to the destination (MTA may suggest them; reject).
 - Default CDI scope for services and repositories: `@ApplicationScoped`.
+- Prefer constructor injection; config via `@ConfigProperty` / `%profile` keys
+  (or `QUARKUS_PROFILE`) — do not invent Spring-style `application-*.properties`
+  trees on the destination.
 - REST resources under `/api/`; JSON via Jackson; health at `/q/health`
   (`/q/*` deliberately sits outside the application root path).
+- Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 
 ## Build and test
 

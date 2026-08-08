@@ -52,6 +52,7 @@ phases:
       - sdd-readiness
       - role-authority
       - grounded-generation
+      - spring-to-quarkus-patterns
       - domain-gates
     max_runtime_seconds: 2700
     requires_acks:
