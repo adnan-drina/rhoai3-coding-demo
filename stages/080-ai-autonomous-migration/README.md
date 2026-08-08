@@ -70,14 +70,11 @@ Before any agent writes a line, the supported product establishes the facts.
 > under the application's Reports tab. The in-workspace path above is the
 > demo default: the findings land exactly where the agent will work.
 
-> **Harness analysis path (Track B):** when the autonomous outer loop
-> runs, `analyze.sh` performs the same MTA analysis programmatically via
-> kantra and writes the results to `migration/mta-findings.json` (plus
-> the profile session artifacts under `migration/`). The IDE panel above
-> is for *human* exploration and validation; the harness never reads
-> `legacy/.vscode/mta-core/` — it reads `migration/mta-findings.json` as
-> its ground truth. Both paths use the same rulesets and targets from
-> `migration.yaml`.
+> **Harness analysis path:** M1 uses the `mta-analysis` skill / `mta-cli`
+> (kantra) and writes `migration/mta-findings.json` (plus session artifacts
+> under `migration/`). The IDE panel above is for *human* exploration; the
+> harness reads `migration/mta-findings.json` as ground truth. Both paths
+> use the same rulesets and targets from `migration.yaml`.
 
 ---
 
@@ -92,7 +89,7 @@ Each kind exists in two execution forms: **computational** (deterministic and fa
 
 Red Hat AI describes this as the **Agent-as-a-Workload** pattern: the agentic loop runs inside a governed workspace (our Dev Spaces pod), reaches models only through the MaaS gateway (identity, quotas, telemetry), and calls tools through governed endpoints. The workspace isolation, the MaaS gateway, and the pipeline quality gate form three layers of enforcement that the model cannot influence, even if its behavior is manipulated. This is the same defense-in-depth architecture described in [Architect an open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents), applied here to a migration workload.
 
-Böckeler's follow-up, [Maintainability sensors for coding agents](https://martinfowler.com/articles/sensors-for-coding-agents.html), confirms a practice this harness already leans on: a red sensor should carry **self-correction guidance**, not only the raw failure. Our factory-parity sensors (`sensors.sh`) print a short `FIX:` block with the evidence — what to change, what not to waive, and which runbook section applies — so the correction session spends tokens on the root cause instead of re-deriving the policy.
+Böckeler's follow-up, [Maintainability sensors for coding agents](https://martinfowler.com/articles/sensors-for-coding-agents.html), confirms a practice this harness already leans on: a red sensor should carry **self-correction guidance**, not only the raw failure. Domain gates and validation skills print actionable refuse reasons (what failed, what evidence is missing) so the next Kanban attempt spends tokens on the root cause instead of re-deriving policy.
 
 Everything this platform already operates maps onto that picture:
 
@@ -141,7 +138,7 @@ The harness runs a staged process (the "M-process"). Every stage has explicit in
  architecture-profile.md · roadmap.md · briefs/S*.md · specs/S*/tasks.md  │
                                                                           │
               next story from the roadmap  ◀──────────────────────────────┘
-              (failed story stops the run; resume via story-state.csv)
+              (failed story → Kanban blocked; resume via dispatch)
 ```
 
 | # | Stage | Enabling technology | Tasks it performs | Output artifacts (committed) |
@@ -152,7 +149,11 @@ The harness runs a staged process (the "M-process"). Every stage has explicit in
 | 4 | **M4 IMPLEMENT** | Supervisor task loop; Hermes orchestrator + OpenCode worker (packets); skills + AGENTS.md rules; task/milestone sensors (isolated Maven repo, in-loop SonarQube) | Execute the story's tasks one commit each; harvest from the recipe-staged sources; port/pin contract tests; every commit sensor-verified; red commits get autonomous fix sessions; mechanical commit closure for green-but-uncommitted work | code + tests, one `T-NNN:` commit per task, `run-log.md` rows |
 | 5 | **M5 EVALUATE** | Pre-push preflight (full quality gate + boot check); Tekton factory pipeline + SonarQube gate; kantra after-analysis (script step); Hermes retro session | Gate the story locally, ship through the factory; deploy stories must serve their acceptance endpoints live; measure the findings delta (before vs destination); write retro proposals | pipeline + gate results, deployed increment, `findings-delta`, `retro-proposals.md` |
 
-The **inner loop** (sensors → fix sessions, lint → revision) corrects the *work* within minutes. The **outer loop** (automated) applies Retro's brief updates to **remaining** stories so the next brief starts smarter — it does not rewrite the roadmap mid-run, and a failed story stops the run (resume from `migration/story-state.csv`). The **steering loop** (human) takes Retro's skill/sensor/runbook proposals into a follow-up PR; the agent never auto-edits `.hermes/skills/**`.
+The **inner loop** (gates → fix → re-dispatch) corrects the *work* within a
+card's retries. **Kanban parents/deps** sequence stories; a failed card blocks
+dependents until unblocked or superseded. The **steering loop** (human) lands
+skill/sensor/runbook improvements as versioned PRs — agents do not silently
+rewrite `.hermes/skills/**` mid-run.
 
 ### One typed model, and prose rendered from it
 
@@ -226,116 +227,96 @@ Together with the typed model, this gives the migration several independent reas
 
 **The chain reports its own gaps.** `G5` and `G9` currently print `NOT-LANDED` with the reason (`Goal↔Acceptance coherence not enforced at authoring yet`), and the log states plainly that `GREEN is not full grounding`. That is deliberate: a check that quietly passes when it has not really run is worse than no check, and the honest verdict is what tells the steering loop where to invest next.
 
-### Two demo tracks
+### Demo track (Hermes-native)
 
-Two equal demo tracks share the same M-process and gates:
+The execution surface is **Hermes Kanban** — not a custom outer-loop script.
+Deleted Track B machinery (`outer-loop.sh`, `supervisor.sh`,
+`.hermes/harness/…`) must not be run; those paths are gone from the golden
+scaffold.
 
-| Track | Who drives | How you start | M2 behavior |
-|---|---|---|---|
-| **A — Interactive / story walkthrough** | You run Hermes sessions stage by stage (or one story at a time via `supervisor.sh`) | Steps 5–7 below | You can skip M2 for a whole-app single-story pass, or run it normally for the incremental path |
-| **B — Autonomous outer loop** | `outer-loop.sh` owns M1→M2 and every story's M3→M5 | `nohup .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &` then `tail -f /tmp/outer-loop.log` | Always runs M2 (incremental by design) |
+| Surface | Role | Maturity (live `petclinic-rest-v7-refac`, 2026-08-08) |
+|---|---|---|
+| `hermes kanban list` / `show` / `runs` / `log` | Snapshots / worker log | **DEMONSTRATED** |
+| `hermes kanban watch` (`--interval` ok) | Live `task_events` stream | **DEMONSTRATED** (idle banner + poll) |
+| `hermes kanban dispatch` | Spawn workers for ready cards | **DEMONSTRATED** (Owner/Pet M3 card) |
+| `hermes dashboard` (default `:9119`) | Web UI / Kanban tab | CLI exists; Dev Spaces reachability **not** yet DEMONSTRATED |
+| Full M1→M5 Owner/Pet → `PROVISIONAL_ACCEPT` | End-to-end slice | **In progress** — do not describe as observed-complete |
+
+Evidence: `harness-refactoring/measurements/hermes-native-tracking/VERIFY.md`.
 
 ### The harness implementation: Hermes Agent
 
-Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (Nous Research) as the harness implementation that owns the autonomous loop: a CLI-first agent that consumes the project's guides, runs the sensors as tools (build, tests, OpenRewrite, analysis), and iterates until the checks pass or the budget expires. The properties that matter here:
+Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.nousresearch.com/docs)** (Nous Research): a CLI-first agent that consumes the project's guides (AGENTS.md, skills, SOUL), runs sensors as tools, and drives work through **Kanban tasks** with native recovery (`max_runtime_seconds`) rather than a repo-owned supervisor.
 
-- **CLI-native, headless-capable**: `hermes chat -q "..."` runs a one-shot turn (including in non-TTY workers), and `hermes -w -z "..."` runs one in an isolated git worktree. The loop is drivable from a terminal and from automation alike.
-- **Governed models, first-class**: `~/.hermes/config.yaml` points at any OpenAI-compatible endpoint, our MaaS gateway with a platform-issued key, so every loop iteration is metered like everything else on this platform.
-- **Continuity with what you already built**: Hermes speaks the AGENTS.md and [agentskills.io](https://agentskills.io/home) mental model this project has used since stage 070. The guides in this repository are its guides, and its built-in learning loop (skills created and improved from experience) is the "skills retro" practice running inside the agent itself.
-- **A real task system for real migrations**: Hermes includes a Kanban board (`~/.hermes/kanban.db`) for multi-agent task decomposition. In practice, the live autonomous run is driven by `outer-loop.sh` and `supervisor.sh`, which dispatch story-scoped task packets to OpenCode workers and track progress through `migration/story-state.csv`. The Kanban layer is available for interactive exploration and future multi-worker scaling, but the demo's execution path is the outer loop.
+- **CLI-native, headless-capable**: `hermes chat -q "..."` runs a one-shot turn; Kanban workers are spawned by `hermes kanban dispatch`.
+- **Governed models, first-class**: `~/.hermes/config.yaml` points at the MaaS gateway with a platform-issued key, so every iteration is metered.
+- **Continuity with stage 070**: Hermes speaks AGENTS.md and [agentskills.io](https://agentskills.io/home). Spec Kit is provisioned **in the workspace** (AD-S): `/speckit.specify` → plan → tasks → `kanban_create` — **never** `/speckit.implement`.
+- **Kanban is the engine**: create phase cards with `workspace_kind=dir` + absolute `workspace_path`, skill preload, and runtime caps from `.hermes/phase-dispatch.yaml`. Follow progress with `hermes kanban watch` / `tail`.
 
-> **Why Hermes over other agent frameworks?** The choice comes down to
-> fit: Hermes is CLI-native and headless-first (`hermes chat -q`), speaks
-> the AGENTS.md + agentskills.io conventions this project already uses,
-> points at any OpenAI-compatible endpoint (our MaaS gateway), and its
-> outer-loop/supervisor architecture matches the story-driven shape of a
-> real migration. Alternatives like [OpenClaw](https://docs.openclaw.ai/)
-> are strong products but center on gateway/session management rather
-> than the terminal-driven autonomous loop this stage teaches.
-
-Division of labor: **Hermes is the orchestrator** (it plans, drives the loop, and runs sensors; its escalation valve can edit application source directly during EXECUTION when a task is too small to justify a full worker dispatch) and **OpenCode is the coding worker inside the harness**, dispatched one bounded task at a time via `opencode run`. The whole contract is versioned in the repository as the **migration-harness runbook** (`.hermes/skills/migration-harness/`), which the workspace links into Hermes' skill path automatically; the interactive `/speckit.*` commands from stage 070 remain available when you want to author specs yourself.
+> **Why Hermes?** CLI-native and headless-first, speaks the AGENTS.md +
+> agentskills.io conventions this project already uses, points at any
+> OpenAI-compatible endpoint (our MaaS gateway), and ships a durable Kanban
+> board for multi-phase migration work. Alternatives like
+> [OpenClaw](https://docs.openclaw.ai/) center on gateway/session management
+> rather than this terminal-driven shape.
 
 ---
 
-## Step 5: Plan the migration (Track A interactive, or start Track B)
+## Step 5: Plan the migration (brief → spec-kit → Kanban)
 
-The MTA findings say what must change; the spec says what the migrated service must be. In this stage the **orchestrator writes the contract**. You review it; you don't have to author it.
+The MTA findings say what must change; the **migration brief** + Spec Kit say
+what the migrated service must be. Hermes writes the SDD artifacts; you review.
 
-### Track B — autonomous (preferred for the full M-process)
+1. Ensure Spec Kit is provisioned in `/projects/modernized` (AD-S skill
+   `specify-workspace-init` — idempotent stamp `.specify/.rhoai3-ads-provisioned`).
+2. Feed a brief that reuses the **§17.2 citation triple** (task · brief · legacy
+   locus / finding id). Open `Q-*` block plan advance.
+3. In a workspace terminal:
+   ```bash
+   cd /projects/modernized
+   hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /speckit.plan then /speckit.tasks. Stop. Never /speckit.implement. Create Kanban cards from tasks.md with workspace dir:/projects/modernized."
+   ```
+4. Skim `specs/.../spec.md`, `plan.md`, `tasks.md`. Confirm Non-Goals survived
+   and §17.2 citations are present.
 
-One command owns M1→M2 and every story's M3→M5, including brief refresh after each successful story:
+**What you should see:** SDD artifacts under `specs/`, and ready/todo cards on
+`hermes kanban list` — not `/speckit.implement` output.
+
+> **Maturity:** provision + `/speckit.specify`→tasks→`kanban_create` has been
+> exercised live on Owner/Pet. Treat full slice-green (`PROVISIONAL_ACCEPT`) as
+> **not yet DEMONSTRATED** until the verdict artifact exists.
+
+---
+
+## Step 6: Watch Hermes migrate (Kanban)
+
+Follow the board — do **not** start deleted `outer-loop.sh` / `supervisor.sh`.
 
 ```bash
 cd /projects/modernized
-nohup .hermes/harness/outer-loop.sh >> /tmp/outer-loop.log 2>&1 &
-tail -f /tmp/outer-loop.log
-# Single progress sink: /tmp/outer-loop.log (L-N1). Per-story detail: /tmp/supervisor.log.
+# terminal A — live events
+hermes kanban watch --interval 1
+# terminal B — spawn ready work (caps from phase-dispatch.yaml)
+hermes kanban dispatch --max 1
+# inspect a card
+hermes kanban show <task_id>
+hermes kanban log <task_id>
 ```
 
-If a story fails, the loop stops before dependents. Fix or waive, then relaunch — `migration/story-state.csv` skips stories already marked `complete`.
+Per IMPLEMENT card the worker should:
 
-### Track A — interactive walkthrough
+- **HARVEST** from `/projects/.derived/legacy-at-3` (or typed redesign) into
+  `/projects/modernized` with grounded-generation / spring-to-quarkus patterns
+- Carry **provenance** (AD-H §19) on commits; task id prefixes the commit message
+- Stop at story verify with literal **`PROVISIONAL_ACCEPT`** (M4) — kill-ratio
+  stays `pending_threshold` until pinned; full M5 `ACCEPT` is a later step
 
-1. In a workspace terminal, start planning (Track A can skip M2 for a whole-app single-story pass, or run it normally for the incremental path; Track B always runs M2):
-  ```bash
-   cd /projects/modernized
-   hermes chat -q "Use the migration-harness skill. Execute M1 (normalize ground truth) and M3 (plan)."
-  ```
-   Or drive ground truth with the script the outer loop uses: `.hermes/harness/analyze.sh`, then a Hermes session for M3 only.
-2. Watch what the runbook makes Hermes do: normalize analysis into `migration/mta-findings.json`, script-extract violation counts rather than reading the file into context, then write `specs/.../spec.md`, `plan.md`, and `tasks.md` (every task tagged `Class: rewrite` or `Class: infer`, rewrite first, each citing finding rule ids).
-3. Skim the artifacts — a soft, non-blocking checkpoint. Mechanical findings should be tagged `rewrite` and delegated to **OpenRewrite**; the interactive `/speckit.*` path from stage 070 remains available if you prefer to author the spec yourself.
+**What you should see:** cards moving ready→running→done; worker logs via
+`hermes kanban log`; no custom supervisor process.
 
-A `hermes chat -q` run is a headless one-shot session. The prompt names the **migration-harness skill**, and Hermes loads the runbook from `.hermes/skills/migration-harness/`. Each M-stage ends with one commit: in this harness a commit is a claim that the stage completed and its outputs are traceable.
-
-**What you should see:** spec, plan, and tasks in the repository, written by the orchestrator, traceable line-by-line to MTA findings and observed behavior (Track A), or the same artifacts appearing story-by-story under Track B's log.
-
----
-
-## Step 6: Watch the harness migrate
-
-### Track B
-
-If you started `outer-loop.sh` in Step 5, keep watching `/tmp/outer-loop.log` and `/tmp/supervisor.log`. Per story the outer loop runs M3 (plan-lint gated), then `supervisor.sh` for M4/M5.
-
-### Track A
-
-You start the run and observe; Hermes (or the supervisor) drives.
-
-1. Start execution for the tasks you planned:
-  ```bash
-   hermes chat -q "Use the migration-harness skill. Execute M4 for the tasks in specs/<story>/tasks.md."
-  ```
-   Or the supervised path (same engine Track B uses per story):
-  ```bash
-   nohup .hermes/harness/supervisor.sh > /tmp/supervisor-nohup.log 2>&1 &
-   tail -f /tmp/supervisor.log
-  ```
-2. What the runbook enforces, per task:
-  - **HARVEST tasks** (mechanical, pre-staged by M1): Hermes dispatches a harvest task to OpenCode with explicit source and destination paths from the recipe-staged tree. OpenRewrite already ran during M1; the worker copies and adapts. This is the fast path, dominant when the migration is mostly namespace/annotation work (e.g., pure Jakarta).
-  - **REDESIGN tasks** (inference-heavy): Hermes hands OpenCode one bounded task packet via `opencode run` with the decided target shape from the brief. The worker implements against the `targetContract` flags, not from a blank-slate guess. This is the dominant path on the cart migration where service behavior changes.
-  - **Escalation**: for trivially small edits (a one-line import fix, a config entry), Hermes' escalation valve can edit application source directly during EXECUTION instead of dispatching a full worker session.
-  - **Sensors after every task**: the supervisor runs factory-parity checks (`sensors.sh`); a red result includes evidence plus a `FIX:` guidance block and becomes a correction packet (two attempts); exhausted budget lands in `migration/debt.md`.
-3. Your job is observation. `migration/run-log.md` accumulates one line per task; where retries cluster is where the harness needs improving (Step 8 steering).
-
-Each task runs in a fresh orchestrator session. Hermes writes a **task packet** with a fixed schema, verifies independently, and ends each completed task in one commit prefixed with its task id: the git history *is* the execution trace.
-
-**What you should see:** the loop converging task by task: harvest tasks for the mechanical (HARVEST) share, bounded worker runs for the judgment (REDESIGN) share, sensors between every step.
-
-> **Honesty beat:** autonomy is token-hungry. Every iteration of the loop is metered through the developer's MaaS key; Step 8 shows the bill. That cost profile is why token limits exist and why deterministic transforms carry the mechanical share of the work.
-
-> **Why these models:** the two harness roles have different failure
-> modes **and different quotas**, so the platform seats them separately.
-> The **orchestrator** (MiniMax M2, 196K context) is selected for lean
-> long-horizon supervision — and is **rate-limited**, so it owns M1–M2,
-> sensor-fix judgment, M5 evaluate, and escalation. The **worker**
-> (`qwen3-6-27b` on the cluster GPU behind MaaS) has **unlimited** tokens
-> here and owns all M4 coding (`rewrite` + `infer`) via OpenCode first
-> (`WORKER_FIRST`) — and drafts **M3 plans** worker-first too, with
-> plan-lint as the deterministic verifier and MiniMax as the backstop
-> when a draft stays red: the seat rule is *verifiability decides the
-> seat*, not task difficulty. Mechanical harvest is not a MiniMax job.
-> Selection history lives in `docs/OPERATIONS.md`; seat rules in
-> `.hermes/skills/migration-harness/REFERENCE.md`.
+> **Honesty beat:** autonomy is token-hungry and metered through MaaS (Step 8).
+> Dashboard Kanban-tab reachability from Dev Spaces is **not** claimed until
+> verified separately.
 
 ---
 
@@ -343,21 +324,28 @@ Each task runs in a fresh orchestrator session. Hermes writes a **task packet** 
 
 Nothing merges on agent authority, and no human approval substitutes for the factory either.
 
-1. M5 re-analyzes the **migrated** code (`migration/mta-findings-after.json`). Done is the Step 3 baseline resolved or explicitly waived, never "the agent says done."
-2. The supervisor pushes. Its report ends there by contract: "pushed; the factory pipeline decides." (Pushing from the workspace requires your Git credentials.)
-3. Watch the project's pipeline: clone → build → SonarQube quality gate → image. **Red CI means autonomy failed the regulated exit**; green CI is the platform's proof.
-4. Spot-check the diff if you like — optional. If something slipped through, tighten a guide or sensor and re-run: that is the **steering** loop (human), not an auto-edit of skills mid-run.
+1. After M5 (full `ACCEPT` path — **after** kill-ratio pin or typed waiver),
+   re-analyze migrated code; done is the Step 3 baseline resolved or waived.
+2. Push from the workspace (Git credentials required). The report ends:
+   "pushed; the factory pipeline decides."
+3. Watch the project's pipeline: clone → build → SonarQube quality gate → image.
+   **Red CI means autonomy failed the regulated exit**; green CI is the proof.
+4. Spot-check optional. Gaps → improve guides/sensors (steering), not mid-run
+   skill rewrites.
 
-Under Track B, deploy stories must also hit the acceptance path from `migration.yaml` live before the story is marked complete; then Retro may refresh remaining briefs before the next story.
-
-**What you should see:** an evidence-backed migration shipping through the factory: findings delta recorded, tests green, quality gate passed, with the pipeline, not a person, as the merge authority.
+**What you should see:** findings delta recorded, tests green, quality gate
+passed — pipeline as merge authority. Do not claim this exit until a slice has
+actually shipped.
 
 ---
 
 ## Step 8: The bill and the retro
 
-1. Open the Stage 040 MaaS usage dashboard: the token consumption of the full autonomous run (orchestrator and worker on the same developer key) next to the interactive stages' usage. Autonomy is visible on the same meter as everything else.
-2. Read `migration/retro-proposals.md`: **Brief updates** may already have been applied by the outer loop to remaining stories; **Skill / harness proposals** are for you — land them as versioned changes to the repository's guides, exactly like the stage 070 skills retro. Also skim `migration/run-log.md` and `migration/debt.md` for retry clusters.
+1. Open the Stage 040 MaaS usage dashboard: token consumption for Hermes
+   sessions / Kanban workers on the developer key, next to earlier stages.
+2. After a real slice: skim Kanban run history (`hermes kanban runs`), any
+   `migration/retro-proposals.md` / debt notes, and tighten guides/skills as
+   versioned repo changes (stage 070 skills-retro practice).
 
 > **Token governance beat (MTA 8.2):** interactive sessions run on
 > five-minute access tokens; automation runs on **API keys** you create in
