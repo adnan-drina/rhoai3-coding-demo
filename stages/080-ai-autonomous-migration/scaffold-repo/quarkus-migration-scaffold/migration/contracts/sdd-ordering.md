@@ -68,7 +68,7 @@ Story-level roadmap uses the same layering (`roadmap-lint` successor).
 
 ## Enforcement
 
-Cheap checks land in `scripts/check-sdd-readiness.sh` / phase schema when task
-JSON + plan artifacts exist (Lead). Full roadmap/plan-lint successors ride M2/M3
-schema work. Non-blocking vs cut-order inventory → fixtures → mta-cli →
-NetworkPolicy.
+Cheap checks: `scripts/check-sdd-ordering.py` (via `check-sdd-readiness.sh`)
+when task JSON / plan artifacts exist — identity refs, refuse IMPLEMENT
+`replan`, require `plan_revision` on supersession. Full roadmap/plan-lint
+successors ride M2/M3 schema work.

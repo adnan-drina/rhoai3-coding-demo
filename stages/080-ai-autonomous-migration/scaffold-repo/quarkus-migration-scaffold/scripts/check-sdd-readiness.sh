@@ -129,6 +129,13 @@ PY
   fi
 done
 
+# --- AD-S §S.6 ordering (identity / refuse worker re-plan / plan_revision) ---
+if ! python3 "${root}/scripts/check-sdd-ordering.py" "${root}"; then
+  bad=1
+fi
+# Count §S.6 toward "checked" only when it examined artifacts (script always runs).
+checked=$((checked + 1))
+
 if [ "${checked}" -eq 0 ]; then
   note "OK: no SDD specs/tasks/waivers yet — readiness lint idle (P0 shapes documented under migration/contracts/)."
   exit 0
