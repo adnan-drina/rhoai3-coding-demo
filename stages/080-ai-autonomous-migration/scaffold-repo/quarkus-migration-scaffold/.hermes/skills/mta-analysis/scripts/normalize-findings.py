@@ -57,8 +57,16 @@ def main() -> int:
         if not isinstance(incidents, list):
             incidents = []
         for inc in incidents:
-            if isinstance(inc, dict) and not inc.get("codeSnip"):
-                inc["codeSnip"] = "(absent-from-tool)"
+            if isinstance(inc, dict):
+                if not inc.get("codeSnip"):
+                    inc["codeSnip"] = "(absent-from-tool)"
+                # Preserve-model requires lineNumber; property-file hits often omit it.
+                if inc.get("lineNumber") in (None, ""):
+                    inc["lineNumber"] = 0
+                if not inc.get("uri"):
+                    inc["uri"] = "(absent-from-tool)"
+                if not inc.get("message"):
+                    inc["message"] = "(absent-from-tool)"
         v["incidents"] = incidents
 
     out = {
