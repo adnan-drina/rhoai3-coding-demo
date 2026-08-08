@@ -85,6 +85,14 @@ components:
           exposure: public
           secure: false
           protocol: https
+        # Hermes Agent web dashboard (Architect demo-surface E-20260808T145020Z).
+        # Start before dispatch: hermes dashboard --skip-build --host 0.0.0.0
+        # --port 9119 --no-open (public bind requires Hermes auth provider).
+        - name: hermes-dashboard
+          targetPort: 9119
+          exposure: public
+          secure: false
+          protocol: https
         - name: debug
           targetPort: 5005
           exposure: none
