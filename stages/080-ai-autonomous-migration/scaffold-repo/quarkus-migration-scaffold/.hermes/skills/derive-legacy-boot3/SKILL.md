@@ -31,7 +31,7 @@ derivation design; do not "simplify" harvest checks back to the RO mount.
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh"
-bash scripts/check-legacy-at-3-manifest.sh
+bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 ```
 
 - If `spring-boot.version >= 3` already: `mode=identity` — `harvest_referent`

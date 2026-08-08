@@ -13,9 +13,11 @@ set -euo pipefail
 
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ASSET_OVERRIDE="${SCRIPT_DIR}/../.hermes/provision/spec-kit/overrides/spec-template.md"
+# Skill lives at .hermes/skills/specify-workspace-init/scripts — provision assets at repo .hermes/provision
+PROJECT_HERMES="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+ASSET_OVERRIDE="${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md"
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
-LOG_PREFIX="specify-init-workspace"
+LOG_PREFIX="specify-workspace-init"
 
 log() { echo "[${LOG_PREFIX}] $*"; }
 die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }

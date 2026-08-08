@@ -68,7 +68,8 @@ Story-level roadmap uses the same layering (`roadmap-lint` successor).
 
 ## Enforcement
 
-Cheap checks: `scripts/check-sdd-ordering.py` (via `check-sdd-readiness.sh`)
-when task JSON / plan artifacts exist — identity refs, refuse IMPLEMENT
-`replan`, require `plan_revision` on supersession. Full roadmap/plan-lint
-successors ride M2/M3 schema work.
+Cheap checks: skill `sdd-readiness`
+(`.hermes/skills/sdd-readiness/scripts/check-ordering.py` via
+`check-readiness.sh`) when task JSON / plan artifacts exist — identity refs,
+refuse IMPLEMENT `replan`, require `plan_revision` on supersession. Full
+roadmap/plan-lint successors ride M2/M3 schema work.

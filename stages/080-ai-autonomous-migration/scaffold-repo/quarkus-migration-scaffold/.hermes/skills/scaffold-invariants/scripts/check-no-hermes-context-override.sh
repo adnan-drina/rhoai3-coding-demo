@@ -3,7 +3,7 @@
 # first-match-wins (.hermes.md → AGENTS.md → …). Either override file
 # silently shadows AGENTS.md — fail if either name appears anywhere.
 set -euo pipefail
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../../../.." && pwd)"
 bad=0
 while IFS= read -r -d '' f; do
   echo "FAIL: ${f#"${root}"/} — removes AGENTS.md from Hermes load order (AD-002)." >&2

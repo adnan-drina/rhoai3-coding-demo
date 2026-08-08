@@ -2,7 +2,8 @@
 
 **Status:** provisional lock (`rhoai3.mta-findings/v1-provisional`)  
 **Source of bytes:** copy of `mta-cli` / `kantra` `--json-output` **plus** our
-`execution_evidence` envelope (added by `scripts/normalize-mta-findings.py`).  
+`execution_evidence` envelope (skill `mta-analysis` →
+`scripts/normalize-findings.py`).  
 **Blocked on live re-measure** until a workspace has a working CLI (host 7.3
 rulesets broken). Field list is from PROBE + Konveyor shape + Architect W2 §11.5.
 
@@ -46,6 +47,6 @@ Do **not** overload deferral. Tool-wrong cases use `mta-exception`
 ## Validate
 
 ```bash
-python3 scripts/normalize-mta-findings.py migration/mta-findings.json
-python3 scripts/validate-mta-findings-schema.py migration/mta-findings.json
+python3 .hermes/skills/mta-analysis/scripts/normalize-findings.py migration/mta-findings.json
+python3 .hermes/skills/mta-analysis/scripts/validate-findings-schema.py migration/mta-findings.json
 ```

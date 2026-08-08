@@ -6,8 +6,8 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib_verdict import expect, write_verdict  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from verdict import expect, write_verdict  # noqa: E402
 
 
 def evaluate(fixture_dir: Path) -> str:
@@ -30,14 +30,14 @@ def evaluate(fixture_dir: Path) -> str:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    base = root / "migration/fixtures/admission/g1"
+    base = root / "migration/fixtures/admission/g1-characterization"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",
         "known-vacuous": "INCONCLUSIVE",
     }
     rc = 0
-    out_dir = root / "migration/fixtures/admission/out/g1"
+    out_dir = root / "migration/fixtures/admission/out/g1-characterization"
     for name, want in expected.items():
         got = evaluate(base / name)
         write_verdict(

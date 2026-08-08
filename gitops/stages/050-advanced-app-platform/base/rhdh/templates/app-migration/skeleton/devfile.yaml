@@ -174,13 +174,11 @@ commands:
           echo "installed but not configured — governed MaaS credentials come"
           echo "from the platform init script."
         fi
-        # AD-S: Spec Kit in the migration workspace (Hermes), not the golden
-        # scaffold. Idempotent; Non-Goals override + never /speckit.implement.
-        # Script lands from golden fetch; skeleton only overwrites this
-        # dual-project devfile.
-        if [ -f "${PROJECT_DIR}/scripts/specify-init-workspace.sh" ]; then
-          bash "${PROJECT_DIR}/scripts/specify-init-workspace.sh" "${PROJECT_DIR}" \
-            || echo "WARN: specify-init-workspace failed (AD-S) — re-run: bash scripts/specify-init-workspace.sh ${PROJECT_DIR}"
+        # AD-S: Spec Kit via specify-workspace-init skill (lands from golden).
+        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/specify-workspace-init/scripts/init-workspace.sh"
+        if [ -f "${SPECIFY_INIT}" ]; then
+          bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
+            || echo "WARN: specify-workspace-init failed (AD-S) — re-run: bash ${SPECIFY_INIT} ${PROJECT_DIR}"
         fi
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom

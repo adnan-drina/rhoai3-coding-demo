@@ -117,9 +117,9 @@ print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha256", ""))
 PY
 )"
 # Preserve model: envelope + codeSnip required (provisional schema lock).
-python3 "${ROOT}/scripts/normalize-mta-findings.py" \
+python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
   "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "${INPUT_DIGEST}"
-python3 "${ROOT}/scripts/validate-mta-findings-schema.py" "${JSON_OUT}" \
-  || die "findings failed provisional schema validation (migration/schemas/mta-findings.md)"
+python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
+  || die "findings failed provisional schema validation (migration/schemas/mta-findings.md; skill mta-analysis)"
 
 echo "OK: findings → ${JSON_OUT}  report → ${OUT_DIR}"

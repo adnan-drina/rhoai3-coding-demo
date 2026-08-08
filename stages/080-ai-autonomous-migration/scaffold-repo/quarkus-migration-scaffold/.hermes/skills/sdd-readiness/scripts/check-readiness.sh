@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# P0 pattern-steals (Architect E-20260808T061327Z): fail closed on
+# sdd-readiness skill — P0 pattern-steals + AD-S §S.6 (Architect E-20260808T061327Z): fail closed on
 # unresolved Q-*, missing Non-Goals, incomplete task packets, waivers
 # without re_open_trigger. Skips cleanly when no SDD artifacts exist yet.
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../../../.." && pwd)"
 bad=0
 checked=0
 
@@ -130,7 +130,7 @@ PY
 done
 
 # --- AD-S §S.6 ordering (identity / refuse worker re-plan / plan_revision) ---
-if ! python3 "${root}/scripts/check-sdd-ordering.py" "${root}"; then
+if ! python3 "$(cd "$(dirname "$0")" && pwd)/check-ordering.py" "${root}"; then
   bad=1
 fi
 # Count §S.6 toward "checked" only when it examined artifacts (script always runs).

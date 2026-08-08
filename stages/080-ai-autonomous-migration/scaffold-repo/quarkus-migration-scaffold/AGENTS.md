@@ -50,97 +50,79 @@ Maven Central and in-repo sources only — it cannot see your workspace. Your
 local green is not the factory's green until the build passes without
 workspace state.
 
-## Hermes project-context invariant (AD-H / AD-001 / AD-002)
+## Hermes (AD-H) — classify, then place
 
-Do **not** add `.hermes.md` or `HERMES.md` anywhere in this repository.
-Hermes loads project context first-match-wins (`.hermes.md` → `AGENTS.md` →
-…); either file would silently stop this `AGENTS.md` from loading. Enforce
-with:
+**Kind determines home.** Map: `.hermes/LAYOUT.md`. Do not add top-level
+`scripts/` for new procedures (that directory is intentionally empty aside
+from a pointer README).
 
-```bash
-bash scripts/check-no-hermes-context-override.sh
-```
+| Kind | Home |
+|------|------|
+| Standing conventions | this `AGENTS.md` |
+| Identity | `.hermes/SOUL.md` |
+| Procedures / tool invocations | `.hermes/skills/<name>/` |
+| Domain gates G-1..G-4 | skill `domain-gates` (vocabulary names below) |
+| Run / phase data | `migration/` |
+| SDD stack | `.specify/` (workspace provision only — AD-S) |
 
-### Hermes paths (AD-H)
+### Paths
 
 | Path | Role |
 |------|------|
-| `$HERMES_MANAGED_DIR` (`/etc/hermes` or `/projects/.platform/hermes`) | Platform config + secrets (`.env`) — not in this repo |
-| `$HERMES_HOME` → `.hermes/home/` | Runtime tree (sessions/logs gitignored; agent-created skills versioned) |
-| `.hermes/skills/` | Scaffold procedures via `skills.external_dirs` (no symlink loop) |
-| `~/.hermes/skills/` | Also on `external_dirs` — spec-kit installs here (`Path.home()`, ignores `$HERMES_HOME`) |
-| `.hermes/SOUL.md` | Identity source; provisioning places a copy at `$HERMES_HOME/SOUL.md` |
-| `.specify/` | SDD stack (**AD-S**) — created at workspace provision, not in the golden scaffold |
-| `~/.hermes/skills/` (spec-kit) | `/speckit.*` Hermes skills from `specify init --integration hermes` |
+| `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
+| `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
+| `.hermes/skills/` | Scaffold skills on `skills.external_dirs` |
+| `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
+| `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
-`auth.json` must **not** exist anywhere under Hermes homes — its presence
-means Portal onboarding was used instead of Managed Scope.
+Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
+`bash .hermes/skills/scaffold-invariants/scripts/check-no-hermes-context-override.sh`
 
-### Spec Kit (AD-S) — provision and stop rule
+`auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
-Workspace postStart runs `scripts/specify-init-workspace.sh` (or run it by
-hand once). That installs Hermes-integrated Spec Kit **in this workspace
-only** and the Non-Goals template override.
+### Domain gate vocabulary
 
-**Stop rule:** after `/speckit.tasks` (optional `/speckit.analyze`), convert
-`tasks.md` into Hermes `kanban_create()` calls. **Never run
-`/speckit.implement`** — Kanban is the only executor (AD-006 / AD-H).
+| ID | Name | Skill script |
+|----|------|----------------|
+| G-1 | characterization | `domain-gates/scripts/g1-characterization.py` |
+| G-2 | harvest-fidelity | `domain-gates/scripts/g2-harvest-fidelity.py` |
+| G-3 | findings-delta | `domain-gates/scripts/g3-findings-delta.py` |
+| G-4 | runtime-parity | `domain-gates/scripts/g4-runtime-parity.py` |
 
-When `HERMES_HOME` is relocated, keep **both**
-`<modernized>/.hermes/skills` and `$HOME/.hermes/skills` on
-`skills.external_dirs` (spec-kit writes to `Path.home()`, not `$HERMES_HOME`).
+### Common invocations
+
+```bash
+# Specimen-free suite
+bash .hermes/skills/harness-validate/scripts/validate.sh
+
+# SDD readiness (pattern-steals + AD-S §S.6)
+bash .hermes/skills/sdd-readiness/scripts/check-readiness.sh
+
+# Entry-point inventory (W2 §11.3)
+python3 .hermes/skills/inventory-entry-points/scripts/inventory-entry-points.py \
+  /projects/.derived/legacy-at-3 -o migration/entry-point-inventory.json
+
+# MTA analyze (skill mta-analysis)
+bash .hermes/skills/mta-analysis/scripts/mta-analyze-legacy.sh
+
+# Spec Kit provision (AD-S) — postStart / once
+bash .hermes/skills/specify-workspace-init/scripts/init-workspace.sh /projects/modernized
+```
+
+When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
+
+### Spec Kit stop rule (AD-S)
+
+After `/speckit.tasks` (optional `/speckit.analyze`) → `kanban_create()`.
+**Never** `/speckit.implement`.
 
 ### Task-id correlation (AD-H §7.5)
 
-Every Kanban task, commit-message prefix, Hermes session/log reference,
-domain-gate result, and run-report line must carry the **same task id**.
-This is a phase-schema requirement (not a logging feature): a reviewer who
-starts on any surface must reach the others for that task.
-
-### Pattern-steals (Loiane → scaffold gates)
-
-Binding shapes (not a toolkit copy): open `Q-*` + missing Non-Goals block
-readiness; task packets need `ac_ids` / `files_in_scope` / `deps`; every
-`mta-exception` needs a checkable `re_open_trigger`. See
-`migration/contracts/pattern-steals.md` and
-`migration/schemas/mta-exception.md`. Enforce with:
-
-```bash
-bash scripts/check-sdd-readiness.sh
-```
+Every Kanban task, commit prefix, session/log ref, domain-gate result, and
+run-report line must carry the **same task id**.
 
 ### SDD ordering (AD-S §S.6)
 
-Brief **identity** fields carry unchanged into spec / stories / tasks; the
-implementation graph follows build → security → schema → contracts → test
-infra → feature → surfaces; IMPLEMENT workers **must not** re-plan (block +
-escalate). See `migration/contracts/sdd-ordering.md`.
-
-### Harness validate (local, specimen-free)
-
-```bash
-bash scripts/validate-harness.sh
-```
-
-Runs SDD readiness, W2 §10 admission fixtures (G-1…G-4 tri-state), provisional
-`mta-findings` schema check, and an inventory-scanner smoke.
-
-### Entry-point inventory (W2 §11.3)
-
-Scan `legacy@3.x` (or any Java tree) before plan/Kanban populate:
-
-```bash
-python3 scripts/inventory-entry-points.py /projects/.derived/legacy-at-3 \
-  -o migration/entry-point-inventory.json
-```
-
-HTTP and non-HTTP (`@PostConstruct`, `@Scheduled`, listeners, CLI runners).
-Ship even when near-empty — zero files without a scan is not the same as a
-ran scan with zero entry points.
-
-### MTA findings (provisional schema)
-
-After `mta-analyze-legacy.sh`, findings are normalized to
-`rhoai3.mta-findings/v1-provisional` (`codeSnip` required). See
-`migration/schemas/mta-findings.md`. CLI: prefer `kantra-ensure` then
-`mta-cli`/`kantra` on PATH.
+Brief identity carries unchanged; graph order build → security → schema →
+API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
+See `migration/contracts/sdd-ordering.md`.

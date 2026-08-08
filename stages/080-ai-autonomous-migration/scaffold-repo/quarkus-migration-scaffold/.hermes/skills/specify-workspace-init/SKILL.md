@@ -17,7 +17,7 @@ description: >
 ## Procedure
 
 ```bash
-bash scripts/specify-init-workspace.sh /projects/modernized
+bash "${HERMES_SKILL_DIR}/scripts/init-workspace.sh" /projects/modernized
 ```
 
 Idempotent via `.specify/.rhoai3-ads-provisioned`.

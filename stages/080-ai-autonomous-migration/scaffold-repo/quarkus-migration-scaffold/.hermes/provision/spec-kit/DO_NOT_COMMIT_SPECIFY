@@ -1,3 +1,4 @@
 This directory holds provision *assets* only (Non-Goals override template).
 Do not commit a workspace `.specify/` tree into the golden scaffold (AD-S S.4).
-`.specify/` is created at provision by scripts/specify-init-workspace.sh.
+`.specify/` is created at provision by skill specify-workspace-init
+(`.hermes/skills/specify-workspace-init/scripts/init-workspace.sh`).

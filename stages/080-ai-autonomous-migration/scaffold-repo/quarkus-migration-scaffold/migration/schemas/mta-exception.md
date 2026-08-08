@@ -50,6 +50,6 @@ decided_at: 2026-08-08T00:00:00Z
 
 ## Fail closed
 
-`scripts/check-sdd-readiness.sh` fails if any file under
+Skill `sdd-readiness` (`check-readiness.sh`) fails if any file under
 `migration/waivers/` or `migration/mta-exceptions/` lacks a non-empty
 `re_open_trigger` (YAML/JSON).
