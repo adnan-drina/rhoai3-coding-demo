@@ -140,3 +140,11 @@ python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
 ```
 
 See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
+
+### Grounded generation (AD-H §17)
+
+Implementers consult, in order: task packet → approved brief/spec → legacy RO
+→ destination reference/`AGENTS.md` → approved Quarkus docs (how only).
+Non-trivial changes cite task id, brief/story id, and legacy locus. Invention
+outside evidence is a `blocked` outcome, not improvisation. See
+`migration/contracts/grounded-generation.md`.
