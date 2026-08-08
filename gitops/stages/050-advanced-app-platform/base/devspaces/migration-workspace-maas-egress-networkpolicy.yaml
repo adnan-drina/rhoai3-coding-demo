@@ -44,11 +44,16 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Dev Spaces control plane — REQUIRED for the workspace to start.
-    # The per-workspace che-gateway sidecar calls
-    # che-gateway.openshift-devspaces:8089 to obtain the IDE URL. Without this
-    # rule the pod runs, the IDE serves 200 on :3100, and the browser still gets
-    # 504 "workspace has not received an IDE URL" (2026-08-08 outage).
+    # Dev Spaces control plane. Required egress row R2 (class PRIMARY), derived
+    # from Red Hat Dev Spaces ingress documentation — see
+    # harness-refactoring/source-analysis/control-admission/20260808-required-egress.md
+    # The per-workspace che-gateway sidecar reaches
+    # che-gateway.openshift-devspaces for workspace-plane traffic.
+    #
+    # NOTE: the commit that introduced this rule (ba5b3c6) claimed it fixed a
+    # workspace 504. That claim was wrong — the 504 was a browser-side issue, and
+    # this rule did not change the observed behaviour. The rule is kept because
+    # R2 requires it on documented grounds, not because it resolved an incident.
     - to:
         - namespaceSelector:
             matchLabels:
