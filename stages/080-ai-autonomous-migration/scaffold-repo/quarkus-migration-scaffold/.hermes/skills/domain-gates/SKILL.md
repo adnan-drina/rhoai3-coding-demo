@@ -44,9 +44,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/g4-runtime-parity.py" /projects/modernized
 
 ## G-1 volume floor — PIT dry-run (Research R1 / Architect ACCEPT)
 
-Pin **`pitest-maven` 1.25.5**; use **`-Dpit.dryRun=true`** (not `+dryRun`
-feature). Referent needs **≥1 compilable test**; refuse zero-test skip and
-`-DskipTests`. **No static-metric floor.**
+Pin **`pitest-maven` 1.25.5** + **`pitest-junit5-plugin` ≥1.2.3** (declared
+on the scaffold `pom.xml` pitest plugin); use **`-Dpit.dryRun=true`** (not
+`+dryRun` feature). Referent needs **≥1 compilable test**; refuse zero-test
+skip and `-DskipTests`. **No static-metric floor.**
 
 ```bash
 # Live count (writes evidence JSON optional)

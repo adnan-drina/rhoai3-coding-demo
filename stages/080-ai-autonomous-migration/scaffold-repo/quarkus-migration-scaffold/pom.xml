@@ -140,6 +140,21 @@
            shared jacoco-quarkus.exec, target/jacoco-report/jacoco.xml often
            never lands and Sonar new_coverage reads 0% on exercised classes.
            Align with https://quarkus.io/guides/tests-with-coverage -->
+      <!-- G-1 volume floor (W2 §6 / Research): pitest-maven 1.25.5 + junit5
+           plugin ≥1.2.3. Not bound to a phase — invoked by
+           domain-gates/scripts/count-pit-dry-run.sh (-Dpit.dryRun=true). -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>1.25.5</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>1.2.3</version>
+          </dependency>
+        </dependencies>
+      </plugin>
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
