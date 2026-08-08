@@ -1,7 +1,7 @@
 # SDD ordering contract (brief → spec → tasks → re-plan)
 
 **Status:** binding for migration workspace · mirrors **AD-S §S.6**  
-**Sources:** Architect plan / AD-S §S.6 (Operator ACK pending on ledger)  
+**Sources:** Architect plan / AD-S §S.6 (Operator ACK `E-20260808T072759Z`)  
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).  
 Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 

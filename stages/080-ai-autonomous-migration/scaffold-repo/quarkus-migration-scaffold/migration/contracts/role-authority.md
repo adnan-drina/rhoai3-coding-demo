@@ -1,7 +1,7 @@
 # Role authority contract (Hermes orchestration)
 
 **Status:** binding for migration workspace · mirrors **AD-H §16**  
-**Sources:** Architect plan / AD-H §16 (Operator ACK pending on ledger)  
+**Sources:** Architect plan / AD-H §16 (Operator ACK `E-20260808T072759Z`)  
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
 AD-H / AD-S / SOUL stand. Human checkpoints are **ack artifacts** or Kanban

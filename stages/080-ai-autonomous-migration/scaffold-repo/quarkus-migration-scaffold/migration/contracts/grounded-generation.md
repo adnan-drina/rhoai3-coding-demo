@@ -1,7 +1,7 @@
 # Grounded code generation (IMPLEMENT)
 
 **Status:** binding for migration workspace · mirrors **AD-H §17**  
-**Sources:** Architect plan / AD-H §17 (Operator ACK pending on ledger)  
+**Sources:** Architect plan / AD-H §17 (Operator ACK `E-20260808T072759Z`)  
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
 Applies to the **implementer** role (M3). SOUL / AD-S §S.6 / AD-H §16 /
