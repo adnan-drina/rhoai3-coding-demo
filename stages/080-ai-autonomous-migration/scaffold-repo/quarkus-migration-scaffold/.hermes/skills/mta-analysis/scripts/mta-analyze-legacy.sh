@@ -161,4 +161,11 @@ python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
 python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
   || die "findings failed provisional schema validation (migration/schemas/mta-findings.md; skill mta-analysis)"
 
-echo "OK: findings → ${JSON_OUT}  report → ${OUT_DIR}"
+# M1→M2 seam: bounded handoff index (no codeSnip). Evidence store stays at JSON_OUT.
+python3 "$(cd "$(dirname "$0")" && pwd)/emit-findings-handoff.py" "${ROOT}" "${JSON_OUT}" \
+  "${ROOT}/migration/findings-handoff.json" \
+  || die "emit findings-handoff failed (migration/schemas/findings-handoff.md)"
+python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
+  || die "findings-handoff gate failed after emit"
+
+echo "OK: findings → ${JSON_OUT}  handoff → ${ROOT}/migration/findings-handoff.json  report → ${OUT_DIR}"

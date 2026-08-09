@@ -52,7 +52,10 @@ If `mta-cli`/`kantra` are missing, the script runs `kantra-ensure` (lazy PVC
 install under `/projects/.tools/kantra`). Findings are normalized
 (`normalize-findings.py`) to `rhoai3.mta-findings/v1-provisional`
 (`codeSnip` required) and schema-checked (`validate-findings-schema.py`) —
-see `migration/schemas/mta-findings.md`.
+see `migration/schemas/mta-findings.md`. After validate, emit the M1→M2 seam
+artifact `migration/findings-handoff.json` (`emit-findings-handoff.py`, schema
+`rhoai3.findings-handoff/v1` — **no** `codeSnip`) and run
+`check-findings-handoff.py`. See `migration/schemas/findings-handoff.md`.
 
 The script expands `migration.yaml` `analysis.targets` into repeated
 `--target` flags, writes JSON findings, and overwrites the output dir.

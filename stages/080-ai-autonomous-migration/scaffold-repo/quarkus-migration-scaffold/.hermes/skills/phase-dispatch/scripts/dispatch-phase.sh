@@ -156,7 +156,7 @@ orchestration: hermes_native (required)
 1. Load/run **derive-legacy-boot3** - ensure `migration/derived/legacy-at-3.json` and frozen harvest_referent.
 2. Load/run **mta-analysis** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w).
 3. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json`.
-4. Schema-validate findings; grant `migration/acks/m1-findings.json` when OK.
+4. Schema-validate findings; emit `migration/findings-handoff.json` (seam); grant `migration/acks/m1-findings.json` when OK.
 
 ## Constraints
 - workspace: dir:/projects/modernized
@@ -165,23 +165,34 @@ orchestration: hermes_native (required)
 - If blocked, report typed BLOCK and stop.
 
 ## Done when
-- `migration/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`)
+- `migration/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
+- `migration/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
 - `migration/acks/m1-findings.json` granted with violation_rules count
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
     ;;
   M2)
     cat >"${BODY_FILE}" <<'EOF'
-# M2 PLAN - Hermes-native (planner / spec-author)
+# M2 PLAN - Hermes-native (planner / spec-author) — original scope
 
 Phase: M2 per `.hermes/phase-dispatch.yaml`
-Requires ack: migration/acks/m1-findings.json
+Requires: migration/acks/m1-findings.json + findings-handoff gate
+
+## READ (planner context)
+- `migration/findings-handoff.json` (required; schema rhoai3.findings-handoff/v1)
+- `migration/acks/m1-findings.json`
+- `migration/entry-point-inventory.json` (controller names/counts; optional digest check via handoff)
+
+## DO NOT
+- Do **not** load `migration/mta-findings.json` or `mta-analyze-out/` into chat (evidence store — selective locus reads only after digest check)
+- Never `/speckit.implement`
 
 ## Job
-1. Partition stories/briefs from findings + legacy structure.
-2. Spec Kit: `/speckit.specify` → plan → tasks (optional analyze). **Never** `/speckit.implement`.
-3. Create implementer Kanban cards from tasks.md (`hermes kanban create`).
-4. Grant `migration/acks/brief-identity.json` when brief identity is stable.
+1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
+2. Partition stories/briefs from **handoff rules/loci** + inventory.
+3. Spec Kit: `/speckit.specify` → plan → tasks (optional analyze).
+4. Create implementer Kanban cards from tasks.md (`hermes kanban create`).
+5. Grant `migration/acks/brief-identity.json` when brief identity is stable.
 
 ## Constraints
 - workspace: dir:/projects/modernized
