@@ -56,7 +56,8 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | Skill | Purpose |
 |-------|---------|
 | `derive-legacy-boot3` | Boot 2→3 derivation + manifest check |
-| `mta-analysis` | `mta-cli` analyze + findings normalize/schema |
+| `phase-dispatch` | Hermes Kanban create+dispatch for M1–M5 from `phase-dispatch.yaml` |
+| `mta-analysis` | `mta-cli` analyze + findings normalize/schema (inside M1/M5 worker) |
 | `specify-workspace-init` | AD-S Spec Kit provision |
 | `inventory-entry-points` | Entry-point scanner |
 | `sdd-readiness` | Pattern-steals + §S.6 lints |

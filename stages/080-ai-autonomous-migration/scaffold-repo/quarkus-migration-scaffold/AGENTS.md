@@ -106,8 +106,11 @@ bash .hermes/skills/sdd-readiness/scripts/check-readiness.sh
 python3 .hermes/skills/inventory-entry-points/scripts/inventory-entry-points.py \
   /projects/.derived/legacy-at-3 -o migration/entry-point-inventory.json
 
-# MTA analyze (skill mta-analysis)
-bash .hermes/skills/mta-analysis/scripts/mta-analyze-legacy.sh
+# M1 ANALYZE — Hermes Kanban only (skill phase-dispatch → mta-analysis inside worker)
+# Forbidden for orchestration: nohup …/mta-analyze-legacy.sh & (tasks=0 / not hermes_native)
+bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
+# Domain script (runs inside the M1 worker after skill load — not the control plane):
+#   bash .hermes/skills/mta-analysis/scripts/mta-analyze-legacy.sh
 
 # Spec Kit provision (AD-S) — postStart / once
 bash .hermes/skills/specify-workspace-init/scripts/init-workspace.sh /projects/modernized

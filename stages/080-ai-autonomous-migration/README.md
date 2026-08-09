@@ -114,11 +114,17 @@ hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /spe
 
 ```bash
 cd /projects/modernized
+export HERMES_HOME=/projects/modernized/.hermes/home
 # terminal A — start BEFORE any dispatch
 hermes kanban watch --interval 1
-# terminal B — spawn ready work
-hermes kanban dispatch --max 1
+# terminal B — seed M1 (derive + MTA + inventory) as a Hermes Kanban task, then tick
+bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
+# later phases: dispatch-phase.sh M2 --parent <m1_task_id>
+# (dispatch-phase already runs one hermes kanban dispatch tick)
 ```
+
+Do **not** start M1 with a detached `mta-analyze-legacy.sh` — Hermes must own
+M1–M5 orchestration (role, skills, `max_runtime_seconds`, recovery).
 
 **Dashboard is not part of Acts A–E.** Operator-only Hermes dashboard (optional)
 lives in `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md` — **not** the demo

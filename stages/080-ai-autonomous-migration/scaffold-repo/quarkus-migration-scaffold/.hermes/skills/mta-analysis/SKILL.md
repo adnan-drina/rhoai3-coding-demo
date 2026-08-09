@@ -14,6 +14,12 @@ description: >
 - M5 (or any findings-delta step) needs findings regenerated against the same
   referent the harvest compared to
 
+**Orchestration:** start M1 via skill `phase-dispatch`
+(`dispatch-phase.sh M1`) so Kanban owns the task, role, budget, and recovery.
+Do **not** invoke this script from a Lead/operator detached shell as the
+migration control plane — that yields `tasks=0` and cannot stamp
+`orchestration=hermes_native`.
+
 Do **not** load this skill for unrelated coding tasks — progressive disclosure
 keeps it off the token budget until M1/M5.
 
