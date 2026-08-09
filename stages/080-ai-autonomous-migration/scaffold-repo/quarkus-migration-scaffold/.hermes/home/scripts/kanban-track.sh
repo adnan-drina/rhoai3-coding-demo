@@ -11,6 +11,8 @@
 # Usage (from /projects/modernized):
 #   bash .hermes/home/scripts/kanban-track.sh follow          # daemon + live watch
 #   bash .hermes/home/scripts/kanban-track.sh watch           # live events only
+#   bash .hermes/home/scripts/kanban-track.sh progress        # one-shot board + short log tails
+#   bash .hermes/home/scripts/kanban-track.sh progress-follow # continuous worker log stream
 #   bash .hermes/home/scripts/kanban-track.sh dispatch        # one claim/spawn tick
 #   bash .hermes/home/scripts/kanban-track.sh status
 #   bash .hermes/home/scripts/kanban-track.sh show <task_id>
@@ -20,7 +22,10 @@
 #
 # Two-pane demo (recommended for audience):
 #   terminal A:  …/kanban-track.sh watch
-#   terminal B:  …/kanban-track.sh dispatch   # or phase-dispatch skill
+#   terminal B:  …/kanban-track.sh progress-follow   # or: tail <task_id>
+#
+# Env:
+#   KANBAN_PROGRESS_LINES  lines shown by `progress` (default 60)
 #
 set -euo pipefail
 
@@ -29,8 +34,19 @@ HERMES_HOME="${HERMES_HOME:-${PROJECT_DIR}/.hermes/home}"
 INTERVAL="${KANBAN_WATCH_INTERVAL:-1}"
 DISPATCH_MAX="${KANBAN_DISPATCH_MAX:-1}"
 DAEMON_INTERVAL="${KANBAN_DAEMON_INTERVAL:-15}"
+PROGRESS_LINES="${KANBAN_PROGRESS_LINES:-60}"
 DAEMON_LOG="${HERMES_HOME}/kanban-daemon.log"
 DAEMON_PIDFILE="${HERMES_HOME}/kanban-daemon.pid"
+
+running_task_ids() {
+  # Prefer `ls` column layout; fall back to `list`.
+  local ids
+  ids="$(hermes kanban ls 2>/dev/null | awk '/running/{print $2}' | head -10 || true)"
+  if [[ -z "${ids}" ]]; then
+    ids="$(hermes kanban list 2>/dev/null | awk '/running/{print $1}' | head -10 || true)"
+  fi
+  printf '%s' "${ids}"
+}
 
 die() { echo "kanban-track: $*" >&2; exit 1; }
 
@@ -75,11 +91,36 @@ cmd_ensure_daemon() {
   echo "kanban-track: started daemon pid=$(cat "${DAEMON_PIDFILE}") log=${DAEMON_LOG}"
 }
 
+print_board_snapshot() {
+  # Hermes `kanban watch` seeds at MAX(event id) and does NOT replay history
+  # (upstream hermes_cli/kanban.py _cmd_watch). Empty stream ≠ empty board.
+  echo "kanban-track: board snapshot (watch will only print NEW events after this):"
+  hermes kanban ls 2>&1 | head -40 || hermes kanban list 2>&1 | head -40 || true
+  hermes kanban stats 2>&1 | head -20 || true
+  # Surface running workers so the terminal is never a blank pane mid-run.
+  local running
+  running="$(running_task_ids)"
+  if [[ -n "${running}" ]]; then
+    echo "kanban-track: running task(s) — stream with progress-follow (or log/tail):"
+    echo "  bash $0 progress-follow"
+    for tid in ${running}; do
+      echo "  bash $0 progress-follow ${tid}   # or: log|tail|show ${tid}"
+    done
+  else
+    echo "kanban-track: no running tasks — dispatch or phase-dispatch to create events."
+  fi
+  echo "kanban-track: HERMES_HOME=${HERMES_HOME}"
+}
+
 cmd_watch() {
   need_hermes
   cd_project
+  # Relocated board: without this, watch may bind empty ~/.hermes/kanban.db
+  export HERMES_HOME
   echo "kanban-track: watching board events (interval=${INTERVAL}s). Ctrl-C stops watch only."
   echo "kanban-track: tip — start this BEFORE dispatch/phase-dispatch for the demo pane."
+  print_board_snapshot
+  echo "kanban-track: entering forward-only watch (Hermes does not replay past events)…"
   exec hermes kanban watch --interval "${INTERVAL}" "$@"
 }
 
@@ -88,6 +129,74 @@ cmd_dispatch() {
   cd_project
   hermes kanban dispatch --max "${DISPATCH_MAX}" --json "$@" || true
   hermes kanban ls 2>&1 | head -40 || hermes kanban list 2>&1 | head -40 || true
+}
+
+cmd_progress() {
+  # One-shot: board + last lines of each running worker log (not a sixth surface).
+  # For a continuous stream use progress-follow (worker log via tail -f; not hermes kanban tail).
+  need_hermes
+  cd_project
+  export HERMES_HOME
+  print_board_snapshot
+  local running tid
+  running="$(running_task_ids)"
+  for tid in ${running}; do
+    echo "======== log ${tid} (last ${PROGRESS_LINES} lines; stream with: $0 progress-follow ${tid}) ========"
+    hermes kanban log "${tid}" --tail 4000 2>&1 | tail -n "${PROGRESS_LINES}" || true
+  done
+}
+
+cmd_progress_follow() {
+  # Continuous worker *process* log (tool calls / reasoning transcript).
+  # Not `hermes kanban tail` — that is the board event stream (claim/heartbeat/done).
+  # Hermes CLI: `hermes kanban log <id> [--tail BYTES]` (no --follow); stream via tail -f.
+  need_hermes
+  cd_project
+  export HERMES_HOME
+  local want="${1:-}"; shift || true
+  local running tid logfile
+  running="$(running_task_ids)"
+  if [[ -n "${want}" ]]; then
+    tid="${want}"
+  else
+    # First running task; if several, say so and pin the first.
+    # shellcheck disable=SC2086
+    set -- ${running}
+    tid="${1:-}"
+    if [[ -z "${tid}" ]]; then
+      print_board_snapshot
+      die "no running task to follow — dispatch first, or: $0 progress-follow <task_id>"
+    fi
+    if [[ -n "${2:-}" ]]; then
+      echo "kanban-track: multiple running tasks; following ${tid} (also: $*)"
+      echo "kanban-track: pin with: $0 progress-follow <task_id>"
+    fi
+  fi
+  # Default board layout; also try boards/*/logs if relocated.
+  logfile="${HERMES_HOME}/kanban/logs/${tid}.log"
+  if [[ ! -f "${logfile}" ]]; then
+    logfile="$(find "${HERMES_HOME}/kanban" -type f -name "${tid}.log" 2>/dev/null | head -1 || true)"
+  fi
+  print_board_snapshot
+  if [[ -n "${logfile}" && -f "${logfile}" ]]; then
+    echo "kanban-track: streaming worker log ${logfile} (Ctrl-C stops stream only)…"
+    echo "kanban-track: tip — board events are separate: hermes kanban watch / hermes kanban tail ${tid}"
+    exec tail -n "${PROGRESS_LINES}" -f "${logfile}"
+  fi
+  echo "kanban-track: log file not found yet; dumping hermes kanban log ${tid} then waiting…"
+  hermes kanban log "${tid}" --tail 65536 2>&1 || true
+  # Wait briefly for dispatcher to create the file, then follow.
+  local i
+  for i in $(seq 1 30); do
+    logfile="${HERMES_HOME}/kanban/logs/${tid}.log"
+    [[ -f "${logfile}" ]] && break
+    logfile="$(find "${HERMES_HOME}/kanban" -type f -name "${tid}.log" 2>/dev/null | head -1 || true)"
+    [[ -n "${logfile}" && -f "${logfile}" ]] && break
+    sleep 1
+  done
+  [[ -n "${logfile}" && -f "${logfile}" ]] || die "no worker log for ${tid} under ${HERMES_HOME}/kanban/"
+  echo "kanban-track: streaming ${logfile}"
+  exec tail -n 0 -f "${logfile}"
 }
 
 cmd_follow() {
@@ -158,6 +267,8 @@ main() {
     -h|--help|help) usage ;;
     follow)         cmd_follow "$@" ;;
     watch)          cmd_watch "$@" ;;
+    progress)       cmd_progress "$@" ;;
+    progress-follow|plog|stream) cmd_progress_follow "$@" ;;
     dispatch|tick)  cmd_dispatch "$@" ;;
     ensure-daemon|daemon) cmd_ensure_daemon "$@" ;;
     status|ls|list) cmd_status "$@" ;;
@@ -165,7 +276,7 @@ main() {
     log)            cmd_log "$@" ;;
     tail)           cmd_tail "$@" ;;
     runs)           cmd_runs "$@" ;;
-    *)              die "unknown command: ${cmd} (try: follow|watch|dispatch|status|show|log|tail|runs)" ;;
+    *)              die "unknown command: ${cmd} (try: follow|watch|progress|progress-follow|dispatch|status|show|log|tail|runs)" ;;
   esac
 }
 
