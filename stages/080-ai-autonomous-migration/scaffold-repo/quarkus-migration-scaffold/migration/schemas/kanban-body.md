@@ -15,8 +15,15 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `phase` | `M1`…`M5` \| `factory` | |
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
 | `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires |
-| `files_in_scope` | list | **M3 required non-empty** |
+| `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
 | `exit_criteria` | list of objects | **M3/M4/M5 required non-empty** — falsifiable done-when |
+
+**M3 `files_in_scope` dual-path (Deputy `E-20260809T220100Z`):** each
+legacy/referent path must be paired with its destination write path (same list,
+legacy then dest, or both present). Legacy-only lists cannot detect out-of-bounds
+writes. PetClinic map: `/projects/.derived/legacy-at-3/…` →
+`/projects/modernized/…`, and `org/springframework/samples/petclinic` → `com/demo`
+under `src/{main,test}/java`.
 
 Each `exit_criteria[]` item is an object with a short `check` id and either:
 - `{ "check", "cmd", "expect" }` — shell command (e.g. `expect: "rc=0"`), or
@@ -47,4 +54,5 @@ analysis prose as authority.
 | `BODY_REF_DIGEST` | `BODY_REF_DIGEST: key={key} path={path} expected={sha} actual={sha_or_error}` |
 | `BODY_REF_UNKNOWN` | `BODY_REF_UNKNOWN: key={key} not in phase vocabulary` |
 | `BODY_SCOPE` | `BODY_SCOPE: M3 requires non-empty files_in_scope` |
+| `BODY_SCOPE_DEST` | `BODY_SCOPE_DEST: M3 files_in_scope needs destination paths (not legacy-only)` |
 | `BODY_EXIT` | `BODY_EXIT: phase={phase} requires non-empty exit_criteria[]` |

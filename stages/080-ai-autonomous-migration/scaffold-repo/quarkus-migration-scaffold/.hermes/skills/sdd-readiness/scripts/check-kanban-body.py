@@ -149,6 +149,29 @@ def check_body(label: str, body: dict, root: Path) -> int:
         if not isinstance(scope, list) or not scope:
             fail("BODY_SCOPE", "M3 requires non-empty files_in_scope")
             bad = 1
+        else:
+            # Deputy E-20260809T220100Z — legacy-only scope cannot check writes.
+            paths: list[str] = []
+            for item in scope:
+                if isinstance(item, str):
+                    paths.append(item)
+                elif isinstance(item, dict):
+                    for k in ("legacy", "src", "source", "dest", "dst", "destination"):
+                        if item.get(k):
+                            paths.append(str(item[k]))
+            has_legacy = any(
+                "/.derived/legacy" in p or "/legacy-" in p for p in paths
+            )
+            has_dest = any(
+                "/modernized/" in p or p.startswith("/projects/modernized")
+                for p in paths
+            )
+            if has_legacy and not has_dest:
+                fail(
+                    "BODY_SCOPE_DEST",
+                    "M3 files_in_scope needs destination paths (not legacy-only)",
+                )
+                bad = 1
 
     # Deputy E-20260809T190500Z / W2 §6 completion half — M3/M4/M5 must name
     # falsifiable done-when (exit_criteria), not only refs + scope.
