@@ -440,11 +440,36 @@ data:
     # Secret out of band (not in git); the provider is skipped when absent.
     REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
+    # AD-008 — Qwen primary; MiniMax (redhat) only via explicit escalation
+    # override. Secrets alone must NOT ambiently enable MiniMax (quota control).
     OPENCODE_ENABLED='["qwen27b"]'
     OPENCODE_REDHAT_PROVIDER=""
-    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      OPENCODE_ENABLED='["qwen27b", "redhat"]'
-      OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
+    OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
+    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
+      && [ -f "${OPENCODE_ESCALATION_FILE}" ]; then
+      if python3 - "${OPENCODE_ESCALATION_FILE}" <<'ESCV'
+import json, sys
+path = sys.argv[1]
+try:
+    d = json.load(open(path))
+except Exception as e:
+    print(f"AD-008: escalation file unreadable ({e}); MiniMax stays disabled.", file=sys.stderr)
+    sys.exit(1)
+need = ("model_id", "model_id_primary", "escalation_reason", "prior_failure_run_id")
+missing = [k for k in need if not str(d.get(k) or "").strip()]
+mid = str(d.get("model_id") or "")
+if missing:
+    print(f"AD-008: escalation missing fields {missing}; MiniMax stays disabled.", file=sys.stderr)
+    sys.exit(1)
+if "minimax" not in mid.lower():
+    print(f"AD-008: model_id={mid!r} is not MiniMax; MiniMax stays disabled.", file=sys.stderr)
+    sys.exit(1)
+print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
+sys.exit(0)
+ESCV
+      then
+        OPENCODE_ENABLED='["qwen27b", "redhat"]'
+        OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
           "npm": "@ai-sdk/openai-compatible",
@@ -468,6 +493,12 @@ data:
         }
     REDHATEOF
     )"
+        echo "AD-008: OpenCode MiniMax enabled for this init (escalation override present)."
+      else
+        echo "AD-008: OpenCode MiniMax NOT enabled (escalation override invalid)."
+      fi
+    elif [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
+      echo "AD-008: Red Hat model secrets present but no ${OPENCODE_ESCALATION_FILE} — MiniMax stays disabled (Qwen primary)."
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
@@ -696,8 +727,8 @@ data:
             f"(default={m.get('default')!r} model_base={model_base!r})"
         )
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
-        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=platform-maas-qwen27b\n")
-    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-H factory; model pin qwen3-6-27b).")
+        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=platform-maas-qwen27b\nad=AD-008\n")
+    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-008 pin qwen3-6-27b).")
     HERMESEOF
 
       # Architect E-20260808T151907Z / Deputy E-20260808T153444Z —
@@ -990,6 +1021,37 @@ data:
     EOF
 
       ensure_opencode_compat_path
+      # AD-008 — pin stamp + fail-closed if default model is not platform Qwen.
+      export PROJECT_DIR
+      python3 - <<'PINOC'
+import json, os, sys
+cfg = os.path.expanduser("~/.config/opencode/opencode.json")
+try:
+    d = json.load(open(cfg))
+except Exception as e:
+    print(f"ERROR: AD-008 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
+    sys.exit(1)
+model = str(d.get("model") or "")
+enabled = d.get("enabled_providers") or []
+if model != "qwen27b/qwen3-6-27b":
+    print(f"ERROR: AD-008 OpenCode pin failed (model={model!r})", file=sys.stderr)
+    sys.exit(1)
+if "qwen27b" not in enabled:
+    print(f"ERROR: AD-008 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
+    sys.exit(1)
+stamp_dir = os.environ["PROJECT_DIR"]
+stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
+os.makedirs(os.path.dirname(stamp), exist_ok=True)
+with open(stamp, "w") as fh:
+    fh.write("model=qwen27b/qwen3-6-27b\n")
+    fh.write(f"enabled_providers={json.dumps(enabled)}\n")
+    fh.write("ad=AD-008\n")
+    if "redhat" in enabled:
+        fh.write("minimax=escalation-override\n")
+    else:
+        fh.write("minimax=disabled\n")
+print(f"AD-008 OpenCode pin OK: {stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
+PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."
     else
