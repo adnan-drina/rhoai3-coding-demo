@@ -100,7 +100,25 @@ PY
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}" "$(dirname "${JSON_OUT}")"
 
-echo "Analyzing INPUT=${INPUT} (legacy@3.x referent)"
+# Clean-room finding 2026-08-09 (v8): analyzer-lsp hard-codes
+# `-configuration ./` and often empty `-data`, so Equinox dirs land in cwd.
+# Never run analyze with cwd inside the destination git root.
+MTA_RUN_CWD="${MTA_RUN_CWD:-/projects/.tools/mta-run}"
+mkdir -p "${MTA_RUN_CWD}"
+# JDT/m2e must write `.project` into the analyzed tree. Frozen harvest_referent
+# (derive freeze_tree a-w) causes AccessDeniedException and a silent hang.
+ANALYZE_INPUT="${INPUT}"
+if ! ( touch "${INPUT}/.mta-write-probe" 2>/dev/null && rm -f "${INPUT}/.mta-write-probe" ); then
+  ANALYZE_INPUT="${MTA_ANALYZE_INPUT:-/projects/.derived/legacy-at-3-mta-input}"
+  echo "mta-analyze-legacy: harvest_referent is not writable — cloning to ${ANALYZE_INPUT}"
+  rm -rf "${ANALYZE_INPUT}"
+  mkdir -p "${ANALYZE_INPUT}"
+  tar -C "${INPUT}" -cf - . | tar -C "${ANALYZE_INPUT}" -xf -
+  chmod -R u+w "${ANALYZE_INPUT}" 2>/dev/null || true
+fi
+
+echo "Analyzing INPUT=${ANALYZE_INPUT} (legacy@3.x referent; frozen source=${INPUT})"
+echo "MTA_RUN_CWD=${MTA_RUN_CWD} (Equinox -configuration ./ containment)"
 echo "Targets:${TARGET_LIST}"
 echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
 
@@ -108,12 +126,15 @@ echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
 # dependencies.yaml: map[interface{}]interface{}). Treat tool exit as soft if
 # OUT_DIR still has output.json / output.yaml (AD-003 / live P10 retry path).
 set +e
-"${CLI}" analyze \
-  --input "${INPUT}" \
-  --output "${OUT_DIR}" \
-  "${TARGET_FLAGS[@]}" \
-  --json-output "${JSON_OUT}" \
-  --overwrite
+(
+  cd "${MTA_RUN_CWD}"
+  "${CLI}" analyze \
+    --input "${ANALYZE_INPUT}" \
+    --output "${OUT_DIR}" \
+    "${TARGET_FLAGS[@]}" \
+    --json-output "${JSON_OUT}" \
+    --overwrite
+)
 analyze_rc=$?
 set -e
 

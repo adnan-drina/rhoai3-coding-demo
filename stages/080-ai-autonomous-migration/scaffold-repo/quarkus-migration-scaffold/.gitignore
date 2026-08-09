@@ -30,6 +30,13 @@ __pycache__/
 .project
 .settings/
 .classpath
+# Kantra/analyzer-lsp Equinox state if analyze is ever mis-cwd'd into the
+# destination root (containment fix is cwd outside git root — belt only).
+.metadata/
+org.eclipse.core.runtime/
+org.eclipse.equinox.app/
+org.eclipse.equinox.launcher/
+org.eclipse.osgi/
 
 # Derived legacy@3.x trees must never be committed (workspace path is
 # /projects/.derived/; guard against accidental copies under modernized).

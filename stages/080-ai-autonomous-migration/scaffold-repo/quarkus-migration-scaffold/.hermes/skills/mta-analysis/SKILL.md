@@ -84,5 +84,11 @@ Both are required environment facts, not optional tuning.
 - Do not analyze `/projects/legacy` when the manifest says a derived
   `harvest_referent` — you will mix Boot-2 API surface into Boot-3 findings.
 - Do not pass `--source` "to be more precise."
+- Do not run `mta-cli analyze` with cwd inside `/projects/modernized` —
+  analyzer-lsp uses `-configuration ./` and drops Equinox dirs in cwd
+  (script forces `MTA_RUN_CWD`, default `/projects/.tools/mta-run`).
+- Frozen `legacy-at-3` is not a valid analyze input for JDT/m2e (needs a
+  writable `.project`). The script clones to `legacy-at-3-mta-input` when
+  the harvest referent is not writable.
 - Do not relocate this reasoning into `AGENTS.md` — conventions stay
   always-on; this procedure loads only when M1/M5 needs it.
