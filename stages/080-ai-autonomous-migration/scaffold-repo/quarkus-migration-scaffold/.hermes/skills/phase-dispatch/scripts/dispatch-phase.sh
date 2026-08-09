@@ -197,6 +197,11 @@ Requires: migration/acks/m1-findings.json + findings-handoff gate
 ## Constraints
 - workspace: dir:/projects/modernized
 - Stop at tasks → kanban_create.
+- **AD-009:** every M3 child **must** set `--max-runtime` to M3
+  `max_runtime_seconds` from `.hermes/phase-dispatch.yaml` (currently 2700).
+  Creating children without max-runtime is forbidden (phantom unbounded sessions).
+- **Produce-not-verify:** do not `kanban_complete` by only verifying pre-seeded
+  specs/plans/tasks from a prior card.
 EOF
     TITLE="M2 PLAN: story partition + SDD"
     ;;
@@ -214,6 +219,10 @@ grounded-generation consult order, and domain gates. One task ⇒ one role.
 ## Constraints
 - workspace: dir:/projects/modernized
 - Do not re-plan scope. Typed BLOCK if inputs are wrong.
+- **AD-009:** if provider-stale / consecutive failures hit the failure cap,
+  typed BLOCK with `block_class=environmental_provider` (stamp via
+  `.hermes/home/scripts/stamp-environmental-provider-block.py`). Do **not**
+  MiniMax-escalate (AD-008). Native reclaim is allowed until the cap.
 EOF
     TITLE="M3 IMPLEMENT: bounded transform"
     ;;
