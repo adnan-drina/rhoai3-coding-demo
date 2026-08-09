@@ -707,6 +707,18 @@ ESCV
         "kanban": {
             "auto_decompose": False,
         },
+        # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
+        # default proxy idle / Hermes stale window (~minutes) before the
+        # first content token. Class A amplifier; not MiniMax.
+        "providers": {
+            "custom": {
+                "models": {
+                    "qwen3-6-27b": {
+                        "stale_timeout_seconds": 900,
+                    },
+                },
+            },
+        },
     }
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:

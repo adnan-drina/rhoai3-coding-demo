@@ -84,6 +84,12 @@ Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
 
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
+Hermes worker config is **`$HERMES_HOME/config.yaml`** (relocated), not
+`~/.hermes/config.yaml` (often absent / wiped by Managed Scope init). Platform
+Managed Scope pins `providers.custom.models.qwen3-6-27b.stale_timeout_seconds: 900`
+(AD-009 §3.2) so Qwen thinking does not trip the proxy idle / Broken-pipe window;
+do not MiniMax that class.
+
 ### Domain gate vocabulary
 
 | ID | Name | Skill script |
