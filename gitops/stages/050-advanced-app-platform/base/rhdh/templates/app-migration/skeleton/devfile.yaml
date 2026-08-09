@@ -210,9 +210,48 @@ commands:
           exit 0
         fi
         cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
-        nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
-          >/tmp/hermes-dashboard.log 2>&1 &
-        echo "Hermes dashboard postStart: started pid=$! loopback 127.0.0.1:9119 (IDE port-forward; log=/tmp/hermes-dashboard.log)"
+        start_dash() {
+          nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
+            >/tmp/hermes-dashboard.log 2>&1 &
+          echo $!
+        }
+        listening() {
+          python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null
+        }
+        # Supervised start (Architect E-20260809T003929Z / E-20260809T005047Z):
+        # READY log alone is not liveness — mirror golden scaffold.
+        pid="$(start_dash)"
+        echo "Hermes dashboard postStart: launched pid=${pid} loopback 127.0.0.1:9119"
+        ok=0
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          sleep 1
+          if listening; then ok=1; break; fi
+        done
+        if [ "${ok}" -ne 1 ]; then
+          echo "WARN: dashboard not listening after 10s — one restart"
+          kill "${pid}" 2>/dev/null || true
+          pid="$(start_dash)"
+          sleep 3
+          if listening; then ok=1; fi
+        fi
+        if [ "${ok}" -eq 1 ]; then
+          # Tiny watchdog: restart once if the process dies within ~3m of workspace start.
+          nohup bash -c '
+            for _ in $(seq 1 36); do
+              sleep 5
+              if python3 -c "import socket;s=socket.socket();s.settimeout(0.5);s.connect((\"127.0.0.1\",9119))" 2>/dev/null; then
+                continue
+              fi
+              echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
+              nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
+                >>/tmp/hermes-dashboard.log 2>&1 &
+              exit 0
+            done
+          ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
+          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; operator tunnel still required)"
+        else
+          echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open"
+        fi
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom
   # targets 21). Each Maven command selects Java 21 through that contract.
