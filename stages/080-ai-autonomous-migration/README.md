@@ -117,10 +117,13 @@ cd /projects/modernized
 export HERMES_HOME=/projects/modernized/.hermes/home
 # terminal A — start BEFORE any dispatch
 hermes kanban watch --interval 1
+# or: bash .hermes/home/scripts/kanban-track.sh watch
 # terminal B — seed M1 (derive + MTA + inventory) as a Hermes Kanban task, then tick
 bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
 # later phases: dispatch-phase.sh M2 --parent <m1_task_id>
 # (dispatch-phase already runs one hermes kanban dispatch tick)
+# single-pane alternative: bash .hermes/home/scripts/kanban-track.sh follow
+#   (starts daemon --force + watch; still create/dispatch cards separately)
 ```
 
 Do **not** start M1 with a detached `mta-analyze-legacy.sh` — Hermes must own
@@ -136,6 +139,7 @@ Drill-down:
 hermes kanban show <task_id>
 hermes kanban runs <task_id>   # task_id required
 hermes kanban log <task_id>
+# or: bash .hermes/home/scripts/kanban-track.sh {show|runs|log|tail} <task_id>
 ```
 
 **Honest exit of this act:** M4 **`PROVISIONAL_ACCEPT`** for Owner/Pet
