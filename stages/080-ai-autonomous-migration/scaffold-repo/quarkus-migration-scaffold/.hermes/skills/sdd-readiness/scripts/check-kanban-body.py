@@ -150,6 +150,33 @@ def check_body(label: str, body: dict, root: Path) -> int:
             fail("BODY_SCOPE", "M3 requires non-empty files_in_scope")
             bad = 1
 
+    # Deputy E-20260809T190500Z / W2 §6 completion half — M3/M4/M5 must name
+    # falsifiable done-when (exit_criteria), not only refs + scope.
+    if phase in ("M3", "M4", "M5"):
+        exits = body.get("exit_criteria") or body.get("done_when")
+        if not isinstance(exits, list) or not exits:
+            fail(
+                "BODY_EXIT",
+                f"phase={phase} requires non-empty exit_criteria[]",
+            )
+            bad = 1
+        else:
+            for i, item in enumerate(exits):
+                if not isinstance(item, dict) or not item.get("check"):
+                    fail(
+                        "BODY_EXIT",
+                        f"phase={phase} exit_criteria[{i}] needs check + "
+                        f"(cmd/expect or assert)",
+                    )
+                    bad = 1
+                    continue
+                if not (item.get("cmd") or item.get("assert")):
+                    fail(
+                        "BODY_EXIT",
+                        f"phase={phase} exit_criteria[{i}] needs cmd or assert",
+                    )
+                    bad = 1
+
     return bad
 
 

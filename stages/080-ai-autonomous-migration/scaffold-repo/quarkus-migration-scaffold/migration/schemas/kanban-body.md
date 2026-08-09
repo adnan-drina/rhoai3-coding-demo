@@ -16,6 +16,12 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
 | `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires |
 | `files_in_scope` | list | **M3 required non-empty** |
+| `exit_criteria` | list of objects | **M3/M4/M5 required non-empty** — falsifiable done-when |
+
+Each `exit_criteria[]` item is an object with a short `check` id and either:
+- `{ "check", "cmd", "expect" }` — shell command (e.g. `expect: "rc=0"`), or
+- `{ "check", "assert" }` — named assertion the worker must verify before
+  `kanban_complete` (e.g. scope / residue).
 
 **Forbidden in body:** inline findings blobs, pasted file contents, derived
 analysis prose as authority.
@@ -41,3 +47,4 @@ analysis prose as authority.
 | `BODY_REF_DIGEST` | `BODY_REF_DIGEST: key={key} path={path} expected={sha} actual={sha_or_error}` |
 | `BODY_REF_UNKNOWN` | `BODY_REF_UNKNOWN: key={key} not in phase vocabulary` |
 | `BODY_SCOPE` | `BODY_SCOPE: M3 requires non-empty files_in_scope` |
+| `BODY_EXIT` | `BODY_EXIT: phase={phase} requires non-empty exit_criteria[]` |

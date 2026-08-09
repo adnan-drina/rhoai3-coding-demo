@@ -8,7 +8,8 @@
 #     --body-json migration/bodies/m3-001-owner.json \
 #     [--parent t_xxx] [--idempotency-key KEY]
 #
-# Body JSON must satisfy check-kanban-body.py (phase=M3, refs[], files_in_scope).
+# Body JSON must satisfy check-kanban-body.py (phase=M3, refs[], files_in_scope,
+# exit_criteria[] — Deputy E-20260809T190500Z completion half).
 # Do NOT use bare `hermes kanban create` for M3 — that path omits skills
 # (Review grounding study 20260809: M3 workers loaded zero skills).
 set -euo pipefail
@@ -97,6 +98,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo
   echo "## Obligation"
   echo "Execute only the files_in_scope and refs in the typed body."
+  echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
   echo "Consult grounded-generation + spring-to-quarkus-patterns before edits."
   echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo
