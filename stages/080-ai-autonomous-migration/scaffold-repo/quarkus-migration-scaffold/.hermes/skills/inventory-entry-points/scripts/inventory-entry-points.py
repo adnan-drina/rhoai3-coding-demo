@@ -55,8 +55,16 @@ class EntryPoint:
 
 
 def iter_java(root: Path):
+    root = root.resolve()
     for p in root.rglob("*.java"):
-        if any(part in SKIP_DIR_NAMES for part in p.parts):
+        # Skip only relative to the scan root. Absolute parts must not apply:
+        # harvest_referent lives under /projects/.derived/… and ".derived" is
+        # in SKIP_DIR_NAMES (clean-room M1 finding 2026-08-09).
+        try:
+            rel = p.resolve().relative_to(root)
+        except ValueError:
+            continue
+        if any(part in SKIP_DIR_NAMES for part in rel.parts):
             continue
         yield p
 
