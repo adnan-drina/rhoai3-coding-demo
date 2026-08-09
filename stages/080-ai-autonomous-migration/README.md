@@ -120,11 +120,9 @@ hermes kanban watch --interval 1
 hermes kanban dispatch --max 1
 ```
 
-**Dashboard is not part of Acts A–E.** Hermes dashboard (loopback `:9119`) is
-an **operator convenience** via a real client tunnel (`oc port-forward` so
-browser `Host` stays `127.0.0.1`) — not Che Ports / Simple Browser, and not an
-audience projector. See `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md`
-(Architect `E-20260808T160412Z`).
+**Dashboard is not part of Acts A–E.** Operator-only Hermes dashboard (optional)
+lives in `harness-refactoring/docs/DEMO-SURFACE-RUNBOOK.md` — **not** the demo
+spine. Do not use Che Ports / Simple Browser for it.
 
 Drill-down:
 
@@ -153,7 +151,7 @@ unless observed in *this* environment.
 |---|---|
 | `hermes kanban list` / `show` / `runs` / `log` | **DEMONSTRATED** |
 | `hermes kanban watch` / `dispatch` | **DEMONSTRATED** (Owner/Pet) |
-| `hermes dashboard` loopback `:9119` | **IMPLEMENTED** (operator-only via `oc port-forward`) — **not** a demo surface; not required for DEFINED→DEMONSTRATED |
+| `hermes dashboard` loopback `:9119` | **DEFINED** (operator appendix / runbook only; postStart best-effort) — **not** demo surface; not required for DEFINED→DEMONSTRATED |
 | Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
 | Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
 
