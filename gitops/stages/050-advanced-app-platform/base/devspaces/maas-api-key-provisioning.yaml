@@ -678,7 +678,11 @@ ESCV
             "default": "qwen3-6-27b",
             "base_url": "${MAAS_API_BASE_URL}",
             "api_key": "${MAAS_API_KEY}",
+            # Total context ceiling (vLLM --max-model-len). Hermes unset
+            # max_tokens defaults to half (=65536), which makes any prompt
+            # ≥65537 arithmetically unservable (Deputy E-20260809T180800Z).
             "context_length": 131072,
+            "max_tokens": 8192,
         },
         "tool_loop_guardrails": {
             "hard_stop_enabled": True,
@@ -710,11 +714,14 @@ ESCV
         # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
         # default proxy idle / Hermes stale window (~minutes) before the
         # first content token. Class A amplifier; not MiniMax.
+        # max_tokens:8192 — Class A output cap so prompt+completion fit
+        # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
         "providers": {
             "custom": {
                 "models": {
                     "qwen3-6-27b": {
                         "stale_timeout_seconds": 900,
+                        "max_tokens": 8192,
                     },
                 },
             },

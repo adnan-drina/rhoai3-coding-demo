@@ -86,9 +86,13 @@ Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
 
 Hermes worker config is **`$HERMES_HOME/config.yaml`** (relocated), not
 `~/.hermes/config.yaml` (often absent / wiped by Managed Scope init). Platform
-Managed Scope pins `providers.custom.models.qwen3-6-27b.stale_timeout_seconds: 900`
-(AD-009 §3.2) so Qwen thinking does not trip the proxy idle / Broken-pipe window;
-do not MiniMax that class.
+Managed Scope pins for `qwen3-6-27b`:
+- `stale_timeout_seconds: 900` (AD-009 §3.2) — long thinking vs proxy idle
+- `max_tokens: 8192` — **required**; unset Hermes defaults to half of
+  `context_length` (65536), which with ≥65537 prompt tokens exceeds the 131072
+  vLLM ceiling and yields `VLLMValidationError` (not a proxy timeout)
+
+Do not MiniMax either class.
 
 ### Domain gate vocabulary
 
