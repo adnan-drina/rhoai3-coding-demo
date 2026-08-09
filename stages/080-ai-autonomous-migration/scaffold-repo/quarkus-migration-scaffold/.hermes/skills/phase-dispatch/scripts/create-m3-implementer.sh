@@ -97,16 +97,14 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Typed body (W2 §6): \`${BODY_JSON}\`"
   echo
   echo "## Obligation"
-  echo "Execute only the files_in_scope and refs in the typed body."
+  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
+  echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
   echo "Consult grounded-generation + spring-to-quarkus-patterns before edits."
   echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo
-  echo "## Typed body (inline copy for worker)"
-  echo '```json'
-  cat "${BODY_JSON}"
-  echo '```'
-  echo
+  # Do NOT inline the typed JSON here — it bloated M3 prompts to ~30k before any
+  # tool use (v10 S-001 hang at API#4 in=62473). Path above is authoritative.
   echo "## Constraints"
   echo "- workspace: dir:${WORKSPACE_DIR}"
   echo "- Do not re-plan scope. Typed BLOCK if inputs wrong."
