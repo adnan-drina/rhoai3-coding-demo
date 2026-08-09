@@ -200,6 +200,16 @@ Requires: migration/acks/m1-findings.json + findings-handoff gate
 - **AD-009:** every M3 child **must** set `--max-runtime` to M3
   `max_runtime_seconds` from `.hermes/phase-dispatch.yaml` (currently 2700).
   Creating children without max-runtime is forbidden (phantom unbounded sessions).
+- **AD-009 circuit-breaker (M2 K=1):** on consecutive provider-stale / Broken
+  pipe reclaim, run
+  `python3 .hermes/home/scripts/apply-environmental-circuit-breaker.py --task-id $TASK --phase M2 --provider-stale-events N`
+  then typed `kanban_block` — do **not** MiniMax. Unstamped crash loops are an
+  IMPLEMENT gap.
+- **AD-009 §3.1:** rc=0 without kanban terminal →
+  `apply-protocol-untyped-terminal.py --task-id $TASK --block` (typed
+  `protocol_untyped`; dual-annotate if environmental).
+- **AD-009 hard budget:** `enforce-max-runtime-hard.py --apply` — elapsed >
+  `max_runtime_seconds` is a control, not an advisory %.
 - **Produce-not-verify:** do not `kanban_complete` by only verifying pre-seeded
   specs/plans/tasks from a prior card.
 EOF
@@ -220,9 +230,12 @@ grounded-generation consult order, and domain gates. One task ⇒ one role.
 - workspace: dir:/projects/modernized
 - Do not re-plan scope. Typed BLOCK if inputs are wrong.
 - **AD-009:** if provider-stale / consecutive failures hit the failure cap,
-  typed BLOCK with `block_class=environmental_provider` (stamp via
-  `.hermes/home/scripts/stamp-environmental-provider-block.py`). Do **not**
-  MiniMax-escalate (AD-008). Native reclaim is allowed until the cap.
+  typed BLOCK with `block_class=environmental_provider`. Prefer:
+  `python3 .hermes/home/scripts/apply-environmental-circuit-breaker.py --task-id $TASK --phase M3 --provider-stale-events N`
+  (or `stamp-environmental-provider-block.py`). Do **not** MiniMax-escalate
+  (AD-008). Native reclaim is allowed until the cap (M3 K=2).
+- **AD-009 §3.1 / hard budget:** silent exit → `protocol_untyped` stamp;
+  over `max_runtime_seconds` → `enforce-max-runtime-hard.py --apply`.
 EOF
     TITLE="M3 IMPLEMENT: bounded transform"
     ;;

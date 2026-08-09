@@ -240,19 +240,45 @@ def skill_tips_ok(repo: Path, commit: str, prov: dict | None) -> dict:
     return out
 
 
-def soul_at_commit(repo: Path, commit: str) -> dict:
-    out: dict = {"ok": False, "soul_sha": None, "prov_soul_sha": None, "gaps": []}
+def soul_at_commit(repo: Path, commit: str, prov: dict | None = None) -> dict:
+    """Prefer provenance soul_path (loaded-path rule); else git .hermes/SOUL.md."""
+    out: dict = {
+        "ok": False,
+        "soul_sha": None,
+        "soul_path": None,
+        "prov_soul_sha": None,
+        "gaps": [],
+    }
+    if isinstance(prov, dict):
+        sp = prov.get("soul_path") or prov.get("soulPath")
+        if sp:
+            out["soul_path"] = str(sp)
+            p = Path(str(sp))
+            if p.is_file():
+                out["soul_sha"] = sha256_bytes(p.read_bytes())
+                out["ok"] = True
+                return out
+            out["gaps"].append("soul_path_unreadable_at_reconstruct")
+    # Fallback: committed project SOUL (may diverge from loaded path — name gap)
     try:
         blob = subprocess.check_output(
             ["git", "-C", str(repo), "show", f"{commit}:.hermes/SOUL.md"],
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError:
-        out["gaps"].append("soul_missing_at_commit")
-        return out
+        try:
+            blob = subprocess.check_output(
+                ["git", "-C", str(repo), "show", f"{commit}:.hermes/home/SOUL.md"],
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            out["gaps"].append("soul_missing_at_commit")
+            return out
+        out["soul_path"] = ".hermes/home/SOUL.md"
+    else:
+        out["soul_path"] = ".hermes/SOUL.md"
     digest = sha256_bytes(blob)
     out["soul_sha"] = digest
-    # Compare to provenance if present
     out["ok"] = True
     return out
 
@@ -388,7 +414,7 @@ def reconstruct(repo: Path, commit_ish: str) -> dict:
     prov_path, prov = find_provenance(repo, task_id)
     task_path, task_obj = find_task_packet(repo, task_id)
     loci = loci_from_prov(prov)
-    soul = soul_at_commit(repo, commit)
+    soul = soul_at_commit(repo, commit, prov if isinstance(prov, dict) else None)
     if isinstance(prov, dict):
         soul["prov_soul_sha"] = prov.get("soul_sha") or prov.get("soulSha")
         if soul.get("soul_sha") and soul.get("prov_soul_sha"):

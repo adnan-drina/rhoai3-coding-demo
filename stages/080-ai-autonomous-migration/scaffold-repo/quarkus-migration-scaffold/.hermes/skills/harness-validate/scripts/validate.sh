@@ -215,6 +215,35 @@ fi
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
   > "${vr_tmp}/migration/verdicts/m5.json"
 python3 "${SKILLS}/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
+# candidate→promote (finding 4)
+python3 "${SKILLS}/validation-release-gates/scripts/check-candidate-promote.py" "${ROOT}" || rc=1
+printf '%s\n' '{"phase":"factory","status":"push_main","promoted_to_main":true,"factory_result":"fail"}' \
+  > "${vr_tmp}/migration/preflight/factory.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-candidate-promote.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: promote without candidate_sha / on factory fail should refuse" >&2
+  rc=1
+else
+  echo "OK: illegal promote refused"
+fi
+printf '%s\n' '{"phase":"factory","status":"factory_ready","candidate_sha":"abcdef1","factory_result":"pass","promoted_to_main":false}' \
+  > "${vr_tmp}/migration/preflight/factory.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-candidate-promote.py" "${vr_tmp}" || rc=1
+# side-effect recovery idle + persisted-data idle
+python3 "${SKILLS}/validation-release-gates/scripts/check-side-effect-recovery.py" "${ROOT}" || rc=1
+python3 "${SKILLS}/domain-gates/scripts/check-persisted-data-contract.py" "${ROOT}" || rc=1
+# SCOPED_ACCEPT gate (finding 3)
+python3 "${SKILLS}/validation-release-gates/scripts/check-accept-scope.py" "${ROOT}" || rc=1
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","entry_point_descope_count":2}' \
+  > "${vr_tmp}/migration/verdicts/m5.json"
+if python3 "${SKILLS}/validation-release-gates/scripts/check-accept-scope.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: full ACCEPT with descopes should refuse" >&2
+  rc=1
+else
+  echo "OK: full ACCEPT with descopes refused"
+fi
+printf '%s\n' '{"phase":"M5","verdict":"SCOPED_ACCEPT","accept_kind":"scoped","entry_point_descope_count":2}' \
+  > "${vr_tmp}/migration/verdicts/m5.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-accept-scope.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"
 
 echo "== external_dirs (AD-S relocate) =="
@@ -263,7 +292,7 @@ if python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "$
 else
   echo "OK: missing worker_session_id refused"
 fi
-printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","worker_session_id":"sess1","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
+printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","task_run_id":"1","worker_session_id":"sess1","soul_path":"/tmp/no-such-soul.md","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
   > "${ap_tmp}/migration/tasks/bad.json"
 if python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
   echo "FAIL: model_id=unknown without model_id_gap should refuse" >&2
@@ -271,9 +300,16 @@ if python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "$
 else
   echo "OK: unknown model_id without gap refused"
 fi
-printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","worker_session_id":"sess1","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","model_id_gap":true,"citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
+# Good fixture: write a real soul file and hash it
+soul_tmp="$(mktemp)"
+printf 'test soul\n' > "${soul_tmp}"
+soul_sha="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${soul_tmp}').read_bytes()).hexdigest())")"
+printf '%s\n' "{\"id\":\"T-1\",\"phase\":\"M3\",\"role\":\"implementer\",\"status\":\"done\",\"provenance\":{\"task_id\":\"T-1\",\"task_run_id\":\"1\",\"campaign_id\":\"fixture\",\"worker_session_id\":\"sess1\",\"soul_path\":\"${soul_tmp}\",\"soul_sha\":\"${soul_sha}\",\"skill_tips\":{\"grounded-generation\":\"abc\"},\"model_id\":\"unknown\",\"model_id_gap\":true,\"citations\":{\"brief_or_story_id\":\"B-1\",\"legacy_locus\":\"projects/legacy/Foo.java:1-10\"},\"artifacts\":[]}}" \
   > "${ap_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" || rc=1
+rm -f "${soul_tmp}"
+# interventions audit
+python3 "${ROOT}/.hermes/home/scripts/audit-interventions.py" "${ROOT}" || rc=1
 rm -rf "${ap_tmp}"
 
 if [ "${rc}" -ne 0 ]; then

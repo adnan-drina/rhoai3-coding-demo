@@ -20,8 +20,9 @@ tests/gates.
 | Field | Rule |
 |-------|------|
 | `task_id` | Commit subject |
+| `task_run_id` | Hermes `task_runs` id for this execution — **fail closed** if missing |
 | `worker_session_id` | Hermes-stamped on `kanban_complete` — **fail closed** if missing |
-| `soul_sha` | sha256 of `.hermes/SOUL.md` at commit |
+| `soul_sha` + `soul_path` | sha256 of the **loaded** SOUL (`$HERMES_HOME` / `~/.hermes` first) |
 | `skill_tips` | name→git sha for phase `skills[]` preload |
 | §17 citations | brief/story + legacy locus |
 | `model_id` | config / `model_override` when present; `unknown` + `model_id_gap: true` only if neither readable — gap ≠ full reconstruction |

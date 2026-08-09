@@ -18,10 +18,16 @@ import json
 import sys
 from pathlib import Path
 
+# Local helper (same directory)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from resolve_loaded_soul import resolve_loaded_soul  # noqa: E402
+
 MANDATORY = (
     "task_id",
+    "task_run_id",
     "worker_session_id",
     "soul_sha",
+    "soul_path",
     "skill_tips",
     "model_id",
     "citations",
@@ -81,12 +87,32 @@ def provenance_of(obj: dict) -> dict | None:
     return None
 
 
-def check_prov(label: str, prov: dict, *, require_apply_log: bool) -> int:
+def check_prov(
+    label: str,
+    prov: dict,
+    *,
+    require_apply_log: bool,
+    root: Path | None = None,
+) -> int:
     bad = 0
     tid = prov.get("task_id") or prov.get("id")
     if not tid:
         print(f"FAIL: {label}: missing task_id (AD-H §19)", file=sys.stderr)
         bad = 1
+    run_id = prov.get("task_run_id") or prov.get("taskRunId") or prov.get("run_id")
+    if not run_id:
+        print(
+            f"FAIL: {label}: missing task_run_id — join key incomplete "
+            f"(campaign_id+task_id+task_run_id+worker_session_id; AD-H §19.1)",
+            file=sys.stderr,
+        )
+        bad = 1
+    # campaign_id recommended; warn only when absent (may be single-campaign workspace)
+    if prov.get("campaign_id") in (None, "") and prov.get("campaignId") in (None, ""):
+        print(
+            f"WARN: {label}: missing campaign_id (correlation key incomplete)",
+            file=sys.stderr,
+        )
     sess = prov.get("worker_session_id") or prov.get("workerSessionId")
     if not sess:
         print(
@@ -94,13 +120,41 @@ def check_prov(label: str, prov: dict, *, require_apply_log: bool) -> int:
             file=sys.stderr,
         )
         bad = 1
-    for field in ("soul_sha", "skill_tips", "model_id"):
-        key_alt = {"soul_sha": "soulSha", "skill_tips": "skillTips", "model_id": "modelId"}.get(
-            field, field
-        )
+    for field in ("soul_sha", "soul_path", "skill_tips", "model_id"):
+        key_alt = {
+            "soul_sha": "soulSha",
+            "soul_path": "soulPath",
+            "skill_tips": "skillTips",
+            "model_id": "modelId",
+        }.get(field, field)
         if prov.get(field) in (None, "") and prov.get(key_alt) in (None, ""):
             print(f"FAIL: {label}: missing {field} (AD-H §19)", file=sys.stderr)
             bad = 1
+    # Loaded-path integrity: soul_sha must match bytes at soul_path (or live resolve)
+    soul_path = prov.get("soul_path") or prov.get("soulPath")
+    soul_sha = prov.get("soul_sha") or prov.get("soulSha")
+    if soul_path and soul_sha:
+        p = Path(str(soul_path))
+        if p.is_file():
+            import hashlib
+
+            digest = hashlib.sha256(p.read_bytes()).hexdigest()
+            if digest != str(soul_sha):
+                print(
+                    f"FAIL: {label}: soul_sha mismatch vs soul_path bytes "
+                    f"(loaded-path rule; finding 5)",
+                    file=sys.stderr,
+                )
+                bad = 1
+        elif root is not None:
+            live = resolve_loaded_soul(root)
+            if live.get("ok") and live.get("soul_sha") != str(soul_sha):
+                print(
+                    f"FAIL: {label}: soul_sha does not match currently loaded SOUL "
+                    f"at {live.get('soul_path')} (finding 5)",
+                    file=sys.stderr,
+                )
+                bad = 1
     model = str(prov.get("model_id") or prov.get("modelId") or "")
     gap = prov.get("model_id_gap")
     if gap is None:
@@ -166,7 +220,7 @@ def main() -> int:
                     tips = obj.get("skill_tips") or {}
                     if isinstance(tips, dict) and "derive-legacy-boot3" in tips:
                         need_log = True
-                    bad |= check_prov(rel, obj, require_apply_log=need_log)
+                    bad |= check_prov(rel, obj, require_apply_log=need_log, root=root)
             except Exception as e:
                 print(f"FAIL: {rel}: {e}", file=sys.stderr)
                 bad = 1
@@ -211,7 +265,7 @@ def main() -> int:
                     isinstance(r, dict) and r.get("key") == "derive_apply_log" for r in refs
                 ):
                     need_log = True
-                bad |= check_prov(label, prov, require_apply_log=need_log)
+                bad |= check_prov(label, prov, require_apply_log=need_log, root=root)
 
     if checked == 0:
         print("OK: no IMPLEMENT provenance artifacts — §19 lint idle")

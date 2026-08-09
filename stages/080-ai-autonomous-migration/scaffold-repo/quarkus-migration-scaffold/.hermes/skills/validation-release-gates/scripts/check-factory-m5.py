@@ -119,11 +119,28 @@ def full_accept_ok(obj: dict) -> str | None:
     )
     if verdict == "PROVISIONAL_ACCEPT":
         return "factory needs M5 ACCEPT, not PROVISIONAL_ACCEPT (AD-H §18.0)"
+    if verdict == "SCOPED_ACCEPT":
+        return (
+            "factory needs full ACCEPT — SCOPED_ACCEPT is not factory-eligible "
+            "(standing descopes; Architect E-20260809T113120Z)"
+        )
     kind = str(obj.get("accept_kind") or obj.get("acceptKind") or "").lower()
     if kind == "provisional":
         return "M5 ACCEPT is provisional — factory needs full ACCEPT (AD-H §18.0)"
+    if kind in {"scoped", "scoped_accept"}:
+        return "factory needs full ACCEPT — accept_kind=scoped not eligible"
     if kind and kind not in {"full", ""}:
         return f"M5 ACCEPT accept_kind={kind!r} — need full"
+    # Standing descopes block full ACCEPT even if accept_kind claims full
+    try:
+        descope = int(obj.get("entry_point_descope_count") or 0)
+    except (TypeError, ValueError):
+        descope = 0
+    if descope > 0:
+        return (
+            f"entry_point_descope_count={descope} — full ACCEPT forbidden; "
+            f"use SCOPED_ACCEPT (AD-H §18 / finding 3)"
+        )
     kill = str(obj.get("g1_kill_ratio") or obj.get("g1KillRatio") or "").lower()
     pinned = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
     waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (

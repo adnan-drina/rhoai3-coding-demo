@@ -90,6 +90,7 @@ phases:
   M5:
     # CLOSE — full ACCEPT (G-4 closes G-1 residue). Kill-ratio PASS+pin or
     # typed Operator waiver. G-4 fail after provisional → reopen that story.
+    # Standing entry-point descopes ⇒ SCOPED_ACCEPT only (check-accept-scope.py).
     role: validator
     accept_kind: full
     skills:
@@ -106,12 +107,14 @@ phases:
       - g3_findings_delta
       - acceptance_live
       - g4_runtime_parity
+      - accept_scope  # check-accept-scope.py — SCOPED_ACCEPT if descopes
     max_runtime_seconds: 2400
     requires_acks:
       - m1-findings
       - brief-identity
   factory:
-    # Push main — must_not_contradict_m5_accept = full M5 ACCEPT only (§18.0).
+    # Candidate SHA → factory green → promote that SHA (§16.3 / §18.1 / finding 4).
+    # must_not_contradict_m5_accept = full M5 ACCEPT only (§18.0).
     # Provisional M4 / provisional-labeled M5 must refuse.
     role: validator
     required_checks:
@@ -121,6 +124,8 @@ phases:
       - security
       - deploy_smoke
       - must_not_contradict_m5_accept
+      - candidate_sha_then_promote
+
 
 # Reviewer is not an M-phase seed — used between phases / on blocked.
 roles:
@@ -143,4 +148,9 @@ roles:
 
 watchdog:
   # max(phases)=3600 + 600s grace for "still running after native recovery"
+  # Observation only (kanban-stuck-watchdog.py). Hard budget is a separate
+  # action layer — AD-009 §3 step 6:
+  #   python3 .hermes/home/scripts/enforce-max-runtime-hard.py --apply
+  # Silent exit typing — AD-009 §3.1:
+  #   python3 .hermes/home/scripts/apply-protocol-untyped-terminal.py --task-id t_… --block
   stuck_seconds: 4200

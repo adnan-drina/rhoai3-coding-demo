@@ -38,6 +38,7 @@ EXPECTED: dict[str, list[str]] = {
         "g3_findings_delta",
         "acceptance_live",
         "g4_runtime_parity",
+        "accept_scope",
     ],
     "factory": [
         "compile",
@@ -46,6 +47,7 @@ EXPECTED: dict[str, list[str]] = {
         "security",
         "deploy_smoke",
         "must_not_contradict_m5_accept",
+        "candidate_sha_then_promote",
     ],
 }
 

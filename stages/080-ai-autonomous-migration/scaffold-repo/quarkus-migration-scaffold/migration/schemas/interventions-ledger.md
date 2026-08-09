@@ -16,14 +16,23 @@ One JSON object per line:
 | `class` | yes | `A` = harness fix (survives next specimen) · `B` = run nourishment (specimen-local) |
 | `type` | yes | Short snake token |
 | `detail` | yes | Human-readable what/why |
-| extra | no | Optional keys (`phase`, `task_id`, `supersedes`, …) |
+| `event_id` | yes | Immutable id (`evt_…`); auto-stamped by helper |
+| `monitor_event_id(s)` | no | Cite Monitor `migration/monitor-events.jsonl` ids; unmatched ⇒ INCONCLUSIVE |
+| `reconstructed` | forbidden | Must not be true — reconstructed A/B ⇒ INCONCLUSIVE |
 
 ## Append helper
 
 ```bash
 bash .hermes/home/scripts/log-intervention.sh A findings_handoff_land "emit+check wired into mta-analyze"
-bash .hermes/home/scripts/log-intervention.sh B copy_payload '{"phase":"M2","task_id":"t_xxx"}'
+bash .hermes/home/scripts/log-intervention.sh B copy_payload "thin M2" '{"phase":"M2","task_id":"t_xxx","monitor_event_ids":["mon_…"]}'
+```
+
+## Audit
+
+```bash
+python3 .hermes/home/scripts/audit-interventions.py /projects/modernized
 ```
 
 Log **as interventions happen**, classified A/B at the moment — do not reconstruct
-after the fact for campaign measurement.
+after the fact for campaign measurement (AD-010 finding 7 /
+`E-20260809T113120Z`).
