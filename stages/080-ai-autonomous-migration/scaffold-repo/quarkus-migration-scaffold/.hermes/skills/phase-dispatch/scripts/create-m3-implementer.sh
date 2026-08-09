@@ -100,6 +100,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
+  echo "**AD-002D:** \`skill_view\` (or equivalent) for ≥1 phase skill, OR typed \`skills_unused:<reason>\` in the completion comment — silence is not a negative."
   echo "Consult grounded-generation + spring-to-quarkus-patterns before edits."
   echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo

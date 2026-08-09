@@ -30,6 +30,10 @@ Each `exit_criteria[]` item is an object with a short `check` id and either:
 - `{ "check", "assert" }` — named assertion the worker must verify before
   `kanban_complete` (e.g. scope / residue).
 
+**M3 required check id `skills` (AD-002D):** assert consult via `skill_view` (or
+equivalent) for ≥1 phase skill, **or** typed `skills_unused:<reason>` in the
+completion comment. Silence is not a typed negative.
+
 **Forbidden in body:** inline findings blobs, pasted file contents, derived
 analysis prose as authority.
 

@@ -200,6 +200,21 @@ def check_body(label: str, body: dict, root: Path) -> int:
                     )
                     bad = 1
 
+        # AD-002D — preload ≠ consultation; M3 must name a skills check.
+        if phase == "M3":
+            checks = {
+                str(item.get("check") or "")
+                for item in exits
+                if isinstance(item, dict)
+            }
+            if "skills" not in checks:
+                fail(
+                    "BODY_EXIT",
+                    "phase=M3 requires exit_criteria check=skills "
+                    "(skill_view/consult or typed skills_unused)",
+                )
+                bad = 1
+
     return bad
 
 
