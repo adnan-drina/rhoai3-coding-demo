@@ -48,6 +48,9 @@ phases:
       - m1-findings
   M3:
     # IMPLEMENT — per-unit transform
+    # Children MUST be created via
+    # .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh
+    # (bare hermes kanban create omits these skills — grounding study 20260809).
     role: implementer
     skills:
       - sdd-readiness

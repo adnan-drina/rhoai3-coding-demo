@@ -191,12 +191,19 @@ Requires: migration/acks/m1-findings.json + findings-handoff gate
 1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
 2. Partition stories/briefs from **handoff rules/loci** + inventory.
 3. Spec Kit: `/speckit.specify` → plan → tasks (optional analyze).
-4. Create implementer Kanban cards from tasks.md (`hermes kanban create`).
+4. Create implementer Kanban cards from tasks.md using
+   **`bash .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh`**
+   (NOT bare `hermes kanban create` — that omits M3 skills; Review grounding
+   study 20260809). Each child needs a typed body JSON under
+   `migration/bodies/` that passes `check-kanban-body.py`.
 5. Grant `migration/acks/brief-identity.json` when brief identity is stable.
 
 ## Constraints
 - workspace: dir:/projects/modernized
-- Stop at tasks → kanban_create.
+- Stop at tasks → create-m3-implementer.
+- **M3 skill preload (P1-B fix):** every M3 child **must** be created via
+  `create-m3-implementer.sh` so skills from `phase-dispatch.yaml` M3 are
+  attached (`grounded-generation`, `spring-to-quarkus-patterns`, …).
 - **AD-009:** every M3 child **must** set `--max-runtime` to M3
   `max_runtime_seconds` from `.hermes/phase-dispatch.yaml` (currently 2700).
   Creating children without max-runtime is forbidden (phantom unbounded sessions).
@@ -221,10 +228,23 @@ EOF
 
 Phase: M3 per `.hermes/phase-dispatch.yaml`
 Requires acks: m1-findings, brief-identity
+Prefer create path: `create-m3-implementer.sh` (skills preloaded).
 
 ## Job
-Execute the bounded implementer card(s) for this story. Respect files_in_scope,
-grounded-generation consult order, and domain gates. One task ⇒ one role.
+Execute only `files_in_scope` from the typed W2 §6 body. Consult
+grounded-generation + spring-to-quarkus-patterns before edits. One task ⇒ one role.
+
+## Typed body (required — not a pointer to tasks.md)
+Write/attach `migration/bodies/<task>.json` with:
+- `task_id`, `role=implementer`, `phase=M3`
+- `files_in_scope`: non-empty paths
+- `refs[]` including `brief_identity_ack`, `legacy_locus` (sha256 digests)
+- optional `spec_path` / `plan_path` / `tasks_path` digests
+Validate: `python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized`
+
+## Done when
+- Scoped compile/tests for files_in_scope pass, or typed BLOCK with residue named
+- Provenance record writable under migration/tasks/ (AD-H §19)
 
 ## Constraints
 - workspace: dir:/projects/modernized
