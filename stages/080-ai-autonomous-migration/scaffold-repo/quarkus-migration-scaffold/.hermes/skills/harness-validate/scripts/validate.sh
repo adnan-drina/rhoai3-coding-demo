@@ -508,6 +508,21 @@ rm -f "${soul_tmp}"
 python3 "${ROOT}/.hermes/home/scripts/audit-interventions.py" "${ROOT}" || rc=1
 rm -rf "${ap_tmp}"
 
+echo "== R-M3.5–8 POM / dependency_wait handoff =="
+python3 "${SKILLS}/sdd-readiness/scripts/check-persistence-bom.py" "${ROOT}" || rc=1
+python3 "${SKILLS}/sdd-readiness/scripts/check-compile-deps-preflight.py" "${ROOT}" || rc=1
+dep_tmp="$(mktemp -d)"
+mkdir -p "${dep_tmp}/migration/verdicts"
+python3 "${SKILLS}/validation-release-gates/scripts/apply-dependency-wait-hold.py" \
+  "${dep_tmp}" --task-id t_fixture_dep_wait --stamp || rc=1
+if [ ! -f "${dep_tmp}/migration/verdicts/dependency-wait-hold-t_fixture_dep_wait.json" ]; then
+  echo "FAIL: dependency-wait-hold stamp missing" >&2
+  rc=1
+else
+  echo "OK: R-M3.6 dependency-wait-hold stamp"
+fi
+rm -rf "${dep_tmp}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1
