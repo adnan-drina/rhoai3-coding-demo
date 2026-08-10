@@ -8,6 +8,9 @@ Paraphrased public API names. Prefer living Full-path from
 - Primary living map: quarkusio/skills (Apache-2.0)
 - Pedagogical locus: Deandrea et al., *Quarkus for Spring Developers*, 2021,
   Tables 3.1–3.2 (cite only; not verbatim)
+- **Primary (artifact review AR-3.4):** Research pack
+  `source-analysis/external-review/20260810-artifact-review-quarkus-cites.md`
+  — Quarkus validation guide (REST `@Valid`)
 
 ## Cards
 
@@ -22,12 +25,26 @@ Paraphrased public API names. Prefer living Full-path from
 | rest-query | `@RequestParam` | `@QueryParam` | ADOPT | |
 | rest-header | `@RequestHeader` | `@HeaderParam` | ADOPT | |
 | rest-body | `@RequestBody` | unannotated entity param / `@Consumes` | ADOPT | |
+| rest-valid | `@Valid` + `BindingResult` | Endpoint `@Valid` **or** manual validation — pick one strategy | ADOPT | AR-3.4 — `@Valid` runs before/with method; builtin violation mapper |
+| rest-wildcard | Spring `/**` / `*` path patterns | Jakarta URI **templates** (`{param}` / regex in `{param:regex}`) | REDESIGN | Literal `*` in `@Path` is **not** a wildcard (AR-2.4) |
 | rest-response-status | `@ResponseStatus` | `Response.status(...)` or exception mapper | ADOPT | |
-| rest-advice | `@RestControllerAdvice` / `@ExceptionHandler` | `@ServerExceptionMapper` | ADOPT | Pair with problem+json if project uses it |
+| rest-advice | `@RestControllerAdvice` / `@ExceptionHandler` | `@ServerExceptionMapper` / `ExceptionMapper` | ADOPT | Do not map all `Exception` → 400 (AR-2.6) |
 
 **REJECT:** Spring MVC stack on destination; `quarkus-spring-web` compat.
+
+## Binding (AR-3.4 / AR-2.4)
+
+1. **Path patterns:** convert Spring wildcards to Jakarta templates; never leave
+   literal `*` expecting glob semantics.
+2. **Validation strategy (choose explicitly):**
+   - automatic: `@Valid` on params + compatible violation mapper, **or**
+   - manual: no endpoint `@Valid`; controller builds legacy-shaped error bodies.
+   Mixing so `@Valid` short-circuits a custom BindingResult path is a defect.
+3. Designate one authoritative OpenAPI/contract and validate registered routes
+   against it (owner-nested vs plural top-level).
 
 ## Agent text
 
 Map Spring Web annotations to JAX-RS (`quarkus-rest`). Keep `/api/` root and
-Jackson JSON. Do not invent endpoints absent from legacy/brief.
+Jackson JSON. Do not invent endpoints absent from legacy/brief. Prove route +
+invalid-request parity (status/headers/body) for touched resources.

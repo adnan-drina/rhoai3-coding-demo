@@ -39,6 +39,15 @@ Flyway). Do not leave `db-kind=h2` with `jdbc:hsqldb:` URLs or non-Flyway
 Do **not** claim “Panache” in the completion summary unless Panache types appear
 in the diff (`claim_accuracy` / S-004 lesson).
 
+### Absent result + transactions (AR-3.5)
+
+| Topic | Rule |
+|-------|------|
+| `getSingleResult()` | Throws when missing — **not** null. Declare finder contract: `Optional` / null / exception; map absence to **404**, not catch-all 400. |
+| HQL/JPQL | Use **entity attribute paths**, not physical column names (`pet_id`) (AR-2.5). |
+| `@Transactional` | Spring vs Jakarta are **not** drop-in for propagation/isolation/timeout/read-only — disposition each non-default attribute. One layer owns each use-case transaction (AR-2.7: no load-detach-merge across two txs without `@Version`). |
+| Bulk DML + `remove()` | Do not mix bulk delete with managed `remove()` on the same instances in one flow. |
+
 **DEFER:** reactive Panache, Kafka, SSE — not default specimen path.
 
 ## Agent text
@@ -46,3 +55,5 @@ in the diff (`claim_accuracy` / S-004 lesson).
 Default to Panache repositories when they fit legacy behaviour; otherwise CDI
 `EntityManager` is an acceptable Quarkus layer — name what you shipped. Keep
 Flyway as the schema path. Do not add Spring Data or `quarkus-spring-data-*`.
+Name absent-result and transaction ownership in the completion summary when
+touched.
