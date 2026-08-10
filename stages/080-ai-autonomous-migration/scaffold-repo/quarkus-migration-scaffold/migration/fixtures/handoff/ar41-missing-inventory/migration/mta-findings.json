@@ -1,0 +1,11 @@
+{
+  "violations": {
+    "demo.rule": {
+      "ruleID": "demo.rule",
+      "category": "optional",
+      "description": "demo description for AR-4.2",
+      "effort": 1,
+      "incidents": [{"uri": "src/main/java/A.java", "lineNumber": 1}]
+    }
+  }
+}

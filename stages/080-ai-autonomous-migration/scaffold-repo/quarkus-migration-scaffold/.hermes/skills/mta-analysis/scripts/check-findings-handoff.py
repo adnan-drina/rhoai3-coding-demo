@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M2 domain gate: findings-handoff.json consumer contract (Architect E-20260809T072752Z)."""
+"""M2 domain gate: findings-handoff.json (Architect E-20260809T072752Z + §16.7)."""
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +10,7 @@ from pathlib import Path
 SCHEMA = "rhoai3.findings-handoff/v1"
 HANDOFF_MAX_BYTES = 65536
 FORBIDDEN_KEYS = {"codesnip", "code_snip", "raw", "analysis.log", "output.json"}
+DISPOSITIONS = frozenset({"apply", "false_positive", "needs_review", "opaque_exception"})
 
 
 def sha256_file(path: Path) -> str:
@@ -34,10 +35,61 @@ def walk_forbidden(obj, path="$") -> list[str]:
     return hits
 
 
+def ep_key(ep: dict) -> str:
+    f = str(ep.get("file") or ep.get("path") or "")
+    line = ep.get("line")
+    return f"{f}:{line}" if line is not None else f
+
+
+def check_partition_conservation(root: Path, inv: dict) -> int:
+    """AR-4.1 — if story partition present, union must equal inventory endpoints."""
+    part_p = root / "migration" / "story-endpoint-partition.json"
+    if not part_p.is_file():
+        return 0
+    part = json.loads(part_p.read_text(encoding="utf-8"))
+    stories = part.get("stories") if isinstance(part, dict) else None
+    if not isinstance(stories, dict):
+        print("FAIL: AR-4.1 story-endpoint-partition.stories missing", file=sys.stderr)
+        return 1
+    inv_eps = {ep_key(e) for e in (inv.get("entry_points") or []) if isinstance(e, dict)}
+    union: set[str] = set()
+    dup = 0
+    for sid, eps in stories.items():
+        if not isinstance(eps, list):
+            print(f"FAIL: AR-4.1 stories[{sid}] not a list", file=sys.stderr)
+            return 1
+        for ep in eps:
+            if isinstance(ep, str):
+                k = ep
+            elif isinstance(ep, dict):
+                k = ep_key(ep)
+            else:
+                continue
+            if k in union:
+                dup += 1
+            union.add(k)
+    if union != inv_eps:
+        missing = sorted(inv_eps - union)[:8]
+        extra = sorted(union - inv_eps)[:8]
+        print(
+            f"FAIL: AR-4.1 partition conservation "
+            f"(union={len(union)} inventory={len(inv_eps)} "
+            f"missing_sample={missing} extra_sample={extra})",
+            file=sys.stderr,
+        )
+        return 1
+    if dup:
+        print(f"FAIL: AR-4.1 partition has {dup} duplicate endpoint assignment(s)", file=sys.stderr)
+        return 1
+    print(f"OK: AR-4.1 partition conservation ({len(union)} endpoints)")
+    return 0
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     handoff_p = root / "migration" / "findings-handoff.json"
     evidence_p = root / "migration" / "mta-findings.json"
+    inventory_p = root / "migration" / "entry-point-inventory.json"
 
     if not handoff_p.is_file():
         print("FAIL: missing migration/findings-handoff.json (typed blocked)", file=sys.stderr)
@@ -45,13 +97,16 @@ def main() -> int:
     if not evidence_p.is_file():
         print("FAIL: missing migration/mta-findings.json evidence store", file=sys.stderr)
         return 1
+    if not inventory_p.is_file():
+        print("FAIL: AR-4.1 missing migration/entry-point-inventory.json", file=sys.stderr)
+        return 1
 
     raw = handoff_p.read_bytes()
     if len(raw) > HANDOFF_MAX_BYTES:
         print(f"FAIL: handoff size {len(raw)} > {HANDOFF_MAX_BYTES}", file=sys.stderr)
         return 1
     evid_size = evidence_p.stat().st_size
-    if evid_size > 0 and len(raw) / evid_size >= 0.25:
+    if evid_size >= 8192 and len(raw) / evid_size >= 0.25:
         print(
             f"FAIL: handoff/evidence ratio {len(raw)}/{evid_size} >= 0.25",
             file=sys.stderr,
@@ -80,6 +135,29 @@ def main() -> int:
         )
         return 1
 
+    # AR-4.1 inventory digest
+    inv_h = handoff.get("inventory")
+    if not isinstance(inv_h, dict) or not inv_h.get("path") or not inv_h.get("sha256"):
+        print("FAIL: AR-4.1 handoff.inventory.path/sha256 required", file=sys.stderr)
+        return 1
+    inv_digest = sha256_file(inventory_p)
+    if inv_digest != inv_h.get("sha256"):
+        print(
+            f"FAIL: AR-4.1 inventory sha256 mismatch "
+            f"(file={inv_digest} handoff={inv_h.get('sha256')})",
+            file=sys.stderr,
+        )
+        return 1
+    inv = json.loads(inventory_p.read_text(encoding="utf-8"))
+    inv_count = int((inv.get("counts") or {}).get("total") or len(inv.get("entry_points") or []))
+    stamped = inv_h.get("endpoint_count")
+    if stamped is not None and int(stamped) != inv_count:
+        print(
+            f"FAIL: AR-4.1 inventory.endpoint_count {stamped} != inventory total {inv_count}",
+            file=sys.stderr,
+        )
+        return 1
+
     evidence = json.loads(evidence_p.read_text(encoding="utf-8"))
     viol = evidence.get("violations") if isinstance(evidence, dict) else None
     if not isinstance(viol, dict):
@@ -95,13 +173,36 @@ def main() -> int:
         if rid not in evid_ids:
             print(f"FAIL: handoff rule_id {rid!r} not in evidence store", file=sys.stderr)
             return 1
+        # AR-4.2 semantics
+        desc = r.get("description")
+        disp = r.get("disposition")
+        if not isinstance(desc, str) or not desc.strip():
+            print(f"FAIL: AR-4.2 rule {rid!r} missing description", file=sys.stderr)
+            return 1
+        if disp not in DISPOSITIONS:
+            print(
+                f"FAIL: AR-4.2 rule {rid!r} disposition {disp!r} not in {sorted(DISPOSITIONS)}",
+                file=sys.stderr,
+            )
+            return 1
+        if desc.startswith("opaque:") and disp not in {"opaque_exception", "needs_review"}:
+            print(
+                f"FAIL: AR-4.2 opaque rule {rid!r} must use opaque_exception/needs_review "
+                f"(got {disp!r}) — no planner invention",
+                file=sys.stderr,
+            )
+            return 1
 
     if not handoff.get("ack_obligation"):
         print("FAIL: ack_obligation missing", file=sys.stderr)
         return 1
 
+    if check_partition_conservation(root, inv):
+        return 1
+
     print(
-        f"OK: findings-handoff gate ({len(raw)}B, {len(rules)} rules, digest={digest[:12]}…)"
+        f"OK: findings-handoff gate ({len(raw)}B, {len(rules)} rules, "
+        f"inventory={inv_count}, digest={digest[:12]}…)"
     )
     return 0
 

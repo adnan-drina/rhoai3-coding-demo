@@ -1,0 +1,6 @@
+{
+  "role": "planner",
+  "writes": ["src/main/java/com/demo/Evil.java"],
+  "files_in_scope": [],
+  "note": "AR-1.3 fixture — M2 source-write probe must REFUSE"
+}

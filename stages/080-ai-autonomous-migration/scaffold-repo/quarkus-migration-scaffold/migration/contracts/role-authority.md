@@ -68,6 +68,10 @@ Record under `migration/acks/` (or Kanban metadata):
 | Ack presence before phase advance | skill `role-authority` → `check-acks.sh` |
 | Cross-role write refuse | skill `role-authority` → `check-role-writes.py` |
 | §16.4 proving-min fence | `write-fence.md` → `apply-write-fence.sh` / `probe-write-fence.py` / `check-write-fence.py` |
+| §16.8 AR-1.3 one-role | `check-one-role-dispatch.py` (+ M2 source-write probe) |
+| §16.8 AR-1.4 skill_manage | `check-skill-manage-policy.py` — never edit `.hermes/skills/**` in-session |
+| §16.8 AR-1.5 slim packet | `slim-packet.md` + `check-phase-attach-matrix.py` |
+| §16.8 AR-1.6 untrusted | `check-untrusted-boundary.py` + `fixtures/authority/ar16-untrusted/` |
 
 ```bash
 bash .hermes/skills/role-authority/scripts/check-acks.sh M2

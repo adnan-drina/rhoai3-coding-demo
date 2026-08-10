@@ -3,6 +3,9 @@
 
 Seam artifact: identity + rule/locus index + digests. NO codeSnip / raw blobs.
 Evidence store remains migration/mta-findings.json.
+
+AD-H §16.7 / AR-4.1: inventory digest REQUIRED (refuse emit without inventory).
+AD-H §16.7 / AR-4.2: each rule carries bounded description + disposition.
 """
 from __future__ import annotations
 
@@ -13,8 +16,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "rhoai3.findings-handoff/v1"
-# Absolute cap must fail "read 350KiB snip exhaust as plan input" class.
 HANDOFF_MAX_BYTES = 65536
+DESC_MAX = 240
+DISPOSITIONS = frozenset({"apply", "false_positive", "needs_review", "opaque_exception"})
 
 
 def sha256_file(path: Path) -> str:
@@ -50,9 +54,36 @@ def loci_from_incidents(incidents: list) -> list[dict]:
         if line_i is not None:
             entry["line"] = line_i
         out.append(entry)
-        if len(out) >= 40:  # per-rule cap keeps handoff cardinality-bounded
+        if len(out) >= 40:
             break
     return out
+
+
+def bounded_description(v: dict, rid: str) -> str:
+    for key in ("description", "title", "message", "ruleDescription", "hint"):
+        raw = v.get(key)
+        if isinstance(raw, str) and raw.strip():
+            text = " ".join(raw.split())
+            if len(text) > DESC_MAX:
+                text = text[: DESC_MAX - 1] + "…"
+            # never carry snip-like payloads
+            if "codeSnip" in text or "code_snip" in text:
+                continue
+            return text
+    # Opaque ID without semantic text → typed exception disposition path
+    return f"opaque:{rid}"
+
+
+def disposition_of(v: dict, description: str) -> str:
+    explicit = str(v.get("disposition") or "").strip().lower()
+    if explicit in DISPOSITIONS:
+        return explicit
+    if description.startswith("opaque:"):
+        return "opaque_exception"
+    cat = str(v.get("category") or "").lower()
+    if "false" in cat and "positive" in cat:
+        return "false_positive"
+    return "apply"
 
 
 def main() -> int:
@@ -64,12 +95,23 @@ def main() -> int:
     if not evidence.is_file():
         print(f"emit-findings-handoff: missing evidence {evidence}", file=sys.stderr)
         return 2
+    # AR-4.1 — inventory before handoff or force re-emit
+    if not inventory.is_file():
+        print(
+            "emit-findings-handoff: AR-4.1 missing migration/entry-point-inventory.json "
+            "— run inventory-entry-points before emit (refuse)",
+            file=sys.stderr,
+        )
+        return 2
 
     doc = json.loads(evidence.read_text(encoding="utf-8"))
     violations = doc.get("violations") if isinstance(doc, dict) else None
     if not isinstance(violations, dict):
         print("emit-findings-handoff: evidence lacks violations{}", file=sys.stderr)
         return 2
+
+    inv = json.loads(inventory.read_text(encoding="utf-8"))
+    inv_count = int((inv.get("counts") or {}).get("total") or len(inv.get("entry_points") or []))
 
     rules = []
     by_category: dict[str, int] = {}
@@ -79,16 +121,18 @@ def main() -> int:
         incidents = v.get("incidents") if isinstance(v.get("incidents"), list) else []
         cat = str(v.get("category") or "uncategorized")
         by_category[cat] = by_category.get(cat, 0) + 1
+        desc = bounded_description(v, str(v.get("ruleID") or rid))
         rule = {
             "rule_id": str(v.get("ruleID") or rid),
             "category": cat,
             "incident_count": len(incidents),
             "loci": loci_from_incidents(incidents),
+            "description": desc,
+            "disposition": disposition_of(v, desc),
         }
         effort = v.get("effort")
         if effort is not None and effort != "":
             rule["effort"] = effort
-        # Refuse to carry snips into the handoff object
         blob = json.dumps(rule)
         if "codeSnip" in blob or "code_snip" in blob:
             print("emit-findings-handoff: internal error — snip leaked", file=sys.stderr)
@@ -107,26 +151,28 @@ def main() -> int:
             "path": evid_rel,
             "sha256": sha256_file(evidence),
         },
+        "inventory": {
+            "path": str(inventory.relative_to(root)),
+            "sha256": sha256_file(inventory),
+            "endpoint_count": inv_count,
+        },
         "rules": rules,
         "totals": {
             "violations": len(rules),
             "by_category": by_category,
+            "inventory_endpoints": inv_count,
         },
         "ack_obligation": (
             "M2 PLAN must partition from findings-handoff.json rules/loci + inventory digests; "
             "must not load mta-findings.json codeSnip/raw exhaust into the planner context. "
-            "Selective evidence reads allowed only by locus path after digest check."
+            "Selective evidence reads allowed only by locus path after digest check. "
+            "Opaque rule IDs require disposition=opaque_exception or consistent re-classify — "
+            "never invent semantics (AR-4.2)."
         ),
     }
-    if inventory.is_file():
-        handoff["inventory"] = {
-            "path": str(inventory.relative_to(root)),
-            "sha256": sha256_file(inventory),
-        }
 
     raw = json.dumps(handoff, indent=2) + "\n"
     if len(raw.encode("utf-8")) > HANDOFF_MAX_BYTES:
-        # Drop loci detail first, keep rule_id/category/counts
         for r in handoff["rules"]:
             r["loci"] = r["loci"][:5]
         raw = json.dumps(handoff, indent=2) + "\n"
@@ -143,7 +189,8 @@ def main() -> int:
         return 4
 
     evid_size = evidence.stat().st_size
-    if evid_size > 0 and size / evid_size >= 0.25:
+    # Ratio lint targets snip-bloated evidence stores; skip tiny fixtures (<8KiB).
+    if evid_size >= 8192 and size / evid_size >= 0.25:
         print(
             f"emit-findings-handoff: ratio {size}/{evid_size} >= 0.25 (fail lint)",
             file=sys.stderr,
@@ -152,7 +199,10 @@ def main() -> int:
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(raw, encoding="utf-8")
-    print(f"OK: findings-handoff → {out} ({size}B, {len(rules)} rules)")
+    print(
+        f"OK: findings-handoff → {out} ({size}B, {len(rules)} rules, "
+        f"inventory_endpoints={inv_count})"
+    )
     return 0
 
 

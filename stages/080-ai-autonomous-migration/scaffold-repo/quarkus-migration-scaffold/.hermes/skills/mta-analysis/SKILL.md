@@ -57,6 +57,10 @@ artifact `migration/findings-handoff.json` (`emit-findings-handoff.py`, schema
 `rhoai3.findings-handoff/v1` — **no** `codeSnip`) and run
 `check-findings-handoff.py`. See `migration/schemas/findings-handoff.md`.
 
+AD-H §16.7 / AR-4.1–4.2: inventory digest **required** before emit; each rule
+carries bounded `description` + `disposition`; optional
+`story-endpoint-partition.json` conservation gate.
+
 The script expands `migration.yaml` `analysis.targets` into repeated
 `--target` flags, writes JSON findings, and overwrites the output dir.
 
