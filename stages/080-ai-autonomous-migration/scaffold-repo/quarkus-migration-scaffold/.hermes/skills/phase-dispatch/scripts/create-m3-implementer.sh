@@ -86,6 +86,13 @@ PY
 [[ ${#SKILLS[@]} -gt 0 ]] || die "no M3 skills parsed from phase-dispatch.yaml"
 [[ -n "${MAX_RUNTIME}" ]] || die "no M3 max_runtime_seconds"
 
+# AD-010 §3b — optional per-story override when body stamps effort-high.
+BODY_BUDGET="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("runtime_budget_sec") or "")' "${BODY_JSON}")"
+if [[ -n "${BODY_BUDGET}" ]]; then
+  MAX_RUNTIME="${BODY_BUDGET}"
+  echo "create-m3-implementer: §3b runtime_budget_sec=${MAX_RUNTIME} from body" >&2
+fi
+
 # Human-readable markdown wrapper + attach typed JSON path as obligation
 BODY_MD="$(mktemp)"
 trap 'rm -f "${BODY_MD}"' EXIT

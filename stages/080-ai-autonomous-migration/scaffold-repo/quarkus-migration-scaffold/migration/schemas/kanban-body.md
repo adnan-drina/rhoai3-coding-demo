@@ -34,6 +34,10 @@ Each `exit_criteria[]` item is an object with a short `check` id and either:
 equivalent) for ≥1 phase skill, **or** typed `skills_unused:<reason>` in the
 completion comment. Silence is not a typed negative.
 
+**Optional `runtime_budget_sec` (AD-010 §3b):** integer seconds when
+`effort_class` is high. Create-helper passes it as `--max-runtime`. Do **not**
+raise the phase-wide default from one sample.
+
 **Forbidden in body:** inline findings blobs, pasted file contents, derived
 analysis prose as authority.
 
