@@ -40,6 +40,11 @@ require paths outside `files_in_scope`. Lint `BODY_SCOPE_EXIT` fails when checks
 `pom.xml` in scope — add dual-path pom (legacy-at-3 + modernized). Architect may
 extend this under `Architect:rule-body-self-consistency`.
 
+**Recommended M3 check id  (Deputy ):**
+**Recommended M3 check id `claim_accuracy` (Deputy E-20260810T042100Z):**
+completion summary/result must name only technologies present in the diff
+(S-002/S-004 overstated Quarkus security / Panache). Not a BODY_EXIT hard require yet.
+
 **Optional `runtime_budget_sec` (AD-010 §3b):** integer seconds when
 `effort_class` is high. Create-helper passes it as `--max-runtime`. Do **not**
 raise the phase-wide default from one sample.
