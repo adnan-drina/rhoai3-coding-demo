@@ -30,7 +30,20 @@ Measured count uses the same dest normalization as implementer checkpoints
 Over-cap → **REFUSE** create / body lint (`BODY_SIZE`). Split the story; do not
 raise the wall.
 
+## Wall-fit (Architect E-20260810T111450Z)
+
+Count caps alone are unsound for “decompose when units > wall”. At **create**
+time (`create-m3-implementer.sh` passes `--wall-fit`):
+
+`estimated_seconds = operand_count × 75` (proving-min seconds/operand)
+
+Refuse when `estimated_seconds > runtime_budget_sec` (or phase default
+2700 / effort-high 3600). Example: **60 × 75 = 4500 > 3600** → REFUSE.
+
+Board-wide `check-kanban-body` keeps count/caps only (no `--wall-fit`) so a
+named verification undecomposed body does not freeze unrelated authoring.
+
 ```bash
 python3 .hermes/skills/sdd-readiness/scripts/check-operand-count.py .
-python3 .hermes/skills/sdd-readiness/scripts/check-operand-count.py . migration/bodies/m3-s-010.json
+python3 .hermes/skills/sdd-readiness/scripts/check-operand-count.py . migration/bodies/m3-s-010.json --wall-fit
 ```

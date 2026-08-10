@@ -27,7 +27,10 @@ def _operand_count_rc(label: str, body: dict) -> int:
         return 1
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return int(mod.check_one(label, body))
+    # Board-wide lint: count match + caps only. Wall-fit is create-time
+    # (--wall-fit) so historical undecomposed verification bodies do not block
+    # unrelated authoring (Architect E-111450Z).
+    return int(mod.check_one(label, body, wall_fit=False))
 
 REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "M1": ("harvest_referent",),

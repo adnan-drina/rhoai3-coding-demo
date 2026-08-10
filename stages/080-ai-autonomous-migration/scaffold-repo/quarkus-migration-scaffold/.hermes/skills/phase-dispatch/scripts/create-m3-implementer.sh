@@ -107,9 +107,10 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-surgical-scopes.py" 
   || die "AR-4.4 surgical scopes failed for ${BODY_JSON}"
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-semantic-exits.py" "${ROOT}" "${BODY_JSON}" \
   || die "AR-2.3–2.7 semantic exits failed for ${BODY_JSON}"
-# Architect E-104925Z / E-110403Z — measured operand_count refuse (phase-name REJECT)
+# Architect E-104925Z / E-110403Z / E-111450Z — operand_count + wall-fit refuse
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" "${BODY_JSON}" \
-  || die "BODY_SIZE operand-count failed for ${BODY_JSON}"
+  --wall-fit \
+  || die "BODY_SIZE operand-count/wall-fit failed for ${BODY_JSON}"
 
 # Human-readable markdown wrapper + attach typed JSON path as obligation
 BODY_MD="$(mktemp)"

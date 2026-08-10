@@ -397,6 +397,16 @@ if python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
 else
   echo "OK: over-cap operand_count refused"
 fi
+python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
+  "${ROOT}/migration/fixtures/story-sizing/ar-size-good.json" --wall-fit || rc=1
+if python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
+  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-wallfit.json" --wall-fit \
+  >/dev/null 2>&1; then
+  echo "FAIL: wall-fit 60@3600 should refuse" >&2
+  rc=1
+else
+  echo "OK: wall-fit 60@3600 refused"
+fi
 
 echo "== wall-as-terminal exit-eval (Architect E-110403Z) =="
 wall_tmp="$(mktemp -d)"

@@ -9,6 +9,12 @@ from typing import Any, Optional
 
 DEFAULT_MAX = 40
 HIGH_MAX = 80
+# Proving-min wall-fit (Architect E-111450Z): refuse undecomposed scopes whose
+# estimated runtime exceeds budget. Tuned so 60@3600 refuses while completed
+# M3 stories (~35@2700 / 34@3600) still pass. Not a claim of measured rate.
+SECONDS_PER_OPERAND = 75
+DEFAULT_BUDGET_SEC = 2700
+HIGH_BUDGET_SEC = 3600
 
 
 def normalize_dest(item: Any) -> Optional[str]:
@@ -56,6 +62,16 @@ def max_for(body: dict) -> int:
     return DEFAULT_MAX
 
 
+def budget_sec(body: dict) -> int:
+    raw = body.get("runtime_budget_sec")
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0:
+        return raw
+    effort = str(body.get("effort_class") or "").strip().lower()
+    if effort in {"high", "effort-high", "effort_high"}:
+        return HIGH_BUDGET_SEC
+    return DEFAULT_BUDGET_SEC
+
+
 def load_bodies(root: Path, only: list[Path]) -> list[tuple[str, dict]]:
     if only:
         out = []
@@ -82,7 +98,7 @@ def load_bodies(root: Path, only: list[Path]) -> list[tuple[str, dict]]:
     return out
 
 
-def check_one(label: str, body: dict) -> int:
+def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
     measured = measured_operands(body)
     if not measured:
@@ -119,11 +135,29 @@ def check_one(label: str, body: dict) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: {label} operand_count={raw} measured={len(measured)} max={cap}")
+    if wall_fit:
+        budget = budget_sec(body)
+        estimated = len(measured) * SECONDS_PER_OPERAND
+        if estimated > budget:
+            print(
+                f"BODY_SIZE: {label}: wall-fit refuse "
+                f"estimated={estimated}s ({len(measured)}×{SECONDS_PER_OPERAND}s) "
+                f"> budget={budget}s — decompose (Architect E-111450Z / §3b units>wall); "
+                f"do not raise wall",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"OK: {label} operand_count={raw} measured={len(measured)} "
+            f"max={cap} wall-fit estimated={estimated}s<=budget={budget}s"
+        )
+    else:
+        print(f"OK: {label} operand_count={raw} measured={len(measured)} max={cap}")
     return 0
 
 
 def main() -> int:
+    wall_fit = "--wall-fit" in sys.argv[1:]
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     root = Path(args[0] if args else ".").resolve()
     only: list[Path] = []
@@ -139,7 +173,7 @@ def main() -> int:
         return 0
     bad = 0
     for label, body in bodies:
-        bad |= check_one(label, body)
+        bad |= check_one(label, body, wall_fit=wall_fit)
     if bad:
         print("BODY_SIZE operand-count checks FAILED", file=sys.stderr)
         return 1
