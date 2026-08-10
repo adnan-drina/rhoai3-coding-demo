@@ -47,6 +47,11 @@ def evaluate(fixture_dir: Path) -> str:
     if data.get("char_surface_stub"):
         return "REFUSE"
 
+    # AR-3.6 — harness probe is not an acceptance operand
+    operand = str(data.get("operand") or data.get("g1_operand") or "").lower()
+    if data.get("probe_only") or operand in {"harness_probe", "probe", "tooling_smoke"}:
+        return "REFUSE"
+
     if mutants > 0 and killed == mutants:
         return "ACCEPT"
     return "REFUSE"
@@ -65,6 +70,8 @@ def main() -> int:
         "f9-kill-ratio-0-0": "FAIL",
         "f9-referent-dry-run-fail": "INCONCLUSIVE",
         "f9-floor-ambiguous": "INCONCLUSIVE",
+        # AR-3.6 — probe-only evidence → REFUSE (not ACCEPT)
+        "ar36-probe-only": "REFUSE",
     }
     rc = 0
     out_dir = root / "migration/fixtures/admission/out/g1-characterization"

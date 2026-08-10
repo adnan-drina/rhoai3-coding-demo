@@ -54,10 +54,20 @@ on the scaffold `pom.xml` pitest plugin); use **`-Dpit.dryRun=true`** (not
 `+dryRun` feature). Referent needs **≥1 compilable test**; refuse zero-test
 skip and `-DskipTests`. **No static-metric floor.**
 
+**AR-3.6:** default PIT targets are **product** packages. `com.demo.harness.*`
+is tooling smoke only (`G1_OPERAND=tooling_smoke`). Probe-only trees **REFUSE**
+as acceptance (`check-g1-acceptance-operand.py`).
+
 ```bash
-# Live count (writes evidence JSON optional)
+# Acceptance operand preflight
+python3 "${HERMES_SKILL_DIR}/scripts/check-g1-acceptance-operand.py" /projects/modernized
+
+# Live count (product default — writes evidence JSON optional)
 bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh" /path/to/module \
   migration/evidence/pit-dry-run.json
+
+# Tooling smoke only (NOT acceptance)
+G1_OPERAND=tooling_smoke bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh" .
 
 # Parse an existing mutations.xml (fail closed if missing/empty)
 python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \

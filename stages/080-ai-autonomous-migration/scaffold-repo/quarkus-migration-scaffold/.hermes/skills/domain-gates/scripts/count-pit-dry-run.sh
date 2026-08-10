@@ -35,13 +35,29 @@ if grep -q '<artifactId>pitest-maven</artifactId>' pom.xml; then
   PIT_GOAL="org.pitest:pitest-maven:mutationCoverage"
 fi
 
-# Optional scope (default: specimen-free harness probe — green unit for volume).
-# Override for slice kill-ratio (#8) once the suite is green under PIT.
-PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.harness.*}"
-PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.harness.*}"
+# AR-3.6 / AD-H §G.1: default operand = product packages — NOT harness probe.
+# Harness probe is tooling smoke only: G1_OPERAND=tooling_smoke + override targets.
+G1_OPERAND="${G1_OPERAND:-acceptance}"
+if [ "${G1_OPERAND}" = "tooling_smoke" ]; then
+  PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.harness.*}"
+  PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.harness.*}"
+  echo "WARN: G1_OPERAND=tooling_smoke — harness probe is NOT acceptance evidence" >&2
+else
+  # Product packages commonly used by this scaffold / petclinic dest.
+  PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.dto.*,com.demo.security.*}"
+  PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.security.*}"
+  # Refuse accidental harness-as-acceptance unless explicitly overridden.
+  if [ "${PIT_TARGET_CLASSES}" = "com.demo.harness.*" ] || [ "${PIT_TARGET_TESTS}" = "com.demo.harness.*" ]; then
+    die "AR-3.6 refuse harness probe as G-1 acceptance target (set G1_OPERAND=tooling_smoke for smoke-only)"
+  fi
+  # Preflight: product tests must exist for acceptance dry-run
+  python3 "${SKILL_DIR}/scripts/check-g1-acceptance-operand.py" "${MODULE_DIR}" \
+    || die "AR-3.6 acceptance operand check failed before PIT"
+fi
 
 # PIT 1.25.x defaults HTML-only in some setups; parser needs mutations.xml.
 PIT_OUTPUT_FORMATS="${PIT_OUTPUT_FORMATS:-XML,HTML}"
+PIT_EXCLUDED_CLASSES="${PIT_EXCLUDED_CLASSES:-com.demo.harness.*}"
 
 set +e
 mvn -q test-compile \
@@ -50,6 +66,7 @@ mvn -q test-compile \
   -Ddetail=true \
   -DtargetClasses="${PIT_TARGET_CLASSES}" \
   -DtargetTests="${PIT_TARGET_TESTS}" \
+  -DexcludedClasses="${PIT_EXCLUDED_CLASSES}" \
   -DoutputFormats="${PIT_OUTPUT_FORMATS}" \
   2>&1 | tee /tmp/pit-dry-run.log
 mvn_rc=${PIPESTATUS[0]}

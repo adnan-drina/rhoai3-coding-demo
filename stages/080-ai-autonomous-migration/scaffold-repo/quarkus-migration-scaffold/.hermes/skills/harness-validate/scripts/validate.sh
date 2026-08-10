@@ -43,6 +43,22 @@ else
   echo "OK: missing mutations.xml refused"
 fi
 
+echo "== AR-3.6 G-1 acceptance operand (probe ≠ acceptance) =="
+# Scaffold tip currently has harness-only tests → must REFUSE as acceptance
+if python3 "${SKILLS}/domain-gates/scripts/check-g1-acceptance-operand.py" "${ROOT}" >/dev/null 2>&1; then
+  echo "FAIL: probe-only scaffold should refuse acceptance operand" >&2
+  rc=1
+else
+  echo "OK: AR-3.6 probe-only acceptance refused"
+fi
+if G1_OPERAND=tooling_smoke python3 "${SKILLS}/domain-gates/scripts/check-g1-acceptance-operand.py" "${ROOT}"; then
+  echo "OK: AR-3.6 tooling_smoke harness path permitted (non-acceptance)"
+else
+  echo "FAIL: tooling_smoke should allow harness-only" >&2
+  rc=1
+fi
+
+
 echo "== mta-analysis findings schema (fixture known-good) =="
 python3 "${SKILLS}/mta-analysis/scripts/validate-findings-schema.py" \
   migration/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1

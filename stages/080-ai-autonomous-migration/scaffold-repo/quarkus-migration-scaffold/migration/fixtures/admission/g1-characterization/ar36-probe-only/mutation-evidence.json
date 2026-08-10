@@ -1,0 +1,9 @@
+{
+  "ran": true,
+  "mutants_generated": 12,
+  "mutations_total": 12,
+  "mutations_killed": 12,
+  "probe_only": true,
+  "operand": "harness_probe",
+  "note": "AR-3.6: green PIT on com.demo.harness.G1VolumeProbe is not acceptance"
+}
