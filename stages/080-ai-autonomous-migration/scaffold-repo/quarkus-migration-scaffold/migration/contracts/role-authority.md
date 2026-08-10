@@ -9,7 +9,8 @@ AD-H / AD-S / SOUL stand. Human checkpoints are **ack artifacts** or Kanban
 
 **Rule:** one Kanban task ⇒ one role. Dispatch `skills[]` is the **declared
 preload / intended skill set** (Hermes ordered multi-skill load) — **not**
-Hermes hard RBAC. **Enforcement:** SOUL + `HERMES_WRITE_SAFE_ROOT` + ack gates
+Hermes hard RBAC. **Enforcement:** SOUL + `HERMES_WRITE_SAFE_ROOT` + **§16.4
+proving-min write fence** (`migration/contracts/write-fence.md`) + ack gates
 + Lead refuse lints (Research `E-20260808T074430Z`).
 
 ## Roles and prohibitions
@@ -30,7 +31,8 @@ for the same fact.
 ## Least privilege (summary)
 
 **Obligations, not Hermes RBAC.** Mechanical fence = `HERMES_WRITE_SAFE_ROOT` +
-acks/lints — not this table alone.
+§16.4 deny-list OS fence + scope refuse + acks/lints — not this table alone.
+`HERMES_WRITE_SAFE_ROOT` alone is insufficient (ACKs live inside the safe root).
 
 | Surface | Who writes |
 |---------|------------|
@@ -65,10 +67,14 @@ Record under `migration/acks/` (or Kanban metadata):
 | Ack schema | `migration/schemas/ack.md` + `migration/acks/` |
 | Ack presence before phase advance | skill `role-authority` → `check-acks.sh` |
 | Cross-role write refuse | skill `role-authority` → `check-role-writes.py` |
+| §16.4 proving-min fence | `write-fence.md` → `apply-write-fence.sh` / `probe-write-fence.py` / `check-write-fence.py` |
 
 ```bash
 bash .hermes/skills/role-authority/scripts/check-acks.sh M2
 python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
+bash .hermes/skills/role-authority/scripts/apply-write-fence.sh lock
+python3 .hermes/skills/role-authority/scripts/probe-write-fence.py .
+python3 .hermes/skills/role-authority/scripts/check-write-fence.py . --body migration/bodies/S-010.json
 ```
 
 Full Kanban dispatch wiring rides phase schema. Non-blocking vs Operator ACK

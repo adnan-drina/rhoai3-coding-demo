@@ -95,6 +95,34 @@ else
 fi
 rm -rf "${rw_tmp}"
 
+echo "== write-fence proving-min (AD-H §16.4 / F2) =="
+fence_tmp="$(mktemp -d)"
+mkdir -p "${fence_tmp}/migration/acks" "${fence_tmp}/migration/verdicts" \
+  "${fence_tmp}/.hermes/skills" "${fence_tmp}/migration/fixtures" \
+  "${fence_tmp}/src/main/java"
+printf '%s\n' 'ok' > "${fence_tmp}/migration/acks/README.md"
+printf '%s\n' 'ok' > "${fence_tmp}/migration/fixtures/keep.txt"
+bash "${SKILLS}/role-authority/scripts/apply-write-fence.sh" "${fence_tmp}" lock || rc=1
+if python3 "${SKILLS}/role-authority/scripts/probe-write-fence.py" "${fence_tmp}"; then
+  echo "OK: F2 seat probe PASS on temp tree"
+else
+  echo "FAIL: F2 seat probe" >&2
+  rc=1
+fi
+# scope refuse smoke
+printf '%s\n' '{"files_in_scope":["src/main/java/Foo.java"]}' > "${fence_tmp}/body.json"
+printf '%s\n' 'x' > "${fence_tmp}/src/main/java/OutOfScope.java"
+if python3 "${SKILLS}/role-authority/scripts/check-write-fence.py" "${fence_tmp}" \
+  --no-git-status --body "${fence_tmp}/body.json" \
+  --writes src/main/java/OutOfScope.java migration/acks/forged.json >/dev/null 2>&1; then
+  echo "FAIL: write-fence should refuse OOS + ack forge" >&2
+  rc=1
+else
+  echo "OK: write-fence refuses OOS + deny-path writes"
+fi
+bash "${SKILLS}/role-authority/scripts/apply-write-fence.sh" "${fence_tmp}" unlock >/dev/null || true
+rm -rf "${fence_tmp}"
+
 echo "== grounded-generation (AD-H §17) =="
 python3 "${SKILLS}/grounded-generation/scripts/check-citation.py" "${ROOT}" || rc=1
 gg_tmp="$(mktemp -d)"
