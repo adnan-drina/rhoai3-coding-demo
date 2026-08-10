@@ -43,7 +43,8 @@ phases:
         - sdd-readiness
         - role-authority
         # /speckit.specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
-    max_runtime_seconds: 2400
+    # R-M2.5 (Architect E-20260810T153830Z): match M1 — 2400 under-fit mid-setup-tasks
+    max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
   M3:

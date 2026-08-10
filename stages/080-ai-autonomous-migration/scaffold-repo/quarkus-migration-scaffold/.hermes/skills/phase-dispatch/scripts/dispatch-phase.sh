@@ -215,14 +215,23 @@ Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + find
 
 ## Job (in order)
 1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
-2. **Hard-invoke** `/speckit.specify` **before** freeform partition essays (then `/speckit.plan` → `/speckit.tasks`). Cite `migration/contracts/sdd-ordering.md` + `story-sizing.md`.
-3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1` — see `migration/schemas/partition.md`) with story IDs + layering from handoff/inventory. Prefer Spec Kit `spec.md` as the next durable artifact.
-4. Create implementer Kanban cards from tasks.md using
+2. **R-M2.6 resume-from-artifacts** (Architect E-20260810T153830Z): if
+   `migration/briefs/partition.json` **and** Spec Kit `spec.md` exist
+   (and `plan.md` when present) → **skip** re-partition / re-`/speckit.specify`
+   / re-`/speckit.plan`; jump to `/speckit.tasks` → step 4. Do not rewrite
+   write-once `partition.json`.
+3. Else **Hard-invoke** `/speckit.specify` **before** freeform partition essays
+   (then `/speckit.plan` → `/speckit.tasks`). Cite `migration/contracts/sdd-ordering.md`
+   + `story-sizing.md`.
+4. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1` — see
+   `migration/schemas/partition.md`) with story IDs + layering from
+   handoff/inventory. Prefer Spec Kit `spec.md` as the next durable artifact.
+5. Create implementer Kanban cards from tasks.md using
    **`bash .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh`**
    (NOT bare `hermes kanban create` — that omits M3 skills; Review grounding
    study 20260809). Each child needs a typed body JSON under
    `migration/bodies/` that passes `check-kanban-body.py`.
-5. Stop when briefs/tasks/bodies are stable — **Operator** grants
+6. Stop when briefs/tasks/bodies are stable — **Operator** grants
    `migration/acks/brief-identity.ack.yaml` (not a worker Done criterion).
 
 ## Done when

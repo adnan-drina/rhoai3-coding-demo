@@ -22,9 +22,7 @@ def _load_yaml(path: Path):
     try:
         import yaml  # type: ignore
     except ImportError:
-        # Minimal fallback: refuse rather than half-parse.
-        print(f"FAIL: PyYAML required to patch {path}", file=sys.stderr)
-        sys.exit(2)
+        return None
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
@@ -37,11 +35,110 @@ def _dump_yaml(path: Path, doc) -> None:
     )
 
 
+def _regex_values(text: str) -> tuple[int | None, int | None, int | None, int | None]:
+    """Best-effort read without PyYAML (model + first qwen provider block)."""
+    import re
+
+    model_mt = re.search(r"(?m)^model:\s*\n(?:[ \t]+.+\n)*?[ \t]+max_tokens:\s*(\d+)\s*$", text)
+    ctx = re.search(r"(?m)^[ \t]+context_length:\s*(\d+)\s*$", text)
+    # provider model max_tokens under qwen3-6-27b
+    qwen_block = re.search(
+        rf"(?ms)^[ \t]+{re.escape(MODEL_ID)}:\s*\n((?:[ \t]+.+\n)*)",
+        text,
+    )
+    qwen_mt = None
+    qwen_stale = None
+    if qwen_block:
+        qwen_mt_m = re.search(r"(?m)^[ \t]+max_tokens:\s*(\d+)\s*$", qwen_block.group(1))
+        stale_m = re.search(
+            r"(?m)^[ \t]+stale_timeout_seconds:\s*(\d+)\s*$", qwen_block.group(1)
+        )
+        qwen_mt = int(qwen_mt_m.group(1)) if qwen_mt_m else None
+        qwen_stale = int(stale_m.group(1)) if stale_m else None
+    return (
+        int(model_mt.group(1)) if model_mt else None,
+        qwen_mt,
+        int(ctx.group(1)) if ctx else None,
+        qwen_stale,
+    )
+
+
+def _regex_apply(path: Path) -> None:
+    """Pin knobs with line rewrites when PyYAML is unavailable."""
+    import re
+
+    text = path.read_text(encoding="utf-8")
+    text2, n1 = re.subn(
+        r"(?m)^([ \t]+context_length:\s*)\d+\s*$",
+        rf"\g<1>{REQUIRED_CONTEXT}",
+        text,
+        count=1,
+    )
+    text2, n2 = re.subn(
+        r"(?m)^(model:\s*\n(?:[ \t]+.+\n)*?[ \t]+max_tokens:\s*)\d+\s*$",
+        rf"\g<1>{REQUIRED_MAX_TOKENS}",
+        text2,
+        count=1,
+    )
+    # provider qwen max_tokens + stale
+    def _qwen_sub(m: re.Match[str]) -> str:
+        block = m.group(0)
+        block, _ = re.subn(
+            r"(?m)^([ \t]+max_tokens:\s*)\d+\s*$",
+            rf"\g<1>{REQUIRED_MAX_TOKENS}",
+            block,
+            count=1,
+        )
+        block, _ = re.subn(
+            r"(?m)^([ \t]+stale_timeout_seconds:\s*)\d+\s*$",
+            r"\g<1>900",
+            block,
+            count=1,
+        )
+        if "max_tokens:" not in block:
+            indent = re.match(r"^([ \t]+)", m.group(0).splitlines()[-1] or "        ")
+            ind = indent.group(1) if indent else "        "
+            block = block.rstrip() + f"\n{ind}max_tokens: {REQUIRED_MAX_TOKENS}\n"
+        return block
+
+    text2, n3 = re.subn(
+        rf"(?ms)^([ \t]+{re.escape(MODEL_ID)}:\s*\n(?:[ \t]+.+\n)*)",
+        _qwen_sub,
+        text2,
+        count=1,
+    )
+    if n1 + n2 + n3 == 0 and f"max_tokens: {REQUIRED_MAX_TOKENS}" not in text2:
+        raise SystemExit(f"FAIL: regex apply could not pin max_tokens in {path}")
+    path.write_text(text2, encoding="utf-8")
+
+
 def ensure(path: Path, apply: bool) -> bool:
     if not path.is_file():
         print(f"SKIP: missing {path}")
         return False
     doc = _load_yaml(path)
+    if doc is None:
+        before = _regex_values(path.read_text(encoding="utf-8"))
+        need = (
+            before[0] != REQUIRED_MAX_TOKENS
+            or before[1] != REQUIRED_MAX_TOKENS
+            or before[2] != REQUIRED_CONTEXT
+            or before[3] != 900
+        )
+        if not need:
+            print(f"OK: {path} already max_tokens={REQUIRED_MAX_TOKENS} (regex)")
+            return False
+        print(
+            f"{'APPLY' if apply else 'WOULD'}: {path} (no PyYAML) "
+            f"model.max_tokens {before[0]!r}→{REQUIRED_MAX_TOKENS} "
+            f"provider.max_tokens {before[1]!r}→{REQUIRED_MAX_TOKENS}"
+        )
+        if not apply:
+            return True
+        _regex_apply(path)
+        print(f"OK: patched {path} via regex")
+        return True
+
     model = doc.setdefault("model", {})
     providers = doc.setdefault("providers", {})
     custom = providers.setdefault("custom", {})
