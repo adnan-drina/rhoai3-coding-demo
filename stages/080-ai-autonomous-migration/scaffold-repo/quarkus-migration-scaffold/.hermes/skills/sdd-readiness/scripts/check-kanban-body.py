@@ -178,6 +178,33 @@ def check_body(label: str, body: dict, root: Path) -> int:
                 )
                 bad = 1
 
+    # ER#2 F6 / §G.2 — transform class + G-2 applicability stamped into identity.
+    # Silence must not skip G-2; stamp is evidence-derived, not worker-optional.
+    TRANSFORM_CLASSES = frozenset({"NONE", "HARVEST", "REWRITE", "CONFIG", "OTHER"})
+    G2_APPLICABILITY = frozenset(
+        {"required", "not_applicable", "undetermined_pending_derive"}
+    )
+    if phase in ("M3", "M4", "M5"):
+        identity = body.get("identity")
+        if not isinstance(identity, dict):
+            fail(
+                "BODY_IDENTITY",
+                f"phase={phase} identity missing F6 transform_class / "
+                f"g2_applicability (must be object)",
+            )
+            bad = 1
+        else:
+            tc = str(identity.get("transform_class") or "").upper()
+            g2 = str(identity.get("g2_applicability") or "").lower()
+            if tc not in TRANSFORM_CLASSES or g2 not in G2_APPLICABILITY:
+                fail(
+                    "BODY_IDENTITY",
+                    f"phase={phase} identity missing F6 transform_class / "
+                    f"g2_applicability "
+                    f"(got transform_class={tc!r} g2_applicability={g2!r})",
+                )
+                bad = 1
+
     # Deputy E-20260809T190500Z / W2 §6 completion half — M3/M4/M5 must name
     # falsifiable done-when (exit_criteria), not only refs + scope.
     if phase in ("M3", "M4", "M5"):
@@ -280,6 +307,23 @@ def check_body(label: str, body: dict, root: Path) -> int:
                     "(add dual-path pom; do not force workers to breach scope)",
                 )
                 bad = 1
+
+        # F6 — when G-2 applies, M4/M5 consumers must name check=g2 (silence ≠ skip).
+        if phase in ("M4", "M5") and isinstance(body.get("identity"), dict):
+            g2 = str(body["identity"].get("g2_applicability") or "").lower()
+            if g2 in {"required", "undetermined_pending_derive"}:
+                checks = {
+                    str(item.get("check") or "")
+                    for item in (exits if isinstance(exits, list) else [])
+                    if isinstance(item, dict)
+                }
+                if "g2" not in checks:
+                    fail(
+                        "BODY_G2",
+                        f"g2_applicability={g2} requires exit_criteria "
+                        f"check=g2 (M4/M5; F6 / §G.2)",
+                    )
+                    bad = 1
 
     return bad
 

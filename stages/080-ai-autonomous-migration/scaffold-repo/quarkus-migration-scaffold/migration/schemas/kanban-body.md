@@ -14,9 +14,22 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `role` | string | AD-H §16 role |
 | `phase` | `M1`…`M5` \| `factory` | |
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
-| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires |
+| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below** |
 | `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
 | `exit_criteria` | list of objects | **M3/M4/M5 required non-empty** — falsifiable done-when |
+
+**F6 transform / G-2 applicability stamp (ER#2 / §G.2):** for phases **M3/M4/M5**,
+`identity` MUST include evidence-derived fields (immutable task identity):
+
+| Field | Allowed values | Rule |
+|-------|----------------|------|
+| `transform_class` | `NONE` \| `HARVEST` \| `REWRITE` \| `CONFIG` \| `OTHER` | Derived from referent/staging — not worker-optional prose |
+| `g2_applicability` | `required` \| `not_applicable` \| `undetermined_pending_derive` | **Silence ≠ skip** when `required` or `undetermined_pending_derive` |
+
+When `g2_applicability` is `required` or `undetermined_pending_derive`, phases
+**M4/M5** MUST include `exit_criteria` `check=g2` (consumer-validated). M3 must
+carry the stamp so later gates cannot be turned off by omitting a HARVEST claim.
+A fixture that deletes/downgrades the stamp blocks full `ACCEPT`.
 
 **M3 `files_in_scope` dual-path (Deputy `E-20260809T220100Z`):** each
 legacy/referent path must be paired with its destination write path (same list,
@@ -77,3 +90,5 @@ analysis prose as authority.
 | `BODY_SCOPE_DEST` | `BODY_SCOPE_DEST: M3 files_in_scope needs destination paths (not legacy-only)` |
 | `BODY_SCOPE_EXIT` | `BODY_SCOPE_EXIT: exit_criteria imply pom.xml but files_in_scope omits it` |
 | `BODY_EXIT` | `BODY_EXIT: phase={phase} requires non-empty exit_criteria[]` |
+| `BODY_IDENTITY` | `BODY_IDENTITY: phase={phase} identity missing F6 transform_class / g2_applicability` |
+| `BODY_G2` | `BODY_G2: g2_applicability={val} requires exit_criteria check=g2 (M4/M5)` |
