@@ -89,10 +89,15 @@ def check_body(label: str, body: dict, root: Path) -> int:
         bad = 1
         return bad
 
-    # inline content heuristic
-    raw = json.dumps(body)
+    # inline content heuristic — exclude large legitimate path lists
+    # (W2 §6.4 compile-closure can push files_in_scope past 12k JSON chars).
+    slim = {
+        k: v
+        for k, v in body.items()
+        if k not in ("files_in_scope", "filesInScope", "exit_criteria", "done_when")
+    }
+    raw = json.dumps(slim)
     if len(raw) > 12000 or INLINE_MARKERS.search(raw):
-        # allow if only short strings in refs
         fail(
             "BODY_INLINE",
             "body must not carry derived content (digest refs only)",
