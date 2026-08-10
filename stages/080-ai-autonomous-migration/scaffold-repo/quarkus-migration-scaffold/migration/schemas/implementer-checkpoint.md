@@ -14,7 +14,10 @@ Per-task seam under `migration/runs/<task_id>/checkpoint.json`.
   "completed": [],
   "next": "src/test/java/com/demo/rest/OwnerRestControllerTests.java",
   "updated_at": "RFC3339Z",
-  "notes": "optional"
+  "notes": "optional",
+  "test_compile_gates": [
+    {"paths": ["src/test/java/com/demo/rest/OwnerRestControllerTests.java"], "at": "RFC3339Z", "ok": true}
+  ]
 }
 ```
 
@@ -25,3 +28,5 @@ Per-task seam under `migration/runs/<task_id>/checkpoint.json`.
 - `next` is first incomplete path, or `null` when done.
 - Retries / re-dispatch **MUST** load checkpoint before new writes and resume
   at `next` (not cold re-walk). Body digest must match or REFUSE.
+- Completing `src/test/**` requires a green `run-test-compile-gate` (appended to
+  `test_compile_gates`) unless fixture `--skip-test-compile-gate`.

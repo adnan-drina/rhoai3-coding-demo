@@ -424,6 +424,28 @@ else
 fi
 rm -rf "${wall_tmp}"
 
+echo "== #1b test-compile gate on checkpoint stamp (Deputy E-115113Z) =="
+tc_tmp="$(mktemp -d)"
+mkdir -p "${tc_tmp}/migration/runs/t_tcgate"
+printf '%s\n' '{"schema":"rhoai3.implementer-checkpoint/v1","task_id":"t_tcgate","body_path":"x","body_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","work_list":["src/test/java/com/demo/ATests.java","src/main/java/com/demo/A.java"],"completed":[],"next":"src/test/java/com/demo/ATests.java","updated_at":"2026-08-10T00:00:00Z"}' \
+  > "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json"
+# No pom at tmp root → stamp must REFUSE (structural gate, not advisory)
+if python3 "${SKILLS}/auditability-repeatability/scripts/stamp-implementer-checkpoint.py" \
+  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  --completed src/test/java/com/demo/ATests.java >/dev/null 2>&1; then
+  echo "FAIL: src/test stamp without pom/test-compile should refuse" >&2
+  rc=1
+else
+  echo "OK: src/test checkpoint stamp refused without test-compile gate"
+fi
+# Fixture skip path still works for shape tests
+python3 "${SKILLS}/auditability-repeatability/scripts/stamp-implementer-checkpoint.py" \
+  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  --completed src/test/java/com/demo/ATests.java --skip-test-compile-gate || rc=1
+python3 "${SKILLS}/auditability-repeatability/scripts/check-implementer-checkpoint.py" \
+  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" || rc=1
+rm -rf "${tc_tmp}"
+
 echo "== body-digest immutability (Architect E-111424Z) =="
 DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
 python3 "${SKILLS}/auditability-repeatability/scripts/check-body-digest-match.py" "${ROOT}" \

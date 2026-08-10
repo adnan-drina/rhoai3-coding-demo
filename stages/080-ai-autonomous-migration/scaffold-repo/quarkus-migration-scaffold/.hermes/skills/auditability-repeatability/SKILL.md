@@ -34,6 +34,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-run-digests.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/init-implementer-checkpoint.py" \
   /projects/modernized/migration/bodies/m3-s-010.json --task-id t_example \
   --root /projects/modernized
+# src/test stamp runs mvn test-compile gate (REFUSE if red)
+python3 "${HERMES_SKILL_DIR}/scripts/run-test-compile-gate.py" /projects/modernized \
+  --task-id t_example --paths src/test/java/com/demo/rest/OwnerRestControllerTests.java
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json \
   --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java

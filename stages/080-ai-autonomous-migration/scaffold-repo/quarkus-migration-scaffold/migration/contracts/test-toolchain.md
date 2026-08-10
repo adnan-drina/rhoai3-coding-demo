@@ -23,12 +23,17 @@ corpus by accident. For M3 bodies whose `files_in_scope` includes
 
 1. `exit_criteria` MUST include `check: test_compile` with
    `cmd: mvn -q test-compile` (or equivalent) and `expect: rc=0`
-2. Implementer MUST run that command **after batches of test writes** and
-   before `kanban_complete`; red `testCompile` → typed terminal / fix deps —
-   not silent progress to Review
+2. **Structural (Deputy E-20260810T115113Z):** `stamp-implementer-checkpoint.py
+   --completed src/test/...` **REFUSE**s unless `run-test-compile-gate.py` is
+   green first. Advisory prose alone decays mid-run — the checkpoint seam is
+   the invariant. `--skip-test-compile-gate` is fixture-only.
+3. Wall terminals still evaluate `test_compile` via `wall-exit-eval.md`.
 
 Authoring gate: `check-kanban-body.py` refuses M3 bodies with test scope but
 no `test_compile` exit.
+
+**Fresh-run HOLD:** no `substrate=fresh_workspace` S-010 re-dispatch until this
+structural gate is landed (Lead `enforce-1b-before-fresh-run`).
 
 ## Wall-as-terminal (Architect E-20260810T110403Z)
 

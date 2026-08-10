@@ -23,7 +23,7 @@ For M3 implementer tasks (especially test-authoring):
 python3 .hermes/skills/auditability-repeatability/scripts/init-implementer-checkpoint.py \
   migration/bodies/m3-s-010.json --task-id t_example
 
-# After writing a dest file
+# After writing a dest file (src/test/** runs mvn test-compile gate first)
 python3 .hermes/skills/auditability-repeatability/scripts/stamp-implementer-checkpoint.py \
   migration/runs/t_example/checkpoint.json \
   --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
@@ -33,7 +33,7 @@ python3 .hermes/skills/auditability-repeatability/scripts/check-implementer-chec
   migration/runs/t_example/checkpoint.json
 ```
 
-Schema: `migration/schemas/implementer-checkpoint.md`.
+`src/test/**` stamp without a green gate → **REFUSE** (Deputy E-115113Z #1b
+invariant). `--skip-test-compile-gate` is fixture-only.
 
-S-010 re-dispatch remains HOLD until this land is on tip + live (with Class A
-#1 toolchain and #2 sizing BIND already done).
+Schema: `migration/schemas/implementer-checkpoint.md`.
