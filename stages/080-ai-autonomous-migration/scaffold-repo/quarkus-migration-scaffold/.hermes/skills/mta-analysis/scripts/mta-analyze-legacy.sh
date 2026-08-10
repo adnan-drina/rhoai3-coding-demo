@@ -19,35 +19,54 @@ JSON_OUT="${MTA_JSON_OUT:-${ROOT}/migration/mta-findings.json}"
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
 
 ensure_cli() {
+  # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
+  local kantra_bin="/projects/.tools/kantra/kantra"
+  local mta_alias="/projects/.tools/kantra/mta-cli"
   export PATH="${HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
-  if command -v mta-cli >/dev/null 2>&1; then
-    command -v mta-cli
+
+  _link_mta_alias() {
+    if [ -x "${kantra_bin}" ]; then
+      ln -sfn kantra "${mta_alias}"
+      [ -x "${mta_alias}" ] || [ -x "${kantra_bin}" ] || return 1
+    fi
+    return 0
+  }
+
+  if [ -x "${kantra_bin}" ]; then
+    _link_mta_alias || true
+    printf '%s\n' "${kantra_bin}"
     return 0
   fi
   if command -v kantra >/dev/null 2>&1; then
     command -v kantra
+    return 0
+  fi
+  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
+    command -v mta-cli
     return 0
   fi
   if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
     echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…"
     "${HOME}/.local/bin/kantra-ensure"
     export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
-    if [ -x /projects/.tools/kantra/kantra ] && [ ! -e /projects/.tools/kantra/mta-cli ]; then
-      ln -sf kantra /projects/.tools/kantra/mta-cli
-    fi
+    _link_mta_alias || true
   fi
-  if command -v mta-cli >/dev/null 2>&1; then
-    command -v mta-cli
+  if [ -x "${kantra_bin}" ]; then
+    printf '%s\n' "${kantra_bin}"
     return 0
   fi
   if command -v kantra >/dev/null 2>&1; then
     command -v kantra
     return 0
   fi
+  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
+    command -v mta-cli
+    return 0
+  fi
   return 1
 }
 
-CLI="$(ensure_cli)" || die "mta-cli (or kantra) not on PATH — run kantra-ensure / platform tooling"
+CLI="$(ensure_cli)" || die "mta-cli/kantra missing after kantra-ensure — re-run once; prefer /projects/.tools/kantra/kantra"
 
 [ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run derive-legacy-boot3 skill: bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\""
 [ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"

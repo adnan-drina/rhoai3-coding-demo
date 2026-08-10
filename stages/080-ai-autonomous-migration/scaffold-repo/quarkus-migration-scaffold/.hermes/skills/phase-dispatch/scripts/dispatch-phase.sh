@@ -154,20 +154,22 @@ orchestration: hermes_native (required)
 
 ## Job (in order)
 1. Load/run **derive-legacy-boot3** - ensure `migration/derived/legacy-at-3.json` and frozen harvest_referent.
-2. Load/run **mta-analysis** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w).
-3. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json`.
-4. Schema-validate findings; emit `migration/findings-handoff.json` (seam); grant `migration/acks/m1-findings.json` when OK.
+2. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json` (**before** MTA handoff emit).
+3. Load/run **mta-analysis** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `migration/findings-handoff.json` (requires inventory).
+4. Schema-validate findings + handoff (`check-findings-handoff.py`). **Do not** write stage-advance acks — Operator grants `migration/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
 
 ## Constraints
 - workspace: dir:/projects/modernized
 - Do not hand-edit destination app source.
 - Do not run analyze as a detached shell outside this Kanban task.
+- Do **not** grant `migration/acks/m1-findings.json` or any `acknowledged_by` worker role (AR-1.1).
 - If blocked, report typed BLOCK and stop.
 
 ## Done when
 - `migration/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
+- `migration/entry-point-inventory.json` present
 - `migration/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
-- `migration/acks/m1-findings.json` granted with violation_rules count
+- Stage-advance ack is **out of band** (Operator) — not a worker Done criterion
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
     ;;
@@ -176,11 +178,11 @@ EOF
 # M2 PLAN - Hermes-native (planner / spec-author) — original scope
 
 Phase: M2 per `.hermes/phase-dispatch.yaml`
-Requires: migration/acks/m1-findings.json + findings-handoff gate
+Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + findings-handoff gate
 
 ## READ (planner context)
 - `migration/findings-handoff.json` (required; schema rhoai3.findings-handoff/v1)
-- `migration/acks/m1-findings.json`
+- `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) — authoritative; refuse bare `m1-findings.json`
 - `migration/entry-point-inventory.json` (controller names/counts; optional digest check via handoff)
 
 ## DO NOT

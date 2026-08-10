@@ -109,7 +109,23 @@ PY
     done
   fi
   if [ "${found}" -eq 0 ]; then
-    echo "FAIL: phase ${PHASE} requires ack '${ack_type}' under migration/acks/ (status: acknowledged)" >&2
+    hint=""
+    bare="${ACK_DIR}/${ack_type}.json"
+    if [ -f "${bare}" ]; then
+      bare_status="$(python3 - "${bare}" <<'PY'
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(str(doc.get("status", "")).strip() or "?")
+except Exception as e:
+    print(f"unreadable:{e.__class__.__name__}")
+PY
+)"
+      hint="; found non-authoritative ${bare#"${ROOT}"/} status=${bare_status} — want ${ack_type}.ack.yaml|.ack.json kind=migration-ack status=acknowledged (AR-1.1; bare *.json worker grants refused)"
+    else
+      hint="; want migration/acks/${ack_type}.ack.yaml|.ack.json kind=migration-ack status=acknowledged (no matching .ack.* file)"
+    fi
+    echo "FAIL: phase ${PHASE} missing authoritative ack '${ack_type}'${hint}" >&2
     bad=1
   fi
 done <<EOF

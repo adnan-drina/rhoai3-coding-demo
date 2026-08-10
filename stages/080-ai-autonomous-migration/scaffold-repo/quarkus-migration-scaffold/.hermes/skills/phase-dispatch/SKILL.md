@@ -54,9 +54,9 @@ bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
 The created M1 task instructs the worker to, in order:
 
 1. `derive-legacy-boot3` (manifest check / derive if missing)
-2. `mta-analysis` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`)
-3. `inventory-entry-points` → `migration/entry-point-inventory.json`
-4. Grant `migration/acks/m1-findings.json` when findings schema-validate
+2. `inventory-entry-points` → `migration/entry-point-inventory.json` (before handoff emit)
+3. `mta-analysis` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
+4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1)
 
 ## Pitfalls
 
