@@ -65,6 +65,28 @@ ensure_hermes_home_config() {
     chmod 600 "${HERMES_HOME}/.env"
     echo "dispatch-phase: copied managed .env → HERMES_HOME"
   fi
+  # Architect E-20260810T141120Z — provider knobs are tip/scaffold state.
+  # Fresh workspaces lose hand-placed max_tokens; enforce before dispatch.
+  local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"
+  if [[ -f "${ensure_py}" ]]; then
+    if HERMES_HOME="${HERMES_HOME}" HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
+      python3 "${ensure_py}" --apply \
+        "${HERMES_MANAGED_DIR}/config.yaml" "${HERMES_HOME}/config.yaml" \
+      2>/dev/null; then
+      :
+    else
+      # Fallback: hermes venv often has PyYAML when system python3 does not.
+      local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
+      if [[ -x "${venv_py}" ]]; then
+        HERMES_HOME="${HERMES_HOME}" HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
+          "${venv_py}" "${ensure_py}" --apply \
+          "${HERMES_MANAGED_DIR}/config.yaml" "${HERMES_HOME}/config.yaml" \
+          || echo "dispatch-phase: WARN ensure-provider-max-tokens failed" >&2
+      else
+        echo "dispatch-phase: WARN ensure-provider-max-tokens skipped (no PyYAML)" >&2
+      fi
+    fi
+  fi
 }
 
 ensure_daemon() {
