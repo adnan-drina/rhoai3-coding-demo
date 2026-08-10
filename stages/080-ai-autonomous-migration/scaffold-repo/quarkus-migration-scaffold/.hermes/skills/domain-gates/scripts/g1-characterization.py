@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G-1 admission evaluator — mutation / char_surface (W2 §10)."""
+"""G-1 admission evaluator — mutation / char_surface (W2 §10; §G.1 F9 table)."""
 from __future__ import annotations
 
 import json
@@ -11,19 +11,43 @@ from verdict import expect, write_verdict  # noqa: E402
 
 
 def evaluate(fixture_dir: Path) -> str:
+    """Apply §G.1 F9 transition table (v1) + prior char_surface / score rules.
+
+    FAIL rows (F9): dest ``mutants_generated==0``; kill ratio ``0/0``.
+    INCONCLUSIVE rows (F9): referent dry-run could not run; floor ambiguous.
+    """
     evidence_path = fixture_dir / "mutation-evidence.json"
     if not evidence_path.is_file():
         return "INCONCLUSIVE"
+
     data = json.loads(evidence_path.read_text(encoding="utf-8"))
-    if not data.get("ran"):
+
+    # F9 — floor ambiguous / ratchet-only proposed for first qual → INCONCLUSIVE
+    floor = str(data.get("floor_status") or "").lower()
+    if data.get("floor_ambiguous") or floor in {"ambiguous", "ratchet_only"}:
         return "INCONCLUSIVE"
-    if int(data.get("mutations_total") or 0) == 0:
+
+    ran = bool(data.get("ran"))
+    tool_error = bool(data.get("tool_error") or data.get("skip"))
+    # F9 — referent (or any) PIT dry-run could not run → INCONCLUSIVE
+    if not ran or tool_error:
         return "INCONCLUSIVE"
+
+    mutants = int(
+        data.get("mutants_generated")
+        if data.get("mutants_generated") is not None
+        else (data.get("mutations_total") or 0)
+    )
+    killed = int(data.get("mutations_killed") or 0)
+
+    # F9 — dest hollow / emptied OR vacuous 0/0 → FAIL (not INCONCLUSIVE)
+    if mutants == 0:
+        return "FAIL"
+
     if data.get("char_surface_stub"):
         return "REFUSE"
-    killed = int(data.get("mutations_killed") or 0)
-    total = int(data.get("mutations_total") or 0)
-    if total > 0 and killed == total:
+
+    if mutants > 0 and killed == mutants:
         return "ACCEPT"
     return "REFUSE"
 
@@ -31,22 +55,33 @@ def evaluate(fixture_dir: Path) -> str:
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     base = root / "migration/fixtures/admission/g1-characterization"
+    # known-vacuous SUPERSEDED by F9: zero mutants with ran=true → FAIL
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",
-        "known-vacuous": "INCONCLUSIVE",
+        "known-vacuous": "FAIL",
+        # ER#2 F9 golden rows (Architect E-20260810T083600Z)
+        "f9-dest-zero-mutants": "FAIL",
+        "f9-kill-ratio-0-0": "FAIL",
+        "f9-referent-dry-run-fail": "INCONCLUSIVE",
+        "f9-floor-ambiguous": "INCONCLUSIVE",
     }
     rc = 0
     out_dir = root / "migration/fixtures/admission/out/g1-characterization"
     for name, want in expected.items():
-        got = evaluate(base / name)
+        fixture = base / name
+        if not fixture.is_dir():
+            print(f"FAIL G-1/{name}: missing fixture dir {fixture}")
+            rc = 1
+            continue
+        got = evaluate(fixture)
         write_verdict(
             out_dir / f"{name}.json",
             "G-1",
             name,
             got,
             "mutation-evidence.json",
-            {"path": str(base / name)},
+            {"path": str(fixture), "f9_table": "v1"},
         )
         rc |= expect(got, want, "G-1", name)
     return rc

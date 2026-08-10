@@ -1,0 +1,10 @@
+{
+  "ran": true,
+  "scope": "dest",
+  "tool": "pitest-summary",
+  "mutants_generated": 0,
+  "mutations_total": 0,
+  "mutations_killed": 0,
+  "char_surface_stub": false,
+  "note": "F9: dest in-scope unit hollow/emptied — mutants_generated==0 → FAIL"
+}
