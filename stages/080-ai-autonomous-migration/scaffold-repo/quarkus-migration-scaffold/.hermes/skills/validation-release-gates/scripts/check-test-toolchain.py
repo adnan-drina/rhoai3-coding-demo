@@ -26,6 +26,30 @@ def has_dep(pom: str, group: str, artifact: str) -> bool:
     return re.search(pattern, pom, re.S) is not None
 
 
+def assertj_has_version(pom: str) -> bool:
+    """RH Quarkus BOM may not manage assertj — require an explicit version."""
+    m = re.search(
+        r"<groupId>\s*org\.assertj\s*</groupId>\s*"
+        r"<artifactId>\s*assertj-core\s*</artifactId>\s*"
+        r"(?:<version>\s*[^<]+\s*</version>\s*)?"
+        r"<scope>\s*test\s*</scope>",
+        pom,
+        re.S,
+    )
+    if not m:
+        # allow version after scope too
+        m = re.search(
+            r"<groupId>\s*org\.assertj\s*</groupId>\s*"
+            r"<artifactId>\s*assertj-core\s*</artifactId>.*?</dependency>",
+            pom,
+            re.S,
+        )
+        if not m:
+            return False
+        return bool(re.search(r"<version>\s*[^<]+\s*</version>", m.group(0)))
+    return "<version>" in m.group(0)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root", nargs="?", default=".")
@@ -49,7 +73,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("OK: test toolchain present (rest-assured + assertj-core)")
+    if not assertj_has_version(pom):
+        print(
+            "FAIL: org.assertj:assertj-core present but missing <version> "
+            "(RH Quarkus BOM may not manage it)",
+            file=sys.stderr,
+        )
+        return 1
+    print("OK: test toolchain present (rest-assured + assertj-core@version)")
     return 0
 
 
