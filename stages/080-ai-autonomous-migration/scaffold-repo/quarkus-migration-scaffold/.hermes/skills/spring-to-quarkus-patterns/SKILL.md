@@ -28,7 +28,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map |
 | `references/di-config.md` | Scopes, config properties, profiles |
 | `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim) |
-| `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices |
+| `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
 | `references/security-config.md` | HTTP authz / `@RolesAllowed` (no overstated “Quarkus security”) |
 
 ## Source policy

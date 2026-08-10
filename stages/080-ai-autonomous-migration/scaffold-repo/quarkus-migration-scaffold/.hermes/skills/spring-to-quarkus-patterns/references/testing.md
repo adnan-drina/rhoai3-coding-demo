@@ -42,3 +42,33 @@ Prefer `@QuarkusTest` for REST/service IT. Do not invent Spring Boot test
 annotations. Name technologies that appear in the diff only (`claim_accuracy`).
 Never claim “tests roll back” unless `@TestTransaction` (or equivalent) is in
 the diff.
+
+## Failure / Import / Mock procedures (≤40 lines — open this section first)
+
+**Canonical import:** `io.quarkus.test.InjectMock` (artifact `quarkus-junit-mockito`
+in pom). If `test-compile` fails, read the pom artifactId — **do not invent**
+`junit5.mockito` / alternate packages.
+
+**Mock granularity (stops 500/NPE loops):**
+- If the controller calls a **Mapper** and you `@InjectMock` it → stub **every**
+  method on the request path (default null ⇒ 500).
+- Prefer MockMvc-isolation ports: `@InjectMock` the **service** above the mapper
+  + REST Assured (card `test-rest-isolation`).
+- Never leave happy-path mapper/service mocks unstubbed.
+
+**Isolation card `test-rest-isolation`:** legacy MockMvc + `@MockBean(service)` →
+Quarkus `@QuarkusTest` + `@InjectMock` **service** + REST Assured hitting the
+real JAX-RS stack. Copy once:
+`migration/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
+
+**Failure triage (red tests — once per failure class):**
+1. Classify 400 vs 500 vs assertion.
+2. For 500: open server log once; check unstubbed mocks.
+3. Only then rewrite the test.
+4. After the first green controller test in this task: **do not restate** the
+   Spring→Quarkus map — copy the established pattern.
+
+**Ack scripts:** exit 1 always means gate fail — do not reinterpret a
+`status: acknowledged` substring inside FAIL output.
+
+**Out of scope here:** AD-009 provider/connect faults (not skill-fixable).
