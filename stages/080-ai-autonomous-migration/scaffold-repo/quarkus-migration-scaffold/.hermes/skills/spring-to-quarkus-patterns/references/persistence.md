@@ -14,6 +14,19 @@
 | pers-entity | `@Entity` JPA | `@Entity` (Jakarta) | ADOPT | `javax`→`jakarta` |
 | pers-tx | `@Transactional` (Spring) | `@Transactional` (Quarkus / Narayana) | ADOPT | Same name; confirm import |
 | pers-migrate | Flyway/Liquibase Spring setup | **Flyway** (project law) | STRENGTHEN | Do not invent boot-time DDL |
+| pers-jdbc | Spring datasource | `quarkus-jdbc-*` matching `db-kind` + URL | ADOPT | AR-2.1 — mismatch = non-startable |
+| pers-flyway-run | Flyway at boot | `quarkus-flyway` + `migrate-at-start=true` + `V*__*.sql` under `db/migration` | STRENGTHEN | Default migrate-at-start is **false** (Quarkus Flyway guide) |
+
+### Runnable DB profile (AR-2.1 — binding)
+
+A profile is **not** migrated until a **clean checkout** against an empty intended
+DB: starts → `/q/health` → Flyway history + schema → required seed → Owner/Pet
+query succeeds; **second start idempotent**. `hibernate.schema-generation=none`
+without Flyway (or other schema owner) is a **BLOCK**, not ACCEPT.
+
+Primary cites: Research `20260810-artifact-review-quarkus-cites.md` (datasource +
+Flyway). Do not leave `db-kind=h2` with `jdbc:hsqldb:` URLs or non-Flyway
+`initDB.sql` filenames as the default runnable path.
 
 ### EntityManager vs Panache (decide before claim)
 
