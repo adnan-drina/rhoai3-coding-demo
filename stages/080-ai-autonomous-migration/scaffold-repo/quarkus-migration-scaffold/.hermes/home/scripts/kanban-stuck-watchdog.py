@@ -102,6 +102,37 @@ def ttfc_seconds() -> int:
     return DEFAULT_TTFC_SEC
 
 
+def check_fast_deny(task_id: str, root: Path) -> str | None:
+    """Return alert if non-retryable vLLM validation 400 seen (Deputy E-163600Z)."""
+    script = hermes_home() / "scripts" / "check-vllm-validation-fast-deny.py"
+    if not script.is_file():
+        return None
+    try:
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                str(root),
+                "--task-id",
+                str(task_id),
+                "--stamp",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"WATCHDOG: fast-deny check failed for {task_id}: {exc}"
+    if cp.returncode == 2:
+        detail = (cp.stderr or cp.stdout or "").strip().splitlines()
+        tail = detail[-1] if detail else "vllm_validation_error"
+        return (
+            f"WATCHDOG: fast-deny task {task_id} — {tail}. "
+            f"Do not sleep-retry; compact/split or Lead block."
+        )
+    return None
+
+
 def check_ttfc(task_id: str, root: Path, ttfc: int) -> str | None:
     """Return alert line if TTFC breached; None if OK/skip."""
     script = hermes_home() / "scripts" / "check-stream-liveness.py"
@@ -278,6 +309,10 @@ def main() -> int:
         ttfc_alert = check_ttfc(str(ident), root, ttfc)
         if ttfc_alert:
             alerts.append(ttfc_alert)
+        # Deputy E-20260810T163600Z — fast-deny non-retryable validation 400s
+        fd_alert = check_fast_deny(str(ident), root)
+        if fd_alert:
+            alerts.append(fd_alert)
 
     if alerts:
         print("\n".join(alerts))

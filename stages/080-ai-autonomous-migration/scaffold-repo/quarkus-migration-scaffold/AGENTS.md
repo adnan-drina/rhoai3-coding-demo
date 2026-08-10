@@ -95,6 +95,11 @@ Managed Scope pins for `qwen3-6-27b`:
 - `max_tokens: 8192` — **required**; unset Hermes defaults to half of
   `context_length` (65536), which with ≥65537 prompt tokens exceeds the 131072
   vLLM ceiling and yields `VLLMValidationError` (not a proxy timeout)
+- **Compaction headroom + fast-deny** — compress at
+  `compression.threshold_tokens: 110000` (≤ `context_length − max_tokens − margin`);
+  never sleep-retry a context/max_tokens 4xx. Watchdog calls
+  `check-vllm-validation-fast-deny.py --stamp`
+  (`migration/contracts/compaction-headroom-and-fast-deny.md`)
 
 Do not MiniMax either class.
 

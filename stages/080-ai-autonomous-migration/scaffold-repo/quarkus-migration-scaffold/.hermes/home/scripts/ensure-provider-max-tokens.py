@@ -15,6 +15,8 @@ from pathlib import Path
 
 REQUIRED_MAX_TOKENS = 8192
 REQUIRED_CONTEXT = 131072
+# context_length - max_tokens - margin(≥4096) = 118784; pin below that (Deputy E-163600Z)
+REQUIRED_COMPRESS_THRESHOLD_TOKENS = 110000
 MODEL_ID = "qwen3-6-27b"
 
 
@@ -171,8 +173,70 @@ def ensure(path: Path, apply: bool) -> bool:
     model["max_tokens"] = REQUIRED_MAX_TOKENS
     qwen["max_tokens"] = REQUIRED_MAX_TOKENS
     qwen["stale_timeout_seconds"] = 900
+    compression = doc.setdefault("compression", {})
+    compression["enabled"] = True
+    compression["threshold_tokens"] = REQUIRED_COMPRESS_THRESHOLD_TOKENS
     _dump_yaml(path, doc)
     print(f"OK: patched {path}")
+    return True
+
+
+def ensure_compression(path: Path, apply: bool) -> bool:
+    """Pin compression.threshold_tokens even when max_tokens already OK."""
+    if not path.is_file():
+        return False
+    doc = _load_yaml(path)
+    if doc is None:
+        text = path.read_text(encoding="utf-8")
+        import re
+
+        m = re.search(r"(?m)^[ \t]+threshold_tokens:\s*(\d+)\s*$", text)
+        cur = int(m.group(1)) if m else None
+        if cur == REQUIRED_COMPRESS_THRESHOLD_TOKENS:
+            return False
+        print(
+            f"{'APPLY' if apply else 'WOULD'}: {path} compression.threshold_tokens "
+            f"{cur!r}→{REQUIRED_COMPRESS_THRESHOLD_TOKENS}"
+        )
+        if not apply:
+            return True
+        if m:
+            text2 = re.sub(
+                r"(?m)^([ \t]+threshold_tokens:\s*)\d+\s*$",
+                rf"\g<1>{REQUIRED_COMPRESS_THRESHOLD_TOKENS}",
+                text,
+                count=1,
+            )
+        elif re.search(r"(?m)^compression:\s*$", text):
+            text2 = re.sub(
+                r"(?m)^(compression:\s*\n)",
+                rf"\1  threshold_tokens: {REQUIRED_COMPRESS_THRESHOLD_TOKENS}\n  enabled: true\n",
+                text,
+                count=1,
+            )
+        else:
+            text2 = text.rstrip() + (
+                f"\ncompression:\n  enabled: true\n"
+                f"  threshold_tokens: {REQUIRED_COMPRESS_THRESHOLD_TOKENS}\n"
+            )
+        path.write_text(text2, encoding="utf-8")
+        print(f"OK: patched compression on {path} via regex")
+        return True
+
+    compression = doc.setdefault("compression", {})
+    before = compression.get("threshold_tokens")
+    if before == REQUIRED_COMPRESS_THRESHOLD_TOKENS and compression.get("enabled", True):
+        return False
+    print(
+        f"{'APPLY' if apply else 'WOULD'}: {path} compression.threshold_tokens "
+        f"{before!r}→{REQUIRED_COMPRESS_THRESHOLD_TOKENS}"
+    )
+    if not apply:
+        return True
+    compression["enabled"] = True
+    compression["threshold_tokens"] = REQUIRED_COMPRESS_THRESHOLD_TOKENS
+    _dump_yaml(path, doc)
+    print(f"OK: patched compression on {path}")
     return True
 
 
@@ -199,6 +263,7 @@ def main() -> int:
     changed = False
     for p in paths:
         changed = ensure(p, args.apply) or changed
+        changed = ensure_compression(p, args.apply) or changed
     if changed and not args.apply:
         return 1
     return 0
