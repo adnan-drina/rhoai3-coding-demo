@@ -47,10 +47,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-runnable-db-config.py" /projects/mode
 
 # AD-H §16.6 / AR-2.2 — refuse empty/placeholder security (idle until security intent)
 python3 "${HERMES_SKILL_DIR}/scripts/check-empty-security.py" /projects/modernized
+
+# AD-H §G.1 / AR-2.8 — product-test families (boot/CRUD/security/DB); not harness probe
+python3 "${HERMES_SKILL_DIR}/../domain-gates/scripts/check-product-tests.py" /projects/modernized
 ```
 
 Contracts: `migration/contracts/workspace-recovery.md`,
-`migration/contracts/runnable-db-security.md`.
+`migration/contracts/runnable-db-security.md`,
+`migration/contracts/product-tests.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 

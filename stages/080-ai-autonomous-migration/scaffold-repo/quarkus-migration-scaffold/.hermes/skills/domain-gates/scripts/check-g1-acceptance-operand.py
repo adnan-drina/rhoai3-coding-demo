@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """AD-H §G.1 / AR-3.6 — refuse probe-only trees as G-1 acceptance operand.
 
-Exit 0 when at least one *Test.java exists outside com.demo.harness.
+Exit 0 when at least one *Test.java / *IT.java exists outside com.demo.harness.
 Exit 1 (REFUSE) when tests are absent or only under the harness probe package.
 Tooling smoke may still target harness under G1_OPERAND=tooling_smoke (not
 acceptance).
+
+*IT.java is included (Quarkus integration-test convention); paired with AR-2.8
+family coverage.
 """
 from __future__ import annotations
 
@@ -20,7 +23,12 @@ def test_paths(root: Path) -> list[Path]:
     test_root = root / "src" / "test" / "java"
     if not test_root.is_dir():
         return []
-    return sorted(test_root.rglob("*Test.java"))
+    out: list[Path] = []
+    for p in sorted(test_root.rglob("*.java")):
+        name = p.name
+        if name.endswith("Test.java") or name.endswith("IT.java"):
+            out.append(p)
+    return out
 
 
 def is_harness(path: Path, root: Path) -> bool:

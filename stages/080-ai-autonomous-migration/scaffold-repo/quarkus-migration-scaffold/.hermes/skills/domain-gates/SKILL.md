@@ -58,9 +58,15 @@ skip and `-DskipTests`. **No static-metric floor.**
 is tooling smoke only (`G1_OPERAND=tooling_smoke`). Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
+**AR-2.8:** acceptance also requires product-test **families** boot + security +
+crud + db (`check-product-tests.py`; contract `migration/contracts/product-tests.md`).
+
 ```bash
-# Acceptance operand preflight
+# Acceptance operand preflight (probe refuse)
 python3 "${HERMES_SKILL_DIR}/scripts/check-g1-acceptance-operand.py" /projects/modernized
+
+# Product-test families (boot/CRUD/security/DB)
+python3 "${HERMES_SKILL_DIR}/scripts/check-product-tests.py" /projects/modernized
 
 # Live count (product default — writes evidence JSON optional)
 bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh" /path/to/module \
