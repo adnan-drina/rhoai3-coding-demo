@@ -107,6 +107,9 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-surgical-scopes.py" 
   || die "AR-4.4 surgical scopes failed for ${BODY_JSON}"
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-semantic-exits.py" "${ROOT}" "${BODY_JSON}" \
   || die "AR-2.3–2.7 semantic exits failed for ${BODY_JSON}"
+# Architect E-104925Z / E-110403Z — measured operand_count refuse (phase-name REJECT)
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" "${BODY_JSON}" \
+  || die "BODY_SIZE operand-count failed for ${BODY_JSON}"
 
 # Human-readable markdown wrapper + attach typed JSON path as obligation
 BODY_MD="$(mktemp)"
@@ -127,6 +130,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file (prefer \`next\` from checkpoint)."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\` (endpoint/semantic exits required — AR-4.4)."
   echo "**In-loop testCompile (S-010 Class A):** if writing \`src/test/**\`, run \`mvn -q test-compile\` after each batch of test writes; red compile is a typed terminal/fix — do **not** proceed to \`kanban_complete\` with a corpus that does not compile. Scaffold ships assertj-core + rest-assured (\`migration/contracts/test-toolchain.md\`)."
+  echo "**Wall-as-terminal (Architect E-110403Z):** on \`timed_out\` / budget wall, Lead/Monitor MUST run \`evaluate-exit-criteria.py --trigger timed_out\` then \`check-wall-exit-eval.py\` before requeue — exit criteria are not vacuous on wall death (\`migration/contracts/wall-exit-eval.md\`)."
   echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
   echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config)."
   echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"

@@ -30,5 +30,8 @@ corpus by accident. For M3 bodies whose `files_in_scope` includes
 Authoring gate: `check-kanban-body.py` refuses M3 bodies with test scope but
 no `test_compile` exit.
 
-Re-dispatch of S-010 stays **HOLD** until this land + Architect sizing rule +
-checkpoint land (Lead BIND preconditions).
+## Wall-as-terminal (Architect E-20260810T110403Z)
+
+`timed_out` **must** evaluate cmd-shaped exits (at least `test_compile` when
+present). See `migration/contracts/wall-exit-eval.md`. Advisory in-loop prose
+alone does not cover budget-wall death.

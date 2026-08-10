@@ -18,6 +18,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-kanban-body.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-surgical-scopes.py" /projects/modernized
 # AR-2.3–2.7 — semantic product exits for REST/persistence stories
 python3 "${HERMES_SKILL_DIR}/scripts/check-semantic-exits.py" /projects/modernized
+# Architect E-104925Z / E-110403Z — measured operand_count (phase-name REJECT)
+python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" /projects/modernized
 ```
 
 Idle (pass) when no SDD / body artifacts exist yet.
@@ -28,5 +30,6 @@ Idle (pass) when no SDD / body artifacts exist yet.
 - `migration/contracts/sdd-ordering.md` (AD-S §S.6)
 - `migration/contracts/surgical-scopes.md` (AR-4.4)
 - `migration/contracts/semantic-exits.md` (AR-2.3–2.7)
+- `migration/contracts/story-sizing.md` (operand_count)
 - `migration/schemas/mta-exception.md`
 - `migration/schemas/kanban-body.md` (W2 §6.1)

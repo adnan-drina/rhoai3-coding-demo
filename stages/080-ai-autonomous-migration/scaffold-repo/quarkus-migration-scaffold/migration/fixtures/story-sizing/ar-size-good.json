@@ -1,0 +1,25 @@
+{
+  "id": "S-FIX-GOOD",
+  "phase": "M3",
+  "role": "implementer",
+  "effort_class": "default",
+  "refs": [],
+  "identity": {
+    "story_id": "S-FIX-GOOD",
+    "transform_class": "HARVEST",
+    "g2_applicability": "not_applicable",
+    "operand_count": 2,
+    "sizing_basis": "operand_count"
+  },
+  "files_in_scope": [
+    "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/rest/A.java",
+    "/projects/modernized/src/main/java/com/demo/rest/A.java",
+    "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/rest/B.java",
+    "/projects/modernized/src/main/java/com/demo/rest/B.java"
+  ],
+  "exit_criteria": [
+    {"check": "compile", "cmd": "true", "expect": "rc=0"},
+    {"check": "skills", "assert": "AD-002E: consult or skills_unused; silence invalid"},
+    {"check": "endpoint_contract", "assert": "fixture"}
+  ]
+}

@@ -11,10 +11,23 @@ Idle (exit 0) when no body artifacts exist.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
+
+
+def _operand_count_rc(label: str, body: dict) -> int:
+    """Architect E-104925Z / E-110403Z — measured operand_count refuse."""
+    path = Path(__file__).with_name("check-operand-count.py")
+    spec = importlib.util.spec_from_file_location("check_operand_count", path)
+    if spec is None or spec.loader is None:
+        print(f"BODY_SIZE: {label}: cannot load check-operand-count.py", file=sys.stderr)
+        return 1
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return int(mod.check_one(label, body))
 
 REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "M1": ("harvest_referent",),
@@ -344,6 +357,11 @@ def check_body(label: str, body: dict, root: Path) -> int:
                         f"check=g2 (M4/M5; F6 / §G.2)",
                     )
                     bad = 1
+
+        # Architect E-104925Z / E-110403Z — measured operand denominator.
+        if phase == "M3":
+            if _operand_count_rc(label, body) != 0:
+                bad = 1
 
     return bad
 

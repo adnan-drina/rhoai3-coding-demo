@@ -53,12 +53,19 @@ python3 "${HERMES_SKILL_DIR}/../domain-gates/scripts/check-product-tests.py" /pr
 
 # S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
+
+# Architect E-110403Z — wall-as-terminal exit evaluation
+python3 "${HERMES_SKILL_DIR}/scripts/evaluate-exit-criteria.py" /projects/modernized \
+  --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
+python3 "${HERMES_SKILL_DIR}/scripts/check-wall-exit-eval.py" /projects/modernized \
+  --task-id t_xxx --trigger timed_out --require-test-compile
 ```
 
 Contracts: `migration/contracts/workspace-recovery.md`,
 `migration/contracts/runnable-db-security.md`,
 `migration/contracts/product-tests.md`,
-`migration/contracts/test-toolchain.md`.
+`migration/contracts/test-toolchain.md`,
+`migration/contracts/wall-exit-eval.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 

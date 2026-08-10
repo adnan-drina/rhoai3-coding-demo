@@ -17,7 +17,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-TERMINALS = frozenset({"crashed", "gave_up", "kill", "killed", "timeout_kill"})
+TERMINALS = frozenset(
+    {"crashed", "gave_up", "kill", "killed", "timeout_kill", "timed_out"}
+)
 
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:

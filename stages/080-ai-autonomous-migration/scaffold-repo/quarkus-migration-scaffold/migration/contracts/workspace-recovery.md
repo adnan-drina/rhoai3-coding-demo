@@ -9,12 +9,14 @@ Treating requeue as restore is a defect.
 
 ## Proving-campaign exit (a)
 
-On terminals `crashed` / `gave_up` / `kill`:
+On terminals `crashed` / `gave_up` / `kill` / `timed_out`:
 
 1. Run `restore-or-refuse-requeue.py` **before** unblock/requeue/dispatch.
 2. If the workspace is dirty → **refuse** requeue (exit 1) **or** `--action restore`
    to a known baseline, then re-check `workspace_clean`.
 3. Dirty-workspace fixture must fail the check (see harness-validate smoke).
+4. On **`timed_out` / wall**: also run `evaluate-exit-criteria.py` +
+   `check-wall-exit-eval.py` (`wall-exit-eval.md`) — wall is a terminal.
 
 ## Commands
 

@@ -1,0 +1,71 @@
+{
+  "id": "S-FIX-BAD-OVER",
+  "phase": "M3",
+  "role": "implementer",
+  "effort_class": "default",
+  "identity": {
+    "story_id": "S-FIX-BAD-OVER",
+    "transform_class": "HARVEST",
+    "g2_applicability": "not_applicable",
+    "operand_count": 41,
+    "sizing_basis": "operand_count"
+  },
+  "files_in_scope": [
+    "/projects/modernized/src/main/java/com/demo/rest/F0.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F1.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F2.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F3.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F4.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F5.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F6.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F7.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F8.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F9.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F10.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F11.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F12.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F13.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F14.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F15.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F16.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F17.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F18.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F19.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F20.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F21.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F22.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F23.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F24.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F25.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F26.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F27.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F28.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F29.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F30.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F31.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F32.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F33.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F34.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F35.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F36.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F37.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F38.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F39.java",
+    "/projects/modernized/src/main/java/com/demo/rest/F40.java"
+  ],
+  "exit_criteria": [
+    {
+      "check": "compile",
+      "cmd": "true",
+      "expect": "rc=0"
+    },
+    {
+      "check": "skills",
+      "assert": "AD-002E: consult or skills_unused; silence invalid"
+    },
+    {
+      "check": "endpoint_contract",
+      "assert": "fixture"
+    }
+  ]
+}

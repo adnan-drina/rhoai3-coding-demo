@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Architect E-110403Z — evaluate cmd-shaped exit_criteria at any terminal (incl. wall)."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+SCHEMA = "rhoai3.exit-eval/v1"
+WALLISH = frozenset({"timed_out", "timeout_kill", "gave_up"})
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("root", nargs="?", default=".")
+    ap.add_argument("--body", required=True)
+    ap.add_argument("--task-id", required=True)
+    ap.add_argument(
+        "--trigger",
+        required=True,
+        help="timed_out | timeout_kill | gave_up | complete | blocked",
+    )
+    ap.add_argument(
+        "--skip-cmds",
+        action="store_true",
+        help="Record cmd exits as skipped (fixtures / dry meta only)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
+    body_path = Path(args.body)
+    if not body_path.is_file():
+        body_path = root / args.body
+    if not body_path.is_file():
+        print(f"FAIL: body not found: {args.body}", file=sys.stderr)
+        return 1
+    body = json.loads(body_path.read_text(encoding="utf-8"))
+    if isinstance(body.get("body"), dict):
+        body = body["body"]
+    exits = body.get("exit_criteria") or body.get("done_when") or []
+    trigger = args.trigger.strip().lower()
+    results = []
+    cmd_failed: list[str] = []
+    for item in exits:
+        if not isinstance(item, dict):
+            continue
+        check = str(item.get("check") or "")
+        cmd = item.get("cmd")
+        if cmd:
+            if args.skip_cmds:
+                results.append(
+                    {
+                        "check": check,
+                        "kind": "cmd",
+                        "ok": None,
+                        "status": "skipped",
+                        "cmd": str(cmd),
+                    }
+                )
+                continue
+            cp = subprocess.run(
+                str(cmd),
+                shell=True,
+                cwd=root,
+                text=True,
+                capture_output=True,
+            )
+            ok = cp.returncode == 0
+            if not ok:
+                cmd_failed.append(check or str(cmd))
+            results.append(
+                {
+                    "check": check,
+                    "kind": "cmd",
+                    "rc": cp.returncode,
+                    "ok": ok,
+                    "cmd": str(cmd),
+                    "stderr_tail": (cp.stderr or "")[-400:],
+                }
+            )
+        else:
+            results.append(
+                {
+                    "check": check,
+                    "kind": "assert",
+                    "ok": None,
+                    "status": "unevaluated_assert",
+                    "assert": str(item.get("assert") or ""),
+                }
+            )
+
+    try:
+        rel_body = str(body_path.resolve().relative_to(root))
+    except ValueError:
+        rel_body = str(body_path)
+    overall_ok = not cmd_failed and any(r.get("kind") == "cmd" for r in results)
+    # Wall terminals with zero cmd exits still produce an artifact, but overall_ok false.
+    if not any(r.get("kind") == "cmd" for r in results):
+        overall_ok = False
+    payload = {
+        "schema": SCHEMA,
+        "task_id": args.task_id,
+        "body_path": rel_body,
+        "body_sha256": sha256_file(body_path),
+        "trigger": trigger,
+        "evaluated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "results": results,
+        "cmd_failed": cmd_failed,
+        "overall_ok": overall_ok,
+        "wallish": trigger in WALLISH,
+    }
+    out_dir = root / "migration" / "runs" / args.task_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / "exit-eval.json"
+    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"OK: wrote {out.relative_to(root)} overall_ok={overall_ok} failed={cmd_failed}")
+    # Non-zero when cmd checks failed — wall death must surface red compile etc.
+    return 0 if overall_ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

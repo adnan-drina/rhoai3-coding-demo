@@ -375,10 +375,44 @@ if python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/
 else
   echo "OK: BODY_REF_MISSING refused"
 fi
-printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","files_in_scope":["src/Foo.java"],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"abc"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"def"}]}' \
+printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"abc"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"def"}]}' \
   > "${kb_tmp}/migration/bodies/bad.json"
 python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" || rc=1
 rm -rf "${kb_tmp}"
+
+echo "== story-sizing operand_count (Architect E-110403Z) =="
+python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
+  "${ROOT}/migration/fixtures/story-sizing/ar-size-good.json" || rc=1
+if python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
+  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-missing.json" >/dev/null 2>&1; then
+  echo "FAIL: missing operand_count should refuse" >&2
+  rc=1
+else
+  echo "OK: missing operand_count refused"
+fi
+if python3 "${SKILLS}/sdd-readiness/scripts/check-operand-count.py" "${ROOT}" \
+  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-overcap.json" >/dev/null 2>&1; then
+  echo "FAIL: over-cap operand_count should refuse" >&2
+  rc=1
+else
+  echo "OK: over-cap operand_count refused"
+fi
+
+echo "== wall-as-terminal exit-eval (Architect E-110403Z) =="
+wall_tmp="$(mktemp -d)"
+mkdir -p "${wall_tmp}/migration/runs/t_fixture_wall"
+cp "${ROOT}/migration/fixtures/wall-exit-eval/ar-wall-good/exit-eval.json" \
+  "${wall_tmp}/migration/runs/t_fixture_wall/exit-eval.json"
+python3 "${SKILLS}/validation-release-gates/scripts/check-wall-exit-eval.py" "${wall_tmp}" \
+  --task-id t_fixture_wall --trigger timed_out --require-test-compile || rc=1
+if python3 "${SKILLS}/validation-release-gates/scripts/check-wall-exit-eval.py" "${wall_tmp}" \
+  --task-id t_missing --trigger timed_out >/dev/null 2>&1; then
+  echo "FAIL: missing wall exit-eval should refuse" >&2
+  rc=1
+else
+  echo "OK: missing wall exit-eval refused"
+fi
+rm -rf "${wall_tmp}"
 
 echo "== auditability-repeatability (AD-H §19) =="
 python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ROOT}" || rc=1

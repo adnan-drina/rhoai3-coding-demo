@@ -14,7 +14,7 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `role` | string | AD-H §16 role |
 | `phase` | `M1`…`M5` \| `factory` | |
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
-| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below** |
+| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below**; M3 also **operand_count** + **sizing_basis** (`story-sizing.md`) |
 | `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
 | `files_writable` / `write_set` | list | **AR-4.4 preferred** — allowed destination writes |
 | `files_readable` / `readable_deps` | list | **AR-4.4** — readable deps (not write authority) |
@@ -95,3 +95,4 @@ analysis prose as authority.
 | `BODY_EXIT` | `BODY_EXIT: phase={phase} requires non-empty exit_criteria[]` |
 | `BODY_IDENTITY` | `BODY_IDENTITY: phase={phase} identity missing F6 transform_class / g2_applicability` |
 | `BODY_G2` | `BODY_G2: g2_applicability={val} requires exit_criteria check=g2 (M4/M5)` |
+| `BODY_SIZE` | `BODY_SIZE: …` — missing/mismatched `operand_count`, bad `sizing_basis`, or over cap (`story-sizing.md`) |

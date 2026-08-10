@@ -1,0 +1,18 @@
+{
+  "id": "S-FIX-BAD-MISSING",
+  "phase": "M3",
+  "role": "implementer",
+  "identity": {
+    "story_id": "S-FIX-BAD-MISSING",
+    "transform_class": "HARVEST",
+    "g2_applicability": "not_applicable"
+  },
+  "files_in_scope": [
+    "/projects/modernized/src/main/java/com/demo/rest/A.java"
+  ],
+  "exit_criteria": [
+    {"check": "compile", "cmd": "true", "expect": "rc=0"},
+    {"check": "skills", "assert": "AD-002E: consult or skills_unused; silence invalid"},
+    {"check": "endpoint_contract", "assert": "fixture"}
+  ]
+}
