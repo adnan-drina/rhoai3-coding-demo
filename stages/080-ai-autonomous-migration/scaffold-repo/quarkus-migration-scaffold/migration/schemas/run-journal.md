@@ -23,6 +23,8 @@ Per-attempt journal under `migration/runs/<task_id>-<run_id>.json`.
 
 - Worker **MUST** verify `body_sha256` matches `body_path` before first edit.
 - Retries **MUST** reuse the same `body_sha256` or REFUSE.
+- **Immutability (Architect E-111424Z):** dispatched body bytes MUST NOT change;
+  use `check-body-digest-match.py` — see `body-immutability.md`.
 - `pre_tree_sha256` / `post_tree_sha256` cover the write-set (incl. untracked).
 - Create helper stamps body digest at create time (`stamp-body-digest.py`).
 

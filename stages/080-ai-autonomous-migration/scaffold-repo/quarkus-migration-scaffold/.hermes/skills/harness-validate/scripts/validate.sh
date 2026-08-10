@@ -414,6 +414,21 @@ else
 fi
 rm -rf "${wall_tmp}"
 
+echo "== body-digest immutability (Architect E-111424Z) =="
+DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
+python3 "${SKILLS}/auditability-repeatability/scripts/check-body-digest-match.py" "${ROOT}" \
+  --body "${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json" \
+  --expect "${DIGEST}" || rc=1
+if python3 "${SKILLS}/auditability-repeatability/scripts/check-body-digest-match.py" "${ROOT}" \
+  --body "${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json" \
+  --expect deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
+  >/dev/null 2>&1; then
+  echo "FAIL: digest mismatch should refuse" >&2
+  rc=1
+else
+  echo "OK: body digest mismatch refused"
+fi
+
 echo "== auditability-repeatability (AD-H §19) =="
 python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ROOT}" || rc=1
 ap_tmp="$(mktemp -d)"

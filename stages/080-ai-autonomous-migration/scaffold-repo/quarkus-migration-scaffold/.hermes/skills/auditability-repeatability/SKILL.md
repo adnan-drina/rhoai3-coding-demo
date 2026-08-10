@@ -20,6 +20,11 @@ description: >
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 
+# Architect E-111424Z — refuse body digest drift after dispatch
+python3 "${HERMES_SKILL_DIR}/scripts/check-body-digest-match.py" /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/check-body-digest-match.py" /projects/modernized \
+  --body migration/bodies/m3-s-010.json --expect <card-digest>
+
 # AD-H §16.9 / AR-4.3 — body digest stamp + run journal pre/post digests
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
   /projects/modernized/migration/bodies/m3-s-010.json

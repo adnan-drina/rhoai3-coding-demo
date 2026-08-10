@@ -125,6 +125,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "## Obligation"
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`refs\`)."
   echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
+  echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`migration/contracts/body-immutability.md\`)."
   echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."
   echo "**Checkpoint/resume (S-010 Class A #3):** before first edit, init or load \`migration/runs/<task_id>/checkpoint.json\` (\`init-implementer-checkpoint.py\` / \`check-implementer-checkpoint.py\`). After each successful dest write, \`stamp-implementer-checkpoint.py --completed <path>\`. On retry/re-dispatch: resume at \`next\` — do **not** cold re-walk completed operands (\`migration/contracts/implementer-checkpoint.md\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file (prefer \`next\` from checkpoint)."
