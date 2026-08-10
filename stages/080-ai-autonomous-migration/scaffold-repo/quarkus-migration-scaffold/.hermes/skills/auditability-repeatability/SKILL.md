@@ -24,11 +24,23 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
   /projects/modernized/migration/bodies/m3-s-010.json
 python3 "${HERMES_SKILL_DIR}/scripts/check-run-digests.py" /projects/modernized
+
+# S-010 Class A #3 — implementer checkpoint / resume seam
+python3 "${HERMES_SKILL_DIR}/scripts/init-implementer-checkpoint.py" \
+  /projects/modernized/migration/bodies/m3-s-010.json --task-id t_example \
+  --root /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
+  /projects/modernized/migration/runs/t_example/checkpoint.json \
+  --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
+python3 "${HERMES_SKILL_DIR}/scripts/check-implementer-checkpoint.py" \
+  /projects/modernized/migration/runs/t_example/checkpoint.json
 ```
 
 Looks under `migration/provenance/*.json` and task JSON `provenance` /
 `metadata` / `completion_metadata` fields. Run journals: `migration/runs/`
-(`migration/schemas/run-journal.md`).
+(`migration/schemas/run-journal.md`). Checkpoints:
+`migration/schemas/implementer-checkpoint.md` /
+`migration/contracts/implementer-checkpoint.md`.
 
 ## Reconstruction (plan #6 / AD-H §19.1)
 
