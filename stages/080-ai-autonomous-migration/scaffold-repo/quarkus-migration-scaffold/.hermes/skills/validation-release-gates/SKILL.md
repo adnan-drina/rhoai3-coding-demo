@@ -41,9 +41,16 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/restore-or-refuse-requeue.py" /projects/modernized \
   --terminal crashed
 python3 "${HERMES_SKILL_DIR}/scripts/check-workspace-clean.py" /projects/modernized
+
+# AD-H §16.6 / AR-2.1 — refuse non-runnable default DB (idle until DB intent)
+python3 "${HERMES_SKILL_DIR}/scripts/check-runnable-db-config.py" /projects/modernized
+
+# AD-H §16.6 / AR-2.2 — refuse empty/placeholder security (idle until security intent)
+python3 "${HERMES_SKILL_DIR}/scripts/check-empty-security.py" /projects/modernized
 ```
 
-Contract: `migration/contracts/workspace-recovery.md`.
+Contracts: `migration/contracts/workspace-recovery.md`,
+`migration/contracts/runnable-db-security.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 

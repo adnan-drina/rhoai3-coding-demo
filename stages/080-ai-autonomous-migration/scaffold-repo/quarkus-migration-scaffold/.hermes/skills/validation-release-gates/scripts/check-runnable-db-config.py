@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""AD-H §16.6 / AR-2.1 — refuse non-runnable default DB profiles."""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def main() -> int:
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    pom = read(root / "pom.xml")
+    props_files = list((root / "src/main/resources").glob("application*.properties"))
+    blob = "\n".join(read(p) for p in sorted(props_files))
+    mig = list((root / "src/main/resources").rglob("V*__*.sql"))
+    init_sql = list((root / "src/main/resources").rglob("initDB.sql"))
+
+    db_intent = bool(
+        re.search(r"(?m)^quarkus\.datasource\.", blob)
+        or "quarkus-jdbc-" in pom
+        or "quarkus-flyway" in pom
+        or mig
+        or init_sql
+    )
+    if not db_intent:
+        print("OK: AR-2.1 idle (no DB intent in pom/properties/migrations)")
+        return 0
+
+    bad = 0
+    for dep in ("quarkus-jdbc-", "quarkus-flyway"):
+        if dep not in pom:
+            print(f"FAIL: AR-2.1 pom missing {dep}*", file=sys.stderr)
+            bad = 1
+
+    kinds = re.findall(r"(?m)^quarkus\.datasource\.db-kind\s*=\s*(\S+)", blob)
+    urls = re.findall(r"(?m)^quarkus\.datasource\.jdbc\.url\s*=\s*(\S+)", blob)
+    for kind in kinds:
+        for url in urls:
+            if kind == "h2" and "hsqldb" in url:
+                print(
+                    f"FAIL: AR-2.1 db-kind=h2 with hsqldb URL ({url})",
+                    file=sys.stderr,
+                )
+                bad = 1
+            if kind == "hsqldb" and url.startswith("jdbc:h2:"):
+                print(
+                    f"FAIL: AR-2.1 db-kind=hsqldb with h2 URL ({url})",
+                    file=sys.stderr,
+                )
+                bad = 1
+
+    if not re.search(r"(?m)^quarkus\.flyway\.migrate-at-start\s*=\s*true\s*$", blob):
+        print("FAIL: AR-2.1 quarkus.flyway.migrate-at-start=true required", file=sys.stderr)
+        bad = 1
+
+    if not mig:
+        if init_sql:
+            print(
+                "FAIL: AR-2.1 initDB.sql without Flyway V*__*.sql — not runnable path",
+                file=sys.stderr,
+            )
+        else:
+            print("FAIL: AR-2.1 no Flyway V*__*.sql migrations found", file=sys.stderr)
+        bad = 1
+
+    if bad:
+        print("AR-2.1 runnable-db config FAILED", file=sys.stderr)
+        return 1
+    print(f"OK: AR-2.1 runnable-db config ({len(mig)} migration file(s))")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
