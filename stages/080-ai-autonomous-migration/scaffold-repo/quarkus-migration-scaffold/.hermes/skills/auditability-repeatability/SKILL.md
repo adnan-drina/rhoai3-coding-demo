@@ -19,10 +19,16 @@ description: >
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
+
+# AD-H §16.9 / AR-4.3 — body digest stamp + run journal pre/post digests
+python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
+  /projects/modernized/migration/bodies/m3-s-010.json
+python3 "${HERMES_SKILL_DIR}/scripts/check-run-digests.py" /projects/modernized
 ```
 
 Looks under `migration/provenance/*.json` and task JSON `provenance` /
-`metadata` / `completion_metadata` fields.
+`metadata` / `completion_metadata` fields. Run journals: `migration/runs/`
+(`migration/schemas/run-journal.md`).
 
 ## Reconstruction (plan #6 / AD-H §19.1)
 

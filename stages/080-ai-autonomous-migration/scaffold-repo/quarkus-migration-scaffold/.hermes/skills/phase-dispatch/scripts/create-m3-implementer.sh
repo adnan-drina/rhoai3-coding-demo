@@ -96,6 +96,18 @@ if [[ -n "${BODY_BUDGET}" ]]; then
   echo "create-m3-implementer: §3b runtime_budget_sec=${MAX_RUNTIME} from body" >&2
 fi
 
+# AR-4.3 — persist exact body digest before create (immutable input stamp)
+BODY_DIGEST="$(python3 "${ROOT}/.hermes/skills/auditability-repeatability/scripts/stamp-body-digest.py" \
+  "${BODY_JSON}" | tail -1)"
+[[ -n "${BODY_DIGEST}" && "${#BODY_DIGEST}" -eq 64 ]] \
+  || die "AR-4.3 stamp-body-digest failed for ${BODY_JSON}"
+
+# AR-4.4 / AR-2.3–2.7 — lint the body being created (not the whole board)
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-surgical-scopes.py" "${ROOT}" "${BODY_JSON}" \
+  || die "AR-4.4 surgical scopes failed for ${BODY_JSON}"
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-semantic-exits.py" "${ROOT}" "${BODY_JSON}" \
+  || die "AR-2.3–2.7 semantic exits failed for ${BODY_JSON}"
+
 # Human-readable markdown wrapper + attach typed JSON path as obligation
 BODY_MD="$(mktemp)"
 trap 'rm -f "${BODY_MD}"' EXIT
@@ -105,11 +117,14 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Phase: M3 per \`.hermes/phase-dispatch.yaml\`"
   echo "Role: implementer"
   echo "Typed body (W2 §6): \`${BODY_JSON}\`"
+  echo "Body digest (AR-4.3): \`${BODY_DIGEST}\`"
   echo
   echo "## Obligation"
-  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
+  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`refs\`)."
+  echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
+  echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
-  echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
+  echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\` (endpoint/semantic exits required — AR-4.4)."
   echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
   echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config)."
   echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
@@ -119,6 +134,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "## Constraints"
   echo "- workspace: dir:${WORKSPACE_DIR}"
   echo "- Do not re-plan scope. Typed BLOCK if inputs wrong."
+  echo "- Write only \`files_writable\` / destination write-set (AR-4.4); readable deps are not write authority."
   echo "- **AD-009:** max-runtime=${MAX_RUNTIME}s; no MiniMax (AD-008)."
   echo "- Skills preload ≠ consultation (AD-002D/E) — consult or typed unused."
 } >"${BODY_MD}"

@@ -16,7 +16,10 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
 | `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below** |
 | `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
-| `exit_criteria` | list of objects | **M3/M4/M5 required non-empty** — falsifiable done-when |
+| `files_writable` / `write_set` | list | **AR-4.4 preferred** — allowed destination writes |
+| `files_readable` / `readable_deps` | list | **AR-4.4** — readable deps (not write authority) |
+| `sequence_after` | list | **AR-4.4** — explicit sequence when write sets would overlap |
+| `exit_criteria` | list of objects | **M3/M4/M5 required non-empty** — falsifiable done-when; endpoint/semantic checks required (AR-4.4 / AR-2.3–2.7) |
 
 **F6 transform / G-2 applicability stamp (ER#2 / §G.2):** for phases **M3/M4/M5**,
 `identity` MUST include evidence-derived fields (immutable task identity):
