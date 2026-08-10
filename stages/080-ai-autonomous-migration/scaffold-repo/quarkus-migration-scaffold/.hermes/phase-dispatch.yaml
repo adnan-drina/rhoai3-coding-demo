@@ -52,13 +52,13 @@ phases:
     # .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     role: implementer
+    # AD-002F — useful = influence. M3 default preload is the workhorse + body lint
+    # only. Drop zero-touch (domain-gates→M4, role-authority/grounded-generation/
+    # auditability-repeatability unread on S-001…S-006). Workers consult via
+    # skill_view; unused preloads need skills_unused (AD-002E).
     skills:
       - sdd-readiness
-      - role-authority
-      - grounded-generation
-      - auditability-repeatability
       - spring-to-quarkus-patterns
-      - domain-gates
     # AD-H §18 required_checks (validator/sensor matrix)
     required_checks:
       - compile

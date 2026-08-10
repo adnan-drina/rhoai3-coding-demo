@@ -107,8 +107,8 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
-  echo "**AD-002E:** every preloaded skill → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` in the completion comment before \`kanban_complete\`. Silence is invalid. Do **not** claim skills were consulted without a consult event (claim-vs-diff defect)."
-  echo "Prefer consulting grounded-generation + spring-to-quarkus-patterns before edits when they apply."
+  echo "**AD-002E/F:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only (influence-fit). Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
+  echo "Prefer \`skill_view\` on \`spring-to-quarkus-patterns\` (and its \`references/*\`) before edits — progressive disclosure, do not bulk-paste skill bodies."
   echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo
   # Do NOT inline the typed JSON here — it bloated M3 prompts to ~30k before any
