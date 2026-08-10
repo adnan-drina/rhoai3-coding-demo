@@ -236,6 +236,10 @@ Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + find
   `python3 .hermes/home/scripts/apply-environmental-circuit-breaker.py --task-id $TASK --phase M2 --provider-stale-events N`
   then typed `kanban_block` — do **not** MiniMax. Unstamped crash loops are an
   IMPLEMENT gap.
+- **Crash requeue ceiling (Architect E-20260810T142650Z):** on `crashed`, run
+  `python3 .hermes/skills/validation-release-gates/scripts/apply-crash-requeue-policy.py . --task-id $TASK --k-crash 1 --cause harness_fault --stamp`
+  (does **not** spend wall soft-K). Hard ceiling → typed block; never primary
+  budget/`timed_out`.
 - **AD-009 §3.1:** rc=0 without kanban terminal →
   `apply-protocol-untyped-terminal.py --task-id $TASK --block` (typed
   `protocol_untyped`; dual-annotate if environmental).

@@ -61,13 +61,18 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-wall-exit-eval.py" /projects/moderniz
   --task-id t_xxx --trigger timed_out --require-test-compile
 python3 "${HERMES_SKILL_DIR}/scripts/apply-wall-requeue-policy.py" /projects/modernized \
   --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
+
+# Architect E-20260810T142650Z — crash requeue ceiling (does not spend wall soft-K)
+python3 "${HERMES_SKILL_DIR}/scripts/apply-crash-requeue-policy.py" /projects/modernized \
+  --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
 ```
 
 Contracts: `migration/contracts/workspace-recovery.md`,
 `migration/contracts/runnable-db-security.md`,
 `migration/contracts/product-tests.md`,
 `migration/contracts/test-toolchain.md`,
-`migration/contracts/wall-exit-eval.md`.
+`migration/contracts/wall-exit-eval.md`,
+`migration/contracts/crash-requeue.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 

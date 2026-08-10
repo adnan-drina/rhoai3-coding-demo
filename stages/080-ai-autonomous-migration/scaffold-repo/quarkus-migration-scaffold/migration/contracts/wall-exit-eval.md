@@ -45,3 +45,6 @@ python3 .hermes/skills/validation-release-gates/scripts/apply-wall-requeue-polic
 ```
 
 Also F4 restore-or-refuse before intentional requeue (`workspace-recovery.md`).
+
+Crash/reclaim loops are **not** covered here — see `crash-requeue.md`
+(Architect E-20260810T142650Z, K_crash=1).
