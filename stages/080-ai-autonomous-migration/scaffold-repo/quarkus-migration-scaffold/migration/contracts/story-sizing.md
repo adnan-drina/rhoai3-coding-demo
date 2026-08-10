@@ -30,15 +30,20 @@ Measured count uses the same dest normalization as implementer checkpoints
 Over-cap → **REFUSE** create / body lint (`BODY_SIZE`). Split the story; do not
 raise the wall.
 
-## Wall-fit (Architect E-20260810T111450Z)
+## Wall-fit (Architect E-20260810T111450Z / R-M3.9 E-20260810T184700Z)
 
 Count caps alone are unsound for “decompose when units > wall”. At **create**
 time (`create-m3-implementer.sh` passes `--wall-fit`):
 
-`estimated_seconds = operand_count × 75` (proving-min seconds/operand)
+`estimated_seconds = operand_count × 90` (proving-min seconds/operand;
+retuned after v11 S-003 #20 timed_out at 42 FIS×~86s)
 
 Refuse when `estimated_seconds > runtime_budget_sec` (or phase default
-2700 / effort-high 3600). Example: **60 × 75 = 4500 > 3600** → REFUSE.
+2700 / effort-high 3600). Example: **42 × 90 = 3780 > 3600** → REFUSE.
+**Reject** blind wall raise alone — prefer **JPA-repos vs JDBC-repos** split.
+
+Also refuse dual-stack (`…/jpa/…` **and** `…/jdbc/…`) when measured ≥ 20
+(R-M3.9) even if the arithmetic barely fits.
 
 Board-wide `check-kanban-body` keeps count/caps only (no `--wall-fit`) so a
 named verification undecomposed body does not freeze unrelated authoring.

@@ -9,12 +9,16 @@ from typing import Any, Optional
 
 DEFAULT_MAX = 40
 HIGH_MAX = 80
-# Proving-min wall-fit (Architect E-111450Z): refuse undecomposed scopes whose
-# estimated runtime exceeds budget. Tuned so 60@3600 refuses while completed
-# M3 stories (~35@2700 / 34@3600) still pass. Not a claim of measured rate.
-SECONDS_PER_OPERAND = 75
+# Proving-min wall-fit (Architect E-111450Z / R-M3.9 E-20260810T184700Z):
+# refuse undecomposed scopes whose estimated runtime exceeds budget.
+# Tuned from v11 S-003 #20 timed_out (~86s/file observed at 42 FIS@3600) —
+# 75s/op admitted 42×75=3150≤3600 and still wall-exhausted. Prefer split
+# (JPA-repos vs JDBC-repos) over blind wall raise.
+SECONDS_PER_OPERAND = 90
 DEFAULT_BUDGET_SEC = 2700
 HIGH_BUDGET_SEC = 3600
+# Dual-stack repository stories (JPA + JDBC impl trees) at FIS≥20 must split.
+DUAL_STACK_SPLIT_MIN = 20
 
 
 def normalize_dest(item: Any) -> Optional[str]:
@@ -138,12 +142,24 @@ def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
     if wall_fit:
         budget = budget_sec(body)
         estimated = len(measured) * SECONDS_PER_OPERAND
+        paths_l = [p.lower() for p in measured]
+        has_jpa = any("/jpa/" in p or p.endswith("/jpa") for p in paths_l)
+        has_jdbc = any("/jdbc/" in p or p.endswith("/jdbc") for p in paths_l)
+        if has_jpa and has_jdbc and len(measured) >= DUAL_STACK_SPLIT_MIN:
+            print(
+                f"BODY_SIZE: {label}: R-M3.9 dual-stack refuse — "
+                f"JPA+JDBC repository trees with measured={len(measured)}≥"
+                f"{DUAL_STACK_SPLIT_MIN} — split into JPA-repos vs JDBC-repos "
+                f"cards (Architect E-20260810T184700Z); do not raise wall",
+                file=sys.stderr,
+            )
+            return 1
         if estimated > budget:
             print(
                 f"BODY_SIZE: {label}: wall-fit refuse "
                 f"estimated={estimated}s ({len(measured)}×{SECONDS_PER_OPERAND}s) "
-                f"> budget={budget}s — decompose (Architect E-111450Z / §3b units>wall); "
-                f"do not raise wall",
+                f"> budget={budget}s — decompose (Architect E-111450Z / R-M3.9); "
+                f"prefer JPA vs JDBC split; do not raise wall alone",
                 file=sys.stderr,
             )
             return 1

@@ -523,6 +523,51 @@ else
 fi
 rm -rf "${dep_tmp}"
 
+echo "== R-M3.9–13 wall-fit + JDBC =="
+python3 "${SKILLS}/sdd-readiness/scripts/check-jdbc-deps-preflight.py" "${ROOT}" || rc=1
+# 42@3600 must refuse under retuned 90s/op (R-M3.9; S-003 class)
+wf42="$(mktemp -d)"
+python3 - <<PY || rc=1
+import json, pathlib, subprocess, sys
+root = pathlib.Path("${ROOT}")
+fis = []
+for i in range(42):
+    fis.append(f"/projects/.derived/legacy-at-3/src/main/java/com/demo/R{i}.java")
+    fis.append(f"/projects/modernized/src/main/java/com/demo/R{i}.java")
+body = {
+    "phase": "M3",
+    "role": "implementer",
+    "effort_class": "high",
+    "runtime_budget_sec": 3600,
+    "identity": {
+        "story_id": "S-WF42",
+        "transform_class": "HARVEST",
+        "g2_applicability": "not_applicable",
+        "operand_count": 42,
+        "sizing_basis": "operand_count",
+    },
+    "files_in_scope": fis,
+    "exit_criteria": [
+        {"check": "compile", "cmd": "true", "expect": "rc=0"},
+        {"check": "skills", "assert": "fixture"},
+        {"check": "endpoint_contract", "assert": "fixture"},
+    ],
+}
+path = pathlib.Path("${wf42}") / "body42.json"
+path.write_text(json.dumps(body))
+cp = subprocess.run(
+    [sys.executable, str(root / ".hermes/skills/sdd-readiness/scripts/check-operand-count.py"),
+     str(root), str(path), "--wall-fit"],
+    capture_output=True, text=True,
+)
+if cp.returncode == 0:
+    print("FAIL: wall-fit 42@3600 should refuse under R-M3.9", file=sys.stderr)
+    print(cp.stdout, cp.stderr, file=sys.stderr)
+    sys.exit(1)
+print("OK: wall-fit 42@3600 refused (R-M3.9)")
+PY
+rm -rf "${wf42}"
+
 if [ "${rc}" -ne 0 ]; then
   echo "harness-validate FAILED" >&2
   exit 1
