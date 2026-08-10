@@ -74,7 +74,9 @@ phases:
     role: validator
     verdict_token: PROVISIONAL_ACCEPT
     accept_kind: provisional
+    # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
     skills:
+      - sdd-readiness
       - domain-gates
       - validation-release-gates
       - harness-validate
@@ -96,7 +98,9 @@ phases:
     # Standing entry-point descopes ⇒ SCOPED_ACCEPT only (check-accept-scope.py).
     role: validator
     accept_kind: full
+    # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
     skills:
+      - sdd-readiness
       - mta-analysis
       - domain-gates
       - validation-release-gates

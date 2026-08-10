@@ -48,6 +48,9 @@ done
 # Validate typed body before create
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" \
   || die "check-kanban-body failed — fix typed body first"
+# AD-002G P0.2 — refuse create if phase attach matrix drifts
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
+  || die "phase attach matrix failed — fix .hermes/phase-dispatch.yaml skills[]"
 
 # Parse M3 skills + max_runtime from yaml
 eval "$(python3 - "${DISPATCH_YAML}" <<'PY'
@@ -107,9 +110,9 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
-  echo "**AD-002E/F:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only (influence-fit). Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
-  echo "Prefer \`skill_view\` on \`spring-to-quarkus-patterns\` (and its \`references/*\`) before edits — progressive disclosure, do not bulk-paste skill bodies."
-  echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
+  echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
+  echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config)."
+  echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo
   # Do NOT inline the typed JSON here — it bloated M3 prompts to ~30k before any
   # tool use (v10 S-001 hang at API#4 in=62473). Path above is authoritative.
