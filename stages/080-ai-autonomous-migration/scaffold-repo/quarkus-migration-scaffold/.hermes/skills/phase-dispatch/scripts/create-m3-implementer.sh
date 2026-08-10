@@ -125,6 +125,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\` (endpoint/semantic exits required — AR-4.4)."
+  echo "**In-loop testCompile (S-010 Class A):** if writing \`src/test/**\`, run \`mvn -q test-compile\` after each batch of test writes; red compile is a typed terminal/fix — do **not** proceed to \`kanban_complete\` with a corpus that does not compile. Scaffold ships assertj-core + rest-assured (\`migration/contracts/test-toolchain.md\`)."
   echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
   echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config)."
   echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"

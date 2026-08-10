@@ -50,11 +50,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-empty-security.py" /projects/moderniz
 
 # AD-H §G.1 / AR-2.8 — product-test families (boot/CRUD/security/DB); not harness probe
 python3 "${HERMES_SKILL_DIR}/../domain-gates/scripts/check-product-tests.py" /projects/modernized
+
+# S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
+python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
 ```
 
 Contracts: `migration/contracts/workspace-recovery.md`,
 `migration/contracts/runnable-db-security.md`,
-`migration/contracts/product-tests.md`.
+`migration/contracts/product-tests.md`,
+`migration/contracts/test-toolchain.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 

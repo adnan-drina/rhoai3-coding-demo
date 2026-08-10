@@ -21,7 +21,7 @@
 
 **DEFER:** Testcontainers / Dev Services wiring beyond project defaults — not required for first green.
 
-## Binding (AR-3.3 / AR-2.8)
+## Binding (AR-3.3 / AR-2.8 / S-010 Class A)
 
 1. **`@QuarkusTest` does not auto-rollback.** Use `@TestTransaction` when the
    test must leave the DB unchanged; prove fixture counts unchanged after
@@ -31,6 +31,10 @@
 3. Acceptance tests must cover **product** behavior (CRUD statuses, mappings,
    validation, tx, security, intended DB) — harness probes are **not**
    acceptance evidence (AR-3.6).
+4. **Toolchain:** scaffold `pom.xml` ships `assertj-core` + `rest-assured`
+   (test scope). Prefer AssertJ `assertThat` over inventing a new library.
+   After writing tests, run `mvn -q test-compile` in-loop
+   (`migration/contracts/test-toolchain.md`).
 
 ## Agent text
 

@@ -272,6 +272,26 @@ def check_body(label: str, body: dict, root: Path) -> int:
                         )
                         bad = 1
 
+            # S-010 Class A / Deputy E-20260810T104752Z — test scope ⇒ in-loop
+            # testCompile exit (red compile must not reach Review silently).
+            scope_paths = body.get("files_in_scope") or body.get("filesInScope") or []
+            if isinstance(scope_paths, list):
+                touches_tests = any(
+                    isinstance(p, str) and "/src/test/" in p.replace("\\", "/")
+                    for p in scope_paths
+                )
+            else:
+                touches_tests = False
+            if touches_tests and "test_compile" not in checks:
+                fail(
+                    "BODY_EXIT",
+                    "phase=M3 with src/test in files_in_scope requires "
+                    "exit_criteria check=test_compile "
+                    "(cmd: mvn -q test-compile; in-loop invariant — "
+                    "migration/contracts/test-toolchain.md)",
+                )
+                bad = 1
+
             # Deputy E-20260810T025100Z — exit criteria must not require paths
             # outside files_in_scope (S-003: jpa_entities needed pom.xml OOS).
             # Architect:rule-body-self-consistency may tighten further; this is
