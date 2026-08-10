@@ -191,10 +191,10 @@ def main() -> int:
     args = ap.parse_args()
     paths = [Path(p) for p in args.paths]
     if not paths:
-        managed = Path(os.environ.get("HERMES_MANAGED_DIR", "/projects/.platform/hermes"))
-        home = Path(os.environ.get("HERMES_HOME", ""))
-        if not home:
-            home = Path("/projects/modernized/.hermes/home")
+        managed_raw = (os.environ.get("HERMES_MANAGED_DIR") or "").strip()
+        managed = Path(managed_raw or "/projects/.platform/hermes")
+        home_raw = (os.environ.get("HERMES_HOME") or "").strip()
+        home = Path(home_raw or "/projects/modernized/.hermes/home")
         paths = [managed / "config.yaml", home / "config.yaml"]
     changed = False
     for p in paths:
