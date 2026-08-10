@@ -19,15 +19,16 @@ Current Hermes exposes a single provider knob `stale_timeout_seconds` used for
 both TTFC and inter-chunk (`Stream stale … no chunks received`). Tip keeps
 `stale_timeout_seconds: 900` for inter-chunk / thinking.
 
-Until Hermes adds a distinct TTFC knob, Lead/Monitor **MUST** apply the 90s
-TTFC band operationally:
+Until Hermes adds a distinct TTFC knob, the **caller** is the existing cron
+job `kanban-stuck-watchdog` (not AGENTS.md memory):
 
 ```bash
-python3 .hermes/home/scripts/check-stream-liveness.py . --task-id t_xxx --ttfc-sec 90
+# Invoked automatically each watchdog tick for every running task:
+python3 .hermes/home/scripts/check-stream-liveness.py . --task-id t_xxx --ttfc-sec 90 --stamp
 ```
 
-Exit `2` ⇒ TTFC breach (stamp `lost_turn` / consider `environmental_provider`
-primary when stream-stale / Broken pipe). Does not MiniMax.
+Manual invoke remains valid. Exit `2` ⇒ TTFC breach + verdict stamp. Board
+block remains Lead/Monitor. Does not MiniMax.
 
 ## Forbidden
 

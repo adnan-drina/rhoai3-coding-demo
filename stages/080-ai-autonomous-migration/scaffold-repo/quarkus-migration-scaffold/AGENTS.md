@@ -89,8 +89,9 @@ Hermes worker config is **`$HERMES_HOME/config.yaml`** (relocated), not
 Managed Scope pins for `qwen3-6-27b`:
 - `stale_timeout_seconds: 900` (AD-009 §3.2) — **inter-chunk** / long thinking
 - **TTFC 90s** (AD-009 §3.2a) — zero-chunk waits must not use the 900s knob;
-  Hermes has one stale timer today → operational check
-  `check-stream-liveness.py --ttfc-sec 90` (`migration/contracts/stream-liveness.md`)
+  Hermes has one stale timer today → **`kanban-stuck-watchdog` cron invokes**
+  `check-stream-liveness.py --ttfc-sec 90 --stamp` each tick
+  (`migration/contracts/stream-liveness.md`)
 - `max_tokens: 8192` — **required**; unset Hermes defaults to half of
   `context_length` (65536), which with ≥65537 prompt tokens exceeds the 131072
   vLLM ceiling and yields `VLLMValidationError` (not a proxy timeout)

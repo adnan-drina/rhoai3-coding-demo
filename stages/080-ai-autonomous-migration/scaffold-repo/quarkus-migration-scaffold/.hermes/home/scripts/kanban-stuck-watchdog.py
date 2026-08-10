@@ -3,12 +3,17 @@
 no_agent cron script: exit 0 + empty stdout = silent tick; exit 0 + stdout =
 local alert; non-zero exit = error alert (broken watchdog cannot be silent).
 
-Observation layer only: alerts when a task stays `running` past STUCK_SECONDS
-*after* native `max_runtime_seconds` recovery should have fired. Does not
-restart, kill, or mutate state. Default stuck budget comes from
-`.hermes/phase-dispatch.yaml` (must exceed max phase max_runtime_seconds).
-A second cron job requires an Architect decision stating why this one is
-insufficient.
+Primary: alert when a task stays `running` past STUCK_SECONDS *after* native
+`max_runtime_seconds` recovery should have fired. Does not restart/kill/board-
+mutate.
+
+Also (AD-009 §3.2a / Deputy E-20260810T145838Z): for every `running` task, invoke
+`check-stream-liveness.py --ttfc-sec 90 --stamp` so TTFC is not documentation-only.
+Verdict stamp on breach is allowed; board block remains Lead/Monitor.
+
+Default stuck budget comes from `.hermes/phase-dispatch.yaml` (must exceed max
+phase max_runtime_seconds). A second cron job requires an Architect decision
+stating why this one is insufficient.
 """
 
 from __future__ import annotations
@@ -16,9 +21,12 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import time
 from pathlib import Path
+
+DEFAULT_TTFC_SEC = 90
 
 
 def hermes_home() -> Path:
@@ -72,6 +80,62 @@ def stuck_seconds() -> int:
         if parsed is not None:
             return parsed
     return 4200
+
+
+def project_root() -> Path:
+    """Workspace root that owns migration/ and .hermes/home/kanban/logs/."""
+    home = hermes_home()
+    if home.name == "home" and home.parent.name == ".hermes":
+        return home.parent.parent
+    env = os.environ.get("PROJECT_ROOT", "").strip()
+    if env:
+        return Path(env).expanduser()
+    return home.parent
+
+
+def ttfc_seconds() -> int:
+    if "TTFC_SECONDS" in os.environ:
+        try:
+            return max(30, int(os.environ["TTFC_SECONDS"]))
+        except ValueError as exc:
+            raise SystemExit(f"kanban-stuck-watchdog: bad TTFC_SECONDS: {exc}") from exc
+    return DEFAULT_TTFC_SEC
+
+
+def check_ttfc(task_id: str, root: Path, ttfc: int) -> str | None:
+    """Return alert line if TTFC breached; None if OK/skip."""
+    script = hermes_home() / "scripts" / "check-stream-liveness.py"
+    if not script.is_file():
+        return (
+            f"WATCHDOG: TTFC checker missing at {script} "
+            f"(task {task_id}) — detector not invocable"
+        )
+    try:
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                str(root),
+                "--task-id",
+                str(task_id),
+                "--ttfc-sec",
+                str(ttfc),
+                "--stamp",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"WATCHDOG: TTFC check failed for {task_id}: {exc}"
+    if cp.returncode == 2:
+        detail = (cp.stderr or cp.stdout or "").strip().splitlines()
+        tail = detail[-1] if detail else "ttfc_breach"
+        return (
+            f"WATCHDOG: TTFC breach task {task_id} (ttfc={ttfc}s) — {tail}. "
+            f"Verdict stamp attempted; board action is Lead/Monitor."
+        )
+    return None
 
 
 def find_running_table(conn: sqlite3.Connection) -> tuple[str, str, str] | None:
@@ -192,6 +256,8 @@ def main() -> int:
         conn.close()
 
     alerts: list[str] = []
+    root = project_root()
+    ttfc = ttfc_seconds()
     for row in rows:
         status_v, time_v = row[0], row[1]
         ident = row[2] if len(row) > 2 else "?"
@@ -208,6 +274,10 @@ def main() -> int:
                 f"WATCHDOG: Kanban task {ident!s} stuck in running for "
                 f"{int(age)}s (threshold {threshold}s). Alert only — no action taken."
             )
+        # AD-009 §3.2a — TTFC caller (Deputy E-20260810T145838Z)
+        ttfc_alert = check_ttfc(str(ident), root, ttfc)
+        if ttfc_alert:
+            alerts.append(ttfc_alert)
 
     if alerts:
         print("\n".join(alerts))
