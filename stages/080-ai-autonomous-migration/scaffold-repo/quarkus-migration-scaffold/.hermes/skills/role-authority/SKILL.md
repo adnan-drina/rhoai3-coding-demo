@@ -27,9 +27,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-role-writes.py" /projects/modernized
 bash "${HERMES_SKILL_DIR}/scripts/apply-write-fence.sh" /projects/modernized lock
 python3 "${HERMES_SKILL_DIR}/scripts/probe-write-fence.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-write-fence.py" /projects/modernized
+
+# AD-H §16.5 / AR-1.1 / AR-1.2 — self-ACK + comment-as-Lead refuse
+python3 "${HERMES_SKILL_DIR}/scripts/check-ack-authority.py" /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/check-comment-authority.py" /projects/modernized
 ```
 
-Contracts: `migration/contracts/role-authority.md`, `migration/contracts/write-fence.md`.
+Contracts: `migration/contracts/role-authority.md`, `migration/contracts/write-fence.md`,
+`migration/contracts/ack-authority.md`.
 Idle when no tasks / no phase advance requested.
 
 ## Roles (summary)

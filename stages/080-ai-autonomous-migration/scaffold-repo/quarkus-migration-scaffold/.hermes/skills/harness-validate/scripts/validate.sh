@@ -111,6 +111,30 @@ else
 fi
 rm -rf "${rw_tmp}"
 
+echo "== ack/comment authority (AD-H §16.5 / AR-1.1 / AR-1.2) =="
+# fixture feed must refuse impersonating override
+if python3 "${SKILLS}/role-authority/scripts/check-comment-authority.py" "${ROOT}" >/dev/null 2>&1; then
+  echo "FAIL: AR-1.2 impersonating override fixture should refuse" >&2
+  rc=1
+else
+  echo "OK: AR-1.2 impersonating comment refused"
+fi
+ar11_tmp="$(mktemp -d)"
+mkdir -p "${ar11_tmp}/migration/acks"
+printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"planner (M2)","acknowledged_at":"2026-08-09T17:00:00Z"}' \
+  > "${ar11_tmp}/migration/acks/brief-identity.json"
+if python3 "${SKILLS}/role-authority/scripts/check-ack-authority.py" "${ar11_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: AR-1.1 planner self-ACK should refuse" >&2
+  rc=1
+else
+  echo "OK: AR-1.1 planner self-ACK refused"
+fi
+printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"Operator","acknowledged_at":"2026-08-10T00:00:00Z","task_id":"t_demo","artifact_digests":{"brief":"abc"}}' \
+  > "${ar11_tmp}/migration/acks/brief-identity.ack.json"
+rm -f "${ar11_tmp}/migration/acks/brief-identity.json"
+python3 "${SKILLS}/role-authority/scripts/check-ack-authority.py" "${ar11_tmp}" || rc=1
+rm -rf "${ar11_tmp}"
+
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
 fence_tmp="$(mktemp -d)"
 mkdir -p "${fence_tmp}/migration/acks" "${fence_tmp}/migration/verdicts" \

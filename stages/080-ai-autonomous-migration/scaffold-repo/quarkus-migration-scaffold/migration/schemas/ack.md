@@ -12,10 +12,15 @@ Human checkpoints are **ack artifacts**, not Hermes interactive approvals.
 | `kind` | string | always `migration-ack` |
 | `ack_type` | string | `m1-findings` \| `brief-identity` \| (future typed acks) |
 | `status` | string | `acknowledged` (only accepted value for advance) |
-| `acknowledged_by` | string | Human identity / role (Operator, steerer, …) |
+| `acknowledged_by` | string | **Human / authenticated external signer** — **not** worker roles (`planner`, `implementer`, `default`, …) (AR-1.1) |
 | `acknowledged_at` | string | ISO-8601 UTC |
-| `artifact_refs` | list | Digests/paths covered (findings file, brief id, …) |
+| `task_id` | string | **Required** Kanban task id binding the grant (AR-1.1) |
+| `artifact_digests` | object/list | **Required** immutable digests of brief/plan/findings (AR-1.1) |
+| `artifact_refs` | list | Paths covered; prefer digest-bearing entries (`sha256`) |
 | `notes` | string | optional |
+
+Prefer `*.ack.yaml` / `*.ack.json`. Bare `migration/acks/*.json` self-grants
+are **refused** by `check-ack-authority.py`.
 
 ## Examples
 
