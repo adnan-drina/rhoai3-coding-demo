@@ -211,9 +211,34 @@ def check_body(label: str, body: dict, root: Path) -> int:
                 fail(
                     "BODY_EXIT",
                     "phase=M3 requires exit_criteria check=skills "
-                    "(skill_view/consult or typed skills_unused)",
+                    "(AD-002E: consult each preload or typed skills_unused; "
+                    "silence invalid)",
                 )
                 bad = 1
+            else:
+                # Soft authoring nudge: skills assert should forbid silence /
+                # false-consult (AD-002E). Missing keywords → warning-as-fail
+                # only when assert present but still says silence is OK without
+                # AD-002E language — keep required presence only above.
+                for item in exits if isinstance(exits, list) else []:
+                    if not isinstance(item, dict) or item.get("check") != "skills":
+                        continue
+                    assert_s = str(item.get("assert") or item.get("cmd") or "")
+                    if assert_s and "skills_unused" not in assert_s:
+                        fail(
+                            "BODY_EXIT",
+                            "phase=M3 skills assert must allow typed "
+                            "skills_unused (AD-002E)",
+                        )
+                        bad = 1
+                    if assert_s and "silence" not in assert_s.lower() and "AD-002E" not in assert_s:
+                        # Prefer explicit silence-invalid / AD-002E marker.
+                        fail(
+                            "BODY_EXIT",
+                            "phase=M3 skills assert must mark silence invalid "
+                            "(AD-002E / AD-002D)",
+                        )
+                        bad = 1
 
             # Deputy E-20260810T025100Z — exit criteria must not require paths
             # outside files_in_scope (S-003: jpa_entities needed pom.xml OOS).

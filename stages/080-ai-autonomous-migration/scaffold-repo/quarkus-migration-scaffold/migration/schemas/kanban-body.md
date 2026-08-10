@@ -30,9 +30,11 @@ Each `exit_criteria[]` item is an object with a short `check` id and either:
 - `{ "check", "assert" }` — named assertion the worker must verify before
   `kanban_complete` (e.g. scope / residue).
 
-**M3 required check id `skills` (AD-002D):** assert consult via `skill_view` (or
-equivalent) for ≥1 phase skill, **or** typed `skills_unused:<reason>` in the
-completion comment. Silence is not a typed negative.
+**M3 required check id `skills` (AD-002D / AD-002E):** for each preloaded skill,
+**consult** via `skill_view` (or equivalent) **or** typed
+`skills_unused:<skill>:<reason>` in the completion comment before
+`kanban_complete`. Silence is invalid. Claiming “skills consulted” without a
+consult event is a claim-vs-diff defect (not a silent pass).
 
 **Scope/exit consistency (Deputy `E-20260810T025100Z`):** exit criteria must not
 require paths outside `files_in_scope`. Lint `BODY_SCOPE_EXIT` fails when checks

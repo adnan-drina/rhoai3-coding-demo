@@ -107,8 +107,8 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`, \`refs\`)."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\`."
-  echo "**AD-002D:** \`skill_view\` (or equivalent) for ≥1 phase skill, OR typed \`skills_unused:<reason>\` in the completion comment — silence is not a negative."
-  echo "Consult grounded-generation + spring-to-quarkus-patterns before edits."
+  echo "**AD-002E:** every preloaded skill → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` in the completion comment before \`kanban_complete\`. Silence is invalid. Do **not** claim skills were consulted without a consult event (claim-vs-diff defect)."
+  echo "Prefer consulting grounded-generation + spring-to-quarkus-patterns before edits when they apply."
   echo "Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"
   echo
   # Do NOT inline the typed JSON here — it bloated M3 prompts to ~30k before any
@@ -117,7 +117,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "- workspace: dir:${WORKSPACE_DIR}"
   echo "- Do not re-plan scope. Typed BLOCK if inputs wrong."
   echo "- **AD-009:** max-runtime=${MAX_RUNTIME}s; no MiniMax (AD-008)."
-  echo "- Skills are preloaded via dispatch — use skill_view / skill scripts."
+  echo "- Skills preload ≠ consultation (AD-002D/E) — consult or typed unused."
 } >"${BODY_MD}"
 
 CREATE_ARGS=(
