@@ -40,6 +40,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/run-test-compile-gate.py" /projects/moderni
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json \
   --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
+# Harness-driven catch-up when stamp was skipped (Deputy E-121112Z)
+python3 "${HERMES_SKILL_DIR}/scripts/check-test-write-checkpoint-lag.py" \
+  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/sync-checkpoint-from-test-writes.py" \
+  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-implementer-checkpoint.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json
 ```

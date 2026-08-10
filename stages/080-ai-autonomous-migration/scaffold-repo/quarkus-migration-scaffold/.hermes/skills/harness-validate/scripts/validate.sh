@@ -424,6 +424,21 @@ else
 fi
 rm -rf "${wall_tmp}"
 
+echo "== checkpoint lag check (Deputy E-121112Z) =="
+lag_tmp="$(mktemp -d)"
+mkdir -p "${lag_tmp}/migration/runs/t_lag" "${lag_tmp}/src/test/java/com/demo"
+printf '%s\n' 'class ATests {}' > "${lag_tmp}/src/test/java/com/demo/ATests.java"
+printf '%s\n' '{"schema":"rhoai3.implementer-checkpoint/v1","task_id":"t_lag","body_path":"x","body_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","work_list":["src/test/java/com/demo/ATests.java"],"completed":[],"next":"src/test/java/com/demo/ATests.java","updated_at":"2026-08-10T00:00:00Z"}' \
+  > "${lag_tmp}/migration/runs/t_lag/checkpoint.json"
+if python3 "${SKILLS}/auditability-repeatability/scripts/check-test-write-checkpoint-lag.py" \
+  "${lag_tmp}/migration/runs/t_lag/checkpoint.json" --root "${lag_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: disk lag should refuse" >&2
+  rc=1
+else
+  echo "OK: src/test checkpoint lag refused"
+fi
+rm -rf "${lag_tmp}"
+
 echo "== #1b test-compile gate on checkpoint stamp (Deputy E-115113Z) =="
 tc_tmp="$(mktemp -d)"
 mkdir -p "${tc_tmp}/migration/runs/t_tcgate"

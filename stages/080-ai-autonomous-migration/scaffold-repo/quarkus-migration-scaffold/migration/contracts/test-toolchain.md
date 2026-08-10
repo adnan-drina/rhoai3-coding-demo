@@ -25,9 +25,12 @@ corpus by accident. For M3 bodies whose `files_in_scope` includes
    `cmd: mvn -q test-compile` (or equivalent) and `expect: rc=0`
 2. **Structural (Deputy E-20260810T115113Z):** `stamp-implementer-checkpoint.py
    --completed src/test/...` **REFUSE**s unless `run-test-compile-gate.py` is
-   green first. Advisory prose alone decays mid-run — the checkpoint seam is
-   the invariant. `--skip-test-compile-gate` is fixture-only.
-3. Wall terminals still evaluate `test_compile` via `wall-exit-eval.md`.
+   green first. `--skip-test-compile-gate` is fixture-only.
+3. **Harness-driven stamp (Deputy E-20260810T121112Z):** voluntary stamp decays.
+   On wall/requeue and before `kanban_complete`, run
+   `sync-checkpoint-from-test-writes.py` / `check-test-write-checkpoint-lag.py`
+   so on-disk `src/test/**` writes cannot outrun the checkpoint.
+4. Wall / soft-requeue still evaluate `test_compile` via `wall-exit-eval.md`.
 
 Authoring gate: `check-kanban-body.py` refuses M3 bodies with test scope but
 no `test_compile` exit.

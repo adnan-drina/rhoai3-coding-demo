@@ -54,11 +54,13 @@ python3 "${HERMES_SKILL_DIR}/../domain-gates/scripts/check-product-tests.py" /pr
 # S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
 
-# Architect E-110403Z — wall-as-terminal exit evaluation
+# Architect E-110403Z / E-121300Z — wall exit-eval + soft K requeue policy
 python3 "${HERMES_SKILL_DIR}/scripts/evaluate-exit-criteria.py" /projects/modernized \
   --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
 python3 "${HERMES_SKILL_DIR}/scripts/check-wall-exit-eval.py" /projects/modernized \
   --task-id t_xxx --trigger timed_out --require-test-compile
+python3 "${HERMES_SKILL_DIR}/scripts/apply-wall-requeue-policy.py" /projects/modernized \
+  --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
 ```
 
 Contracts: `migration/contracts/workspace-recovery.md`,

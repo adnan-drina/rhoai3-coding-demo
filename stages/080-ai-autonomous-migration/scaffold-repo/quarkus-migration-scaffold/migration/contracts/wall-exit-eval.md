@@ -30,7 +30,18 @@ Assert-only exits are recorded as `unevaluated_assert` (honest); cmd exits run
 and must be present for wall terminals when the body declares them (especially
 `test_compile`).
 
-## Requeue
+## Requeue (Architect E-20260810T121300Z)
 
-Before unblock/requeue after `timed_out`, F4 restore-or-refuse **and** wall-exit
-eval must be green (or typed refuse). See `workspace-recovery.md`.
+Unbounded silent requeue **REJECT**.
+
+| Mode | Rule |
+|------|------|
+| Soft | At most **K=1** timed_out soft-requeue; **before resume** run exit-eval + `sync-checkpoint-from-test-writes.py` |
+| Hard | Next timed_out after K → **block** (terminal) + exit-eval; do not soft-resume |
+
+```bash
+python3 .hermes/skills/validation-release-gates/scripts/apply-wall-requeue-policy.py . \
+  --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
+```
+
+Also F4 restore-or-refuse before intentional requeue (`workspace-recovery.md`).
