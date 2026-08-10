@@ -106,6 +106,32 @@ def main() -> int:
     # Wall terminals with zero cmd exits still produce an artifact, but overall_ok false.
     if not any(r.get("kind") == "cmd" for r in results):
         overall_ok = False
+    wallish = trigger in WALLISH
+    # R-M3.31 (Architect E-20260810T230310Z): wallish + incomplete checkpoint ⇒
+    # not product-green even when compile alone passes.
+    notes: list[str] = [
+        "R-M3.28: credit AD-009 freeze / >300s stream latency before classifying "
+        "wall-fit PASS bodies as sizing defects"
+    ]
+    cp_incomplete = False
+    cp_path = root / "migration" / "runs" / args.task_id / "checkpoint.json"
+    if cp_path.is_file():
+        try:
+            cp = json.loads(cp_path.read_text(encoding="utf-8"))
+            work = cp.get("work_list") or []
+            done = cp.get("completed") or []
+            if work and len(done) < len(work):
+                cp_incomplete = True
+            elif work and cp.get("next") is not None and not done:
+                cp_incomplete = True
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    if wallish and cp_incomplete:
+        overall_ok = False
+        notes.append(
+            "R-M3.31: wallish + incomplete checkpoint → overall_ok=false "
+            "(compile-only green is not product PASS)"
+        )
     payload = {
         "schema": SCHEMA,
         "task_id": args.task_id,
@@ -116,7 +142,9 @@ def main() -> int:
         "results": results,
         "cmd_failed": cmd_failed,
         "overall_ok": overall_ok,
-        "wallish": trigger in WALLISH,
+        "wallish": wallish,
+        "checkpoint_incomplete": cp_incomplete,
+        "notes": notes,
     }
     out_dir = root / "migration" / "runs" / args.task_id
     out_dir.mkdir(parents=True, exist_ok=True)

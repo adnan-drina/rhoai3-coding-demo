@@ -30,6 +30,15 @@ Assert-only exits are recorded as `unevaluated_assert` (honest); cmd exits run
 and must be present for wall terminals when the body declares them (especially
 `test_compile`).
 
+### AD-009 / incomplete checkpoint (Architect E-20260810T230310Z)
+
+| ID | Rule |
+|----|------|
+| **R-M3.28** | Ballot / exit-eval **notes** must credit AD-009 provider freeze + >300s stream latencies before calling a wall-fit PASS body a **sizing** defect |
+| **R-M3.31** | `evaluate-exit-criteria.py` sets `overall_ok=false` when `wallish` **and** implementer checkpoint is incomplete — even if `compile` alone is green |
+
+See `m3-security-write-first.md` (R-M3.29/30) for security-card remediations.
+
 ## Requeue (Architect E-20260810T121300Z)
 
 Unbounded silent requeue **REJECT**.

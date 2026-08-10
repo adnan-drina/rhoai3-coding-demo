@@ -1,0 +1,221 @@
+{
+  "task_id": "m3-s-003",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [
+    {
+      "key": "brief_identity_ack",
+      "path": "migration/acks/m1-findings.ack.yaml",
+      "sha256": "c4ef223358311bef24d86e4a0c30693a21fdce82775298a4083d56565f9b41ff"
+    },
+    {
+      "key": "legacy_locus",
+      "path": "migration/findings-handoff.json",
+      "sha256": "991ddee07b0fa8c36a18ab807357aa6b3bef62c3ff198c08ba2239222ccce0d3"
+    },
+    {
+      "key": "spec_path",
+      "path": "specs/001-quarkus-migration/spec.md",
+      "sha256": "b2f5980ccca8a6d2ccd9fce20d37913f7f7440df8105b1057ca6859cac3ba7a8"
+    },
+    {
+      "key": "plan_path",
+      "path": "specs/001-quarkus-migration/plan.md",
+      "sha256": "ea2d0a18d32c6b0ce08154508c2eedf8aff807f8d135387f1eb1ce0283939ffc"
+    }
+  ],
+  "identity": {
+    "story_id": "S-003a",
+    "transform_class": "HARVEST",
+    "g2_applicability": "required",
+    "operand_count": 30,
+    "sizing_basis": "operand_count",
+    "title": "Repository layer (JPA/Spring Data): interfaces and JPA impls"
+  },
+  "files_in_scope": [
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/UserRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/UserRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetTypeRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetTypeRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVetRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVetRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaSpecialtyRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaSpecialtyRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaUserRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaUserRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jpa/package-info.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/package-info.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataUserRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataUserRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVetRepository.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVetRepository.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetRepositoryOverride.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetRepositoryOverride.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetTypeRepositoryOverride.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetTypeRepositoryOverride.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpecialtyRepositoryOverride.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpecialtyRepositoryOverride.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/VisitRepositoryOverride.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/VisitRepositoryOverride.java"
+    }
+  ],
+  "files_writable": [
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/UserRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetTypeRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVetRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaSpecialtyRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaUserRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jpa/package-info.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataUserRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVetRepository.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetRepositoryOverride.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetTypeRepositoryOverride.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpecialtyRepositoryOverride.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/VisitRepositoryOverride.java"
+  ],
+  "exit_criteria": [
+    {
+      "check": "compile",
+      "cmd": "mvn -q compile",
+      "expect": "rc=0"
+    },
+    {
+      "check": "scope",
+      "assert": "All files_in_scope for S-003 migrated; no out-of-scope writes"
+    },
+    {
+      "check": "skills",
+      "assert": "Consulted sdd-readiness and spring-to-quarkus-patterns via skill_view or typed skills_unused with reason; silence is invalid per AD-002E/AD-002D"
+    },
+    {
+      "check": "hql_entity_path",
+      "assert": "All repository methods return correct data; @PersistenceContext replaced with @Inject; @Transactional applied to EntityManager remove operations per transaction-to-quarkus-00003"
+    },
+    {
+      "check": "create_fk",
+      "assert": "FK-preserving create paths for in-scope persistence (AR-2.3)"
+    },
+    {
+      "check": "http_semantics",
+      "assert": "HTTP/status semantics for in-scope API surface (AR-2.4)"
+    }
+  ],
+  "runtime_budget_sec": 3600,
+  "effort_class": "high",
+  "split_of": "S-003",
+  "split_note": "R-M3.9 split of S-003; JPA+SpringData only; no jdbc/**",
+  "parent_body": "migration/bodies/m3-s-003.json"
+}

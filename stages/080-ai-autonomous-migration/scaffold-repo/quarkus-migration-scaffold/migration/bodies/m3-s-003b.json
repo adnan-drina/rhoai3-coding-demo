@@ -1,0 +1,131 @@
+{
+  "task_id": "m3-s-003",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [
+    {
+      "key": "brief_identity_ack",
+      "path": "migration/acks/m1-findings.ack.yaml",
+      "sha256": "c4ef223358311bef24d86e4a0c30693a21fdce82775298a4083d56565f9b41ff"
+    },
+    {
+      "key": "legacy_locus",
+      "path": "migration/findings-handoff.json",
+      "sha256": "991ddee07b0fa8c36a18ab807357aa6b3bef62c3ff198c08ba2239222ccce0d3"
+    },
+    {
+      "key": "spec_path",
+      "path": "specs/001-quarkus-migration/spec.md",
+      "sha256": "b2f5980ccca8a6d2ccd9fce20d37913f7f7440df8105b1057ca6859cac3ba7a8"
+    },
+    {
+      "key": "plan_path",
+      "path": "specs/001-quarkus-migration/plan.md",
+      "sha256": "ea2d0a18d32c6b0ce08154508c2eedf8aff807f8d135387f1eb1ce0283939ffc"
+    }
+  ],
+  "identity": {
+    "story_id": "S-003b",
+    "transform_class": "HARVEST",
+    "g2_applicability": "required",
+    "operand_count": 12,
+    "sizing_basis": "operand_count",
+    "title": "Repository layer (JDBC): jdbc profile impls"
+  },
+  "files_in_scope": [
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRowMapper.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRowMapper.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetTypeRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetTypeRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetVisitExtractor.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetVisitExtractor.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVetRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVetRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRowMapper.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRowMapper.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcSpecialtyRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcSpecialtyRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcUserRepositoryImpl.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcUserRepositoryImpl.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/repository/jdbc/package-info.java",
+      "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/package-info.java"
+    }
+  ],
+  "files_writable": [
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRowMapper.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetTypeRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetVisitExtractor.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVetRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRowMapper.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcSpecialtyRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcUserRepositoryImpl.java",
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/repository/jdbc/package-info.java"
+  ],
+  "exit_criteria": [
+    {
+      "check": "compile",
+      "cmd": "mvn -q compile",
+      "expect": "rc=0"
+    },
+    {
+      "check": "scope",
+      "assert": "All files_in_scope for S-003 migrated; no out-of-scope writes"
+    },
+    {
+      "check": "skills",
+      "assert": "Consulted sdd-readiness and spring-to-quarkus-patterns via skill_view or typed skills_unused with reason; silence is invalid per AD-002E/AD-002D"
+    },
+    {
+      "check": "hql_entity_path",
+      "assert": "All repository methods return correct data; @PersistenceContext replaced with @Inject; @Transactional applied to EntityManager remove operations per transaction-to-quarkus-00003"
+    },
+    {
+      "check": "create_fk",
+      "assert": "FK-preserving create paths for in-scope persistence (AR-2.3)"
+    },
+    {
+      "check": "http_semantics",
+      "assert": "HTTP/status semantics for in-scope API surface (AR-2.4)"
+    }
+  ],
+  "runtime_budget_sec": 3600,
+  "effort_class": "high",
+  "split_of": "S-003",
+  "split_note": "R-M3.9 split of S-003; jdbc/** only; check-jdbc-deps-preflight before first write",
+  "parent_body": "migration/bodies/m3-s-003.json"
+}
