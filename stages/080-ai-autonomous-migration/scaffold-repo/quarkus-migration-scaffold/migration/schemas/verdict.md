@@ -16,6 +16,7 @@
 | `g1_kill_ratio_waiver` | Typed Operator waiver for M5 `ACCEPT` while ratio is `pending_threshold` |
 | `ship` | Never for `PROVISIONAL_ACCEPT` or `INCONCLUSIVE`. M5 `ACCEPT` only |
 | `routing` / `failure_class` | §18.3; composition reopen → `reopen_story` or `blocked` |
+| `g4_mode` | **Required on G-4 gate outputs** — `SAMPLE` until equivalence bar (AD-H §G.4 / ER#2 F8). Do not omit; do not claim equivalence oracle on SAMPLE. |
 
 Closure map home: `migration/slices/closure-map.json` (operand for §18.0 ¶4).
 

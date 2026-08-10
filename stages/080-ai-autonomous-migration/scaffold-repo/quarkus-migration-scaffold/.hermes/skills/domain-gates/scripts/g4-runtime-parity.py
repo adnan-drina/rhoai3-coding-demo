@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""G-4 admission evaluator — response parity / identical 5xx vacuity (W2 §10)."""
+"""G-4 admission evaluator — response parity / identical 5xx vacuity (W2 §10).
+
+ER#2 F8 / AD-H §G.4: current depth is SAMPLE, not behavioral-equivalence.
+Every gate output stamps g4_mode=SAMPLE until partitions + permitted
+equivalence + zero unverified entry points land for release_qualified.
+"""
 from __future__ import annotations
 
 import json
@@ -8,6 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from verdict import expect, write_verdict  # noqa: E402
+
+# AD-H §G.4 / ER#2 F8 — honest label until equivalence bar is met
+G4_MODE = "SAMPLE"
 
 
 def evaluate(fixture_dir: Path) -> str:
@@ -54,8 +62,16 @@ def main() -> int:
             got,
             "parity.json",
             {"path": str(base / name)},
+            g4_mode=G4_MODE,
         )
+        # F8: refuse silent equivalence — SAMPLE stamp required on every write
+        written = json.loads((out_dir / f"{name}.json").read_text(encoding="utf-8"))
+        if written.get("g4_mode") != G4_MODE:
+            print(f"FAIL G-4/{name}: missing g4_mode={G4_MODE} stamp (ER#2 F8)", file=sys.stderr)
+            rc = 1
         rc |= expect(got, want, "G-4", name)
+    if rc == 0:
+        print(f"OK: G-4 admission stamped g4_mode={G4_MODE} (not equivalence oracle)")
     return rc
 
 

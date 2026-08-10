@@ -6,15 +6,24 @@ from pathlib import Path
 from typing import Any
 
 
-def write_verdict(path: Path, gate: str, fixture: str, verdict: str, reason: str, evidence: dict[str, Any]) -> None:
+def write_verdict(
+    path: Path,
+    gate: str,
+    fixture: str,
+    verdict: str,
+    reason: str,
+    evidence: dict[str, Any],
+    **extra: Any,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {
+    doc: dict[str, Any] = {
         "gate": gate,
         "fixture": fixture,
         "verdict": verdict,
         "reason": reason,
         "evidence": evidence,
     }
+    doc.update(extra)
     path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 

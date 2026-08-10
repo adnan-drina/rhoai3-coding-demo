@@ -18,6 +18,11 @@ Hermes owns orchestration. **We** own these deterministic fidelity checks
 | G-3 | `findings-delta` | finding present but asserted resolved |
 | G-4 | `runtime-parity` | different status/body; identical 5xx = vacuous |
 
+**G-4 mode (ER#2 F8 / AD-H §G.4):** gate outputs stamp `g4_mode: SAMPLE`.
+This is **not** a behavioral-equivalence oracle. Full `ACCEPT` /
+`release_qualified` needs referent-derived partitions, per-normalizer
+permitted equivalence, and zero unverified entry points.
+
 ## Admission fixtures (W2 §10)
 
 Specimen-free pairs under `migration/fixtures/admission/gN-<name>/`.
