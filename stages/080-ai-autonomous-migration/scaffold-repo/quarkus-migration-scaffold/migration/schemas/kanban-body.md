@@ -34,6 +34,12 @@ Each `exit_criteria[]` item is an object with a short `check` id and either:
 equivalent) for ≥1 phase skill, **or** typed `skills_unused:<reason>` in the
 completion comment. Silence is not a typed negative.
 
+**Scope/exit consistency (Deputy `E-20260810T025100Z`):** exit criteria must not
+require paths outside `files_in_scope`. Lint `BODY_SCOPE_EXIT` fails when checks
+`quarkus_pom` / `jpa_entities` (or any cmd/assert naming `pom.xml`) run without
+`pom.xml` in scope — add dual-path pom (legacy-at-3 + modernized). Architect may
+extend this under `Architect:rule-body-self-consistency`.
+
 **Optional `runtime_budget_sec` (AD-010 §3b):** integer seconds when
 `effort_class` is high. Create-helper passes it as `--max-runtime`. Do **not**
 raise the phase-wide default from one sample.
@@ -63,4 +69,5 @@ analysis prose as authority.
 | `BODY_REF_UNKNOWN` | `BODY_REF_UNKNOWN: key={key} not in phase vocabulary` |
 | `BODY_SCOPE` | `BODY_SCOPE: M3 requires non-empty files_in_scope` |
 | `BODY_SCOPE_DEST` | `BODY_SCOPE_DEST: M3 files_in_scope needs destination paths (not legacy-only)` |
+| `BODY_SCOPE_EXIT` | `BODY_SCOPE_EXIT: exit_criteria imply pom.xml but files_in_scope omits it` |
 | `BODY_EXIT` | `BODY_EXIT: phase={phase} requires non-empty exit_criteria[]` |

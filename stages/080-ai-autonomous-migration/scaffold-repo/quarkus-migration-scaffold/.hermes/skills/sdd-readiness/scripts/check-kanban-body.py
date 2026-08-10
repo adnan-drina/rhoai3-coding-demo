@@ -215,6 +215,42 @@ def check_body(label: str, body: dict, root: Path) -> int:
                 )
                 bad = 1
 
+            # Deputy E-20260810T025100Z — exit criteria must not require paths
+            # outside files_in_scope (S-003: jpa_entities needed pom.xml OOS).
+            # Architect:rule-body-self-consistency may tighten further; this is
+            # the authoring-time catch for known pom-implying checks + explicit
+            # pom.xml mentions in cmd/assert text.
+            scope = body.get("files_in_scope") or body.get("filesInScope") or []
+            scope_paths: list[str] = []
+            for item in scope:
+                if isinstance(item, str):
+                    scope_paths.append(item)
+                elif isinstance(item, dict):
+                    for k in ("legacy", "src", "source", "dest", "dst", "destination"):
+                        if item.get(k):
+                            scope_paths.append(str(item[k]))
+            scope_text = "\n".join(scope_paths)
+            has_pom = any(p.endswith("pom.xml") or p.endswith("/pom.xml") for p in scope_paths) or (
+                "pom.xml" in scope_text
+            )
+            pom_implied_checks = {"quarkus_pom", "jpa_entities"}
+            needs_pom = bool(checks & pom_implied_checks)
+            for item in exits if isinstance(exits, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                blob = " ".join(
+                    str(item.get(k) or "") for k in ("cmd", "assert", "expect", "check")
+                )
+                if "pom.xml" in blob:
+                    needs_pom = True
+            if needs_pom and not has_pom:
+                fail(
+                    "BODY_SCOPE_EXIT",
+                    "exit_criteria imply pom.xml but files_in_scope omits it "
+                    "(add dual-path pom; do not force workers to breach scope)",
+                )
+                bad = 1
+
     return bad
 
 
