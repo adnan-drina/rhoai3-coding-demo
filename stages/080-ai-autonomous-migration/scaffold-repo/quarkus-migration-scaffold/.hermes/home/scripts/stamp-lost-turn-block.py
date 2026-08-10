@@ -18,16 +18,31 @@ def main() -> int:
     ap.add_argument("--last-api-call", default="")
     ap.add_argument("--last-tool", default="")
     ap.add_argument("--provider-signal", default="")
+    ap.add_argument(
+        "--primary-class",
+        default="harness_fault",
+        choices=("harness_fault", "environmental_provider"),
+        help="Architect refine: stream-stale may be environmental_provider primary",
+    )
+    ap.add_argument(
+        "--secondary-class",
+        default="",
+        help="Optional dual-annotate (e.g. lost_turn under environmental primary)",
+    )
     ap.add_argument("--note", default="")
     args = ap.parse_args()
     root = Path(args.root)
     out_dir = root / "migration" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
+    secondary = args.secondary_class or (
+        "lost_turn" if args.primary_class == "environmental_provider" else ""
+    )
     stamp = {
         "schema": "rhoai3.lost-turn-block/v1",
         "ad": "AD-010",
-        "block_class": "harness_fault",
+        "block_class": args.primary_class,
         "fault_subtype": "lost_turn",
+        "secondary_class": secondary or None,
         "task_id": args.task_id,
         "run_id": args.run_id or None,
         "transcript_bytes": args.transcript_bytes,
@@ -41,7 +56,7 @@ def main() -> int:
         "note": args.note
         or (
             "Lost turn — provider idle/stale with no durable transcript/artifact; "
-            "not budget/timed_out primary (Architect E-20260810T144150Z)"
+            "not budget/timed_out primary (Architect E-20260810T144150Z / E-144540Z)"
         ),
     }
     path = out_dir / f"lost-turn-{args.task_id}.json"

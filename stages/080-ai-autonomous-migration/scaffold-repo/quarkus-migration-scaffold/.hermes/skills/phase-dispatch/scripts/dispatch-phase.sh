@@ -210,17 +210,26 @@ Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + find
 ## DO NOT
 - Do **not** load `migration/mta-findings.json` or `mta-analyze-out/` into chat (evidence store — selective locus reads only after digest check)
 - Never `/speckit.implement`
+- Do **not** grant `migration/acks/brief-identity.json` or any worker `acknowledged_by` (AR-1.1) — Operator writes `brief-identity.ack.yaml`
+- Do **not** re-list the full story partition in Reasoning after `migration/briefs/partition.json` exists — edit the file (R-M2.2 anti-narration)
 
-## Job
+## Job (in order)
 1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
-2. Partition stories/briefs from **handoff rules/loci** + inventory.
-3. Spec Kit: `/speckit.specify` → plan → tasks (optional analyze).
+2. **Hard-invoke** `/speckit.specify` **before** freeform partition essays (then `/speckit.plan` → `/speckit.tasks`). Cite `migration/contracts/sdd-ordering.md` + `story-sizing.md`.
+3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1` — see `migration/schemas/partition.md`) with story IDs + layering from handoff/inventory. Prefer Spec Kit `spec.md` as the next durable artifact.
 4. Create implementer Kanban cards from tasks.md using
    **`bash .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh`**
    (NOT bare `hermes kanban create` — that omits M3 skills; Review grounding
    study 20260809). Each child needs a typed body JSON under
    `migration/bodies/` that passes `check-kanban-body.py`.
-5. Grant `migration/acks/brief-identity.json` when brief identity is stable.
+5. Stop when briefs/tasks/bodies are stable — **Operator** grants
+   `migration/acks/brief-identity.ack.yaml` (not a worker Done criterion).
+
+## Done when
+- `migration/briefs/partition.json` present (write-once seed)
+- Spec Kit artifacts exist under Spec Kit paths / `migration/specs` as produced by slash-invoke
+- M3 children created via `create-m3-implementer.sh` with max-runtime
+- brief-identity stage-advance ack is **out of band** (Operator)
 
 ## Constraints
 - workspace: dir:/projects/modernized
