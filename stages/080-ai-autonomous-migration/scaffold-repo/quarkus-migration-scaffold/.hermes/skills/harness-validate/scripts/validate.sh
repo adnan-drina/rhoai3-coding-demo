@@ -259,6 +259,38 @@ python3 "${SKILLS}/validation-release-gates/scripts/check-candidate-promote.py" 
 # side-effect recovery idle + persisted-data idle
 python3 "${SKILLS}/validation-release-gates/scripts/check-side-effect-recovery.py" "${ROOT}" || rc=1
 python3 "${SKILLS}/domain-gates/scripts/check-persisted-data-contract.py" "${ROOT}" || rc=1
+
+echo "== workspace recovery proving-min (AD-H §5.1 / F4) =="
+f4_tmp="$(mktemp -d)"
+f4_home="$(mktemp -d)"
+export HERMES_HOME="${f4_home}"
+git -C "${f4_tmp}" init -q
+git -C "${f4_tmp}" config user.email "f4@example.com"
+git -C "${f4_tmp}" config user.name "F4 Fixture"
+printf '%s\n' 'base' > "${f4_tmp}/README.md"
+git -C "${f4_tmp}" add README.md
+git -C "${f4_tmp}" commit -q -m "baseline"
+# dirty fixture must refuse requeue
+printf '%s\n' 'dirt' > "${f4_tmp}/CRASH-RESIDUE.txt"
+if python3 "${SKILLS}/validation-release-gates/scripts/restore-or-refuse-requeue.py" "${f4_tmp}" \
+  --terminal crashed >/dev/null 2>&1; then
+  echo "FAIL: dirty workspace should refuse requeue after crashed" >&2
+  rc=1
+else
+  echo "OK: F4 dirty fixture refuses requeue (requeue≠restore)"
+fi
+# restore clears dirt
+if python3 "${SKILLS}/validation-release-gates/scripts/restore-or-refuse-requeue.py" "${f4_tmp}" \
+  --terminal crashed --action restore --baseline HEAD; then
+  echo "OK: F4 restore → workspace_clean"
+else
+  echo "FAIL: F4 restore should yield clean tree" >&2
+  rc=1
+fi
+python3 "${SKILLS}/validation-release-gates/scripts/check-workspace-clean.py" "${f4_tmp}" || rc=1
+unset HERMES_HOME
+rm -rf "${f4_tmp}" "${f4_home}"
+
 # SCOPED_ACCEPT gate (finding 3)
 python3 "${SKILLS}/validation-release-gates/scripts/check-accept-scope.py" "${ROOT}" || rc=1
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","entry_point_descope_count":2}' \

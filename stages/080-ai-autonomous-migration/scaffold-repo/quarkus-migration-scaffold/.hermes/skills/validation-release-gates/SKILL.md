@@ -36,7 +36,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/compute-substrate-reopen.py" /projects/mode
 
 # Factory must not contradict M5 ACCEPT (required oracle)
 python3 "${HERMES_SKILL_DIR}/scripts/check-factory-m5.py" /projects/modernized
+
+# AD-H §5.1 / ER#2 F4 — before requeue after crashed/gave_up/kill (requeue≠restore)
+python3 "${HERMES_SKILL_DIR}/scripts/restore-or-refuse-requeue.py" /projects/modernized \
+  --terminal crashed
+python3 "${HERMES_SKILL_DIR}/scripts/check-workspace-clean.py" /projects/modernized
 ```
+
+Contract: `migration/contracts/workspace-recovery.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 
