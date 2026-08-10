@@ -523,6 +523,26 @@ else
 fi
 rm -rf "${dep_tmp}"
 
+echo "== AD-011 skill extension overlay =="
+if [ ! -f "${ROOT}/migration/contracts/ad011-skill-extension.md" ]; then
+  echo "FAIL: missing ad011-skill-extension.md" >&2
+  rc=1
+else
+  echo "OK: AD-011 contract present"
+fi
+if [ ! -f "${ROOT}/workshop-extensions/README.md" ]; then
+  echo "FAIL: missing workshop-extensions/README.md" >&2
+  rc=1
+else
+  echo "OK: workshop-extensions starter present"
+fi
+if [ ! -f "${ROOT}/extensions/spring-to-quarkus-patterns/references/jdbc-anti-essay.md" ]; then
+  echo "FAIL: missing example extension jdbc-anti-essay.md" >&2
+  rc=1
+else
+  echo "OK: example spring-to-quarkus-patterns overlay present"
+fi
+
 echo "== R-M3.9–13 wall-fit + JDBC =="
 python3 "${SKILLS}/sdd-readiness/scripts/check-jdbc-deps-preflight.py" "${ROOT}" || rc=1
 # 42@3600 must refuse under retuned 90s/op (R-M3.9; S-003 class)

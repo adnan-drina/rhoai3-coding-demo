@@ -77,6 +77,8 @@ from a pointer README).
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
 | `.hermes/skills/` | Scaffold skills on `skills.external_dirs` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
+| `extensions/<skill>/references/` | AD-011 additive overlays (R-AD011.2) — `skill_view` base **and** extension |
+| `workshop-extensions/` | Demo-user starter for overlays / shadows — never SOUL |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
 Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
