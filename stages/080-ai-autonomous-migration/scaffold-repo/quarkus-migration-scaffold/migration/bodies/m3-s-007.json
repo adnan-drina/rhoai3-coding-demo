@@ -2,10 +2,28 @@
   "task_id": "m3-s-007",
   "role": "implementer",
   "phase": "M3",
-  "refs": {
-    "inventory_handler_census": 34,
-    "inventory_handler_census_note": "F11 Architect E-20260811T070235Z / E-20260811T071144Z"
-  },
+  "refs": [
+    {
+      "key": "brief_identity_ack",
+      "path": "migration/acks/m1-findings.ack.yaml",
+      "sha256": "c4ef223358311bef24d86e4a0c30693a21fdce82775298a4083d56565f9b41ff"
+    },
+    {
+      "key": "legacy_locus",
+      "path": "migration/findings-handoff.json",
+      "sha256": "991ddee07b0fa8c36a18ab807357aa6b3bef62c3ff198c08ba2239222ccce0d3"
+    },
+    {
+      "key": "spec_path",
+      "path": "specs/001-quarkus-migration/spec.md",
+      "sha256": "b2f5980ccca8a6d2ccd9fce20d37913f7f7440df8105b1057ca6859cac3ba7a8"
+    },
+    {
+      "key": "plan_path",
+      "path": "specs/001-quarkus-migration/plan.md",
+      "sha256": "ea2d0a18d32c6b0ce08154508c2eedf8aff807f8d135387f1eb1ce0283939ffc"
+    }
+  ],
   "identity": {
     "story_id": "S-007",
     "transform_class": "HARVEST",

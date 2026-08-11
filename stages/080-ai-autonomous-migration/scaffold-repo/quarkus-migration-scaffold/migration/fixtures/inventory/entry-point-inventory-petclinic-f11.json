@@ -1,0 +1,294 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "scanned_at": "2026-08-11T07:51:15Z",
+  "root": "/projects/legacy",
+  "execution_evidence": {
+    "scanner": "inventory-entry-points.py",
+    "java_files_seen": 102,
+    "inputs_digest_sha256": "442ac20680b425613ab2b50e219087e4529633a00926af80046aa50a21d78954",
+    "ran": true,
+    "vacuous": false
+  },
+  "counts": {
+    "total": 34,
+    "http": 34,
+    "non_http": 0,
+    "by_subtype": {
+      "spring-mvc-or-jaxrs": 34
+    }
+  },
+  "entry_points": [
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 53,
+      "symbol": "OwnerRestController#getOwnersList",
+      "evidence": "@RequestMapping(value = \"/*/lastname/{lastName}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 66,
+      "symbol": "OwnerRestController#getOwners",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 76,
+      "symbol": "OwnerRestController#getOwner",
+      "evidence": "@RequestMapping(value = \"/{ownerId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 87,
+      "symbol": "OwnerRestController#addOwner",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 105,
+      "symbol": "OwnerRestController#updateOwner",
+      "evidence": "@RequestMapping(value = \"/{ownerId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java",
+      "line": 130,
+      "symbol": "OwnerRestController#deleteOwner",
+      "evidence": "@RequestMapping(value = \"/{ownerId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 55,
+      "symbol": "PetRestController#getPet",
+      "evidence": "@RequestMapping(value = \"/{petId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 65,
+      "symbol": "PetRestController#getPets",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 75,
+      "symbol": "PetRestController#getPetTypes",
+      "evidence": "@RequestMapping(value = \"/pettypes\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 81,
+      "symbol": "PetRestController#addPet",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 98,
+      "symbol": "PetRestController#updatePet",
+      "evidence": "@RequestMapping(value = \"/{petId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java",
+      "line": 119,
+      "symbol": "PetRestController#deletePet",
+      "evidence": "@RequestMapping(value = \"/{petId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+      "line": 51,
+      "symbol": "PetTypeRestController#getAllPetTypes",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+      "line": 62,
+      "symbol": "PetTypeRestController#getPetType",
+      "evidence": "@RequestMapping(value = \"/{petTypeId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+      "line": 72,
+      "symbol": "PetTypeRestController#addPetType",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+      "line": 88,
+      "symbol": "PetTypeRestController#updatePetType",
+      "evidence": "@RequestMapping(value = \"/{petTypeId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java",
+      "line": 107,
+      "symbol": "PetTypeRestController#deletePetType",
+      "evidence": "@RequestMapping(value = \"/{petTypeId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java",
+      "line": 41,
+      "symbol": "RootRestController#redirectToSwagger",
+      "evidence": "@RequestMapping(value = \"/\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+      "line": 55,
+      "symbol": "SpecialtyRestController#getAllSpecialtys",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+      "line": 66,
+      "symbol": "SpecialtyRestController#getSpecialty",
+      "evidence": "@RequestMapping(value = \"/{specialtyId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+      "line": 76,
+      "symbol": "SpecialtyRestController#addSpecialty",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+      "line": 92,
+      "symbol": "SpecialtyRestController#updateSpecialty",
+      "evidence": "@RequestMapping(value = \"/{specialtyId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java",
+      "line": 111,
+      "symbol": "SpecialtyRestController#deleteSpecialty",
+      "evidence": "@RequestMapping(value = \"/{specialtyId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/UserRestController.java",
+      "line": 47,
+      "symbol": "UserRestController#addOwner",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java",
+      "line": 57,
+      "symbol": "VetRestController#getAllVets",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java",
+      "line": 68,
+      "symbol": "VetRestController#getVet",
+      "evidence": "@RequestMapping(value = \"/{vetId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java",
+      "line": 78,
+      "symbol": "VetRestController#addVet",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java",
+      "line": 94,
+      "symbol": "VetRestController#updateVet",
+      "evidence": "@RequestMapping(value = \"/{vetId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java",
+      "line": 118,
+      "symbol": "VetRestController#deleteVet",
+      "evidence": "@RequestMapping(value = \"/{vetId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+      "line": 56,
+      "symbol": "VisitRestController#getAllVisitDtos",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+      "line": 68,
+      "symbol": "VisitRestController#getVisitDto",
+      "evidence": "@RequestMapping(value = \"/{visitId}\", method = RequestMethod.GET, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+      "line": 78,
+      "symbol": "VisitRestController#addVisit",
+      "evidence": "@RequestMapping(value = \"\", method = RequestMethod.POST, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+      "line": 95,
+      "symbol": "VisitRestController#updateVisit",
+      "evidence": "@RequestMapping(value = \"/{visitId}\", method = RequestMethod.PUT, produces = \"application/json\")"
+    },
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java",
+      "line": 115,
+      "symbol": "VisitRestController#deleteVisit",
+      "evidence": "@RequestMapping(value = \"/{visitId}\", method = RequestMethod.DELETE, produces = \"application/json\")"
+    }
+  ]
+}

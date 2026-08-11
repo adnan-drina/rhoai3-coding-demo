@@ -249,20 +249,6 @@ dependents until unblocked or superseded. The **steering loop** (human) lands
 skill/sensor/runbook improvements as versioned PRs — agents do not silently
 rewrite `.hermes/skills/**` mid-run.
 
-### Retired authority (not the live attendee path) — R-HX.2 residual
-
-> **Retired (2026-08-11, R-HX.2):** the earlier appendix narrative that treated
-> `migration/model.json` as the single typed authority, rendered
-> `architecture-profile.md` / `roadmap.md` / `briefs/**` / `specs/**` from that
-> model, and classified work as **HARVEST vs REDESIGN** with recipe staging is
-> **not** the live demo or Hermes Kanban path. Do not teach it as current.
->
-> **Live authority:** Hermes Kanban + `.hermes/phase-dispatch.yaml`
-> (**M1 ANALYZE → M2 PLAN → M3 IMPLEMENT → M4 VERIFY → M5 CLOSE**), Spec Kit
-> under M2 (`speckit-specify` → `plan` → `tasks`), and typed story bodies under
-> `migration/bodies/m3-s-*.json`. Acceptance and identity ride those artifacts
-> and skills — not a central `model.json` / HARVEST supervisor process.
-
 ### Staying true to the source: the grounding chain
 
 Gates answer *"is this output correct?"*. A long autonomous run needs a second, different question at every hand-off: **is what this stage produced actually derived from what the previous stage gave it?** That is what the grounding chain checks, and the run log opens with the question rather than a list of check names:
@@ -292,13 +278,13 @@ GROUND  G1 — PASS
 | G4 | M3 | The planner inventing derived facts instead of using the ones inlined in its packet |
 | G5 · G9 | M3 authoring | Task tokens that resolve nowhere; acceptance that can be satisfied without doing what the goal requires |
 
-Together with the typed model, this gives the migration several independent reasons to stay factual rather than one:
+Together with Hermes Kanban typed bodies (`migration/bodies/m3-s-*.json`) and Spec Kit artifacts, this gives the migration several independent reasons to stay factual rather than one:
 
 - **Claims are checked against the source.** G1 resolves every cited token in the file it was cited from; G2 keeps the vocabulary native to this specimen.
-- **Derived facts are derived, not recalled.** Ids, class, shape, port and acceptance come from the model; the coding seat is refused if it tries to author them.
+- **Derived facts are derived, not recalled.** Story identity, scope, and acceptance ride typed body fields and phase-dispatch; the coding seat is refused if it tries to invent them.
 - **Evidence is anchored.** Code quotes carry `path:line` cites that the harness resolves; a cite that will not resolve is dropped from the packet rather than passed through for the agent to reconstruct.
-- **The agent is given the facts instead of sent to find them.** In the reference run **92% of task seats made no tool calls at all, and none read the legacy tree** — an agent that never reaches the source cannot misremember it.
-- **The whole derivation is reproducible.** Clearing the task layer and re-deriving it from M1/M2 reproduces every harness-owned field bit-for-bit; a field that had been invented rather than derived would differ.
+- **The agent is given the facts instead of sent to find them.** Prefer inlined packet facts over open-ended legacy tree walks.
+- **The whole derivation is reproducible.** Re-running M1 inventory/handoff and M2 Spec Kit → typed bodies regenerates harness-owned fields; invented fields would drift.
 
 **The chain reports its own gaps.** `G5` and `G9` currently print `NOT-LANDED` with the reason (`Goal↔Acceptance coherence not enforced at authoring yet`), and the log states plainly that `GREEN is not full grounding`. That is deliberate: a check that quietly passes when it has not really run is worse than no check, and the honest verdict is what tells the steering loop where to invest next.
 
@@ -366,7 +352,7 @@ actually shipped.
 
 - **Analysis grounds autonomy:** MTA's findings, not the agent's self-assessment, defined done.
 - **The harness regulates quality:** guides steered generation, sensors caught and fed back failures, and the agent iterated to green before a human ever looked.
-- **Determinism where possible, inference where needed:** mechanical transforms ride skills/recipes and typed bodies; judgement-heavy work stays on Spec Kit + implementer cards under Hermes Kanban (retired appendix HARVEST/REDESIGN supervisor language is not the live path).
+- **Determinism where possible, inference where needed:** mechanical transforms ride skills and typed bodies; judgement-heavy work stays on Spec Kit + implementer cards under Hermes Kanban.
 - **The factory, not a person, was the merge authority:** the agent could push, but only the pipeline and its quality gate could turn that push into a trusted artifact. Humans moved up a level, from reviewing diffs to improving the harness.
 - **Governance held at full autonomy:** same identity, token limits, and telemetry as every previous stage, just more visible, because agents consume more.
 
