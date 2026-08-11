@@ -15,12 +15,57 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 DEFAULT_MANAGED = "/projects/.platform/hermes"
 
 
+def _hermes_venv_python() -> Optional[Path]:
+    for cand in (
+        Path.home() / ".hermes" / "hermes-agent" / "venv" / "bin" / "python",
+        Path("/home/user/.hermes/hermes-agent/venv/bin/python"),
+    ):
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def _reexec_under_hermes_venv() -> None:
+    """Hermes agent requires its venv (Py≥3.10 + PyYAML). Re-exec if needed."""
+    if os.environ.get("HERMES_ASSERT_NO_REEXEC") == "1":
+        return
+    vpy = _hermes_venv_python()
+    if vpy is None:
+        return
+    try:
+        if Path(sys.executable).resolve() == vpy.resolve():
+            return
+    except OSError:
+        pass
+    os.environ["HERMES_ASSERT_NO_REEXEC"] = "1"
+    os.execv(str(vpy), [str(vpy), *sys.argv])
+
+
+def _ensure_hermes_importable() -> None:
+    try:
+        import hermes_cli  # noqa: F401
+        return
+    except ImportError:
+        pass
+    for cand in (
+        Path.home() / ".hermes" / "hermes-agent",
+        Path("/home/user/.hermes/hermes-agent"),
+    ):
+        if (cand / "hermes_cli").is_dir():
+            p = str(cand)
+            if p not in sys.path:
+                sys.path.insert(0, p)
+            return
+
+
 def main() -> int:
+    _reexec_under_hermes_venv()
     managed = (os.environ.get("HERMES_MANAGED_DIR") or "").strip()
     if not managed:
         print(
@@ -40,7 +85,6 @@ def main() -> int:
         print(f"FAIL: missing Managed Scope config: {cfg}", file=sys.stderr)
         return 1
 
-    # Prefer Hermes' own resolver when importable.
     try:
         _ensure_hermes_importable()
         from hermes_cli.managed_scope import get_managed_dir  # type: ignore
@@ -63,46 +107,19 @@ def main() -> int:
             )
             return 1
     except Exception as exc:
-        # Import/venv may be unavailable in some lint contexts — fall back
-        # to file presence only when HERMES_ASSERT_MANAGED_FILES_ONLY=1.
         if os.environ.get("HERMES_ASSERT_MANAGED_FILES_ONLY") == "1":
             print(f"OK: managed files present (import skip: {exc})")
             return 0
         print(
             f"FAIL: cannot verify provider via hermes import ({exc}). "
-            "Run inside the migration workspace with hermes on PYTHONPATH, "
-            "or set HERMES_ASSERT_MANAGED_FILES_ONLY=1 for file-only check.",
+            "Run with hermes venv python, or set "
+            "HERMES_ASSERT_MANAGED_FILES_ONLY=1 for file-only check.",
             file=sys.stderr,
         )
         return 1
 
     print(f"OK: Managed Scope active dir={managed} provider=yes")
     return 0
-
-
-def _ensure_hermes_importable() -> None:
-    """Add hermes-agent checkout to sys.path; prefer venv site-packages."""
-    venv_site = Path.home() / ".hermes" / "hermes-agent" / "venv" / "lib"
-    if venv_site.is_dir():
-        for p in sorted(venv_site.glob("python*/site-packages")):
-            sp = str(p)
-            if sp not in sys.path:
-                sys.path.insert(0, sp)
-    try:
-        import hermes_cli  # noqa: F401
-        return
-    except ImportError:
-        pass
-    candidates = [
-        Path.home() / ".hermes" / "hermes-agent",
-        Path("/home/user/.hermes/hermes-agent"),
-    ]
-    for cand in candidates:
-        if (cand / "hermes_cli").is_dir():
-            p = str(cand)
-            if p not in sys.path:
-                sys.path.insert(0, p)
-            return
 
 
 if __name__ == "__main__":
