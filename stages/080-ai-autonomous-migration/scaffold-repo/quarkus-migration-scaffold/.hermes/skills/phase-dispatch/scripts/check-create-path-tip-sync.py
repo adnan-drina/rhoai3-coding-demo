@@ -22,6 +22,8 @@ REQUIRED_FILES = [
     "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ".hermes/skills/mta-analysis/scripts/check-findings-handoff.py",
     ".hermes/skills/sdd-readiness/scripts/check-findings-handoff.py",
+    # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
+    ".hermes/provision/spec-kit/overrides/spec-template.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -159,6 +161,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/phase-dispatch.yaml",
         "specify-workspace-init",
         "M2a attaches specify-workspace-init",
+    ),
+    (
+        ".hermes/skills/specify-workspace-init/scripts/init-workspace.sh",
+        'ASSET_OVERRIDE="${ROOT}/.hermes/provision/spec-kit/overrides/spec-template.md"',
+        "init-workspace resolves Non-Goals via ROOT (not SCRIPT_DIR walk)",
     ),
 ]
 

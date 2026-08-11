@@ -13,9 +13,20 @@ set -euo pipefail
 
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Skill lives at .hermes/skills/specify-workspace-init/scripts — provision assets at repo .hermes/provision
-PROJECT_HERMES="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-ASSET_OVERRIDE="${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md"
+# Non-Goals override lives under the workspace project tree
+# (`${ROOT}/.hermes/provision/...`), not relative to the skill script.
+# Hermes may invoke this skill from `.hermes/skills/...` OR from
+# `.hermes/home/skills/software-development/...` — walking up from
+# SCRIPT_DIR mis-resolves PROJECT_HERMES in the latter case (v12 M2a
+# t_44c55c31 exit 1 / Deputy E-120800Z).
+ASSET_OVERRIDE="${ROOT}/.hermes/provision/spec-kit/overrides/spec-template.md"
+if [ ! -f "${ASSET_OVERRIDE}" ]; then
+  # Fallback: tip skill tree under .hermes/skills/... → ../../.. = .hermes
+  PROJECT_HERMES="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+  if [ -f "${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md" ]; then
+    ASSET_OVERRIDE="${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md"
+  fi
+fi
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
 LOG_PREFIX="specify-workspace-init"
 
@@ -23,7 +34,7 @@ log() { echo "[${LOG_PREFIX}] $*"; }
 die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
-[ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE}"
+[ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under ${ROOT}/.hermes/provision/spec-kit/overrides/)"
 
 if [ -f "${MARKER}" ]; then
   log "already provisioned ($(cat "${MARKER}")) — skip"
