@@ -125,6 +125,16 @@ REQUIRED_SUBSTRINGS = [
         "check-phase-input-manifest.py",
         "input-manifest wired into dispatch-phase",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "REVIEW_ADHERE_OBSERVE=",
+        "dispatch emits Review adhere-observe Need (Operator E-114300Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "REVIEW_ADHERE_OBSERVE=",
+        "create-m3 emits Review adhere-observe Need",
+    ),
 ]
 
 

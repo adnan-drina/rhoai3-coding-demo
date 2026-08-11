@@ -200,3 +200,19 @@ command -v hermes >/dev/null 2>&1 || die "hermes not on PATH"
 cd "${WORKSPACE_DIR}"
 OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"
 echo "${OUT}"
+TASK_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or "")' <<<"${OUT}")"
+[[ -n "${TASK_ID}" ]] || die "kanban create returned no id"
+mkdir -p "${ROOT}/migration/derived"
+echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
+# Operator E-20260811T114300Z — Review live adherence observation on every dispatch
+{
+  echo "schema: rhoai3.review-adhere-observe-need/v1"
+  echo "task_id: ${TASK_ID}"
+  echo "phase: M3"
+  echo "need: Review:adhere-observe-${TASK_ID}"
+  echo "operator_event: E-20260811T114300Z"
+  date -u +'ts: %Y-%m-%dT%H:%M:%SZ'
+} >"${ROOT}/migration/derived/review-adhere-observe-needed.yaml"
+echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
+hermes kanban dispatch --max 1 --json || true
+echo "OK: M3 → ${TASK_ID}. File ledger Need Review:adhere-observe-${TASK_ID}"

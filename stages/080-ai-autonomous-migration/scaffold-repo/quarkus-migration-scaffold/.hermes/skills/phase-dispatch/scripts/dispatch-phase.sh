@@ -439,8 +439,20 @@ TASK_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id"
 [[ -n "${TASK_ID}" ]] || die "kanban create returned no id"
 mkdir -p "${ROOT}/migration/derived"
 echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-${PHASE}-task-id.txt"
-echo "dispatch-phase: created ${TASK_ID}"
+# Operator E-20260811T114300Z — every dispatch must commission Review live adherence
+# observation. Host Lead files ledger Need from this marker (same commit as dispatch).
+{
+  echo "schema: rhoai3.review-adhere-observe-need/v1"
+  echo "task_id: ${TASK_ID}"
+  echo "phase: ${PHASE}"
+  echo "need: Review:adhere-observe-${TASK_ID}"
+  echo "operator_event: E-20260811T114300Z"
+  date -u +'ts: %Y-%m-%dT%H:%M:%SZ'
+} >"${ROOT}/migration/derived/review-adhere-observe-needed.yaml"
+echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
+echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
 
 hermes kanban dispatch --max "${DISPATCH_MAX}" --json || true
 hermes kanban ls 2>&1 | head -40
 echo "OK: ${PHASE} → ${TASK_ID} (Hermes-native). Track: hermes kanban watch / show ${TASK_ID}"
+echo "OK: file ledger Need Review:adhere-observe-${TASK_ID} (host: .wake/file-review-adhere-observe.py)"
