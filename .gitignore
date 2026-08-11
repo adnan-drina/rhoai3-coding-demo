@@ -17,6 +17,9 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+# Track scaffold JDT LS heap settings (Operator E-20260811T104500Z demo-noise fix).
+!stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.vscode/
+!stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.vscode/settings.json
 *.code-workspace
 
 # Tool-specific agent config (local runtime preferences, not project governance)
