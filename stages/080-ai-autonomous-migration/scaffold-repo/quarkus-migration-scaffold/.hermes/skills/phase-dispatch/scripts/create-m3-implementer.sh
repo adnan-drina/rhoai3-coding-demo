@@ -259,24 +259,35 @@ echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
 # Architect E-20260811T200911Z Class A — park-at-birth fail-closed.
 # Parent may already be done → Hermes auto-promotes dependency children to ready.
 # Force needs_input park and verify; never emit ack-request for dispatchable mint.
-_park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
+# Architect E-20260811T200911Z Class A — park-at-birth fail-closed.
+# Parent may already be done → Hermes auto-promotes dependency children to ready.
+# Force needs_input park (CLI + sqlite fallback) and verify; never emit ack for ready.
+_read_status() {
+  hermes kanban show "$1" --json 2>/dev/null | python3 -c 'import json,sys
 try:
   d=json.load(sys.stdin)
   t=d.get("task") if isinstance(d.get("task"), dict) else d
   print((t.get("status") or "").lower())
 except Exception:
-  print("")' || true)"
+  print("")' || true
+}
+_park_status="$(_read_status "${TASK_ID}")"
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
-  hermes kanban block "${TASK_ID}" --kind needs_input \
-    "park-at-birth HOLD until Operator ack + Architect section-3a (Architect E-20260811T200911Z / migration/contracts/park-at-birth.md)" \
-    >/dev/null 2>&1 || true
-  _park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
-try:
-  d=json.load(sys.stdin)
-  t=d.get("task") if isinstance(d.get("task"), dict) else d
-  print((t.get("status") or "").lower())
-except Exception:
-  print("")' || true)"
+  # Prefer CLI; reason must be a single argv (spaces OK when quoted). Fallback: sqlite.
+  hermes kanban block "${TASK_ID}" --kind needs_input "park-at-birth" >/dev/null 2>&1 || true
+  _park_status="$(_read_status "${TASK_ID}")"
+fi
+if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
+  python3 - "${HERMES_HOME}/kanban.db" "${TASK_ID}" <<'PY' || true
+import sqlite3, sys
+db, tid = sys.argv[1], sys.argv[2]
+conn = sqlite3.connect(db)
+conn.execute("UPDATE tasks SET status=? WHERE id=?", ("blocked", tid))
+conn.commit()
+conn.close()
+print(f"OK: sqlite park-at-birth {tid} -> blocked")
+PY
+  _park_status="$(_read_status "${TASK_ID}")"
 fi
 if [[ "${_park_status}" == "ready" || "${_park_status}" == "todo" || "${_park_status}" == "running" || -z "${_park_status}" ]]; then
   die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (migration/contracts/park-at-birth.md)"
