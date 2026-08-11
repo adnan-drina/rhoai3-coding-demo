@@ -20,6 +20,8 @@ REQUIRED_FILES = [
     "migration/fixtures/security/golden-basic-authz/README.md",
     "migration/fixtures/testing/golden-test-application.properties",
     "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
+    ".hermes/skills/mta-analysis/scripts/check-findings-handoff.py",
+    ".hermes/skills/sdd-readiness/scripts/check-findings-handoff.py",
 ]
 
 REQUIRED_SUBSTRINGS = [

@@ -239,7 +239,8 @@ Phase: M2a per `.hermes/phase-dispatch.yaml`
 Requires: Operator `migration/acks/m1-findings.ack.yaml` + findings-handoff gate
 
 ## Job
-1. `check-findings-handoff.py` — typed BLOCK if FAIL.
+1. `python3 .hermes/skills/sdd-readiness/scripts/check-findings-handoff.py /projects/modernized`
+   (shim → mta-analysis canonical; typed BLOCK if FAIL).
 2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`).
 3. Prefer Spec Kit `/speckit-specify` **before** freeform partition essays.
 4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
