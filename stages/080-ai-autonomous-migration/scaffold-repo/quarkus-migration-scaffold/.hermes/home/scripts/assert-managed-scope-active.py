@@ -42,6 +42,7 @@ def main() -> int:
 
     # Prefer Hermes' own resolver when importable.
     try:
+        _ensure_hermes_importable()
         from hermes_cli.managed_scope import get_managed_dir  # type: ignore
         from hermes_cli.main import _has_any_provider_configured  # type: ignore
 
@@ -77,6 +78,25 @@ def main() -> int:
 
     print(f"OK: Managed Scope active dir={managed} provider=yes")
     return 0
+
+
+def _ensure_hermes_importable() -> None:
+    """Add hermes-agent checkout to sys.path when hermes_cli is not installed."""
+    try:
+        import hermes_cli  # noqa: F401
+        return
+    except ImportError:
+        pass
+    candidates = [
+        Path.home() / ".hermes" / "hermes-agent",
+        Path("/home/user/.hermes/hermes-agent"),
+    ]
+    for cand in candidates:
+        if (cand / "hermes_cli").is_dir():
+            p = str(cand)
+            if p not in sys.path:
+                sys.path.insert(0, p)
+            return
 
 
 if __name__ == "__main__":
