@@ -11,6 +11,11 @@ PLACEHOLDER_MARKERS = (
     "this bean is inert",
     "exists solely as a documentation anchor",
     "until then this bean is inert",
+    # R-M3.39 / v11 S-005 javadoc-only shells (Review E-20260811T054056Z)
+    "security configuration is declarative",
+    "no java-based filter chain",
+    "no java class needed to express",
+    "security is disabled by default in quarkus",
 )
 
 
@@ -66,6 +71,16 @@ def main() -> int:
         if re.search(r"class\s+\w+[^{]*\{\s*\}", text, re.S):
             print(f"FAIL: AR-2.2 empty security class {rel}", file=sys.stderr)
             bad = 1
+            continue
+        # Brace body with only comments/whitespace → javadoc-only shell (R-M3.39)
+        m = re.search(r"class\s+\w+[^{]*\{(.*)\}\s*\Z", text, re.S)
+        if m is not None:
+            body = m.group(1)
+            stripped = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
+            stripped = re.sub(r"//.*?$", "", stripped, flags=re.M)
+            if stripped.strip() == "":
+                print(f"FAIL: AR-2.2 javadoc-only security class {rel}", file=sys.stderr)
+                bad = 1
 
     for path in sec.rglob("Roles.java") if sec.is_dir() else []:
         text = path.read_text(encoding="utf-8")

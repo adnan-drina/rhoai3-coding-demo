@@ -2,7 +2,7 @@
 name: specify-workspace-init
 description: >
   Provision-time Spec Kit (AD-S) for the migration workspace: Hermes
-  integration, Non-Goals override, never /speckit.implement. Run once after
+  integration, Non-Goals override, never /speckit-implement. Run once after
   workspace start when .specify/ is missing, or when re-provisioning.
 ---
 
@@ -34,8 +34,8 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`.
 
 ## Stop rule (non-negotiable)
 
-After `/speckit.tasks` (optional `/speckit.analyze`) → `kanban_create()`.
-**Never** `/speckit.implement`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
+**Never** `/speckit-implement`.
 
 ## Pitfalls
 

@@ -99,13 +99,35 @@ def scan_file(path: Path, root: Path) -> list[EntryPoint]:
     for i, line in enumerate(lines):
         if HTTP_ANN.search(line) or HTTP_METHOD_ANN.search(line):
             # Prefer method-level HTTP mappings; class-level @RestController alone
-            # is not an entry point without a mapping — still record @Path /
-            # @RequestMapping on types when present.
+            # is not an entry point without a mapping.
             if re.search(r"@RestController\b|@Controller\b", line) and not re.search(
                 r"@(?:RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|Path)\b",
                 line,
             ):
                 continue
+            # F11 / Architect E-20260811T070235Z: type-level @RequestMapping/@Path
+            # path prefixes are not independently callable handlers (PetClinic
+            # inflated 42→34). Keep method-level Get/Post/… and method @RequestMapping.
+            if re.search(r"@(?:RequestMapping|Path)\b", line) and not re.search(
+                r"@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\b",
+                line,
+            ):
+                type_level = False
+                for j in range(i + 1, min(i + 12, len(lines))):
+                    nxt = lines[j]
+                    if re.search(
+                        r"^\s*(public\s+|protected\s+|private\s+)?(class|interface|enum)\b",
+                        nxt,
+                    ):
+                        type_level = True
+                        break
+                    if re.search(
+                        r"^\s*(public|protected|private|static).+\(.*\).*\{?\s*$",
+                        nxt,
+                    ):
+                        break
+                if type_level:
+                    continue
             key = (i + 1, "http")
             if key in seen:
                 continue

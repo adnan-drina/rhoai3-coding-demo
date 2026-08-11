@@ -6,7 +6,7 @@ When reclaiming or re-dispatching M2, if durable artifacts already exist:
 
 | Present | Action |
 |---------|--------|
-| `migration/briefs/partition.json` + Spec Kit `spec.md` (+ `plan.md` if present) | Skip re-partition / re-specify / re-plan; jump `/speckit.tasks` → `create-m3-implementer.sh` |
+| `migration/briefs/partition.json` + Spec Kit `spec.md` (+ `plan.md` if present) | Skip re-partition / re-specify / re-plan; jump `/speckit-tasks` → `create-m3-implementer.sh` |
 | Missing any of the above | Full Job order from the M2 body (specify → plan → tasks) |
 
 ## Constraints

@@ -42,8 +42,8 @@ bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
 ### What the script does
 
 1. Reads `.hermes/phase-dispatch.yaml` for `role`, `skills[]`, `max_runtime_seconds`.
-2. Ensures relocated `HERMES_HOME` has managed `config.yaml` + `.env` (kanban
-   workers do not inherit managed-only pins reliably).
+2. R-HX.5: does **not** copy Managed Scope `config.yaml` / `.env` into
+   `HERMES_HOME` (DB/logs only; provider/auth stay under `HERMES_MANAGED_DIR`).
 3. Ensures a standalone `hermes kanban daemon --force` (Dev Spaces has no gateway).
 4. `hermes kanban create` with `workspace=dir:/projects/modernized`, skills,
    budget, idempotency key `migration-<phase>-v1`.

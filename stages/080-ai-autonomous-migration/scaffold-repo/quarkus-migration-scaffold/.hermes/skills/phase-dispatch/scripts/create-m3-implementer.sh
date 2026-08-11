@@ -45,6 +45,12 @@ done
 [[ -f "${BODY_JSON}" ]] || die "body json not found: ${BODY_JSON}"
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
 
+# R-M3.32: materialize AD-011 overlays into Hermes skill tree before create
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
+  || die "sync-extension-overlays-into-skills failed"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
+  || die "R-M3.32: extension overlays missing from .hermes/skills/*/references/ (skill_view will fail)"
+
 # Validate typed body before create
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" \
   || die "check-kanban-body failed — fix typed body first"
@@ -140,8 +146,8 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "**R-M3.10/12 JDBC (Architect E-20260810T184700Z):** before first \`repository/jdbc/**\` edit — \`skill_view\` persistence (+ jdbc notes); write-first mechanical transforms; **forbid** multi-kB Spring-replacement redesign essays in Reasoning."
   echo "**R-M3.11 JDBC deps:** run \`python3 .hermes/skills/sdd-readiness/scripts/check-jdbc-deps-preflight.py .\` before first JDBC write — require \`spring-jdbc\` + \`spring-data-jdbc-core\` (no OOS pom)."
   echo "**R-M3.13 lean reclaim (FIS≥20):** on soft reclaim, resume from checkpoint \`next\` only — do **not** re-bulk-read all legacy JDBC/JPA sources."
-  echo "**AD-011 / R-AD011.2 overlay (Architect E-20260810T185500Z):** if \`extensions/<skill>/references/*\` exists (e.g. \`extensions/spring-to-quarkus-patterns/references/jdbc-anti-essay.md\` or \`security-anti-essay.md\`), \`skill_view\` the **base** skill **and** the extension path — Hermes has no merge. Never SOUL. See \`migration/contracts/ad011-skill-extension.md\` + \`workshop-extensions/README.md\`."
-  echo "**R-M3.29 security write-first (Architect E-20260810T230310Z):** before first \`security/**\` edit — hard \`skill_view\` \`references/security-config.md\` **and** \`extensions/spring-to-quarkus-patterns/references/security-anti-essay.md\`; write-first / anti-essay; stamp after each dest write (\`migration/contracts/m3-security-write-first.md\`)."
+  echo "**AD-011 / R-AD011.2 overlay (Architect E-20260810T185500Z):** author overlays under \`extensions/<skill>/references/*\`; create path syncs them into \`.hermes/skills/<skill>/references/\` (R-M3.32). \`skill_view\` in-skill \`references/<file>\` after sync. Never SOUL. See \`migration/contracts/ad011-skill-extension.md\` + \`m3-security-write-first.md\`."
+  echo "**R-M3.29/32/39 security write-first:** before first \`security/**\` edit — hard \`skill_view\` \`references/security-config.md\` **and** \`references/security-anti-essay.md\` (Hermes skill tree; create refuses if sync/--check fails); write-first / anti-essay; stamp after each dest write. **R-M3.39:** javadoc-only shells FAIL — land pom (\`quarkus-security\` + \`quarkus-elytron-security-jdbc\`) + \`application.properties\` auth wiring; \`check-empty-security.py .\` must be rc=0 before complete."
   echo "**R-M3.28/31 wall narrative (Architect E-20260810T230310Z):** exit-eval credits AD-009 freeze/>300s latency; \`overall_ok=false\` when wallish + incomplete checkpoint (compile-only green ≠ product PASS)."
   echo "**Checkpoint lag (Deputy E-121112Z):** after \`src/test/**\` writes — and on every wall — run \`sync-checkpoint-from-test-writes.py\` so stamp/#1b gate is harness-driven, not voluntary."
   echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."

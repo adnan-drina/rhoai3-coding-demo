@@ -4,8 +4,8 @@
 #
 # skills[] = declared preload / intended skill set (AD-H §16) — not Hermes RBAC.
 # One Kanban task ⇒ one role. Enforcement: SOUL + write-safe-root + acks + lints.
-# Spec-kit /speckit.* skills live under ~/.hermes/skills (Path.home()); keep
-# that path on skills.external_dirs. Never include /speckit.implement.
+# Spec-kit /speckit-* skills live under ~/.hermes/skills (Path.home()); keep
+# that path on skills.external_dirs. Never include /speckit-implement.
 #
 # workspace_kind / workspace_path / body / parents / idempotency_key land
 # with the full phase schema (§15.3). Until then:
@@ -42,7 +42,7 @@ phases:
       spec-author:
         - sdd-readiness
         - role-authority
-        # /speckit.specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
+        # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
     # R-M2.5 (Architect E-20260810T153830Z): match M1 — 2400 under-fit mid-setup-tasks
     max_runtime_seconds: 3600
     requires_acks:

@@ -86,7 +86,9 @@ Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
 
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
-Hermes worker config is **`$HERMES_HOME/config.yaml`** (relocated), not
+Hermes worker **provider/auth** config is **Managed Scope** (`HERMES_MANAGED_DIR`,
+typically `/projects/.platform/hermes`) — **R-HX.5:** do not copy secrets into
+writable `$HERMES_HOME`. `$HERMES_HOME` holds kanban DB / logs / sessions, not
 `~/.hermes/config.yaml` (often absent / wiped by Managed Scope init). Platform
 Managed Scope pins for `qwen3-6-27b`:
 - `stale_timeout_seconds: 900` (AD-009 §3.2) — **inter-chunk** / long thinking
@@ -141,8 +143,8 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
 ### Spec Kit stop rule (AD-S)
 
-After `/speckit.tasks` (optional `/speckit.analyze`) → `kanban_create()`.
-**Never** `/speckit.implement`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
+**Never** `/speckit-implement`.
 
 ### Task-id correlation (AD-H §7.5)
 

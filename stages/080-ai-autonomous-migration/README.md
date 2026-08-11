@@ -213,44 +213,35 @@ and a deterministic gate guards each hand-off. Modernization is incremental by
 design: M2 cuts the work into dependency-ordered **stories**, and M3→M5 cycle
 per story. No big bang.
 
+> **R-HX.2 (2026-08-11):** live phase glossary is **only**
+> `scaffold …/.hermes/phase-dispatch.yaml` —
+> **M1 ANALYZE → M2 PLAN → M3 IMPLEMENT → M4 VERIFY → M5 CLOSE**.
+> Older SEQUENCE / SPECIFY / EVALUATE labels below are retired.
+
 ```text
-      ┌──── outer loop (automated): Retro → remaining briefs only ──────────────┐
+      ┌──── outer loop: Retro → remaining stories ──────────────────────────────┐
       │                    steering (human): skills / sensors / runbook ────────┤
       ▼                                                                         │
 ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐
 │ (1)  M1   │    │ (2)  M2   │    │ (3)  M3   │    │ (4)  M4   │    │ (5)  M5   │
-│  ANALYZE  │───▶│ SEQUENCE  │───▶│  SPECIFY  │───▶│ IMPLEMENT │───▶│ EVALUATE  │──┘
-│           │    │           │    │ per story │    │ per story │    │ per story │
+│  ANALYZE  │───▶│   PLAN    │───▶│ IMPLEMENT │───▶│  VERIFY   │───▶│   CLOSE   │──┘
+│           │    │           │    │ per story │    │ provisional│   │  ACCEPT   │
 └───────────┘    └───────────┘    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
- [analysis         [roadmap        ▲    │ story     ▲    │ sensors        │
-  pipeline]         lint]          └────┘ state:    └────┘ red → fix      │
-                                   unfilled→seats;  session (inner loop)  │
-                                   filled→plan-lint                       │
+ [MTA/kantra +     [partition +     ▲    │ Kanban     ▲    │ gates         │
+  inventory]        Spec Kit +       │    │ implementer│    │ (PROVISIONAL  │
+                    typed bodies]    └───┘ soft-K     └───┘ ACCEPT)        │
                                                                           │
- ── grounding: is each stage's output derived from what it was given?     │
- G1 · G2         G3 G6 G7 G8      G4 G5 G9         build · tests          │
-                                                                          │
-┌──────────────────────────────────────────────────────────────────────┐  │
-│ migration/model.json — the typed source of truth                     │  │
-│   units + decisions      ·      stories      ·      tasks            │  │
-│   id · class · shape · port · acceptance ......  harness-derived     │  │
-│   goal · plan · risk .........................  seat judgement only  │  │
-└──────────────────────────────────────────────────────────────────────┘  │
-      │ rendered, never hand-authored                                     │
-      ▼                                                                   │
- architecture-profile.md · roadmap.md · briefs/S*.md · specs/S*/tasks.md  │
-                                                                          │
-              next story from the roadmap  ◀──────────────────────────────┘
-              (failed story → Kanban blocked; resume via dispatch)
+              next story / unblock  ◀─────────────────────────────────────┘
+              (failed card → blocked; resume via phase-dispatch)
 ```
 
-| # | Stage | Enabling technology | Tasks it performs | Output artifacts (committed) |
+| # | Stage | Enabling technology | Tasks it performs | Output artifacts |
 |---|---|---|---|---|
-| 1 | **M1 ANALYZE** | MTA/kantra (Windup rules incl. platform contract rules), OpenRewrite recipes, dependency-graph script, one Hermes analyst session | Rule-based analysis of the legacy app (migration path + jakarta + cloud-readiness + JDK targets); classify every finding against the MAPPINGS rule-joins; compute the conversion order and god nodes; pre-execute mechanical recipes (jakarta) into a staging tree; write the architecture profile: components, integration surfaces, behavioral contract sources, domain seams | `mta-findings.json`, `findings-inventory.md`, `dependency-order.md`, `recipe-log.md` + staged sources, `architecture-profile.md` |
-| 2 | **M2 SEQUENCE** | Hermes planner session guided by the SEQUENCING skill; `roadmap-lint` gate | Cut the modernization into dependency-ordered stories (models before services before surfaces; domain seams for monoliths); mark deploy milestones; write one self-contained brief per story with real legacy code excerpts and the contracts that story owns | `roadmap.md`, `briefs/S*.md` |
-| 3 | **M3 SPECIFY** | Typed task loop (`m3_task_loop.py`) dispatching one bounded judgement per task to an OpenCode worker; story-scoped `plan-lint` gate | Generate the story's typed tasks from the migration model (ids, ownership, class/shape/port and acceptance all derived); ask the worker for one judgement per task — goal, plan, risk — and merge it into the model; render `tasks.md` from the model | `migration/model.json` (`tasks[]`), rendered `specs/S<NN>/tasks.md` |
-| 4 | **M4 IMPLEMENT** | Supervisor task loop; Hermes orchestrator + OpenCode worker (packets); skills + AGENTS.md rules; task/milestone sensors (isolated Maven repo, in-loop SonarQube) | Execute the story's tasks one commit each; harvest from the recipe-staged sources; port/pin contract tests; every commit sensor-verified; red commits get autonomous fix sessions; mechanical commit closure for green-but-uncommitted work | code + tests, one `T-NNN:` commit per task, `run-log.md` rows |
-| 5 | **M5 EVALUATE** | Pre-push preflight (full quality gate + boot check); Tekton factory pipeline + SonarQube gate; kantra after-analysis (script step); Hermes retro session | Gate the story locally, ship through the factory; deploy stories must serve their acceptance endpoints live; measure the findings delta (before vs destination); write retro proposals | pipeline + gate results, deployed increment, `findings-delta`, `retro-proposals.md` |
+| 1 | **M1 ANALYZE** | Hermes Kanban + `mta-analysis` / `inventory-entry-points` / `derive-legacy-boot3` | Derive findings-handoff + inventory; Operator ACK | `migration/findings-handoff.json`, inventory, ACK |
+| 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`) + `create-m3-implementer.sh` | Story partition, briefs, typed M3 body JSONs | `partition.json`, Spec Kit specs, `migration/bodies/m3-s-*.json` |
+| 3 | **M3 IMPLEMENT** | Hermes implementer workers + `spring-to-quarkus-patterns` / `sdd-readiness` | Surgical destination writes per story; soft-K then hard-block | Modernized sources under `files_writable` |
+| 4 | **M4 VERIFY** | Domain / validation-release gates | `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
+| 5 | **M5 CLOSE** | Factory / full ACCEPT path | Story close when platform gates green | Pipeline + ACCEPT |
 
 The **inner loop** (gates → fix → re-dispatch) corrects the *work* within a
 card's retries. **Kanban parents/deps** sequence stories; a failed card blocks

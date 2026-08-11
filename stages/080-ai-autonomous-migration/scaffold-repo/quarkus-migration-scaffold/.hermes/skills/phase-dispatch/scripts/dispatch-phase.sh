@@ -52,35 +52,30 @@ die() { echo "dispatch-phase: $*" >&2; exit 1; }
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
 command -v python3 >/dev/null 2>&1 || die "python3 required"
 
-# Relocated HERMES_HOME must carry managed model/auth — kanban workers often
-# miss HERMES_MANAGED_DIR-only pins (clean-room finding 2026-08-09).
+# R-HX.5 (Architect E-20260811T070102Z): do NOT copy Managed Scope config/.env
+# into writable HERMES_HOME. Provider/auth stay platform-owned under
+# HERMES_MANAGED_DIR. HERMES_HOME is for kanban DB / logs / sessions only.
 ensure_hermes_home_config() {
   mkdir -p "${HERMES_HOME}"
-  if [[ -f "${HERMES_MANAGED_DIR}/config.yaml" && ! -f "${HERMES_HOME}/config.yaml" ]]; then
-    cp -f "${HERMES_MANAGED_DIR}/config.yaml" "${HERMES_HOME}/config.yaml"
-    echo "dispatch-phase: copied managed config.yaml → HERMES_HOME"
+  if [[ -f "${HERMES_HOME}/.env" || -f "${HERMES_HOME}/auth.json" ]]; then
+    echo "dispatch-phase: WARN R-HX.5 — refuse secret-bearing files under HERMES_HOME (.env/auth.json); use Managed Scope only" >&2
   fi
-  if [[ -f "${HERMES_MANAGED_DIR}/.env" && ! -f "${HERMES_HOME}/.env" ]]; then
-    cp -f "${HERMES_MANAGED_DIR}/.env" "${HERMES_HOME}/.env"
-    chmod 600 "${HERMES_HOME}/.env"
-    echo "dispatch-phase: copied managed .env → HERMES_HOME"
-  fi
-  # Architect E-20260810T141120Z — provider knobs are tip/scaffold state.
-  # Fresh workspaces lose hand-placed max_tokens; enforce before dispatch.
+  [[ -f "${HERMES_MANAGED_DIR}/config.yaml" ]] \
+    || die "missing Managed Scope config: ${HERMES_MANAGED_DIR}/config.yaml"
+  # Architect E-20260810T141120Z — provider knobs applied to Managed Scope only.
   local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"
   if [[ -f "${ensure_py}" ]]; then
     if HERMES_HOME="${HERMES_HOME}" HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
       python3 "${ensure_py}" --apply \
-        "${HERMES_MANAGED_DIR}/config.yaml" "${HERMES_HOME}/config.yaml" \
+        "${HERMES_MANAGED_DIR}/config.yaml" \
       2>/dev/null; then
       :
     else
-      # Fallback: hermes venv often has PyYAML when system python3 does not.
       local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
       if [[ -x "${venv_py}" ]]; then
         HERMES_HOME="${HERMES_HOME}" HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
           "${venv_py}" "${ensure_py}" --apply \
-          "${HERMES_MANAGED_DIR}/config.yaml" "${HERMES_HOME}/config.yaml" \
+          "${HERMES_MANAGED_DIR}/config.yaml" \
           || echo "dispatch-phase: WARN ensure-provider-max-tokens failed" >&2
       else
         echo "dispatch-phase: WARN ensure-provider-max-tokens skipped (no PyYAML)" >&2
@@ -209,7 +204,7 @@ Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + find
 
 ## DO NOT
 - Do **not** load `migration/mta-findings.json` or `mta-analyze-out/` into chat (evidence store — selective locus reads only after digest check)
-- Never `/speckit.implement`
+- Never `/speckit-implement`
 - Do **not** grant `migration/acks/brief-identity.json` or any worker `acknowledged_by` (AR-1.1) — Operator writes `brief-identity.ack.yaml`
 - Do **not** re-list the full story partition in Reasoning after `migration/briefs/partition.json` exists — edit the file (R-M2.2 anti-narration)
 
@@ -217,11 +212,11 @@ Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + find
 1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
 2. **R-M2.6 resume-from-artifacts** (Architect E-20260810T153830Z): if
    `migration/briefs/partition.json` **and** Spec Kit `spec.md` exist
-   (and `plan.md` when present) → **skip** re-partition / re-`/speckit.specify`
-   / re-`/speckit.plan`; jump to `/speckit.tasks` → step 4. Do not rewrite
+   (and `plan.md` when present) → **skip** re-partition / re-`/speckit-specify`
+   / re-`/speckit-plan`; jump to `/speckit-tasks` → step 4. Do not rewrite
    write-once `partition.json`.
-3. Else **Hard-invoke** `/speckit.specify` **before** freeform partition essays
-   (then `/speckit.plan` → `/speckit.tasks`). Cite `migration/contracts/sdd-ordering.md`
+3. Else **Hard-invoke** `/speckit-specify` **before** freeform partition essays
+   (then `/speckit-plan` → `/speckit-tasks`). Cite `migration/contracts/sdd-ordering.md`
    + `story-sizing.md`.
 4. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1` — see
    `migration/schemas/partition.md`) with story IDs + layering from

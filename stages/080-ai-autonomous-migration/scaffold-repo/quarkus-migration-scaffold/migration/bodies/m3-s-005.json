@@ -28,7 +28,7 @@
     "story_id": "S-005",
     "transform_class": "HARVEST",
     "g2_applicability": "required",
-    "operand_count": 3,
+    "operand_count": 4,
     "sizing_basis": "operand_count"
   },
   "files_in_scope": [
@@ -43,12 +43,22 @@
     {
       "legacy": "/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/security/Roles.java",
       "dest": "/projects/modernized/src/main/java/org/springframework/samples/petclinic/security/Roles.java"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/src/main/resources/application.properties",
+      "dest": "/projects/modernized/src/main/resources/application.properties"
+    },
+    {
+      "legacy": "/projects/.derived/legacy-at-3/pom.xml",
+      "dest": "/projects/modernized/pom.xml"
     }
   ],
   "files_writable": [
     "/projects/modernized/src/main/java/org/springframework/samples/petclinic/security/BasicAuthenticationConfig.java",
     "/projects/modernized/src/main/java/org/springframework/samples/petclinic/security/DisableSecurityConfig.java",
-    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/security/Roles.java"
+    "/projects/modernized/src/main/java/org/springframework/samples/petclinic/security/Roles.java",
+    "/projects/modernized/src/main/resources/application.properties",
+    "/projects/modernized/pom.xml"
   ],
   "exit_criteria": [
     {
@@ -62,14 +72,20 @@
     },
     {
       "check": "skills",
-      "assert": "Consulted sdd-readiness and spring-to-quarkus-patterns via skill_view (including references/security-config.md and extensions/spring-to-quarkus-patterns/references/security-anti-essay.md before first security/** edit) or typed skills_unused with reason; silence invalid per AD-002E/AD-002D / R-M3.29"
+      "assert": "Consulted sdd-readiness and spring-to-quarkus-patterns via skill_view (including references/security-config.md and references/security-anti-essay.md in Hermes skill tree before first security/** edit) or typed skills_unused with reason; silence invalid per AD-002E/AD-002D / R-M3.29 / R-M3.32"
     },
     {
       "check": "security_authz",
-      "assert": "BasicAuthenticationConfig and DisableSecurityConfig migrated to Quarkus spring-security; both authenticated and non-authenticated profiles functional"
+      "assert": "Functional Quarkus auth: pom has quarkus-security + quarkus-elytron-security-jdbc; application.properties wires petclinic.security.enable profiles with quarkus.http.auth.basic + JDBC userstore (users/roles queries); BasicAuthenticationConfig/DisableSecurityConfig are NOT javadoc-only shells; check-empty-security.py . returns rc=0; Roles keep static final constants"
+    },
+    {
+      "check": "empty_security_gate",
+      "cmd": "python3 .hermes/skills/validation-release-gates/scripts/check-empty-security.py .",
+      "expect": "rc=0"
     }
   ],
   "notes": {
-    "r_m3_29": "Hard skill_view security-config + security-anti-essay; write-first; no multi-kB redesign essays before first dest stamp"
+    "r_m3_29": "Hard skill_view security-config + security-anti-essay; write-first; no multi-kB redesign essays before first dest stamp",
+    "r_m3_39": "Compile + 3 Java files alone is NOT PASS; props+pom auth wiring required; javadoc-only *AuthenticationConfig is completion defect"
   }
 }

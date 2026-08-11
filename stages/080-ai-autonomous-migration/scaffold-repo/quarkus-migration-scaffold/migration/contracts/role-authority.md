@@ -17,9 +17,9 @@ proving-min write fence** (`migration/contracts/write-fence.md`) + ack gates
 
 | Role | Phase | May | Prohibited |
 |------|-------|-----|------------|
-| **Evidence analyst** | M1 (+ pre-M1 derive) | `mta-analysis`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit.implement` |
+| **Evidence analyst** | M1 (+ pre-M1 derive) | `mta-analysis`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
 | **Planner** | M2 | Stories/briefs; roadmap deps per §S.6; re-plan graph under same identity | Destination app code; silent identity change; IMPLEMENT; author constitution/`AGENTS.md` |
-| **Spec author** | M2→M3 | `/speckit.specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create()` | `/speckit.implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
+| **Spec author** | M2→M3 | `/speckit-specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create()` | `/speckit-implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
 | **Implementer** | M3 | Edit `files_in_scope` only; task-id commits; stop → `blocked` | Re-plan; legacy/derived; `.hermes/skills/**`, `SOUL.md`, Managed Scope; invent units; weaken gates/tests |
 | **Reviewer** | between phases / `blocked` | Read artifacts + gates; request rework; typed block reasons | Silent code fixes; override REFUSE; change identity; merge |
 | **Validator** | M4–M5 | `domain-gates`, `harness-validate`, preflight/factory; record verdicts | Greenwash code; drop thresholds; ACCEPT without oracle |

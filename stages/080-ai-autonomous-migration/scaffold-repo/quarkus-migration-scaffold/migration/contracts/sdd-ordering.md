@@ -12,7 +12,7 @@ carry-forward, implementation-graph layers, and re-plan authority.
 ## Brief identity → spec / stories / tasks
 
 The **migration brief** is the M2 story packet (or typed equivalent) that feeds
-`/speckit.specify` → plan → tasks → `kanban_create()`.
+`/speckit-specify` → plan → tasks → `kanban_create()`.
 
 ### Carry unchanged (identity)
 

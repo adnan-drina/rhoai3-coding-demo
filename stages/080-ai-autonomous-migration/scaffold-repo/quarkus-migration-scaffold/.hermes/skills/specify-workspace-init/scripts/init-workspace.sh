@@ -58,8 +58,10 @@ ensure_specify() {
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
   command -v uv >/dev/null 2>&1 || die "uv not available after install"
-  log "installing specify-cli via uv tool…"
-  uv tool install specify-cli
+  # R-HX.1 — pin Spec Kit (see migration/contracts/tooling-pins.md)
+  local SPECIFY_PIN="${SPECIFY_CLI_VERSION:-0.16.1}"
+  log "installing specify-cli==${SPECIFY_PIN} via uv tool…"
+  uv tool install "specify-cli==${SPECIFY_PIN}"
   export PATH="${HOME}/.local/bin:${PATH}"
   command -v specify >/dev/null 2>&1 || die "specify not on PATH after uv tool install"
 }
@@ -97,7 +99,7 @@ ensure the Hermes profile lists BOTH:
   - <modernized>/.hermes/skills
   - $HOME/.hermes/skills
 
-Do not remove the Path.home() entry or /speckit.* skills become invisible.
+Do not remove the Path.home() entry or /speckit-* skills become invisible.
 EOF
   log "wrote ${note}"
 }
@@ -117,12 +119,12 @@ fi
 cat > "${ROOT}/.specify/AD-S-STOP-RULE.md" <<'EOF'
 # AD-S stop rule
 
-After `/speckit.tasks` (optional `/speckit.analyze`), convert `tasks.md` into
+After `/speckit-tasks` (optional `/speckit-analyze`), convert `tasks.md` into
 Hermes `kanban_create()` calls.
 
-**Never run `/speckit.implement`.** Kanban is the only executor (AD-006 / AD-H).
+**Never run `/speckit-implement`.** Kanban is the only executor (AD-006 / AD-H).
 EOF
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 log "OK — AD-S provision complete (marker ${MARKER})"
-log "Stop rule: /speckit.tasks → kanban_create(); NEVER /speckit.implement"
+log "Stop rule: /speckit-tasks → kanban_create(); NEVER /speckit-implement"

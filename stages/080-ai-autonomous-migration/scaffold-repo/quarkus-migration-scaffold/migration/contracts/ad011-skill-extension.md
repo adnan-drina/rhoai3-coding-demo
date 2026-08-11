@@ -13,7 +13,7 @@ Users steer behavior via skills + contracts — **not** SOUL.
 | ID | Rule |
 |----|------|
 | **R-AD011.1** | Demo-user overrides via (1) overlay `skills.external_dirs`, and/or (2) `HERMES_HOME` name-shadow, and/or (3) `references/` patches — **never SOUL**, never inject skill bodies into prompts (AD-002D). |
-| **R-AD011.2** | Tip additive overlay: if `extensions/<skill>/references/*` exists, hard-invoke / `skill_view` MUST load the **base** skill **and** the extension path (Hermes has no merge/`extends`). |
+| **R-AD011.2** | Tip additive overlay: author under `extensions/<skill>/references/*`. Create/init **must** sync into `.hermes/skills/<skill>/references/` (R-M3.32) so in-skill `skill_view references/<file>` resolves — Hermes has no merge/`extends`. |
 | **R-AD011.3** | Keep AD-002G attach matrix. Harness refuse/preflight stays in `migration/contracts` + scripts. **OBJECT** 1:1 new `SKILL.md` per workflow component. |
 | **R-AD011.4** | Workshop starter lives under `workshop-extensions/` (see README). |
 | **R-AD011.5** | Migration workers: prefer `skills.write_approval: true` **or** deny `skill_manage`; keep golden `.hermes/skills/**` RO to workers when the FS allows. |

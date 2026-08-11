@@ -47,5 +47,5 @@ Idle when no tasks / no phase advance requested.
 ## Roles (summary)
 
 evidence-analyst · planner · spec-author · implementer · reviewer · validator  
-One Kanban task ⇒ one role. Never `/speckit.implement`. Never edit
+One Kanban task ⇒ one role. Never `/speckit-implement`. Never edit
 `.hermes/skills/**` from a worker. `skill_manage` unavailable / proposal-only.

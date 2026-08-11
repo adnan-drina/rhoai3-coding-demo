@@ -542,6 +542,15 @@ if [ ! -f "${ROOT}/extensions/spring-to-quarkus-patterns/references/jdbc-anti-es
 else
   echo "OK: example spring-to-quarkus-patterns overlay present"
 fi
+echo "== R-M3.32 skill-tree overlay sync =="
+python3 "${SKILLS}/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" || rc=1
+python3 "${SKILLS}/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check || rc=1
+if [ ! -f "${ROOT}/.hermes/skills/spring-to-quarkus-patterns/references/security-anti-essay.md" ]; then
+  echo "FAIL: R-M3.32 security-anti-essay.md missing from Hermes skill tree" >&2
+  rc=1
+else
+  echo "OK: security-anti-essay.md present in Hermes skill tree"
+fi
 
 echo "== R-M3.9–13 wall-fit + JDBC =="
 python3 "${SKILLS}/sdd-readiness/scripts/check-jdbc-deps-preflight.py" "${ROOT}" || rc=1
