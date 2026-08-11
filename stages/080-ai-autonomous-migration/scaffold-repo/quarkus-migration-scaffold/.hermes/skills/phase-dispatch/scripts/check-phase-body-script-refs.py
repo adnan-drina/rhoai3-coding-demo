@@ -19,7 +19,7 @@ PHASE_KEY = re.compile(r"^  (M[1-5][ab]?|factory):\s*$")
 SKILL_ITEM = re.compile(r"^      - (\S+)\s*$")
 # Capture scaffold paths, runtime home paths, HERMES_SKILL_DIR forms, bare names
 SCRIPT_REF = re.compile(
-    r"(?:`|/|\s|=)"
+    r"(?:`|/|\s|=|\")"
     r"("
     r"(?:\$\{HERMES_SKILL_DIR(?::-[\w./-]+)?\}/scripts/[\w.-]+\.(?:py|sh))"
     r"|(?:\.hermes/home/skills/software-development/[\w.-]+/scripts/[\w.-]+\.(?:py|sh))"
@@ -27,7 +27,7 @@ SCRIPT_REF = re.compile(
     r"|(?:\.hermes/home/scripts/[\w.-]+\.(?:py|sh))"
     r"|(?:[\w.-]+\.(?:py|sh))"
     r")"
-    r"(?:`|\s|$)"
+    r"(?:`|\s|\"|$)"
 )
 
 
