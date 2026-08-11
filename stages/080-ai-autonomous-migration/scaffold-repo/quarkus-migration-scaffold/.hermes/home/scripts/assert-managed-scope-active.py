@@ -81,7 +81,13 @@ def main() -> int:
 
 
 def _ensure_hermes_importable() -> None:
-    """Add hermes-agent checkout to sys.path when hermes_cli is not installed."""
+    """Add hermes-agent checkout to sys.path; prefer venv site-packages."""
+    venv_site = Path.home() / ".hermes" / "hermes-agent" / "venv" / "lib"
+    if venv_site.is_dir():
+        for p in sorted(venv_site.glob("python*/site-packages")):
+            sp = str(p)
+            if sp not in sys.path:
+                sys.path.insert(0, sp)
     try:
         import hermes_cli  # noqa: F401
         return
