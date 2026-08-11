@@ -89,3 +89,8 @@ python3 .hermes/skills/validation-release-gates/scripts/check-factory-m5.py .
 
 `must_not_contradict_m5_accept` is a **required oracle**, not an aspirational
 label. Does not replace G-1…G-4 oracles.
+
+## M4 floor (Phase-2)
+
+See `migration/contracts/m4-floor-runner.md` and
+`.hermes/skills/validation-release-gates/scripts/run-m4-floor.sh`.

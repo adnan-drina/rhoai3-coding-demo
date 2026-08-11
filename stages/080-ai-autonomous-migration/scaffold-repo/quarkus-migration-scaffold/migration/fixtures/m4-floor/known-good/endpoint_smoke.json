@@ -1,0 +1,13 @@
+{
+  "schema": "rhoai3.gate-receipt/v1",
+  "check": "endpoint_smoke",
+  "result": "PASS",
+  "cmd": "fixture",
+  "rc": 0,
+  "operand": "http://127.0.0.1:8080/q/health",
+  "operand_digest": "4470e9a58156eeed7984473e7e8926ef66dffcc09c4c337b37a8620cdfebab34",
+  "note": "",
+  "ts": "2026-08-11T10:05:24Z",
+  "floor": "m4-minimum",
+  "ad010_demo": false
+}

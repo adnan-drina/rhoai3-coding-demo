@@ -29,7 +29,8 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/di-config.md` | Scopes, config properties, profiles |
 | `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim) |
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
-| `references/security-config.md` | HTTP authz / `@RolesAllowed` (no overstated “Quarkus security”) |
+| `references/security-config.md` | A-bar security map + golden basic-authz (R-HX.13) |
+| `references/security-anti-essay.md` | Write-first / anti-placeholder (synced from extensions) |
 
 ## Source policy
 

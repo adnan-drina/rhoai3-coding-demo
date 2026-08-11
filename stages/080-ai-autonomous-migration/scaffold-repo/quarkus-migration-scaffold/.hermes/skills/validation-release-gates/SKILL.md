@@ -76,6 +76,22 @@ Contracts: `migration/contracts/workspace-recovery.md`,
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 
+## M4 floor runner (R-HX.9 Phase-2)
+
+Minimum ordered runner for Phase-3 dual-arm verify — **not** full AD-010.
+
+Contract: `migration/contracts/m4-floor-runner.md`  
+Schema: `migration/schemas/gate-receipt.md`
+
+```bash
+bash "${HERMES_SKILL_DIR}/scripts/run-m4-floor.sh" /path/to/frozen-modernized
+python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
+  /path/to/frozen-modernized/migration/receipts/m4-floor/<run-id>
+# dry fixtures
+python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
+  /projects/modernized/migration/fixtures/m4-floor/known-good
+```
+
 ## Chaos matrix (plan #7)
 
 Timeout, process death, dup dispatch, digest mismatch, and gate refusal —
