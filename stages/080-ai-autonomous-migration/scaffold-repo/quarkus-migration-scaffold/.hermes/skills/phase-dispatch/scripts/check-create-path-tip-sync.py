@@ -135,6 +135,16 @@ REQUIRED_SUBSTRINGS = [
         "REVIEW_ADHERE_OBSERVE=",
         "create-m3 emits Review adhere-observe Need",
     ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "speckit-specify",
+        "M2a attaches speckit-specify (Architect E-115316Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "Spec Kit invoke-or-BLOCK",
+        "M2a Spec Kit invoke-or-needs_input (Architect E-115316Z)",
+    ),
 ]
 
 

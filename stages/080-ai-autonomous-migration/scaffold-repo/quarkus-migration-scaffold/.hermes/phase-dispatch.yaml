@@ -49,11 +49,13 @@ phases:
     # R-AB.2 / pre-v12 R1 — PLAN partition + briefs only (turn-volume cut)
     # mta-analysis attached so check-findings-handoff.py resolves via skill_view
     # (Deputy E-20260811T112700Z — R1 split had omitted it).
+    # speckit-specify: Architect E-20260811T115316Z invoke-or-needs_input BIND
     role: planner
     skills:
       - sdd-readiness
       - role-authority
       - mta-analysis
+      - speckit-specify
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings

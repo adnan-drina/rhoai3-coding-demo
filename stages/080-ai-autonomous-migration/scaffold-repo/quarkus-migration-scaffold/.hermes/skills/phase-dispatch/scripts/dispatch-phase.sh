@@ -267,15 +267,22 @@ substitution / path invention / specimen-body priming. Measure the harness.
 1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
    (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
-2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) using
-   only Input-manifest sources + Spec Kit — **not** `migration/bodies/*`.
-3. Prefer Spec Kit `/speckit-specify` **before** freeform partition essays.
+2. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
+   - Hard-invoke attached skill `speckit-specify` via `skill_view` / `/speckit-specify`
+     (discoverable under `/home/user/.hermes/skills/speckit-specify` when on `external_dirs`).
+   - If Spec Kit cannot run as defined → typed **`needs_input` BLOCK** and STOP.
+     **Do not** freeform-write `partition.json` as a silent substitute.
+   - Evidence: Spec Kit seed (e.g. `.specify/` or `specs/**/spec.md`) **or** a typed
+     `needs_input` block comment — required before Done.
+3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
+   Spec Kit seed (or Operator disposition of a typed BLOCK) — Input-manifest sources
+   only; **not** `migration/bodies/*`.
 4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
    Lead/Operator dispatch **M2b** next (parent = this task).
 
 ## Done when
-- `migration/briefs/partition.json` present (write-once)
-- Spec Kit `spec.md` seeded when produced by slash-invoke
+- Spec Kit invoke evidenced (seed artifact) **or** typed `needs_input` BLOCK recorded
+- `migration/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
 - **No** M3 children created on this card
 
 ## Constraints
