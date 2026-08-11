@@ -15,9 +15,11 @@
 | di-singleton | `@Service` singleton intent | `@ApplicationScoped` preferred over `@Singleton` | STRENGTHEN | `@Singleton` not client-proxyable / harder to mock |
 | cfg-value | `@Value("${k}")` | `@ConfigProperty(name="k")` | ADOPT | |
 | cfg-mapping | `@ConfigurationProperties` | `@ConfigMapping` | ADOPT | |
-| cfg-profile | `spring.profiles.active` / `application-dev.properties` | `%dev.key` in `application.properties` or `QUARKUS_PROFILE` | ADOPT | Do not invent parallel Spring profile files |
+| cfg-profile | `spring.profiles.active` / `application-dev.properties` | `%dev.key` in `application.properties` or `QUARKUS_PROFILE` | ADOPT | Quarkus also loads `application-<profile>.properties` when that profile is active |
+| di-profile | Spring `@Profile("x")` on beans | `@IfBuildProfile("x")` (`io.quarkus.arc.profile`) | ADOPT | **FORBIDDEN:** `io.quarkus.arc.Profile` / `@IfProfileActive` — not on Quarkus 3.27 classpath (Phase-3 Class B) |
 
-**REJECT:** `quarkus-spring-di` / Spring Boot autoconfig on destination.
+**REJECT:** `quarkus-spring-di` / Spring Boot autoconfig on destination.  
+**REJECT:** `import io.quarkus.arc.Profile` or `IfProfileActive` — use `IfBuildProfile` / `UnlessBuildProfile`.
 
 ## Agent text
 

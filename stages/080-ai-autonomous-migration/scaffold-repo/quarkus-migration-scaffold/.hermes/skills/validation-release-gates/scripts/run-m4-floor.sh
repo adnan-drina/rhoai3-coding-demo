@@ -43,7 +43,7 @@ trap cleanup EXIT
 # --- 1) package (optional) ---
 if [[ "${M4_SKIP_PACKAGE:-0}" != "1" ]]; then
   log "mvn -q -DskipTests package"
-  (cd "${PRODUCT_ROOT}" && mvn -q -DskipTests package) || {
+  (cd "${PRODUCT_ROOT}" && mvn -q -DskipTests package ${QUARKUS_PROFILE:+-Dquarkus.profile=${QUARKUS_PROFILE}}) || {
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
       --result FAIL --cmd "mvn -q -DskipTests package" --rc 1 --operand "${PRODUCT_ROOT}" \
       --note "package failed"
@@ -77,7 +77,8 @@ else
     exit 1
   fi
   log "starting ${JAR} on ${PORT}"
-  (cd "${PRODUCT_ROOT}" && java -jar "${JAR}" -Dquarkus.http.port="${PORT}" >"${RECEIPT_DIR}/app.log" 2>&1) &
+  # System properties must precede -jar for Quarkus
+  (cd "${PRODUCT_ROOT}" && java -Dquarkus.http.port="${PORT}" ${QUARKUS_PROFILE:+-Dquarkus.profile=${QUARKUS_PROFILE}} -jar "${JAR}" >"${RECEIPT_DIR}/app.log" 2>&1) &
   APP_PID=$!
   STARTED_LOCAL=1
   ok=0
