@@ -94,24 +94,41 @@ def fqcn_to_rel(fqcn: str) -> str:
     return "src/main/java/" + fqcn.replace(".", "/") + ".java"
 
 
+PLATFORM_PREFIXES = (
+    "java.",
+    "javax.",
+    "jakarta.",
+    "io.quarkus.",
+    "org.eclipse.",
+    "org.junit.",
+    "org.mockito.",
+    "com.fasterxml.",
+    "org.hibernate.",
+    "org.jboss.",
+)
+
+
+def is_platform_fqcn(fqcn: str) -> bool:
+    return any(fqcn.startswith(p) for p in PLATFORM_PREFIXES)
+
+
 def resolve_simple_type(root: Path, simple: str, text: str, class_rel: str) -> str | None:
-    """Map simple interface name → workspace-relative .java path."""
+    """Map simple interface name → workspace-relative .java path (specimen only)."""
     imports = {m.group(1).split(".")[-1]: m.group(1) for m in IMPORT_RE.finditer(text)}
     if simple in imports:
-        return fqcn_to_rel(imports[simple])
+        fqcn = imports[simple]
+        if is_platform_fqcn(fqcn):
+            return None
+        return fqcn_to_rel(fqcn)
     pkg_m = PKG_RE.search(text)
     if pkg_m:
         same = fqcn_to_rel(f"{pkg_m.group(1)}.{simple}")
-        # Prefer if exists anywhere we can see
         for base in (root, Path("/projects/legacy"), Path("/projects/.derived/legacy-at-3")):
             if (base / same).is_file():
                 return same
-        # same-package path even if not yet on dest (legacy-only) — still the
-        # canonical dest-relative path the body should name
         if class_rel.endswith(".java"):
             sibling = str(Path(class_rel).with_name(simple + ".java")).replace("\\", "/")
             return sibling
-    # Parent-package fallback (JpaXxxRepositoryImpl → repository/XxxRepository)
     parent = str(Path(class_rel).parent.parent / f"{simple}.java").replace("\\", "/")
     for base in (root, Path("/projects/legacy"), Path("/projects/.derived/legacy-at-3")):
         if (base / parent).is_file():
@@ -129,15 +146,12 @@ def interfaces_for(root: Path, rel: str) -> set[str]:
     if not m:
         return needed
     clause = m.group(1)
-    # Drop annotations / generics noise roughly: take comma-separated type heads
     for raw in clause.split(","):
         raw = raw.strip()
         if not raw:
             continue
-        # Strip generics: OwnerRepository<...> → OwnerRepository
         head = raw.split("<", 1)[0].strip()
-        # Skip fully-qualified java./jakarta. platform types
-        if head.startswith("java.") or head.startswith("jakarta."):
+        if is_platform_fqcn(head):
             continue
         simple = head.split(".")[-1]
         if not TYPE_RE.fullmatch(simple):
@@ -145,8 +159,27 @@ def interfaces_for(root: Path, rel: str) -> set[str]:
         if simple in ("Serializable", "Cloneable", "AutoCloseable"):
             continue
         resolved = resolve_simple_type(root, simple, text, rel)
-        if resolved:
-            needed.add(resolved)
+        if not resolved:
+            continue
+        # Framework jars resolve under src/main/java/io/... — drop those
+        if "/io/quarkus/" in resolved or resolved.startswith("src/main/java/io/"):
+            continue
+        if not resolved.startswith("src/main/java/"):
+            continue
+        # Only care if the interface exists in legacy (migration specimen) or dest
+        # or is clearly same-app package as the implementing class.
+        legacy_hit = any(
+            (base / resolved).is_file()
+            for base in (
+                Path("/projects/legacy"),
+                Path("/projects/.derived/legacy-at-3"),
+            )
+        )
+        dest_hit = (root / resolved).is_file()
+        same_app = Path(rel).parts[:5] == Path(resolved).parts[:5]
+        if not (legacy_hit or dest_hit or same_app):
+            continue
+        needed.add(resolved)
     return needed
 
 
