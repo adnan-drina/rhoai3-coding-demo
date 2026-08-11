@@ -9,19 +9,34 @@ from typing import Any, Optional
 
 DEFAULT_MAX = 40
 HIGH_MAX = 80
+# build_config (pom.xml / resources) — small scopes; separate class (Operator E-124000Z)
+BUILD_CONFIG_MAX = 12
+BUILD_CONFIG_HIGH_MAX = 20
 # Proving-min wall-fit (Architect E-111450Z / R-M3.9 E-20260810T184700Z):
 # refuse undecomposed scopes whose estimated runtime exceeds budget.
 # Tuned from v11 S-003 #20 timed_out (~86s/file observed at 42 FIS@3600) —
 # 75s/op admitted 42×75=3150≤3600 and still wall-exhausted. Prefer split
 # (JPA-repos vs JDBC-repos) over blind wall raise.
 SECONDS_PER_OPERAND = 90
+SECONDS_PER_OPERAND_BUILD_CONFIG = 180
 DEFAULT_BUDGET_SEC = 2700
 HIGH_BUDGET_SEC = 3600
 # Dual-stack repository stories (JPA + JDBC impl trees) at FIS≥20 must split.
 DUAL_STACK_SPLIT_MIN = 20
 
+OPERAND_CLASS_SRC = "src_code"
+OPERAND_CLASS_BUILD = "build_config"
 
-def normalize_dest(item: Any) -> Optional[str]:
+
+def operand_class(body: dict) -> str:
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    raw = str(ident.get("operand_class") or OPERAND_CLASS_SRC).strip().lower()
+    if raw in {"build_config", "build-config", "config", "pom"}:
+        return OPERAND_CLASS_BUILD
+    return OPERAND_CLASS_SRC
+
+
+def normalize_dest(item: Any, *, oclass: str = OPERAND_CLASS_SRC) -> Optional[str]:
     if isinstance(item, str):
         p = item
     elif isinstance(item, dict):
@@ -39,19 +54,27 @@ def normalize_dest(item: Any) -> Optional[str]:
         p = p.split("/projects/modernized/", 1)[1]
     if "/.derived/" in p or p.startswith("projects/legacy"):
         return None
+    if oclass == OPERAND_CLASS_BUILD:
+        # Build-system / config stories (Operator E-20260811T124000Z)
+        if p == "pom.xml" or p.endswith("/pom.xml"):
+            return "pom.xml" if p.endswith("pom.xml") else p
+        if p.startswith("src/main/resources/") or p.startswith("src/test/resources/"):
+            return p
+        return None
     if not p.startswith("src/"):
         return None
     return p
 
 
 def measured_operands(body: dict) -> list[str]:
+    oclass = operand_class(body)
     out: list[str] = []
     for key in ("files_writable", "filesWritable", "files_in_scope", "filesInScope"):
         items = body.get(key) or []
         if not isinstance(items, list) or not items:
             continue
         for item in items:
-            p = normalize_dest(item)
+            p = normalize_dest(item, oclass=oclass)
             if p and p not in out:
                 out.append(p)
         if key in ("files_writable", "filesWritable") and out:
@@ -61,6 +84,10 @@ def measured_operands(body: dict) -> list[str]:
 
 def max_for(body: dict) -> int:
     effort = str(body.get("effort_class") or "").strip().lower()
+    if operand_class(body) == OPERAND_CLASS_BUILD:
+        if effort in {"high", "effort-high", "effort_high"}:
+            return BUILD_CONFIG_HIGH_MAX
+        return BUILD_CONFIG_MAX
     if effort in {"high", "effort-high", "effort_high"}:
         return HIGH_MAX
     return DEFAULT_MAX
@@ -75,6 +102,11 @@ def budget_sec(body: dict) -> int:
         return HIGH_BUDGET_SEC
     return DEFAULT_BUDGET_SEC
 
+
+def seconds_per_operand(body: dict) -> int:
+    if operand_class(body) == OPERAND_CLASS_BUILD:
+        return SECONDS_PER_OPERAND_BUILD_CONFIG
+    return SECONDS_PER_OPERAND
 
 def load_bodies(root: Path, only: list[Path]) -> list[tuple[str, dict]]:
     if only:
@@ -104,9 +136,19 @@ def load_bodies(root: Path, only: list[Path]) -> list[tuple[str, dict]]:
 
 def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    oclass = operand_class(body)
     measured = measured_operands(body)
     if not measured:
-        print(f"BODY_SIZE: {label}: no measurable dest src/ operands", file=sys.stderr)
+        hint = (
+            "pom.xml or src/main|test/resources/**"
+            if oclass == OPERAND_CLASS_BUILD
+            else "src/**"
+        )
+        print(
+            f"BODY_SIZE: {label}: no measurable dest operands "
+            f"(operand_class={oclass}; expect {hint})",
+            file=sys.stderr,
+        )
         return 1
     basis = str(ident.get("sizing_basis") or "").strip()
     if basis != "operand_count":
@@ -134,18 +176,25 @@ def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
     if len(measured) > cap:
         print(
             f"BODY_SIZE: {label}: measured={len(measured)} > max={cap} "
-            f"(effort_class={body.get('effort_class')!r}) — decompose; "
+            f"(effort_class={body.get('effort_class')!r}; "
+            f"operand_class={oclass}) — decompose; "
             f"do not raise wall (Architect E-104925Z)",
             file=sys.stderr,
         )
         return 1
     if wall_fit:
         budget = budget_sec(body)
-        estimated = len(measured) * SECONDS_PER_OPERAND
+        spo = seconds_per_operand(body)
+        estimated = len(measured) * spo
         paths_l = [p.lower() for p in measured]
         has_jpa = any("/jpa/" in p or p.endswith("/jpa") for p in paths_l)
         has_jdbc = any("/jdbc/" in p or p.endswith("/jdbc") for p in paths_l)
-        if has_jpa and has_jdbc and len(measured) >= DUAL_STACK_SPLIT_MIN:
+        if (
+            oclass == OPERAND_CLASS_SRC
+            and has_jpa
+            and has_jdbc
+            and len(measured) >= DUAL_STACK_SPLIT_MIN
+        ):
             print(
                 f"BODY_SIZE: {label}: R-M3.9 dual-stack refuse — "
                 f"JPA+JDBC repository trees with measured={len(measured)}≥"
@@ -157,20 +206,24 @@ def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
         if estimated > budget:
             print(
                 f"BODY_SIZE: {label}: wall-fit refuse "
-                f"estimated={estimated}s ({len(measured)}×{SECONDS_PER_OPERAND}s) "
+                f"estimated={estimated}s ({len(measured)}×{spo}s) "
                 f"> budget={budget}s — decompose (Architect E-111450Z / R-M3.9); "
-                f"prefer JPA vs JDBC split; do not raise wall alone",
+                f"prefer JPA vs JDBC split (src_code) or split config packs "
+                f"(build_config); do not raise wall alone",
                 file=sys.stderr,
             )
             return 1
         print(
-            f"OK: {label} operand_count={raw} measured={len(measured)} "
-            f"max={cap} wall-fit estimated={estimated}s<=budget={budget}s"
+            f"OK: {label} operand_class={oclass} operand_count={raw} "
+            f"measured={len(measured)} max={cap} "
+            f"wall-fit estimated={estimated}s<=budget={budget}s"
         )
     else:
-        print(f"OK: {label} operand_count={raw} measured={len(measured)} max={cap}")
+        print(
+            f"OK: {label} operand_class={oclass} operand_count={raw} "
+            f"measured={len(measured)} max={cap}"
+        )
     return 0
-
 
 def main() -> int:
     wall_fit = "--wall-fit" in sys.argv[1:]

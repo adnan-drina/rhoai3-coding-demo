@@ -57,9 +57,12 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-i
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
   || die "R-M3.32: extension overlays missing from .hermes/skills/*/references/ (skill_view will fail)"
 
-# Validate typed body before create
+# Validate THE body being created (Operator E-20260811T124000Z) — not whole
+# migration/bodies/ (incomplete siblings must not block a single create).
+# Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" \
-  || die "check-kanban-body failed — fix typed body first"
+  --body "${BODY_JSON}" \
+  || die "check-kanban-body failed for ${BODY_JSON} — fix typed body first"
 # AD-002G P0.2 — refuse create if phase attach matrix drifts
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed — fix .hermes/phase-dispatch.yaml skills[]"

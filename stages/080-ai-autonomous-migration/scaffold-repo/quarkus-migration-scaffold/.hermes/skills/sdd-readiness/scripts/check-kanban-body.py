@@ -370,21 +370,50 @@ def check_body(label: str, body: dict, root: Path) -> int:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    # Operator E-20260811T124000Z: create-path validates THE body being created
+    # (--body PATH). Whole-corpus scan remains the default (R0 / board lint).
+    args = sys.argv[1:]
+    only: list[Path] = []
+    pos: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("--body", "--only") and i + 1 < len(args):
+            only.append(Path(args[i + 1]))
+            i += 2
+            continue
+        if args[i].startswith("-"):
+            print(f"FAIL: unknown flag {args[i]}", file=sys.stderr)
+            return 1
+        pos.append(args[i])
+        i += 1
+    root = Path(pos[0] if pos else ".").resolve()
     files: list[Path] = []
-    for d in (
-        root / "migration/tasks",
-        root / "migration/bodies",
-        root / "migration/kanban",
-    ):
-        if d.is_dir():
-            files.extend(sorted(d.glob("*.json")))
+    if only:
+        for p in only:
+            path = p if p.is_absolute() else (root / p)
+            path = path.resolve()
+            if not path.is_file():
+                print(f"FAIL: --body not a file: {path}", file=sys.stderr)
+                return 1
+            files.append(path)
+    else:
+        for d in (
+            root / "migration/tasks",
+            root / "migration/bodies",
+            root / "migration/kanban",
+        ):
+            if d.is_dir():
+                files.extend(sorted(d.glob("*.json")))
     pairs: list[tuple[str, dict]] = []
     for f in files:
         try:
             pairs.extend(bodies_from(f))
         except Exception as e:
-            print(f"FAIL: {f.relative_to(root)}: {e}", file=sys.stderr)
+            try:
+                rel = f.relative_to(root)
+            except ValueError:
+                rel = f
+            print(f"FAIL: {rel}: {e}", file=sys.stderr)
             return 1
 
     if not pairs:
@@ -399,9 +428,9 @@ def main() -> int:
     if bad:
         print(f"Kanban body checks FAILED ({len(pairs)} body(ies)).", file=sys.stderr)
         return 1
-    print(f"OK: Kanban body §6.1 checks passed ({len(pairs)} body(ies)).")
+    scope = "single-body" if only else "corpus"
+    print(f"OK: Kanban body §6.1 checks passed ({len(pairs)} body(ies); {scope}).")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

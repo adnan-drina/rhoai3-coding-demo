@@ -196,6 +196,21 @@ REQUIRED_SUBSTRINGS = [
         "jump to /speckit-tasks",
         "decision-complete lint forbids jump-over-plan",
     ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/check-operand-count.py",
+        "build_config",
+        "operand_class build_config (Operator E-124000Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        '--body "${BODY_JSON}"',
+        "create-m3 validates single body (Operator E-124000Z)",
+    ),
+    (
+        "migration/contracts/story-sizing.md",
+        "operand_class",
+        "story-sizing documents operand classes",
+    ),
 ]
 
 
