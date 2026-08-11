@@ -96,6 +96,11 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-mint-constraints-co
   --body "${BODY_JSON}" \
   || die "MINT_COMPLETENESS: constraints still absent/empty (tag constraint_free if intentional)"
 
+# Architect E-20260811T203657Z Class A — dependency/pre-exists closure
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py" "${ROOT}" \
+  --body "${BODY_JSON}" \
+  || die "DEPENDENCY_CLOSURE: fix false pre-exists or absorb missing types into scope (migration/contracts/dependency-closure.md)"
+
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
 # migration/bodies/ (incomplete siblings must not block a single create).
 # Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"

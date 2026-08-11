@@ -64,6 +64,9 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd-readiness/scripts/assert-mint-constraints-complete.py",
     "migration/contracts/mint-completeness-constraints.md",
     "migration/contracts/park-at-birth.md",
+    # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
+    ".hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py",
+    "migration/contracts/dependency-closure.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -431,6 +434,21 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
         "COMPLETE-CMD enforce",
         "watchdog auto-wires complete-cmd reclaim",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py",
+        "DEPENDENCY_CLOSURE",
+        "Class A dependency-closure script",
+    ),
+    (
+        "migration/contracts/dependency-closure.md",
+        "BANK-DEP-CLOSURE-1",
+        "dependency-closure contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "assert-dependency-closure.py",
+        "Class A dependency-closure wired into create-m3",
     ),
 ]
 
