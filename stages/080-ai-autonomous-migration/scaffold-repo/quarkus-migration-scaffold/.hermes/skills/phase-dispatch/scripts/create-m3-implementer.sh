@@ -48,6 +48,8 @@ done
 # Pre-v12 R0/R3 — tip sync proof before M3 create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
   || die "create-path tip sync failed (R0/R3)"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py" "${ROOT}" \
+  || die "phase body script refs failed (R0)"
 
 # R-M3.32: materialize AD-011 overlays into Hermes skill tree before create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \

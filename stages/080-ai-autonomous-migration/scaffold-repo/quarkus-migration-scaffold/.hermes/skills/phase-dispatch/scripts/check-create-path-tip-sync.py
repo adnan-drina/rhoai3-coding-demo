@@ -85,6 +85,16 @@ REQUIRED_SUBSTRINGS = [
         "M2b:",
         "R1 M2b phase key",
     ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "mta-analysis",
+        "M2a/M2b attach mta-analysis (Deputy E-112700Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py",
+        "BODY_SCRIPT_LINT",
+        "R0 body-script lint present",
+    ),
 ]
 
 

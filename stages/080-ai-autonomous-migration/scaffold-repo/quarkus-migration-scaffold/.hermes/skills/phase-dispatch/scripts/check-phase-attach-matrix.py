@@ -14,8 +14,8 @@ from pathlib import Path
 REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M1": frozenset({"derive-legacy-boot3", "mta-analysis", "sdd-readiness"}),
     "M2": frozenset({"sdd-readiness", "role-authority"}),
-    "M2a": frozenset({"sdd-readiness", "role-authority"}),
-    "M2b": frozenset({"sdd-readiness", "role-authority"}),
+    "M2a": frozenset({"sdd-readiness", "role-authority", "mta-analysis"}),
+    "M2b": frozenset({"sdd-readiness", "role-authority", "mta-analysis"}),
     "M3": frozenset({"sdd-readiness", "spring-to-quarkus-patterns"}),
     "M4": frozenset({"sdd-readiness", "domain-gates"}),
     "M5": frozenset({"sdd-readiness", "domain-gates"}),

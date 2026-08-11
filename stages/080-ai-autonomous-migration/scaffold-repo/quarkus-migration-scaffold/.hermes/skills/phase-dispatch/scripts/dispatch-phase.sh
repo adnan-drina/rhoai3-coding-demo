@@ -60,6 +60,10 @@ command -v python3 >/dev/null 2>&1 || die "python3 required"
 # Pre-v12 R0/R3 — tip sync must be green before any phase create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
   || die "create-path tip sync failed (R0/R3)"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
+  || die "phase attach matrix failed"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py" "${ROOT}" \
+  || die "phase body script refs failed (R0 / Deputy E-20260811T112700Z)"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
   || die "extension overlay sync failed"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
@@ -214,7 +218,9 @@ orchestration: hermes_native (required)
 1. Load/run **derive-legacy-boot3** - ensure `migration/derived/legacy-at-3.json` and frozen harvest_referent.
 2. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json` (**before** MTA handoff emit).
 3. Load/run **mta-analysis** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `migration/findings-handoff.json` (requires inventory).
-4. Schema-validate findings + handoff (`check-findings-handoff.py`). **Do not** write stage-advance acks — Operator grants `migration/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
+4. Schema-validate findings + handoff:
+   `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized`.
+   **Do not** write stage-advance acks — Operator grants `migration/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
 
 ## Constraints
 - workspace: dir:/projects/modernized
