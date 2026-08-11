@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Architect E-111424Z — refuse AR-4.3 body digest mismatch (immutability)."""
+"""Architect E-111424Z — refuse AR-4.3 body digest mismatch (immutability).
+
+Architect E-20260811T195141Z Class A — when `--body` is given without
+`--expect`, scope to that body's own sidecar only (fail-closed). Whole-corpus
+sidecar scans are for harness inventory; complete/exit_criteria must not fail
+on parked OOS siblings (S-002a t_c9b03f60 COMPLETE-CMD / D5).
+"""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +38,25 @@ def check_pair(body: Path, expect: str, label: str) -> int:
     return 0
 
 
+def resolve_body(root: Path, raw: str) -> Path:
+    body = Path(raw)
+    if body.is_file():
+        return body
+    cand = root / raw
+    return cand if cand.is_file() else body
+
+
+def own_sidecar(body: Path) -> Path:
+    # Prefer "<body>.sha256.json" (create-m3 stamp path: foo.json.sha256.json)
+    direct = Path(str(body) + ".sha256.json")
+    if direct.is_file():
+        return direct
+    alt = body.with_suffix(body.suffix + ".sha256.json")
+    if alt.is_file():
+        return alt
+    return direct
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root", nargs="?", default=".")
@@ -40,16 +65,39 @@ def main() -> int:
     ap.add_argument(
         "--sidecar",
         default=None,
-        help="rhoai3.body-digest/v1 sidecar (default: scan migration/bodies/*.sha256.json)",
+        help="rhoai3.body-digest/v1 sidecar (default: own-body when --body, else scan all)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
 
     if args.body and args.expect:
-        body = Path(args.body)
-        if not body.is_file():
-            body = root / args.body
+        body = resolve_body(root, args.body)
         return check_pair(body, args.expect.strip().lower(), str(body))
+
+    # Class A E-20260811T195141Z: --body alone ⇒ own sidecar only (not corpus scan).
+    if args.body and not args.expect and not args.sidecar:
+        body = resolve_body(root, args.body)
+        if not body.is_file():
+            print(f"FAIL: body missing {args.body}", file=sys.stderr)
+            return 1
+        sc = own_sidecar(body)
+        if not sc.is_file():
+            print(
+                f"FAIL: {body}: missing own sidecar {sc.name} "
+                f"(stamp via stamp-body-digest.py; Architect E-20260811T195141Z)",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            stamp = json.loads(sc.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"FAIL: {sc}: {e}", file=sys.stderr)
+            return 1
+        if stamp.get("schema") != SCHEMA:
+            print(f"FAIL: {sc.name}: bad schema {stamp.get('schema')!r}", file=sys.stderr)
+            return 1
+        expect = str(stamp.get("body_sha256") or "").strip().lower()
+        return check_pair(body, expect, f"{body.name}+{sc.name}")
 
     sidecars: list[Path] = []
     if args.sidecar:
@@ -85,9 +133,7 @@ def main() -> int:
             cand = root / "migration" / "bodies" / name
             bpath = cand if cand.is_file() else bpath
         if not bpath.is_file() and args.body:
-            bpath = Path(args.body)
-            if not bpath.is_file():
-                bpath = root / args.body
+            bpath = resolve_body(root, args.body)
         bad |= check_pair(bpath, expect, sc.name)
     if bad:
         print("BODY_DIGEST mismatch checks FAILED", file=sys.stderr)

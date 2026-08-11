@@ -16,13 +16,18 @@ and that digest are **immutable for the life of the task**.
 ## Check
 
 ```bash
-# Sidecar (create-time stamp) vs current body bytes
-python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py .
+# Own-body sidecar (exit_criteria / complete — Architect E-20260811T195141Z)
+python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py . \
+  --body migration/bodies/m3-s-010.json
 
 # Explicit expect (card Body digest line)
 python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py . \
   --body migration/bodies/m3-s-010.json \
   --expect 1a117038a78e4c725f191fe654bf01d73747dce534e66a79886546cac3050bf3
+
+# Harness inventory only — whole-corpus sidecar scan (not an exit criterion)
+python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py .
 ```
 
-Also covered by `check-run-digests.py` sidecar drift scan.
+Also covered by `check-run-digests.py` sidecar drift scan. See
+`body-digest-own-story.md`.

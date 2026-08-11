@@ -57,6 +57,9 @@ REQUIRED_FILES = [
     # Operator E-20260811T184628Z — Managed Scope required at spawn (not symlink)
     ".hermes/home/scripts/assert-managed-scope-active.py",
     "migration/contracts/managed-scope-at-spawn.md",
+    # Architect E-20260811T195141Z Class A — own-body digest at complete
+    ".hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py",
+    "migration/contracts/body-digest-own-story.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -389,6 +392,16 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
         "STILLBORN",
         "null-heartbeat stillborn watchdog",
+    ),
+    (
+        ".hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py",
+        "Class A E-20260811T195141Z",
+        "own-body digest scope at --body alone",
+    ),
+    (
+        "migration/contracts/body-digest-own-story.md",
+        "own sidecar",
+        "body-digest-own-story contract",
     ),
 ]
 
