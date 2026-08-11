@@ -462,7 +462,16 @@ if python3 "${SKILLS}/auditability-repeatability/scripts/stamp-implementer-check
 else
   echo "OK: src/test checkpoint stamp refused without test-compile gate"
 fi
-# Fixture skip path still works for shape tests
+# Fixture skip path still works for shape tests (env-gated; live seats FORBIDDEN)
+if python3 "${SKILLS}/auditability-repeatability/scripts/stamp-implementer-checkpoint.py" \
+  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  --completed src/test/java/com/demo/ATests.java --skip-test-compile-gate >/dev/null 2>&1; then
+  echo "FAIL: --skip-test-compile-gate without fixture env should refuse" >&2
+  rc=1
+else
+  echo "OK: live skip-test-compile-gate refused without fixture env"
+fi
+RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1 \
 python3 "${SKILLS}/auditability-repeatability/scripts/stamp-implementer-checkpoint.py" \
   "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
   --completed src/test/java/com/demo/ATests.java --skip-test-compile-gate || rc=1

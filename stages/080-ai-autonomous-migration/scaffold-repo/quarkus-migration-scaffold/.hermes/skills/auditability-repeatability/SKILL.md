@@ -34,17 +34,19 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-run-digests.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/init-implementer-checkpoint.py" \
   /projects/modernized/migration/bodies/m3-s-010.json --task-id t_example \
   --root /projects/modernized
-# src/test stamp runs mvn test-compile gate (REFUSE if red)
-python3 "${HERMES_SKILL_DIR}/scripts/run-test-compile-gate.py" /projects/modernized \
-  --task-id t_example --paths src/test/java/com/demo/rest/OwnerRestControllerTests.java
+# src/test stamp runs scoped test-compile gate (REFUSE if in-scope red)
+python3 "${HERMES_SKILL_DIR}/scripts/run-scoped-compile-gate.py" /projects/modernized \
+  --task-id t_example --body migration/bodies/m3-s-010.json --goal test-compile
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json \
+  --body /projects/modernized/migration/bodies/m3-s-010.json \
   --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
 # Harness-driven catch-up when stamp was skipped (Deputy E-121112Z)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-write-checkpoint-lag.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/sync-checkpoint-from-test-writes.py" \
-  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized
+  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized \
+  --body /projects/modernized/migration/bodies/m3-s-010.json
 python3 "${HERMES_SKILL_DIR}/scripts/check-implementer-checkpoint.py" \
   /projects/modernized/migration/runs/t_example/checkpoint.json
 ```

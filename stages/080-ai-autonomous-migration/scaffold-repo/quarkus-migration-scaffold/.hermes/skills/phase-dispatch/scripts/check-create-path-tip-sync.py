@@ -41,6 +41,13 @@ REQUIRED_FILES = [
     ".hermes/home/scripts/stamp-worker-pid-from-ps.py",
     ".hermes/home/scripts/assert-no-residual-workers.py",
     "migration/contracts/residual-worker-kill.md",
+    # Architect E-20260811T175305Z Class A — scope-filtered compile
+    ".hermes/skills/auditability-repeatability/scripts/run-scoped-compile-gate.py",
+    "migration/contracts/compile-scope-filtered.md",
+    # Architect E-20260811T175509Z Class A — complete enforces cmd exits
+    ".hermes/skills/validation-release-gates/scripts/assert-complete-exit-criteria.py",
+    ".hermes/home/scripts/enforce-complete-exit-criteria.py",
+    "migration/contracts/complete-cmd-exit-criteria.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -318,6 +325,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
         "stamp-destination-inventory.py",
         "create-m3 wires destination-inventory stamp",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "assert-complete-exit-criteria.py",
+        "Class A complete-cmd assert before kanban_complete",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "run-scoped-compile-gate.py",
+        "Class A scoped compile cited in M3 body",
+    ),
+    (
+        "migration/contracts/compile-scope-filtered.md",
+        "files_writable",
+        "compile-scope-filtered contract",
+    ),
+    (
+        "migration/contracts/complete-cmd-exit-criteria.md",
+        "complete-exit-ok.json",
+        "complete-cmd-exit-criteria contract",
     ),
 ]
 

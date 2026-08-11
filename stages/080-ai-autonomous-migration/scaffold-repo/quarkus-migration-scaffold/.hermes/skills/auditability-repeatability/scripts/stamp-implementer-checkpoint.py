@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Mark dest path(s) completed on an implementer checkpoint (resume seam).
 
-S-010 Class A #1b / Deputy E-20260810T115113Z: completing a src/test/** operand
-requires a green mvn test-compile gate first (structural invariant, not prose).
+S-010 Class A #1b / Deputy E-20260810T115113Z + Architect E-20260811T175305Z:
+completing a src/test/** operand requires a green **scoped** test-compile gate.
+`--skip-test-compile-gate` is FORBIDDEN on live seats (fixture env only).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -32,6 +34,36 @@ def workspace_root(checkpoint: Path) -> Path:
     return checkpoint.resolve().parents[3]
 
 
+def resolve_body(root: Path, ck: dict) -> Path | None:
+    for key in ("body_path", "typed_body", "body"):
+        raw = ck.get(key)
+        if isinstance(raw, str) and raw.endswith(".json"):
+            p = Path(raw)
+            if not p.is_file():
+                p = root / raw
+            if p.is_file():
+                return p
+    # Convention: migration/bodies/m3-s-NNN.json from task title/story — scan refs
+    refs = ck.get("refs") or []
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        if ref.get("key") in ("typed_body", "body"):
+            p = root / str(ref.get("path") or "")
+            if p.is_file():
+                return p
+    # Fallback: body mentioned in work metadata
+    story = ck.get("story_id") or ck.get("story")
+    if story:
+        cand = root / "migration" / "bodies" / f"m3-{str(story).lower()}.json"
+        if cand.is_file():
+            return cand
+        cand = root / "migration" / "bodies" / f"{story}.json"
+        if cand.is_file():
+            return cand
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("checkpoint")
@@ -42,9 +74,14 @@ def main() -> int:
         help="Dest-relative path completed (repeatable)",
     )
     ap.add_argument(
+        "--body",
+        default="",
+        help="Typed body JSON for scoped compile gate (required when stamping src/test/**)",
+    )
+    ap.add_argument(
         "--skip-test-compile-gate",
         action="store_true",
-        help="Fixture/authoring only — FORBIDDEN on live implementer seats",
+        help="FORBIDDEN on live seats — requires RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1",
     )
     args = ap.parse_args()
     path = Path(args.checkpoint)
@@ -71,40 +108,70 @@ def main() -> int:
             new_paths.append(p)
 
     test_paths = [p for p in new_paths if is_test_operand(p)]
-    if test_paths and not args.skip_test_compile_gate:
-        root = workspace_root(path)
-        gate = (
-            Path(__file__).resolve().parent / "run-test-compile-gate.py"
-        )
-        cmd = [
-            sys.executable,
-            str(gate),
-            str(root),
-            "--task-id",
-            str(ck.get("task_id") or "unknown"),
-        ]
-        for p in test_paths:
-            cmd.extend(["--paths", p])
-        cp = subprocess.run(cmd, text=True, capture_output=True)
-        sys.stderr.write(cp.stderr or "")
-        sys.stdout.write(cp.stdout or "")
-        if cp.returncode != 0:
+    if test_paths:
+        if args.skip_test_compile_gate:
+            if os.environ.get("RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE") != "1":
+                print(
+                    "FAIL: --skip-test-compile-gate FORBIDDEN on live implementer seats "
+                    "(Architect E-20260811T175305Z). Compliant fork: typed needs_input "
+                    "BLOCK — do not bypass. Fixtures may set "
+                    "RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1.",
+                    file=sys.stderr,
+                )
+                return 1
             print(
-                "FAIL: refuse checkpoint advance — src/test operand(s) without "
-                "green test-compile gate (Deputy E-115113Z #1b invariant). "
-                f"paths={test_paths}",
+                "WARN: fixture skip-test-compile-gate allowed by env",
                 file=sys.stderr,
             )
-            return 1
-        gates = list(ck.get("test_compile_gates") or [])
-        gates.append(
-            {
-                "paths": test_paths,
-                "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "ok": True,
-            }
-        )
-        ck["test_compile_gates"] = gates
+        else:
+            root = workspace_root(path)
+            body = Path(args.body) if args.body else None
+            if body and not body.is_file():
+                body = root / args.body
+            if body is None or not body.is_file():
+                body = resolve_body(root, ck)
+            if body is None or not body.is_file():
+                print(
+                    "FAIL: scoped test-compile gate needs --body <typed body json> "
+                    "(Architect E-20260811T175305Z Class A compile-scope). "
+                    "Cannot silently skip.",
+                    file=sys.stderr,
+                )
+                return 1
+            gate = Path(__file__).resolve().parent / "run-scoped-compile-gate.py"
+            cmd = [
+                sys.executable,
+                str(gate),
+                str(root),
+                "--task-id",
+                str(ck.get("task_id") or "unknown"),
+                "--body",
+                str(body),
+                "--goal",
+                "test-compile",
+            ]
+            cp = subprocess.run(cmd, text=True, capture_output=True)
+            sys.stderr.write(cp.stderr or "")
+            sys.stdout.write(cp.stdout or "")
+            if cp.returncode != 0:
+                print(
+                    "FAIL: refuse checkpoint advance — scoped test-compile gate red "
+                    f"for src/test operand(s) {test_paths}. "
+                    "If failures are OOS-only the scoped gate should PASS; "
+                    "in-scope errors must be fixed. Typed needs_input if blocked.",
+                    file=sys.stderr,
+                )
+                return 1
+            gates = list(ck.get("test_compile_gates") or [])
+            gates.append(
+                {
+                    "paths": test_paths,
+                    "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "ok": True,
+                    "scoped": True,
+                }
+            )
+            ck["test_compile_gates"] = gates
 
     remaining = [p for p in work if p not in done]
     ck["completed"] = done

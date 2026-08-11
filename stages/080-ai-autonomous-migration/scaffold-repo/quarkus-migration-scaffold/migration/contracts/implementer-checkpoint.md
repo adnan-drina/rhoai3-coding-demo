@@ -33,7 +33,9 @@ python3 .hermes/skills/auditability-repeatability/scripts/check-implementer-chec
   migration/runs/t_example/checkpoint.json
 ```
 
-`src/test/**` stamp without a green gate → **REFUSE** (Deputy E-115113Z #1b
-invariant). `--skip-test-compile-gate` is fixture-only.
+`src/test/**` stamp without a green **scoped** gate → **REFUSE**
+(Architect E-20260811T175305Z / Deputy E-115113Z #1b). `--skip-test-compile-gate`
+requires `RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1` (live seats FORBIDDEN).
+See `compile-scope-filtered.md`.
 
 Schema: `migration/schemas/implementer-checkpoint.md`.

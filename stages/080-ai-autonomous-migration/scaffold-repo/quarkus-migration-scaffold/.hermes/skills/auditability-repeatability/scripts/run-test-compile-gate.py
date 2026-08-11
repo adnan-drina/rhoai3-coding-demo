@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Run mvn test-compile and stamp gate evidence (S-010 Class A #1b invariant)."""
+"""Run scoped test-compile gate (S-010 #1b + Architect E-20260811T175305Z Class A).
+
+Delegates to run-scoped-compile-gate.py when --body is provided (required on live
+implementer seats). Whole-tree mvn alone is no longer the acceptance signal.
+"""
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-
-SCHEMA = "rhoai3.test-compile-gate/v1"
 
 
 def main() -> int:
@@ -17,44 +17,32 @@ def main() -> int:
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--task-id", required=True)
     ap.add_argument(
+        "--body",
+        required=True,
+        help="Typed body JSON — scope filter uses files_writable",
+    )
+    ap.add_argument(
         "--paths",
         action="append",
         default=[],
-        help="Dest paths this gate covers (repeatable)",
+        help="Dest paths this gate covers (recorded; repeatable)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    if not (root / "pom.xml").is_file():
-        print(f"FAIL: no pom.xml under {root}", file=sys.stderr)
-        return 1
-    cp = subprocess.run(
-        ["mvn", "-q", "test-compile"],
-        cwd=root,
-        text=True,
-        capture_output=True,
-    )
-    out_dir = root / "migration" / "runs" / args.task_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema": SCHEMA,
-        "task_id": args.task_id,
-        "cmd": "mvn -q test-compile",
-        "rc": cp.returncode,
-        "ok": cp.returncode == 0,
-        "paths": args.paths,
-        "evaluated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "stderr_tail": (cp.stderr or "")[-400:],
-    }
-    out = out_dir / "test-compile-gate.json"
-    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    if cp.returncode != 0:
-        print(
-            f"FAIL: test-compile gate rc={cp.returncode} → {out.relative_to(root)}",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"OK: test-compile gate → {out.relative_to(root)}")
-    return 0
+    scoped = Path(__file__).resolve().parent / "run-scoped-compile-gate.py"
+    cmd = [
+        sys.executable,
+        str(scoped),
+        str(root),
+        "--task-id",
+        args.task_id,
+        "--body",
+        args.body,
+        "--goal",
+        "test-compile",
+    ]
+    cp = subprocess.run(cmd, text=True)
+    return cp.returncode
 
 
 if __name__ == "__main__":

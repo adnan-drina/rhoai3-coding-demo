@@ -12,12 +12,57 @@ from pathlib import Path
 
 SCHEMA = "rhoai3.exit-eval/v1"
 WALLISH = frozenset({"timed_out", "timeout_kill", "gave_up"})
+# Architect E-20260811T175305Z — whole-tree compile unsatisfiable mid-partition
+SCOPED_COMPILE_CHECKS = frozenset({"compile", "test_compile"})
 
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
     return h.hexdigest()
+
+
+def run_scoped_compile(
+    root: Path, task_id: str, body_path: Path, check: str
+) -> tuple[bool, int, str]:
+    """Return (ok, rc, cmd_label) via scope-filtered gate."""
+    scoped = (
+        root
+        / ".hermes"
+        / "skills"
+        / "auditability-repeatability"
+        / "scripts"
+        / "run-scoped-compile-gate.py"
+    )
+    if not scoped.is_file():
+        # Fallback relative to this script tree (tip layout)
+        scoped = (
+            Path(__file__).resolve().parents[2]
+            / "auditability-repeatability"
+            / "scripts"
+            / "run-scoped-compile-gate.py"
+        )
+    goal = "test-compile" if check == "test_compile" else "compile"
+    cp = subprocess.run(
+        [
+            sys.executable,
+            str(scoped),
+            str(root),
+            "--task-id",
+            task_id,
+            "--body",
+            str(body_path),
+            "--goal",
+            goal,
+        ],
+        text=True,
+        capture_output=True,
+    )
+    return (
+        cp.returncode == 0,
+        cp.returncode,
+        f"run-scoped-compile-gate.py --goal {goal}",
+    )
 
 
 def main() -> int:
@@ -64,6 +109,32 @@ def main() -> int:
                         "ok": None,
                         "status": "skipped",
                         "cmd": str(cmd),
+                    }
+                )
+                continue
+            # Class A compile-scope: intercept compile / test_compile
+            if check in SCOPED_COMPILE_CHECKS or (
+                "test-compile" in str(cmd) or str(cmd).rstrip().endswith(" compile")
+            ):
+                scoped_check = (
+                    "test_compile"
+                    if check == "test_compile" or "test-compile" in str(cmd)
+                    else "compile"
+                )
+                ok, rc, label = run_scoped_compile(
+                    root, args.task_id, body_path, scoped_check
+                )
+                if not ok:
+                    cmd_failed.append(check or label)
+                results.append(
+                    {
+                        "check": check,
+                        "kind": "cmd",
+                        "rc": rc,
+                        "ok": ok,
+                        "cmd": label,
+                        "scoped": True,
+                        "body_cmd": str(cmd),
                     }
                 )
                 continue
