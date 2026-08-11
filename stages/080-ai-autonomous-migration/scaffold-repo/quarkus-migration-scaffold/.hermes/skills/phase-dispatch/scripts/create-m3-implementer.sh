@@ -87,6 +87,15 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-partition-coverage.p
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer before create (migration/contracts/quarantine-survives-dispatch.md)"
 
+# Architect E-20260811T200911Z Class A — mint-completeness (inject standard constraints
+# when absent/empty; distinct from preservation). Refuse later if still empty.
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-mint-constraints-complete.py" "${ROOT}" \
+  --body "${BODY_JSON}" --inject \
+  || die "MINT_COMPLETENESS inject failed for ${BODY_JSON}"
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-mint-constraints-complete.py" "${ROOT}" \
+  --body "${BODY_JSON}" \
+  || die "MINT_COMPLETENESS: constraints still absent/empty (tag constraint_free if intentional)"
+
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
 # migration/bodies/ (incomplete siblings must not block a single create).
 # Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"
@@ -247,6 +256,30 @@ TASK_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id"
 [[ -n "${TASK_ID}" ]] || die "kanban create returned no id"
 mkdir -p "${ROOT}/migration/derived"
 echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
+# Architect E-20260811T200911Z Class A — park-at-birth fail-closed.
+# Parent may already be done → Hermes auto-promotes dependency children to ready.
+# Force needs_input park and verify; never emit ack-request for dispatchable mint.
+_park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
+try:
+  d=json.load(sys.stdin)
+  print((d.get("status") or "").lower())
+except Exception:
+  print("")' || true)"
+if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
+  hermes kanban block "${TASK_ID}" --kind needs_input \
+    "park-at-birth HOLD until Operator ack + Architect section-3a (Architect E-20260811T200911Z / migration/contracts/park-at-birth.md)" \
+    >/dev/null 2>&1 || true
+  _park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
+try:
+  d=json.load(sys.stdin)
+  print((d.get("status") or "").lower())
+except Exception:
+  print("")' || true)"
+fi
+if [[ "${_park_status}" == "ready" || "${_park_status}" == "todo" || "${_park_status}" == "running" || -z "${_park_status}" ]]; then
+  die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (migration/contracts/park-at-birth.md)"
+fi
+echo "PARK_AT_BIRTH=${TASK_ID} status=${_park_status}"
 # Operator E-20260811T114300Z — Review live adherence observation on every dispatch
 {
   echo "schema: rhoai3.review-adhere-observe-need/v1"
@@ -260,7 +293,7 @@ echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 # Do NOT dispatch here — cards are born blocked; unpark is gate-driven
 # (M2b ledger PASS + brief-identity ack + serial order). Deputy E-131900Z.
 hermes kanban comment "${TASK_ID}" \
-  "born-parked: initial-status=blocked; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z)" \
+  "born-parked: initial-status=blocked + park-at-birth verify; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z / Architect E-20260811T200911Z)" \
   >/dev/null 2>&1 || true
 # Stamp derived claim list for parent completion (Operator E-133000Z #5)
 DERIVED_DIR="${ROOT}/migration/derived"

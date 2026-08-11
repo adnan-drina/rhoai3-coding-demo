@@ -301,6 +301,34 @@ def check_stillborn_null_heartbeat(
     return alerts
 
 
+def check_complete_cmd_enforce(root: Path) -> list[str]:
+    """Architect E-20260811T200911Z — auto-wire COMPLETE-CMD reclaim on red/missing receipt."""
+    script = Path(__file__).resolve().parent / "enforce-complete-exit-criteria.py"
+    if not script.is_file():
+        return [
+            "WATCHDOG: COMPLETE-CMD enforce script missing "
+            f"({script}) — cannot auto-reclaim red receipts"
+        ]
+    try:
+        cp = subprocess.run(
+            [sys.executable, str(script), str(root), "--sweep-done"],
+            cwd=str(root),
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [f"WATCHDOG: COMPLETE-CMD enforce failed to run: {exc}"]
+    out = ((cp.stdout or "") + (cp.stderr or "")).strip()
+    if cp.returncode == 0:
+        return []
+    # rc=1 means reclaim happened or dry mismatch; surface tails for Lead
+    lines = [ln for ln in out.splitlines() if ln.strip()][-12:]
+    if not lines:
+        lines = [f"enforce rc={cp.returncode}"]
+    return ["WATCHDOG: COMPLETE-CMD enforce — " + ln for ln in lines]
+
+
 def main() -> int:
     home = hermes_home()
     db_path = Path(os.environ.get("KANBAN_DB", str(home / "kanban.db")))
@@ -352,6 +380,8 @@ def main() -> int:
 
     alerts: list[str] = list(stillborn_alerts)
     root = project_root()
+    # Architect E-20260811T200911Z — red/missing complete-exit receipt must not stay done
+    alerts.extend(check_complete_cmd_enforce(root))
     ttfc = ttfc_seconds()
     for row in rows:
         status_v, time_v = row[0], row[1]

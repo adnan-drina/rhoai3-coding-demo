@@ -60,6 +60,10 @@ REQUIRED_FILES = [
     # Architect E-20260811T195141Z Class A — own-body digest at complete
     ".hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py",
     "migration/contracts/body-digest-own-story.md",
+    # Architect E-20260811T200911Z Class A — mint-completeness + park-at-birth
+    ".hermes/skills/sdd-readiness/scripts/assert-mint-constraints-complete.py",
+    "migration/contracts/mint-completeness-constraints.md",
+    "migration/contracts/park-at-birth.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -402,6 +406,31 @@ REQUIRED_SUBSTRINGS = [
         "migration/contracts/body-digest-own-story.md",
         "own sidecar",
         "body-digest-own-story contract",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/assert-mint-constraints-complete.py",
+        "MINT_COMPLETENESS",
+        "Class A mint-completeness script",
+    ),
+    (
+        "migration/contracts/mint-completeness-constraints.md",
+        "preserve ≠ invent",
+        "mint-completeness-constraints contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "PARK_AT_BIRTH",
+        "Class A park-at-birth verify after create",
+    ),
+    (
+        "migration/contracts/park-at-birth.md",
+        "auto-promote",
+        "park-at-birth contract",
+    ),
+    (
+        ".hermes/home/scripts/kanban-stuck-watchdog.py",
+        "COMPLETE-CMD enforce",
+        "watchdog auto-wires complete-cmd reclaim",
     ),
 ]
 

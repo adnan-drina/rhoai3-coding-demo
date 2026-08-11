@@ -21,10 +21,10 @@ evaluated exits; complete path did not.
 2. Green run writes `migration/runs/<id>/complete-exit-ok.json` (`ok=true`).
 3. `compile` / `test_compile` checks use the **scoped** gate
    (`compile-scope-filtered.md`) — whole-tree rc=0 is not the criterion.
-4. **Harness reclaim:** Lead/watchdog may run
-   `.hermes/home/scripts/enforce-complete-exit-criteria.py --task <id>`
-   (or `--sweep-done`) to revert `done` → `needs_input` when the receipt is
-   missing/red. That is fail-closed after Hermes accepts the tool call.
+4. **Harness reclaim (auto-wire):** `kanban-stuck-watchdog.py` runs
+   `enforce-complete-exit-criteria.py --sweep-done` each tick so red/missing
+   receipts cannot stay `done` (Architect E-20260811T200911Z). Lead may also
+   run enforce manually for a single task.
 5. Wall / soft-requeue continue via `wall-exit-eval.md` (unchanged).
 
 ## Scripts
@@ -34,9 +34,11 @@ evaluated exits; complete path did not.
 | `assert-complete-exit-criteria.py` | Pre-complete fail-closed eval + receipt |
 | `evaluate-exit-criteria.py` | Shared cmd evaluator (scoped compile) |
 | `enforce-complete-exit-criteria.py` | Post-complete reclaim without receipt |
+| `kanban-stuck-watchdog.py` | Auto-sweeps done cards lacking green receipt |
 
 ## Related
 
 - `wall-exit-eval.md` — wall path already wired
 - `compile-scope-filtered.md` — mid-partition compile criterion
 - `completion-na-reject.md` — no N/A rewrite of binding criteria
+- `body-digest-own-story.md` — own-body digest at complete
