@@ -26,6 +26,8 @@ REQUIRED_FILES = [
     ".hermes/provision/spec-kit/overrides/spec-template.md",
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
     ".hermes/skills/phase-dispatch/scripts/check-specify-preseed.py",
+    # Architect E-122959Z — decision-complete card lint
+    ".hermes/skills/phase-dispatch/scripts/check-decision-complete-cards.py",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -178,6 +180,21 @@ REQUIRED_SUBSTRINGS = [
         "devfile.yaml",
         "provision-owns-tools",
         "devfile postStart owns Spec Kit init",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "Per-artifact Spec Kit resume ladder",
+        "M2b per-artifact resume ladder (Operator E-122500Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "check-decision-complete-cards.py",
+        "decision-complete lint wired into dispatch",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-decision-complete-cards.py",
+        "jump to /speckit-tasks",
+        "decision-complete lint forbids jump-over-plan",
     ),
 ]
 

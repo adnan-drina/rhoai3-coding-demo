@@ -66,6 +66,8 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-r
   || die "phase body script refs failed (R0 / Deputy E-20260811T112700Z)"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-input-manifest.py" "${ROOT}" "${PHASE}" \
   || die "phase input manifests failed (R0 / Operator E-20260811T113700Z)"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-decision-complete-cards.py" "${ROOT}" \
+  || die "decision-complete card lint failed (R0 / Architect E-20260811T122959Z)"
 # Architect E-20260811T121308Z — provision-owns-tools: Spec Kit preseed before M2a
 if [[ "${PHASE}" == "M2a" ]]; then
   python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-specify-preseed.py" "${ROOT}" \
@@ -328,12 +330,19 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
 
 ## Job
 1. Require `migration/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
-2. **R-M2.6 resume-from-disk:** if Spec Kit `spec.md` (+ `plan.md` when present)
-   exist → skip re-partition / re-specify; jump to `/speckit-tasks`.
-3. Else `/speckit-plan` → `/speckit-tasks` (cite `sdd-ordering.md` + `story-sizing.md`).
-4. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
+2. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
+   replaces inverted v11 R-M2.6 compound jump under M2a/M2b split):
+   - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
+     equiv). **Skip iff** `spec.md` already exists (M2a normally left it). Do **not**
+     invent specs.
+   - **`/speckit-plan`:** precondition = `spec.md` present. **Skip iff** `plan.md`
+     already exists. Otherwise run `/speckit-plan` (cite `sdd-ordering.md` +
+     `story-sizing.md`). **Never** jump over plan just because `spec.md` exists.
+   - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
+     `needs_input` BLOCK. Then emit tasks artifacts.
+3. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
    Bodies are generated here — do not consume golden specimen packets.
-5. Stop for Operator `brief-identity.ack.yaml`.
+4. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when
 - Spec Kit tasks artifacts present
