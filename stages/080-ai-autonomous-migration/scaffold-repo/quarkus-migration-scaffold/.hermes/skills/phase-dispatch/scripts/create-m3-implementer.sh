@@ -14,6 +14,10 @@
 # exit_criteria[] — Deputy E-20260809T190500Z completion half).
 # Do NOT use bare `hermes kanban create` for M3 — that path omits skills
 # (Review grounding study 20260809: M3 workers loaded zero skills).
+#
+# Architect E-20260811T155332Z Class A (tip FREEZE exception): after create,
+# emit unsigned migration/acks/ack-request-<story>.yaml with task_id + body +
+# partition digests so Operator/Deputy can sign without hand-copy races.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -277,5 +281,46 @@ p.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 print(path)
 PY
 echo "CREATED_CARDS_CLAIM=${CLAIM_FILE}"
+
+# Architect E-20260811T155332Z Class A — atomic create→digest→ack-request
+# (freeze exception). Emit unsigned ack-request so Operator/Deputy signs
+# without hand-copying digests; dispatch still verifies ack↔card↔live (AR-4.3).
+# Body digests are finalized above (stamps + stamp-body-digest) before create.
+STORY_ID="$(python3 -c 'import json,sys,re,pathlib
+p=pathlib.Path(sys.argv[1])
+d=json.load(open(p))
+sid=(d.get("identity") or {}).get("story_id") or d.get("story_id") or ""
+if not sid:
+  m=re.search(r"m3-s-([0-9a-z]+)", p.name, re.I)
+  sid=("S-"+m.group(1).upper()) if m else ""
+print(sid)' "${BODY_JSON}")"
+[[ -n "${STORY_ID}" ]] || die "cannot derive story_id for ack-request from ${BODY_JSON}"
+PARTITION_JSON="${ROOT}/migration/briefs/partition.json"
+[[ -f "${PARTITION_JSON}" ]] || die "missing ${PARTITION_JSON} for ack-request"
+PARTITION_DIGEST="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${PARTITION_JSON}")"
+ACK_DIR="${ROOT}/migration/acks"
+mkdir -p "${ACK_DIR}"
+# sanitize story id for filename (S-002a → S-002a)
+ACK_REQ="${ACK_DIR}/ack-request-${STORY_ID}.yaml"
+{
+  echo "kind: migration-ack-request"
+  echo "ack_type: brief-identity"
+  echo "status: unsigned"
+  echo "schema: rhoai3.ack-request/v1"
+  echo "story_id: ${STORY_ID}"
+  echo "task_id: ${TASK_ID}"
+  echo "created_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "artifact_refs:"
+  echo "  - story_id: ${STORY_ID}"
+  echo "  - path: ${BODY_JSON}"
+  echo "    sha256: ${BODY_DIGEST}"
+  echo "  - path: migration/briefs/partition.json"
+  echo "    sha256: ${PARTITION_DIGEST}"
+  echo "notes: \"Architect E-20260811T155332Z Class A atomic create→ack-request; Operator/Deputy signs by completing into brief-identity ack (no hand-copied digests)\""
+} >"${ACK_REQ}"
+echo "ACK_REQUEST=${ACK_REQ}"
+echo "ACK_REQUEST_DIGESTS body=${BODY_DIGEST} partition=${PARTITION_DIGEST} task_id=${TASK_ID} story_id=${STORY_ID}"
+
 echo "OK: M3 → ${TASK_ID} (blocked/parked; parent=${PARENT_PRIMARY}). File ledger Need Review:adhere-observe-${TASK_ID}"
 echo "NOTE: parent must kanban_complete with created_cards including ${TASK_ID} (empty list REJECT)"
+echo "NOTE: Operator ack-after-create via ${ACK_REQ} (unsigned → brief-identity ack); then Lead reverify + Architect §3a before dispatch"
