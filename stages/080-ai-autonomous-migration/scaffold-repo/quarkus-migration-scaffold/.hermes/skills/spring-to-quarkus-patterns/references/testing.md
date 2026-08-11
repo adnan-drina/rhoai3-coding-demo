@@ -35,6 +35,11 @@
    (test scope). Prefer AssertJ `assertThat` over inventing a new library.
    After writing tests, run `mvn -q test-compile` in-loop
    (`migration/contracts/test-toolchain.md`).
+5. **`quarkus.test.continuous-testing` enum (R-M3.59 / S-008 Class B):** valid
+   values are `disabled` | `enabled` | `paused` only. Never write
+   `false`/`true` — Quarkus rejects them (`SRCFG00049`) and `mvn test` fails
+   before suites run. Prefer `disabled` for CI/`mvn test`. Golden snippet:
+   `migration/fixtures/testing/golden-test-application.properties`.
 
 ## Agent text
 
