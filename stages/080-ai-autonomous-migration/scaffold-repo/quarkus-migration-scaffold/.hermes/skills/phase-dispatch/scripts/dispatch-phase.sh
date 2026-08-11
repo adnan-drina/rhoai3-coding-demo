@@ -342,6 +342,12 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
      `needs_input` BLOCK. Then emit tasks artifacts.
 3. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
    Bodies are generated here — do not consume golden specimen packets.
+   **Body refs (Deputy E-20260811T131200Z):**
+   - `brief_identity_ack`: `sha256: "pending"` + intended future ack path
+     (e.g. `migration/acks/brief-identity-<story>.ack.yaml`). Do **not**
+     substitute `partition.json` or invent prose digests.
+   - `legacy_locus`: 64-hex of the primary legacy **file** (not a directory;
+     not `see-harvest-referent` prose).
 4. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when
@@ -375,7 +381,8 @@ grounded-generation + spring-to-quarkus-patterns before edits. One task ⇒ one 
 Write/attach `migration/bodies/<task>.json` with:
 - `task_id`, `role=implementer`, `phase=M3`
 - `files_in_scope`: non-empty paths
-- `refs[]` including `brief_identity_ack`, `legacy_locus` (sha256 digests)
+- `refs[]` including `brief_identity_ack` (`pending` until Operator ack, then 64-hex)
+  and `legacy_locus` (64-hex of primary legacy file)
 - optional `spec_path` / `plan_path` / `tasks_path` digests
 Validate: `python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized`
 

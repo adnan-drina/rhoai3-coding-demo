@@ -5,6 +5,21 @@
 
 Human checkpoints are **ack artifacts**, not Hermes interactive approvals.
 
+## Creation-time body refs (Deputy `E-20260811T131200Z`)
+
+M2b `create-m3-implementer.sh` runs **before** Operator writes
+`brief-identity*.ack.yaml`. M3 bodies therefore **MUST** carry:
+
+```json
+{"key":"brief_identity_ack","path":"migration/acks/brief-identity-<story>.ack.yaml","sha256":"pending"}
+```
+
+`sha256: "pending"` is the only typed creation-time deferral (see
+`kanban-body.md`). Substituting `partition.json` (or any other extant file) as
+the ack digest is a schema improvisation — refuse on next create. When the
+Operator ack lands, first-implement (or Lead amend) replaces `pending` with the
+real 64-hex digest of that ack file.
+
 ## Required fields
 
 | Field | Type | Rule |

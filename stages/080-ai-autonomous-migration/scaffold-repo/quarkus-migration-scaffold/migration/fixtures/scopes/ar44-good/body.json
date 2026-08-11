@@ -3,8 +3,8 @@
   "role": "implementer",
   "phase": "M3",
   "refs": [
-    {"key": "brief_identity_ack", "path": "migration/acks/brief-identity.json", "sha256": "00"},
-    {"key": "legacy_locus", "path": "migration/acks/legacy.json", "sha256": "00"}
+    {"key": "brief_identity_ack", "path": "migration/acks/brief-identity.json", "sha256": "pending"},
+    {"key": "legacy_locus", "path": "migration/acks/legacy.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
   ],
   "identity": {
     "story_id": "S-AR44G",

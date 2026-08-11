@@ -9,6 +9,10 @@
 - Required: `task_id` + `artifact_digests` (or digest-bearing `artifact_refs`)
 - Bare `migration/acks/*.json` grants without `.ack.` naming are forgeable — refuse
 - Live `brief-identity.json` with `acknowledged_by: planner` is **not** stage authority
+- **Creation-time M3 bodies** may cite `brief_identity_ack` with
+  `sha256: "pending"` and the intended future ack path — that is **not** a
+  self-ACK; phase advance still requires a real Operator ack artifact
+  (`kanban-body.md` / Deputy `E-20260811T131200Z`)
 
 ```bash
 python3 .hermes/skills/role-authority/scripts/check-ack-authority.py .

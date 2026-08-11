@@ -62,6 +62,12 @@ INLINE_MARKERS = re.compile(
     r"<html|package\s+com\.|class\s+\w+\s*\{)"
 )
 
+# Deputy E-20260811T131200Z — digest slots are hex only; prose sentinels forbidden.
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+# Creation-time typed pending — only for ack refs that do not yet exist.
+PENDING_SHA = "pending"
+PENDING_ALLOWED_KEYS = frozenset({"brief_identity_ack", "m1_findings_ack"})
+
 
 def fail(code: str, detail: str) -> None:
     print(f"{code}: {detail}", file=sys.stderr)
@@ -143,8 +149,41 @@ def check_body(label: str, body: dict, root: Path) -> int:
             continue
         seen[key] = ref
         path_s = str(ref.get("path") or "")
-        exp = str(ref.get("sha256") or "").lower()
-        if path_s and exp:
+        exp_raw = str(ref.get("sha256") or "")
+        exp = exp_raw.lower()
+        if not exp_raw:
+            fail(
+                "BODY_REF_SHA256",
+                f"key={key} sha256 missing (need 64 hex or typed pending)",
+            )
+            bad = 1
+            continue
+        if exp == PENDING_SHA:
+            if key not in PENDING_ALLOWED_KEYS:
+                fail(
+                    "BODY_REF_SHA256",
+                    f"key={key} sha256=pending not allowed "
+                    f"(pending only for {sorted(PENDING_ALLOWED_KEYS)})",
+                )
+                bad = 1
+                continue
+            if not path_s:
+                fail(
+                    "BODY_REF_SHA256",
+                    f"key={key} sha256=pending requires intended future path",
+                )
+                bad = 1
+            # Creation-time: skip digest verify until Operator/first-implement fills hex.
+            continue
+        if not SHA256_HEX.match(exp):
+            fail(
+                "BODY_REF_SHA256",
+                f"key={key} sha256 must be 64 lowercase hex or typed "
+                f"pending (got {exp_raw!r})",
+            )
+            bad = 1
+            continue
+        if path_s:
             p = (root / path_s).resolve() if not Path(path_s).is_absolute() else Path(path_s)
             # Also try relative to root without resolve escape
             if not p.is_file():

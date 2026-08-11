@@ -13,7 +13,7 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `task_id` | string | §7.5 correlation |
 | `role` | string | AD-H §16 role |
 | `phase` | `M1`…`M5` \| `factory` | |
-| `refs` | list of `{ key, path, sha256 }` | digest-anchored only |
+| `refs` | list of `{ key, path, sha256 }` | digest-anchored; see sha256 rules below |
 | `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below**; M3 also **operand_count** + **sizing_basis** (`story-sizing.md`) |
 | `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
 | `files_writable` / `write_set` | list | **AR-4.4 preferred** — allowed destination writes |
@@ -80,6 +80,24 @@ analysis prose as authority.
 | M5 | `m4_verdict`, `mta_rescan_input` | `g3_baseline`, `g4_inventory` |
 | factory | `m5_accept` | — |
 
+## `refs[].sha256` rules (Deputy `E-20260811T131200Z`)
+
+| Value | Allowed keys | Meaning |
+|-------|--------------|---------|
+| 64 lowercase hex (`[0-9a-f]{64}`) | all ref keys | Digest of `path` when the file exists; inventing prose/`see-*` sentinels is **refuse** |
+| exact `pending` | **only** `brief_identity_ack`, `m1_findings_ack` | Creation-time typed deferral — ack artifact not yet written |
+
+**Creation-time `brief_identity_ack` (M2b → create-m3):** Operator ack does not
+exist yet. Bodies **MUST** use `sha256: "pending"` and `path` = the intended
+future ack path (e.g. `migration/acks/brief-identity-<story>.ack.yaml`).
+**Do not** substitute `partition.json` or any other extant file as a stand-in
+ack digest. First implement / Operator grant replaces `pending` with the real
+hex when the ack file exists.
+
+**`legacy_locus`:** always 64 hex of the primary legacy **file** for the story
+(not a directory; not prose like `see-harvest-referent`). Path the file; digest
+that file.
+
 ## Failure codes (print verbatim)
 
 | Code | Template |
@@ -88,6 +106,7 @@ analysis prose as authority.
 | `BODY_INLINE` | `BODY_INLINE: body must not carry derived content (digest refs only)` |
 | `BODY_REF_MISSING` | `BODY_REF_MISSING: phase={phase} missing ref key={key}` |
 | `BODY_REF_DIGEST` | `BODY_REF_DIGEST: key={key} path={path} expected={sha} actual={sha_or_error}` |
+| `BODY_REF_SHA256` | `BODY_REF_SHA256: key={key} sha256 must be 64 lowercase hex or typed pending …` |
 | `BODY_REF_UNKNOWN` | `BODY_REF_UNKNOWN: key={key} not in phase vocabulary` |
 | `BODY_SCOPE` | `BODY_SCOPE: M3 requires non-empty files_in_scope` |
 | `BODY_SCOPE_DEST` | `BODY_SCOPE_DEST: M3 files_in_scope needs destination paths (not legacy-only)` |

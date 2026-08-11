@@ -375,9 +375,18 @@ if python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/
 else
   echo "OK: BODY_REF_MISSING refused"
 fi
-printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"abc"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"def"}]}' \
+printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}' \
   > "${kb_tmp}/migration/bodies/bad.json"
 python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" || rc=1
+# Deputy E-20260811T131200Z — prose in sha256 slots must refuse
+printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"see-harvest-referent"}]}' \
+  > "${kb_tmp}/migration/bodies/bad.json"
+if python3 "${SKILLS}/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: non-hex sha256 prose should refuse" >&2
+  rc=1
+else
+  echo "OK: BODY_REF_SHA256 refused non-hex prose"
+fi
 rm -rf "${kb_tmp}"
 
 echo "== story-sizing operand_count (Architect E-110403Z) =="
