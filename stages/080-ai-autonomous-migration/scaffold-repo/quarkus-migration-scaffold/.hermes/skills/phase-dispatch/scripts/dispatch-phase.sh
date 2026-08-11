@@ -75,6 +75,20 @@ ensure_hermes_home_config() {
   fi
   [[ -f "${HERMES_MANAGED_DIR}/config.yaml" ]] \
     || die "missing Managed Scope config: ${HERMES_MANAGED_DIR}/config.yaml"
+  # skill_utils reads skills.external_dirs from HERMES_HOME/config.yaml (not Managed
+  # Scope alone). Without this, kanban workers fail: Unknown skill(s) for tip skills
+  # under .hermes/skills/ (v12 M1 t_bc2a6cc7). Non-secret discovery paths only.
+  if [[ ! -f "${HERMES_HOME}/config.yaml" ]] || ! grep -q 'external_dirs' "${HERMES_HOME}/config.yaml" 2>/dev/null; then
+    cat >"${HERMES_HOME}/config.yaml" <<EOF
+skills:
+  write_approval: true
+  inline_shell: false
+  external_dirs:
+    - ${ROOT}/.hermes/skills
+    - ${HOME}/.hermes/skills
+EOF
+    echo "dispatch-phase: wrote HERMES_HOME/config.yaml skills.external_dirs (skill discovery)"
+  fi
   # Architect E-20260810T141120Z — provider knobs applied to Managed Scope only.
   local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"
   if [[ -f "${ensure_py}" ]]; then
