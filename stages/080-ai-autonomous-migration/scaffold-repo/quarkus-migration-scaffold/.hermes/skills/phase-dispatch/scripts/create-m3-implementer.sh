@@ -262,7 +262,8 @@ echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
 _park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
 try:
   d=json.load(sys.stdin)
-  print((d.get("status") or "").lower())
+  t=d.get("task") if isinstance(d.get("task"), dict) else d
+  print((t.get("status") or "").lower())
 except Exception:
   print("")' || true)"
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
@@ -272,7 +273,8 @@ if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
   _park_status="$(hermes kanban show "${TASK_ID}" --json 2>/dev/null | python3 -c 'import json,sys
 try:
   d=json.load(sys.stdin)
-  print((d.get("status") or "").lower())
+  t=d.get("task") if isinstance(d.get("task"), dict) else d
+  print((t.get("status") or "").lower())
 except Exception:
   print("")' || true)"
 fi
