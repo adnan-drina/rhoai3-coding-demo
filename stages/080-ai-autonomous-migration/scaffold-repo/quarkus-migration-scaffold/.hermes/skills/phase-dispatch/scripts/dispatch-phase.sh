@@ -64,6 +64,8 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix
   || die "phase attach matrix failed"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py" "${ROOT}" \
   || die "phase body script refs failed (R0 / Deputy E-20260811T112700Z)"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-input-manifest.py" "${ROOT}" "${PHASE}" \
+  || die "phase input manifests failed (R0 / Operator E-20260811T113700Z)"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
   || die "extension overlay sync failed"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
@@ -245,11 +247,28 @@ EOF
 Phase: M2a per `.hermes/phase-dispatch.yaml`
 Requires: Operator `migration/acks/m1-findings.ack.yaml` + findings-handoff gate
 
+## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
+Any obligation unexecutable as written (unresolvable gate script, missing
+contract, absent required input) → typed **`needs_input` BLOCK**. Never silent
+substitution / path invention / specimen-body priming. Measure the harness.
+
+## Input manifest
+### Required present
+- migration/acks/m1-findings.ack.yaml
+- migration/findings-handoff.json
+- migration/entry-point-inventory.json
+- migration/mta-findings.json
+- migration/schemas/partition.md
+### Forbidden absent
+- migration/bodies/*.json
+- migration/bodies/m3-*.json
+
 ## Job
 1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
-   (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (lint/harness defect — do not treat as product FAIL).
-2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`).
+   (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
+2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) using
+   only Input-manifest sources + Spec Kit — **not** `migration/bodies/*`.
 3. Prefer Spec Kit `/speckit-specify` **before** freeform partition essays.
 4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
    Lead/Operator dispatch **M2b** next (parent = this task).
@@ -273,12 +292,25 @@ EOF
 Phase: M2b per `.hermes/phase-dispatch.yaml`
 Requires: M2a partition present; m1-findings ack
 
+## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
+Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitution.
+
+## Input manifest
+### Required present
+- migration/acks/m1-findings.ack.yaml
+- migration/findings-handoff.json
+- migration/briefs/partition.json
+- migration/schemas/partition.md
+### Forbidden absent
+- migration/bodies/m3-*.json
+
 ## Job
-1. Require `migration/briefs/partition.json` — typed BLOCK if missing (run M2a first).
-2. **R-M2.6 resume-from-artifacts:** if Spec Kit `spec.md` (+ `plan.md` when present)
+1. Require `migration/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
+2. **R-M2.6 resume-from-disk:** if Spec Kit `spec.md` (+ `plan.md` when present)
    exist → skip re-partition / re-specify; jump to `/speckit-tasks`.
 3. Else `/speckit-plan` → `/speckit-tasks` (cite `sdd-ordering.md` + `story-sizing.md`).
 4. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
+   Bodies are generated here — do not consume golden specimen packets.
 5. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when

@@ -110,6 +110,21 @@ REQUIRED_SUBSTRINGS = [
         "2 = missing script",
         "gate exit semantics typed (Deputy E-113300Z)",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-phase-input-manifest.py",
+        "phase input manifests",
+        "R0 input-manifest lint present (Operator E-113700Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "Input manifest",
+        "M2a/M2b input manifests (Operator E-113700Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "check-phase-input-manifest.py",
+        "input-manifest wired into dispatch-phase",
+    ),
 ]
 
 
