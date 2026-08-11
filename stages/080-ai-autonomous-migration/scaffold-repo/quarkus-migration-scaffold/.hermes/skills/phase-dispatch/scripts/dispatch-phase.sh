@@ -81,13 +81,27 @@ ensure_hermes_home_config() {
   if [[ ! -f "${HERMES_HOME}/config.yaml" ]] || ! grep -q 'external_dirs' "${HERMES_HOME}/config.yaml" 2>/dev/null; then
     cat >"${HERMES_HOME}/config.yaml" <<EOF
 skills:
-  write_approval: true
+  # Headless kanban: write_approval:true times out with no approver (Deputy
+  # E-20260811T111800Z). Protect acks/golden via AR-1.1 + FS, not a global gate.
+  write_approval: false
   inline_shell: false
   external_dirs:
     - ${ROOT}/.hermes/skills
     - ${HOME}/.hermes/skills
 EOF
     echo "dispatch-phase: wrote HERMES_HOME/config.yaml skills.external_dirs (skill discovery)"
+  fi
+  # Rescope live home config if a prior create left write_approval:true
+  if grep -q 'write_approval:[[:space:]]*true' "${HERMES_HOME}/config.yaml" 2>/dev/null; then
+    python3 - "${HERMES_HOME}/config.yaml" <<'PY' || echo "dispatch-phase: WARN write_approval rescope failed" >&2
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+new = re.sub(r"(write_approval:\s*)true", r"\1false", text, count=1)
+if new != text:
+    p.write_text(new, encoding="utf-8")
+    print("dispatch-phase: rescoped skills.write_approval true→false (headless)")
+PY
   fi
   # Architect E-20260810T141120Z — provider knobs applied to Managed Scope only.
   local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"

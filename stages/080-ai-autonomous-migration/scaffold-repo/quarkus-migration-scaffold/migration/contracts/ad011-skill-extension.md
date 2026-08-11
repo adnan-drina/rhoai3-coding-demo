@@ -16,7 +16,7 @@ Users steer behavior via skills + contracts — **not** SOUL.
 | **R-AD011.2** | Tip additive overlay: author under `extensions/<skill>/references/*`. Create/init **must** sync into `.hermes/skills/<skill>/references/` (R-M3.32) so in-skill `skill_view references/<file>` resolves — Hermes has no merge/`extends`. |
 | **R-AD011.3** | Keep AD-002G attach matrix. Harness refuse/preflight stays in `migration/contracts` + scripts. **OBJECT** 1:1 new `SKILL.md` per workflow component. |
 | **R-AD011.4** | Workshop starter lives under `workshop-extensions/` (see README). |
-| **R-AD011.5** | Migration workers: prefer `skills.write_approval: true` **or** deny `skill_manage`; keep golden `.hermes/skills/**` RO to workers when the FS allows. |
+| **R-AD011.5** | Migration workers: prefer deny `skill_manage` + FS RO on golden `.hermes/skills/**` when the FS allows. **Headless Kanban:** `skills.write_approval: true` is **forbidden** (no approver → timeout-deny; Deputy `E-20260811T111800Z`) — use `write_approval: false` and protect acks via AR-1.1. |
 | **R-AD011.6** | Bundles DEFER (P2.4). |
 | **R-AD011.7** | P1.3 HOLD stands except Architect-named influence lifts. |
 

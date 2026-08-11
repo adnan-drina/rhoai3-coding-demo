@@ -691,10 +691,13 @@ ESCV
         "memory": {
             "memory_enabled": False,
         },
-        # AD-H §1 / §7.3 — gated skill writes (post-run batch approve);
-        # no inline shell; scaffold + global (spec-kit) via external_dirs.
+        # AD-H §1 / §7.3 — no inline shell; scaffold + global (spec-kit)
+        # via external_dirs. write_approval:false for headless Kanban
+        # workers (no approver channel — Deputy E-20260811T111800Z /
+        # v12 M1 timeout-denies). Protect acks/golden via AR-1.1 + FS
+        # RO, not a global write gate.
         "skills": {
-            "write_approval": True,
+            "write_approval": False,
             "inline_shell": False,
             "external_dirs": [skills_dir, global_skills],
         },
