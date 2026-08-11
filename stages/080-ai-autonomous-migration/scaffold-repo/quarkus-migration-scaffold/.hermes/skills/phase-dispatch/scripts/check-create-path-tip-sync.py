@@ -145,6 +145,21 @@ REQUIRED_SUBSTRINGS = [
         "Spec Kit invoke-or-BLOCK",
         "M2a Spec Kit invoke-or-needs_input (Architect E-115316Z)",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-completion-na-reject.py",
+        "COMPLETION_NA",
+        "completion consumer N/A reject (Operator E-120200Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "step 0",
+        "M2a step0 specify-workspace-init (Operator E-120200Z)",
+    ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "specify-workspace-init",
+        "M2a attaches specify-workspace-init",
+    ),
 ]
 
 

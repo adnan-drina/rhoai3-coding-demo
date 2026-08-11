@@ -56,6 +56,7 @@ phases:
       - role-authority
       - mta-analysis
       - speckit-specify
+      - specify-workspace-init
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings

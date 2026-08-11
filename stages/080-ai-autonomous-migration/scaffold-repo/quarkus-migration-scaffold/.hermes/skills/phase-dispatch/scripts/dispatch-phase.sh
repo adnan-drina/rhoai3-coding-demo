@@ -264,6 +264,12 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - migration/bodies/m3-*.json
 
 ## Job
+0. **Spec Kit workspace init (step 0 — Operator E-20260811T120200Z):**
+   If `.specify/` is missing under `/projects/modernized`, run
+   `bash "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/specify-workspace-init}/scripts/init-workspace.sh" /projects/modernized`
+   (attached skill `specify-workspace-init`). If already provisioned, prove with
+   `ls -la .specify/` (command output). Unavailability claims **must** include
+   command evidence (`which specify`, `ls` of skill path) — falsified claims are ADHERE_FAIL.
 1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
    (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
@@ -289,6 +295,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - workspace: dir:/projects/modernized
 - AD-009 hard budget / crash requeue / protocol_untyped as for prior M2 law
 - Soft-K @2700 not used on M2a (max_runtime=3600); no MiniMax
+- **Completion consumer (Operator E-20260811T120200Z):** never self-declare a binding
+  Done criterion **N/A**. Before `kanban_complete`, run
+  `python3 .hermes/skills/phase-dispatch/scripts/check-completion-na-reject.py --text "$YOUR_RESULT_SUMMARY"`.
+  Exit 1 ⇒ typed `needs_input` (do not complete). Workers satisfy or BLOCK — never amend.
 EOF
     TITLE="M2a PLAN: story partition + briefs"
     ;;
