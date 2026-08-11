@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Create-path interface-closure gate (Architect E-20260811T181749Z Class A).
 
-BANK-CREATE-PATH-IFACE-1 elevated: every interface an in-scope / writable impl
-implements must be (a) in files_in_scope / files_writable, (b) already present
+BANK-CREATE-PATH-IFACE-1 elevated: every interface an in-scope / writable class
+*implements* must be (a) in files_in_scope / files_writable, (b) already present
 on destination, or (c) declared in dependencies[].
 
 Fail-closed before create-m3 / dispatch so workers are not cornered into
@@ -19,7 +19,15 @@ import re
 import sys
 from pathlib import Path
 
-IMPL_RE = re.compile(r"implements\s+([^{]+)")
+CLASS_IMPL_RE = re.compile(
+    r"(?m)^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+)*"
+    r"class\s+[A-Za-z_][A-Za-z0-9_]*"
+    r"(?:\s*<[^;{]+>)?"
+    r"(?:\s+extends\s+[^{]+?)?"
+    r"\s+implements\s+([^{]+?)\{"
+)
+IMPORT_RE = re.compile(r"(?m)^\s*import\s+([a-zA-Z0-9_.]+)\s*;")
+PKG_RE = re.compile(r"(?m)^\s*package\s+([a-zA-Z0-9_.]+)\s*;")
 TYPE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -72,9 +80,9 @@ def read_text(path: Path) -> str:
 def resolve_source(root: Path, rel: str) -> Path | None:
     candidates = [
         root / rel,
-        root / "projects" / "legacy" / rel,
         Path("/projects/legacy") / rel,
         Path("/projects/.derived/legacy-at-3") / rel,
+        root.parent / "legacy" / rel,
     ]
     for c in candidates:
         if c.is_file():
@@ -82,32 +90,72 @@ def resolve_source(root: Path, rel: str) -> Path | None:
     return None
 
 
+def fqcn_to_rel(fqcn: str) -> str:
+    return "src/main/java/" + fqcn.replace(".", "/") + ".java"
+
+
+def resolve_simple_type(root: Path, simple: str, text: str, class_rel: str) -> str | None:
+    """Map simple interface name → workspace-relative .java path."""
+    imports = {m.group(1).split(".")[-1]: m.group(1) for m in IMPORT_RE.finditer(text)}
+    if simple in imports:
+        return fqcn_to_rel(imports[simple])
+    pkg_m = PKG_RE.search(text)
+    if pkg_m:
+        same = fqcn_to_rel(f"{pkg_m.group(1)}.{simple}")
+        # Prefer if exists anywhere we can see
+        for base in (root, Path("/projects/legacy"), Path("/projects/.derived/legacy-at-3")):
+            if (base / same).is_file():
+                return same
+        # same-package path even if not yet on dest (legacy-only) — still the
+        # canonical dest-relative path the body should name
+        if class_rel.endswith(".java"):
+            sibling = str(Path(class_rel).with_name(simple + ".java")).replace("\\", "/")
+            return sibling
+    # Parent-package fallback (JpaXxxRepositoryImpl → repository/XxxRepository)
+    parent = str(Path(class_rel).parent.parent / f"{simple}.java").replace("\\", "/")
+    for base in (root, Path("/projects/legacy"), Path("/projects/.derived/legacy-at-3")):
+        if (base / parent).is_file():
+            return parent
+    return None
+
+
 def interfaces_for(root: Path, rel: str) -> set[str]:
-    """Return workspace-relative interface .java paths required by rel."""
     needed: set[str] = set()
-    p = Path(rel)
-    if not rel.endswith(".java"):
-        return needed
-    # Heuristic: FooImpl.java → same-dir Foo.java
-    if p.name.endswith("Impl.java"):
-        iface = p.with_name(p.name[: -len("Impl.java")] + ".java")
-        needed.add(str(iface).replace("\\", "/"))
     src = resolve_source(root, rel)
     if src is None:
         return needed
     text = read_text(src)
-    # class FooImpl implements A, B {
-    for m in IMPL_RE.finditer(text):
-        clause = m.group(1)
-        # drop extends leftovers / generics crud roughly
-        clause = clause.split("{", 1)[0]
-        for tok in TYPE_RE.findall(clause):
-            if tok in ("implements", "extends"):
-                continue
-            # same-package simple name → sibling .java
-            sibling = str(p.with_name(tok + ".java")).replace("\\", "/")
-            needed.add(sibling)
+    m = CLASS_IMPL_RE.search(text)
+    if not m:
+        return needed
+    clause = m.group(1)
+    # Drop annotations / generics noise roughly: take comma-separated type heads
+    for raw in clause.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        # Strip generics: OwnerRepository<...> → OwnerRepository
+        head = raw.split("<", 1)[0].strip()
+        # Skip fully-qualified java./jakarta. platform types
+        if head.startswith("java.") or head.startswith("jakarta."):
+            continue
+        simple = head.split(".")[-1]
+        if not TYPE_RE.fullmatch(simple):
+            continue
+        if simple in ("Serializable", "Cloneable", "AutoCloseable"):
+            continue
+        resolved = resolve_simple_type(root, simple, text, rel)
+        if resolved:
+            needed.add(resolved)
     return needed
+
+
+def covered(iface: str, scope: set[str], deps: set[str], root: Path) -> bool:
+    if iface in scope or iface in deps:
+        return True
+    if (root / iface).is_file():
+        return True  # pre-exists on destination
+    return False
 
 
 def main() -> int:
@@ -132,31 +180,19 @@ def main() -> int:
     for rel in sorted(scope):
         if not rel.endswith(".java"):
             continue
-        if not (
-            rel.endswith("Impl.java")
-            or "/service/" in rel
-            or "/repository/" in rel
-        ):
-            # Still parse implements for any scoped java that looks like a class
-            pass
         ifaces = interfaces_for(root, rel)
         if not ifaces:
             continue
         checked += 1
         for iface in sorted(ifaces):
-            if iface in scope:
+            if covered(iface, scope, deps, root):
                 continue
-            if iface in deps:
-                continue
-            if (root / iface).is_file():
-                continue  # pre-exists on destination
-            # legacy-only pre-exist does NOT count — dest must have it or scope it
             holes.append(f"{rel} → missing interface {iface}")
 
     if holes:
         print(
             "FAIL: INTERFACE_CLOSURE (Architect E-20260811T181749Z Class A) — "
-            "in-scope impl(s) require interface(s) not in scope/deps/dest:",
+            "in-scope class(es) implement interface(s) not in scope/deps/dest:",
             file=sys.stderr,
         )
         for h in holes:
@@ -170,7 +206,7 @@ def main() -> int:
         return 1
     print(
         f"OK: interface-closure "
-        f"(scoped_java_checked≈{checked} scope={len(scope)} deps={len(deps)})"
+        f"(classes_with_implements={checked} scope={len(scope)} deps={len(deps)})"
     )
     return 0
 
