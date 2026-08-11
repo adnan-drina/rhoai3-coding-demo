@@ -14,6 +14,8 @@ from pathlib import Path
 REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M1": frozenset({"derive-legacy-boot3", "mta-analysis", "sdd-readiness"}),
     "M2": frozenset({"sdd-readiness", "role-authority"}),
+    "M2a": frozenset({"sdd-readiness", "role-authority"}),
+    "M2b": frozenset({"sdd-readiness", "role-authority"}),
     "M3": frozenset({"sdd-readiness", "spring-to-quarkus-patterns"}),
     "M4": frozenset({"sdd-readiness", "domain-gates"}),
     "M5": frozenset({"sdd-readiness", "domain-gates"}),
@@ -27,10 +29,11 @@ def parse_phase_skills(text: str) -> dict[str, list[str]]:
     cur: str | None = None
     in_skills = False
     for ln in text.splitlines():
-        m = re.match(r"^  (M[1-5]):\s*$", ln)
+        m = re.match(r"^  (M[1-5][ab]?|factory):\s*$", ln)
         if m:
             cur = m.group(1)
-            phases.setdefault(cur, [])
+            if cur != "factory":
+                phases.setdefault(cur, [])
             in_skills = False
             continue
         if cur and re.match(r"^  [A-Za-z0-9_]+:\s*$", ln):

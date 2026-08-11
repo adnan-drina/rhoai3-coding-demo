@@ -45,6 +45,10 @@ done
 [[ -f "${BODY_JSON}" ]] || die "body json not found: ${BODY_JSON}"
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
 
+# Pre-v12 R0/R3 — tip sync proof before M3 create
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
+  || die "create-path tip sync failed (R0/R3)"
+
 # R-M3.32: materialize AD-011 overlays into Hermes skill tree before create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
   || die "sync-extension-overlays-into-skills failed"
@@ -152,6 +156,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "**Checkpoint lag (Deputy E-121112Z):** after \`src/test/**\` writes — and on every wall — run \`sync-checkpoint-from-test-writes.py\` so stamp/#1b gate is harness-driven, not voluntary."
   echo "**AD-002E/F/G:** preloaded skills are \`sdd-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
   echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config). For security cards also open the R-M3.29 extension. For S-010/test work open \`references/testing.md\` §Failure/Import/Mock procedures + golden fixture \`migration/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java\`."
+  echo "**Pre-v12 R5 hard-invoke traps (Architect E-20260811T102405Z):** when story touches REST/DTO/MapStruct — \`skill_view\` \`references/di-config.md\` and set MapStruct \`componentModel = \"cdi\"\` (no default/spring). When story touches \`@IfBuildProfile\` / profile-gated beans — forbid that API; use \`%profile\` config / build-time alternatives per di-config. When story touches QuarkusTest / continuous testing props — \`skill_view\` \`references/testing.md\` continuous-testing enum (boolean props FAIL). Cite the ref path in Reasoning before first related dest write."
   echo "**Pre-flight ceiling (AD-002 §1 / AD-009 §3.5):** before large API turns, refuse emit when \`prompt_tokens + max_tokens > max-model-len\` via \`check-preflight-ceiling.py\` (stamp \`context_budget\` on refuse). Do **not** discover the ceiling via \`VLLMValidationError\`."
   echo "**F3–F6 predictions (when body carries them):** score \`injectmock_reasoning_blocks\` / \`import_hunt\` / reasoning-share gates at terminal — Architect ACCEPT \`E-20260810T131445Z\`; missing scores ⇒ cannot claim skill-guide DEMONSTRATED."
   echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py /projects/modernized\`"

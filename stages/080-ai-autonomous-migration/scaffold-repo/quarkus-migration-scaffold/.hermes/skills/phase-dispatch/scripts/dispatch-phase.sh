@@ -37,9 +37,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${PHASE}" ]] || {
-  echo "usage: dispatch-phase.sh M1|M2|M3|M4|M5|factory [--parent ID] [--dry-run]" >&2
+  echo "usage: dispatch-phase.sh M1|M2a|M2b|M3|M4|M5|factory [--parent ID] [--dry-run]" >&2
+  echo "  (bare M2 refused — use M2a then M2b; R-AB.2 / pre-v12 R1)" >&2
   exit 2
 }
+if [[ "${PHASE}" == "M2" ]]; then
+  echo "dispatch-phase: REFUSE bare M2 — dispatch M2a (partition) then M2b (SDD+create-m3); R-AB.2" >&2
+  exit 2
+fi
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 DISPATCH_YAML="${ROOT}/.hermes/phase-dispatch.yaml"
@@ -51,6 +56,14 @@ die() { echo "dispatch-phase: $*" >&2; exit 1; }
 
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
 command -v python3 >/dev/null 2>&1 || die "python3 required"
+
+# Pre-v12 R0/R3 — tip sync must be green before any phase create
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
+  || die "create-path tip sync failed (R0/R3)"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
+  || die "extension overlay sync failed"
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
+  || die "extension overlay --check failed (R-M3.32)"
 
 # R-HX.5 (Architect E-20260811T070102Z): do NOT copy Managed Scope config/.env
 # into writable HERMES_HOME. Provider/auth stay platform-owned under
@@ -190,78 +203,61 @@ orchestration: hermes_native (required)
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
     ;;
-  M2)
+  M2a)
     cat >"${BODY_FILE}" <<'EOF'
-# M2 PLAN - Hermes-native (planner / spec-author) — original scope
+# M2a PLAN — partition + briefs only (R-AB.2 / pre-v12 R1)
 
-Phase: M2 per `.hermes/phase-dispatch.yaml`
-Requires: Operator `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) + findings-handoff gate
+Phase: M2a per `.hermes/phase-dispatch.yaml`
+Requires: Operator `migration/acks/m1-findings.ack.yaml` + findings-handoff gate
 
-## READ (planner context)
-- `migration/findings-handoff.json` (required; schema rhoai3.findings-handoff/v1)
-- `migration/acks/m1-findings.ack.yaml` (or `.ack.json`) — authoritative; refuse bare `m1-findings.json`
-- `migration/entry-point-inventory.json` (controller names/counts; optional digest check via handoff)
-
-## DO NOT
-- Do **not** load `migration/mta-findings.json` or `mta-analyze-out/` into chat (evidence store — selective locus reads only after digest check)
-- Never `/speckit-implement`
-- Do **not** grant `migration/acks/brief-identity.json` or any worker `acknowledged_by` (AR-1.1) — Operator writes `brief-identity.ack.yaml`
-- Do **not** re-list the full story partition in Reasoning after `migration/briefs/partition.json` exists — edit the file (R-M2.2 anti-narration)
-
-## Job (in order)
-1. Run `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized` — typed BLOCK if FAIL.
-2. **R-M2.6 resume-from-artifacts** (Architect E-20260810T153830Z): if
-   `migration/briefs/partition.json` **and** Spec Kit `spec.md` exist
-   (and `plan.md` when present) → **skip** re-partition / re-`/speckit-specify`
-   / re-`/speckit-plan`; jump to `/speckit-tasks` → step 4. Do not rewrite
-   write-once `partition.json`.
-3. Else **Hard-invoke** `/speckit-specify` **before** freeform partition essays
-   (then `/speckit-plan` → `/speckit-tasks`). Cite `migration/contracts/sdd-ordering.md`
-   + `story-sizing.md`.
-4. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1` — see
-   `migration/schemas/partition.md`) with story IDs + layering from
-   handoff/inventory. Prefer Spec Kit `spec.md` as the next durable artifact.
-5. Create implementer Kanban cards from tasks.md using
-   **`bash .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh`**
-   (NOT bare `hermes kanban create` — that omits M3 skills; Review grounding
-   study 20260809). Each child needs a typed body JSON under
-   `migration/bodies/` that passes `check-kanban-body.py`.
-6. Stop when briefs/tasks/bodies are stable — **Operator** grants
-   `migration/acks/brief-identity.ack.yaml` (not a worker Done criterion).
+## Job
+1. `check-findings-handoff.py` — typed BLOCK if FAIL.
+2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`).
+3. Prefer Spec Kit `/speckit-specify` **before** freeform partition essays.
+4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
+   Lead/Operator dispatch **M2b** next (parent = this task).
 
 ## Done when
-- `migration/briefs/partition.json` present (write-once seed)
-- Spec Kit artifacts exist under Spec Kit paths / `migration/specs` as produced by slash-invoke
-- M3 children created via `create-m3-implementer.sh` with max-runtime
-- brief-identity stage-advance ack is **out of band** (Operator)
+- `migration/briefs/partition.json` present (write-once)
+- Spec Kit `spec.md` seeded when produced by slash-invoke
+- **No** M3 children created on this card
 
 ## Constraints
 - workspace: dir:/projects/modernized
-- Stop at tasks → create-m3-implementer.
-- **M3 skill preload (P1-B fix):** every M3 child **must** be created via
-  `create-m3-implementer.sh` so skills from `phase-dispatch.yaml` M3 are
-  attached (`grounded-generation`, `spring-to-quarkus-patterns`, …).
-- **AD-009:** every M3 child **must** set `--max-runtime` to M3
-  `max_runtime_seconds` from `.hermes/phase-dispatch.yaml` (currently 2700).
-  Creating children without max-runtime is forbidden (phantom unbounded sessions).
-- **AD-009 circuit-breaker (M2 K=1):** on consecutive provider-stale / Broken
-  pipe reclaim, run
-  `python3 .hermes/home/scripts/apply-environmental-circuit-breaker.py --task-id $TASK --phase M2 --provider-stale-events N`
-  then typed `kanban_block` — do **not** MiniMax. Unstamped crash loops are an
-  IMPLEMENT gap.
-- **Crash requeue ceiling (Architect E-20260810T142650Z):** on `crashed`, run
-  `python3 .hermes/skills/validation-release-gates/scripts/apply-crash-requeue-policy.py . --task-id $TASK --k-crash 1 --cause harness_fault --stamp`
-  (does **not** spend wall soft-K). Hard ceiling → typed block; never primary
-  budget/`timed_out`.
-- **AD-009 §3.1:** rc=0 without kanban terminal →
-  `apply-protocol-untyped-terminal.py --task-id $TASK --block` (typed
-  `protocol_untyped`; dual-annotate if environmental).
-- **AD-009 hard budget:** `enforce-max-runtime-hard.py --apply` — elapsed >
-  `max_runtime_seconds` is a control, not an advisory %.
-- **Produce-not-verify:** do not `kanban_complete` by only verifying pre-seeded
-  specs/plans/tasks from a prior card.
+- AD-009 hard budget / crash requeue / protocol_untyped as for prior M2 law
+- Soft-K @2700 not used on M2a (max_runtime=3600); no MiniMax
 EOF
-    TITLE="M2 PLAN: story partition + SDD"
+    TITLE="M2a PLAN: story partition + briefs"
+    ;;
+  M2b)
+    cat >"${BODY_FILE}" <<'EOF'
+# M2b PLAN — SDD emit + create-m3 children (R-AB.2 / pre-v12 R1)
+
+Phase: M2b per `.hermes/phase-dispatch.yaml`
+Requires: M2a partition present; m1-findings ack
+
+## Job
+1. Require `migration/briefs/partition.json` — typed BLOCK if missing (run M2a first).
+2. **R-M2.6 resume-from-artifacts:** if Spec Kit `spec.md` (+ `plan.md` when present)
+   exist → skip re-partition / re-specify; jump to `/speckit-tasks`.
+3. Else `/speckit-plan` → `/speckit-tasks` (cite `sdd-ordering.md` + `story-sizing.md`).
+4. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
+5. Stop for Operator `brief-identity.ack.yaml`.
+
+## Done when
+- Spec Kit tasks artifacts present
+- M3 children created via `create-m3-implementer.sh` with max-runtime
+- brief-identity ack out of band (Operator)
+
+## Constraints
+- workspace: dir:/projects/modernized
+- Do not rewrite write-once `partition.json`
+- AD-009 / crash requeue / protocol_untyped as prior M2 law; no MiniMax
+EOF
+    TITLE="M2b PLAN: SDD + create-m3 children"
+    ;;
+  M2)
+    die "bare M2 refused — use M2a then M2b (R-AB.2)"
     ;;
   M3)
     cat >"${BODY_FILE}" <<'EOF'
@@ -306,6 +302,12 @@ EOF
 
 Phase: M4 — verdict token PROVISIONAL_ACCEPT (accept_kind=provisional).
 Run required_checks from phase-dispatch.yaml. Write verdict JSON under migration/verdicts/.
+
+## Pre-v12 R2 — M4 floor (required)
+1. `bash .hermes/skills/validation-release-gates/scripts/run-m4-floor.sh /projects/modernized`
+2. `python3 .hermes/skills/validation-release-gates/scripts/check-m4-floor-receipts.py migration/receipts/m4-floor/latest`
+3. Bank receipts; do **not** claim PROVISIONAL_ACCEPT without boot_health + endpoint_smoke PASS (g4_hook may be INCONCLUSIVE / SAMPLE).
+Contract: `migration/contracts/m4-floor-runner.md`. `ad010_demo=false` until Architect promotes.
 EOF
     TITLE="M4 VERIFY: provisional accept"
     ;;

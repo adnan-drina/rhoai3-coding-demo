@@ -27,8 +27,8 @@ phases:
     max_runtime_seconds: 3600
     requires_acks: []
   M2:
-    # PLAN — story partition / briefs (planner) and SDD emit (spec-author)
-    # Dispatch picks one role per task; both listed for the phase seed.
+    # DEPRECATED monolithic PLAN — use M2a then M2b (R-AB.2 / pre-v12 R1).
+    # Kept for matrix/docs; dispatch-phase refuses bare M2.
     role: planner
     alternate_roles:
       - spec-author
@@ -42,8 +42,25 @@ phases:
       spec-author:
         - sdd-readiness
         - role-authority
-        # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
-    # R-M2.5 (Architect E-20260810T153830Z): match M1 — 2400 under-fit mid-setup-tasks
+    max_runtime_seconds: 3600
+    requires_acks:
+      - m1-findings
+  M2a:
+    # R-AB.2 / pre-v12 R1 — PLAN partition + briefs only (turn-volume cut)
+    role: planner
+    skills:
+      - sdd-readiness
+      - role-authority
+    max_runtime_seconds: 3600
+    requires_acks:
+      - m1-findings
+  M2b:
+    # R-AB.2 / pre-v12 R1 — SDD emit + create-m3 children (after M2a partition)
+    role: spec-author
+    skills:
+      - sdd-readiness
+      - role-authority
+      # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings

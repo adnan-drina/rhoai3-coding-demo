@@ -73,6 +73,12 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-hibernate-orm</artifactId>
     </dependency>
+    <!-- Pre-v12 R4 (Architect E-20260811T102405Z): JDBC driver required whenever
+         hibernate-orm is on the classpath or `mvn package` / M4 boot_health FAIL. -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-jdbc-h2</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-hibernate-validator</artifactId>
