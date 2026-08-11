@@ -32,6 +32,10 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd-readiness/scripts/stamp-destination-inventory.py",
     ".hermes/skills/sdd-readiness/scripts/check-partition-coverage.py",
+    # Architect E-20260811T170706Z Class A — quarantine survives dispatch
+    ".hermes/skills/sdd-readiness/scripts/assert-quarantine-tombstones.py",
+    ".hermes/skills/sdd-readiness/scripts/register-quarantine-tombstone.py",
+    "migration/contracts/quarantine-survives-dispatch.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -254,6 +258,21 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd-readiness/scripts/check-partition-coverage.py",
         "PARTITION_COVERAGE",
         "partition-coverage gate script (Architect E-133858Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "assert-quarantine-tombstones.py",
+        "Class A quarantine tombstones at create (Architect E-170706Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "assert-quarantine-tombstones.py",
+        "Class A quarantine tombstones at dispatch-phase (Architect E-170706Z)",
+    ),
+    (
+        "migration/contracts/quarantine-survives-dispatch.md",
+        "rhoai3.quarantine-tombstones/v1",
+        "quarantine-survives-dispatch contract",
     ),
     (
         "migration/contracts/partition-coverage.md",

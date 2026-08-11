@@ -79,6 +79,10 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-partition-coverage.p
   --write-receipt migration/receipts/partition-coverage/latest.json \
   || die "PARTITION_COVERAGE not VALID — remediate partition/bodies before create"
 
+# Architect E-20260811T170706Z Class A — quarantine tombstones must survive create/dispatch
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
+  || die "quarantine tombstones resurrected — wipe + purge restorer before create (migration/contracts/quarantine-survives-dispatch.md)"
+
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
 # migration/bodies/ (incomplete siblings must not block a single create).
 # Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"

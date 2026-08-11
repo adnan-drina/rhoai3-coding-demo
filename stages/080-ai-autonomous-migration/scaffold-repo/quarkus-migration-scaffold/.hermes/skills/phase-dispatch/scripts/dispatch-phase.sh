@@ -60,6 +60,9 @@ command -v python3 >/dev/null 2>&1 || die "python3 required"
 # Pre-v12 R0/R3 — tip sync must be green before any phase create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
   || die "create-path tip sync failed (R0/R3)"
+# Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
+  || die "quarantine tombstones resurrected — wipe + purge restorer (migration/contracts/quarantine-survives-dispatch.md)"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py" "${ROOT}" \
