@@ -50,13 +50,14 @@ phases:
     # mta-analysis attached so check-findings-handoff.py resolves via skill_view
     # (Deputy E-20260811T112700Z — R1 split had omitted it).
     # speckit-specify: Architect E-20260811T115316Z invoke-or-needs_input BIND
+    # provision-owns-tools (Architect E-20260811T121308Z): Spec Kit init is
+    # workspace provision / postStart — not an agent skill on M2a.
     role: planner
     skills:
       - sdd-readiness
       - role-authority
       - mta-analysis
       - speckit-specify
-      - specify-workspace-init
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings

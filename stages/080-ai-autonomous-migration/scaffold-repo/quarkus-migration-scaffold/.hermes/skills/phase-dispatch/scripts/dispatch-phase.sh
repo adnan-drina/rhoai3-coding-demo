@@ -66,6 +66,11 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-body-script-r
   || die "phase body script refs failed (R0 / Deputy E-20260811T112700Z)"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-input-manifest.py" "${ROOT}" "${PHASE}" \
   || die "phase input manifests failed (R0 / Operator E-20260811T113700Z)"
+# Architect E-20260811T121308Z — provision-owns-tools: Spec Kit preseed before M2a
+if [[ "${PHASE}" == "M2a" ]]; then
+  python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-specify-preseed.py" "${ROOT}" \
+    || die "Spec Kit preseed failed (R0 / provision-owns-tools) — run postStart init-workspace.sh; do not agent-init"
+fi
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" \
   || die "extension overlay sync failed"
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
@@ -264,12 +269,12 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - migration/bodies/m3-*.json
 
 ## Job
-0. **Spec Kit workspace init (step 0 — Operator E-20260811T120200Z):**
-   If `.specify/` is missing under `/projects/modernized`, run
-   `bash "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/specify-workspace-init}/scripts/init-workspace.sh" /projects/modernized`
-   (attached skill `specify-workspace-init`). If already provisioned, prove with
-   `ls -la .specify/` (command output). Unavailability claims **must** include
-   command evidence (`which specify`, `ls` of skill path) — falsified claims are ADHERE_FAIL.
+0. **Spec Kit preseed verify-or-BLOCK** (Architect E-20260811T121308Z provision-owns-tools):
+   Workspace provision (devfile postStart) owns `specify init` + Non-Goals override.
+   **Agent has no init authority.** Prove with command evidence:
+   `test -d .specify && test -f .specify/.rhoai3-ads-provisioned && ls -la .specify/templates/overrides/`
+   If missing/invalid → typed **`needs_input` BLOCK** and STOP.
+   **Forbidden:** inventing `.specify/`, manual `specify init`, copying overrides by hand.
 1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
    (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
@@ -278,7 +283,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
      (discoverable under `/home/user/.hermes/skills/speckit-specify` when on `external_dirs`).
    - If Spec Kit cannot run as defined → typed **`needs_input` BLOCK** and STOP.
      **Do not** freeform-write `partition.json` as a silent substitute.
-   - Evidence: Spec Kit seed (e.g. `.specify/` or `specs/**/spec.md`) **or** a typed
+   - Evidence: Spec Kit seed (e.g. `specs/**/spec.md`) **or** a typed
      `needs_input` block comment — required before Done.
 3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
    Spec Kit seed (or Operator disposition of a typed BLOCK) — Input-manifest sources

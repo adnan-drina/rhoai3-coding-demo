@@ -176,11 +176,15 @@ commands:
           echo "installed but not configured — governed MaaS credentials come"
           echo "from the platform init script."
         fi
-        # AD-S: Spec Kit via specify-workspace-init skill (Hermes taxonomy).
+        # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
+        # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
         SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/specify-workspace-init/scripts/init-workspace.sh"
         if [ -f "${SPECIFY_INIT}" ]; then
           bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
-            || echo "WARN: specify-workspace-init failed (AD-S) — re-run: bash ${SPECIFY_INIT} ${PROJECT_DIR}"
+            || { echo "ERROR: specify-workspace-init failed (AD-S provision-owns-tools)"; exit 1; }
+        else
+          echo "ERROR: missing ${SPECIFY_INIT} — cannot provision Spec Kit"
+          exit 1
         fi
   - id: start-hermes-dashboard
     exec:

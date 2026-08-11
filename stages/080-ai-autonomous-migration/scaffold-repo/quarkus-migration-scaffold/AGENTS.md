@@ -135,8 +135,10 @@ bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
 # Domain script (runs inside the M1 worker after skill load — not the control plane):
 #   bash .hermes/skills/mta-analysis/scripts/mta-analyze-legacy.sh
 
-# Spec Kit provision (AD-S) — postStart / once
+# Spec Kit provision (AD-S / provision-owns-tools) — postStart owns init
+# Agents on M2a verify-or-needs_input only — never specify init / invent .specify/
 bash .hermes/skills/specify-workspace-init/scripts/init-workspace.sh /projects/modernized
+python3 .hermes/skills/phase-dispatch/scripts/check-specify-preseed.py /projects/modernized
 ```
 
 When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.

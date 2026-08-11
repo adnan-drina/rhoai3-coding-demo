@@ -24,6 +24,8 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
     ".hermes/provision/spec-kit/overrides/spec-template.md",
+    # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
+    ".hermes/skills/phase-dispatch/scripts/check-specify-preseed.py",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -154,18 +156,28 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
-        "step 0",
-        "M2a step0 specify-workspace-init (Operator E-120200Z)",
+        "verify-or-BLOCK",
+        "M2a step0 verify-or-BLOCK (Architect E-121308Z provision-owns-tools)",
     ),
     (
-        ".hermes/phase-dispatch.yaml",
-        "specify-workspace-init",
-        "M2a attaches specify-workspace-init",
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "check-specify-preseed.py",
+        "M2a dispatch wires Spec Kit preseed R0",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "no init authority",
+        "M2a forbids agent specify init",
     ),
     (
         ".hermes/skills/specify-workspace-init/scripts/init-workspace.sh",
         'ASSET_OVERRIDE="${ROOT}/.hermes/provision/spec-kit/overrides/spec-template.md"',
         "init-workspace resolves Non-Goals via ROOT (not SCRIPT_DIR walk)",
+    ),
+    (
+        "devfile.yaml",
+        "provision-owns-tools",
+        "devfile postStart owns Spec Kit init",
     ),
 ]
 

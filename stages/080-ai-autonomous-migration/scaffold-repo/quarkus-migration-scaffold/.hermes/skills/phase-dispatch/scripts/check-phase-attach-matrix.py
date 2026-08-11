@@ -14,7 +14,8 @@ from pathlib import Path
 REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M1": frozenset({"derive-legacy-boot3", "mta-analysis", "sdd-readiness"}),
     "M2": frozenset({"sdd-readiness", "role-authority"}),
-    "M2a": frozenset({"sdd-readiness", "role-authority", "mta-analysis", "speckit-specify", "specify-workspace-init"}),
+    # provision-owns-tools: no specify-workspace-init on M2a (Architect E-121308Z)
+    "M2a": frozenset({"sdd-readiness", "role-authority", "mta-analysis", "speckit-specify"}),
     "M2b": frozenset({"sdd-readiness", "role-authority", "mta-analysis"}),
     "M3": frozenset({"sdd-readiness", "spring-to-quarkus-patterns"}),
     "M4": frozenset({"sdd-readiness", "domain-gates"}),
