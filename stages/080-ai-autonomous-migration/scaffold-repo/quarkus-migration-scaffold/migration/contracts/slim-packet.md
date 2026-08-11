@@ -23,6 +23,16 @@ creates with `--initial-status blocked` and does **not** call
 `kanban dispatch`. Unpark remains gate-driven (M2b adherence PASS +
 brief-identity ack + serial order). Todo-born + auto-dispatch is a serial breach.
 
+**created_cards attribution (Operator `E-20260811T133000Z` #5):** create-m3
+requires `--parent <M2b task>` and stamps `--created-by <parent>`. Parent
+completion must pass those child ids in `created_cards` (see
+`check-created-cards-claim.py`). `created_cards=[]` to skip the claim check
+is **REJECT** when `migration/derived/created-cards-<parent>.json` is nonempty.
+
+**Block signals worker (Operator `E-20260811T133000Z` #2):** use
+`.hermes/home/scripts/block-and-signal-worker.sh` — board block alone does not
+kill in-flight workers.
+
 ## Headroom note
 
 Slim M3 preload is the workhorse + body lint only. Workers consult additional

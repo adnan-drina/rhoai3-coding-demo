@@ -6,7 +6,9 @@
 #   bash .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh \
 #     --title "M3 IMPLEMENT: Owner Management" \
 #     --body-json migration/bodies/m3-001-owner.json \
-#     [--parent t_xxx] [--idempotency-key KEY]
+#     --parent t_xxx [--idempotency-key KEY]
+#
+# --parent is REQUIRED (Operator E-20260811T133000Z #5 created_cards attribution).
 #
 # Body JSON must satisfy check-kanban-body.py (phase=M3, refs[], files_in_scope,
 # exit_criteria[] — Deputy E-20260809T190500Z completion half).
@@ -44,6 +46,10 @@ done
 [[ -n "${BODY_JSON}" ]] || die "--body-json required"
 [[ -f "${BODY_JSON}" ]] || die "body json not found: ${BODY_JSON}"
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
+# Operator E-20260811T133000Z #5 — parent link + created_by=parent so
+# Hermes created_cards verification accepts CLI creates (not tool-only).
+[[ ${#PARENTS[@]} -gt 0 ]] || die "--parent REQUIRED (M2b/planner task id) for created_cards attribution"
+PARENT_PRIMARY="${PARENTS[0]}"
 
 # Pre-v12 R0/R3 — tip sync proof before M3 create
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-create-path-tip-sync.py" "${ROOT}" \
@@ -179,12 +185,15 @@ trap 'rm -f "${BODY_MD}"' EXIT
 # Deputy E-20260811T131900Z — M3 cards MUST be born parked. v12 lost v11
 # born-parked behavior; create+dispatch let the daemon race M2b (serial breach).
 # --initial-status blocked = human/gate unpark only (not todo/dispatchable).
+# Operator E-20260811T133000Z #5 — created_by=parent task id (not the script
+# name) so completing parent may list these ids in created_cards and pass
+# Hermes _verify_created_cards (assignee/parent-id/link trust).
 CREATE_ARGS=(
   --json
   --assignee default
   --workspace "dir:${WORKSPACE_DIR}"
   --max-runtime "${MAX_RUNTIME}"
-  --created-by create-m3-implementer
+  --created-by "${PARENT_PRIMARY}"
   --initial-status blocked
   --body "$(cat "${BODY_MD}")"
 )
@@ -226,4 +235,34 @@ echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 hermes kanban comment "${TASK_ID}" \
   "born-parked: initial-status=blocked; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z)" \
   >/dev/null 2>&1 || true
-echo "OK: M3 → ${TASK_ID} (blocked/parked). File ledger Need Review:adhere-observe-${TASK_ID}"
+# Stamp derived claim list for parent completion (Operator E-133000Z #5)
+DERIVED_DIR="${ROOT}/migration/derived"
+mkdir -p "${DERIVED_DIR}"
+CLAIM_FILE="${DERIVED_DIR}/created-cards-${PARENT_PRIMARY}.json"
+python3 - "${CLAIM_FILE}" "${PARENT_PRIMARY}" "${TASK_ID}" "${BODY_DIGEST}" <<'PY'
+import json, sys, pathlib, datetime
+path, parent, tid, digest = sys.argv[1:5]
+p = pathlib.Path(path)
+cards = []
+if p.is_file():
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        cards = list(data.get("cards") or [])
+    except Exception:
+        cards = []
+ids = {c.get("id") for c in cards if isinstance(c, dict)}
+if tid not in ids:
+    cards.append({"id": tid, "body_sha256": digest, "created_by": parent})
+out = {
+    "schema": "rhoai3.created-cards-claim/v1",
+    "parent": parent,
+    "cards": cards,
+    "updated_at": datetime.datetime.now(datetime.timezone.utc)
+    .strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+p.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+print(path)
+PY
+echo "CREATED_CARDS_CLAIM=${CLAIM_FILE}"
+echo "OK: M3 → ${TASK_ID} (blocked/parked; parent=${PARENT_PRIMARY}). File ledger Need Review:adhere-observe-${TASK_ID}"
+echo "NOTE: parent must kanban_complete with created_cards including ${TASK_ID} (empty list REJECT)"

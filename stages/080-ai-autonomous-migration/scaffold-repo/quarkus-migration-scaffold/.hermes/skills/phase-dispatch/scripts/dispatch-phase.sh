@@ -341,6 +341,7 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
    - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
      `needs_input` BLOCK. Then emit tasks artifacts.
 3. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
+   **Required:** `--parent <this task id>` on every create (Operator E-20260811T133000Z #5).
    Bodies are generated here — do not consume golden specimen packets.
    Cards are **born blocked** (no auto-dispatch). Do **not** unblock/dispatch M3
    children from M2b (Deputy E-20260811T131900Z serial law).
@@ -350,16 +351,22 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
      substitute `partition.json` or invent prose digests.
    - `legacy_locus`: 64-hex of the primary legacy **file** (not a directory;
      not `see-harvest-referent` prose).
-4. Stop for Operator `brief-identity.ack.yaml`.
+4. Before `kanban_complete`: run
+   `python3 .hermes/skills/phase-dispatch/scripts/check-created-cards-claim.py --parent $TASK_ID --claimed <ids…>`
+   Pass those ids as `created_cards`. **`created_cards=[]` is REJECT** when
+   `migration/derived/created-cards-$TASK_ID.json` is nonempty.
+5. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when
 - Spec Kit tasks artifacts present
-- M3 children created via `create-m3-implementer.sh` with max-runtime
+- M3 children created via `create-m3-implementer.sh --parent $TASK_ID`
+- `check-created-cards-claim.py` OK with non-empty claimed ids
 - brief-identity ack out of band (Operator)
 
 ## Constraints
 - workspace: dir:/projects/modernized
 - Do not rewrite write-once `partition.json`
+- Prefer short tool results; avoid bulk-pasting bodies (context margin)
 - AD-009 / crash requeue / protocol_untyped as prior M2 law; no MiniMax
 EOF
     TITLE="M2b PLAN: SDD + create-m3 children"

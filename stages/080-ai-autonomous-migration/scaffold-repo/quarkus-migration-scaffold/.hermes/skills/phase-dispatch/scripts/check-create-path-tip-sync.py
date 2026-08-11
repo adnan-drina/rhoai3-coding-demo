@@ -221,6 +221,31 @@ REQUIRED_SUBSTRINGS = [
         "Do NOT dispatch here",
         "create-m3 must not auto-dispatch (Deputy E-131900Z)",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "--parent REQUIRED",
+        "create-m3 requires --parent (Operator E-133000Z #5)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        'created-by "${PARENT_PRIMARY}"',
+        "create-m3 created_by=parent for card-claim (Operator E-133000Z #5)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-created-cards-claim.py",
+        "CREATED_CARDS_REJECT",
+        "empty created_cards rejected when derived nonempty",
+    ),
+    (
+        ".hermes/home/scripts/block-and-signal-worker.sh",
+        "SIGTERM",
+        "block-and-signal-worker (Operator E-133000Z #2)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "check-created-cards-claim.py",
+        "M2b wires created_cards claim check",
+    ),
 ]
 
 
