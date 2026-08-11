@@ -9,6 +9,12 @@ Official mechanism (Hermes docs — Managed Scope):
 
 Dev Spaces often exports HERMES_MANAGED_DIR only from ~/.bashrc; non-login
 spawns (oc exec python, nohup without export) drop it — this gate refuses.
+
+Architect E-20260811T205329Z Class A — **pin** the managed dir: the process
+env must resolve to the platform Managed Scope path (default
+`/projects/.platform/hermes`). A wrong export such as the specimen workspace
+(`/projects/modernized`) previously passed "dir exists" intuition and
+stillborn workers with the Hermes Setup banner (t_b2cc9426 run#59).
 """
 from __future__ import annotations
 
@@ -19,6 +25,8 @@ from typing import Optional
 
 
 DEFAULT_MANAGED = "/projects/.platform/hermes"
+# Optional override for non-demo hosts; live seats must pin platform path.
+PIN_ENV = "HERMES_MANAGED_DIR_PIN"
 
 
 def _hermes_venv_python() -> Optional[Path]:
@@ -64,19 +72,65 @@ def _ensure_hermes_importable() -> None:
             return
 
 
+def _pinned_managed() -> Path:
+    raw = (os.environ.get(PIN_ENV) or DEFAULT_MANAGED).strip()
+    return Path(raw).expanduser()
+
+
 def main() -> int:
     _reexec_under_hermes_venv()
+    pinned = _pinned_managed()
     managed = (os.environ.get("HERMES_MANAGED_DIR") or "").strip()
     if not managed:
         print(
             "FAIL: HERMES_MANAGED_DIR unset — Hermes Managed Scope inactive. "
-            f"Export HERMES_MANAGED_DIR={DEFAULT_MANAGED} (or /etc/hermes) "
+            f"Export HERMES_MANAGED_DIR={pinned} "
             "before kanban daemon/dispatch. Official overlay — do not symlink "
             "Managed config into HERMES_HOME (R-HX.5).",
             file=sys.stderr,
         )
         return 1
-    managed_path = Path(managed)
+    managed_path = Path(managed).expanduser()
+    try:
+        managed_res = managed_path.resolve()
+        pinned_res = pinned.resolve()
+    except OSError as exc:
+        print(f"FAIL: cannot resolve Managed Scope paths ({exc})", file=sys.stderr)
+        return 1
+
+    # Architect E-20260811T205329Z — fail-closed pin (not merely "dir exists").
+    if managed_res != pinned_res:
+        print(
+            f"FAIL: HERMES_MANAGED_DIR={managed_res} != pinned Managed Scope "
+            f"{pinned_res} (Architect E-20260811T205329Z Class A). "
+            f"Wrong exports like /projects/modernized stillborn workers. "
+            f"Export HERMES_MANAGED_DIR={pinned_res} (override pin via "
+            f"{PIN_ENV} only on non-demo hosts).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Extra belt: never treat HERMES_HOME / write-safe specimen as managed.
+    for label, env_key in (
+        ("HERMES_HOME", "HERMES_HOME"),
+        ("HERMES_WRITE_SAFE_ROOT", "HERMES_WRITE_SAFE_ROOT"),
+    ):
+        other = (os.environ.get(env_key) or "").strip()
+        if not other:
+            continue
+        try:
+            other_res = Path(other).expanduser().resolve()
+        except OSError:
+            continue
+        if managed_res == other_res:
+            print(
+                f"FAIL: HERMES_MANAGED_DIR equals {label}={other_res} — "
+                "Managed Scope must be the platform overlay path, not the "
+                "specimen workspace (R-HX.5 / E-20260811T205329Z).",
+                file=sys.stderr,
+            )
+            return 1
+
     if not managed_path.is_dir():
         print(f"FAIL: HERMES_MANAGED_DIR not a directory: {managed}", file=sys.stderr)
         return 1
@@ -91,10 +145,10 @@ def main() -> int:
         from hermes_cli.main import _has_any_provider_configured  # type: ignore
 
         resolved = get_managed_dir()
-        if resolved is None or Path(resolved).resolve() != managed_path.resolve():
+        if resolved is None or Path(resolved).resolve() != managed_res:
             print(
                 f"FAIL: hermes get_managed_dir()={resolved!r} "
-                f"(expected {managed})",
+                f"(expected {managed_res})",
                 file=sys.stderr,
             )
             return 1
@@ -108,7 +162,7 @@ def main() -> int:
             return 1
     except Exception as exc:
         if os.environ.get("HERMES_ASSERT_MANAGED_FILES_ONLY") == "1":
-            print(f"OK: managed files present (import skip: {exc})")
+            print(f"OK: managed files present pin={managed_res} (import skip: {exc})")
             return 0
         print(
             f"FAIL: cannot verify provider via hermes import ({exc}). "
@@ -118,7 +172,7 @@ def main() -> int:
         )
         return 1
 
-    print(f"OK: Managed Scope active dir={managed} provider=yes")
+    print(f"OK: Managed Scope active dir={managed_res} provider=yes pin=ok")
     return 0
 
 

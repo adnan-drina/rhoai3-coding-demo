@@ -1,6 +1,6 @@
 # Contract: Managed Scope must be active at kanban spawn
 
-**BIND class:** spawn / daemon / dispatch (Operator URGENT stillborn `t_c9b03f60`)
+**BIND class:** spawn / daemon / dispatch (Operator URGENT stillborn `t_c9b03f60`; Architect Class A pin `E-20260811T205329Z` / `t_b2cc9426` run#59)
 
 ## Official rule (Hermes Managed Scope)
 
@@ -17,12 +17,14 @@ https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
 - Symlink or copy Managed Scope `config.yaml` / `.env` into `HERMES_HOME` (R-HX.5).
 - Spawn `hermes kanban daemon` / `dispatch` / workers without `HERMES_MANAGED_DIR` in the **process** environment.
 - Rely on `~/.bashrc` alone — non-login spawns (`oc exec` python, bare nohup) drop bashrc exports.
+- Export `HERMES_MANAGED_DIR` to the specimen workspace (`/projects/modernized`), `HERMES_HOME`, or `HERMES_WRITE_SAFE_ROOT` — that stillborns with the Hermes Setup banner even when a directory exists.
 
 ## MUST
 
-1. Export `HERMES_MANAGED_DIR` (demo default `/projects/.platform/hermes`) in every dispatch/daemon wrapper.
-2. Run `assert-managed-scope-active.py` before spawn — refuse if unset/missing/provider-false.
+1. Export `HERMES_MANAGED_DIR` to the **pinned** platform path (demo default `/projects/.platform/hermes`) in every dispatch/daemon wrapper. Wrong inherited values must be **refused**, not silently defaulted-over only when unset.
+2. Run `assert-managed-scope-active.py` before spawn — refuse if unset / missing / provider-false / **not equal to pin** (Architect E-20260811T205329Z).
 3. Keep `HERMES_HOME/config.yaml` as non-secret workspace knobs only (`skills.external_dirs`, …); providers stay managed.
+4. Prefer `.hermes/home/scripts/kanban-dispatch-guarded.sh` (or `dispatch-phase.sh`) over bare `hermes kanban dispatch` from ad-hoc shells.
 
 ## Symptom of breach
 

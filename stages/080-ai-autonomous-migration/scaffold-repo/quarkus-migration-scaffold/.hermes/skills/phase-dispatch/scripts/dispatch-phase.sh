@@ -89,14 +89,19 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-i
 # t_c9b03f60 — bashrc-only export is not enough for non-login spawns).
 ensure_hermes_home_config() {
   mkdir -p "${HERMES_HOME}"
-  export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
+  # Architect E-20260811T205329Z Class A — pin Managed Scope dir (refuse wrong exports).
+  local _pin="${HERMES_MANAGED_DIR_PIN:-/projects/.platform/hermes}"
+  if [[ -n "${HERMES_MANAGED_DIR:-}" && "${HERMES_MANAGED_DIR}" != "${_pin}" ]]; then
+    die "HERMES_MANAGED_DIR=${HERMES_MANAGED_DIR} != pinned ${_pin} (Architect E-20260811T205329Z Class A)"
+  fi
+  export HERMES_MANAGED_DIR="${_pin}"
   if [[ -f "${HERMES_HOME}/.env" || -f "${HERMES_HOME}/auth.json" ]]; then
     echo "dispatch-phase: WARN R-HX.5 — refuse secret-bearing files under HERMES_HOME (.env/auth.json); use Managed Scope only" >&2
   fi
   [[ -f "${HERMES_MANAGED_DIR}/config.yaml" ]] \
     || die "missing Managed Scope config: ${HERMES_MANAGED_DIR}/config.yaml"
   python3 "${ROOT}/.hermes/home/scripts/assert-managed-scope-active.py" \
-    || die "Managed Scope inactive — refuse daemon/dispatch (managed-scope-at-spawn)"
+    || die "Managed Scope inactive/unpinned — refuse daemon/dispatch (managed-scope-at-spawn)"
   # skill_utils reads skills.external_dirs from HERMES_HOME/config.yaml (not Managed
   # Scope alone). Without this, kanban workers fail: Unknown skill(s) for tip skills
   # under .hermes/skills/ (v12 M1 t_bc2a6cc7). Non-secret discovery paths only —
@@ -155,9 +160,13 @@ ensure_daemon() {
   # Dev Spaces: no messaging gateway — standalone daemon is required.
   # Explicit export: nohup children must not depend on interactive bashrc.
   export HERMES_HOME="${HERMES_HOME:-${ROOT}/.hermes/home}"
-  export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
+  local _pin="${HERMES_MANAGED_DIR_PIN:-/projects/.platform/hermes}"
+  if [[ -n "${HERMES_MANAGED_DIR:-}" && "${HERMES_MANAGED_DIR}" != "${_pin}" ]]; then
+    die "HERMES_MANAGED_DIR=${HERMES_MANAGED_DIR} != pinned ${_pin} (Architect E-20260811T205329Z Class A)"
+  fi
+  export HERMES_MANAGED_DIR="${_pin}"
   python3 "${ROOT}/.hermes/home/scripts/assert-managed-scope-active.py" \
-    || die "Managed Scope inactive — refuse daemon start"
+    || die "Managed Scope inactive/unpinned — refuse daemon start"
   nohup env \
     HERMES_HOME="${HERMES_HOME}" \
     HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \

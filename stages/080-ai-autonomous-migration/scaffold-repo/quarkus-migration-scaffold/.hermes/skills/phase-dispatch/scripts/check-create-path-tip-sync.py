@@ -57,6 +57,8 @@ REQUIRED_FILES = [
     # Operator E-20260811T184628Z — Managed Scope required at spawn (not symlink)
     ".hermes/home/scripts/assert-managed-scope-active.py",
     "migration/contracts/managed-scope-at-spawn.md",
+    # Architect E-20260811T205329Z Class A — pin Managed Scope dir + guarded dispatch
+    ".hermes/home/scripts/kanban-dispatch-guarded.sh",
     # Architect E-20260811T195141Z Class A — own-body digest at complete
     ".hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py",
     "migration/contracts/body-digest-own-story.md",
@@ -387,13 +389,23 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/home/scripts/assert-managed-scope-active.py",
-        "HERMES_MANAGED_DIR",
-        "Managed Scope spawn assert",
+        "HERMES_MANAGED_DIR_PIN",
+        "Managed Scope spawn assert (dir pin)",
     ),
     (
         "migration/contracts/managed-scope-at-spawn.md",
-        "Symlink or copy",
-        "managed-scope-at-spawn contract",
+        "not equal to pin",
+        "managed-scope-at-spawn contract (pin)",
+    ),
+    (
+        ".hermes/home/scripts/kanban-dispatch-guarded.sh",
+        "assert-managed-scope-active.py",
+        "Class A guarded kanban dispatch wrapper",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "Architect E-20260811T205329Z Class A",
+        "Class A Managed Scope pin in dispatch-phase",
     ),
     (
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
