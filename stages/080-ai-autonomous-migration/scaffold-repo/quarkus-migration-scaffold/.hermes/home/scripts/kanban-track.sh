@@ -31,6 +31,7 @@ set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/projects/modernized}"
 HERMES_HOME="${HERMES_HOME:-${PROJECT_DIR}/.hermes/home}"
+HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
 INTERVAL="${KANBAN_WATCH_INTERVAL:-1}"
 DISPATCH_MAX="${KANBAN_DISPATCH_MAX:-1}"
 DAEMON_INTERVAL="${KANBAN_DAEMON_INTERVAL:-15}"
@@ -58,7 +59,10 @@ cd_project() {
   [[ -d "${PROJECT_DIR}" ]] || die "PROJECT_DIR not a directory: ${PROJECT_DIR}"
   cd "${PROJECT_DIR}"
   export HERMES_HOME
+  export HERMES_MANAGED_DIR
   mkdir -p "${HERMES_HOME}"
+  python3 "${HERMES_HOME}/scripts/assert-managed-scope-active.py" \
+    || die "Managed Scope inactive — export HERMES_MANAGED_DIR (official overlay; do not symlink into HERMES_HOME)"
 }
 
 daemon_running() {
@@ -81,14 +85,18 @@ cmd_ensure_daemon() {
     return 0
   fi
   # Dev Spaces: standalone dispatcher (no gateway). See hermes kanban docs --force.
-  nohup hermes kanban daemon --force --interval "${DAEMON_INTERVAL}" --verbose \
+  # Pin Managed Scope in child env — do not rely on interactive bashrc.
+  nohup env \
+    HERMES_HOME="${HERMES_HOME}" \
+    HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
+    hermes kanban daemon --force --interval "${DAEMON_INTERVAL}" --verbose \
     >"${DAEMON_LOG}" 2>&1 &
   echo $! >"${DAEMON_PIDFILE}"
   sleep 1
   if ! daemon_running; then
     die "daemon failed to stay up — see ${DAEMON_LOG}"
   fi
-  echo "kanban-track: started daemon pid=$(cat "${DAEMON_PIDFILE}") log=${DAEMON_LOG}"
+  echo "kanban-track: started daemon pid=$(cat "${DAEMON_PIDFILE}") managed=${HERMES_MANAGED_DIR} log=${DAEMON_LOG}"
 }
 
 print_board_snapshot() {

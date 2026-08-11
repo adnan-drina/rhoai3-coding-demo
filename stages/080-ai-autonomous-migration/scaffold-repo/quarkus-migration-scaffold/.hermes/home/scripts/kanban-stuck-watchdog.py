@@ -240,6 +240,67 @@ def parse_epoch(value: object, now: float) -> float | None:
         return None
 
 
+def stillborn_grace_seconds() -> int:
+    """Age after which running+NULL heartbeat is stillborn (Operator E-184628Z)."""
+    if "STILLBORN_GRACE_SECONDS" in os.environ:
+        try:
+            return max(30, int(os.environ["STILLBORN_GRACE_SECONDS"]))
+        except ValueError as exc:
+            raise SystemExit(
+                f"kanban-stuck-watchdog: bad STILLBORN_GRACE_SECONDS: {exc}"
+            ) from exc
+    return 120
+
+
+def check_stillborn_null_heartbeat(
+    conn: sqlite3.Connection, *, now: float, grace: int
+) -> list[str]:
+    """Alert when status=running but last_heartbeat_at is NULL past grace.
+
+    Heartbeat-age watchdogs miss stillborn workers (provider-resolution failure
+    at spawn): they never heartbeat, so AGE checks never fire.
+    """
+    try:
+        cols = {
+            r[1].lower(): r[1]
+            for r in conn.execute('PRAGMA table_info("task_runs")')
+        }
+    except sqlite3.Error:
+        return []
+    need = {"task_id", "status", "started_at", "last_heartbeat_at"}
+    if not need.issubset(cols):
+        return []
+    q = (
+        f'SELECT "{cols["task_id"]}", "{cols["started_at"]}", '
+        f'"{cols["last_heartbeat_at"]}", "{cols["status"]}" '
+        f'FROM task_runs WHERE lower(cast("{cols["status"]}" as text)) = ? '
+        f'AND "{cols["last_heartbeat_at"]}" IS NULL'
+    )
+    alerts: list[str] = []
+    try:
+        rows = list(conn.execute(q, ("running",)))
+    except sqlite3.Error:
+        return []
+    for task_id, started_at, _hb, status in rows:
+        started = parse_epoch(started_at, now)
+        if started is None:
+            alerts.append(
+                f"WATCHDOG: STILLBORN task {task_id!s} status={status!s} "
+                f"last_heartbeat_at=NULL started_at={started_at!r} "
+                f"(unparseable) — reclaim/redispatch after Managed Scope check."
+            )
+            continue
+        age = now - started
+        if age >= grace:
+            alerts.append(
+                f"WATCHDOG: STILLBORN task {task_id!s} running with "
+                f"last_heartbeat_at=NULL for {int(age)}s "
+                f"(grace {grace}s). Likely spawn env missing "
+                f"HERMES_MANAGED_DIR / provider — reclaim + assert-managed-scope-active."
+            )
+    return alerts
+
+
 def main() -> int:
     home = hermes_home()
     db_path = Path(os.environ.get("KANBAN_DB", str(home / "kanban.db")))
@@ -280,13 +341,16 @@ def main() -> int:
             f'FROM "{table}" WHERE lower(cast("{status_col}" as text)) = ?'
         )
         rows = list(conn.execute(q, ("running",)))
+        stillborn_alerts = check_stillborn_null_heartbeat(
+            conn, now=now, grace=stillborn_grace_seconds()
+        )
     except sqlite3.Error as exc:
         print(f"kanban-stuck-watchdog: query failed: {exc}", file=sys.stderr)
         return 1
     finally:
         conn.close()
 
-    alerts: list[str] = []
+    alerts: list[str] = list(stillborn_alerts)
     root = project_root()
     ttfc = ttfc_seconds()
     for row in rows:

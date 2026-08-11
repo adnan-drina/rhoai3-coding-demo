@@ -81,19 +81,26 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-i
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
   || die "extension overlay --check failed (R-M3.32)"
 
-# R-HX.5 (Architect E-20260811T070102Z): do NOT copy Managed Scope config/.env
-# into writable HERMES_HOME. Provider/auth stay platform-owned under
-# HERMES_MANAGED_DIR. HERMES_HOME is for kanban DB / logs / sessions only.
+# R-HX.5 + Hermes Managed Scope (official):
+#   Providers/secrets live under HERMES_MANAGED_DIR and *overlay* HERMES_HOME.
+#   Do NOT symlink or copy Managed config/.env into HERMES_HOME.
+#   Docs: https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
+# Workers that lack HERMES_MANAGED_DIR in-process stillborn (Operator URGENT
+# t_c9b03f60 — bashrc-only export is not enough for non-login spawns).
 ensure_hermes_home_config() {
   mkdir -p "${HERMES_HOME}"
+  export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
   if [[ -f "${HERMES_HOME}/.env" || -f "${HERMES_HOME}/auth.json" ]]; then
     echo "dispatch-phase: WARN R-HX.5 — refuse secret-bearing files under HERMES_HOME (.env/auth.json); use Managed Scope only" >&2
   fi
   [[ -f "${HERMES_MANAGED_DIR}/config.yaml" ]] \
     || die "missing Managed Scope config: ${HERMES_MANAGED_DIR}/config.yaml"
+  python3 "${ROOT}/.hermes/home/scripts/assert-managed-scope-active.py" \
+    || die "Managed Scope inactive — refuse daemon/dispatch (managed-scope-at-spawn)"
   # skill_utils reads skills.external_dirs from HERMES_HOME/config.yaml (not Managed
   # Scope alone). Without this, kanban workers fail: Unknown skill(s) for tip skills
-  # under .hermes/skills/ (v12 M1 t_bc2a6cc7). Non-secret discovery paths only.
+  # under .hermes/skills/ (v12 M1 t_bc2a6cc7). Non-secret discovery paths only —
+  # model/provider stay in Managed Scope overlay (official; not a home copy).
   if [[ ! -f "${HERMES_HOME}/config.yaml" ]] || ! grep -q 'external_dirs' "${HERMES_HOME}/config.yaml" 2>/dev/null; then
     cat >"${HERMES_HOME}/config.yaml" <<EOF
 skills:
@@ -146,10 +153,18 @@ ensure_daemon() {
     return 0
   fi
   # Dev Spaces: no messaging gateway — standalone daemon is required.
-  nohup hermes kanban daemon --force --interval 15 --verbose \
+  # Explicit export: nohup children must not depend on interactive bashrc.
+  export HERMES_HOME="${HERMES_HOME:-${ROOT}/.hermes/home}"
+  export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
+  python3 "${ROOT}/.hermes/home/scripts/assert-managed-scope-active.py" \
+    || die "Managed Scope inactive — refuse daemon start"
+  nohup env \
+    HERMES_HOME="${HERMES_HOME}" \
+    HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR}" \
+    hermes kanban daemon --force --interval 15 --verbose \
     >"${HERMES_HOME}/kanban-daemon.log" 2>&1 &
   echo $! >"${HERMES_HOME}/kanban-daemon.pid"
-  echo "dispatch-phase: started kanban daemon --force pid=$(cat "${HERMES_HOME}/kanban-daemon.pid")"
+  echo "dispatch-phase: started kanban daemon --force pid=$(cat "${HERMES_HOME}/kanban-daemon.pid") managed=${HERMES_MANAGED_DIR}"
   sleep 1
 }
 

@@ -54,6 +54,9 @@ REQUIRED_FILES = [
     # Architect E-20260811T182820Z Class A — constraints preservation on amend
     ".hermes/skills/sdd-readiness/scripts/assert-constraints-preserved.py",
     "migration/contracts/constraints-preservation-on-amend.md",
+    # Operator E-20260811T184628Z — Managed Scope required at spawn (not symlink)
+    ".hermes/home/scripts/assert-managed-scope-active.py",
+    "migration/contracts/managed-scope-at-spawn.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -371,6 +374,21 @@ REQUIRED_SUBSTRINGS = [
         "migration/contracts/constraints-preservation-on-amend.md",
         "silently drop",
         "constraints-preservation-on-amend contract",
+    ),
+    (
+        ".hermes/home/scripts/assert-managed-scope-active.py",
+        "HERMES_MANAGED_DIR",
+        "Managed Scope spawn assert",
+    ),
+    (
+        "migration/contracts/managed-scope-at-spawn.md",
+        "Symlink or copy",
+        "managed-scope-at-spawn contract",
+    ),
+    (
+        ".hermes/home/scripts/kanban-stuck-watchdog.py",
+        "STILLBORN",
+        "null-heartbeat stillborn watchdog",
     ),
 ]
 
