@@ -40,14 +40,15 @@ Paths are workspace-relative under `/projects/modernized`.
 - `assert-quarantine-tombstones.py` — fail if any tombstoned path exists in dest
 - Wired into `create-m3-implementer.sh` (pre-create) and `dispatch-phase.sh` (pre-dispatch)
 
-## Sync mechanism (confirmed negatives + working model)
+## Sync mechanism (corrected — Architect ABSORB `E-20260811T173254Z`)
 
-| Mechanism | Role on S-004 `t_b5019586` |
-|-----------|---------------------------|
+| Mechanism | Role on S-004 cascade |
+|-----------|------------------------|
+| **Residual Hermes worker** | **Primary cause** — abort/terminal without process kill left run#39 / PID 85052 writing post-quarantine Overrides on shared `dir:/projects/modernized` |
 | Hermes `workspace_kind=worktree` materialize | **Not used** — card is `dir:/projects/modernized` |
-| `git checkout` / tracked restore | **Ruled out** — `?? springdatajpa/` untracked |
-| Raw `/projects/legacy` copy | **Ruled out** — legacy still has `@Profile`; resurrected SHAs differ |
-| Worker `write_file` on Overrides | **Ruled out** — Deputy log forensics (zero writes) |
-| Shared live tree + unknown restorer | **Working model** — dispatch-correlated restore of pre-quarantine modernized `springdatajpa/` (abort-pollution bytes). Exact cache inode not located; tombstone assert is the fail-closed control. |
+| `git checkout` / tracked restore | **Ruled out** — paths untracked |
+| Raw `/projects/legacy` copy | **Ruled out** — legacy still has `@Profile` |
+| Provisioning-snapshot theory | **Superseded** as primary (Operator forensics; Architect ABSORB) |
 
-Eclipse local history under `/projects/.tools/mta-run/.metadata/.../.history` exists but is not proven as the restorer.
+Tombstones remain useful at **dispatch-time**. Mid-run zombie writes require
+`migration/contracts/residual-worker-kill.md` (kill+verify at abort/terminal).

@@ -36,6 +36,11 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd-readiness/scripts/assert-quarantine-tombstones.py",
     ".hermes/skills/sdd-readiness/scripts/register-quarantine-tombstone.py",
     "migration/contracts/quarantine-survives-dispatch.md",
+    # Architect E-20260811T173254Z Class A — residual worker kill+verify
+    ".hermes/home/scripts/kill-and-verify-task-worker.sh",
+    ".hermes/home/scripts/stamp-worker-pid-from-ps.py",
+    ".hermes/home/scripts/assert-no-residual-workers.py",
+    "migration/contracts/residual-worker-kill.md",
 ]
 
 REQUIRED_SUBSTRINGS = [

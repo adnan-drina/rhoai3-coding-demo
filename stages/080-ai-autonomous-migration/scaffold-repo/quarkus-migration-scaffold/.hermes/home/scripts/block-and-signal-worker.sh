@@ -78,4 +78,13 @@ else
   echo "block-and-signal-worker: no live worker matched ${TASK_ID}" >&2
 fi
 
+# Architect E-20260811T173254Z — verify death (residual-worker Class A)
+VERIFY="$(cd "$(dirname "$0")" && pwd)/kill-and-verify-task-worker.sh"
+if [[ -f "${VERIFY}" ]]; then
+  bash "${VERIFY}" "${TASK_ID}" || {
+    echo "block-and-signal-worker: FAIL verify death for ${TASK_ID}" >&2
+    exit 1
+  }
+fi
+
 echo "OK: block-and-signal ${TASK_ID}"
