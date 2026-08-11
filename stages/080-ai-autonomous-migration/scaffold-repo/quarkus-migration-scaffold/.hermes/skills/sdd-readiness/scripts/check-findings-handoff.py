@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """M2a/M2b gate shim — delegates to mta-analysis check-findings-handoff.py.
 
-M2a attaches sdd-readiness (not mta-analysis). Workers resolve this path first
-(Deputy E-20260811T112100Z). Canonical implementation stays under mta-analysis.
+M2a attaches sdd-readiness (+ mta-analysis after E-112700Z). Prefer invoking via
+`${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/…`
+(Deputy E-20260811T113300Z runtime root). Canonical stays under mta-analysis.
+
+Exit: 0=pass; 1=FAIL→BLOCK; 2=missing script (lint/harness defect).
 """
 from __future__ import annotations
 
@@ -18,7 +21,8 @@ CANON = _skills_parent / "mta-analysis" / "scripts" / "check-findings-handoff.py
 
 if not CANON.is_file():
     print(
-        f"FAIL: canonical check-findings-handoff missing at {CANON}",
+        f"FAIL: exit=2 missing script — canonical check-findings-handoff at {CANON} "
+        f"(lint/harness defect; do not invent)",
         file=sys.stderr,
     )
     raise SystemExit(2)

@@ -218,8 +218,9 @@ orchestration: hermes_native (required)
 1. Load/run **derive-legacy-boot3** - ensure `migration/derived/legacy-at-3.json` and frozen harvest_referent.
 2. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json` (**before** MTA handoff emit).
 3. Load/run **mta-analysis** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `migration/findings-handoff.json` (requires inventory).
-4. Schema-validate findings + handoff:
-   `python3 .hermes/skills/mta-analysis/scripts/check-findings-handoff.py /projects/modernized`.
+4. Schema-validate findings + handoff (runtime skill root / AD-H §7.1):
+   `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/mta-analysis}/scripts/check-findings-handoff.py" /projects/modernized`
+   Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (harness/lint defect — do not invent).
    **Do not** write stage-advance acks — Operator grants `migration/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
 
 ## Constraints
@@ -245,8 +246,9 @@ Phase: M2a per `.hermes/phase-dispatch.yaml`
 Requires: Operator `migration/acks/m1-findings.ack.yaml` + findings-handoff gate
 
 ## Job
-1. `python3 .hermes/skills/sdd-readiness/scripts/check-findings-handoff.py /projects/modernized`
-   (shim → mta-analysis canonical; typed BLOCK if FAIL).
+1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
+   `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
+   (shim → mta-analysis canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (lint/harness defect — do not treat as product FAIL).
 2. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`).
 3. Prefer Spec Kit `/speckit-specify` **before** freeform partition essays.
 4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.

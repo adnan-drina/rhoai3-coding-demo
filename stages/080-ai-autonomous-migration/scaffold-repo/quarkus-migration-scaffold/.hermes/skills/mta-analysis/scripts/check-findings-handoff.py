@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""M2 domain gate: findings-handoff.json (Architect E-20260809T072752Z + §16.7)."""
+"""M2 domain gate: findings-handoff.json (Architect E-20260809T072752Z + §16.7).
+
+Exit semantics (Deputy E-20260811T113300Z — contract, not judgment):
+  0 = pass
+  1 = FAIL → typed BLOCK (product/gate residue)
+  2 = missing script / unusable harness path (lint defect — do not invent)
+"""
 from __future__ import annotations
 
 import hashlib

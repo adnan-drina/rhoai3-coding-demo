@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """R0 body-script lint — every script named in a phase seed body must resolve.
 
-Deputy E-20260811T112700Z / R-HX.12 live specimen: bare `check-findings-handoff.py`
-on M2a with mta-analysis not attached → worker could not skill_view the owning
-skill. Fail-closed at create/dispatch when a body cites `*.py`/`*.sh` that is
-not under an attached skill's `scripts/` (or an explicit `.hermes/skills/...`
-path present on disk).
+Deputy E-20260811T112700Z / R-HX.12: bare names + missing attach → skill_view fail.
+Deputy E-20260811T113300Z: card anchors must resolve at RUNTIME skill root
+(`.hermes/home/skills/software-development/<skill>/` via symlink) or via
+`${HERMES_SKILL_DIR}` (AD-H §7.1) — scaffold-only `.hermes/skills/...` paths
+404 when workers probe the Hermes discovery tree first.
+
+Fail-closed at create/dispatch.
 """
 from __future__ import annotations
 
@@ -13,12 +15,19 @@ import re
 import sys
 from pathlib import Path
 
-# Same phase→skills parser contract as check-phase-attach-matrix.py
 PHASE_KEY = re.compile(r"^  (M[1-5][ab]?|factory):\s*$")
 SKILL_ITEM = re.compile(r"^      - (\S+)\s*$")
-# Script refs in markdown bodies (bare name or path)
+# Capture scaffold paths, runtime home paths, HERMES_SKILL_DIR forms, bare names
 SCRIPT_REF = re.compile(
-    r"(?:`|/|\s)((?:\.hermes/skills/[\w./-]+/scripts/)?[\w.-]+\.(?:py|sh))(?:`|\s|$)"
+    r"(?:`|/|\s|=)"
+    r"("
+    r"(?:\$\{HERMES_SKILL_DIR(?::-[\w./-]+)?\}/scripts/[\w.-]+\.(?:py|sh))"
+    r"|(?:\.hermes/home/skills/software-development/[\w.-]+/scripts/[\w.-]+\.(?:py|sh))"
+    r"|(?:\.hermes/skills/[\w./-]+/scripts/[\w.-]+\.(?:py|sh))"
+    r"|(?:\.hermes/home/scripts/[\w.-]+\.(?:py|sh))"
+    r"|(?:[\w.-]+\.(?:py|sh))"
+    r")"
+    r"(?:`|\s|$)"
 )
 
 
@@ -54,10 +63,8 @@ def parse_phase_skills(text: str) -> dict[str, list[str]]:
 
 
 def extract_body_scripts(dispatch_sh: Path) -> dict[str, set[str]]:
-    """Pull heredoc bodies per phase from dispatch-phase.sh (M1|M2a|…)."""
     text = dispatch_sh.read_text(encoding="utf-8")
     out: dict[str, set[str]] = {}
-    # case arms: M2a) ... cat >... <<'EOF' ... EOF
     for m in re.finditer(
         r"^\s+(M[1-5][ab]?|factory)\)\s*\n.*?<<'EOF'\n(.*?)EOF",
         text,
@@ -70,20 +77,71 @@ def extract_body_scripts(dispatch_sh: Path) -> dict[str, set[str]]:
     return out
 
 
+def skill_script_exists(root: Path, skill: str, name: str) -> bool:
+    """Accept tip scaffold path OR runtime Hermes discovery symlink target."""
+    scaffold = root / ".hermes" / "skills" / skill / "scripts" / name
+    if scaffold.is_file():
+        return True
+    runtime = (
+        root
+        / ".hermes"
+        / "home"
+        / "skills"
+        / "software-development"
+        / skill
+        / "scripts"
+        / name
+    )
+    return runtime.is_file()
+
+
 def resolve_ok(root: Path, phase: str, skills: list[str], ref: str) -> bool:
+    # ${HERMES_SKILL_DIR}/scripts/X or ${HERMES_SKILL_DIR:-default}/scripts/X
+    m = re.match(
+        r"\$\{HERMES_SKILL_DIR(?::-([\w./-]+))?\}/scripts/([\w.-]+\.(?:py|sh))$",
+        ref,
+    )
+    if m:
+        default_root, name = m.group(1), m.group(2)
+        if default_root:
+            # default may be .hermes/home/skills/software-development/<skill>
+            parts = Path(default_root).parts
+            if "software-development" in parts:
+                idx = parts.index("software-development")
+                if idx + 1 < len(parts):
+                    sk = parts[idx + 1]
+                    if skill_script_exists(root, sk, name):
+                        return True
+            # or absolute-ish skill dir name as last component
+            sk = Path(default_root).name
+            if skill_script_exists(root, sk, name):
+                return True
+        for sk in list(skills) + ["phase-dispatch"]:
+            if skill_script_exists(root, sk, name):
+                return True
+        return False
+
+    if ref.startswith(".hermes/home/skills/software-development/"):
+        # .hermes/home/skills/software-development/<skill>/scripts/<name>
+        parts = Path(ref).parts
+        try:
+            i = parts.index("software-development")
+            sk, name = parts[i + 1], parts[-1]
+        except (ValueError, IndexError):
+            return False
+        return skill_script_exists(root, sk, name)
+
     if ref.startswith(".hermes/skills/") or ref.startswith("migration/"):
         return (root / ref).is_file()
     if ref.startswith(".hermes/home/scripts/"):
         return (root / ref).is_file()
+
     name = Path(ref).name
-    # bare name — attached skill scripts, phase-dispatch harness, or home scripts
     home = root / ".hermes" / "home" / "scripts" / name
     if home.is_file():
         return True
-    search_skills = list(skills) + ["phase-dispatch"]
-    for sk in search_skills:
-        cand = root / ".hermes" / "skills" / sk / "scripts" / name
-        if cand.is_file():
+    for sk in list(skills) + ["phase-dispatch"]:
+        if skill_script_exists(root, sk, name):
             return True
     return False
 
@@ -106,12 +164,12 @@ def main() -> int:
             else:
                 print(
                     f"FAIL: {phase} body cites {ref!r} but not under attached "
-                    f"skills {skills}",
+                    f"skills {skills} (scaffold or runtime software-development root)",
                     file=sys.stderr,
                 )
                 bad = 1
     if bad:
-        print("FAIL: phase body script refs (R0 / Deputy E-20260811T112700Z)", file=sys.stderr)
+        print("FAIL: phase body script refs (R0 / Deputy E-20260811T113300Z)", file=sys.stderr)
         return 1
     print("OK: phase body script refs")
     return 0

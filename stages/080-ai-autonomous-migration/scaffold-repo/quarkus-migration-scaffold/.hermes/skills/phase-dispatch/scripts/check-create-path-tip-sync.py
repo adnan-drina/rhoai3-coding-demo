@@ -95,6 +95,21 @@ REQUIRED_SUBSTRINGS = [
         "BODY_SCRIPT_LINT",
         "R0 body-script lint present",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "HERMES_SKILL_DIR:-.hermes/home/skills/software-development/sdd-readiness",
+        "M2a runtime skill-root anchor (Deputy E-113300Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/check-phase-body-script-refs.py",
+        "software-development",
+        "R0 lint accepts runtime software-development root",
+    ),
+    (
+        ".hermes/skills/mta-analysis/scripts/check-findings-handoff.py",
+        "2 = missing script",
+        "gate exit semantics typed (Deputy E-113300Z)",
+    ),
 ]
 
 
