@@ -28,6 +28,10 @@ REQUIRED_FILES = [
     ".hermes/skills/phase-dispatch/scripts/check-specify-preseed.py",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/skills/phase-dispatch/scripts/check-decision-complete-cards.py",
+    # Operator E-20260811T144200Z — deps + dest-inventory at create
+    ".hermes/skills/sdd-readiness/scripts/stamp-body-dependencies.py",
+    ".hermes/skills/sdd-readiness/scripts/stamp-destination-inventory.py",
+    ".hermes/skills/sdd-readiness/scripts/check-partition-coverage.py",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -260,6 +264,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
         "Partition-coverage gate",
         "M2a wires partition-coverage VALID",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/stamp-body-dependencies.py",
+        "DEPENDENCY_HOLE",
+        "body dependencies stamp (Operator E-144200Z)",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/stamp-destination-inventory.py",
+        "destination-inventory",
+        "destination inventory stamp (Operator E-144200Z)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "stamp-body-dependencies.py",
+        "create-m3 wires dependencies stamp",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "stamp-destination-inventory.py",
+        "create-m3 wires destination-inventory stamp",
     ),
 ]
 

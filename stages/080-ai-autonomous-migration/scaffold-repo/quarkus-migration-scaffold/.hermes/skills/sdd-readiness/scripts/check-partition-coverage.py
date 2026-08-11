@@ -90,8 +90,9 @@ def load_json(path: Path) -> dict | list | None:
 def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
     if not bodies_dir.is_dir():
         return []
-    # m3-s-001.json / m3-S-001.json patterns
-    sid = story_id.lower().replace("_", "-")
+    # Exact identity.story_id match only (Operator E-20260811T144200Z).
+    # Path-substring matching falsely bound partition S-002 → m3-s-002a/b.
+    want = story_id.lower()
     candidates = list(bodies_dir.glob("m3-*.json"))
     for path in candidates:
         if path.name.endswith(".sha256.json"):
@@ -101,7 +102,7 @@ def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
             continue
         ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
         bid = str(ident.get("story_id") or data.get("story_id") or "")
-        if bid.lower() != story_id.lower() and sid not in path.name.lower():
+        if bid.lower() != want:
             continue
         scope = data.get("files_in_scope") or data.get("filesInScope") or []
         out: list[str] = []

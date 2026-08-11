@@ -63,6 +63,18 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-i
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py" "${ROOT}" --check \
   || die "R-M3.32: extension overlays missing from .hermes/skills/*/references/ (skill_view will fail)"
 
+# Operator E-20260811T144200Z — dependencies + destination-inventory at create
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/stamp-body-dependencies.py" "${ROOT}" \
+  --body "${BODY_JSON}" --write \
+  || die "stamp-body-dependencies failed (assign orphan model/interface owners first)"
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/stamp-destination-inventory.py" "${ROOT}" \
+  --body "${BODY_JSON}" --write \
+  || die "stamp-destination-inventory failed"
+# Partition coverage fail-closed before create (gate already tip-loaded)
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-partition-coverage.py" "${ROOT}" \
+  --write-receipt migration/receipts/partition-coverage/latest.json \
+  || die "PARTITION_COVERAGE not VALID — remediate partition/bodies before create"
+
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
 # migration/bodies/ (incomplete siblings must not block a single create).
 # Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"
@@ -145,7 +157,8 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "Body digest (AR-4.3): \`${BODY_DIGEST}\`"
   echo
   echo "## Obligation"
-  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`refs\`)."
+  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`dependencies\`, \`refs\` incl. \`destination_inventory\`)."
+  echo "**Dependencies (Operator E-20260811T144200Z):** treat \`dependencies[]\` as authority for import provenance (\`provider\` = owning story or \`pre-exists\`). Coverage-gap on orphan model/interface ⇒ typed BLOCK — do **not** invent owners or OOS-create deps."
   echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
   echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`migration/contracts/body-immutability.md\`)."
   echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."

@@ -45,7 +45,15 @@ ALLOWED_EXTRA: dict[str, frozenset[str]] = {
     "M1": frozenset({"legacy_at_3_manifest"}),
     "M2": frozenset({"entry_point_inventory", "brief_draft"}),
     "M3": frozenset(
-        {"spec_path", "plan_path", "tasks_path", "derive_apply_log", "legacy_locus"}
+        {
+            "spec_path",
+            "plan_path",
+            "tasks_path",
+            "derive_apply_log",
+            "legacy_locus",
+            # Operator E-20260811T144200Z — dest paths+digests at create
+            "destination_inventory",
+        }
     ),
     "M4": frozenset({"g1_fixture", "g2_fixture"}),
     "M5": frozenset({"g3_baseline", "g4_inventory"}),

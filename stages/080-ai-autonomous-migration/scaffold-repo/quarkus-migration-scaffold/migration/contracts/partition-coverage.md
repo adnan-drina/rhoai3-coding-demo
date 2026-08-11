@@ -29,6 +29,14 @@ variance becomes measured data.
 4. **Compose** — per-story wall-fit / operand-class / dep-order remain create-time
    gates; this gate is the whole-partition verdict.
 
+Body match is **exact** `identity.story_id` only (Operator `E-20260811T144200Z`).
+Path-substring binding (e.g. partition `S-002` → `m3-s-002a.json`) is forbidden —
+split stories must appear as their own partition rows (`S-002a` / `S-002b`).
+
+Related create-time stamps (same Operator bind): `stamp-body-dependencies.py`
+(`dependencies:` block) and `stamp-destination-inventory.py` (`destination_inventory`
+ref).
+
 ## Verdict
 
 `VALID` | `INVALID` (gaps listed) | `INCONCLUSIVE` (missing inputs / no files).
