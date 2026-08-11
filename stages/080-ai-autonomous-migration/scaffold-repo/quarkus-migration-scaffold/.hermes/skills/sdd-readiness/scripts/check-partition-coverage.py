@@ -12,6 +12,9 @@ Checks:
   3) Optional MTA findings addressed via story.rules or typed oos
   4) Composes with bodies' files_in_scope when present (M2b+)
 
+Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
+rewrites are derived from inventory / migration.yaml — never hardcoded.
+
 Usage:
   python3 check-partition-coverage.py /projects/modernized
   python3 check-partition-coverage.py . --write-receipt migration/receipts/partition-coverage.json
@@ -21,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,31 +38,40 @@ if not hasattr(Path, "is_relative_to"):
 
     Path.is_relative_to = _is_relative_to  # type: ignore[attr-defined]
 
-EXPECTED_HTTP_ENDPOINTS = 34  # F11-corrected denominator
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from specimen_agnostic import (  # noqa: E402
+    inventory_http_expected,
+    load_json,
+    path_rewrites,
+    resolve_inventory_path,
+)
 
 
-def norm_file(path: str) -> str:
-    p = path.replace("\\", "/")
-    for prefix in (
-        "/projects/.derived/legacy-at-3/",
-        "/projects/modernized/",
-        "/projects/legacy/",
-        "projects/.derived/legacy-at-3/",
-        "projects/modernized/",
-        "projects/legacy/",
-    ):
-        if p.startswith(prefix):
-            p = p[len(prefix) :]
-    # dest package remap → legacy path form for inventory compare
-    p = p.replace(
-        "src/main/java/com/demo/",
-        "src/main/java/org/springframework/samples/petclinic/",
-    )
-    p = p.replace(
-        "src/test/java/com/demo/",
-        "src/test/java/org/springframework/samples/petclinic/",
-    )
-    return p.lstrip("./")
+def make_norm_file(root: Path):
+    rewrites = path_rewrites(root)
+
+    def norm_file(path: str) -> str:
+        p = path.replace("\\", "/")
+        for prefix in (
+            "/projects/.derived/legacy-at-3/",
+            "/projects/modernized/",
+            "/projects/legacy/",
+            "projects/.derived/legacy-at-3/",
+            "projects/modernized/",
+            "projects/legacy/",
+        ):
+            if p.startswith(prefix):
+                p = p[len(prefix) :]
+        for dest_p, leg_p in rewrites:
+            if p.startswith(dest_p):
+                p = leg_p + p[len(dest_p) :]
+                break
+        return p.lstrip("./")
+
+    return norm_file
 
 
 def story_files(story: dict) -> list[str]:
@@ -78,20 +89,9 @@ def story_files(story: dict) -> list[str]:
     return out
 
 
-def load_json(path: Path) -> dict | list | None:
-    if not path.is_file():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
 def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
     if not bodies_dir.is_dir():
         return []
-    # Exact identity.story_id match only (Operator E-20260811T144200Z).
-    # Path-substring matching falsely bound partition S-002 → m3-s-002a/b.
     want = story_id.lower()
     candidates = list(bodies_dir.glob("m3-*.json"))
     for path in candidates:
@@ -121,21 +121,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--partition", default="migration/briefs/partition.json")
+    ap.add_argument("--inventory", default="")
     ap.add_argument(
-        "--inventory",
-        default="",
-        help="default: migration/entry-point-inventory.json then F11 fixture",
+        "--allow-specimen-fixture",
+        action="store_true",
+        help="Permit falling back to migration/fixtures/inventory/* specimen inventories",
     )
     ap.add_argument("--findings", default="migration/mta-findings.json")
     ap.add_argument("--bodies", default="migration/bodies")
     ap.add_argument("--write-receipt", default="")
-    ap.add_argument(
-        "--retro",
-        action="store_true",
-        help="Evidence-only: print verdict, always exit 0 (Architect: no mid-campaign re-plan)",
-    )
+    ap.add_argument("--retro", action="store_true")
     args = ap.parse_args()
     root = Path(args.root).resolve()
+    norm_file = make_norm_file(root)
 
     part_path = root / args.partition
     partition = load_json(part_path)
@@ -143,18 +141,11 @@ def main() -> int:
         print("PARTITION_COVERAGE: INCONCLUSIVE — missing/invalid partition.json", file=sys.stderr)
         return 0 if args.retro else 1
 
-    inv_path = Path(args.inventory) if args.inventory else None
-    if inv_path and not inv_path.is_absolute():
-        inv_path = root / inv_path
-    if inv_path is None or not inv_path.is_file():
-        for cand in (
-            root / "migration/entry-point-inventory.json",
-            root
-            / "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
-        ):
-            if cand.is_file():
-                inv_path = cand
-                break
+    inv_path = resolve_inventory_path(
+        root,
+        args.inventory,
+        allow_specimen_fixture=bool(args.allow_specimen_fixture),
+    )
     inventory = load_json(inv_path) if inv_path else None
     if not isinstance(inventory, dict):
         print("PARTITION_COVERAGE: INCONCLUSIVE — missing inventory", file=sys.stderr)
@@ -167,11 +158,19 @@ def main() -> int:
 
     http_eps = [e for e in entry_points if isinstance(e, dict) and e.get("kind") == "http"]
     ep_count = len(http_eps)
+    expected_http = inventory_http_expected(inventory)
     gaps: list[str] = []
-    if ep_count != EXPECTED_HTTP_ENDPOINTS:
-        gaps.append(
-            f"inventory_http_count={ep_count} expected_F11={EXPECTED_HTTP_ENDPOINTS}"
-        )
+    declared = None
+    totals = inventory.get("totals") if isinstance(inventory.get("totals"), dict) else {}
+    for key in ("http_endpoints", "http", "endpoints_http", "expected_http_endpoints"):
+        if key in totals:
+            try:
+                declared = int(totals[key])
+            except (TypeError, ValueError):
+                declared = None
+            break
+    if declared is not None and declared != ep_count:
+        gaps.append(f"inventory_http_count={ep_count} inventory_totals_declared={declared}")
 
     stories = [s for s in partition["stories"] if isinstance(s, dict)]
     bodies_dir = root / args.bodies
@@ -183,23 +182,19 @@ def main() -> int:
             continue
         files = story_files(story)
         body_fs = body_files_for_story(bodies_dir, sid)
-        # Prefer bodies when present (M2b+); else partition sketches (M2a)
         chosen = body_fs if body_fs else files
         story_file_map[sid] = {norm_file(f) for f in chosen if f}
 
-    # File overlaps
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():
         for f in files:
             if not f or f.endswith("pom.xml"):
-                # pom may be dual-pathed across CONFIG stories — allow multi for pom only
                 continue
             if f in owner and owner[f] != sid:
                 gaps.append(f"file_overlap:{f}:{owner[f]}+{sid}")
             else:
                 owner[f] = sid
 
-    # Endpoint → exactly one story (by owning the controller file)
     uncovered: list[str] = []
     multi: list[str] = []
     for ep in http_eps:
@@ -207,7 +202,6 @@ def main() -> int:
         sym = str(ep.get("symbol") or "")
         key = f"{f}#{sym}" if sym else f
         claimants = [sid for sid, files in story_file_map.items() if f in files]
-        # Also allow story.endpoints / story.entry_points explicit lists
         for story in stories:
             sid = str(story.get("story_id") or "")
             for field in ("endpoints", "entry_points", "symbols"):
@@ -231,7 +225,6 @@ def main() -> int:
         for m in multi[:8]:
             gaps.append(f"multi:{m}")
 
-    # MTA findings (optional → INCONCLUSIVE if absent, not INVALID)
     findings_path = root / args.findings
     findings = load_json(findings_path)
     mta_status = "skipped_missing"
@@ -279,11 +272,12 @@ def main() -> int:
         "inventory": str(inv_path.relative_to(root)) if inv_path and inv_path.is_relative_to(root) else str(inv_path),
         "story_count": len(stories),
         "http_endpoint_count": ep_count,
-        "expected_http_endpoints": EXPECTED_HTTP_ENDPOINTS,
+        "expected_http_endpoints": expected_http,
         "mta_status": mta_status,
         "gaps": gaps,
         "architect_bind": "E-20260811T133858Z",
         "operator_proposal": "E-20260811T134200Z",
+        "portability_bind": "E-20260811T150800Z",
     }
     if args.write_receipt:
         out = Path(args.write_receipt)

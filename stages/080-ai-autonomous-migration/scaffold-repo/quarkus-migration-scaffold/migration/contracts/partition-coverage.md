@@ -19,9 +19,11 @@ variance becomes measured data.
 
 ## Checks
 
-1. **Endpoint coverage** — inventory HTTP entry_points (F11 denominator **34**)
+1. **Endpoint coverage** — inventory HTTP entry_points (denominator = **runtime inventory count**, never a specimen constant — Operator `E-20260811T150800Z`)
    each map to **exactly one** story (via story `files` / body `files_in_scope`
-   owning the controller file, or explicit `endpoints` lists).
+   owning the controller file, or explicit `endpoints` lists). Package remaps
+   come from `migration.yaml` `path_rewrites` / discovery — not hardcoded roots.
+   Specimen fixtures only with `--allow-specimen-fixture`.
 2. **No file overlaps** — non-`pom.xml` paths claimed by two stories → INVALID.
 3. **MTA** — when `migration/mta-findings.json` present, each rule id is in some
    story `rules` or partition `mta_oos` / `findings_oos`; missing findings file →

@@ -257,8 +257,18 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         "migration/contracts/partition-coverage.md",
-        "F11 denominator",
-        "partition-coverage contract",
+        "runtime inventory count",
+        "partition-coverage contract (specimen-agnostic)",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/specimen_agnostic.py",
+        "path_rewrites",
+        "specimen-agnostic helpers (Operator E-150800Z)",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/check-partition-coverage.py",
+        "allow-specimen-fixture",
+        "coverage gate fixture-gated (Operator E-150800Z)",
     ),
     (
         ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",

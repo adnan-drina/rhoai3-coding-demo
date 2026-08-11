@@ -6,6 +6,13 @@ migration:
   target: quarkus
   provisionedBy: quarkus-migration-scaffold
   needsDatabase: false
+  # Per-run package stamp (Operator E-20260811T150800Z) — coolstore overwrites
+  legacyBasePackage: org.springframework.samples.petclinic
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/org/springframework/samples/petclinic/
+    - from: src/test/java/com/demo/
+      to: src/test/java/org/springframework/samples/petclinic/
 
 analysis:
   targets:

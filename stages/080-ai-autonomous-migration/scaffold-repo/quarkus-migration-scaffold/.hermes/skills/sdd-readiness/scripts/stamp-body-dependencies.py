@@ -21,30 +21,36 @@ import sys
 from pathlib import Path
 
 IMP_RE = re.compile(r"^\s*import\s+([a-zA-Z0-9_.]+)\s*;", re.M)
-PKG_PREFIX = "org.springframework.samples.petclinic."
+
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from specimen_agnostic import legacy_java_prefixes, path_rewrites  # noqa: E402
 
 
-def norm_file(path: str) -> str:
-    p = path.replace("\\", "/")
-    for prefix in (
-        "/projects/.derived/legacy-at-3/",
-        "/projects/modernized/",
-        "/projects/legacy/",
-        "projects/.derived/legacy-at-3/",
-        "projects/modernized/",
-        "projects/legacy/",
-    ):
-        if p.startswith(prefix):
-            p = p[len(prefix) :]
-    p = p.replace(
-        "src/main/java/com/demo/",
-        "src/main/java/org/springframework/samples/petclinic/",
-    )
-    p = p.replace(
-        "src/test/java/com/demo/",
-        "src/test/java/org/springframework/samples/petclinic/",
-    )
-    return p.lstrip("./")
+def make_norm_file(root: Path):
+    rewrites = path_rewrites(root)
+
+    def norm_file(path: str) -> str:
+        p = path.replace("\\", "/")
+        for prefix in (
+            "/projects/.derived/legacy-at-3/",
+            "/projects/modernized/",
+            "/projects/legacy/",
+            "projects/.derived/legacy-at-3/",
+            "projects/modernized/",
+            "projects/legacy/",
+        ):
+            if p.startswith(prefix):
+                p = p[len(prefix) :]
+        for dest_p, leg_p in rewrites:
+            if p.startswith(dest_p):
+                p = leg_p + p[len(dest_p) :]
+                break
+        return p.lstrip("./")
+
+    return norm_file
 
 
 def load_json(path: Path):
@@ -69,7 +75,7 @@ def writable_paths(body: dict) -> list[str]:
     return out
 
 
-def provider_map(bodies_dir: Path) -> dict[str, str]:
+def provider_map(bodies_dir: Path, norm_file) -> dict[str, str]:
     own: dict[str, str] = {}
     if not bodies_dir.is_dir():
         return own
@@ -108,13 +114,19 @@ def resolve_legacy(root: Path, rel: str) -> Path | None:
     return None
 
 
-def imports_for(java_path: Path) -> list[str]:
+def imports_for(java_path: Path, pkg_prefixes: list[str]) -> list[str]:
     text = java_path.read_text(encoding="utf-8", errors="ignore")
     out: list[str] = []
     for m in IMP_RE.finditer(text):
         imp = m.group(1)
-        if not imp.startswith(PKG_PREFIX) or imp.endswith(".*"):
+        if imp.endswith(".*"):
             continue
+        if pkg_prefixes and not any(imp.startswith(p) for p in pkg_prefixes):
+            continue
+        if not pkg_prefixes:
+            # no prefix discovered — only accept imports under src/main/java tree shape
+            if not imp or imp.startswith("java.") or imp.startswith("javax.") or imp.startswith("jakarta."):
+                continue
         out.append("src/main/java/" + imp.replace(".", "/") + ".java")
     return out
 
@@ -136,7 +148,9 @@ def main() -> int:
         return 1
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
     self_sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
-    own = provider_map(root / args.bodies)
+    norm_file = make_norm_file(root)
+    pkg_prefixes = legacy_java_prefixes(root)
+    own = provider_map(root / args.bodies, norm_file)
     deps: dict[str, str] = {}
     for wf in writable_paths(body):
         rel = norm_file(wf)
@@ -145,7 +159,7 @@ def main() -> int:
         lp = resolve_legacy(root, rel)
         if lp is None:
             continue
-        for dep_rel in imports_for(lp):
+        for dep_rel in imports_for(lp, pkg_prefixes):
             if dep_rel == rel:
                 continue
             provider = own.get(dep_rel)
