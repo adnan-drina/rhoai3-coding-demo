@@ -71,6 +71,10 @@ python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/sync-extension-overlays-i
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/stamp-body-dependencies.py" "${ROOT}" \
   --body "${BODY_JSON}" --write \
   || die "stamp-body-dependencies failed (assign orphan model/interface owners first)"
+# Architect E-20260811T181749Z Class A — interface-closure before create
+python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-interface-closure.py" "${ROOT}" \
+  --body "${BODY_JSON}" \
+  || die "INTERFACE_CLOSURE: add missing interfaces to scope/deps/dest before create"
 python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/stamp-destination-inventory.py" "${ROOT}" \
   --body "${BODY_JSON}" --write \
   || die "stamp-destination-inventory failed"
@@ -167,6 +171,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "## Obligation"
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`dependencies\`, \`refs\` incl. \`destination_inventory\`)."
   echo "**Dependencies (Operator E-20260811T144200Z):** treat \`dependencies[]\` as authority for import provenance (\`provider\` = owning story or \`pre-exists\`). Coverage-gap on orphan model/interface ⇒ typed BLOCK — do **not** invent owners or OOS-create deps."
+  echo "**Interface-closure Class A (Architect E-20260811T181749Z):** create path refuses bodies where an in-scope \`*Impl\` lacks its interface in scope/deps/dest (\`check-interface-closure.py\` / \`migration/contracts/interface-closure.md\`). Mid-run OOS-create of a missing interface = ABORT — typed \`needs_input\` only."
   echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
   echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/skills/auditability-repeatability/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`migration/contracts/body-immutability.md\`)."
   echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."

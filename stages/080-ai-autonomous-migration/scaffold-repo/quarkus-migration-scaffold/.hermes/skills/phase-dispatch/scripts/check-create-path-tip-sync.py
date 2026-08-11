@@ -48,6 +48,9 @@ REQUIRED_FILES = [
     ".hermes/skills/validation-release-gates/scripts/assert-complete-exit-criteria.py",
     ".hermes/home/scripts/enforce-complete-exit-criteria.py",
     "migration/contracts/complete-cmd-exit-criteria.md",
+    # Architect E-20260811T181749Z Class A — interface-closure at create
+    ".hermes/skills/sdd-readiness/scripts/check-interface-closure.py",
+    "migration/contracts/interface-closure.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -345,6 +348,16 @@ REQUIRED_SUBSTRINGS = [
         "migration/contracts/complete-cmd-exit-criteria.md",
         "complete-exit-ok.json",
         "complete-cmd-exit-criteria contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "check-interface-closure.py",
+        "Class A interface-closure wired into create-m3",
+    ),
+    (
+        "migration/contracts/interface-closure.md",
+        "BANK-CREATE-PATH-IFACE-1",
+        "interface-closure contract",
     ),
 ]
 
