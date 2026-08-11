@@ -211,6 +211,16 @@ REQUIRED_SUBSTRINGS = [
         "operand_class",
         "story-sizing documents operand classes",
     ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "--initial-status blocked",
+        "M3 born parked (Deputy E-131900Z serial breach)",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "Do NOT dispatch here",
+        "create-m3 must not auto-dispatch (Deputy E-131900Z)",
+    ),
 ]
 
 

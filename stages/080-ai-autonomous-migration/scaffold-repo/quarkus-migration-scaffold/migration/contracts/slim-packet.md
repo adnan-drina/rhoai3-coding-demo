@@ -18,6 +18,11 @@ Standing context **MUST NOT** drown the task packet. Per-phase attach is
 
 Create helpers refuse when the matrix drifts (`create-m3-implementer.sh`).
 
+**M3 born-parked (Deputy `E-20260811T131900Z`):** `create-m3-implementer.sh`
+creates with `--initial-status blocked` and does **not** call
+`kanban dispatch`. Unpark remains gate-driven (M2b adherence PASS +
+brief-identity ack + serial order). Todo-born + auto-dispatch is a serial breach.
+
 ## Headroom note
 
 Slim M3 preload is the workhorse + body lint only. Workers consult additional

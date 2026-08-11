@@ -176,12 +176,16 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "- Skills preload ≠ consultation (AD-002D/E) — consult or typed unused."
 } >"${BODY_MD}"
 
+# Deputy E-20260811T131900Z — M3 cards MUST be born parked. v12 lost v11
+# born-parked behavior; create+dispatch let the daemon race M2b (serial breach).
+# --initial-status blocked = human/gate unpark only (not todo/dispatchable).
 CREATE_ARGS=(
   --json
   --assignee default
   --workspace "dir:${WORKSPACE_DIR}"
   --max-runtime "${MAX_RUNTIME}"
   --created-by create-m3-implementer
+  --initial-status blocked
   --body "$(cat "${BODY_MD}")"
 )
 [[ -n "${IDEM_KEY}" ]] && CREATE_ARGS+=(--idempotency-key "${IDEM_KEY}")
@@ -217,5 +221,9 @@ echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
   date -u +'ts: %Y-%m-%dT%H:%M:%SZ'
 } >"${ROOT}/migration/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
-hermes kanban dispatch --max 1 --json || true
-echo "OK: M3 → ${TASK_ID}. File ledger Need Review:adhere-observe-${TASK_ID}"
+# Do NOT dispatch here — cards are born blocked; unpark is gate-driven
+# (M2b ledger PASS + brief-identity ack + serial order). Deputy E-131900Z.
+hermes kanban comment "${TASK_ID}" \
+  "born-parked: initial-status=blocked; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z)" \
+  >/dev/null 2>&1 || true
+echo "OK: M3 → ${TASK_ID} (blocked/parked). File ledger Need Review:adhere-observe-${TASK_ID}"

@@ -342,6 +342,8 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
      `needs_input` BLOCK. Then emit tasks artifacts.
 3. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
    Bodies are generated here — do not consume golden specimen packets.
+   Cards are **born blocked** (no auto-dispatch). Do **not** unblock/dispatch M3
+   children from M2b (Deputy E-20260811T131900Z serial law).
    **Body refs (Deputy E-20260811T131200Z):**
    - `brief_identity_ack`: `sha256: "pending"` + intended future ack path
      (e.g. `migration/acks/brief-identity-<story>.ack.yaml`). Do **not**

@@ -47,7 +47,10 @@ bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
 3. Ensures a standalone `hermes kanban daemon --force` (Dev Spaces has no gateway).
 4. `hermes kanban create` with `workspace=dir:/projects/modernized`, skills,
    budget, idempotency key `migration-<phase>-v1`.
-5. One `hermes kanban dispatch --max 1` tick.
+5. Phase dispatch (M1/M2a/M2b) may tick `hermes kanban dispatch --max 1`.
+   **M3 create path (`create-m3-implementer.sh`) MUST NOT** — cards are born
+   `--initial-status blocked` and unpark only after M2b ledger PASS +
+   brief-identity ack + serial GO (Deputy `E-20260811T131900Z`).
 
 ### M1 body contract (evidence-analyst)
 
