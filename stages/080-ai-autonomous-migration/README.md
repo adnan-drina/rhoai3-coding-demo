@@ -249,38 +249,19 @@ dependents until unblocked or superseded. The **steering loop** (human) lands
 skill/sensor/runbook improvements as versioned PRs — agents do not silently
 rewrite `.hermes/skills/**` mid-run.
 
-### One typed model, and prose rendered from it
+### Retired authority (not the live attendee path) — R-HX.2 residual
 
-The process above is driven by a single typed artifact, `migration/model.json`: units and their decisions from M1, the story partition from M2, and the task list for M3. Everything a reader sees — `architecture-profile.md`, `roadmap.md`, `briefs/S*.md`, `specs/S<NN>/tasks.md` — is **rendered from that model**, and each rendered file says so in its own header. The rule is simple and it is what keeps a long autonomous run honest: **if the harness can derive a fact, nothing else may author it, and nothing is stored that can be computed.**
-
-Two consequences shape how the agent works.
-
-**The harness owns identity and acceptance; the agent owns judgement.** Task ids, ownership, class, shape, port and acceptance criteria are all derived — acceptance, for instance, follows from the unit's role plus its `targetContract` flags, so a HARVEST task is always held to byte-fidelity against the staged sources and a REDESIGN task is always held to the contract it was assigned. The coding seat is asked for exactly one thing per task: a judgement — goal, plan, risk — returned as JSON. The harness merges it into the model and re-renders the markdown. The seat never edits `specs/**` or `migration/**`; attempts to author an id or an acceptance are refused rather than silently accepted.
-
-**Facts travel to the agent, not references to facts.** Each task's packet carries what that task asserts over: anchored code snippets at the cited lines, the story brief inlined, and — where the acceptance is stated against the staged tree — the staging facts (path, LOC) the acceptance will be checked against. A seat that has been given the fact has no reason to go looking for it, and the loop is measurably quieter for it: in the reference run, **92% of task seats completed with no tool calls at all**, and none read the legacy tree.
-
-This is the same idea as the guides/sensors split, applied one level down. A guide that *names* a source makes the agent go and fetch it; a guide that *contains* the source lets the agent spend its budget on the judgement you actually wanted.
-
-### Quality model: HARVEST vs REDESIGN and the deterministic gates
-
-Every MTA finding is classified before any agent acts on it. The M1 MAPPINGS rule-joins produce one of two classes:
-
-- **HARVEST**: the finding has a mechanical transform (OpenRewrite recipe, namespace rename, annotation swap). The recipe executes into a staging tree during M1; later, a worker task *harvests* the result into the destination. No inference needed.
-- **REDESIGN**: the finding requires judgment (new endpoint contract, new concurrency model, new error handling strategy). The decided target shape comes from `targetContract` in `migration.yaml`, not from the model re-deriving a faithful contract. The architecture profile's §7 section is authoritative for these.
-
-Six flags in `targetContract` express the operator contract for REDESIGN tasks: `getIdempotent`, `validateInput`, `mapErrors`, `threadSafeState`, `cacheRefreshGuard`, `normalizeBeforeDerive`. A HARVEST-only migration (e.g., pure Jakarta namespace) may leave all six off; a service modernization turns them on selectively. The classification drives the plan: HARVEST tasks are ordered early (mechanical, low risk), REDESIGN tasks follow (inference-heavy, sensor-guarded).
-
-Named deterministic gates enforce each hand-off:
-
-| Gate | Where it fires | What it enforces |
-|---|---|---|
-| `profile-rubric` | End of M1 | Architecture profile completeness: components, integration surfaces, contract sources, domain seams all present |
-| `roadmap-lint` | End of M2 | Story dependency order is valid, every story has a brief, deploy milestones are marked |
-| `plan-lint --profile` | End of M3 (per story) | Reads the typed store (`model.tasks[]`), not the rendered markdown. Every REDESIGN task traces to a `targetContract` flag; HARVEST tasks trace to a recipe; no orphan findings — plus the semantic checks: every task's target must still **exist in the tree** (no dead tasks), task order must respect the M1 dependency graph (dependencies convert before dependents, no two tasks may produce competing beans for one interface), and every task declares its `Class`, `Shape`, and `Oracle` so downstream guards read declared fields instead of guessing from titles |
-| `wiring-check` | Mid-M4 (per milestone) | Integration surfaces actually wire (imports resolve, endpoints register, dependency injection connects) |
-| Preflight (build + boot + quality gate) | End of M5 (per story) | Full Maven build, SonarQube gate, application boots, deploy stories serve acceptance endpoints |
-
-If a gate fires red, the loop revises (M3) or enters a fix session (M4) automatically. A gate never passes on model confidence alone.
+> **Retired (2026-08-11, R-HX.2):** the earlier appendix narrative that treated
+> `migration/model.json` as the single typed authority, rendered
+> `architecture-profile.md` / `roadmap.md` / `briefs/**` / `specs/**` from that
+> model, and classified work as **HARVEST vs REDESIGN** with recipe staging is
+> **not** the live demo or Hermes Kanban path. Do not teach it as current.
+>
+> **Live authority:** Hermes Kanban + `.hermes/phase-dispatch.yaml`
+> (**M1 ANALYZE → M2 PLAN → M3 IMPLEMENT → M4 VERIFY → M5 CLOSE**), Spec Kit
+> under M2 (`speckit-specify` → `plan` → `tasks`), and typed story bodies under
+> `migration/bodies/m3-s-*.json`. Acceptance and identity ride those artifacts
+> and skills — not a central `model.json` / HARVEST supervisor process.
 
 ### Staying true to the source: the grounding chain
 
@@ -385,7 +366,7 @@ actually shipped.
 
 - **Analysis grounds autonomy:** MTA's findings, not the agent's self-assessment, defined done.
 - **The harness regulates quality:** guides steered generation, sensors caught and fed back failures, and the agent iterated to green before a human ever looked.
-- **Determinism where possible, inference where needed:** HARVEST tasks (OpenRewrite recipes, pre-staged in M1) carried the mechanical transforms; the model spent its budget on REDESIGN tasks where operator-decided `targetContract` flags guided the judgment calls.
+- **Determinism where possible, inference where needed:** mechanical transforms ride skills/recipes and typed bodies; judgement-heavy work stays on Spec Kit + implementer cards under Hermes Kanban (retired appendix HARVEST/REDESIGN supervisor language is not the live path).
 - **The factory, not a person, was the merge authority:** the agent could push, but only the pipeline and its quality gate could turn that push into a trusted artifact. Humans moved up a level, from reviewing diffs to improving the harness.
 - **Governance held at full autonomy:** same identity, token limits, and telemetry as every previous stage, just more visible, because agents consume more.
 

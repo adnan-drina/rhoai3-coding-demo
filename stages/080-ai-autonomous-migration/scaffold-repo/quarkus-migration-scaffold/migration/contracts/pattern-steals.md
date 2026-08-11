@@ -21,7 +21,7 @@ Homes: `.hermes/LAYOUT.md`.
 | P0 | Task packet shape (`AC-IDs`, `files_in_scope`, deps) | **Landed** — same skill; Kanban body fill rides phase schema |
 | P0 | Waiver re-open triggers | **Landed** — `migration/schemas/mta-exception.md` + readiness lint |
 | P1 | Baseline-aware brownfield | **After** first specimen runs — `_baseline`-shaped artifact under `migration/` |
-| P1 | EARS-lite / AC traceability | **After** M3 SPECIFY path produces stable AC IDs — evaluate companion |
+| P1 | EARS-lite / AC traceability | **After** M2 Spec Kit (`speckit-specify` → plan → tasks) + typed M3 IMPLEMENT bodies produce stable AC IDs — evaluate companion |
 | P1 | Single validate entrypoint | **Landed** — skill `harness-validate` |
 | P2 | Confirmed-red (assertion-red only) | **After** fixtures; optional pre-IMPLEMENT; does not replace G-1 |
 | P2 | Forbid skip / silent threshold drop | **With** CI/factory preflight |
