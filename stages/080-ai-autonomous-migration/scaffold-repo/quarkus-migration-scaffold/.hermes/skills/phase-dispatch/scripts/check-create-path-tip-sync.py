@@ -51,6 +51,9 @@ REQUIRED_FILES = [
     # Architect E-20260811T181749Z Class A — interface-closure at create
     ".hermes/skills/sdd-readiness/scripts/check-interface-closure.py",
     "migration/contracts/interface-closure.md",
+    # Architect E-20260811T182820Z Class A — constraints preservation on amend
+    ".hermes/skills/sdd-readiness/scripts/assert-constraints-preserved.py",
+    "migration/contracts/constraints-preservation-on-amend.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -358,6 +361,16 @@ REQUIRED_SUBSTRINGS = [
         "migration/contracts/interface-closure.md",
         "BANK-CREATE-PATH-IFACE-1",
         "interface-closure contract",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/assert-constraints-preserved.py",
+        "CONSTRAINTS_PRESERVATION",
+        "Class A constraints-preservation script",
+    ),
+    (
+        "migration/contracts/constraints-preservation-on-amend.md",
+        "silently drop",
+        "constraints-preservation-on-amend contract",
     ),
 ]
 
