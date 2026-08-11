@@ -14,8 +14,13 @@ the full story set in Reasoning — edit the file.
 | Field | Type | Rule |
 |-------|------|------|
 | `schema` | string | `rhoai3.partition/v1` |
-| `stories` | array | Each: `story_id`, `title`, `layer` (foundation\|model\|repo\|service\|rest\|test\|…), optional files/controller sketches |
+| `stories` | array | Each: `story_id`, `title`, `layer` (foundation\|model\|repo\|service\|rest\|test\|…), optional `files` / `rules` / `endpoints` |
 | `ordering_basis` | string | Cite `sdd-ordering.md` / `story-sizing.md` |
 | `written_at` | string | ISO-8601 UTC |
+| `mta_oos` / `findings_oos` | array | optional typed out-of-scope MTA rule ids (partition-coverage gate) |
 
 Prefer Spec Kit `spec.md` as the next artifact after partition (R-M2.3).
+
+**M2a exit gate:** `check-partition-coverage.py` must be **VALID**
+(`migration/contracts/partition-coverage.md`). Story-count variance is allowed
+only when the gate passes.

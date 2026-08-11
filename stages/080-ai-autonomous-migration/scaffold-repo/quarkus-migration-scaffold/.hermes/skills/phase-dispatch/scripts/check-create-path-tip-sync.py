@@ -246,6 +246,21 @@ REQUIRED_SUBSTRINGS = [
         "check-created-cards-claim.py",
         "M2b wires created_cards claim check",
     ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/check-partition-coverage.py",
+        "PARTITION_COVERAGE",
+        "partition-coverage gate script (Architect E-133858Z)",
+    ),
+    (
+        "migration/contracts/partition-coverage.md",
+        "F11 denominator",
+        "partition-coverage contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/dispatch-phase.sh",
+        "Partition-coverage gate",
+        "M2a wires partition-coverage VALID",
+    ),
 ]
 
 

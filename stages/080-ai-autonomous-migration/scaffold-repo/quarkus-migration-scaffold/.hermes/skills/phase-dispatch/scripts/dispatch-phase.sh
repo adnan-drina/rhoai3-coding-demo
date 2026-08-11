@@ -290,12 +290,17 @@ substitution / path invention / specimen-body priming. Measure the harness.
 3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
    Spec Kit seed (or Operator disposition of a typed BLOCK) — Input-manifest sources
    only; **not** `migration/bodies/*`.
-4. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
+4. **Partition-coverage gate** (Architect E-20260811T133858Z): run
+   `python3 .hermes/skills/sdd-readiness/scripts/check-partition-coverage.py . --write-receipt migration/receipts/partition-coverage/latest.json`
+   — must print `PARTITION_COVERAGE: VALID` (fail-closed). See
+   `migration/contracts/partition-coverage.md`.
+5. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
    Lead/Operator dispatch **M2b** next (parent = this task).
 
 ## Done when
 - Spec Kit invoke evidenced (seed artifact) **or** typed `needs_input` BLOCK recorded
 - `migration/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
+- `check-partition-coverage.py` → **VALID** (+ receipt)
 - **No** M3 children created on this card
 
 ## Constraints
