@@ -71,6 +71,9 @@ REQUIRED_FILES = [
     "migration/contracts/dependency-closure.md",
     # Architect E-20260812T055516Z Class A — BANK-CONV-LIVE-WD-1 (stream-stale / warm-hb)
     ".hermes/home/scripts/check-conversation-liveness.py",
+    # Operator E-20260812T061639Z / Architect E-20260812T061718Z Class A — card↔sidecar
+    ".hermes/skills/auditability-repeatability/scripts/assert-card-body-digest-match.py",
+    "migration/contracts/card-sidecar-digest-cross-assert.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -458,6 +461,21 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/home/scripts/check-conversation-liveness.py",
         "BANK-CONV-LIVE-WD-1",
         "conversation-liveness detector script",
+    ),
+    (
+        ".hermes/skills/auditability-repeatability/scripts/assert-card-body-digest-match.py",
+        "card↔sidecar digest mismatch",
+        "Class A card↔sidecar digest cross-assert script",
+    ),
+    (
+        "migration/contracts/card-sidecar-digest-cross-assert.md",
+        "card↔sidecar",
+        "card-sidecar-digest-cross-assert contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "assert-card-body-digest-match.py",
+        "Class A card↔sidecar assert wired into create-m3 ack path",
     ),
     (
         ".hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py",

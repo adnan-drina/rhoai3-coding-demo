@@ -382,6 +382,12 @@ ACK_REQ="${ACK_DIR}/ack-request-${STORY_ID}.yaml"
 echo "ACK_REQUEST=${ACK_REQ}"
 echo "ACK_REQUEST_DIGESTS body=${BODY_DIGEST} partition=${PARTITION_DIGEST} task_id=${TASK_ID} story_id=${STORY_ID}"
 
+# Operator E-20260812T061639Z / Architect E-20260812T061718Z Class A —
+# card↔sidecar digest cross-assert at ack-regen choke point (refuse dead digests).
+python3 "${ROOT}/.hermes/skills/auditability-repeatability/scripts/assert-card-body-digest-match.py" \
+  "${ROOT}" --task-id "${TASK_ID}" --body "${BODY_JSON}" \
+  || die "card↔sidecar digest cross-assert REFUSE for ${TASK_ID} (migration/contracts/card-sidecar-digest-cross-assert.md)"
+
 echo "OK: M3 → ${TASK_ID} (blocked/parked; parent=${PARENT_PRIMARY}). File ledger Need Review:adhere-observe-${TASK_ID}"
 echo "NOTE: parent must kanban_complete with created_cards including ${TASK_ID} (empty list REJECT)"
 echo "NOTE: Operator ack-after-create via ${ACK_REQ} (unsigned → brief-identity ack); then Lead reverify + Architect §3a before dispatch"
