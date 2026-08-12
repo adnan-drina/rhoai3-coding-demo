@@ -84,6 +84,9 @@ REQUIRED_FILES = [
     # Architect E-20260812T074514Z RW-1 CONV-LIVE deepen
     ".hermes/home/scripts/classify-conv-live-stall.py",
     "migration/contracts/conv-live-bounded-retry.md",
+    # Architect E-20260812T090529Z Class A — CONV-LIVE arm on dispatch path (D4)
+    ".hermes/home/scripts/arm-conv-live-watchdog.sh",
+    "migration/contracts/conv-live-arm-on-dispatch.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -531,6 +534,21 @@ REQUIRED_SUBSTRINGS = [
         "migration/contracts/conv-live-bounded-retry.md",
         "BOUNDED_RETRY",
         "RW-1 CONV-LIVE bounded in-turn retry contract",
+    ),
+    (
+        ".hermes/home/scripts/arm-conv-live-watchdog.sh",
+        "conv-live-watchdog-loop",
+        "Class A CONV-LIVE arm-on-dispatch poller",
+    ),
+    (
+        ".hermes/home/scripts/kanban-dispatch-guarded.sh",
+        "arm-conv-live-watchdog.sh",
+        "Class A CONV-LIVE arm wired into guarded dispatch",
+    ),
+    (
+        "migration/contracts/conv-live-arm-on-dispatch.md",
+        "BANK-CONV-LIVE-WD-1",
+        "CONV-LIVE arm-on-dispatch contract",
     ),
 ]
 
