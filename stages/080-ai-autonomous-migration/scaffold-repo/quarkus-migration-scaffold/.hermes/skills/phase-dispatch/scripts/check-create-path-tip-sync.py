@@ -78,6 +78,12 @@ REQUIRED_FILES = [
     ".hermes/skills/harness-validate/scripts/check-skill-conformance.py",
     ".hermes/skills/phase-dispatch/scripts/assert-bundle-skills-exist.py",
     ".hermes/home/skill-bundles/m3-implementer.yaml",
+    # Architect E-20260812T074514Z RW-2 BANK-DEST-INV-HARDINVOKE-1
+    ".hermes/skills/sdd-readiness/scripts/assert-dest-inventory-hardinvoke.py",
+    "migration/contracts/dest-inventory-hardinvoke.md",
+    # Architect E-20260812T074514Z RW-1 CONV-LIVE deepen
+    ".hermes/home/scripts/classify-conv-live-stall.py",
+    "migration/contracts/conv-live-bounded-retry.md",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -495,6 +501,36 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
         "assert-dependency-closure.py",
         "Class A dependency-closure wired into create-m3",
+    ),
+    (
+        ".hermes/skills/sdd-readiness/scripts/assert-dest-inventory-hardinvoke.py",
+        "DEST_INV_HARDINVOKE",
+        "RW-2 dest-inventory hard-invoke lint",
+    ),
+    (
+        "migration/contracts/dest-inventory-hardinvoke.md",
+        "BANK-DEST-INV-HARDINVOKE-1",
+        "dest-inventory-hardinvoke contract",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "BANK-DEST-INV-HARDINVOKE-1",
+        "RW-2 dest-inventory cite obligation on create-m3",
+    ),
+    (
+        ".hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh",
+        "assert-bundle-skills-exist.py",
+        "RW-3 CS-7 bundle exists-assert wired into create-m3",
+    ),
+    (
+        ".hermes/home/scripts/classify-conv-live-stall.py",
+        "CONV_LIVE_CLASSIFY",
+        "RW-1 CONV-LIVE stream-layer classifier",
+    ),
+    (
+        "migration/contracts/conv-live-bounded-retry.md",
+        "BOUNDED_RETRY",
+        "RW-1 CONV-LIVE bounded in-turn retry contract",
     ),
 ]
 

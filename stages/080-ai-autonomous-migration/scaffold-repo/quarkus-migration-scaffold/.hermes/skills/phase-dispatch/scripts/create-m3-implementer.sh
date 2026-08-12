@@ -110,6 +110,10 @@ python3 "${ROOT}/.hermes/skills/sdd-readiness/scripts/check-kanban-body.py" "${R
 # AD-002G P0.2 — refuse create if phase attach matrix drifts
 python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed — fix .hermes/phase-dispatch.yaml skills[]"
+# CS-7 / RW-3 — fail-closed if m3-implementer bundle lists unresolved skills
+python3 "${ROOT}/.hermes/skills/phase-dispatch/scripts/assert-bundle-skills-exist.py" "${ROOT}" \
+  --bundle m3-implementer \
+  || die "CS-7 bundle exists-assert failed — fix .hermes/home/skill-bundles/m3-implementer.yaml"
 
 # Parse M3 skills + max_runtime from yaml
 eval "$(python3 - "${DISPATCH_YAML}" <<'PY'
@@ -184,6 +188,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo
   echo "## Obligation"
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`dependencies\`, \`refs\` incl. \`destination_inventory\`)."
+  echo "**Dest-inventory hard-invoke (BANK-DEST-INV-HARDINVOKE-1 / Architect E-20260812T074514Z):** any conclusion that a dependency/path is missing/absent/DEST_MISS/\`empty destination\` is **INVALID** unless Reasoning cites \`refs.destination_inventory\` (path+sha256) or the stamped receipt under \`migration/receipts/destination-inventory/\`. Typed \`dependency_wait\` **REQUIRES** that citation first. Do **not** invent OOS owners or OOS-create \"missing\" deps."
   echo "**Dependencies (Operator E-20260811T144200Z):** treat \`dependencies[]\` as authority for import provenance (\`provider\` = owning story or \`pre-exists\`). Coverage-gap on orphan model/interface ⇒ typed BLOCK — do **not** invent owners or OOS-create deps."
   echo "**Interface-closure Class A (Architect E-20260811T181749Z):** create path refuses bodies where an in-scope \`*Impl\` lacks its interface in scope/deps/dest (\`check-interface-closure.py\` / \`migration/contracts/interface-closure.md\`). Mid-run OOS-create of a missing interface = ABORT — typed \`needs_input\` only."
   echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."

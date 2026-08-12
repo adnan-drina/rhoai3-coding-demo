@@ -357,6 +357,28 @@ def check_conversation_liveness(task_id: str, root: Path) -> str | None:
         return None
     tail = ((cp.stderr or "") + "\n" + (cp.stdout or "")).strip().splitlines()
     msg = tail[-1] if tail else f"rc={cp.returncode}"
+    # RW-1: stamp stream-layer classify receipt (bounded-retry policy input)
+    classify = Path(__file__).resolve().parent / "classify-conv-live-stall.py"
+    if classify.is_file():
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(classify),
+                    str(root),
+                    "--task-id",
+                    task_id,
+                    "--stamp",
+                    "--flat-sec",
+                    str(flat),
+                ],
+                cwd=str(root),
+                text=True,
+                capture_output=True,
+                timeout=90,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     return f"WATCHDOG: BANK-CONV-LIVE-WD-1 {task_id}: {msg}"
 
 

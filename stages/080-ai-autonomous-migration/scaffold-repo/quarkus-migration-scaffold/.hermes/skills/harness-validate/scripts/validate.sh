@@ -551,6 +551,10 @@ echo "== CS-7 m3-implementer bundle exists-assert (fail-closed) =="
 python3 "${SKILLS}/phase-dispatch/scripts/assert-bundle-skills-exist.py" \
   "${ROOT}" --bundle m3-implementer || rc=1
 
+echo "== BANK-DEST-INV-HARDINVOKE-1 (RW-2) =="
+python3 "${SKILLS}/sdd-readiness/scripts/assert-dest-inventory-hardinvoke.py" \
+  "${ROOT}" || rc=1
+
 echo "== AD-011 skill extension overlay =="
 if [ ! -f "${ROOT}/migration/contracts/ad011-skill-extension.md" ]; then
   echo "FAIL: missing ad011-skill-extension.md" >&2
