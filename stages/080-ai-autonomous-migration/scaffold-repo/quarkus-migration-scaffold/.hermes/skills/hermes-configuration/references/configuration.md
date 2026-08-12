@@ -1,53 +1,40 @@
 # Configuration — locations, precedence, Managed Scope
 
-**Official sources (cite these):**
-- Configuration: https://hermes-agent.nousresearch.com/docs/user-guide/configuration
-- Configuring Models: https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models
-- Managed Scope: https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
-- Security: https://hermes-agent.nousresearch.com/docs/user-guide/security
+**Official page:** https://hermes-agent.nousresearch.com/docs/user-guide/configuration
 
-**Internal digest (not a substitute for official cite):**
-`harness-refactoring/source-analysis/hermes/configuration.md` (W1).
+Also: https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
 
-## Directory structure (official)
+**CS-5 cross-pointer:**
+`harness-refactoring/source-analysis/hermes/20260812-official-kanban-alignment.md`
 
-Under `$HERMES_HOME` (often `~/.hermes/`, relocated via `HERMES_HOME`):
+## File map (official Directory Structure)
 
-| Path | Role |
-|------|------|
+| Path under `$HERMES_HOME` | Role |
+|---------------------------|------|
 | `config.yaml` | Non-secret settings |
-| `.env` | Secrets / API keys |
-| `skills/` | Agent-created skills (`skill_manage`) |
-| `sessions/`, `logs/`, `cron/` | Runtime |
+| `.env` | API keys / secrets |
+| `auth.json` | OAuth (Portal) — remove on MaaS seats |
+| `skills/`, `sessions/`, `logs/`, `cron/` | Runtime |
+
+Relocate whole tree with `HERMES_HOME`. Secrets stay out of `config.yaml`
+(official secrets rule).
 
 ## Precedence (official)
 
-1. CLI arguments (highest, per-invocation)
+1. CLI arguments (highest)
 2. `$HERMES_HOME/config.yaml`
 3. `$HERMES_HOME/.env`
 4. Built-in defaults
-5. **Managed Scope** — `/etc/hermes/{config.yaml,.env}` or
-   `$HERMES_MANAGED_DIR/{config.yaml,.env}` pins selected keys over user
-   config (leaf merge). Docs: enforcement is **filesystem permissions
-   only**, not an un-escapable sandbox.
 
-## Platform pin (demo-validated)
+`${VAR}` / `${env:VAR}` substitution resolves inside `config.yaml`.
 
-- Relocate knob: `HERMES_MANAGED_DIR=/projects/.platform/hermes`
-- Provider/auth live in Managed Scope — **do not** dual-home secrets under
-  writable `$HERMES_HOME` (R-HX.5).
-- Demo pins commonly include: `model.context_length: 131072`,
-  `model.max_tokens: 8192`, `providers.custom.models.<id>.stale_timeout_seconds: 900`,
-  `compression.threshold_tokens: 110000`,
-  `tool_loop_guardrails.hard_stop_enabled: true`.
+## Managed Scope (quote)
 
-## CLI verification
+Official: an administrator can pin specific config and secret values that a
+standard user cannot override — via `/etc/hermes/{config.yaml,.env}` or
+`$HERMES_MANAGED_DIR/{config.yaml,.env}` (leaf merge over user config).
 
-```bash
-hermes config              # view resolved
-hermes config get KEY
-hermes config check
-hermes doctor
-```
+Docs also state the limit: enforcement is filesystem permissions only — not
+an un-escapable sandbox. Pair with NetworkPolicy for endpoint control.
 
-`hermes config set` routes API keys → `.env`, other keys → `config.yaml`.
+Demo pin path: `HERMES_MANAGED_DIR=/projects/.platform/hermes`.

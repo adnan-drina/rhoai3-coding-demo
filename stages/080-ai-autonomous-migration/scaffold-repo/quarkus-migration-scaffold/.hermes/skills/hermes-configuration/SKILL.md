@@ -1,73 +1,48 @@
 ---
 name: hermes-configuration
-description: Cite Hermes docs before any config.yaml change.
+description: Official Hermes config sources, keys, and vetted examples
 version: 1.0.0
-author: rhoai3-coding-demo
-license: MIT
+author: rhoai3-harness-team
+license: Apache-2.0
+platforms: [linux]
 metadata:
   hermes:
-    tags: config,kanban,skills,hooks,managed-scope
-    category: platform
+    tags: [configuration, harness, official-docs, governance]
+    category: harness
 ---
 
-# Hermes configuration
-
-AD-013 enablement package (CS-8). Packages official Hermes configuration
-digests + URLs so config/Managed Scope/kanban/skills/hooks work cites
-source without board archaeology. Sunset tag: **KEEP** (user-space
-evidence) pending chain-end drift audit.
+# Hermes Configuration
 
 ## When to Use
-
-- Any change to `config.yaml`, Managed Scope (`HERMES_MANAGED_DIR`),
-  `kanban.*`, `skills.*`, hooks, bundles, taps, or profiles.
-- Class A tip work that touches Hermes runtime knobs (stream/stale,
-  dispatch, write-approval, external_dirs).
-- AD-013 citation duty when evaluating official vs homegrown mechanism.
-
-Do **not** use for product Quarkus migration code (use phase skills).
-Do **not** treat this skill as permission to lift serial HOLD or remint
-M3 cards.
+Any change touching Hermes agent configuration in this project: `config.yaml`
+(any seat), Managed Scope pins, `kanban.*` dispatcher keys, `skills.*`
+governance (external_dirs, write_approval, bundles, taps), shell hooks,
+profiles, or provider/model wiring. Consult BEFORE designing; AD-013 requires
+citing the official section you relied on.
 
 ## Procedure
-
-1. Identify the domain: `configuration` | `kanban` | `skills-governance` |
-   `hooks`.
-2. Load the matching digest via `skill_view(hermes-configuration, path)`:
-   - `references/configuration.md`
-   - `references/kanban.md`
-   - `references/skills-governance.md`
-   - `references/hooks.md`
-3. Cite the **official URL + section** (AD-013 / R-OF.1) in the ledger or
-   contract before changing behavior.
-4. Respect Managed Scope precedence: pinned keys under
-   `$HERMES_MANAGED_DIR` win; do not copy secrets into writable
-   `$HERMES_HOME`.
-5. Compare against VALIDATED examples under `examples/` (factory 5-liner,
-   Managed Scope pin, AD-002E preload).
-6. Validate on the live seat (`hermes config check` / `hermes doctor` /
-   targeted probe) before claiming done.
-
-Pointers to the CS-5 pack and W1 research doc:
-`references/pointers.md`.
+1. Identify the config domain; open the matching reference:
+   - locations, precedence, Managed Scope → `references/configuration.md`
+   - dispatcher/kanban keys → `references/kanban-config.md`
+   - skills governance, bundles, taps → `references/skills-governance.md`
+   - shell hooks, pre_verify, accept-hooks → `references/hooks.md`
+2. Read the official recommendation there (each file quotes the doc and links
+   the exact page/section).
+3. Prefer the official mechanism; if it is insufficient, record why in your
+   entry (AD-013 citation duty).
+4. Copy the nearest vetted snippet from `examples/` and adapt; never hand-copy
+   digests or secrets.
+5. Validate on a live seat before landing (see Verification).
 
 ## Verification
+- The proposing entry cites the official doc section (AD-013).
+- Change validated against a live seat (`hermes config get` / seat restart /
+  `hermes hooks doctor` as applicable).
+- Managed Scope precedence respected: user-seat files never override pins.
+- No secrets outside `.env`/Secret objects (official secrets rule).
 
-- [ ] Entry or contract carries an official Hermes/OpenCode/spec-kit URL
-      cite for the touched domain (AD-013).
-- [ ] Change was checked against the matching `references/<domain>.md`.
-- [ ] Managed Scope precedence respected (`HERMES_MANAGED_DIR` pin;
-      no secret dual-home under `$HERMES_HOME`).
-- [ ] Live-seat validation ran (`hermes config check` and/or domain probe).
-- [ ] This skill passes
-      `python3 .hermes/skills/harness-validate/scripts/check-skill-conformance.py . --skill hermes-configuration --strict`.
-
-## Pitfalls
-
-- Pointing at scattered board archaeology instead of this package (R9/R10).
-- Setting `skills.write_approval: true` on headless Kanban seats (no
-  approver → timeout-deny).
-- Treating `external_dirs` as a write boundary — it is discovery only.
-- Using `--accept-hooks` casually outside dispatcher profile workers.
-- Wrapper Class A without R-OF.1 cite while BANK-CONV-LIVE is
-  CHAIN-CRITICAL.
+## Example
+Pin the worker model fleet-wide (Managed Scope, AD-008): see
+`examples/managed-scope-pin.yaml` — admin-tier pin per the official line
+"an administrator can pin specific config and secret values that a standard
+user cannot override." Cite: user-guide/configuration §Managed Scope.

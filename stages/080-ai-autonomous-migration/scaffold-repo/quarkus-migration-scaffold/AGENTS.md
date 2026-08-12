@@ -65,7 +65,6 @@ from a pointer README).
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | `.hermes/SOUL.md` |
 | Procedures / tool invocations | `.hermes/skills/<name>/` |
-| Hermes configuration change | consult `.hermes/skills/hermes-configuration/references/` **FIRST**; AD-013 citation mandatory (CS-8) |
 | Domain gates G-1..G-4 | skill `domain-gates` (vocabulary names below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
@@ -77,6 +76,7 @@ from a pointer README).
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
 | `.hermes/skills/` | Scaffold skills on `skills.external_dirs` |
+| `.hermes/skills/hermes-configuration/` | Config source-of-truth: consult `references/` BEFORE any Hermes config change; AD-013 citation mandatory (CS-8) |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
 | `extensions/<skill>/references/` | AD-011 additive overlays (R-AD011.2) — `skill_view` base **and** extension |
 | `workshop-extensions/` | Demo-user starter for overlays / shadows — never SOUL |

@@ -1,42 +1,30 @@
 # Skills governance
 
-**Official sources (cite these):**
-- Skills: https://hermes-agent.nousresearch.com/docs/user-guide/features/skills
-- Skill bundles (same page, §Skill Bundles)
-- AD-012 / R-SK authoring law (architecture): `architecture/SOLUTION-ARCHITECTURE.md` §H.12
+**Official page:** https://hermes-agent.nousresearch.com/docs/user-guide/features/skills
 
-## Official surfaces
+**CS-5 cross-pointer:**
+`harness-refactoring/source-analysis/hermes/20260812-official-kanban-alignment.md`
 
-| Knob | Meaning |
-|------|---------|
-| `skills.external_dirs` | Extra skill roots scanned **in place** (not a write boundary) |
-| `skills.write_approval` | Stage agent skill writes for `/skills approve` |
-| Bundles | YAML manifests under skill-bundles; `instruction:` + `skills:` |
-| Taps | Workshop / remote skill sources |
-| Per-task injection | `kanban_create(skills=[...])` / card `skills` JSON |
+## Config knobs
 
-## Platform pins (validated)
+| Knob | Official meaning |
+|------|------------------|
+| `skills.external_dirs` | Extra skill roots scanned in place — **not a write-protection boundary** |
+| `skills.write_approval` | Stage writes to `~/.hermes/pending/skills/`; review via `/skills approve\|reject` |
+| Bundles | YAML manifest + `instruction:` + `skills:`; `.bundled_manifest` origin hashes |
+| Taps | Remote / workshop skill sources |
+| Per-task attach | `kanban_create(skills=[...])` / `--skill` — prefer over editing assignee profile |
 
-```yaml
-skills:
-  write_approval: false   # headless Kanban: true → timeout-deny (R-AD011.5)
-  inline_shell: false
-  external_dirs:
-    - /projects/modernized/.hermes/skills
-    - /home/user/.hermes/skills
-```
+## Bundle caution (official vs our doctrine)
 
-## Authoring law (AD-012)
+Official: **"missing skills are skipped, not fatal."**
 
-New/edited skills: R-SK.1–6 (layout, frontmatter ≤60-char imperative
-description, When→Procedure→Verification, progressive disclosure,
-conformance lint, install hygiene). Lint:
+Our doctrine (CS-7): that skip is **FORBIDDEN** on dispatch — fail-closed
+exists-assert every bundle-listed skill resolves on the seat before
+`kanban dispatch`.
 
-```bash
-python3 .hermes/skills/harness-validate/scripts/check-skill-conformance.py . --skill NAME --strict
-```
+## Headless Kanban note
 
-## CS-7 bundles
-
-Phase bundles use `m<phase>-*` names only. Official "missing skills skipped"
-is **FORBIDDEN** here — fail-closed exists-assert before dispatch.
+`skills.write_approval: true` with no interactive approver → timeout-deny
+(R-AD011.5). Demo Managed Scope uses `write_approval: false` and protects
+golden skills via FS / policy elsewhere.

@@ -1,7 +1,7 @@
-# Managed Scope pin excerpt — VALIDATED live seat
-# Path: $HERMES_MANAGED_DIR/config.yaml (demo: /projects/.platform/hermes)
+# Managed Scope pin — AD-008 model fleet pin (admin tier)
 # Official: https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
-# Relocate knob: HERMES_MANAGED_DIR (process env for dispatch/daemon — not specimen .env)
+# Quote: administrator can pin values a standard user cannot override.
+# Path: $HERMES_MANAGED_DIR/config.yaml (demo: /projects/.platform/hermes)
 
 model:
   provider: custom
@@ -18,9 +18,6 @@ approvals:
   mode: smart
   timeout: 300
   cron_mode: deny
-
-kanban:
-  auto_decompose: false
 
 providers:
   custom:
