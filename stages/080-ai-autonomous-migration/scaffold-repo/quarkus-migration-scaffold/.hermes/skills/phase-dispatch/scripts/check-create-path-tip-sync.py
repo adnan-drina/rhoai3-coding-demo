@@ -69,6 +69,8 @@ REQUIRED_FILES = [
     # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
     ".hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py",
     "migration/contracts/dependency-closure.md",
+    # Architect E-20260812T055516Z Class A — BANK-CONV-LIVE-WD-1 (stream-stale / warm-hb)
+    ".hermes/home/scripts/check-conversation-liveness.py",
 ]
 
 REQUIRED_SUBSTRINGS = [
@@ -446,6 +448,16 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
         "COMPLETE-CMD enforce",
         "watchdog auto-wires complete-cmd reclaim",
+    ),
+    (
+        ".hermes/home/scripts/kanban-stuck-watchdog.py",
+        "BANK-CONV-LIVE-WD-1",
+        "conversation-liveness warm-hb post-tool stall watchdog",
+    ),
+    (
+        ".hermes/home/scripts/check-conversation-liveness.py",
+        "BANK-CONV-LIVE-WD-1",
+        "conversation-liveness detector script",
     ),
     (
         ".hermes/skills/sdd-readiness/scripts/assert-dependency-closure.py",

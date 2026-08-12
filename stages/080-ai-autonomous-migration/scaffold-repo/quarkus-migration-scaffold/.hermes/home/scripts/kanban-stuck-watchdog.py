@@ -329,6 +329,37 @@ def check_complete_cmd_enforce(root: Path) -> list[str]:
     return ["WATCHDOG: COMPLETE-CMD enforce — " + ln for ln in lines]
 
 
+def check_conversation_liveness(task_id: str, root: Path) -> str | None:
+    """BANK-CONV-LIVE-WD-1 — flat transcript + API idle while hb warm (post-tool stall)."""
+    script = Path(__file__).resolve().parent / "check-conversation-liveness.py"
+    if not script.is_file():
+        return None
+    flat = int(os.environ.get("CONV_LIVE_FLAT_SECONDS", "600"))
+    try:
+        cp = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                str(root),
+                "--task-id",
+                task_id,
+                "--flat-sec",
+                str(flat),
+            ],
+            cwd=str(root),
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"WATCHDOG: conversation-liveness failed to run for {task_id}: {exc}"
+    if cp.returncode == 0:
+        return None
+    tail = ((cp.stderr or "") + "\n" + (cp.stdout or "")).strip().splitlines()
+    msg = tail[-1] if tail else f"rc={cp.returncode}"
+    return f"WATCHDOG: BANK-CONV-LIVE-WD-1 {task_id}: {msg}"
+
+
 def main() -> int:
     home = hermes_home()
     db_path = Path(os.environ.get("KANBAN_DB", str(home / "kanban.db")))
@@ -407,6 +438,10 @@ def main() -> int:
         fd_alert = check_fast_deny(str(ident), root)
         if fd_alert:
             alerts.append(fd_alert)
+        # BANK-CONV-LIVE-WD-1 — post-tool / stream-stale class (warm hb mask)
+        cl_alert = check_conversation_liveness(str(ident), root)
+        if cl_alert:
+            alerts.append(cl_alert)
 
     if alerts:
         print("\n".join(alerts))
