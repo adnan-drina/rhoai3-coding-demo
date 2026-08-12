@@ -22,15 +22,15 @@ On terminals `crashed` / `gave_up` / `kill` / `timed_out`:
 
 ```bash
 # Refuse silent requeue onto dirt
-python3 .hermes/skills/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
+python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
   --terminal crashed
 
 # Explicit restore then allow
-python3 .hermes/skills/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
+python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
   --terminal gave_up --action restore --baseline HEAD
 
 # Clean-only probe
-python3 .hermes/skills/validation-release-gates/scripts/check-workspace-clean.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-workspace-clean.py .
 ```
 
 ## Deferred (release)

@@ -12,8 +12,8 @@
 ## Invoke
 
 ```bash
-bash .hermes/skills/validation-release-gates/scripts/run-m4-floor.sh /path/to/frozen-modernized
-python3 .hermes/skills/validation-release-gates/scripts/check-m4-floor-receipts.py \
+bash .hermes/skills/gates/validation-release-gates/scripts/run-m4-floor.sh /path/to/frozen-modernized
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-m4-floor-receipts.py \
   /path/to/frozen-modernized/migration/receipts/m4-floor/<run-id>
 ```
 

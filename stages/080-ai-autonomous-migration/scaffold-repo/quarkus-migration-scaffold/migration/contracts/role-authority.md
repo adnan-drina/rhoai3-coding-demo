@@ -74,11 +74,11 @@ Record under `migration/acks/` (or Kanban metadata):
 | §16.8 AR-1.6 untrusted | `check-untrusted-boundary.py` + `fixtures/authority/ar16-untrusted/` |
 
 ```bash
-bash .hermes/skills/role-authority/scripts/check-acks.sh M2
-python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
-bash .hermes/skills/role-authority/scripts/apply-write-fence.sh lock
-python3 .hermes/skills/role-authority/scripts/probe-write-fence.py .
-python3 .hermes/skills/role-authority/scripts/check-write-fence.py . --body migration/bodies/S-010.json
+bash .hermes/skills/harness/role-authority/scripts/check-acks.sh M2
+python3 .hermes/skills/harness/role-authority/scripts/check-role-writes.py .
+bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh lock
+python3 .hermes/skills/harness/role-authority/scripts/probe-write-fence.py .
+python3 .hermes/skills/harness/role-authority/scripts/check-write-fence.py . --body migration/bodies/S-010.json
 ```
 
 Full Kanban dispatch wiring rides phase schema. Non-blocking vs Operator ACK

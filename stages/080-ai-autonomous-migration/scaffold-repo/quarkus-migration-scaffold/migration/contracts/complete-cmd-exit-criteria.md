@@ -14,7 +14,7 @@ evaluated exits; complete path did not.
 
 1. **Before** `kanban_complete`, worker MUST run:
    ```bash
-   python3 .hermes/skills/validation-release-gates/scripts/assert-complete-exit-criteria.py \
+   python3 .hermes/skills/gates/validation-release-gates/scripts/assert-complete-exit-criteria.py \
      . --task-id <id> --body <typed body.json>
    ```
    rc≠0 → **REFUSE** complete; typed `needs_input` or fix. Do not invent N/A.

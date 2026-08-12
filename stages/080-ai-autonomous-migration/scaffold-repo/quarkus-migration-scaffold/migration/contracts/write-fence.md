@@ -25,17 +25,17 @@ Authenticated human approvals bound to artifact digests in a store the worker
 
 ```bash
 # Lock implementer deny-list (default role)
-bash .hermes/skills/role-authority/scripts/apply-write-fence.sh lock
+bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh lock
 
 # Lead/human temporarily unlock to grant an ack, then re-lock
-bash .hermes/skills/role-authority/scripts/apply-write-fence.sh unlock
-bash .hermes/skills/role-authority/scripts/apply-write-fence.sh lock
+bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh unlock
+bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh lock
 
 # Seat probe (must PASS after lock)
-python3 .hermes/skills/role-authority/scripts/probe-write-fence.py .
+python3 .hermes/skills/harness/role-authority/scripts/probe-write-fence.py .
 
 # Pre-complete refuse (git dirty + optional body scope)
-python3 .hermes/skills/role-authority/scripts/check-write-fence.py . \
+python3 .hermes/skills/harness/role-authority/scripts/check-write-fence.py . \
   --body migration/bodies/S-010.json
 ```
 

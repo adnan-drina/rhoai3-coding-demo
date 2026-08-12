@@ -24,9 +24,9 @@ Optional markers in test sources: `AR28:boot`, `AR28:security`, `AR28:crud`,
 ## Checker
 
 ```bash
-python3 .hermes/skills/domain-gates/scripts/check-product-tests.py .
+python3 .hermes/skills/gates/domain-gates/scripts/check-product-tests.py .
 # Also refuse probe-only (AR-3.6):
-python3 .hermes/skills/domain-gates/scripts/check-g1-acceptance-operand.py .
+python3 .hermes/skills/gates/domain-gates/scripts/check-g1-acceptance-operand.py .
 ```
 
 Fixtures: `migration/fixtures/product-tests/ar28-*`.

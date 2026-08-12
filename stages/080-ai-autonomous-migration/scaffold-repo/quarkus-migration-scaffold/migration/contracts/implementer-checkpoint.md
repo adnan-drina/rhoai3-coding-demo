@@ -20,16 +20,16 @@ For M3 implementer tasks (especially test-authoring):
 
 ```bash
 # Init from body (dest paths under modernized / files_writable)
-python3 .hermes/skills/auditability-repeatability/scripts/init-implementer-checkpoint.py \
+python3 .hermes/skills/harness/auditability-repeatability/scripts/init-implementer-checkpoint.py \
   migration/bodies/m3-s-010.json --task-id t_example
 
 # After writing a dest file (src/test/** runs mvn test-compile gate first)
-python3 .hermes/skills/auditability-repeatability/scripts/stamp-implementer-checkpoint.py \
+python3 .hermes/skills/harness/auditability-repeatability/scripts/stamp-implementer-checkpoint.py \
   migration/runs/t_example/checkpoint.json \
   --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
 
 # Validate shape / resume readiness
-python3 .hermes/skills/auditability-repeatability/scripts/check-implementer-checkpoint.py \
+python3 .hermes/skills/harness/auditability-repeatability/scripts/check-implementer-checkpoint.py \
   migration/runs/t_example/checkpoint.json
 ```
 

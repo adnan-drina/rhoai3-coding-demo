@@ -66,25 +66,25 @@ never ships.
 | Piece | Path |
 |-------|------|
 | Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
-| Matrix lint + checklist print | `.hermes/skills/validation-release-gates/scripts/check-phase-matrix.py` |
-| Verdict routing + §18.0 composition | `.hermes/skills/validation-release-gates/scripts/check-verdict-routing.py` |
-| Shared-substrate reopen set | `.hermes/skills/validation-release-gates/scripts/compute-substrate-reopen.py` |
-| Factory ↔ M5 **ACCEPT** oracle | `.hermes/skills/validation-release-gates/scripts/check-factory-m5.py` |
+| Matrix lint + checklist print | `.hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py` |
+| Verdict routing + §18.0 composition | `.hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py` |
+| Shared-substrate reopen set | `.hermes/skills/gates/validation-release-gates/scripts/compute-substrate-reopen.py` |
+| Factory ↔ M5 **ACCEPT** oracle | `.hermes/skills/gates/validation-release-gates/scripts/check-factory-m5.py` |
 | Verdict field schema | `migration/schemas/verdict.md` |
 | Closure map (§11.3 operand) | `migration/slices/closure-map.json` |
 | Wired into | `harness-validate`; M4/M5 `skills[]` |
-| Chaos matrix (plan #7) | `.hermes/skills/validation-release-gates/scripts/run-chaos-matrix.py` |
+| Chaos matrix (plan #7) | `.hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py` |
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
-python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M5
-python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
-python3 .hermes/skills/validation-release-gates/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
-python3 .hermes/skills/validation-release-gates/scripts/check-factory-m5.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py . --print M5
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-factory-m5.py .
 # Live chaos (Hermes venv; isolated board; no LLM spawn):
 # HERMES_AGENT_ROOT=$HOME/.hermes/hermes-agent \
 #   $HERMES_AGENT_ROOT/venv/bin/python \
-#   .hermes/skills/validation-release-gates/scripts/run-chaos-matrix.py .
+#   .hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py .
 ```
 
 `must_not_contradict_m5_accept` is a **required oracle**, not an aspirational
@@ -93,4 +93,4 @@ label. Does not replace G-1…G-4 oracles.
 ## M4 floor (Phase-2)
 
 See `migration/contracts/m4-floor-runner.md` and
-`.hermes/skills/validation-release-gates/scripts/run-m4-floor.sh`.
+`.hermes/skills/gates/validation-release-gates/scripts/run-m4-floor.sh`.

@@ -8,17 +8,17 @@ for new procedures.
 | Standing convention | `AGENTS.md` | Java 21, native Quarkus, task-id correlation |
 | Identity | `.hermes/SOUL.md` | faithfulness, stop-on-bad-input |
 | Procedural knowledge + tool invocation | `.hermes/skills/<name>/` | `mta-analysis`, `derive-legacy-boot3`, `specify-workspace-init` |
-| Deterministic **domain** gate | `.hermes/skills/domain-gates/` | G-1..G-4 vocabulary names below |
-| Scaffold lint | `.hermes/skills/scaffold-invariants/` | no `.hermes.md` override |
-| SDD readiness checks | `.hermes/skills/sdd-readiness/` | Non-Goals, Q-*, §S.6 |
-| Entry-point inventory | `.hermes/skills/inventory-entry-points/` | W2 §11.3 scanner |
-| Harness meta-validate | `.hermes/skills/harness-validate/` | specimen-free suite |
+| Deterministic **domain** gate | `.hermes/skills/gates/domain-gates/` | G-1..G-4 vocabulary names below |
+| Scaffold lint | `.hermes/skills/harness/harness-validate/scripts/check-no-hermes-context-override.sh` | no `.hermes.md` override |
+| SDD readiness checks | `.hermes/skills/sdd/sdd-readiness/` | Non-Goals, Q-*, §S.6 |
+| Entry-point inventory | `.hermes/skills/analysis/inventory-entry-points/` | W2 §11.3 scanner |
+| Harness meta-validate | `.hermes/skills/harness/harness-validate/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
 | Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
 | Role authority contract | `migration/contracts/role-authority.md` | AD-H §16 — roles, privilege, human checkpoints |
 | Grounded generation contract | `migration/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `migration/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
-| Validation / release skill | `.hermes/skills/validation-release-gates/` | matrix lint + verdict routing |
+| Validation / release skill | `.hermes/skills/gates/validation-release-gates/` | matrix lint + verdict routing |
 | Auditability contract | `migration/contracts/auditability-repeatability.md` | AD-H §19 — provenance, digests, early metric |
 | Provenance schema | `migration/schemas/generation-provenance.md` | Kanban metadata fields |
 | Kanban body schema | `migration/schemas/kanban-body.md` | W2 §6.1 typed refs + failure codes |
@@ -47,8 +47,8 @@ bash "${HERMES_SKILL_DIR}/scripts/<script>"
 From a shell without a loaded skill:
 
 ```bash
-bash .hermes/skills/harness-validate/scripts/validate.sh
-bash .hermes/skills/domain-gates/scripts/run-admission.sh
+bash .hermes/skills/harness/harness-validate/scripts/validate.sh
+bash .hermes/skills/gates/domain-gates/scripts/run-admission.sh
 ```
 
 ## Skill index
@@ -62,8 +62,8 @@ bash .hermes/skills/domain-gates/scripts/run-admission.sh
 | `inventory-entry-points` | Entry-point scanner |
 | `sdd-readiness` | Pattern-steals + §S.6 lints |
 | `domain-gates` | G-1..G-4 + admission fixtures (parser/fixture only until live prove) |
-| `scaffold-invariants` | Load-order / taxonomy lints |
-| `harness-validate` | One entrypoint for the above |
+| `harness-validate` | One entrypoint for the above (+ context-override lint) |
+| *(platform)* `harness-skill-authoring` | CS-9 / R-SK land-time lint — not golden (R-SK.9) |
 | `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
 | `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |

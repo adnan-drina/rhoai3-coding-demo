@@ -14,7 +14,7 @@ Default profile MUST:
 5. Clean start → `/q/health` → Owner/Pet query; second start idempotent
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/check-runnable-db-config.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py .
 ```
 
 ## AR-2.2 — Real security
@@ -25,5 +25,5 @@ python3 .hermes/skills/validation-release-gates/scripts/check-runnable-db-config
 3. `@RolesAllowed` uses **compile-time constant** role names (AR-3.1).
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/check-empty-security.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py .
 ```

@@ -32,6 +32,10 @@ components:
       volumeMounts:
         - name: m2
           path: /home/user/.m2
+        # CS-1: OpenCode managed config (/etc/opencode) — writable volume
+        # for workspace user (Architect E-061618Z).
+        - name: opencode-managed
+          path: /etc/opencode
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
@@ -46,6 +50,9 @@ components:
   - name: m2
     volume:
       size: 1G
+  - name: opencode-managed
+    volume:
+      size: 16Mi
 commands:
   - id: init-ai-tools
     exec:

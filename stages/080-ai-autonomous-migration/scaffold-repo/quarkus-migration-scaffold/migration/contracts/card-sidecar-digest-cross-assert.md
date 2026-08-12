@@ -21,7 +21,7 @@ worker check (C5 FAIL / SIGN WITHHELD 2026-08-12).
 ## Tooling
 
 ```bash
-python3 .hermes/skills/auditability-repeatability/scripts/assert-card-body-digest-match.py \
+python3 .hermes/skills/harness/auditability-repeatability/scripts/assert-card-body-digest-match.py \
   . --task-id <task_id> --body migration/bodies/m3-s-NNN.json
 ```
 

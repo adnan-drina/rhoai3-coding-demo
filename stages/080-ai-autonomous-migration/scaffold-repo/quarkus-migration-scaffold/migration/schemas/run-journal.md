@@ -29,7 +29,7 @@ Per-attempt journal under `migration/runs/<task_id>-<run_id>.json`.
 - Create helper stamps body digest at create time (`stamp-body-digest.py`).
 
 ```bash
-python3 .hermes/skills/auditability-repeatability/scripts/stamp-body-digest.py \
+python3 .hermes/skills/harness/auditability-repeatability/scripts/stamp-body-digest.py \
   migration/bodies/m3-s-010.json
-python3 .hermes/skills/auditability-repeatability/scripts/check-run-digests.py .
+python3 .hermes/skills/harness/auditability-repeatability/scripts/check-run-digests.py .
 ```

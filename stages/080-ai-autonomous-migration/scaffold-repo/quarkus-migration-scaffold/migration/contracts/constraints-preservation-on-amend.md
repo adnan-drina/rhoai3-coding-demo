@@ -14,7 +14,7 @@ Proven twice: `t_29ccead3` forbid-drop class; S-002a prefer-fresh
 
 1. Before any body amend, snapshot constraints:
    ```bash
-   python3 .hermes/skills/sdd-readiness/scripts/assert-constraints-preserved.py \
+   python3 .hermes/skills/sdd/sdd-readiness/scripts/assert-constraints-preserved.py \
      . --body migration/bodies/m3-s-NNN.json --snapshot-before
    ```
 2. After amend (and after dependency/inventory stamps that rewrite the JSON),

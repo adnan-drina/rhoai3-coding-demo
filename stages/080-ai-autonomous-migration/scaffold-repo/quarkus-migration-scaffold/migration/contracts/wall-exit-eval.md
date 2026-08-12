@@ -17,10 +17,10 @@ failure mode (wall kill never reaches `kanban_complete`).
 On wall / gave_up-after-timeout (Lead, Monitor, or dispatcher hook):
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/evaluate-exit-criteria.py \
+python3 .hermes/skills/gates/validation-release-gates/scripts/evaluate-exit-criteria.py \
   . --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
 
-python3 .hermes/skills/validation-release-gates/scripts/check-wall-exit-eval.py \
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-wall-exit-eval.py \
   . --task-id t_xxx --trigger timed_out
 ```
 
@@ -49,7 +49,7 @@ Unbounded silent requeue **REJECT**.
 | Hard | Next timed_out after K → **block** (terminal) + exit-eval; do not soft-resume |
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/apply-wall-requeue-policy.py . \
+python3 .hermes/skills/gates/validation-release-gates/scripts/apply-wall-requeue-policy.py . \
   --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
 ```
 

@@ -75,7 +75,7 @@ phases:
   M3:
     # IMPLEMENT — per-unit transform
     # Children MUST be created via
-    # .hermes/skills/phase-dispatch/scripts/create-m3-implementer.sh
+    # .hermes/skills/harness/phase-dispatch/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     role: implementer
     # AD-002F — useful = influence. M3 default preload is the workhorse + body lint

@@ -79,14 +79,24 @@ components:
       volumeMounts:
         - name: m2
           path: /home/user/.m2
+        # CS-1: OpenCode managed config (/etc/opencode) — writable volume
+        # for workspace user (Architect E-061618Z).
+        - name: opencode-managed
+          path: /etc/opencode
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
           exposure: public
           secure: false
           protocol: https
-        # Hermes dashboard: Architect E-20260808T154612Z option A —
-        # loopback 127.0.0.1:9119 + IDE port-forward (no public route).
+        # Hermes dashboard — Operator E-20260812T171806Z W1 rider:
+        # bind stays 127.0.0.1:9119 (no --host 0.0.0.0); che-gateway
+        # endpoint (public + secure) for OAuth-wrapped viewer path.
+        - name: hermes-dashboard
+          targetPort: 9119
+          exposure: public
+          secure: true
+          protocol: https
         - name: debug
           targetPort: 5005
           exposure: none
@@ -95,6 +105,9 @@ components:
   - name: m2
     volume:
       size: 1G
+  - name: opencode-managed
+    volume:
+      size: 16Mi
 commands:
   - id: init-migration-tools
     exec:
@@ -178,7 +191,7 @@ commands:
         fi
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
-        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/specify-workspace-init/scripts/init-workspace.sh"
+        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/sdd/specify-workspace-init/scripts/init-workspace.sh"
         if [ -f "${SPECIFY_INIT}" ]; then
           bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
             || { echo "ERROR: specify-workspace-init failed (AD-S provision-owns-tools)"; exit 1; }
@@ -189,7 +202,7 @@ commands:
   - id: start-hermes-dashboard
     exec:
       component: development-tooling
-      # Architect E-20260808T154612Z option A — loopback + IDE port-forward.
+      # Operator E-20260812T171806Z — loopback bind + che-gateway secure endpoint.
       commandLine: |
         set +e
         export PATH="${HOME}/.local/bin:${PATH}"
@@ -249,7 +262,7 @@ commands:
               exit 0
             done
           ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
-          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; operator tunnel still required)"
+          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; open hermes-dashboard endpoint via che-gateway/OAuth)"
         else
           echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open"
         fi

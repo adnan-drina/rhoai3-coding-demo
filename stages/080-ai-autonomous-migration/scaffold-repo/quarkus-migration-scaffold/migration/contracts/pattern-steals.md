@@ -7,7 +7,7 @@ Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 
 AD-S / Hermes / Kanban / `github/spec-kit` stand. These are **fail-closed
 shapes** we absorb; enforcement lives in skill **`sdd-readiness`**
-(`.hermes/skills/sdd-readiness/`).
+(`.hermes/skills/sdd/sdd-readiness/`).
 
 **Companion:** brief identity carry-forward, graph layering, and re-plan
 authority live in `migration/contracts/sdd-ordering.md` (**AD-S §S.6**).

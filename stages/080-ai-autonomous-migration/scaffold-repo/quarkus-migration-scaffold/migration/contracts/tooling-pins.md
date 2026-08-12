@@ -26,4 +26,4 @@ Hermes skill names (not dotted GitHub slash paths):
 1. `hermes --version` matches pin above (or Architect-approved bump).
 2. `specify --version` / `uv tool list` shows `specify-cli` **0.16.1**.
 3. `ls ~/.hermes/skills | grep '^speckit-'` includes specify/plan/tasks/analyze.
-4. `python3 .hermes/skills/phase-dispatch/scripts/sync-extension-overlays-into-skills.py . --check`.
+4. `python3 .hermes/skills/harness/phase-dispatch/scripts/sync-extension-overlays-into-skills.py . --check`.

@@ -17,5 +17,5 @@ Compat: if only `files_in_scope` is present, destination paths in that list are
 treated as the write set; legacy/referent paths are readable-only.
 
 ```bash
-python3 .hermes/skills/sdd-readiness/scripts/check-surgical-scopes.py .
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-surgical-scopes.py .
 ```

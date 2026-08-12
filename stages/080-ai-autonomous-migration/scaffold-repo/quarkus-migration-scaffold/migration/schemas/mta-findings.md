@@ -47,6 +47,6 @@ Do **not** overload deferral. Tool-wrong cases use `mta-exception`
 ## Validate
 
 ```bash
-python3 .hermes/skills/mta-analysis/scripts/normalize-findings.py migration/mta-findings.json
-python3 .hermes/skills/mta-analysis/scripts/validate-findings-schema.py migration/mta-findings.json
+python3 .hermes/skills/analysis/mta-analysis/scripts/normalize-findings.py migration/mta-findings.json
+python3 .hermes/skills/analysis/mta-analysis/scripts/validate-findings-schema.py migration/mta-findings.json
 ```

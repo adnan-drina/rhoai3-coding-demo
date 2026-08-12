@@ -1,7 +1,7 @@
 # Partition-coverage gate (M2a exit)
 
 **Status:** binding · Architect `E-20260811T133858Z` / Operator `E-20260811T134200Z`  
-**Lint:** `.hermes/skills/sdd-readiness/scripts/check-partition-coverage.py`
+**Lint:** `.hermes/skills/sdd/sdd-readiness/scripts/check-partition-coverage.py`
 
 ## Why
 
@@ -46,6 +46,6 @@ ref).
 Receipt schema: `rhoai3.partition-coverage/v1` via `--write-receipt`.
 
 ```bash
-python3 .hermes/skills/sdd-readiness/scripts/check-partition-coverage.py /projects/modernized \
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-partition-coverage.py /projects/modernized \
   --write-receipt migration/receipts/partition-coverage/latest.json
 ```

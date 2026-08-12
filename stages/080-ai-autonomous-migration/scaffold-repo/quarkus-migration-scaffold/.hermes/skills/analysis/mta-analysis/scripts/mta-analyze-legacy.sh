@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# AD-003 amendment A — harness M1/M5 analysis invocation.
+#
+#   mta-cli analyze --input <legacy@3.x> --output … --target … [--json-output]
+#
+# NEVER pass --source (dated Track B evidence 2026-07-27: excludes
+# source-labelless rules and narrows the set). Targets come from
+# migration.yaml analysis.targets. Input is harvest_referent (legacy@3.x),
+# not the RO 2.x mount working copy.
+set -euo pipefail
+
+# Skill layout: .hermes/skills/analysis/mta-analysis/scripts/ → project root is ../../../..
+ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+MANIFEST="${ROOT}/migration/derived/legacy-at-3.json"
+MIGRATION_YAML="${ROOT}/migration.yaml"
+OUT_DIR="${MTA_OUT_DIR:-${ROOT}/migration/mta-analyze-out}"
+JSON_OUT="${MTA_JSON_OUT:-${ROOT}/migration/mta-findings.json}"
+
+die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
+
+ensure_cli() {
+  # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
+  local kantra_bin="/projects/.tools/kantra/kantra"
+  local mta_alias="/projects/.tools/kantra/mta-cli"
+  export PATH="${HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
+
+  _link_mta_alias() {
+    if [ -x "${kantra_bin}" ]; then
+      ln -sfn kantra "${mta_alias}"
+      [ -x "${mta_alias}" ] || [ -x "${kantra_bin}" ] || return 1
+    fi
+    return 0
+  }
+
+  if [ -x "${kantra_bin}" ]; then
+    _link_mta_alias || true
+    printf '%s\n' "${kantra_bin}"
+    return 0
+  fi
+  if command -v kantra >/dev/null 2>&1; then
+    command -v kantra
+    return 0
+  fi
+  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
+    command -v mta-cli
+    return 0
+  fi
+  if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
+    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…"
+    "${HOME}/.local/bin/kantra-ensure"
+    export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
+    _link_mta_alias || true
+  fi
+  if [ -x "${kantra_bin}" ]; then
+    printf '%s\n' "${kantra_bin}"
+    return 0
+  fi
+  if command -v kantra >/dev/null 2>&1; then
+    command -v kantra
+    return 0
+  fi
+  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
+    command -v mta-cli
+    return 0
+  fi
+  return 1
+}
+
+CLI="$(ensure_cli)" || die "mta-cli/kantra missing after kantra-ensure — re-run once; prefer /projects/.tools/kantra/kantra"
+
+[ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run derive-legacy-boot3 skill: bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\""
+[ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"
+
+# Java 21 required (kantra analyzer bundles osgi.ee=JavaSE-21; Java 17 wedges).
+export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
+export PATH="${JAVA_HOME}/bin:${PATH}"
+java -version 2>&1 | head -1 || true
+[ -n "${JVM_MAX_MEM:-}" ] || die "JVM_MAX_MEM unset (AD-003) — set in the Dev Spaces container env"
+
+INPUT="$(python3 - "${MANIFEST}" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8"))["harvest_referent"])
+PY
+)"
+[ -d "${INPUT}" ] || die "harvest_referent not a directory: ${INPUT}"
+
+# Expand analysis.targets → repeated --target flags (no --source).
+TARGET_FLAGS=()
+TARGET_LIST=""
+while IFS= read -r t; do
+  [ -n "${t}" ] || continue
+  TARGET_FLAGS+=(--target "${t}")
+  TARGET_LIST="${TARGET_LIST} ${t}"
+done < <(python3 - "${MIGRATION_YAML}" <<'PY'
+import sys
+try:
+    import yaml
+except ImportError:
+    text = open(sys.argv[1], encoding="utf-8").read().splitlines()
+    in_targets = False
+    for ln in text:
+        if ln.strip().startswith("targets:"):
+            in_targets = True
+            continue
+        if in_targets:
+            s = ln.strip()
+            if s.startswith("- "):
+                print(s[2:].strip().strip("\"'"))
+            elif s and not s.startswith("#") and not s.startswith("-"):
+                break
+    raise SystemExit
+doc = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+for t in (doc.get("analysis") or {}).get("targets") or []:
+    print(t)
+PY
+)
+[ "${#TARGET_FLAGS[@]}" -gt 0 ] || die "no analysis.targets in ${MIGRATION_YAML}"
+
+rm -rf "${OUT_DIR}"
+mkdir -p "${OUT_DIR}" "$(dirname "${JSON_OUT}")"
+
+# Clean-room finding 2026-08-09 (v8): analyzer-lsp hard-codes
+# `-configuration ./` and often empty `-data`, so Equinox dirs land in cwd.
+# Never run analyze with cwd inside the destination git root.
+MTA_RUN_CWD="${MTA_RUN_CWD:-/projects/.tools/mta-run}"
+mkdir -p "${MTA_RUN_CWD}"
+# JDT/m2e must write `.project` into the analyzed tree. Frozen harvest_referent
+# (derive freeze_tree a-w) causes AccessDeniedException and a silent hang.
+ANALYZE_INPUT="${INPUT}"
+if ! ( touch "${INPUT}/.mta-write-probe" 2>/dev/null && rm -f "${INPUT}/.mta-write-probe" ); then
+  ANALYZE_INPUT="${MTA_ANALYZE_INPUT:-/projects/.derived/legacy-at-3-mta-input}"
+  echo "mta-analyze-legacy: harvest_referent is not writable — cloning to ${ANALYZE_INPUT}"
+  rm -rf "${ANALYZE_INPUT}"
+  mkdir -p "${ANALYZE_INPUT}"
+  tar -C "${INPUT}" -cf - . | tar -C "${ANALYZE_INPUT}" -xf -
+  chmod -R u+w "${ANALYZE_INPUT}" 2>/dev/null || true
+fi
+
+echo "Analyzing INPUT=${ANALYZE_INPUT} (legacy@3.x referent; frozen source=${INPUT})"
+echo "MTA_RUN_CWD=${MTA_RUN_CWD} (Equinox -configuration ./ containment)"
+echo "Targets:${TARGET_LIST}"
+echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
+
+# --json-output can fail after a successful analysis (kantra marshal of
+# dependencies.yaml: map[interface{}]interface{}). Treat tool exit as soft if
+# OUT_DIR still has output.json / output.yaml (AD-003 / live P10 retry path).
+set +e
+(
+  cd "${MTA_RUN_CWD}"
+  "${CLI}" analyze \
+    --input "${ANALYZE_INPUT}" \
+    --output "${OUT_DIR}" \
+    "${TARGET_FLAGS[@]}" \
+    --json-output "${JSON_OUT}" \
+    --overwrite
+)
+analyze_rc=$?
+set -e
+
+if [[ ! -s "${JSON_OUT}" ]]; then
+  if [[ -s "${OUT_DIR}/output.json" ]]; then
+    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json"
+    cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
+  elif [[ -s "${OUT_DIR}/output.yaml" ]]; then
+    die "analyze wrote output.yaml but not output.json — convert YAML offline (analyze_rc=${analyze_rc})"
+  else
+    die "mta-cli analyze failed (rc=${analyze_rc}) with no ${OUT_DIR}/output.json|output.yaml"
+  fi
+fi
+
+INPUT_DIGEST="$(python3 - "${MANIFEST}" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1], encoding="utf-8")).get("sha256", ""))
+PY
+)"
+# Preserve model: envelope + codeSnip required (provisional schema lock).
+# Digest form matches live P10: legacy-at-3:<sha256>
+python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
+  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}"
+python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
+  || die "findings failed provisional schema validation (migration/schemas/mta-findings.md; skill mta-analysis)"
+
+# M1→M2 seam: bounded handoff index (no codeSnip). Evidence store stays at JSON_OUT.
+python3 "$(cd "$(dirname "$0")" && pwd)/emit-findings-handoff.py" "${ROOT}" "${JSON_OUT}" \
+  "${ROOT}/migration/findings-handoff.json" \
+  || die "emit findings-handoff failed (migration/schemas/findings-handoff.md)"
+python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
+  || die "findings-handoff gate failed after emit"
+
+echo "OK: findings → ${JSON_OUT}  handoff → ${ROOT}/migration/findings-handoff.json  report → ${OUT_DIR}"

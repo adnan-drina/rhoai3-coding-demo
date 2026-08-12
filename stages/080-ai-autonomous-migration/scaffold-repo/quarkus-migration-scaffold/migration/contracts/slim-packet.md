@@ -40,5 +40,5 @@ references via `skill_view` (AD-002G hard-invoke). Unused preloads need
 `skills_unused` (AD-002E).
 
 ```bash
-python3 .hermes/skills/phase-dispatch/scripts/check-phase-attach-matrix.py .
+python3 .hermes/skills/harness/phase-dispatch/scripts/check-phase-attach-matrix.py .
 ```

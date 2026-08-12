@@ -1,0 +1,83 @@
+---
+name: phase-dispatch
+description: Dispatch M1–M5 Kanban phase tasks
+version: 1.1.0
+author: rhoai3-harness-team
+license: Apache-2.0
+platforms: [linux]
+metadata:
+  hermes:
+    tags:
+    - harness
+    - orchestration
+    category: harness
+---
+# Phase dispatch (Hermes Kanban)
+
+## When to Use
+
+- Starting **any** M-phase, especially **M1 ANALYZE** (derive + MTA + inventory)
+- Replacing a forbidden detached `mta-analyze-legacy.sh` / derive shell under PPID 1
+- Seeding the next phase after an ack is granted
+
+## Standing rule
+
+**Hermes owns orchestration for M1–M5.** Domain scripts (`mta-analyze-legacy.sh`,
+`derive-legacy-boot3.sh`, …) run **inside** a Kanban worker that loaded the
+declared skills — they are not the demo control plane.
+
+## Procedure
+
+```bash
+export HERMES_HOME="${HERMES_HOME:-/projects/modernized/.hermes/home}"
+export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
+cd /projects/modernized
+
+# Ensure watch is already running in another pane (demo Act D).
+bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M1
+# later:
+bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2 --parent <m1_task_id>
+```
+
+From a shell without the skill loaded:
+
+```bash
+bash .hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh M1
+```
+
+### What the script does
+
+1. Reads `.hermes/phase-dispatch.yaml` for `role`, `skills[]`, `max_runtime_seconds`.
+2. R-HX.5: does **not** copy Managed Scope `config.yaml` / `.env` into
+   `HERMES_HOME` (DB/logs only; provider/auth stay under `HERMES_MANAGED_DIR`).
+3. Ensures a standalone `hermes kanban daemon --force` (Dev Spaces has no gateway).
+4. `hermes kanban create` with `workspace=dir:/projects/modernized`, skills,
+   budget, idempotency key `migration-<phase>-v1`.
+5. Phase dispatch (M1/M2a/M2b) may tick `hermes kanban dispatch --max 1`.
+   **M3 create path (`create-m3-implementer.sh`) MUST NOT** — cards are born
+   `--initial-status blocked` and unpark only after M2b ledger PASS +
+   brief-identity ack + serial GO (Deputy `E-20260811T131900Z`).
+
+### M1 body contract (evidence-analyst)
+
+The created M1 task instructs the worker to, in order:
+
+1. `derive-legacy-boot3` (manifest check / derive if missing)
+2. `inventory-entry-points` → `migration/entry-point-inventory.json` (before handoff emit)
+3. `mta-analysis` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
+4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1)
+
+## Pitfalls
+
+- Do **not** start M1 by `nohup …/mta-analyze-legacy.sh &` — that yields
+  `tasks=0` and cannot stamp `orchestration=hermes_native`.
+- Do **not** omit `--workspace dir:/projects/modernized` (scratch default is wrong).
+- Start `hermes kanban watch` **before** dispatch for the demo audience.
+  Convenience wrapper (native only): `bash .hermes/home/scripts/kanban-track.sh follow`
+  (daemon + watch) or `… watch` / `… dispatch` in two panes.
+
+
+## Verification
+
+- Scripts under `scripts/` exit 0 on a healthy seat.
+- Conformance lint passes for this skill.

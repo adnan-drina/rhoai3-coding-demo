@@ -62,7 +62,7 @@ Also refuse dual-stack (`…/jpa/…` **and** `…/jdbc/…`) when measured ≥ 
   incomplete siblings must not block an individual create.
 
 ```bash
-python3 .hermes/skills/sdd-readiness/scripts/check-operand-count.py .
-python3 .hermes/skills/sdd-readiness/scripts/check-operand-count.py . migration/bodies/m3-s-010.json --wall-fit
-python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py . --body migration/bodies/m3-s-001.json
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-operand-count.py .
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-operand-count.py . migration/bodies/m3-s-010.json --wall-fit
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-kanban-body.py . --body migration/bodies/m3-s-001.json
 ```

@@ -75,16 +75,15 @@ from a pointer README).
 |------|------|
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
-| `.hermes/skills/` | Scaffold skills on `skills.external_dirs` |
-| `.hermes/skills/hermes-configuration/` | Config source-of-truth: consult `references/` BEFORE any Hermes config change; AD-013 citation mandatory (CS-8) |
-| `.hermes/skills/harness/skill-authoring/` | R-SK authoring + lint (CS-9 / R-SK.5): consult before new/edited skills; run `scripts/check-skill-conformance.py` before land |
+| `.hermes/skills/` | Scaffold golden skills on `skills.external_dirs` (R-SK.9: attach **or** script/contract-invoked **or** provision-invoked) |
+| `.agents/skills/hermes-configuration/` (platform repo) | Config source-of-truth for agents — consult BEFORE Hermes config change; AD-013 (CS-8 curated refs under `references/scaffold-curated/`) |
+| `.agents/skills/harness-skill-authoring/` (platform repo) | CS-9 / R-SK.5+R-SK.9 land-time lint (relocated E-190021Z): consult before new/edited golden skills; run `scripts/check-skill-conformance.py --all --flat-ok --root .hermes/skills` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
 | `extensions/<skill>/references/` | AD-011 additive overlays (R-AD011.2) — `skill_view` base **and** extension |
 | `workshop-extensions/` | Demo-user starter for overlays / shadows — never SOUL |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
-Do **not** add `.hermes.md` / `HERMES.md` (shadows this file). Lint:
-`bash .hermes/skills/scaffold-invariants/scripts/check-no-hermes-context-override.sh`
+Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
 
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
@@ -122,25 +121,25 @@ Do not MiniMax either class.
 
 ```bash
 # Specimen-free suite
-bash .hermes/skills/harness-validate/scripts/validate.sh
+bash .hermes/skills/harness/harness-validate/scripts/validate.sh
 
 # SDD readiness (pattern-steals + AD-S §S.6)
-bash .hermes/skills/sdd-readiness/scripts/check-readiness.sh
+bash .hermes/skills/sdd/sdd-readiness/scripts/check-readiness.sh
 
 # Entry-point inventory (W2 §11.3)
-python3 .hermes/skills/inventory-entry-points/scripts/inventory-entry-points.py \
+python3 .hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py \
   /projects/.derived/legacy-at-3 -o migration/entry-point-inventory.json
 
 # M1 ANALYZE — Hermes Kanban only (skill phase-dispatch → mta-analysis inside worker)
 # Forbidden for orchestration: nohup …/mta-analyze-legacy.sh & (tasks=0 / not hermes_native)
-bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
+bash .hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh M1
 # Domain script (runs inside the M1 worker after skill load — not the control plane):
-#   bash .hermes/skills/mta-analysis/scripts/mta-analyze-legacy.sh
+#   bash .hermes/skills/analysis/mta-analysis/scripts/mta-analyze-legacy.sh
 
 # Spec Kit provision (AD-S / provision-owns-tools) — postStart owns init
 # Agents on M2a verify-or-needs_input only — never specify init / invent .specify/
-bash .hermes/skills/specify-workspace-init/scripts/init-workspace.sh /projects/modernized
-python3 .hermes/skills/phase-dispatch/scripts/check-specify-preseed.py /projects/modernized
+bash .hermes/skills/sdd/specify-workspace-init/scripts/init-workspace.sh /projects/modernized
+python3 .hermes/skills/harness/phase-dispatch/scripts/check-specify-preseed.py /projects/modernized
 ```
 
 When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
@@ -170,8 +169,8 @@ author, implementer, reviewer, validator). One Kanban task ⇒ one role; phase
 `migration/acks/` — not mid-run approval prompts.
 
 ```bash
-bash .hermes/skills/role-authority/scripts/check-acks.sh M2
-python3 .hermes/skills/role-authority/scripts/check-role-writes.py .
+bash .hermes/skills/harness/role-authority/scripts/check-acks.sh M2
+python3 .hermes/skills/harness/role-authority/scripts/check-role-writes.py .
 ```
 
 See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
@@ -185,8 +184,8 @@ Non-trivial changes cite task id, brief/story id, and legacy locus. Invention
 outside evidence is a `blocked` outcome, not improvisation.
 
 ```bash
-python3 .hermes/skills/grounded-generation/scripts/check-citation.py .
-python3 .hermes/skills/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
+python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py .
+python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
 ```
 
 See `migration/contracts/grounded-generation.md`.
@@ -199,9 +198,9 @@ must not contradict M5 ACCEPT. REFUSE → fix/retry; INCONCLUSIVE → human queu
 rollback = last bad task tip only; wave block stops new stories.
 
 ```bash
-python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py .
-python3 .hermes/skills/validation-release-gates/scripts/check-phase-matrix.py . --print M4
-python3 .hermes/skills/validation-release-gates/scripts/check-verdict-routing.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py . --print M4
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py .
 ```
 
 See `migration/contracts/validation-release-gates.md`.
@@ -218,7 +217,7 @@ Typed `body` only — digest refs, not inlined blobs. See
 `migration/schemas/kanban-body.md`.
 
 ```bash
-python3 .hermes/skills/sdd-readiness/scripts/check-kanban-body.py .
+python3 .hermes/skills/sdd/sdd-readiness/scripts/check-kanban-body.py .
 ```
 
 ### Auditability and repeatability (AD-H §19)
@@ -231,8 +230,8 @@ provenance into commit trailers. Early bad-agent signal = unsupported claims
 (§17).
 
 ```bash
-python3 .hermes/skills/auditability-repeatability/scripts/check-provenance.py .
-python3 .hermes/skills/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>]
+python3 .hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py .
+python3 .hermes/skills/harness/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>]
 ```
 
 See `migration/contracts/auditability-repeatability.md`.

@@ -63,12 +63,12 @@ Citation lints do **not** replace domain-gate oracles.
 
 | Piece | Path |
 |-------|------|
-| Citation + invent-without-locus | `.hermes/skills/grounded-generation/scripts/check-citation.py` |
+| Citation + invent-without-locus | `.hermes/skills/harness/grounded-generation/scripts/check-citation.py` |
 | Wired into | `harness-validate`; M3 `skills[]` in `phase-dispatch.yaml` |
 
 ```bash
-python3 .hermes/skills/grounded-generation/scripts/check-citation.py .
-python3 .hermes/skills/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
+python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py .
+python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
 ```
 
 Non-blocking vs open Review / deferred items. Citation lints do **not** replace

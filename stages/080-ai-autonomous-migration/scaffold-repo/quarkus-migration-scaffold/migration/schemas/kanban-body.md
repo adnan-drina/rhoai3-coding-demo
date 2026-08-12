@@ -1,7 +1,7 @@
 # Kanban `body` schema (W2 §6.1)
 
 **Status:** binding · mirrors Architect §6.1  
-**Lint:** `.hermes/skills/sdd-readiness/scripts/check-kanban-body.py`
+**Lint:** `.hermes/skills/sdd/sdd-readiness/scripts/check-kanban-body.py`
 
 Typed object only (JSON under `migration/tasks/*.json` field `body`, or
 standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.

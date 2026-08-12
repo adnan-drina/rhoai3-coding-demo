@@ -1,0 +1,21 @@
+{
+  "identity": {
+    "story_id": "m3-s-008-d1-remint-fixture",
+    "operand_count": 1,
+    "operand_class": "src_code",
+    "sizing_basis": "operand_count"
+  },
+  "files_in_scope": [
+    "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+  ],
+  "files_writable": [
+    "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+  ],
+  "dependencies": [
+    {
+      "file": "src/main/java/org/springframework/samples/petclinic/owner/OwnerMissingPreExists.java",
+      "provider": "pre-exists"
+    }
+  ],
+  "phase": "M3"
+}

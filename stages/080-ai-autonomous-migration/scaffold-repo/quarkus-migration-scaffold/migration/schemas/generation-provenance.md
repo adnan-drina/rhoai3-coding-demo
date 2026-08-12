@@ -1,6 +1,6 @@
 # `generation-provenance` (Kanban completion metadata)
 
-**Status:** binding · lint `.hermes/skills/auditability-repeatability/scripts/check-provenance.py`  
+**Status:** binding · lint `.hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py`  
 **Home:** Hermes Kanban task-run `metadata` on IMPLEMENT complete (authoritative).
 Optional export: `migration/provenance/<task_id>.json` generated **from** that
 metadata (AD-H §19.3).

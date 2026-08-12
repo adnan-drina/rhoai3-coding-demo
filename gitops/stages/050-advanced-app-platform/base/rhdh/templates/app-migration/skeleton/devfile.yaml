@@ -79,15 +79,28 @@ components:
       volumeMounts:
         - name: m2
           path: /home/user/.m2
+        # CS-1: OpenCode managed config dir (/etc/opencode). Workspace
+        # user cannot write root-owned /etc; this volume makes the
+        # official managed path writable (Architect E-061618Z).
+        - name: opencode-managed
+          path: /etc/opencode
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
           exposure: public
           secure: false
           protocol: https
-        # Hermes dashboard: Architect E-20260808T154612Z option A —
-        # loopback-only (127.0.0.1:9119) + Che/VS Code port-forward.
-        # Do NOT declare a public Dev Spaces route (Host-header rejects it).
+        # Hermes dashboard — Operator E-20260812T171806Z W1 rider:
+        # process stays on 127.0.0.1:9119 (official security model —
+        # hermes-kanban: do NOT --host 0.0.0.0; plugin routes are
+        # unauthenticated). che-gateway proxies pod-localhost behind
+        # OpenShift OAuth (exposure public + secure true). Verify on
+        # fresh-seat: endpoint reachable + authed + board renders.
+        - name: hermes-dashboard
+          targetPort: 9119
+          exposure: public
+          secure: true
+          protocol: https
         - name: debug
           targetPort: 5005
           exposure: none
@@ -96,6 +109,9 @@ components:
   - name: m2
     volume:
       size: 1G
+  - name: opencode-managed
+    volume:
+      size: 16Mi
 commands:
   - id: init-migration-tools
     exec:
@@ -186,8 +202,8 @@ commands:
   - id: start-hermes-dashboard
     exec:
       component: development-tooling
-      # Architect E-20260808T154612Z option A — loopback bind + IDE port-forward.
-      # Fail-soft: missing Hermes / pre-warm must not block the IDE.
+      # Operator E-20260812T171806Z: loopback bind + che-gateway endpoint
+      # (secure public). Fail-soft: missing Hermes / pre-warm must not block IDE.
       commandLine: |
         set +e
         export PATH="${HOME}/.local/bin:${PATH}"
@@ -248,7 +264,7 @@ commands:
               exit 0
             done
           ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
-          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; operator tunnel still required)"
+          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; open hermes-dashboard endpoint via che-gateway/OAuth)"
         else
           echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open"
         fi

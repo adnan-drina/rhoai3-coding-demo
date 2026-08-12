@@ -638,7 +638,7 @@ ESCV
       # scaffold skills at $PROJECT_DIR/.hermes/skills (external_dirs).
       local hermes_home="${PROJECT_DIR}/.hermes/home"
       local hermes_skills_dir="${PROJECT_DIR}/.hermes/skills"
-      mkdir -p "${hermes_home}"
+      mkdir -p "${hermes_home}" "${hermes_skills_dir}"
 
       # auth.json = Portal onboarding path; incompatible with Managed Scope.
       # Lead:pin-model-binding-managed-scope — wipe residue so Managed Scope
@@ -663,15 +663,20 @@ ESCV
       mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
       # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
       # CLI default cwd is correct; do not set terminal.cwd.
-      # Dashboard exposure = Architect E-20260808T154612Z option A (loopback
-      # + IDE port-forward) — no public-bind auth provider in Managed Scope.
+      # W1 five pins (Operator E-171354Z / Review service-CA nit): in-cluster
+      # .svc + ssl_ca_cert + 900s + aux-title off + streaming default-on.
+      # Dashboard: loopback bind + che-gateway secure endpoint (E-171806Z).
       "${venv_py}" - <<'HERMESEOF'
     import os, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
-    base = os.environ["MAAS_BASE_URL"].rstrip("/")
-    model_base = base + "/models-as-a-service/qwen3-6-27b/v1"
+    # Worker seats: in-cluster KServe OpenAI base (not external LB hairpin).
+    # Cite scaffold hermes-configuration / Lead E-152000Z TLS class.
+    model_base = (
+        "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+    )
+    service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
     cfg = {
         "model": {
             "provider": "custom",
@@ -692,12 +697,13 @@ ESCV
             "memory_enabled": False,
         },
         # AD-H §1 / §7.3 — no inline shell; scaffold + global (spec-kit)
-        # via external_dirs. write_approval:false for headless Kanban
-        # workers (no approver channel — Deputy E-20260811T111800Z /
-        # v12 M1 timeout-denies). Protect acks/golden via AR-1.1 + FS
-        # RO, not a global write gate.
+        # via external_dirs. W3/A5 (E-150714Z / E-204256Z): pin BOTH
+        # write_approval + guard_agent_created true on rebuild base so
+        # skill deltas stage pending→diff→approve (R-SK.8 / CS-6 #1).
+        # ACK/golden still protected via AR-1.1 + write-fence hooks.
         "skills": {
-            "write_approval": False,
+            "write_approval": True,
+            "guard_agent_created": True,
             "inline_shell": False,
             "external_dirs": [skills_dir, global_skills],
         },
@@ -711,16 +717,29 @@ ESCV
         },
         # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
         # subtasks outside our per-phase schema (AD-H §3).
+        # W1 session-end: official orphaned-running reconcile (default true;
+        # pin so PVC drift cannot disable it) — E-150437Z / hermes-kanban.
+        # W2 CS-5 #1 fire-live pins (Operator E-201707Z): official dispatcher
+        # suite — do NOT port tip wrappers. Values = product defaults made
+        # explicit for rebuild-base reproducibility.
         "kanban": {
             "auto_decompose": False,
+            "reconcile_orphans": True,
+            "failure_limit": 2,
+            "dispatch_stale_timeout_seconds": 14400,
+            "review_dispatch": False,
         },
         # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
         # default proxy idle / Hermes stale window (~minutes) before the
         # first content token. Class A amplifier; not MiniMax.
         # max_tokens:8192 — Class A output cap so prompt+completion fit
         # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
+        # providers.custom.api + ssl_ca_cert: service-CA for in-cluster TLS
+        # (do NOT set SSL_CERT_FILE to service-ca alone).
         "providers": {
             "custom": {
+                "api": "${MAAS_API_BASE_URL}",
+                "ssl_ca_cert": service_ca,
                 "models": {
                     "qwen3-6-27b": {
                         "stale_timeout_seconds": 900,
@@ -729,7 +748,106 @@ ESCV
                 },
             },
         },
+        # Single-GPU: disable session-title aux calls contending with main.
+        "auxiliary": {
+            "title_generation": {
+                "enabled": False,
+            },
+        },
+        # Streaming pin: leave default chat streaming ON (no stream-disable).
+        # Stage3 kill-test: client disconnect → engine Running:0 (receipt
+        # monitoring/20260812-stage3-disconnect-abort.md). abort_request API
+        # still 404 on this vLLM — disconnect path is the abort mechanism.
+        # W2 CS-5 #4/#5 — REHOST exit-criteria + write-fence onto official
+        # hooks (Operator E-201707Z fire-live). Policy ours; mechanism official
+        # (hermes-hooks: pre_verify + pre_tool_call fail_closed). Init runs
+        # `hermes hooks doctor` after seed (script edits are trusted by
+        # command string — doctor catches drift).
+        "hooks": {
+            "hooks_auto_accept": True,
+            "pre_tool_call": [
+                {
+                    "matcher": "write_file|patch|edit_file|apply_patch|create_file",
+                    "command": os.path.join(managed, "agent-hooks", "write-fence.py"),
+                    "timeout": 5,
+                    "fail_closed": True,
+                }
+            ],
+            "pre_verify": [
+                {
+                    "command": os.path.join(managed, "agent-hooks", "pre-verify-assert.py"),
+                    "timeout": 5,
+                }
+            ],
+        },
     }
+    # A1 exists-assert — every skills.external_dirs path must resolve to a dir
+    # (mkdir scaffold + global above; refuse silent missing roots).
+    for _edir in (cfg.get("skills") or {}).get("external_dirs") or []:
+        if not os.path.isdir(_edir):
+            raise SystemExit(f"ERROR: A1 skills.external_dirs missing: {_edir}")
+    hooks_dir = os.path.join(managed, "agent-hooks")
+    os.makedirs(hooks_dir, exist_ok=True)
+    write_fence_py = os.path.join(hooks_dir, "write-fence.py")
+    pre_verify_py = os.path.join(hooks_dir, "pre-verify-assert.py")
+    with open(write_fence_py, "w") as fh:
+        fh.write(
+            "#!/usr/bin/env python3\n"
+            '"""W2 write-fence — HERMES_WRITE_SAFE_ROOT on pre_tool_call fail_closed."""\n'
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "d = json.load(sys.stdin)\n"
+            'tool = d.get("tool_name") or ""\n'
+            'ti = d.get("tool_input") or {}\n'
+            'WRITE_TOOLS = {"write_file", "patch", "edit_file", "apply_patch", "create_file"}\n'
+            "if tool not in WRITE_TOOLS:\n"
+            '    print("{}"); raise SystemExit(0)\n'
+            "path = None\n"
+            'for k in ("path", "file", "filename", "target"):\n'
+            "    if isinstance(ti.get(k), str) and ti[k]:\n"
+            "        path = ti[k]; break\n"
+            'targets = ti.get("targets") if isinstance(ti.get("targets"), dict) else {}\n'
+            "if path is None:\n"
+            '    for k in ("path", "file"):\n'
+            "        if isinstance(targets.get(k), str) and targets[k]:\n"
+            "            path = targets[k]; break\n"
+            "if not path:\n"
+            '    print("{}"); raise SystemExit(0)\n'
+            'safe = os.environ.get("HERMES_WRITE_SAFE_ROOT", os.environ.get("PROJECT_DIR", "/projects/modernized"))\n'
+            "safe_p = Path(safe).resolve()\n"
+            "norm = Path(path)\n"
+            "if not norm.is_absolute():\n"
+            "    norm = Path.cwd() / norm\n"
+            "norm = Path(os.path.abspath(str(norm)))\n"
+            "try:\n"
+            "    norm.relative_to(safe_p)\n"
+            '    print("{}"); raise SystemExit(0)\n'
+            "except ValueError:\n"
+            '    msg = f"write-fence: path {norm} outside HERMES_WRITE_SAFE_ROOT={safe_p}"\n'
+            '    print(json.dumps({"action": "block", "message": msg}))\n'
+            "    raise SystemExit(2)\n"
+        )
+    with open(pre_verify_py, "w") as fh:
+        fh.write(
+            "#!/usr/bin/env python3\n"
+            '"""W2 pre_verify host — idempotent on attempt>0 (CS-5 #4)."""\n'
+            "import json, os, sys\n"
+            "d = json.load(sys.stdin)\n"
+            'attempt = int(d.get("attempt") or 0)\n'
+            "if attempt:\n"
+            '    print("{}"); raise SystemExit(0)\n'
+            'require = os.environ.get("HERMES_PRE_VERIFY_REQUIRE_MARKER", "")\n'
+            'marker = os.environ.get("HERMES_PRE_VERIFY_MARKER", "/tmp/w2-pre-verify-ok")\n'
+            'if require == "1" and not os.path.exists(marker):\n'
+            "    print(json.dumps({\n"
+            '        "action": "continue",\n'
+            '        "message": f"pre_verify: missing marker {marker}",\n'
+            "    }))\n"
+            "else:\n"
+            '    print("{}")\n'
+        )
+    os.chmod(write_fence_py, 0o755)
+    os.chmod(pre_verify_py, 0o755)
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
@@ -743,14 +861,28 @@ ESCV
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
     pin = yaml.safe_load(open(cfg_path))
     m = pin.get("model") or {}
-    if m.get("default") != "qwen3-6-27b" or "qwen3-6-27b" not in model_base:
+    if m.get("default") != "qwen3-6-27b":
         raise SystemExit(
             f"ERROR: model pin failed after Managed Scope write "
-            f"(default={m.get('default')!r} model_base={model_base!r})"
+            f"(default={m.get('default')!r})"
         )
+    prov = (pin.get("providers") or {}).get("custom") or {}
+    if not prov.get("ssl_ca_cert"):
+        raise SystemExit("ERROR: W1 pin missing providers.custom.ssl_ca_cert")
+    aux = ((pin.get("auxiliary") or {}).get("title_generation") or {})
+    if aux.get("enabled") is not False:
+        raise SystemExit("ERROR: W1 pin auxiliary.title_generation.enabled must be false")
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
-        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=platform-maas-qwen27b\nad=AD-008\n")
-    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (AD-008 pin qwen3-6-27b).")
+        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=in-cluster-kserve-qwen27b\nad=AD-008\n")
+    with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
+        fh.write(
+            "stale_timeout_seconds=900\n"
+            "maas_api_base_url=in-cluster-kserve-.svc\n"
+            f"ssl_ca_cert={service_ca}\n"
+            "auxiliary.title_generation.enabled=false\n"
+            "streaming=default-on\n"
+        )
+    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b).")
     HERMESEOF
 
       # Architect E-20260808T151907Z / Deputy E-20260808T153444Z —
@@ -874,6 +1006,14 @@ ESCV
         echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
         return
       fi
+      # W2: hermes hooks doctor after seed (official: script edits trusted by
+      # command string — doctor catches mtime/allowlist drift). Non-fatal if
+      # hermes binary not yet on PATH at this init phase.
+      if command -v hermes >/dev/null 2>&1; then
+        HERMES_HOME="${managed_dir}" HERMES_MANAGED_DIR="${managed_dir}" \
+          HERMES_ACCEPT_HOOKS=1 hermes hooks doctor >/dev/null 2>&1 \
+          || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
+      fi
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
       # Demo surface (Architect E-20260808T154612Z exposure A): pre-warm
@@ -991,7 +1131,30 @@ ESCV
     if [ "${AI_TOOL}" = "opencode" ]; then
       ensure_opencode_latest
       ensure_quarkus_agent_mcp
-      cat > "${HOME}/.config/opencode/opencode.json" <<EOF
+      # CS-1 (Architect E-20260812T061618Z): pin lives in official managed
+      # config /etc/opencode/opencode.json (above user/project in OpenCode
+      # precedence). Devfile mounts volume `opencode-managed` at that path
+      # so the workspace user can write it. Precedence proven on OpenCode
+      # 1.18.16 (OPENCODE_TEST_MANAGED_CONFIG_DIR sentinel model wins over
+      # ~/.config). If /etc/opencode is not writable (old seats without the
+      # mount), KEEP legacy AD-008 ~/.config + .platform stamp.
+      OPENCODE_MANAGED_DIR="/etc/opencode"
+      OPENCODE_MANAGED_CFG="${OPENCODE_MANAGED_DIR}/opencode.json"
+      OPENCODE_USER_CFG="${HOME}/.config/opencode/opencode.json"
+      OPENCODE_PIN_MODE="managed"
+      if ! mkdir -p "${OPENCODE_MANAGED_DIR}" 2>/dev/null \
+        || ! touch "${OPENCODE_MANAGED_DIR}/.rhoai3-write-test" 2>/dev/null; then
+        OPENCODE_PIN_MODE="legacy"
+        echo "WARN: CS-1 /etc/opencode not writable — keeping AD-008 legacy pin (add opencode-managed volume mount)."
+      else
+        rm -f "${OPENCODE_MANAGED_DIR}/.rhoai3-write-test" 2>/dev/null || true
+      fi
+      OPENCODE_CFG_TARGET="${OPENCODE_USER_CFG}"
+      if [ "${OPENCODE_PIN_MODE}" = "managed" ]; then
+        OPENCODE_CFG_TARGET="${OPENCODE_MANAGED_CFG}"
+      fi
+      mkdir -p "$(dirname "${OPENCODE_CFG_TARGET}")" "${HOME}/.config/opencode"
+      cat > "${OPENCODE_CFG_TARGET}" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
       "autoupdate": true,
@@ -1042,37 +1205,53 @@ ESCV
     }
     EOF
 
+      if [ "${OPENCODE_PIN_MODE}" = "managed" ]; then
+        # Mirror into XDG for tools/UI that only look at ~/.config; managed
+        # path still wins for model/provider enforcement.
+        cp -f "${OPENCODE_MANAGED_CFG}" "${OPENCODE_USER_CFG}"
+      fi
       ensure_opencode_compat_path
-      # AD-008 — pin stamp + fail-closed if default model is not platform Qwen.
-      export PROJECT_DIR
+      # AD-008 / CS-1 — fail-closed if default model is not platform Qwen.
+      export PROJECT_DIR OPENCODE_CFG_TARGET OPENCODE_PIN_MODE OPENCODE_MANAGED_CFG
       python3 - <<'PINOC'
 import json, os, sys
-cfg = os.path.expanduser("~/.config/opencode/opencode.json")
+mode = os.environ.get("OPENCODE_PIN_MODE", "legacy")
+cfg = os.environ.get("OPENCODE_CFG_TARGET") or os.path.expanduser("~/.config/opencode/opencode.json")
 try:
     d = json.load(open(cfg))
 except Exception as e:
-    print(f"ERROR: AD-008 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
+    print(f"ERROR: AD-008/CS-1 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
     sys.exit(1)
 model = str(d.get("model") or "")
 enabled = d.get("enabled_providers") or []
 if model != "qwen27b/qwen3-6-27b":
-    print(f"ERROR: AD-008 OpenCode pin failed (model={model!r})", file=sys.stderr)
+    print(f"ERROR: AD-008/CS-1 OpenCode pin failed (model={model!r})", file=sys.stderr)
     sys.exit(1)
 if "qwen27b" not in enabled:
-    print(f"ERROR: AD-008 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
+    print(f"ERROR: AD-008/CS-1 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
     sys.exit(1)
 stamp_dir = os.environ["PROJECT_DIR"]
-stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
-os.makedirs(os.path.dirname(stamp), exist_ok=True)
-with open(stamp, "w") as fh:
-    fh.write("model=qwen27b/qwen3-6-27b\n")
-    fh.write(f"enabled_providers={json.dumps(enabled)}\n")
-    fh.write("ad=AD-008\n")
-    if "redhat" in enabled:
-        fh.write("minimax=escalation-override\n")
-    else:
-        fh.write("minimax=disabled\n")
-print(f"AD-008 OpenCode pin OK: {stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
+legacy_stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
+if mode == "managed":
+    # Retire .platform/opencode/ on new base (CS-1).
+    import shutil
+    legacy_root = os.path.join(stamp_dir, ".platform", "opencode")
+    if os.path.isdir(legacy_root):
+        shutil.rmtree(legacy_root)
+    managed = os.environ.get("OPENCODE_MANAGED_CFG", "/etc/opencode/opencode.json")
+    print(f"CS-1 OpenCode managed pin OK: {managed} (minimax={'on' if 'redhat' in enabled else 'off'})")
+else:
+    os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
+    with open(legacy_stamp, "w") as fh:
+        fh.write("model=qwen27b/qwen3-6-27b\n")
+        fh.write(f"enabled_providers={json.dumps(enabled)}\n")
+        fh.write("ad=AD-008\n")
+        fh.write("cs1=legacy-fallback-no-etc-mount\n")
+        if "redhat" in enabled:
+            fh.write("minimax=escalation-override\n")
+        else:
+            fh.write("minimax=disabled\n")
+    print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
 PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."

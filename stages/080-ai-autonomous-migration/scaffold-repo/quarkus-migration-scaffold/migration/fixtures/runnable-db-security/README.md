@@ -4,13 +4,13 @@ Use with the validation-release-gates checkers:
 
 ```bash
 # Idle on empty scaffold (no DB / security intent)
-python3 .hermes/skills/validation-release-gates/scripts/check-runnable-db-config.py .
-python3 .hermes/skills/validation-release-gates/scripts/check-empty-security.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py .
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py .
 
 # Refuse known-bad fragments (copy under a temp tree that includes pom intent)
-python3 .hermes/skills/validation-release-gates/scripts/check-runnable-db-config.py \
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py \
   migration/fixtures/runnable-db-security/bad-db-kind-mismatch
-python3 .hermes/skills/validation-release-gates/scripts/check-empty-security.py \
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py \
   migration/fixtures/runnable-db-security/bad-placeholder-security
 ```
 
