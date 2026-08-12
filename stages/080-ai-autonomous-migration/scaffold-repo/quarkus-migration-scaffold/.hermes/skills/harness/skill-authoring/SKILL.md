@@ -1,7 +1,7 @@
 ---
 name: skill-authoring
 description: Author and verify skills per R-SK law and official layout
-version: 1.0.0
+version: 1.0.1
 author: rhoai3-harness-team
 license: Apache-2.0
 platforms: [linux]
@@ -22,7 +22,8 @@ landing.
 ## Procedure
 1. Read `references/structure-law.md` (R-SK.1 layout + R-SK.7 categories) and
    place the skill: `analysis/` | `sdd/` | `gates/` | `harness/` |
-   `spring-to-quarkus/` (pair-as-category; Architect amend E-104205Z).
+   `migration/` (fixed set; Architect FINAL E-104706Z). Path-qualify
+   `.hermes/skills/migration/` vs workspace `migration/` run-state.
 2. Author frontmatter per `references/frontmatter-law.md` (R-SK.2): name =
    leaf directory, description ≤60 chars imperative, semver `version` (bump on
    EVERY content change), `author`, `license`, `metadata.hermes.tags` +

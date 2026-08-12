@@ -13,8 +13,8 @@ import re
 import sys
 from pathlib import Path
 
-# Architect amend E-20260812T104205Z — pair-as-category (no abstract patterns/)
-CATEGORIES = {"analysis", "sdd", "gates", "harness", "spring-to-quarkus"}
+# Architect ratify E-20260812T104706Z — fixed five (migration/ fifth; not pair-named)
+CATEGORIES = {"analysis", "sdd", "gates", "harness", "migration"}
 ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets"}
 REQ_SECTIONS = ["## When to Use", "## Procedure", "## Verification"]
 OPT_SECTIONS = {"## Pitfalls", "## Example"}
