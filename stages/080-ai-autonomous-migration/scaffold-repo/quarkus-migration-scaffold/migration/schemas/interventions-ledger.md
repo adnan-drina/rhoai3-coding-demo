@@ -30,7 +30,7 @@ bash .hermes/home/scripts/log-intervention.sh B copy_payload "thin M2" '{"phase"
 ## Audit
 
 ```bash
-python3 .hermes/home/scripts/audit-interventions.py /projects/modernized
+python3 "${HARNESS_BOARD_TOOLS:-../../harness-refactoring/.wake/tools}/audit-interventions.py" /projects/modernized
 ```
 
 Log **as interventions happen**, classified A/B at the moment — do not reconstruct

@@ -79,9 +79,9 @@ from a pointer README).
 | `.agents/skills/hermes-configuration/` (platform repo) | Config source-of-truth for agents — consult BEFORE Hermes config change; AD-013 (CS-8 curated refs under `references/scaffold-curated/`) |
 | `.agents/skills/harness-skill-authoring/` (platform repo) | CS-9 / R-SK.5+R-SK.9 land-time lint (relocated E-190021Z): consult before new/edited golden skills; run `scripts/check-skill-conformance.py --all --flat-ok --root .hermes/skills` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
-| `extensions/<skill>/references/` | AD-011 additive overlays (R-AD011.2) — `skill_view` base **and** extension |
-| `workshop-extensions/` | Demo-user starter for overlays / shadows — never SOUL |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
+
+Demo users extend skills via official `skills.external_dirs` / taps / `hermes skills install` (workshop-extensions dir removed in tidy-up 2026-08-12).
 
 Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
 
@@ -94,9 +94,9 @@ writable `$HERMES_HOME`. `$HERMES_HOME` holds kanban DB / logs / sessions, not
 Managed Scope pins for `qwen3-6-27b`:
 - `stale_timeout_seconds: 900` (AD-009 §3.2) — **inter-chunk** / long thinking
 - **TTFC 90s** (AD-009 §3.2a) — zero-chunk waits must not use the 900s knob;
-  Hermes has one stale timer today → **`kanban-stuck-watchdog` cron invokes**
+  Hermes has one stale timer today → detect/typed-stamp family
   `check-stream-liveness.py --ttfc-sec 90 --stamp` each tick
-  (`migration/contracts/stream-liveness.md`)
+  (`migration/contracts/stream-liveness.md`; corpse `kanban-stuck-watchdog` removed)
 - `max_tokens: 8192` — **required**; unset Hermes defaults to half of
   `context_length` (65536), which with ≥65537 prompt tokens exceeds the 131072
   vLLM ceiling and yields `VLLMValidationError` (not a proxy timeout)

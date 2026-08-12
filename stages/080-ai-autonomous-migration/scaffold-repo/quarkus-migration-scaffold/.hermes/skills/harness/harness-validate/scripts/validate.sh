@@ -522,8 +522,20 @@ printf '%s\n' "{\"id\":\"T-1\",\"phase\":\"M3\",\"role\":\"implementer\",\"statu
   > "${ap_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" || rc=1
 rm -f "${soul_tmp}"
-# interventions audit
-python3 "${ROOT}/.hermes/home/scripts/audit-interventions.py" "${ROOT}" || rc=1
+# interventions audit (reviewer tool — relocated to board .wake/tools/; optional here)
+_AUDIT_IV="${HARNESS_BOARD_TOOLS:-}/audit-interventions.py"
+if [ -z "${HARNESS_BOARD_TOOLS:-}" ]; then
+  for _cand in \
+    "${ROOT}/../../../harness-refactoring/.wake/tools/audit-interventions.py" \
+    "${ROOT}/../../../../harness-refactoring/.wake/tools/audit-interventions.py"; do
+    if [ -f "${_cand}" ]; then _AUDIT_IV="${_cand}"; break; fi
+  done
+fi
+if [ -f "${_AUDIT_IV}" ]; then
+  python3 "${_AUDIT_IV}" "${ROOT}" || rc=1
+else
+  echo "OK: audit-interventions skipped (reviewer tool not on scaffold path)"
+fi
 rm -rf "${ap_tmp}"
 
 echo "== R-M3.5–8 POM / dependency_wait handoff =="

@@ -447,26 +447,26 @@ data:
     OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
       && [ -f "${OPENCODE_ESCALATION_FILE}" ]; then
-      if python3 - "${OPENCODE_ESCALATION_FILE}" <<'ESCV'
-import json, sys
-path = sys.argv[1]
-try:
-    d = json.load(open(path))
-except Exception as e:
-    print(f"AD-008: escalation file unreadable ({e}); MiniMax stays disabled.", file=sys.stderr)
-    sys.exit(1)
-need = ("model_id", "model_id_primary", "escalation_reason", "prior_failure_run_id")
-missing = [k for k in need if not str(d.get(k) or "").strip()]
-mid = str(d.get("model_id") or "")
-if missing:
-    print(f"AD-008: escalation missing fields {missing}; MiniMax stays disabled.", file=sys.stderr)
-    sys.exit(1)
-if "minimax" not in mid.lower():
-    print(f"AD-008: model_id={mid!r} is not MiniMax; MiniMax stays disabled.", file=sys.stderr)
-    sys.exit(1)
-print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
-sys.exit(0)
-ESCV
+      if cat <<'ESCV' | sed -e 's/^          //' | python3 - "${OPENCODE_ESCALATION_FILE}"
+          import json, sys
+          path = sys.argv[1]
+          try:
+              d = json.load(open(path))
+          except Exception as e:
+              print(f"AD-008: escalation file unreadable ({e}); MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          need = ("model_id", "model_id_primary", "escalation_reason", "prior_failure_run_id")
+          missing = [k for k in need if not str(d.get(k) or "").strip()]
+          mid = str(d.get("model_id") or "")
+          if missing:
+              print(f"AD-008: escalation missing fields {missing}; MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          if "minimax" not in mid.lower():
+              print(f"AD-008: model_id={mid!r} is not MiniMax; MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
+          sys.exit(0)
+      ESCV
       then
         OPENCODE_ENABLED='["qwen27b", "redhat"]'
         OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
@@ -1213,46 +1213,46 @@ ESCV
       ensure_opencode_compat_path
       # AD-008 / CS-1 — fail-closed if default model is not platform Qwen.
       export PROJECT_DIR OPENCODE_CFG_TARGET OPENCODE_PIN_MODE OPENCODE_MANAGED_CFG
-      python3 - <<'PINOC'
-import json, os, sys
-mode = os.environ.get("OPENCODE_PIN_MODE", "legacy")
-cfg = os.environ.get("OPENCODE_CFG_TARGET") or os.path.expanduser("~/.config/opencode/opencode.json")
-try:
-    d = json.load(open(cfg))
-except Exception as e:
-    print(f"ERROR: AD-008/CS-1 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
-    sys.exit(1)
-model = str(d.get("model") or "")
-enabled = d.get("enabled_providers") or []
-if model != "qwen27b/qwen3-6-27b":
-    print(f"ERROR: AD-008/CS-1 OpenCode pin failed (model={model!r})", file=sys.stderr)
-    sys.exit(1)
-if "qwen27b" not in enabled:
-    print(f"ERROR: AD-008/CS-1 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
-    sys.exit(1)
-stamp_dir = os.environ["PROJECT_DIR"]
-legacy_stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
-if mode == "managed":
-    # Retire .platform/opencode/ on new base (CS-1).
-    import shutil
-    legacy_root = os.path.join(stamp_dir, ".platform", "opencode")
-    if os.path.isdir(legacy_root):
-        shutil.rmtree(legacy_root)
-    managed = os.environ.get("OPENCODE_MANAGED_CFG", "/etc/opencode/opencode.json")
-    print(f"CS-1 OpenCode managed pin OK: {managed} (minimax={'on' if 'redhat' in enabled else 'off'})")
-else:
-    os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
-    with open(legacy_stamp, "w") as fh:
-        fh.write("model=qwen27b/qwen3-6-27b\n")
-        fh.write(f"enabled_providers={json.dumps(enabled)}\n")
-        fh.write("ad=AD-008\n")
-        fh.write("cs1=legacy-fallback-no-etc-mount\n")
-        if "redhat" in enabled:
-            fh.write("minimax=escalation-override\n")
-        else:
-            fh.write("minimax=disabled\n")
-    print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
-PINOC
+      cat <<'PINOC' | sed -e 's/^          //' | python3 -
+          import json, os, sys
+          mode = os.environ.get("OPENCODE_PIN_MODE", "legacy")
+          cfg = os.environ.get("OPENCODE_CFG_TARGET") or os.path.expanduser("~/.config/opencode/opencode.json")
+          try:
+              d = json.load(open(cfg))
+          except Exception as e:
+              print(f"ERROR: AD-008/CS-1 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
+              sys.exit(1)
+          model = str(d.get("model") or "")
+          enabled = d.get("enabled_providers") or []
+          if model != "qwen27b/qwen3-6-27b":
+              print(f"ERROR: AD-008/CS-1 OpenCode pin failed (model={model!r})", file=sys.stderr)
+              sys.exit(1)
+          if "qwen27b" not in enabled:
+              print(f"ERROR: AD-008/CS-1 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
+              sys.exit(1)
+          stamp_dir = os.environ["PROJECT_DIR"]
+          legacy_stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
+          if mode == "managed":
+              # Retire .platform/opencode/ on new base (CS-1).
+              import shutil
+              legacy_root = os.path.join(stamp_dir, ".platform", "opencode")
+              if os.path.isdir(legacy_root):
+                  shutil.rmtree(legacy_root)
+              managed = os.environ.get("OPENCODE_MANAGED_CFG", "/etc/opencode/opencode.json")
+              print(f"CS-1 OpenCode managed pin OK: {managed} (minimax={'on' if 'redhat' in enabled else 'off'})")
+          else:
+              os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
+              with open(legacy_stamp, "w") as fh:
+                  fh.write("model=qwen27b/qwen3-6-27b\n")
+                  fh.write(f"enabled_providers={json.dumps(enabled)}\n")
+                  fh.write("ad=AD-008\n")
+                  fh.write("cs1=legacy-fallback-no-etc-mount\n")
+                  if "redhat" in enabled:
+                      fh.write("minimax=escalation-override\n")
+                  else:
+                      fh.write("minimax=disabled\n")
+              print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
+      PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."
     else

@@ -66,8 +66,10 @@ on the scaffold `pom.xml` pitest plugin); use **`-Dpit.dryRun=true`** (not
 `+dryRun` feature). Referent needs **≥1 compilable test**; refuse zero-test
 skip and `-DskipTests`. **No static-metric floor.**
 
-**AR-3.6:** default PIT targets are **product** packages. `com.demo.harness.*`
-is tooling smoke only (`G1_OPERAND=tooling_smoke`). Probe-only trees **REFUSE**
+**AR-3.6:** default PIT targets are **product** packages. Tooling-smoke probe
+sources live under `examples/g1-volume-probe/` (relocated out of template `src/`;
+`com.demo.harness.*` when copied for smoke). `G1_OPERAND=tooling_smoke` only.
+Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
 **AR-2.8:** acceptance also requires product-test **families** boot + security +
