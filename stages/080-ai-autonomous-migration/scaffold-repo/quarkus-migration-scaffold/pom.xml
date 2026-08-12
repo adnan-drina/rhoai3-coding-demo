@@ -20,6 +20,8 @@
     <!-- O-JACOCOARGLINE -->
     <argLine></argLine>
     <surefire-plugin.version>3.5.3</surefire-plugin.version>
+    <!-- S-003 MapStruct mappers (Lead fix-upstream-pom E-20260812T091651Z) -->
+    <mapstruct.version>1.5.5.Final</mapstruct.version>
     <!-- Both report locations: quarkus-jacoco writes the first for
          @QuarkusTest runs; jacoco-maven-plugin writes the second for plain
          JUnit tests (migration model/unit tests). Sonar imports whichever
@@ -102,6 +104,13 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <!-- S-003 / Lead fix-upstream-pom — MapStruct for @Mapper DTO harvest.
+         componentModel=cdi (Pre-v12 R5); not spring. Required before mapper writes. -->
+    <dependency>
+      <groupId>org.mapstruct</groupId>
+      <artifactId>mapstruct</artifactId>
+      <version>${mapstruct.version}</version>
+    </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-health</artifactId>
@@ -161,6 +170,20 @@
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${compiler-plugin.version}</version>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.mapstruct</groupId>
+              <artifactId>mapstruct-processor</artifactId>
+              <version>${mapstruct.version}</version>
+            </path>
+          </annotationProcessorPaths>
+          <compilerArgs>
+            <arg>-Amapstruct.defaultComponentModel=cdi</arg>
+            <arg>-Amapstruct.suppressGeneratorTimestamp=true</arg>
+            <arg>-Amapstruct.suppressGeneratorVersionInfoComment=true</arg>
+          </compilerArgs>
+        </configuration>
       </plugin>
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
