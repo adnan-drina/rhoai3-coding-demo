@@ -74,6 +74,10 @@ REQUIRED_FILES = [
     # Operator E-20260812T061639Z / Architect E-20260812T061718Z Class A — card↔sidecar
     ".hermes/skills/auditability-repeatability/scripts/assert-card-body-digest-match.py",
     "migration/contracts/card-sidecar-digest-cross-assert.md",
+    # Architect E-20260812T064611Z / E-20260812T064637Z Class A — AD-012 lint + CS-7 bundle
+    ".hermes/skills/harness-validate/scripts/check-skill-conformance.py",
+    ".hermes/skills/phase-dispatch/scripts/assert-bundle-skills-exist.py",
+    ".hermes/home/skill-bundles/m3-implementer.yaml",
 ]
 
 REQUIRED_SUBSTRINGS = [

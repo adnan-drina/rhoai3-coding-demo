@@ -541,6 +541,16 @@ else
 fi
 rm -rf "${dep_tmp}"
 
+echo "== AD-012 / R-SK.5 skill conformance (soft until CS-6 #2) =="
+# Mid-chain: report-only (14/14 hygiene = chain-end wave). Strict via
+# SKILL_CONFORMANCE_STRICT=1 or --strict after compliance wave.
+python3 "${SKILLS}/harness-validate/scripts/check-skill-conformance.py" \
+  "${ROOT}" --report-only || rc=1
+
+echo "== CS-7 m3-implementer bundle exists-assert (fail-closed) =="
+python3 "${SKILLS}/phase-dispatch/scripts/assert-bundle-skills-exist.py" \
+  "${ROOT}" --bundle m3-implementer || rc=1
+
 echo "== AD-011 skill extension overlay =="
 if [ ! -f "${ROOT}/migration/contracts/ad011-skill-extension.md" ]; then
   echo "FAIL: missing ad011-skill-extension.md" >&2
