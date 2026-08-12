@@ -66,6 +66,18 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    # Also refuse any OTHER 64-hex digests in the card markdown (obligation
+    # "Verify … matches `…`" / --expect lines). Partial restamps left those
+    # stale and caused S-003 run#65 typed BLOCK (Review E-20260812T063915Z).
+    extras = sorted({h for h in re.findall(r"[0-9a-f]{64}", row[0]) if h != live})
+    if extras:
+        print(
+            f"REFUSE: card {args.task_id} has stale obligation digest(s) "
+            f"{[e[:16] for e in extras]} != live {live[:16]} "
+            f"(must replace ALL body-digest occurrences on restamp)",
+            file=sys.stderr,
+        )
+        return 1
     print(f"OK: card↔sidecar digest match task={args.task_id} sha256={live}")
     return 0
 
