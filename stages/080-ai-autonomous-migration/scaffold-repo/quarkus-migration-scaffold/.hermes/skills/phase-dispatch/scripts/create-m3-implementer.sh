@@ -283,8 +283,8 @@ except Exception:
 }
 _park_status="$(_read_status "${TASK_ID}")"
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
-  # Prefer CLI; reason must be a single argv (spaces OK when quoted). Fallback: sqlite.
-  hermes kanban block "${TASK_ID}" --kind needs_input "park-at-birth" >/dev/null 2>&1 || true
+  # Prefer CLI; --kind before task_id (Hermes argparse). Fallback: sqlite.
+  hermes kanban block --kind needs_input "${TASK_ID}" park-at-birth >/dev/null 2>&1 || true
   _park_status="$(_read_status "${TASK_ID}")"
 fi
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then

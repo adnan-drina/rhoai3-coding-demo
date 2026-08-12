@@ -12,9 +12,11 @@ present).
 
 ## Rule
 
+**BOUNDED_RETRY** budget = **1** in-turn attempt per run (then reclaim).
+
 1. When `check-conversation-liveness.py` fails, Lead/Monitor run
    `classify-conv-live-stall.py --task-id … --stamp` before reclaim.
-2. **Bounded retry budget = 1** per run: one typed in-turn resume/retry attempt
+2. **BOUNDED_RETRY** budget = 1 per run: one typed in-turn resume/retry attempt
    is authorized when class is `client_unconsumed` or `unknown`; then reclaim.
 3. Class `provider_idle` ⇒ do **not** burn the retry on the same send path —
    stamp + reclaim; escalate send/close diagnosis.
