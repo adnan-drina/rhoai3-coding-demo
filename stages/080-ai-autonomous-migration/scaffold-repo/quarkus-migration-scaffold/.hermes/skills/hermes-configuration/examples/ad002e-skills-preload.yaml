@@ -1,0 +1,11 @@
+# AD-002E / skills preload — VALIDATED Managed Scope excerpt
+# Official skills: https://hermes-agent.nousresearch.com/docs/user-guide/features/skills
+# external_dirs = discovery only (not a write boundary)
+# write_approval:true forbidden on headless Kanban (R-AD011.5)
+
+skills:
+  write_approval: false
+  inline_shell: false
+  external_dirs:
+    - /projects/modernized/.hermes/skills
+    - /home/user/.hermes/skills

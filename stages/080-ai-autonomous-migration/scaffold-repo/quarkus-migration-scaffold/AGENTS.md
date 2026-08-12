@@ -65,6 +65,7 @@ from a pointer README).
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | `.hermes/SOUL.md` |
 | Procedures / tool invocations | `.hermes/skills/<name>/` |
+| Hermes configuration change | consult `.hermes/skills/hermes-configuration/references/` **FIRST**; AD-013 citation mandatory (CS-8) |
 | Domain gates G-1..G-4 | skill `domain-gates` (vocabulary names below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |

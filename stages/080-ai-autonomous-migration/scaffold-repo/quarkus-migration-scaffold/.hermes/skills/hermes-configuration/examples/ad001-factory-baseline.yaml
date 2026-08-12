@@ -1,0 +1,15 @@
+# AD-001 / W1 factory 5-liner shape — VALIDATED on demo Managed Scope
+# (secrets via env substitution; never commit real keys).
+# Official: https://hermes-agent.nousresearch.com/docs/user-guide/configuration
+# Official models: https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models
+
+model:
+  provider: custom
+  default: qwen3-6-27b
+  base_url: ${MAAS_API_BASE_URL}
+  api_key: ${MAAS_API_KEY}
+  context_length: 131072
+  max_tokens: 8192
+
+tool_loop_guardrails:
+  hard_stop_enabled: true

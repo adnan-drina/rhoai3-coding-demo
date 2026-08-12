@@ -1,0 +1,37 @@
+# Managed Scope pin excerpt — VALIDATED live seat
+# Path: $HERMES_MANAGED_DIR/config.yaml (demo: /projects/.platform/hermes)
+# Official: https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope
+# Relocate knob: HERMES_MANAGED_DIR (process env for dispatch/daemon — not specimen .env)
+
+model:
+  provider: custom
+  default: qwen3-6-27b
+  base_url: ${MAAS_API_BASE_URL}
+  api_key: ${MAAS_API_KEY}
+  context_length: 131072
+  max_tokens: 8192
+
+memory:
+  memory_enabled: false
+
+approvals:
+  mode: smart
+  timeout: 300
+  cron_mode: deny
+
+kanban:
+  auto_decompose: false
+
+providers:
+  custom:
+    models:
+      qwen3-6-27b:
+        stale_timeout_seconds: 900
+        max_tokens: 8192
+
+compression:
+  enabled: true
+  threshold_tokens: 110000
+
+tool_loop_guardrails:
+  hard_stop_enabled: true
