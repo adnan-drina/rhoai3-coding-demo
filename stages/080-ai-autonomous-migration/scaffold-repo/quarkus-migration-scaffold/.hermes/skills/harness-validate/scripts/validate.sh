@@ -541,11 +541,33 @@ else
 fi
 rm -rf "${dep_tmp}"
 
-echo "== AD-012 / R-SK.5 skill conformance (soft until CS-6 #2) =="
-# Mid-chain: report-only (14/14 hygiene = chain-end wave). Strict via
-# SKILL_CONFORMANCE_STRICT=1 or --strict after compliance wave.
-python3 "${SKILLS}/harness-validate/scripts/check-skill-conformance.py" \
-  "${ROOT}" --report-only || rc=1
+echo "== AD-012 / R-SK.5 skill conformance (CS-9 skill-authoring vehicle) =="
+# New/edited skills must self-pass. Tree-wide --all --flat-ok is ADVISORY
+# until CS-6 #2 / v13 category move (Architect E-20260812T104038Z).
+SA_LINT="${SKILLS}/harness/skill-authoring/scripts/check-skill-conformance.py"
+if [ -f "${SA_LINT}" ]; then
+  if ! python3 "${SA_LINT}" "${SKILLS}/harness/skill-authoring"; then
+    echo "FAIL: skill-authoring must self-pass R-SK lint" >&2
+    rc=1
+  else
+    echo "OK: skill-authoring self-pass"
+  fi
+  # Advisory tree scan (do not fail validate unless STRICT)
+  set +e
+  python3 "${SA_LINT}" --all --flat-ok --root "${SKILLS}"
+  sa_rc=$?
+  set -e
+  if [ "${SKILL_CONFORMANCE_STRICT:-0}" = "1" ] && [ "${sa_rc}" != "0" ]; then
+    echo "FAIL: R-SK.5 --all strict mode" >&2
+    rc=1
+  else
+    echo "OK: R-SK.5 --all --flat-ok advisory (rc=${sa_rc}; STRICT=${SKILL_CONFORMANCE_STRICT:-0})"
+  fi
+else
+  # Legacy soft path if CS-9 skill not present
+  python3 "${SKILLS}/harness-validate/scripts/check-skill-conformance.py" \
+    "${ROOT}" --report-only || rc=1
+fi
 
 echo "== CS-7 m3-implementer bundle exists-assert (fail-closed) =="
 python3 "${SKILLS}/phase-dispatch/scripts/assert-bundle-skills-exist.py" \
