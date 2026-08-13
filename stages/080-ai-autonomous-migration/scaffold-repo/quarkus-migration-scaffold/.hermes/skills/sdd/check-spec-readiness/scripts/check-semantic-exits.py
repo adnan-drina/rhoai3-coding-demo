@@ -34,6 +34,9 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
 
 RESTISH = ("RestController", "Repository", "ApplicationService")
 
+COMPILE_ONLY = frozenset({"quarkus_compile", "compile", "mvn_compile", "mvn_test_compile"})
+
+
 
 def load_m3(root: Path) -> list[tuple[str, dict]]:
     out = []
@@ -116,7 +119,24 @@ def main() -> int:
         families = identity.get("semantic_families") or identity.get("semanticFamilies")
         paths = " ".join(write_paths(body))
         restish = any(tok in paths for tok in RESTISH)
+        exits_pre = body.get("exit_criteria") or []
         if not families and not restish:
+            # Still enforce measurable non-compile exits (L2) even for non-REST bodies
+            for x in exits_pre if isinstance(exits_pre, list) else []:
+                if not isinstance(x, dict):
+                    continue
+                check = str(x.get("check") or "").strip()
+                if not check or check in COMPILE_ONLY:
+                    continue
+                cmd = x.get("cmd")
+                if not (isinstance(cmd, str) and cmd.strip()):
+                    print(
+                        f"FAIL: AR-2.3–2.7 {label}: exit {check!r} has no cmd "
+                        f"(unmeasurable; add cmd or drop — E-20260813T215058Z L2)",
+                        file=sys.stderr,
+                    )
+                    bad = 1
+                    checked += 1
             continue
         checked += 1
         if isinstance(families, str):
@@ -146,6 +166,23 @@ def main() -> int:
                 file=sys.stderr,
             )
             bad = 1
+
+        # Deputy E-20260813T215058Z L2: non-compile exits must be measurable (cmd)
+        # or removed — prose-only asserts are vacuous-pass class.
+        for x in exits:
+            if not isinstance(x, dict):
+                continue
+            check = str(x.get("check") or "").strip()
+            if not check or check in COMPILE_ONLY:
+                continue
+            cmd = x.get("cmd")
+            if not (isinstance(cmd, str) and cmd.strip()):
+                print(
+                    f"FAIL: AR-2.3–2.7 {label}: exit {check!r} has no cmd "
+                    f"(unmeasurable; add cmd or drop — E-20260813T215058Z L2)",
+                    file=sys.stderr,
+                )
+                bad = 1
 
     if checked == 0:
         print("OK: AR-2.3–2.7 idle (no REST/persistence M3 bodies)")

@@ -8,7 +8,9 @@ M2a exit / create-path fail-closed: prove the partition is VALID as a whole
 
 Checks:
   1) Endpoint coverage — each inventory HTTP entry_point maps to exactly one story
-  2) No file overlaps across stories (write-conflict)
+  2) No file overlaps across stories (write-conflict), except when a body
+     declares sequence_after / dependencies that order the writers
+     (Deputy E-20260813T215058Z / Review B2 — legal sequenced overlap)
   3) Optional MTA findings addressed via story.rules or typed oos
   4) Composes with bodies' files_in_scope when present (M2b+)
 
@@ -89,32 +91,127 @@ def story_files(story: dict) -> list[str]:
     return out
 
 
+
+def story_id_tokens(sid: str) -> set[str]:
+    """Normalize story id forms: S-012, s-012, m3-s-012, 012."""
+    s = str(sid or "").strip().lower().replace("_", "-")
+    if not s:
+        return set()
+    out = {s}
+    if s.startswith("m3-"):
+        s = s[3:]
+        out.add(s)
+    if s.startswith("s-"):
+        out.add(s)
+        out.add(s[2:])
+        bare = s[2:].lstrip("0") or "0"
+        out.add(bare)
+        out.add(f"s-{s[2:]}")
+    else:
+        out.add(f"s-{s}")
+        bare = s.lstrip("0") or "0"
+        out.add(bare)
+    return {t for t in out if t}
+
+
+def sequence_refs(body: dict) -> set[str]:
+    refs: set[str] = set()
+    for key in ("sequence_after", "dependencies"):
+        raw = body.get(key)
+        if raw is None and isinstance(body.get("identity"), dict):
+            raw = body["identity"].get(key)
+        if isinstance(raw, str) and raw.strip():
+            raw = [raw]
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if isinstance(item, str):
+                refs |= story_id_tokens(item)
+            elif isinstance(item, dict):
+                for k in ("story_id", "id", "task_id", "ref"):
+                    if item.get(k):
+                        refs |= story_id_tokens(str(item[k]))
+    return refs
+
+
+def load_body_doc(path: Path) -> dict | None:
+    data = load_json(path)
+    if not isinstance(data, dict):
+        return None
+    if isinstance(data.get("body"), dict):
+        return data["body"]
+    return data
+
+
+def sequenced_overlap_ok(sid_a: str, sid_b: str, seq_by_story: dict[str, set[str]]) -> bool:
+    """True when either story declares an ordering edge toward the other."""
+    a_toks = story_id_tokens(sid_a)
+    b_toks = story_id_tokens(sid_b)
+    a_refs = seq_by_story.get(sid_a, set())
+    b_refs = seq_by_story.get(sid_b, set())
+    if a_refs & b_toks:
+        return True
+    if b_refs & a_toks:
+        return True
+    return False
+
 def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
     if not bodies_dir.is_dir():
         return []
-    want = story_id.lower()
+    want = story_id_tokens(story_id)
     candidates = list(bodies_dir.glob("m3-*.json"))
     for path in candidates:
         if path.name.endswith(".sha256.json"):
             continue
-        data = load_json(path)
+        data = load_body_doc(path)
         if not isinstance(data, dict):
             continue
         ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
         bid = str(ident.get("story_id") or data.get("story_id") or "")
-        if bid.lower() != want:
+        if not (story_id_tokens(bid) & want):
             continue
-        scope = data.get("files_in_scope") or data.get("filesInScope") or []
         out: list[str] = []
-        for item in scope if isinstance(scope, list) else []:
-            if isinstance(item, str):
-                out.append(item)
-            elif isinstance(item, dict):
-                for k in ("legacy", "src", "source", "path", "file"):
-                    if item.get(k):
-                        out.append(str(item[k]))
+        for key in ("files_writable", "write_set", "files_in_scope", "filesInScope"):
+            scope = data.get(key) or []
+            if not isinstance(scope, list):
+                continue
+            for item in scope:
+                if isinstance(item, str):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    for k in ("legacy", "src", "source", "path", "file", "dest"):
+                        if item.get(k):
+                            out.append(str(item[k]))
         return out
     return []
+
+
+def body_sequence_map(bodies_dir: Path, story_ids: list[str]) -> dict[str, set[str]]:
+    """Map each partition story_id -> normalized sequence_after/dependencies tokens."""
+    out: dict[str, set[str]] = {sid: set() for sid in story_ids}
+    if not bodies_dir.is_dir():
+        return out
+    by_tok: dict[str, str] = {}
+    for sid in story_ids:
+        for tok in story_id_tokens(sid):
+            by_tok[tok] = sid
+    for path in bodies_dir.glob("m3-*.json"):
+        if path.name.endswith(".sha256.json"):
+            continue
+        data = load_body_doc(path)
+        if not isinstance(data, dict):
+            continue
+        ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+        bid = str(ident.get("story_id") or data.get("story_id") or "")
+        sid = None
+        for tok in story_id_tokens(bid):
+            if tok in by_tok:
+                sid = by_tok[tok]
+                break
+        if not sid:
+            continue
+        out[sid] = sequence_refs(data)
+    return out
 
 
 def main() -> int:
@@ -185,13 +282,18 @@ def main() -> int:
         chosen = body_fs if body_fs else files
         story_file_map[sid] = {norm_file(f) for f in chosen if f}
 
+    seq_by_story = body_sequence_map(bodies_dir, list(story_file_map.keys()))
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():
         for f in files:
             if not f or f.endswith("pom.xml"):
                 continue
             if f in owner and owner[f] != sid:
-                gaps.append(f"file_overlap:{f}:{owner[f]}+{sid}")
+                prev = owner[f]
+                if sequenced_overlap_ok(sid, prev, seq_by_story):
+                    # Legal sequenced write (e.g. S-012 after S-002 on application.properties)
+                    continue
+                gaps.append(f"file_overlap:{f}:{prev}+{sid}")
             else:
                 owner[f] = sid
 
