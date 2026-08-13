@@ -88,9 +88,9 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-partition
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer before create (migration/contracts/quarantine-survives-dispatch.md)"
 
-# S-008 / W4 — Owner→Pet→Visit resurrection order (distinct from tombstones)
+# S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
-  || die "S-008 resurrection-order failed — Owner before Pet before Visit (migration/contracts/s008-quarantine-resurrection-order.md)"
+  || die "S-008 resurrection-order failed — parent before child before grandchild (migration/contracts/s008-quarantine-resurrection-order.md)"
 
 # Architect E-20260811T200911Z Class A — mint-completeness (inject standard constraints
 # when absent/empty; distinct from preservation). Refuse later if still empty.

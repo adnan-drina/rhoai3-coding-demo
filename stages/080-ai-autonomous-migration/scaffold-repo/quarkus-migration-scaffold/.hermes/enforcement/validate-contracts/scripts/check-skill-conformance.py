@@ -375,9 +375,12 @@ def check_r_sk9(skills_root: Path, skill_dirs: list[Path]) -> list[str]:
 # R-SK.5 specimen-literal choke-point (Operator E-20260813T075411Z /
 # Deputy E-20260813T122115Z). Guidance under skills references + migration
 # contracts must stay specimen-agnostic; Architect KEEP lines may cite EID.
+# 2026-08-13: spaced Owner/Pet + enforcement/src scan (Deputy false-zero unpark).
 SPECIMEN_LITERAL_RX = [
     re.compile(r"org\.springframework\.samples\.petclinic"),
-    re.compile(r"\bOwner/Pet\b"),
+    # Allow optional whitespace around / or unicode/ASCII arrows (was \bOwner/Pet\b
+    # which missed "Owner / Pet" in S-008 contract — false green).
+    re.compile(r"\bOwner\s*(?:/|→|->)\s*Pet\b"),
     re.compile(r"(?i)\bpetclinic\b"),
     re.compile(r"/owners/\{[^}]*\}/pets"),
     # Derived reference-app type names (Deputy E-20260813T144954Z P2)
@@ -409,6 +412,23 @@ def load_specimen_keep(scaffold: Path) -> set[str]:
     return keep
 
 
+def _append_tree(
+    scan: list[Path],
+    root: Path,
+    *,
+    suffixes: set[str],
+    skip_parts: frozenset[str] = frozenset({"__pycache__", "examples", "assets"}),
+) -> None:
+    if not root.is_dir():
+        return
+    for p in root.rglob("*"):
+        if not p.is_file() or p.suffix not in suffixes:
+            continue
+        if any(x in p.parts for x in skip_parts):
+            continue
+        scan.append(p)
+
+
 def check_specimen_literals(scaffold: Path) -> list[str]:
     errs: list[str] = []
     keep = load_specimen_keep(scaffold)
@@ -435,6 +455,14 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
             if "__pycache__" in p.parts:
                 continue
             scan.append(p)
+    # Post Wave-B cutover: enforcement scripts live outside skills/ — scan them
+    # or the gate is a false zero on the largest script tree.
+    enforcement = scaffold / ".hermes" / "enforcement"
+    _append_tree(
+        scan,
+        enforcement,
+        suffixes={".py", ".sh", ".md", ".txt", ".yaml", ".yml"},
+    )
     contracts = scaffold / "migration" / "contracts"
     if contracts.is_dir():
         scan.extend(
@@ -450,6 +478,12 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
             for p in fixtures.rglob("*")
             if p.is_file() and p.suffix in {".java", ".md", ".txt", ".yaml", ".yml"}
         )
+    # Product/source tree when present (skeleton may be absent post-bootstrap)
+    _append_tree(
+        scan,
+        scaffold / "src",
+        suffixes={".java", ".kt", ".properties", ".yml", ".yaml", ".md", ".txt"},
+    )
     for p in scan:
         try:
             rel = str(p.relative_to(scaffold)).replace("\\", "/")

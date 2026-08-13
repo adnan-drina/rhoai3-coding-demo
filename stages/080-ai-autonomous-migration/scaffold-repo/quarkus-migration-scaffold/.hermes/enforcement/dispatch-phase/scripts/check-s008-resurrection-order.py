@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""S-008 / W4 — Owner→Pet→Visit (parent-chain) resurrection order.
+"""S-008 / W4 — parent→child→grandchild (scar triad) resurrection order.
 
 Contract: migration/contracts/s008-quarantine-resurrection-order.md
 Distinct from quarantine-survives-dispatch (tombstones). This lint refuses
-partition / story bodies that list Visit before Pet, or Pet before Owner,
-when the triad appears together.
+partition / story bodies that list grandchild before child, or child before
+parent, when the triad appears together.
 
 Usage:
   python3 check-s008-resurrection-order.py .
@@ -19,12 +19,13 @@ from pathlib import Path
 
 EXIT_CODES = """Exit codes:
   0  pass — no triad disorder, or idle (no triad present)
-  1  BLOCK — Visit before Pet or Pet before Owner in partition/bodies
+  1  BLOCK — grandchild before child or child before parent in partition/bodies
   2  usage
 """
 
 CONTRACT = "migration/contracts/s008-quarantine-resurrection-order.md"
-# Role tokens (specimen-agnostic labels used by the W4 scar contract)
+# Scar role tokens (W4) — matched in partition/bodies; guidance prose must not
+# use specimen slash-forms (R-SK.5).
 ROLE_RX = {
     "owner": re.compile(r"\bowners?\b|\bowner\b", re.I),
     "pet": re.compile(r"\bpets?\b|\bpet\b", re.I),
@@ -54,26 +55,26 @@ def check_order(label: str, text: str) -> int:
         return 0
     bad = 0
     idxs = {r: first_index(text, r) for r in ("owner", "pet", "visit")}
-    # Owner must precede Pet when both present
+    # Parent must precede child when both present
     if idxs["owner"] >= 0 and idxs["pet"] >= 0 and idxs["pet"] < idxs["owner"]:
         print(
-            f"FAIL: {label}: Pet appears before Owner "
+            f"FAIL: {label}: child (pet) appears before parent (owner) "
             f"(S-008 / {CONTRACT})",
             file=sys.stderr,
         )
         bad = 1
-    # Pet must precede Visit when both present
+    # Child must precede grandchild when both present
     if idxs["pet"] >= 0 and idxs["visit"] >= 0 and idxs["visit"] < idxs["pet"]:
         print(
-            f"FAIL: {label}: Visit appears before Pet "
+            f"FAIL: {label}: grandchild (visit) appears before child (pet) "
             f"(S-008 / {CONTRACT})",
             file=sys.stderr,
         )
         bad = 1
-    # Owner must precede Visit when both present (even if Pet absent)
+    # Parent must precede grandchild when both present (even if child absent)
     if idxs["owner"] >= 0 and idxs["visit"] >= 0 and idxs["visit"] < idxs["owner"]:
         print(
-            f"FAIL: {label}: Visit appears before Owner "
+            f"FAIL: {label}: grandchild (visit) appears before parent (owner) "
             f"(S-008 / {CONTRACT})",
             file=sys.stderr,
         )
@@ -108,7 +109,6 @@ def main() -> int:
             except (OSError, json.JSONDecodeError):
                 continue
             blob = json.dumps(data, ensure_ascii=False)
-            # Also fold title / parent / dependencies fields
             checked += 1
             bad |= check_order(str(path.relative_to(root)), blob)
 

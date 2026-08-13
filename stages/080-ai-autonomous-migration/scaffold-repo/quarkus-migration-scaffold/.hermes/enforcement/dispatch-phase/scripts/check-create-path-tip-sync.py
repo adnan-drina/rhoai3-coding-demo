@@ -36,7 +36,7 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/register-quarantine-tombstone.py",
     "migration/contracts/quarantine-survives-dispatch.md",
-    # S-008 / W4 — Owner→Pet→Visit resurrection order
+    # S-008 / W4 — parent-chain triad resurrection order
     ".hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py",
     "migration/contracts/s008-quarantine-resurrection-order.md",
     # Architect E-20260811T173254Z Class A — residual worker kill+verify

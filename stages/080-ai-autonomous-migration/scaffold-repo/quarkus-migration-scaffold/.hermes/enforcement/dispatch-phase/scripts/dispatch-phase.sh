@@ -80,7 +80,7 @@ python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-create-path-ti
 # Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer (migration/contracts/quarantine-survives-dispatch.md)"
-# S-008 / W4 — Owner→Pet→Visit resurrection order (distinct from tombstones)
+# S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
   || die "S-008 resurrection-order failed (migration/contracts/s008-quarantine-resurrection-order.md)"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-attach-matrix.py" "${ROOT}" \

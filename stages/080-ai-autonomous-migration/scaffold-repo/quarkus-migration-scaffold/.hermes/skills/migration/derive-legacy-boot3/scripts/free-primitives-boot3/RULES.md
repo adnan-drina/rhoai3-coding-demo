@@ -18,7 +18,7 @@ require G-4 dual-mode later — compile success is not behavioral proof.
 | `springfox-to-springdoc` | [springdoc migrating-from-springfox](https://springdoc.org/#migrating-from-springfox) + Boot 3.0 Migration Guide (Jakarta / no javax.servlet) | pom or sources reference `io.springfox` / `springfox.*` | springfox deps and springfox-importing `.java` gone; `org.springdoc:springdoc-openapi-starter-webmvc-ui` present | Y — skip when springfox absent | fires only when pre true | pom, java | **Y** — G-4 OpenAPI path subset (`/v3/api-docs` and/or swagger-ui) before DEMONSTRATED |
 | `thymeleaf-spring6` | Boot 3.0 Migration Guide — Thymeleaf spring5 → spring6 | sources reference `org.thymeleaf.spring5` | those refs are `org.thymeleaf.spring6` | Y — skip when spring5 absent | fires only when pre true | java | N |
 
-**Owner/Pet slice note (Architect E-20260808T095454Z):** first prove may use
+**Parent/child entity-slice note (Architect E-20260808T095454Z):** first prove may use
 typed **OpenAPI descope** (remove springfox without springdoc) instead of this
 rule — declare descope; G-4 OpenAPI N/A for that slice. This rule is the
 admitted general composite path for later specimens / full migration.
