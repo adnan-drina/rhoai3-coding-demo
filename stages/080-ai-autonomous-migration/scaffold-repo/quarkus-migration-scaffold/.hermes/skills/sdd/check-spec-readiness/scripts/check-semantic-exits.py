@@ -41,7 +41,12 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
 
 RESTISH = ("RestController", "Repository", "ApplicationService")
 
-from specimen_agnostic import COMPILE_ONLY, is_oracle_unavailable  # noqa: E402
+from specimen_agnostic import (  # noqa: E402
+    COMPILE_ONLY,
+    is_oracle_unavailable,
+    normalize_operand_class,
+    oracle_unavailable_allowed_for_class,
+)
 
 
 
@@ -137,7 +142,15 @@ def main() -> int:
                     continue
                 # F5: oracle_unavailable needs reason, not cmd
                 if check == "oracle_unavailable":
-                    if not is_oracle_unavailable(x):
+                    oclass = normalize_operand_class(body)
+                    if not oracle_unavailable_allowed_for_class(oclass):
+                        print(
+                            f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable forbidden for "
+                            f"operand_class={oclass!r} (F5a E-20260813T221456Z)",
+                            file=sys.stderr,
+                        )
+                        bad = 1
+                    elif not is_oracle_unavailable(x):
                         print(
                             f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable lacks reason "
                             f"(E-20260813T220250Z F5)",
@@ -196,7 +209,15 @@ def main() -> int:
                 continue
             # F5: oracle_unavailable needs reason, not cmd (Lead triage)
             if check == "oracle_unavailable":
-                if not is_oracle_unavailable(x):
+                oclass = normalize_operand_class(body)
+                if not oracle_unavailable_allowed_for_class(oclass):
+                    print(
+                        f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable forbidden for "
+                        f"operand_class={oclass!r} (F5a E-20260813T221456Z)",
+                        file=sys.stderr,
+                    )
+                    bad = 1
+                elif not is_oracle_unavailable(x):
                     print(
                         f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable lacks reason "
                         f"(E-20260813T220250Z F5)",

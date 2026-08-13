@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Operator E-20260811T133000Z banked #5 — created_cards attribution seam.
+"""Created-cards claim vs partition (Deputy E-20260813T221456Z F8a).
 
-M2b mandates CLI ``create-m3-implementer.sh`` (which now stamps parent linkage +
-``created_by=<parent>``). Completing with ``created_cards=[]`` to skip the
-Hermes card-claim check is a **consumer REJECT** when a derived claim list
-exists for that parent.
+F8 question: did we mint the stories the partition asked for?
+Answer = set equality of partition story_ids ↔ created card story_ids
+(both directions). Stamp↔board self-consistency alone is circular and
+insufficient.
+
+Modes:
+  --mode partition   (default) partition story_ids == derived story_ids
+  --mode subset      derived story_ids ⊆ partition (incremental create-m3)
+  --mode stamp       legacy: claimed task ids ⊆ derived stamp (secondary)
 
 Usage:
-  python3 check-created-cards-claim.py --parent t_xxx [--claimed id id…]
-  python3 check-created-cards-claim.py --parent t_xxx --claimed-empty
+  python3 check-created-cards-claim.py --parent t_xxx --mode partition
+  python3 check-created-cards-claim.py --parent t_xxx --mode subset
+  python3 check-created-cards-claim.py --parent t_xxx --claimed id… --mode stamp
 
-Exit 0 = OK; 1 = REJECT (empty claim while derived children exist, or
-claimed id not in derived list).
+Exit 0 = OK; 1 = REJECT.
 """
 from __future__ import annotations
 
@@ -25,7 +30,18 @@ def derived_path(root: Path, parent: str) -> Path:
     return root / "evidence" / "derived" / f"created-cards-{parent}.json"
 
 
-def load_derived(path: Path) -> list[str]:
+def partition_path(root: Path) -> Path:
+    for rel in (
+        "evidence/briefs/partition.json",
+        "migration/briefs/partition.json",
+    ):
+        p = root / rel
+        if p.is_file():
+            return p
+    return root / "evidence" / "briefs" / "partition.json"
+
+
+def load_derived(path: Path) -> list[dict]:
     if not path.is_file():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -35,46 +51,104 @@ def load_derived(path: Path) -> list[str]:
         cards = data
     else:
         cards = []
-    out: list[str] = []
+    out: list[dict] = []
     for c in cards:
         if isinstance(c, str) and c.strip():
-            out.append(c.strip())
+            out.append({"id": c.strip()})
         elif isinstance(c, dict) and c.get("id"):
-            out.append(str(c["id"]).strip())
+            out.append(c)
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default=".")
-    ap.add_argument("--parent", required=True, help="M2b / creating parent task id")
-    ap.add_argument(
-        "--claimed",
-        nargs="*",
-        default=None,
-        help="created_cards ids passed to kanban_complete",
-    )
-    ap.add_argument(
-        "--claimed-empty",
-        action="store_true",
-        help="Assert completing with created_cards=[] (will REJECT if derived nonempty)",
-    )
-    args = ap.parse_args()
-    root = Path(args.root).resolve()
-    parent = str(args.parent).strip()
-    path = derived_path(root, parent)
-    derived = load_derived(path)
+def derived_ids(cards: list[dict]) -> list[str]:
+    return [str(c.get("id") or "").strip() for c in cards if str(c.get("id") or "").strip()]
 
-    if args.claimed_empty:
-        claimed: list[str] = []
-    elif args.claimed is None:
+
+def derived_story_ids(cards: list[dict]) -> set[str]:
+    out: set[str] = set()
+    for c in cards:
+        sid = str(c.get("story_id") or "").strip()
+        if sid:
+            out.add(sid)
+    return out
+
+
+def partition_story_ids(root: Path) -> set[str]:
+    path = partition_path(root)
+    if not path.is_file():
+        raise FileNotFoundError(f"missing partition at {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    stories = data.get("stories") if isinstance(data, dict) else None
+    if not isinstance(stories, list):
+        raise ValueError(f"partition missing stories[]: {path}")
+    out: set[str] = set()
+    for s in stories:
+        if not isinstance(s, dict):
+            continue
+        sid = str(s.get("story_id") or s.get("id") or "").strip()
+        if sid:
+            out.add(sid)
+    return out
+
+
+def check_partition(root: Path, parent: str, *, mode: str) -> int:
+    path = derived_path(root, parent)
+    cards = load_derived(path)
+    created = derived_story_ids(cards)
+    try:
+        wanted = partition_story_ids(root)
+    except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
+        print(f"CREATED_CARDS_REJECT: partition load failed: {e}", file=sys.stderr)
+        return 1
+
+    if not wanted:
+        print("CREATED_CARDS_REJECT: partition stories[] empty", file=sys.stderr)
+        return 1
+
+    extra = sorted(created - wanted)
+    missing = sorted(wanted - created)
+
+    if mode == "subset":
+        if extra:
+            print(
+                f"CREATED_CARDS_REJECT: derived story_ids not in partition: {extra}",
+                file=sys.stderr,
+            )
+            return 1
+        if not created:
+            print(
+                f"WARN: derived claim empty at {path} (create-m3 not stamped yet)",
+                file=sys.stderr,
+            )
         print(
-            "FAIL: pass --claimed id… or --claimed-empty",
+            f"OK: created_cards ⊆ partition "
+            f"({len(created)}/{len(wanted)} stories; parent={parent})"
+        )
+        return 0
+
+    # full partition equality
+    if extra or missing:
+        print(
+            "CREATED_CARDS_REJECT: partition story_ids ≠ created card story_ids "
+            f"(missing={missing} extra={extra}) — F8a E-20260813T221456Z "
+            "(compare partition, not stamp self-consistency)",
             file=sys.stderr,
         )
         return 1
-    else:
-        claimed = [str(x).strip() for x in args.claimed if str(x).strip()]
+    print(
+        f"OK: partition == created_cards story_ids "
+        f"({len(wanted)} stories; parent={parent}) — F8a"
+    )
+    return 0
+
+
+def check_stamp(root: Path, parent: str, claimed: list[str], claimed_empty: bool) -> int:
+    path = derived_path(root, parent)
+    cards = load_derived(path)
+    derived = derived_ids(cards)
+
+    if claimed_empty:
+        claimed = []
 
     if derived and not claimed:
         print(
@@ -104,9 +178,47 @@ def main() -> int:
 
     print(
         f"OK: created_cards claim ({len(claimed)} id(s)) matches derived "
-        f"for parent={parent}"
+        f"for parent={parent} (stamp mode; prefer --mode partition)"
     )
     return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", default=".")
+    ap.add_argument("--parent", required=True, help="M2b / creating parent task id")
+    ap.add_argument(
+        "--mode",
+        choices=("partition", "subset", "stamp"),
+        default="partition",
+        help="partition=set equality (F8a); subset=incremental; stamp=legacy",
+    )
+    ap.add_argument(
+        "--claimed",
+        nargs="*",
+        default=None,
+        help="created_cards ids (stamp mode)",
+    )
+    ap.add_argument(
+        "--claimed-empty",
+        action="store_true",
+        help="Assert completing with created_cards=[] (stamp mode)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
+    parent = str(args.parent).strip()
+
+    if args.mode in {"partition", "subset"}:
+        return check_partition(root, parent, mode=args.mode)
+
+    if args.claimed is None and not args.claimed_empty:
+        print(
+            "FAIL: stamp mode requires --claimed id… or --claimed-empty",
+            file=sys.stderr,
+        )
+        return 1
+    claimed = [str(x).strip() for x in (args.claimed or []) if str(x).strip()]
+    return check_stamp(root, parent, claimed, args.claimed_empty)
 
 
 if __name__ == "__main__":

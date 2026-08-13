@@ -398,17 +398,19 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
    - `legacy_locus`: 64-hex of the primary legacy **file** (not a directory;
      not `see-harvest-referent` prose).
 4. Before `kanban_complete`: run
-   `bash .hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh . $TASK_ID <ids…>`
-   (or `python3 .hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py --parent $TASK_ID --claimed <ids…>`)
-   Pass those ids as `created_cards`. **`created_cards=[]` is REJECT** when
-   `evidence/derived/created-cards-$TASK_ID.json` is nonempty.
-   **HARD (F8):** assert MUST exit 0 before `kanban_complete` — prose alone is not enforcement.
+   `bash .hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh . $TASK_ID`
+   (writes `evidence/runs/$TASK_ID/m2b-created-cards-ok.json`). Asserts
+   **partition story_ids == created card story_ids** (F8a — not stamp self-check).
+   Pass matching ids as `created_cards`. **`created_cards=[]` is REJECT** when
+   derived claim is nonempty.
+   **F8b machinery:** `python3 .hermes/home/scripts/enforce-m2b-created-cards-claim.py . --task $TASK_ID`
+   reclaims `done` without the ok receipt — prose is not the gate.
 5. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when
 - Spec Kit tasks artifacts present
 - M3 children created via `create-m3-implementer.sh --parent $TASK_ID`
-- `check-created-cards-claim.py` OK with non-empty claimed ids
+- `assert-m2b-created-cards-claim.sh` OK (partition set equality + receipt)
 - brief-identity ack out of band (Operator)
 
 ## Constraints

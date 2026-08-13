@@ -361,12 +361,22 @@ hermes kanban comment "${TASK_ID}" \
   "born-parked: initial-status=blocked + park-at-birth verify; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z / Architect E-20260811T200911Z)" \
   >/dev/null 2>&1 || true
 # Stamp derived claim list for parent completion (Operator E-133000Z #5)
+# F8a: stamp carries story_id so claim can compare to partition (not self).
+STORY_ID="$(python3 -c 'import json,sys,re,pathlib
+p=pathlib.Path(sys.argv[1])
+d=json.load(open(p))
+sid=(d.get("identity") or {}).get("story_id") or d.get("story_id") or ""
+if not sid:
+  m=re.search(r"m3-s-([0-9a-z]+)", p.name, re.I)
+  sid=("S-"+m.group(1).upper()) if m else ""
+print(sid)' "${BODY_JSON}")"
+[[ -n "${STORY_ID}" ]] || die "cannot derive story_id for ack-request from ${BODY_JSON}"
 DERIVED_DIR="${ROOT}/evidence/derived"
 mkdir -p "${DERIVED_DIR}"
 CLAIM_FILE="${DERIVED_DIR}/created-cards-${PARENT_PRIMARY}.json"
-python3 - "${CLAIM_FILE}" "${PARENT_PRIMARY}" "${TASK_ID}" "${BODY_DIGEST}" <<'PY'
+python3 - "${CLAIM_FILE}" "${PARENT_PRIMARY}" "${TASK_ID}" "${BODY_DIGEST}" "${STORY_ID}" <<'PY'
 import json, sys, pathlib, datetime
-path, parent, tid, digest = sys.argv[1:5]
+path, parent, tid, digest, story = sys.argv[1:6]
 p = pathlib.Path(path)
 cards = []
 if p.is_file():
@@ -377,7 +387,17 @@ if p.is_file():
         cards = []
 ids = {c.get("id") for c in cards if isinstance(c, dict)}
 if tid not in ids:
-    cards.append({"id": tid, "body_sha256": digest, "created_by": parent})
+    cards.append({
+        "id": tid,
+        "story_id": story,
+        "body_sha256": digest,
+        "created_by": parent,
+    })
+else:
+    for c in cards:
+        if isinstance(c, dict) and c.get("id") == tid:
+            c.setdefault("story_id", story)
+            c["body_sha256"] = digest
 out = {
     "schema": "rhoai3.created-cards-claim/v1",
     "parent": parent,
@@ -390,27 +410,16 @@ print(path)
 PY
 echo "CREATED_CARDS_CLAIM=${CLAIM_FILE}"
 
-# Deputy E-20260813T220250Z F8 — enforce claim coherence in machinery (not prose).
-# Re-read derived ids and fail-closed if stamp/claim diverges.
-CLAIM_IDS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(" ".join(c.get("id","") for c in (d.get("cards") or []) if isinstance(c,dict) and c.get("id")))' "${CLAIM_FILE}")"
+# F8a (Deputy E-20260813T221456Z): claim vs partition (subset during incremental mint).
+# Full set equality is enforced at M2b parent complete (assert-m2b + enforce).
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py" \
-  --root "${ROOT}" --parent "${PARENT_PRIMARY}" --claimed ${CLAIM_IDS} \
-  || die "CREATED_CARDS_CLAIM check failed after stamp (E-20260813T220250Z F8)"
-
+  --root "${ROOT}" --parent "${PARENT_PRIMARY}" --mode subset \
+  || die "CREATED_CARDS_CLAIM partition-subset failed after stamp (E-20260813T221456Z F8a)"
 
 # Architect E-20260811T155332Z Class A — atomic create→digest→ack-request
 # (freeze exception). Emit unsigned ack-request so Operator/Deputy signs
 # without hand-copying digests; dispatch still verifies ack↔card↔live (AR-4.3).
 # Body digests are finalized above (stamps + stamp-body-digest) before create.
-STORY_ID="$(python3 -c 'import json,sys,re,pathlib
-p=pathlib.Path(sys.argv[1])
-d=json.load(open(p))
-sid=(d.get("identity") or {}).get("story_id") or d.get("story_id") or ""
-if not sid:
-  m=re.search(r"m3-s-([0-9a-z]+)", p.name, re.I)
-  sid=("S-"+m.group(1).upper()) if m else ""
-print(sid)' "${BODY_JSON}")"
-[[ -n "${STORY_ID}" ]] || die "cannot derive story_id for ack-request from ${BODY_JSON}"
 PARTITION_JSON="${ROOT}/evidence/briefs/partition.json"
 [[ -f "${PARTITION_JSON}" ]] || die "missing ${PARTITION_JSON} for ack-request"
 PARTITION_DIGEST="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${PARTITION_JSON}")"

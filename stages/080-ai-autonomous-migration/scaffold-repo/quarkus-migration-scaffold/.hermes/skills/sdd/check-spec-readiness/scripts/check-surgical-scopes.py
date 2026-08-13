@@ -30,9 +30,14 @@ EXIT_CODES = """Exit codes:
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
     ENDPOINTISH,
+    ORACLE_UNAVAILABLE_MINT_CAP,
+    collect_oracle_unavailable,
     is_oracle_unavailable,
     normalize_operand_class,
+    oracle_unavailable_allowed_for_class,
+    oracle_unavailable_routes_to_lead,
     required_semantic_exits_for,
+    write_oracle_unavailable_receipt,
 )
 
 
@@ -166,20 +171,47 @@ def main() -> int:
             for x in exits
             if isinstance(x, dict)
         }
-        # F5: typed escape — oracle_unavailable with reason routes to Lead
-        has_oracle_escape = any(
-            is_oracle_unavailable(x) for x in exits if isinstance(x, dict)
-        )
+        # F5a/F5b: oracle_unavailable only for non-rest/api/src_code + reason; routes
         oclass = normalize_operand_class(body)
         required = required_semantic_exits_for(body)
+        escape_items = [
+            x for x in exits if isinstance(x, dict) and is_oracle_unavailable(x)
+        ]
+        has_oracle_escape = bool(escape_items)
         if has_oracle_escape:
-            # legal standalone semantic exit for any class
+            if not oracle_unavailable_allowed_for_class(oclass):
+                print(
+                    f"FAIL: AR-4.4 {label}: oracle_unavailable forbidden for "
+                    f"operand_class={oclass!r} (F5a E-20260813T221456Z — rest/api/"
+                    f"src_code always have an oracle)",
+                    file=sys.stderr,
+                )
+                bad = 1
+                has_oracle_escape = False  # do not treat as satisfying semantic exit
+            elif not all(
+                oracle_unavailable_routes_to_lead(x, operand_class=oclass)
+                for x in escape_items
+            ):
+                print(
+                    f"FAIL: AR-4.4 {label}: oracle_unavailable lacks reason "
+                    f"(F5b routes_to_lead)",
+                    file=sys.stderr,
+                )
+                bad = 1
+                has_oracle_escape = False
+        if has_oracle_escape:
+            # class-legal escape satisfies semantic-exit requirement for this body
             pass
         elif not (checks & required):
+            esc_hint = (
+                "oracle_unavailable+reason"
+                if oracle_unavailable_allowed_for_class(oclass)
+                else "a measurable semantic exit (oracle_unavailable forbidden for this class)"
+            )
             print(
                 f"FAIL: AR-4.4 {label}: no semantic exit for operand_class={oclass!r} "
-                f"(need one of {sorted(required)[:8]}; or oracle_unavailable+reason — "
-                f"E-20260813T220250Z F1/F5)",
+                f"(need one of {sorted(required)[:8]}; or {esc_hint} — "
+                f"E-20260813T220250Z F1/F5 / E-20260813T221456Z F5a)",
                 file=sys.stderr,
             )
             bad = 1
@@ -196,6 +228,23 @@ def main() -> int:
                 file=sys.stderr,
             )
             bad = 1
+
+
+    # F5b — mint-wide debt list + fail-closed above cap (Deputy E-221456Z)
+    entries = collect_oracle_unavailable(bodies)
+    receipt = write_oracle_unavailable_receipt(root, entries)
+    if len(entries) > ORACLE_UNAVAILABLE_MINT_CAP:
+        print(
+            f"FAIL: AR-4.4 oracle_unavailable count {len(entries)} > cap "
+            f"{ORACLE_UNAVAILABLE_MINT_CAP} (F5b); see {receipt}",
+            file=sys.stderr,
+        )
+        bad = 1
+    elif entries:
+        print(
+            f"OK: F5b oracle_unavailable debt {len(entries)}/{ORACLE_UNAVAILABLE_MINT_CAP} "
+            f"→ {receipt}"
+        )
 
     if bad:
         print("AR-4.4 surgical scopes FAILED", file=sys.stderr)

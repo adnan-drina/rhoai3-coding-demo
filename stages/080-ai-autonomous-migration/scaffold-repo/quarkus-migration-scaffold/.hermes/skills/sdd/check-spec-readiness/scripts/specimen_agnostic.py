@@ -6,6 +6,7 @@ fixtures / per-run migration.yaml stamps — never in gate logic constants.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -344,6 +345,15 @@ ENDPOINTISH = SEMANTIC_EXIT_VOCAB
 
 # operand_class → preferred semantic exit checks (at least one required unless
 # oracle_unavailable with reason). Unknown classes fall back to ENDPOINTISH ∩ REST-ish.
+# F5a (Deputy E-20260813T221456Z): oracle_unavailable is NOT legal for
+# rest/api/src_code — those always have a measurable oracle. Escape remains
+# for build/config/test/infra/observability classes that genuinely lack one.
+ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES: frozenset[str] = frozenset(
+    {"rest", "api", "src_code"}
+)
+# F5b: mint-wide fail-closed when escape count exceeds this (of ~13 stories).
+ORACLE_UNAVAILABLE_MINT_CAP: int = 2
+
 OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
     "build_config": frozenset({"build_resolves", "oracle_unavailable"}),
     "build-config": frozenset({"build_resolves", "oracle_unavailable"}),
@@ -362,7 +372,6 @@ OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
             "create_fk",
             "exception_mapping",
             "security_authz",
-            "oracle_unavailable",
         }
     ),
     "api": frozenset(
@@ -370,10 +379,10 @@ OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
             "endpoint_contract",
             "route_contract",
             "http_semantics",
-            "oracle_unavailable",
         }
     ),
-    "src_code": frozenset(SEMANTIC_EXIT_VOCAB),  # default: full vocab
+    # src_code: full vocab minus the universal escape (F5a)
+    "src_code": frozenset(SEMANTIC_EXIT_VOCAB - {"oracle_unavailable"}),
 }
 
 
@@ -392,7 +401,8 @@ def required_semantic_exits_for(body: dict) -> frozenset[str]:
     # aliases
     if oc in {"build_config", "build-config", "config", "pom"}:
         return OPERAND_CLASS_SEMANTIC_EXITS["build_config"]
-    return SEMANTIC_EXIT_VOCAB
+    # Unknown class: full vocab without universal escape (F5a posture)
+    return frozenset(SEMANTIC_EXIT_VOCAB - {"oracle_unavailable"})
 
 
 def is_compile_only_check(name: str) -> bool:
@@ -409,7 +419,80 @@ def is_oracle_unavailable(exit_item: dict) -> bool:
     return isinstance(reason, str) and bool(reason.strip())
 
 
-def oracle_unavailable_routes_to_lead(exit_item: dict) -> bool:
-    """F5 escape is legal only with a non-empty reason (Lead triage signal)."""
-    return is_oracle_unavailable(exit_item)
+def oracle_unavailable_allowed_for_class(operand_class: str) -> bool:
+    """F5a — escape forbidden for rest/api/src_code."""
+    oc = str(operand_class or "").strip().lower()
+    return oc not in ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES
 
+
+def oracle_unavailable_routes_to_lead(
+    exit_item: dict, *, operand_class: str = ""
+) -> bool:
+    """F5b — true only when escape is class-legal + reasoned (Lead debt signal).
+
+    Callers must also mint-cap and write evidence/receipts/oracle-unavailable.json.
+    """
+    if not is_oracle_unavailable(exit_item):
+        return False
+    if operand_class and not oracle_unavailable_allowed_for_class(operand_class):
+        return False
+    return True
+
+
+def collect_oracle_unavailable(
+    bodies: list[tuple[str, dict]],
+) -> list[dict]:
+    """Return [{story_id, operand_class, reason, label}, ...] for Lead triage."""
+    out: list[dict] = []
+    for label, body in bodies:
+        if not isinstance(body, dict):
+            continue
+        ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+        sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
+        oc = normalize_operand_class(body)
+        exits = body.get("exit_criteria") or body.get("done_when") or []
+        if not isinstance(exits, list):
+            continue
+        for x in exits:
+            if not isinstance(x, dict):
+                continue
+            if not is_oracle_unavailable(x):
+                continue
+            reason = x.get("reason") or x.get("why") or x.get("detail") or ""
+            out.append(
+                {
+                    "story_id": sid,
+                    "operand_class": oc,
+                    "reason": str(reason).strip(),
+                    "label": label,
+                    "routes_to_lead": oracle_unavailable_routes_to_lead(
+                        x, operand_class=oc
+                    ),
+                }
+            )
+    return out
+
+
+def write_oracle_unavailable_receipt(
+    root: Path, entries: list[dict], *, cap: int = ORACLE_UNAVAILABLE_MINT_CAP
+) -> Path:
+    """Persist Lead-visible debt list (F5b)."""
+    from datetime import datetime, timezone
+
+    receipt_dir = root / "evidence" / "receipts"
+    receipt_dir.mkdir(parents=True, exist_ok=True)
+    path = receipt_dir / "oracle-unavailable.json"
+    payload = {
+        "schema": "rhoai3.oracle-unavailable-receipt/v1",
+        "cap": cap,
+        "count": len(entries),
+        "over_cap": len(entries) > cap,
+        "entries": entries,
+        "stamped_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "notes": [
+            "Deputy E-20260813T221456Z F5b — escape is debt, not a pass",
+            "routes_to_lead requires class-legal + non-empty reason",
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
