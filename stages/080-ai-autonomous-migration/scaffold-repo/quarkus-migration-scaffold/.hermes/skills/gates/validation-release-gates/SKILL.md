@@ -60,20 +60,16 @@ and is idle (exit 0) when its trigger artifact is absent. Commands under
    `migration/verdicts/` + `migration/preflight/`; `check-accept-scope.py` for
    descope ⇒ `SCOPED_ACCEPT`; `compute-substrate-reopen.py --check <verdict>`
    (or `--implicated a,b --print`) against `migration/slices/closure-map.json`.
-4. **Terminals and requeue** — `evaluate-exit-criteria.py --body … --task-id …
-   --trigger …` writes `migration/runs/<task>/exit-eval.json`;
-   `check-wall-exit-eval.py` refuses a wall terminal without it;
-   `apply-wall-requeue-policy.py --k-soft` and `apply-crash-requeue-policy.py
-   --k-crash --cause` bound soft requeues; `restore-or-refuse-requeue.py
-   --terminal <t>` (`check` default, `restore` mode) plus
-   `check-workspace-clean.py`; `apply-dependency-wait-hold.py` for typed
-   `dependency_wait`; `check-side-effect-recovery.py` for recovery claims.
-5. **Completion** — `assert-complete-exit-criteria.py --task-id --body` must
-   exit 0 before `kanban_complete`; it writes
-   `migration/runs/<task>/complete-exit-ok.json`.
-6. **Ship** — `check-factory-m5.py` (required oracle) and
+4. **Semantics (B8)** — `check-semantics-manifest.py` (contract
+   `check-semantics-manifest.md`; also via `check-m4-floor-receipts.py`).
+5. **Terminals and requeue** — `evaluate-exit-criteria.py`, wall/crash apply
+   scripts, `restore-or-refuse-requeue.py`, `check-workspace-clean.py`,
+   `apply-dependency-wait-hold.py`, `check-side-effect-recovery.py`.
+6. **Completion** — `assert-complete-exit-criteria.py --task-id --body` →
+   `migration/runs/<task>/complete-exit-ok.json` before `kanban_complete`.
+7. **Ship** — `check-factory-m5.py` (required oracle) and
    `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
-7. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
+8. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
    `run-chaos-matrix.py` under the Hermes venv.
 
 ## Checks
@@ -87,6 +83,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized
 
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
+
+# B8 check-semantics (see references/available-scripts.md + fixtures README)
+python3 "${HERMES_SKILL_DIR}/scripts/check-semantics-manifest.py" /projects/modernized
 
 # Shared-substrate reopen set (§18.0 ¶4 / §11.3)
 python3 "${HERMES_SKILL_DIR}/scripts/compute-substrate-reopen.py" /projects/modernized \
@@ -189,7 +188,8 @@ Full inventory: `references/available-scripts.md` (UPLIFT-4). Includes
   `rhoai3.gate-receipt/v1` — and `check-m4-floor-receipts.py` prints `OK: M4
   floor receipts complete`. `boot_health`/`endpoint_smoke` must be `PASS`;
   `g4_hook` `INCONCLUSIVE` is honest for the SAMPLE floor, `REFUSE` fails.
-  Every receipt has `ad010_demo: false` — floor green is not `release_qualified`.
+  Every receipt has `ad010_demo: false` —   floor green is not `release_qualified`. B8: health-only smoke →
+  `endpoint_smoke_health`; `check-semantics-manifest.py` must pass.
 - Wall/crash: each terminal has `migration/runs/<task>/exit-eval.json` with
   schema `rhoai3.exit-eval/v1`; `apply-wall-requeue-policy.py` exit 2 is the
   hard ceiling (block, do not requeue) and must not be read as a soft pass.

@@ -82,8 +82,10 @@
 | Item | State |
 |------|-------|
 | Manifest authored (Review Need) | **DONE** — this file |
-| Lint tooling | **OWED** — B8 tip-bank card |
-| Rename `endpoint_smoke` / path lists | **OWED** — with floor contract |
-| G-4 harvest vs admission | **OPEN** |
+| Lint tooling | **DONE** — `validation-release-gates/scripts/check-semantics-manifest.py` (B8 tip `Lead:wire-b8-check-semantics-manifest`) |
+| Rename `endpoint_smoke` / path lists | **DONE** — floor runner emits `endpoint_smoke_health` when smoke paths exclude `/api/*` |
+| G-4 harvest vs admission | **OPEN** (lint forbids SAMPLE→product-closed; harvest still required for SEMANTIC close) |
+
+Callers: `check-m4-floor-receipts.py`, `run-m4-floor.sh` / `write-receipt.py`, `harness-validate` (negative fixtures under `migration/fixtures/check-semantics-manifest/`).
 
 — Review

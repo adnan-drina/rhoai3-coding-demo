@@ -24,11 +24,28 @@ mkdir -p "${RECEIPT_DIR}"
 PORT="${M4_PORT:-8080}"
 BASE_URL="${BASE_URL_OVERRIDE:-http://127.0.0.1:${PORT}}"
 SMOKE_PATHS="${M4_SMOKE_PATHS:-/q/health}"
+# B8 / check-semantics-manifest: health/root-only smoke must not claim endpoint_smoke
+SMOKE_CHECK_ID="endpoint_smoke"
+SMOKE_CLAIM=""
+has_api=0
+for _sp in ${SMOKE_PATHS}; do
+  case "${_sp}" in
+    /api|/*/api|/*/api/*|*/api) has_api=1 ;;
+  esac
+done
+if [[ "${has_api}" != "1" ]]; then
+  SMOKE_CHECK_ID="endpoint_smoke_health"
+  SMOKE_CLAIM="health/root only"
+fi
 ROOT_PATH=""
 if [[ -f "${PRODUCT_ROOT}/src/main/resources/application.properties" ]]; then
   ROOT_PATH="$(grep -E "^quarkus\.http\.root-path=" "${PRODUCT_ROOT}/src/main/resources/application.properties" | head -1 | cut -d= -f2- || true)"
 fi
 ROOT_PATH="${ROOT_PATH%/}"
+PACKAGE_RC="skipped"
+if [[ "${M4_SKIP_PACKAGE:-0}" != "1" ]]; then
+  PACKAGE_RC="pending"
+fi
 
 log() { printf "[m4-floor] %s\n" "$*"; }
 
@@ -43,17 +60,22 @@ trap cleanup EXIT
 # --- 1) package (optional) ---
 if [[ "${M4_SKIP_PACKAGE:-0}" != "1" ]]; then
   log "mvn -q -DskipTests package"
-  (cd "${PRODUCT_ROOT}" && mvn -q -DskipTests package ${QUARKUS_PROFILE:+-Dquarkus.profile=${QUARKUS_PROFILE}}) || {
+  if (cd "${PRODUCT_ROOT}" && mvn -q -DskipTests package ${QUARKUS_PROFILE:+-Dquarkus.profile=${QUARKUS_PROFILE}}); then
+    PACKAGE_RC="0"
+  else
+    PACKAGE_RC="1"
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
       --result FAIL --cmd "mvn -q -DskipTests package" --rc 1 --operand "${PRODUCT_ROOT}" \
-      --note "package failed"
-    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
-      --result FAIL --cmd "skipped" --rc 1 --note "boot failed"
+      --note "package failed" --package-rc "${PACKAGE_RC}" --adequacy SEMANTIC
+    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
+      --result FAIL --cmd "skipped" --rc 1 --note "boot failed" \
+      --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
-      --result INCONCLUSIVE --cmd "skipped" --rc 0 --note "boot failed"
+      --result INCONCLUSIVE --cmd "skipped" --rc 0 --note "boot failed" \
+      --g4-mode SAMPLE --adequacy ADMISSION
     echo "FAIL: package" >&2
     exit 1
-  }
+  fi
 fi
 
 # --- start app unless BASE_URL already reachable ---
@@ -68,11 +90,11 @@ else
   if [[ -z "${JAR}" || ! -f "${JAR}" ]]; then
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
       --result FAIL --cmd "find runner jar" --rc 1 --operand "${PRODUCT_ROOT}/target" \
-      --note "no quarkus runner jar"
-    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
-      --result FAIL --cmd "skipped" --rc 1
+      --note "no quarkus runner jar" --package-rc "${PACKAGE_RC}" --adequacy SEMANTIC
+    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
+      --result FAIL --cmd "skipped" --rc 1 --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
-      --result INCONCLUSIVE --cmd "skipped" --rc 0
+      --result INCONCLUSIVE --cmd "skipped" --rc 0 --g4-mode SAMPLE --adequacy ADMISSION
     echo "FAIL: no runner jar" >&2
     exit 1
   fi
@@ -97,11 +119,11 @@ else
   if [[ "${ok}" != "1" ]]; then
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
       --result FAIL --cmd "java -jar ${JAR}" --rc 1 --operand "${BASE_URL}/q/health" \
-      --note "health never became ready; see app.log"
-    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
-      --result FAIL --cmd "skipped" --rc 1
+      --note "health never became ready; see app.log" --package-rc "${PACKAGE_RC}" --health-status fail --adequacy SEMANTIC
+    python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
+      --result FAIL --cmd "skipped" --rc 1 --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
     python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
-      --result INCONCLUSIVE --cmd "skipped" --rc 0
+      --result INCONCLUSIVE --cmd "skipped" --rc 0 --g4-mode SAMPLE --adequacy ADMISSION
     echo "FAIL: boot_health" >&2
     exit 1
   fi
@@ -113,14 +135,16 @@ if ! curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
 fi
 if curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
   python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
-    --result PASS --cmd "curl -sf ${HEALTH_URL}" --rc 0 --operand "${HEALTH_URL}"
+    --result PASS --cmd "curl -sf ${HEALTH_URL}" --rc 0 --operand "${HEALTH_URL}" \
+    --package-rc "${PACKAGE_RC}" --health-status ok --adequacy SEMANTIC
 else
   python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/boot_health.json" --check boot_health \
-    --result FAIL --cmd "curl -sf ${HEALTH_URL}" --rc 1 --operand "${HEALTH_URL}"
-  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
-    --result FAIL --cmd "skipped" --rc 1
+    --result FAIL --cmd "curl -sf ${HEALTH_URL}" --rc 1 --operand "${HEALTH_URL}" \
+    --package-rc "${PACKAGE_RC}" --health-status fail --adequacy SEMANTIC
+  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
+    --result FAIL --cmd "skipped" --rc 1 --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
   python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
-    --result INCONCLUSIVE --cmd "skipped" --rc 0
+    --result INCONCLUSIVE --cmd "skipped" --rc 0 --g4-mode SAMPLE --adequacy ADMISSION
   echo "FAIL: boot_health curl" >&2
   exit 1
 fi
@@ -147,13 +171,15 @@ for path in ${SMOKE_PATHS}; do
   fi
 done
 if [[ "${smoke_rc}" == "0" ]]; then
-  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
+  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
     --result PASS --cmd "curl smoke ${SMOKE_PATHS}" --rc 0 \
-    --operand "${BASE_URL}" --note "hits=${smoke_hits[*]}"
+    --operand "${BASE_URL}" --note "hits=${smoke_hits[*]}" \
+    --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
 else
-  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/endpoint_smoke.json" --check endpoint_smoke \
+  python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/${SMOKE_CHECK_ID}.json" --check "${SMOKE_CHECK_ID}" \
     --result FAIL --cmd "curl smoke ${SMOKE_PATHS}" --rc 1 \
-    --operand "${BASE_URL}" --note "${smoke_note}; hits=${smoke_hits[*]}"
+    --operand "${BASE_URL}" --note "${smoke_note}; hits=${smoke_hits[*]}" \
+    --smoke-paths "${SMOKE_PATHS}" --claim "${SMOKE_CLAIM}" --adequacy SEMANTIC
 fi
 
 # --- 3) G-4 hook ---
@@ -200,7 +226,8 @@ case "${G4_RESULT}" in
 esac
 python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
   --result "${recv}" --cmd "g4-runtime-parity.py" --rc 0 \
-  --operand "${PARITY_DIR}" --note "${G4_NOTE}; evaluator=${G4_RESULT}; g4_mode=SAMPLE"
+  --operand "${PARITY_DIR}" --note "${G4_NOTE}; evaluator=${G4_RESULT}; g4_mode=SAMPLE" \
+  --g4-mode SAMPLE --adequacy ADMISSION
 
 # symlink latest
 ln -sfn "${RUN_ID}" "${PRODUCT_ROOT}/migration/receipts/m4-floor/latest" 2>/dev/null || true

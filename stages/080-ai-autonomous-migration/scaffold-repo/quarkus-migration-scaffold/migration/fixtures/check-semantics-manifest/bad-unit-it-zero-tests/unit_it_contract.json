@@ -1,0 +1,9 @@
+{
+  "schema": "rhoai3.gate-receipt/v1",
+  "check": "unit_it_contract",
+  "result": "PASS",
+  "cmd": "mvn -q test",
+  "rc": 0,
+  "tests_required": true,
+  "test_count": 0
+}

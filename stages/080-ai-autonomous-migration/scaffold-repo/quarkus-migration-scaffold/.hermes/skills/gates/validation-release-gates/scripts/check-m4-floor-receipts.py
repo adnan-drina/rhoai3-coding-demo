@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-REQUIRED = ("boot_health", "endpoint_smoke", "g4_hook")
+REQUIRED_CORE = ("boot_health", "g4_hook")
+# B8: health/root-only smoke may use endpoint_smoke_health
+SMOKE_ALIASES = ("endpoint_smoke", "endpoint_smoke_health")
 OK = {"PASS", "INCONCLUSIVE"}  # INCONCLUSIVE honest for g4 SAMPLE floor
 
 
@@ -40,7 +43,7 @@ def main() -> int:
         by_check[data["check"]] = data
 
     bad = 0
-    for name in REQUIRED:
+    for name in REQUIRED_CORE:
         if name not in by_check:
             print(f"FAIL: missing receipt for {name}", file=sys.stderr)
             bad = 1
@@ -59,6 +62,34 @@ def main() -> int:
             bad = 1
         else:
             print(f"OK: {name}={result}")
+
+    smoke_name = next((n for n in SMOKE_ALIASES if n in by_check), None)
+    if smoke_name is None:
+        print(
+            "FAIL: missing receipt for endpoint_smoke or endpoint_smoke_health "
+            "(B8 / migration/contracts/check-semantics-manifest.md)",
+            file=sys.stderr,
+        )
+        bad = 1
+    else:
+        result = by_check[smoke_name].get("result")
+        if result != "PASS":
+            print(f"FAIL: {smoke_name} result={result} (need PASS)", file=sys.stderr)
+            bad = 1
+        else:
+            print(f"OK: {smoke_name}={result}")
+
+    # B8 semantics lint on the same receipt set
+    lint = Path(__file__).resolve().parent / "check-semantics-manifest.py"
+    proc = subprocess.run(
+        [sys.executable, str(lint), str(receipts_dir)],
+        text=True,
+        capture_output=True,
+    )
+    sys.stdout.write(proc.stdout or "")
+    sys.stderr.write(proc.stderr or "")
+    if proc.returncode != 0:
+        bad = 1
 
     if bad:
         return 1

@@ -262,6 +262,47 @@ rm -rf "${gg_tmp}"
 echo "== validation-release-gates (AD-H §18) =="
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-phase-matrix.py" "${ROOT}" || rc=1
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-verdict-routing.py" "${ROOT}" || rc=1
+# B8 — check-semantics-manifest (migration/contracts/check-semantics-manifest.md)
+python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" "${ROOT}" || rc=1
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
+  echo "FAIL: B8 narrowed smoke should refuse endpoint_smoke id" >&2
+  rc=1
+else
+  echo "OK: B8 endpoint_smoke over-promise refused"
+fi
+python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/good-endpoint-smoke-health" || rc=1
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-boot-health-skipped-package" >/dev/null 2>&1; then
+  echo "FAIL: B8 boot_health skipped package should refuse" >&2
+  rc=1
+else
+  echo "OK: B8 boot_health skipped package refused"
+fi
+python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/good-boot-health" || rc=1
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-g4-sample-as-product-closed" >/dev/null 2>&1; then
+  echo "FAIL: B8 SAMPLE g4_hook→product closed should refuse" >&2
+  rc=1
+else
+  echo "OK: B8 SAMPLE g4 product-closed refused"
+fi
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-mvn-verify-no-clean" >/dev/null 2>&1; then
+  echo "FAIL: B8 mvn_clean_verify without clean should refuse" >&2
+  rc=1
+else
+  echo "OK: B8 mvn verify without clean refused"
+fi
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
+  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-unit-it-zero-tests" >/dev/null 2>&1; then
+  echo "FAIL: B8 unit_it_contract zero tests PASS should refuse" >&2
+  rc=1
+else
+  echo "OK: B8 unit_it zero-test PASS refused"
+fi
 vr_tmp="$(mktemp -d)"
 mkdir -p "${vr_tmp}/migration/verdicts"
 printf '%s\n' '{"phase":"M5","verdict":"INCONCLUSIVE","ship":true}' > "${vr_tmp}/migration/verdicts/bad.json"

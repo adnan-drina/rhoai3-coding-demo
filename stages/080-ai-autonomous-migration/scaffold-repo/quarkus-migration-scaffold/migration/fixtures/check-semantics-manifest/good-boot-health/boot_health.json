@@ -1,0 +1,11 @@
+{
+  "schema": "rhoai3.gate-receipt/v1",
+  "check": "boot_health",
+  "result": "PASS",
+  "cmd": "curl -sf /q/health",
+  "rc": 0,
+  "package_rc": "0",
+  "health_status": "ok",
+  "floor": "m4-minimum",
+  "ad010_demo": false
+}
