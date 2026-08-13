@@ -28,6 +28,8 @@ repository (`/projects/modernized`).
 - REST resources under `/api/`; JSON via Jackson; health at `/q/health`
   (`/q/*` deliberately sits outside the application root path).
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
+- Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
+  versions in `migration/contracts/tooling-pins.md` only).
 
 ## Build and test
 
@@ -134,3 +136,4 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
 | Provenance / reconstruct | `auditability-repeatability` | `migration/contracts/auditability-repeatability.md` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
+| Quarkus extension add/rm | `manage-quarkus-extensions` | `.hermes/skills/migration/manage-quarkus-extensions/` + `tooling-pins.md` |

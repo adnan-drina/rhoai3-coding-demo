@@ -7,6 +7,7 @@
 |------|----------------------|-----------------|
 | **Hermes Agent** | `v0.20.0` (`2026.8.3`) | Platform Dev Spaces init (`maas-api-key-provisioning` / Managed Scope). Record digest when installer gains a pin API. |
 | **Spec Kit (`specify-cli`)** | `0.16.1` | `uv tool install 'specify-cli==0.16.1'` in `specify-workspace-init` |
+| **Red Hat Quarkus platform** | `com.redhat.quarkus.platform:quarkus-bom:3.27.3.SP1-redhat-00002` | Destination `pom.xml` `quarkus.platform.*` properties; Maven plugin same GAV stream. Skills cite this row — do not restate the version in skill bodies. |
 
 ## Hermes Spec Kit skill names
 

@@ -264,6 +264,8 @@ python3 "${SKILLS}/gates/validation-release-gates/scripts/check-phase-matrix.py"
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-verdict-routing.py" "${ROOT}" || rc=1
 # B8 — check-semantics-manifest (migration/contracts/check-semantics-manifest.md)
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" "${ROOT}" || rc=1
+# Quarkus platform pin ↔ pom (manage-quarkus-extensions)
+python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py" "${ROOT}" || rc=1
 if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
   "${ROOT}/migration/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
   echo "FAIL: B8 narrowed smoke should refuse endpoint_smoke id" >&2
