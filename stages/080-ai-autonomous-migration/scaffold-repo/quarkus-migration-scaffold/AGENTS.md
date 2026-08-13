@@ -63,7 +63,7 @@ from a pointer README).
 | Kind | Home |
 |------|------|
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
-| Identity | `.hermes/SOUL.md` |
+| Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` (factory places + sha256-verifies) |
 | Procedures / tool invocations | `.hermes/skills/<category>/<name>/` |
 | Domain gates G-1..G-4 | skill `domain-gates` (router below) |
 | Run / phase data | `migration/` |

@@ -6,7 +6,7 @@ for new procedures.
 | Kind | Home | Examples here |
 |------|------|----------------|
 | Standing convention | `AGENTS.md` | Java 21, native Quarkus, task-id correlation |
-| Identity | `.hermes/SOUL.md` | faithfulness, stop-on-bad-input |
+| Identity | authored `.hermes/SOUL.md`; loaded `$HERMES_HOME/SOUL.md` | factory places + sha256-verifies (AD-H §14) |
 | Procedural knowledge + tool invocation | `.hermes/skills/<name>/` | `mta-analysis`, `derive-legacy-boot3`, `specify-workspace-init` |
 | Deterministic **domain** gate | `.hermes/skills/gates/domain-gates/` | G-1..G-4 vocabulary names below |
 | Scaffold lint | `.hermes/skills/harness/harness-validate/scripts/check-no-hermes-context-override.sh` | no `.hermes.md` override |

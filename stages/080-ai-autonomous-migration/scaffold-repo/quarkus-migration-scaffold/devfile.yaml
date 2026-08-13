@@ -74,6 +74,14 @@ components:
         # jvmMaxMem examples ("2G").
         - name: JVM_MAX_MEM
           value: "8G"
+        # AD-H §14 / Deputy E-20260813T152939Z — container-wide Hermes paths.
+        # Must NOT depend on login-shell .bashrc export: non-login processes
+        # (cron, bare sh -c, daemons) otherwise fall back to ~/.hermes and
+        # load the generic auto-seeded SOUL decoy.
+        - name: HERMES_HOME
+          value: "/projects/modernized/.hermes/home"
+        - name: HERMES_MANAGED_DIR
+          value: "/projects/.platform/hermes"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -199,6 +207,24 @@ commands:
           echo "ERROR: missing ${SPECIFY_INIT} — cannot provision Spec Kit"
           exit 1
         fi
+        # Deputy E-20260813T152939Z — neutralize ~/.hermes/SOUL.md decoy so a
+        # mis-launched process (HERMES_HOME unset) fails loudly instead of
+        # loading the generic Nous starter identity.
+        DECOY_SOUL="${HOME}/.hermes/SOUL.md"
+        mkdir -p "${HOME}/.hermes"
+        cat > "${DECOY_SOUL}" <<'DECOY'
+# REFUSE — wrong SOUL.md
+
+This path is NOT the migration workspace identity.
+
+Set HERMES_HOME=/projects/modernized/.hermes/home (container env / login
+profile) and load $HERMES_HOME/SOUL.md. The authored copy lives at
+/projects/modernized/.hermes/SOUL.md and is factory-placed under HERMES_HOME
+with sha256 verification (AD-H §14).
+
+Do not use the auto-seeded Hermes starter identity in this seat.
+DECOY
+        echo "Neutralized decoy SOUL at ${DECOY_SOUL} (Deputy E-20260813T152939Z)."
   - id: start-hermes-dashboard
     exec:
       component: development-tooling
