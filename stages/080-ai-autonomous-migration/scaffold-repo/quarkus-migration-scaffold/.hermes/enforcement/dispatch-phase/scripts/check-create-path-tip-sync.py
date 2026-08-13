@@ -27,6 +27,8 @@ REQUIRED_FILES = [
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
     ".hermes/enforcement/dispatch-phase/scripts/check-specify-preseed.py",
     ".hermes/enforcement/validate-contracts/scripts/check-specify-absent.py",
+    # Deputy E-20260813T184709Z — root scripts/ negative-space retired
+    ".hermes/enforcement/validate-contracts/scripts/check-scripts-absent.py",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
     # Operator E-20260811T144200Z — deps + dest-inventory at create
