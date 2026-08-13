@@ -6,14 +6,38 @@ before sinking N file writes. Architect E-20260810T172800Z.
 """
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
 
+EXIT_CODES = """\
+Exit codes (house contract UPLIFT-3):
+  0  pass — persistence BOM preflight passed
+  1  BLOCK — missing pom or persistence deps (typed dependency_wait; same as
+     check-persistence-bom.py — passed through, not remapped)
+  2  usage / harness defect (bad arguments, or sibling script missing)
+"""
+
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing pom.xml (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     script = Path(__file__).resolve().parent / "check-persistence-bom.py"
+    if not script.is_file():
+        print(f"FAIL: missing sibling {script}", file=sys.stderr)
+        return 2
     cp = subprocess.run(
         [sys.executable, str(script), str(root)],
         text=True,
@@ -28,7 +52,8 @@ def main() -> int:
             "Architect E-20260810T172800Z.",
             file=sys.stderr,
         )
-        return 2
+        # Pass through sibling code (1=BLOCK); only invent 2 for harness defects.
+        return 1 if cp.returncode == 1 else cp.returncode
     print("OK: R-M3.7 compile-deps preflight (persistence BOM)")
     return 0
 

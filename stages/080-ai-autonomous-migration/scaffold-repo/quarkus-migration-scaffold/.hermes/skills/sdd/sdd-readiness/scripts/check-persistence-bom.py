@@ -5,6 +5,7 @@ Architect E-20260810T172800Z / migration/contracts/pom-persistence-handoff.md
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -13,9 +14,28 @@ REQUIRED = (
     "quarkus-hibernate-validator",
 )
 
+EXIT_CODES = """\
+Exit codes (house contract UPLIFT-3):
+  0  pass — required artifacts present in pom.xml
+  1  BLOCK — missing pom.xml or missing required deps (typed dependency_wait)
+  2  usage / harness defect (bad or unknown arguments)
+"""
+
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing pom.xml (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     pom = root / "pom.xml"
     if not pom.is_file():
         print(f"FAIL: missing {pom}", file=sys.stderr)

@@ -115,6 +115,21 @@ The created M1 task instructs the worker to, in order:
   Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
   (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
 
+## Available scripts
+
+- `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
+- `scripts/create-m3-implementer.sh` — M3 child with required skills + park-at-birth
+- `scripts/check-phase-attach-matrix.py` — skills[] vs attach-matrix law
+- `scripts/check-create-path-tip-sync.py` — BLOCKING R0/R3 create-path tip sync
+- `scripts/check-phase-input-manifest.py` — phase input manifest present
+- `scripts/check-phase-body-script-refs.py` — body refs to scripts resolve
+- `scripts/check-specify-preseed.py` — Spec Kit preseed gate
+- `scripts/check-completion-na-reject.py` — refuse N/A completion abuse
+- `scripts/check-created-cards-claim.py` — created-cards claim coherence
+- `scripts/check-decision-complete-cards.py` — decision→complete card checks
+- `scripts/assert-bundle-skills-exist.py` — CS-7 bundle skill exists-assert
+- `scripts/sync-extension-overlays-into-skills.py` — sync extensions→skills refs (`--check`)
+
 ## Verification
 
 - `migration/derived/phase-<PHASE>-task-id.txt` contains the new task id.

@@ -163,6 +163,10 @@ HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
   --out /tmp/chaos-7-out --board chaos-matrix-7
 ```
 
+## Available scripts
+
+Full inventory: `references/available-scripts.md` (UPLIFT-4). Includes
+`write-receipt.py` (creates the receipts `check-m4-floor-receipts.py` validates).
 
 ## Verification
 

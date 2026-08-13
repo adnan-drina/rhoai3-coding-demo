@@ -60,6 +60,29 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `migration/schemas/mta-exception.md`
 - `migration/schemas/kanban-body.md` (W2 §6.1)
 
+## Available scripts
+
+- `scripts/check-readiness.sh` — corpus SDD readiness + ordering + body lint
+- `scripts/check-kanban-body.py` — W2 §6.1 typed body vocabulary (`--body` optional)
+- `scripts/check-ordering.py` — §S.6 story/spec ordering
+- `scripts/check-surgical-scopes.py` — AR-4.4 write-set / exit surgery
+- `scripts/check-semantic-exits.py` — AR-2.3–2.7 product exit semantics
+- `scripts/check-operand-count.py` — measured operand_count / wall-fit
+- `scripts/check-partition-coverage.py` — M2a partition VALID receipt
+- `scripts/check-interface-closure.py` — interface closure Class-A gate
+- `scripts/check-findings-handoff.py` — findings handoff schema (also under mta)
+- `scripts/check-persistence-bom.py` — R-M3.5 persistence BOM in pom.xml
+- `scripts/check-compile-deps-preflight.py` — R-M3.7 wraps persistence BOM
+- `scripts/check-jdbc-deps-preflight.py` — R-M3.11 JDBC deps preflight
+- `scripts/assert-dependency-closure.py` — Class-A dependency closure
+- `scripts/assert-mint-constraints-complete.py` — mint constraints complete
+- `scripts/assert-constraints-preserved.py` — constraints survive amend
+- `scripts/assert-quarantine-tombstones.py` — quarantine tombstone presence
+- `scripts/assert-dest-inventory-hardinvoke.py` — dest inventory hard-invoke
+- `scripts/register-quarantine-tombstone.py` — mutate: register tombstone
+- `scripts/stamp-body-dependencies.py` — mutate: `--write` body deps stamp
+- `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
+- `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
 
 ## Verification
 
