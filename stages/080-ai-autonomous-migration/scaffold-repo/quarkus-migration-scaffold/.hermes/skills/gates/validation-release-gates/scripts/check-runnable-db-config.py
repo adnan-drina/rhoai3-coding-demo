@@ -20,7 +20,8 @@ EXIT_CODES = """Exit codes:
   0  pass — runnable default DB profile, or gate idle (no DB intent in
      pom / properties / migrations)
   1  BLOCK — missing quarkus-jdbc-*/quarkus-flyway, db-kind vs JDBC URL
-     mismatch, missing quarkus.flyway.migrate-at-start=true, or no Flyway
+     mismatch, destination hsqldb (tip-bank B7 / Quarkus 3.27+ dropped
+     extension), missing quarkus.flyway.migrate-at-start=true, or no Flyway
      V*__*.sql migrations
   2  usage / harness defect (bad or unknown argument)
 """
@@ -67,8 +68,34 @@ def main() -> int:
             print(f"FAIL: AR-2.1 pom missing {dep}*", file=sys.stderr)
             bad = 1
 
+    # Tip-bank B7 / Operator E-20260813T111808Z — refuse HSQLDB as destination.
+    # Quarkus 3.27+ dropped the HSQLDB JDBC extension; prose in persistence.md
+    # is not enough — gate must fail closed or every fresh seat re-imports it.
+    if "quarkus-jdbc-hsqldb" in pom:
+        print(
+            "FAIL: AR-2.1 / B7 pom declares quarkus-jdbc-hsqldb — "
+            "extension dropped on Quarkus 3.27+; use h2/postgresql/mysql",
+            file=sys.stderr,
+        )
+        bad = 1
     kinds = re.findall(r"(?m)^quarkus\.datasource\.db-kind\s*=\s*(\S+)", blob)
     urls = re.findall(r"(?m)^quarkus\.datasource\.jdbc\.url\s*=\s*(\S+)", blob)
+    for kind in kinds:
+        if kind.lower() == "hsqldb":
+            print(
+                "FAIL: AR-2.1 / B7 db-kind=hsqldb forbidden on Quarkus 3.27+ "
+                "(map legacy HSQLDB → h2/postgresql/mysql)",
+                file=sys.stderr,
+            )
+            bad = 1
+    for url in urls:
+        if "jdbc:hsqldb:" in url.lower():
+            print(
+                f"FAIL: AR-2.1 / B7 jdbc:hsqldb URL forbidden ({url}) — "
+                "use jdbc:h2: / postgresql / mysql",
+                file=sys.stderr,
+            )
+            bad = 1
     for kind in kinds:
         for url in urls:
             if kind == "h2" and "hsqldb" in url:

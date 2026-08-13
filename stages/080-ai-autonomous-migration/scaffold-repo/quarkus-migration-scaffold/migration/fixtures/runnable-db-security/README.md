@@ -10,6 +10,9 @@ python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-securi
 # Refuse known-bad fragments (copy under a temp tree that includes pom intent)
 python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py \
   migration/fixtures/runnable-db-security/bad-db-kind-mismatch
+# Tip-bank B7 — destination HSQLDB must REFUSE (not only mismatched pairs)
+python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py \
+  migration/fixtures/runnable-db-security/bad-hsqldb-destination
 python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py \
   migration/fixtures/runnable-db-security/bad-placeholder-security
 ```

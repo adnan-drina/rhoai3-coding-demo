@@ -1,0 +1,1 @@
+-- placeholder so AR-2.1 migration presence check is not the only failure mode
