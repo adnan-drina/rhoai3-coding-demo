@@ -1,7 +1,7 @@
 # Validation and release gates
 
-**Status:** binding for migration workspace · mirrors **AD-H §18**  
-**Sources:** Architect plan / AD-H §18 (Operator ACK pending on ledger)  
+**Status:** binding for migration workspace · mirrors **AD-H §18**
+**Basis:** plan / AD-H §18 ( pending on ledger)
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
 Cross-refs: W2 G-1…G-4 (`domain-gates`), AD-H §16 validator/acks, AGENTS
@@ -57,11 +57,11 @@ never ships.
 | **Automatic rollback** | Failed task's last bad tip | Revert to last green task commit on that story line only |
 | **Story re-open** | M5 G-4 REFUSE/INCONCLUSIVE after `PROVISIONAL_ACCEPT` | Re-open that story |
 | **Shared-substrate re-open** | Fail in overlapping §11.3 closure | Re-open closure-intersection set |
-| **Block migration wave** | Missing acks; wave-level G-3 reopen; `main`/factory red with no fix; critical Sonar/security; Operator stop | Stop **new** stories; in-flight finish or park |
+| **Block migration wave** | Missing acks; wave-level G-3 reopen; `main`/factory red with no fix; critical Sonar/security; steward stop | Stop **new** stories; in-flight finish or park |
 
 **Full** completion requires M5 **`ACCEPT`**, not `PROVISIONAL_ACCEPT`.
 
-## Enforcement (Lead)
+## Enforcement
 
 | Piece | Path |
 |-------|------|
@@ -83,8 +83,8 @@ python3 .hermes/skills/gates/validation-release-gates/scripts/compute-substrate-
 python3 .hermes/skills/gates/validation-release-gates/scripts/check-factory-m5.py .
 # Live chaos (Hermes venv; isolated board; no LLM spawn):
 # HERMES_AGENT_ROOT=$HOME/.hermes/hermes-agent \
-#   $HERMES_AGENT_ROOT/venv/bin/python \
-#   .hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py .
+# $HERMES_AGENT_ROOT/venv/bin/python \
+# .hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py .
 ```
 
 `must_not_contradict_m5_accept` is a **required oracle**, not an aspirational

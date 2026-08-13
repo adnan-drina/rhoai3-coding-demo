@@ -1,6 +1,6 @@
 # R-M2.6 — M2 resume-from-artifacts
 
-**BIND:** Architect `E-20260810T153830Z`.
+**Status:** binding (in-tree).
 
 When reclaiming or re-dispatching M2, if durable artifacts already exist:
 
@@ -13,6 +13,6 @@ When reclaiming or re-dispatching M2, if durable artifacts already exist:
 
 - Do **not** rewrite write-once `partition.json`.
 - Do **not** mid-run digest-breaking body rewrite on a live task — tip body
-  lands here; apply on next reclaim/redisp.
+ lands here; apply on next reclaim/redisp.
 - Prefer R-M2.5 wall raise (3600s) over M2a/M2b split unless 3600+resume still
-  dies before `tasks.md`.
+ dies before `tasks.md`.

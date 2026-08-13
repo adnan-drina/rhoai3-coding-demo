@@ -1,7 +1,7 @@
 # Role authority contract (Hermes orchestration)
 
-**Status:** binding for migration workspace · mirrors **AD-H §16**  
-**Sources:** Architect plan / AD-H §16 (Operator ACK `E-20260808T072759Z`)  
+**Status:** binding for migration workspace · mirrors **AD-H §16**
+**Basis:** plan / AD-H §16
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
 AD-H / AD-S / SOUL stand. Human checkpoints are **ack artifacts** or Kanban
@@ -11,7 +11,7 @@ AD-H / AD-S / SOUL stand. Human checkpoints are **ack artifacts** or Kanban
 preload / intended skill set** (Hermes ordered multi-skill load) — **not**
 Hermes hard RBAC. **Enforcement:** SOUL + `HERMES_WRITE_SAFE_ROOT` + **§16.4
 proving-min write fence** (`migration/contracts/write-fence.md`) + ack gates
-+ Lead refuse lints (Research `E-20260808T074430Z`).
++ role-authority refuse lints.
 
 ## Roles and prohibitions
 
@@ -19,7 +19,7 @@ proving-min write fence** (`migration/contracts/write-fence.md`) + ack gates
 |------|-------|-----|------------|
 | **Evidence analyst** | M1 (+ pre-M1 derive) | `mta-analysis`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
 | **Planner** | M2 | Stories/briefs; roadmap deps per §S.6; re-plan graph under same identity | Destination app code; silent identity change; IMPLEMENT; author constitution/`AGENTS.md` |
-| **Spec author** | M2→M3 | `/speckit-specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create()` | `/speckit-implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
+| **Spec author** | M2→M3 | `/speckit-specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create` | `/speckit-implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
 | **Implementer** | M3 | Edit `files_in_scope` only; task-id commits; stop → `blocked` | Re-plan; legacy/derived; `.hermes/skills/**`, `SOUL.md`, Managed Scope; invent units; weaken gates/tests |
 | **Reviewer** | between phases / `blocked` | Read artifacts + gates; request rework; typed block reasons | Silent code fixes; override REFUSE; change identity; merge |
 | **Validator** | M4–M5 | `domain-gates`, `harness-validate`, preflight/factory; record verdicts | Greenwash code; drop thresholds; ACCEPT without oracle |
@@ -43,7 +43,7 @@ for the same fact.
 | `.specify/` / `specs/` | Spec author |
 | `.hermes/skills/**`, Managed Scope, `.env` | **nobody** (steering humans via PR) |
 
-Environment: Dev Spaces workspace; MaaS via NetworkPolicy; no cluster-admin /
+Environment: Dev Spaces workspace; MaaS via NetworkPolicy; no cluster-admin
 GitOps mutate. `HERMES_WRITE_SAFE_ROOT=$PROJECT_DIR` is the write fence.
 
 ## Human checkpoints
@@ -59,7 +59,7 @@ Record under `migration/acks/` (or Kanban metadata):
 | Task commit / open change | — | **No** if packet rules met; no force-push |
 | Push/merge `main` | factory | **Demo:** agent may push when M4/M5 + preflight green. **Enterprise:** protected branch → human merge |
 
-## Enforcement (Lead)
+## Enforcement
 
 | Piece | Home |
 |-------|------|
@@ -81,5 +81,5 @@ python3 .hermes/skills/harness/role-authority/scripts/probe-write-fence.py .
 python3 .hermes/skills/harness/role-authority/scripts/check-write-fence.py . --body migration/bodies/S-010.json
 ```
 
-Full Kanban dispatch wiring rides phase schema. Non-blocking vs Operator ACK
+Full Kanban dispatch wiring rides phase schema. Non-blocking vs human ACK
 on §16.

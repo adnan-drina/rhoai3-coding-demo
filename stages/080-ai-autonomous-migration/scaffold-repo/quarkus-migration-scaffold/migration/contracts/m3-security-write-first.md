@@ -1,7 +1,7 @@
-# M3 security write-first (Architect R-M3.29)
+# M3 security write-first ( R-M3.29)
 
-**Status:** binding proving-min  
-**Sources:** Architect BIND `E-20260810T230310Z` · S-005 hard-block `t_df9cf31a` (0/3 across dual wall)
+**Status:** binding proving-min
+**Basis:** S-005 hard-block `t_df9cf31a` (0/3 across dual wall)
 
 ## Rules
 

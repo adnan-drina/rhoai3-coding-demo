@@ -1,4 +1,4 @@
-# Compaction headroom + fast-deny (AD-009 / Deputy E-20260810T163600Z)
+# Compaction headroom + fast-deny (AD-009)
 
 ## Compaction headroom
 
@@ -21,8 +21,8 @@ Tip/live config:
 
 ```yaml
 compression:
-  enabled: true
-  threshold_tokens: 110000   # headroom under 118784
+ enabled: true
+ threshold_tokens: 110000 # headroom under 118784
 ```
 
 `ensure-provider-max-tokens.py --apply` also pins this.
@@ -38,4 +38,4 @@ Caller: `kanban-stuck-watchdog` invokes
 `check-vllm-validation-fast-deny.py --stamp` for every `running` task.
 
 On match: stamp `context_budget` (trigger `vllm_validation_error`) and alert.
-Board block remains Lead/Monitor after stamp + human/Lead action.
+Board block remains dispatcher after stamp + human steward action.

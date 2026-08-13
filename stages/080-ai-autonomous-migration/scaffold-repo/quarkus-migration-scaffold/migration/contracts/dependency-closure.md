@@ -1,6 +1,6 @@
 # Dependency / pre-exists / import-closure (Class A)
 
-**Architect BIND:** `E-20260811T203657Z` (elevate BANK-DEP-CLOSURE-1 / Operator `E-20260811T203516Z`)
+**Status:** binding (in-tree).
 
 ## Problem
 
@@ -13,12 +13,12 @@ sibling gap.
 ## Rule
 
 1. At create-m3 (fail-closed): `assert-dependency-closure.py --body <body>`
-   - Every `dependencies[]` entry with `provider=pre-exists` must exist on the
-     destination filesystem.
+ - Every `dependencies[]` entry with `provider=pre-exists` must exist on the
+ destination filesystem.
 2. Optional `--imports`: existing `files_writable` `.java` files must not import
-   specimen domain types that are DEST_MISS and lack an owner in writable/scope/deps.
+ specimen domain types that are DEST_MISS and lack an owner in writable/scope/deps.
 3. Distinct from `interface-closure.md` (implements) and
-   `partition-coverage.md` (endpoints/overlaps).
+ `partition-coverage.md` (endpoints/overlaps).
 
 ## Scripts
 

@@ -1,10 +1,10 @@
 # Grounded code generation (IMPLEMENT)
 
-**Status:** binding for migration workspace · mirrors **AD-H §17**  
-**Sources:** Architect plan / AD-H §17 (Operator ACK `E-20260808T072759Z`)  
+**Status:** binding for migration workspace · mirrors **AD-H §17**
+**Basis:** plan / AD-H §17
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
-Applies to the **implementer** role (M3). SOUL / AD-S §S.6 / AD-H §16 /
+Applies to the **implementer** role (M3). SOUL / AD-S §S.6 / AD-H §16
 pattern-steals / G-1…G-4 stand. Higher-priority sources win on conflict; lower
 sources may only supply *expression*, never new *behaviour*.
 
@@ -18,7 +18,7 @@ sources may only supply *expression*, never new *behaviour*.
 | **4** | **Target reference implementation** | Accepted destination code + `AGENTS.md` / constitution | Copy unrelated modules; override legacy |
 | **5** | **Approved Quarkus documentation** (allowlist below) | Framework *how* | New business rules, DB shape, integration behaviour |
 
-**Pri-5 allowlist** (Research AMEND `E-20260808T074430Z`): (1) Quarkus docs
+**Pri-5 allowlist** : (1) Quarkus docs
 matching RH BOM / destination version (demo default **3.27**); (2) scaffold
 skills / free-primitives `RULES.md` / related skill refs; (3) optional
 quarkusio Full-path materials already cited by those skills. **Out:** unlisted
@@ -59,7 +59,7 @@ Missing citation → refuse or Kanban `blocked`.
 
 Citation lints do **not** replace domain-gate oracles.
 
-## Enforcement (Lead)
+## Enforcement
 
 | Piece | Path |
 |-------|------|

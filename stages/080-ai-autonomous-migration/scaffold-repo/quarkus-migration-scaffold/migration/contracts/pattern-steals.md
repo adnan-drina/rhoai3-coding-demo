@@ -1,8 +1,8 @@
 # Pattern-steals contract (Loiane → migration scaffold)
 
-**Status:** binding for workspace gates · **Not** a copy of Loiane's toolkit  
-**Sources:** Architect `E-20260808T061327Z`; Research toolkit + `.specs/` docs  
-**Placement:** this golden scaffold only (consumed in `/projects/modernized`).  
+**Status:** binding for workspace gates · **Not** a copy of Loiane's toolkit
+**Basis:** ; toolkit + `.specs/` docs
+**Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 
 AD-S / Hermes / Kanban / `github/spec-kit` stand. These are **fail-closed
@@ -13,7 +13,7 @@ shapes** we absorb; enforcement lives in skill **`sdd-readiness`**
 authority live in `migration/contracts/sdd-ordering.md` (**AD-S §S.6**).
 Homes: `.hermes/LAYOUT.md`.
 
-## Sequencing (Lead)
+## Sequencing
 
 | Pri | Steal | Land |
 |-----|--------|------|
@@ -41,7 +41,7 @@ Before Kanban-ready / phase advance:
 
 1. Active specs **must** include a non-empty `## Non-Goals` section (AD-S).
 2. Unresolved open questions (`Q-*` with unchecked `- [ ]` or explicit
-   `status: open`) **block** readiness.
+ `status: open`) **block** readiness.
 3. Invention outside Non-Goals / AC set is a process violation (sensors + review).
 
 ### Task packets (Kanban / `migration/tasks/*.json`)

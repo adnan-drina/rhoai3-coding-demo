@@ -1,7 +1,7 @@
 # Write fence — proving min (AD-H §16.4 / ER#2 F2)
 
-**Status:** binding for `validation_protocol_conformant` · **not** `release_qualified`  
-**Sources:** Architect BIND `E-20260810T084100Z` · AD-H §16.4
+**Status:** binding for `validation_protocol_conformant` · **not** `release_qualified`
+**Basis:** AD-H §16.4
 
 `HERMES_WRITE_SAFE_ROOT=/projects/modernized` alone is **insufficient**: ACKs,
 gate verdicts, and ballot-adjacent stores live inside that tree. Proving-min
@@ -27,7 +27,7 @@ Authenticated human approvals bound to artifact digests in a store the worker
 # Lock implementer deny-list (default role)
 bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh lock
 
-# Lead/human temporarily unlock to grant an ack, then re-lock
+# /human temporarily unlock to grant an ack, then re-lock
 bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh unlock
 bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh lock
 
@@ -36,7 +36,7 @@ python3 .hermes/skills/harness/role-authority/scripts/probe-write-fence.py .
 
 # Pre-complete refuse (git dirty + optional body scope)
 python3 .hermes/skills/harness/role-authority/scripts/check-write-fence.py . \
-  --body migration/bodies/S-010.json
+ --body migration/bodies/S-010.json
 ```
 
 Forging an ACK file must not advance a stage once this fence is locked.

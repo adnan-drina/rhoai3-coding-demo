@@ -1,6 +1,6 @@
 # CONV-LIVE arm on dispatch path (D4)
 
-**Architect BIND:** `E-20260812T090529Z` (Operator LIVE FLAG `E-20260812T090441Z`)
+**Status:** binding (in-tree).
 **Bank:** BANK-CONV-LIVE-WD-1
 
 ## Problem
@@ -12,11 +12,11 @@ detector process — reclaim minutes-scale detectors never engaged.
 ## Rule
 
 1. Every M3 `kanban-dispatch-guarded.sh` invocation **must** call
-   `arm-conv-live-watchdog.sh` before `hermes kanban dispatch`.
+ `arm-conv-live-watchdog.sh` before `hermes kanban dispatch`.
 2. The arm script starts (or reuses) a seat-local poller that runs
-   `kanban-stuck-watchdog.py` on an interval (default 120s). That watchdog
-   already invokes `check-conversation-liveness.py` and stamps
-   `classify-conv-live-stall.py` on FAIL.
+ `kanban-stuck-watchdog.py` on an interval (default 120s). That watchdog
+ already invokes `check-conversation-liveness.py` and stamps
+ `classify-conv-live-stall.py` on FAIL.
 3. Fail-closed: missing arm script or arm failure ⇒ refuse dispatch.
 4. Idempotent: re-dispatch must not spawn duplicate pollers (pidfile).
 

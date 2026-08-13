@@ -1,6 +1,6 @@
 # Scope-filtered compile / test-compile (Class A)
 
-**Architect BIND:** `E-20260811T175305Z` (elevate BANK-COMPILE-SCOPE-1)
+**Status:** binding (in-tree).
 
 ## Problem
 
@@ -13,17 +13,17 @@ fail the tree while AR-4.4 forbids fixing them. Workers corner into
 ## Rule
 
 1. **Scoped gate:** run
-   `python3 .hermes/skills/harness/auditability-repeatability/scripts/run-scoped-compile-gate.py \
-     . --task-id <id> --body <typed body> --goal test-compile|compile`
+ `python3 .hermes/skills/harness/auditability-repeatability/scripts/run-scoped-compile-gate.py \
+ . --task-id <id> --body <typed body> --goal test-compile|compile`
 2. FAIL-CLOSED only when Maven error paths intersect the body's
-   `files_writable` (own scope).
+ `files_writable` (own scope).
 3. OOS-only errors → gate **OK** with `reason=oos_only_compile_errors_scoped_ok`
-   (artifact under `migration/runs/<id>/scoped-*-gate.json`). Not a skip.
+ (artifact under `migration/runs/<id>/scoped-*-gate.json`). Not a skip.
 4. **`--skip-test-compile-gate` FORBIDDEN** on live seats. Fixture-only when
-   `RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1`. Compliant fork when blocked:
-   typed `needs_input` — do not bypass.
+ `RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1`. Compliant fork when blocked:
+ typed `needs_input` — do not bypass.
 5. Checkpoint stamp (`stamp-implementer-checkpoint.py`) and wall/complete
-   exit-eval route `compile` / `test_compile` through the scoped gate.
+ exit-eval route `compile` / `test_compile` through the scoped gate.
 6. In-scope errors must be fixed before stamp/complete.
 
 ## Scripts

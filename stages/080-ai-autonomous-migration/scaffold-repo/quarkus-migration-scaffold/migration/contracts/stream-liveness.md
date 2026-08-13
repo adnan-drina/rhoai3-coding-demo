@@ -1,6 +1,6 @@
-# Stream liveness split (Architect E-20260810T145240Z / AD-009 §3.2a)
+# Stream liveness split (AD-009 §3.2a)
 
-**Status:** binding proving-min  
+**Status:** binding proving-min
 **Peer:** `lost-turn-block.md`
 
 ## Rule
@@ -28,7 +28,7 @@ python3 .hermes/home/scripts/check-stream-liveness.py . --task-id t_xxx --ttfc-s
 ```
 
 Manual invoke remains valid. Exit `2` ⇒ TTFC breach + verdict stamp. Board
-block remains Lead/Monitor. Does not MiniMax.
+block remains dispatcher. Does not MiniMax.
 
 ## Forbidden
 

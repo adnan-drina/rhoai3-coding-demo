@@ -1,8 +1,8 @@
 # Check-semantics manifest — M4 / M5 gate checks (B8)
 
-**Stamp:** 2026-08-13T11:20Z · **Author:** Review  
-**Authority:** Operator `E-20260813T111808Z` (REQUIRED OUTPUT) · Architect soft CONCUR `E-20260813T111923Z` · tip-bank **B8** `E-20260813T111910Z`  
-**Law:** every gate check declares **operands** + **coverage claim**; authoring-time review against the check’s name; lint where mechanical.  
+**Stamp:** 2026-08-13T11:20Z · **Author:** Review
+**Basis:** in-tree harness obligations (sibling contracts + skills).
+**Status:** binding (in-tree).
 **Doctrine:** fixture-proof ≠ semantically adequate (3rd occurrence this campaign — smoke/root-cause family).
 
 ## How to read a row
@@ -14,7 +14,7 @@
 | **Coverage claim** | What PASS asserts about the **product** (not the harness) |
 | **Adequacy class** | `SEMANTIC` (product truth) · `ADMISSION` (fixture/schema only) · `TOOLING` (harness health) |
 | **Over-promise risk** | What a green check can **hide** |
-| **Lint** | Mechanical guard proposed (Lead tip-bank land) |
+| **Lint** | Mechanical guard proposed (tip-bank land) |
 
 ---
 
@@ -26,7 +26,7 @@
 | `endpoint_smoke` | Configured smoke URL(s) from floor contract (historically health/root — **not** `/api/*`) | Named smoke path returns success **after** boot | **SEMANTIC (narrow)** | Name suggests “endpoints”; operand is often health/root only — **must not** be read as REST CRUD proof | Manifest + runner: smoke URL list declared; if list excludes `/api/*`, check id must be `endpoint_smoke_health` **or** claim text must say “health/root only” |
 | `g4_hook` | Admission G-4 fixtures / hook script under validation-release-gates | Hook **ran**; admission fixtures evaluated | **ADMISSION** until product partitions harvested | PASS/INCONCLUSIVE on fixtures ≠ product G-4 runtime parity | Verdict router: `g4_mode=SAMPLE` ⇒ forbid mapping hook PASS → product G-4 closed; M5 ACCEPT blocked on INCONCLUSIVE (already AD-H §18) |
 
-**Campaign proof:** M4 run#1 `boot_health` FAIL correctly caught whole-app CDI (`JdbcTemplate`) while per-story scoped-compile stayed green — **SEMANTIC adequacy of `boot_health` validated**.  
+**Campaign proof:** M4 run#1 `boot_health` FAIL correctly caught whole-app CDI (`JdbcTemplate`) while per-story scoped-compile stayed green — **SEMANTIC adequacy of `boot_health` validated**.
 **Campaign scar:** run#1 verifier patched product to chase boot — conduct breach (separate); does not weaken the check’s semantic claim.
 
 ---
@@ -52,7 +52,7 @@
 | `mta_rescan` | MTA / analysis scripts | Findings scan executed | **SEMANTIC (analysis)** | Not runtime | — |
 | `g3_findings_delta` | G-3 delta scripts/fixtures | Findings delta within bound | **ADMISSION** on fixtures | Fixture PASS ≠ product finding close | — |
 | `acceptance_live` | Live HTTP against running app (paths exercised) | Named live acceptance paths behave | **SEMANTIC** | Must list paths; `/q/health` PASS must not imply `/api/*` | **Path manifest required**; M5 REFUSE correctly used JAX-RS 404 on `/api/*` |
-| `g4_runtime_parity` | Product G-4 partitions + runtime compare | Product runtime parity closed | **SEMANTIC** only with harvested partitions | Admission fixtures → INCONCLUSIVE ≠ ACCEPT | Block M5 ACCEPT on INCONCLUSIVE (held); Architect rules harvest vs admission change (E-111910Z) |
+| `g4_runtime_parity` | Product G-4 partitions + runtime compare | Product runtime parity closed | **SEMANTIC** only with harvested partitions | Admission fixtures → INCONCLUSIVE ≠ ACCEPT | Block M5 ACCEPT on INCONCLUSIVE (held); policy rules harvest vs admission change |
 | `accept_scope` | Closure / promote policy | Scope of ACCEPT idle/active | **TOOLING** | IDLE must block ship | — |
 
 ---
@@ -67,23 +67,23 @@
 
 ---
 
-## Authoring checklist (for Lead tip-bank B8 land)
+## Adequacy checklist
 
-1. Every new/changed gate check adds one row here **before** first live use.  
-2. Name ↔ claim review: if the English name implies more than operands, **rename or shrink the claim**.  
-3. Lint (mechanical where possible):  
-   - `g4_mode=SAMPLE` + `g4_*` PASS ⇒ warning  
-   - `endpoint_smoke` PASS with only `/q/health` ⇒ warning if id still says `endpoint` without qualifier  
-   - `unit_it_contract` / `regression_suite` exit 0 with zero tests when AR-2.8 on ⇒ FAIL or forced SKIP+block  
-4. Reviewer (human/Deputy) stamps Adequacy class on first green receipt.
+1. Every new/changed gate check adds one row here **before** first live use.
+2. Name ↔ claim review: if the English name implies more than operands, **rename or shrink the claim**.
+3. Lint (mechanical where possible):
+ - `g4_mode=SAMPLE` + `g4_*` PASS ⇒ warning
+ - `endpoint_smoke` PASS with only `/q/health` ⇒ warning if id still says `endpoint` without qualifier
+ - `unit_it_contract` / `regression_suite` exit 0 with zero tests when AR-2.8 on ⇒ FAIL or forced SKIP+block
+4. Reviewer (human steward) stamps Adequacy class on first green receipt.
 
 ## Status
 
 | Item | State |
 |------|-------|
 | Manifest authored (Review Need) | **DONE** — this file |
-| Lint tooling | **OWED** — Lead B8 tip-bank card |
-| Rename `endpoint_smoke` / path lists | **OWED** — Lead with floor contract |
-| Architect G-4 harvest vs admission | **OPEN** — E-111910Z |
+| Lint tooling | **OWED** — B8 tip-bank card |
+| Rename `endpoint_smoke` / path lists | **OWED** — with floor contract |
+| G-4 harvest vs admission | **OPEN** |
 
 — Review

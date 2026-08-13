@@ -1,7 +1,7 @@
 # Implementer checkpoint / resume (S-010 Class A #3)
 
-**Status:** binding proving-min  
-**Sources:** Deputy `E-20260810T104752Z` defect 3 · Lead BIND `E-20260810T104932Z` · Architect sizing BIND
+**Status:** binding proving-min
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 ## Problem
 
@@ -14,27 +14,27 @@ For M3 implementer tasks (especially test-authoring):
 
 1. **Init** a checkpoint from the typed body dest write-set at create/start
 2. **Stamp** after each successful dest write (or batch): mark path completed;
-   set `next`
+ set `next`
 3. **Resume** on re-dispatch / retry: read checkpoint first; continue at `next`;
-   refuse body-digest mismatch
+ refuse body-digest mismatch
 
 ```bash
 # Init from body (dest paths under modernized / files_writable)
 python3 .hermes/skills/harness/auditability-repeatability/scripts/init-implementer-checkpoint.py \
-  migration/bodies/m3-s-010.json --task-id t_example
+ migration/bodies/m3-s-010.json --task-id t_example
 
 # After writing a dest file (src/test/** runs mvn test-compile gate first)
 python3 .hermes/skills/harness/auditability-repeatability/scripts/stamp-implementer-checkpoint.py \
-  migration/runs/t_example/checkpoint.json \
-  --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
+ migration/runs/t_example/checkpoint.json \
+ --completed src/test/java/com/demo/rest/OwnerRestControllerTests.java
 
 # Validate shape / resume readiness
 python3 .hermes/skills/harness/auditability-repeatability/scripts/check-implementer-checkpoint.py \
-  migration/runs/t_example/checkpoint.json
+ migration/runs/t_example/checkpoint.json
 ```
 
 `src/test/**` stamp without a green **scoped** gate → **REFUSE**
-(Architect E-20260811T175305Z / Deputy E-115113Z #1b). `--skip-test-compile-gate`
+(#1b). `--skip-test-compile-gate`
 requires `RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1` (live seats FORBIDDEN).
 See `compile-scope-filtered.md`.
 

@@ -1,8 +1,8 @@
 # SDD ordering contract (brief → spec → tasks → re-plan)
 
-**Status:** binding for migration workspace · mirrors **AD-S §S.6**  
-**Sources:** Architect plan / AD-S §S.6 (Operator ACK `E-20260808T072759Z`)  
-**Placement:** this golden scaffold only (consumed in `/projects/modernized`).  
+**Status:** binding for migration workspace · mirrors **AD-S §S.6**
+**Basis:** plan / AD-S §S.6
+**Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 
 AD-S / Hermes / Kanban / `github/spec-kit` stand. Pattern-steals
@@ -12,7 +12,7 @@ carry-forward, implementation-graph layers, and re-plan authority.
 ## Brief identity → spec / stories / tasks
 
 The **migration brief** is the M2 story packet (or typed equivalent) that feeds
-`/speckit-specify` → plan → tasks → `kanban_create()`.
+`/speckit-specify` → plan → tasks → `kanban_create`.
 
 ### Carry unchanged (identity)
 
@@ -59,7 +59,7 @@ Story-level roadmap uses the same layering (`roadmap-lint` successor).
 |-------|-------------------|-------------------------------------|
 | IMPLEMENT worker | **No** | Stop; Kanban `blocked` with typed reason |
 | M2 / PLAN owner | **Yes — task/plan graph only** | Re-emit plan/tasks → `kanban_create` under **same** brief identity |
-| Spec / brief identity change | **Escalate** | Amend brief/spec (M2 or Operator); then PLAN re-derives |
+| Spec / brief identity change | **Escalate** | Amend brief/spec (M2); then PLAN re-derives |
 
 **Supersession (mandatory):** bump `plan_revision` (or dated
 `migration/plans/` / git history); archive superseded Kanban tasks with

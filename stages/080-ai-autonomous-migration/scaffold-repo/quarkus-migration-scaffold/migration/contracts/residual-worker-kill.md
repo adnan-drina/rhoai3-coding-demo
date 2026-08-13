@@ -1,6 +1,6 @@
 # Residual worker kill (Class A)
 
-**Architect BIND:** `E-20260811T173254Z` (mechanism ABSORB `E-20260811T173153Z`)
+**Status:** binding (in-tree).
 
 ## Problem
 
@@ -15,15 +15,15 @@ resurrection only. They **do not** stop mid-run zombie writes.
 ## Rule
 
 1. **Abort / hard-block:** always use
-   `.hermes/home/scripts/block-and-signal-worker.sh` **and**
-   `.hermes/home/scripts/kill-and-verify-task-worker.sh <task_id>` (verify death).
+ `.hermes/home/scripts/block-and-signal-worker.sh` **and**
+ `.hermes/home/scripts/kill-and-verify-task-worker.sh <task_id>` (verify death).
 2. **Terminal (`done` / triage / archive):** run `kill-and-verify-task-worker.sh`
-   for that task_id; fail-closed if a hermes `kanban task <id>` process remains.
+ for that task_id; fail-closed if a hermes `kanban task <id>` process remains.
 3. **Record PID:** after spawn/dispatch, run
-   `python3 .hermes/home/scripts/stamp-worker-pid-from-ps.py . --task <id>`
-   so `tasks.worker_pid` is non-NULL.
+ `python3 .hermes/home/scripts/stamp-worker-pid-from-ps.py . --task <id>`
+ so `tasks.worker_pid` is non-NULL.
 4. **Sweep:** `python3 .hermes/home/scripts/assert-no-residual-workers.py .`
-   before next M3 dispatch and after every abort/terminal.
+ before next M3 dispatch and after every abort/terminal.
 5. Never kill the legitimate in-flight product worker (protect by PID/task_id).
 
 ## Scripts
@@ -38,5 +38,5 @@ resurrection only. They **do not** stop mid-run zombie writes.
 ## Mechanism note
 
 Override "resurrection" on S-004 was **residual worker**, not provisioning
-snapshot (Operator forensics; Architect ABSORB). `t_b5019586` worker exoneration
+snapshot (steward forensics; absorbed). `t_b5019586` worker exoneration
 on invent stands.

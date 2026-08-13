@@ -1,6 +1,6 @@
 # Body-digest match scopes to own story at complete (Class A)
 
-**Architect BIND:** `E-20260811T195141Z` (elevate Operator D5 / bank body-digest scope)
+**Status:** binding (in-tree).
 
 ## Problem
 
@@ -14,13 +14,13 @@ rationalized OOS-scoped-OK and Hermes still accepted `kanban_complete`
 ## Rule
 
 1. **`--body` alone** (no `--expect`, no `--sidecar`): check **only** that body's
-   own sidecar (`<body>.sha256.json`). Fail-closed if missing/mismatched.
+ own sidecar (`<body>.sha256.json`). Fail-closed if missing/mismatched.
 2. **`--body` + `--expect`**: check that pair only (card digest path).
 3. **No `--body`**: harness inventory may still scan all `*.sha256.json`
-   sidecars (create-path / Lead restamp hygiene) — not an exit criterion.
+ sidecars (create-path / restamp hygiene) — not an exit criterion.
 4. Complete path continues to require green
-   `assert-complete-exit-criteria.py` before `kanban_complete`
-   (`complete-cmd-exit-criteria.md`).
+ `assert-complete-exit-criteria.py` before `kanban_complete`
+ (`complete-cmd-exit-criteria.md`).
 
 ## Related
 

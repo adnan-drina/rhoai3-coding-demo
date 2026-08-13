@@ -1,6 +1,6 @@
 # Partition-coverage gate (M2a exit)
 
-**Status:** binding · Architect `E-20260811T133858Z` / Operator `E-20260811T134200Z`  
+**Status:** binding ·
 **Lint:** `.hermes/skills/sdd/sdd-readiness/scripts/check-partition-coverage.py`
 
 ## Why
@@ -19,23 +19,23 @@ variance becomes measured data.
 
 ## Checks
 
-1. **Endpoint coverage** — inventory HTTP entry_points (denominator = **runtime inventory count**, never a specimen constant — Operator `E-20260811T150800Z`)
-   each map to **exactly one** story (via story `files` / body `files_in_scope`
-   owning the controller file, or explicit `endpoints` lists). Package remaps
-   come from `migration.yaml` `path_rewrites` / discovery — not hardcoded roots.
-   Specimen fixtures only with `--allow-specimen-fixture`.
+1. **Endpoint coverage** — inventory HTTP entry_points (denominator = **runtime inventory count**, never a specimen constant )
+ each map to **exactly one** story (via story `files` / body `files_in_scope`
+ owning the controller file, or explicit `endpoints` lists). Package remaps
+ come from `migration.yaml` `path_rewrites` / discovery — not hardcoded roots.
+ Specimen fixtures only with `--allow-specimen-fixture`.
 2. **No file overlaps** — non-`pom.xml` paths claimed by two stories → INVALID.
 3. **MTA** — when `migration/mta-findings.json` present, each rule id is in some
-   story `rules` or partition `mta_oos` / `findings_oos`; missing findings file →
-   not INVALID (checked as skipped).
+ story `rules` or partition `mta_oos` / `findings_oos`; missing findings file →
+ not INVALID (checked as skipped).
 4. **Compose** — per-story wall-fit / operand-class / dep-order remain create-time
-   gates; this gate is the whole-partition verdict.
+ gates; this gate is the whole-partition verdict.
 
-Body match is **exact** `identity.story_id` only (Operator `E-20260811T144200Z`).
+Body match is **exact** `identity.story_id` only .
 Path-substring binding (e.g. partition `S-002` → `m3-s-002a.json`) is forbidden —
 split stories must appear as their own partition rows (`S-002a` / `S-002b`).
 
-Related create-time stamps (same Operator bind): `stamp-body-dependencies.py`
+Related create-time stamps (same bind): `stamp-body-dependencies.py`
 (`dependencies:` block) and `stamp-destination-inventory.py` (`destination_inventory`
 ref).
 
@@ -47,5 +47,5 @@ Receipt schema: `rhoai3.partition-coverage/v1` via `--write-receipt`.
 
 ```bash
 python3 .hermes/skills/sdd/sdd-readiness/scripts/check-partition-coverage.py /projects/modernized \
-  --write-receipt migration/receipts/partition-coverage/latest.json
+ --write-receipt migration/receipts/partition-coverage/latest.json
 ```

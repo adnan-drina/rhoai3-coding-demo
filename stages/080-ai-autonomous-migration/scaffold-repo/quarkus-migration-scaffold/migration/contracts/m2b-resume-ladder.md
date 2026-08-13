@@ -1,6 +1,6 @@
 # M2b per-artifact Spec Kit resume ladder
 
-**Status:** bound — Architect E-20260811T122959Z (decision-complete cards)  
+**Status:** bound — (decision-complete cards)
 **Supersedes for M2b:** inverted v11 R-M2.6 compound jump (`spec.md` → `/speckit-tasks`)
 
 Under M2a/M2b split, M2a normally leaves `spec.md`. Jumping to `/speckit-tasks`

@@ -1,7 +1,7 @@
 # Product acceptance tests (AD-H §G.1 / AR-2.8)
 
-**Status:** binding proving-min  
-**Sources:** Architect BIND `E-20260810T095356Z` · action-plan AR-2.8 · pairs AR-3.6
+**Status:** binding proving-min
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 ## Bar
 

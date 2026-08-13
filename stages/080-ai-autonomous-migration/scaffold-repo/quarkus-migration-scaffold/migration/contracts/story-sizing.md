@@ -1,8 +1,7 @@
-# Story sizing denominator (Architect E-20260810T104925Z / E-20260810T110403Z)
+# Story sizing denominator
 
-**Status:** binding proving-min  
-**Sources:** Architect BIND story sizing · Lead land `check-operand-count.py`  
-**Amended:** Operator E-20260811T124000Z — operand classes (`src_code` / `build_config`)
+**Status:** binding proving-min
+**Basis:** story sizing · land `check-operand-count.py`
 
 ## Rule
 
@@ -40,7 +39,7 @@ paths, filtered by class. **Do not** invent `src/` placeholders to satisfy
 Over-cap → **REFUSE** create / body lint (`BODY_SIZE`). Split the story; do not
 raise the wall.
 
-## Wall-fit (Architect E-20260810T111450Z / R-M3.9 E-20260810T184700Z)
+## Wall-fit (R-M3.9 )
 
 Count caps alone are unsound for “decompose when units > wall”. At **create**
 time (`create-m3-implementer.sh` passes `--wall-fit` on **the body being created**):
@@ -54,12 +53,12 @@ Refuse when `estimated_seconds > runtime_budget_sec` (or phase default
 Also refuse dual-stack (`…/jpa/…` **and** `…/jdbc/…`) when measured ≥ 20
 (R-M3.9, `src_code` only) even if the arithmetic barely fits.
 
-## Create vs corpus validation (Operator E-20260811T124000Z)
+## Create vs corpus validation
 
 - **Create path:** `check-kanban-body.py ROOT --body <this.json>` +
-  `check-operand-count.py ROOT <this.json> --wall-fit` — single body only.
+ `check-operand-count.py ROOT <this.json> --wall-fit` — single body only.
 - **Corpus / R0:** `check-kanban-body.py ROOT` (no `--body`) scans all bodies;
-  incomplete siblings must not block an individual create.
+ incomplete siblings must not block an individual create.
 
 ```bash
 python3 .hermes/skills/sdd/sdd-readiness/scripts/check-operand-count.py .

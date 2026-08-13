@@ -1,6 +1,6 @@
 # Card ↔ sidecar digest cross-assert
 
-**Authority:** Operator `E-20260812T061639Z`; Architect `E-20260812T061718Z`.
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 ## Law
 
@@ -22,7 +22,7 @@ worker check (C5 FAIL / SIGN WITHHELD 2026-08-12).
 
 ```bash
 python3 .hermes/skills/harness/auditability-repeatability/scripts/assert-card-body-digest-match.py \
-  . --task-id <task_id> --body migration/bodies/m3-s-NNN.json
+ . --task-id <task_id> --body migration/bodies/m3-s-NNN.json
 ```
 
 Wired into `create-m3-implementer.sh` after ack-request emit (fail-closed).

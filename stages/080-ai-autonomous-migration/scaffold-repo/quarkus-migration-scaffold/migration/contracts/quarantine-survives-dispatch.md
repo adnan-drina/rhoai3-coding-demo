@@ -1,6 +1,6 @@
 # Quarantine survives dispatch (Class A)
 
-**Architect BIND:** `E-20260811T170706Z` / `E-20260811T171008Z`
+**Status:** binding (in-tree).
 
 ## Problem
 
@@ -19,16 +19,16 @@ Wiping files from the live destination tree (`dir:/projects/modernized`) does **
 
 ```json
 {
-  "schema": "rhoai3.quarantine-tombstones/v1",
-  "tombstones": [
-    {
-      "path": "src/main/java/.../PetRepositoryOverride.java",
-      "reason": "abort-run OOS Override residue",
-      "task_id": "t_cc936c8b",
-      "quarantine_dir": "migration/quarantine/abort-t_cc936c8b-run39/",
-      "registered_at": "2026-08-11T17:12:00Z"
-    }
-  ]
+ "schema": "rhoai3.quarantine-tombstones/v1",
+ "tombstones": [
+ {
+ "path": "src/main/java/.../PetRepositoryOverride.java",
+ "reason": "abort-run OOS Override residue",
+ "task_id": "t_cc936c8b",
+ "quarantine_dir": "migration/quarantine/abort-t_cc936c8b-run39/",
+ "registered_at": "2026-08-11T17:12:00Z"
+ }
+ ]
 }
 ```
 
@@ -40,7 +40,7 @@ Paths are workspace-relative under `/projects/modernized`.
 - `assert-quarantine-tombstones.py` — fail if any tombstoned path exists in dest
 - Wired into `create-m3-implementer.sh` (pre-create) and `dispatch-phase.sh` (pre-dispatch)
 
-## Sync mechanism (corrected — Architect ABSORB `E-20260811T173254Z`)
+## Sync mechanism (corrected — ABSORB )
 
 | Mechanism | Role on S-004 cascade |
 |-----------|------------------------|
@@ -48,7 +48,7 @@ Paths are workspace-relative under `/projects/modernized`.
 | Hermes `workspace_kind=worktree` materialize | **Not used** — card is `dir:/projects/modernized` |
 | `git checkout` / tracked restore | **Ruled out** — paths untracked |
 | Raw `/projects/legacy` copy | **Ruled out** — legacy still has `@Profile` |
-| Provisioning-snapshot theory | **Superseded** as primary (Operator forensics; Architect ABSORB) |
+| Provisioning-snapshot theory | **Superseded** as primary (steward forensics; absorbed) |
 
 Tombstones remain useful at **dispatch-time**. Mid-run zombie writes require
 `migration/contracts/residual-worker-kill.md` (kill+verify at abort/terminal).

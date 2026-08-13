@@ -1,7 +1,7 @@
-# Wall-as-terminal exit evaluation (Architect E-20260810T110403Z)
+# Wall-as-terminal exit evaluation
 
-**Status:** binding proving-min  
-**Sources:** Deputy Gap 2 · Architect BIND wall-as-terminal · Lead land
+**Status:** binding proving-min
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 ## Rule
 
@@ -14,14 +14,14 @@ failure mode (wall kill never reaches `kanban_complete`).
 
 ## Procedure
 
-On wall / gave_up-after-timeout (Lead, Monitor, or dispatcher hook):
+On wall / gave_up-after-timeout (dispatcher hook):
 
 ```bash
 python3 .hermes/skills/gates/validation-release-gates/scripts/evaluate-exit-criteria.py \
-  . --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
+ . --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
 
 python3 .hermes/skills/gates/validation-release-gates/scripts/check-wall-exit-eval.py \
-  . --task-id t_xxx --trigger timed_out
+ . --task-id t_xxx --trigger timed_out
 ```
 
 Artifact: `migration/runs/<task_id>/exit-eval.json` (`rhoai3.exit-eval/v1`).
@@ -30,7 +30,7 @@ Assert-only exits are recorded as `unevaluated_assert` (honest); cmd exits run
 and must be present for wall terminals when the body declares them (especially
 `test_compile`).
 
-### AD-009 / incomplete checkpoint (Architect E-20260810T230310Z)
+### AD-009 / incomplete checkpoint
 
 | ID | Rule |
 |----|------|
@@ -39,7 +39,7 @@ and must be present for wall terminals when the body declares them (especially
 
 See `m3-security-write-first.md` (R-M3.29/30) for security-card remediations.
 
-## Requeue (Architect E-20260810T121300Z)
+## Requeue
 
 Unbounded silent requeue **REJECT**.
 
@@ -50,10 +50,10 @@ Unbounded silent requeue **REJECT**.
 
 ```bash
 python3 .hermes/skills/gates/validation-release-gates/scripts/apply-wall-requeue-policy.py . \
-  --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
+ --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
 ```
 
 Also F4 restore-or-refuse before intentional requeue (`workspace-recovery.md`).
 
 Crash/reclaim loops are **not** covered here — see `crash-requeue.md`
-(Architect E-20260810T142650Z, K_crash=1).
+(K_crash=1).

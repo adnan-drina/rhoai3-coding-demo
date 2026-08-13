@@ -1,6 +1,6 @@
 # CONV-LIVE bounded in-turn retry (RW-1)
 
-**Architect BIND:** `E-20260812T074514Z` (Operator remediation `E-20260812T074401Z`)
+**Status:** binding (in-tree).
 **Bank:** BANK-CONV-LIVE-WD-1
 
 ## Problem
@@ -14,13 +14,13 @@ present).
 
 **BOUNDED_RETRY** budget = **1** in-turn attempt per run (then reclaim).
 
-1. When `check-conversation-liveness.py` fails, Lead/Monitor run
-   `classify-conv-live-stall.py --task-id … --stamp` before reclaim.
+1. When `check-conversation-liveness.py` fails, dispatcher run
+ `classify-conv-live-stall.py --task-id … --stamp` before reclaim.
 2. **BOUNDED_RETRY** budget = 1 per run: one typed in-turn resume/retry attempt
-   is authorized when class is `client_unconsumed` or `unknown`; then reclaim.
+ is authorized when class is `client_unconsumed` or `unknown`; then reclaim.
 3. Class `provider_idle` ⇒ do **not** burn the retry on the same send path —
-   stamp + reclaim; escalate send/close diagnosis.
-4. Detector remains alert-only (no board mutate). Reclaim stays Lead-owned.
+ stamp + reclaim; escalate send/close diagnosis.
+4. Detector remains alert-only (no board mutate). Reclaim stays steward-owned.
 
 ## Scripts
 

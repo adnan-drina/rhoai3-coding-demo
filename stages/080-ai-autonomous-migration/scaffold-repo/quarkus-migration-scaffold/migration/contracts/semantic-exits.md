@@ -1,7 +1,7 @@
 # Semantic product exits (AR-2.3–2.7)
 
-**Status:** binding proving-min  
-**Sources:** Architect BIND `E-20260810T094810Z` · external artifact review §2.3–2.7
+**Status:** binding proving-min
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 Bodies that touch REST/persistence CRUD **MUST** name falsifiable exits — not
 compile-only. Stamp families via `identity.semantic_families` (list).

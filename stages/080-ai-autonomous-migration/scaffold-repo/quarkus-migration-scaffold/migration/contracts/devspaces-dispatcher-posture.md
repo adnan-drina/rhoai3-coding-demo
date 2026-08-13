@@ -1,6 +1,6 @@
 # Dev Spaces dispatcher posture (tip-bank B5 / B6)
 
-**Authority:** Operator tip-bank `E-20260813T111910Z` · hermes-kanban official docs  
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 **Status:** interim documentation until v14 orchestrator-mint (AD-016)
 
 ## B5 — daemon vs gateway
@@ -15,11 +15,11 @@ Measured posture (v13):
 ```bash
 export HERMES_MANAGED_DIR=/projects/.platform/hermes
 export HERMES_HOME=/projects/modernized/.hermes/home
-hermes kanban daemon --force   # single dispatcher; document if started
+hermes kanban daemon --force # single dispatcher; document if started
 ```
 
 Do **not** invent Class-A dispatch wrappers. Prefer documenting this seat
-constraint and feeding it into v14 graph design (orchestrator-owned mint /
+constraint and feeding it into v14 graph design (orchestrator-owned mint
 dispatch) rather than normalizing dual-dispatchers.
 
 ## B6 — promote vs park-at-birth
@@ -28,9 +28,9 @@ Create-path law: M3 children are **parked/blocked at birth** (serial drain).
 Native Hermes may auto-promote children when the parent planner reaches
 `done` (observed v13: all nine M3s flipped ready on M2b complete).
 
-**Interim control (until v14):** after planner Done, Lead/Operator re-parks
+**Interim control (until v14):** after planner Done, human steward re-parks
 non-GO stories and promotes exactly one serial GO. Do not resurrect custom
 dispatch wrappers to fight the engine.
 
 **v14 intent:** orchestrator-mint dissolves the mismatch — birth state and
-fan-out are graph-owned, not post-hoc Lead nursing.
+fan-out are graph-owned, not post-hoc nursing.

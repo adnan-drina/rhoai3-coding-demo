@@ -1,7 +1,7 @@
 # M3 wall-fit + JDBC harness (R-M3.9–13)
 
-**Status:** binding proving-min  
-**Sources:** Architect BIND `E-20260810T184700Z` · Research `20260810-m3-s003-harness-review.md`
+**Status:** binding proving-min
+**Basis:** `20260810-m3-s003-harness-review.md`
 
 ## Bindings
 

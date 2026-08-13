@@ -1,7 +1,7 @@
 # Tooling pins (R-HX.1)
 
-**Status:** binding proving-min for Wave-0 demo reproducibility  
-**Sources:** Architect BIND `E-20260811T070102Z` · live v11 workspace smoke 2026-08-11
+**Status:** binding proving-min for Wave-0 demo reproducibility
+**Basis:** in-tree harness obligations (sibling contracts + skills).
 
 | Tool | Pin (campaign-tested) | Install surface |
 |------|----------------------|-----------------|
@@ -23,7 +23,7 @@ Hermes skill names (not dotted GitHub slash paths):
 
 ## Fresh-workspace smoke (before cold audience)
 
-1. `hermes --version` matches pin above (or Architect-approved bump).
+1. `hermes --version` matches pin above (or steward-approved bump).
 2. `specify --version` / `uv tool list` shows `specify-cli` **0.16.1**.
 3. `ls ~/.hermes/skills | grep '^speckit-'` includes specify/plan/tasks/analyze.
 4. `python3 .hermes/skills/harness/phase-dispatch/scripts/sync-extension-overlays-into-skills.py . --check`.

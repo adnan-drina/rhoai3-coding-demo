@@ -1,6 +1,6 @@
-# Crash requeue ceiling (Architect E-20260810T142650Z)
+# Crash requeue ceiling
 
-**Status:** binding proving-min  
+**Status:** binding proving-min
 **Peer:** `wall-exit-eval.md` (bounds `timed_out` only)
 
 ## Rule
@@ -16,14 +16,14 @@ must not be unbounded while wall soft-K reports green.
 
 ## Procedure
 
-On `crashed` (Lead, Monitor, or dispatcher hook) — after F4 restore-or-refuse:
+On `crashed` (dispatcher hook) — after F4 restore-or-refuse:
 
 ```bash
 python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py \
-  . --terminal crashed
+ . --terminal crashed
 
 python3 .hermes/skills/gates/validation-release-gates/scripts/apply-crash-requeue-policy.py \
-  . --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
+ . --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
 ```
 
 Exit codes: `0` soft OK / exhausted warning · `2` hard ceiling · `1` usage error.

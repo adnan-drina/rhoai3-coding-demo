@@ -1,8 +1,8 @@
 # Auditability and repeatability
 
-**Status:** binding for migration workspace · mirrors **AD-H §19**  
-**Sources:** Architect AD-H §19; Research forks `E-20260808T074820Z`
-(`source-analysis/ad-challenge-pass/20260808-adh-19-forks.md`)  
+**Status:** binding for migration workspace · mirrors **AD-H §19**
+**Basis:** AD-H §19; forks
+(`source-analysis/ad-challenge-pass/20260808-adh-19-forks.md`)
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
 Cross-refs: AD-H §7.5, §16–§18, W2 §6 digests, W2 §12.3 derive apply log,
@@ -47,7 +47,7 @@ Digests / hashes prove loaded inputs. Approvals live in `migration/acks/` and
 **Unsupported claims** (§17) → refuse / `blocked`. No second threshold here.
 Secondary: failed validation, rework, task-order reversals, human overrides.
 
-## Enforcement (Lead)
+## Enforcement
 
 | Piece | Path |
 |-------|------|
@@ -61,7 +61,7 @@ python3 .hermes/skills/harness/auditability-repeatability/scripts/check-provenan
 python3 .hermes/skills/harness/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>] -o /tmp/reconstruct.json
 ```
 
-Derive apply log must appear in `artifacts[]` when `derive-legacy-boot3` /
+Derive apply log must appear in `artifacts[]` when `derive-legacy-boot3`
 `derive_apply_log` is in play (W2 §12.3).
 
 **Fail closed:** unlinkable IMPLEMENT commit, missing `worker_session_id`,
