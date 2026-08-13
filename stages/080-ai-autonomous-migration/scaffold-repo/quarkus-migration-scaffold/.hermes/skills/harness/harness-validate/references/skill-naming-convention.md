@@ -57,7 +57,7 @@ the assertion that would catch a silent failure.
 attach skills by leaf name (`skills=[...]` / `--skill`) and bundles pin them,
 so a mid-chain rename breaks live anchors. Rename between chains only.
 
-## v14 mint-boundary rename (applied)
+## v14 mint-boundary rename (PROPOSED — not yet applied; gated on `t_4dc3ea97`)
 
 | Was | Now | Reason |
 |-----|-----|--------|

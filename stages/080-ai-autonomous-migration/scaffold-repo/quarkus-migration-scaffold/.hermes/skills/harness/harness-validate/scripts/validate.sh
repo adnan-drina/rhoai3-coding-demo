@@ -356,6 +356,16 @@ if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-factory-m5.py
 else
   echo "OK: factory self-reported kill-ratio waiver refused"
 fi
+# P0 — empty touch'd m5-accept.ack must NOT count as ACCEPT (Deputy E-20260813T151402Z)
+rm -f "${vr_tmp}/migration/verdicts/"*.json
+mkdir -p "${vr_tmp}/migration/acks"
+: > "${vr_tmp}/migration/acks/m5-accept.ack"
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: empty touch m5-accept.ack must not satisfy factory ship gate" >&2
+  rc=1
+else
+  echo "OK: empty touch m5-accept.ack refused (P0)"
+fi
 mkdir -p "${vr_tmp}/migration/acks"
 cat > "${vr_tmp}/migration/acks/g1-kill-ratio-waiver-S-1.ack.yaml" <<'ACK'
 kind: migration-ack
@@ -364,6 +374,9 @@ status: acknowledged
 acknowledged_by: Operator
 acknowledged_at: "2026-08-13T00:00:00Z"
 ACK
+# Proper M5 verdict + typed waiver → pass
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold"}' \
+  > "${vr_tmp}/migration/verdicts/m5.json"
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 # candidate→promote (finding 4)
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-candidate-promote.py" "${ROOT}" || rc=1

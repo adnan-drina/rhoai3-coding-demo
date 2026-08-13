@@ -150,12 +150,48 @@ def pinned_kill_ratio_pass(root: Path) -> str | None:
     return None
 
 
+def load_migration_ack(path: Path) -> dict | None:
+    """Parse a migration-ack artifact. Empty / touch'd files return None (P0)."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not raw.strip():
+        return None
+    if path.suffix == ".json" or path.name.endswith(".ack.json"):
+        try:
+            doc = json.loads(raw)
+        except Exception:
+            return None
+        return doc if isinstance(doc, dict) else None
+    import re
+
+    def field(name: str) -> str:
+        m = re.search(rf"(?im)^{name}:\s*(.+)$", raw)
+        return m.group(1).strip().strip("\"'") if m else ""
+
+    doc = {
+        "kind": field("kind"),
+        "ack_type": field("ack_type"),
+        "status": field("status"),
+        "accept_kind": field("accept_kind") or "full",
+    }
+    if not doc["kind"] and not doc["ack_type"] and not doc["status"]:
+        return None
+    return doc
+
+
 def m5_accept_state(root: Path) -> tuple[str, str, dict]:
     """Return (state, label, obj) where state is ACCEPT|REFUSE|INCONCLUSIVE|MISSING.
 
-    ACCEPT here means **full** M5 ACCEPT (AD-H §18.0). Provisional is rejected.
-    Does not invent kill-ratio waiver flags — those must come from the verdict
-    object or typed waiver / pin artifacts (Deputy E-20260813T144954Z P1).
+    ACCEPT means **full** M5 ACCEPT (AD-H §18.0). Provisional is rejected.
+
+    Authority sources (Deputy E-20260813T151402Z P0):
+      1. A real M5 verdict JSON under migration/verdicts/ (preferred).
+      2. A non-empty migration-ack for m5-accept with kind/status acknowledged.
+    A zero-byte `touch` of m5-accept.ack is NOT ACCEPT — Research reproduced
+    that bypass; file presence alone is refused.
+    Body `refs: [{key: m5_accept}]` is NOT proof of ACCEPT.
     """
     best: tuple[str, str, dict] = ("MISSING", "", {})
     vdir = root / "migration/verdicts"
@@ -172,34 +208,40 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
                         best = (v, str(path.relative_to(root)), obj)
             except Exception:
                 continue
-    ack = root / "migration/acks/m5-accept.ack"
-    if ack.is_file() and best[0] == "MISSING":
-        return ("ACCEPT", str(ack.relative_to(root)), {"accept_kind": "full"})
-    for d in (root / "migration/bodies", root / "migration/tasks"):
-        if not d.is_dir():
+    if best[0] != "MISSING":
+        return best
+
+    adir = root / "migration" / "acks"
+    candidates: list[Path] = []
+    if adir.is_dir():
+        for name in (
+            "m5-accept.ack.yaml",
+            "m5-accept.ack.yml",
+            "m5-accept.ack.json",
+            "m5-accept.ack",
+        ):
+            p = adir / name
+            if p.is_file():
+                candidates.append(p)
+        candidates.extend(sorted(adir.glob("m5-accept*.ack.yaml")))
+    for ack in candidates:
+        doc = load_migration_ack(ack)
+        if not doc:
+            # Empty / unparseable — do NOT treat as ACCEPT (P0 touch bypass).
             continue
-        for path in sorted(d.glob("*.json")):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                items = data if isinstance(data, list) else [data]
-                for obj in items:
-                    if not isinstance(obj, dict):
-                        continue
-                    body = obj.get("body") if isinstance(obj.get("body"), dict) else obj
-                    if str(body.get("phase") or "").upper() != "FACTORY":
-                        continue
-                    refs = body.get("refs") or []
-                    if isinstance(refs, list) and any(
-                        isinstance(r, dict) and r.get("key") == "m5_accept" for r in refs
-                    ):
-                        if best[0] == "MISSING":
-                            best = (
-                                "ACCEPT",
-                                str(path.relative_to(root)) + " (m5_accept ref)",
-                                {"accept_kind": "full"},
-                            )
-            except Exception:
-                continue
+        if doc.get("kind") != "migration-ack":
+            continue
+        if str(doc.get("status", "")).lower() != "acknowledged":
+            continue
+        at = str(doc.get("ack_type") or "").lower().replace("_", "-")
+        if at not in {"m5-accept", "m5_accept", "m5accept"}:
+            continue
+        kind = str(doc.get("accept_kind") or "full").lower()
+        return (
+            "ACCEPT",
+            str(ack.relative_to(root)),
+            {"accept_kind": kind or "full", "verdict": "ACCEPT"},
+        )
     return best
 
 
