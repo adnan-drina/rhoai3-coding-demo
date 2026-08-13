@@ -48,7 +48,7 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
-4. Writes `external_dirs` reminder beside this skill; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
+4. Writes `external_dirs` reminder under `.specify/EXTERNAL_DIRS.note`; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
 5. Stamps `.specify/AD-S-STOP-RULE.md`
 
 ## Stop rule (non-negotiable)
@@ -71,7 +71,7 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 - Four artifacts must exist **together** under the workspace root: `.specify/`
   (from `specify init`), `.specify/templates/overrides/spec-template.md`,
   `.specify/AD-S-STOP-RULE.md`, and
-  `.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note`.
+  `.specify/EXTERNAL_DIRS.note` (workspace-only; gitignored — not under R-SK.5 skill scan).
 - `.specify/.rhoai3-ads-provisioned` holds a UTC timestamp and is written
   **last**; a second run prints `already provisioned (<ts>) — skip` on stderr
   (plus one JSON object on stdout with `skipped:true`) and exits 0.

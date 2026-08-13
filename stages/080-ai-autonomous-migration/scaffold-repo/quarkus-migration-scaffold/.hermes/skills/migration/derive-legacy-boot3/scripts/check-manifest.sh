@@ -3,6 +3,22 @@
 # M1 and harvest gates require harvest_referent (legacy@3.x).
 # W2 §3.1: also require JDK + Spring Boot before/after version fields.
 set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: check-manifest.sh [--help]
+
+Fail closed if evidence/derived/legacy-at-3.json is missing or incomplete.
+Interface probe only for --help (R-SK.12); does not emit gate OK/FAIL verdicts.
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"
 manifest="${root}/evidence/derived/legacy-at-3.json"
 if [ ! -f "${manifest}" ]; then

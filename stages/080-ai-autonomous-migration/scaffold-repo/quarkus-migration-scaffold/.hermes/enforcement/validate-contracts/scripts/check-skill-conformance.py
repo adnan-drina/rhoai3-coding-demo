@@ -487,9 +487,26 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
     # R-SK.5 P3 — root migration.yaml is the load-bearing specimen descriptor
     # (Deputy E-20260813T184217Z). Golden must stay empty/fake; scanning it
     # closes the third false-zero hole (after src/ and .java fixtures).
+    # Stamped seats (app-migration template) intentionally carry specimen
+    # contracts — out of R-SK.5 scope (specimen-layering; not Architect KEEP).
+    def _migration_is_stamped(path: Path) -> bool:
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        if "provisionedBy: app-migration" in raw:
+            return True
+        for ln in raw.splitlines():
+            s = ln.split("#", 1)[0].strip()
+            if s.startswith("legacyRepoUrl:"):
+                val = s.split(":", 1)[1].strip().strip("'\"")
+                if val:
+                    return True
+        return False
+
     for name in ("migration.yaml", "migration.yml"):
         mig = scaffold / name
-        if mig.is_file():
+        if mig.is_file() and not _migration_is_stamped(mig):
             scan.append(mig)
     for p in scan:
         try:

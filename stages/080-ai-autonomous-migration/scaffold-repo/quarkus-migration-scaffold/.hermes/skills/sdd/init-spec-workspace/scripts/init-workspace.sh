@@ -62,6 +62,20 @@ fi
 
 if [ -f "${MARKER}" ]; then
   TS="$(cat "${MARKER}")"
+  # CS-9: prior tips wrote EXTERNAL_DIRS.note into the skill tree (R-SK.1 stray).
+  # Relocate under .specify/ (gitignored) even on skip so tip-pull seats go green.
+  legacy_note="${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
+  dest_note="${ROOT}/.specify/EXTERNAL_DIRS.note"
+  if [ -f "${legacy_note}" ]; then
+    mkdir -p "${ROOT}/.specify"
+    if [ ! -f "${dest_note}" ]; then
+      mv "${legacy_note}" "${dest_note}"
+      log "relocated legacy EXTERNAL_DIRS.note → ${dest_note}"
+    else
+      rm -f "${legacy_note}"
+      log "removed legacy skill-tree EXTERNAL_DIRS.note (dest already present)"
+    fi
+  fi
   HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip"
   emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
@@ -119,8 +133,12 @@ log "installed Non-Goals override → .specify/templates/overrides/spec-template
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
 note_external_dirs() {
-  local note="${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
+  # Workspace-only under .specify/ (gitignored) — never land in R-SK.1/R-SK.5
+  # scanned skill trees (CS-9 / R-SK.1 stray tip file).
+  local note="${ROOT}/.specify/EXTERNAL_DIRS.note"
   mkdir -p "$(dirname "${note}")"
+  # Drop legacy tip-path note if a prior provision wrote it into the skill tree.
+  rm -f "${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
   cat > "${note}" <<'EOF'
 AD-S / AD-002B — skills.external_dirs after specify init
 
