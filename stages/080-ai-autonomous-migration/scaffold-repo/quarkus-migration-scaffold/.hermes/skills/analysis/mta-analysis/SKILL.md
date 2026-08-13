@@ -11,6 +11,7 @@ metadata:
     - analysis
     - m1
     category: analysis
+    kind: guidance
 ---
 # MTA analysis (legacy@3.x)
 

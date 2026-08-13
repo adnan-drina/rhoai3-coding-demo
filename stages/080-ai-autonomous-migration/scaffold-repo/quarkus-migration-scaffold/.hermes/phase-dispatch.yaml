@@ -71,6 +71,13 @@ phases:
     # only. Drop zero-touch (domain-gates→M4, enforce-authority-boundary/
     # grounded-generation/auditability-repeatability unread on S-001…S-006).
     # Workers consult via skill_view; unused preloads need skills_unused (AD-002E).
+    #
+    # Architect E-20260813T152211Z / Lead wire-or-retire: do NOT re-attach
+    # grounded-generation or auditability-repeatability to skills[] (opt-in ≠
+    # enforcement). They are harness-invoked on create (body digest /
+    # checkpoint) and on complete via assert-complete-exit-criteria.py
+    # (citation + body-digest + provenance). Physical move → .hermes/enforcement/
+    # at v14 mint with UPLIFT-6.
     skills:
       - sdd-readiness
       - spring-to-quarkus-patterns

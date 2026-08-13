@@ -178,6 +178,17 @@ def main() -> int:
     ap.add_argument("root", nargs="?", default=".", help="scaffold / workspace root")
     ap.add_argument("--commit-msg", metavar="FILE", help="lint a commit message file")
     ap.add_argument(
+        "--packet",
+        metavar="FILE",
+        action="append",
+        default=[],
+        help=(
+            "lint an explicit IMPLEMENT packet JSON (repeatable). Used by the "
+            "complete-path harness invoke (Architect E-20260813T152211Z) so "
+            "§17 does not depend on skill_view opt-in."
+        ),
+    )
+    ap.add_argument(
         "--trivial",
         action="store_true",
         help="treat --commit-msg as trivial (task id only)",
@@ -210,10 +221,21 @@ def main() -> int:
     for d in (root / "migration/tasks", root / "migration/kanban"):
         if d.is_dir():
             files.extend(sorted(d.glob("*.json")))
+    for raw in args.packet:
+        p = Path(raw)
+        if not p.is_file():
+            p = root / raw
+        if not p.is_file():
+            fail(f"--packet not found: {raw}")
+            continue
+        files.append(p)
 
     impl_checked = 0
     for path in files:
-        rel = str(path.relative_to(root))
+        try:
+            rel = str(path.resolve().relative_to(root))
+        except ValueError:
+            rel = str(path)
         try:
             items = load_items(path)
         except Exception as e:

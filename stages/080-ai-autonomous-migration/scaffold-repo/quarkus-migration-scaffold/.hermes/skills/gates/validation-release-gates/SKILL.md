@@ -12,6 +12,7 @@ metadata:
     - m4
     - m5
     category: gates
+    kind: guidance
 ---
 ## When to Use
 

@@ -90,6 +90,51 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # Architect E-20260813T152211Z / Lead wire-or-retire: AD-H §17/§19 must not
+    # depend on skill_view. Invoke enforcement scripts on the complete path.
+    skills = root / ".hermes" / "skills" / "harness"
+    citation = skills / "grounded-generation" / "scripts" / "check-citation.py"
+    body_digest = (
+        skills / "auditability-repeatability" / "scripts" / "check-body-digest-match.py"
+    )
+    provenance = (
+        skills / "auditability-repeatability" / "scripts" / "check-provenance.py"
+    )
+    for label, cmd in (
+        (
+            "body-digest",
+            [sys.executable, str(body_digest), str(root), "--body", str(body)],
+        ),
+        (
+            "citation",
+            [
+                sys.executable,
+                str(citation),
+                str(root),
+                "--packet",
+                str(body),
+            ],
+        ),
+        (
+            "provenance",
+            [sys.executable, str(provenance), str(root)],
+        ),
+    ):
+        if not Path(cmd[1]).is_file():
+            print(f"FAIL: missing enforcement script for {label}: {cmd[1]}", file=sys.stderr)
+            return 2
+        sub = subprocess.run(cmd, text=True, capture_output=True)
+        sys.stdout.write(sub.stdout or "")
+        sys.stderr.write(sub.stderr or "")
+        if sub.returncode != 0:
+            print(
+                f"FAIL: refuse kanban_complete — {label} enforcement rc={sub.returncode} "
+                f"(Architect E-20260813T152211Z mechanical path)",
+                file=sys.stderr,
+            )
+            return 1 if sub.returncode == 1 else sub.returncode
+
     print(f"OK: complete-exit green → {out.relative_to(root)}")
     return 0
 

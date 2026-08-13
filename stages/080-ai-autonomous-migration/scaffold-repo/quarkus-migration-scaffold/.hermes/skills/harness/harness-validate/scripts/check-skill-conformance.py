@@ -213,6 +213,14 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
         errs.append(
             f"{name}:R-SK.7:not under a category dir {sorted(CATEGORIES)}"
         )
+    # R-SK.14 Slice A — Architect E-20260813T145219Z / E-20260813T152211Z:
+    # every package declares guidance vs enforcement until the tree cutover.
+    kind = field(fm, "kind")
+    if kind not in {"guidance", "enforcement"}:
+        errs.append(
+            f"{name}:R-SK.14:metadata.hermes.kind must be "
+            f"'guidance' or 'enforcement' (got {kind!r})"
+        )
     pos = -1
     for s in REQ_SECTIONS:
         p = text.find(s)

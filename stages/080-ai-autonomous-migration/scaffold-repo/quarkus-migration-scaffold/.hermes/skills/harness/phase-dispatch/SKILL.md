@@ -11,6 +11,7 @@ metadata:
     - harness
     - orchestration
     category: harness
+    kind: enforcement
 ---
 # Phase dispatch (Hermes Kanban)
 

@@ -11,6 +11,7 @@ metadata:
     - sdd
     - m2
     category: sdd
+    kind: guidance
 ---
 ## When to Use
 

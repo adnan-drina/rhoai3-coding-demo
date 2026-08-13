@@ -11,6 +11,7 @@ metadata:
     - analysis
     - m1
     category: analysis
+    kind: guidance
 ---
 # Entry-point inventory
 

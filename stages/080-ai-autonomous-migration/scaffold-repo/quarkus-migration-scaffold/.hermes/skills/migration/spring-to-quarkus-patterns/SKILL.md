@@ -11,6 +11,7 @@ metadata:
     - migration
     - quarkus
     category: migration
+    kind: guidance
 ---
 ## When to Use
 

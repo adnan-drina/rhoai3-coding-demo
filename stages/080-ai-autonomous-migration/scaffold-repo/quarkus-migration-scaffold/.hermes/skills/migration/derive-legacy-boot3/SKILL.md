@@ -11,6 +11,7 @@ metadata:
     - migration
     - quarkus
     category: migration
+    kind: guidance
 ---
 # Boot 2→3 derivation (before M1)
 

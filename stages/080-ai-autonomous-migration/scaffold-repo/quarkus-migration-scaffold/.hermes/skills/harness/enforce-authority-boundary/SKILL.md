@@ -11,6 +11,7 @@ metadata:
     - harness
     - orchestration
     category: harness
+    kind: enforcement
 ---
 ## When to Use
 
