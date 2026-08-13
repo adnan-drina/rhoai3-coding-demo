@@ -11,6 +11,13 @@
 # Idempotent: skips when .specify/.rhoai3-ads-provisioned exists.
 set -euo pipefail
 
+# --dry-run as first arg or DRY_RUN=1: print plan and exit 0 before installs.
+if [[ "${1:-}" == "--dry-run" ]]; then
+  shift
+  DRY_RUN=1
+fi
+DRY_RUN="${DRY_RUN:-0}"
+
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Non-Goals override lives under the workspace project tree
@@ -35,6 +42,16 @@ die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
 [ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under ${ROOT}/.hermes/provision/spec-kit/overrides/)"
+
+if [[ "${DRY_RUN}" == "1" ]]; then
+  log "DRY-RUN: ROOT=${ROOT}"
+  log "DRY-RUN: MARKER=${MARKER}"
+  log "DRY-RUN: ASSET_OVERRIDE=${ASSET_OVERRIDE}"
+  log "DRY-RUN: would run: specify init --here --integration hermes --force --ignore-agent-tools"
+  log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
+  log "DRY-RUN: would write marker ${MARKER}"
+  exit 0
+fi
 
 if [ -f "${MARKER}" ]; then
   log "already provisioned ($(cat "${MARKER}")) — skip"

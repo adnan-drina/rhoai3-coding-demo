@@ -77,7 +77,12 @@ def main() -> int:
         "known-vacuous": "INCONCLUSIVE",
     }
     rc = 0
-    out_dir = root / "migration/fixtures/admission/out/g2-harvest-fidelity"
+    out_base = __import__("os").environ.get("RHOAI3_ADMISSION_OUT")
+    if out_base:
+        out_dir = Path(out_base) / "g2-harvest-fidelity"
+    else:
+        # UPLIFT-7: never write run-state into the golden tree by default
+        out_dir = Path(__import__("tempfile").mkdtemp(prefix="rhoai3-g2-harvest-fidelity-"))
     for name, want in expected.items():
         got = evaluate(base / name)
         write_verdict(

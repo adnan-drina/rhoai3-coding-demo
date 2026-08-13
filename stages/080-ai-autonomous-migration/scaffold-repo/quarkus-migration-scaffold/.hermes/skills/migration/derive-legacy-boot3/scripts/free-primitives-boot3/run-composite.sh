@@ -8,12 +8,39 @@
 #   SKIP_MTA_JAKARTA=1  force package-map fallback (skip mta-cli)
 set -euo pipefail
 
+# --dry-run as first arg or DRY_RUN=1: list rules that would run; no python.
+if [[ "${1:-}" == "--dry-run" ]]; then
+  shift
+  DRY_RUN=1
+fi
+DRY_RUN="${DRY_RUN:-0}"
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export COMPOSITE_ROOT="${COMPOSITE_ROOT:-$(pwd)}"
 export PYTHONPATH="${HERE}${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "free-primitives-boot3: COMPOSITE_ROOT=${COMPOSITE_ROOT}"
 echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default under COMPOSITE_ROOT>}"
+
+RULES=(
+  "${HERE}/rules/r00_javax_to_jakarta.py"
+  "${HERE}/rules/r10_bump_boot_parent.py"
+  "${HERE}/rules/r20_mysql_connector.py"
+  "${HERE}/rules/r30_jaxb_api.py"
+  "${HERE}/rules/r40_security6_wsca.py"
+  "${HERE}/rules/r45_security6_matchers.py"
+  "${HERE}/rules/r50_openapi_jakarta.py"
+  "${HERE}/rules/r60_springfox_to_springdoc.py"
+  "${HERE}/rules/r70_thymeleaf_spring6.py"
+)
+
+if [[ "${DRY_RUN}" == "1" ]]; then
+  echo "DRY-RUN: free-primitives-boot3 would run ${#RULES[@]} rules:"
+  for script in "${RULES[@]}"; do
+    echo "DRY-RUN:   $(basename "$script")"
+  done
+  exit 0
+fi
 
 # Fresh apply log for this invocation
 if [ -n "${APPLY_LOG_PATH:-}" ]; then
@@ -28,14 +55,8 @@ run_rule() {
 }
 
 # Order: jakarta → Boot bump → POM → Security (WSCA then matchers) → generator → thymeleaf
-run_rule "${HERE}/rules/r00_javax_to_jakarta.py"
-run_rule "${HERE}/rules/r10_bump_boot_parent.py"
-run_rule "${HERE}/rules/r20_mysql_connector.py"
-run_rule "${HERE}/rules/r30_jaxb_api.py"
-run_rule "${HERE}/rules/r40_security6_wsca.py"
-run_rule "${HERE}/rules/r45_security6_matchers.py"
-run_rule "${HERE}/rules/r50_openapi_jakarta.py"
-run_rule "${HERE}/rules/r60_springfox_to_springdoc.py"
-run_rule "${HERE}/rules/r70_thymeleaf_spring6.py"
+for script in "${RULES[@]}"; do
+  run_rule "${script}"
+done
 
 echo "free-primitives-boot3: OK"

@@ -19,7 +19,9 @@ def apply_log_path() -> Path:
     p = os.environ.get("APPLY_LOG_PATH", "")
     if p:
         return Path(p)
-    return repo_root() / "migration" / "derived" / "free-primitives-apply-log.json"
+    # Prefer under COMPOSITE_ROOT (derived tree), never the golden
+    # migration/derived/ path (UPLIFT-7 / e3925b3b regression class).
+    return repo_root() / ".rhoai3-free-primitives-apply-log.json"
 
 
 def iter_files(root: Path, suffixes: Iterable[str]) -> list[Path]:

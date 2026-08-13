@@ -59,11 +59,34 @@ def dest_paths(body: dict) -> list[str]:
     return out
 
 
+def _print_existing_summary(out: Path, root: Path, existing: dict) -> None:
+    try:
+        rel = out.relative_to(root)
+    except ValueError:
+        rel = out
+    completed = existing.get("completed") or []
+    n_completed = len(completed) if isinstance(completed, list) else 0
+    print(
+        f"OK: existing checkpoint {rel} "
+        f"next={existing.get('next', '?')} completed={n_completed} (idempotent retry)"
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("body_json")
     ap.add_argument("--task-id", required=True)
     ap.add_argument("--root", default=".")
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="wipe/re-init checkpoint even when body_sha256 matches",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print planned checkpoint write (or keep existing) and exit 0",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     body_path = Path(args.body_json)
@@ -82,6 +105,25 @@ def main() -> int:
         rel_body = str(body_path.resolve().relative_to(root))
     except ValueError:
         rel_body = str(body_path)
+    out_dir = root / "migration" / "runs" / args.task_id
+    out = out_dir / "checkpoint.json"
+
+    if out.is_file() and not args.force:
+        try:
+            existing = json.loads(out.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            existing = None
+        if isinstance(existing, dict) and existing.get("body_sha256") == digest:
+            if args.dry_run:
+                print(
+                    f"DRY-RUN: would keep existing {out.relative_to(root)} "
+                    f"(body_sha256 matches; no write)"
+                )
+                _print_existing_summary(out, root, existing)
+                return 0
+            _print_existing_summary(out, root, existing)
+            return 0
+
     ck = {
         "schema": SCHEMA,
         "task_id": args.task_id,
@@ -93,9 +135,20 @@ def main() -> int:
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "notes": "init",
     }
-    out_dir = root / "migration" / "runs" / args.task_id
+    if args.dry_run:
+        try:
+            rel_out = out.relative_to(root)
+        except ValueError:
+            rel_out = out
+        print(
+            f"DRY-RUN: would write {rel_out} "
+            f"next={ck['next']} work={len(work)} body_sha256={digest[:12]}…"
+        )
+        if out.is_file() and args.force:
+            print(f"DRY-RUN: --force would replace existing {rel_out}")
+        return 0
+
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / "checkpoint.json"
     out.write_text(json.dumps(ck, indent=2) + "\n", encoding="utf-8")
     print(f"OK: wrote {out.relative_to(root)} next={ck['next']} work={len(work)}")
     return 0

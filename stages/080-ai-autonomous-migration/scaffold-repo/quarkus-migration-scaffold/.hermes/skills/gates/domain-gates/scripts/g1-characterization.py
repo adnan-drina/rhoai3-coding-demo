@@ -74,7 +74,12 @@ def main() -> int:
         "ar36-probe-only": "REFUSE",
     }
     rc = 0
-    out_dir = root / "migration/fixtures/admission/out/g1-characterization"
+    out_base = __import__("os").environ.get("RHOAI3_ADMISSION_OUT")
+    if out_base:
+        out_dir = Path(out_base) / "g1-characterization"
+    else:
+        # UPLIFT-7: never write run-state into the golden tree by default
+        out_dir = Path(__import__("tempfile").mkdtemp(prefix="rhoai3-g1-characterization-"))
     for name, want in expected.items():
         fixture = base / name
         if not fixture.is_dir():

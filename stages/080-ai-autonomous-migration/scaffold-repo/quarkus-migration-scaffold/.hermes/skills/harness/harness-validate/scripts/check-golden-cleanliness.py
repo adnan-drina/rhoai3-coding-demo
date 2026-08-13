@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""UPLIFT-7 / R-SK.13 companion — golden tree must not accumulate run-state.
+
+Gates and composites historically wrote under:
+  migration/fixtures/admission/out/**
+  migration/derived/free-primitives-apply-log.json
+Those paths regenerate on validate/derive and must never be tip-committed
+(regression of e3925b3b). R-SK.13 skips `out/` so hermeticity alone cannot
+catch this — this lint does.
+
+Rules (fail-closed):
+  G1  forbidden paths must not be git-tracked
+  G2  if present on disk under the golden root, they must be gitignored
+      (so `git add -A` cannot sweep them)
+
+Usage:
+  python3 check-golden-cleanliness.py --root .
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+# Exact files + directory prefixes relative to scaffold root.
+FORBIDDEN_FILES = (
+    "migration/derived/free-primitives-apply-log.json",
+    "migration/derived/review-adhere-observe-needed.yaml",
+)
+FORBIDDEN_PREFIXES = (
+    "migration/fixtures/admission/out/",
+)
+FORBIDDEN_NAME_GLOBS = (
+    ("migration/derived", "phase-*-task-id.txt"),
+    ("migration/derived", "created-cards-*.json"),
+)
+
+
+def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        text=True,
+        capture_output=True,
+    )
+
+
+def on_disk_forbidden(root: Path) -> list[Path]:
+    hits: list[Path] = []
+    for rel in FORBIDDEN_FILES:
+        p = root / rel
+        if p.is_file():
+            hits.append(p)
+    out_root = root / "migration/fixtures/admission/out"
+    if out_root.is_dir():
+        hits.extend(sorted(p for p in out_root.rglob("*") if p.is_file()))
+    for parent, pattern in FORBIDDEN_NAME_GLOBS:
+        hits.extend(sorted((root / parent).glob(pattern)))
+    # de-dupe
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for p in hits:
+        if p not in seen and p.is_file():
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def tracked_forbidden(root: Path) -> list[str]:
+    """Return tracked paths that match forbidden prefixes/names."""
+    ls = git(root, "ls-files", "-z", "--", "migration/")
+    if ls.returncode != 0:
+        return [f"G1:git-ls-files-failed:{ls.stderr.strip()}"]
+    bad: list[str] = []
+    for raw in (ls.stdout or "").split("\0"):
+        rel = raw.strip()
+        if not rel:
+            continue
+        if any(rel == f or rel.startswith(f + "/") for f in FORBIDDEN_FILES):
+            bad.append(rel)
+            continue
+        if any(rel.startswith(pfx) for pfx in FORBIDDEN_PREFIXES):
+            bad.append(rel)
+            continue
+        parent = str(Path(rel).parent)
+        name = Path(rel).name
+        for pdir, pattern in FORBIDDEN_NAME_GLOBS:
+            if parent.replace("\\", "/") == pdir and Path(name).match(pattern.split("/")[-1]):
+                bad.append(rel)
+    return bad
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Exit: 0=clean, 1=contamination, 2=usage",
+    )
+    ap.add_argument("--root", default=".", help="scaffold root")
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
+    if not root.is_dir():
+        print(f"FAIL: bad root {root}", file=sys.stderr)
+        return 2
+
+    errs: list[str] = []
+    for rel in tracked_forbidden(root):
+        if rel.startswith("G1:"):
+            errs.append(rel)
+        else:
+            errs.append(f"G1:tracked:{rel}")
+
+    files = on_disk_forbidden(root)
+    for p in files:
+        rel = str(p.relative_to(root)).replace("\\", "/")
+        ig = git(root, "check-ignore", "-q", rel)
+        if ig.returncode != 0:
+            errs.append(f"G2:not-gitignored:{rel}")
+
+    for e in errs:
+        print(e)
+    print(f"GOLDEN_CLEANLINESS_FILES={len(files)} VIOLATIONS={len(errs)}")
+    return 1 if errs else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

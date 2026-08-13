@@ -119,6 +119,11 @@ def main() -> int:
         action="store_true",
         help="write verdict stamp when hard ceiling trips (default: print only)",
     )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print plan only; skip --stamp write",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     n = count_crashed(args.task_id)
@@ -132,15 +137,21 @@ def main() -> int:
         )
         print(msg, file=sys.stderr)
         if args.stamp:
-            path = write_stamp(
-                root,
-                task_id=args.task_id,
-                cause=args.cause,
-                crash_count=n,
-                k_crash=args.k_crash,
-                note=args.note,
+            stamp_path = (
+                root / "migration" / "verdicts" / f"crash-requeue-{args.cause}-{args.task_id}.json"
             )
-            print(f"stamped {path}")
+            if args.dry_run:
+                print(f"DRY-RUN: would stamp {stamp_path} (skipped write)")
+            else:
+                path = write_stamp(
+                    root,
+                    task_id=args.task_id,
+                    cause=args.cause,
+                    crash_count=n,
+                    k_crash=args.k_crash,
+                    note=args.note,
+                )
+                print(f"stamped {path}")
         return 2
     if n == args.k_crash:
         print(

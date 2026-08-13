@@ -59,11 +59,35 @@ def main() -> int:
         action="store_true",
         help="Only check K / artifact presence (eval already ran)",
     )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print plan only; skip eval/sync subprocess side effects",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     scripts = root / ".hermes/skills/gates/validation-release-gates/scripts"
     n = count_timed_out(args.task_id)
     print(f"wall-policy: timed_out_count={n} k_soft={args.k_soft}")
+
+    if args.dry_run:
+        print(
+            f"DRY-RUN: skip eval/sync side effects for task={args.task_id} "
+            f"skip_eval={args.skip_eval}"
+        )
+        if n > args.k_soft:
+            print(
+                f"DRY-RUN: would FAIL HARD CEILING (timed_out_count={n} > k_soft={args.k_soft})"
+            )
+            return 2
+        if n == args.k_soft:
+            print(
+                f"DRY-RUN: soft requeue budget exhausted (n={n}=k); "
+                f"next timed_out would hard-block"
+            )
+            return 0
+        print(f"DRY-RUN: soft requeue still available (n={n} < k={args.k_soft})")
+        return 0
 
     if not args.skip_eval:
         eval_py = scripts / "evaluate-exit-criteria.py"

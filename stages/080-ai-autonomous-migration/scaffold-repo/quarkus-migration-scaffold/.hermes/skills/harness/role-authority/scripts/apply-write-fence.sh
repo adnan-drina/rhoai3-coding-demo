@@ -7,6 +7,7 @@ set -euo pipefail
 ROLE="${WRITE_FENCE_ROLE:-implementer}"
 ROOT="."
 ACTION="lock"
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -14,8 +15,12 @@ while [[ $# -gt 0 ]]; do
       ACTION="$1"
       shift
       ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
     -*)
-      echo "usage: $0 [ROOT] {lock|unlock|status}" >&2
+      echo "usage: $0 [--dry-run] [ROOT] {lock|unlock|status}" >&2
       exit 2
       ;;
     *)
@@ -70,6 +75,17 @@ unlock_path() {
 
 case "${ACTION}" in
   lock)
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      echo "DRY-RUN: write-fence LOCK role=${ROLE} root=${ROOT}"
+      for rel in "${DENY_DIRS[@]}"; do
+        echo "DRY-RUN: would lock ${ROOT}/${rel}"
+      done
+      for rel in "${DENY_FILES[@]}"; do
+        [[ -e "${ROOT}/${rel}" ]] || continue
+        echo "DRY-RUN: would lock ${ROOT}/${rel}"
+      done
+      exit 0
+    fi
     for rel in "${DENY_DIRS[@]}"; do
       mkdir -p "${ROOT}/${rel}"
       lock_path "${ROOT}/${rel}"
@@ -81,7 +97,19 @@ case "${ACTION}" in
     echo "OK: write-fence LOCKED role=${ROLE} root=${ROOT}"
     ;;
   unlock)
-    for rel in "migration/acks" "migration/verdicts" ".hermes/skills"; do
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      echo "DRY-RUN: write-fence UNLOCK role=${ROLE} root=${ROOT}"
+      for rel in "${DENY_DIRS[@]}"; do
+        [[ -e "${ROOT}/${rel}" ]] || continue
+        echo "DRY-RUN: would unlock ${ROOT}/${rel}"
+      done
+      for rel in "${DENY_FILES[@]}"; do
+        [[ -e "${ROOT}/${rel}" ]] || continue
+        echo "DRY-RUN: would unlock ${ROOT}/${rel}"
+      done
+      exit 0
+    fi
+    for rel in "${DENY_DIRS[@]}"; do
       [[ -e "${ROOT}/${rel}" ]] || continue
       unlock_path "${ROOT}/${rel}"
     done

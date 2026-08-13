@@ -658,6 +658,8 @@ fi
 # fail-closed on directories the harness deliberately deleted.
 echo "== R-SK.13 scaffold hermeticity (no link to the authoring project) =="
 python3 "${SKILL_DIR}/scripts/check-scaffold-hermeticity.py" --root "${ROOT}" || rc=1
+echo "== UPLIFT-7 golden cleanliness (no run-state in tip tree) =="
+python3 "${SKILL_DIR}/scripts/check-golden-cleanliness.py" --root "${ROOT}" || rc=1
 echo "== R-SK.12 script CLI contract (syntax + no false-green --help) =="
 python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.hermes/skills" || rc=1
 echo "== CS-7 bundle exists-assert =="

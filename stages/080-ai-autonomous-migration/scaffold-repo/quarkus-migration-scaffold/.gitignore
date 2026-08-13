@@ -2,8 +2,16 @@
 # specify-workspace-init; never commit into the golden scaffold.
 .specify/
 
-# Admission fixture run output
+# Admission fixture run output (UPLIFT-7 — never tip-commit)
 migration/fixtures/admission/out/
+
+# Derive / dispatch run-state under migration/derived/ (UPLIFT-7).
+# Intentional in-seat manifests (legacy-at-3.json) may exist; these globs
+# are regenerating exhaust that previously contaminated the golden tip.
+migration/derived/free-primitives-apply-log.json
+migration/derived/phase-*-task-id.txt
+migration/derived/review-adhere-observe-needed.yaml
+migration/derived/created-cards-*.json
 
 # Live analysis / inventory outputs (regenerated in workspace)
 migration/entry-point-inventory.json
@@ -51,3 +59,8 @@ migration/derived/legacy-at-3/
 .hermes/home/cron/output/
 .hermes/home/auth.json
 .hermes/home/.env
+
+# Free-primitives apply log (UPLIFT-7) — under derived tree or mis-cwd scaffold root
+.rhoai3-free-primitives-apply-log.json
+**/.rhoai3-free-primitives-apply-log.json
+

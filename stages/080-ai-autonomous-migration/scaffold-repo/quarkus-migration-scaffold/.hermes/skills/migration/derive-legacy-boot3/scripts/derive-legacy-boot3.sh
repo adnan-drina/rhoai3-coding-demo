@@ -15,6 +15,13 @@
 #                            (default: free-primitives-boot3 composite, W2 §12)
 set -euo pipefail
 
+# --dry-run as first arg or DRY_RUN=1: print plan and exit 0 (no mkdir/rm/mutate).
+if [[ "${1:-}" == "--dry-run" ]]; then
+  shift
+  DRY_RUN=1
+fi
+DRY_RUN="${DRY_RUN:-0}"
+
 LEGACY_SRC="${LEGACY_SRC:-/projects/legacy}"
 DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
 # Skill layout: .hermes/skills/migration/derive-legacy-boot3/scripts/ → project root is ../../../..
@@ -23,9 +30,19 @@ MODERNIZED_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 MANIFEST_DIR="${MODERNIZED_ROOT}/migration/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
 COMPOSITE_SCRIPT="${SCRIPT_DIR}/free-primitives-boot3/run-composite.sh"
-APPLY_LOG_DEFAULT="${MANIFEST_DIR}/free-primitives-apply-log.json"
+APPLY_LOG_DEFAULT="${DERIVED_ROOT}/.rhoai3-free-primitives-apply-log.json"
 
 die() { echo "derive-legacy-boot3: $*" >&2; exit 1; }
+
+if [[ "${DRY_RUN}" == "1" ]]; then
+  echo "DRY-RUN: derive-legacy-boot3 plan"
+  echo "DRY-RUN: LEGACY_SRC=${LEGACY_SRC}"
+  echo "DRY-RUN: DERIVED_ROOT=${DERIVED_ROOT}"
+  echo "DRY-RUN: MANIFEST=${MANIFEST}"
+  echo "DRY-RUN: COMPOSITE_SCRIPT=${COMPOSITE_SCRIPT}"
+  echo "DRY-RUN: APPLY_LOG_DEFAULT=${APPLY_LOG_DEFAULT}"
+  exit 0
+fi
 
 [ -d "${LEGACY_SRC}" ] || die "missing LEGACY_SRC=${LEGACY_SRC}"
 [ -f "${LEGACY_SRC}/pom.xml" ] || die "no pom.xml under ${LEGACY_SRC}"

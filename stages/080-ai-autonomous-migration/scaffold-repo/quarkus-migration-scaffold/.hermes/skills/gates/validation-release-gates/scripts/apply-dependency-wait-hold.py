@@ -4,7 +4,7 @@
 Architect E-20260810T172800Z / migration/contracts/pom-persistence-handoff.md
 
 On typed dependency_wait: stamp verdict + optional hard block. Names actor Need
-`Lead:fix-upstream-pom` (peer of AD-010 §3d). Never MiniMax.
+`steward:fix-upstream-pom` (peer of AD-010 §3d). Never MiniMax.
 """
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ def write_stamp(root: Path, *, task_id: str, note: str) -> Path:
         "stamped_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "auto_promote": False,
         "minimax_escalate": False,
-        "needs": f"Lead:fix-upstream-pom({task_id})",
+        "needs": f"steward:fix-upstream-pom({task_id})",
         "note": note
         or (
-            "dependency_wait hold — no auto-promote until Lead/Operator fixes "
+            "dependency_wait hold — no auto-promote until steward/Operator fixes "
             "upstream pom or body gains typed pom write (R-M3.6 / "
             "Architect E-20260810T172800Z)"
         ),
@@ -67,22 +67,34 @@ def main() -> int:
         action="store_true",
         help="hermes kanban block (hard hold; no soft promote)",
     )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print plan only; skip stamp write and kanban block",
+    )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     reason = (
-        "R-M3.6 dependency_wait hold — Needs: Lead:fix-upstream-pom; "
+        "R-M3.6 dependency_wait hold — Needs: steward:fix-upstream-pom; "
         "do not auto-promote (Architect E-20260810T172800Z)"
     )
     print(
         f"dependency-wait-hold: task={args.task_id} "
-        f"Needs: Lead:fix-upstream-pom({args.task_id})"
+        f"Needs: steward:fix-upstream-pom({args.task_id})"
     )
     if args.stamp:
-        path = write_stamp(root, task_id=args.task_id, note=args.note)
-        print(f"stamped {path}")
+        stamp_path = root / "migration" / "verdicts" / f"dependency-wait-hold-{args.task_id}.json"
+        if args.dry_run:
+            print(f"DRY-RUN: would stamp {stamp_path} (skipped write)")
+        else:
+            path = write_stamp(root, task_id=args.task_id, note=args.note)
+            print(f"stamped {path}")
     if args.block:
-        kanban_block(args.task_id, reason)
-        print(f"blocked {args.task_id}")
+        if args.dry_run:
+            print(f"DRY-RUN: would kanban block {args.task_id} reason={reason!r}")
+        else:
+            kanban_block(args.task_id, reason)
+            print(f"blocked {args.task_id}")
     return 0
 
 
